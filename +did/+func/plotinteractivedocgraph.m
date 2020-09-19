@@ -63,7 +63,7 @@ layout = varargin{5};
 
 f = figure;
 
-ud = var2struct('docs','G','mdigraph','nodes');
+ud = did.datastructures.var2struct('docs','G','mdigraph','nodes');
 
 set(f,'userdata',ud);
 

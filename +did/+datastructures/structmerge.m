@@ -1,4 +1,4 @@
- function s_out = structmerge(s1, s2, varargin2
+function s_out = structmerge(s1, s2, varargin)
 % STRUCTMERGE - Merge struct variables into a common struct
 %
 %  S_OUT = STRUCTMERGE(S1, S2, ...)

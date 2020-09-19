@@ -431,7 +431,7 @@ classdef document
 				s = strfind(jsonfilelocationstring, searchString);
 				if ~isempty(s), % insert the location
 					filename = [did_globals.path.definition_locations{1} filesep ...
-						filesepconversion(jsonfilelocationstring(s+numel(searchString):end), did.filesep, filesep)];
+						did.file.filesepconversion(jsonfilelocationstring(s+numel(searchString):end), did.filesep, filesep)];
 				else,
 					% first, guess that it is a complete path from the first search path
 					filename = [did_globals.path.definition_locations{1} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
