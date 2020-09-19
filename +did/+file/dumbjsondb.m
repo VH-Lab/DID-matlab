@@ -628,13 +628,13 @@ classdef dumbjsondb
 				switch(lower(operation)),
 					case lower('Added new version'),
 						% we need to write or update the metadata file with the latest version
-						str2text(metafile,mat2str(doc_version));
+						did.file.str2text(metafile,mat2str(doc_version));
 					case lower('Overwrote version'),
 						% we don't need to do anything, but subclasses might
 					case lower('Deleted version'), % need to add the max version
 						v = dumbjsondb_obj.docversions(doc_unique_id);
 						if numel(v)>0, % we have a version
-							str2text(metafile,mat2str(max(v)));
+							did.file.str2text(metafile,mat2str(max(v)));
 						else,
 							if exist(metafile,'file'),
 								delete(metafile);
@@ -702,7 +702,7 @@ classdef dumbjsondb
 				end;
 				s = rmfield(s,'paramfilename'); % redundant and potentially error-prone if path moved
 				je = jsonencode(s);
-				str2text(dumbjsondb_obj.paramfilename,je);
+				did.file.str2text(dumbjsondb_obj.paramfilename,je);
 
 				% Step 3) attempt to create the directory
 				thedir = [filepath filesep dumbjsondb_obj.dirname];
@@ -756,7 +756,7 @@ classdef dumbjsondb
                     error(['Could not generate JSON code from object.']);
                 end;
 				try,
-					str2text([filename], js);
+					did.file.str2text([filename], js);
 				catch,
 					error(['Could not write to file ' [filename ] '; ' lasterr '.']);
 				end
