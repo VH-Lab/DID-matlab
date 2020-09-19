@@ -1,4 +1,4 @@
- / crystallclassdef documen2
+classdef documen2
 	%DOCUMENT - DID_database storage item, general purpose data and parameter storage
 	% The DID_DOCUMENT datatype for storing results in the DID_DATABASE
 	%
