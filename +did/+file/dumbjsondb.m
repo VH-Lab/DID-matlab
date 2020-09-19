@@ -750,16 +750,16 @@ classdef dumbjsondb
 			% DOCOBJECT in JSON using JSONENCODENAN.
 			%
 				% encode the document 
-                try,
-    				js = jsonencodenan(doc_object);
-                catch,
-                    error(['Could not generate JSON code from object.']);
-                end;
-				try,
-					did.file.str2text([filename], js);
-				catch,
-					error(['Could not write to file ' [filename ] '; ' lasterr '.']);
-				end
+			try,
+    				js = did.datastructures.jsonencodenan(doc_object);
+			catch,
+				error(['Could not generate JSON code from object.']);
+			end;
+			try,
+				did.file.str2text([filename], js);
+			catch,
+				error(['Could not write to file ' [filename ] '; ' lasterr '.']);
+			end
 		end % docobject2file()
 
 		function doc_object = file2docobject(filename)
