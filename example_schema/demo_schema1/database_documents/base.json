@@ -1,13 +1,13 @@
 {
 	"document_class": {
-		"definition":						"$DIDDOCUMENT_EX1\/did_document.json",
-		"validation":						"$DIDSCHEMA_EX1\/did_document_schema.json",
-		"class_name":						"did_document",
-		"property_list_name":					"did_document",
+		"definition":						"$DIDDOCUMENT_EX1\/base.json",
+		"validation":						"$DIDSCHEMA_EX1\/base_schema.json",
+		"class_name":						"base",
+		"property_list_name":					"base",
 		"class_version":					1,
 		"superclasses": [ ]
 	},
-	"did_document": {
+	"base": {
 		"session_id":				"",
 		"id":                           "",
 		"name":							"",

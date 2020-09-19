@@ -5,7 +5,7 @@
 		"class_name":						"did_document_epochid",
 		"class_version":					1,
 		"superclasses": [
-			{ "definition":					"$DIDDOCUMENT_EX1\/did_document.json"}
+			{ "definition":					"$DIDDOCUMENT_EX1\/base.json"}
 		]
 	},
 	"epochid":							""

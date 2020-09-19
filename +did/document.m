@@ -1,5 +1,5 @@
-classdef did_document
-	%DID_DOCUMENT - DID_database storage item, general purpose data and parameter storage
+classdef document
+	%DOCUMENT - DID_database storage item, general purpose data and parameter storage
 	% The DID_DOCUMENT datatype for storing results in the DID_DATABASE
 	%
 
@@ -8,7 +8,7 @@ classdef did_document
 	end
 
 	methods
-		function did_document_obj = ndi_document(document_type, varargin)
+		function did_document_obj = document(document_type, varargin)
 			% DID_DOCUMENT - create a new DID_DATABASE object
 			%
 			% DID_DOCUMENT_OBJ = DID_DOCUMENT(DOCUMENT_TYPE, 'PARAM1', VALUE1, ...)
@@ -18,15 +18,15 @@ classdef did_document
 			%
 
 				if nargin<1,
-					document_type = 'did_document';
+					document_type = 'base';
 				end
 
 				if isstruct(document_type),
 					document_properties = document_type;
 				else,  % create blank from definitions
-					document_properties = did_document.readblankdefinition(document_type);
-					document_properties.did_document.id = ndi_id.ndi_unique_id();
-					document_properties.did_document.datestamp = char(datetime('now','TimeZone','UTCLeapSeconds'));
+					document_properties = did.document.readblankdefinition(document_type);
+					document_properties.base.id = did.ido.unique_id();
+					document_properties.base.datestamp = char(datetime('now','TimeZone','UTCLeapSeconds'));
 
 					if numel(varargin)==1, % see if user put it all as one cell array
 						if iscell(varargin{1}),
@@ -48,7 +48,7 @@ classdef did_document
 
 				did_document_obj.document_properties = document_properties;
 
-		end % did_document() creator
+		end % document() creator
 
 		function b = validate(did_document_obj)
 			% VALIDATE - 0/1 evaluate whether DID_DOCUMENT object is valid by its schema
@@ -61,30 +61,18 @@ classdef did_document
 				b = 1; % for now, skip this
 		end % validate()
 
-		function uid = doc_unique_id(did_document_obj)
-			% DOC_UNIQUE_ID - return the document unique identifier for an DID_DOCUMENT
-			% 
-			% UID = DOC_UNIQUE_ID(DID_DOCUMENT_OBJ)
-			%
-			% Returns the unique id of an DID_DOCUMENT
-			% (Found at DID_DOCUMENT_OBJ.documentproperties.did_document.id)
-			%
-				warning('depricated..use ID() instead')
-				uid = did_document_obj.document_properties.ndi_document.id;
-		end % doc_unique_id()
-
 		function uid = id(did_document_obj)
 			% ID - return the document unique identifier for an DID_DOCUMENT
 			%
 			% UID = ID (DID_DOCUMENT_OBJ)
 			%
 			% Returns the unique id of an DID_DOCUMENT
-			% (Found at DID_DOCUMENT_OBJ.documentproperties.did_document.id)
+			% (Found at DID_DOCUMENT_OBJ.documentproperties.base.id)
 			%
-				uid = did_document_obj.document_properties.ndi_document.id;
+				uid = did_document_obj.document_properties.base.id;
 		end; % id()
 
-		function did_document_obj = setproperties(ndi_document_obj, varargin)
+		function did_document_obj = setproperties(did_document_obj, varargin)
 			% SETPROPERTIES - Set property values of an DID_DOCUMENT object
 			%
 			% DID_DOCUMENT_OBJ = SETPROPERTIES(DID_DOCUMENT_OBJ, 'PROPERTY1', VALUE1, ...)
@@ -95,7 +83,7 @@ classdef did_document
 			% See also: DID_DOCUMENT, DID_DOCUMENT/DID_DOCUMENT		
 			%
 			% Example:
-			%   mydoc = mydoc.setproperties('did_document.name','mydoc name');
+			%   mydoc = mydoc.setproperties('base.name','mydoc name');
 
 				newproperties = did_document_obj.document_properties;
 				for i=1:2:numel(varargin),
@@ -109,7 +97,7 @@ classdef did_document
 				did_document_obj.document_properties = newproperties;
 		end; % setproperties
 
-		function did_document_obj_out = plus(ndi_document_obj_a, ndi_document_obj_b)
+		function did_document_obj_out = plus(did_document_obj_a, did_document_obj_b)
 			% PLUS - merge two DID_DOCUMENT objects
 			%
 			% DID_DOCUMENT_OBJ_OUT = PLUS(DID_DOCUMENT_OBJ_A, DID_DOCUMENT_OBJ_B)
@@ -120,7 +108,7 @@ classdef did_document
 			% Note that any fields that A has that are also in B will be preserved; no elements of
 			% those fields of B will be combined with A.
 			%
-				did_document_obj_out = ndi_document_obj_a;
+				did_document_obj_out = did_document_obj_a;
 				% Step 1): Merge superclasses
 				did_document_obj_out.document_properties.document_class.superclasses = ...
 					(cat(1,did_document_obj_out.document_properties.document_class.superclasses,...
@@ -138,7 +126,7 @@ classdef did_document
 				end;
 
 				% Step 3): Merge the other fields
-				did_document_obj_out.document_properties = structmerge(ndi_document_obj_out.document_properties,...
+				did_document_obj_out.document_properties = structmerge(did_document_obj_out.document_properties,...
 					otherproperties);
 		end; % plus() 
 
@@ -179,7 +167,7 @@ classdef did_document
 				end;
 		end; % 
 
-		function did_document_obj = set_dependency_value(ndi_document_obj, dependency_name, value, varargin)
+		function did_document_obj = set_dependency_value(did_document_obj, dependency_name, value, varargin)
 			% SET_DEPENDENCY_VALUE - set the value of a dependency field
 			%
 			% DID_DOCUMENT_OBJ = SET_DEPENDENCY_VALUE(DID_DOCUMENT_OBJ, DEPENDENCY_NAME, VALUE, ...)
@@ -264,7 +252,7 @@ classdef did_document
 				end;
 		end; % 
 
-		function did_document_obj = add_dependency_value_n(ndi_document_obj, dependency_name, value, varargin)
+		function did_document_obj = add_dependency_value_n(did_document_obj, dependency_name, value, varargin)
 			% ADD_DEPENDENCY_VALUE_N - add a dependency to a named list
 			%
 			% DID_DOCUMENT_OBJ = ADD_DEPENDENCY_VALUE_N(DID_DOCUMENT_OBJ, DEPENDENCY_NAME, VALUE, ...)
@@ -291,11 +279,11 @@ classdef did_document
 					error(['This document does not have any dependencies.']);
 				else,
 					d_struct = struct('name',[dependency_name '_' int2str(numel(d)+1)],'value',value);
-					did_document_obj = set_dependency_value(ndi_document_obj, d_struct.name, d_struct.value, 'ErrorIfNotFound', 0);
+					did_document_obj = set_dependency_value(did_document_obj, d_struct.name, d_struct.value, 'ErrorIfNotFound', 0);
 				end;
 		end; % 
 
-		function did_document_obj = remove_dependency_value_n(ndi_document_obj, dependency_name, value, n, varargin)
+		function did_document_obj = remove_dependency_value_n(did_document_obj, dependency_name, value, n, varargin)
 			% REMOVE_DEPENDENCY_VALUE_N - remove a dependency from a named list
 			%
 			% DID_DOCUMENT_OBJ = REMOVE_DEPENDENCY_VALUE_N(DID_DOCUMENT_OBJ, DEPENDENCY_NAME, VALUE, N, ...)
@@ -328,7 +316,7 @@ classdef did_document
 					error(['Could not locate entry ' dependency_name '_' int2str(n)]);
 				end;
 
-				did_document_obj.document_properties.depends_on = ndi_document_obj.document_properties.depends_on([1:match-1 match+1:end]);
+				did_document_obj.document_properties.depends_on = did_document_obj.document_properties.depends_on([1:match-1 match+1:end]);
 
 				for i=n+1:numel(d),
 					match = find(strcmpi([dependency_name '_' int2str(i)],{did_document_obj.document_properties.depends_on.name}));
@@ -339,7 +327,7 @@ classdef did_document
 				end;
 		end; % 
 
-		function b = eq(did_document_obj1, ndi_document_obj2)
+		function b = eq(did_document_obj1, did_document_obj2)
 			% EQ - are two DID_DOCUMENT objects equal?
 			%
 			% B = EQ(DID_DOCUMENT_OBJ1, DID_DOCUMENT_OBJ2)
@@ -347,8 +335,8 @@ classdef did_document
 			% Returns 1 if and only if the objects have identical document_properties.did_document.id
 			% fields.
 			%
-				b = strcmp(did_document_obj1.document_properties.ndi_document.id,...
-					did_document_obj2.document_properties.ndi_document.id);
+				b = strcmp(did_document_obj1.document_properties.did_document.id,...
+					did_document_obj2.document_properties.did_document.id);
 		end; % eq()
 
 	end % methods
@@ -376,7 +364,7 @@ classdef did_document
 
 				% Step 1): read the information we have here
 
-				t = did_document.readjsonfilelocation(jsonfilelocationstring);
+				t = did.document.readjsonfilelocation(jsonfilelocationstring);
 				j = jsondecode(t);
 				s = j; 
 
@@ -388,7 +376,7 @@ classdef did_document
 					if isfield(j.document_class,'superclasses'),
 						for i=1:numel(j.document_class.superclasses),
 							item = celloritem(j.document_class.superclasses, i, 1);
-							s_super{end+1} = did_document.readblankdefinition(item.definition);
+							s_super{end+1} = did.document.readblankdefinition(item.definition);
 						end
 					end
 				end
@@ -433,16 +421,20 @@ classdef did_document
 			%      c) a relative filename with respect to $NDIDOCUMENTPATH
 			%      d) a filename referenced with respect to $NDIDOCUMENTPATH
 			%
-				did_globals;
+				did.globals;
 
-				searchString = '$NDIDOCUMENTPATH';
+					% temporary : I've fixed the search string so it can only be DIDDOCUMENT_EX1 and gets replaced with the first
+					%           : did.path.documentpath{1} entry
+					%           : Should search through all the names
+
+				searchString = '$DIDDOCUMENT_EX1';
 				s = strfind(jsonfilelocationstring, searchString);
 				if ~isempty(s), % insert the location
-					filename = [ndi.path.documentpath filesep ...
-						filesepconversion(jsonfilelocationstring(s+numel(searchString):end), did_filesep, filesep)];
+					filename = [did_globals.path.definition_locations{1} filesep ...
+						filesepconversion(jsonfilelocationstring(s+numel(searchString):end), did.filesep, filesep)];
 				else,
-					% first, guess that it is a complete path from $NDIDOCUMENTPATH
-					filename = [ndi.path.documentpath filesep filesepconversion(jsonfilelocationstring,did_filesep,filesep)];
+					% first, guess that it is a complete path from the first search path
+					filename = [did_globals.path.definition_locations{1} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
 					if ~exist(filename,'file'),
 						% try adding extension
 						filename = [filename '.json'];
@@ -454,7 +446,7 @@ classdef did_document
 							filename = [filename '.json'];
 						end;
 						if ~exist(filename,'file'),
-							filename2 = [ndi.path.documentpath filesep filename];
+							filename2 = [did_globals.path.definition_locations{1} filesep filename];
 							if ~exist(filename2,'file'),
 								error(['Cannot find file ' filename '.']);
 							else,
@@ -469,7 +461,7 @@ classdef did_document
 				if isurl(filename),
 					t = urlread(filename);
 				else,
-					t = textfile2char(filename);
+					t = did.file.textfile2char(filename);
 				end
 		end
 

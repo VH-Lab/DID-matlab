@@ -18,9 +18,9 @@ classdef  matlabdumbjsondb < did.database
 		% should be stored on disk.
 		%
 		% See also: DUMBJSONDB, DUMBJSONDB/DUMBJSONDB
-			did_matlabdumbjsondb_obj = did_matlabdumbjsondb_obj@did_database(varargin{:});
-			did_matlabdumbjsondb_obj.db = dumbjsondb(varargin{3:end},...
-				'dirname','dumbjsondb','unique_object_id_field','did_document.id');
+			did_matlabdumbjsondb_obj = did_matlabdumbjsondb_obj@did.database(varargin{:});
+			did_matlabdumbjsondb_obj.db = did.file.dumbjsondb(varargin{3:end},...
+				'dirname','dumbjsondb','unique_object_id_field','base.id');
 		end; % did_matlabdumbjsondb()
 	end 
 
@@ -57,7 +57,7 @@ classdef  matlabdumbjsondb < did.database
 				version = [];
 			end;
 			[doc, version] = did_matlabdumbjsondb_obj.db.read(did_document_id, version);
-			did_document_obj = did_document(doc);
+			did_document_obj = did.document(doc);
 		end; % do_read
 
 		function did_matlabdumbjsondb_obj = do_remove(did_matlabdumbjsondb_obj, did_document_id, versions)
@@ -69,7 +69,7 @@ classdef  matlabdumbjsondb < did.database
 		end; % do_remove
 
 		function [did_document_objs,doc_versions] = do_search(did_matlabdumbjsondb_obj, searchoptions, searchparams)
-			if isa(searchparams,'did_query'),
+			if isa(searchparams,'did.query'),
 				searchparams = searchparams.to_searchstructure;
 				if 0, % display
 					disp('search params');
@@ -83,7 +83,7 @@ classdef  matlabdumbjsondb < did.database
 			did_document_objs = {};
 			[docs,doc_versions] = did_matlabdumbjsondb_obj.db.search(searchoptions, searchparams);
 			for i=1:numel(docs),
-				did_document_objs{i} = did_document(docs{i});
+				did_document_objs{i} = did.document(docs{i});
 			end;
 		end; % do_search()
 

@@ -6,7 +6,7 @@
 		"property_list_name":					"app",
 		"class_version":					1,
 		"superclasses": [
-			{ "definition":					"$DIDDOCUMENT_EX1\/did_document.json" }
+			{ "definition":					"$DIDDOCUMENT_EX1\/base.json" }
 		]
         },
 	"app": {
