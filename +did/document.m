@@ -359,7 +359,7 @@
 				s_is_empty = 0;
 				if nargin<2,
 					s_is_empty = 1;
-					s = emptystruct;
+					s = did.datastructures.emptystruct;
 				end
 
 				% Step 1): read the information we have here

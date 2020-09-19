@@ -1,4 +1,4 @@
-classdef query
+ / crystallclassdef quer2
 
 	properties (SetAccess=protected,GetAccess=public)
 		searchstructure % search structure
@@ -57,7 +57,7 @@ classdef query
 			%
 			%  creates a SEARCHSTRUCT with the fields of the appropriate names.
 			% 
-				did_query_obj.searchstructure = emptystruct('field','operation','param1','param2');
+				did_query_obj.searchstructure = did.datastructures.emptystruct('field','operation','param1','param2');
 				if nargin==1,
 					if isstruct(varargin{1}),
 						% check arguments
@@ -112,10 +112,10 @@ classdef query
 			%
 			% See also: FIELDSEARCH
 			%
-				searchstructure = emptystruct('field','operation','param1','param2');
+				searchstructure = did.datastructures.emptystruct('field','operation','param1','param2');
 				for i=1:numel(did_query_obj)
 					for j=1:numel(did_query_obj(i).searchstructure),
-						ss_here = emptystruct('field','operation','param1','param2');
+						ss_here = did.datastructures.emptystruct('field','operation','param1','param2');
 						ss_here(1).field = did_query_obj(i).searchstructure(j).field;
 						% check to see if we have a special case that needs to be reduced
 						if strcmpi('isa',did_query_obj(i).searchstructure(j).operation), % replace with search structures
@@ -177,7 +177,7 @@ classdef query
 					error(['Input must be a cell array in the form {''property1'',value1,...}']);
 				end;
 
-				searchstruct = emptystruct('field','operation','param1','param2');
+				searchstruct = did.datastructures.emptystruct('field','operation','param1','param2');
 
 				for i=1:2:numel(searchcellarray),
 					if ischar(searchcellarray{i+1}),
