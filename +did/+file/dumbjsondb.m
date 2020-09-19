@@ -797,7 +797,7 @@ classdef dumbjsondb
 			%    DUMBJSONDB/UNIQUEID2METAFILENAME, STRING2FILESTRING
 			%
 				doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
-				f = string2filestring(doc_unique_id);
+				f = did.file.string2filestring(doc_unique_id);
 				f = ['Object_id_' f];
 		end % uniqueid2filenameprefix
 
