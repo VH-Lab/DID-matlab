@@ -1,0 +1,13 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/did_document_epochid.json",
+		"validation":						"$DIDSCHEMA_EX1\/did_document_epochid_schema.json",
+		"class_name":						"did_document_epochid",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$DIDDOCUMENT_EX1\/did_document.json"}
+		]
+	},
+	"epochid":							""
+}
+

@@ -1,0 +1,24 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/did_document_element_epoch.json",
+		"validation":						"$DIDSCHEMA_EX1\/did_document_element_epoch_schema.json",
+		"class_name":						"did_document_element_epoch",
+		"property_list_name":					"element_epoch",
+		"class_version":					1,
+		"superclasses": [
+			{  "definition":				"$DIDDOCUMENT_EX1\/did_document.json" },
+			{  "definition":				"$DIDDOCUMENT_EX1\/did_document_epochid.json" },
+			{  "definition":				"$DIDDOCUMENT_EX1\/data\/did_document_binaryseries.json" }
+		]
+	},
+	"depends_on": [
+		{	"name": "element_id",
+			"value": "" 
+		}
+	],
+	"element_epoch": {
+		"epoch_clock":						"",
+		"t0_t1":						""
+	}
+}
+

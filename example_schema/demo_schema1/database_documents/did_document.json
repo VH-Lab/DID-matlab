@@ -1,0 +1,19 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/did_document.json",
+		"validation":						"$DIDSCHEMA_EX1\/did_document_schema.json",
+		"class_name":						"did_document",
+		"property_list_name":					"did_document",
+		"class_version":					1,
+		"superclasses": [ ]
+	},
+	"did_document": {
+		"session_id":				"",
+		"id":                           "",
+		"name":							"",
+		"type":							"",
+		"datestamp":						"2018-12-05T18:36:47.241Z",
+		"database_version":					1
+	}
+}
+

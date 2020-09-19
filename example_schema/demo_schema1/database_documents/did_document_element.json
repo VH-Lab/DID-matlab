@@ -1,0 +1,28 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/did_document_element.json",
+		"validation":						"$DIDSCHEMA_EX1\/did_document_element_schema.json",
+		"class_name":						"did_document_element",
+		"property_list_name":					"element",
+		"class_version":					1,
+		"superclasses": [
+			{  "definition":				"$DIDDOCUMENT_EX1\/did_document.json" }
+		]
+	},
+	"depends_on": [
+		{	"name": "underlying_element_id",
+			"value": ""
+		},
+		{	"name": "subject_id",
+			"value": ""
+		}
+	],
+	"element": {
+		"did_element_class":					"did_element",
+		"name":							"",
+		"reference":						"",
+		"type":							"",
+		"direct":						0
+	}
+}
+

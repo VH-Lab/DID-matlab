@@ -1,0 +1,16 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/did_document_animalsubject.json",
+		"validation":						"$DIDSCHEMA_EX1\/did_document_animalsubject_schema.json",
+		"class_name":						"did_document_animalsubject",
+		"property_list_name":				"animalsubject",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$DIDDOCUMENT_EX1\/did_document.json" }
+		]
+        },
+	"animalsubject": {
+		"scientific_name":					"",
+		"genbank_commonname":				""
+	}
+}

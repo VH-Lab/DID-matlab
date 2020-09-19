@@ -1,0 +1,22 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/did_document_app.json",
+		"validation":						"$DIDSCHEMA_EX1\/did_document_app_schema.json",
+		"class_name":						"did_document_app",
+		"property_list_name":					"app",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$DIDDOCUMENT_EX1\/did_document.json" }
+		]
+        },
+	"app": {
+		"name":							"",
+		"version":						"",
+		"url":							"",
+		"os":							"",
+		"os_version":						"",
+		"interpreter":						"",
+		"interpreter_version":					""
+	}
+}
+
