@@ -126,7 +126,7 @@ classdef document
 				end;
 
 				% Step 3): Merge the other fields
-				did_document_obj_out.document_properties = structmerge(did_document_obj_out.document_properties,...
+				did_document_obj_out.document_properties = did.datastructures.structmerge(did_document_obj_out.document_properties,...
 					otherproperties);
 		end; % plus() 
 
@@ -406,7 +406,7 @@ classdef document
 					else,
 						% regular structmerge is fine, will use 'depends_on' field of whichever structure has it, or none
 					end;
-					s = structmerge(s,s_super{i});
+					s = did.datastructures.structmerge(s,s_super{i});
 				end;
 		end % readblankdefinition() 
 
