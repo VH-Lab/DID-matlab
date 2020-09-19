@@ -1,5 +1,4 @@
- / crystallclassdef quer2
-
+classdef query
 	properties (SetAccess=protected,GetAccess=public)
 		searchstructure % search structure
 	end
