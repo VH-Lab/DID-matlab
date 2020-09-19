@@ -228,7 +228,7 @@ classdef dumbjsondb
 					p = dumbjsondb_obj.documentpath();
 					f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
 					if exist([p f],'file'),
-						t = textfile2char([p f]); % dev note: should this go in separate function? maybe
+						t = did.file.textfile2char([p f]); % dev note: should this go in separate function? maybe
 						document = jsondecode(t);
 					else,
 						document = []; % no such document
@@ -775,7 +775,7 @@ classdef dumbjsondb
 			% DOC_OBJECT is empty ([]).
 			%
 				if exist(filename,'file')
-					t = textfile2char([p f]); 
+					t = did.file.textfile2char([p f]); 
 					doc_object = jsondecode(t);
 				else,
 					doc_object = [];
@@ -874,7 +874,7 @@ classdef dumbjsondb
 				if ~exist(filename,'file'),
 					error(['File ' filename ' does not exist.']);
 				end
-				t = textfile2char(filename);
+				t = did.file.textfile2char(filename);
 				s = jsondecode(t);
 		end; % readparameters
 
