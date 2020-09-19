@@ -1,4 +1,4 @@
-classdef document
+ / crystallclassdef documen2
 	%DOCUMENT - DID_database storage item, general purpose data and parameter storage
 	% The DID_DOCUMENT datatype for storing results in the DID_DATABASE
 	%
@@ -147,7 +147,7 @@ classdef document
 			%
 			%
 				ErrorIfNotFound = 1;
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 
 				d = [];
 				notfound = 1;
@@ -184,7 +184,7 @@ classdef document
 			%
 			%
 				ErrorIfNotFound = 1;
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 
 				notfound = 1;
 
@@ -226,7 +226,7 @@ classdef document
 			%
 			%
 				ErrorIfNotFound = 1;
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 
 				d = {};
 				notfound = 1;
@@ -270,7 +270,7 @@ classdef document
 			%
 			%
 				ErrorIfNotFound = 1;
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 
 
 				d = dependency_value_n(did_document_obj, dependency_name, 'ErrorIfNotFound', 0);
@@ -299,7 +299,7 @@ classdef document
 			%
 			%
 				ErrorIfNotFound = 1;
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 
 				d = dependency_value_n(did_document_obj, dependency_name, 'ErrorIfNotFound', 0);
 				hasdependencies = isfield(did_document_obj.document_properties,'depends_on');

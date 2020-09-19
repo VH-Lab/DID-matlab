@@ -28,7 +28,7 @@ classdef fileobj < handle
 				fid = -1;
 				fullpathfilename = '';
 
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 
 				fileobj_obj = fileobj_obj.setproperties('fullpathfilename',fullpathfilename,'fid',fid,...
 						'permission',permission,'machineformat',machineformat);
@@ -52,7 +52,7 @@ classdef fileobj < handle
 					eval([fn{i} '=getfield(fileobj_obj,fn{i});']);
 				end;
 
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 
 				% check for accuracy would be a good idea
 

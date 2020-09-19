@@ -112,7 +112,7 @@ classdef dumbjsondb
 						paramfilename = varargin{2};
 						if nargin>2,
 							try,
-								assign(varargin{3:end});
+								did.datastructures.assign(varargin{3:end});
 							catch,
 								error(['Extra arguments must come in name/value pairs (paramname and then value; see help namevaluepair).']);
 							end
@@ -158,7 +158,7 @@ classdef dumbjsondb
 				Overwrite = 1;
 				[doc_unique_id] = docstats(dumbjsondb_obj, doc_object);
 				doc_version = dumbjsondb_obj.latestdocversion(doc_unique_id);
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 
 				% does file already exist?
 				p = dumbjsondb_obj.documentpath();
@@ -383,7 +383,7 @@ classdef dumbjsondb
 				doc_versions = [];
 
 				version = 'latest';
-				assign(scope{:});
+				did.datastructures.assign(scope{:});
 
 				docids = dumbjsondb_obj.alldocids();
 

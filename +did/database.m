@@ -64,7 +64,7 @@ classdef database
 			% 
 			% See also: NAMEVALUEPAIR 
 				Update = 1;
-				assign(varargin{:});
+				did.datastructures.assign(varargin{:});
 				add_parameters = var2struct('Update');
 				database_obj = do_add(database_obj, did_document_obj, add_parameters);
 		end % add()
