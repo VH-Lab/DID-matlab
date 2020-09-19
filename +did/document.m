@@ -1,4 +1,4 @@
-classdef documen2
+classdef document
 	%DOCUMENT - DID_database storage item, general purpose data and parameter storage
 	% The DID_DOCUMENT datatype for storing results in the DID_DATABASE
 	%
@@ -375,7 +375,7 @@ classdef documen2
 				if isfield(j,'document_class'),
 					if isfield(j.document_class,'superclasses'),
 						for i=1:numel(j.document_class.superclasses),
-							item = celloritem(j.document_class.superclasses, i, 1);
+							item = did.datastructures.celloritem(j.document_class.superclasses, i, 1);
 							s_super{end+1} = did.document.readblankdefinition(item.definition);
 						end
 					end
@@ -458,7 +458,7 @@ classdef documen2
 
 				% filename could be url or filename
 
-				if isurl(filename),
+				if did.file.isurl(filename),
 					t = urlread(filename);
 				else,
 					t = did.file.textfile2char(filename);

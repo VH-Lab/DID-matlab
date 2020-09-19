@@ -60,7 +60,7 @@ classdef query
 				if nargin==1,
 					if isstruct(varargin{1}),
 						% check arguments
-						if ~eqlen(sort(fieldnames(varargin{1})),sort({'field','operation','param1','param2'})),
+						if ~did.datastructures.eqlen(sort(fieldnames(varargin{1})),sort({'field','operation','param1','param2'})),
 							error(['Field names of search structure do not match expected fields.']);
 						end;
 						did_query_obj.searchstructure = varargin{1};
