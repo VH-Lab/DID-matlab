@@ -162,7 +162,7 @@ switch(lower(searchstruct.operation)),
 		if ~isstruct(searchstruct.param1) | ~isstruct(searchstruct.param2),
 			error(['In operation ''or'', searchstruct ''param1'' and ''param2'' must be an array of structures.']);
 		end;
-		b = (fieldsearch(A,searchstruct.param1) | fieldsearch(A,searchstruct.param2));
+		b = (did.datastructures.fieldsearch(A,searchstruct.param1) | did.datastructures.fieldsearch(A,searchstruct.param2));
 	otherwise,
 		error(['Unknown search operation ' searchstruct.operation ]);
 end;

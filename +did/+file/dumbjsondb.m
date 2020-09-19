@@ -897,7 +897,7 @@ classdef dumbjsondb
 			%
 			% Examines the fields of DOCUMENT to determine if there is a match.
 				if isstruct(searchParams),
-					b = fieldsearch(struct(document),searchParams);
+					b = did.datastructures.fieldsearch(struct(document),searchParams);
 					return;
 				end;
 				b = 1;
