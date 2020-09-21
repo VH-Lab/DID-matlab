@@ -1,13 +1,34 @@
 classdef database
-	% A (primarily abstract) database class for NDI that stores and manages virtual documents (NoSQL database)
+	% did.database: The superclass for all did.database implementations
 	%
-	% 
+	% did.database defines the API for the DID database system. Applications or users that use
+	% did.database interact with the ADD, READ, REMOVE, SEARCH, OPENBINARYDOC and CLOSEBINARYDOC methods.
 	%
-	% 
+	% Developers that create subclass implementations of the did.database class should override the functions do_*
+	% that are called to implement these procedures.
+	%
+	% did.database Properties:
+	%   connection - The connection details for the database (might be a file name, directory name, or structure)
+	%
+	% did.database Methods:
+	%   database - Create a new database
+	%   add - Add a document to the database
+	%   read - Read a did.document from the database based on the document's unique identifier
+	%   remove - Remove a did.document from the database
+	%   search - Search for a did.document(s) using a did.query
+	%   openbinarydoc - Open the binary portion of a did.document for reading/writing (returns a did.binarydoc)
+	%   closebinarydoc - Close a did.binarydoc
+	%   
+	%   do_add - The add function that must be overridden by specific subclass implementations
+	%   do_read - The read function that must be overridden by specific subclass implementations
+	%   do_remove - The remove function that must be overridden by specific subclass implementations
+	%   do_search - The search function that must be overrideen by specific subclass implementations
+	%   do_openbinarydoc - The function that opens binary documents that must be overridden in subclass implementations
+	%   do_closebinarydoc - The function that closes binary documents that must be overridden in subclass implementations
+	%
 
 	properties (SetAccess=protected,GetAccess=public)
-		path % The file system or remote path to the database
-		session_unique_reference % The reference string for the database
+		connection % A variable or structure describing the connection parameters of the database; may be a simple file path
 	end % properties
 
 	methods
@@ -20,37 +41,17 @@ classdef database
 			% and reference REFERENCE.
 			%
 			
-			path = '';
-			session_unique_reference = '';
+			connection = '';
 
 			if nargin>0,
-				path = varargin{1};
-			end
-			if nargin>1,
-				session_unique_reference = varargin{2};
+				connection = varargin{1};
 			end
 
-			database_obj.path = path;
-			database_obj.session_unique_reference = session_unique_reference;
+			database_obj.connection = connection;
 		end % database
 
-		function did_document_obj = newdocument(database_obj, document_type)
-			% NEWDOCUMENT - obtain a new/blank DID_DOCUMENT object that can be used with a DATABASE
-			% 
-			% DID_DOCUMENT_OBJ = NEWDOCUMENT(DATABASE_OBJ [, DOCUMENT_TYPE])
-			%
-			% Creates a new/blank DID_DOCUMENT document object that can be used with this
-			% DATABASE.
-			%
-				if nargin<2,
-					document_type = 'did_document';
-				end;
-				did_document_obj = did.document(document_type, ...
-						'session_unique_refrence', database_obj.session_unique_reference);
-		end % newdocument
-
 		function database_obj = add(database_obj, did_document_obj, varargin)
-			% ADD - add an DID_DOCUMENT to the database at a given path
+			% ADD - add an DID_DOCUMENT to the database 
 			%
 			% DATABASE_OBJ = ADD(DATABASE_OBJ, DID_DOCUMENT_OBJ, DBPATH, ...)
 			%
@@ -70,15 +71,15 @@ classdef database
 		end % add()
 
 		function [did_document_obj, version] = read(database_obj, did_document_id, version )
-			% READ - read an DID_DOCUMENT from an DATABASE at a given db path
+			% READ - read an DID.DOCUMENT from a DID.DATABASE 
 			%
-			% DID_DOCUMENT_OBJ = READ(DATABASE_OBJ, NDI_DOCUMENT_ID, [VERSION]) 
+			% DID_DOCUMENT_OBJ = READ(DATABASE_OBJ, DOCUMENT_ID, [VERSION]) 
 			%
-			% Read the DID_DOCUMENT object with the document ID specified by NDI_DOCUMENT_ID. If VERSION
+			% Read the DID_DOCUMENT object with the document ID specified by DOCUMENT_ID. If VERSION
 			% is provided (an integer) then only the version that is equal to VERSION is returned.
 			% Otherwise, the latest version is returned.
 			%
-			% If there is no DID_DOCUMENT object with that ID, then empty is returned ([]).
+			% If there is no DID DOCUMENT object with that ID, then empty is returned ([]).
 			%
 				if nargin<3,
 					[did_document_obj, version] = do_read(database_obj, did_document_id);
@@ -88,19 +89,19 @@ classdef database
 		end % read()
 
 		function [did_binarydoc_obj, version] = openbinarydoc(database_obj, did_document_or_id, version)
-			% OPENBINARYDOC - open and lock an DID_BINARYDOC that corresponds to a document id
+			% OPENBINARYDOC - open and lock an DID.BINARYDOC that corresponds to a document id
 			%
-			% [DID_BINARYDOC_OBJ, VERSION] = OPENBINARYDOC(DATABASE_OBJ, NDI_DOCUMENT_OR_ID, [VERSION])
+			% [DID_BINARYDOC_OBJ, VERSION] = OPENBINARYDOC(DATABASE_OBJ, DID_DOCUMENT_OR_ID, [VERSION])
 			%
-			% Return the open DID_BINARYDOC object and VERSION that corresponds to an NDI_DOCUMENT and
+			% Return the open DID_BINARYDOC object and VERSION that corresponds to an DID.DOCUMENT and
 			% the requested version (the latest version is used if the argument is omitted).
-			% DID_DOCUMENT_OR_ID can be either the document id of an NDI_DOCUMENT or an NDI_DOCUMENT object itsef.
+			% DID.DOCUMENT_OR_ID can be either the document id of an DID.DOCUMENT or an DID.DOCUMENT object itsef.
 			%
 			% Note that this DID_BINARYDOC_OBJ must be closed and unlocked with DATABASE/CLOSEBINARYDOC.
 			% The locked nature of the binary doc is a property of the database, not the document, which is why
 			% the database is needed.
 			% 
-				if isa(did_document_or_id,'did_document'),
+				if isa(did_document_or_id,'did.document'),
 					did_document_id = did_document_or_id.id();
 				else,
 					did_document_id = did_document_or_id;
@@ -114,11 +115,11 @@ classdef database
 		end; % openbinarydoc
 
 		function [did_binarydoc_obj] = closebinarydoc(database_obj, did_binarydoc_obj)
-			% CLOSEBINARYDOC - close and unlock an DID_BINARYDOC 
+			% CLOSEBINARYDOC - close and unlock an DID.BINARYDOC 
 			%
-			% [DID_BINARYDOC_OBJ] = CLOSEBINARYDOC(DATABASE_OBJ, NDI_BINARYDOC_OBJ)
+			% [DID_BINARYDOC_OBJ] = CLOSEBINARYDOC(DATABASE_OBJ, DID_BINARYDOC_OBJ)
 			%
-			% Close and lock an DID_BINARYDOC_OBJ. The NDI_BINARYDOC_OBJ must be unlocked in the
+			% Close and lock an DID_BINARYDOC_OBJ. The DID_BINARYDOC_OBJ must be unlocked in the
 			% database, which is why it is necessary to call this function through the database.
 			%
 				did_binarydoc_obj = do_closebinarydoc(database_obj, did_binarydoc_obj);
@@ -137,8 +138,8 @@ classdef database
 			% to DID_DOCUMENT_OBJ_ID.  If VERSIONS is specified, then only the versions that match
 			% the entries in VERSIONS are removed.
 			%
-			% If an DID_DOCUMENT is passed, then the NDI_DOCUMENT_ID is extracted using
-			% DID_DOCUMENT/DOC_UNIQUE_ID. If a cell array of NDI_DOCUMENT is passed instead, then
+			% If a DID.DOCUMENT is passed, then the DID DOCUMENT_ID is extracted using
+			% DID_DOCUMENT/DOC_UNIQUE_ID. If a cell array of DID.DOCUMENT is passed instead, then
 			% all of the documents are removed.
 			%
 				if isempty(did_document_id),

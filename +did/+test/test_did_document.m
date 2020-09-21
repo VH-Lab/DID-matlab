@@ -24,7 +24,7 @@ end;
 example_session_id = '1234';
 
 disp(['Creating a new database in directory ' dirname '.']);
-db = did.implementations.matlabdumbjsondb(dirname,example_session_id,'new',[dirname filesep 'did.dumbjsondb.json']);
+db = did.implementations.matlabdumbjsondb('new',[dirname filesep 'did.dumbjsondb.json']);
 
 if remove_old,
   % remove any old versions
