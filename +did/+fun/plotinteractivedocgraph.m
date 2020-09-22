@@ -21,8 +21,8 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
 %
 % Example: % Given a DID database DB, plot a graph of all documents.
 %   docs = db.search(did.query({'document_class.class_name','(.*)'}));
-%   [G,nodes,mdigraph] = did.func.docs2graph(docs);
-%   did.func.plotinteractivedocgraph(docs,G,mdigraph,nodes,'layered');
+%   [G,nodes,mdigraph] = did.fun.docs2graph(docs);
+%   did.fun.plotinteractivedocgraph(docs,G,mdigraph,nodes,'layered');
 %
 
 if nargin==0,
@@ -69,5 +69,5 @@ set(f,'userdata',ud);
 
 plot(mdigraph,'layout',layout);
 
-set(gca,'ButtonDownFcn','did.func.plotinteractivedocgraph');
+set(gca,'ButtonDownFcn','did.fun.plotinteractivedocgraph');
 

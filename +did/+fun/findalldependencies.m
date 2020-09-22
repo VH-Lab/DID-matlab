@@ -31,7 +31,7 @@ for i=1:numel(varargin),
 		if ~any(strcmp(id_here,visited)), % we don't already know about it
 			visited = cat(1,visited,{id_here}); 
 			d = cat(1,d,{bb{j}});
-			newdocs = did.func.finddocs_missing_dependencies(E,visited,bb{j});
+			newdocs = did.fun.finddocs_missing_dependencies(E,visited,bb{j});
 			if ~isempty(newdocs),
 				for k=1:numel(newdocs),
 					visited = cat(1,visited,newdocs{k}.id());

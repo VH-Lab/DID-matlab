@@ -1,4 +1,23 @@
 classdef ido
+	% did.ido   Identifier object class; creates globally unique IDs for DID database
+	%
+	% This class creates and stores globally unique IDs. The ID is based on both the
+	% current time and a random number (see did.unique_id). Therefore, the IDs are 
+	% globally unique and also sortable (alphanumerically) by the time of creation
+	% (which is in Universal Controlled Time (Leap Seconds), UTC). 
+	%
+	% did.ido Properties:
+	%   identifier - a unique identifier (id) for this did.ido object
+	%
+	% did.ido Methods:
+	%   ido - creator that generates a DID globally unique ID (or stores an existing ID)
+	%   id - return the identifier of the did.ido object
+	%   unique_id - generate a DID globally unique ID (Static function)
+	% 
+	% Examples:
+	%   myid = did.ido()
+	%   myid.id(), % show the ID
+	%   anotherid = did.ido.unique_id(),
 
 	properties (SetAccess=protected,GetAccess=public)
 		identifier; % a unique identifier id for this object
@@ -28,15 +47,15 @@ classdef ido
 			%
 			% Returns the unique identifier of an DID.IDO object.
 			%
-				identifier = id_obj.identifier;
+				identifier = ido_obj.identifier;
 		end; % id()
 	end; % methods
 
 	methods (Static)
-		function id = unique_id
-			% UNIQUE_ID - Generate a unique ID number for DID databases
+		function id = unique_id()
+			% UNIQUE_ID - Generate a unique ID number for DID databases (Static method)
 			%
-			% ID = UNIQUE_ID
+			% ID = DID.IDO.UNIQUE_ID()
 			%
 			% Generates a unique ID character array based on the current time and a random
 			% number. It is a hexidecimal representation of the serial date number in
@@ -52,7 +71,7 @@ classdef ido
 				random_number = rand + randi([-32727 32727],1);
 				id = [num2hex(serial_date_number) '_' num2hex(random_number)];
 
-		end; % didunique_id()
+		end; % did.ido.unique_id()
 
 	end % methods(static)
 end

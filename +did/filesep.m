@@ -1,7 +1,7 @@
-function c = ndi_filesep
-% NDI_FILESEP The file separator for NDI documents
+function c = filesep
+% DID.FILESEP The file separator for DID document schema
 %
-% The NDI_FILESEP is '/', which may differ from the local user's 
+% The DID.FILESEP is '/', which may differ from the local user's 
 % machine path separator.
 %
 

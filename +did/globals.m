@@ -10,7 +10,13 @@
 % -------------------------------------------------------------------------
 % did_globals.path.path          | The path of the DID distribution on this machine.
 %                                |   (Initialized by did_Init.m)
-% did_globals.path.documentpath  | The path of the NDI document definitions
+% did_globals.path. ...          | A cell array with path words that begin with a '$'
+%    definition_names            |   that will be substituted with the paths in
+%                                |   'definition_locations'
+%                                |   (Initialized by did_Init.m)
+% did_globals.path. ...          | A cell array with file paths or urls that will be
+%    definition_locations        |   substituted for each corresponding path word
+%                                |   in the document definitions and schemas.
 %                                |   (Initialized by did_Init.m)
 % did_globals.path. ...          | The path of the NDI document validation schema
 %    documentschemapath          |   (Initialized by did_Init.m)
