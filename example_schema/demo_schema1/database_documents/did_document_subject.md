@@ -5,7 +5,7 @@
 **Class name**: [did_document_subject](did_document_subject.md)<br>
 **Superclasses**: [base](base.md)
 
-**Definition**: [$DIDDOCUMENT_EX1/did_document_subject.json](did_document_subject.md)<br>
+**Definition**: [$DIDDOCUMENT_EX1/did_document_subject.json](did_document_subject.json)<br>
 **Schema for validation**: [#DIDSCHEMA_EX1/did_document_subject_schema.json](did_document_subject_schema.json)<br>
 **Property_list_name**: `subject`<br>
 **Class_version**: `1`<br>
