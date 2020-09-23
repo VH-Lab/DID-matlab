@@ -1,4 +1,31 @@
 classdef query
+	% did.query: search a did.database for did.documents
+	%
+	% did.query objects define searches for did.documents; they are passed to the did.database/search function
+	%
+	% did.query Properties:
+	%   searchstructure - a structure with fields 'field','operation','param1','param2' that describe the search
+	% 
+	% did.query Methods:
+	%   query - The creator, and includes documentation for specifying the search
+	%   and - Combine two queries into a single query; search for A AND B
+	%   or - Create a query that searches for A OR B
+	%   to_searchstructure - Convert a did.query into a structure that can be passed to did.datastructures.fieldsearch
+	%   searchstruct - make a search structure from field, operation, param1, param2 inputs
+	%   searchcellarray2searchstructure - convert a search cell array to a search structure
+	%   
+	% Examples:
+	%   q = did.query('base.id','exact_string','12345678','')
+	%   q = did.query('base.name','exact_string','myname','')
+	%   q = did.query('base.name','regexp','(.*)','') % match any base.name
+	%   q = did.query('base.id','regexp','(.*)','') % match any base.id
+	%   q = did.query('','isa','base','') % match any document that is member of class 'base'
+	%   
+	% See also: did.query/query, did.datastructures.fieldsearch
+
+
+
+
 	properties (SetAccess=protected,GetAccess=public)
 		searchstructure % search structure
 	end
@@ -55,7 +82,15 @@ classdef query
 			% DID_QUERY_OBJ = QUERY(FIELD, OPERATION, PARAM1, PARAM2)
 			%
 			%  creates a SEARCHSTRUCT with the fields of the appropriate names.
-			% 
+			%   
+			% Examples:
+			%   q = did.query('base.id','exact_string','12345678','')
+			%   q = did.query('base.name','exact_string','myname','')
+			%   q = did.query('base.name','regexp','(.*)','') % match any base.name
+			%   q = did.query('base.id','regexp','(.*)','') % match any base.id
+			%   q = did.query('','isa','base','') % match any document that is member of class 'base'
+			%	
+			%
 				did_query_obj.searchstructure = did.datastructures.emptystruct('field','operation','param1','param2');
 				if nargin==1,
 					if isstruct(varargin{1}),

@@ -1,10 +1,28 @@
 classdef binarydoc < handle
-	% BINARYDOC - a binary file class that handles reading/writing
+	% did.binarydoc: a binary file class that handles reading/writing
+	%   Inherits Matlab object handle
+	%
+	% did.binarydoc defines the operations of a binary file / binary stream.
+	% did.binarydoc is mostly abstract class (except for the delete method).
+	% Implementations in subclasses must override the Methods here.
+	%
+	% did.binarydoc Methods:
+	%   binarydoc - Create a new binary document
+	%   fopen - Open the binary document for reading/writing
+	%   fseek - Move to a location within the binary document
+	%   ftell - Return the current location in a binary document
+	%   feof - Is a binary document at the end of file?
+	%   fwrite - write data to a binary document
+	%   fread - read data from a binary document
+	%   fclose - close a binary document
+	%   delete - delete a binary document (calls handle superclass)
+	%
+
 	properties (SetAccess=protected, GetAccess=public)
 	end  % protected, accessible
 
-	methods (Abstract) 
-		%binarydoc_obj = binarydoc(varargin)
+	methods 
+		function binarydoc_obj = binarydoc(varargin)
 			% BINARYDOC - create a new BINARYDOC object
 			%
 			% BINARYDOC_OBJ = BINARYDOC()
@@ -12,7 +30,23 @@ classdef binarydoc < handle
 			% This is an abstract class, so the creator does nothing.
 			%
 
-		%end; % binarydoc()
+		end % binarydoc()
+
+		function delete(binarydoc_obj)
+			% DELETE - close an BINARYDOC and delete its handle
+			%
+			% DELETE(BINARYDOC_OBJ)
+			%
+			% Closes an BINARYDOC (if necessary) and then deletes the handle.
+			%
+				fclose(binarydoc_obj);
+				delete@handle(binarydoc_obj); % call superclass
+		end; % delete()	
+
+	end;
+
+
+	methods (Abstract) 
 
 		binarydoc_obj = fopen(binarydoc_obj)
 			% FOPEN - open the BINARYDOC for reading/writing
@@ -37,17 +71,17 @@ classdef binarydoc < handle
 			%    'eof'  - end of file 
 			%
 			% See also: FSEEK, FTELL, BINARYDOC/FTELL
-		%end % fseek()
+		%end; % fseek()
 
 		location = ftell(binarydoc_obj)
-			% FSEEK - move to a location within the file stream 
+			% FTELL - return the current location in a binary document
 			%
-			% FSEEK(BINARYDOC_OBJ)
+			% FTELL(BINARYDOC_OBJ)
 			%
 			% Returns the current LOCATION (in bytes) in a file stream.
 			%
 			% See also: FSEEK, FTELL, BINARYDOC/FSEEK
-		%end % ftell()
+		%end; % ftell()
 
 		b = feof(binarydoc_obj)
 			% FEOF - is an BINARYDOC at the end of file?
@@ -91,20 +125,5 @@ classdef binarydoc < handle
 		%end; % fclose()
 
 	end; % Abstract methods
-
-	methods
-
-		function delete(binarydoc_obj)
-		% DELETE - close an BINARYDOC and delete its handle
-		%
-		% DELETE(BINARYDOC_OBJ)
-		%
-		% Closes an BINARYDOC (if necessary) and then deletes the handle.
-		%
-			fclose(binarydoc_obj);
-			delete@handle(binarydoc_obj); % call superclass
-		end; % delete()	
-
-	end % methods
 
 end
