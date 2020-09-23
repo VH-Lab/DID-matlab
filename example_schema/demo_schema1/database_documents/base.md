@@ -2,15 +2,15 @@
 
 ## Class definition
 
-**Class name**: base<br>
+**Class name**: [base](base.md)<br>
 **Superclasses**: \<none\>
 
-**Definition**: `$DIDDOCUMENT_EX1/base.json`<br>
-**Schema for validation**: `#DIDSCHEMA_EX1/base_schema.json`<br>
+**Definition**: [$DIDDOCUMENT_EX1/base.json](base.json)<br>
+**Schema for validation**: [$DIDSCHEMA_EX1/base_schema.json](base_schema.json)<br>
 **Property_list_name**: `base`<br>
 **Class_version**: `1`<br>
 
-## `base` fields:
+## [base](base.md) fields:
 
 Accessed by `base.field` where *field* is one of the field names below
 
