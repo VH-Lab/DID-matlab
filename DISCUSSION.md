@@ -37,7 +37,6 @@ Documents are built from instructions in JSON files. Consider the following pair
 		"id":                            			"",
 		"session_id":						"",
 		"name":							"",
-		"type":							"",
 		"datestamp":						"2018-12-05T18:36:47.241Z",
 	}
 }
@@ -79,7 +78,6 @@ document_properties.
       id: '412685ecea57f3f1_3fc78a4a58138ac0'
       session_id: '4126855fc3f91b22_3fe305de4e869235'
       name: 'manually_selected t00012'
-      type: ''
       datestamp: '2020-09-04T14:59:05.478Z'
       database_version: 1
    class.
