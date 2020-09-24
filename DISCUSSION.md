@@ -7,7 +7,6 @@
 | `base.id` | A globally unique identifier for the document | `did_id string` | Once made, this never changes; even if version is updated. |
 | `base.session_id` | A globally unique identifier for the experimental session | `did_id string` |  Once made, this never changes; even if version is updated. |
 | `base.name` | A string name for the user | ASCII string | Does not need to be unique. The id, session_id, and version confer uniqueness. (Some subtypes may have conditions for name uniqueness; for example, daq_systems must have a unique name. But this is not a database-level requirement.)|
-| `base.type` | A string name for the user | ASCII string | Does not need to be unique. |
 | `base.datestamp` | Time of document creation or modification (that is, it is updated when version is updated) | ISO-8601 date string, time zone must be UTC leap seconds | Human readable. | 
 | `base.version` | Version of database document | `did_id string` | This probably needs to be an `did_id string` to help with merging branches where 2 users have modified the same database entry (otherwise, might have two copies of "n+1" that need to be dealt with); `did_id string`s sort by time alphabetically, so the time would be a means of differentiating them | 
 | `depends_on` | Lists all documents that this document "depends_on" | An array of structures with entries `name` and `ID` and `version` | Name is an internal reference for programs using the documents. "ID" and "version" uniquely identify the document that is depended on | 
