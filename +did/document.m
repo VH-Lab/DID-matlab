@@ -376,7 +376,12 @@ classdef document
 					if isfield(j.document_class,'superclasses'),
 						for i=1:numel(j.document_class.superclasses),
 							item = did.datastructures.celloritem(j.document_class.superclasses, i, 1);
+                           
 							s_super{end+1} = did.document.readblankdefinition(item.definition);
+                            %% add more fields besides 'definition' to the document_class.superclasses struct
+                            item.property_list_name = getfield(s_super{end}.document_class.property_list_name)
+                            item.class_version = getfield(s_super{end}.document_class.class_version)
+                            j.document_class.superclasses[i] = item %% how to make the indexing work properly?
 						end
 					end
 				end
@@ -386,14 +391,15 @@ classdef document
 				for i=1:numel(s_super),
 					% merge s and s_super{i}
 					% part 1: do we need to merge superclass labels?
+              
 					if isfield(s,'document_class')&isfield(s_super{i},'document_class'),
+                    
+                        
 						s.document_class.superclasses = cat(1,s.document_class.superclasses(:),...
 							s_super{i}.document_class.superclasses(:));
 						[dummy,unique_indexes] = unique({s.document_class.superclasses.definition});
 						s.document_class.superclasses = s.document_class.superclasses(unique_indexes);
-                        for j=1:numel(s.document_class.superclasses)
-                            s.document_class.superclasses(j).property_list_name = ...
-                                s.document_class.superclasses(j).definition.strfind('did_document')
+                        
 					else,
 						error(['Documents lack ''document_class'' fields.']);
 					end;
