@@ -25,15 +25,15 @@ classdef validate
     end
     
     methods
-        function did_validate_obj = did_validate(ndi_document_obj,ndi_session_obj)
+        function did_validate_obj = did_validate(document_obj,database)
             if nargin == 0
-                error("You must pass in an instance of ndi_document_obj and an instance of ndi_session_obj as arguments");
+                error("You must pass in an instance of document_obj and an instance of database as arguments");
             end
             
             % Initialization
             ndi_globals;
             if ~any(strcmp(javaclasspath,[ndi.path.path filesep 'java' filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
-                eval("javaaddpath([ndi.path.path filesep 'java' filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
+                eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
             end
             import com.ndi.*;
             import org.json.*;
@@ -49,7 +49,7 @@ classdef validate
             persistent format_validators_list;
             if isempty(format_validators_list)
                 try
-                    format_validators_list = did_validate.load_format_validator();
+                    format_validators_list = validate.load_format_validator();
                 catch e
                     warning("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
                 end
@@ -62,34 +62,34 @@ classdef validate
             end
             
             % Check if the user has passed in a valid ndi_document_obj
-            if ~isa(ndi_document_obj, 'ndi_document')
-                error('You must pass in an instance of ndi_document as your first argument');
+            if ~isa(document_obj, 'document')
+                error('You must pass in an instance of document as your first argument');
             end
             
             % Only check if the user passed in a valid instance of
             % ndi_session if ndi_document_obj has dependency
-            if isfield(ndi_document_obj.document_properties, 'depends_on')
+            if isfield(document_obj.document_properties, 'depends_on')
                 has_dependencies = 1;
-                if ~isa(ndi_session_obj, 'ndi_session')
-                    error('You must pass in an instnce of ndi_session as your second argument to check for dependency')
+                if ~isa(ndi_session_obj, 'database')
+                    error('You must pass in an instnce of database as your second argument to check for dependency')
                 end
             end 
             
             % ndi_document has a property called 'document_properties' that has all of the 
             % data of the document. For example, all documents have 
             % ndi_document_obj.document_properties.ndi_document with fields 'id', 'session_id', etc.
-            schema = did_validate.extract_schema(ndi_document_obj);
-            doc_class = ndi_document_obj.document_properties.document_class;
+            schema = validate.extract_schema(document_obj);
+            doc_class = document_obj.document_properties.document_class;
             %property_list = getfield(ndi_document_obj.document_properties, doc_class.property_list_name);
-            property_list = eval( strcat('ndi_document_obj.document_properties.', doc_class.property_list_name));
+            property_list = eval( strcat('document_obj.document_properties.', doc_class.property_list_name));
             if has_dependencies == 1 
                 % pass depends_on here
-                property_list.depends_on = ndi_document_obj.document_properties.depends_on;
+                property_list.depends_on = document_obj.document_properties.depends_on;
             end
             
             % validate all non-super class properties
             try
-                did_validate_obj.validators.this = com.ndi.Validator( jsonencode(property_list), schema );
+                validate_obj.validators.this = com.ndi.Validator( jsonencode(property_list), schema );
                 if ~isempty(format_validators_list)
                     did_validate_obj.validators.this = did_validate_obj.validators.this.addValidators(format_validators_list);
                 end
@@ -102,7 +102,7 @@ classdef validate
                 did_validate_obj.is_valid = false;
                 did_validate_obj.reports.this = did_validate_obj.validators.this.getReport();
                 did_validate_obj.errormsg_this = string(doc_class.property_list_name) +  ":" ...
-                +string(newline) + did_validate.readHashMap(did_validate_obj.reports.this) + string(newline);
+                +string(newline) + validate.readHashMap(did_validate_obj.reports.this) + string(newline);
             end
                                
             % validate all of the document's superclass if it exists 
@@ -118,12 +118,12 @@ classdef validate
                 % Step 2: find the validator json in the superclass, call it validator_superclass
                 % Step 3: convert the portion of the document that corresponds to this superclass to JSON
                 superclass_name = doc_class.superclasses(i).definition;
-                schema = did_validate.extract_schema(superclass_name);
-                superclassname_without_extension = did_validate.extractnamefromdefinition(superclass_name);
-                properties = struct( eval( strcat('ndi_document_obj.document_properties.', superclassname_without_extension) ) );
+                schema = validate.extract_schema(superclass_name);
+                superclassname_without_extension = validate.extractnamefromdefinition(superclass_name);
+                properties = struct( eval( strcat('document_obj.document_properties.', superclassname_without_extension) ) );
                 % pass depends_on here 
                 if has_dependencies == 1
-                  properties.depends_on = ndi_document_obj.document_properties.depends_on;
+                  properties.depends_on = document_obj.document_properties.depends_on;
                 end
                 validator = 0;
                 try
@@ -141,7 +141,7 @@ classdef validate
                     did_validate_obj.validators.super(i).(superclassname_without_extension) = validator; 
                     did_validate_obj.reports.super(i).(superclassname_without_extension) = report; 
                     did_validate_obj.errormsg_super = string(superclassname_without_extension) +  ":"... 
-                    + newline + did_validate.readHashMap(report) + string(newline);
+                    + newline + validate.readHashMap(report) + string(newline);
                 end
             end
             
@@ -149,31 +149,31 @@ classdef validate
             % search through the ndi_session database to check 
             has_dependencies_error = 0;
             if has_dependencies == 1
-                numofdependencies = numel(ndi_document_obj.document_properties.depends_on);
+                numofdependencies = numel(document_obj.document_properties.depends_on);
                 %emptystruct(1,numofdependencies) = struct;
                 did_validate_obj.reports.dependencies = struct();
                 % NOTE: this does not verify that 'depends-on' documents have the right class membership
                 % might want to add this in the future
                 errormsgdependencies = "We cannot find the following necessary dependency from the database:" + newline;
                 for i = 1:numofdependencies
-                    searchquery = {'ndi_document.id', ndi_document_obj.document_properties.depends_on(i).value};
-                    if numel(ndi_session_obj.database_search(searchquery)) < 1
-                        did_validate_obj.reports.dependencies.(ndi_document_obj.document_properties.depends_on(i).name) = 'fail';
-                        errormsgdependencies = errormsgdependencies + ndi_document_obj.document_properties.depends_on(i).name + newline;
+                    searchquery = {'base.id', document_obj.document_properties.depends_on(i).value};
+                    if numel(database.search(searchquery)) < 1
+                        did_validate_obj.reports.dependencies.(document_obj.document_properties.depends_on(i).name) = 'fail';
+                        errormsgdependencies = errormsgdependencies + document_obj.document_properties.depends_on(i).name + newline;
                         did_validate_obj.is_valid = false;
                         has_dependencies_error = 1;
                     else
-                        did_validate_obj.reports.dependencies(i).(ndi_document_obj.document_properties.depends_on(i).name) = "success";
+                        did_validate_obj.reports.dependencies(i).(document_obj.document_properties.depends_on(i).name) = "success";
                     end
                 end
                 if has_dependencies_error == 1
                     did_validate_obj.errormsg_depends_on = errormsgdependencies;
                 end
             end
-                
             % preparing for the overall report 
             if ~did_validate_obj.is_valid
-                msg = "Validation has failed. Here is a detailed report of the source of failure:"...
+                msg = "Validation has f
+                ailed. Here is a detailed report of the source of failure:"...
                     + newline...
                     + "Here are the errors for the this instance of ndi_document class:" + newline...
                     + "------------------------------------------------------------------------------" + newline... 
@@ -211,7 +211,7 @@ classdef validate
             %
             ndi_globals;
             if ~any(strcmp(javaclasspath,[ndi.path.path filesep 'java' filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
-                eval("javaaddpath([ndi.path.path filesep 'java' filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
+                eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
             end
             import com.ndi.*;
             import org.json.*;
@@ -222,12 +222,12 @@ classdef validate
             schema_json_object = JSONObject(fileread(schema_path));
             report = Validator(json_object, schema_json_object).getReport();
             if (report.size() > 0)
-                error("did_validate_config.json is not formatted correctly: check the following fields" + newline + did_validate.readHashMap(report))
+                error("did_validate_config.json is not formatted correctly: check the following fields" + newline + validate.readHashMap(report))
             end
             json_array = json_object.getJSONArray("string_format");
             for i = 0:json_array.length()-1
                 format_validator_json = json_array.getJSONObject(i);
-                filepath = did_validate.replace_ndipath( string(json_array.getJSONObject(i).getString("filePath")) );
+                filepath = validate.replace_ndipath( string(json_array.getJSONObject(i).getString("filePath")) );
                 format_validator_json = format_validator_json.put("filePath", filepath);
                 json_array = json_array.put(i, format_validator_json);
             end
@@ -259,7 +259,7 @@ classdef validate
             %
             ndi_globals;
             schema_json = "";
-            if isa(ndi_document_obj, 'ndi_document')
+            if isa(ndi_document_obj, 'document')
                 schema_path = ndi_document_obj.document_properties.document_class.validation;
                 schema_path = strrep(schema_path, '$NDISCHEMAPATH', ndi.path.documentschemapath);
                 try
