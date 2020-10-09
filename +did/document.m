@@ -391,6 +391,9 @@ classdef document
 							s_super{i}.document_class.superclasses(:));
 						[dummy,unique_indexes] = unique({s.document_class.superclasses.definition});
 						s.document_class.superclasses = s.document_class.superclasses(unique_indexes);
+                        for j=1:numel(s.document_class.superclasses)
+                            s.document_class.superclasses(j).property_list_name = ...
+                                s.document_class.superclasses(j).definition.strfind('did_document')
 					else,
 						error(['Documents lack ''document_class'' fields.']);
 					end;
@@ -427,14 +430,30 @@ classdef document
 					%           : did.path.documentpath{1} entry
 					%           : Should search through all the names
 
-				searchString = '$DIDDOCUMENT_EX1';
-				s = strfind(jsonfilelocationstring, searchString);
-				if ~isempty(s), % insert the location
-					filename = [did_globals.path.definition_locations{1} filesep ...
-						did.file.filesepconversion(jsonfilelocationstring(s+numel(searchString):end), did.filesep, filesep)];
+
+                match_index = 0
+                search_str_location = []
+                for i = 1:numel(did_globals.path.definition_names)
+                    loc = strfind(jsonfilelocationstring, did_globals.path.definition_names{i});
+                    if ~isempty(loc)
+                        match_index = i
+                        search_str_location = loc
+                        break
+                    end
+                end
+                
+                
+				
+				if ~isempty(search_str_location), % insert the location
+					filename = [...
+                        did_globals.path.definition_locations{match_index} filesep ...
+						did.file.filesepconversion(...
+                        jsonfilelocationstring(search_str_location+numel(did_globals.path.definition_names{match_index}):end), ...
+                        did.filesep, filesep)...
+                        ];
 				else,
 					% first, guess that it is a complete path from the first search path
-					filename = [did_globals.path.definition_locations{1} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
+					filename = [did_globals.path.definition_locations{match_index} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
 					if ~exist(filename,'file'),
 						% try adding extension
 						filename = [filename '.json'];
@@ -446,7 +465,7 @@ classdef document
 							filename = [filename '.json'];
 						end;
 						if ~exist(filename,'file'),
-							filename2 = [did_globals.path.definition_locations{1} filesep filename];
+							filename2 = [did_globals.path.definition_locations{match_index} filesep filename];
 							if ~exist(filename2,'file'),
 								error(['Cannot find file ' filename '.']);
 							else,
