@@ -33,7 +33,7 @@ did_globals.path.temppath = [tempdir filesep 'didtemp'];
 did_globals.path.testpath = [tempdir filesep 'didtestcode'];
 did_globals.path.filecachepath = [userpath filesep 'Documents' filesep 'DID' filesep 'DID-filecache'];
 did_globals.path.preferences = [userpath filesep 'Preferences' filesep' 'DID'];
-did_globals.path.javapath = [mydidpath filesep 'java']
+did_globals.path.javapath = [mydidpath filesep 'java'];
 
 if ~exist(did_globals.path.temppath,'dir'),
         mkdir(did_globals.path.temppath);
