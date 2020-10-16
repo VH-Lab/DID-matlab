@@ -371,8 +371,8 @@ classdef document
 				% Step 2): read the information about all the superclasses
 
 				s_super = {};
-%                 superclasses = did.datastructures.emptystruct;
-                superclasses = {}
+                superclasses = did.datastructures.emptystruct('definition','property_list_name','class_version');
+%                 superclasses = {}
 				if isfield(j,'document_class'),
 					if isfield(j.document_class,'superclasses'),
 						for i=1:numel(j.document_class.superclasses),
@@ -381,7 +381,8 @@ classdef document
                             %% add more fields besides 'definition' to the document_class.superclasses struct
                             item.property_list_name = s_super{end}.document_class.property_list_name
                             item.class_version = s_super{end}.document_class.class_version
-                            superclasses{end+1} = item 
+%                             superclasses{end+1} = item 
+                            superclasses(end+1) = item 
                         end
                         j.document_class.superclasses = superclasses
 					end
