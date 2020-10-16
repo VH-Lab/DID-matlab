@@ -371,18 +371,19 @@ classdef document
 				% Step 2): read the information about all the superclasses
 
 				s_super = {};
-
+%                 superclasses = did.datastructures.emptystruct;
+                superclasses = {}
 				if isfield(j,'document_class'),
 					if isfield(j.document_class,'superclasses'),
 						for i=1:numel(j.document_class.superclasses),
 							item = did.datastructures.celloritem(j.document_class.superclasses, i, 1);
-                           
 							s_super{end+1} = did.document.readblankdefinition(item.definition);
                             %% add more fields besides 'definition' to the document_class.superclasses struct
-                            item.property_list_name = getfield(s_super{end}.document_class.property_list_name)
-                            item.class_version = getfield(s_super{end}.document_class.class_version)
-                            j.document_class.superclasses[i] = item %% how to make the indexing work properly?
-						end
+                            item.property_list_name = s_super{end}.document_class.property_list_name
+                            item.class_version = s_super{end}.document_class.class_version
+                            superclasses{end+1} = item 
+                        end
+                        j.document_class.superclasses = superclasses
 					end
 				end
 
@@ -440,6 +441,7 @@ classdef document
                 match_index = 0
                 search_str_location = []
                 for i = 1:numel(did_globals.path.definition_names)
+                    did_globals.path.definition_names{i}
                     loc = strfind(jsonfilelocationstring, did_globals.path.definition_names{i});
                     if ~isempty(loc)
                         match_index = i
@@ -459,37 +461,39 @@ classdef document
                         ];
 				else,
 					% first, guess that it is a complete path from the first search path
-					filename = [did_globals.path.definition_locations{match_index} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
-					if ~exist(filename,'file'),
-						% try adding extension
-						filename = [filename '.json'];
-					end;
-					if ~exist(filename,'file'), 
-						filename = jsonfilelocationstring;
-						[p,n,e] = fileparts(filename);
-						if isempty(e),
-							filename = [filename '.json'];
-						end;
-						if ~exist(filename,'file'),
-							filename2 = [did_globals.path.definition_locations{match_index} filesep filename];
-							if ~exist(filename2,'file'),
-								error(['Cannot find file ' filename '.']);
-							else,
-								filename = filename2;
-							end;
-						end;
-					end;
-				end;
+                    for i = 1:numel(did_globals.path.definition_locations)
+                        filename = [did_globals.path.definition_locations{i} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
+                        if ~exist(filename,'file'),
+                            % try adding extension
+                            filename = [filename '.json'];
+                        end;
+                        if ~exist(filename,'file'), 
+                            filename = jsonfilelocationstring;
+                            [p,n,e] = fileparts(filename);
+                            if isempty(e),
+                                filename = [filename '.json'];
+                            end;
+                            if ~exist(filename,'file'),
+                                filename2 = [did_globals.path.definition_locations{i} filesep filename];
+                                if ~exist(filename2,'file'),
+                                    error(['Cannot find file ' filename '.']);
+                                else,
+                                    filename = filename2;
+                                end;
+                            end;
+                        end;
+                    end
+                end
 
-				% filename could be url or filename
+            % filename could be url or filename
 
-				if did.file.isurl(filename),
-					t = urlread(filename);
-				else,
-					t = did.file.textfile2char(filename);
-				end
-		end
+                if did.file.isurl(filename),
+                    t = urlread(filename);
+                else,
+                    t = did.file.textfile2char(filename);
+                end
+        end
 
-	end % methods Static
+    end % methods Static
 end % classdef
 
