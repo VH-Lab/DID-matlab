@@ -25,14 +25,16 @@ did.globals;
 did_globals.path = [];
 
 did_globals.path.path = mydidpath;
-did_globals.path.definition_names = {'$DIDDOCUMENT_EX1' '$DIDSCHEMA_EX1'};
+did_globals.path.definition_names = {'$DIDDOCUMENT_EX1' '$DIDSCHEMA_EX1', '$DIDCONTROLLEDVOCAB_EX1'};
 did_globals.path.definition_locations = ...
 	{  [did_globals.path.path filesep 'example_schema' filesep 'demo_schema1' filesep 'database_documents'] ...
-	   [did_globals.path.path filesep 'example_schema' filesep 'demo_schema1' filesep 'schema_documents'] };
+	   [did_globals.path.path filesep 'example_schema' filesep 'demo_schema1' filesep 'database_schema']...
+       [did_globals.path.path filesep 'example_schema' filesep 'demo_schema1' filesep 'controlled_vocabulary']};
 did_globals.path.temppath = [tempdir filesep 'didtemp'];
 did_globals.path.testpath = [tempdir filesep 'didtestcode'];
 did_globals.path.filecachepath = [userpath filesep 'Documents' filesep 'DID' filesep 'DID-filecache'];
 did_globals.path.preferences = [userpath filesep 'Preferences' filesep' 'DID'];
+did_globals.path.javapath = [mydidpath filesep 'java']
 
 if ~exist(did_globals.path.temppath,'dir'),
         mkdir(did_globals.path.temppath);
