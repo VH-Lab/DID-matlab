@@ -58,16 +58,16 @@ classdef document
 			% Checks the fields of the DID_DOCUMENT object against the schema in 
 			% DID_DOCUMENT_OBJ.did_core_properties.validation_schema and returns 1
 			% if the object is valid and 0 otherwise.
-                try
-                    validator = did.validate(did_document_obj);
-                catch
-                    if nargin == 1
-                        error('You must pass in an instance of did.database')
-                    end
-                    validator = did.validate(did_document_obj, did_database);
-                end
-                b = validator.is_valid;
-                e = validator.errormsg;
+				try
+				    validator = did.validate(did_document_obj);
+				catch
+				    if nargin == 1
+					error('You must pass in an instance of did.database')
+				    end
+				    validator = did.validate(did_document_obj, did_database);
+				end
+				b = validator.is_valid;
+				e = validator.errormsg;
 		end % validate()
 
 		function uid = id(did_document_obj)
