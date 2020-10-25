@@ -50,7 +50,7 @@ classdef document
 
 		end % document() creator
 
-		function b = validate(did_document_obj)
+		function [b, e] = validate(did_document_obj, did_database)
 			% VALIDATE - 0/1 evaluate whether DID_DOCUMENT object is valid by its schema
 			% 
 			% B = VALIDATE(DID_DOCUMENT_OBJ)
@@ -58,7 +58,16 @@ classdef document
 			% Checks the fields of the DID_DOCUMENT object against the schema in 
 			% DID_DOCUMENT_OBJ.did_core_properties.validation_schema and returns 1
 			% if the object is valid and 0 otherwise.
-				b = 1; % for now, skip this
+                try
+                    validator = did.validate(did_document_obj);
+                catch
+                    if nargin == 1
+                        error('You must pass in an instance of did.database')
+                    end
+                    validator = did.validate(did_document_obj, did_database);
+                end
+                b = validator.is_valid;
+                e = validator.errormsg;
 		end % validate()
 
 		function uid = id(did_document_obj)
