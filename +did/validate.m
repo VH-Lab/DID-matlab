@@ -239,7 +239,7 @@ classdef validate
         end
     end
 
-    methods(Static, Access = public)
+    methods(Static, Access = private)
         
         function new_path = replace_didpath(path)
             did.globals;
@@ -267,15 +267,7 @@ classdef validate
                 end
             end
             if isa(document_obj, 'char') || isa(document_obj, 'string')
-                schema_path = string(document_obj).replace('.json', '_schema.json');
-                for i = 1:numel(did_globals.path.definition_names)
-                    schema_path = strrep(schema_path, did_globals.path.definition_names{i}, did_globals.path.definition_locations{2});
-                end
-                try
-                    schema_json = fileread(schema_path);
-                catch
-                    error('The schema path does not exsist. Verify that you have created a schema file in the $NDIDOCUMENTSCHEMAPATH folder.');
-                end
+                schema_json = did.validate.extract_schema( did.document(did.validate.replace_didpath(document_obj)) );
             end
         end
         
