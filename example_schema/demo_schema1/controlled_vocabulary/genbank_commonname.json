@@ -1,0 +1,27 @@
+		{
+			"formatTag": "genbank_commonname",
+			"filePath": "$DIDCONTROLLEDVOCAB_EX1\/GenBankControlledVocabulary.tsv.gz",
+			"tableFormat": {
+				"format": [
+					"\t",
+					"\t",
+					"\t"
+				],
+				"entryFormat": [
+					null,
+					null,
+					", ",
+					", "
+				]
+			},
+			"rules": {
+				"correct": [
+					"GenBank_Common_Name"
+				],
+				"suggestions": [
+					"Synonyms",
+					"Scientific_Name"
+				]
+			},
+			"loadTableIntoMemory": true
+		}
