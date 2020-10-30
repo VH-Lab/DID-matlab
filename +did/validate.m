@@ -207,8 +207,7 @@ classdef validate
         
     end
 
-    methods(Static, Access = public)
-        
+    methods(Static, Access = private)
         function format_validators = get_format_validator(schema)
             did.globals
             if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
@@ -224,62 +223,26 @@ classdef validate
                 format_validators_cache = did.cache();      
             end
             
-            properties = schema.properties;
-            for i = 1 : numel(properties)
-                if hasfield(properties{i}, 'format') && hasfield(properties{i}, 'location')
-                    format_validator = format_validators_cache.lookup(properties{i}.location, properties{i}.format);
+            fields = fieldnames(schema.properties);
+            for i = 1 : numel(fields)
+                if isfield(schema.properties.(fields{i}), 'format') && isfield(schema.properties.(fields{i}), 'location')
+                    format_validator = format_validators_cache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
                     if format_validator == -1
-                        json_object = JSONObject(fileread(did.validate.replace_didpath(properties{i}.location)));
+                        disp(['Loading data from controlled vocabulary for ', schema.properties.(fields{i}).format, '. This might take a while:'])
+                        json_object = JSONObject(fileread(did.validate.replace_didpath(schema.properties.(fields{i}).location)));
                         %for now assume that the definition file json is
                         %formatted correctly
                         filepath = did.validate.replace_didpath( string(json_object.getString("filePath")) );
                         json_object = json_object.put("filePath", filepath);
                         format_validator = EnumFormatValidator.buildFromSingleJSON(json_object);
-                        format_validators_cache.add(properties{i}.location, properties{i}.format, format_validator)
+                        format_validators_cache.add(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format, format_validator);
+                    else
+                        format_validator = format_validator.data;
                     end
-                    format_validators.add(format_validator)
+                    format_validators.add(format_validator);
                 end
             end
         end
-        
-            
-        function format_validator_list = load_format_validator()
-            %
-            %  LOAD the the list of FormatValidator configurated based on
-            %  the JSON file did_validate_config.json
-            %
-            did.globals
-            if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
-                eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
-            end
-            import com.ndi.*;
-            import org.json.*;
-            import org.everit.*;
-            %Assume that the documenpath is stored in the first element of
-            %did.path.definition_locations, and the schemapath is stored in
-            %the second element of did.path.definition_locations
-            json_path = [did_globals.path.definition_locations{1} filesep 'did_validate_config.json'];
-            schema_path = [did_globals.path.definition_locations{2} filesep 'did_validate_config_schema.json'];
-            json_object = JSONObject(fileread(json_path));
-            schema_json_object = JSONObject(fileread(schema_path));
-            report = Validator(json_object, schema_json_object).getReport();
-            if (report.size() > 0)
-                error("did_validate_config.json is not formatted correctly: check the following fields" + newline + did.validate.readHashMap(report))
-            end
-            json_array = json_object.getJSONArray("string_format");
-            for i = 0:json_array.length()-1
-                format_validator_json = json_array.getJSONObject(i);
-                filepath = did.validate.replace_didpath( string(json_array.getJSONObject(i).getString("filePath")) );
-                format_validator_json = format_validator_json.put("filePath", filepath);
-                json_array = json_array.put(i, format_validator_json);
-            end
-            json_object = json_object.put("string_format", json_array);
-            format_validator_list = EnumFormatValidator.buildFromJSON(json_object);
-            %did.validators.format_validators = format_validator_list;
-        end
-    end
-
-    methods(Static, Access = private)
         
         function new_path = replace_didpath(path)
             did.globals;
