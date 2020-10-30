@@ -46,14 +46,14 @@ classdef validate
             did_validate_obj.errormsg_depends_on = "no error found" + newline;
             did_validate_obj.errormsg = '';
             did_validate_obj.is_valid = true;
-            persistent format_validators_list;
-            if isempty(format_validators_list)
-                try
-                    format_validators_list = did.validate.load_format_validator();
-                catch e
-                    warning("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
-                end
-            end
+            %persistent format_validators_list;
+            %if isempty(format_validators_list)
+                %try
+                    %format_validators_list = did.validate.load_format_validator();
+                %catch e
+                    %warning("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
+                %end
+            %end
             % Allow users to pass in only one argument if ndi_document_obj
             % does not have depends-on fields (since we don't really need
             % the ndi_session_obj)
@@ -85,6 +85,12 @@ classdef validate
             if has_dependencies == 1 
                 % pass depends_on here
                 property_list.depends_on = document_obj.document_properties.depends_on;
+            end
+            
+            try
+                format_validators_list = did.validate.get_format_validator(jsondecode(schema));
+            catch e
+                warning("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
             end
             
             % validate all non-super class properties
@@ -203,6 +209,40 @@ classdef validate
 
     methods(Static, Access = public)
         
+        function format_validators = get_format_validator(schema)
+            did.globals
+            if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
+                eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
+            end
+            import com.ndi.*;
+            import org.json.*;
+            import org.everit.*;
+            
+            format_validators = java.util.ArrayList();
+            persistent format_validators_cache;
+            if isempty(format_validators_cache)
+                format_validators_cache = did.cache();      
+            end
+            
+            properties = schema.properties;
+            for i = 1 : numel(properties)
+                if hasfield(properties{i}, 'format') && hasfield(properties{i}, 'location')
+                    format_validator = format_validators_cache.lookup(properties{i}.location, properties{i}.format);
+                    if format_validator == -1
+                        json_object = JSONObject(fileread(did.validate.replace_didpath(properties{i}.location)));
+                        %for now assume that the definition file json is
+                        %formatted correctly
+                        filepath = did.validate.replace_didpath( string(json_object.getString("filePath")) );
+                        json_object = json_object.put("filePath", filepath);
+                        format_validator = EnumFormatValidator.buildFromSingleJSON(json_object);
+                        format_validators_cache.add(properties{i}.location, properties{i}.format, format_validator)
+                    end
+                    format_validators.add(format_validator)
+                end
+            end
+        end
+        
+            
         function format_validator_list = load_format_validator()
             %
             %  LOAD the the list of FormatValidator configurated based on
