@@ -297,7 +297,7 @@ public class EnumFormatValidator implements FormatValidator {
      * @return an instance of EnumFormatValidator
      * @throws IllegalArgumentException if the JSON file contains an invalid type
      */
-    private static FormatValidator buildFromSingleJSON(JSONObject input){
+    public static FormatValidator buildFromSingleJSON(JSONObject input){
         EnumFormatValidator.Builder builder = new Builder().setFormatTag(input.getString("formatTag"))
                 .setRules(Rules.buildFromJSON(input.getJSONObject("rules")))
                 .setFilePath(input.getString("filePath"))
