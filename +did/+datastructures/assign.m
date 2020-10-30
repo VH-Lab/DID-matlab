@@ -19,7 +19,7 @@ function assign (varargin)
 
 if numel(varargin)==1,
     if isstruct(varargin{1}),
-        varargin = struct2namevaluepair(varargin{1});
+        varargin = did.datastructures.struct2namevaluepair(varargin{1});
     elseif iscell(varargin{1}),
         varargin = varargin{1};
     end;
