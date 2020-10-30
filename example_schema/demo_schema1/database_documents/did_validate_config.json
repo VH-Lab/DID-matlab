@@ -52,7 +52,7 @@
 					"Scientific_Name"
 				]
 			},
-			"loadTableIntoMemory": false
+			"loadTableIntoMemory": true
 		}
 	]
 }
