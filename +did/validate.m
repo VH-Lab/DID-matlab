@@ -209,6 +209,15 @@ classdef validate
 
     methods(Static, Access = private)
         function format_validators = get_format_validator(schema)
+            %   GET_FORMAT_VALIDATOR - get the necessary format validators
+            %                          needed to validate a json document
+            %                          that contains a costume format tag
+            %
+            %   SCHEMA - a struct representing the json document's
+            %            corresponding schema
+            %
+            %   FORMAT_VALIDATORS = GET_FORMAT_VALIDATOR(SCHEMA)
+            %
             did.globals
             if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
                 eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
@@ -218,15 +227,11 @@ classdef validate
             import org.everit.*;
             
             format_validators = java.util.ArrayList();
-            persistent format_validators_cache;
-            if isempty(format_validators_cache)
-                format_validators_cache = did.cache();      
-            end
-            
+           
             fields = fieldnames(schema.properties);
             for i = 1 : numel(fields)
                 if isfield(schema.properties.(fields{i}), 'format') && isfield(schema.properties.(fields{i}), 'location')
-                    format_validator = format_validators_cache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
+                    format_validator = did_globals.cache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
                     if format_validator == -1
                         disp(['Loading data from controlled vocabulary for ', schema.properties.(fields{i}).format, '. This might take a while:'])
                         json_object = JSONObject(fileread(did.validate.replace_didpath(schema.properties.(fields{i}).location)));
@@ -234,8 +239,11 @@ classdef validate
                         %formatted correctly
                         filepath = did.validate.replace_didpath( string(json_object.getString("filePath")) );
                         json_object = json_object.put("filePath", filepath);
+                        if json_object.has("loadTableIntoMemory") == false
+                            json_object.put("loadTableIntoMemory", true);
+                        end
                         format_validator = EnumFormatValidator.buildFromSingleJSON(json_object);
-                        format_validators_cache.add(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format, format_validator);
+                        did_globals.cache.add(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format, format_validator);
                     else
                         format_validator = format_validator.data;
                     end
@@ -245,6 +253,14 @@ classdef validate
         end
         
         function new_path = replace_didpath(path)
+            %   EXTRACT_SCHEMA - Replace all the definiton names in the
+            %                    path to the actual definition locations
+            %                    defined in did_globals variable
+            %                                                                   
+            %   PATH - a file path that contains definition names                  
+            %
+            %   NEW_PATH = REPLACE_DIDPATH(PATH)
+            %
             did.globals;
             new_path = path;
             for i = 1:numel(did_globals.path.definition_names)
@@ -286,9 +302,10 @@ classdef validate
         end
         
         function str = readHashMap(java_hashmap)
-            %   java_hashmap - an instance of java.util.HashMAP
             %   turn an instance of java.util.hashmap into string useful
             %   for displaying the error messages
+            %
+            %   java_hashmap - an instance of java.util.HashMAP
             %   
             %   STR = READHASHMAP(JAVA_HASHMAP)
             %
