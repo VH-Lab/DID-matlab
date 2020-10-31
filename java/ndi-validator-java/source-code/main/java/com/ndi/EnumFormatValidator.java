@@ -298,6 +298,7 @@ public class EnumFormatValidator implements FormatValidator {
      * @throws IllegalArgumentException if the JSON file contains an invalid type
      */
     public static FormatValidator buildFromSingleJSON(JSONObject input){
+        validateSingleEnumFormatValidatorJSON(input);
         EnumFormatValidator.Builder builder = new Builder().setFormatTag(input.getString("formatTag"))
                 .setRules(Rules.buildFromJSON(input.getJSONObject("rules")))
                 .setFilePath(input.getString("filePath"))
@@ -329,6 +330,21 @@ public class EnumFormatValidator implements FormatValidator {
             throw new IllegalArgumentException("EnumFormatValidator Initialization Error: JSONObject cannot be null");
         }
         try (InputStream is = EnumFormatValidator.class.getResourceAsStream("/ndi_validate_config_schema.json")) {
+            Validator validator = new Validator(arg, new JSONObject(new JSONTokener(is)));
+            if (validator.getReport().size() != 0) {
+                throw new IllegalArgumentException("EnumFormatValidator Initialization Error: ndi_validate_config.json is not formatted correctly:\n"
+                        + validator.getReport().toString());
+            }
+        } catch (NullPointerException | IOException ex) {
+            throw new InternalError("Jar File Broken Error: Cannot load JSON Schema. Check if the jar file is broken");
+        }
+    }
+
+    public static void validateSingleEnumFormatValidatorJSON(JSONObject arg){
+        if (arg == null) {
+            throw new IllegalArgumentException("EnumFormatValidator Initialization Error: JSONObject cannot be null");
+        }
+        try (InputStream is = EnumFormatValidator.class.getResourceAsStream("/ndi_validate_config_single_schema.json")) {
             Validator validator = new Validator(arg, new JSONObject(new JSONTokener(is)));
             if (validator.getReport().size() != 0) {
                 throw new IllegalArgumentException("EnumFormatValidator Initialization Error: ndi_validate_config.json is not formatted correctly:\n"

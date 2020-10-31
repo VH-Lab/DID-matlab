@@ -83,10 +83,10 @@ class Table {
         }
         String rowKey = tuple.get(this.primaryIndexColNum);
         if (rowKey == null){
-            throw new IllegalArgumentException("the primary index cannot be null");
+            return;
         }
         if (rowKeys.contains(rowKey)){
-            throw new IllegalArgumentException("the primary index has to be unique");
+            return;
         }
         int index = 0;
         for (String entry : tuple){
