@@ -207,11 +207,7 @@ classdef cache < handle
 			% data              | The data stored
 
 				index = find ( strcmp(key,{did_cache_obj.table.key}) & strcmp(type,{did_cache_obj.table.type}) );
-				if numel(index) == 0
-                    tableentry = -1;
-                else
-                    tableentry = did_cache_obj.table(index);
-                end
+                tableentry = did_cache_obj.table(index);
 		end % tableentry
 
 		function b = bytes(did_cache_obj)
