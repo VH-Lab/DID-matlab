@@ -90,7 +90,7 @@ classdef validate
             try
                 format_validators_list = did.validate.get_format_validator(jsondecode(schema));
             catch e
-                warning("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
+                error("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
             end
             
             % validate all non-super class properties
@@ -232,7 +232,7 @@ classdef validate
             for i = 1 : numel(fields)
                 if isfield(schema.properties.(fields{i}), 'format') && isfield(schema.properties.(fields{i}), 'location')
                     format_validator = did_globals.cache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
-                    if format_validator == -1
+                    if numel(format_validator) == 0
                         disp(['Loading data from controlled vocabulary for ', schema.properties.(fields{i}).format, '. This might take a while:'])
                         json_object = JSONObject(fileread(did.validate.replace_didpath(schema.properties.(fields{i}).location)));
                         %for now assume that the definition file json is
