@@ -22,6 +22,5 @@
 			"Synonyms",
 			"GenBank_Common_Name"
 		]
-	},
-	"loadTableIntoMemory": true
+	}
 }
