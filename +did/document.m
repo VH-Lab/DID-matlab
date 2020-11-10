@@ -438,24 +438,10 @@ classdef document
 			%
 				did.globals;
 
-				match_index = 0;
-				search_str_location = [];
-				for i = 1:numel(did_globals.path.definition_names)
-					loc = strfind(jsonfilelocationstring, did_globals.path.definition_names{i});
-					if ~isempty(loc)
-						match_index = i;
-						search_str_location = loc;
-						break;
-					end
-				end
-                
-				if ~isempty(search_str_location), % insert the location
-					filename = [...
-						did_globals.path.definition_locations{match_index} filesep ...
-						did.file.filesepconversion(...
-						jsonfilelocationstring(search_str_location+numel(did_globals.path.definition_names{match_index}):end), ...
-						did.filesep, filesep)...
-					];
+				jsonfilelocationstring_update = did.document.replace_didpath(jsonfilelocationstring);
+
+				if ~strcmp(jsonfilelocationstring_update,jsonfilelocationstring), % insert the location
+					filename = jsonfilelocationstring_update;
 				else,
 					% first, guess that it is a complete path from the first search path
 					for i = 1:numel(did_globals.path.definition_locations)
@@ -490,6 +476,20 @@ classdef document
 					t = did.file.textfile2char(filename);
 				end
 			end %  did.document.readjsonfilelocation()
+
+			function new_path = replace_didpath(path)
+				%   REPLACE_DIDPATH - Replace all the definiton names in the path to the actual definition locations defined in did_globals variable
+				%
+				%   NEW_PATH = REPLACE_DIDPATH(PATH)
+				%
+				%   PATH - a file path that contains definition names
+				%
+					did.globals;
+					new_path = path;
+					for i = 1:numel(did_globals.path.definition_names),
+						new_path = strrep(new_path, did_globals.path.definition_names{i}, did_globals.path.definition_locations{i});
+					end
+			end; % replace_didpath()
     end % methods Static
 end % classdef
 
