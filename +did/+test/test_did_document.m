@@ -40,6 +40,7 @@ disp(['Creating a new document of type did_document_app'])
 
 doc = did.document('did_document_app','app.name','mytestname','base.name','mytestdocument');
 
+disp(['These are the doc.document_properties:'])
 doc.document_properties,
 
 disp(['Adding the document to the database']);
