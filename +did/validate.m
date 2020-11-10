@@ -95,7 +95,7 @@ classdef validate
             
             % validate all non-super class properties
             try
-                did_validate_obj.validators.this = com.ndi.Validator( jsonencode(property_list), schema );
+                validate_obj.validators.this = com.ndi.Validator( jsonencode(property_list), schema );
                 if ~isempty(format_validators_list)
                     did_validate_obj.validators.this = did_validate_obj.validators.this.addValidators(format_validators_list);
                 end
@@ -126,6 +126,7 @@ classdef validate
                 superclass_name = doc_class.superclasses(i).definition;
                 schema = did.validate.extract_schema(superclass_name);
                 superclassname_without_extension = did.validate.extractnamefromdefinition(superclass_name);
+
                 properties = struct( eval( strcat('document_obj.document_properties.', superclassname_without_extension) ) );
                 % pass depends_on here 
                 if has_dependencies == 1
@@ -164,6 +165,7 @@ classdef validate
                 for i = 1:numofdependencies
                     searchquery = {'base.id', document_obj.document_properties.depends_on(i).value};
                     if numel(database_obj.search(searchquery)) < 1
+
                         did_validate_obj.reports.dependencies.(document_obj.document_properties.depends_on(i).name) = 'fail';
                         errormsgdependencies = errormsgdependencies + document_obj.document_properties.depends_on(i).name + newline;
                         did_validate_obj.is_valid = false;
@@ -178,7 +180,8 @@ classdef validate
             end
             % preparing for the overall report 
             if ~did_validate_obj.is_valid
-                msg = "Validation has failed. Here is a detailed report of the source of failure:"...
+                msg = "Validation has f
+                ailed. Here is a detailed report of the source of failure:"...
                     + newline...
                     + "Here are the errors for the this instance of ndi_document class:" + newline...
                     + "------------------------------------------------------------------------------" + newline... 
@@ -220,6 +223,7 @@ classdef validate
             %
             did.globals
             if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
+
                 eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
             end
             import com.ndi.*;

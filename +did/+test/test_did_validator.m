@@ -175,4 +175,5 @@ function test_did_validator()
 
     disp('clearing the database')
     E.clear('yes')
+
 end
