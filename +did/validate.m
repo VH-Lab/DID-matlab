@@ -25,14 +25,14 @@ classdef validate
     end
     
     methods
-        function did_validate_obj = did_validate(document_obj,database)
+        function did_validate_obj = validate(document_obj,database_obj)
             if nargin == 0
                 error("You must pass in an instance of document_obj and an instance of database as arguments");
             end
             
             % Initialization
-            ndi_globals;
-            if ~any(strcmp(javaclasspath,[ndi.path.path filesep 'java' filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
+            did.globals
+            if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
                 eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
             end
             import com.ndi.*;
@@ -46,31 +46,31 @@ classdef validate
             did_validate_obj.errormsg_depends_on = "no error found" + newline;
             did_validate_obj.errormsg = '';
             did_validate_obj.is_valid = true;
-            persistent format_validators_list;
-            if isempty(format_validators_list)
-                try
-                    format_validators_list = validate.load_format_validator();
-                catch e
-                    warning("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
-                end
-            end
+            %persistent format_validators_list;
+            %if isempty(format_validators_list)
+                %try
+                    %format_validators_list = did.validate.load_format_validator();
+                %catch e
+                    %warning("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
+                %end
+            %end
             % Allow users to pass in only one argument if ndi_document_obj
             % does not have depends-on fields (since we don't really need
             % the ndi_session_obj)
             if nargin == 1
-                ndi_session_obj = 0;
+                database_obj = 0;
             end
             
             % Check if the user has passed in a valid ndi_document_obj
-            if ~isa(document_obj, 'document')
-                error('You must pass in an instance of document as your first argument');
+            if ~isa(document_obj, 'did.document')
+                error('You must pass in an instance of did.document as your first argument');
             end
             
             % Only check if the user passed in a valid instance of
             % ndi_session if ndi_document_obj has dependency
             if isfield(document_obj.document_properties, 'depends_on')
                 has_dependencies = 1;
-                if ~isa(ndi_session_obj, 'database')
+                if ~isa(database_obj, 'did.database')
                     error('You must pass in an instnce of database as your second argument to check for dependency')
                 end
             end 
@@ -78,13 +78,19 @@ classdef validate
             % ndi_document has a property called 'document_properties' that has all of the 
             % data of the document. For example, all documents have 
             % ndi_document_obj.document_properties.ndi_document with fields 'id', 'session_id', etc.
-            schema = validate.extract_schema(document_obj);
+            schema = did.validate.extract_schema(document_obj);
             doc_class = document_obj.document_properties.document_class;
             %property_list = getfield(ndi_document_obj.document_properties, doc_class.property_list_name);
             property_list = eval( strcat('document_obj.document_properties.', doc_class.property_list_name));
             if has_dependencies == 1 
                 % pass depends_on here
                 property_list.depends_on = document_obj.document_properties.depends_on;
+            end
+            
+            try
+                format_validators_list = did.validate.get_format_validator(jsondecode(schema));
+            catch e
+                error("Format validators aren't initialized properly: Here are the error messages" + newline + e.message);
             end
             
             % validate all non-super class properties
@@ -102,7 +108,7 @@ classdef validate
                 did_validate_obj.is_valid = false;
                 did_validate_obj.reports.this = did_validate_obj.validators.this.getReport();
                 did_validate_obj.errormsg_this = string(doc_class.property_list_name) +  ":" ...
-                +string(newline) + validate.readHashMap(did_validate_obj.reports.this) + string(newline);
+                +string(newline) + did.validate.readHashMap(did_validate_obj.reports.this) + string(newline);
             end
                                
             % validate all of the document's superclass if it exists 
@@ -118,8 +124,9 @@ classdef validate
                 % Step 2: find the validator json in the superclass, call it validator_superclass
                 % Step 3: convert the portion of the document that corresponds to this superclass to JSON
                 superclass_name = doc_class.superclasses(i).definition;
-                schema = validate.extract_schema(superclass_name);
-                superclassname_without_extension = validate.extractnamefromdefinition(superclass_name);
+                schema = did.validate.extract_schema(superclass_name);
+                superclassname_without_extension = did.validate.extractnamefromdefinition(superclass_name);
+
                 properties = struct( eval( strcat('document_obj.document_properties.', superclassname_without_extension) ) );
                 % pass depends_on here 
                 if has_dependencies == 1
@@ -141,7 +148,7 @@ classdef validate
                     did_validate_obj.validators.super(i).(superclassname_without_extension) = validator; 
                     did_validate_obj.reports.super(i).(superclassname_without_extension) = report; 
                     did_validate_obj.errormsg_super = string(superclassname_without_extension) +  ":"... 
-                    + newline + validate.readHashMap(report) + string(newline);
+                    + newline + did.validate.readHashMap(report) + string(newline);
                 end
             end
             
@@ -157,7 +164,8 @@ classdef validate
                 errormsgdependencies = "We cannot find the following necessary dependency from the database:" + newline;
                 for i = 1:numofdependencies
                     searchquery = {'base.id', document_obj.document_properties.depends_on(i).value};
-                    if numel(database.search(searchquery)) < 1
+                    if numel(database_obj.search(searchquery)) < 1
+
                         did_validate_obj.reports.dependencies.(document_obj.document_properties.depends_on(i).name) = 'fail';
                         errormsgdependencies = errormsgdependencies + document_obj.document_properties.depends_on(i).name + newline;
                         did_validate_obj.is_valid = false;
@@ -202,84 +210,87 @@ classdef validate
         
     end
 
-    methods(Static, Access = public)
-        
-        function format_validator_list = load_format_validator()
+    methods(Static, Access = private)
+        function format_validators = get_format_validator(schema)
+            %   GET_FORMAT_VALIDATOR - get the necessary format validators
+            %                          needed to validate a json document
+            %                          that contains a costume format tag
             %
-            %  LOAD the the list of FormatValidator configurated based on
-            %  the JSON file did_validate_config.json
+            %   SCHEMA - a struct representing the json document's
+            %            corresponding schema
             %
-            ndi_globals;
-            if ~any(strcmp(javaclasspath,[ndi.path.path filesep 'java' filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
+            %   FORMAT_VALIDATORS = GET_FORMAT_VALIDATOR(SCHEMA)
+            %
+            did.globals
+            if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
+
                 eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
             end
             import com.ndi.*;
             import org.json.*;
             import org.everit.*;
-            json_path = [ndi.path.documentpath filesep 'did_validate_config.json'];
-            schema_path = [ndi.path.documentschemapath filesep 'did_validate_config_schema.json'];
-            json_object = JSONObject(fileread(json_path));
-            schema_json_object = JSONObject(fileread(schema_path));
-            report = Validator(json_object, schema_json_object).getReport();
-            if (report.size() > 0)
-                error("did_validate_config.json is not formatted correctly: check the following fields" + newline + validate.readHashMap(report))
-            end
-            json_array = json_object.getJSONArray("string_format");
-            for i = 0:json_array.length()-1
-                format_validator_json = json_array.getJSONObject(i);
-                filepath = validate.replace_ndipath( string(json_array.getJSONObject(i).getString("filePath")) );
-                format_validator_json = format_validator_json.put("filePath", filepath);
-                json_array = json_array.put(i, format_validator_json);
-            end
-            json_object = json_object.put("string_format", json_array);
-            format_validator_list = EnumFormatValidator.buildFromJSON(json_object);
-            ndi.validators.format_validators = format_validator_list;
-        end
-    end
-
-    methods(Static, Access = public)
-        
-        function new_path = replace_ndipath(path)
-            ndi_globals;
-            fn = fieldnames(ndi.path);
-            for i = 1:numel(fn)
-                if numel( strfind(path, "$NDI" + (string(fn{i}).upper())) )~= 0
-                    new_path = strrep(path, "$NDI" + (string(fn{i}).upper()), ndi.path.(fn{i}));
-                    return;
+            
+            format_validators = java.util.ArrayList();
+           
+            fields = fieldnames(schema.properties);
+            for i = 1 : numel(fields)
+                if isfield(schema.properties.(fields{i}), 'format') && isfield(schema.properties.(fields{i}), 'location')
+                    format_validator = did_globals.cache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
+                    if numel(format_validator) == 0
+                        disp(['Loading data from controlled vocabulary for ', schema.properties.(fields{i}).format, '. This might take a while:'])
+                        json_object = JSONObject(fileread(did.validate.replace_didpath(schema.properties.(fields{i}).location)));
+                        %for now assume that the definition file json is
+                        %formatted correctly
+                        filepath = did.validate.replace_didpath( string(json_object.getString("filePath")) );
+                        json_object = json_object.put("filePath", filepath);
+                        if json_object.has("loadTableIntoMemory") == false
+                            json_object.put("loadTableIntoMemory", true);
+                        end
+                        format_validator = EnumFormatValidator.buildFromSingleJSON(json_object);
+                        did_globals.cache.add(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format, format_validator);
+                    else
+                        format_validator = format_validator.data;
+                    end
+                    format_validators.add(format_validator);
                 end
             end
-            new_path = path;
         end
         
-        function schema_json = extract_schema(ndi_document_obj)
+        function new_path = replace_didpath(path)
+            %   EXTRACT_SCHEMA - Replace all the definiton names in the
+            %                    path to the actual definition locations
+            %                    defined in did_globals variable
+            %                                                                   
+            %   PATH - a file path that contains definition names                  
+            %
+            %   NEW_PATH = REPLACE_DIDPATH(PATH)
+            %
+            did.globals;
+            new_path = path;
+            for i = 1:numel(did_globals.path.definition_names)
+                new_path = strrep(new_path, did_globals.path.definition_names{i}, did_globals.path.definition_locations{i});
+            end
+        end
+        
+        function schema_json = extract_schema(document_obj)
             %   EXTRACT_SCHEMA - Extract the content of the ndi_document's
             %                    corresponding schema
             %
             %   SCHEMA_JSON = EXTRACT_SCHEMA(NDI_DOCUMENT_OBJ)
             %
-            ndi_globals;
+            did.globals;
             schema_json = "";
-            if isa(ndi_document_obj, 'document')
-                schema_path = ndi_document_obj.document_properties.document_class.validation;
-                schema_path = strrep(schema_path, '$NDISCHEMAPATH', ndi.path.documentschemapath);
+            if isa(document_obj, 'did.document')
+                schema_path = document_obj.document_properties.document_class.validation;
+                schema_path = did.validate.replace_didpath(schema_path);
                 try
                     schema_json = fileread(schema_path);
                 catch
                     error("the schema path does not exsist");
                 end
             end
-            if isa(ndi_document_obj, 'char') || isa(ndi_document_obj, 'string')
-                schema_path = string(ndi_document_obj).replace('.json', '_schema.json');
-                if  numel( strfind(ndi_document_obj, '$NDIDOCUMENTPATH') ) ~= 0
-                    schema_path = strrep(schema_path, '$NDIDOCUMENTPATH', ndi.path.documentschemapath);
-                elseif numel( strfind(ndi_document_obj, '$NDISCHEMAPATH') ) ~= 0
-                    schema_path = strrep(schema_path, '$NDISCHEMAPATH', ndi.path.documentsschemapath);
-                end
-                try
-                    schema_json = fileread(schema_path);
-                catch
-                    error('The schema path does not exsist. Verify that you have created a schema file in the $NDIDOCUMENTSCHEMAPATH folder.');
-                end
+            if isa(document_obj, 'char') || isa(document_obj, 'string')
+                schema_json = did.validate.extract_schema( did.document(did.validate.replace_didpath(document_obj)) );
             end
         end
         
@@ -295,9 +306,10 @@ classdef validate
         end
         
         function str = readHashMap(java_hashmap)
-            %   java_hashmap - an instance of java.util.HashMAP
             %   turn an instance of java.util.hashmap into string useful
             %   for displaying the error messages
+            %
+            %   java_hashmap - an instance of java.util.HashMAP
             %   
             %   STR = READHASHMAP(JAVA_HASHMAP)
             %

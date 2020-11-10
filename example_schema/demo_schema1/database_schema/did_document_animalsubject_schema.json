@@ -1,0 +1,15 @@
+{
+	"type" : "object",
+	"properties" : {
+		"scientific_name" : {
+			"type" : "string",
+			"format" : "animal_subject",
+			"location" : "$DIDCONTROLLEDVOCAB_EX1\/scientific_name.json"
+		},
+		"genbank_commonname" : {
+			"type" : "string",
+			"format" : "genbank_commonname",
+			"location" : "$DIDCONTROLLEDVOCAB_EX1\/genbank_commonname.json"
+		}
+	}
+}

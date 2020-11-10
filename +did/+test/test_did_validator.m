@@ -1,4 +1,4 @@
-function test_ndi_validate()
+function test_did_validator()
 % TEST_NDI_DOCUMENT - Test the functionality of the NDI_VALIDATE object 
 %
 % TEST_NDI_DOCUMENT()
@@ -8,118 +8,172 @@ function test_ndi_validate()
 % corresponding schema
 %
 
-ndi_globals;
+    did.globals
 
-% validate classes that don't have depnds-on and have relatively few super-classes
-subject_doc = docment('did_document_subject', 'sample_subject@brandeis.edu', '');
-validator = validate(subject_doc);
-assert(validator.is_valid == 1, 'fail');
-disp('good')
+    % validate classes that don't have depnds-on and have relatively few super-classes
+    
+    subject_doc = did.document('did_document_subject', ...
+                                'subject.local_identifier', 'sample_subject@brandeis.edu',...
+                                'subject.description', '');
+    validator = did.validate(subject_doc);
+    disp('Test Case 1')
+    assert(validator.is_valid == 1, 'fail');
+    disp('good')
+    disp("" + newline + newline)
+    
+    
+    subject_doc = subject_doc.setproperties('subject.description', 5);
+    validator = did.validate(subject_doc);
+    assert(validator.is_valid == 0, 'fail');
 
-subject_doc = subject_doc.setproperties('subject.description', 5);
-validator = ndi_validate(subject_doc);
-assert(validator.is_valid == 0, 'fail');
+    disp('Test Case 2')
+    try
+        assert(validator.is_valid == 0, "fail");
+        validator.throw_error();
+    catch e
+        errormsg = e.message;
+    end
+    disp("good" + newline)
+    disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
+    disp("" + newline + newline)
 
-try
-    assert(validator.is_valid == 0, "fail");
-    validator.throw_error();
-catch e
-    errormsg = e.message;
-end
-disp("good" + newline)
-disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
-disp("")
+    subject_doc = subject_doc.setproperties('did.base.document_version', 'not a number');
+    validator = did.validate(subject_doc);
+    disp('Test Case 3')
+    assert(validator.is_valid == 0, 'fail');
+    disp('good');
+    disp("" + newline + newline)
+    
+    disp('Test Case 4')
+    try
+        validator.throw_error();
+    catch e
+        errormsg = e.message;
+    end
+    disp("good" + newline)
+    disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
+    disp("" + newline + newline)
 
-subject_doc = subject_doc.setproperties('ndi_document.database_version', 'not a number');
-validator = validate(subject_doc);
-assert(validator.is_valid == 0, 'fail');
-disp('good');
+    % validate more complicated classes that may contain depends-on and more
+    % super-classes
+    dirname = fileparts(which('did.test.test_did_validator'));
+    
+    try
+        E = did.implementations.matlabdumbjsondb('LOAD', [dirname filesep '.test_database', filesep, 'test.db']);
+    catch
+        E = did.implementations.matlabdumbjsondb('NEW', [dirname filesep '.test_database', filesep, 'test.db']);
+    end
+    
 
-try
-    validator.throw_error();
-catch e
-    errormsg = e.message;
-end
-disp("good" + newline)
-disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
-disp("")
 
-% validate more complicated classes that may contain depends-on and more
-% super-classes
-dirname = [ndi.path.exampleexperpath filesep 'exp1_eg_saved'];
-E = ndi_session_dir('exp1',dirname);
+    disp('Let us clear the database first before we proceed')
+    E.clear('yes')
+    subject_doc = did.document('did_document_subject', ...
+                                'subject.local_identifier', 'sample_subject@brandeis.edu',...
+                                'subject.description', '');
+    subject_base_id = subject_doc.document_properties.base.id;
+    element_id = did.document('did_document_epochid', ...
+                               'epochid', '12345a');
+    element_base_id = element_id.document_properties.base.id;                    
 
-disp('Let us clear the database first before we proceed')
-E.database_clear('yes');
-dt = ndi_filenavigator(E, '.*\.rhd\>');
-validator = ndi_validate(dt.newdocument());
-assert(validator.is_valid == 1, 'fail');
-disp('good')
+    E.add(subject_doc);
+    E.add(element_id);
 
-%dev1 = ndi_daqsystem_mfdaq('intan1',dt,ndi_daqreader_mfdaq_intan());
-dev1 = document('ndi_daqsystem_mfdaq', dt, ndi_daqreader_mfdaq_intan)
-docs = dev1.newdocument();
-doc = docs{3};
-validator = ndi_validate(doc, E);
-assert(validator.is_valid == 0, "fail");
+    document_element = did.document('did_document_element');
+    validator = did.validate(document_element, E);
+    disp("test case 5")
+    assert(validator.is_valid == 0, 'fail');
+    try
+        validator.throw_error();
+    catch e
+        errormsg = e.message;
+    end
+    disp("good" + newline)
+    disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
+    disp("")
+    disp("" + newline + newline)
 
-try
-    validator.throw_error();
-catch e
-    errormsg = e.message;
-end
-disp("good" + newline)
-disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
-disp("")
+    document_element = document_element.setproperties('depends_on(1).value', element_base_id);
+    validator = did.validate(document_element, E);
+    disp("test case 6")
+    assert(validator.is_valid == 0, 'fail');
+    try
+        validator.throw_error();
+    catch e
+        errormsg = e.message;
+    end
+    disp("good" + newline)
+    disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
+    disp("")
+    disp("" + newline + newline)
 
-E.database_add(dev1.daqreader.newdocument());
-validator = ndi_validate(doc, E);
-assert(validator.is_valid == 0, "fail");
+    document_element = document_element.setproperties('depends_on(2).value', subject_base_id);
+    validator = did.validate(document_element, E);
+    disp("test case 7")
+    assert(validator.is_valid == 1, 'fail');
+    disp('good')
+    disp("" + newline + newline)
 
-try
-    validator.throw_error();
-catch e
-    errormsg = e.message;
-end
-disp("good" + newline)
-disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
-disp("")
+    %test format_validators
+    animal_subject_good_doc = did.document('did_document_animalsubject', 'animalsubject.scientific_name', 'Aboma etheostoma', 'animalsubject.genbank_commonname', 'scaly goby');
+    validator = did.validate(animal_subject_good_doc);
+    disp("test case 8")
+    assert(validator.is_valid == 1, "fail");
+    disp('good')
+    disp("" + newline + newline)
 
-E.database_add(docs{1});
-validator = ndi_validate(doc, E);
-assert(validator.is_valid == 1, "fail");
-disp('good');
+    animal_subject_bad_doc_with_hint = did.document('did_document_animalsubject.json', 'animalsubject.scientific_name', 'scaly goby', 'animalsubject.genbank_commonname', 'Aboma etheostoma');
+    errormsg = "";
+    disp("test case 9")
+    try
+        validator = did.validate(animal_subject_bad_doc_with_hint);
+        assert(validator.is_valid == 0, "fail");
+        validator.throw_error();
+    catch e
+        errormsg = e.message;
+    end
+    disp("good" + newline)
+    disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
+    disp("")
+    disp("" + newline + newline)
 
-%test format_validators
-animal_subject_good_doc = ndi_document('ndi_document_animalsubject.json', 'animalsubject.scientific_name', 'Aboma etheostoma', 'animalsubject.genbank_commonname', 'scaly goby');
-validator = ndi_validate(animal_subject_good_doc);
-assert(validator.is_valid == 1, "fail");
-disp('good')
+    animal_subject_bad_doc = did.document('did_document_animalsubject', 'animalsubject.scientific_name', 'invalid_scientific_name', 'animalsubject.genbank_commonname', 'invalid_genbank_commonname');
+    disp("test case 10")
+    try
+        validator = did.validate(animal_subject_bad_doc);
+        assert(validator.is_valid == 0, "fail");
+        validator.throw_error();
+    catch e
+        errormsg = e.message;
+    end
+    disp("good" + newline)
+    disp("Here is the error message that is supposed to display" + newline + errormsg)
+    disp("")
+    disp("" + newline + newline)
+    
+    %Test invalid superclass
+    subject_doc = did.document('did_document_subject', ...
+                               'subject.local_identifier', 'sample_subject@brandeis.edu',...
+                               'subject.description', '');
+    subject_doc = subject_doc.setproperties('base.document_version', 'not a number');
+    disp('Test Case 11')
+    try
+        validator = did.validate(subject_doc);
+        assert(validator.is_valid == 0, "fail");
+        validator.throw_error();
+    catch e
+        errormsg = e.message;
+    end
+    disp("good" + newline)
+    disp("Here is the error message that is supposed to display" + newline + newline + errormsg)
+    disp("")
+    disp("" + newline + newline)
+    
+    
+    
+    disp('All test cases have passed.')
 
-animal_subject_bad_doc_with_hint = ndi_document('ndi_document_animalsubject.json', 'animalsubject.scientific_name', 'scaly goby', 'animalsubject.genbank_commonname', 'Aboma etheostoma');
-errormsg = "";
-try
-    validator = ndi_validate(animal_subject_bad_doc_with_hint);
-    assert(validator.is_valid == 0, "fail");
-    validator.throw_error();
-catch e
-    errormsg = e.message;
-end
-disp("good" + newline)
-disp("Here is the error message that is supposed to display" + newline + newline +  errormsg)
-disp("")
-
-animal_subject_bad_doc = ndi_document('ndi_document_animalsubject.json', 'animalsubject.scientific_name', 'invalid_scientific_name', 'animalsubject.genbank_commonname', 'invalid_genbank_commonname');
-try
-    validator = ndi_validate(animal_subject_bad_doc);
-    assert(validator.is_valid == 0, "fail");
-    validator.throw_error();
-catch e
-    errormsg = e.message;
-end
-disp("good" + newline)
-disp("Here is the error message that is supposed to display" + newline + errormsg)
-disp("")
-disp('All test cases have passed.')
+    disp('clearing the database')
+    E.clear('yes')
 
 end

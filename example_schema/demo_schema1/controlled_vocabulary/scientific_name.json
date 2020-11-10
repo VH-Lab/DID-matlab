@@ -1,0 +1,26 @@
+{
+	"formatTag": "animal_subject",
+	"filePath": "$DIDCONTROLLEDVOCAB_EX1\/GenBankControlledVocabulary.tsv.gz",
+	"tableFormat": {
+		"format": [
+			"\t",
+			"\t",
+			"\t"
+		],
+		"entryFormat": [
+			null,
+			null,
+			", ",
+			", "
+			]
+		},
+	"rules": {
+		"correct": [
+			"Scientific_Name"
+		],
+		"suggestions": [
+			"Synonyms",
+			"GenBank_Common_Name"
+		]
+	}
+}
