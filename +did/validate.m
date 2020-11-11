@@ -95,7 +95,7 @@ classdef validate
             
             % validate all non-super class properties
             try
-                validate_obj.validators.this = com.ndi.Validator( jsonencode(property_list), schema );
+                did_validate_obj.validators.this = com.ndi.Validator( jsonencode(property_list), schema );
                 if ~isempty(format_validators_list)
                     did_validate_obj.validators.this = did_validate_obj.validators.this.addValidators(format_validators_list);
                 end
