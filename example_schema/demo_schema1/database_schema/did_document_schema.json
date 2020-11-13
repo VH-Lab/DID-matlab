@@ -6,7 +6,10 @@
 	"properties": {
 		"session_id": {
 			"description": "the unique identifier of the ndi_session this document is associated with",
-			"type": "string"
+			"type": "string",
+			"documentation_description": "The globally unique identifier of any data session that produced this document",
+			"documentation_datatype": "DID ID string",
+			"documentation_default_value": "-"
 		},
 		"id": {
 			"description": "the unique identifier of this ndi_document",
