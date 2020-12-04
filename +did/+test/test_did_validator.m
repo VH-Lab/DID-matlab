@@ -27,8 +27,8 @@ function test_did_validator()
     assert(validator.is_valid == 0, 'fail');
 
     disp('Test Case 2')
+    assert(validator.is_valid == 0, "fail");
     try
-        assert(validator.is_valid == 0, "fail");
         validator.throw_error();
     catch e
         errormsg = e.message;
@@ -125,9 +125,9 @@ function test_did_validator()
     animal_subject_bad_doc_with_hint = did.document('did_document_animalsubject.json', 'animalsubject.scientific_name', 'scaly goby', 'animalsubject.genbank_commonname', 'Aboma etheostoma');
     errormsg = "";
     disp("test case 9")
+    validator = did.validate(animal_subject_bad_doc_with_hint);
+    assert(validator.is_valid == 0, "fail");
     try
-        validator = did.validate(animal_subject_bad_doc_with_hint);
-        assert(validator.is_valid == 0, "fail");
         validator.throw_error();
     catch e
         errormsg = e.message;
@@ -139,9 +139,9 @@ function test_did_validator()
 
     animal_subject_bad_doc = did.document('did_document_animalsubject', 'animalsubject.scientific_name', 'invalid_scientific_name', 'animalsubject.genbank_commonname', 'invalid_genbank_commonname');
     disp("test case 10")
+    validator = did.validate(animal_subject_bad_doc);
+    assert(validator.is_valid == 0, "fail");
     try
-        validator = did.validate(animal_subject_bad_doc);
-        assert(validator.is_valid == 0, "fail");
         validator.throw_error();
     catch e
         errormsg = e.message;
@@ -157,9 +157,9 @@ function test_did_validator()
                                'subject.description', '');
     subject_doc = subject_doc.setproperties('base.document_version', 'not a number');
     disp('Test Case 11')
+    validator = did.validate(subject_doc);
+    assert(validator.is_valid == 0, "fail");
     try
-        validator = did.validate(subject_doc);
-        assert(validator.is_valid == 0, "fail");
         validator.throw_error();
     catch e
         errormsg = e.message;
@@ -175,5 +175,4 @@ function test_did_validator()
 
     disp('clearing the database')
     E.clear('yes')
-
 end

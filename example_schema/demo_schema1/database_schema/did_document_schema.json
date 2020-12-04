@@ -27,7 +27,7 @@
 			"description": "the time this ndi_document is created in ISO8601 format",
 			"type": "string"
 		},
-		"database_version": {
+		"document_version": {
 			"description": "the version of the json database",
 			"type": "number"
 		}
