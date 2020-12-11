@@ -1,12 +1,11 @@
 classdef  mongodb < did.database
-
 	properties (SetAccess=protected, GetAccess=public)
 		collection
-    end
+    	end
     
-    properties(SetAccess=protected, GetAccess=private)
-        cleanup
-    end
+    	properties(SetAccess=protected, GetAccess=private)
+        	cleanup
+    	end
 
 	methods
 		function did_mongodb_obj = mongodb(varargin)
