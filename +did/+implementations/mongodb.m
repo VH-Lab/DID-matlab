@@ -10,20 +10,20 @@ classdef  mongodb < did.database
 
 	methods
 		function did_mongodb_obj = mongodb(varargin)
-		% DID_MONGODB_OBJ make a new MONGODB object
-		% 
-		% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, COLLECTION, COMMAND)
-        	%
-        	% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, COLLECTION, COMMAND)
-        	%
-        	% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)
-       	 	%
-        	% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)
-        	%
-		% Creates a new MONGODB object.
-		%
-		% COMMAND can either be 'Load' or 'New'. 
-		%
+			% DID_MONGODB_OBJ make a new MONGODB object
+			% 
+			% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, COLLECTION, COMMAND)
+			%
+			% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, COLLECTION, COMMAND)
+			%
+			% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)
+			%
+			% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)
+			%
+			% Creates a new MONGODB object.
+			%
+			% COMMAND can either be 'Load' or 'New'. 
+			%
             		default = struct("port", 27017, "server", "localhost");
 			conn = "";
 			command = "";
