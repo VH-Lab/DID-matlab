@@ -24,7 +24,7 @@ classdef  mongodb < did.database
 			%
 			% COMMAND can either be 'Load' or 'New'. 
 			%
-            		default = struct("port", 27017, "server", "localhost");
+            default = struct("port", 27017, "server", "localhost");
 			conn = "";
 			command = "";
 			collection = "";
@@ -92,9 +92,9 @@ classdef  mongodb < did.database
 		    %Close the connection to the database when the object is being
 		    %destroyed to prevent memory leak. This method is called when
 		    %we clear an instance of mongodb from the workspace
-		       if isopen(did_mongodb_obj.connection)
+		   	if isopen(did_mongodb_obj.connection)
 			   close(did_mongodb_obj.connection);
-		       end
+		  	end
 		end
 
 		function did_mongodb_obj = do_add(did_mongodb_obj, did_document_obj, add_parameters)
@@ -103,40 +103,39 @@ classdef  mongodb < did.database
 		    id = did_document_obj.document_properties.base.id;
 		    update = 0;
 		    if isfield(add_parameters, 'Update')
-			update = add_parameters.Update;
+				update = add_parameters.Update;
 		    end
 		    %First look up the document in the database
 		    lookup = find(db, cn,'Query', ['{"document_properties.base.id" : "', id, '"}']);
 		    if isempty(lookup)
-			insert(db, cn, struct(did_document_obj));
+				insert(db, cn, struct(did_document_obj));
 		    else
-			if update == 0
-			    error("The document already exist in the database");
-			else
-			    error("Not yet fully understand what to do");
-			end
+				if update == 0
+			    	error("The document already exist in the database");
+				else
+			    	error("Not yet fully understand what to do");
+				end
 		    end
-
 		end % do_add
 
 		function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
 		    if nargin < 3
-			version = [];
+				version = [];
 		    end
 		    db = did_mongodb_obj.connection;
 		    cn = did_mongodb_obj.collection;
 		    id = did_document_id.id();
 		    if isempty(version)
-			raw = find(db, cn,'Query', ['{"document_properties.base.id" : "', id, '"}']);
+				raw = find(db, cn,'Query', ['{"document_properties.base.id" : "', id, '"}']);
 		    else
-			raw = find(db, cn,'Query', ['{"document_properties.base.id" : "', id, '", "document_properties.base.document_version" : ', num2str(version), '}']);
+				raw = find(db, cn,'Query', ['{"document_properties.base.id" : "', id, '", "document_properties.base.document_version" : ', num2str(version), '}']);
 		    end
 		    if ~isempty(raw)
-			did_document_obj = did.document(raw.document_properties);
-			version = did_document_obj.document_properties.base.document_version;
+				did_document_obj = did.document(raw.document_properties);
+				version = did_document_obj.document_properties.base.document_version;
 		    else
-			did_document_obj = [];
-			version = -1;
+				did_document_obj = [];
+				version = -1;
 		    end
 		end % do_read
 
