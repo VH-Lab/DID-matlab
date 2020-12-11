@@ -23,7 +23,7 @@ classdef  mongodb < did.database
 			%
 			% COMMAND can either be 'Load' or 'New'. 
 			%
-            default = struct("port", 27017, "server", "localhost");
+            		default = struct("port", 27017, "server", "localhost");
 			conn = "";
 			command = "";
 			collection = "";
@@ -44,7 +44,7 @@ classdef  mongodb < did.database
 				collection = varargin{6};
 				command = varargin{7};
 			else
-				error("Sample usage:" + newline + ...
+				error("usage:" + newline + ...
 					"DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, COLLECTION, COMMAND)" + newline + ...
 					"DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, COLLECTION, COMMAND)" + newline + ...
 					"DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)" + newline + ...
@@ -110,9 +110,9 @@ classdef  mongodb < did.database
 				insert(db, cn, struct(did_document_obj));
 		    else
 				if update == 0
-			    	error("The document already exist in the database");
+			    		error("The document already exist in the database");
 				else
-			    	error("Not yet fully understand what to do");
+			    		error("Not yet fully understand what to do");
 				end
 		    end
 		end % do_add
