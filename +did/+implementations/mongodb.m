@@ -80,7 +80,7 @@ classdef  mongodb < did.database
 			ids = find(did_mongodb_obj.connection,did_mongodb_obj.collection, 'Projection', '{"document_properties.base.id": 1.0}');
                 	docids = cell(1, numel(ids));
                 	for i = 1:numel(ids)
-                    		ids(i).document_properties.base.id
+                    		ids(i).document_properties.base.id;
                     		docids{i} = ids(i).document_properties.base.id;
                 	end
         	end % alldocids()
@@ -163,12 +163,12 @@ classdef  mongodb < did.database
             		end
             		if numel(searchparams) > 1
                 		query = did.implementations.mongodb.didquery2mongodb('', '', searchparams, '');
-            		else
-                		query = did.implementations.mongodb.didquery2mongodb(searchparams.searchstructure.field, ...
-                                                                     searchparams.searchstructure.operation, ...
-                                                                     searchparams.searchstructure.param1, ...
-                                                                     searchparams.searchstructure.param2);
-            		end
+                    else
+                		query = did.implementations.mongodb.didquery2mongodb(searchparams.field, ...
+                                                                     searchparams.operation, ...
+                                                                     searchparams.param1, ...
+                                                                     searchparams.param2);
+                    end
             		raw = find(db, cn,'Query', query);
             		if ~isempty(raw)
                 		did_document_obj = did.document.empty(numel(raw), 0);
@@ -195,52 +195,52 @@ classdef  mongodb < did.database
     methods(Static)
         
         function query = didquery2mongodb(field, operation, param1, param2)
-            if numel(param1) > 1
+            if isa(param1, 'did.query')
                 queries = string(1, numel(param1));
                 for i = 1:numel(param1)
-                    queries(i) = didquery2mongodb(param1(i).searchstructure.field, ...
-                                            param1(i).searchstructure.operation, ...
-                                            param1(i).searchstructure.param1, ...
-                                            param1(i).searchstructure.param2);
+                    queries(i) = didquery2mongodb(param1(i).field, ...
+                                            param1(i).operation, ...
+                                            param1(i).param1, ...
+                                            param1(i).param2);
                 end
                 query = jsonencode(struct('$and', queries));
                 return
             end
             switch operation
-                case {'exact_string', 'exact_number'}
-                    query = jsonencode(struct(field, match));
+                case 'exact_string'
+                    query = ['{"document_properties.', field, '" : "', param1, '"}'];
+                case 'exact_number'
+                	query = ['{"document_properties.', field, '" : ', num2str(param1), '}']
                 case 'regexp'
-                    query = jsonencode(struct(field, struct('$regex', ['/', param1, '/i'])));
+                	query = ['{"document_properties.', field, '" : {$regex : "', param1, '"}}'];
                 case 'contains_string'
-                    query =  jsonencode(struct(field, struct('$regex', pattern)));
+                	query = ['{"document_properties.', field, '" : {$regex : "', ['^.*', param1, '.*$'], '"}}']
                 case 'lessthan'
-                    query = jsonencode(struct(field, struct('$lt', value)));
+                	query = ['{"document_properties.', field, '" : {$lt : ', num2str(param1), '}}'];
                 case 'lessthaneq'
-                    query = jsonencode(struct(field, struct('$lte', value)));
+                	query = ['{"document_properties.', field, '" : {$lte : ', num2str(param1), '}}'];
                 case 'greaterthan'
-                    query = jsonencode(struct(field, struct('$gte', value)));
+                	query = ['{"document_properties.', field, '" : {$gt : ', num2str(param1), '}}'];
                 case 'greaterthaneq'
-                    query = jsonencode(struct(field, struct('$gte', value)));
+                	query = ['{"document_properties.', field, '" : {$gte : ', num2str(param1), '}}'];
                 case 'hasfield'
-                    query = jsonencode(struct(field, struct('$exists', true)));
-                case 'depends_on'
-                    query = jsonencode(struct(field, match));
+                	query = ['{"document_properties.', field, '" : {$exists : true}}']
                 case 'or'
                     if numel(param1) > 1
                         q1 = didquery2mongodb('', '', param1, '');
                     else
-                        q1 = didquery2mongodb(param1.searchstructure.field, ...
-                                            param1.searchstructure.operation, ...
-                                            param1.searchstructure.param1, ...
-                                            param1.searchstructure.param2);
+                        q1 = didquery2mongodb(param1.field, ...
+                                            param1.operation, ...
+                                            param1.param1, ...
+                                            param1.param2);
                     end
                     if numel(param2) > 1
                         q2 = didquery2mongodb('', '', param2, '');
                     else
-                        q2 = didquery2mongodb(param2.searchstructure.field, ...
-                                            param2.searchstructure.operation, ...
-                                            param2.searchstructure.param1, ...
-                                            param2.searchstructure.param2);
+                        q2 = didquery2mongodb(param2.field, ...
+                                            param2.operation, ...
+                                            param2.param1, ...
+                                            param2.param2);
                     end 
                     query = jsonencode(struct('$or', [q1, q2]));
                 otherwise
