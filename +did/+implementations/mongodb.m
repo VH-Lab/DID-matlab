@@ -112,12 +112,13 @@ classdef  mongodb < did.database
 				if update == 0
 			    		error("The document already exist in the database");
 				else
-			    		error("Not yet fully understand what to do");
+			    		remove(db, cn, ['{"document_properties.base.id" : "', id, '"}']);
+                        do_add(did_mongodb_obj, did_document_obj, add_parameters)
 				end
 		    end
 		end % do_add
-
-		function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
+		
+        function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
 		    if nargin < 3
 				version = [];
 		    end
@@ -138,20 +139,113 @@ classdef  mongodb < did.database
 		    end
 		end % do_read
 
-		function did_mongodb_obj = do_remove(did_mongodb_obj, did_document_id, versions)
-		    error("Not implemented");	
+		
+        function did_document_obj = do_remove(did_mongodb_obj, did_document_id, versions)
+            db = did_mongodb_obj.connection;
+		    cn = did_mongodb_obj.collection;
+            did_document_obj = do_read(did_mongodb_obj, did_document_id, versions);
+            if ~isempty(did_document_obj)
+                remove(db, cn, ['{"document_properties.base.id" : "', id, '"}'])
+            end
 		end % do_remove
 
-		function [did_mongodb_obj,doc_versions] = do_search(did_mongodb_obj, searchoptions, searchparams)
-		    error("Not implemented");
+		
+        function [did_document_obj,doc_versions] = do_search(did_mongodb_obj, searchoptions, searchparams)
+            %searchoptions is not used
+            
+            db = did_mongodb_obj.connection;
+		    cn = did_mongodb_obj.collection;
+            if isa(searchparams,'did.query')
+				searchparams = searchparams.to_searchstructure;
+            end            
+            if ~(isa(searchparams, 'struct'))
+                error('You must pass in either an instance of did.query or struct')
+            end
+            if numel(searchparams) > 1
+                query = did.implementations.mongodb.didquery2mongodb('', '', searchparams, '');
+            else
+                query = did.implementations.mongodb.didquery2mongodb(searchparams.searchstructure.field, ...
+                                                                     searchparams.searchstructure.operation, ...
+                                                                     searchparams.searchstructure.param1, ...
+                                                                     searchparams.searchstructure.param2);
+            end
+            raw = find(db, cn,'Query', query);
+            if ~isempty(raw)
+                did_document_obj = did.document.empty(numel(raw), 0);
+                for i = 1:numel(raw)
+                    did_document_obj(i) = did.document(raw(i).document_properties);
+                    doc_versions = did_document_obj(i).document_properties.base.document_version;
+                end
+		    else
+				did_document_obj = [];
+				doc_versions = [];
+            end
 		end % do_search()
 
+        
 		function [did_binarydoc_obj, key] = do_openbinarydoc(did_mongodb_obj, did_document_id, version)
 		    error("Not implemented");
 		end % do_binarydoc()
 
 		function [did_binarydoc_matfid_obj] = do_closebinarydoc(did_mongodb_obj, did_binarydoc_matfid_obj)
 		    error("Not implemented");
-		end % do_closebinarydoc()
-    	end
+		end % do_closebinarydoc()    
+    end
+    
+    methods(Static)
+        
+        function query = didquery2mongodb(field, operation, param1, param2)
+            if numel(param1) > 1
+                queries = string(1, numel(param1));
+                for i = 1:numel(param1)
+                    queries(i) = didquery2mongodb(param1(i).searchstructure.field, ...
+                                            param1(i).searchstructure.operation, ...
+                                            param1(i).searchstructure.param1, ...
+                                            param1(i).searchstructure.param2);
+                end
+                query = jsonencode(struct('$and', queries));
+                return
+            end
+            switch operation
+                case {'exact_string', 'exact_number'}
+                    query = jsonencode(struct(field, match));
+                case 'regexp'
+                    query = jsonencode(struct(field, struct('$regex', ['/', param1, '/i'])));
+                case 'contains_string'
+                    query =  jsonencode(struct(field, struct('$regex', pattern)));
+                case 'lessthan'
+                    query = jsonencode(struct(field, struct('$lt', value)));
+                case 'lessthaneq'
+                    query = jsonencode(struct(field, struct('$lte', value)));
+                case 'greaterthan'
+                    query = jsonencode(struct(field, struct('$gte', value)));
+                case 'greaterthaneq'
+                    query = jsonencode(struct(field, struct('$gte', value)));
+                case 'hasfield'
+                    query = jsonencode(struct(field, struct('$exists', true)));
+                case 'depends_on'
+                    query = jsonencode(struct(field, match));
+                case 'or'
+                    if numel(param1) > 1
+                        q1 = didquery2mongodb('', '', param1, '');
+                    else
+                        q1 = didquery2mongodb(param1.searchstructure.field, ...
+                                            param1.searchstructure.operation, ...
+                                            param1.searchstructure.param1, ...
+                                            param1.searchstructure.param2);
+                    end
+                    if numel(param2) > 1
+                        q2 = didquery2mongodb('', '', param2, '');
+                    else
+                        q2 = didquery2mongodb(param2.searchstructure.field, ...
+                                            param2.searchstructure.operation, ...
+                                            param2.searchstructure.param1, ...
+                                            param2.searchstructure.param2);
+                    end 
+                    query = jsonencode(struct('$or', [q1, q2]));
+                otherwise
+                    error('Invalid operation')
+            end
+        end
+    end
 end
