@@ -118,7 +118,7 @@ classdef  mongodb < did.database
 		    end
 		end % do_add
 		
-        function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
+       		function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
 		    if nargin < 3
 				version = [];
 		    end
@@ -140,46 +140,46 @@ classdef  mongodb < did.database
 		end % do_read
 
 		
-        function did_document_obj = do_remove(did_mongodb_obj, did_document_id, versions)
-            db = did_mongodb_obj.connection;
-		    cn = did_mongodb_obj.collection;
-            did_document_obj = do_read(did_mongodb_obj, did_document_id, versions);
-            if ~isempty(did_document_obj)
-                remove(db, cn, ['{"document_properties.base.id" : "', id, '"}'])
-            end
+        	function did_document_obj = do_remove(did_mongodb_obj, did_document_id, versions)
+            		db = did_mongodb_obj.connection;
+		    	cn = did_mongodb_obj.collection;
+            		did_document_obj = do_read(did_mongodb_obj, did_document_id, versions);
+            		if ~isempty(did_document_obj)
+                		remove(db, cn, ['{"document_properties.base.id" : "', id, '"}'])
+            		end
 		end % do_remove
 
 		
-        function [did_document_obj,doc_versions] = do_search(did_mongodb_obj, searchoptions, searchparams)
-            %searchoptions is not used
+        	function [did_document_obj,doc_versions] = do_search(did_mongodb_obj, searchoptions, searchparams)
+            		%searchoptions is not used
             
-            db = did_mongodb_obj.connection;
-		    cn = did_mongodb_obj.collection;
-            if isa(searchparams,'did.query')
+            		db = did_mongodb_obj.connection;
+		    	cn = did_mongodb_obj.collection;
+            		if isa(searchparams,'did.query')
 				searchparams = searchparams.to_searchstructure;
-            end            
-            if ~(isa(searchparams, 'struct'))
-                error('You must pass in either an instance of did.query or struct')
-            end
-            if numel(searchparams) > 1
-                query = did.implementations.mongodb.didquery2mongodb('', '', searchparams, '');
-            else
-                query = did.implementations.mongodb.didquery2mongodb(searchparams.searchstructure.field, ...
+            		end            
+            		if ~(isa(searchparams, 'struct'))
+                		error('You must pass in either an instance of did.query or struct')
+            		end
+            		if numel(searchparams) > 1
+                		query = did.implementations.mongodb.didquery2mongodb('', '', searchparams, '');
+            		else
+                		query = did.implementations.mongodb.didquery2mongodb(searchparams.searchstructure.field, ...
                                                                      searchparams.searchstructure.operation, ...
                                                                      searchparams.searchstructure.param1, ...
                                                                      searchparams.searchstructure.param2);
-            end
-            raw = find(db, cn,'Query', query);
-            if ~isempty(raw)
-                did_document_obj = did.document.empty(numel(raw), 0);
-                for i = 1:numel(raw)
-                    did_document_obj(i) = did.document(raw(i).document_properties);
-                    doc_versions = did_document_obj(i).document_properties.base.document_version;
-                end
-		    else
+            		end
+            		raw = find(db, cn,'Query', query);
+            		if ~isempty(raw)
+                		did_document_obj = did.document.empty(numel(raw), 0);
+                		for i = 1:numel(raw)
+                    			did_document_obj(i) = did.document(raw(i).document_properties);
+                    			doc_versions = did_document_obj(i).document_properties.base.document_version;
+                		end
+		    	else
 				did_document_obj = [];
 				doc_versions = [];
-            end
+           		 end
 		end % do_search()
 
         
