@@ -23,7 +23,7 @@ classdef  mongodb < did.database
             %
             % COMMAND can either be 'Load' or 'New'. 
             %
-                    default = struct("port", 27017, "server", "localhost");
+            default = struct("port", 27017, "server", "localhost");
             conn = "";
             command = "";
             collection = "";
@@ -120,7 +120,7 @@ classdef  mongodb < did.database
             warning('on','all')
         end % do_add
         
-           function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
+        function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
             if nargin < 3
                 version = [];
             end
