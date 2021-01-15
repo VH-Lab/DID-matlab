@@ -243,7 +243,7 @@ classdef  mongodb < did.database
                         else
                             before = "{'document_properties."  + field + "' : {";
                             for i = 1:numel(param1)
-                                curr = param1{i} + "' : '" + param2{i} + "'";
+                                curr = "'" + param1{i} + "' : " + "'" + param2{i} + "'";
                                 if i ~= numel(param1)
                                     curr = curr + ", ";
                                 end
@@ -252,7 +252,7 @@ classdef  mongodb < did.database
                             query = before + "}}";
                         end
                     case 'isa'
-                        q1 = did.query('document_class', 'hasanysubfield_contains_string', 'class_name', param1);
+                        q1 = did.query('document_class', 'hasanysubfield_contains_string', 'definition', param1);
                         q2 = did.query('document_class.superclasses', 'hasanysubfield_contains_string', 'definition', param1);
                         query = did.implementations.mongodb.didquery2mongodb('', 'or', q1, q2);
                     case 'or'
