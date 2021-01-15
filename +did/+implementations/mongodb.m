@@ -11,19 +11,19 @@ classdef  mongodb < did.database
 		function did_mongodb_obj = mongodb(varargin)
 			% DID_MONGODB_OBJ make a new MONGODB object
 			% 
-			% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, COLLECTION, COMMAND)
+			% DID_MONGODB_OBJ = MONGODB(SERVER, PORT, DBNAME, COLLECTION, COMMAND)
 			%
-			% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, COLLECTION, COMMAND)
+			% DID_MONGODB_OBJ = MONGODB(DBNAME, COLLECTION, COMMAND)
 			%
-			% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)
+			% DID_MONGODB_OBJ = MONGODB(DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)
 			%
-			% DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)
+			% DID_MONGODB_OBJ = MONGODB(SERVER, PORT, DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)
 			%
 			% Creates a new MONGODB object.
 			%
 			% COMMAND can either be 'Load' or 'New'. 
 			%
-            		default = struct("port", 27017, "server", "localhost");
+            default = struct("port", 27017, "server", "localhost");
 			conn = "";
 			command = "";
 			collection = "";
@@ -45,10 +45,10 @@ classdef  mongodb < did.database
 				command = varargin{7};
 			else
 				error("usage:" + newline + ...
-					"DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, COLLECTION, COMMAND)" + newline + ...
-					"DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, COLLECTION, COMMAND)" + newline + ...
-					"DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)" + newline + ...
-					"DID_MONGODB_OBJ = DID_MATLABDUMBJSONDB(SERVER, PORT, DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND))");
+					"DID_MONGODB_OBJ = MONGODB(SERVER, PORT, DBNAME, COLLECTION, COMMAND)" + newline + ...
+					"DID_MONGODB_OBJ = MONGODB(DBNAME, COLLECTION, COMMAND)" + newline + ...
+					"DID_MONGODB_OBJ = MONGODB(DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND)" + newline + ...
+					"DID_MONGODB_OBJ = MONGODB(SERVER, PORT, DBNAME, USERNAME, PASSWORD, COLLECTION, COMMAND))");
 			end  
 			did_mongodb_obj = did_mongodb_obj@did.database(conn);
 			command = string(lower(strtrim(command)));
@@ -94,9 +94,10 @@ classdef  mongodb < did.database
 		   	if isopen(did_mongodb_obj.connection)
 			   close(did_mongodb_obj.connection);
 		  	end
-		end
+        end % desstructor
 
 		function did_mongodb_obj = do_add(did_mongodb_obj, did_document_obj, add_parameters)
+            warning('off','all') %supress warning when did_document_obj is converted into a struct for insertion
 		    db = did_mongodb_obj.connection;
 		    cn = did_mongodb_obj.collection;
 		    id = did_document_obj.document_properties.base.id;
@@ -115,16 +116,20 @@ classdef  mongodb < did.database
 			    		remove(db, cn, ['{"document_properties.base.id" : "', id, '"}']);
                         do_add(did_mongodb_obj, did_document_obj, add_parameters)
 				end
-		    end
+            end
+            warning('on','all')
 		end % do_add
 		
-       		function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
+       	function [did_document_obj, version] = do_read(did_mongodb_obj, did_document_id, version)
 		    if nargin < 3
 				version = [];
 		    end
 		    db = did_mongodb_obj.connection;
 		    cn = did_mongodb_obj.collection;
-		    id = did_document_id.id();
+            id = did_document_id;
+            if isa(did_document_id, 'did.ido')
+                id = did_document_id.id();
+            end
 		    if isempty(version)
 				raw = find(db, cn,'Query', ['{"document_properties.base.id" : "', id, '"}']);
 		    else
@@ -140,46 +145,51 @@ classdef  mongodb < did.database
 		end % do_read
 
 		
-        	function did_document_obj = do_remove(did_mongodb_obj, did_document_id, versions)
-            		db = did_mongodb_obj.connection;
-		    	cn = did_mongodb_obj.collection;
-            		did_document_obj = do_read(did_mongodb_obj, did_document_id, versions);
-            		if ~isempty(did_document_obj)
-                		remove(db, cn, ['{"document_properties.base.id" : "', id, '"}'])
-            		end
+        function did_document_obj = do_remove(did_mongodb_obj, did_document_id, versions)
+            db = did_mongodb_obj.connection;
+        	cn = did_mongodb_obj.collection;
+            if nargin < 3
+                did_document_obj = do_read(did_mongodb_obj, did_document_id);
+            else
+                did_document_obj = do_read(did_mongodb_obj, did_document_id, versions);
+            end
+            if ~isempty(did_document_obj)
+                id = did_document_obj.document_properties.base.id;
+                remove(db, cn, ['{"document_properties.base.id" : "', id, '"}'])
+            end
 		end % do_remove
 
 		
-        	function [did_document_obj,doc_versions] = do_search(did_mongodb_obj, searchoptions, searchparams)
-            		%searchoptions is not used
-            
-            		db = did_mongodb_obj.connection;
-		    	cn = did_mongodb_obj.collection;
-            		if isa(searchparams,'did.query')
+        function [did_document_obj,doc_versions] = do_search(did_mongodb_obj, searchoptions, searchparams)
+            %searchoptions is not used
+            db = did_mongodb_obj.connection;
+		    cn = did_mongodb_obj.collection;
+            if isa(searchparams,'did.query')
 				searchparams = searchparams.to_searchstructure;
-            		end            
-            		if ~(isa(searchparams, 'struct'))
-                		error('You must pass in either an instance of did.query or struct')
-            		end
-            		if numel(searchparams) > 1
-                		query = did.implementations.mongodb.didquery2mongodb('', '', searchparams, '');
-                    else
-                		query = did.implementations.mongodb.didquery2mongodb(searchparams.field, ...
+            end            
+            if ~(isa(searchparams, 'struct'))
+                error('You must pass in either an instance of did.query or struct')
+            end
+            if numel(searchparams) > 1
+                query = did.implementations.mongodb.didquery2mongodb('', '', searchparams, '');
+            else
+                query = did.implementations.mongodb.didquery2mongodb(searchparams.field, ...
                                                                      searchparams.operation, ...
                                                                      searchparams.param1, ...
                                                                      searchparams.param2);
-                    end
-            		raw = find(db, cn,'Query', query);
-            		if ~isempty(raw)
-                		did_document_obj = did.document.empty(numel(raw), 0);
-                		for i = 1:numel(raw)
-                    			did_document_obj(i) = did.document(raw(i).document_properties);
-                    			doc_versions = did_document_obj(i).document_properties.base.document_version;
-                		end
-		    	else
+            end
+            %query  %uncomment if you want 
+            raw = find(db, cn,'Query', query);
+            if ~isempty(raw)
+                did_document_obj = did.document.empty(numel(raw), 0);
+                for i = 1:numel(raw)
+                    did_document_obj(i) = did.document(raw(i).document_properties);
+                    doc_versions = did_document_obj(i).document_properties.base.document_version;
+                end
+		    else
 				did_document_obj = [];
 				doc_versions = [];
-           		 end
+           	end
 		end % do_search()
 
         
@@ -193,59 +203,70 @@ classdef  mongodb < did.database
     end
     
     methods(Static)
-        
         function query = didquery2mongodb(field, operation, param1, param2)
-            if isa(param1, 'did.query')
-                queries = string(1, numel(param1));
+            if ~isa(param1, 'char') && numel(param1) > 1
+                queries = strings(1, numel(param1));
                 for i = 1:numel(param1)
-                    queries(i) = didquery2mongodb(param1(i).field, ...
+                    queries(i) = did.implementations.mongodb.didquery2mongodb(param1(i).field, ...
                                             param1(i).operation, ...
                                             param1(i).param1, ...
                                             param1(i).param2);
+                
                 end
-                query = jsonencode(struct('$and', queries));
+                query = "{$and : [" + strjoin(queries, ', ') + "]}";
                 return
-            end
-            switch operation
-                case 'exact_string'
-                    query = ['{"document_properties.', field, '" : "', param1, '"}'];
-                case 'exact_number'
-                	query = ['{"document_properties.', field, '" : ', num2str(param1), '}']
-                case 'regexp'
-                	query = ['{"document_properties.', field, '" : {$regex : "', param1, '"}}'];
-                case 'contains_string'
-                	query = ['{"document_properties.', field, '" : {$regex : "', ['^.*', param1, '.*$'], '"}}']
-                case 'lessthan'
-                	query = ['{"document_properties.', field, '" : {$lt : ', num2str(param1), '}}'];
-                case 'lessthaneq'
-                	query = ['{"document_properties.', field, '" : {$lte : ', num2str(param1), '}}'];
-                case 'greaterthan'
-                	query = ['{"document_properties.', field, '" : {$gt : ', num2str(param1), '}}'];
-                case 'greaterthaneq'
-                	query = ['{"document_properties.', field, '" : {$gte : ', num2str(param1), '}}'];
-                case 'hasfield'
-                	query = ['{"document_properties.', field, '" : {$exists : true}}']
-                case 'or'
-                    if numel(param1) > 1
-                        q1 = didquery2mongodb('', '', param1, '');
-                    else
-                        q1 = didquery2mongodb(param1.field, ...
-                                            param1.operation, ...
-                                            param1.param1, ...
-                                            param1.param2);
-                    end
-                    if numel(param2) > 1
-                        q2 = didquery2mongodb('', '', param2, '');
-                    else
-                        q2 = didquery2mongodb(param2.field, ...
-                                            param2.operation, ...
-                                            param2.param1, ...
-                                            param2.param2);
-                    end 
-                    query = jsonencode(struct('$or', [q1, q2]));
-                otherwise
-                    error('Invalid operation')
+            else
+                switch operation
+                    case 'exact_string'
+                        query = ['{"document_properties.', field, '" : "', param1, '"}'];
+                    case 'exact_number'
+                        query = ['{"document_properties.', field, '" : ', num2str(param1), '}'];
+                    case 'regexp'
+                        query = ['{"document_properties.', field, '" : {$regex : "', param1, '"}}'];
+                    case 'contains_string'
+                        query = ['{"document_properties.', field, '" : {$regex : "', ['^.*', param1, '.*$'], '"}}'];
+                    case 'lessthan'
+                        query = ['{"document_properties.', field, '" : {$lt : ', num2str(param1), '}}'];
+                    case 'lessthaneq'
+                        query = ['{"document_properties.', field, '" : {$lte : ', num2str(param1), '}}'];
+                    case 'greaterthan'
+                        query = ['{"document_properties.', field, '" : {$gt : ', num2str(param1), '}}'];
+                    case 'greaterthaneq'
+                        query = ['{"document_properties.', field, '" : {$gte : ', num2str(param1), '}}'];
+                    case 'hasfield'
+                        query = ['{"document_properties.', field, '" : {$exists : true}}'];
+                    case 'hasanysubfield_contains_string'
+                        query = ['{"document_properties.', field, '.', param1, '" : {$regex : "', ['^.*', param2, '.*$'], '"}}'];
+                    case 'isa'
+                        q1 = did.query('document_class', 'hasanysubfield_contains_string', 'class_name', param1);
+                        q2 = did.query('document_class.superclasses', 'hasanysubfield_contains_string', 'definition', param1);
+                        query = did.implementations.mongodb.didquery2mongodb('', 'or', q1, q2);
+                    case 'depends_on'
+                        query = ['{"document_properties.depends_on" : {"name" : "', param1, '" "value" : "', param2, '"}}'];
+                    case 'or'
+                        if numel(param1) > 1 
+                            q1 = did.implementations.mongodb.didquery2mongodb('', '', param1, '');
+                        else
+                            q1 = did.implementations.mongodb.didquery2mongodb(param1.field, ...
+                                                param1.operation, ...
+                                                param1.param1, ...
+                                                param1.param2);
+                        end
+                        if numel(param2) > 1
+                            q2 = did.implementations.mongodb.didquery2mongodb('', '', param2, '');
+                        else
+                            q2 = did.implementations.mongodb.didquery2mongodb(param2.field, ...
+                                                param2.operation, ...
+                                                param2.param1, ...
+                                                param2.param2);
+                        end 
+                        query = ['{$or : [', q1, ' , ', q2, ']}'];
+                    otherwise
+                        error('Invalid operation')
+                end
             end
         end
+     
     end
+    
 end
