@@ -104,12 +104,28 @@ classdef query
 					elseif isa(varargin{1},'did_query'), % just copy search structure
 						did_query_obj.searchstructure = varargin{1}.searchstructure;
 					end;
-				elseif nargin==4,
+                elseif nargin == 2,
+                    if string(varargin{2}) == "hasfield"
+                        did_query_obj.searchstructure = struct('field',varargin{1},'operation',varargin{2},...
+						'param1','','param2','');
+                    else
+                        error('Inputs to DID_QUERY is allowed to be 2 only when operation == "hasfield"');
+                    end
+                elseif nargin == 3,
+                    if ismember(string(varargin{2}), ["regexp", "exact_string", "contains_string", "exact_number",... 
+                            "lessthan", "lessthaneq", "greaterthaneq"])
+                        did_query_obj.searchstructure = struct('field',varargin{1},'operation',varargin{2},...
+                            'param1',varargin{3},'param2','');
+                    else
+                        error(['Inputs to DID_QUERY is allowed to be 3 only for the following operations: ', newline...
+                            , '"regexp", "exact_string", "contains_string", "exact_number", "lessthan", "lessthaneq", "greaterthaneq"']);
+                    end
+                elseif nargin==4,
 					did_query_obj.searchstructure = struct('field',varargin{1},'operation',varargin{2},...
 						'param1',varargin{3},'param2',varargin{4});
 				elseif nargin==0, % not an error
 				else,
-					error(['Unknown inputs to DID_QUERY; number of inputs was ' int2str(nargin) ' but expected 0, 1, or 4.']);
+					error(['Unknown inputs to DID_QUERY; number of inputs was ' int2str(nargin) ' but expected 0, 1, 2, 3 or 4.']);
 				end;
 		end;  %query() % 
 
