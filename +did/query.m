@@ -108,6 +108,9 @@ classdef query
                     if string(varargin{2}) == "hasfield"
                         did_query_obj.searchstructure = struct('field',varargin{1},'operation',varargin{2},...
 						'param1','','param2','');
+                    elseif string(varargin{1}) == "isa"
+                        did_query_obj.searchstructure = struct('field','','operation',varargin{1},...
+						'param1',varargin{2},'param2','');
                     else
                         error('Inputs to DID_QUERY is allowed to be 2 only when operation == "hasfield"');
                     end
@@ -116,9 +119,12 @@ classdef query
                             "lessthan", "lessthaneq", "greaterthaneq"])
                         did_query_obj.searchstructure = struct('field',varargin{1},'operation',varargin{2},...
                             'param1',varargin{3},'param2','');
+                    elseif string(varargin{1}) == "depends_on"
+                        did_query_obj.searchstructure = struct('field','','operation',varargin{1},...
+                            'param1',varargin{2},'param2',varargin{3});
                     else
                         error(['Inputs to DID_QUERY is allowed to be 3 only for the following operations: ', newline...
-                            , '"regexp", "exact_string", "contains_string", "exact_number", "lessthan", "lessthaneq", "greaterthaneq"']);
+                            , '"regexp", "exact_string", "contains_string", "exact_number", "lessthan", "lessthaneq", "greaterthaneq", "depends_on']);
                     end
                 elseif nargin==4,
 					did_query_obj.searchstructure = struct('field',varargin{1},'operation',varargin{2},...
