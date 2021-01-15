@@ -153,7 +153,7 @@ classdef database
 				end;
 				
 				for i=1:numel(did_document_id)
-					if isa(did_document_id{i}, 'did_document'),
+					if isa(did_document_id{i}, 'did.document'),
 						did_document_id_list{end+1} = did_document_id{i}.id();
 					else,
 						did_document_id_list{end+1} = did_document_id{i};
