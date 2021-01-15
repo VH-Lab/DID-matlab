@@ -204,7 +204,7 @@ classdef  mongodb < did.database
     
     methods(Static)
         function query = didquery2mongodb(field, operation, param1, param2)
-            if ~isa(param1, 'char') && numel(param1) > 1
+            if ~isa(param1, 'char') && numel(param1) > 1 && isempty(param2) && isempty(field) && isempty(operation)
                 queries = strings(1, numel(param1));
                 for i = 1:numel(param1)
                     queries(i) = did.implementations.mongodb.didquery2mongodb(param1(i).field, ...
@@ -237,12 +237,24 @@ classdef  mongodb < did.database
                         query = ['{"document_properties.', field, '" : {$exists : true}}'];
                     case 'hasanysubfield_contains_string'
                         query = ['{"document_properties.', field, '.', param1, '" : {$regex : "', ['^.*', param2, '.*$'], '"}}'];
+                    case 'hasanysubfield_exact_string'
+                        if numel(param1) ~= numel(param2)
+                            error("param1 size must agree with param2 size")
+                        else
+                            before = "{'document_properties."  + field + "' : {";
+                            for i = 1:numel(param1)
+                                curr = param1{i} + "' : '" + param2{i} + "'";
+                                if i ~= numel(param1)
+                                    curr = curr + ", ";
+                                end
+                                before = before + curr;
+                            end
+                            query = before + "}}";
+                        end
                     case 'isa'
                         q1 = did.query('document_class', 'hasanysubfield_contains_string', 'class_name', param1);
                         q2 = did.query('document_class.superclasses', 'hasanysubfield_contains_string', 'definition', param1);
                         query = did.implementations.mongodb.didquery2mongodb('', 'or', q1, q2);
-                    case 'depends_on'
-                        query = ['{"document_properties.depends_on" : {"name" : "', param1, '" "value" : "', param2, '"}}'];
                     case 'or'
                         if numel(param1) > 1 
                             q1 = did.implementations.mongodb.didquery2mongodb('', '', param1, '');
