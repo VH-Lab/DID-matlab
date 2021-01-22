@@ -178,7 +178,7 @@ classdef  mongodb < did.database
                                                                      searchparams.param1, ...
                                                                      searchparams.param2);
             end
-            %query  %uncomment if you want 
+            %query  %uncomment if you want to view the mongodb query
             raw = find(db, cn,'Query', query);
             if ~isempty(raw)
                 did_document_obj = did.document.empty(numel(raw), 0);
@@ -204,6 +204,7 @@ classdef  mongodb < did.database
     
     methods(Static)
         function query = didquery2mongodb(field, operation, param1, param2)
+            %this handle the 'and' operation
             if ~isa(param1, 'char') && numel(param1) > 1 && isempty(param2) && isempty(field) && isempty(operation)
                 queries = strings(1, numel(param1));
                 for i = 1:numel(param1)
@@ -214,7 +215,6 @@ classdef  mongodb < did.database
                 
                 end
                 query = "{$and : [" + strjoin(queries, ', ') + "]}";
-                return
             else
                 switch operation
                     case 'exact_string'
@@ -278,7 +278,5 @@ classdef  mongodb < did.database
                 end
             end
         end
-     
-    end
-    
+    end 
 end
