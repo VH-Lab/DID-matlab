@@ -1,0 +1,14 @@
+  - FAQ: 'faq.md'
+  - Contributing: 'contributing.md'
+  - Learning Matlab: 'learning_matlab.md'
+
+
+use_directory_urls: true
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - codehilite
+
+

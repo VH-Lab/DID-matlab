@@ -1,0 +1,30 @@
+site_name: DID-matlab
+repo_url: https://github.com/VH-Lab/DID-matlab
+site_author: VH Lab
+docs_dir: 'docs'
+google_analytics:
+  - UA-91714905-8
+  - auto
+theme:
+  name: 'material'
+  palette:
+    - scheme: default
+      primary: 'indigo'
+      secondary: 'indigo'
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  features:
+    - navigation
+nav:
+  - Home: index.md
+  - Installation: 'installation.md'
+  - Development:
+    - DID schema: 'development/did_schema.md'
+    - DID database: 'development/did_database.md'
+  - Tutorials (planned)
+  - Document reference:
