@@ -57,10 +57,12 @@ superclasses: { # no superclasses
 depends_on: {  # no depends-on
 }
 
-| id | did_uid | 12345 | 
-| session_id | did_uid | 12345 |
-| name | char | "" | 255 |
-| datestamp | timestamp | "2018-12-05T18:36:47.241Z" | 
+#| fieldname   | type      | default_value                     | parameters             | queryable |
+#| ----------- | --------- | --------------------------------- | ---------------------- | --------- |
+ | id          | did_uid   | 41268a59896f1419_40b33bf4c53bb4dd |                        |    1      |
+ | seesion_id  | did_uid   | 41268a5989e22f71_c0d0f3fc2c926c85 |                        |    1      |
+ | name        | char      | ""                                | 255                    |    1      | 
+ | datestamp   | timestamp | "2018-12-05T18:36:47.241Z"        |                        |    1      |
 ```
 
 This code should internally produce the equivalent of the following structure (here represented in JSON):
