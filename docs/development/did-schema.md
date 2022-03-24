@@ -77,8 +77,8 @@ This code should internally produce the equivalent of the following structure (h
 		"superclasses": [ ]
 	},
 	"ndi_document": {
-		"id":							"12345",
-		"session_id":						"12345",
+		"id":							"41268a59896f1419_40b33bf4c53bb4dd",
+		"session_id":						"41268a5989e22f71_c0d0f3fc2c926c85",
 		"name":							"",
 		"datestamp":						"2018-12-05T18:36:47.241Z",
 	}
