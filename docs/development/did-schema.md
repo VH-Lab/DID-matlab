@@ -57,10 +57,10 @@ superclasses: { # no superclasses
 depends_on: {  # no depends-on
 }
 
-| id | did_uid | | 
-| session_id | did_uid | |
-| name | char | 255 |
-| datestamp | timestamp | | 
+| id | did_uid | 12345 | 
+| session_id | did_uid | 12345 |
+| name | char | "" | 255 |
+| datestamp | timestamp | "2018-12-05T18:36:47.241Z" | 
 ```
 
 This code should internally produce the equivalent of the following structure (here represented in JSON):
@@ -92,3 +92,4 @@ DIDschema2JSON
 DIDschema2Sqlinfo (Column names)
 Struct2SqlInfo (input: struct, output: col_names, col_values)
 ```
+
