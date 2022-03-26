@@ -9,9 +9,15 @@ superclasses: {
 }
 
 depends_on: {
-  name1,value1;
-  name2,value2;
-  name3,value3;
+  name1,uid1;
+  name2,uid2;
+  name3,uid3;
+}
+
+file: {
+  name1,location;
+  name2,location;
+  name3,location;
 }
 
 | fieldname1 | type | default_value | size, range parameters | queryable |
@@ -44,6 +50,16 @@ fieldnames and structure names can be any alphanumeric character but can only ha
 | timestamp | A timestamp in UTC | no parameters |
 | char | A charcter array | length |
 | did_uid   | A DID UID | no parameters |
+
+`superclasses` lists the superclasses by the locations of their schema files.
+
+`depends_on` lists the database documents that this document depends on; if any of the documents that this document depends on
+are deleted, then this document is deleted, too. Each `depends_on` field has a name as well as the UID of the document that
+satisfies that dependency.
+
+`file` is a list of file names (alphanumeric characters and '_' only) that are associated with the document. The location of the
+file is provided as well; this could be a full path filename on disk, a path relative to the database location, or some other
+reference. It is never opened directly by the user, it is opened with `did.database.openbinaryfile()`.
 
 ## Example document schema
 

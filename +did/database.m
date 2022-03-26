@@ -29,25 +29,27 @@ classdef database
 
 	properties (SetAccess=protected,GetAccess=public)
 		connection % A variable or structure describing the connection parameters of the database; may be a simple file path
+		commit % the commit number of the database that we are viewing/editing at the moment
 	end % properties
 
 	methods
 		function database_obj = database(varargin)
 			% DATABASE - create a new DATABASE
 			%
-			% DATABASE_OBJ = DATABASE(PATH, REFERENCE)
+			% DATABASE_OBJ = DATABASE(...)
 			%
-			% Creates a new DATABASE object with data path PATH
-			% and reference REFERENCE.
+			% Creates a new DATABASE object 
 			%
 			
 			connection = '';
+			commit = '';
 
 			if nargin>0,
 				connection = varargin{1};
 			end
 
 			database_obj.connection = connection;
+			database_obj.commit = commit;
 		end % database
 
 		function database_obj = add(database_obj, did_document_obj, varargin)
@@ -57,86 +59,63 @@ classdef database
 			%
 			% Adds the document DID_DOCUMENT_OBJ to the database DATABASE_OBJ.
 			%
-			% This function also accepts name/value pairs that modify its behavior:
-			% Parameter (default)      | Description
-			% -------------------------------------------------------------------------
-			% 'Update'  (1)            | If document exists, update it. If 0, an error is 
-			%                          |   generated if a document with the same ID exists
-			% 
 			% See also: NAMEVALUEPAIR 
-				Update = 1;
-				did.datastructures.assign(varargin{:});
-				add_parameters = did.datastructures.var2struct('Update');
-				database_obj = do_add(database_obj, did_document_obj, add_parameters);
+				database_obj = do_add(database_obj, did_document_obj);
 		end % add()
 
-		function [did_document_obj, version] = read(database_obj, did_document_id, version )
+		function [did_document_obj, commit_out] = read(database_obj, did_document_id, commit_in)
 			% READ - read an DID.DOCUMENT from a DID.DATABASE 
 			%
-			% DID_DOCUMENT_OBJ = READ(DATABASE_OBJ, DOCUMENT_ID, [VERSION]) 
+			% [DID_DOCUMENT_OBJ,COMMIT] = READ(DATABASE_OBJ, DOCUMENT_ID, [COMMIT]) 
 			%
-			% Read the DID_DOCUMENT object with the document ID specified by DOCUMENT_ID. If VERSION
-			% is provided (an integer) then only the version that is equal to VERSION is returned.
-			% Otherwise, the latest version is returned.
+			% Read the DID_DOCUMENT object with the document ID specified by DOCUMENT_ID. 
+			% If COMMIT is omitted, then the current DATABASE_OBJ.COMMIT is read.
+			%
+			% The commit ID being viewed is also returned.
 			%
 			% If there is no DID DOCUMENT object with that ID, then empty is returned ([]).
 			%
 				if nargin<3,
-					[did_document_obj, version] = do_read(database_obj, did_document_id);
-				else,
-					[did_document_obj, version] = do_read(database_obj, did_document_id, version);
-				end
+					commit_in = database_obj.commit;
+				end;
+				[did_document_obj, commit_out] = do_read(database_obj, did_document_id, commit_in);
 		end % read()
 
-		function [did_binarydoc_obj, version] = openbinarydoc(database_obj, did_document_or_id, version)
+		function [did_binarydoc_obj,commit] = openbinarydoc(database_obj, did_document_or_id, name, commit_requested)
 			% OPENBINARYDOC - open and lock an DID.BINARYDOC that corresponds to a document id
 			%
-			% [DID_BINARYDOC_OBJ, VERSION] = OPENBINARYDOC(DATABASE_OBJ, DID_DOCUMENT_OR_ID, [VERSION])
+			% [DID_BINARYDOC_OBJ, COMMIT] = OPENBINARYDOC(DATABASE_OBJ, DID_DOCUMENT_OR_ID, NAME, [COMMIT_REQUESTED])
 			%
-			% Return the open DID_BINARYDOC object and VERSION that corresponds to an DID.DOCUMENT and
-			% the requested version (the latest version is used if the argument is omitted).
-			% DID.DOCUMENT_OR_ID can be either the document id of an DID.DOCUMENT or an DID.DOCUMENT object itsef.
+			% Return the open DID_BINARYDOC object and COMMIT that corresponds to a DID.DOCUMENT and the
+			% NAME of the requested file record. If COMMIT_REQUESTED is provided, then the requested commit id
+			% is read.
 			%
-			% Note that this DID_BINARYDOC_OBJ must be closed and unlocked with DATABASE/CLOSEBINARYDOC.
-			% The locked nature of the binary doc is a property of the database, not the document, which is why
-			% the database is needed.
-			% 
+			% DID.DOCUMENT_OR_ID can be either the document id of an DID.DOCUMENT or a DID.DOCUMENT object itsef.
+			%
+			% Note that the resulting document should be closed with DID_BINARYDOC_OBJ.close() when finished.
+			%
+			%
 				if isa(did_document_or_id,'did.document'),
 					did_document_id = did_document_or_id.id();
 				else,
 					did_document_id = did_document_or_id;
 				end;
-				if nargin<3,
-					[did_document_obj,version] = database_obj.read(did_document_id);
-				else,
-					[did_document_obj,version] = database_obj.read(did_document_id, version);
+				if nargin<4,
+					commit_requested = database_obj.commit;
 				end;
-				did_binarydoc_obj = do_openbinarydoc(database_obj, did_document_id, version);
+				did_binarydoc_obj = do_openbinarydoc(database_obj, did_document_id, name, commit_requested);
 		end; % openbinarydoc
-
-		function [did_binarydoc_obj] = closebinarydoc(database_obj, did_binarydoc_obj)
-			% CLOSEBINARYDOC - close and unlock an DID.BINARYDOC 
-			%
-			% [DID_BINARYDOC_OBJ] = CLOSEBINARYDOC(DATABASE_OBJ, DID_BINARYDOC_OBJ)
-			%
-			% Close and lock an DID_BINARYDOC_OBJ. The DID_BINARYDOC_OBJ must be unlocked in the
-			% database, which is why it is necessary to call this function through the database.
-			%
-				did_binarydoc_obj = do_closebinarydoc(database_obj, did_binarydoc_obj);
-		end; % closebinarydoc
 
 		function database_obj = remove(database_obj, did_document_id, versions)
 			% REMOVE - remove a document from an DATABASE
 			%
-			% DATABASE_OBJ = REMOVE(DATABASE_OBJ, DID_DOCUMENT_ID) 
-			%     or
-			% DATABASE_OBJ = REMOVE(DATABASE_OBJ, DID_DOCUMENT_ID, VERSIONS)
+			% DATABASE_OBJ = REMOVE(DATABASE_OBJ, DID_DOCUMENT_ID, [COMMIT_REQUESTED]) 
 			%     or 
 			% DATABASE_OBJ = REMOVE(DATABASE_OBJ, DID_DOCUMENT) 
 			%
 			% Removes the DID_DOCUMENT object with the 'document unique reference' equal
-			% to DID_DOCUMENT_OBJ_ID.  If VERSIONS is specified, then only the versions that match
-			% the entries in VERSIONS are removed.
+			% to DID_DOCUMENT_OBJ_ID.  If COMMIT_REQUESTED is specified, then the document is
+			% removed from that commit. Otherwise, the current commit is used.
 			%
 			% If a DID.DOCUMENT is passed, then the DID DOCUMENT_ID is extracted using
 			% DID_DOCUMENT/DOC_UNIQUE_ID. If a cell array of DID.DOCUMENT is passed instead, then
@@ -161,11 +140,7 @@ classdef database
 				end;
 
 				for i=1:numel(did_document_id_list),
-					if nargin<3,
-						do_remove(database_obj, did_document_id_list{i});
-					else,
-						do_remove(database_obj, did_document_id{i}, versions);
-					end;
+					do_remove(database_obj, did_document_id_list{i});
 				end;
 		end % remove()
 
@@ -179,6 +154,26 @@ classdef database
 			%
 				docids = {}; % needs to be overridden
 		end; % alldocids()
+
+		function commit_ids = allcommits(database_obj)
+			% COMMITS - return all commit IDs for a DID database
+			%
+			% COMMIT_IDS = ALLCOMMITS(DATABASE_OBJ)
+			%
+			% Return a list of all commit IDs for the current database.
+			%
+				commit_ids = {};
+		end;
+
+		function database_obj = checkout_branch(database_obj, commitid)
+			% CHECKOUT_BRANCH - check out a particular commit/branch of the database
+			%
+			% DATABASE_OBJ = CHECKOUT_BRANCH(DATABASE_OBJ, COMMITID)
+			%
+			%
+
+
+		end; 
 
 		function clear(database_obj, areyousure)
 			% CLEAR - remove/delete all records from an DATABASE
