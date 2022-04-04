@@ -38,7 +38,7 @@ end;
 
 disp(['Creating a new document of type did_document_app'])
 
-doc = did.document('did_document_app','app.name','mytestname','base.name','mytestdocument');
+doc = did.document('did_document_app','app.name','mytestname','base.name','mytestdocument', 'base.session', example_session_id);
 
 disp(['These are the doc.document_properties:'])
 doc.document_properties,
@@ -58,7 +58,11 @@ end;
  % now do some searching
 
 disp(['Now searching for the document'])
-doc = db.search(did.query({'base.name','mytestdocument'}))
+
+q1 = did.query('base.name','exact_string','mytestdocument','');
+q2 = did.query('base.session','exact_string',example_session_id,'');
+q_ = q1 & q2;
+doc = db.search(q_)
 if numel(doc)~=1,
 	error(['Found <1 or >1 document with base.name ''mytestdocument''; this means there is a database problem.']);
 end;
