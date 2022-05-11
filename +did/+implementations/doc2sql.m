@@ -28,8 +28,8 @@ function sqlMetaData = doc2sql(doc)
     % Create some common columns
     sqlMetaData.columns = struct('name',{}, 'matlabType',{}, 'sqlType',{}, 'value',{}); %initialize
 
-    id = getField(doc_props, {'app.id',  'base.id',  'ndi_document.id'});
-    sqlMetaData.columns(end+1) = newColumn('id', id);
+    id = getField(doc_props, {'app.id', 'base.id', 'ndi_document.id'});
+    sqlMetaData.columns(end+1) = newColumn('doc_id', id);
 
     className = getField(doc_props, {'document_class.class_name','ndi_document.type'});
     sqlMetaData.columns(end+1) = newColumn('class', className);
@@ -42,7 +42,9 @@ function sqlMetaData = doc2sql(doc)
     sqlMetaData.columns(end+1) = newColumn('superclass', superclass);
 
     datestamp = getField(doc_props, {'base.datestamp','ndi_document.datestamp'});
-    sqlMetaData.columns(end+1) = newColumn('creation', datestamp);
+    sqlMetaData.columns(end+1) = newColumn('datestamp', datestamp);
+
+    sqlMetaData.columns(end+1) = newColumn('creation', '');
     sqlMetaData.columns(end+1) = newColumn('deletion', '');
 
     dependsOn = getField(doc_props, 'depends_on');
@@ -54,9 +56,9 @@ function sqlMetaData = doc2sql(doc)
 
     % Extract the custom (dynamic) meta-tables from the document property fields
     fields = fieldnames(doc_props);
-    fields = setdiff(fields, {'app','base','depends_on','document_class'}, 'stable');
+    fields = setdiff(fields, {'depends_on','document_class'}, 'stable');
     for idx = 1 : numel(fields)
-        sqlMetaData(end+1) = getMetaTableFrom(doc_props, fields{idx}); %#ok<AGROW>
+        sqlMetaData(end+1) = getMetaTableFrom(doc_props, id, fields{idx}); %#ok<AGROW>
     end
 end
 
@@ -87,9 +89,10 @@ function colData = newColumn(name, value, matlabType)
 end
 
 % Create custom (dynamic) meta-table from a sub-struct
-function metaTable = getMetaTableFrom(doc_props, name)
+function metaTable = getMetaTableFrom(doc_props, id, name)
     metaTable.name = name;
-    metaTable.columns = struct('name',{}, 'matlabType',{}, 'sqlType',{}, 'value',{}); %initialize
+    %metaTable.columns = struct('name',{}, 'matlabType',{}, 'sqlType',{}, 'value',{}); %initialize
+    metaTable.columns = newColumn('doc_id', id);
     dataStruct = doc_props.(name);
     fields = fieldnames(dataStruct);
     for idx = 1 : numel(fields)
