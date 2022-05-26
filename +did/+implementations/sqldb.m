@@ -9,7 +9,7 @@ classdef  sqldb < did.database
 		function did_sqldb_obj = sqldb(varargin)
 		% SQLDB make a new did.implementations.sql SQLDB object
 		% 
-		% DID_SQLDB_OBJ = DID_SQLDB(COMMAND, PATHNAME)
+		% DID_SQLDB_OBJ = DID_SQLDB(...)
 		%
 		% Creates a new SQLDB object.
 		%
