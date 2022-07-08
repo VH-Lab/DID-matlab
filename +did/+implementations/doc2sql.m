@@ -121,7 +121,7 @@ function metaTable = getMetaTableFrom(doc_props, id, name)
             matlabType = class(fieldValue);
             dataSize = size(fieldValue);
             if ~ischar(fieldValue) && ~isscalar(fieldValue) && ~isempty(fieldValue)
-                sizeStr = regexprep(mat2str(dataSize), '\s+', '×');
+                sizeStr = regexprep(mat2str(dataSize), '\s+', 'x'); %'×'
                 fieldValue = sprintf('%s %s', sizeStr, matlabType);
             end
             metaTable.columns(end+1) = newColumn(cumulFieldName, fieldValue, matlabType);

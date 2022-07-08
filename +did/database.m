@@ -1,35 +1,42 @@
-classdef database
-	% did.database: The superclass for all did.database implementations
-	%
-	% did.database defines the API for the DID database system. Applications or users that use
-	% did.database interact with the ADD, READ, REMOVE, SEARCH, OPENBINARYDOC and CLOSEBINARYDOC methods.
-	%
-	% Developers that create subclass implementations of the did.database class should override the functions do_*
-	% that are called to implement these procedures.
-	%
-	% did.database Properties:
-	%   connection - The connection details for the database (might be a file name, directory name, or structure)
-	%
-	% did.database Methods:
-	%   database - Create a new database
-	%   add - Add a document to the database
-	%   read - Read a did.document from the database based on the document's unique identifier
-	%   remove - Remove a did.document from the database
-	%   search - Search for a did.document(s) using a did.query
-	%   openbinarydoc - Open the binary portion of a did.document for reading/writing (returns a did.binarydoc)
-	%   closebinarydoc - Close a did.binarydoc
-	%   
-	%   do_add - The add function that must be overridden by specific subclass implementations
-	%   do_read - The read function that must be overridden by specific subclass implementations
-	%   do_remove - The remove function that must be overridden by specific subclass implementations
-	%   do_search - The search function that must be overrideen by specific subclass implementations
-	%   do_openbinarydoc - The function that opens binary documents that must be overridden in subclass implementations
-	%   do_closebinarydoc - The function that closes binary documents that must be overridden in subclass implementations
-	%
+classdef (Abstract) database < handle
+% did.database: Abstract superclass for all did.database implementations
+%
+% did.database defines the API for the DID database system.
+% Applications/users interact with its public methods.
+%
+% Developers who create subclass implementations of the did.database class should
+% override the corresponding do_* methods, which are called by the public methods.
+%
+% Properties (read-only):
+%   connection - The connection details for the database (might be a file name, directory name, or struct)
+%   commit     - The commit number of the database that we are viewing/editing at the moment
+%   dbid       - The database ID
+%   version    - Version of the database
+%
+% Public methods with a default implementation:
+%   database - Create a new database
+%   add - Add a document to the database
+%   read - Read a did.document from the database based on the document's unique identifier
+%   remove - Remove a did.document from the database
+%   clear - Remove all did.documents from the database
+%   search - Search for a did.document(s) using a did.query
+%   openbinarydoc - Open the binary portion of a did.document for reading/writing (returns a did.binarydoc)
+%   closebinarydoc - Close a did.binarydoc
+% 
+% Methods that *MUST* be overloaded by specific subclass implementations:
+%   do_add
+%   do_read
+%   do_remove
+%   do_search
+%   do_openbinarydoc
+%   do_closebinarydoc
+%   delete - destructor (typically closes the database connection/file, if open)
 
-	properties (SetAccess=protected,GetAccess=public)
-		connection % A variable or structure describing the connection parameters of the database; may be a simple file path
-		commit % the commit number of the database that we are viewing/editing at the moment
+	properties (SetAccess=protected, GetAccess=public)
+		connection % A variable or struct describing the connection parameters of the database; may be a simple file path
+		commit     % The commit number of the database that we are viewing/editing at the moment
+        dbid       % Database ID
+        version    % Database version
 	end % properties
 
 	methods
@@ -39,12 +46,11 @@ classdef database
 			% DATABASE_OBJ = DATABASE(...)
 			%
 			% Creates a new DATABASE object 
-			%
 			
 			connection = '';
 			commit = '';
 
-			if nargin>0,
+			if nargin>0
 				connection = varargin{1};
 			end
 
@@ -60,7 +66,7 @@ classdef database
 			% Adds the document DID_DOCUMENT_OBJ to the database DATABASE_OBJ.
 			%
 			% See also: NAMEVALUEPAIR 
-				database_obj = do_add(database_obj, did_document_obj);
+            database_obj = do_add(database_obj, did_document_obj, varargin{:});
 		end % add()
 
 		function [did_document_obj, commit_out] = read(database_obj, did_document_id, commit_in)
@@ -74,39 +80,14 @@ classdef database
 			% The commit ID being viewed is also returned.
 			%
 			% If there is no DID DOCUMENT object with that ID, then empty is returned ([]).
-			%
-				if nargin<3,
-					commit_in = database_obj.commit;
-				end;
-				[did_document_obj, commit_out] = do_read(database_obj, did_document_id, commit_in);
+
+            if nargin<3
+                commit_in = database_obj.commit;
+            end
+            [did_document_obj, commit_out] = do_read(database_obj, did_document_id, commit_in);
 		end % read()
 
-		function [did_binarydoc_obj,commit] = openbinarydoc(database_obj, did_document_or_id, name, commit_requested)
-			% OPENBINARYDOC - open and lock an DID.BINARYDOC that corresponds to a document id
-			%
-			% [DID_BINARYDOC_OBJ, COMMIT] = OPENBINARYDOC(DATABASE_OBJ, DID_DOCUMENT_OR_ID, NAME, [COMMIT_REQUESTED])
-			%
-			% Return the open DID_BINARYDOC object and COMMIT that corresponds to a DID.DOCUMENT and the
-			% NAME of the requested file record. If COMMIT_REQUESTED is provided, then the requested commit id
-			% is read.
-			%
-			% DID.DOCUMENT_OR_ID can be either the document id of an DID.DOCUMENT or a DID.DOCUMENT object itsef.
-			%
-			% Note that the resulting document should be closed with DID_BINARYDOC_OBJ.close() when finished.
-			%
-			%
-				if isa(did_document_or_id,'did.document'),
-					did_document_id = did_document_or_id.id();
-				else,
-					did_document_id = did_document_or_id;
-				end;
-				if nargin<4,
-					commit_requested = database_obj.commit;
-				end;
-				did_binarydoc_obj = do_openbinarydoc(database_obj, did_document_id, name, commit_requested);
-		end; % openbinarydoc
-
-		function database_obj = remove(database_obj, did_document_id, versions)
+        function database_obj = remove(database_obj, did_document_id, varargin)
 			% REMOVE - remove a document from an DATABASE
 			%
 			% DATABASE_OBJ = REMOVE(DATABASE_OBJ, DID_DOCUMENT_ID, [COMMIT_REQUESTED]) 
@@ -120,29 +101,64 @@ classdef database
 			% If a DID.DOCUMENT is passed, then the DID DOCUMENT_ID is extracted using
 			% DID_DOCUMENT/DOC_UNIQUE_ID. If a cell array of DID.DOCUMENT is passed instead, then
 			% all of the documents are removed.
-			%
-				if isempty(did_document_id),
-					return; % nothing to do
-				end;
 
-				did_document_id_list = {};
-				
-				if ~iscell(did_document_id),
-					did_document_id = {did_document_id};
-				end;
-				
-				for i=1:numel(did_document_id)
-					if isa(did_document_id{i}, 'did_document'),
-						did_document_id_list{end+1} = did_document_id{i}.id();
-					else,
-						did_document_id_list{end+1} = did_document_id{i};
-					end;
-				end;
+            if isempty(did_document_id)
+                return; % nothing to do
+            end
 
-				for i=1:numel(did_document_id_list),
-					do_remove(database_obj, did_document_id_list{i});
-				end;
+            if ~iscell(did_document_id)
+                did_document_id = {did_document_id};
+            end
+
+            did_document_id_list = {};
+            for i=1:numel(did_document_id)
+                if isa(did_document_id{i}, 'did_document')
+                    did_document_id_list{end+1} = did_document_id{i}.id(); %#ok<AGROW>
+                else
+                    did_document_id_list{end+1} = did_document_id{i}; %#ok<AGROW>
+                end
+            end
+            for i=1:numel(did_document_id_list)
+                do_remove(database_obj, did_document_id_list{i}, varargin{:});
+            end
 		end % remove()
+
+		function database_obj = clear(database_obj, areyousure)
+			% CLEAR - remove/delete all records from an DATABASE
+			% 
+			% DATABASE_OBJ = CLEAR(DATABASE_OBJ, [AREYOUSURE])
+			%
+			% Removes all documents from the database object.
+			% 
+			% Use with care!
+            % If AREYOUSURE='yes' the function will proceed, otherwise not.
+			%
+			% See also: DATABASE/REMOVE
+
+            if nargin<2
+                areyousure = 'no';
+            end
+            if strcmpi(areyousure,'Yes')
+                ids = database_obj.alldocids;
+                for i=1:numel(ids)
+                    database_obj.remove(ids{i}) % remove the entry
+                end
+            else
+                disp('Not clearing because user did not indicate he/she is sure.');
+            end
+		end % clear
+
+		function did_document_objs = search(database_obj, query_obj)
+			% SEARCH - search for an DID_DOCUMENT from an DATABASE
+			%
+			% DOCUMENT_OBJS = SEARCH(DATABASE_OBJ, DID.QUERYOBJ)
+			%
+			% Performs a search of the database with a DID QUERY object.
+			% 
+			% This function returns a cell array of DID_DOCUMENT objects. If no
+            % documents match the query, then an empty cell array ({}) is returned.
+            did_document_objs = database_obj.do_search(query_obj);
+		end % search()
 
 		function docids = alldocids(database_obj)
 			% ALLDOCIDS - return all document unique reference numbers for the database
@@ -151,87 +167,73 @@ classdef database
 			%
 			% Return all document unique reference strings as a cell array of strings. If there
 			% are no documents, empty is returned.
-			%
-				docids = {}; % needs to be overridden
-		end; % alldocids()
+            docids = {}; % needs to be overridden
+        end % alldocids()
 
 		function commit_ids = allcommits(database_obj)
-			% COMMITS - return all commit IDs for a DID database
+			% ALLCOMMITS - return all commit IDs for a DID database
 			%
 			% COMMIT_IDS = ALLCOMMITS(DATABASE_OBJ)
 			%
 			% Return a list of all commit IDs for the current database.
-			%
-				commit_ids = {};
-		end;
+            commit_ids = {};
+        end
 
 		function database_obj = checkout_branch(database_obj, commitid)
 			% CHECKOUT_BRANCH - check out a particular commit/branch of the database
 			%
 			% DATABASE_OBJ = CHECKOUT_BRANCH(DATABASE_OBJ, COMMITID)
-			%
-			%
+            % TODO
+        end
 
-
-		end; 
-
-		function clear(database_obj, areyousure)
-			% CLEAR - remove/delete all records from an DATABASE
-			% 
-			% CLEAR(DATABASE_OBJ, [AREYOUSURE])
+		function [did_binarydoc_obj, commit] = openbinarydoc(database_obj, did_document_or_id, name, commit_requested)
+			% OPENBINARYDOC - open and lock an DID.BINARYDOC that corresponds to a document id
 			%
-			% Removes all documents from the DUMBJSONDB object.
-			% 
-			% Use with care. If AREYOUSURE is 'yes' then the
-			% function will proceed. Otherwise, it will not.
+			% [DID_BINARYDOC_OBJ, COMMIT] = OPENBINARYDOC(DATABASE_OBJ, DID_DOCUMENT_OR_ID, NAME, [COMMIT_REQUESTED])
 			%
-			% See also: DATABASE/REMOVE
+			% Return the open DID_BINARYDOC object and COMMIT that corresponds
+            % to a DID.DOCUMENT and the NAME of the requested file record. 
+            % If COMMIT_REQUESTED is provided, then the requested commit id is read.
+			%
+			% DID.DOCUMENT_OR_ID can be either the document id of an DID.DOCUMENT
+            % or a DID.DOCUMENT object itsef.
+			%
+			% Note that the resulting document should be closed with
+            % DID_BINARYDOC_OBJ.close() when finished.
+            %
+            % See also: CLOSEBINARYDOC
 
-				if nargin<2,
-					areyousure = 'no';
-				end;
-				if strcmpi(areyousure,'Yes')
-					ids = database_obj.alldocids;
-					for i=1:numel(ids), 
-						database_obj.remove(ids{i}) % remove the entry
-					end
-				else,
-					disp(['Not clearing because user did not indicate he/she is sure.']);
-				end;
-		end % clear
+            if isa(did_document_or_id,'did.document')
+                did_document_id = did_document_or_id.id();
+            else
+                did_document_id = did_document_or_id;
+            end
+            if nargin<4
+                commit_requested = database_obj.commit;
+            end
+            did_binarydoc_obj = do_openbinarydoc(database_obj, did_document_id, name, commit_requested);
+        end % openbinarydoc
 
-		function [did_document_objs,versions] = search(database_obj, searchparams)
-			% SEARCH - search for an DID_DOCUMENT from an DATABASE
+		function database_obj = closebinarydoc(database_obj, did_document_obj)
+			% CLOSEBINARYDOC - close an open DID_DOCUMENT in the database 
 			%
-			% [DOCUMENT_OBJS,VERSIONS] = SEARCH(DATABASE_OBJ, DID.QUERYOBJ)
+			% DATABASE_OBJ = CLOSEBINARYDOC(DATABASE_OBJ, DID_DOCUMENT_OBJ)
 			%
-			% Performs a search of the database with a DID QUERY object.
-			% 
-			% This function returns a cell array of DID_DOCUMENT objects. If no documents match the
-			% query, then an empty cell array ({}) is returned. An array VERSIONS contains the document version of
-			% of each DID_DOCUMENT.
-			% 
-				searchOptions = {};
-				[did_document_objs, versions] = database_obj.do_search(searchOptions,searchparams);
-		end % search()
+			% Closes a DID_DOCUMENT_OBJ that was previously opened with OPENBINARYDOC().
+			%
+			% See also: OPENBINARYDOC 
+            database_obj = do_closebinarydoc(database_obj, did_document_obj);
+		end % add()
 
 	end % methods database
 
-	methods (Access=protected)
-		function database_obj = do_add(database_obj, did_document_obj, add_parameters)
-		end % do_add
-		function [did_document_obj, version] = do_read(database_obj, did_document_id, version);
-		end % do_read
-		function did_document_obj = do_remove(database_obj, did_document_id, versions)
-		end % do_remove
-		function [did_document_objs,versions] = do_search(database_obj, searchoptions, searchparams) 
-		end % do_search()
-		function [did_binarydoc_obj] = do_openbinarydoc(database_obj, did_document_id, version) 
-		end % do_openbinarydoc()
-		function [did_binarydoc_obj] = do_closebinarydoc(database_obj, did_binarydoc_obj) 
-		end % do_closebinarydoc()
-
+    % These methods *MUST* be overloaded by implementation subclasses
+	methods (Abstract, Access=protected)
+		database_obj = do_add(database_obj, did_document_obj, add_parameters)
+		[did_document_obj, version] = do_read(database_obj, did_document_id, version)
+		did_document_obj = do_remove(database_obj, did_document_id, versions)
+		did_document_objs = do_search(database_obj, query_obj) 
+		did_binarydoc_obj = do_openbinarydoc(database_obj, did_document_id, version) 
+		did_binarydoc_obj = do_closebinarydoc(database_obj, did_binarydoc_obj) 
 	end % Methods (Access=Protected) protected methods
 end % classdef
-
-
