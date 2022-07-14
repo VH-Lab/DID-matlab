@@ -318,7 +318,20 @@ classdef sqlitedb < did.database
         %                   false (default) to return an array of values.
         %                     If multiple fields are returned by the query,
         %                     they are enclused within a containing cell-array.
-            data = mksqlite(sqlitedb_obj.dbid, query_str);
+
+            % Open the database for update
+            filename = sqlitedb_obj.connection;
+            sqlitedb_obj.dbid = mksqlite('open',filename);
+            hCleanup = onCleanup(@()mksqlite(sqlitedb_obj.dbid, 'close'));
+
+            % Run the SQL query in the database
+            try
+                %query_str  %debug
+                data = mksqlite(sqlitedb_obj.dbid, query_str);
+            catch err
+                fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\n',query_str)
+                rethrow(err)
+            end
             if isempty(data), data = {}; return, end
             returnStruct = nargin > 2 && returnStruct;  % default=false
             if ~returnStruct && isstruct(data)
@@ -329,15 +342,13 @@ classdef sqlitedb < did.database
                 for i = numFields : -1 : 1
                     dataCells{i} = dataTable.(fn{i});
                 end
-                if numFields == 1
-                    dataCells = dataCells{1};
-                end
+                if numFields == 1, dataCells = dataCells{1}; end  %de-cell
                 data = dataCells;
             end
         end
 
         function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
-            sql_str = '';
+            sql_str = ''; %#ok<NASGU>
             field  = query_struct.field;
             param1 = query_struct.param1;
             param2 = query_struct.param2;
@@ -377,7 +388,7 @@ classdef sqlitedb < did.database
                 case 'hasanysubfield_exact_string'     %TODO
                     error('DID:Implementations:SQLiteDB','Query operation "%s" is not yet implemented for SQLiteDB',op);
                 case 'regexp'
-                    sql_str = ['fields.field_name="' field '" AND doc_data.value REGEXP "' param1 '"'];
+                    sql_str = ['fields.field_name="' field '" AND regex(doc_data.value,"' param1 '") NOT NULL'];
                 case 'isa'
                     sql_str = ['(fields.field_name="meta.class" AND doc_data.value = "' param1 '") OR ' ...
                                '(fields.field_name="meta.superclass" AND doc_data.value like "%' param1 '%")'];
@@ -392,7 +403,7 @@ classdef sqlitedb < did.database
         end
 
         function query_str = get_sql_query_str(sqlitedb_obj, query_structs)
-            query_str = ['SELECT docs.doc_id ' ...
+            query_str = ['SELECT DISTINCT docs.doc_id ' ...
                          'FROM   docs, doc_data, fields ' ...
                          'WHERE  docs.doc_idx = doc_data.doc_idx AND ' ...
                                ' fields.field_idx = doc_data.field_idx AND ' ...
@@ -413,14 +424,27 @@ classdef sqlitedb < did.database
             if isa(query_obj,'did.query')
 			    query_obj = query_obj.searchstructure;
             end
-            if isstruct(query_obj)
-                query_str = get_sql_query_str(sqlitedb_obj, query_obj)
-            else
-                query_str = query_obj;
-            end
 
             % Run the SQL query on the DB and return the matching documents
-            doc_ids = run_sql_query(sqlitedb_obj, query_str);
+            if isstruct(query_obj)
+                % Special external loop over all &-ed queries
+                doc_ids = {};
+                for i = 1 : numel(query_obj)
+                    query_str = get_sql_query_str(sqlitedb_obj, query_obj(i));
+                    new_doc_ids = run_sql_query(sqlitedb_obj, query_str);
+                    if i > 1
+                        doc_ids = intersect(doc_ids, new_doc_ids);
+                    else
+                        doc_ids = new_doc_ids;
+                    end
+                end
+                if numel(doc_ids) == 1,  doc_ids = doc_ids{1};  end
+            else  % already in SQL str format
+                query_str = query_obj;
+                doc_ids = run_sql_query(sqlitedb_obj, query_str);
+            end
+
+            % Return the resulting doc IDs
 		    did_document_objs = doc_ids; %TODO: convert from doc_id => doc_obj?
 	    end % do_search()
 
