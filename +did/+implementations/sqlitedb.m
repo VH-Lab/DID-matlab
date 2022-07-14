@@ -58,20 +58,132 @@ classdef sqlitedb < did.database
     end
 
     methods % public
-	    function docids = alldocids(sqlitedb_obj)
-	    % ALLDOCIDS - return all document unique reference numbers for the database
-	    %
-	    % DOCIDS = ALLDOCIDS(SQLDB_OBJ)
-	    %
-	    % Return all document unique reference strings as a cell array of strings. If there
-	    % are no documents, empty is returned.
+        function data = run_sql_query(sqlitedb_obj, query_str, returnStruct)
+        % runSqlQuery - run an SQL query on the database
+        % 
+        % Inputs:
+        %    sqlitedb_obj - this class object
+        %    query_str - the SQL query string. For example: 
+        %                'SELECT docs.doc_id FROM docs, doc_data, fields 
+        %                 WHERE docs.doc_idx = doc_data.doc_idx 
+        %                   AND fields.field_idx = doc_data.field_idx
+        %                   AND fields.field_idx = doc_data.field_idx
+        %                   AND ((fields.field_name = "meta.class" AND 
+        %                         doc_data.value = "ndi_documentx") OR
+        %                        (fields.field_name = "meta.superclass" AND 
+        %                         doc_data.value like "%ndi_documentx%"))'
+        %    returnStruct - true to return a struct (or struct array) of values.
+        %                   false (default) to return an array of values.
+        %                     If multiple fields are returned by the query,
+        %                     they are enclused within a containing cell-array.
 
-		    docids = sqlitedb_obj.db.alldocids();
+            % Open the database for query
+            filename = sqlitedb_obj.connection;
+            sqlitedb_obj.dbid = mksqlite('open',filename);
+            hCleanup = onCleanup(@()mksqlite(sqlitedb_obj.dbid, 'close'));
+
+            % Run the SQL query in the database
+            try
+                %query_str  %debug
+                data = mksqlite(sqlitedb_obj.dbid, query_str);
+            catch err
+                fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\n',query_str)
+                rethrow(err)
+            end
+            if isempty(data), data = {}; return, end
+            returnStruct = nargin > 2 && returnStruct;  % default=false
+            if ~returnStruct && isstruct(data)
+                fn = fieldnames(data);
+                numFields = numel(fn);
+                dataTable = struct2table(data);
+                dataCells = {};
+                for i = numFields : -1 : 1
+                    results = dataTable.(fn{i});
+                    if isempty(results)
+                        results = {};  % ensure it's a cell-array
+                    elseif ~iscell(results) && (isscalar(results) || ischar(results))
+                        results = {results};
+                    end
+                    dataCells{i} = results;
+                end
+                %if numFields == 1, dataCells = dataCells{1}; end  %de-cell
+                data = dataCells;
+            end
+        end
+
+	    function doc_ids = alldocids(sqlitedb_obj)
+	    % ALLDOCIDS - return all unique document ids in the database
+	    %
+	    % DOC_IDS = ALLDOCIDS(SQLITEDB_OBJ)
+	    %
+	    % Return all unique document ids as a cell array of strings. 
+	    % If there are no documents, an empty cell array is returned.
+
+            % Run the SQL query in the database
+            query_str = 'SELECT DISTINCT doc_id FROM docs';
+            data = run_sql_query(sqlitedb_obj, query_str);
+
+            % Parse the results
+            doc_ids = data{1};
+            if ~iscell(doc_ids)
+                doc_ids = {doc_ids};
+            end
 	    end % alldocids()
+
+	    function doc_ids = allcommits(sqlitedb_obj)
+	    % ALLCOMMITS - return all unique commit ids in the database
+	    %
+	    % COMMIT_IDS = ALLCOMMITS(SQLITEDB_OBJ)
+	    %
+	    % Return all unique commit ids as a cell array of strings. 
+	    % If there are no commits, an empty cell array is returned.
+
+            % Run the SQL query in the database
+            query_str = 'SELECT DISTINCT commit_id FROM commits';
+            data = run_sql_query(sqlitedb_obj, query_str);
+
+            % Parse the results
+            doc_ids = data{1};
+            if ~iscell(doc_ids)
+                doc_ids = {doc_ids};
+            end
+	    end % all_doc_ids()
+
+        function doc_objs = doc_ids_to_objects(sqlitedb_obj, doc_ids)
+	    % doc_ids_to_objects - convert doc ids into DID.DOCUMENT objects
+	    %
+	    % DOC_OBJS = DOC_IDS_TO_OBJECTS(SQLITEDB_OBJ)
+	    %
+	    % Return an array of DID.DOCUMENT objects corresponding to the documents
+        % within the database.
+
+            % Initialize an empty results array of no objects
+            doc_objs = did.document.empty;
+
+            % Loop over all specified doc_ids
+            if ~iscell(doc_ids), doc_ids = {doc_ids}; end
+            for i = 1 : numel(doc_ids)
+                % Run the SQL query in the database
+                doc_id = doc_ids{i};
+                query_str = ['SELECT json_code FROM docs WHERE doc_id="' doc_id '"'];
+                data = run_sql_query(sqlitedb_obj, query_str);
+
+                % Parse the results
+                if isempty(data)
+                    error('DID:SQLITEDB:DOC_ID','Document id %s was not found in the database',doc_id);
+                else
+                    json_code = data{1};
+                    if iscell(json_code), json_code = json_code{1}; end
+                    doc_objs(i) = did.document(jsondecode(json_code));
+                end
+            end
+
+            % Reshape the output array based on the input array's dimensions
+            doc_objs = reshape(doc_objs,size(doc_ids));
+        end
     end
 
     methods (Access=protected)
-
         function open_db(sqlitedb_obj, filename)
         % open_db - Open/create a DID SQLite database with the specified filename
 
@@ -184,6 +296,9 @@ classdef sqlitedb < did.database
             meta_data_struct = cell2struct({meta_data.columns}',{meta_data.name}');
             doc_id = meta_data_struct.meta(1).value;
 
+            % Get the JSON code that parses all the document's properties
+            json_code = jsonencode(did_document_obj.document_properties);
+
             % Handle case of existing document
             params = parseOptionalParams(varargin{:});
             try doOnDuplicate = params.OnDuplicate; catch, doOnDuplicate = 'error'; end
@@ -208,8 +323,8 @@ classdef sqlitedb < did.database
             commit_id = num2str(now,'%.9f');
             mksqlite(sqlitedb_obj.dbid, 'INSERT INTO commits (commit_id,commit_time) VALUES (?,?)', ...
                                         commit_id, getUnixTime());
-            mksqlite(sqlitedb_obj.dbid, 'INSERT INTO docs (doc_id,commit_id) VALUES (?,?)', ...
-                                        doc_id, commit_id); %, did_document_obj);
+            mksqlite(sqlitedb_obj.dbid, 'INSERT INTO docs (doc_id,commit_id,json_code) VALUES (?,?,?)', ...
+                                        doc_id, commit_id, json_code); %, did_document_obj);
             data = mksqlite(sqlitedb_obj.dbid, 'SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             doc_idx = data(1).doc_idx;
 
@@ -299,54 +414,10 @@ classdef sqlitedb < did.database
             mksqlite(sqlitedb_obj.dbid, 'DELETE FROM docs     WHERE doc_idx=?', doc_idx)
             mksqlite(sqlitedb_obj.dbid, 'DELETE FROM doc_data WHERE doc_idx=?', doc_idx)
         end % do_remove
+    end
 
-        function data = run_sql_query(sqlitedb_obj, query_str, returnStruct)
-        % runSqlQuery - run an SQL query on the database
-        % 
-        % Inputs:
-        %    sqlitedb_obj - this class object
-        %    query_str - the SQL query string. For example: 
-        %                'SELECT docs.doc_id FROM docs, doc_data, fields 
-        %                 WHERE docs.doc_idx = doc_data.doc_idx 
-        %                   AND fields.field_idx = doc_data.field_idx
-        %                   AND fields.field_idx = doc_data.field_idx
-        %                   AND ((fields.field_name = "meta.class" AND 
-        %                         doc_data.value = "ndi_documentx") OR
-        %                        (fields.field_name = "meta.superclass" AND 
-        %                         doc_data.value like "%ndi_documentx%"))'
-        %    returnStruct - true to return a struct (or struct array) of values.
-        %                   false (default) to return an array of values.
-        %                     If multiple fields are returned by the query,
-        %                     they are enclused within a containing cell-array.
-
-            % Open the database for update
-            filename = sqlitedb_obj.connection;
-            sqlitedb_obj.dbid = mksqlite('open',filename);
-            hCleanup = onCleanup(@()mksqlite(sqlitedb_obj.dbid, 'close'));
-
-            % Run the SQL query in the database
-            try
-                %query_str  %debug
-                data = mksqlite(sqlitedb_obj.dbid, query_str);
-            catch err
-                fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\n',query_str)
-                rethrow(err)
-            end
-            if isempty(data), data = {}; return, end
-            returnStruct = nargin > 2 && returnStruct;  % default=false
-            if ~returnStruct && isstruct(data)
-                fn = fieldnames(data);
-                numFields = numel(fn);
-                dataTable = struct2table(data);
-                dataCells = {};
-                for i = numFields : -1 : 1
-                    dataCells{i} = dataTable.(fn{i});
-                end
-                if numFields == 1, dataCells = dataCells{1}; end  %de-cell
-                data = dataCells;
-            end
-        end
-
+    % Search-related methods
+    methods (Access=protected)
         function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
             sql_str = ''; %#ok<NASGU>
             field  = query_struct.field;
@@ -417,7 +488,41 @@ classdef sqlitedb < did.database
             end
         end
 
-	    function did_document_objs = do_search(sqlitedb_obj, query_obj)
+        function doc_ids = search_doc_ids(sqlitedb_obj, query_struct)
+        % search_doc_ids - recursively search the database for matching doc IDs
+
+            num_structs = numel(query_struct);
+            if num_structs > 1  % loop over all &-ed queries
+                doc_ids = {};
+                for i = 1 : num_structs
+                    new_doc_ids = search_doc_ids(sqlitedb_obj, query_struct(i));
+                    if i > 1
+                        doc_ids = intersect(doc_ids{1}, new_doc_ids{1});
+                    else
+                        doc_ids = new_doc_ids;
+                    end
+                end
+                if size(doc_ids,1)==1 && size(doc_ids,2)>1
+                    doc_ids = doc_ids';  % ensure column vector
+                end
+            else
+                op = strtrim(lower(query_struct.operation));
+                op(op=='~') = '';
+                if strcmpi(op,'or')
+                    doc_ids1 = search_doc_ids(sqlitedb_obj, query_struct.param1);
+                    doc_ids2 = search_doc_ids(sqlitedb_obj, query_struct.param2);
+                    doc_ids = union(doc_ids1{1}, doc_ids2{1});
+                    if size(doc_ids,1)==1 && size(doc_ids,2)>1
+                        doc_ids = doc_ids';  % ensure column vector
+                    end
+                else  % leaf scalar query
+                    query_str = get_sql_query_str(sqlitedb_obj, query_struct);
+                    doc_ids = run_sql_query(sqlitedb_obj, query_str);
+                end
+            end
+        end
+
+	    function did_document_ids = do_search(sqlitedb_obj, query_obj)
         % do_search - searches database for doc_ids that match specified query
 
             % Convert the query object into an SQL query string
@@ -427,29 +532,22 @@ classdef sqlitedb < did.database
 
             % Run the SQL query on the DB and return the matching documents
             if isstruct(query_obj)
-                % Special external loop over all &-ed queries
-                doc_ids = {};
-                for i = 1 : numel(query_obj)
-                    query_str = get_sql_query_str(sqlitedb_obj, query_obj(i));
-                    new_doc_ids = run_sql_query(sqlitedb_obj, query_str);
-                    if i > 1
-                        doc_ids = intersect(doc_ids, new_doc_ids);
-                    else
-                        doc_ids = new_doc_ids;
-                    end
-                end
-                if numel(doc_ids) == 1,  doc_ids = doc_ids{1};  end
+                doc_ids = search_doc_ids(sqlitedb_obj, query_obj);
             else  % already in SQL str format
                 query_str = query_obj;
                 doc_ids = run_sql_query(sqlitedb_obj, query_str);
             end
+            if numel(doc_ids)==1 && iscell(doc_ids{1})
+                doc_ids = doc_ids{1};  %de-cell
+            end
 
             % Return the resulting doc IDs
-		    did_document_objs = doc_ids; %TODO: convert from doc_id => doc_obj?
+		    did_document_ids = doc_ids; %TODO: convert from doc_id => doc_obj?
 	    end % do_search()
+    end
 
-    % for now, let's disregard these
- 
+    % Disregard these
+    methods (Access=protected)
 	    function [did_binarydoc_obj, key] = do_openbinarydoc(sqlitedb_obj, did_document_id, version)
 		    did_binarydoc_obj = [];
 		    [fid, key] = sqlitedb_obj.db.openbinaryfile(did_document_id, version);

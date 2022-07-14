@@ -60,12 +60,13 @@ function doc_ids = test_did_sqlitedb(dirname)
     q2 = did.query('data.str','contains_string','123');
     q3 = did.query('data.str','regexp','abc');
     q4 = did.query('data.num','greaterThanEq',0);
-    r1 =db.search(q1),    assert(isequal(r1,id1),           'Bad results for db query #1');
-    r2 =db.search(q2),    assert(isequal(r2,{id1;id2}),     'Bad results for db query #2');
-    r3 =db.search(q3),    assert(isequal(r3,{id1;id3}),     'Bad results for db query #3');
-    r4 =db.search(q4),    assert(isequal(r4,{id2;id3}),     'Bad results for db query #4');
-    r34=db.search(q3|q4), assert(isequal(r34,{id1;id2;id3}),'Bad results for db query #3 | 4');
-    r34=db.search(q3&q4), assert(isequal(r34,id3),          'Bad results for db query #3 & 4');
+    r1  =db.search(q1),    assert(isequal(r1,{id1}),           'Bad results for db query #1');
+    r2  =db.search(q2),    assert(isequal(r2,{id1;id2}),       'Bad results for db query #2');
+    r3  =db.search(q3),    assert(isequal(r3,{id1;id3}),       'Bad results for db query #3');
+    r4  =db.search(q4),    assert(isequal(r4,{id2;id3}),       'Bad results for db query #4');
+    rOr =db.search(q3|q4), assert(isequal(rOr,{id1;id2;id3}),  'Bad results for db query #3 | 4');
+    rAnd=db.search(q3&q4), assert(isequal(rAnd,{id3}),         'Bad results for db query #3 & 4');
+    rAll=db.search(q1|(q3&q4)), assert(isequal(rAll,{id1;id3}),'Bad results for db query #1|(3&4)');
 
     % remove docs from the DB
     doc_ids = db.search(did.query({'base.name',''}));
@@ -80,3 +81,7 @@ function doc_ids = test_did_sqlitedb(dirname)
 
     % all done - delete the temporary DB
     delete(db_filename)
+
+    disp('All seams to be ok!')
+
+    if ~nargout, clear doc_ids, end
