@@ -44,7 +44,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Open/create the database (croaks in case of error)
             sqlitedb_obj.open_db();
-	    end % sqlitedb()
+
+            % Update the database version
+            sqlitedb_obj.version = [];
+            try sqlitedb_obj.version.mksqlite = mksqlite('version mex'); catch, end
+            try sqlitedb_obj.version.sqlite   = mksqlite('version sql'); catch, end
+        end % sqlitedb()
     end 
 
     methods % destructor

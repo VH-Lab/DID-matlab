@@ -9,8 +9,9 @@ classdef (Abstract) database < handle
 %
 % Properties (read-only):
 %   connection - Connection details for the database (might be a file name, directory name, or struct)
+%   dbid       - Database ID (set by the specific implementation class)
+%   version    - Database version (set by the specific implementation class)
 %   branch_id  - Branch ID that we are currently viewing/editing
-%   dbid       - Database ID
 %   frozen_branch_ids = Cell array of ids of branches that cannot be modified
 %
 % Public methods with a default implementation that should not be overloaded:
@@ -60,8 +61,10 @@ classdef (Abstract) database < handle
     % Read-only properties
 	properties (SetAccess=protected, GetAccess=public)
 		connection % A variable or struct describing the connection parameters of the database; may be a simple file path
-		branch_id  % The branch ID that we are viewing/editing at the moment
         dbid       % Database ID
+        version    % Database version
+
+        current_branch_id = '' % The branch ID that we are viewing/editing at the moment
         frozen_branch_ids = {} % Cell array of ids of branches that cannot be modified
 	end % properties
 
@@ -82,7 +85,7 @@ classdef (Abstract) database < handle
 			end
 
 			database_obj.connection = connection;
-			database_obj.branch_id = branchId;
+			database_obj.current_branch_id = branchId;
 		end % database
     end
 
@@ -116,7 +119,7 @@ classdef (Abstract) database < handle
 
             % If parent_branch_id was not specified, use the current branch
             if nargin < 3 || isempty(parent_branch_id)
-                parent_branch_id = database_obj.branch_id;
+                parent_branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -133,7 +136,7 @@ classdef (Abstract) database < handle
             database_obj.do_add_branch(branch_id, parent_branch_id);
 
             % The new branch was successfully added - set current branch to it
-            database_obj.branch_id = branch_id;
+            database_obj.current_branch_id = branch_id;
         end % add_branch()
 
         function set_branch(database_obj, branch_id)
@@ -148,7 +151,7 @@ classdef (Abstract) database < handle
             branch_id = database_obj.validate_branch_id(branch_id);
 
             % Update the current database branch
-            database_obj.branch_id = branch_id;
+            database_obj.current_branch_id = branch_id;
         end % set_branch()
 
         function branch_id = get_branch(database_obj)
@@ -157,7 +160,7 @@ classdef (Abstract) database < handle
 			% BRANCH_ID = GET_BRANCH(DATABASE_OBJ)
 
             % Return the current database branch
-            branch_id = database_obj.branch_id;
+            branch_id = database_obj.current_branch_id;
         end % get_branch()
 
         function parent_branch_id = get_branch_parent(database_obj, branch_id)
@@ -171,7 +174,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 2 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -192,7 +195,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 2 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -213,7 +216,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 2 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -235,7 +238,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 2 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -263,7 +266,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 2 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -281,11 +284,11 @@ classdef (Abstract) database < handle
             database_obj.frozen_branch_ids = setdiff(database_obj.frozen_branch_ids,branch_id);
 
             % If this was the current branch, update the current branch to root
-            if isequal(database_obj.branch_id, branch_id)
-                database_obj.branch_id = branch_ids{1};
-                if isequal(database_obj.branch_id, branch_id)
+            if isequal(database_obj.current_branch_id, branch_id)
+                database_obj.current_branch_id = branch_ids{1};
+                if isequal(database_obj.current_branch_id, branch_id)
                     % Root branch was deleted - reset current branch id to none
-                    database_obj.branch_id = '';
+                    database_obj.current_branch_id = '';
                 end
             end
         end % delete_branch()
@@ -301,7 +304,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 2 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -337,7 +340,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 2 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -372,7 +375,7 @@ classdef (Abstract) database < handle
             if mod(numel(varargin),2) == 1  % odd number of values
                 if any(strcmpi(branch_id,'OnDuplicate'))
                     % the specified branch_id is actually a param name
-                    branch_id = database_obj.branch_id;
+                    branch_id = database_obj.current_branch_id;
                     varargin = ['OnDuplicate' varargin];
                 else
                     error('DID:Database:InvalidParams','Invalid parameters specified in did.database.add_doc() call');
@@ -383,7 +386,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 3 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -482,7 +485,7 @@ classdef (Abstract) database < handle
             if mod(numel(varargin),2) == 1  % odd number of values
                 if any(strcmpi(branch_id,'OnMissing'))
                     % the specified branch_id is actually a param name
-                    branch_id = database_obj.branch_id;
+                    branch_id = database_obj.current_branch_id;
                     varargin = ['OnMissing' varargin];
                 else
                     error('DID:Database:InvalidParams','Invalid parameters specified in did.database.remove_doc() call');
@@ -493,7 +496,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 3 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
@@ -607,7 +610,7 @@ classdef (Abstract) database < handle
 
             % If branch_id was not specified, use the current branch
             if nargin < 3 || isempty(branch_id)
-                branch_id = database_obj.branch_id;
+                branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
