@@ -1,7 +1,7 @@
-function [G] = make_tree(N_initial, children_rate, children_rate_decay, max_depth)
-% MAKE_TREE - construct a random tree structure
+function [nodenames] = name_tree(G, initial_node_name)
+% NAME_TREE - name the nodes in a tree structure with given adjacency matrix
 %
-% [G] = did.test.fun.make_tree(N_INITIAL, CHILDREN_RATE, CHILDREN_RATE_DECAY, MAX_DEPTH)
+% [NODENAMES] = did.test.fun.name_tree(G, [initial_node_name])
 %
 % Creates a tree structure starting from N_INITIAL nodes. Each initial node generates
 % a certain number of children according to the Poisson rate CHILDREN_RATE. In each
@@ -18,6 +18,8 @@ function [G] = make_tree(N_initial, children_rate, children_rate_decay, max_dept
 %  figure;
 %  plot(digraph(G),'layout','layered');
 %
+
+error('not done yet');
 
 if max_depth < 0,
 	children_rate = 0;
