@@ -1,7 +1,7 @@
-function [G] = make_tree(N_initial, children_rate, children_rate_decay, max_depth)
+function [G,node_names] = make_tree(N_initial, children_rate, children_rate_decay, max_depth)
 % MAKE_TREE - construct a random tree structure
 %
-% [G] = did.test.fun.make_tree(N_INITIAL, CHILDREN_RATE, CHILDREN_RATE_DECAY, MAX_DEPTH)
+% [G,NODE_NAMES] = did.test.fun.make_tree(N_INITIAL, CHILDREN_RATE, CHILDREN_RATE_DECAY, MAX_DEPTH)
 %
 % Creates a tree structure starting from N_INITIAL nodes. Each initial node generates
 % a certain number of children according to the Poisson rate CHILDREN_RATE. In each
@@ -9,14 +9,16 @@ function [G] = make_tree(N_initial, children_rate, children_rate_decay, max_dept
 % CHILDREN_RATE_DECAY, so that in generation g the rate is CHILDREN_RATE*(CHILDREN_RATE_DECAY^(g-1)).
 % After reaching MAX_DEPTH, no more children are generated.
 %
-% G is a connectivity matrix such that G(i,j) is 1 if node j is a direct child of node i.
+% NODE_NAMES is a cell array of strings of names for the nodes. The root nodes are named with a single letter
+% like 'a', 'b', and so on, and the first child of 'a' is named 'a_a', the second child is named 'a_b', and so on.
 %
+% G is a connectivity matrix such that G(i,j) is 1 if node j is a direct child of node i.
 % 
 %
 % Example:
-%  G = did.test.fun.make_tree(4, 3, 0.8, 10);
+%  [G,node_names] = did.test.fun.make_tree(4, 3, 0.8, 10);
 %  figure;
-%  plot(digraph(G),'layout','layered');
+%  plot(digraph(G,node_names),'layout','layered');
 %
 
 if max_depth < 0,
@@ -38,3 +40,4 @@ for i=1:N_initial,
 	end;
 end;
 
+node_names = did.test.fun.name_tree(G);
