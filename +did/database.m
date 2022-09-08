@@ -131,8 +131,9 @@ classdef (Abstract) database < handle
             end
 
             % Add the new branch to the database
-            check_parent = ~isempty(parent_branch_id); %only check if not empty
-            parent_branch_id = database_obj.validate_branch_id(parent_branch_id, check_parent);
+            if ~isempty(parent_branch_id) %only check if not empty
+                parent_branch_id = database_obj.validate_branch_id(parent_branch_id);
+            end
             database_obj.do_add_branch(branch_id, parent_branch_id);
 
             % The new branch was successfully added - set current branch to it
@@ -751,6 +752,13 @@ classdef (Abstract) database < handle
 	    end % do_search()
     end
 
+    % Hidden synonym methods
+    methods (Hidden)
+        function parent_branch_id = get_parent_branch(database_obj, varargin)
+            parent_branch_id = get_branch_parent(database_obj, varargin{:});
+        end
+    end
+
     % These methods *MUST* be overloaded by implementation subclasses
 	methods (Abstract, Access=protected)
         results = do_run_sql_query(database_obj, query_str, varargin)
@@ -816,8 +824,14 @@ classdef (Abstract) database < handle
             if isstring(doc_id), doc_id = char(doc_id); end
             if isa(doc_id, 'did_document')
                 doc_id = doc_id.id();
+            elseif isstruct(doc_id)
+                try
+                    doc_id = doc_id.document_properties.ndi_document.id;
+                catch
+                    error('DID:Database:InvalidDocID','Input document must be a valid document object or ID');
+                end
             elseif isempty(doc_id) || ~ischar(doc_id)
-                error('DID:Database:InvalidDocID','Document ID must be a non-empty string');
+                error('DID:Database:InvalidDocID','Input document must be a valid document object or ID');
             end
 
             % Optionally ensure that the branch exists in the database

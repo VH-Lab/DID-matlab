@@ -264,7 +264,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
 
             % Handle case of the branch already containing this document
-            data = this_obj.run_sql_noOpen('SELECT doc_idx FROM branch_docs WHERE doc_idx=?', doc_idx);
+            data = this_obj.run_sql_noOpen(['SELECT doc_idx FROM branch_docs ' ...
+                                            ' WHERE doc_idx=? AND branch_id=?'], ...
+                                           doc_idx, branch_id);
             if ~isempty(data)
                 errMsg = sprintf('Document %s already exists in branch %s', doc_id, branch_id);
                 %assert(isempty(data),'DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg)
