@@ -1,57 +1,66 @@
 function [b,msg] = test_did_branches(varargin)
 % TEST_DID_BRANCHES - test the branching functionality of a DID database
 %
+% [B,MSG] = TEST_DID_BRANCHES()
 % 
+% Tests the branching functions of the did.database class, using the
+% did.implementations.sqlitedb class.
+%  
+% This function first tries to delete a file 'test2.sqlite', and then
+% makes a new database with the same filename.
 %
-%
 
-	 % Step 1: make an empty database with a starting branch
+b = 1;
+msg = '';
 
-	db = did.implementations.sqlitedb('test2.sqlite');
+% Step 1: make an empty database with a starting branch
+!rm test2.sqlite
+db = did.implementations.sqlitedb('test2.sqlite');
 
-	db.add_branch('TOP_');
+% Step 2: generate a tree and a set of node names
 
-	 % Step 2: generate a tree and a set of node names
+[G,node_names] = did.test.fun.make_tree(1, 4, 0.8, 10);
+dG = digraph(G,node_names);
+root_indexes = find(cellfun(@(x) ~any(x=='_'), node_names)); % find the root nodes
 
-	[G,node_names] = did.test.fun.make_tree(4, 3, 0.8, 10);
-	dG = digraph(G,node_names);
-	root_indexes = cellfun(@(x) ~any(x=='_'), node_names); % find the root nodes
+% Step 3: add the tree to the database as a set of branches
+	
+disp(['Adding ' int2str(numel(node_names)) ' random branches...']);
+did.test.branch.add_branch_nodes(db, '', dG, root_indexes);
 
-	 % Step 3: add the tree to the database as a set of branches
+% Step 4: verify that the branch order is right
+% Step 4a: let's start by verifying we have all the branches
 
-	add_branch_nodes(db, 'TOP_', dG, root_indexes); % this is not tested
+disp(['Verifying branches...']);
+[b,missing] = did.test.branch.verify_branch_nodes(db,dG);
 
-	% Step 4: verify that the branch order is right
+if ~b,
+	missing,
+	error(['We are missing the branches listed above.']);
+end;
 
-	% Step 5: pick a branch at random to delete
+% Step 4b: now look at all the relationships
 
-		branch_index = randi(size(G,1));
-		node_to_delete = dG.Nodes{branch_index,1};
-		dG = dG.rmnode(node_to_delete);
-		db.delete_branch(node_to_delete);
+disp(['Verifying branch relationships...']);
+[b,msg] = did.test.branch.verify_branch_node_structure(db,dG);
+if ~b,
+	msg = msg;
+	return;
+end;
+	
+% Step 5: pick a branch at random to delete
 
-		% verify the branch order is right
+num_random_deletions = min(35,numel(node_names));
+disp(['Verifying branch relationships after ' ...
+	int2str(num_random_deletions) ' random end-point deletions...']);
 
-end % test_did_branches
+for j=1:num_random_deletions,
+	dG = did.test.branch.delete_random_branch(db,dG);
+end;
 
-function add_branch_nodes(db, starting_db_branch_id, dG, node_start_index)
-		% not tested!
-	if nargin<3,
-		node_start_index = 0;
-	end;
+% Step 6: re-examine integrity of branches 
+[b,msg] = did.test.branch.verify_branch_node_structure(db,dG);
+if ~b,
+	msg = ['After random deletions: ' msg];
+end;
 
-	if node_start_index == 0,
-		node_start_index = cellfun(@(x) ~any(x=='_'), dG.Nodes{:,1});
-	end;
-
-	for i=1:numel(node_start_index)
-		node_here = dG.Nodes{node_start_index(i),1};
-		db.set_branch(starting_db_branch_id);
-		disp(['Adding branch ' node_here ' to parent ' starting_db_branch_id '.']);
-		db.add_branch(node_here);
-		pre_ID = dG.predecessors(node_here);
-		pre_ID_indexes = ismember(dG.Nodes{:,1},pre_ID);
-		add_branch_nodes(db, dG.Nodes{node_start_index(i),1}, dG, pre_ID_indexes);
-	end;
-
-end % add_branch_nodes

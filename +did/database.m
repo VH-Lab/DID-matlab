@@ -368,7 +368,7 @@ classdef (Abstract) database < handle
             % Ensure we got a valid input doc object
             if isempty(document_obj)
                 return; % nothing to do
-            elseif ~isa(document_obj,'did.document') && ~isstruct(document_obj)
+            elseif ~(isa(document_obj,'did.document') || isa(document_obj,'ndi.document')) && ~isstruct(document_obj)
                 error('DID:Database:InvalidDoc','Invalid doc specified in did.database.add_doc() call - must be a valid did.document object');
             end
 
