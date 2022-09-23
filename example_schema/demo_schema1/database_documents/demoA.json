@@ -1,0 +1,16 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/demoA.json",
+		"validation":						"$DIDSCHEMA_EX1\/demoA.json",
+		"class_name":						"did_demoA",
+		"property_list_name":					"demoA",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$DIDDOCUMENT_EX1\/base.json" }
+		]
+        },
+	"demoA": {
+		"value":						""
+	}
+}
+

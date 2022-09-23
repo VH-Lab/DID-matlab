@@ -1,0 +1,27 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/demoC.json",
+		"validation":						"$DIDSCHEMA_EX1\/demoC.json",
+		"class_name":						"did_demoC",
+		"property_list_name":					"demoC",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$DIDDOCUMENT_EX1\/base.json" }
+		]
+        },
+	"depends_on": [
+		{	"name":	"item1",
+			"value": ""
+		},
+		{	"name":	"item2",
+			"value": ""
+		},
+		{	"name":	"item3",
+			"value": ""
+		}
+	],
+	"demoC": {
+		"value":						""
+	}
+}
+
