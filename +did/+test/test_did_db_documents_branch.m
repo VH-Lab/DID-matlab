@@ -1,9 +1,9 @@
-function [b,msg] = test_did_db_documents(varargin)
+function [b,msg] = test_did_db_documents_branch(varargin)
 % TEST_DID_BRANCHES - test the branching functionality of a DID database
 %
-% [B,MSG] = TEST_DID_DB_DOCUMENTS()
+% [B,MSG] = TEST_DID_DB_DOCUMENTS_BRANCH()
 % 
-% Tests the document adding functions of the did.database class, using the
+% Tests the document and branching functions of the did.database class, using the
 % did.implementations.sqlitedb class.
 %  
 % This function first tries to delete a file 'test_db_docs.sqlite', and then
@@ -26,5 +26,28 @@ for i=1:numel(docs)
 	db.add_doc(docs{i});
 end
 
-% Step 3: check the database results
+% Step 3: now, add a new branch 'a_a'. The documents in the graph should be
+% accessible from the new branch 'a_a'.
+
+db.add_branch('a_a');
+
+% Step 4: check the database results
 [b,msg] = did.test.documents.verify_db_document_structure(db, G, docs);
+
+db.set_branch('a');
+[b,msg] = did.test.documents.verify_db_document_structure(db, G, docs);
+
+% Step 5: now, delete all the documents from branch a_a and check to make
+% sure there are still in branch a
+db.set_branch('a_a');
+
+docs_to_remove = {};
+for i=1:numel(docs),
+    docs_to_remove{end+1} = docs{i}.id();
+end;
+
+db.remove_doc(docs_to_remove);
+
+db.set_branch('a');
+[b,msg] = did.test.documents.verify_db_document_structure(db, G, docs);
+
