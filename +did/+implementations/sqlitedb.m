@@ -132,7 +132,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             sqlStr = ['SELECT doc_idx FROM branch_docs WHERE branch_id="' parent_branch_id '"'];
             data = this_obj.run_sql_noOpen(sqlStr);
             if ~isempty(data)
-                doc_idx = data(1).doc_idx;
+                doc_idx = [data.doc_idx];
                 for i = 1 : numel(doc_idx)
                     sqlStr = 'INSERT INTO branch_docs (branch_id,doc_idx,timestamp) VALUES (?,?,?)';
                     this_obj.run_sql_noOpen(sqlStr,branch_id,doc_idx(i),tnow);
