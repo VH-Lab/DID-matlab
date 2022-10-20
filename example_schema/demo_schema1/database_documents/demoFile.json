@@ -1,0 +1,66 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/demoFile.json",
+		"validation":						"$DIDSCHEMA_EX1\/demoFile.json",
+		"class_name":						"did_demoFile",
+		"property_list_name":					"demoFile",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$DIDDOCUMENT_EX1\/base.json" }
+		]
+        },
+	"demoFile": {
+		"value":						""
+	},
+	"files": {
+		"file_list": [
+			"filename1.ext",
+			"filename2.ext"
+		],
+		"file_info": [
+		{
+			"name": "filename1.ext",
+			"locations": [
+			{
+				"delete_original": 1,
+				"uid": "41268bfa11faa5ff_c0ddad560858299e",
+				"location": "C:\\Users\\username\\123456789.ext1",
+				"parameters": "",
+				"location_type": "file",
+				"ingest": 1
+			},
+			{
+				"delete_original": 0,
+				"uid": "41268bfa12287f64_40dbbdf6582271b2",
+				"location": "https://myserver.com/123456789.ext1",
+				"parameters": "",
+				"location_type": "url",
+				"ingest": 0
+			}
+			]
+		},
+		{
+			"name": "filename2.ext2",
+			"locations": [
+			{
+				"delete_original": 1,
+				"uid": "41268bfa13b7992b_40d079ab70659331",
+				"location": "C:\\Users\\username\\987654321.ext2",
+				"parameters": "",
+				"location_type": "file",
+				"ingest": 1
+			},
+			{
+				"delete_original": 0,
+				"uid": "41268bfa13d2bc22_c0bb8d41c21210cf",
+				"location": "https://myserver.com/987654321.ext2",
+				"parameters": "",
+				"location_type": "url",
+				"ingest": 0
+			}
+			]
+		}
+		]
+	}
+}
+
