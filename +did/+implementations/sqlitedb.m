@@ -49,6 +49,20 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             sqlitedb_obj.version = [];
             try sqlitedb_obj.version.mksqlite = mksqlite('version mex'); catch, end
             try sqlitedb_obj.version.sqlite   = mksqlite('version sql'); catch, end
+
+            % Set some default database preferences
+            try
+                cacheDir = '';
+                did.globals();
+                cacheDir = did_globals.path.filecachepath;
+                if ~iempty(cacheDir), mkdir(cacheDir); end
+            catch
+            end
+            if isempty(cacheDir), cacheDir = tempdir; end
+            %sqlitedb_obj.set_preference('remote_folder',  fileparts(which(filename)));
+            sqlitedb_obj.set_preference('cache_folder',    cacheDir);
+            sqlitedb_obj.set_preference('cache_duration',  1.0); %[days]
+            sqlitedb_obj.set_preference('cache_max_files', inf);
         end % sqlitedb()
     end 
 
@@ -232,10 +246,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             doc_id = meta_data_struct.meta(1).value;
 
             % If the document was not already defined (for any branch)
+            doc_props = document_obj.document_properties;
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             if isempty(data)
                 % Get the JSON code that parses all the document's properties
-                json_code = jsonencode(document_obj.document_properties);
+                json_code = jsonencode(doc_props);
 
                 % Add the new document to docs table
                 sqlStr = 'INSERT INTO docs (doc_id,json_code,timestamp) VALUES (?,?,?)';
@@ -286,6 +301,49 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Add the document reference to the branch_docs table
             sqlStr = 'INSERT INTO branch_docs (branch_id,doc_idx,timestamp) VALUES (?,?,?)';
             this_obj.run_sql_noOpen(sqlStr, branch_id, doc_idx, now);
+
+            % Check if the doc refers to any local files that should be cached
+            numCachedFiles = 0;
+            try files = doc_props.files.file_info; catch, files = []; end
+            for idx = 1 : numel(files)
+                try
+                    filename = sprintf('#%d',idx); %used in catch, if the line below fails
+                    filename = files(idx).name;
+                    locations = files(idx).locations;
+                    for locIdx = 1 : numel(locations)
+                        thisLocation = locations(locIdx);
+                        if thisLocation.ingest
+                            sourcePath = thisLocation.location;
+                            destDir = this_obj.get_preference('cache_folder');
+                            destPath = fullfile(destDir, thisLocation.uid);
+                            try
+                                if strcmpi(thisLocation.location_type, 'file')
+                                    [status,errMsg] = copyfile(sourcePath, destPath, 'f');
+                                else
+                                    websave(destPath, sourcePath);
+                                end
+                            catch err
+                                status = false;
+                                errMsg = err.message;
+                            end
+                            if ~status
+                                warning('DID:SQLiteDB:add_doc','Failed to cache file "%s" referenced in document object: %s',filename,errMsg);
+                            else
+                                if thisLocation.delete_original
+                                    delete(sourcePath);
+                                end
+                                this_obj.insert_doc_data_field(doc_idx, 'files', 'cached_file_path', destPath);
+                                numCachedFiles = numCachedFiles + 1;
+                            end
+                        end
+                    end
+                catch
+                    warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
+                end
+            end
+            if numCachedFiles > 1
+                warning('DID:SQLiteDB:add_doc','Multiple files specified for caching in document object');
+            end
         end % do_add_doc()
 
         function document_obj = do_get_doc(this_obj, document_id, varargin)
@@ -411,6 +469,53 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
             %}
         end % do_remove_doc()
+
+        function file_obj = do_open_doc(this_obj, document_id, varargin)
+	        % do_open_doc - Return a did.file.readonly_fileobj for the specified document ID
+	        %
+	        % file_obj = do_open_doc(this_obj, document_id, [params])
+	        %
+			% Returns the DID.FILE.READONLY_FILEOBJ object for the specified doc. 
+            % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
+            %
+            % Optional PARAMS may be specified as P-V pairs of a parameter name
+            % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
+            % constructor method.
+            %
+            % Inputs:
+            %    this_obj - this class object
+            %    document_id - unique document ID for the requested document
+            %    params - optional parameters to DID.FILE.FILEOBJ constructor
+            %
+            % Outputs:
+            %    file_obj - a did.file.readonly_fileobj object (possibly empty)
+
+            % Get the cached filepath to the specified document
+            query_str = ['SELECT value FROM docs,fields,doc_data ' ...
+                         ' WHERE docs.doc_id="' document_id '" ' ...
+                         '   AND fields.field_name="files.cached_file_path" ' ...
+                         '   AND doc_data.field_idx=fields.field_idx ' ...
+                         '   AND doc_data.doc_idx=docs.doc_idx'];
+            data = this_obj.run_sql_query(query_str);
+            if isempty(data)
+                error('DID:SQLITEDB:DOC_ID','Document id "%s" does not have a readable cached file defined',document_id);
+            end
+
+            % Ensure that the cached file exists
+            data = data{1};
+            if iscell(data)
+                if numel(data) > 1
+                    warning('DID:SQLITEDB:open','Multiple cached files defined for document "%s" - opening %s',document_id,data{end})
+                end
+                data = data{end};
+            end
+            if ~exist(data,'file')
+                error('DID:SQLITEDB:open','Defined cached file %s for document id "%s" does not exist',data,document_id);
+            end
+
+            % Create a did.file.readonly_fileobj wrapper obj for the cached file
+            file_obj = did.file.readonly_fileobj('fullpathfilename',data);
+        end
     end
 
     % Internal methods used by this class

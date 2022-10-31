@@ -35,12 +35,15 @@ classdef (Abstract) database < handle
 %   open_doc    - Open binary portion of a did.document for read/write (returns a did.binarydoc)
 %   close_doc   - Close an open did.binarydoc
 %
+%   get_preference_names - returns a cell-array of defined pref names for this database
+%   set_preference - sets a value to a preference name in this database
+%   get_preference - gets the value of a preference name in this database
+%
 %   search - Search current/specified branch for did.document(s) matching a did.query
 %   run_sql_query - Run the specified SQL query in the database
 %
 % Protected methods with a default implementation that *MAY* be overloaded:
 %   do_search      - implements the core logic for the search() method
-%   do_open_doc    - implements the core logic for the open_doc() method
 %   do_close_doc   - implements the core logic for the close_doc() method
 %   delete - destructor (typically closes the database connection/file, if open)
 % 
@@ -56,6 +59,7 @@ classdef (Abstract) database < handle
 %   do_get_doc_ids    - implements the core logic for the all_doc_ids() method
 %   do_add_doc        - implements the core logic for the add_doc() method
 %   do_get_doc        - implements the core logic for the get_doc() method, for a single doc_id
+%   do_open_doc       - implements the core logic for the open_doc() method
 %   do_remove_doc     - implements the core logic for the remove_doc() method
 
     % Read-only properties
@@ -67,6 +71,10 @@ classdef (Abstract) database < handle
         current_branch_id = '' % The branch ID that we are viewing/editing at the moment
         frozen_branch_ids = {} % Cell array of ids of branches that cannot be modified
 	end % properties
+
+    properties (Access=protected)
+        preferences
+    end % properties
 
     % Main database constructor
 	methods
@@ -86,6 +94,7 @@ classdef (Abstract) database < handle
 
 			database_obj.connection = connection;
 			database_obj.current_branch_id = branchId;
+			database_obj.preferences = containers.Map;
 		end % database
     end
 
@@ -515,17 +524,17 @@ classdef (Abstract) database < handle
             end
         end % remove_doc()
 
-        function document_obj = open_doc(database_obj, document_id)
+        function file_obj = open_doc(database_obj, document_id, varargin)
 			% OPEN_DOC - open and lock a specified DID.DOCUMENT in the database
 			%
-			% DOCUMENT_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID)
+			% FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID)
 			%
-			% Return a DID.DOCUMENT object matching the specified DOCUMENT_ID. 
+			% Return a DID.FILE.READONLY_FILEOBJ object for the specified DOCUMENT_ID. 
 			%
-			% DID.DOCUMENT_ID can be either the document id of a DID.DOCUMENT
-            % or a DID.DOCUMENT object itsef.
+			% DOCUMENT_ID can be either the document id of a DID.DOCUMENT, or a
+            % DID.DOCUMENT object itsef.
 			%
-			% Note: close the document with DOCUMENT_OBJ.close() when finished.
+			% Note: close the document with FILE_OBJ.close() when finished.
             %
             % See also: CLOSE_DOC
 
@@ -533,19 +542,19 @@ classdef (Abstract) database < handle
             document_id = database_obj.validate_doc_id(document_id, false);
 
             % Open the document
-            document_obj = database_obj.do_open_doc(document_id);
+            file_obj = database_obj.do_open_doc(document_id, varargin{:});
         end % open_doc()
 
-        function close_doc(database_obj, document_obj)
+        function close_doc(database_obj, file_obj)
 			% CLOSE_DOC - close an open DID.DOCUMENT file
 			%
-			% DOCUMENT_OBJ = CLOSE_DOC(DATABASE_OBJ, DOCUMENT_OBJ)
+			% DOCUMENT_OBJ = CLOSE_DOC(DATABASE_OBJ, FILE_OBJ)
 			%
-			% Closes a DOCUMENT_OBJ that was previously opened with OPEN_DOC().
+			% Closes a FILE_OBJ that was previously opened with OPEN_DOC().
 			%
 			% See also: OPEN_DOC 
 
-            database_obj.do_close_doc(document_obj);
+            database_obj.do_close_doc(file_obj);
         end % close_doc()
     end
 
@@ -763,20 +772,24 @@ classdef (Abstract) database < handle
 	methods (Abstract, Access=protected)
         results = do_run_sql_query(database_obj, query_str, varargin)
 
+        % Branch-related methods
         branch_ids = do_get_branch_ids(database_obj)
         do_add_branch(database_obj, branch_id, parent_branch_id, varargin)
 		do_delete_branch(database_obj, branch_id, varargin)
         parent_branch_id = do_get_branch_parent(database_obj, branch_id, varargin)
         branch_ids = do_get_sub_branches(database_obj, branch_id, varargin)
 
+        % Document-related methods
         doc_ids = do_get_doc_ids(database_obj, branch_id, varargin)
 		do_add_doc(database_obj, document_obj, branch_id, varargin)
 		document_obj = do_get_doc(database_obj, document_id, varargin)
 		do_remove_doc(database_obj, document_id, branch_id, varargin)
+        file_obj = do_open_doc(database_obj, document_id, varargin)
     end
 
-    % Disregard these
+    % General utility functions used by this class that don't depend on a class object
     methods (Access=protected)
+        %{
         function document_obj = do_open_doc(database_obj, document_id)
 		    document_obj = [];
 		    [fid, key] = database_obj.db.openbinaryfile(document_id);
@@ -785,22 +798,20 @@ classdef (Abstract) database < handle
 			    document_obj = did_binarydoc_matfid('fid',fid,'fullpathfilename',filename,...
 				    'machineformat',machineformat,'permission',permission, 'doc_unique_id', document_id, 'key', key);
 			    document_obj.frewind(); % move to beginning of the file
-		    end
+            end
 	    end % do_binarydoc()
-        function do_close_doc(database_obj, document_obj)
+        %}
+        function do_close_doc(database_obj, file_obj) %#ok<INUSD>
     	    % DO_CLOSE_DOC - close and unlock a DID.DOCUMENT object
     	    %
-    	    % DO_CLOSE_DOC(sqlitedb_obj, DOCUMENT_OBJ)
+    	    % DO_CLOSE_DOC(sqlitedb_obj, FILE_OBJ)
     	    %
-    	    % Close and unlock the file associated with DOCUMENT_OBJ.
+    	    % Close and unlock the file associated with FILE_OBJ.
 
-		    database_obj.db.closebinaryfile(document_obj.fid, document_obj.key, document_obj.doc_unique_id);
-		    document_obj.fclose(); 
+		    %database_obj.db.closebinaryfile(document_obj.fid, document_obj.key, document_obj.doc_unique_id);
+		    file_obj.fclose(); 
 	    end % do_close_doc()
-    end
 
-    % General utility functions used by this class that don't depend on a class object
-    methods (Access=protected)
         function [branch_id, branch_ids] = validate_branch_id(database_obj, branch_id, check_existance)
             % The branch_id must be a non-empty string
             if isstring(branch_id), branch_id = char(branch_id); end
@@ -822,16 +833,18 @@ classdef (Abstract) database < handle
         function doc_id = validate_doc_id(database_obj, doc_id, check_existance)
             % The doc_id must be a non-empty string
             if isstring(doc_id), doc_id = char(doc_id); end
-            if isa(doc_id, 'did_document')
+            try %if isa(doc_id, 'did_document') || isa(doc_id,'did.document')
                 doc_id = doc_id.id();
-            elseif isstruct(doc_id)
-                try
-                    doc_id = doc_id.document_properties.ndi_document.id;
-                catch
+            catch %else
+                if isstruct(doc_id)
+                    try
+                        doc_id = doc_id.document_properties.ndi_document.id;
+                    catch
+                        error('DID:Database:InvalidDocID','Input document must be a valid document object or ID');
+                    end
+                elseif isempty(doc_id) || ~ischar(doc_id)
                     error('DID:Database:InvalidDocID','Input document must be a valid document object or ID');
                 end
-            elseif isempty(doc_id) || ~ischar(doc_id)
-                error('DID:Database:InvalidDocID','Input document must be a valid document object or ID');
             end
 
             % Optionally ensure that the branch exists in the database
@@ -863,4 +876,65 @@ classdef (Abstract) database < handle
         end
     end
 
+    % Preferences management
+    methods
+        function prefNames = get_preference_names(this)
+			% GET_PREFERENCE_NAMES - return a cell-array of all defined pref names
+			%
+			% prefNames = GET_PREFERENCE_NAMES(DATABASE_OBJ)
+			%
+			% Returns a cell-array of all preference names defined in this DB obj.
+            % If no preferences were defined (via SET_PREFERENCE method), an empty
+            % cell-array is returned.
+            %
+            % See also: SET_PREFERENCE, GET_PREFERENCE
+
+            prefNames = this.preferences.keys;
+        end
+        function value = get_preference(this, pref_name, default_value)
+			% GET_PREFERENCE - return value of pre-defined preference in this object.
+			%
+			% value = GET_PREFERENCE(DATABASE_OBJ, PREF_NAME, [DEFAULT_VALUE])
+			%
+			% Return the value pre-stored for the specified PREF_NAME in this obj.
+            % If no value was pre-stored (via the SET_PREFERENCE method), then if
+            % the optional DEFAULT_VALUE input parameter was specified it will be
+            % returned; otherwise, an error will be generated.
+            %
+            % See also: SET_PREFERENCE, GET_PREFERENCE_NAMES
+
+            if nargin < 2 || isempty(pref_name)
+                error('DID:Database:MissingPrefName','The get_preference method requires a valid preference name input parameter')
+            elseif ~ischar(pref_name) && ~isa(pref_name,'string')
+                error('DID:Database:InvalidPrefName','The get_preference method requires a valid preference name input parameter')
+            end
+            try
+                value = this.preferences(pref_name);
+            catch
+                if nargin  > 2
+                    value = default_value;
+                else
+                    error('DID:Database:InvalidPreference','Preference value %s is not defined', pref_name)
+                end
+            end
+        end
+        function set_preference(this, pref_name, value)
+			% SET_PREFERENCE - sets value of specified preference in this object.
+			%
+			% SET_PREFERENCE(DATABASE_OBJ, PREF_NAME, [VALUE])
+			%
+			% Sets the value of the specified PREF_NAME preference in this obj.
+            % If VALUE is not specified, an empty [] value will be set.
+            %
+            % See also: GET_PREFERENCE, GET_PREFERENCE_NAMES
+
+            if nargin < 2 || isempty(pref_name)
+                error('DID:Database:MissingPrefName','The set_preference method requires a valid preference name input parameter')
+            elseif ~ischar(pref_name) && ~isa(pref_name,'string')
+                error('DID:Database:InvalidPrefName','The set_preference method requires a valid preference name input parameter')
+            end
+            if nargin < 3, value = []; end  % default = empty value
+            this.preferences(pref_name) = value;
+        end
+    end
 end % database classdef
