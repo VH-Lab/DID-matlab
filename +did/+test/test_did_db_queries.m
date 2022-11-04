@@ -29,16 +29,21 @@ end
 % Step 3: check the database results
 [b,msg] = did.test.documents.verify_db_document_structure(db, G, docs);
 
+if ~b,
+    return;
+end;
+
+
 % Step 4: test the query capabilities
 
  % First, test did.query operation 'exact_string'
 
+keyboard
 d1 = db.search(did.query('base.id','exact_string',docs{1}.id()));
-
-if ~strcmp(d1.id(),docs{1}.id())
+d1_doc = db.get_docs(d1);
+if ~strcmp(d1_doc{1}.id(),docs{1}.id())
     b = 0;
     msg = ['Exact string operation failed'];
 end;
-
 
 
