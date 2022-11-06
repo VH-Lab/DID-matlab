@@ -139,8 +139,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Add the new branch to the branches table (no docs yet)
             tnow = now;
             hCleanup = this_obj.open_db(); %#ok<NASGU>
-            sqlStr = 'INSERT INTO branches (branch_id,parent_id,timestamp) VALUES (?,?,?)';
-            this_obj.run_sql_noOpen(sqlStr, branch_id, parent_branch_id, tnow);
+            this_obj.insert_into_table('branches', 'branch_id,parent_id,timestamp', branch_id, parent_branch_id, tnow);
 
             % Duplicate the docs from parent branch to the newly-created branch
             sqlStr = ['SELECT doc_idx FROM branch_docs WHERE branch_id="' parent_branch_id '"'];
@@ -148,8 +147,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             if ~isempty(data)
                 doc_idx = [data.doc_idx];
                 for i = 1 : numel(doc_idx)
-                    sqlStr = 'INSERT INTO branch_docs (branch_id,doc_idx,timestamp) VALUES (?,?,?)';
-                    this_obj.run_sql_noOpen(sqlStr,branch_id,doc_idx(i),tnow);
+                    this_obj.insert_into_table('branch_docs','branch_id,doc_idx,timestamp',branch_id,doc_idx(i),tnow);
                 end
             end
         end % do_add_branch()
@@ -253,8 +251,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 json_code = jsonencode(doc_props);
 
                 % Add the new document to docs table
-                sqlStr = 'INSERT INTO docs (doc_id,json_code,timestamp) VALUES (?,?,?)';
-                this_obj.run_sql_noOpen(sqlStr, doc_id, json_code, now); %, document_obj);
+                this_obj.insert_into_table('docs', 'doc_id,json_code,timestamp', doc_id, json_code, now); %, document_obj);
 
                 % Re-fetch the new document record's idx
                 data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
@@ -299,51 +296,67 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
 
             % Add the document reference to the branch_docs table
-            sqlStr = 'INSERT INTO branch_docs (branch_id,doc_idx,timestamp) VALUES (?,?,?)';
-            this_obj.run_sql_noOpen(sqlStr, branch_id, doc_idx, now);
+            this_obj.insert_into_table('branch_docs', 'branch_id,doc_idx,timestamp', branch_id, doc_idx, now);
 
             % Check if the doc refers to any local files that should be cached
             numCachedFiles = 0;
             try files = doc_props.files.file_info; catch, files = []; end
             for idx = 1 : numel(files)
                 try
+                    % Loop over all files defined within the doc
                     filename = sprintf('#%d',idx); %used in catch, if the line below fails
                     filename = files(idx).name;
                     locations = files(idx).locations;
                     for locIdx = 1 : numel(locations)
+                        % Cache this file locally, if specified
                         thisLocation = locations(locIdx);
+                        sourcePath = thisLocation.location;
                         if thisLocation.ingest
-                            sourcePath = thisLocation.location;
                             destDir = this_obj.get_preference('cache_folder');
                             destPath = fullfile(destDir, thisLocation.uid);
                             try
-                                if strcmpi(thisLocation.location_type, 'file')
+                                file_type = lower(strtrim(thisLocation.location_type));
+                                if strcmpi(file_type, 'file')
                                     [status,errMsg] = copyfile(sourcePath, destPath, 'f');
-                                else
+                                else  % url
                                     websave(destPath, sourcePath);
+                                    status = exist(destPath,'file');
                                 end
                             catch err
                                 status = false;
                                 errMsg = err.message;
                             end
                             if ~status
-                                warning('DID:SQLiteDB:add_doc','Failed to cache file "%s" referenced in document object: %s',filename,errMsg);
+                                warning('DID:SQLiteDB:add_doc','Failed to cache "%s" %s referenced in document object: %s',filename,file_type,errMsg);
+                                destPath = '';
                             else
                                 if thisLocation.delete_original
                                     delete(sourcePath);
                                 end
-                                this_obj.insert_doc_data_field(doc_idx, 'files', 'cached_file_path', destPath);
+                                %this_obj.insert_doc_data_field(doc_idx, 'files', 'cached_file_path', destPath);
                                 numCachedFiles = numCachedFiles + 1;
                             end
+                        else
+                            destPath = '';
                         end
+
+                        % Store file information in the database (files tables)
+                        fieldNames = 'doc_idx, filename, uid, orig_location, cached_location, type, parameters';
+                        this_obj.insert_into_table('files',fieldNames, ...
+                            doc_idx, filename, thisLocation.uid, ...
+                            sourcePath, destPath, ...
+                            thisLocation.location_type, ...
+                            thisLocation.parameters);
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
                 end
             end
+            %{
             if numCachedFiles > 1
                 warning('DID:SQLiteDB:add_doc','Multiple files specified for caching in document object');
             end
+            %}
         end % do_add_doc()
 
         function document_obj = do_get_doc(this_obj, document_id, varargin)
@@ -470,17 +483,22 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %}
         end % do_remove_doc()
 
-        function file_obj = do_open_doc(this_obj, document_id, varargin)
+        function file_obj = do_open_doc(this_obj, document_id, filename, varargin)
 	        % do_open_doc - Return a did.file.readonly_fileobj for the specified document ID
 	        %
-	        % file_obj = do_open_doc(this_obj, document_id, [params])
+	        % file_obj = do_open_doc(this_obj, document_id, [filename], [params])
 	        %
-			% Returns the DID.FILE.READONLY_FILEOBJ object for the specified doc. 
+			% Return a DID.FILE.READONLY_FILEOBJ object for the data file within
+            % the specified DOCUMENT_ID. If DOCUMENT_ID includes multiple files,
+            % the requested file can be specified using an optional FILENAME.
+			%
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
             % constructor method.
+            %
+            % Only the first matching file that is found is returned.
             %
             % Inputs:
             %    this_obj - this class object
@@ -491,30 +509,66 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %    file_obj - a did.file.readonly_fileobj object (possibly empty)
 
             % Get the cached filepath to the specified document
-            query_str = ['SELECT value FROM docs,fields,doc_data ' ...
+            query_str = ['SELECT cached_location,orig_location,uid,type ' ...
+                         '  FROM docs,files ' ...
                          ' WHERE docs.doc_id="' document_id '" ' ...
-                         '   AND fields.field_name="files.cached_file_path" ' ...
-                         '   AND doc_data.field_idx=fields.field_idx ' ...
-                         '   AND doc_data.doc_idx=docs.doc_idx'];
-            data = this_obj.run_sql_query(query_str);
+                         '   AND files.doc_idx=docs.doc_idx'];
+            if nargin > 2 && ~isempty(filename)
+                query_str = [query_str ' AND files.filename="' filename '"'];
+            else
+                filename = '';  % used in catch block below
+            end
+            data = this_obj.run_sql_query(query_str, true);  %structArray=true
             if isempty(data)
-                error('DID:SQLITEDB:DOC_ID','Document id "%s" does not have a readable cached file defined',document_id);
-            end
-
-            % Ensure that the cached file exists
-            data = data{1};
-            if iscell(data)
-                if numel(data) > 1
-                    warning('DID:SQLITEDB:open','Multiple cached files defined for document "%s" - opening %s',document_id,data{end})
+                if isempty(filename)
+                    error('DID:SQLITEDB:open','Document id "%s" does not include any readable file',document_id);
+                else
+                    error('DID:SQLITEDB:open','Document id "%s" does not include a file named "%s"',document_id,filename);
                 end
-                data = data{end};
-            end
-            if ~exist(data,'file')
-                error('DID:SQLITEDB:open','Defined cached file %s for document id "%s" does not exist',data,document_id);
             end
 
-            % Create a did.file.readonly_fileobj wrapper obj for the cached file
-            file_obj = did.file.readonly_fileobj('fullpathfilename',data);
+            % First try to access the cached file, if defined and if exists
+            file_paths = {data.cached_location};
+            file_paths = file_paths(~cellfun('isempty',file_paths));
+            for idx = 1 : numel(file_paths)
+                this_file = file_paths{idx};
+                if exist(this_file,'file')
+                    % Return a did.file.readonly_fileobj wrapper obj for the cached file
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
+                    return
+                end
+            end
+
+            % No cached file exists, try to access original location(s)
+            for idx = 1 : numel(data)  %data is a struct array
+                this_file_struct = data(idx);
+                sourcePath = this_file_struct.orig_location;
+                destDir = this_obj.get_preference('cache_folder');
+                destPath = fullfile(destDir, this_file_struct.uid);
+                try
+                    file_type = lower(strtrim(this_file_struct.type));
+                    if strcmpi(file_type,'file')
+                        [status,errMsg] = copyfile(sourcePath, destPath, 'f');
+                        if ~status, error(errMsg); end
+                    else  % url
+                        websave(destPath, sourcePath);
+                        if ~exist(destPath,'file'), error(' '); end
+                    end
+                    % Return a did.file.readonly_fileobj wrapper obj for the cached file
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',sourcePath,varargin{:});
+                    return
+                catch err
+                    errMsg = strtrim(err.message); if ~isempty(errMsg), errMsg=[': ' errMsg]; end %#ok<AGROW>
+                    warning('DID:SQLITEDB:open','Cannot access the %s "%s" in document "%s"%s',file_type,sourcePath,document_id,errMsg);
+                end
+            end
+
+            % No cached file was found or is accessible - return an error
+            if isempty(filename)
+                error('DID:SQLITEDB:open','No file in document "%s" can be accessed',document_id);
+            else
+                error('DID:SQLITEDB:open','The file "%s" in document "%s" cannot be accessed',filename,document_id);
+            end
         end
     end
 
@@ -562,66 +616,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             else % new database
 
+                % Use Types BLOBs to store data values of any type/size
+                % http://mksqlite.sourceforge.net/d2/dd2/example_6.html
+                mksqlite('typedBLOBs', 2);
+
                 % Create empty default tables in the newly-created database
-                try
-                    % Use Types BLOBs to store data values of any type/size
-                    % http://mksqlite.sourceforge.net/d2/dd2/example_6.html
-                    mksqlite('typedBLOBs', 2);
-
-                    %{
-                    % Create "app" table
-                    this_obj.create_table('app', {'field TEXT NOT NULL', 'value'});
-                    this_obj.run_sql_noOpen('INSERT INTO app VALUES ("name",?)',    filename);
-                    this_obj.run_sql_noOpen('INSERT INTO app VALUES ("creation",?)',this_obj.getUnixTime());
-                    %}
-
-                    %% Create "branches" table
-                    this_obj.create_table('branches', ...
-                                             {'branch_id TEXT NOT NULL UNIQUE', ...
-                                              'parent_id TEXT', ...
-                                              'timestamp NUMERIC', ...
-                                              'FOREIGN KEY(parent_id) REFERENCES branches(branch_id)', ...
-                                              'PRIMARY KEY(branch_id)'});
-
-                    %% Create "docs" table
-                    this_obj.create_table('docs', ...
-                                             {'doc_id    TEXT    NOT NULL UNIQUE', ...
-                                              'doc_idx   INTEGER NOT NULL UNIQUE', ...
-                                              'json_code TEXT', ...
-                                              'timestamp NUMERIC', ...
-                                              ... 'object', ... %BLOB
-                                              'PRIMARY KEY(doc_idx AUTOINCREMENT)'});
-
-                    %% Create "branch_docs" table
-                    this_obj.create_table('branch_docs', ...
-                                             {'branch_id TEXT    NOT NULL', ...
-                                              'doc_idx   INTEGER NOT NULL', ...
-                                              'timestamp NUMERIC', ...
-                                              'FOREIGN KEY(branch_id) REFERENCES branches(branch_id)', ...
-                                              'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
-                                              'PRIMARY KEY(branch_id,doc_idx)'});
-
-                    %% Create "fields" table
-                    this_obj.create_table('fields', ...
-                                             {'class      TEXT NOT NULL', ...
-                                              'field_name TEXT NOT NULL UNIQUE', ...
-                                              'json_name  TEXT NOT NULL', ...
-                                              'field_idx  INTEGER NOT NULL UNIQUE DEFAULT 1', ...
-                                              'PRIMARY KEY(field_idx AUTOINCREMENT)'});
-
-                    %% Create "doc_data" table
-                    this_obj.create_table('doc_data', ...
-                                             {'doc_idx   INTEGER NOT NULL', ...
-                                              'field_idx INTEGER NOT NULL', ...
-                                              'value', ... %BLOB - any data type
-                                              'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
-                                              'FOREIGN KEY(field_idx) REFERENCES fields(field_idx)'});
-
-                catch err
-                    this_obj.close_db();
-                    try delete(filename); catch, end
-                    error('DID:SQLITEDB:CREATE','Error creating %s as a new DID SQLite database: %s',filename,err.message);
-                end
+                this_obj.create_db_tables();
 
                 % Close the database
                 this_obj.close_db();
@@ -638,7 +638,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 data = mksqlite(this_obj.dbid, query_str, varargin{:});
             catch err
                 query_str = regexprep(query_str, {' +',' = '}, {' ','='});
-                fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\n',query_str)
+                fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\nError cause: %s\n',query_str,err.message)
                 rethrow(err)
             end
         end
@@ -646,6 +646,69 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         function close_db(this_obj)
             % Close the database file (ignore any errors)
             try mksqlite(this_obj.dbid, 'close'); catch, end
+        end
+
+        function create_db_tables(this_obj)
+            try
+                %% Create "branches" table
+                this_obj.create_table('branches', ...
+                    {'branch_id TEXT NOT NULL UNIQUE', ...
+                     'parent_id TEXT', ...
+                     'timestamp NUMERIC', ...
+                     'FOREIGN KEY(parent_id) REFERENCES branches(branch_id)', ...
+                     'PRIMARY KEY(branch_id)'});
+
+                %% Create "docs" table
+                this_obj.create_table('docs', ...
+                    {'doc_id    TEXT    NOT NULL UNIQUE', ...
+                     'doc_idx   INTEGER NOT NULL UNIQUE', ...
+                     'json_code TEXT', ...
+                     'timestamp NUMERIC', ...
+                     ... 'object', ... %BLOB
+                     'PRIMARY KEY(doc_idx AUTOINCREMENT)'});
+
+                %% Create "branch_docs" table
+                this_obj.create_table('branch_docs', ...
+                    {'branch_id TEXT    NOT NULL', ...
+                     'doc_idx   INTEGER NOT NULL', ...
+                     'timestamp NUMERIC', ...
+                     'FOREIGN KEY(branch_id) REFERENCES branches(branch_id)', ...
+                     'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
+                     'PRIMARY KEY(branch_id,doc_idx)'});
+
+                %% Create "fields" table
+                this_obj.create_table('fields', ...
+                    {'class      TEXT NOT NULL', ...
+                     'field_name TEXT NOT NULL UNIQUE', ...
+                     'json_name  TEXT NOT NULL', ...
+                     'field_idx  INTEGER NOT NULL UNIQUE DEFAULT 1', ...
+                     'PRIMARY KEY(field_idx AUTOINCREMENT)'});
+
+                %% Create "doc_data" table
+                this_obj.create_table('doc_data', ...
+                    {'doc_idx   INTEGER NOT NULL', ...
+                     'field_idx INTEGER NOT NULL', ...
+                     'value', ... %BLOB - any data type
+                     'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
+                     'FOREIGN KEY(field_idx) REFERENCES fields(field_idx)'});
+
+                %% Create "files" table
+                this_obj.create_table('files', ...
+                    {'doc_idx         INTEGER NOT NULL', ...
+                     'filename        TEXT NOT NULL', ...
+                     'uid             TEXT NOT NULL UNIQUE', ...
+                     'orig_location   TEXT NOT NULL', ...
+                     'cached_location TEXT',          ... % empty if not cached
+                     'type            TEXT NOT NULL', ...
+                     'parameters      TEXT',          ... % normally empty
+                     'FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx)', ...
+                     'PRIMARY KEY(doc_idx,filename,uid)'});
+
+            catch err
+                this_obj.close_db();
+                try delete(filename); catch, end
+                error('DID:SQLITEDB:CREATE','Error creating %s as a new DID SQLite database: %s',filename,err.message);
+            end
         end
 
         function create_table(this_obj, table_name, columns, extra)
@@ -662,6 +725,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             this_obj.run_sql_noOpen(sql_str);
         end
 
+        function insert_into_table(this_obj, table_name, field_names, varargin)
+            queryStrs = regexprep(field_names,'[^,]+','?');
+            sqlStr = ['INSERT INTO ' table_name ' (' field_names ') VALUES (' queryStrs ')'];
+            this_obj.run_sql_noOpen(sqlStr, varargin{:});
+        end
+
         function insert_doc_data_field(this_obj, doc_idx, group_name, field_name, value)
             % Fetch the field_id (auto-incremented) for the specified field_name
             field_name = regexprep(strtrim(field_name),'___','.');       % ___ => .
@@ -671,13 +740,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             results = this_obj.run_sql_noOpen('SELECT field_idx FROM fields WHERE field_name=?', field_name);
             if isempty(results)
                 % Insert a new field key and rerun the query
-                this_obj.run_sql_noOpen('INSERT INTO fields (class,field_name,json_name) VALUES (?,?,?)', group_name, field_name, json_name);
+                this_obj.insert_into_table('fields','class,field_name,json_name', group_name, field_name, json_name);
                 this_obj.insert_doc_data_field(doc_idx, group_name, field_name, value);
             else
                 % Add a new field with the specified field_id to the doc_data table
                 field_idx = results(1).field_idx;
                 %if ~isempty(value)
-                    this_obj.run_sql_noOpen('INSERT INTO doc_data (doc_idx,field_idx,value) VALUES (?,?,?)', doc_idx, field_idx, value);
+                    this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
                 %end
             end
         end

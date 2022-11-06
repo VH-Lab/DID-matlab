@@ -32,7 +32,7 @@ classdef (Abstract) database < handle
 %   add_doc     - Add a did.document to the current or specified branch
 %   get_docs    - Return did.document(s) that match the specified document ID(s)
 %   remove_doc  - Remove a did.document from the current or specified branch
-%   open_doc    - Open binary portion of a did.document for read/write (returns a did.binarydoc)
+%   open_doc    - Return a did.file.fileobj wrapper for a file in a did.document
 %   close_doc   - Close an open did.binarydoc
 %
 %   get_preference_names - returns a cell-array of defined pref names for this database
@@ -524,17 +524,25 @@ classdef (Abstract) database < handle
             end
         end % remove_doc()
 
-        function file_obj = open_doc(database_obj, document_id, varargin)
+        function file_obj = open_doc(database_obj, document_id, filename, varargin)
 			% OPEN_DOC - open and lock a specified DID.DOCUMENT in the database
 			%
-			% FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID)
+			% FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID, [FILENAME], [PARAMS])
 			%
-			% Return a DID.FILE.READONLY_FILEOBJ object for the specified DOCUMENT_ID. 
+			% Return a DID.FILE.READONLY_FILEOBJ object for the data file within
+            % the specified DOCUMENT_ID. If DOCUMENT_ID includes multiple files,
+            % the requested file can be specified using an optional FILENAME.
 			%
 			% DOCUMENT_ID can be either the document id of a DID.DOCUMENT, or a
             % DID.DOCUMENT object itsef.
+            %
+            % Optional PARAMS may be specified as P-V pairs of a parameter name
+            % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
+            % constructor method.
 			%
-			% Note: close the document with FILE_OBJ.close() when finished.
+			% Notes:
+            %   1. Only the first matching file that is found is returned.
+            %   2. Close the document with FILE_OBJ.close() when finished.
             %
             % See also: CLOSE_DOC
 
@@ -542,6 +550,7 @@ classdef (Abstract) database < handle
             document_id = database_obj.validate_doc_id(document_id, false);
 
             % Open the document
+            if nargin > 2, varargin = [filename, varargin]; end
             file_obj = database_obj.do_open_doc(document_id, varargin{:});
         end % open_doc()
 
@@ -588,7 +597,7 @@ classdef (Abstract) database < handle
             if ~returnStruct && isstruct(data)
                 fn = fieldnames(data);
                 numFields = numel(fn);
-                dataTable = struct2table(data);
+                dataTable = struct2table(data,'AsArray',true);
                 dataCells = {};
                 for i = numFields : -1 : 1
                     results = dataTable.(fn{i});
@@ -784,7 +793,7 @@ classdef (Abstract) database < handle
 		do_add_doc(database_obj, document_obj, branch_id, varargin)
 		document_obj = do_get_doc(database_obj, document_id, varargin)
 		do_remove_doc(database_obj, document_id, branch_id, varargin)
-        file_obj = do_open_doc(database_obj, document_id, varargin)
+        file_obj = do_open_doc(database_obj, document_id, filename, varargin)
     end
 
     % General utility functions used by this class that don't depend on a class object
