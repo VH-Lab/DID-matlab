@@ -2,9 +2,9 @@
 	"classname":	"demoC",
 	"superclasses": [ "base" ],
 	"depends_on": [
-		{"name": "item1", "mustbenotempty": 1},
-		{"name": "item2", "mustbenotempty": 1},
-		{"name": "item3", "mustbenotempty": 1}
+		{"name": "item1", "mustbenotempty": 0},
+		{"name": "item2", "mustbenotempty": 0},
+		{"name": "item3", "mustbenotempty": 0}
 	 ],
 	"file": [ ],
 	"demoC": [
