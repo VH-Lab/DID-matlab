@@ -2,7 +2,7 @@
 
 ## Schema outline
 
-```
+```json
 {
 	"classname": "classname",
 	"superclasses": [ "class1", "class2", "class3" ],
