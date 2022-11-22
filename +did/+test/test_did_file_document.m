@@ -41,7 +41,7 @@ if ~isfolder(dirname),
 	mkdir(dirname);
 end;
 
-doc = did.document('demoFile');
+doc = did.document('demoFile','demoFile.value',1);
 
 for i=1:numel(fname),
 	fullfilename{i} = fullfile(dirname,fname{i});
