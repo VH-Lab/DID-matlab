@@ -488,9 +488,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 	        %
 	        % file_obj = do_open_doc(this_obj, document_id, [filename], [params])
 	        %
-			% Return a DID.FILE.READONLY_FILEOBJ object for the data file within
-            % the specified DOCUMENT_ID. If DOCUMENT_ID includes multiple files,
-            % the requested file can be specified using an optional FILENAME.
+			% Return a DID.FILE.READONLY_FILEOBJ object for a data file within
+            % the specified DOCUMENT_ID. The requested filename must be
+            % specified using the (mandatory) FILENAME parameter.
 			%
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
@@ -503,6 +503,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Inputs:
             %    this_obj - this class object
             %    document_id - unique document ID for the requested document
+            %    filename - name of requested data file referenced in the document
             %    params - optional parameters to DID.FILE.FILEOBJ constructor
             %
             % Outputs:
@@ -516,7 +517,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             if nargin > 2 && ~isempty(filename)
                 query_str = [query_str ' AND files.filename="' filename '"'];
             else
-                filename = '';  % used in catch block below
+                error('DID:SQLITEDB:open','The requested filename must be specified in open_doc()');
+                %filename = '';  % used in catch block below
             end
             data = this_obj.run_sql_query(query_str, true);  %structArray=true
             if isempty(data)

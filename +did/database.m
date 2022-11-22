@@ -527,11 +527,11 @@ classdef (Abstract) database < handle
         function file_obj = open_doc(database_obj, document_id, filename, varargin)
 			% OPEN_DOC - open and lock a specified DID.DOCUMENT in the database
 			%
-			% FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID, [FILENAME], [PARAMS])
+			% FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
 			%
-			% Return a DID.FILE.READONLY_FILEOBJ object for the data file within
-            % the specified DOCUMENT_ID. If DOCUMENT_ID includes multiple files,
-            % the requested file can be specified using an optional FILENAME.
+			% Return a DID.FILE.READONLY_FILEOBJ object for a data file within
+            % the specified DOCUMENT_ID. The requested filename should be
+            % specified using the (mandatory) FILENAME parameter.
 			%
 			% DOCUMENT_ID can be either the document id of a DID.DOCUMENT, or a
             % DID.DOCUMENT object itsef.
@@ -540,9 +540,7 @@ classdef (Abstract) database < handle
             % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
             % constructor method.
 			%
-			% Notes:
-            %   1. Only the first matching file that is found is returned.
-            %   2. Close the document with FILE_OBJ.close() when finished.
+			% Note: Close the document with FILE_OBJ.close() when finished.
             %
             % See also: CLOSE_DOC
 
@@ -550,8 +548,8 @@ classdef (Abstract) database < handle
             document_id = database_obj.validate_doc_id(document_id, false);
 
             % Open the document
-            if nargin > 2, varargin = [filename, varargin]; end
-            file_obj = database_obj.do_open_doc(document_id, varargin{:});
+            %if nargin > 2, varargin = [filename, varargin]; end %filename is NOT optional!
+            file_obj = database_obj.do_open_doc(document_id, filename, varargin{:});
         end % open_doc()
 
         function close_doc(database_obj, file_obj)
