@@ -1,6 +1,6 @@
 {
 	"classname":	"demoB",
-	"superclasses": [ "base" ],
+	"superclasses": [ "base" , "demoA"],
 	"depends_on": [ ],
 	"file": [ ],
 	"demoB": [
