@@ -12,7 +12,7 @@
 	],
 	"file": [
 		{ "name": "name1.ext", "mustbenotempty", 1},
-		{ "name": "name1.ext", "mustbenotempty", 1}
+		{ "name": "name2.ext", "mustbenotempty", 1}
 	],
 	"field": [
 		{
