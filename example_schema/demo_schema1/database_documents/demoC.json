@@ -1,7 +1,7 @@
 {
 	"document_class": {
 		"definition":						"$DIDDOCUMENT_EX1\/demoC.json",
-		"validation":						"$DIDSCHEMA_EX1\/demoC.json",
+		"validation":						"$DIDSCHEMA_EX1\/demoC.schema.json",
 		"class_name":						"did_demoC",
 		"property_list_name":					"demoC",
 		"class_version":					1,
