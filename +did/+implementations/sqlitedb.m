@@ -185,6 +185,18 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 parent_branch_id = '';
             else
                 parent_branch_id = data{1};
+                if iscell(parent_branch_id)
+                    if isempty(parent_branch_id)
+                        parent_branch_id = '';
+                    elseif numel(parent_branch_id) == 1
+                        parent_branch_id = char(parent_branch_id{1}); % [] => ''
+                    else
+                        % multiple values - leave as cell array (maybe error?)
+                        warning('DID:SQLITEDB:Multiple_Parents','Multiple branch parents found for branch %s',branch_id);
+                    end
+                elseif ~ischar(parent_branch_id)
+                    parent_branch_id = char(parent_branch_id); % [] => ''
+                end
             end
         end % do_get_branch_parent()
 
