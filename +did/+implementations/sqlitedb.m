@@ -192,7 +192,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         parent_branch_id = char(parent_branch_id{1}); % [] => ''
                     else
                         % multiple values - leave as cell array (maybe error?)
-                        warning('DID:SQLITEDB:Multiple_Parents','Multiple branch parents found for branch %s',branch_id);
+                        warning('DID:SQLITEDB:Multiple_Parents','Multiple branch parents found for the %s branch',branch_id);
                     end
                 elseif ~ischar(parent_branch_id)
                     parent_branch_id = char(parent_branch_id); % [] => ''
@@ -292,7 +292,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                                             ' WHERE doc_idx=? AND branch_id=?'], ...
                                            doc_idx, branch_id);
             if ~isempty(data)
-                errMsg = sprintf('Document %s already exists in branch %s', doc_id, branch_id);
+                errMsg = sprintf('Document %s already exists in the %s branch', doc_id, branch_id);
                 %assert(isempty(data),'DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg)
                 params = this_obj.parseOptionalParams(varargin{:});
                 try doOnDuplicate = params.OnDuplicate; catch, doOnDuplicate = 'error'; end
@@ -425,7 +425,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 	    end % do_get_doc()
 
         function do_remove_doc(this_obj, document_id, branch_id, varargin)
-            % do_remove - Remove specified DID document from the specified branch
+            % do_remove_doc - Remove specified DID document from the specified branch
 	        %
 	        % do_remove_doc(this_obj, document_id, branch_id, [params])
 	        %
@@ -463,7 +463,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %doc_id = [doc_id '/' branch_id];
             data = this_obj.run_sql_noOpen(sqlStr);
             if isempty(data)
-                errMsg = sprintf('Cannot remove document %s - document not found in branch %s', doc_id, branch_id);
+                errMsg = sprintf('Cannot remove document %s - document not found in the %s branch', doc_id, branch_id);
                 %assert(~isempty(data),'DID:SQLITEDB:NO_SUCH_DOC','%s',errMsg)
                 params = this_obj.parseOptionalParams(varargin{:});
                 try doOnMissing = params.OnMissing; catch, doOnMissing = 'error'; end

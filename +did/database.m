@@ -8,7 +8,7 @@ classdef (Abstract) database < handle
 % override the corresponding do_* methods, which are called by the public methods.
 %
 % Properties (read-only):
-%   connection - Connection details for the database (might be a file name, directory name, or struct)
+%   connection - Database connection details (e.g. file/folder name or a struct)
 %   dbid       - Database ID (set by the specific implementation class)
 %   version    - Database version (set by the specific implementation class)
 %   branch_id  - Branch ID that we are currently viewing/editing
@@ -20,47 +20,47 @@ classdef (Abstract) database < handle
 %   all_branch_ids     - Return a cell-array of all branch IDs in the database
 %   add_branch         - Create a new branch, at the current or specified branch
 %   set_branch         - Set the current branch used by subsequent queries/actions
-%   get_branch         - Return the current branch used by subsequent queries/actions
+%   get_branch         - Return current branch, used by subsequent queries/actions
 %   get_branch_parent  - Return the parent branch of the current/specified branch
-%   get_sub_branches   - Returns array of sub-branches of the current/specified branch
+%   get_sub_branches   - Return array of sub-branches of current/specified branch
 %   freeze_branch      - Mark a branch as protected from further modification
 %   is_branch_editable - Is current/specified branch locked for modification?
 %   delete_branch      - Delete the current or specified branch, if not frozen
 %   display_branches   - Display branches hierarchy under specified branch
 %
 %   get_doc_ids - Return a cell-array of all document IDs in the specific branch
-%   add_doc     - Add a did.document to the current or specified branch
+%   add_docs    - Add did.document(s) to the current or specified branch
 %   get_docs    - Return did.document(s) that match the specified document ID(s)
-%   remove_doc  - Remove a did.document from the current or specified branch
+%   remove_docs - Remove did.document(s) from the current or specified branch
 %   open_doc    - Return a did.file.fileobj wrapper for a file in a did.document
 %   close_doc   - Close an open did.binarydoc
 %
-%   get_preference_names - returns a cell-array of defined pref names for this database
-%   set_preference - sets a value to a preference name in this database
-%   get_preference - gets the value of a preference name in this database
+%   get_preference_names - return cell-array of defined database pref names
+%   set_preference - set new value to a preference name in this database
+%   get_preference - get the value of a preference name in this database
 %
 %   search - Search current/specified branch for did.document(s) matching a did.query
-%   run_sql_query - Run the specified SQL query in the database
+%   run_sql_query - Run the specified SQL query in the database, return results
 %
 % Protected methods with a default implementation that *MAY* be overloaded:
-%   do_search      - implements the core logic for the search() method
-%   do_close_doc   - implements the core logic for the close_doc() method
+%   do_search            - core logic for database.search()
+%   do_close_doc         - core logic for database.close_doc()
 %   delete - destructor (typically closes the database connection/file, if open)
 % 
 % Protected methods that *MUST* be overloaded by specific subclass implementations:
-%   do_run_sql_query  - implements the core logic for the run_sql_query() method
+%   do_run_sql_query     - core logic for database.run_sql_query()
 %
-%   do_get_branch_ids - implements the core logic for the all_branch_ids() method
-%   do_add_branch     - implements the core logic for the add_branch() method
-%   do_delete_branch  - implements the core logic for the delete_branch() method
-%   do_get_branch_parent - implements core logic for the get_branch_parent() method
-%   do_get_sub_branches  - implements core logic for the get_sub_branches() method
+%   do_get_branch_ids    - core logic for database.all_branch_ids()
+%   do_add_branch        - core logic for database.add_branch()
+%   do_delete_branch     - core logic for database.delete_branch()
+%   do_get_branch_parent - core logic for database.get_branch_parent()
+%   do_get_sub_branches  - core logic for database.get_sub_branches()
 %
-%   do_get_doc_ids    - implements the core logic for the all_doc_ids() method
-%   do_add_doc        - implements the core logic for the add_doc() method
-%   do_get_doc        - implements the core logic for the get_doc() method, for a single doc_id
-%   do_open_doc       - implements the core logic for the open_doc() method
-%   do_remove_doc     - implements the core logic for the remove_doc() method
+%   do_get_doc_ids       - core logic for database.all_doc_ids()
+%   do_add_doc           - core logic for database.add_docs(),    for a single doc
+%   do_get_doc           - core logic for database.get_doc(),     for a single doc
+%   do_open_doc          - core logic for database.open_doc(),    for a single doc
+%   do_remove_doc        - core logic for database.remove_docs(), for a single doc
 
     % Read-only properties
 	properties (SetAccess=protected, GetAccess=public)
@@ -360,25 +360,35 @@ classdef (Abstract) database < handle
             doc_ids = database_obj.do_get_doc_ids(branch_id);
         end % all_doc_ids()
 
-        function add_doc(database_obj, document_obj, branch_id, varargin)
-			% ADD - add a DID.DOCUMENT object to the specified branch
+        function add_docs(database_obj, document_objs, branch_id, varargin)
+			% ADD_DOCS - add did.document object(s) to the specified branch
 			%
-			% DATABASE_OBJ = ADD(DATABASE_OBJ, DOCUMENT_OBJ, [BRANCH_ID], [PARAMS...])
+			% ADD_DOCS(DATABASE_OBJ, DOCUMENT_OBJS, [BRANCH_ID], [PARAMETERS...])
 			%
-			% Adds the document DOCUMENT_OBJ to the specified BRANCH_ID.
+			% Adds the DOCUMENT_OBJS to the specified BRANCH_ID, subject to a
+            % schema validation check. DOCUMENT_OBJS may be a single did.document
+            % object, struct, or an array of such (either regular or cell array).
+            %
             % If BRANCH_ID is empty or not specified, the current branch is used.
             %
             % An error is generated if the branch is frozen and cannot be modified.
 			%
-            % Optional PARAMS may be specified as P-V pairs of a parameter name
-            % followed by parameter value. The following parameters are possible:
+            % Optional PARAMETERS may be specified as P-V pairs of parameter name
+            % followed by parameter value. The following parameters are accepted:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
 
             % Ensure we got a valid input doc object
-            if isempty(document_obj)
+            if isempty(document_objs)
                 return; % nothing to do
-            elseif ~(isa(document_obj,'did.document') || isa(document_obj,'ndi.document')) && ~isstruct(document_obj)
-                error('DID:Database:InvalidDoc','Invalid doc specified in did.database.add_doc() call - must be a valid did.document object');
+            else
+                % Ensure all documents are either a struct or did.document object
+                for idx = 1 : numel(document_objs)
+                    doc = document_objs(idx);
+                    if iscell(doc), doc = doc{1}; end
+                    if ~(isa(doc,'did.document') || isa(doc,'ndi.document')) && ~isstruct(doc)
+                        error('DID:Database:InvalidDoc','Invalid doc specified in did.database.add_docs() call - must be a valid did.document object');
+                    end
+                end
             end
 
             % Parse the input parameters
@@ -402,25 +412,32 @@ classdef (Abstract) database < handle
             % Ensure branch IDs validity
             branch_id = database_obj.validate_branch_id(branch_id);
 
-            % Call the specific database's addition method
-            database_obj.do_add_doc(document_obj, branch_id, varargin{:});
+            % Ensure that the input docs pass schema validation
+            % TODO
+
+            % Call the database's addition method separately for each doc
+            for idx = 1 : numel(document_objs)
+                doc = document_objs(idx);
+                if iscell(doc), doc = doc{1}; end
+                database_obj.do_add_doc(doc, branch_id, varargin{:});
+            end
         end % add_doc()
 
         function document_objs = get_docs(database_obj, document_ids, varargin)
-			% GET_DOC - Return DID.DOCUMENT object(s) that match the specified doc ID(s)
+			% GET_DOCS - Return did.document object(s) that match the specified doc ID(s)
 			%
-			% DOCUMENT_OBJS = GET_DOC(DATABASE_OBJ, [DOCUMENT_IDS], [PARAMS]) 
+			% DOCUMENT_OBJS = GET_DOCS(DATABASE_OBJ, [DOCUMENT_IDS], [PARAMETERS...]) 
 			%
-			% Returns the DID.DOCUMENT object with the specified by DOCUMENT_IDS. 
-            % DOCUMENT_IDS may be a scalar ID string, or a cell-array of IDs
+			% Returns the did.document object for the specified by DOCUMENT_IDS. 
+            % DOCUMENT_IDS may be a scalar ID string, or an array of IDs
             % (in this case, an array of corresponding doc objects is returned).
             %
             % If DOCUMENT_IDS is not specified, the get_doc_ids() method is used
             % to fetch the document IDs of the current branch, which are then
             % used by this method.
             %
-            % Optional PARAMS may be specified as P-V pairs of a parameter name
-            % followed by parameter value. The following parameters are possible:
+            % Optional PARAMETERS may be specified as P-V pairs of parameter name
+            % followed by parameter value. The following parameters are accepted:
             %   - 'OnMissing' - followed by 'ignore', 'warn', or 'error' (default)
 
             % Parse the input parameters
@@ -449,7 +466,7 @@ classdef (Abstract) database < handle
             end
 
             % Loop over all specified doc_ids
-            if ~iscell(document_ids), document_ids = {document_ids}; end
+            document_ids = database_obj.normalizeDocIDs(document_ids);
             numDocs = numel(document_ids);
             for i = 1 : numDocs
                 % Fetch the document object from the database
@@ -463,33 +480,32 @@ classdef (Abstract) database < handle
             end
         end % get_doc()
 
-        function remove_doc(database_obj, document_ids, branch_id, varargin)
-			% REMOVE - remove a document from an DATABASE
+        function remove_docs(database_obj, documents, branch_id, varargin)
+			% REMOVE_DOCS - remove did.document object(s) from a database branch
 			%
-			% DATABASE_OBJ = REMOVE(DATABASE_OBJ, DOCUMENT_IDS, [BRANCH_ID], [PARAMS...])
+			% REMOVE_DOCS(DATABASE_OBJ, DOCUMENTS, [BRANCH_ID], [PARAMETERS...])
 			%
-			% Removes specified DOCUMENT_IDS from the specified BRANCH_ID.
+			% Removes the specified DOCUMENTS from the specified database branch.
+            % DOCUMENTS may be a single document or an array of documents.
+            % Any of the specified DOCUMENTS may be a did.document object,
+            % or a unique document ID for a did.document object.
+            %
             % If BRANCH_ID is empty or not specified, the current branch is used.
             %
-            % DOCUMENT_IDS may be a single document ID or cell array of IDs.
-            % Any of the specified DOCUMENT_IDS may be a DID.DOCUMENT object
-            % or a unique document ID for such a DID.DOCUMENT object.
-            %
             % An error is generated if the specified BRANCH_ID does not exist
-            % in the database, or if any of the DOCUMENT_IDS do not exist
-            % in the specified branch.
+            % in the database. Depending on the value of the optional OnMissing
+            % parameter, an error may also be generated if any of the DOCUMENTS
+            % do not exist in the specified branch.
             %
-            % Optional PARAMS may be specified as P-V pairs of a parameter name
-            % followed by parameter value. The following parameters are possible:
+            % Optional PARAMETERS may be specified as P-V pairs of parameter name
+            % followed by parameter value. The following parameters are accepted:
             %   - 'OnMissing' - followed by 'ignore', 'warn', or 'error' (default)
 
-            % Parse the input document_ids
-            if isempty(document_ids)
-                return; % nothing to do
+            % Parse the input document_ids, convert to a cell-array of char ids
+            if isempty(documents)
+                return  % nothing to do
             end
-            if ~iscell(document_ids)
-                document_ids = {document_ids};
-            end
+            documents = database_obj.normalizeDocIDs(documents);
 
             % Parse the input parameters
             if mod(numel(varargin),2) == 1  % odd number of values
@@ -513,9 +529,9 @@ classdef (Abstract) database < handle
             branch_id = database_obj.validate_branch_id(branch_id);
 
             % Loop over all the specified documents
-            for i = 1 : numel(document_ids)
+            for i = 1 : numel(documents)
                 % Replace did.document object reference with its unique doc id
-                doc_id = database_obj.validate_doc_id(document_ids{i}, false);
+                doc_id = database_obj.validate_doc_id(documents{i}, false);
    
                 % Call the specific database's removal method
                 database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
@@ -525,7 +541,7 @@ classdef (Abstract) database < handle
         end % remove_doc()
 
         function file_obj = open_doc(database_obj, document_id, filename, varargin)
-			% OPEN_DOC - open and lock a specified DID.DOCUMENT in the database
+			% OPEN_DOC - open and lock a specified did.document in the database
 			%
 			% FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
 			%
@@ -533,8 +549,8 @@ classdef (Abstract) database < handle
             % the specified DOCUMENT_ID. The requested filename should be
             % specified using the (mandatory) FILENAME parameter.
 			%
-			% DOCUMENT_ID can be either the document id of a DID.DOCUMENT, or a
-            % DID.DOCUMENT object itsef.
+			% DOCUMENT_ID can be either the document id of a did.document, or a
+            % did.document object itsef.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
@@ -553,9 +569,9 @@ classdef (Abstract) database < handle
         end % open_doc()
 
         function close_doc(database_obj, file_obj)
-			% CLOSE_DOC - close an open DID.DOCUMENT file
+			% CLOSE_DOC - close an open did.document file
 			%
-			% DOCUMENT_OBJ = CLOSE_DOC(DATABASE_OBJ, FILE_OBJ)
+			% CLOSE_DOC(DATABASE_OBJ, FILE_OBJ)
 			%
 			% Closes a FILE_OBJ that was previously opened with OPEN_DOC().
 			%
@@ -612,17 +628,17 @@ classdef (Abstract) database < handle
         end        
 
         function document_ids = search(database_obj, query_obj, branch_id)
-			% SEARCH - find matching DID.DOCUMENTs in the specified branch
+			% SEARCH - find matching did.documents in the specified branch
 			%
 			% DOCUMENT_IDS = SEARCH(DATABASE_OBJ, DID.QUERYOBJ, [BRANCH_ID])
 			%
 			% Search the specified BRANCH_ID using a DID QUERY object, return a
-            % list of matching DID.DOCUMENT IDs.
+            % list of matching did.document IDs.
             %
             % If BRANCH_ID is empty or not specified, the current branch is used.
             % An error is genereted if the specified BRANCH_ID does not exist.
 			% 
-			% This function returns a cell array of DID.DOCUMENT IDs. If no
+			% This function returns a cell array of did.document IDs. If no
             % documents match the query, an empty cell array ({}) is returned.
 
             % If branch_id was not specified, use the current branch
@@ -773,6 +789,19 @@ classdef (Abstract) database < handle
         function parent_branch_id = get_parent_branch(database_obj, varargin)
             parent_branch_id = get_branch_parent(database_obj, varargin{:});
         end
+        function display_branch(database_obj, varargin)
+            display_branches(database_obj, varargin{:});
+        end
+
+        function add_doc(database_obj, varargin)
+            add_docs(database_obj, varargin{:});
+        end
+        function document_obj = get_doc(database_obj, varargin)
+            document_obj = get_docs(database_obj, varargin{:});
+        end
+        function remove_doc(database_obj, varargin)
+            remove_docs(database_obj, varargin{:});
+        end
     end
 
     % These methods *MUST* be overloaded by implementation subclasses
@@ -794,7 +823,7 @@ classdef (Abstract) database < handle
         file_obj = do_open_doc(database_obj, document_id, filename, varargin)
     end
 
-    % General utility functions used by this class that don't depend on a class object
+    % General utility functions used by this class that depend on a class object
     methods (Access=protected)
         %{
         function document_obj = do_open_doc(database_obj, document_id)
@@ -809,7 +838,7 @@ classdef (Abstract) database < handle
 	    end % do_binarydoc()
         %}
         function do_close_doc(database_obj, file_obj) %#ok<INUSD>
-    	    % DO_CLOSE_DOC - close and unlock a DID.DOCUMENT object
+    	    % DO_CLOSE_DOC - close and unlock a did.document object
     	    %
     	    % DO_CLOSE_DOC(sqlitedb_obj, FILE_OBJ)
     	    %
@@ -838,8 +867,10 @@ classdef (Abstract) database < handle
         end
 
         function doc_id = validate_doc_id(database_obj, doc_id, check_existance)
-            % The doc_id must be a non-empty string
-            if isstring(doc_id), doc_id = char(doc_id); end
+            % The doc_id must be a non-empty string or char-array
+            if isstring(doc_id)
+                doc_id = char(doc_id);  % "id" => 'id'
+            end
             try %if isa(doc_id, 'did_document') || isa(doc_id,'did.document')
                 doc_id = doc_id.id();
             catch %else
@@ -879,6 +910,19 @@ classdef (Abstract) database < handle
             end
             for idx = 1 : 2 : length(varargin)
                 params.(varargin{idx}) = varargin{idx+1};
+            end
+        end
+
+        function document_ids = normalizeDocIDs(document_ids)
+            % Convert scalar or regular array of doc_ids to cell-array of doc_ids
+            if isempty(document_ids)
+                document_ids = {};
+            elseif isa(document_ids,'string')
+                document_ids = arrayfun(@char,document_ids,'uniform',0); %[".." ".."] => {'..','..'}
+            elseif ischar(document_ids)
+                document_ids = {document_ids};
+            elseif ~iscell(document_ids)  % regular array of objs/structs
+                document_ids = num2cell(document_ids);
             end
         end
     end
