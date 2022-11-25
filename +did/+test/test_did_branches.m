@@ -14,8 +14,11 @@ b = 1;
 msg = '';
 
 % Step 1: make an empty database with a starting branch
-!rm test2.sqlite
-db = did.implementations.sqlitedb('test2.sqlite');
+db_filename = [pwd filesep 'test2.sqlite'];
+if isfile(db_filename), 
+	delete(db_filename);
+end;
+db = did.implementations.sqlitedb(db_filename); 
 
 % Step 2: generate a tree and a set of node names
 

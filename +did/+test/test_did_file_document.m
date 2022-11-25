@@ -5,7 +5,7 @@ function [b,msg] = test_did_file_document()
 %
 % Creates a demoFile-type did.document, and creates two 
 % example files to be added to the database when it is
-% added to the database with did.database.add_doc()
+% added to the database with did.database.add_docs()
 % 
 % The files are then read from the database and the contents
 % checked.
@@ -64,7 +64,7 @@ for i=1:numel(fname),
 	doc = doc.add_file(fname{i},[url_prefix fname{i}]);
 end;
 
-db.add_doc(doc);
+db.add_docs(doc);
 
  % now delete the original files
 

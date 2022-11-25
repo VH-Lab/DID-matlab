@@ -63,9 +63,10 @@ for i=1:numel(starting_nodes),
 	db.add_branch(branch_node_names{node_here});
 
 	if isroot, % need to add the documents from doc_struct
-		for d=1:numel(doc_struct.docs),
-			db.add_doc(doc_struct.docs{d});
-		end;
+		db.add_docs(doc_struct.docs);
+		%for d=1:numel(doc_struct.docs),
+		%	db.add_doc(doc_struct.docs{d});
+		%end;
 	end;
 
 	% Step 2-2 modify doc_struct from the inputs by removing and adding some docs
@@ -74,7 +75,7 @@ for i=1:numel(starting_nodes),
 		did.test.documents.rm_doc_tree(2, doc_struct.G, doc_struct.node_names, doc_struct.docs);
 
 	if ~isempty(docs_to_rm)
-		db.remove_doc(docs_to_rm);
+		db.remove_docs(docs_to_rm);
 	end;
 
 	N = numel(new_doc_struct.docs);
@@ -82,9 +83,10 @@ for i=1:numel(starting_nodes),
 		did.test.documents.add_doc_tree([5 5 5],new_doc_struct.G,...
 		new_doc_struct.node_names, new_doc_struct.docs);
 
-	for n=N+1:numel(new_doc_struct2.docs),
-		db.add_doc(new_doc_struct2.docs{n});
-	end;
+	db.add_docs(new_doc_struct2.docs(N+1:numel(new_doc_struct2.docs)));
+	%for n=N+1:numel(new_doc_struct2.docs),
+	%	db.add_doc(new_doc_struct2.docs{n});
+	%end;
 
 	doc_struct_out{node_here} = new_doc_struct2;
 

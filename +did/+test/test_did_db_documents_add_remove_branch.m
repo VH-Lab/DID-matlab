@@ -10,8 +10,11 @@ function [b,msg] = test_did_db_documents_add_remove_branch(varargin)
 % makes a new database with the same filename.
 
 % Step 1: make an empty database with a starting branch
-delete test_db_docs_and_branch.sqlite
-db = did.implementations.sqlitedb('test_db_docs_and_branch.sqlite');
+db_filename = [pwd filesep 'test_db_docs_and_branch.sqlite'];
+if isfile(db_filename), 
+	delete(db_filename);
+end;
+db = did.implementations.sqlitedb(db_filename); 
 
 [branchG,branch_node_names] = did.test.fun.make_tree(1,4,0.8,10);
 
