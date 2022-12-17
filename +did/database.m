@@ -733,7 +733,7 @@ classdef (Abstract) database < handle
                 for i = 1 : num_structs
                     new_doc_ids = search_doc_ids(sqlitedb_obj, query_struct(i), branch_id);
                     if i > 1
-                        doc_ids = intersect(doc_ids{1}, new_doc_ids{1});
+                        doc_ids = intersect(doc_ids, new_doc_ids);
                     else
                         doc_ids = new_doc_ids;
                     end
