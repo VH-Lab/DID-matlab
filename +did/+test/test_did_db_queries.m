@@ -10,30 +10,38 @@ function [b,msg] = test_did_db_queries(varargin)
 % makes a new database with the same filename.
 %
 % This function takes name/value pairs that alter its behavior:
-% -------------------------------------------------------------------------------
-% | Parameter (default)    | Description                                         |
-% |------------------------|-----------------------------------------------------|
-% | Do_EXACT_STRING_test(0)| 0/1 Should we test 'exact_string'?                  |
-% | Do_AND_test (0)        | 0/1 Should we test the AND method?                  |
-% | Do_OR_test (0)         | 0/1 Should we test the OR method?                   |
-% |------------------------|-----------------------------------------------------|
+% -----------------------------------------------------------------------------------
+% | Parameter (default)       | Description                                         |
+% |---------------------------|-----------------------------------------------------|
+% | Do_EXACT_STRING_test(0)   | 0/1 Should we test 'exact_string'?                  |
+% | Do_AND_test (0)           | 0/1 Should we test the AND method?                  |
+% | doc_id_ind_for_and (1)    | doc id index used in AND test              
+% | doc_value_ind_for_and (2) | doc value index used in AND test
+% | Do_OR_test (0)            | 0/1 Should we test the OR method?                   |
+% | Do_NOT_test (0)           | 0/1 Should we test '~'?                             |
+% | Do_CONTAINS_STRING_test(0)| 0/1 Should we test 'contains_string'?               |
+% | Do_LESSTHAN_test (0)      | 0/1 Should we test 'lessthan'?                      |
+% |---------------------------|-----------------------------------------------------|
 
 
  % setup: assign default parameter values
  
 Do_EXACT_STRING_test = 0; %4a
 Do_AND_test = 0; %4b
+doc_id_ind_for_and = 1;
+doc_value_ind_for_and = 2;
 Do_OR_test = 0; %4c
 Do_NOT_test = 0; %4d
 Do_CONTAINS_STRING_test = 0; %4e
 Do_LESSTHAN_test = 0; %4f
 Do_LESSTHANEQ_test = 0; %4g: test 'lessthaneq'
 Do_GREATERTHAN_test = 0; %4h: test 'greaterthan'
-Do_GREATERTHANEQ_test = 0;%4i: test 'greaterthaneq'
-%4j: test 'hasfield'
-%4k: test 'hasanysubfield_contains_string'
-%4l: test 'depends_on'
-%4m: test 'isa'
+Do_GREATERTHANEQ_test = 0; %4i: test 'greaterthaneq'
+Do_HASFIELD_test = 0; %4j: test 'hasfield'
+Do_HASANYSUBFIELD_CONTAINS_STRING_test = 0; %4k: test 'hasanysubfield_contains_string'
+Do_DEPENDS_ON_test = 0; %4l: test 'depends_on' 
+Do_ISA_test = 0; %4m: test 'isa'
+Do_REGEXP_test = 0; %4n: test 'regexp'
 did.datastructures.assign(varargin{:});
 
 doc_id_ind = 1;
@@ -174,9 +182,9 @@ end % Do_EXACT_STRING_test
 %  'exact_number'
 
 if Do_AND_test, 
-    id_chosen = 1;
-    value_chosen = 1; %doc values are equivalent to their index
-    demoType = did.test.fun.get_demoType(docs{value_chosen}); %find the demo type that this doc contains
+    id_chosen = docs{doc_id_ind_for_and}.id;
+    value_chosen = doc_value_ind_for_and; %doc values are equivalent to their index
+    demoType = did.test.fun.get_demoType(docs{doc_value_ind_for_and}); %find the demo type that this doc contains
     exact_number_field_name = [demoType,'.value']; %the value field can only be accessed by going through the demoType field, which may be named differently for each document 
     q = did.query('base.id','exact_string',id_chosen)&did.query(exact_number_field_name,'exact_number',value_chosen); %find docs that have the chosen id AND the chosen value (numerical field located in demoType)
     [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q); %returns a cell array of doc ids and docs themselves that we expect the query to return
@@ -476,9 +484,43 @@ if Do_GREATERTHANEQ_test
         disp(['We expected:'])
         ids_expected,
     end;
-end
+end % Do_GREATERTHANEQ_test
 
 %4j: test 'hasfield'
-
+if Do_HASFIELD_test
+    q = did.query('demoA','hasfield','');
+    d10 = db.search(q);
+    [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
+    disp(['Results of HASFIELD test:'])
+    if ~iscell(d10) %can't do any of the below if the result of the search is not a cell with document ids
+        b = 0;
+        msg = ['HASFIELD operation query did not produce a cell array of documents - instead it produced an array of type ' class(d10) ' and length ' int2str(numel(d10)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        disp(msg)
+        disp(['This is the error; expected a cell array of documents.'])
+        disp(['We got:']);
+        d10,
+        disp(['We expected:'])
+        ids_expected,
+        return;
+    elseif ~did.datastructures.eqlen(d10(:),ids_expected(:))
+        b = 0;
+        msg = ['HASFIELD operation query did not produce expected output.'];
+        disp(msg)
+        disp(['We got:']);
+        d10,
+        disp(['We expected:'])
+        ids_expected,
+        return
+    else
+        disp(['Number of total docs: ' num2str(numel(docs))])
+        disp(['We got:']);
+        d10,
+        disp(['We expected:'])
+        ids_expected,
+    end;
+end % Do_HASFIELD_test
 
 %4k: test 'hasanysubfield_contains_string'
+%4l: test 'depends_on' 
+%4m: test 'isa'
+%4n: test 'regexp'
