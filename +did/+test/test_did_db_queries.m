@@ -15,12 +15,16 @@ function [b,msg] = test_did_db_queries(varargin)
 % |---------------------------|-----------------------------------------------------|
 % | Do_EXACT_STRING_test(0)   | 0/1 Should we test 'exact_string'?                  |
 % | Do_AND_test (0)           | 0/1 Should we test the AND method?                  |
-% | doc_id_ind_for_and (1)    | doc id index used in AND test              
-% | doc_value_ind_for_and (2) | doc value index used in AND test
+% | doc_id_ind_for_and (1)    | doc id index used in AND test                       |         
+% | doc_value_ind_for_and (2) | doc value index used in AND test                    |
 % | Do_OR_test (0)            | 0/1 Should we test the OR method?                   |
 % | Do_NOT_test (0)           | 0/1 Should we test '~'?                             |
 % | Do_CONTAINS_STRING_test(0)| 0/1 Should we test 'contains_string'?               |
 % | Do_LESSTHAN_test (0)      | 0/1 Should we test 'lessthan'?                      |
+% | Do_LESSTHANEQ_test (0)    | 0/1 Should we test 'lessthaneq'?                    |
+% | Do_GREATERTHAN_test (0)   | 0/1 Should we test 'greaterthan'?                   |
+% | Do_GREATERTHANEQ_test (0) | 0/1 Should we test 'greaterthaneq'?                 |
+% | Do_HASFIELD_test (0)      | 0/1 Should we test 'hasfield'?                      |
 % |---------------------------|-----------------------------------------------------|
 
 
