@@ -28,6 +28,7 @@ classdef (Abstract) database < handle
 %   delete_branch      - Delete the current or specified branch, if not frozen
 %   display_branches   - Display branches hierarchy under specified branch
 %
+%   all_doc_ids - Return a cell-array of all document IDs in the database
 %   get_doc_ids - Return a cell-array of all document IDs in the specific branch
 %   add_docs    - Add did.document(s) to the current or specified branch
 %   get_docs    - Return did.document(s) that match the specified document ID(s)
@@ -56,7 +57,7 @@ classdef (Abstract) database < handle
 %   do_get_branch_parent - core logic for database.get_branch_parent()
 %   do_get_sub_branches  - core logic for database.get_sub_branches()
 %
-%   do_get_doc_ids       - core logic for database.all_doc_ids()
+%   do_get_doc_ids       - core logic for database.get_doc_ids()
 %   do_add_doc           - core logic for database.add_docs(),    for a single doc
 %   do_get_doc           - core logic for database.get_doc(),     for a single doc
 %   do_open_doc          - core logic for database.open_doc(),    for a single doc
@@ -338,6 +339,17 @@ classdef (Abstract) database < handle
 
     % Document-related methods
     methods
+		function doc_ids = all_doc_ids(database_obj)
+			% ALL_DOC_IDS - return all document IDs for a DID database
+			%
+			% DOC_IDS = ALL_DOC_IDS(DATABASE_OBJ)
+			%
+			% Return a cell array of all document IDs in the database.
+    	    % If there are no documents, an empty cell array is returned.
+            
+            doc_ids = database_obj.do_get_doc_ids();
+        end % all_branch_ids()
+
         function doc_ids = get_doc_ids(database_obj, branch_id)
 			% GET_DOC_IDS - return all document identifiers in a database branch
 			%
@@ -412,8 +424,8 @@ classdef (Abstract) database < handle
             % Ensure branch IDs validity
             branch_id = database_obj.validate_branch_id(branch_id);
 
-            % Ensure that the input docs pass schema validation
-            % TODO
+            % Ensure that all the input docs pass schema validation
+            database_obj.validate_docs(document_objs);
 
             % Call the database's addition method separately for each doc
             for idx = 1 : numel(document_objs)
@@ -837,7 +849,7 @@ classdef (Abstract) database < handle
             end
 	    end % do_binarydoc()
         %}
-        function do_close_doc(database_obj, file_obj) %#ok<INUSD>
+        function do_close_doc(database_obj, file_obj) %#ok<INUSL>
     	    % DO_CLOSE_DOC - close and unlock a did.document object
     	    %
     	    % DO_CLOSE_DOC(sqlitedb_obj, FILE_OBJ)
@@ -891,6 +903,334 @@ classdef (Abstract) database < handle
                 if ~ismember(doc_id, doc_ids)
                     error('DID:Database:InvalidDocID','Document ID "%s" does not exist in the database',doc_id);
                 end
+            end
+        end
+
+        function validate_docs(database_obj, document_objs)
+            % Get the superset of all doc IDs in the database and the input docs
+            all_ids = database_obj.all_doc_ids();
+            for docIdx = 1 : numel(document_objs)
+                try
+                    %add the ids in the input document_objs
+                    doc = document_objs(docIdx);
+                    if iscell(doc), doc = doc{1}; end
+                    docProps = doc.document_properties;
+                    all_ids{end+1} = docProps.base.id; %#ok<AGROW>
+                catch
+                    % ignore this document
+                end
+            end
+            all_ids = unique(lower(all_ids));
+
+            for docIdx = 1 : numel(document_objs)
+                % Get the document properties
+                doc = document_objs(docIdx);
+                if iscell(doc), doc = doc{1}; end
+                docProps = doc.document_properties;
+
+                % Get the validation schema filename (if defined & exists)
+                try
+                    classProps = docProps.document_class;
+                    schema_filename = classProps.validation;
+                catch
+                    continue  % no validation field, so don't validate this doc!
+                end
+                if isempty(schema_filename), continue, end
+                schemaStruct = database_obj.get_document_schema(schema_filename);
+
+                % Check all the defined validation rules
+                database_obj.validate_doc_vs_schema(docProps, schemaStruct, all_ids);
+            end
+        end
+
+        function schemaStruct = get_document_schema(database_obj, schema_filename) %#ok<INUSL>
+            % Get the path location of path placeholders
+            global did_globals %#ok<GVMIS>
+            if isempty(did_globals), did_Init; end
+            paths = did_globals.path;
+            try pathDefs = strrep(paths.definition_names,'$','\$');    catch, pathDefs = {}; end
+            try pathLocs = strrep(paths.definition_locations,'\','/'); catch, pathLocs = {}; end
+
+            % Get the filename (might have a missing '.schema' or '_schema')
+            schema_filename = regexprep(schema_filename,pathDefs,pathLocs);
+            if ~exist(schema_filename,'file')
+                schema_filename = regexprep(schema_filename,'\.json$','.schema.json');
+                if ~exist(schema_filename,'file')
+                    schema_filename = strrep(schema_filename,'.schema.json','_schema.json');
+                    if ~exist(schema_filename,'file')
+                        error('DID:Database:ValidationFileMissing','Validation file "%s" not found',validation);
+                    end
+                end
+            end
+
+            % Read the file contents
+            fid = fopen(schema_filename,'r');
+            if fid < 1
+                error('DID:Database:ValidationFileCorrupt','Validation file "%s" cannot be read',schema_filename);
+            end
+            txt = fread(fid,'*char')';
+            fclose(fid);
+
+            % Ensure the contents is valid JSON, convert it a to Matlab struct
+            try
+                schemaStruct = jsondecode(txt);
+            catch
+                error('DID:Database:ValidationFileBad','Validation file "%s" has invalid JSON format',schema_filename);
+            end
+        end
+
+        function validate_doc_vs_schema(database_obj, docProps, schemaStruct, all_ids)
+            IGNORE_DID_CLASS_PREFIX = true;
+
+            % Loop over all fields in the validation schema
+            try doc_id = docProps.base.id; catch, doc_id = ''; end
+            classProps = docProps.document_class;
+            class_name = classProps.class_name;
+            doc_name = [class_name ' doc ' doc_id];
+            schemaClassName = schemaStruct.classname;
+            if IGNORE_DID_CLASS_PREFIX
+                class_name      = regexprep(class_name,     'did.','','ignorecase');
+                schemaClassName = regexprep(schemaClassName,'did.','','ignorecase');
+            end
+            isSuperClass = ~strcmpi(class_name,schemaClassName);
+            if isSuperClass
+                doc_name = [doc_name ' (superclass ' schemaClassName ')'];
+            end
+            fprintf('Validating %s\n',doc_name);
+            try
+                superFullNames = {classProps.superclasses.definition};
+            catch
+                superFullNames = {};
+            end
+            [~,superNames] = fileparts(superFullNames);
+            if ~iscell(superNames), superNames = {superNames}; end
+            superNames = unique(superNames);
+            schemaFields = fieldnames(schemaStruct);
+            for fieldIdx = 1 : numel(schemaFields)
+                field = schemaFields{fieldIdx};
+                expected = schemaStruct.(field);
+                switch field
+                    case 'classname'
+                        % Compare the defined vs. actual class name
+                        % Note: schema field: 'classname', doc field: 'class_name'
+                        if IGNORE_DID_CLASS_PREFIX
+                            expected = regexprep(expected,'did.','','ignorecase');
+                        end
+                        areSame = ismember(lower(expected), lower([superNames,class_name]));
+                        assert(areSame,'DID:Database:ValidationClassname', ...
+                            'Mismatched classname ("%s" <=> "%s") in doc %s', ...
+                            expected, class_name, doc_id);
+
+                    case 'superclasses'
+                        % Compare the defined vs. actual superclass names
+                        if isSuperClass, continue, end  % && isempty(expected)
+                        try expectedStr = strjoin(unique(expected),','); catch, expectedStr = ''; end
+                        superNamesStr = strjoin(superNames,',');
+                        areSame = strcmpi(expectedStr, superNamesStr);
+                        assert(areSame,'DID:Database:ValidationSuperClasses', ...
+                            'Dissimilar superclasses defined/found for %s ("%s" <=> "%s")', ...
+                            doc_name, expectedStr, superNamesStr);
+                        % Recursively validate all superNames against this doc:
+                        for idx = 1 : numel(superNames)
+                            % First get the superClass' definition struct
+                            defStruct = database_obj.get_document_schema(superFullNames{idx});
+                            % Extract validation file from definition
+                            validationFile = defStruct.document_class.validation;
+                            if ~isempty(validationFile)
+                                % Read the superClass' schema from the validation file
+                                schemaStruct2 = database_obj.get_document_schema(validationFile);
+                                % Validate the superClass' schema
+                                database_obj.validate_doc_vs_schema(docProps, schemaStruct2, all_ids);
+                            end
+                        end
+
+                    case 'depends_on'
+                        % Compare the defined vs. actual dependency names
+                        if isempty(expected) && isSuperClass, continue, end
+                        try depends = docProps.depends_on; docNames = {depends.name}; catch, docNames = {}; end
+                        if isempty(expected) && isempty(docNames), continue, end
+                        expectedNames = {expected.name};
+                        mustHaveValue = {expected.mustbenotempty};
+                        areSame = isequal(lower(unique(expectedNames)), lower(unique(docNames)));
+                        assert(areSame,'DID:Database:ValidationDependsOn', ...
+                            'Dissimilar dependencies defined/found for %s', doc_name);
+                        % Loop over all dependencies and ensure they exist
+                        for idx = 1 : numel(mustHaveValue)
+                            item_name = expectedNames{idx};
+                            idx2 = find(strcmpi(item_name,docNames),1);
+                            value = depends(idx2).value;
+
+                            % If dependency is marked as MustBeNotEmpty, ensure it's not empty
+                            expectedValue = mustHaveValue{idx};
+                            if ~isempty(expectedValue) && expectedValue
+                                assert(~isempty(value), ...
+                                    'DID:Database:ValidationDependEmpty', ...
+                                    'Empty dependency found for "%s" in %s', ...
+                                    item_name, doc_name)
+                            end
+
+                            % Ensure the dependent ID exists in database or input docs
+                            if ~isempty(value)
+                                % compare the dependent value to all doc IDs
+                                isOk = ismember(lower(value), all_ids);
+                                assert(isOk,'DID:Database:ValidationDependency', ...
+                                    'Dependent doc ID "%s" (%s) of %s not found in the database or input docs', ...
+                                    value, item_name, doc_name)
+                            end
+                        end
+
+                    case 'file'
+                        % Compare the defined vs. actual file names
+                        try files = docProps.files.file_info; docNames = {files.name}; catch, docNames = {}; end
+                        if isempty(expected) && (isSuperClass || isempty(docNames)), continue, end
+                        expectedNames = {expected.name};
+                        mustHaveValue = {expected.mustbenotempty};
+                        areSame = isequal(lower(unique(expectedNames)), lower(unique(docNames)));
+                        assert(areSame,'DID:Database:ValidationFiles', ...
+                            'Dissimilar files defined/found for %s', doc_name);
+                        % Loop over all files and ensure they exist
+                        for idx = 1 : numel(mustHaveValue)
+                            expectedValue = mustHaveValue{idx};
+                            if ~isempty(expectedValue) && expectedValue
+                                item_name = expectedNames{idx};
+                                idx2 = find(strcmpi(item_name,docNames),1);
+                                locations = files(idx2).locations;
+                                found = false;
+                                for idx2 = 1 : numel(locations)
+                                    fileLocation = locations{idx2}.location;
+                                    if exist(fileLocation,'file')
+                                        found = true; break
+                                    else
+                                        try
+                                            filename = websave(tempname,fileLocation);
+                                            if exist(filename,'file')
+                                                delete(filename);
+                                                found = true; break
+                                            end
+                                        catch
+                                            % ignore this location
+                                        end
+                                    end
+                                end
+                                assert(found,'DID:Database:ValidationFileMissing', ...
+                                    'Missing file "%s" in %s',item_name,doc_name)
+                            end
+                        end
+
+                    otherwise  % class-specific field
+                        % Compare the type and value of all class-specific fields
+                        docValue = docProps.(field);
+                        expectedSubFields = strjoin(unique({expected.name}),',');
+                        docSubFields = strjoin(unique(fieldnames(docValue)),',');
+                        areSame = strcmpi(expectedSubFields,docSubFields);
+                        assert(areSame,'DID:Database:ValidationFields', ...
+                            'Dissimilar sub-fields defined/found for %s field in %s ("%s" <=> "%s")', ...
+                            field, doc_name, expectedSubFields, docSubFields);
+                        for idx = 1 : numel(expected)
+                            definition = expected(idx);
+                            subfield = definition.name;
+                            field_name = [field '.' subfield];
+                            docSubValue = docValue.(subfield);
+                            database_obj.validate_field_type_and_value(doc_name, field_name, docSubValue, definition)
+                        end
+                end
+            end
+        end
+
+        function validate_field_type_and_value(database_obj, doc_name, field_name, value, definition) %#ok<INUSL>
+            expectedType   = definition.type;
+            expectedParams = definition.parameters;
+            switch lower(expectedType)
+                case 'integer'
+                    assert(isnumeric(value), ...
+                        'DID:Database:ValidationFieldInteger', ...
+                        'Invalid non-numeric sub-field %s found in %s', ...
+                        field_name, doc_name);
+                    assert(numel(expectedParams)==3, ...
+                        'DID:Database:ValidationFieldInteger', ...
+                        '3 parameters must be defined for Integer fields in a document schema, but %d defined', ...
+                        numel(expectedParams))
+                    if isnan(value) && expectedParams(3)
+                        isOk = true;
+                    else
+                        isOk = value >= expectedParams(1) && ...
+                            value <= expectedParams(2) && ...
+                            value == fix(value); %integer
+                    end
+                    assert(isOk,'DID:Database:ValidationFieldInteger', ...
+                        'Invalid sub-field %s value found in %s', ...
+                        field_name, doc_name);
+
+                case 'double'
+                    assert(isnumeric(value), ...
+                        'DID:Database:ValidationFieldDouble', ...
+                        'Invalid non-numeric sub-field %s found in %s', ...
+                        field_name, doc_name);
+                    assert(numel(expectedParams)==3, ...
+                        'DID:Database:ValidationFieldDouble', ...
+                        '3 parameters must be defined for Double fields in a document schema, but %d defined', ...
+                        numel(expectedParams))
+                    if isnan(value) && expectedParams(3)
+                        isOk = true;
+                    else
+                        isOk = value >= expectedParams(1) && ...
+                            value <= expectedParams(2);
+                    end
+                    assert(isOk,'DID:Database:ValidationFieldDouble', ...
+                        'Invalid sub-field %s value found in %s', ...
+                        field_name, doc_name);
+
+                case 'matrix'
+                    assert(isnumeric(value), ...
+                        'DID:Database:ValidationFieldMatrix', ...
+                        'Invalid non-numeric sub-field %s found in %s', ...
+                        field_name, doc_name);
+                    assert(numel(expectedParams)==2, ...
+                        'DID:Database:ValidationFieldMatrix', ...
+                        '2 parameters must be defined for Matrix fields in a document schema, but %d defined', ...
+                        numel(expectedParams))
+                    isOk = isequal(size(value), expectedParams);
+                    assert(isOk,'DID:Database:ValidationFieldMatrix', ...
+                        'Invalid sub-field %s size %dx%d found in %s', ...
+                        field_name, size(value,1), size(value,2), ...
+                        doc_name);
+
+                case 'timestamp'
+                    assert(ischar(value), ...
+                        'DID:Database:ValidationFieldTimestamp', ...
+                        'Invalid non-timestamp sub-field %s found in %s', ...
+                        field_name, doc_name);
+                    value = regexprep(value,'Z$',''); %discard trailing 'Z' (unparsable by LocalDateTime)
+                    jTimestr = java.lang.String(value);
+                    java.time.LocalDateTime.parse(jTimestr);  % will croak if unparsable
+
+                case {'char','string'}
+                    assert(ischar(value), ...
+                        'DID:Database:ValidationFieldChar', ...
+                        'Invalid non-char sub-field %s found in %s', ...
+                        field_name, doc_name);
+                    isOk = length(value) <= expectedParams(1);
+                    assert(isOk,'DID:Database:ValidationFieldChar', ...
+                        'Invalid sub-field %s length %d found in %s', ...
+                        field_name, length(value), doc_name);
+
+                case 'did_uid'
+                    assert(ischar(value), ...
+                        'DID:Database:ValidationFieldUID', ...
+                        'Invalid non-UID sub-field %s found in %s', ...
+                        field_name, doc_name);
+                    if isempty(value), return, end
+                    uid_part = '[\dA-F]{16}';
+                    regex = [uid_part '_' uid_part];
+                    isOk = length(value)==33 && ~isempty(regexpi(value,regex,'once'));
+                    assert(isOk,'DID:Database:ValidationFieldUID', ...
+                        'Invalid non-UID sub-field %s found in %s', ...
+                        field_name, doc_name);
+
+                otherwise
+                    error('DID:Database:ValidationFieldType', ...
+                          'Invalid sub-field %s type "%s" defined in %s', ...
+                          field_name, expectedType, doc_name);
             end
         end
     end
