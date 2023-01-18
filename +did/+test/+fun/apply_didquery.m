@@ -17,7 +17,7 @@ function [id,d] = apply_didquery(docs,q)
 %               % searches for a document with the exact id 41268c9f518203ae_c0c5ed97d6afccde
 %             
 
-search_params = q.searchstructure;
+search_params = q.to_searchstructure;
 id = {};
 d = {};
 for i = 1:numel(docs)

@@ -264,7 +264,7 @@ end % Do_OR_test
 
 % 4d: test 'not'
 if Do_NOT_test %run a test of the NOT operator in a query 
-    q = did.query('base.id','~exact_string',id_chosen); %using ~ for NOT
+    q = did.query('base.id','~bluh',id_chosen); %using ~ for NOT
     d4 = db.search(q); 
     [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q); 
     % ^using NOT with OR or CONTAINS_STRING might make this test more
@@ -337,7 +337,7 @@ end
 
 %4f: test 'lessthan'
 if Do_LESSTHAN_test
-    number_chosen = 48;
+    number_chosen = randi(100);
     %q = did.query('demoA.value','lessthan',number_chosen); %easy option,
     % but may not return the amount of documents expected if a document's
     % value is stored in the demoB or demoC field (would occur if the
@@ -525,6 +525,119 @@ if Do_HASFIELD_test
 end % Do_HASFIELD_test
 
 %4k: test 'hasanysubfield_contains_string'
+if Do_HASANYSUBFIELD_CONTAINS_STRING_test
+    doc_id_ind = randi(numel(docs));
+    doc_id = docs{doc_id_ind}.id;
+    q = did.query('base','hasanysubfield_contains_string','id',doc_id);
+    d11 = db.search(q);
+    [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
+    disp(['Results of HASANYSUBFIELD_CONTAINS_STRING test:'])
+    if ~iscell(d11) %can't do any of the below if the result of the search is not a cell with document ids
+        b = 0;
+        msg = ['HASANYSUBFIELD_CONTAINS_STRING operation query did not produce a cell array of documents - instead it produced an array of type ' class(d11) ' and length ' int2str(numel(d11)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        disp(msg)
+        disp(['This is the error; expected a cell array of documents.'])
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+        return;
+    elseif ~did.datastructures.eqlen(d11(:),ids_expected(:))
+        b = 0;
+        msg = ['HASANYSUBFIELD_CONTAINS_STRING operation query did not produce expected output.'];
+        disp(msg)
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+        return
+    else
+        disp(['Number of total docs: ' num2str(numel(docs))])
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+    end;
+    
+end %Do_HASANYSUBFIELD_CONTAINS_STRING_test
+
 %4l: test 'depends_on' 
+if Do_DEPENDS_ON_test
+    doc_ind = numel(docs); %choose last document to ensure we use the demoC build, which contains the depends_on field
+    if numel(docs{doc_ind}.document_properties.depends_on)>0 %so we don't try to access indices of an array that don't exist
+        dependency_name = docs{doc_ind}.document_properties.depends_on(1).name;
+        dependency_value = docs{doc_ind}.document_properties.depends_on(1).value;
+    else %maybe do a try catch to check if you get an expected error
+        
+    end
+    q = did.query('','depends_on',dependency_name,dependency_value);
+    d11 = db.search(q);
+    [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
+    disp(['Results of DEPENDS_ON test:'])
+    if ~iscell(d11) %can't do any of the below if the result of the search is not a cell with document ids
+        b = 0;
+        msg = ['DEPENDS_ON operation query did not produce a cell array of documents - instead it produced an array of type ' class(d11) ' and length ' int2str(numel(d11)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        disp(msg)
+        disp(['This is the error; expected a cell array of documents.'])
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+        return;
+    elseif ~did.datastructures.eqlen(d11(:),ids_expected(:))
+        b = 0;
+        msg = ['DEPENDS_ON operation query did not produce expected output.'];
+        disp(msg)
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+        return
+    else
+        disp(['Number of total docs: ' num2str(numel(docs))])
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+    end;
+    
+end %Do_DEPENDS_ON_test
+
 %4m: test 'isa'
+if Do_ISA_test
+    q = did.query('','isa','demoB');
+    [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
+    d11 = db.search(q);
+    disp(['Results of ISA test:'])
+    if ~iscell(d11) %can't do any of the below if the result of the search is not a cell with document ids
+        b = 0;
+        msg = ['ISA operation query did not produce a cell array of documents - instead it produced an array of type ' class(d11) ' and length ' int2str(numel(d11)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        disp(msg)
+        disp(['This is the error; expected a cell array of documents.'])
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+        return;
+    elseif ~did.datastructures.eqlen(d11(:),ids_expected(:))
+        b = 0;
+        msg = ['ISA operation query did not produce expected output.'];
+        disp(msg)
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+        return
+    else
+        disp(['Number of total docs: ' num2str(numel(docs))])
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+    end;
+end %Do_ISA_test
+
 %4n: test 'regexp'
+if Do_REGEXP_test
+    
+end %Do_REGEXP_test
