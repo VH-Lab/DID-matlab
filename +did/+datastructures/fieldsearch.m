@@ -37,7 +37,9 @@ function b = fieldsearch(A, searchstruct)
 %    |                          in 'param2'? If 'param1' is a cell list, then 'param2' can be a cell list of contained
 %    |                          strings to be matched.
 %    | 'or'                   - are the searchstruct elements specified in 'param1' OR 'param2' true?
-%    | '~'                    - NOT of any operator, such as ~regexp, negates the outcome of the search
+%    |*'~'                    - NOT of any operator, such as ~regexp, negates the outcome of the search
+%
+%       *to be implemented
 %    -----------------------|
 % param1                    | Search parameter 1. Meaning depends on 'operation' (see above).
 % param2                    | Search parameter 2. Meaning depends on 'operation' (see above).

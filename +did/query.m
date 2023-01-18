@@ -51,14 +51,16 @@ classdef query
 			%     |   'lessthaneq'         - is the field value less than or equal to 'param1' (and comparable size)
 			%     |   'greaterthan'        - is the field value greater than 'param1' (and comparable size)
 			%     |   'greaterthaneq'      - is the field value greater than or equal to 'param1' (and comparable size)
-			%     |   'hasfield'           - is the field present? (no role for 'param1' or 'param2')
-			%     |   'hasanysubfield_contains_string' - Is the field value an array of structs or cell array of structs
+			%     |***'hasfield'           - is the field present? (no role for 'param1' or 'param2')
+			%     |***'hasanysubfield_contains_string' - Is the field value an array of structs or cell array of structs
 			%     |                        such that any has a field named 'param1' with a string that contains the string
 			%     |                        in 'param2'?
 			%     |   'or'                 - are any of the searchstruct elements specified in 'param1' true?
-			%     |   'isa'                - is 'param1' either a superclass or the document class itself of the DID_DOCUMENT?
-			%     |   'depends_on'         - does the document depend on an item with name 'param1' and value 'param2'?
-			%     |----------------------|
+			%     |***'isa'                - is 'param1' either a superclass or the document class itself of the DID_DOCUMENT?
+			%     |***'depends_on'         - does the document depend on an item with name 'param1' and value 'param2'?
+			%     |
+            %     |***to be implemented
+            %     |----------------------|
 			% param1                     | Search parameter 1. Meaning depends on 'operation' (see above).
 			% param2                     | Search parameter 2. Meaning depends on 'operation' (see above).
 			% ---------------------------------------------------------------------------

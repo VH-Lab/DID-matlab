@@ -10,22 +10,26 @@ function [b,msg] = test_did_db_queries(varargin)
 % makes a new database with the same filename.
 %
 % This function takes name/value pairs that alter its behavior:
-% -----------------------------------------------------------------------------------
-% | Parameter (default)       | Description                                         |
-% |---------------------------|-----------------------------------------------------|
-% | Do_EXACT_STRING_test(0)   | 0/1 Should we test 'exact_string'?                  |
-% | Do_AND_test (0)           | 0/1 Should we test the AND method?                  |
-% | doc_id_ind_for_and (1)    | doc id index used in AND test                       |         
-% | doc_value_ind_for_and (2) | doc value index used in AND test                    |
-% | Do_OR_test (0)            | 0/1 Should we test the OR method?                   |
-% | Do_NOT_test (0)           | 0/1 Should we test '~'?                             |
-% | Do_CONTAINS_STRING_test(0)| 0/1 Should we test 'contains_string'?               |
-% | Do_LESSTHAN_test (0)      | 0/1 Should we test 'lessthan'?                      |
-% | Do_LESSTHANEQ_test (0)    | 0/1 Should we test 'lessthaneq'?                    |
-% | Do_GREATERTHAN_test (0)   | 0/1 Should we test 'greaterthan'?                   |
-% | Do_GREATERTHANEQ_test (0) | 0/1 Should we test 'greaterthaneq'?                 |
-% | Do_HASFIELD_test (0)      | 0/1 Should we test 'hasfield'?                      |
-% |---------------------------|-----------------------------------------------------|
+% -----------------------------------------------------------------------------------------------------
+% | Parameter (default)                        | Description                                          |
+% |--------------------------------------------|------------------------------------------------------|
+% | Do_EXACT_STRING_test(0)                    | 0/1 Should we test 'exact_string'?                   |
+% | Do_AND_test (0)                            | 0/1 Should we test the AND method?                   |
+% | doc_id_ind_for_and (1)                     | doc id index used in AND test                        |         
+% | doc_value_ind_for_and (2)                  | doc value index used in AND test                     |
+% | Do_OR_test (0)                             | 0/1 Should we test the OR method?                    |
+% | ***Do_NOT_test (0)                            | 0/1 Should we test '~'?                              |
+% | Do_CONTAINS_STRING_test(0)                 | 0/1 Should we test 'contains_string'?                |
+% | Do_LESSTHAN_test (0)                       | 0/1 Should we test 'lessthan'?                       |
+% | Do_LESSTHANEQ_test (0)                     | 0/1 Should we test 'lessthaneq'?                     |
+% | Do_GREATERTHAN_test (0)                    | 0/1 Should we test 'greaterthan'?                    |
+% | Do_GREATERTHANEQ_test (0)                  | 0/1 Should we test 'greaterthaneq'?                  |
+% | ***Do_HASFIELD_test (0)                       | 0/1 Should we test 'hasfield'?                       |
+% | ***Do_HASANYSUBFIELD_CONTAINS_STRING_test (0) | 0/1 Should we test 'hasanysubfield_contains_string'? |
+% | ***Do_DEPENDS_ON_test (0)                     | 0/1 Should we test'depends_on'?                      |
+% | ***Do_ISA_test (0)                            | 0/1 Should we test 'isa'?                            |
+% | Do_REGEXP_test (0)                         | 0/1 Should we test'regexp'?                          |
+% |--------------------------------------------|------------------------------------------------------|
 
 
  % setup: assign default parameter values
@@ -205,7 +209,7 @@ if Do_AND_test,
         disp(['We expected:'])
         ids_expected,
         return
-    elseif ~did.datastructures.eqlen(d2,ids_expected) %checks that the length and contents of each object are the same
+    elseif ~did.datastructures.eqlen(d2,ids_expected)|| ( isempty(d2) && isempty(ids_expected)) %checks that the length and contents of each object are the same
         b = 0;
         msg = ['AND operation query did not produce expected output.'];
         disp(msg)
@@ -638,6 +642,38 @@ if Do_ISA_test
 end %Do_ISA_test
 
 %4n: test 'regexp'
+% use the datestamp field in base, which has a defined structure, and
+% choose one digit arbitrarily (preferably one that is relatively evenly distributed between the 10 digits among different documents)
 if Do_REGEXP_test
-    
+    regexp_chosen = '\d{4}-\d{2}-\d{2}\w\d{2}:\d{2}:\d{2}.\d{2}0\w'; %last digit arbitrarily chosen to be a 0
+    q = did.query('base.datestamp','regexp',regexp_chosen);
+    [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
+    d11 = db.search(q);
+    disp(['Results of REGEXP test:'])
+    if ~iscell(d11) %can't do any of the below if the result of the search is not a cell with document ids
+        b = 0;
+        msg = ['REGEXP operation query did not produce a cell array of documents - instead it produced an array of type ' class(d11) ' and length ' int2str(numel(d11)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        disp(msg)
+        disp(['This is the error; expected a cell array of documents.'])
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+        return;
+    elseif ~did.datastructures.eqlen(d11(:),ids_expected(:))
+        b = 0;
+        msg = ['REGEXP operation query did not produce expected output.'];
+        disp(msg)
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+        return
+    else
+        disp(['Number of total docs: ' num2str(numel(docs))])
+        disp(['We got:']);
+        d11,
+        disp(['We expected:'])
+        ids_expected,
+    end;
 end %Do_REGEXP_test
