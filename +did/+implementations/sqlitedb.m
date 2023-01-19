@@ -224,10 +224,16 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 			%
 			% Returns a cell array of document IDs contained in the specified BRANCH_ID.
             % If BRANCH_ID has no documents, an empty cell array is returned.
+            % If BRANCH_ID  is empty or not specified, all IDs in all branches are
+            % returned.
 
-            sqlStr = ['SELECT docs.doc_id FROM docs,branch_docs' ...
-                      ' WHERE docs.doc_idx = branch_docs.doc_idx' ...
-                      '   AND branch_id="' branch_id '"'];
+            if nargin > 1 && ~isempty(branch_id)
+                sqlStr = ['SELECT docs.doc_id FROM docs,branch_docs' ...
+                          ' WHERE docs.doc_idx = branch_docs.doc_idx' ...
+                          '   AND branch_id="' branch_id '"'];
+            else
+                sqlStr = 'SELECT docs.doc_id FROM docs';
+            end
             data = this_obj.run_sql_query(sqlStr);
             if isempty(data)
                 doc_ids = {};
