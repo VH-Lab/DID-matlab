@@ -42,11 +42,11 @@ node_ids = {};
 for i=1:numel(docs),
 	node_ids{end+1} = docs{i}.id();
 	switch(docs{i}.document_properties.document_class.class_name),
-		case {'did_demoA'},
+		case {'demoA'},
 			ids_A{end+1} = docs{i}.id();
-		case {'did_demoB'},
+		case {'demoB'},
 			ids_B{end+1} = docs{i}.id();
-		case {'did_demoC'},
+		case {'demoC'},
 			ids_C{end+1} = docs{i}.id();
 		otherwise,
 			error(['Unknown document class ' docs{i}.document_properties.document_class.class_name '.']);
