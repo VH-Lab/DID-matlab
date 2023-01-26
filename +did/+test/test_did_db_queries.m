@@ -14,6 +14,7 @@ function [b,msg] = test_did_db_queries(varargin)
 % | Parameter (default)                        | Description                                          |
 % |--------------------------------------------|------------------------------------------------------|
 % | Do_EXACT_STRING_test(0)                    | 0/1 Should we test 'exact_string'?                   |
+% | Do_NOT_EXACT_STRING_test(0)                | 0/1 Should we test '~exact_string'?                  |
 % | Do_AND_test (0)                            | 0/1 Should we test the AND method?                   |
 % | doc_id_ind_for_and (1)                     | doc id index used in AND test                        |         
 % | doc_value_ind_for_and (2)                  | doc value index used in AND test                     |
@@ -35,6 +36,7 @@ function [b,msg] = test_did_db_queries(varargin)
  % setup: assign default parameter values
  
 Do_EXACT_STRING_test = 0; %4a
+Do_NOT_EXACT_STRING_test = 0; %4a
 Do_AND_test = 0; %4b
 doc_id_ind_for_and = 1;
 doc_value_ind_for_and = 2;
@@ -186,6 +188,43 @@ if Do_EXACT_STRING_test
     end
 end % Do_EXACT_STRING_test
 
+if Do_NOT_EXACT_STRING_test
+    q = did.query('base.id','~exact_string',id_chosen);
+    d1 = db.search(q); %this does a fast search using the database and returns ids
+    [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q); %manual search to check outcome of fast search against
+    
+    disp('Results of NOT_EXACT_STRING test:')    
+    if ~iscell(d1) %can't do any of the below if the result of the search is not a cell with document ids
+        b = 0;
+        msg = ['NOT_EXACT_STRING operation query did not produce a cell array of documents - instead it produced an array of type ' class(d1) ' and length ' int2str(numel(d1)) '. Expected a cell array with ' int2str(numel(ids_expected)) ' document(s).'];
+        disp(msg)
+        disp(['This is the error; expected a cell array of documents.'])
+        disp(['We got:']);
+        d1,
+        disp(['We expected:'])
+        ids_expected,
+        return
+    elseif ~did.datastructures.eqlen(d1,ids_expected) %checks that the length and contents of each object are the same
+        b = 0;
+        msg = ['NOT_EXACT_STRING operation query did not produce expected output.'];
+        disp(msg)
+        disp(['We got:']);
+        d1,
+        disp(['We expected:'])
+        ids_expected,
+        disp(['We were looking for NOT ' id_chosen])
+        return
+    else
+        disp(['We got:']);
+        d1,
+        disp(['We expected:'])
+        ids_expected,
+    end
+end % Do_NOT_EXACT_STRING_test
+
+
+
+
 %  4b: test did.query operations 'and' with 'exact_string' and
 %  'exact_number'
 
@@ -209,7 +248,7 @@ if Do_AND_test,
         disp(['We expected:'])
         ids_expected,
         return
-    elseif ~did.datastructures.eqlen(d2,ids_expected)|| ( isempty(d2) && isempty(ids_expected)) %checks that the length and contents of each object are the same
+    elseif ~did.datastructures.eqlen(d2,ids_expected) && ~( isempty(d2) && isempty(ids_expected)) %checks that the length and contents of each object are the same
         b = 0;
         msg = ['AND operation query did not produce expected output.'];
         disp(msg)
@@ -248,7 +287,7 @@ if Do_OR_test
         disp(['We expected:'])
         ids_expected,
         return;
-    elseif ~did.datastructures.eqlen(d3(:),ids_expected(:))
+    elseif ~did.datastructures.eqlen(d3(:),ids_expected(:)) && ~( isempty(d2) && isempty(ids_expected))
         b = 0;
         msg = ['OR operation query did not produce expected output.'];
         disp(msg);
