@@ -1,11 +1,11 @@
 function [ids_expected,docs_expected] = get_docs_expected(docs,id_input,value_input,query)
-%GET_DOCS_ACTUAL returns the expected document output of the selected query
+%GET_DOCS_EXPECTED returns the expected document output of the selected query
 %
 %   [IDS_EXPECTED, DOCS_EXPECTED] = GET_DOCS_EXPECTED(DOCS, ID_INPUT, VALUE_INPUT, QUERY)
 %
 %   Given DOCS, a cell array of did.document objects, id_input (the id of a
 %   selected document), an array of VALUEs to search for in either demoA, demoB, or
-%   demoC, and query (either 'and' or 'or'), this calculates
+%   demoC, and query (either 'and', 'or', or 'not'), this calculates
 %   the expected output of the query.
 %
 %   IDS_EXPECTED is a cell array of the did.document ids that should be
@@ -45,6 +45,15 @@ switch query
             demoType = did.test.fun.get_demoType(docs{doc_ind});
             each_value = eval(['docs{doc_ind}.document_properties.',demoType,'.value']);
             if ismember(each_value,value_input) | strcmp(docs{doc_ind}.id,id_input)
+                docs_expected{end+1} = docs{doc_ind};
+            end
+        end
+    case 'not'
+        %add docs that don't match the ID
+        for doc_ind = 1:length(docs)
+            demoType = did.test.fun.get_demoType(docs{doc_ind});
+            each_value = eval(['docs{doc_ind}.document_properties.',demoType,'.value']);
+            if ~strcmp(docs{doc_ind}.id,id_input)
                 docs_expected{end+1} = docs{doc_ind};
             end
         end
