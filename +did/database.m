@@ -701,10 +701,14 @@ classdef (Abstract) database < handle
                     sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value >= ' num2str(param1(1))];
                 case 'hassize'   %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
-                case 'hasmember' %TODO
-                    error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
-                case 'hasfield'  %TODO
-                    error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
+                case 'hasmember'
+                    param1 = strrep(param1,'*','%');
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value like "%' param1 ',%"'];
+                case 'hasfield'
+                    sql_str = ['fields.field_name="' field '"'];
+                case 'depends_on'
+                    param1 = strrep(param1,'*','%');
+                    sql_str = ['fields.field_name="meta.depends_on" AND ' notStr 'doc_data.value like "%' param1 ',' param2 ';%"'];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasanysubfield_contains_string'  %TODO
@@ -716,8 +720,6 @@ classdef (Abstract) database < handle
                 case 'isa'
                     sql_str = ['(fields.field_name="meta.class" AND ' notStr 'doc_data.value = "' param1 '") OR ' ...
                                '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1 '%")'];
-                case 'depends_on'   %TODO
-                    error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 otherwise
                     %error('DID:Database:SQL','Unrecognized query operation "%s"',op);
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
