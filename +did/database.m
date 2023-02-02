@@ -688,6 +688,7 @@ classdef (Abstract) database < handle
                 case 'exact_string_anycase'
                     sql_str = ['fields.field_name="' field '" AND ' notStr 'LOWER(doc_data.value) = "' lower(param1) '"'];
                 case 'contains_string'
+                    param1 = strrep(param1,'*','%');
                     sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value like "%' param1 '%"'];
                 case 'exact_number'
                     sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value = '  num2str(param1(1))];
