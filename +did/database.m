@@ -673,33 +673,43 @@ classdef (Abstract) database < handle
             param2 = query_struct.param2;
             op = strtrim(lower(query_struct.operation));
             isNot = op(1)=='~';
+            if isNot
+                notStr = 'NOT ';
+            else
+                notStr = '';
+            end
             op(op=='~') = '';
             switch op
                 case 'or'
                     sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1) ' OR ' ...
                                query_struct_to_sql_str(sqlitedb_obj, param2)];
                 case 'exact_string'
-                    sql_str = ['fields.field_name="' field '" AND doc_data.value = "' param1 '"'];
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value = "' param1 '"'];
                 case 'exact_string_anycase'
-                    sql_str = ['fields.field_name="' field '" AND LOWER(doc_data.value) = "' lower(param1) '"'];
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'LOWER(doc_data.value) = "' lower(param1) '"'];
                 case 'contains_string'
-                    sql_str = ['fields.field_name="' field '" AND doc_data.value like "%' param1 '%"'];
+                    param1 = strrep(param1,'*','%');
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value like "%' param1 '%"'];
                 case 'exact_number'
-                    sql_str = ['fields.field_name="' field '" AND doc_data.value = '  num2str(param1(1))];
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value = '  num2str(param1(1))];
                 case 'lessthan'
-                    sql_str = ['fields.field_name="' field '" AND doc_data.value < '  num2str(param1(1))];
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value < '  num2str(param1(1))];
                 case 'lessthaneq'
-                    sql_str = ['fields.field_name="' field '" AND doc_data.value <= ' num2str(param1(1))];
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value <= ' num2str(param1(1))];
                 case 'greaterthan'
-                    sql_str = ['fields.field_name="' field '" AND doc_data.value > '  num2str(param1(1))];
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value > '  num2str(param1(1))];
                 case 'greaterthaneq'
-                    sql_str = ['fields.field_name="' field '" AND doc_data.value >= ' num2str(param1(1))];
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value >= ' num2str(param1(1))];
                 case 'hassize'   %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
-                case 'hasmember' %TODO
-                    error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
-                case 'hasfield'  %TODO
-                    error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
+                case 'hasmember'
+                    param1 = strrep(param1,'*','%');
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value like "%' param1 ',%"'];
+                case 'hasfield'
+                    sql_str = ['fields.field_name="' field '"'];
+                case 'depends_on'
+                    param1 = strrep(param1,'*','%');
+                    sql_str = ['fields.field_name="meta.depends_on" AND ' notStr 'doc_data.value like "%' param1 ',' param2 ';%"'];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasanysubfield_contains_string'  %TODO
@@ -707,18 +717,16 @@ classdef (Abstract) database < handle
                 case 'hasanysubfield_exact_string'     %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'regexp'
-                    sql_str = ['fields.field_name="' field '" AND regex(doc_data.value,"' param1 '") NOT NULL'];
+                    sql_str = ['fields.field_name="' field '" AND ' notStr 'regex(doc_data.value,"' param1 '") NOT NULL'];
                 case 'isa'
-                    sql_str = ['(fields.field_name="meta.class" AND doc_data.value = "' param1 '") OR ' ...
-                               '(fields.field_name="meta.superclass" AND doc_data.value like "%' param1 '%")'];
+                    sql_str = ['(fields.field_name="meta.class" AND ' notStr 'doc_data.value = "' param1 '") OR ' ...
+                               '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1 '%")'];
                 otherwise
                     %error('DID:Database:SQL','Unrecognized query operation "%s"',op);
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
             end
             sql_str = ['(' sql_str ')'];
-            if isNot
-                sql_str = ['NOT ' sql_str];
-            end
+            %sql_str = [notStr sql_str];
         end
         function query_str = get_sql_query_str(sqlitedb_obj, query_structs, branch_id)
             query_str = ['SELECT DISTINCT docs.doc_id ' ...
@@ -735,6 +743,7 @@ classdef (Abstract) database < handle
                     query_str = [query_str ' AND ' sql_str]; %#ok<AGROW>
                 end
             end
+            query_str = regexprep(query_str,' +',' ');
         end
         function doc_ids = search_doc_ids(sqlitedb_obj, query_struct, branch_id)
             % search_doc_ids - recursively search the database for matching doc IDs

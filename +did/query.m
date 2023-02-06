@@ -51,14 +51,16 @@ classdef query
 			%     |   'lessthaneq'         - is the field value less than or equal to 'param1' (and comparable size)
 			%     |   'greaterthan'        - is the field value greater than 'param1' (and comparable size)
 			%     |   'greaterthaneq'      - is the field value greater than or equal to 'param1' (and comparable size)
-			%     |   'hasfield'           - is the field present? (no role for 'param1' or 'param2')
-			%     |   'hasanysubfield_contains_string' - Is the field value an array of structs or cell array of structs
+			%     |***'hasfield'           - is the field present? (no role for 'param1' or 'param2')
+			%     |***'hasanysubfield_contains_string' - Is the field value an array of structs or cell array of structs
 			%     |                        such that any has a field named 'param1' with a string that contains the string
 			%     |                        in 'param2'?
 			%     |   'or'                 - are any of the searchstruct elements specified in 'param1' true?
-			%     |   'isa'                - is 'param1' either a superclass or the document class itself of the DID_DOCUMENT?
-			%     |   'depends_on'         - does the document depend on an item with name 'param1' and value 'param2'?
-			%     |----------------------|
+			%     |***'isa'                - is 'param1' either a superclass or the document class itself of the DID_DOCUMENT?
+			%     |***'depends_on'         - does the document depend on an item with name 'param1' and value 'param2'?
+			%     |
+            %     |***to be implemented
+            %     |----------------------|
 			% param1                     | Search parameter 1. Meaning depends on 'operation' (see above).
 			% param2                     | Search parameter 2. Meaning depends on 'operation' (see above).
 			% ---------------------------------------------------------------------------
@@ -118,13 +120,13 @@ classdef query
 			% C = AND(A,B) or C = A & B
 			%
 			% Produces a new DID.QUERY object C that is true if both DID.QUERY A and DID.QUERY B are true.
-            %
+			%
 			% Combines the searches from A and B into a search C. The searchstructure field of
 			% C will be a concatenated version of those from A and B. The query C will only pass if
 			% all of the characteristics of A and B are satisfied.
 
-            C = A;
-            C.searchstructure = [C.searchstructure(:); B.searchstructure(:)];
+				C = A;
+				C.searchstructure = [C.searchstructure(:); B.searchstructure(:)];
 		end % and()
 
 		function C = or(A,B)
@@ -134,8 +136,8 @@ classdef query
 			%
 			% Produces a new DID.QUERY object C that is true if either DID.QUERY A or DID.QUERY B is true.
 
-            C = did.query();
-            C.searchstructure = did.query.searchstruct('','or',A.searchstructure(:),B.searchstructure(:));
+				C = did.query();
+				C.searchstructure = did.query.searchstruct('','or',A.searchstructure(:),B.searchstructure(:));
 		end % or()
 
 		function searchstructure = to_searchstructure(did_query_obj)
@@ -148,51 +150,72 @@ classdef query
 			%
 			% See also: FIELDSEARCH
 
-            searchstructure = did.datastructures.emptystruct('field','operation','param1','param2');
-            for i=1:numel(did_query_obj)
-                for j=1:numel(did_query_obj(i).searchstructure)
-                    ss_here = did.datastructures.emptystruct('field','operation','param1','param2');
-                    ss_here(1).field = did_query_obj(i).searchstructure(j).field;
-                    % check to see if we have a special case that needs to be reduced
-                    if strcmpi('isa',did_query_obj(i).searchstructure(j).operation) % replace with search structures
-                        findinsubfield = struct('field','document_class.superclasses',...
-                            'operation','hasanysubfield_contains_string',...
-                            'param1','definition');
-                        findinsubfield.param2 = did_query_obj(i).searchstructure(j).param1;
-                        findinmainfield = struct('field','document_class.definition', ...
-                            'operation','contains_string');
-                        findinmainfield.param1 = did_query_obj(i).searchstructure(j).param1;
-                        findinmainfield.param2 = '';
-                        ss_here(1).field = '';
-                        ss_here(1).operation = 'or';
-                        ss_here(1).param1 = findinsubfield;
-                        ss_here(1).param2 = findinmainfield;
-                    elseif strcmpi('depends_on',did_query_obj(i).searchstructure(j).operation)
-                        param1 = {'name','value'};
-                        param2 = { did_query_obj(i).searchstructure(j).param1 did_query_obj(i).searchstructure(j).param2 };
-                        if strcmp(param2{1},'*') % ignore the name
-                            param1 = param1(2);
-                            param2 = param2(2);
+				searchstructure = did.datastructures.emptystruct('field','operation','param1','param2');
+				for i=1:numel(did_query_obj)
+					for j=1:numel(did_query_obj(i).searchstructure)
+						ss_here = did.datastructures.emptystruct('field','operation','param1','param2');
+						ss_here(1).field = did_query_obj(i).searchstructure(j).field;
+						% check to see if we have a special case that needs to be reduced
+						if strcmpi('isa',did_query_obj(i).searchstructure(j).operation) % replace with search structures
+							findinsubfield = struct('field','document_class.superclasses',...
+								'operation','hasanysubfield_contains_string',...
+								'param1','definition');
+							findinsubfield.param2 = did_query_obj(i).searchstructure(j).param1;
+							findinmainfield = struct('field','document_class.definition', ...
+								'operation','contains_string');
+							findinmainfield.param1 = did_query_obj(i).searchstructure(j).param1;
+							findinmainfield.param2 = '';
+							ss_here(1).field = '';
+							ss_here(1).operation = 'or';
+							ss_here(1).param1 = findinsubfield;
+							ss_here(1).param2 = findinmainfield;
+                        elseif strcmpi('~isa',did_query_obj(i).searchstructure(j).operation), % replace with search structures
+							% use one of DeMorgan's law: not(A or B) = not(A) AND not(B)
+							findinsubfield = struct('field','document_class.superclasses',...
+								'operation','~hasanysubfield_contains_string',...
+								'param1','definition');
+							findinsubfield.param2 = did_query_obj(i).searchstructure(j).param1;
+                                                        findinmainfield = struct('field','document_class.definition', ...
+								'operation','~contains_string');
+							findinmainfield.param1 = did_query_obj(i).searchstructure(j).param1;
+							findinmainfield.param2 = '';
+							ss_here = cat(1, findinsubfield, findinmainfield);
+						elseif strcmpi('depends_on',did_query_obj(i).searchstructure(j).operation)
+							param1 = {'name','value'};
+							param2 = { did_query_obj(i).searchstructure(j).param1 did_query_obj(i).searchstructure(j).param2 };
+							if strcmp(param2{1},'*') % ignore the name
+								param1 = param1(2);
+								param2 = param2(2);
+							end
+							ss_here = struct('field','depends_on','operation','hasanysubfield_exact_string');
+							ss_here(1).param1 = param1;
+							ss_here(1).param2 = param2;
+						elseif strcmpi('~depends_on',did_query_obj(i).searchstructure(j).operation),
+							param1 = {'name','value'};
+							param2 = { did_query_obj(i).searchstructure(j).param1 did_query_obj(i).searchstructure(j).param2 };
+							if strcmp(param2{1},'*'), % ignore the name
+								param1 = param1(2);
+								param2 = param2(2);
+							end;
+							ss_here = struct('field','depends_on','operation','~hasanysubfield_exact_string');
+							ss_here(1).param1 = param1;
+							ss_here(1).param2 = param2;
+						else % regular case
+							ss_here(1).operation = did_query_obj(i).searchstructure(j).operation;
+							if isa(did_query_obj(i).searchstructure(j).param1,'did_query')
+								ss_here(1).param1 = did_query_obj(i).searchstructure(j).param1.to_searchstructure();
+							else
+								ss_here(1).param1 = did_query_obj(i).searchstructure(j).param1;
+							end
+							if isa(did_query_obj(i).searchstructure(j).param2,'did_query')
+								ss_here(1).param2 = did_query_obj(i).searchstructure(j).param2.to_searchstructure();
+							else
+								ss_here(1).param2 = did_query_obj(i).searchstructure(j).param2;
+							end
                         end
-                        ss_here = struct('field','depends_on','operation','hasanysubfield_exact_string');
-                        ss_here(1).param1 = param1;
-                        ss_here(1).param2 = param2;
-                    else % regular case
-                        ss_here(1).operation = did_query_obj(i).searchstructure(j).operation;
-                        if isa(did_query_obj(i).searchstructure(j).param1,'did_query')
-                            ss_here(1).param1 = did_query_obj(i).searchstructure(j).param1.to_searchstructure();
-                        else
-                            ss_here(1).param1 = did_query_obj(i).searchstructure(j).param1;
-                        end
-                        if isa(did_query_obj(i).searchstructure(j).param2,'did_query')
-                            ss_here(1).param2 = did_query_obj(i).searchstructure(j).param2.to_searchstructure();
-                        else
-                            ss_here(1).param2 = did_query_obj(i).searchstructure(j).param2;
-                        end
-                    end
-                    searchstructure(end+1) = ss_here;
-                end
-            end
+						searchstructure = cat(1,searchstructure,ss_here);
+					end
+				end
 		end % to_searchstructure();
 	end % methods
 
@@ -208,22 +231,22 @@ classdef query
 			% 
 			% See also: FIELDSEARCH, DID.QUERY/DID.QUERY
 
-            if ~iscell(searchcellarray) || mod(numel(searchcellarray),2) ~= 0
-                error('Input must be a cell array in the form {''property1'',value1,...}');
-            end
+				if ~iscell(searchcellarray) || mod(numel(searchcellarray),2) ~= 0
+					error('Input must be a cell array in the form {''property1'',value1,...}');
+				end
 
-            searchstruct = did.datastructures.emptystruct('field','operation','param1','param2');
+				searchstruct = did.datastructures.emptystruct('field','operation','param1','param2');
 
-            for i=1:2:numel(searchcellarray)
-                if ischar(searchcellarray{i+1})
-                    newstructure = struct('field',searchcellarray{i}, 'operation','regexp',...
-                        'param1',searchcellarray{i+1},'param2',[]);
-                else
-                    newstructure = struct('field',searchcellarray{i}, 'operation','exact_number',...
-                        'param1',searchcellarray{i+1},'param2',[]);
-                end
-                searchstruct(end+1) = newstructure;
-            end
+				for i=1:2:numel(searchcellarray)
+					if ischar(searchcellarray{i+1})
+						newstructure = struct('field',searchcellarray{i}, 'operation','regexp',...
+							'param1',searchcellarray{i+1},'param2',[]);
+					else
+						newstructure = struct('field',searchcellarray{i}, 'operation','exact_number',...
+						'param1',searchcellarray{i+1},'param2',[]);
+					end
+					searchstruct(end+1) = newstructure;
+				end
 		end
 
 		function searchstruct_out = searchstruct(field, operation, param1, param2)
@@ -235,7 +258,7 @@ classdef query
 			% 
 			% See also: FIELDSEARCH, DID.QUERY/DID.QUERY
 
-            searchstruct_out = struct('field',field,'operation',operation,'param1',param1,'param2',param2);	 
+				searchstruct_out = struct('field',field,'operation',operation,'param1',param1,'param2',param2);	 
 		end 
 	end % methods (Static)
 end 
