@@ -9,6 +9,19 @@ function [b,msg] = test_did_db_documents_invalid(varargin)
 % This function first tries to delete a file 'test_db_docs.sqlite'
 % in the current directory, and then makes a new database with the same
 % filename.
+%
+% This version takes name/value pairs that may make changes that are invalid 
+% to the schema:
+% -----------------------------------------------------------------------------------------------------
+% | Parameter (default)                        | Description                                          |
+% |--------------------------------------------|------------------------------------------------------|
+% | value_modifier ('sham')                    | How should we modify the value field?                          |
+% | id_modifier ('sham')                    | How should we modify the id field?                          |
+% | datestamp_modifier ('sham')                    | How should we modify the datestamp field?                          |
+% | session_id_modifier ('sham')                    | How should we modify the session_id field?                          |
+% | dependency_modifier ('sham')                    | How should we modify the doc dependencies?                          |
+% | remover ('sham')                    | Which field should we remove?                         |
+% |--------------------------------------------|------------------------------------------------------|
 
 % Step 1: make an empty database with a starting branch
 db_filename = [pwd filesep 'test_db_docs.sqlite'];
@@ -39,10 +52,12 @@ dG = digraph(G,node_names);
 plot(dG,'layout','circle');
 title('The dependency relationships among the randomly generated documents.');
 
+b=0;
+msg = '';
 try
     db.add_docs(docs);
 catch E
-    b = 1;
+    b = 1; %caught the invalidation
     msg = [E.message newline 'Error due to one of the following modifiers: '...
         newline 'value_modifier:' '''' value_modifier ''''...
         newline 'id_modifier:' '''' id_modifier ''''...
@@ -59,4 +74,6 @@ end
 % end
 
 % Step 3: check the database results
-[b,msg] = did.test.documents.verify_db_document_structure(db, G, docs);
+[b2,msg2] = did.test.documents.verify_db_document_structure(db, G, docs);
+b = b & b2;
+msg = [msg newline msg2];

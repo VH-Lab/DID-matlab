@@ -1,7 +1,7 @@
 function [G, node_names, docs] = make_doc_tree_invalid(rates,varargin)
 % MAKE_DOC_TREE - make a "tree" of documents to add to a database
 %
-% [G, NODE_NAMES, DOCS] = MAKE_DOC_TREE_INVALID(RATES, METHODS)
+% [G, NODE_NAMES, DOCS] = MAKE_DOC_TREE_INVALID(RATES)
 %
 % Makes a directed graph G, associated NODE_NAMES, and demo did.documents 
 % DOCS by generating documents of type demoA demoB and demoC at poisson
@@ -13,8 +13,18 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates,varargin)
 % an A and B document (and C document, if they exist) are randomly selected
 % to be the dependencies of the new C-type document.
 %
-% This version makes changes that are invalid to the schema, depending upon METHOD.
-% If METHOD is 'int2str', the integer value fields are set to strings. 
+% This version takes name/value pairs that may make changes that are invalid 
+% to the schema:
+% -----------------------------------------------------------------------------------------------------
+% | Parameter (default)                        | Description                                          |
+% |--------------------------------------------|------------------------------------------------------|
+% | value_modifier ('sham')                    | How should we modify the value field?                          |
+% | id_modifier ('sham')                    | How should we modify the id field?                          |
+% | datestamp_modifier ('sham')                    | How should we modify the datestamp field?                          |
+% | session_id_modifier ('sham')                    | How should we modify the session_id field?                          |
+% | dependency_modifier ('sham')                    | How should we modify the doc dependencies?                          |
+% | remover ('sham')                    | Which field should we remove?                         |
+% |--------------------------------------------|------------------------------------------------------|
 %
 % G(i,j) is 1 if document j depends on document i and 0 otherwise.
 % 
@@ -78,10 +88,26 @@ for i=1:numA,
 end;
 
 for i=1:numB,
-	docs{end+1} = did.document('demoB','demoB.value',int2str(counter),...
+	docs{end+1} = did.document('demoB','demoB.value',counter,...
 		'demoA.value',counter);
+    %now can continue modifying docs:
+    d = docs{end};
+    d_struct = struct(d);
+    %modify value:
+    d_struct.document_properties.demoA.value = modifyvalue(value_modifier,counter);
+    %modify id: 
+    current_id = docs{end}.document_properties.base.id; 
+    d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
+    %remove a struct or field:
+    d_struct = remove(remover,d_struct);
+    %finish:
+    if isfield(d_struct,'document_properties')
+        docs{end} = did.document(d_struct.document_properties); %replace document in list with the modified version
+    else
+        docs{end} = did.document(d_struct);
+    end
 	node_names{end+1} = int2str(counter);
-    if isfield(docs{end}.document_properties.base,'id')
+    if isfield(docs{end}.document_properties,'base') && isfield(docs{end}.document_properties.base,'id')
         ids_B{end+1} = docs{end}.id();
     end
 	counter = counter + 1;
@@ -94,20 +120,38 @@ for i=1:numC,
 	depB = randi([0 numB]);
 	depC = randi([0 c_count]);
 
-	docs{end+1} = did.document('demoC','demoC.value',int2str(counter));
+	docs{end+1} = did.document('demoC','demoC.value',counter);
+    %now can continue modifying docs:
+    d = docs{end};
+    d_struct = struct(d);
+    %modify value:
+    d_struct.document_properties.demoA.value = modifyvalue(value_modifier,counter);
+    %modify id: 
+    current_id = docs{end}.document_properties.base.id; 
+    d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
+    %remove a struct or field:
+    d_struct = remove(remover,d_struct);
+    %finish:
+    if isfield(d_struct,'document_properties')
+        docs{end} = did.document(d_struct.document_properties); %replace document in list with the modified version
+    else
+        docs{end} = did.document(d_struct);
+    end
 	node_names{end+1} = int2str(counter);
-	ids_C{end+1} = docs{end}.id();
+    if isfield(docs{end}.document_properties,'base') && isfield(docs{end}.document_properties.base,'id')
+        ids_C{end+1} = docs{end}.id();
+    end
 	if depA>0 && numel(ids_A)>0 % check that ids_A is being filled in before accessing its indices 
 		docs{end} = docs{end}.set_dependency_value('item1',...
 			ids_A{depA});
 		G(depA,counter) = 1;
 	end;
-	if depB>0,
+	if depB>0 && numel(ids_B)>0,
 		docs{end} = docs{end}.set_dependency_value('item2',...
 			ids_B{depB});
 		G(numA+depB,counter) = 1;
 	end;
-	if depC>0,
+	if depC>0 && numel(ids_C)>0,
 		docs{end} = docs{end}.set_dependency_value('item3',...
 			ids_C{depC});
 		G(numA+numB+depC,counter) = 1;
