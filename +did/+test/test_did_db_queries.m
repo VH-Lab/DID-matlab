@@ -21,6 +21,7 @@ function [b,msg] = test_did_db_queries(varargin)
 % | Do_OR_test (0)                             | 0/1 Should we test the OR method?                    |
 % | Do_NOT_BLUH_test (0)                       | 0/1 Should we test '~bluh'?                          |
 % | Do_CONTAINS_STRING_test(0)                 | 0/1 Should we test 'contains_string'?                |
+% | param1_contains_string ('id_substring_chosen')| what should we use as param1 for a 'contains_string' query?|
 % | Do_NOT_CONTAINS_STRING_test(0)             | 0/1 Should we test '~contains_string'?               |
 % | Do_LESSTHAN_test (0)                       | 0/1 Should we test 'lessthan'?                       |
 % | Do_LESSTHANEQ_test (0)                     | 0/1 Should we test 'lessthaneq'?                     |
@@ -29,7 +30,7 @@ function [b,msg] = test_did_db_queries(varargin)
 % | ***Do_HASFIELD_test (0)                       | 0/1 Should we test 'hasfield'?                       |
 % | fieldname ('demoA')                        | the name of the field used to test HASFIELD            |           
 % | ***Do_HASMEMBER_test (0)                      | 0/1 Should we test 'hasmember'?                       |
-% | param1 (1)                                 | the value to put in param1 in a query using 'hasmember'|
+% | param1_hasmember (1)                       | the value to put in param1 in a query using 'hasmember'|
 % | ***Do_HASANYSUBFIELD_CONTAINS_STRING_test (0) | 0/1 Should we test 'hasanysubfield_contains_string'? |
 % | Do_DEPENDS_ON_test (0)                     | 0/1 Should we test'depends_on'?                      |
 % | Do_ISA_test (0)                            | 0/1 Should we test 'isa'?                            |
@@ -49,15 +50,16 @@ doc_value_ind_for_and = 2;
 Do_OR_test = 0; 
 Do_NOT_BLUH_test = 0; 
 Do_CONTAINS_STRING_test = 0; 
-Do_NOT_CONTAINS_STRING_test = 0; 
+param1_contains_string = 'id_substring_chosen';
+Do_NOT_CONTAINS_STRING_test = 0;
 Do_LESSTHAN_test = 0; 
 Do_LESSTHANEQ_test = 0; 
 Do_GREATERTHAN_test = 0; 
 Do_GREATERTHANEQ_test = 0; 
 Do_HASFIELD_test = 0; 
 fieldname = 'demoA';
-param1 = 1;
 Do_HASMEMBER_test = 0;
+param1_hasmember = 1;
 Do_HASANYSUBFIELD_CONTAINS_STRING_test = 0; 
 Do_DEPENDS_ON_test = 0; 
 Do_ISA_test = 0; 
@@ -380,8 +382,12 @@ end % Do_NOT_BLUH_test
 
 %test 'contains_string'
 if Do_CONTAINS_STRING_test
-    id_substring_chosen = cell2mat(extractBetween(id_chosen,11,12)); %base the chosen id_substring off of the previously chosen full id, (max 33 characters)
-    q = did.query('base.id','contains_string',id_substring_chosen); 
+    if strcmp(param1_contains_string,'id_substring_chosen')
+        param1 = cell2mat(extractBetween(id_chosen,11,12)); %base the chosen id_substring off of the previously chosen full id, (max 33 characters)
+    else
+        param1 = param1_contains_string;
+    end
+    q = did.query('base.id','contains_string',param1); 
     d = db.search(q); 
     [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q); 
     disp('Results of CONTAINS_STRING test:');
@@ -641,6 +647,7 @@ end % Do_HASFIELD_test
 
 %test 'hasmember'
 if Do_HASMEMBER_test
+    param1 = param1_hasmember;
     q = did.query(fieldname,'hasmember',param1);
     d = db.search(q);
     [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
@@ -717,7 +724,8 @@ if Do_DEPENDS_ON_test
         dependency_name = docs{doc_ind}.document_properties.depends_on(1).name;
         dependency_value = docs{doc_ind}.document_properties.depends_on(1).value;
     else %maybe do a try catch to check if you get an expected error
-        
+        dependency_name = '';
+        dependency_value = '';
     end
     q = did.query('','depends_on',dependency_name,dependency_value);
     d11 = db.search(q);
