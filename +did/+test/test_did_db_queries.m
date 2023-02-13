@@ -21,14 +21,15 @@ function [b,msg] = test_did_db_queries(varargin)
 % | Do_OR_test (0)                             | 0/1 Should we test the OR method?                    |
 % | Do_NOT_BLUH_test (0)                       | 0/1 Should we test '~bluh'?                          |
 % | Do_CONTAINS_STRING_test(0)                 | 0/1 Should we test 'contains_string'?                |
-% | *Do_NOT_CONTAINS_STRING_test(0)             | 0/1 Should we test '~contains_string'?               |
+% | Do_NOT_CONTAINS_STRING_test(0)             | 0/1 Should we test '~contains_string'?               |
 % | Do_LESSTHAN_test (0)                       | 0/1 Should we test 'lessthan'?                       |
 % | Do_LESSTHANEQ_test (0)                     | 0/1 Should we test 'lessthaneq'?                     |
 % | Do_GREATERTHAN_test (0)                    | 0/1 Should we test 'greaterthan'?                    |
 % | Do_GREATERTHANEQ_test (0)                  | 0/1 Should we test 'greaterthaneq'?                  |
 % | ***Do_HASFIELD_test (0)                       | 0/1 Should we test 'hasfield'?                       |
-% | fieldname ('demoA')                        | the name of the field used to test HASFIELD            |           |
-% | *Do_HASMEMBER_test (0)                      | 0/1 Should we test 'hasmember'?                       |
+% | fieldname ('demoA')                        | the name of the field used to test HASFIELD            |           
+% | ***Do_HASMEMBER_test (0)                      | 0/1 Should we test 'hasmember'?                       |
+% | param1 (1)                                 | the value to put in param1 in a query using 'hasmember'|
 % | ***Do_HASANYSUBFIELD_CONTAINS_STRING_test (0) | 0/1 Should we test 'hasanysubfield_contains_string'? |
 % | Do_DEPENDS_ON_test (0)                     | 0/1 Should we test'depends_on'?                      |
 % | Do_ISA_test (0)                            | 0/1 Should we test 'isa'?                            |
@@ -55,6 +56,7 @@ Do_GREATERTHAN_test = 0;
 Do_GREATERTHANEQ_test = 0; 
 Do_HASFIELD_test = 0; 
 fieldname = 'demoA';
+param1 = 1;
 Do_HASMEMBER_test = 0;
 Do_HASANYSUBFIELD_CONTAINS_STRING_test = 0; 
 Do_DEPENDS_ON_test = 0; 
@@ -329,8 +331,6 @@ if Do_NOT_BLUH_test %run a test of the NOT operator in a query
     catch exception_expected
         ids_expected = exception_expected; %doing this to check whether the apply_didquery function throws an exception or has a real output
     end
-    % ^using NOT with OR or CONTAINS_STRING might make this test more
-    % versatile
     
     disp('Results of NOT_BLUH test:') 
     if ~iscell(d4) && ~isa(d4,'MException') %can't do any of the below if the result of the search is not a cell with document ids or an exception
@@ -376,44 +376,81 @@ if Do_NOT_BLUH_test %run a test of the NOT operator in a query
         disp(['We expected:'])
         ids_expected,
     end;
-end
+end % Do_NOT_BLUH_test
 
-%4e: test 'contains_string'
+%test 'contains_string'
 if Do_CONTAINS_STRING_test
     id_substring_chosen = cell2mat(extractBetween(id_chosen,11,12)); %base the chosen id_substring off of the previously chosen full id, (max 33 characters)
     q = did.query('base.id','contains_string',id_substring_chosen); 
-    d5 = db.search(q); 
+    d = db.search(q); 
     [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q); 
     disp('Results of CONTAINS_STRING test:');
-    if ~iscell(d5) %can't do any of the below if the result of the search is not a cell with document ids
+    if ~iscell(d) %can't do any of the below if the result of the search is not a cell with document ids
         b = 0;
-        msg = ['CONTAINS_STRING operation query did not produce a cell array of documents - instead it produced an array of type ' class(d5) ' and length ' int2str(numel(d5)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        msg = ['CONTAINS_STRING operation query did not produce a cell array of documents - instead it produced an array of type ' class(d) ' and length ' int2str(numel(d)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
         disp(msg)
         disp(['This is the error; expected a cell array of documents.'])
         disp(['We got:']);
-        d5,
+        d,
         disp(['We expected:'])
         ids_expected,
         return;
-    elseif ~did.datastructures.eqlen(d5(:),ids_expected(:))
+    elseif ~did.datastructures.eqlen(d(:),ids_expected(:))
         b = 0;
         msg = ['CONTAINS_STRING operation query did not produce expected output.'];
         disp(msg)
         disp(['We got:']);
-        d5,
+        d,
         disp(['We expected:'])
         ids_expected,
         return
     else
         disp(['The string was ' id_substring_chosen])
         disp(['We got:']);
-        d5,
+        d,
         disp(['We expected:'])
         ids_expected,
     end;
 end
 
-%4f: test 'lessthan'
+%test '~contains_string'
+    % ^using NOT with CONTAINS_STRING is a more flexible way to test NOT
+if Do_NOT_CONTAINS_STRING_test
+    id_substring_chosen = cell2mat(extractBetween(id_chosen,11,12)); %base the chosen id_substring off of the previously chosen full id, (max 33 characters)
+    q = did.query('base.id','~contains_string',id_substring_chosen); 
+    d = db.search(q); 
+    [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q); 
+    disp('Results of NOT_CONTAINS_STRING test:');
+    if ~iscell(d) %can't do any of the below if the result of the search is not a cell with document ids
+        b = 0;
+        msg = ['NOT_CONTAINS_STRING operation query did not produce a cell array of documents - instead it produced an array of type ' class(d) ' and length ' int2str(numel(d)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        disp(msg)
+        disp(['This is the error; expected a cell array of documents.'])
+        disp(['We got:']);
+        d,
+        disp(['We expected:'])
+        ids_expected,
+        return;
+    elseif ~did.datastructures.eqlen(d(:),ids_expected(:))
+        b = 0;
+        msg = ['NOT_CONTAINS_STRING operation query did not produce expected output.'];
+        disp(msg)
+        disp(['We got:']);
+        d,
+        disp(['We expected:'])
+        ids_expected,
+        return
+    else
+        disp(['Number of total docs: ' num2str(numel(docs))])
+        disp(['The string was ' id_substring_chosen])
+        disp(['We got:']);
+        d,
+        disp(['We expected:'])
+        ids_expected,
+    end;
+end % Do_NOT_CONTAINS_STRING_test
+
+%test 'lessthan'
 if Do_LESSTHAN_test
     number_chosen = randi(100);
     %q = did.query('demoA.value','lessthan',number_chosen); %easy option,
@@ -571,38 +608,72 @@ end % Do_GREATERTHANEQ_test
 %4j: test 'hasfield'
 if Do_HASFIELD_test
     q = did.query(fieldname,'hasfield','');
-    d10 = db.search(q);
+    d = db.search(q);
     [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
     disp(['Results of HASFIELD test:'])
-    if ~iscell(d10) %can't do any of the below if the result of the search is not a cell with document ids
+    if ~iscell(d) %can't do any of the below if the result of the search is not a cell with document ids
         b = 0;
-        msg = ['HASFIELD operation query did not produce a cell array of documents - instead it produced an array of type ' class(d10) ' and length ' int2str(numel(d10)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        msg = ['HASFIELD operation query did not produce a cell array of documents - instead it produced an array of type ' class(d) ' and length ' int2str(numel(d)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
         disp(msg)
         disp(['This is the error; expected a cell array of documents.'])
         disp(['We got:']);
-        d10,
+        d,
         disp(['We expected:'])
         ids_expected,
         return;
-    elseif ~did.datastructures.eqlen(d10(:),ids_expected(:))
+    elseif ~did.datastructures.eqlen(d(:),ids_expected(:))
         b = 0;
         msg = ['HASFIELD operation query did not produce expected output.'];
         disp(msg)
         disp(['We got:']);
-        d10,
+        d,
         disp(['We expected:'])
         ids_expected,
         return
     else
         disp(['Number of total docs: ' num2str(numel(docs))])
         disp(['We got:']);
-        d10,
+        d,
         disp(['We expected:'])
         ids_expected,
     end;
 end % Do_HASFIELD_test
 
-%4k: test 'hasanysubfield_contains_string'
+%test 'hasmember'
+if Do_HASMEMBER_test
+    q = did.query(fieldname,'hasmember',param1);
+    d = db.search(q);
+    [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
+    disp(['Results of HASMEMBER test:'])
+    if ~iscell(d) %can't do any of the below if the result of the search is not a cell with document ids
+        b = 0;
+        msg = ['HASMEMBER operation query did not produce a cell array of documents - instead it produced an array of type ' class(d) ' and length ' int2str(numel(d)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
+        disp(msg)
+        disp(['This is the error; expected a cell array of documents.'])
+        disp(['We got:']);
+        d,
+        disp(['We expected:'])
+        ids_expected,
+        return;
+    elseif ~did.datastructures.eqlen(d(:),ids_expected(:))
+        b = 0;
+        msg = ['HASMEMBER operation query did not produce expected output.'];
+        disp(msg)
+        disp(['We got:']);
+        d,
+        disp(['We expected:'])
+        ids_expected,
+        return
+    else
+        disp(['Number of total docs: ' num2str(numel(docs))])
+        disp(['We got:']);
+        d,
+        disp(['We expected:'])
+        ids_expected,
+    end;
+end % 'Do_HASMEMBER_test'
+
+%test 'hasanysubfield_contains_string'
 if Do_HASANYSUBFIELD_CONTAINS_STRING_test
     doc_id_ind = randi(numel(docs));
     doc_id = docs{doc_id_ind}.id;
