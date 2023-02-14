@@ -141,19 +141,47 @@ for i=1:numC,
     if isfield(docs{end}.document_properties,'base') && isfield(docs{end}.document_properties.base,'id')
         ids_C{end+1} = docs{end}.id();
     end
-	if depA>0 && numel(ids_A)>0 % check that ids_A is being filled in before accessing its indices 
-		docs{end} = docs{end}.set_dependency_value('item1',...
-			ids_A{depA});
-		G(depA,counter) = 1;
+	if depA>0 
+        if numel(ids_A)>0 && ... % check that ids_A is being filled in before accessing its indices 
+            isfield(docs{end}.document_properties,'depends_on') % check that depends_on field hasn't been removed
+                % make sure that item1 exists:
+                exists_item1 = 0;
+                for doc_ind = 1:numel(docs{end}.document_properties.depends_on) %depends_on doc_ind
+                    exists_item1 = exists_item1 | strcmp(docs{end}.document_properties.depends_on(doc_ind).name,'item1'); %as long as item1 is found once, it exists
+                end
+                if exists_item1
+                    docs{end} = docs{end}.set_dependency_value('item1',...
+                        ids_A{depA});
+                end
+        end
+		G(depA,counter) = 1; %even if dependencies not set, plot still shows them
 	end;
-	if depB>0 && numel(ids_B)>0,
-		docs{end} = docs{end}.set_dependency_value('item2',...
-			ids_B{depB});
+	if depB>0 
+        if numel(ids_B)>0 && isfield(docs{end}.document_properties,'depends_on')  
+            % make sure that item2 exists:
+            exists_item2 = 0;
+            for doc_ind = 1:numel(docs{end}.document_properties.depends_on) %depends_on doc_ind
+                exists_item2 = exists_item2 | strcmp(docs{end}.document_properties.depends_on(doc_ind).name,'item2'); %as long as item2 is found once, it exists
+            end
+            if exists_item2
+                docs{end} = docs{end}.set_dependency_value('item2',...
+                    ids_B{depB});
+            end
+        end
 		G(numA+depB,counter) = 1;
 	end;
-	if depC>0 && numel(ids_C)>0,
-		docs{end} = docs{end}.set_dependency_value('item3',...
-			ids_C{depC});
+	if depC>0 
+        if numel(ids_C)>0 && isfield(docs{end}.document_properties,'depends_on')  
+            % make sure that item3 exists:
+            exists_item3 = 0;
+            for doc_ind = 1:numel(docs{end}.document_properties.depends_on) %depends_on doc_ind
+                exists_item3 = exists_item3 | strcmp(docs{end}.document_properties.depends_on(doc_ind).name,'item3'); %as long as item3 is found once, it exists
+            end
+            if exists_item3
+                docs{end} = docs{end}.set_dependency_value('item3',...
+                    ids_C{depC});
+            end
+        end
 		G(numA+numB+depC,counter) = 1;
 	end;
 
@@ -216,12 +244,47 @@ switch method
         struct.document_properties.base = rmfield(struct.document_properties.base,'name');
     case 'datestamp'
         struct.document_properties.base = rmfield(struct.document_properties.base,'datestamp');
-    case 'demoA'
-        struct.document_properties = rmfield(struct.document_properties,'base');
+    case 'demoA' %for demoA and demoB docs
+        if isfield(struct.document_properties,'demoA') %check that the struct contains demoA before removing it
+            struct.document_properties = rmfield(struct.document_properties,'demoA');
+        end
     case 'demoB' %for demoB docs
+        if isfield(struct.document_properties,'demoB') %check that the struct contains demoB before removing it
+            struct.document_properties = rmfield(struct.document_properties,'demoB');
+        end
     case 'demoC' %for demoC docs
+        if isfield(struct.document_properties,'demoC') %check that the struct contains demoC before removing it
+            struct.document_properties = rmfield(struct.document_properties,'demoC');
+        end
+    case 'depends_on' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties = rmfield(struct.document_properties,'depends_on');
+        end
+    case 'depends_on.name' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties = rmfield(struct.document_properties.depends_on,'name');
+        end
+    case 'depends_on.value' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties = rmfield(struct.document_properties.depends_on,'value');
+        end
+    case 'item1' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties.depends_on = struct.document_properties.depends_on([2,3]); %exclude the first item and its value
+        end
+    case 'item2' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties.depends_on = struct.document_properties.depends_on([1,3]);
+        end
+    case 'item3' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties.depends_on = struct.document_properties.depends_on([1,2]);
+        end    
     case 'value'
-        struct.document_properties.demoA = rmfield(struct.document_properties.demoA,'value');
+        %remove value from demoB (arbitrary choice of demo type)
+        if isfield(struct.document_properties,'demoB') %check that the struct contains demoB before removing its value
+            struct.document_properties.demoA = rmfield(struct.document_properties.demoB,'value');
+        end
     case 'document_class'
         struct.document_properties = rmfield(struct.document_properties,'document_class');
     case 'definition'
