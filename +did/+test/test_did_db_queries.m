@@ -35,6 +35,7 @@ function [b,msg] = test_did_db_queries(varargin)
 % | Do_DEPENDS_ON_test (0)                     | 0/1 Should we test'depends_on'?                      |
 % | Do_ISA_test (0)                            | 0/1 Should we test 'isa'?                            |
 % | Do_REGEXP_test (0)                         | 0/1 Should we test'regexp'?                          |
+% | *Do_HASSIZE_test (0)                        | 0/1 Should we test 'hassize'?                        |
 %   *not implemented in this function
 %   ***not implemented in DID / test doesn't pass
 % |--------------------------------------------|------------------------------------------------------|
