@@ -1011,7 +1011,10 @@ classdef (Abstract) database < handle
             catch
                 superFullNames = {};
             end
-            [~,superNames] = fileparts(superFullNames);
+            superNames = {};
+            for i=1:numel(superFullNames),
+                [~,superNames{i}] = fileparts(superFullNames{i}); % keep compatibility with Matlab 2019a
+            end;
             if ~iscell(superNames), superNames = {superNames}; end
             superNames = unique(superNames);
             schemaFields = fieldnames(schemaStruct);
