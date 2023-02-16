@@ -94,7 +94,7 @@ for i=1:numB,
     d = docs{end};
     d_struct = struct(d);
     %modify value:
-    d_struct.document_properties.demoA.value = modifyvalue(value_modifier,counter);
+    d_struct.document_properties.demoB.value = modifyvalue(value_modifier,counter); %value contained in demoB
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
@@ -125,10 +125,13 @@ for i=1:numC,
     d = docs{end};
     d_struct = struct(d);
     %modify value:
-    d_struct.document_properties.demoA.value = modifyvalue(value_modifier,counter);
+    d_struct.document_properties.demoC.value = modifyvalue(value_modifier,counter); %value contained in demoC
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
+    %modify dependencies:
+    current_dependency = docs{end}.document_properties.depends_on;
+    d_struct.document_properties.base.id = modifydependency(dependency_modifier,current_dependency);
     %remove a struct or field:
     d_struct = remove(remover,d_struct);
     %finish:
