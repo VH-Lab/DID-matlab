@@ -1,9 +1,7 @@
 function [b,msg] = test_did_db_queries(varargin)
-% TEST_DID_BRANCHES - test the branching functionality of a DID database
-%
-% [B,MSG] = TEST_DID_DB_DOCUMENTS()
+% [B,MSG] = TEST_DID_DB_QUERIES(VARARGIN)
 % 
-% Tests the document adding functions of the did.database class, using the
+% Tests the functionality of queries using the db.query class, and using the
 % did.implementations.sqlitedb class.
 %  
 % This function first tries to delete a file 'test_db_docs.sqlite', and then
@@ -20,7 +18,7 @@ function [b,msg] = test_did_db_queries(varargin)
 % | doc_value_ind_for_and (2)                  | doc value index used in AND test                     |
 % | Do_OR_test (0)                             | 0/1 Should we test the OR method?                    |
 % | Do_NOT_BLUH_test (0)                       | 0/1 Should we test '~bluh'?                          |
-% | Do_CONTAINS_STRING_test(0)                 | 0/1 Should we test 'contains_string'?                |
+% | ***Do_CONTAINS_STRING_test(0)                 | 0/1 Should we test 'contains_string'?                |
 % | param1_contains_string ('id_substring_chosen')| what should we use as param1 for a 'contains_string' query?|
 % | Do_NOT_CONTAINS_STRING_test(0)             | 0/1 Should we test '~contains_string'?               |
 % | Do_LESSTHAN_test (0)                       | 0/1 Should we test 'lessthan'?                       |
@@ -33,6 +31,7 @@ function [b,msg] = test_did_db_queries(varargin)
 % | param1_hasmember (1)                       | the value to put in param1 in a query using 'hasmember'|
 % | ***Do_HASANYSUBFIELD_CONTAINS_STRING_test (0) | 0/1 Should we test 'hasanysubfield_contains_string'? |
 % | Do_DEPENDS_ON_test (0)                     | 0/1 Should we test'depends_on'?                      |
+% | param1_depends_on ('item1')                | the dependency name chosen
 % | Do_ISA_test (0)                            | 0/1 Should we test 'isa'?                            |
 % | Do_REGEXP_test (0)                         | 0/1 Should we test'regexp'?                          |
 % | *Do_HASSIZE_test (0)                        | 0/1 Should we test 'hassize'?                        |
@@ -63,6 +62,7 @@ Do_HASMEMBER_test = 0;
 param1_hasmember = 1;
 Do_HASANYSUBFIELD_CONTAINS_STRING_test = 0; 
 Do_DEPENDS_ON_test = 0; 
+param1_depends_on = 'item1';
 Do_ISA_test = 0; 
 Do_REGEXP_test = 0; 
 did.datastructures.assign(varargin{:});
@@ -262,7 +262,8 @@ if Do_AND_test,
         disp(['We expected:'])
         ids_expected,
         return
-    elseif ~did.datastructures.eqlen(d2,ids_expected) && ~( isempty(d2) && isempty(ids_expected)) %checks that the length and contents of each object are the same
+    elseif ~did.datastructures.eqlen(d2,ids_expected) && ... %checks that the length and contents of each object are the same
+        ~( isempty(d2) && isempty(ids_expected)) %length of arrays doesn't matter if both are empty
         b = 0;
         msg = ['AND operation query did not produce expected output.'];
         disp(msg)
@@ -396,6 +397,7 @@ if Do_CONTAINS_STRING_test
         b = 0;
         msg = ['CONTAINS_STRING operation query did not produce a cell array of documents - instead it produced an array of type ' class(d) ' and length ' int2str(numel(d)) '. Expected a cell array with ' int2str(numel(docs_expected)) ' document(s).'];
         disp(msg)
+        disp(['The string was ' param1])
         disp(['This is the error; expected a cell array of documents.'])
         disp(['We got:']);
         d,
@@ -406,13 +408,16 @@ if Do_CONTAINS_STRING_test
         b = 0;
         msg = ['CONTAINS_STRING operation query did not produce expected output.'];
         disp(msg)
+        disp(['The string was ' param1])
+        disp(['Number of total docs: ' num2str(numel(docs))])
         disp(['We got:']);
         d,
         disp(['We expected:'])
         ids_expected,
         return
     else
-        disp(['The string was ' id_substring_chosen])
+        disp(['The string was ' param1])
+        disp(['Number of total docs: ' num2str(numel(docs))])
         disp(['We got:']);
         d,
         disp(['We expected:'])
@@ -722,8 +727,9 @@ end %Do_HASANYSUBFIELD_CONTAINS_STRING_test
 if Do_DEPENDS_ON_test
     doc_ind = numel(docs); %choose last document to ensure we use the demoC build, which contains the depends_on field
     if numel(docs{doc_ind}.document_properties.depends_on)>0 %so we don't try to access indices of an array that don't exist
-        dependency_name = docs{doc_ind}.document_properties.depends_on(1).name;
-        dependency_value = docs{doc_ind}.document_properties.depends_on(1).value;
+        %dependency_name = docs{doc_ind}.document_properties.depends_on(1).name;
+        dependency_name = param1_depends_on;
+        dependency_value = docs{doc_ind}.document_properties.depends_on(2).value;
     else %maybe do a try catch to check if you get an expected error
         dependency_name = '';
         dependency_value = '';
