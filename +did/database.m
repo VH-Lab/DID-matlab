@@ -705,7 +705,9 @@ classdef (Abstract) database < handle
                 case 'hasmember'
                     param1 = strrep(num2str(param1),'*','%');
                     field_check = ['(fields.field_name="' field '" OR fields.field_name like "' field '.%")'];
-                    value_check = ['(doc_data.value like "%' param1 ',%" OR doc_data.value=' param1 ' OR doc_data.value="' param1 '")'];
+                    %value_check= ['(doc_data.value like "%' param1 ',%"' ...
+                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' param1 '\s*(,.*)*$") NOT NULL' ...
+                                   ' OR doc_data.value=' param1 ' OR doc_data.value="' param1 '")'];
                     sql_str = [field_check ' AND ' notStr value_check];
                 case 'hasfield'
                     sql_str = ['fields.field_name="' field '" OR fields.field_name like "' field '.%"'];
