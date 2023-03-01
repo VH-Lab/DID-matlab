@@ -129,12 +129,10 @@ for i=1:numC,
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
-    %modify dependencies:
-    current_dependency = docs{end}.document_properties.depends_on;
-    d_struct.document_properties.base.id = modifydependency(dependency_modifier,current_dependency);
+    
     %remove a struct or field:
     d_struct = remove(remover,d_struct);
-    %finish:
+    %turn struct back into doc:
     if isfield(d_struct,'document_properties')
         docs{end} = did.document(d_struct.document_properties); %replace document in list with the modified version
     else
@@ -187,7 +185,16 @@ for i=1:numC,
         end
 		G(numA+numB+depC,counter) = 1;
 	end;
-
+    %modify dependencies after they are set:
+    d = docs{end};
+    d_struct = struct(d);
+    d_struct = modifydependency(dependency_modifier,d_struct); %needs to be implemented
+    %turn struct back into doc:
+    if isfield(d_struct,'document_properties')
+        docs{end} = did.document(d_struct.document_properties); %replace document in list with the modified version
+    else
+        docs{end} = did.document(d_struct);
+    end
 	counter = counter + 1;
 	c_count = c_count + 1;
 end;
@@ -228,11 +235,25 @@ switch method
     case 'replace_letter_invalid1'
         id = replaceBetween(id,1,1,'*'); %replace letter/digit with a special character
     case 'replace_letter_invalid2'
-        id = replaceBetween(id,1,1,''''); %replace letter/digit with a special charactercase 'sham'
+        id = replaceBetween(id,1,1,''''); %replace letter/digit with a special character
     case 'sham'
     otherwise
         error(['Unknown method ' method '.']);
 end
+function struct = modifydependency(method,struct)
+switch method
+    case 'invalid id'
+        struct.document_properties.depends_on(1).value = 'abcdefg';
+    case 'invalid name'
+        struct.document_properties.depends_on(1).name = 'abcdefg';
+    case 'add dependency'
+        struct.document_properties.depends_on(4).name = 'item4';
+        struct.document_properties.depends_on(4).value = struct.document_properties.depends_on(1).value; %set the 4th dependency to the same value as the first
+    case 'sham'
+    otherwise
+        error(['Unknown method ' method '.']);
+end
+
 function struct = remove(method,struct)
 switch method
     case 'document_properties'
