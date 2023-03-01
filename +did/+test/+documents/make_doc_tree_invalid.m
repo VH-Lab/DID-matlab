@@ -55,8 +55,7 @@ ids_C = {};
 %list of possible tests and their default option
 value_modifier = 'sham';
 id_modifier = 'sham';
-datestamp_modifier = 'sham';
-session_id_modifier= 'sham';
+other_modifier = 'sham';
 dependency_modifier = 'sham'; % primarily for demoC
 remover = 'sham';
 did.datastructures.assign(varargin{:});
@@ -72,6 +71,8 @@ for i=1:numA,
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
+    %modify other fields:
+    d_struct = modifyotherfields(other_modifier,d_struct);
     %remove a struct or field:
     d_struct = remove(remover,d_struct);
     %finish:
@@ -98,6 +99,8 @@ for i=1:numB,
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
+    %modify other fields:
+    d_struct = modifyotherfields(other_modifier,d_struct);
     %remove a struct or field:
     d_struct = remove(remover,d_struct);
     %finish:
@@ -129,7 +132,8 @@ for i=1:numC,
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
-    
+    %modify other fields:
+    d_struct = modifyotherfields(other_modifier,d_struct);
     %remove a struct or field:
     d_struct = remove(remover,d_struct);
     %turn struct back into doc:
@@ -253,7 +257,32 @@ switch method
     otherwise
         error(['Unknown method ' method '.']);
 end
-
+function struct = modifyotherfields(method,struct)
+switch method
+    case 'invalid definition'
+        struct.document_properties.document_class.definition = 'abcdefg';
+    case 'invalid validation'
+        struct.document_properties.document_class.validation = 'abcdefg';
+    case 'invalid class name'
+        struct.document_properties.document_class.class_name = 'abcdefg';
+    case 'invalid property list name'
+        struct.document_properties.document_class.property_list_name = 'abcdefg';
+    case 'new class version number'
+        struct.document_properties.document_class.class_version = 2;
+    case 'class version string'
+        struct.document_properties.document_class.class_version = 'abcdefg';
+    case 'invalid superclass definition'
+        struct.document_properties.document_class.superclasses(1).definition = 'abcdefg';
+    case 'invalid session id'
+        struct.document_properties.base.session_id = 'abcdefg';
+    case 'invalid base name'
+        struct.document_properties.base.name = 'abcdefg';
+    case 'invalid datestamp'
+        struct.document_properties.base.datestamp = 'abcdefg';
+    case 'sham'
+    otherwise
+        error(['Unknown method ' method '.']);
+end
 function struct = remove(method,struct)
 switch method
     case 'document_properties'
