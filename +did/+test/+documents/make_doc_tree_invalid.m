@@ -55,8 +55,7 @@ ids_C = {};
 %list of possible tests and their default option
 value_modifier = 'sham';
 id_modifier = 'sham';
-datestamp_modifier = 'sham';
-session_id_modifier= 'sham';
+other_modifier = 'sham';
 dependency_modifier = 'sham'; % primarily for demoC
 remover = 'sham';
 did.datastructures.assign(varargin{:});
@@ -72,6 +71,8 @@ for i=1:numA,
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
+    %modify other fields:
+    d_struct = modifyotherfields(other_modifier,d_struct);
     %remove a struct or field:
     d_struct = remove(remover,d_struct);
     %finish:
@@ -94,10 +95,12 @@ for i=1:numB,
     d = docs{end};
     d_struct = struct(d);
     %modify value:
-    d_struct.document_properties.demoA.value = modifyvalue(value_modifier,counter);
+    d_struct.document_properties.demoB.value = modifyvalue(value_modifier,counter); %value contained in demoB
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
+    %modify other fields:
+    d_struct = modifyotherfields(other_modifier,d_struct);
     %remove a struct or field:
     d_struct = remove(remover,d_struct);
     %finish:
@@ -125,13 +128,15 @@ for i=1:numC,
     d = docs{end};
     d_struct = struct(d);
     %modify value:
-    d_struct.document_properties.demoA.value = modifyvalue(value_modifier,counter);
+    d_struct.document_properties.demoC.value = modifyvalue(value_modifier,counter); %value contained in demoC
     %modify id: 
     current_id = docs{end}.document_properties.base.id; 
     d_struct.document_properties.base.id = modifyid(id_modifier,current_id);
+    %modify other fields:
+    d_struct = modifyotherfields(other_modifier,d_struct);
     %remove a struct or field:
     d_struct = remove(remover,d_struct);
-    %finish:
+    %turn struct back into doc:
     if isfield(d_struct,'document_properties')
         docs{end} = did.document(d_struct.document_properties); %replace document in list with the modified version
     else
@@ -141,22 +146,59 @@ for i=1:numC,
     if isfield(docs{end}.document_properties,'base') && isfield(docs{end}.document_properties.base,'id')
         ids_C{end+1} = docs{end}.id();
     end
-	if depA>0 && numel(ids_A)>0 % check that ids_A is being filled in before accessing its indices 
-		docs{end} = docs{end}.set_dependency_value('item1',...
-			ids_A{depA});
-		G(depA,counter) = 1;
+	if depA>0 
+        if numel(ids_A)>0 && ... % check that ids_A is being filled in before accessing its indices 
+            isfield(docs{end}.document_properties,'depends_on') % check that depends_on field hasn't been removed
+                % make sure that item1 exists:
+                exists_item1 = 0;
+                for doc_ind = 1:numel(docs{end}.document_properties.depends_on) %depends_on doc_ind
+                    exists_item1 = exists_item1 | strcmp(docs{end}.document_properties.depends_on(doc_ind).name,'item1'); %as long as item1 is found once, it exists
+                end
+                if exists_item1
+                    docs{end} = docs{end}.set_dependency_value('item1',...
+                        ids_A{depA});
+                end
+        end
+		G(depA,counter) = 1; %even if dependencies not set, plot still shows them
 	end;
-	if depB>0 && numel(ids_B)>0,
-		docs{end} = docs{end}.set_dependency_value('item2',...
-			ids_B{depB});
+	if depB>0 
+        if numel(ids_B)>0 && isfield(docs{end}.document_properties,'depends_on')  
+            % make sure that item2 exists:
+            exists_item2 = 0;
+            for doc_ind = 1:numel(docs{end}.document_properties.depends_on) %depends_on doc_ind
+                exists_item2 = exists_item2 | strcmp(docs{end}.document_properties.depends_on(doc_ind).name,'item2'); %as long as item2 is found once, it exists
+            end
+            if exists_item2
+                docs{end} = docs{end}.set_dependency_value('item2',...
+                    ids_B{depB});
+            end
+        end
 		G(numA+depB,counter) = 1;
 	end;
-	if depC>0 && numel(ids_C)>0,
-		docs{end} = docs{end}.set_dependency_value('item3',...
-			ids_C{depC});
+	if depC>0 
+        if numel(ids_C)>0 && isfield(docs{end}.document_properties,'depends_on')  
+            % make sure that item3 exists:
+            exists_item3 = 0;
+            for doc_ind = 1:numel(docs{end}.document_properties.depends_on) %depends_on doc_ind
+                exists_item3 = exists_item3 | strcmp(docs{end}.document_properties.depends_on(doc_ind).name,'item3'); %as long as item3 is found once, it exists
+            end
+            if exists_item3
+                docs{end} = docs{end}.set_dependency_value('item3',...
+                    ids_C{depC});
+            end
+        end
 		G(numA+numB+depC,counter) = 1;
 	end;
-
+    %modify dependencies after they are set:
+    d = docs{end};
+    d_struct = struct(d);
+    d_struct = modifydependency(dependency_modifier,d_struct); %needs to be implemented
+    %turn struct back into doc:
+    if isfield(d_struct,'document_properties')
+        docs{end} = did.document(d_struct.document_properties); %replace document in list with the modified version
+    else
+        docs{end} = did.document(d_struct);
+    end
 	counter = counter + 1;
 	c_count = c_count + 1;
 end;
@@ -197,7 +239,46 @@ switch method
     case 'replace_letter_invalid1'
         id = replaceBetween(id,1,1,'*'); %replace letter/digit with a special character
     case 'replace_letter_invalid2'
-        id = replaceBetween(id,1,1,''''); %replace letter/digit with a special charactercase 'sham'
+        id = replaceBetween(id,1,1,''''); %replace letter/digit with a special character
+    case 'sham'
+    otherwise
+        error(['Unknown method ' method '.']);
+end
+function struct = modifydependency(method,struct)
+switch method
+    case 'invalid id'
+        struct.document_properties.depends_on(1).value = 'abcdefg';
+    case 'invalid name'
+        struct.document_properties.depends_on(1).name = 'abcdefg';
+    case 'add dependency'
+        struct.document_properties.depends_on(4).name = 'item4';
+        struct.document_properties.depends_on(4).value = struct.document_properties.depends_on(1).value; %set the 4th dependency to the same value as the first
+    case 'sham'
+    otherwise
+        error(['Unknown method ' method '.']);
+end
+function struct = modifyotherfields(method,struct)
+switch method
+    case 'invalid definition'
+        struct.document_properties.document_class.definition = 'abcdefg';
+    case 'invalid validation'
+        struct.document_properties.document_class.validation = 'abcdefg';
+    case 'invalid class name'
+        struct.document_properties.document_class.class_name = 'abcdefg';
+    case 'invalid property list name'
+        struct.document_properties.document_class.property_list_name = 'abcdefg';
+    case 'new class version number'
+        struct.document_properties.document_class.class_version = 2;
+    case 'class version string'
+        struct.document_properties.document_class.class_version = 'abcdefg';
+    case 'invalid superclass definition'
+        struct.document_properties.document_class.superclasses(1).definition = 'abcdefg';
+    case 'invalid session id'
+        struct.document_properties.base.session_id = 'abcdefg';
+    case 'invalid base name'
+        struct.document_properties.base.name = 'abcdefg';
+    case 'invalid datestamp'
+        struct.document_properties.base.datestamp = 'abcdefg';
     case 'sham'
     otherwise
         error(['Unknown method ' method '.']);
@@ -216,12 +297,47 @@ switch method
         struct.document_properties.base = rmfield(struct.document_properties.base,'name');
     case 'datestamp'
         struct.document_properties.base = rmfield(struct.document_properties.base,'datestamp');
-    case 'demoA'
-        struct.document_properties = rmfield(struct.document_properties,'base');
+    case 'demoA' %for demoA and demoB docs
+        if isfield(struct.document_properties,'demoA') %check that the struct contains demoA before removing it
+            struct.document_properties = rmfield(struct.document_properties,'demoA');
+        end
     case 'demoB' %for demoB docs
+        if isfield(struct.document_properties,'demoB') %check that the struct contains demoB before removing it
+            struct.document_properties = rmfield(struct.document_properties,'demoB');
+        end
     case 'demoC' %for demoC docs
+        if isfield(struct.document_properties,'demoC') %check that the struct contains demoC before removing it
+            struct.document_properties = rmfield(struct.document_properties,'demoC');
+        end
+    case 'depends_on' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties = rmfield(struct.document_properties,'depends_on');
+        end
+    case 'depends_on.name' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties = rmfield(struct.document_properties.depends_on,'name');
+        end
+    case 'depends_on.value' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties = rmfield(struct.document_properties.depends_on,'value');
+        end
+    case 'item1' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties.depends_on = struct.document_properties.depends_on([2,3]); %exclude the first item and its value
+        end
+    case 'item2' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties.depends_on = struct.document_properties.depends_on([1,3]);
+        end
+    case 'item3' %for demoC docs only
+        if isfield(struct.document_properties,'depends_on')
+            struct.document_properties.depends_on = struct.document_properties.depends_on([1,2]);
+        end    
     case 'value'
-        struct.document_properties.demoA = rmfield(struct.document_properties.demoA,'value');
+        %remove value from demoB (arbitrary choice of demo type)
+        if isfield(struct.document_properties,'demoB') %check that the struct contains demoB before removing its value
+            struct.document_properties.demoA = rmfield(struct.document_properties.demoB,'value');
+        end
     case 'document_class'
         struct.document_properties = rmfield(struct.document_properties,'document_class');
     case 'definition'
