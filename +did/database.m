@@ -688,7 +688,7 @@ classdef (Abstract) database < handle
                 case 'exact_string_anycase'
                     sql_str = ['fields.field_name="' field '" AND ' notStr 'LOWER(doc_data.value) = "' lower(param1) '"'];
                 case 'contains_string'
-                    param1 = strrep(param1,'*','%');
+                    param1 = strrep(num2str(param1),'*','%');
                     sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value like "%' param1 '%"'];
                 case 'exact_number'
                     sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value = '  num2str(param1(1))];
@@ -703,12 +703,16 @@ classdef (Abstract) database < handle
                 case 'hassize'   %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasmember'
-                    param1 = strrep(param1,'*','%');
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value like "%' param1 ',%"'];
+                    param1 = strrep(num2str(param1),'*','%');
+                    field_check = ['(fields.field_name="' field '" OR fields.field_name like "' field '.%")'];
+                    %value_check= ['(doc_data.value like "%' param1 ',%"' ...
+                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' param1 '\s*(,.*)*$") NOT NULL' ...
+                                   ' OR doc_data.value=' param1 ' OR doc_data.value="' param1 '")'];
+                    sql_str = [field_check ' AND ' notStr value_check];
                 case 'hasfield'
-                    sql_str = ['fields.field_name="' field '"'];
+                    sql_str = ['fields.field_name="' field '" OR fields.field_name like "' field '.%"'];
                 case 'depends_on'
-                    param1 = strrep(param1,'*','%');
+                    param1 = strrep(num2str(param1),'*','%');
                     sql_str = ['fields.field_name="meta.depends_on" AND ' notStr 'doc_data.value like "%' param1 ',' param2 ';%"'];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
@@ -1012,9 +1016,9 @@ classdef (Abstract) database < handle
                 superFullNames = {};
             end
             superNames = {};
-            for i=1:numel(superFullNames),
-                [~,superNames{i}] = fileparts(superFullNames{i}); % keep compatibility with Matlab 2019a
-            end;
+            for i = 1 : numel(superFullNames)
+                [~,superNames{i}] = fileparts(superFullNames{i}); %#ok<AGROW> % keep compatibility with Matlab 2019a
+            end
             if ~iscell(superNames), superNames = {superNames}; end
             superNames = unique(superNames);
             schemaFields = fieldnames(schemaStruct);
