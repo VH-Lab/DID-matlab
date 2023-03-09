@@ -11,8 +11,11 @@ classdef (Abstract) database < handle
 %   connection - Database connection details (e.g. file/folder name or a struct)
 %   dbid       - Database ID (set by the specific implementation class)
 %   version    - Database version (set by the specific implementation class)
-%   branch_id  - Branch ID that we are currently viewing/editing
-%   frozen_branch_ids = Cell array of ids of branches that cannot be modified
+%   current_branch_id - Branch ID that we are currently viewing/editing
+%   frozen_branch_ids - Cell array of ids of branches that cannot be modified
+%
+% Properties (read/write):
+%   debug      - Whether to display debug info in console (default: false)
 %
 % Public methods with a default implementation that should not be overloaded:
 %   database - Create a new database object with no branches initially
@@ -75,6 +78,11 @@ classdef (Abstract) database < handle
 
     properties (Access=protected)
         preferences
+    end % properties
+
+    % Public read/write properties
+    properties (Access=public)
+        debug (1,1) logical = false  % Display debug info in console? (default: false)
     end % properties
 
     % Main database constructor
@@ -431,6 +439,20 @@ classdef (Abstract) database < handle
             for idx = 1 : numel(document_objs)
                 doc = document_objs(idx);
                 if iscell(doc), doc = doc{1}; end
+                if database_obj.debug
+                    try
+                        docProps = doc.document_properties;
+                        doc_id = docProps.base.id;
+                        try
+                            className = docProps.document_class.class_name;
+                        catch
+                            className = '<unknown class>';
+                        end
+                        fprintf('Adding %s doc %s to database branch %s\n', ...
+                                className, doc_id, branch_id);
+                    catch
+                    end
+                end
                 database_obj.do_add_doc(doc, branch_id, varargin{:});
             end
         end % add_doc()
@@ -667,10 +689,15 @@ classdef (Abstract) database < handle
     end
     methods (Access=protected)
         function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
+            % Convert a single did.query object/struct into SQL query string
             sql_str = ''; %#ok<NASGU>
             field  = query_struct.field;
             param1 = query_struct.param1;
             param2 = query_struct.param2;
+            param1Str = num2str(param1);
+            param1Val = num2str(param1(1));
+            param1Like = regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'});
+            field_check = ['fields.field_name="' field '"'];
             op = strtrim(lower(query_struct.operation));
             isNot = op(1)=='~';
             if isNot
@@ -684,36 +711,37 @@ classdef (Abstract) database < handle
                     sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1) ' OR ' ...
                                query_struct_to_sql_str(sqlitedb_obj, param2)];
                 case 'exact_string'
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value = "' param1 '"'];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1Str '"'];
                 case 'exact_string_anycase'
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'LOWER(doc_data.value) = "' lower(param1) '"'];
+                    sql_str = [field_check ' AND ' notStr 'LOWER(doc_data.value) = "' lower(param1Str) '"'];
                 case 'contains_string'
-                    param1 = strrep(num2str(param1),'*','%');
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value like "%' param1 '%"'];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'exact_number'
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value = '  num2str(param1(1))];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
                 case 'lessthan'
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value < '  num2str(param1(1))];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value < '  param1Val];
                 case 'lessthaneq'
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value <= ' num2str(param1(1))];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value <= ' param1Val];
                 case 'greaterthan'
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value > '  num2str(param1(1))];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value > '  param1Val];
                 case 'greaterthaneq'
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'doc_data.value >= ' num2str(param1(1))];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value >= ' param1Val];
                 case 'hassize'   %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasmember'
-                    param1 = strrep(num2str(param1),'*','%');
-                    field_check = ['(fields.field_name="' field '" OR fields.field_name like "' field '.%")'];
+                    fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
+                    field_check = ['(' field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\")'];
                     %value_check= ['(doc_data.value like "%' param1 ',%"' ...
-                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' param1 '\s*(,.*)*$") NOT NULL' ...
-                                   ' OR doc_data.value=' param1 ' OR doc_data.value="' param1 '")'];
+                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' param1Str '\s*(,.*)*$") NOT NULL' ...
+                                   ' OR doc_data.value='  param1Str ...
+                                   ' OR doc_data.value="' param1Str '")'];
                     sql_str = [field_check ' AND ' notStr value_check];
                 case 'hasfield'
-                    sql_str = ['fields.field_name="' field '" OR fields.field_name like "' field '.%"'];
+                    fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
+                    sql_str = [field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\"'];
                 case 'depends_on'
-                    param1 = strrep(num2str(param1),'*','%');
-                    sql_str = ['fields.field_name="meta.depends_on" AND ' notStr 'doc_data.value like "%' param1 ',' param2 ';%"'];
+                    field_check = 'fields.field_name="meta.depends_on"';
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like ',' param2 ';%" ESCAPE "\"'];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasanysubfield_contains_string'  %TODO
@@ -721,18 +749,18 @@ classdef (Abstract) database < handle
                 case 'hasanysubfield_exact_string'     %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'regexp'
-                    sql_str = ['fields.field_name="' field '" AND ' notStr 'regex(doc_data.value,"' param1 '") NOT NULL'];
+                    sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,"' param1Str '") NOT NULL'];
                 case 'isa'
-                    sql_str = ['(fields.field_name="meta.class" AND ' notStr 'doc_data.value = "' param1 '") OR ' ...
-                               '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1 '%")'];
+                    sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
+                               '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\")'];
                 otherwise
-                    %error('DID:Database:SQL','Unrecognized query operation "%s"',op);
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
             end
             sql_str = ['(' sql_str ')'];
             %sql_str = [notStr sql_str];
         end
         function query_str = get_sql_query_str(sqlitedb_obj, query_structs, branch_id)
+            % Convert an array of did.query objects/structs into SQL query string
             query_str = ['SELECT DISTINCT docs.doc_id ' ...
                          'FROM   docs, branch_docs, doc_data, fields ' ...
                          'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
@@ -993,6 +1021,8 @@ classdef (Abstract) database < handle
         end
 
         function validate_doc_vs_schema(database_obj, docProps, schemaStruct, all_ids)
+            % Validate a document vs. its definition schema(s)
+
             IGNORE_DID_CLASS_PREFIX = true;
 
             % Loop over all fields in the validation schema
@@ -1009,7 +1039,9 @@ classdef (Abstract) database < handle
             if isSuperClass
                 doc_name = [doc_name ' (superclass ' schemaClassName ')'];
             end
-            fprintf('Validating %s\n',doc_name);
+            if database_obj.debug
+                fprintf('Validating %s\n',doc_name);
+            end
             try
                 superFullNames = {classProps.superclasses.definition};
             catch
@@ -1154,6 +1186,7 @@ classdef (Abstract) database < handle
         end
 
         function validate_field_type_and_value(database_obj, doc_name, field_name, value, definition) %#ok<INUSL>
+            % Validate a field value vs. its definition (expected type etc.)
             expectedType   = definition.type;
             expectedParams = definition.parameters;
             switch lower(expectedType)
@@ -1254,10 +1287,12 @@ classdef (Abstract) database < handle
     % General utility functions used by this class that don't depend on a class object
     methods (Access=protected, Static)
         function value = getUnixTime()
+            % Return the current time in UNIX format
             value = java.util.Date().getTime;
         end
 
         function params = parseOptionalParams(varargin)
+            % Return optional input args in struct format
             params = struct;
             if nargin < 1, return, end
             if isstruct(varargin{1})
