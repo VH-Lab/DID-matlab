@@ -1014,7 +1014,7 @@ classdef (Abstract) database < handle
                 if ~exist(schema_filename,'file')
                     schema_filename = strrep(schema_filename,'.schema.json','_schema.json');
                     if ~exist(schema_filename,'file')
-                        error('DID:Database:ValidationFileMissing','Validation file "%s" not found',validation);
+                        error('DID:Database:ValidationFileMissing','Validation file "%s" not found',schema_filename);
                     end
                 end
             end
