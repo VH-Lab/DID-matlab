@@ -969,9 +969,16 @@ classdef (Abstract) database < handle
                 if iscell(doc), doc = doc{1}; end
                 docProps = doc.document_properties;
 
+                % Ensure the docProps have a minimal document_class sub-struct
+                try doc_id = docProps.base.id; catch, doc_id = ''; end
+                validateField(docProps,'document_properties','document_class');
+                classProps = docProps.document_class;
+                validateField(classProps,'document_class','class_name');
+                validateField(classProps,'document_class','property_list_name');
+                validateField(classProps,'document_class','class_version');
+
                 % Get the validation schema filename (if defined & exists)
                 try
-                    classProps = docProps.document_class;
                     schema_filename = classProps.validation;
                 catch
                     continue  % no validation field, so don't validate this doc!
@@ -981,6 +988,14 @@ classdef (Abstract) database < handle
 
                 % Check all the defined validation rules
                 database_obj.validate_doc_vs_schema(docProps, schemaStruct, all_ids);
+            end
+
+            % Validate a single field in a parent struct (existing, non-empty)
+            function validateField(parentStruct, parentName, fieldName)
+                assert(isfield(parentStruct,fieldName), ...
+                       'Doc %s %s has no %s field!',doc_id,parentName,fieldName);
+                value = parentStruct.(fieldName);
+                assert(~isempty(value),'Doc %s %s field is empty!',doc_id,fieldName);
             end
         end
 
@@ -1027,8 +1042,8 @@ classdef (Abstract) database < handle
 
             % Loop over all fields in the validation schema
             try doc_id = docProps.base.id; catch, doc_id = ''; end
-            classProps = docProps.document_class;
-            class_name = classProps.class_name;
+            classProps = docProps.document_class; % this croaks if document_class is missing - good!
+            class_name = classProps.class_name; % this croaks if class_name field is missing - good!
             doc_name = [class_name ' doc ' doc_id];
             schemaClassName = schemaStruct.classname;
             if IGNORE_DID_CLASS_PREFIX
