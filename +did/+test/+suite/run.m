@@ -1,10 +1,10 @@
-function output = testsuite
+function output = run
 % TESTSUITE - run a suite of tests
 %
-% OUTPUT = did.test.testsuite
+% OUTPUT = did.test.suite.run
 %
 % Loads a set of test suite instructions in the file
-% 'testsuite_list.txt'. This file is a tab-delimited table
+% 'list.txt'. This file is a tab-delimited table
 % that can be loaded with vlt.file.loadStructArray with fields
 % Field name          | Description
 % --------------------------------------------------------------------------
@@ -18,11 +18,11 @@ function output = testsuite
 % outcome             | Success is 1, failure is 0. -1 means it was not run.
 % errormsg            | Any error message
 %
-% based on ndi.test.ndi_testsuite
+% based on ndi.test.testsuite.ndi_testsuite
 
-w = which('did.test.testsuite.testsuite');
+w = which('did.test.suite.run');
 p = fileparts(w);
-jobs = vlt.file.loadStructArray([p filesep 'testsuite_list.txt']);
+jobs = vlt.file.loadStructArray([p filesep 'list.txt']);
 
 output = vlt.data.emptystruct('outcome','errormsg');
 
