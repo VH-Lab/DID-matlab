@@ -1,4 +1,4 @@
-function [b,msg] = test_did_db_documents_invalid(varargin)
+function [b,msg] = db_documents_invalid(varargin)
 % TEST_DID_BRANCHES - test the branching functionality of a DID database
 %
 % [B,MSG] = TEST_DID_DB_DOCUMENTS()

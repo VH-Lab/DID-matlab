@@ -1,4 +1,4 @@
-function [b,msg] = test_did_db_queries(varargin)
+function [b,msg] = db_queries(varargin)
 % [B,MSG] = TEST_DID_DB_QUERIES(VARARGIN)
 % 
 % Tests the functionality of queries using the db.query class, and using the

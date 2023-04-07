@@ -1,4 +1,4 @@
-function [test_results,test_messages] = test_did_run_query_tests()
+function [test_results,test_messages] = run_query_tests()
 %TEST_DID_RUN_QUERY_TESTS runs tests using the function 'test_did_db_queries'
 %
 %   [TEST_RESULTS,TEST_MESSAGES] = TEST_DID_RUN_QUERY_TESTS() 
