@@ -1,4 +1,4 @@
-function [test_results,test_messages] = run_test_invalid()
+function [test_results,test_messages] = run_invalid()
 %RUN_TEST_INVALID runs tests for catching invalid modification to docs
 %   Detailed explanation goes here
 test_results = [];
