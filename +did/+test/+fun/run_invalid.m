@@ -1,6 +1,9 @@
-function [test_results,test_messages] = run_invalid()
+function run_invalid
 %RUN_TEST_INVALID runs tests for catching invalid modification to docs
-%   Detailed explanation goes here
+%   no output is specified because it is called by did.test.suite.run (through the text
+%   file did.test.suite.list)
+%   within the function, the results and any error messages are stored in
+%   the scalar array test_results and the cell array test_messages, respectively
 test_results = [];
 test_messages = {};
 

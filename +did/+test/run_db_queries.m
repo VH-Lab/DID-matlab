@@ -1,12 +1,12 @@
-function [test_results,test_messages] = run_db_queries()
+function run_db_queries
 %TEST_DID_RUN_QUERY_TESTS runs tests using the function 'test_did_db_queries'
 %
 %   [TEST_RESULTS,TEST_MESSAGES] = TEST_DID_RUN_QUERY_TESTS() 
 %
 %   returns array of b values: b = 1 if test passes, b = 0 if at least one test fails
 %
-%   returns msg = {''} (empty message) if all tests passed; otherwise, msg
-%   will be a cell array of all the failure messages from 'test_did_db_queries'
+%   stores output internally in the cell array test_messages: An empty message for each test that passes, 
+%   the failure messages from 'test_did_db_queries' for each test that fails
 
 test_results = [];
 test_messages = {};
