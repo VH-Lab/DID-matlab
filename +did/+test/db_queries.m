@@ -1,4 +1,4 @@
-function [b,msg] = test_did_db_queries(varargin)
+function [b,msg] = db_queries(varargin)
 % [B,MSG] = TEST_DID_DB_QUERIES(VARARGIN)
 % 
 % Tests the functionality of queries using the db.query class, and using the
@@ -619,7 +619,7 @@ end % Do_GREATERTHANEQ_test
 
 %4j: test 'hasfield'
 if Do_HASFIELD_test
-    q = did.query(fieldname,'hasfield','');
+    q = did.query(fieldname,'hasfield');
     d = db.search(q);
     [ids_expected,docs_expected] = did.test.fun.apply_didquery(docs,q);
     disp(['Results of HASFIELD test:'])

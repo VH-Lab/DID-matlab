@@ -695,7 +695,11 @@ classdef (Abstract) database < handle
             param1 = query_struct.param1;
             param2 = query_struct.param2;
             param1Str = num2str(param1);
-            param1Val = num2str(param1(1));
+            if numel(param1)>=1
+                param1Val = num2str(param1(1));
+            else
+                param1Val = [];
+            end
             param1Like = regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'});
             field_check = ['fields.field_name="' field '"'];
             op = strtrim(lower(query_struct.operation));
