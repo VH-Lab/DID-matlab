@@ -6,6 +6,10 @@ function output = run
 % Loads a set of test suite instructions in the file
 % 'list.txt'. This file is a tab-delimited table
 % that can be loaded with vlt.file.loadStructArray with fields
+% 
+% note: loadStructArray requires test code to have no output; instead, the
+% test function should throw an exception if the test fails
+% 
 % Field name          | Description
 % --------------------------------------------------------------------------
 % code                | The code to be run (as a Matlab evaluation)
@@ -22,7 +26,7 @@ function output = run
 
 w = which('did.test.suite.run');
 p = fileparts(w);
-jobs = vlt.file.loadStructArray([p filesep 'list.txt']);
+jobs = vlt.file.loadStructArray([p filesep 'list.txt']); 
 
 output = vlt.data.emptystruct('outcome','errormsg');
 
