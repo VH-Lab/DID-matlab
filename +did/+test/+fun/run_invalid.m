@@ -1,4 +1,4 @@
-function run_invalid
+function [test_results,test_messages] = run_invalid
 %RUN_TEST_INVALID runs tests for catching invalid modification to docs
 %   no output is specified because it is called by did.test.suite.run (through the text
 %   file did.test.suite.list)

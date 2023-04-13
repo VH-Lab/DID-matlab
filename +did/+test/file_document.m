@@ -1,7 +1,7 @@
-function [b,msg] = test_did_file_document()
-% TEST_DID_FILE_DOCUMENT - Test the functionality of the did.document and did.database object file components
+function [b,msg] = file_document()
+% did.test.file_document - Test the functionality of the did.document and did.database object file components
 %
-% [B,MSG] = TEST_DID_FILE_DOCUMENT()
+% [B,MSG] = did.test.file_document()
 %
 % Creates a demoFile-type did.document, and creates two 
 % example files to be added to the database when it is

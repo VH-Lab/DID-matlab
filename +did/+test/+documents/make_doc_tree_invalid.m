@@ -65,7 +65,9 @@ for i=1:numA,
 	docs{end+1} = did.document('demoA'); %add unmodified document to list
     %now can continue modifying docs:
     d = docs{end};
+    warnstate = warning('off');
     d_struct = struct(d);
+    warning(warnstate);
     %modify value:
     d_struct.document_properties.demoA.value = modifyvalue(value_modifier,counter);
     %modify id: 
@@ -93,7 +95,10 @@ for i=1:numB,
 		'demoA.value',counter);
     %now can continue modifying docs:
     d = docs{end};
+    warnstate = warning('off');
     d_struct = struct(d);
+    warning(warnstate);
+    %modify value:
     %modify value:
     d_struct.document_properties.demoB.value = modifyvalue(value_modifier,counter); %value contained in demoB
     %modify id: 
@@ -126,7 +131,9 @@ for i=1:numC,
 	docs{end+1} = did.document('demoC','demoC.value',counter);
     %now can continue modifying docs:
     d = docs{end};
+    warnstate = warning('off');
     d_struct = struct(d);
+    warning(warnstate);
     %modify value:
     d_struct.document_properties.demoC.value = modifyvalue(value_modifier,counter); %value contained in demoC
     %modify id: 
@@ -191,7 +198,9 @@ for i=1:numC,
 	end;
     %modify dependencies after they are set:
     d = docs{end};
+    warnstate = warning('off');
     d_struct = struct(d);
+    warning(warnstate);
     d_struct = modifydependency(dependency_modifier,d_struct); %needs to be implemented
     %turn struct back into doc:
     if isfield(d_struct,'document_properties')

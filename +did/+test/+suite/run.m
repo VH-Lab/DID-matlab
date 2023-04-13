@@ -1,14 +1,18 @@
 function output = run
-% TESTSUITE - run a suite of tests
+% did.test.suite.run - run a suite of tests
 %
 % OUTPUT = did.test.suite.run
 %
 % Loads a set of test suite instructions in the file
 % 'list.txt'. This file is a tab-delimited table
 % that can be loaded with vlt.file.loadStructArray with fields
-% 
-% note: loadStructArray requires test code to have no output; instead, the
-% test function should throw an exception if the test fails
+%
+% Test functions must be of the form [success,msg] = testfunction()
+% The function should return success==1 and msg=='' if they run
+% successfully, and success==0 with an error message in msg if they fail.
+% The test function can also throw an exception or error and it will be
+% caught and processed as a failure. The function can also return an array of
+% success and a corresponding cell array of msg values.
 % 
 % Field name          | Description
 % --------------------------------------------------------------------------
@@ -22,7 +26,6 @@ function output = run
 % outcome             | Success is 1, failure is 0. -1 means it was not run.
 % errormsg            | Any error message
 %
-% based on ndi.test.testsuite.ndi_testsuite
 
 w = which('did.test.suite.run');
 p = fileparts(w);
@@ -31,13 +34,33 @@ jobs = vlt.file.loadStructArray([p filesep 'list.txt']);
 output = vlt.data.emptystruct('outcome','errormsg');
 
 for i=1:numel(jobs),
+	jobs(i).code = jobs(i).code(2:end-1);
 	output_here = output([]);
 	output_here(1).errormsg = '';
 	output_here(1).outcome = 0;
 	if jobs(i).runit,
+		disp(['+++++  Running ' jobs(i).code ' (' jobs(i).comment ') ++++++' ])
 		try,
-			eval(jobs(i).code);
-			output_here(1).outcome = 1;
+			[b,msg] = eval(jobs(i).code);
+			theb = '';
+			if iscell(msg), % check that all succeed
+				for j=1:numel(b),
+					if b(j)==0,
+						theb = b(j);
+						themsg = msg{j};
+						break;
+					end;
+				end;
+				if isempty(theb),
+					theb = b(j);
+					themsg = '';
+				end;
+			else,
+				theb = 1;
+				themsg = msg;
+			end;
+			output_here(1).outcome = theb;
+			output_here(1).errormsg = themsg;
         catch lasterr
 			output_here(1).errormsg = lasterr.message;
 		end;
@@ -51,7 +74,7 @@ disp(newline);
 disp(newline);
 disp(['--------------------------------------------']);
 disp(newline);
-disp('TESTSUITE OUTCOME');
+disp('did.test.suite.run OUTCOME');
 
 for i=1:numel(output),
 	if output(i).outcome>0,
@@ -68,3 +91,4 @@ for i=1:numel(output),
 		end
 	end;
 end;
+

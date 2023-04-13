@@ -1164,7 +1164,7 @@ classdef (Abstract) database < handle
                                 locations = files(idx2).locations;
                                 found = false;
                                 for idx2 = 1 : numel(locations)
-                                    fileLocation = locations{idx2}.location;
+                                    fileLocation = locations(idx2).location;
                                     if exist(fileLocation,'file')
                                         found = true; break
                                     else

@@ -1,16 +1,24 @@
-function [b,msg] = test_did_db_documents_branch(varargin)
-% TEST_DID_BRANCHES - test the branching functionality of a DID database
+function [b,msg] = documents_branch_simple(varargin)
+% did.test.documents_branch_simple - test the branching functionality of a DID database
 %
-% [B,MSG] = TEST_DID_DB_DOCUMENTS_BRANCH()
+% [B,MSG] = did.test.documents_branch_simple()
 % 
 % Tests the document and branching functions of the did.database class, using the
 % did.implementations.sqlitedb class.
-%  
-% This function first tries to delete a file 'test_db_docs.sqlite', and then
-% makes a new database with the same filename.
+% 
+% This function saves its files in the DID test path and uses the filename.
+% 'test_db_docs.sqlite' filename.
+% 
+% B is 1 if the test succeeds, and 0 otherwise.
+% MSG has an error message if the test fails.
+%
+
+
 
 % Step 1: make an empty database with a starting branch
-db_filename = [pwd filesep 'test_db_docs.sqlite'];
+did.globals;
+dirname = did_globals.path.testpath;
+db_filename = [dirname filesep 'test_db_docs.sqlite'];
 if isfile(db_filename),
 	delete(db_filename); 
 end;
