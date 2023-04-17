@@ -23,7 +23,9 @@ function [b,msg] = db_documents_invalid(varargin)
 % |--------------------------------------------|------------------------------------------------------|
 
 % Step 1: make an empty database with a starting branch
-db_filename = [pwd filesep 'test_db_docs.sqlite'];
+did.globals;
+dirname = did_globals.path.testpath;
+db_filename = [dirname filesep 'test_db_docs.sqlite'];
 if isfile(db_filename),
 	delete(db_filename);
 end;
