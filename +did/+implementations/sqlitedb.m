@@ -4,7 +4,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 % See also: did.database, did.implementations.dumbjasondb, did.implementations.postgresdb
 
     properties
-	    % insert needed properties here
+	    FileDir % full path to directory where files are stored
     end
 
     methods % constructor
@@ -51,18 +51,16 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             try sqlitedb_obj.version.sqlite   = mksqlite('version sql'); catch, end
 
             % Set some default database preferences
-            try
-                cacheDir = '';
-                did.globals();
-                cacheDir = did_globals.path.filecachepath;
-                if ~iempty(cacheDir), mkdir(cacheDir); end
-            catch
-            end
-            if isempty(cacheDir), cacheDir = tempdir; end
+            cacheDir_parent = fileparts(filename);
+            cacheDir = [cacheDir_parent filesep 'files'];
+            if ~isfolder(cacheDir),
+                mkdir(cacheDir);
+            end;
             %sqlitedb_obj.set_preference('remote_folder',  fileparts(which(filename)));
             sqlitedb_obj.set_preference('cache_folder',    cacheDir);
             sqlitedb_obj.set_preference('cache_duration',  1.0); %[days]
             sqlitedb_obj.set_preference('cache_max_files', inf);
+            sqlitedb_obj.FileDir = cacheDir;
         end % sqlitedb()
     end 
 
@@ -330,7 +328,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         thisLocation = locations(locIdx);
                         sourcePath = thisLocation.location;
                         if thisLocation.ingest
-                            destDir = this_obj.get_preference('cache_folder');
+                           % destDir = this_obj.get_preference('cache_folder');
+                            destDir = this_obj.FileDir;
                             destPath = fullfile(destDir, thisLocation.uid);
                             try
                                 file_type = lower(strtrim(thisLocation.location_type));
@@ -548,11 +547,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
 
             % First try to access the cached file, if defined and if exists
-            file_paths = {data.cached_location};
+%            file_paths = {data.cached_location};
+            file_paths = {[this_obj.FileDir filesep data.uid] };
             file_paths = file_paths(~cellfun('isempty',file_paths));
             for idx = 1 : numel(file_paths)
                 this_file = file_paths{idx};
-                if exist(this_file,'file')
+                if isfile(this_file)
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
                     return
@@ -563,7 +563,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             for idx = 1 : numel(data)  %data is a struct array
                 this_file_struct = data(idx);
                 sourcePath = this_file_struct.orig_location;
-                destDir = this_obj.get_preference('cache_folder');
+                destDir = this_obj.FileDir;
+                %destDir = this_obj.get_preference('cache_folder');
                 destPath = fullfile(destDir, this_file_struct.uid);
                 try
                     file_type = lower(strtrim(this_file_struct.type));

@@ -136,7 +136,26 @@ classdef document
 						otherproperties = rmfield(otherproperties,'depends_on');
 				end;
 
-				% Step 3): Merge the other fields
+                                % Step 3): Merge file_list
+                                if isfield(did_document_obj_b.document_properties,'files'),
+                                        % does doc a also have it?
+                                        if isfield(did_document_obj_out.document_properties,'files'),
+                                                file_list = cat(2,did_document_obj_out.document_properties.files.file_list(:)', ...
+							did_document_obj_b.document_properties.files.file_list(:)');
+                                                file_info = cat(1,did_document_obj_out.document_properties.files.file_info(:),...
+							did_document_obj_b.document_properties.files.file_info(:));
+						if numel(unique(file_list))~=numel(file_list),
+							error(['Documents have files of the same name. Cannot be combined.']);
+						end;
+						did_document_obj_out.document_properties.files.file_list = file_list;
+						did_document_obj_out.document_properties.files.file_info = file_info;
+					else, 
+						% doc a doesn't have it, just use doc b's info
+						did_document_obj_out.document_properties.files = did_document_obj_b.document_properties.files;
+					end;
+				end;
+
+				% Step 4): Merge the other fields
 				did_document_obj_out.document_properties = did.datastructures.structmerge(did_document_obj_out.document_properties,...
 					otherproperties);
 		end; % plus() 

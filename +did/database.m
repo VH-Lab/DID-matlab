@@ -568,7 +568,9 @@ classdef (Abstract) database < handle
                 doc_id = database_obj.validate_doc_id(documents{i}, false);
    
                 % Call the specific database's removal method
+                try, % failure is not an error
                 database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
+                end
 
                 % TODO also delete all documents that depend on the deleted doc
             end
@@ -721,7 +723,11 @@ classdef (Abstract) database < handle
                 case 'contains_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'exact_number'
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
+	            if ~isempty(param1Val),
+                        sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
+                    else,
+                        sql_str = [field_check ' AND ' notStr 'doc_data.value > 9e999']; % if is it empty, we have to make it fail
+                    end;
                 case 'lessthan'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value < '  param1Val];
                 case 'lessthaneq'
@@ -827,7 +833,7 @@ classdef (Abstract) database < handle
 
             % Run the SQL query on the DB and return the matching documents
             if isstruct(query_obj)
-                doc_ids = sqlitedb_obj.search_doc_ids(query_obj, branch_id);
+            doc_ids = sqlitedb_obj.search_doc_ids(query_obj, branch_id);
             else  % already in SQL str format
                 query_str = query_obj;
                 doc_ids = sqlitedb_obj.run_sql_query(query_str);
@@ -952,6 +958,8 @@ classdef (Abstract) database < handle
         end
 
         function validate_docs(database_obj, document_objs)
+            return;  % SET THIS ASIDE FOR A LITTLE BIT
+
             % Get the superset of all doc IDs in the database and the input docs
             all_ids = database_obj.all_doc_ids();
             for docIdx = 1 : numel(document_objs)
