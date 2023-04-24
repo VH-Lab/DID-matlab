@@ -958,7 +958,6 @@ classdef (Abstract) database < handle
         end
 
         function validate_docs(database_obj, document_objs)
-            return;  % SET THIS ASIDE FOR A LITTLE BIT
 
             % Get the superset of all doc IDs in the database and the input docs
             all_ids = database_obj.all_doc_ids();
@@ -1021,7 +1020,7 @@ classdef (Abstract) database < handle
 
             % Get the filename (might have a missing '.schema' or '_schema')
             schema_filename = regexprep(schema_filename,pathDefs,pathLocs);
-            if ~exist(schema_filename,'file')
+            if ~isfile(schema_filename),
                 schema_filename = regexprep(schema_filename,'\.json$','.schema.json');
                 if ~exist(schema_filename,'file')
                     schema_filename = strrep(schema_filename,'.schema.json','_schema.json');
@@ -1124,17 +1123,39 @@ classdef (Abstract) database < handle
                         if isempty(expected) && isSuperClass, continue, end
                         try depends = docProps.depends_on; docNames = {depends.name}; catch, docNames = {}; end
                         if isempty(expected) && isempty(docNames), continue, end
-                        expectedNames = {expected.name};
-                        mustHaveValue = {expected.mustbenotempty};
-                        areSame = isequal(lower(unique(expectedNames)), lower(unique(docNames)));
+                        docNames_alt = docNames;
+                        for dn=1:numel(docNames_alt), 
+                            stridx = regexp(docNames{dn},'_(\d*)\>');
+                            if isempty(stridx),
+                                stridx = numel(docNames{dn})+1;
+                            end;
+                            docNames_alt{dn}=docNames{dn}(1:stridx-1);
+                        end;
+                        if ~isempty(expected),
+                            expectedNames = {expected.name};
+                            mustHaveValue = {expected.mustbenotempty};
+                        else,
+                            expectedNames = {};
+                            mustHaveValue = {};
+                        end;
+                        areSame = all(ismember(lower(unique(expectedNames)), lower(unique(docNames_alt))));
+                        if ~areSame,
+                            disp(['Expected dependencies:']);
+                            expectedNames(:)'
+                            disp(['Found dependencies:']);
+                            docNames_alt(:)'
+                        end;
                         assert(areSame,'DID:Database:ValidationDependsOn', ...
                             'Dissimilar dependencies defined/found for %s', doc_name);
                         % Loop over all dependencies and ensure they exist
                         for idx = 1 : numel(mustHaveValue)
                             item_name = expectedNames{idx};
                             idx2 = find(strcmpi(item_name,docNames),1);
-                            value = depends(idx2).value;
-
+                            if isempty(idx2),
+                                value = [];
+                            else,
+                                value = depends(idx2).value;
+                            end;
                             % If dependency is marked as MustBeNotEmpty, ensure it's not empty
                             expectedValue = mustHaveValue{idx};
                             if ~isempty(expectedValue) && expectedValue
@@ -1190,11 +1211,11 @@ classdef (Abstract) database < handle
                                 assert(found,'DID:Database:ValidationFileMissing', ...
                                     'Missing file "%s" in %s',item_name,doc_name)
                             end
-                        end
-
+                        end                        
                     otherwise  % class-specific field
                         % Compare the type and value of all class-specific fields
                         docValue = docProps.(field);
+                        if isempty(expected), continue; end;
                         expectedSubFields = strjoin(unique({expected.name}),',');
                         docSubFields = strjoin(unique(fieldnames(docValue)),',');
                         areSame = strcmpi(expectedSubFields,docSubFields);
@@ -1218,6 +1239,9 @@ classdef (Abstract) database < handle
             expectedParams = definition.parameters;
             switch lower(expectedType)
                 case 'integer'
+                    if islogical(value),
+                        value = double(value);
+                    end;
                     assert(isnumeric(value), ...
                         'DID:Database:ValidationFieldInteger', ...
                         'Invalid non-numeric sub-field %s found in %s', ...
@@ -1242,30 +1266,46 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldDouble', ...
                         'Invalid non-numeric sub-field %s found in %s', ...
                         field_name, doc_name);
-                    assert(numel(expectedParams)==3, ...
+                    assert(numel(expectedParams)==3|numel(expectedParams)==4, ...
                         'DID:Database:ValidationFieldDouble', ...
-                        '3 parameters must be defined for Double fields in a document schema, but %d defined', ...
+                        '3 or 4 parameters must be defined for Double fields in a document schema, but %d defined', ...
                         numel(expectedParams))
-                    if isnan(value) && expectedParams(3)
+                    if numel(expectedParams)>=4,
+                        canbeempty = expectedParams(4);
+                    else,
+                        canbeempty = 0;
+                    end;
+                    if isempty(value) && canbeempty,
                         isOk = true;
-                    else
+                    elseif isnan(value) && expectedParams(3)
+                        isOk = true;
+                    else,
                         isOk = value >= expectedParams(1) && ...
                             value <= expectedParams(2);
                     end
                     assert(isOk,'DID:Database:ValidationFieldDouble', ...
-                        'Invalid sub-field %s value found in %s', ...
+                        'Invalid sub-field Double %s value found in %s', ...
                         field_name, doc_name);
 
                 case 'matrix'
-                    assert(isnumeric(value), ...
+                    isOk = isempty(value)|isnumeric(value);
+                    assert(isOk, ...
                         'DID:Database:ValidationFieldMatrix', ...
-                        'Invalid non-numeric sub-field %s found in %s', ...
+                        'Invalid non-numeric Matrix sub-field %s found in %s', ...
                         field_name, doc_name);
-                    assert(numel(expectedParams)==2, ...
+                    assert(numel(expectedParams)>=2, ...
                         'DID:Database:ValidationFieldMatrix', ...
-                        '2 parameters must be defined for Matrix fields in a document schema, but %d defined', ...
-                        numel(expectedParams))
-                    isOk = isequal(size(value), expectedParams);
+                        'At least 2 parameters must be defined for Matrix fields in a document schema, but %d defined', ...
+                        numel(expectedParams));
+                    % convert size vector to columns
+                    sz = size(value);
+                    sz = sz(:);
+                    nonNans = find(~isnan(expectedParams));
+                    if numel(nonNans)==0,
+                        isOk = true;
+                    else,
+                        isOk = isequal(sz(nonNans),expectedParams(nonNans));
+                    end;
                     assert(isOk,'DID:Database:ValidationFieldMatrix', ...
                         'Invalid sub-field %s size %dx%d found in %s', ...
                         field_name, size(value,1), size(value,2), ...
@@ -1281,11 +1321,16 @@ classdef (Abstract) database < handle
                     java.time.LocalDateTime.parse(jTimestr);  % will croak if unparsable
 
                 case {'char','string'}
-                    assert(ischar(value), ...
+                    isOk = isempty(value)|ischar(value);
+                    assert(isOk, ...
                         'DID:Database:ValidationFieldChar', ...
                         'Invalid non-char sub-field %s found in %s', ...
                         field_name, doc_name);
-                    isOk = length(value) <= expectedParams(1);
+                    if numel(expectedParams)==0, 
+                        isOk = true;
+                    else,
+                        isOk = length(value) <= expectedParams(1);
+                    end;
                     assert(isOk,'DID:Database:ValidationFieldChar', ...
                         'Invalid sub-field %s length %d found in %s', ...
                         field_name, length(value), doc_name);
@@ -1303,6 +1348,16 @@ classdef (Abstract) database < handle
                         'Invalid non-UID sub-field %s found in %s', ...
                         field_name, doc_name);
 
+                case 'structure'
+                    assert(isempty(value)|isstruct(value),...
+                        'DID:Database:ValidationFieldStructure',...
+                        'Invalid structure sub-field %s found in %s',...
+                        field_name, doc_name);
+                case 'cell'
+                    assert(isempty(value)|iscell(value),...
+                        'DID:Database:ValidationFieldStructure',...
+                        'Invalid cell sub-field %s found in %s',...
+                        field_name, doc_name);                    
                 otherwise
                     error('DID:Database:ValidationFieldType', ...
                           'Invalid sub-field %s type "%s" defined in %s', ...
