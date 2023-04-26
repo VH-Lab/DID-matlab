@@ -56,7 +56,7 @@ function sqlMetaData = doc2sql(doc)
 
     % Extract the custom (dynamic) meta-tables from the document property fields
     fields = fieldnames(doc_props);
-    fields = setdiff(fields, {'depends_on','document_class'}, 'stable');
+    fields = setdiff(fields, {'depends_on','document_class','files'}, 'stable');
     for idx = 1 : numel(fields)
         sqlMetaData(end+1) = getMetaTableFrom(doc_props, id, fields{idx}); %#ok<AGROW>
     end
@@ -111,7 +111,7 @@ function metaTable = getMetaTableFrom(doc_props, id, name)
                 for idx3 = 1 : numel(subFields)
                     fieldName = subFields{idx3};
                     newCumulFieldName = [cumulFieldName '___' fieldName];
-                    if numElements > 1
+                    if (numElements > 1),
                         newCumulFieldName = [newCumulFieldName '_' num2str(idx2)]; %#ok<AGROW>
                     end
                     recurseFields(dataStruct, fieldName, newCumulFieldName);
@@ -120,9 +120,14 @@ function metaTable = getMetaTableFrom(doc_props, id, name)
         else
             matlabType = class(fieldValue);
             dataSize = size(fieldValue);
-            if ~ischar(fieldValue) && ~isscalar(fieldValue) && ~isempty(fieldValue)
-                sizeStr = regexprep(mat2str(dataSize), '\s+', 'x'); %'×'
-                fieldValue = sprintf('%s %s', sizeStr, matlabType);
+            if strcmp(matlabType,'cell')&isvector(fieldValue),
+               fieldValue = vlt.data.cell2str(fieldValue);
+            elseif ~ischar(fieldValue) && ~isscalar(fieldValue) && ~isempty(fieldValue)
+                if 0&strcmp(matlabType,'double'), % just leave it
+                else,
+                    sizeStr = regexprep(mat2str(dataSize), '\s+', 'x'); %'×'
+                    fieldValue = sprintf('%s %s', sizeStr, matlabType);
+                end;
             end
             metaTable.columns(end+1) = newColumn(cumulFieldName, fieldValue, matlabType);
         end
