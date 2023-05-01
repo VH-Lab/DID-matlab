@@ -1,7 +1,7 @@
 function t=jsonencodenan(obj)
 % JSONENCODENAN - encode a JSON object allowing Nan/Infinity
 %
-% T = JSONENCODENAN(OBJ)
+% T = did.datastructures.jsonencodenan(OBJ)
 %
 % Encodes the Matlab variable OBJ into a JSON object in a manner that 
 % allows the use of NaN and -Inf and Inf.
@@ -12,8 +12,14 @@ function t=jsonencodenan(obj)
 % See also: JSONENCODE
 
 try,
-	t = jsonencode(obj,'ConvertInfAndNaN',false); % for newer version 
+	t = jsonencode(obj,'ConvertInfAndNaN',false,'PrettyPrint',true); % newest version
 catch,
-	t = jsonencode(obj);
+	try,
+		t = jsonencode(obj,'ConvertInfAndNaN',false); % for after 2018b
+	catch,
+		t = jsonencode(obj);
+	end;
 end;
+
+
 
