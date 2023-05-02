@@ -75,7 +75,6 @@ for i=1:numel(fname),
 end;
 
 g = db.search(did.query('','isa','demoFile',''));
-
 doc_g = db.get_docs(g);
 
 data = {};

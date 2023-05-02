@@ -364,6 +364,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             sourcePath, destPath, ...
                             thisLocation.location_type, ...
                             thisLocation.parameters);
+			if 0, disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); end; % debugging
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
@@ -547,8 +548,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
 
             % First try to access the cached file, if defined and if exists
-%            file_paths = {data.cached_location};
-            file_paths = {[this_obj.FileDir filesep data.uid] };
+%            file_paths = {data.cached_location}; % there used to be only 1 global cache location, now will use local database location
+            file_paths = {};
+            for uids=1:numel(data),
+		file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
+            end;
             file_paths = file_paths(~cellfun('isempty',file_paths));
             for idx = 1 : numel(file_paths)
                 this_file = file_paths{idx};
