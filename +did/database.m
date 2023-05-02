@@ -1184,6 +1184,9 @@ classdef (Abstract) database < handle
                         if isempty(expected) && (isSuperClass || isempty(docNames)), continue, end
                         expectedNames = {expected.name};
                         mustHaveValue = {expected.mustbenotempty};
+                        for idx = 1 : numel(docNames),
+                            docNames{idx} = char(docNames{idx});
+                        end;
                         areSame = isequal(lower(unique(expectedNames)), lower(unique(docNames)));
                         assert(areSame,'DID:Database:ValidationFiles', ...
                             'Dissimilar files defined/found for %s', doc_name);

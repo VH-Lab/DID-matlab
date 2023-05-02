@@ -321,7 +321,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 try
                     % Loop over all files defined within the doc
                     filename = sprintf('#%d',idx); %used in catch, if the line below fails
-                    filename = files(idx).name;
+                    filename = char(files(idx).name);
                     locations = files(idx).locations;
                     for locIdx = 1 : numel(locations)
                         % Cache this file locally, if specified
