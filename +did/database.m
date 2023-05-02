@@ -458,13 +458,14 @@ classdef (Abstract) database < handle
         end % add_doc()
 
         function document_objs = get_docs(database_obj, document_ids, varargin)
-			% GET_DOCS - Return did.document object(s) that match the specified doc ID(s)
+			% GET_DOCS - Return did.document object(s) that match the specified doc ID(s) in the current branch
 			%
 			% DOCUMENT_OBJS = GET_DOCS(DATABASE_OBJ, [DOCUMENT_IDS], [PARAMETERS...]) 
 			%
 			% Returns the did.document object for the specified by DOCUMENT_IDS. 
             % DOCUMENT_IDS may be a scalar ID string, or an array of IDs
             % (in this case, an array of corresponding doc objects is returned).
+            % The document must be defined in the current branch.
             %
             % If DOCUMENT_IDS is not specified, the get_doc_ids() method is used
             % to fetch the document IDs of the current branch, which are then
