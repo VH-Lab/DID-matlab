@@ -570,7 +570,8 @@ classdef (Abstract) database < handle
                 % Call the specific database's removal method
                 try % failure is not an error
                     database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
-                catch
+                catch err
+                    if database_obj.debug, disp(err.message); end
                 end
 
                 % TODO also delete all documents that depend on the deleted doc

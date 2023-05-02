@@ -52,10 +52,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Set some default database preferences
             cacheDir_parent = fileparts(filename);
-            cacheDir = [cacheDir_parent filesep 'files'];
-            if ~isfolder(cacheDir),
+            cacheDir = fullfile(cacheDir_parent, 'files');
+            if ~isfolder(cacheDir)
                 mkdir(cacheDir);
-            end;
+            end
             %sqlitedb_obj.set_preference('remote_folder',  fileparts(which(filename)));
             sqlitedb_obj.set_preference('cache_folder',    cacheDir);
             sqlitedb_obj.set_preference('cache_duration',  1.0); %[days]
@@ -328,7 +328,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         thisLocation = locations(locIdx);
                         sourcePath = thisLocation.location;
                         if thisLocation.ingest
-                           % destDir = this_obj.get_preference('cache_folder');
+                            %destDir = this_obj.get_preference('cache_folder');
                             destDir = this_obj.FileDir;
                             destPath = fullfile(destDir, thisLocation.uid);
                             try
@@ -364,7 +364,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             sourcePath, destPath, ...
                             thisLocation.location_type, ...
                             thisLocation.parameters);
-			if 0, disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); end; % debugging
+            			%disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); %debugging
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
@@ -438,6 +438,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 			% Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID. 
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
+            % If no branches remain that reference the specified DOCUMENT_ID, the
+            % document's data is removed from the database, and any cached files
+            % are deleted.
+            %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
             %   - 'OnMissing' - followed by 'ignore', 'warn', or 'error' (default)
@@ -445,6 +449,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Inputs:
             %    this_obj - this class object
             %    document_id - unique document ID for the requested document
+            %    branch_id - delete the document from the specified branch 
             %    params - optional parameters: 'OnMissing','ignore'/'warn'/'error'
             %
             % Outputs:
@@ -469,13 +474,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %doc_id = [doc_id '/' branch_id];
             data = this_obj.run_sql_noOpen(sqlStr);
             if isempty(data)
-                errMsg = sprintf('Cannot remove document %s - document not found in the %s branch', doc_id, branch_id);
+                errMsg = sprintf('Cannot remove document %s - document not found in the ''%s'' branch', doc_id, branch_id);
                 %assert(~isempty(data),'DID:SQLITEDB:NO_SUCH_DOC','%s',errMsg)
                 params = this_obj.parseOptionalParams(varargin{:});
                 try doOnMissing = params.OnMissing; catch, doOnMissing = 'error'; end
                 doOnMissing = lower(doOnMissing(doOnMissing~=' '));
                 switch doOnMissing
                     case 'ignore'
+                        if this_obj.debug, disp(errMsg); end
                         return
                     case 'warn'
                         warning('DID:SQLITEDB:NO_SUCH_DOC','%s',errMsg);
@@ -487,18 +493,41 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             doc_idx = data(1).doc_idx;
 
             % Remove the document from the branch_docs table
+            if this_obj.debug
+                fprintf('Deleting document %s from branch ''%s''\n',doc_id,branch_id);
+            end
             this_obj.run_sql_noOpen(['DELETE FROM branch_docs WHERE branch_id="' branch_id '" AND doc_idx=?'], doc_idx);
 
-            % TODO - remove all document records if no branch references remain?
-            %{
-            % If no more branches reference this document
-            remaining_ids = this_obj.run_sql_noOpen('SELECT branch_id FROM branch_docs WHERE doc_idx=?', doc_idx));
+            % Remove all document records if no branch references remain in DB (issue #55)
+            remaining_ids = this_obj.run_sql_noOpen('SELECT branch_id FROM branch_docs WHERE doc_idx=?', doc_idx);
             if isempty(remaining_ids)
-                % Remove all document records from docs, doc_data tables
-                this_obj.run_sql_noOpen('DELETE FROM docs     WHERE doc_idx=?', doc_idx)
-                this_obj.run_sql_noOpen('DELETE FROM doc_data WHERE doc_idx=?', doc_idx)
+                % Were any cached files defined for this document?
+                cache_data = this_obj.run_sql_noOpen('SELECT cached_location FROM files WHERE doc_idx=?', doc_idx);
+                if ~isempty(cache_data)
+                    % Delete all cached files of this document
+                    if ischar(cache_data)
+                        cached_files = {cache_data};
+                    else
+                        cached_files = {cache_data.cached_location};
+                    end
+                    oldWarn = warning('off','MATLAB:DELETE:FileNotFound');
+                    hCleanup = onCleanup(@()warning(oldWarn));
+                    for idx = 1 : numel(cached_files)
+                        this_file = cached_files{idx};
+                        if this_obj.debug
+                            fprintf('Deleting %s\n',this_file);
+                        end
+                        delete(this_file);
+                    end
+
+                    % Remove the document records from the database's files table
+                    this_obj.run_sql_noOpen('DELETE FROM files    WHERE doc_idx=?', doc_idx);
+                end
+
+                % Remove all document records from database's docs,doc_data tables
+                this_obj.run_sql_noOpen('DELETE FROM docs     WHERE doc_idx=?', doc_idx);
+                this_obj.run_sql_noOpen('DELETE FROM doc_data WHERE doc_idx=?', doc_idx);
             end
-            %}
         end % do_remove_doc()
 
         function file_obj = do_open_doc(this_obj, document_id, filename, varargin)
@@ -548,11 +577,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
 
             % First try to access the cached file, if defined and if exists
-%            file_paths = {data.cached_location}; % there used to be only 1 global cache location, now will use local database location
-            file_paths = {};
-            for uids=1:numel(data),
-		file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
-            end;
+            %file_paths = {data.cached_location}; % there used to be only 1 global cache location, now will use local database location
+            file_paths = cell(1,numel(data));
+            for uids = 1 : numel(data)
+        		file_paths{uids} = fullfile(this_obj.FileDir, data(uids).uid);
+            end
             file_paths = file_paths(~cellfun('isempty',file_paths));
             for idx = 1 : numel(file_paths)
                 this_file = file_paths{idx};
