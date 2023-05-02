@@ -264,7 +264,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             if isempty(data)
                 % Get the JSON code that parses all the document's properties
-                json_code = jsonencode(doc_props);
+                json_code = did.datastructures.jsonencodenan(doc_props);
 
                 % Add the new document to docs table
                 this_obj.insert_into_table('docs', 'doc_id,json_code,timestamp', doc_id, json_code, now); %, document_obj);
