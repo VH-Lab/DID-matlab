@@ -7,7 +7,7 @@ function [G, node_names, docs] = make_doc_tree(rates)
 % DOCS by generating documents of type demoA demoB and demoC at poisson
 % rates RATES. RATES(1) is the rate of creation of document type A,
 % RATES(2) is the poisson rate of creation of document type B, and
-% RATES(3) is the poisson rate of createion of document type C.
+% RATES(3) is the poisson rate of creation of document type C.
 %
 % The As and Bs are created first. When each C type document is created,
 % an A and B document (and C document, if they exist) are randomly selected
