@@ -364,7 +364,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             sourcePath, destPath, ...
                             thisLocation.location_type, ...
                             thisLocation.parameters);
-            			%disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); %debugging
+                        if this_obj.debug
+                            disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); %debugging
+                        end
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
@@ -378,12 +380,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end % do_add_doc()
 
         function document_obj = do_get_doc(this_obj, document_id, varargin)
-	        % do_get_doc - Return a DID.DOCUMENT for the specified document ID
+	        % do_get_doc - Return a DID.DOCUMENT for the specified document ID in current branch
 	        %
 	        % document_obj = do_get_doc(this_obj, document_id, [params])
 	        %
 			% Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID. 
-            % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
+            % DOCUMENT_ID must be a scalar ID string, not an array of IDs, and
+            % must exist within the current database branch.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
@@ -401,7 +404,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 		    %document_obj = did.document(doc);
 
             % Run the SQL query in the database
-            query_str = ['SELECT json_code FROM docs WHERE doc_id="' document_id '"'];
+            % note: look for the doc in the current branch id (issue #58)
+            branch_id = this_obj.current_branch_id;
+            query_str = ['SELECT json_code FROM docs, branch_docs ' ...
+                         ' WHERE docs.doc_id="' document_id '"' ...
+                         '   AND docs.doc_idx=branch_docs.doc_idx' ...
+                         '   AND branch_docs.branch_id="' branch_id '"'];
             data = this_obj.run_sql_query(query_str);
 
             % Process missing document results
@@ -409,7 +417,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % Handle case of missing document
                 params = this_obj.parseOptionalParams(varargin{:});
                 try doOnMissing = params.OnMissing; catch, doOnMissing = 'error'; end
-                errMsg = sprintf('Document id "%s" was not found in the database',document_id);
+                errMsg = sprintf('Document id "%s" was not found in database branch ''%s''',document_id,branch_id);
                 %assert(~isempty(data),'DID:SQLITEDB:NO_SUCH_DOC','%s',errMsg)
                 doOnMissing = lower(doOnMissing(doOnMissing~=' '));
                 switch doOnMissing

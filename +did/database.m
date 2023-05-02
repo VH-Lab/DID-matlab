@@ -474,22 +474,6 @@ classdef (Abstract) database < handle
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnMissing' - followed by 'ignore', 'warn', or 'error' (default)
 
-            % Parse the input parameters
-            if mod(nargin,2) == 1  % odd number of input args
-                if any(strcmpi(document_ids,'OnMissing'))
-                    % the specified document_ids is actually a param name
-                    document_ids = database_obj.get_doc_ids();
-                    varargin = ['OnMissing' varargin];
-                else
-                    error('DID:Database:InvalidParams','Invalid parameters specified in did.database.get_doc() call');
-                end
-            elseif nargin > 2 && ~any(strcmpi(varargin{1},'OnMissing'))
-                error('DID:Database:InvalidParams','Invalid parameters specified in did.database.get_doc() call');
-            end
-
-            % Initialize an empty results array of no objects
-            document_objs = did.document.empty;
-
             % If document ids were not specified, get them from the current branch
             if nargin < 2
                 document_ids = database_obj.get_doc_ids();
@@ -498,6 +482,24 @@ classdef (Abstract) database < handle
                 document_objs = did.document.empty;
                 return
             end
+
+            % Parse the optional input parameters
+            if nargin > 2
+                if mod(nargin,2) == 1  % odd number of input args
+                    if any(strcmpi(document_ids,'OnMissing'))
+                        % the specified document_ids is actually a param name
+                        document_ids = database_obj.get_doc_ids();
+                        varargin = ['OnMissing' varargin];
+                    else
+                        error('DID:Database:InvalidParams','Invalid parameters specified in did.database.get_doc() call');
+                    end
+                elseif ~any(strcmpi(varargin{1},'OnMissing'))
+                    error('DID:Database:InvalidParams','Invalid parameters specified in did.database.get_doc() call');
+                end
+            end
+
+            % Initialize an empty results array of no objects
+            document_objs = did.document.empty;
 
             % Loop over all specified doc_ids
             document_ids = database_obj.normalizeDocIDs(document_ids);
