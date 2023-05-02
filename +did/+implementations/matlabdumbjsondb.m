@@ -45,8 +45,10 @@ classdef  matlabdumbjsondb < did.database
 
 		function did_matlabdumbjsondb_obj = do_add(did_matlabdumbjsondb_obj, did_document_obj, add_parameters)
 			namevaluepairs = {};
-            fn = {};
-			if nargin>2, fn = fieldnames(add_parameters); end;
+			fn = {};
+			if nargin>2,
+				fn = fieldnames(add_parameters);
+			end;
 			for i=1:numel(fn), 
 				if strcmpi(fn{i},'Update'),
 					namevaluepairs{end+1} = 'Overwrite';

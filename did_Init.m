@@ -36,6 +36,8 @@ did_globals.path.filecachepath = [userpath filesep 'Documents' filesep 'DID' fil
 did_globals.path.preferences = [userpath filesep 'Preferences' filesep' 'DID'];
 did_globals.path.javapath = [mydidpath filesep 'java'];
 
+%did_globals.cache = did.cache();
+
 if ~exist(did_globals.path.temppath,'dir'),
         mkdir(did_globals.path.temppath);
 end;
