@@ -111,23 +111,25 @@ function metaTable = getMetaTableFrom(doc_props, id, name)
                 for idx3 = 1 : numel(subFields)
                     fieldName = subFields{idx3};
                     newCumulFieldName = [cumulFieldName '___' fieldName];
-                    if (numElements > 1),
+                    if (numElements > 1)
                         newCumulFieldName = [newCumulFieldName '_' num2str(idx2)]; %#ok<AGROW>
                     end
                     recurseFields(dataStruct, fieldName, newCumulFieldName);
                 end
             end
         else
+            % Convert strings => chars, string array => cellstr
+            try fieldValue = controllib.internal.util.hString2Char(fieldValue); catch, end
             matlabType = class(fieldValue);
             dataSize = size(fieldValue);
-            if strcmp(matlabType,'cell')&isvector(fieldValue),
+            if strcmp(matlabType,'cell') && isvector(fieldValue)
                fieldValue = vlt.data.cell2str(fieldValue);
             elseif ~ischar(fieldValue) && ~isscalar(fieldValue) && ~isempty(fieldValue)
-                if 0&strcmp(matlabType,'double'), % just leave it
-                else,
+                if 0 && strcmp(matlabType,'double') % just leave it
+                else
                     sizeStr = regexprep(mat2str(dataSize), '\s+', 'x'); %'×'
                     fieldValue = sprintf('%s %s', sizeStr, matlabType);
-                end;
+                end
             end
             metaTable.columns(end+1) = newColumn(cumulFieldName, fieldValue, matlabType);
         end

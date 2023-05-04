@@ -726,7 +726,9 @@ classdef (Abstract) database < handle
                     sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1Str '"'];
                 case 'exact_string_anycase'
                     sql_str = [field_check ' AND ' notStr 'LOWER(doc_data.value) = "' lower(param1Str) '"'];
-                case 'contains_string'
+                case 'has_exact_string'
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%''' param1Like '''%" ESCAPE "\"'];
+                case {'contains_string','has_contains_string'}
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'exact_number'
                     if ~isempty(param1Val)
@@ -1288,6 +1290,8 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldDouble', ...
                         '3 or 4 parameters must be defined for Double fields in a document schema, but %d defined', ...
                         numel(expectedParams))
+
+                    % Validate data value
                     if numel(expectedParams) >= 4
                         canbeempty = expectedParams(4);
                     else
@@ -1315,9 +1319,9 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldMatrix', ...
                         'At least 2 parameters must be defined for Matrix fields in a document schema, but %d defined', ...
                         numel(expectedParams));
-                    % convert size vector to columns
-                    sz = size(value);
-                    sz = sz(:);
+
+                    % Validate data size
+                    sz = size(value)'; %column vector
                     nonNans = find(~isnan(expectedParams));
                     if isempty(nonNans)
                         isOk = true;
@@ -1326,8 +1330,7 @@ classdef (Abstract) database < handle
                     end
                     assert(isOk,'DID:Database:ValidationFieldMatrix', ...
                         'Invalid sub-field %s size %dx%d found in %s', ...
-                        field_name, size(value,1), size(value,2), ...
-                        doc_name);
+                        field_name, size(value,1), size(value,2), doc_name);
 
                 case 'timestamp'
                     assert(ischar(value), ...
@@ -1344,6 +1347,8 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldChar', ...
                         'Invalid non-char sub-field %s found in %s', ...
                         field_name, doc_name);
+
+                    % Validate string length
                     if isempty(expectedParams)
                         isOk = true;
                     else
@@ -1358,6 +1363,8 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldUID', ...
                         'Invalid non-UID sub-field %s found in %s', ...
                         field_name, doc_name);
+
+                    % Validate data value
                     if isempty(value), return, end
                     uid_part = '[\dA-F]{16}';
                     regex = [uid_part '_' uid_part];
@@ -1366,17 +1373,33 @@ classdef (Abstract) database < handle
                         'Invalid non-UID sub-field %s found in %s', ...
                         field_name, doc_name);
 
-                case 'structure'
+                case {'struct','structure'}
                     assert(isempty(value) || isstruct(value),...
                         'DID:Database:ValidationFieldStructure',...
-                        'Invalid structure sub-field %s found in %s',...
+                        'Invalid non-struct sub-field %s found in %s',...
                         field_name, doc_name);
 
                 case 'cell'
                     assert(isempty(value) || iscell(value),...
-                        'DID:Database:ValidationFieldStructure',...
-                        'Invalid cell sub-field %s found in %s',...
-                        field_name, doc_name);                    
+                        'DID:Database:ValidationFieldCell',...
+                        'Invalid non-cell sub-field %s found in %s',...
+                        field_name, doc_name);
+
+                case {'cellstr','stringarray'}  %issue #57
+                    assert(isempty(value) || iscellstr(value) || isstring(value),...
+                        'DID:Database:ValidationFieldStringArray',...
+                        'Invalid non-string-array sub-field %s found in %s',...
+                        field_name, doc_name);
+
+                    % Validate data size
+                    sz = size(value)';  % column vector
+                    expectedSz = expectedParams;
+                    expectedSz(end+1:end+2) = NaN; %ensure 2 values (default=NaN)
+                    isOk = (isnan(expectedSz(1)) || sz(1)>=expectedSz{1}) && ...
+                           (isnan(expectedSz(2)) || sz(2)<=expectedSz{2});
+                    assert(isOk,'DID:Database:ValidationFieldMatrix', ...
+                        'Invalid sub-field %s size %dx%d found in %s', ...
+                        field_name, size(value,1), size(value,2), doc_name);
 
                 otherwise
                     error('DID:Database:ValidationFieldType', ...
