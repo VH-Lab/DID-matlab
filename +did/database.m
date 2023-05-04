@@ -705,6 +705,7 @@ classdef (Abstract) database < handle
             param1Str = num2str(param1);
             if numel(param1)>=1
                 param1Val = num2str(param1(1));
+                param1ValMinus1 = num2str(param1(1)-1);
             else
                 param1Val = [];
             end
@@ -730,6 +731,16 @@ classdef (Abstract) database < handle
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%''' param1Like '''%" ESCAPE "\"'];
                 case {'contains_string','has_contains_string'}
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
+                case 'numel is'
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) = '  param1ValMinus1];
+                case 'numel >'
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) > '  param1ValMinus1];
+                case 'numel <'
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) < '  param1ValMinus1];
+                case 'numel >='
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) >= ' param1ValMinus1];
+                case 'numel <='
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) <= ' param1ValMinus1];
                 case 'exact_number'
                     if ~isempty(param1Val)
                         sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
