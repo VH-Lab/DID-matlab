@@ -5,6 +5,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
     properties
 	    FileDir % full path to directory where files are stored
+        Timeout = 10  % max seconds to wait for database to be accessible
     end
 
     methods % constructor
@@ -62,7 +63,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             sqlitedb_obj.set_preference('cache_max_files', inf);
             sqlitedb_obj.FileDir = cacheDir;
         end % sqlitedb()
-    end 
+    end
 
     methods % destructor
         function delete(this_obj)
@@ -529,7 +530,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     end
 
                     % Remove the document records from the database's files table
-                    this_obj.run_sql_noOpen('DELETE FROM files    WHERE doc_idx=?', doc_idx);
+                    this_obj.run_sql_noOpen('DELETE FROM files WHERE doc_idx=?', doc_idx);
                 end
 
                 % Remove all document records from database's docs,doc_data tables
@@ -653,8 +654,24 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             filename = this_obj.connection;
             isNew = ~exist(filename,'file');
 
-            % Open the specified filename
-            this_obj.dbid = mksqlite('open',filename);
+            % Open the specified database file
+            this_obj.dbid = this_obj.mksqlite_('open',filename);
+
+            % Change the locking_mode from NORMAL to EXCLUSIVE
+            % See https://www.sqlite.org/pragma.html#pragma_locking_mode
+            % https://stackoverflow.com/questions/14272715/how-can-i-lock-a-sqlite-database
+            % It turns out that this causes unintentional DB locking, so avoid!
+            %this_obj.mksqlite_(this_obj.dbid,'pragma locking_mode = exclusive');
+
+            % Start a new transaction so that all updates are committed together
+            % or automatically rolled-back (in case of error)
+            % See https://www.sqlite.org/lang_transaction.html
+            % TODO: perhaps use 'begin concurrent' instead of 'begin exclusive'?
+            % https://www.sqlite.org/cgi/src/doc/begin-concurrent/doc/begin_concurrent.md
+            this_obj.mksqlite_(this_obj.dbid,'begin exclusive');
+
+            % Create a cleanup object to close the DB file once usage is done
+            hCleanup = onCleanup(@()this_obj.close_db());
 
             % If this is an existing file
             if ~isNew
@@ -673,9 +690,6 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     error('DID:SQLITEDB:OPEN','Error opening %s as a DID SQLite database: %s',filename,err.message);
                 end
 
-                % Create a cleanup object to close the DB file once usage is done
-                hCleanup = onCleanup(@()this_obj.close_db());
-
             else % new database
 
                 % Use Types BLOBs to store data values of any type/size
@@ -685,19 +699,16 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % Create empty default tables in the newly-created database
                 this_obj.create_db_tables();
 
-                % Close the database
-                this_obj.close_db();
-
-                % No cleanup object in this case
+                % No cleanup object in this case (this_obj.close_db() is invoked implicitly)
                 hCleanup = [];
             end
         end
 
         function data = run_sql_noOpen(this_obj, query_str, varargin)
-            % Run the SQL query in an open database
+            % Run the SQL query in an open database (retry a bit if locked)
             try
                 %query_str  %debug
-                data = mksqlite(this_obj.dbid, query_str, varargin{:});
+                data = this_obj.mksqlite_(this_obj.dbid, query_str, varargin{:});
             catch err
                 query_str = regexprep(query_str, {' +',' = '}, {' ','='});
                 fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\nError cause: %s\n',query_str,err.message)
@@ -705,9 +716,74 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
         end
 
+        % mksqlite wrapper that waits Timeout secs upon a locked DB (issue #59)
+        function data = mksqlite_(this_obj, varargin)
+            % Retry up to Timeout secs if database is locked
+            data = [];
+            pid = feature('getpid'); %#ok<FEATUD>
+            ticId = tic;
+            paused = false;
+            varStr = strjoin(cellfun(@num2str,varargin,'un',0), ' - ');
+            while true
+                try
+                    if this_obj.debug
+                        fprintf('%s %5d %s\n',datestr(now,'hh:MM:ss.fff'),pid ,varStr(1:min(end,80)));
+                    end
+
+                    % Use "ans" as workaround for when mksqlite() returns no data
+                    %data = mksqlite(varargin{:});
+                    ans = []; %#ok<NOANS>
+                    mksqlite(varargin{:});
+                    data = ans; %#ok<NOANS>
+
+                    % mksqlite processed without error: return from the function
+                    break
+
+                catch err
+
+                    secsPassed = toc(ticId);
+                    isLockedError = contains(err.message, 'database is locked');
+                    isCommitError = contains(err.message, 'cannot commit');
+                    dbIsNotOpen   = contains(err.message, 'database not open');
+
+                    if isCommitError || dbIsNotOpen  % ignorable errors
+                        return
+
+                    elseif ~isLockedError  % applicative error (invalid SQL, bad value etc.)
+                        if this_obj.debug
+                            fprintf(2,'DB error: %s\n',err.message); dbstack(1)
+                        end
+                        rethrow(err) %rethrow upon a non-lock error
+
+                    elseif secsPassed > this_obj.Timeout  % DB lock timeout
+                        str = varargin{1+isnumeric(varargin{1})};
+                        str = sprintf('DB lock timeout after %.2f secs (for: "%s")\n',secsPassed,str);
+                        if this_obj.debug
+                            fprintf(2,'%s %5d %s\n',datestr(now,'hh:MM:ss.fff'),pid,str);
+                        end
+                        rethrow(err) %rethrow upon lock timeout
+
+                    else  % DB lock prior to timeout
+                        % DB is locked: pause a bit and then retry
+                        if this_obj.debug
+                            fprintf('%s %5d %s\n',datestr(now,'hh:MM:ss.fff'),pid,'db lock retry...');
+                        end
+                        pause(rand*0.1);
+                        paused = true;
+                    end
+                end
+            end
+            if paused && this_obj.debug, toc(ticId), end
+        end
+
         function close_db(this_obj)
             % Close the database file (ignore any errors)
-            try mksqlite(this_obj.dbid, 'close'); catch, end
+            try this_obj.mksqlite_(this_obj.dbid, 'commit'); catch, end
+            %try this_obj.mksqlite_(this_obj.dbid, 'pragma locking_mode = normal'); catch, end
+            try this_obj.mksqlite_(this_obj.dbid, 'close');  catch, end
+            if isParallel() %no need to pause if not running in a parallel worker
+                pause(0.1);
+            end
         end
 
         function create_db_tables(this_obj)
@@ -815,3 +891,31 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
     end    
 
 end % sqlitedb classdef
+
+% Is this program running in a parallel worker?
+function [flag, isLocal] = isParallel()
+    %flag = system_dependent('isdmlworker');
+    persistent isParallelFlag isLocalCluster
+    if isempty(isParallelFlag)
+        try
+            task = getCurrentTask();
+            isParallelFlag = ~isempty(task);
+        catch
+            isParallelFlag = false;
+        end
+        if isParallelFlag
+            try
+                job = task.Parent;    % a parallel.job object
+                cluster = job.parent; % a parallel.cluster object
+                %isLocalCluster = isa(cluster,'parallel.cluster.Local');
+                isLocalCluster = strcmpi(cluster.Type,'Local');
+            catch
+                isLocalCluster = false;
+            end
+        else
+            isLocalCluster = false;
+        end
+    end
+    flag = isParallelFlag;
+    isLocal = isLocalCluster;
+end
