@@ -732,15 +732,15 @@ classdef (Abstract) database < handle
                 case {'contains_string','has_contains_string'}
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'numel is'
-                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) = '  param1ValMinus1];
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^\x07]","")) = '  param1ValMinus1];
                 case 'numel >'
-                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) > '  param1ValMinus1];
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^\x07]","")) > '  param1ValMinus1];
                 case 'numel <'
-                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) < '  param1ValMinus1];
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^\x07]","")) < '  param1ValMinus1];
                 case 'numel >='
-                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) >= ' param1ValMinus1];
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^\x07]","")) >= ' param1ValMinus1];
                 case 'numel <='
-                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^,]","")) <= ' param1ValMinus1];
+                    sql_str = [field_check ' AND ' notStr 'length(regex(doc_data.value,"[^\x07]","")) <= ' param1ValMinus1];
                 case 'exact_number'
                     if ~isempty(param1Val)
                         sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
