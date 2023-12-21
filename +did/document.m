@@ -17,12 +17,15 @@ classdef document
 			%
 			%
 
+				made_from_struct = 0;
+				
 				if nargin<1,
 					document_type = 'base';
 				end
 
 				if isstruct(document_type),
 					document_properties = document_type;
+					made_from_struct = 1;
 				else,  % create blank from definitions
 					document_properties = did.document.readblankdefinition(document_type);
 					document_properties.base.id = did.ido.unique_id();
@@ -48,7 +51,9 @@ classdef document
 
 				did_document_obj.document_properties = document_properties;
 
-				did_document_obj = did_document_obj.reset_file_info();
+				if ~made_from_struct,
+					did_document_obj = did_document_obj.reset_file_info();
+				end;
 
 		end % document() creator
 
@@ -136,11 +141,11 @@ classdef document
 						otherproperties = rmfield(otherproperties,'depends_on');
 				end;
 
-                                % Step 3): Merge file_list
-                                if isfield(did_document_obj_b.document_properties,'files'),
-                                        % does doc a also have it?
-                                        if isfield(did_document_obj_out.document_properties,'files'),
-                                                file_list = cat(2,did_document_obj_out.document_properties.files.file_list(:)', ...
+				% Step 3): Merge file_list
+				if isfield(did_document_obj_b.document_properties,'files'),
+					% does doc a also have it?
+					if isfield(did_document_obj_out.document_properties,'files'),
+						file_list = cat(2,did_document_obj_out.document_properties.files.file_list(:)', ...
 							did_document_obj_b.document_properties.files.file_list(:)');
                                                 file_info = cat(1,did_document_obj_out.document_properties.files.file_info(:),...
 							did_document_obj_b.document_properties.files.file_info(:));
