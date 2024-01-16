@@ -1180,45 +1180,23 @@ classdef (Abstract) database < handle
 
                     case 'file'
                         % Compare the defined vs. actual file names
-                        try files = docProps.files.file_info; docNames = {files.name}; catch, docNames = {}; end
-                        if isempty(expected) && (isSuperClass || isempty(docNames)), continue, end
+                        try
+                           actual_files_here = docProps.files.file_info;
+                           actualFileNames = {actual_files_here.name};
+                        catch,
+                           actualFileNames = {};
+                        end
+                        if isempty(expected) && (isSuperClass || isempty(actualFileNames)),
+                           continue,
+                        end
                         expectedNames = {expected.name};
                         mustHaveValue = {expected.mustbenotempty};
-                        for idx = 1 : numel(docNames),
-                            docNames{idx} = char(docNames{idx});
+                        for idx = 1 : numel(actualFileNames),
+                            actualFileNames{idx} = char(actualFileNames{idx});
                         end;
-                        areSame = isequal(lower(unique(expectedNames)), lower(unique(docNames)));
-                        assert(areSame,'DID:Database:ValidationFiles', ...
-                            'Dissimilar files defined/found for %s', doc_name);
-                        % Loop over all files and ensure they exist
-                        for idx = 1 : numel(mustHaveValue)
-                            expectedValue = mustHaveValue{idx};
-                            if ~isempty(expectedValue) && expectedValue
-                                item_name = expectedNames{idx};
-                                idx2 = find(strcmpi(item_name,docNames),1);
-                                locations = files(idx2).locations;
-                                found = false;
-                                for idx2 = 1 : numel(locations)
-                                    fileLocation = locations(idx2).location;
-                                    if exist(fileLocation,'file')
-                                        found = true; break
-                                    else
-                                        try
-                                            filename = websave(tempname,fileLocation);
-                                            if exist(filename,'file')
-                                                delete(filename);
-                                                found = true; break
-                                            end
-                                        catch
-                                            % ignore this location
-                                        end
-                                    end
-                                end
-                                assert(found,'DID:Database:ValidationFileMissing', ...
-                                    'Missing file "%s" in %s',item_name,doc_name)
-                            end
-                        end                        
-                    otherwise  % class-specific field
+			[isvalid,errmsg] = did.database.checkfiles(expectedNames,mustHaveValue,actualFileNames,doc_name,actual_files_here,docProps.files.file_list);
+			assert(isvalid,'DID:Database:ValidationFiles',errmsg);
+                   otherwise  % class-specific field
                         % Compare the type and value of all class-specific fields
                         docValue = docProps.(field);
                         if isempty(expected), continue; end;
@@ -1473,4 +1451,137 @@ classdef (Abstract) database < handle
             this.preferences(pref_name) = value;
         end
     end
+    methods(Static)
+       function [isvalid,errmsg] = checkfiles(expectedNames,mustHaveValue,actualFileNames, doc_name, files, actual_file_list)
+           % CHECKFILES - check to make sure that files that are offered match those that are expected or needed
+           % 
+           % [ISVALID,ERRMSG] = CHECKFILES(EXPECTEDNAMES, MUSTHAVEVALUE, ACTUALFILENAMES, DOC_NAME, files, actual_file_list)
+           %
+           %
+              isvalid = 0;
+              errmsg = '';
+
+              % need to check:
+              %  1 - that every entry of the expected file_list is present in the actual document's file_list
+              %  2 - that every entry of the actual document's file_list is valid (it might differ from
+              %      the literal expected file_list if there are enumerated files that end in _##)
+              %  3 - that every file that is required to be present is in fact present
+
+                % check that each expectedName has a match in the actualFileNames
+              expectedNamesList = unique(expectedNames);
+              actualFileNamesList = unique(actualFileNames);
+
+              % Step 1: are any expectedNames missing in the actual file list?
+              missing_files = setdiff(expectedNamesList,actual_file_list);
+              if ~isempty(missing_files)
+                 errmsg = sprintf('Some required files are missing (including %s) from the file_list in document %s', missing_files{1}, doc_name);
+              end;
+
+              % Step 2: are all files in the actual document's file_list valid?
+              areSame = 1;
+              for i=1:numel(actualFileNamesList),
+                 exact_match = any(strcmp(actualFileNamesList{i},expectedNames));
+                 begin_match = 0;
+                 if ~exact_match,
+                    for j=1:numel(expectedNamesList),
+                       if did.database.isfilenamematch(expectedNamesList{j},actualFileNamesList{i}),
+                          begin_match = 1;
+                          break;
+                       end;
+                    end;
+                 end;
+                 areSame = areSame & (exact_match | begin_match);
+                 if ~areSame,
+                    break;
+                 end
+              end;
+
+              if ~areSame,
+                    errmsg=sprintf('Dissimilar files defined/found (including %s) for %s', actualFileNamesList{i}, doc_name);
+keyboard
+                    return;
+              end;
+
+              % Loop over all files and ensure they exist
+              for idx = 1 : numel(mustHaveValue)
+                 expectedValue = mustHaveValue{idx};
+                 if ~isempty(expectedValue) && expectedValue
+                    item_name = expectedNames{idx};
+                    idx2 = did.database.findfilematch(item_name,actualFileNames);
+                    for k=1:numel(idx2),
+                       locations = files(idx2(k)).locations;
+                       found = did.database.canfindonefile(locations);
+                       if ~found,
+                          errmsg = sprintf('Missing file %s in %s',item_name,doc_name);
+                          return;
+                       end
+                    end
+                 end
+              end
+              isvalid = 1;
+       end; % checkfiles()
+       function index = findfilematch(expectedName,actualNames)
+          % INDEX = FINDFILEMATCH(EXPECTEDNAME, ACTUALNAMES)
+          %
+          % Return the index of the item in the cell array of strings ACTUALNAMES
+          % that matches the EXPECTEDNAME. EXPECTEDNAME can either be an exact match
+          % or can a string 'ANYTHING_#' and ACTUALNAMES{INDEX} can have a number (e.g., 'ANYTHING_5').
+          %
+             index = find(strcmp(expectedName,actualNames));
+             if isempty(index),
+                if expectedName(end)=='#', 
+                   tf = startsWith(actualNames,expectedName(1:end-1));
+                   indexes = find(tf);
+                   for k=1:numel(indexes),
+                      rest_of_name = docNamesList{i}(numel(expectedNamesList{indexes(k)}):end);
+                      if all(rest_of_name>=double('0') & rest_of_name<=double('9')),
+                         index(end+1) = k;
+                      end;
+                   end;
+                end;
+             end;
+       end; % findfilematch()
+       function b = isfilenamematch(expectedName,actualName)
+           % ISFILENAMEMATCH - are two file names matched?
+           % 
+           % B = ISFILENAMEMATCH(EXPECTEDNAME,ACTUALNAME)
+           %
+           % EXPECTEDNAME and ACTUALNAME can match if 
+           %   1) they are equal
+           %   2) If EXPECTEDNAME ends in a '#', ACTUALNAME can begin
+           %      with EXPECTEDNAME and end in an integer.
+              b = isequal(expectedName,actualName);
+              if ~b,
+                 if expectedName(end)=='#',
+                    tf = startsWith(actualName,expectedName(1:end-1));
+                    if tf,
+                       rest_of_name = actualName(numel(expectedName):end);
+                       b = all(rest_of_name>=double('0') & rest_of_name<=double('9'));
+                    end
+                 end
+              end
+       end; % isfilenamematch()
+       function found = canfindonefile(locations)
+          % CANFINDONEFILE - can we find at least one file for this?
+              found = false;
+              for idx2 = 1 : numel(locations)
+                 fileLocation = locations(idx2).location;
+                 if isfile(fileLocation)
+                    found = true;
+                    break
+                 else
+                    try
+                       filename = websave(tempname,fileLocation);
+                       if isfile(filename)
+                          delete(filename);
+                          found = true;
+                          break
+                       end
+                    catch
+                       % ignore this location
+                    end
+                 end
+              end
+       end; % canfindonefile
+    end; % Static methods
 end % database classdef
