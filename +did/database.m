@@ -1183,8 +1183,11 @@ classdef (Abstract) database < handle
                         try
                            actual_files_here = docProps.files.file_info;
                            actualFileNames = {actual_files_here.name};
+                           file_list = docProps.files.file_list;
                         catch,
+                           actual_files_here= [];
                            actualFileNames = {};
+                           file_list = {};
                         end
                         if isempty(expected) && (isSuperClass || isempty(actualFileNames)),
                            continue,
@@ -1194,7 +1197,7 @@ classdef (Abstract) database < handle
                         for idx = 1 : numel(actualFileNames),
                             actualFileNames{idx} = char(actualFileNames{idx});
                         end;
-			[isvalid,errmsg] = did.database.checkfiles(expectedNames,mustHaveValue,actualFileNames,doc_name,actual_files_here,docProps.files.file_list);
+			[isvalid,errmsg] = did.database.checkfiles(expectedNames,mustHaveValue,actualFileNames,doc_name,actual_files_here,file_list);
 			assert(isvalid,'DID:Database:ValidationFiles',errmsg);
                    otherwise  % class-specific field
                         % Compare the type and value of all class-specific fields
@@ -1204,7 +1207,7 @@ classdef (Abstract) database < handle
                         docSubFields = strjoin(unique(fieldnames(docValue)),',');
                         areSame = strcmpi(expectedSubFields,docSubFields);
                         assert(areSame,'DID:Database:ValidationFields', ...
-                            'Dissimilar sub-fields defined/found for %s field in %s ("%s" <=> "%s")', ...
+                            'Dissimilar sub-fields defined/found for %s field in %s (expected fields "%s" <=> actual fields "%s")', ...
                             field, doc_name, expectedSubFields, docSubFields);
                         for idx = 1 : numel(expected)
                             definition = expected(idx);
