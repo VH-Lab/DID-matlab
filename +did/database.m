@@ -1296,6 +1296,8 @@ classdef (Abstract) database < handle
                     nonNans = find(~isnan(expectedParams));
                     if numel(nonNans)==0,
                         isOk = true;
+                    elseif any(expectedParams(nonNans)==1),
+                        isOk = any(sz==1); % allow column/row switch, a vector is a vector; this is temporary
                     else,
                         isOk = isequal(sz(nonNans),expectedParams(nonNans));
                     end;
