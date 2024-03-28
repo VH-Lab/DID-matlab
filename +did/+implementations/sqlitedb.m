@@ -551,7 +551,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 %            file_paths = {data.cached_location}; % there used to be only 1 global cache location, now will use local database location
             file_paths = {};
             for uids=1:numel(data),
-		file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
+                file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
             end;
             file_paths = file_paths(~cellfun('isempty',file_paths));
             for idx = 1 : numel(file_paths)
@@ -595,6 +595,31 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 error('DID:SQLITEDB:open','The file "%s" in document "%s" cannot be accessed',filename,document_id);
             end
         end
+
+        function tf = check_exist_doc(this_obj, document_id, filename, varargin)
+            % Get the cached filepath to the specified document
+            query_str = ['SELECT cached_location,orig_location,uid,type ' ...
+                         '  FROM docs,files ' ...
+                         ' WHERE docs.doc_id="' document_id '" ' ...
+                         '   AND files.doc_idx=docs.doc_idx'];
+            if nargin > 2 && ~isempty(filename)
+                query_str = [query_str ' AND files.filename="' filename '"'];
+            else
+                error('DID:SQLITEDB:open','The requested filename must be specified in check_exist_doc()');
+            end
+            data = this_obj.run_sql_query(query_str, true);  %structArray=true
+            if isempty(data)
+                if isempty(filename) %#ok<IFBDUP>
+                    tf = false;
+                    %error('DID:SQLITEDB:open','Document id "%s" does not include any readable file',document_id);
+                else
+                    tf = false;
+                    %error('DID:SQLITEDB:open','Document id "%s" does not include a file named "%s"',document_id,filename);
+                end
+            else
+                tf = true;
+            end
+        end
     end
 
     % Internal methods used by this class
@@ -614,7 +639,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Is this a new or existing file?
             filename = this_obj.connection;
-            isNew = ~exist(filename,'file');
+            %isNew = ~exist(filename,'file');
+            isNew = ~isfile(filename);
 
             % Open the specified filename
             this_obj.dbid = mksqlite('open',filename);

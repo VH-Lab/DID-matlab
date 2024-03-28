@@ -604,6 +604,10 @@ classdef (Abstract) database < handle
             file_obj = database_obj.do_open_doc(document_id, filename, varargin{:});
         end % open_doc()
 
+        function tf = exist_doc(database_obj, document_id, filename, varargin)
+            tf = database_obj.check_exist_doc(document_id, filename, varargin{:});
+        end
+
         function close_doc(database_obj, file_obj)
 			% CLOSE_DOC - close an open did.document file
 			%
@@ -647,10 +651,11 @@ classdef (Abstract) database < handle
             if ~returnStruct && isstruct(data)
                 fn = fieldnames(data);
                 numFields = numel(fn);
-                dataTable = struct2table(data,'AsArray',true);
+                %dataTable = struct2table(data,'AsArray',true);
                 dataCells = {};
                 for i = numFields : -1 : 1
-                    results = dataTable.(fn{i});
+                    %results = dataTable.(fn{i});
+                    results = {data.(fn{i})};
                     if isempty(results)
                         results = {};  % ensure it's a cell-array
                     elseif ~iscell(results) && (isscalar(results) || ischar(results))
@@ -884,6 +889,7 @@ classdef (Abstract) database < handle
 		document_obj = do_get_doc(database_obj, document_id, varargin)
 		do_remove_doc(database_obj, document_id, branch_id, varargin)
         file_obj = do_open_doc(database_obj, document_id, filename, varargin)
+        tf = check_exist_doc(database_obj, document_id, filename, varargin)
     end
 
     % General utility functions used by this class that depend on a class object
@@ -934,9 +940,9 @@ classdef (Abstract) database < handle
             if isstring(doc_id)
                 doc_id = char(doc_id);  % "id" => 'id'
             end
-            try %if isa(doc_id, 'did_document') || isa(doc_id,'did.document')
+            if isa(doc_id, 'did_document') || isa(doc_id,'did.document')
                 doc_id = doc_id.id();
-            catch %else
+            else
                 if isstruct(doc_id)
                     try
                         doc_id = doc_id.document_properties.ndi_document.id;
