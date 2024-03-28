@@ -599,7 +599,34 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end
 
         function [tf, file_path] = check_exist_doc(this_obj, document_id, filename, varargin)
-            
+            % check_exist_doc - Check if file exists for the specified document ID
+            %
+            % [tf, file_path] = check_exist_doc(this_obj, document_id, filename, [params])
+            %
+            % Return a boolean flag indicating whether a specified file
+            % exists for the specified DOCUMENT_ID. The requested filename 
+            % must be specified using the (mandatory) FILENAME parameter.
+            %
+            % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
+            %
+            % Optional PARAMS may be specified as P-V pairs of a parameter name
+            % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
+            % constructor method.
+            %
+            % Only the first matching file that is found is returned.
+            %
+            % Inputs:
+            %    this_obj - this class object
+            %    document_id - unique document ID for the requested document
+            %    filename - name of requested data file referenced in the document
+            %    params - optional parameters to DID.FILE.FILEOBJ constructor
+            %
+            % Outputs:
+            %    tf - a boolean flag indicating if the file exists
+            %    file_path (optional) - The absolute file path of the file.
+            %       This is an empty character vector if the file does not
+            %       exist
+
             file_path = '';
             
             % Get the cached filepath to the specified document
@@ -614,15 +641,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
             data = this_obj.run_sql_query(query_str, true);  %structArray=true
             if isempty(data)
-                if isempty(filename) %#ok<IFBDUP>
-                    tf = false;
-                    %error('DID:SQLITEDB:open','Document id "%s" does not include any readable file',document_id);
-                else
-                    tf = false;
-                    %error('DID:SQLITEDB:open','Document id "%s" does not include a file named "%s"',document_id,filename);
-                end
+                tf = false; % File does not exist
             else
-                %tf = true;
                 file_path = fullfile( this_obj.FileDir, {data.uid} );
                 tf = false( size( file_path) );
                 for i = numel(file_path)
@@ -631,7 +651,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 tf = any(tf);
                 file_path = file_path(tf);
                 if numel(file_path) > 1
-                    warning('Expected one file')
+                    warning('Expected to find exactly one file matching filename.')
                 end
                 file_path = file_path{1};
             end
@@ -658,7 +678,6 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Is this a new or existing file?
             filename = this_obj.connection;
-            %isNew = ~exist(filename,'file');
             isNew = ~isfile(filename);
 
             % Open the specified filename
@@ -718,7 +737,6 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             try 
                 mksqlite(this_obj.dbid, 'close'); 
                 this_obj.dbid = [];
-                fprintf('Closed connection with database "%s"\n', this_obj.connection)
             catch ME
                 warning(ME.message)
             end
