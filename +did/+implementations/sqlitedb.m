@@ -52,7 +52,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Set some default database preferences
             cacheDir_parent = fileparts(filename);
-            cacheDir = [cacheDir_parent filesep 'files'];
+            cacheDir = fullfile(cacheDir_parent, 'files');
             if ~isfolder(cacheDir),
                 mkdir(cacheDir);
             end;
@@ -642,6 +642,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             data = this_obj.run_sql_query(query_str, true);  %structArray=true
             if isempty(data)
                 tf = false; % File does not exist
+            elseif numel(data) == 1
+                tf = true;
+                file_path = [this_obj.FileDir, filesep, data.uid];
             else
                 file_path = fullfile( this_obj.FileDir, {data.uid} );
                 tf = false( size( file_path) );
