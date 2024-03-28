@@ -611,6 +611,29 @@ classdef (Abstract) database < handle
         end % open_doc()
 
         function [tf, file_path] = exist_doc(database_obj, document_id, filename, varargin)
+            % EXIST_DOC - Check if a did.document exists as a file
+            %
+            % [TF, FILE_PATH] = exist_doc(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
+            %
+            % Return a boolean flag indicating whether a specified file
+            % exists for the specified DOCUMENT_ID. The requested filename 
+            % must be specified using the (mandatory) FILENAME parameter.
+            % Also returns the absolute FILE_PATH for the file. If the file
+            % does not exist, this output is an empty character vector.
+            %
+			% DOCUMENT_ID can be either the document id of a did.document, or a
+            % did.document object itsef.
+            %
+            % Optional PARAMS may be specified as P-V pairs of a parameter name
+            % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
+            % constructor method.
+            %
+            % If multiple files are found, only the file path for the first
+            % document is returned.
+
+            % Validate document ID validity (extract ID from object if needed)
+            document_id = database_obj.validate_doc_id(document_id, false);
+            
             [tf, file_path] = database_obj.check_exist_doc(document_id, filename, varargin{:});
         end
 
