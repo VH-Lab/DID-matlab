@@ -91,7 +91,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %                         doc_data.value like "%ndi_documentx%"))'
 
             % Open the database for query
-            [hCleanup, filename] = this_obj.open_db(); %#ok<ASGLU>
+            if isempty(this_obj.dbid)
+                [hCleanup, filename] = this_obj.open_db(); %#ok<ASGLU>
+            end
 
             % Run the SQL query in the database
             data = this_obj.run_sql_noOpen(query_str);
@@ -596,7 +598,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
         end
 
-        function tf = check_exist_doc(this_obj, document_id, filename, varargin)
+        function [tf, file_path] = check_exist_doc(this_obj, document_id, filename, varargin)
+            
+            file_path = '';
+            
             % Get the cached filepath to the specified document
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
                          '  FROM docs,files ' ...
@@ -617,7 +622,21 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     %error('DID:SQLITEDB:open','Document id "%s" does not include a file named "%s"',document_id,filename);
                 end
             else
-                tf = true;
+                %tf = true;
+                file_path = fullfile( this_obj.FileDir, {data.uid} );
+                tf = false( size( file_path) );
+                for i = numel(file_path)
+                    tf = ~isempty(file_path{i}) && isfile(file_path{i});
+                end
+                tf = any(tf);
+                file_path = file_path(tf);
+                if numel(file_path) > 1
+                    warning('Expected one file')
+                end
+                file_path = file_path{1};
+            end
+            if nargout < 2
+                clear file_path
             end
         end
     end
@@ -696,7 +715,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function close_db(this_obj)
             % Close the database file (ignore any errors)
-            try mksqlite(this_obj.dbid, 'close'); catch, end
+            try 
+                mksqlite(this_obj.dbid, 'close'); 
+                this_obj.dbid = [];
+                fprintf('Closed connection with database "%s"\n', this_obj.connection)
+            catch ME
+                warning(ME.message)
+            end
         end
 
         function create_db_tables(this_obj)

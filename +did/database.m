@@ -107,6 +107,12 @@ classdef (Abstract) database < handle
 		end % database
     end
 
+    methods % Database open
+        function [hCleanup, filename] = open(database_obj)
+            [hCleanup, filename] = database_obj.open_db();
+        end
+    end
+
     % Branch-related methods
     methods
 		function branch_ids = all_branch_ids(database_obj)
@@ -604,8 +610,8 @@ classdef (Abstract) database < handle
             file_obj = database_obj.do_open_doc(document_id, filename, varargin{:});
         end % open_doc()
 
-        function tf = exist_doc(database_obj, document_id, filename, varargin)
-            tf = database_obj.check_exist_doc(document_id, filename, varargin{:});
+        function [tf, file_path] = exist_doc(database_obj, document_id, filename, varargin)
+            [tf, file_path] = database_obj.check_exist_doc(document_id, filename, varargin{:});
         end
 
         function close_doc(database_obj, file_obj)
@@ -850,6 +856,9 @@ classdef (Abstract) database < handle
             % Return the matching documents' IDs
 		    document_ids = doc_ids;
 	    end % do_search()
+        function [hCleanup, filename] = open_db(database_obj) %#ok<STOUT,MANU>
+            % Subclasses may implement
+        end
     end
 
     % Hidden synonym methods
@@ -889,7 +898,7 @@ classdef (Abstract) database < handle
 		document_obj = do_get_doc(database_obj, document_id, varargin)
 		do_remove_doc(database_obj, document_id, branch_id, varargin)
         file_obj = do_open_doc(database_obj, document_id, filename, varargin)
-        tf = check_exist_doc(database_obj, document_id, filename, varargin)
+        [tf, file_path] = check_exist_doc(database_obj, document_id, filename, varargin)
     end
 
     % General utility functions used by this class that depend on a class object
