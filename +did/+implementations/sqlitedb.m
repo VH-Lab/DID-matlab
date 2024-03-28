@@ -52,7 +52,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Set some default database preferences
             cacheDir_parent = fileparts(filename);
-            cacheDir = [cacheDir_parent filesep 'files'];
+            cacheDir = fullfile(cacheDir_parent, 'files');
             if ~isfolder(cacheDir),
                 mkdir(cacheDir);
             end;
@@ -91,7 +91,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %                         doc_data.value like "%ndi_documentx%"))'
 
             % Open the database for query
-            [hCleanup, filename] = this_obj.open_db(); %#ok<ASGLU>
+            if isempty(this_obj.dbid)
+                [hCleanup, filename] = this_obj.open_db(); %#ok<ASGLU>
+            end
 
             % Run the SQL query in the database
             data = this_obj.run_sql_noOpen(query_str);
@@ -551,7 +553,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 %            file_paths = {data.cached_location}; % there used to be only 1 global cache location, now will use local database location
             file_paths = {};
             for uids=1:numel(data),
-		file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
+                file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
             end;
             file_paths = file_paths(~cellfun('isempty',file_paths));
             for idx = 1 : numel(file_paths)
@@ -595,6 +597,71 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 error('DID:SQLITEDB:open','The file "%s" in document "%s" cannot be accessed',filename,document_id);
             end
         end
+
+        function [tf, file_path] = check_exist_doc(this_obj, document_id, filename, varargin)
+            % check_exist_doc - Check if file exists for the specified document ID
+            %
+            % [tf, file_path] = check_exist_doc(this_obj, document_id, filename, [params])
+            %
+            % Return a boolean flag indicating whether a specified file
+            % exists for the specified DOCUMENT_ID. The requested filename 
+            % must be specified using the (mandatory) FILENAME parameter.
+            %
+            % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
+            %
+            % Optional PARAMS may be specified as P-V pairs of a parameter name
+            % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
+            % constructor method.
+            %
+            % Only the first matching file that is found is returned.
+            %
+            % Inputs:
+            %    this_obj - this class object
+            %    document_id - unique document ID for the requested document
+            %    filename - name of requested data file referenced in the document
+            %    params - optional parameters to DID.FILE.FILEOBJ constructor
+            %
+            % Outputs:
+            %    tf - a boolean flag indicating if the file exists
+            %    file_path (optional) - The absolute file path of the file.
+            %       This is an empty character vector if the file does not
+            %       exist
+
+            file_path = '';
+            
+            % Get the cached filepath to the specified document
+            query_str = ['SELECT cached_location,orig_location,uid,type ' ...
+                         '  FROM docs,files ' ...
+                         ' WHERE docs.doc_id="' document_id '" ' ...
+                         '   AND files.doc_idx=docs.doc_idx'];
+            if nargin > 2 && ~isempty(filename)
+                query_str = [query_str ' AND files.filename="' filename '"'];
+            else
+                error('DID:SQLITEDB:open','The requested filename must be specified in check_exist_doc()');
+            end
+            data = this_obj.run_sql_query(query_str, true);  %structArray=true
+            if isempty(data)
+                tf = false; % File does not exist
+            elseif numel(data) == 1
+                tf = true;
+                file_path = [this_obj.FileDir, filesep, data.uid];
+            else
+                file_path = fullfile( this_obj.FileDir, {data.uid} );
+                tf = false( size( file_path) );
+                for i = numel(file_path)
+                    tf = ~isempty(file_path{i}) && isfile(file_path{i});
+                end
+                tf = any(tf);
+                file_path = file_path(tf);
+                if numel(file_path) > 1
+                    warning('Expected to find exactly one file matching filename.')
+                end
+                file_path = file_path{1};
+            end
+            if nargout < 2
+                clear file_path
+            end
+        end
     end
 
     % Internal methods used by this class
@@ -614,7 +681,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Is this a new or existing file?
             filename = this_obj.connection;
-            isNew = ~exist(filename,'file');
+            isNew = ~isfile(filename);
 
             % Open the specified filename
             this_obj.dbid = mksqlite('open',filename);
@@ -670,7 +737,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function close_db(this_obj)
             % Close the database file (ignore any errors)
-            try mksqlite(this_obj.dbid, 'close'); catch, end
+            try 
+                mksqlite(this_obj.dbid, 'close'); 
+                this_obj.dbid = [];
+            catch ME
+                warning(ME.message)
+            end
         end
 
         function create_db_tables(this_obj)

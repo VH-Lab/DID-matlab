@@ -107,6 +107,12 @@ classdef (Abstract) database < handle
 		end % database
     end
 
+    methods % Database open
+        function [hCleanup, filename] = open(database_obj)
+            [hCleanup, filename] = database_obj.open_db();
+        end
+    end
+
     % Branch-related methods
     methods
 		function branch_ids = all_branch_ids(database_obj)
@@ -604,6 +610,33 @@ classdef (Abstract) database < handle
             file_obj = database_obj.do_open_doc(document_id, filename, varargin{:});
         end % open_doc()
 
+        function [tf, file_path] = exist_doc(database_obj, document_id, filename, varargin)
+            % EXIST_DOC - Check if a did.document exists as a file
+            %
+            % [TF, FILE_PATH] = exist_doc(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
+            %
+            % Return a boolean flag indicating whether a specified file
+            % exists for the specified DOCUMENT_ID. The requested filename 
+            % must be specified using the (mandatory) FILENAME parameter.
+            % Also returns the absolute FILE_PATH for the file. If the file
+            % does not exist, this output is an empty character vector.
+            %
+			% DOCUMENT_ID can be either the document id of a did.document, or a
+            % did.document object itsef.
+            %
+            % Optional PARAMS may be specified as P-V pairs of a parameter name
+            % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
+            % constructor method.
+            %
+            % If multiple files are found, only the file path for the first
+            % document is returned.
+
+            % Validate document ID validity (extract ID from object if needed)
+            document_id = database_obj.validate_doc_id(document_id, false);
+            
+            [tf, file_path] = database_obj.check_exist_doc(document_id, filename, varargin{:});
+        end
+
         function close_doc(database_obj, file_obj)
 			% CLOSE_DOC - close an open did.document file
 			%
@@ -647,10 +680,11 @@ classdef (Abstract) database < handle
             if ~returnStruct && isstruct(data)
                 fn = fieldnames(data);
                 numFields = numel(fn);
-                dataTable = struct2table(data,'AsArray',true);
+                %dataTable = struct2table(data,'AsArray',true);
                 dataCells = {};
                 for i = numFields : -1 : 1
-                    results = dataTable.(fn{i});
+                    %results = dataTable.(fn{i});
+                    results = {data.(fn{i})};
                     if isempty(results)
                         results = {};  % ensure it's a cell-array
                     elseif ~iscell(results) && (isscalar(results) || ischar(results))
@@ -845,6 +879,9 @@ classdef (Abstract) database < handle
             % Return the matching documents' IDs
 		    document_ids = doc_ids;
 	    end % do_search()
+        function [hCleanup, filename] = open_db(database_obj) %#ok<STOUT,MANU>
+            % Subclasses may implement
+        end
     end
 
     % Hidden synonym methods
@@ -884,6 +921,7 @@ classdef (Abstract) database < handle
 		document_obj = do_get_doc(database_obj, document_id, varargin)
 		do_remove_doc(database_obj, document_id, branch_id, varargin)
         file_obj = do_open_doc(database_obj, document_id, filename, varargin)
+        [tf, file_path] = check_exist_doc(database_obj, document_id, filename, varargin)
     end
 
     % General utility functions used by this class that depend on a class object
@@ -934,9 +972,9 @@ classdef (Abstract) database < handle
             if isstring(doc_id)
                 doc_id = char(doc_id);  % "id" => 'id'
             end
-            try %if isa(doc_id, 'did_document') || isa(doc_id,'did.document')
+            if isa(doc_id, 'did_document') || isa(doc_id,'did.document')
                 doc_id = doc_id.id();
-            catch %else
+            else
                 if isstruct(doc_id)
                     try
                         doc_id = doc_id.document_properties.ndi_document.id;
