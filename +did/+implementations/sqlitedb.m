@@ -560,6 +560,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 this_file = file_paths{idx};
                 if isfile(this_file)
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
+                    varargin{:}
                     file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
                     return
                 end
@@ -569,7 +570,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             for idx = 1 : numel(data)  %data is a struct array
                 this_file_struct = data(idx);
                 sourcePath = this_file_struct.orig_location;
-                destDir = this_obj.FileDir;
+                destDir = this_obj.FileDir;  % SDV this should be changed to file cache
                 %destDir = this_obj.get_preference('cache_folder');
                 destPath = fullfile(destDir, this_file_struct.uid);
                 try
@@ -577,9 +578,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     if strcmpi(file_type,'file')
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                         if ~status, error(errMsg); end
-                    else  % url
+                    elseif strcmpi(file_type,'url'),
+			% call fileCache object to add the file
                         websave(destPath, sourcePath);
                         if ~exist(destPath,'file'), error(' '); end
+                    elseif strcmp(file_type,'ndi_cloud'),
+			% SDV import here! call file cache method to add the file
                     end
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     file_obj = did.file.readonly_fileobj('fullpathfilename',sourcePath,varargin{:});
