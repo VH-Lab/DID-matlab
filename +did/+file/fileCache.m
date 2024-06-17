@@ -136,6 +136,138 @@ classdef fileCache < handle
 				end;
 		end; % GETPROPERTIES
 
+		function addFile(fileCacheObj, fullPathFileName)
+			% ADDFILE - add a file to the cache
+			%
+			% ADDFILE(FILECACHEOBJ, FULLPATHFILENAME)
+			%
+			% Add a file to the cache. The file at FULLPATHFILENAME is moved 
+			% into the cache. If adding the file would cause the cache to be
+			% overfull, then files are deleted from the cache.
+			%
+			% The file at FULLPATHFILENAME should be outside of the cache.
+			%
+				arguments
+					fileCacheObj (1,1)
+					filename char {isFile} 
+				end
+
+		end; % addFile()
+
+		function removeFile(fileCacheObj, filename)
+			% REMOVEFILE - remove a file from the cache
+			%
+			% REMOVEFILE(FILECACHEOBJ, FILENAME)
+			%
+			% Remove a file from the cache. FILENAME should be the name of a local
+			% file in the cache.
+
+		end; % removeFile
+
+		function [fn,sz,lastAccess] = fileList(fileCacheObj, useCatalog, varargin)
+			% FILELIST - retrieve the files and sizes in the cache
+			%
+			% [FN,SZ,LASTACCESS] = FILELIST(FILECACHEOBJ, [USECATALOG])
+			%
+			% Return a list of filenames in FILECACHEOBJ. 
+			%
+			% FN is a cell array of file names, and SZ is an array of the
+			% corresponding file sizes. That is, SZ(i) is the size (in bytes)
+			% of the file FN{i}. LASTACCESS is a vector of DATENUM values (see NOW) of
+			% last access times for each file.
+			%
+			% By default, the file list is obtained from the file cache information
+			% file. If USECATALOG is provided and it is false, then the directory
+			% is examined directly. If the directory is examined directly, then 
+			% LASTACCESS is filled with NaN.
+			%
+				arguments
+					fileCacheObj (1,1)
+					useCatalog (1,1) logical = true
+					options.lockfid (1,1) double = NaN % undocumented option
+					options.lockFileKey (1,:) char = '';
+				end
+
+				this_function_made_lockfile = 0;
+
+				lFileName = lockFileName(fileCacheObj);
+				iFileName = infoFileName(fileCacheObj);
+
+				if useCatalog,
+					if isnan(options.lockfid), % we did not make the lockfile, let's grab it so the data can't change while we are reading it
+						[lockfid,key] = vlt.file.checkout_lock_file(lFileName, 30, 0, 60); % lock file expires in 60 seconds
+						if lockfid>0,
+							% we have the lock, continue
+						else,
+							error(['Could not gain access to the lock file ' lFileName '.']);
+						end;
+					end;
+					% now we have the lock file, so open the info file
+					fid = fopen(iFileName,'r','ieee-le');
+					if fid>0,
+						
+						% do something
+					end;
+	
+					if this_function_made_lockfile,
+	                                        vlt.file.release_lock_file(lFileName,key);
+					end;
+
+
+				else,
+					d = dir(fileCacheObj.directoryName);
+					fileIndexes = find([d.isDir]==0);
+					d = d(fileIndexes);
+					fn = {d.name};
+					sz = [d.size];
+					lastAccess = NaN*sz;
+				end;
+
+		end; % fileList()
+
+		function resize(fileCacheObj, newFileSize)
+			% RESIZE - resize the cache if needed by deleting files
+			%
+			% RESIZE(FILECACHEOBJ, NEWFILESIZE)
+			%
+			% If needed, delete files from the cache (starting from the
+			% least recently accessed) to make room for a file of NEWFILESIZE
+			% in bytes.  NEWFILESIZE can be a scalar (if a single file is to be added)
+			% or an array.
+			%
+				arguments
+					fileCacheObj
+					newFileSize {mustBeVector} uint64 = 0
+				end
+
+				if sum(newFileSize)>fileCacheObj.maxSize,
+					error(['New files to be added exceed cache allowed size by themselves.']);
+				end;
+
+				[fn,sz,lastaccess] = fileCacheObj.fileList(true);
+				if sum(sz)+sum(newFileSize)>fileCacheObj.maxSize,
+					[la_sorted,la_indexes] = sort(lastaccess);
+					cutoff = find(sum(newFileSize)+cumsum(sz(la_indexes))>fileCacheObj.reduceSize,'first');
+					fileCacheObj.removeFile(fn(la_indexes(1:cutoff)));
+				end;
+		end; % resize
+
+		function touch(fileCacheObj, fileName)
+			% TOUCH - mark a file as accessed right now
+			%
+			% TOUCH(FILECACHEOBJ, FILENAME)
+			%
+			% Indicate that a file has just been accessed. Updates the last access time
+			% of FILENAME. FILENAME can be a scalar or cell array of file names.
+			%
+				argument
+					fileCacheObj (1,1)
+					fileName {mustBeText}
+				end
+
+
+		end; % touch()
+
 	end; % methods
 
 	methods (Access=protected)
