@@ -5,10 +5,10 @@ classdef fileCache < handle
 	properties (SetAccess=protected)
 		directoryName (1,:) char % Full-path directory where the cache is stored
 		fileNameCharacters (1,1) uint16 {mustBeGreaterThanOrEqual(fileNameCharacters,32)} = 32 % Number of characters allowed in a fileName (uint16)
-		maxSize (1,1) uint64 {mustBeGreaterThanOrEqual(maxSize,10e3)} = 100e9 % maximum size for the cache in bytes (uint64)
-		reduceSize (1,1) uint64 {mustBeGreaterThanOrEqual(reduceSize,8e3)} = 80e9 % size to be achieved when files need to be removed
+		maxSize (1,1) uint64 {mustBeGreaterThanOrEqual(maxSize,1000)} = 100e9 % maximum size for the cache in bytes (uint64)
+		reduceSize (1,1) uint64 {mustBeGreaterThanOrEqual(reduceSize,800)} = 80e9 % size to be achieved when files need to be removed
 		currentSize (1,1) uint64 {mustBeGreaterThanOrEqual(currentSize,0)} = 0
-		binaryTable (1,1) 
+		binaryTable (1,1) = 0
 	end
 
 	properties (Constant)
@@ -38,12 +38,13 @@ classdef fileCache < handle
 
 				arguments
 					directoryName (1,:) {mustBeFolder}
-					fileNameCharacters = uint16(32)
+					fileNameCharacters (1,1) uint16 = uint16(32)
 					maxSize = uint64(100e9)
 					reduceSize = uint64(80e9)
 				end
 
 				fileCacheObj.directoryName = directoryName;
+				fileCacheObj.fileNameCharacters = fileNameCharacters;
 
 				need_to_set = 1;
 
@@ -89,8 +90,8 @@ classdef fileCache < handle
 			%
 				arguments
 					fileCacheObj (1,1)
-					maxSize (1,1) uint64 {mustBeGreaterThanOrEqual(maxSize,10e3)} = 100e9
-					reduceSize (1,1) uint64 {mustBeGreaterThanOrEqual(reduceSize,8e3)} = 80e9
+					maxSize (1,1) uint64 {mustBeGreaterThanOrEqual(maxSize,1000)} = 100e9
+					reduceSize (1,1) uint64 {mustBeGreaterThanOrEqual(reduceSize,800)} = 80e9
 					currentSize (1,1) uint64 {mustBeGreaterThanOrEqual(currentSize,0)} = 0
 				end
 
@@ -103,12 +104,14 @@ classdef fileCache < handle
 					fileCacheObj.binaryTable = did.file.binaryTable(...
 						did.file.fileobj('fullpathfilename',iFileName),...
 						{'char','double','uint64'}, ... % filename, last-accessed time, size
-						[33*1 8 8], ... % size of these entries
+						[fileCacheObj.fileNameCharacters*1 8 8], ... % size of these entries in bytes
+						[fileCacheObj.fileNameCharacters 1 1], ... % size of these entries in elements
 						2+8+8+8); % headerSize: fileNameCharacters (uint16) + maxSize & reduceSize & totalSize (uint64)
 					h1 = typecast(uint16(fileCacheObj.fileNameCharacters),'uint8');
 				else, % retrieve the fileCharacter number from the existing header
 					hd = fileCacheObj.binaryTable.readHeader();
-					h1 = typecast(hd(1:2),'uint16');
+					h1 = hd(1:2);
+					h1 = h1(:)';
 				end;
 				h2 = typecast(uint64(maxSize),'uint8');
 				h3 = typecast(uint64(reduceSize),'uint8');
@@ -129,18 +132,27 @@ classdef fileCache < handle
 			% Read the fileCacheObj properties that are stored on disk. 
 			% FILECACHEINFO is a structure with the properties and values.
 			%
+				iFileName = infoFileName(fileCacheObj); 
+				if fileCacheObj.binaryTable==0,
+					fileCacheObj.binaryTable = did.file.binaryTable(...
+						did.file.fileobj('fullpathfilename',iFileName),...
+						{'char','double','uint64'}, ... % filename, last-accessed time, size
+						[fileCacheObj.fileNameCharacters*1 8 8], ... % size of these entries in bytes
+						[fileCacheObj.fileNameCharacters 1 1], ... % size of these entries in elements
+						2+8+8+8); % headerSize: fileNameCharacters (uint16) + maxSize & reduceSize & totalSize (uint64)
+				end;
 				hd = fileCacheObj.binaryTable.readHeader();
-				fileCacheInfo.maxSize = typecast(hd(1:2),'uint16');
+				fileCacheInfo.fileNameCharacters = typecast(hd(1:2),'uint16');
 				fileCacheInfo.maxSize = typecast(hd(3:10),'uint64');
 				fileCacheInfo.reduceSize = typecast(hd(11:18),'uint64');
 				fileCacheInfo.currentSize = typecast(hd(19:26),'uint64');
-				
+			
 		end; % GETPROPERTIES
 
-		function addFile(fileCacheObj, fullPathFileName)
+		function addFile(fileCacheObj, fullPathFileName, fileNameInCache, option)
 			% ADDFILE - add a file to the cache
 			%
-			% ADDFILE(FILECACHEOBJ, FULLPATHFILENAME)
+			% ADDFILE(FILECACHEOBJ, FULLPATHFILENAME, fileNameInCache)
 			%
 			% Add a file to the cache. The file at FULLPATHFILENAME is moved 
 			% into the cache. If adding the file would cause the cache to be
@@ -148,22 +160,96 @@ classdef fileCache < handle
 			%
 			% The file at FULLPATHFILENAME should be outside of the cache.
 			%
+			% If the file should only be copied and not moved, use
+			% ADDFILE(FILECACHEOBJ, FULLPATHFILENAME, fileNameInCache,'copy',true)
+			%
 				arguments
 					fileCacheObj (1,1)
-					filename char {isFile} 
+					fullPathFileName char {mustBeFile} 
+					fileNameInCache (1,:) char = [];
+					option.copy (1,1) logical = false
 				end
 
+				if isempty(fileNameInCache),
+					[dummy,fileNameInCache,ext] = fileparts(fullPathFileName);
+					fileNameInCache = [char(fileNameInCache) char(ext)];
+				end;
+
+				if numel(fileNameInCache)~=fileCacheObj.fileNameCharacters,
+					error(['FileName has wrong number of characters (expected ' int2str(fileCacheObj.fileNameCharacters) ').']);
+				end;
+
+				% make sure file isn't already in there
+				[lockfid,key] = fileCacheObj.binaryTable.getLock();
+				[row,wouldbe] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
+				if row,
+					fileCacheObj.binaryTable.releaseLock(lockfid,key);
+					error(['There is already a file with name ' fileNameInCache ' in the cache.']);
+				end;
+
+				finfo = dir(fullPathFileName);
+				sz = finfo.bytes;
+				fileCacheObj.resizeAndAdd(sz,fileNameInCache); % now it is in db
+				fullFileInCache = fullfile(fileCacheObj.directoryName,fileNameInCache);
+				if option.copy,
+					copyfile(fullPathFileName,fullFileInCache);
+				else,
+					movefile(fullPathFileName,fullFileInCache);
+				end;
+				fileCacheObj.binaryTable.releaseLock(lockfid,key);
 		end; % addFile()
 
-		function removeFile(fileCacheObj, filename)
+		function removeFile(fileCacheObj, fileNameInCache)
 			% REMOVEFILE - remove a file from the cache
 			%
-			% REMOVEFILE(FILECACHEOBJ, FILENAME)
+			% REMOVEFILE(FILECACHEOBJ, FILENAMEINCACHE)
 			%
-			% Remove a file from the cache. FILENAME should be the name of a local
+			% Remove a file from the cache. FILENAMEINCACHE should be the name of a local
 			% file in the cache.
-
+			%
+				[lockfid,key] = fileCacheObj.binaryTable.getLock();
+				[row,wouldbe] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
+				if ~row,
+					fileCacheObj.binaryTable.releaseLock(lockfid,key);
+					error(['File ' filename ' is not in file cache manifest.']);
+				end;
+				p = fileCacheObj.getProperties();
+				szHere = fileCacheObj.binaryTable.readRow(row,3);
+				fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,p.currentSize - szHere);
+				fileCacheObj.binaryTable.deleteRow(row);
+				delete(fullfile(fileCacheObj.directoryName,fileNameInCache));
+				fileCacheObj.binaryTable.releaseLock(lockfid,key);
 		end; % removeFile
+
+		function clear(fileCacheObj)
+			% CLEAR - remove all files from fileCache object 
+			%
+			% CLEAR(FILECACHEOBJ) 
+			%
+			% Clear all files in the cache. Use with caution!
+			%
+				[lockfid,key] = fileCacheObj.binaryTable.getLock();
+				fn = fileCacheObj.fileList(false); 
+				data = {};
+				fileCacheObj.binaryTable.writeTable(data);
+				fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,uint16(0));
+				fullnames = fullfile(fileCacheObj.directoryName,fn)
+				if ~isempty(fullnames),
+					delete(fullnames{:});
+				end;
+				fileCacheObj.binaryTable.releaseLock(lockfid,key);
+		end; 
+
+		function b = isFile(fileCacheObj, fileNameInCache)
+			% ISFILE - is this file in the cache?
+			%
+			% B = ISFILE(FILECACHEOBJ, FILENAMEINCACHE)
+			%
+			% Returns 1 if the file FILENAMEINCACHE is in the cache and
+			% 0 otherwise. FILENAMEINCACHE should be the name of a file only
+			% without a path.
+				b=(fileCacheObj.binaryTable.findRow(1,fileNameInCache)>0);
+		end; % isFile()
 
 		function [fn,sz,lastAccess] = fileList(fileCacheObj, useCatalog)
 			% FILELIST - retrieve the files and sizes in the cache
@@ -200,77 +286,121 @@ classdef fileCache < handle
 					fileCacheObj.binaryTable.releaseLock(lockfid,key);
 				else,
 					d = dir(fileCacheObj.directoryName);
-					fileIndexes = find([d.isDir]==0);
+					fileIndexes = find([d.isdir]==0);
 					d = d(fileIndexes);
+					% leave hidden files
+					include = [];
+					for i=1:numel(d),
+						if d(i).name(1)~='.',
+							include(end+1) = i;
+						end;
+					end;
+					d = d(include);
 					fn = {d.name};
-					sz = [d.size];
+					sz = [d.bytes];
 					lastAccess = NaN*sz;
 				end;
 
 		end; % fileList()
 
-		function resize(fileCacheObj, newFileSize)
-			% RESIZE - resize the cache if needed by deleting files
+		function resizeAndAdd(fileCacheObj, newFileSize, newFileName)
+			% RESIZEANDADD - resize the cache if needed by deleting files (and add file information)
 			%
-			% RESIZE(FILECACHEOBJ, NEWFILESIZE)
+			% RESIZEANDADD(FILECACHEOBJ, NEWFILESIZE, NEWFILENAME)
 			%
 			% If needed, delete files from the cache (starting from the
 			% least recently accessed) to make room for a file of NEWFILESIZE
 			% in bytes.  NEWFILESIZE can be a scalar (if a single file is to be added)
 			% or an array.
 			%
+			% NEWFILENAME is either a single name or a cell array of filenames to add.
+			% If there is a cell array, the size of NEWFILESIZE(i) should correspond with NEWFILENAME{i}.
+			%
+			% The fileCache info entry for NEWFILENAME is added.
+			%
 				arguments
 					fileCacheObj
-					newFileSize {mustBeVector} uint64 = 0
+					newFileSize uint64 {mustBeVector}
+					newFileName {mustBeText}
 				end
+
+				if ~iscell(newFileName),
+					newFileName = {newFileName};
+				end;
 
 				if sum(newFileSize)>fileCacheObj.maxSize,
 					error(['New files to be added exceed cache allowed size by themselves.']);
 				end;
 
 				[lockfid,key] = fileCacheObj.binaryTable.getLock();
-				[fn,sz,lastaccess] = fileCacheObj.fileList(true);
-				if sum(sz)+sum(newFileSize)>fileCacheObj.maxSize,
+				fileCacheProperties = fileCacheObj.getProperties();
+				newTotalSize = fileCacheProperties.currentSize + sum(newFileSize);
+			
+				if newTotalSize>fileCacheObj.maxSize,
 					% we are full! must delete!
-					[la_sorted,la_indexes] = sort(lastaccess);
-					cutoff = find(sum(newFileSize)+cumsum(sz(la_indexes))>fileCacheObj.reduceSize,'first');
-					DC = mat2cell(fn(la_indexes(1:cutoff),:),repmat(1,cutoff,1),fileCacheObj.fileNameCharacters);
+					%disp(['We are full! must delete...']);
+					[fn,sz,lastaccess] = fileCacheObj.fileList(true);
+					[la_sorted,la_indexes] = sort(lastaccess,'descend');
+					cutoff = find(sum(newFileSize)+cumsum(sz(la_indexes))>fileCacheObj.reduceSize,1,'first');
+					DC = mat2cell(fn(la_indexes(cutoff:end),:),repmat(1,-cutoff+numel(la_indexes)+1,1),fileCacheObj.fileNameCharacters);
 					ffn = fullfile(fileCacheObj.directoryName, DC);
-					delete(ffn);
+					delete(ffn{:});
 
 					% now re-organize
-					newfn = mat2cell(fn(la_indexes(cutoff+1:end)),repmat(1,numel(sz)-cutoff,1),size(fn,2));
-					sz = sz(la_indexes(cutoff+1:end));
-					lastaccess = lastaccess(la_indexes(cutoff+1:end));
+
+					newfn = mat2cell(fn(la_indexes(1:cutoff-1),:),repmat(1,cutoff-1,1),size(fn,2));
+					sz = sz(la_indexes(1:cutoff-1));
+					lastaccess = lastaccess(la_indexes(1:cutoff-1));
+					newfn = cat(1,newfn,newFileName);
+					sz = cat(1,sz(:),newFileSize(:));
+					lastaccess = cat(1,lastaccess(:),repmat(now,numel(newFileSize),1));
 					[newfn,sortorder] = sort(newfn); % sort by file name
-					sz = sz(sortorder);
-					lastaccess = lastaccess(sortorder);
 					tabledata = {};
 					for i=1:numel(newfn),
 						tabledata{i,1} = newfn{i};
-						tabledata{i,2} = lastaccess(i); 
-						tabledata{i,3} = sz(i);
+						tabledata{i,2} = lastaccess(sortorder(i)); 
+						tabledata{i,3} = sz(sortorder(i));
 					end;
 					fileCacheObj.binaryTable.writeTable(tabledata);
 					fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,sum(sz));
+				else,
+					%disp(['Not full, total size is ' int2str(newTotalSize) ' and maxSize is ' int2str(fileCacheObj.maxSize) '.']);
+					for i=1:numel(newFileName),
+						data_here{i} = newFileName{i};
+						data_here{2} = now;
+						data_here{3} = newFileSize(i);
+						[row,insertSpot] = fileCacheObj.binaryTable.findRow(1,newFileName{i},'sorted',true);
+						fileCacheObj.binaryTable.insertRow(insertSpot,data_here);
+					end;
+					fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,newTotalSize);
 				end;
 				fileCacheObj.binaryTable.releaseLock(lockfid,key);
 		end; % resize
 
-		function touch(fileCacheObj, fileName)
+		function b = touch(fileCacheObj, fileName)
 			% TOUCH - mark a file as accessed right now
 			%
-			% TOUCH(FILECACHEOBJ, FILENAME)
+			% B = TOUCH(FILECACHEOBJ, FILENAME)
 			%
 			% Indicate that a file has just been accessed. Updates the last access time
 			% of FILENAME. FILENAME can be a scalar or cell array of file names.
 			%
-				argument
+			% B is 1 if the file is found and 0 otherwise.
+			%
+				arguments
 					fileCacheObj (1,1)
 					fileName {mustBeText}
 				end
 
+				b = 0;
 
+				[lockfid,key] = fileCacheObj.binaryTable.getLock();
+				row = fileCacheObj.binaryTable.findRow(1,fileName);
+				if row,
+					fileCacheObj.binaryTable.writeEntry(row,2,now());
+					b = 1;
+				end;
+				fileCacheObj.binaryTable.releaseLock(lockfid,key);
 		end; % touch()
 
 	end; % methods

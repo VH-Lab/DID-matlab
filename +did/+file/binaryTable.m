@@ -134,7 +134,7 @@ classdef binaryTable < handle
 				lockfid = [];
 				if binaryTableObj.hasLock == false,
 					[lockfid,key] = did.file.checkout_lock_file(binaryTableObj.lockFileName(),...
-						30,1,60);
+						30,1,20);
 					binaryTableObj.hasLock = true;
 				end;
 		end; % 
@@ -249,7 +249,7 @@ classdef binaryTable < handle
 		function insertRow(binaryTableObj, insertAfter, dataCell)
 			% INSERTROW- insert or add a row of data to a binaryTable object file
 			%
-			% INSERTROW(BINARYTABLEOBJ, FID, INSERTAFTER, DATACELL)
+			% INSERTROW(BINARYTABLEOBJ, INSERTAFTER, DATACELL)
 			%
 			% Insert a row of data after row INSERTAFTER. 
 			% INSERTAFTER must be in 0..number of rows of BINARYTABLEOBJ.
@@ -449,15 +449,18 @@ classdef binaryTable < handle
 				binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
 		end; % writeTable() 
 
-		function [row] = findRow(binaryTableObj, col, value, option)
+		function [row,wouldBe] = findRow(binaryTableObj, col, value, option)
 			% FINDROW - find data in an ordered column
 			%
-			% [ROW] = FINDROW(BINARYTABLEOBJ, COL, VALUE)
+			% [ROW,WOULDBE] = FINDROW(BINARYTABLEOBJ, COL, VALUE)
 			%
 			% Find rows that match VALUE in column COL.
 			%
 			% ROW is the row index where VALUE occurs.
 			% If the value is not found, then ROW is 0.
+			%
+			% If the column is sorted, WOULDBE is the row preceding
+			% where VALUE would go if it were present. Otherwise WOULDBE is NaN.
 			%
 			% If the data are sorted, FINDROW will use that information
 			% to perform a binary search to speed the process:
@@ -475,6 +478,7 @@ classdef binaryTable < handle
 				end
 
 				row = 0;
+				wouldBe = NaN;
 
 				if ~option.isRecurrent,
 					[lockfid,key] = binaryTableObj.getLock();
@@ -503,27 +507,38 @@ classdef binaryTable < handle
 					end;
 
 					r_look = floor(option.lower_bound + double(option.upper_bound-option.lower_bound)/2);
-					v_here = binaryTableObj.readRow(r_look,col);
-					c = did.file.binaryTable.compare(v_here,value);
-					have_equality = 0;
+					if r_look < 1 | r_look > rTotal, % we are out of bounds, probably because there's no data
+						row = 0;
+						wouldBe = 0;
+					else,
+						v_here = binaryTableObj.readRow(r_look,col);
+						c = did.file.binaryTable.compare(v_here,value);
+						have_equality = 0;
+						lastmove = 0;
+						if option.upper_bound<=option.lower_bound,
+							lastmove = 1;
+						end;
 
-					if c<0, % value here is less than we are looking for
-						new_upper_bound = r_look - 1;
-						new_lower_bound = option.lower_bound;
-					elseif c>0, % value_here is greater than we are looking for
-						new_lower_bound = r_look + 1;
-						new_upper_bound = option.upper_bound;
-					else, % equality!
-						have_equality = 1;
-					end;
+						if c<0, % value here is greater than we are looking for
+							new_upper_bound = r_look - 1;
+							new_lower_bound = option.lower_bound;
+						elseif c>0, % value_here is less than we are looking for
+							new_lower_bound = r_look + 1;
+							new_upper_bound = option.upper_bound;
+						else, % equality!
+							have_equality = 1;
+						end;
 
-					if ~have_equality & new_upper_bound~=new_lower_bound,
-						[row] = binaryTableObj.findRow(col, value, 'sorted', true,...
-							'lower_bound',new_lower_bound,'upper_bound',new_upper_bound,...
-							'isRecurrent',true);
-					else
-						if have_equality,
-							row = r_look;
+						if ~have_equality & ~lastmove,
+							[row,wouldBe] = binaryTableObj.findRow(col, value, 'sorted', true,...
+								'lower_bound',new_lower_bound,'upper_bound',new_upper_bound,...
+								'isRecurrent',true);
+						else
+							if have_equality,
+								row = r_look;
+							else, % is lastmovie
+								wouldBe = r_look -1 *(c<0); % 
+							end;
 						end;
 					end;
 				end;
@@ -544,9 +559,9 @@ classdef binaryTable < handle
 			% If both values are character arrays, then they are compared in alphabetical order.
 			% If ehter value is a cell array, then the first entry is examined.
 			%
-			% If VALUE1 < VALUE2, c is -1.
+			% If VALUE1 > VALUE2, c is -1.
 			% If VALUE1 == VALUE2, c is 0.
-			% If VALUE1 > VALUE2, c is 1.
+			% If VALUE1 < VALUE2, c is 1.
 			% 
 				c = NaN;
 				if iscell(value1),
@@ -562,7 +577,7 @@ classdef binaryTable < handle
 					value2 = char(value2);
 				end;
 				if isscalar(value1) & isscalar(value2),
-					c = -1 * (value1<value2) + 1 * (value1>value2);
+					c = 1 * (value1<value2) - 1 * (value1>value2);
 					if c==0,
 						if value1~=value2,
 							error(['VALUE1 and VALUE2 cannot be compared numerically.']);

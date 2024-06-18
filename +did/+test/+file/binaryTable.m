@@ -122,25 +122,48 @@ for i=1:size(data),
 	end;
 end;
 
-value = id{3};
+  % test search/find
 
-i = bT.findRow(1,value);
+for i=1:size(data),
 
-if i~=3,
-	error(['Wrong row.']);
+	value = id{i};
+	myrow = bT.findRow(1,value);
+	if myrow~=i,
+		error(['Wrong row.']);
+	end;
+
+	myrow = bT.findRow(1,value,'sorted',true);
+	if myrow~=i,
+		error(['Wrong row.']);
+	end;
+
+	myrow = bT.findRow(1,'24234234','sorted',true);
+	if myrow~=0,
+		error(['Should not have found a match but did.']);
+	end;
 end;
 
-i = bT.findRow(1,value,'sorted',true);
+  % test search/find w/ miss
 
-if i~=3,
-	error(['Wrong row.']);
+for i=1:size(data),
+	value = id{i};
+	value(end) = value(end)-1;
+	[myrow,wouldbe] = bT.findRow(1,value,'sorted',true);
+	if wouldbe~=i-1,
+		myrow,
+		error(['1 Wrong row: got ' int2str(wouldbe) ' expected ' int2str(i-1)]);
+	end;
+
+	value = id{i};
+	value(end) = value(end)+1;
+	[myrow,wouldbe] = bT.findRow(1,value,'sorted',true);
+	if wouldbe~=i,
+		myrow,
+		error(['2 Wrong row: got ' int2str(wouldbe) ' expected ' int2str(i)]);
+	end;
 end;
 
-i = bT.findRow(1,'24234234','sorted',true);
 
-if i~=0,
-	error(['Should not have found a match but did.']);
-end;
 
 data2 = {};
 
