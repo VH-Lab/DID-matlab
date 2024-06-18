@@ -7,11 +7,12 @@ classdef fileCache < handle
 		fileNameCharacters (1,1) uint16 {mustBeGreaterThanOrEqual(fileNameCharacters,32)} = 32 % Number of characters allowed in a fileName (uint16)
 		maxSize (1,1) uint64 {mustBeGreaterThanOrEqual(maxSize,10e3)} = 100e9 % maximum size for the cache in bytes (uint64)
 		reduceSize (1,1) uint64 {mustBeGreaterThanOrEqual(reduceSize,8e3)} = 80e9 % size to be achieved when files need to be removed
+		currentSize (1,1) uint64 {mustBeGreaterThanOrEqual(currentSize,0)} = 0
+		binaryTable (1,1) 
 	end
 
 	properties (Constant)
 		cacheInfoFileName = '.fileCacheInfo';
-		cacheInfoLockFileName = '.fileCacheInfo-lock';
 	end
 		
 	methods
@@ -52,7 +53,9 @@ classdef fileCache < handle
 					savedFileCacheParams = fileCacheObj.getProperties();
 					fileCacheObj.fileNameCharacters = savedFileCacheParams.fileNameCharacters;
 					fileCacheObj.maxSize = savedFileCacheParams.maxSize;
-					fielCacheObj.reduceSize = savedFileCacheParams.reduceSize;
+					fileCacheObj.reduceSize = savedFileCacheParams.reduceSize;
+					fileCacheObj.currentSize = savedFileCacheParams.currentSize;
+
 					if nargin>1,
 						if savedFileCacheParams.fileNameCharacters ~= fileNameCharacters,
 							error(['fileNameCharacters may not be altered once established.']);
@@ -69,12 +72,12 @@ classdef fileCache < handle
 				end;
 
 				if need_to_set,
-					fileCacheObj = fileCacheObj.setProperties(fileCacheObj.maxSize, fileCacheObj.reduceSize);
+					fileCacheObj = fileCacheObj.setProperties(fileCacheObj.maxSize, fileCacheObj.reduceSize, fileCacheObj.currentSize);
 				end;
 
 		end; % fileCache
 
-		function fileCacheObj = setProperties(fileCacheObj, maxSize, reduceSize)
+		function fileCacheObj = setProperties(fileCacheObj, maxSize, reduceSize, currentSize)
 			% SETPROPERTIES - set or reset the cache size and reduce size
 			%
 			% FILECACHEOBJ = SETPROPERTIES(FILECACHEOBJ, MAXSIZE, REDUCESIZE)
@@ -87,36 +90,38 @@ classdef fileCache < handle
 				arguments
 					fileCacheObj (1,1)
 					maxSize (1,1) uint64 {mustBeGreaterThanOrEqual(maxSize,10e3)} = 100e9
-					reduceSize (1,1) uint64 {mustBeGreaterThanOrEqual(reduceSize,8e3),mustBeLessThan(reduceSize,maxSize)} = 80e9
+					reduceSize (1,1) uint64 {mustBeGreaterThanOrEqual(reduceSize,8e3)} = 80e9
+					currentSize (1,1) uint64 {mustBeGreaterThanOrEqual(currentSize,0)} = 0
 				end
 
 				if reduceSize>=maxSize,
 					error(['reduceSize must be less than maxSize.']);
 				end;
 
-				lFileName = lockFileName(fileCacheObj);
-				iFileName = infoFileName(fileCacheObj);
-				[lockfid,key] = vlt.file.checkout_lock_file(lFileName, 30, 0, 60); % lock file expires in 60 seconds
-				if lockfid>0,
-					% we have the lock
-					fid = fopen(iFileName,'w','ieee-le');
-					if fid>0,
-						fwrite(fid,fileCacheObj.fileNameCharacters,'uint16');
-						fwrite(fid,[maxSize reduceSize],'uint64');
-						fclose(fid);
-						fileCacheObj.maxSize = maxSize;
-						fileCacheObj.reduceSize = reduceSize;
-					else,
-						vlt.file.release_lock_file(lFileName,key);
-						error(['Could not write to the cache info file ' iFileName '.']);
-					end;
-					vlt.file.release_lock_file(lFileName,key);
-				else,
-					error(['Unable to set properties. Cache lock file access could not be obtained: ' lFileName '.']);
+				iFileName = infoFileName(fileCacheObj); 
+				if ~isfile(iFileName), % does it exist already? If not, make it
+					fileCacheObj.binaryTable = did.file.binaryTable(...
+						did.file.fileobj('fullpathfilename',iFileName),...
+						{'char','double','uint64'}, ... % filename, last-accessed time, size
+						[33*1 8 8], ... % size of these entries
+						2+8+8+8); % headerSize: fileNameCharacters (uint16) + maxSize & reduceSize & totalSize (uint64)
+					h1 = typecast(uint16(fileCacheObj.fileNameCharacters),'uint8');
+				else, % retrieve the fileCharacter number from the existing header
+					hd = fileCacheObj.binaryTable.readHeader();
+					h1 = typecast(hd(1:2),'uint16');
 				end;
+				h2 = typecast(uint64(maxSize),'uint8');
+				h3 = typecast(uint64(reduceSize),'uint8');
+				h4 = typecast(uint64(currentSize),'uint8');
+				hd = [h1 h2 h3 h4];
+				fileCacheObj.maxSize = maxSize;
+				fileCacheObj.reduceSize = reduceSize;
+				fileCacheObj.currentSize = currentSize;
+				fileCacheObj.binaryTable.writeHeader(hd);
+					
 		end; % SETPROPERTIES
 
-		function filecacheinfo = getProperties(fileCacheObj)
+		function fileCacheInfo = getProperties(fileCacheObj)
 			% GETPROPERTIES - read fileCache object properties from the info file
 			%
 			% FILECACHEINFO = GETPROPERTIES(FILECACHEOBJ)
@@ -124,16 +129,12 @@ classdef fileCache < handle
 			% Read the fileCacheObj properties that are stored on disk. 
 			% FILECACHEINFO is a structure with the properties and values.
 			%
-				iFileName = infoFileName(fileCacheObj);
-				fid = fopen(iFileName,'r','ieee-le');
-				if fid>0,
-					filecacheinfo.fileNameCharacters = fread(fid,1,'uint16');
-					filecacheinfo.maxSize = fread(fid,1,'uint64');
-					filecacheinfo.reduceSize = fread(fid,1,'uint64');
-					fclose(fid);
-				else,
-					error(['Unable to get properties. Cache info file access could not be obtained: ' siFileName '.']);
-				end;
+				hd = fileCacheObj.binaryTable.readHeader();
+				fileCacheInfo.maxSize = typecast(hd(1:2),'uint16');
+				fileCacheInfo.maxSize = typecast(hd(3:10),'uint64');
+				fileCacheInfo.reduceSize = typecast(hd(11:18),'uint64');
+				fileCacheInfo.currentSize = typecast(hd(19:26),'uint64');
+				
 		end; % GETPROPERTIES
 
 		function addFile(fileCacheObj, fullPathFileName)
@@ -164,16 +165,16 @@ classdef fileCache < handle
 
 		end; % removeFile
 
-		function [fn,sz,lastAccess] = fileList(fileCacheObj, useCatalog, varargin)
+		function [fn,sz,lastAccess] = fileList(fileCacheObj, useCatalog)
 			% FILELIST - retrieve the files and sizes in the cache
 			%
 			% [FN,SZ,LASTACCESS] = FILELIST(FILECACHEOBJ, [USECATALOG])
 			%
 			% Return a list of filenames in FILECACHEOBJ. 
 			%
-			% FN is a cell array of file names, and SZ is an array of the
+			% FN is an array of file names with names in the rows, and SZ is an array of the
 			% corresponding file sizes. That is, SZ(i) is the size (in bytes)
-			% of the file FN{i}. LASTACCESS is a vector of DATENUM values (see NOW) of
+			% of the file FN(i,:). LASTACCESS is a vector of DATENUM values (see NOW) of
 			% last access times for each file.
 			%
 			% By default, the file list is obtained from the file cache information
@@ -184,36 +185,19 @@ classdef fileCache < handle
 				arguments
 					fileCacheObj (1,1)
 					useCatalog (1,1) logical = true
-					options.lockfid (1,1) double = NaN % undocumented option
-					options.lockFileKey (1,:) char = '';
 				end
 
 				this_function_made_lockfile = 0;
 
-				lFileName = lockFileName(fileCacheObj);
 				iFileName = infoFileName(fileCacheObj);
 
 				if useCatalog,
-					if isnan(options.lockfid), % we did not make the lockfile, let's grab it so the data can't change while we are reading it
-						[lockfid,key] = vlt.file.checkout_lock_file(lFileName, 30, 0, 60); % lock file expires in 60 seconds
-						if lockfid>0,
-							% we have the lock, continue
-						else,
-							error(['Could not gain access to the lock file ' lFileName '.']);
-						end;
-					end;
-					% now we have the lock file, so open the info file
-					fid = fopen(iFileName,'r','ieee-le');
-					if fid>0,
-						
-						% do something
-					end;
-	
-					if this_function_made_lockfile,
-	                                        vlt.file.release_lock_file(lFileName,key);
-					end;
-
-
+					% lock for sequential ops, will save a little time
+					[lockfid,key] = fileCacheObj.binaryTable.getLock();
+					fn = fileCacheObj.binaryTable.readRow(Inf,1);
+					lastAccess = fileCacheObj.binaryTable.readRow(Inf,2);
+					sz = fileCacheObj.binaryTable.readRow(Inf,3);
+					fileCacheObj.binaryTable.releaseLock(lockfid,key);
 				else,
 					d = dir(fileCacheObj.directoryName);
 					fileIndexes = find([d.isDir]==0);
@@ -244,12 +228,33 @@ classdef fileCache < handle
 					error(['New files to be added exceed cache allowed size by themselves.']);
 				end;
 
+				[lockfid,key] = fileCacheObj.binaryTable.getLock();
 				[fn,sz,lastaccess] = fileCacheObj.fileList(true);
 				if sum(sz)+sum(newFileSize)>fileCacheObj.maxSize,
+					% we are full! must delete!
 					[la_sorted,la_indexes] = sort(lastaccess);
 					cutoff = find(sum(newFileSize)+cumsum(sz(la_indexes))>fileCacheObj.reduceSize,'first');
-					fileCacheObj.removeFile(fn(la_indexes(1:cutoff)));
+					DC = mat2cell(fn(la_indexes(1:cutoff),:),repmat(1,cutoff,1),fileCacheObj.fileNameCharacters);
+					ffn = fullfile(fileCacheObj.directoryName, DC);
+					delete(ffn);
+
+					% now re-organize
+					newfn = mat2cell(fn(la_indexes(cutoff+1:end)),repmat(1,numel(sz)-cutoff,1),size(fn,2));
+					sz = sz(la_indexes(cutoff+1:end));
+					lastaccess = lastaccess(la_indexes(cutoff+1:end));
+					[newfn,sortorder] = sort(newfn); % sort by file name
+					sz = sz(sortorder);
+					lastaccess = lastaccess(sortorder);
+					tabledata = {};
+					for i=1:numel(newfn),
+						tabledata{i,1} = newfn{i};
+						tabledata{i,2} = lastaccess(i); 
+						tabledata{i,3} = sz(i);
+					end;
+					fileCacheObj.binaryTable.writeTable(tabledata);
+					fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,sum(sz));
 				end;
+				fileCacheObj.binaryTable.releaseLock(lockfid,key);
 		end; % resize
 
 		function touch(fileCacheObj, fileName)
@@ -272,16 +277,6 @@ classdef fileCache < handle
 
 	methods (Access=protected)
 
-		function lFileName = lockFileName(fileCacheObj)
-			% LOCKFILENAME - return the name of the lock file
-			% 
-			% LFILENAME = LOCKFILENAME(FILECACHEOBJ)
-			%
-			% Return the name of the lock file for a fileCacheObj
-			%
-				lFileName = fullfile(fileCacheObj.directoryName,did.file.fileCache.cacheInfoLockFileName);
-		end; % lockFileName()
-
 		function iFileName = infoFileName(fileCacheObj)
 			% INFOFILENAME - return the name of the cache information file
 			% 
@@ -293,35 +288,5 @@ classdef fileCache < handle
 		end; % infoFileName()
 
 	end;
-
-	methods static
-		function properties = loadFileCacheProperties(filename)
-			% LOADFILECACHEPROPERTIES - load properties for a fileCache object
-			%
-			%  PROPERTIES = LOADFILECACHEPROPERTIES(FILENAME)
-			%
-			% Load the properties from a fileCache object directory.
-			%
-				properties = [];
-
-				if ~isfile(filename), 
-					return;
-				end;
-
-				fid = fopen(filename,'r','ieee-le');
-				if fid<0,
-					error(['Problem opening ' filename ' for reading.']);
-				end;
-
-				properties.fileNameCharacters = fread(fid,1,'uint16');
-				properties.maxSize = fread(fid,1,'uint64');
-				properties.reduceSize = fread(fid,1,'uint64');
-
-				fclose(fid);
-
-		end; % loadFileCacheProperties()
-
-	end
-
 
 end % classdef

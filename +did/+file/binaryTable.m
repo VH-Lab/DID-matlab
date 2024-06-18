@@ -81,7 +81,7 @@ classdef binaryTable < handle
 				binaryTableObj.file.fclose();
 				binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
 				binaryTableObj.file.fopen();
-				headerData = fread(binaryTableObj.file,binaryTableObj.headerSize,'uint8');
+				headerData = uint8(fread(binaryTableObj.file,binaryTableObj.headerSize,'uint8'));
 				binaryTableObj.file.fclose();
 				binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
 		end; % readHeader
