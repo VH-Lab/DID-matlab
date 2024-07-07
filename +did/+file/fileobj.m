@@ -222,7 +222,7 @@ classdef fileobj < handle
         function [data,count] = fread(fileobj_obj, count, precision, skip, machineformat)
             % FREAD - read data from a FILEOBJ
             %
-            % COUNT = FWRITE(FILEOBJ_OBJ, COUNT, [PRECISION], [SKIP], [MACHINEFORMAT])
+            % [DATA,COUNT] = FREAD(FILEOBJ_OBJ, COUNT, [PRECISION], [SKIP], [MACHINEFORMAT])
             %
             % Attempts to read COUNT elements with resolution PRECISION. If PRECISION is not
             % provided, then 'char' is assumed. If SKIP is provided, then SKIP is in number of bytes, unless

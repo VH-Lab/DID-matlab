@@ -1056,17 +1056,41 @@ classdef (Abstract) database < handle
             try pathDefs = strrep(paths.definition_names,'$','\$');    catch, pathDefs = {}; end
             try pathLocs = strrep(paths.definition_locations,'\','/'); catch, pathLocs = {}; end
 
-            % Get the filename (might have a missing '.schema' or '_schema')
-            schema_filename = regexprep(schema_filename,pathDefs,pathLocs);
-            if ~isfile(schema_filename),
-                schema_filename = regexprep(schema_filename,'\.json$','.schema.json');
-                if ~exist(schema_filename,'file')
-                    schema_filename = strrep(schema_filename,'.schema.json','_schema.json');
-                    if ~exist(schema_filename,'file')
-                        error('DID:Database:ValidationFileMissing','Validation file "%s" not found',schema_filename);
+            schema_filename_potential = {};
+            matches = [];
+            % could be multiple candidates
+            for i=1:numel(pathDefs),
+                schema_filename_potential{i} = regexprep(schema_filename,pathDefs{i},pathLocs{i});
+                if ~strcmp(schema_filename_potential{i},schema_filename),
+                    matches(end+1) = i;
+                end;
+            end;
+            schema_filename_potential = schema_filename_potential(matches);
+
+            matches = [];
+            for i=1:numel(schema_filename_potential),
+                if ~isfile(schema_filename_potential{i}),
+                    schema_filename_potential{i} = regexprep(schema_filename_potential{i},'\.json$','.schema.json');
+                    if ~isfile(schema_filename_potential{i})
+                       schema_filename_potential{i} = strrep(schema_filename_potential{i},'.schema.json','_schema.json');
+                       if isfile(schema_filename_potential{i})
+                           matches(end+1) = i;
+                       end
+                    else, 
+                        matches(end+1) = i;
                     end
+                else,
+                    matches(end+1) = i;
                 end
+                if any(matches),
+                    schema_filename = schema_filename_potential{i};
+                    break;
+                end;
             end
+
+            if ~any(matches)
+                error('DID:Database:ValidationFileMissing','Validation file "%s" not found',schema_filename);
+            end;
 
             % Read the file contents
             fid = fopen(schema_filename,'r');
