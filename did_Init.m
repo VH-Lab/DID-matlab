@@ -63,7 +63,7 @@ if ~exist(did_globals.path.preferences,'dir')
     mkdir(did_globals.path.preferences);
 end
 
-did_globals.fileCache = did.file.fileCache(did_globals.path.filecachepath,'fileNameCharacters',33);
+did_globals.fileCache = did.file.fileCache(did_globals.path.filecachepath,33);
 
 did_globals.debug.verbose = 1;
 
