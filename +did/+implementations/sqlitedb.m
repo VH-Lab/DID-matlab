@@ -530,6 +530,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %    file_obj - a did.file.readonly_fileobj object (possibly empty)
 
             % Get the cached filepath to the specified document
+
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
                          '  FROM docs,files ' ...
                          ' WHERE docs.doc_id="' document_id '" ' ...
@@ -549,10 +550,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 end
             end
 
-            % First try to access the cached file, if defined and if exists
-%            file_paths = {data.cached_location}; % there used to be only 1 global cache location, now will use local database location
+            did.globals();
+            % First try to access the global cached file, if defined and if exists
             file_paths = {};
             for uids=1:numel(data),
+                file_paths{end+1} = [did_globals.path.filecachepath filesep data(uids).uid ];
                 file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
             end;
             file_paths = file_paths(~cellfun('isempty',file_paths));
@@ -560,17 +562,21 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 this_file = file_paths{idx};
                 if isfile(this_file)
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
-                    varargin{:}
+                    parent = fileparts(this_file);
+                    if strcmp(parent,did_globals.path.filecachepath), % fileCache,
+                        did_globals.fileCache.touch(this_file); % we used it so indicate that we did
+                    end;
                     file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
                     return
                 end
             end
 
-            % No cached file exists, try to access original location(s)
+            % No stored file exists, try to access original location(s) and put in file cache
             for idx = 1 : numel(data)  %data is a struct array
                 this_file_struct = data(idx);
                 sourcePath = this_file_struct.orig_location;
-                destDir = this_obj.FileDir;  % SDV this should be changed to file cache
+                destDir =  did_globals.path.temppath;
+                %destDir = this_obj.FileDir;  % SDV this should be changed to file cache
                 %destDir = this_obj.get_preference('cache_folder');
                 destPath = fullfile(destDir, this_file_struct.uid);
                 try
@@ -582,11 +588,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 			% call fileCache object to add the file
                         websave(destPath, sourcePath);
                         if ~exist(destPath,'file'), error(' '); end
-                    elseif strcmp(file_type,'ndi_cloud'),
-			% SDV import here! call file cache method to add the file
                     end
+                    % now we have the temporary file for the file cache
+                    did_globals.fileCache.addFile(destPath, this_file_struct.uid);
+                    cacheFile = fullfile(did_globals.fileCache.directoryName,this_file_struct.uid);
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
-                    file_obj = did.file.readonly_fileobj('fullpathfilename',sourcePath,varargin{:});
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin{:});
                     return
                 catch err
                     errMsg = strtrim(err.message); if ~isempty(errMsg), errMsg=[': ' errMsg]; end %#ok<AGROW>

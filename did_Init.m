@@ -23,7 +23,7 @@ did.globals;
 did_globals.path = [];
 
 % Test writability of the user folder (issue #29, R2022a)
-userFolder = fullfile(fileparts(userpath),'DID');
+userFolder = fullfile(userpath,'Documents', 'DID');
 testFilename = fullfile(userFolder,'test.txt');
 fid = fopen(testFilename,'wt');
 if fid < 0
@@ -41,9 +41,9 @@ did_globals.path.definition_locations = {...
     fullfile(defsFolder,'database_documents') ...
     fullfile(defsFolder,'database_schema')...
     fullfile(defsFolder,'controlled_vocabulary')};
-did_globals.path.temppath = fullfile(userFolder,'Temp');     %(tempdir,'didtemp');
+did_globals.path.temppath = fullfile(tempdir,'Temp');     %(tempdir,'didtemp');
 did_globals.path.testpath = fullfile(userFolder,'Testcode'); %(tempdir,'didtestcode');
-did_globals.path.filecachepath = fullfile(userFolder,'Filecache'); %DID-filecache
+did_globals.path.filecachepath = fullfile(userFolder,'fileCache'); %DID file cache
 did_globals.path.preferences   = fullfile(userFolder,'Preferences');
 did_globals.path.javapath = fullfile(mydidpath,'java');
 
@@ -62,6 +62,8 @@ end
 if ~exist(did_globals.path.preferences,'dir')
     mkdir(did_globals.path.preferences);
 end
+
+did_globals.fileCache = did.file.fileCache(did_globals.path.filecachepath,'fileNameCharacters',33);
 
 did_globals.debug.verbose = 1;
 
