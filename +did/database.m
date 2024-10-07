@@ -1052,9 +1052,11 @@ classdef (Abstract) database < handle
             % Get the path location of path placeholders
             global did_globals %#ok<GVMIS>
             if isempty(did_globals), did_Init; end
-            paths = did_globals.path;
-            try pathDefs = strrep(paths.definition_names,'$','\$');    catch, pathDefs = {}; end
-            try pathLocs = strrep(paths.definition_locations,'\','/'); catch, pathLocs = {}; end
+
+            definitionNames = did.common.PathConstants.definitions.keys();
+            definitionLocations = did.common.PathConstants.definitions.values();
+            try pathDefs = strrep(definitionNames,'$','\$');    catch, pathDefs = {}; end
+            try pathLocs = strrep(definitionLocations,'\','/'); catch, pathLocs = {}; end
 
             schema_filename_potential = {};
             matches = [];

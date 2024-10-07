@@ -6,7 +6,7 @@ function doc_ids = test_did_sqlitedb(dirname)
 %  This test function tries to create a DID_DOCUMENT object and store it in a
 %  DID_DATABASE of type SQLite in the specified DIRNAME folder. 
 %
-%  If DIRNAME is not provided, [did_globals.path.testpath] is used. 
+%  If DIRNAME is not provided, [did.common.PathConstants.testpath] is used. 
 %  If the resulting DIRNAME is invalid, DIRNAME is set to the %TEMPDIR% folder.
 %
 %  Upon completion, the test function removes the database file from DIRNAME and
@@ -16,7 +16,7 @@ function doc_ids = test_did_sqlitedb(dirname)
 
     if nargin < 1
         did.globals;
-    	try dirname = did_globals.path.testpath; catch, dirname = tempdir; end
+    	try dirname = did.common.PathConstants.testpath; catch, dirname = tempdir; end
     end
     if ~exist(dirname,'dir'), dirname = tempdir; end
     db_filename = fullfile(dirname, 'test.sqlite');

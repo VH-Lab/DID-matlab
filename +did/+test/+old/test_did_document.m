@@ -8,7 +8,7 @@ function doc = test_did_document(dirname)
 %  removes them on completion.
 %
 %  If DIRNAME is not provided, the default directory
-%  [did_globals.path.testpath] is used.
+%  [did.common.PathConstants.testpath] is used.
 %
 %  See also: did.globals
 
@@ -18,7 +18,7 @@ remove_old = 1;
 write_binary_file = 0;
 
 if nargin<1,
-	dirname = [did_globals.path.testpath filesep 'exampledb'];
+	dirname = [did.common.PathConstants.testpath filesep 'exampledb'];
 end;
 
 example_session_id = '1234';

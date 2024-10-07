@@ -713,8 +713,9 @@ classdef document
 					filename = jsonfilelocationstring_update;
 				else,
 					% first, guess that it is a complete path from the first search path
-					for i = 1:numel(did_globals.path.definition_locations)
-						filename = [did_globals.path.definition_locations{i} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
+                    definitionLocations = did.common.PathConstants.definitions.values();
+					for i = 1:numel(definitionLocations)
+						filename = [definitionLocations{i} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
 						if ~exist(filename,'file'),
 							% try adding extension
 							filename = [filename '.json'];
@@ -726,7 +727,7 @@ classdef document
 								filename = [filename '.json'];
 							end;
 							if ~exist(filename,'file'),
-								filename2 = [did_globals.path.definition_locations{i} filesep filename];
+								filename2 = [definitionLocations{i} filesep filename];
 								if ~exist(filename2,'file'),
 									error(['Cannot find file ' filename '.']);
 								else,
@@ -755,8 +756,9 @@ classdef document
 			%
 				did.globals;
 				new_path = path;
-				for i = 1:numel(did_globals.path.definition_names),
-					new_path = strrep(new_path, did_globals.path.definition_names{i}, did_globals.path.definition_locations{i});
+                definitionNames = did.common.PathConstants.definitions.keys();
+				for i = 1:numel(definitionNames),
+					new_path = strrep(new_path, definitionNames{i}, did.common.PathConstants.definitions(definitionNames{i}));
 				end
 		end; % replace_didpath()
 

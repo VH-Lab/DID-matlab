@@ -8,7 +8,7 @@ function binaryTable
 
 did.globals();
 
-filename = fullfile(did_globals.path.testpath,'myBinTable.bin');
+filename = fullfile(did.common.PathConstants.testpath,'myBinTable.bin');
 
 if isfile(filename), % start out deleting the file
 	delete(filename);

@@ -9,7 +9,7 @@ function b = fileCache()
 b = 0; 
 
 did.globals;
-dirname = [did_globals.path.temppath filesep 'file-cache-test'];
+dirname = [did.common.PathConstants.temppath filesep 'file-cache-test'];
 
 if ~isfolder(dirname),
 	mkdir(dirname);
@@ -22,7 +22,7 @@ obj.clear();
 p = obj.getProperties();
 
 
-tempdir =  [did_globals.path.temppath filesep 'file-cache-test-base'];
+tempdir =  [did.common.PathConstants.temppath filesep 'file-cache-test-base'];
 
 if ~isfolder(tempdir),
 	mkdir(tempdir);

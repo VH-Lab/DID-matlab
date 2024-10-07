@@ -32,8 +32,8 @@ classdef validate
             
             % Initialization
             did.globals
-            if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
-                eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
+            if ~any(strcmp(javaclasspath,[did.common.PathConstants.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
+                eval("javaaddpath([did.common.PathConstants.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
             end
             import com.ndi.*;
             import org.json.*;
@@ -221,9 +221,12 @@ classdef validate
             %   FORMAT_VALIDATORS = GET_FORMAT_VALIDATOR(SCHEMA)
             %
             did.globals
-            if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
 
-                eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
+            didCache = did.common.getCache();
+
+            if ~any(strcmp(javaclasspath,[did.common.PathConstants.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
+
+                eval("javaaddpath([did.common.PathConstants.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
             end
             import com.ndi.*;
             import org.json.*;
@@ -234,7 +237,7 @@ classdef validate
             fields = fieldnames(schema.properties);
             for i = 1 : numel(fields)
                 if isfield(schema.properties.(fields{i}), 'format') && isfield(schema.properties.(fields{i}), 'location')
-                    format_validator = did_globals.cache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
+                    format_validator = didCache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
                     if numel(format_validator) == 0
                         disp(['Loading data from controlled vocabulary for ', schema.properties.(fields{i}).format, '. This might take a while:'])
                         json_object = JSONObject(fileread(did.validate.replace_didpath(schema.properties.(fields{i}).location)));
@@ -246,7 +249,7 @@ classdef validate
                             json_object.put("loadTableIntoMemory", true);
                         end
                         format_validator = EnumFormatValidator.buildFromSingleJSON(json_object);
-                        did_globals.cache.add(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format, format_validator);
+                        didCache.add(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format, format_validator);
                     else
                         format_validator = format_validator.data;
                     end
@@ -266,8 +269,9 @@ classdef validate
             %
             did.globals;
             new_path = path;
-            for i = 1:numel(did_globals.path.definition_names)
-                new_path = strrep(new_path, did_globals.path.definition_names{i}, did_globals.path.definition_locations{i});
+            definitionNames = did.common.PathConstants.definitions.keys();
+            for i = 1:numel(definitionNames)
+                new_path = strrep(new_path, definitionNames{i}, did.common.PathConstants.definitions(definitionNames{i}));
             end
         end
         
