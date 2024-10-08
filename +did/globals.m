@@ -28,5 +28,4 @@
 % ndi.debug                      | A structure with preferences for debugging
 %
 
-global did_globals
 

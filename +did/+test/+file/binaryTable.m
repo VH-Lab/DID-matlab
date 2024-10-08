@@ -6,7 +6,6 @@ function binaryTable
 % Perform a battery of tests on the binaryTable object type.
 %
 
-did.globals();
 
 filename = fullfile(did.common.PathConstants.testpath,'myBinTable.bin');
 

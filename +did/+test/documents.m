@@ -15,7 +15,6 @@ function [b,msg] = documents(varargin)
 
 
 % Step 1: make an empty database with a starting branch
-did.globals;
 dirname = did.common.PathConstants.testpath;
 db_filename = [dirname filesep 'test_db_docs.sqlite'];
 if isfile(db_filename),

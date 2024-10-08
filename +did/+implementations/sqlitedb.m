@@ -550,13 +550,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 end
             end
 
-            did.globals();
             % First try to access the global cached file, if defined and if exists
             file_paths = {};
             for uids=1:numel(data),
                 file_paths{end+1} = [did.common.PathConstants.filecachepath filesep data(uids).uid ];
                 file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
             end;
+
+            didCache = did.common.getCache();
+
             file_paths = file_paths(~cellfun('isempty',file_paths));
             for idx = 1 : numel(file_paths)
                 this_file = file_paths{idx};
@@ -564,7 +566,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     parent = fileparts(this_file);
                     if strcmp(parent,did.common.PathConstants.filecachepath), % fileCache,
-                        did_globals.fileCache.touch(this_file); % we used it so indicate that we did
+                        didCache.touch(this_file); % we used it so indicate that we did
                     end;
                     file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
                     return
@@ -590,8 +592,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         if ~exist(destPath,'file'), error(' '); end
                     end
                     % now we have the temporary file for the file cache
-                    did_globals.fileCache.addFile(destPath, this_file_struct.uid);
-                    cacheFile = fullfile(did_globals.fileCache.directoryName,this_file_struct.uid);
+                    didCache.addFile(destPath, this_file_struct.uid);
+                    cacheFile = fullfile(didCache.directoryName,this_file_struct.uid);
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin{:});
                     return

@@ -8,7 +8,6 @@ function b = fileCache()
 
 b = 0; 
 
-did.globals;
 dirname = [did.common.PathConstants.temppath filesep 'file-cache-test'];
 
 if ~isfolder(dirname),

@@ -19,7 +19,6 @@ b = 1;
 msg = '';
 
 % Step 1: make an empty database with a starting branch
-did.globals;
 dirname = did.common.PathConstants.testpath;
 db_filename = [dirname filesep 'test2.sqlite'];
 if isfile(db_filename), 

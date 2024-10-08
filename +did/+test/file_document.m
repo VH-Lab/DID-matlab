@@ -16,7 +16,6 @@ function [b,msg] = file_document()
 b = 1;
 msg = '';
 
-did.globals();
 dirname = [did.common.PathConstants.testpath filesep 'exampledb'];
 
 db_filename = fullfile(dirname,'filetestdb.sqlite');

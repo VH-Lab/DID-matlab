@@ -8,8 +8,6 @@ function test_did_validator()
 % corresponding schema
 %
 
-    did.globals
-
     % validate classes that don't have depnds-on and have relatively few super-classes
     
     subject_doc = did.document('did_document_subject', ...

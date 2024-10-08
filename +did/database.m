@@ -1050,9 +1050,6 @@ classdef (Abstract) database < handle
 
         function schemaStruct = get_document_schema(database_obj, schema_filename) %#ok<INUSL>
             % Get the path location of path placeholders
-            global did_globals %#ok<GVMIS>
-            if isempty(did_globals), did_Init; end
-
             definitionNames = did.common.PathConstants.definitions.keys();
             definitionLocations = did.common.PathConstants.definitions.values();
             try pathDefs = strrep(definitionNames,'$','\$');    catch, pathDefs = {}; end

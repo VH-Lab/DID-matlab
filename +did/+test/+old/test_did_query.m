@@ -10,9 +10,6 @@ function doc = test_did_document(dirname)
 %  If DIRNAME is not provided, the default directory
 %  [did.common.PathConstants.testpath] is used.
 %
-%  See also: did.globals
-
-did.globals;
 
 remove_old = 1;
 write_binary_file = 0;

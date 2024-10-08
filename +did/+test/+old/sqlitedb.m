@@ -12,10 +12,8 @@ function doc_ids = test_did_sqlitedb(dirname)
 %  Upon completion, the test function removes the database file from DIRNAME and
 %  returns the doc_ids created during the test.
 %
-%  See also: did.globals
 
     if nargin < 1
-        did.globals;
     	try dirname = did.common.PathConstants.testpath; catch, dirname = tempdir; end
     end
     if ~exist(dirname,'dir'), dirname = tempdir; end
