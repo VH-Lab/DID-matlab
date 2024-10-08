@@ -1,3 +1,24 @@
+% Class that defines some global constants for the DID package
+%
+% The following variables are defined:
+% 
+% Name:                          | Description
+% -------------------------------------------------------------------------
+%   path                         | The path of the DID distribution on this machine.
+%   definitions                  | A containers.Map where the keys are placeholder 
+%                                |   names for paths and the value 
+%                                |   is the actual path location or url for the 
+%                                |   corresponding placeholder name. The placeholder
+%                                |   names are present in document definitions and 
+%                                |   schemas and will be substituted with
+%                                |   the actual paths 
+%   documentschemapath. ...      | The path of the NDI document validation schema
+%   preferences                  | A path to a directory of preferences files
+%   filecachepath                | A path where files may be cached (not deleted every time)
+%   temppath                     | The path to a directory that may be used for
+%                                |   temporary files (Initialized by did_Init.m)
+%   testpath                     | A path to a safe place to run test code
+
 classdef PathConstants
 
     properties (Constant)
