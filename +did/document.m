@@ -705,9 +705,8 @@ classdef document
 			%      c) a relative filename with respect to $NDIDOCUMENTPATH
 			%      d) a filename referenced with respect to $NDIDOCUMENTPATH
 			%
-				did.globals;
 
-				jsonfilelocationstring_update = did.document.replace_didpath(jsonfilelocationstring);
+				jsonfilelocationstring_update = did.common.utility.replace_didpath(jsonfilelocationstring);
 
 				if ~strcmp(jsonfilelocationstring_update,jsonfilelocationstring), % insert the location
 					filename = jsonfilelocationstring_update;
@@ -746,22 +745,6 @@ classdef document
 					t = did.file.textfile2char(filename);
 				end
 		end %  did.document.readjsonfilelocation()
-
-		function new_path = replace_didpath(path)
-			%   REPLACE_DIDPATH - Replace all the definiton names in the path to the actual definition locations defined in did_globals variable
-			%
-			%   NEW_PATH = REPLACE_DIDPATH(PATH)
-			%
-			%   PATH - a file path that contains definition names
-			%
-				did.globals;
-				new_path = path;
-                definitionNames = did.common.PathConstants.definitions.keys();
-				for i = 1:numel(definitionNames),
-					new_path = strrep(new_path, definitionNames{i}, did.common.PathConstants.definitions(definitionNames{i}));
-				end
-		end; % replace_didpath()
-
     end % methods Static
 end % classdef
 

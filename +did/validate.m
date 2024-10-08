@@ -31,10 +31,12 @@ classdef validate
             end
             
             % Initialization
-            did.globals
-            if ~any(strcmp(javaclasspath,[did.common.PathConstants.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
-                eval("javaaddpath([did.common.PathConstants.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
+            ndiValidatorJarFilepath = fullfile(did.common.PathConstants.javapath, ...
+                'ndi-validator-java', 'jar', 'ndi-validator-java.jar');
+            if ~any( strcmp(javaclasspath, ndiValidatorJarFilepath) )
+                javaaddpath(ndiValidatorJarFilepath, 'end');
             end
+
             import com.ndi.*;
             import org.json.*;
             import org.everit.*;
@@ -220,7 +222,6 @@ classdef validate
             %
             %   FORMAT_VALIDATORS = GET_FORMAT_VALIDATOR(SCHEMA)
             %
-            did.globals
 
             didCache = did.common.getCache();
 
@@ -240,10 +241,10 @@ classdef validate
                     format_validator = didCache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
                     if numel(format_validator) == 0
                         disp(['Loading data from controlled vocabulary for ', schema.properties.(fields{i}).format, '. This might take a while:'])
-                        json_object = JSONObject(fileread(did.validate.replace_didpath(schema.properties.(fields{i}).location)));
+                        json_object = JSONObject(fileread(did.common.utility.replace_didpath(schema.properties.(fields{i}).location)));
                         %for now assume that the definition file json is
                         %formatted correctly
-                        filepath = did.validate.replace_didpath( string(json_object.getString("filePath")) );
+                        filepath = did.common.utility.replace_didpath( string(json_object.getString("filePath")) );
                         json_object = json_object.put("filePath", filepath);
                         if json_object.has("loadTableIntoMemory") == false
                             json_object.put("loadTableIntoMemory", true);
@@ -258,34 +259,16 @@ classdef validate
             end
         end
         
-        function new_path = replace_didpath(path)
-            %   EXTRACT_SCHEMA - Replace all the definiton names in the
-            %                    path to the actual definition locations
-            %                    defined in did_globals variable
-            %                                                                   
-            %   PATH - a file path that contains definition names                  
-            %
-            %   NEW_PATH = REPLACE_DIDPATH(PATH)
-            %
-            did.globals;
-            new_path = path;
-            definitionNames = did.common.PathConstants.definitions.keys();
-            for i = 1:numel(definitionNames)
-                new_path = strrep(new_path, definitionNames{i}, did.common.PathConstants.definitions(definitionNames{i}));
-            end
-        end
-        
         function schema_json = extract_schema(document_obj)
             %   EXTRACT_SCHEMA - Extract the content of the ndi_document's
             %                    corresponding schema
             %
             %   SCHEMA_JSON = EXTRACT_SCHEMA(NDI_DOCUMENT_OBJ)
             %
-            did.globals;
             schema_json = "";
             if isa(document_obj, 'did.document')
                 schema_path = document_obj.document_properties.document_class.validation;
-                schema_path = did.validate.replace_didpath(schema_path);
+                schema_path = did.common.utility.replace_didpath(schema_path);
                 try
                     schema_json = fileread(schema_path);
                 catch
@@ -293,7 +276,7 @@ classdef validate
                 end
             end
             if isa(document_obj, 'char') || isa(document_obj, 'string')
-                schema_json = did.validate.extract_schema( did.document(did.validate.replace_didpath(document_obj)) );
+                schema_json = did.validate.extract_schema( did.document(did.common.utility.replace_didpath(document_obj)) );
             end
         end
         
