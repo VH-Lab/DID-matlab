@@ -67,8 +67,6 @@ did_globals.fileCache = did.file.fileCache(did_globals.path.filecachepath,33);
 
 did_globals.debug.verbose = 1;
 
-
-
 % test write access to preferences, testpath, filecache, temppath
 paths = {did_globals.path.testpath, did_globals.path.temppath, did_globals.path.filecachepath, did_globals.path.preferences};
 pathnames = {'DID test path', 'DID temporary path', 'DID filecache path', 'DID preferences path'};
