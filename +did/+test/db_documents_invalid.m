@@ -1,4 +1,4 @@
-function [b,msg] = db_documents_invalid(varargin)
+function [b,msg] = db_documents_invalid(options)
 % TEST_DID_BRANCHES - test the branching functionality of a DID database
 %
 % [B,MSG] = TEST_DID_DB_DOCUMENTS()
@@ -15,12 +15,21 @@ function [b,msg] = db_documents_invalid(varargin)
 % -----------------------------------------------------------------------------------------------------
 % | Parameter (default)                        | Description                                          |
 % |--------------------------------------------|------------------------------------------------------|
-% | value_modifier ('sham')                    | How should we modify the value field?                          |
-% | id_modifier ('sham')                    | How should we modify the id field?                          |
-% | dependency_modifier ('sham')                    | How should we modify the doc dependencies?                          |
-% | other_modifier ('sham')                    | How should we modify other fields?                          |
-% | remover ('sham')                    | Which field should we remove?                         |
+% | value_modifier ('sham')                    | How should we modify the value field?                |
+% | id_modifier ('sham')                       | How should we modify the id field?                   |
+% | dependency_modifier ('sham')               | How should we modify the doc dependencies?           |
+% | other_modifier ('sham')                    | How should we modify other fields?                   |
+% | remover ('sham')                           | Which field should we remove?                        |
 % |--------------------------------------------|------------------------------------------------------|
+
+arguments
+    options.value_modifier = 'sham';
+    options.id_modifier = 'sham';
+    options.dependency_modifier = 'sham'; % primarily for demoC
+    options.other_modifier = 'sham';
+    options.remover = 'sham'; 
+end
+
 
 % Step 1: make an empty database with a starting branch
 db_filename = [pwd filesep 'test_db_docs.sqlite'];
@@ -31,12 +40,12 @@ db = did.implementations.sqlitedb(db_filename);
 db.add_branch('a');
 
 % Step 2: generate a set of documents with node names and a graph of the dependencies
-value_modifier = 'sham';
-id_modifier = 'sham';
-dependency_modifier = 'sham'; % primarily for demoC
-other_modifier = 'sham';
-remover = 'sham'; 
-did.datastructures.assign(varargin{:});
+value_modifier = options.value_modifier;
+id_modifier = options.id_modifier;
+dependency_modifier = options.dependency_modifier; % primarily for demoC
+other_modifier = options.other_modifier;
+remover = options.remover; 
+
 [G,node_names,docs] = did.test.documents.make_doc_tree_invalid([30 30 30],... 
     'value_modifier',value_modifier,... %add assign varargin to make_doc_tree_invalid
     'id_modifier',id_modifier,...

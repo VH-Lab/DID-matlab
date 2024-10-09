@@ -1,4 +1,4 @@
-function s_out = structmerge(s1, s2, varargin)
+function s_out = structmerge(s1, s2, options)
 % STRUCTMERGE - Merge struct variables into a common struct
 %
 %  S_OUT = STRUCTMERGE(S1, S2, ...)
@@ -19,15 +19,17 @@ function s_out = structmerge(s1, s2, varargin)
 % 
 %  See also: STRUCT
 
-ErrorIfNewField = 0;
-DoAlphabetical = 1;
-
-did.datastructures.assign(varargin{:});
+    arguments
+        s1
+        s2
+        options.ErrorIfNewField (1,1) logical = false
+        options.DoAlphabetical (1,1) logical = true
+    end
 
 f1 = fieldnames(s1);
 f2 = fieldnames(s2);
 
-if ErrorIfNewField,
+if options.ErrorIfNewField,
 	[c,f1i] = setdiff(f2,f1);
 	if ~isempty(c),
 		error(['Some fields of the second structure are not in the first: ' cell2str(c) '.']);
@@ -45,7 +47,7 @@ for i=1:length(f2),
 	end;
 end;
 
-if DoAlphabetical,
+if options.DoAlphabetical,
 	fn = sort(fieldnames(s_out_));
 	s_out = did.datastructures.emptystruct(fn{:});
 	for i=1:length(fn),
