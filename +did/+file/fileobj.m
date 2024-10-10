@@ -11,13 +11,13 @@ classdef fileobj < handle
         fullpathfilename char = ''
 
         % fid - The Matlab file identifier
-        fid (1,1) int64 = -1
+        fid (1,1) double = -1
 
         % permission - The file permission
-        permission (1,:) char {did.file.mustBeValidPermission} = "r"
+        permission (1,:) char {did.file.mustBeValidPermission} = 'r'
 
         % machineformat - big-endian ('b'), little-endian ('l'), or native ('n')
-        machineformat (1,:) char {did.file.mustBeValidMachineFormat} = "n"
+        machineformat (1,:) char {did.file.mustBeValidMachineFormat} = 'n'
     end % properties
 
     methods
@@ -54,10 +54,10 @@ classdef fileobj < handle
             
             arguments
                 fileobj_obj
-                propValues.machineformat (1,1) string {did.file.mustBeValidMachineFormat} = 'n'; % native machine format
-                propValues.permission (1,1) string {did.file.mustBeValidPermission} = "r"
-                propValues.fid (1,1) int64 = -1
-                propValues.fullpathfilename = '';
+                propValues.machineformat (1,1) string {did.file.mustBeValidMachineFormat}; % native machine format
+                propValues.permission (1,1) string {did.file.mustBeValidPermission}
+                propValues.fid (1,1) int64
+                propValues.fullpathfilename;
             end
 
             propNames = fieldnames(propValues);
