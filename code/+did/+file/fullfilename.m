@@ -34,7 +34,7 @@ if isempty(foldername),
 		fullname = [pwd filesep filename]; 
 	end
 else, % we have a foldername
-	if isfilepathroot(foldername), % then we already have full filename
+	if did.file.isfilepathroot(foldername), % then we already have full filename
 		fullname = filename;
 	else,
 		fullname = [pwd filesep foldername filesep fname]; 
