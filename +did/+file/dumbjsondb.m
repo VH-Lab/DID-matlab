@@ -339,22 +339,22 @@ classdef dumbjsondb
 				release_lock_file(lockfilename,key);
 		end % closebinaryfile
 
-		function [docs, doc_versions] = search(dumbjsondb_obj, scope, searchParams)
+		function [docs, doc_versions] = search(dumbjsondb_obj, searchParams, scope)
 			% SEARCH - perform a search of DUMBJSONDB documents
 			%
-			% [DOCS, DOC_VERSIONS] = SEARCH(DUMBJSONDB_OBJ, SCOPE, SEARCHPARAMS)
+			% [DOCS, DOC_VERSIONS] = SEARCH(DUMBJSONDB_OBJ, SEARCHPARAMS, SCOPE)
 			%
 			% Performs a search of DUMBJSONDB_OBJ to find matching documents.
 			%
+			% SEARCHPARAMS should be either be {'PARAM1', VALUE1, 'PARAM2', VALUE2, ... }
+			%  or a search structure appropriate for FIELDSEARCH.
+            %
 			% SCOPE is a cell array of name/value pairs that modify the search
 			% scope:
 			% SCOPE parameter (default)    : Description
 			% ----------------------------------------------------------------------
 			% version ('latest')           : Which versions should be searched? Can be
 			%                              :   a specific number, 'latest', or 'all'
-			%
-			% SEARCHPARAMS should be either be {'PARAM1', VALUE1, 'PARAM2', VALUE2, ... }
-			%  or a search structure appropriate for FIELDSEARCH.
 			%
 			% The document parameters PARAM1, PARAM2 are examined for matches.
 			% If VALUEN is a string, then a regular expression
@@ -374,31 +374,32 @@ classdef dumbjsondb
 
                 arguments
                     dumbjsondb_obj
-                    scope.version = 'latest'
+                end
+                arguments (Repeating)
                     searchParams
+                end
+                arguments
+                    scope.version = 'latest'
                 end
 
 				docs = {};
 				doc_versions = [];
 
-				version = 'latest';
-				did.datastructures.assign(scope{:});
-
 				docids = dumbjsondb_obj.alldocids();
 
 				for i=1:numel(docids),
-					if strcmpi(version,'latest'),
+					if strcmpi(scope.version,'latest'),
 						v_here = dumbjsondb_obj.docversions(docids{i});
 						v_here = max(v_here);
-					elseif strcmpi(version,'all'),
+					elseif strcmpi(scope.version,'all'),
 						v_here = dumbjsondb_obj.docversions(docids{i});
 					else
-						v_here = version;
+						v_here = scope.version;
 					end;
 
 					for j=1:numel(v_here),
 						[doc_here, version_here] = dumbjsondb_obj.read(docids{i},v_here(j));
-						b = did.file.dumbjsondb.ismatch(doc_here, searchParams);
+						b = did.file.dumbjsondb.ismatch(doc_here, searchParams{:});
 						if b,
 							docs{end+1} = doc_here;
 							doc_versions(end+1) = version_here;
