@@ -1,2 +1,2 @@
-https://github.com/a-ma72/mksqlite@master
+https://github.com/stevevanhooser/mksqlite@master
 https://github.com/VH-lab/vhlab-toolbox-matlab@master
