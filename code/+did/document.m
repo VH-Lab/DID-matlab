@@ -165,7 +165,7 @@ classdef document
 					otherproperties);
 		end; % plus() 
 
-		function d = dependency_value(did_document_obj, dependency_name, varargin)
+        function d = dependency_value(did_document_obj, dependency_name, options)
 			% DEPENDENCY_VALUE - return dependency value given dependency name
 			%
 			% D = DEPENDENCY_VALUE(DID_DOCUMENT_OBJ, DEPENDENCY_NAME, ...)
@@ -181,9 +181,13 @@ classdef document
 			%                          |   not found. Otherwise, return empty.
 			%
 			%
-				ErrorIfNotFound = 1;
-				did.datastructures.assign(varargin{:});
-
+				
+                arguments
+                    did_document_obj
+                    dependency_name
+                    options.ErrorIfNotFound (1,1) logical = 1
+                end
+                
 				d = [];
 				notfound = 1;
 
@@ -197,12 +201,12 @@ classdef document
 					end;
 				end;
 
-				if notfound & ErrorIfNotFound,
+				if notfound & options.ErrorIfNotFound,
 					error(['Dependency name ' dependency_name ' not found.']);
 				end;
 		end; % 
 
-		function did_document_obj = set_dependency_value(did_document_obj, dependency_name, value, varargin)
+        function did_document_obj = set_dependency_value(did_document_obj, dependency_name, value, options)
 			% SET_DEPENDENCY_VALUE - set the value of a dependency field
 			%
 			% DID_DOCUMENT_OBJ = SET_DEPENDENCY_VALUE(DID_DOCUMENT_OBJ, DEPENDENCY_NAME, VALUE, ...)
@@ -218,9 +222,14 @@ classdef document
 			%                          |   not found. Otherwise, generate no error but take no action.
 			%
 			%
-				ErrorIfNotFound = 1;
-				did.datastructures.assign(varargin{:});
-
+				
+                arguments
+                    did_document_obj
+                    dependency_name
+                    value
+                    options.ErrorIfNotFound (1,1) logical = 1
+                end
+                
 				notfound = 1;
 
 				hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
@@ -231,19 +240,19 @@ classdef document
 					if numel(matches)>0,
 						notfound = 0;
 						did_document_obj.document_properties.depends_on(matches(1)).value = value;
-					elseif ~ErrorIfNotFound, % add it
+					elseif ~options.ErrorIfNotFound, % add it
 						did_document_obj.document_properties.depends_on(end+1) = d_struct;
 					end;
-				elseif ~ErrorIfNotFound,
+				elseif ~options.ErrorIfNotFound,
 					did_document_obj.document_properties.depends_on = d_struct;
 				end;
 
-				if notfound & ErrorIfNotFound,
+				if notfound & options.ErrorIfNotFound,
 					error(['Dependency name ' dependency_name ' not found.']);
 				end;
 		end; % 
 
-		function d = dependency_value_n(did_document_obj, dependency_name, varargin)
+		function d = dependency_value_n(did_document_obj, dependency_name, options)
 			% DEPENDENCY_VALUE_N - return dependency values from list given dependency name
 			%
 			% D = DEPENDENCY_VALUE_N(DID_DOCUMENT_OBJ, DEPENDENCY_NAME, ...)
@@ -260,10 +269,14 @@ classdef document
 			%                          |   not found. Otherwise, return empty.
 			%
 			%
-				ErrorIfNotFound = 1;
-				did.datastructures.assign(varargin{:});
-
-				d = {};
+				
+                arguments
+                    did_document_obj
+                    dependency_name
+                    options.ErrorIfNotFound (1,1) logical = 1
+                end
+                
+                d = {};
 				notfound = 1;
 
 				hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
@@ -282,12 +295,12 @@ classdef document
 					end;
 				end;
 
-				if notfound & ErrorIfNotFound,
+				if notfound & options.ErrorIfNotFound,
 					error(['Dependency name ' dependency_name ' not found.']);
 				end;
 		end; % 
 
-		function did_document_obj = add_dependency_value_n(did_document_obj, dependency_name, value, varargin)
+		function did_document_obj = add_dependency_value_n(did_document_obj, dependency_name, value, options)
 			% ADD_DEPENDENCY_VALUE_N - add a dependency to a named list
 			%
 			% DID_DOCUMENT_OBJ = ADD_DEPENDENCY_VALUE_N(DID_DOCUMENT_OBJ, DEPENDENCY_NAME, VALUE, ...)
@@ -304,13 +317,17 @@ classdef document
 			%                          |   not found. Otherwise, generate no error but take no action.
 			%
 			%
-				ErrorIfNotFound = 1;
-				did.datastructures.assign(varargin{:});
-
+			
+                arguments
+                    did_document_obj
+                    dependency_name
+                    value
+                    options.ErrorIfNotFound (1,1) logical = 1
+                end
 
 				d = dependency_value_n(did_document_obj, dependency_name, 'ErrorIfNotFound', 0);
 				hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
-				if ~hasdependencies & ErrorIfNotFound,
+				if ~hasdependencies & options.ErrorIfNotFound,
 					error(['This document does not have any dependencies.']);
 				else,
 					d_struct = struct('name',[dependency_name '_' int2str(numel(d)+1)],'value',value);
@@ -318,7 +335,7 @@ classdef document
 				end;
 		end; % 
 
-		function did_document_obj = remove_dependency_value_n(did_document_obj, dependency_name, value, n, varargin)
+		function did_document_obj = remove_dependency_value_n(did_document_obj, dependency_name, value, n, options)
 			% REMOVE_DEPENDENCY_VALUE_N - remove a dependency from a named list
 			%
 			% DID_DOCUMENT_OBJ = REMOVE_DEPENDENCY_VALUE_N(DID_DOCUMENT_OBJ, DEPENDENCY_NAME, VALUE, N, ...)
@@ -333,16 +350,22 @@ classdef document
 			%                          |   not found. Otherwise, generate no error but take no action.
 			%
 			%
-				ErrorIfNotFound = 1;
-				did.datastructures.assign(varargin{:});
-
+				
+                arguments
+                    did_document_obj
+                    dependency_name
+                    value
+                    n
+                    options.ErrorIfNotFound (1,1) logical = 1
+                end
+                
 				d = dependency_value_n(did_document_obj, dependency_name, 'ErrorIfNotFound', 0);
 				hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
-				if ~hasdependencies & ErrorIfNotFound,
+				if ~hasdependencies & options.ErrorIfNotFound,
 					error(['This document does not have any dependencies.']);
 				end;
 
-				if n>numel(d) & ErrorIfNotFound,
+				if n>numel(d) & options.ErrorIfNotFound,
 					error(['Number to be removed ' int2str(n) ' is greater than total number of entries ' int2str(numel(d)) '.']);
 				end;
 
@@ -362,7 +385,7 @@ classdef document
 				end;
 		end; % 
 
-		function did_document_obj = add_file(did_document_obj, name, location, varargin)
+        function did_document_obj = add_file(did_document_obj, name, location, options)
 			% ADD_FILE - add a file to a did.document
 			%
 			% DID_DOCUMENT_OBJ = ADD_FILE(DID_DOCUMENT_OBJ, NAME, LOCATION, ...)
@@ -400,12 +423,20 @@ classdef document
 			%   'url')                 |   to 'file' if LOCATION does not begin with
 			%                          |   'http://' or 'https://', and 'url' otherwise.
 			%
-				ingest = NaN;
-				delete_original = NaN;
-				location_type = NaN;
-
-				did.datastructures.assign(varargin{:});
 				
+                arguments
+                    did_document_obj
+                    name
+                    location
+                    options.ingest = NaN
+                    options.delete_original = NaN
+                    options.location_type = NaN
+                end
+                
+                ingest = options.ingest;
+				delete_original = options.delete_original;
+				location_type = options.location_type;
+                
 				% Step 1: make sure that the did_document_obj has a 'files' portion
 				% and that name is one of the listed files.
 
@@ -464,7 +495,7 @@ classdef document
 				
 		end; % add_file
 
-		function did_document_obj = remove_file(did_document_obj, name, location, varargin)
+        function did_document_obj = remove_file(did_document_obj, name, location, options)
 			% REMOVE_FILE - remove file information from a did.document
 			%
 			% DID_DOCUMENT_OBJ = REMOVE_FILE(DID_DOCUMENT_OBJ, NAME, [LOCATION], ...)
@@ -483,21 +514,21 @@ classdef document
 			% ErrorIfNoFileInfo (0)    | 0/1 If a name is specified and the
 			%                          |   file info is already empty, should we
 			%                          |   produce an error?
-
-				if nargin<3,
-					location = [];
-				end;
-
-				ErrorIfNoFileInfo = 0;
-				did.datastructures.assign(varargin{:});
 				
+                arguments
+                    did_document_obj
+                    name
+                    location = []
+                    options.ErrorIfNoFileInfo (1,1) logical = 0
+                end
+
 				[b,msg,fI_index] = did_document_obj.is_in_file_list(name);
 				if ~b,
 					error(msg);
 				end;
 
 				if isempty(fI_index),
-					if ErrorIfNoFileInfo,
+					if options.ErrorIfNoFileInfo,
 						error(['No file_info for name ' name ' .']);
 					end;
 				end;
@@ -510,7 +541,7 @@ classdef document
 				location_match_index = find(strcmpi(location,{did_document_obj.document_properties.files.file_info(fI_index).locations.location}));
 
 				if isempty(location_match_index),
-					if ErrorIfNoFileInfo,
+					if options.ErrorIfNoFileInfo,
 						error(['No match found for file ' name ' with location ' location '.']);
 					end;
 				else,

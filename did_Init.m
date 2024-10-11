@@ -17,7 +17,7 @@ matches = (~contains(pathstoadd_cell,'.git'))&(~contains(pathstoadd_cell,'.did_g
 pathstoadd = char(strjoin(pathstoadd_cell(matches),pathsep));
 addpath(pathstoadd);
 
-did.globals;
+%did.globals;
 
 % prepare paths
 did_globals.path = [];

@@ -7,33 +7,39 @@ classdef fileobj < handle
 % would never have to know.
 
     properties (SetAccess=protected, GetAccess=public)
-        fullpathfilename  % the full path file name of the file
-        fid               % The Matlab file identifier
-        permission        % The file permission
-        machineformat     % 'big-endian' or 'little-endian'
+        % fullpathfilename - The full path file name of the file
+        fullpathfilename char = ''
+
+        % fid - The Matlab file identifier
+        fid (1,1) double = -1
+
+        % permission - The file permission
+        permission (1,:) char {did.file.mustBeValidPermission} = 'r'
+
+        % machineformat - big-endian ('b'), little-endian ('l'), or native ('n')
+        machineformat (1,:) char {did.file.mustBeValidMachineFormat} = 'n'
     end % properties
 
     methods
-        function fileobj_obj = fileobj(varargin)
+        function fileobj_obj = fileobj(propValues)
             % FILEOBJ - create a new binary file object
             %
             % FILEOBJ_OBJ = FILEOBJ(...)
             %
             % Creates an empty FILEOBJ object. If FILENAME is provided,
             % then the filename is stored.
+            arguments
+                propValues.machineformat (1,1) string {did.file.mustBeValidMachineFormat} = 'n'; % native machine format
+                propValues.permission (1,1) string {did.file.mustBeValidPermission} = "r"
+                propValues.fid (1,1) int64 = -1
+                propValues.fullpathfilename = '';
+            end
 
-            machineformat = 'n'; % native machine format
-            permission = 'r';
-            fid = -1;
-            fullpathfilename = '';
-
-            did.datastructures.assign(varargin{:});
-
-            fileobj_obj = fileobj_obj.setproperties('fullpathfilename',fullpathfilename,'fid',fid,...
-                'permission',permission,'machineformat',machineformat);
+            nvPairs = namedargs2cell(propValues);
+            fileobj_obj = fileobj_obj.setproperties(nvPairs{:});
         end % fileobj() constructor
 
-        function fileobj_obj = setproperties(fileobj_obj, varargin)
+        function fileobj_obj = setproperties(fileobj_obj, propValues)
             % SETPROPERTIES - set the properties of a FILEOBJ
             %
             % FILEOBJ_OBJ = SETPROPERTIES(FILEOBJ_OBJ, 'PROPERTY1',VALUE1, ...)
@@ -45,20 +51,20 @@ classdef fileobj < handle
             %   fid;              % The Matlab file identifier
             %   permission;       % The file permission
             %   machineformat     % big-endian ('b'), little-endian ('l'), or native ('n')
-
-            fn = fieldnames(fileobj_obj);
-            for i=1:numel(fn)
-                eval([fn{i} '=getfield(fileobj_obj,fn{i});']);
+            
+            arguments
+                fileobj_obj
+                propValues.machineformat (1,1) string {did.file.mustBeValidMachineFormat}; % native machine format
+                propValues.permission (1,1) string {did.file.mustBeValidPermission}
+                propValues.fid (1,1) int64
+                propValues.fullpathfilename;
             end
 
-            did.datastructures.assign(varargin{:});
-
-            % check for accuracy would be a good idea
-            fn = fieldnames(fileobj_obj);
-            for i=1:numel(fn)
-                eval(['fileobj_obj.' fn{i} '= ' fn{i} ';']); %#ok<EVLDOT>
+            propNames = fieldnames(propValues);
+            for i = 1:numel(propNames)
+                iName = propNames{i};
+                fileobj_obj.(iName) = propValues.(iName);
             end
-
         end % setproperties()
 
         function fileobj_obj = fopen(fileobj_obj, permission, machineformat, filename)
@@ -78,6 +84,13 @@ classdef fileobj < handle
             % FILEOBJ_OBJ.fid is -1.
             %
             % See also: FOPEN, FILEOBJ/FCLOSE, FCLOSE
+            
+            arguments
+                fileobj_obj
+                permission (1,1) string {did.file.mustBeValidPermission} = missing
+                machineformat (1,1) string {did.file.mustBeValidMachineFormat} = missing
+                filename (1,1) string = missing
+            end
 
             if fileobj_obj.fid > 0  % if file is already open, close it first
                 fileobj_obj.fclose();
@@ -85,24 +98,19 @@ classdef fileobj < handle
 
             % now work on opening
 
-            if nargin<2
-                permission = fileobj_obj.permission;
+            if ~ismissing(permission)
+                fileobj_obj.permission = permission;
             end
-            if nargin<3
-                machineformat = fileobj_obj.machineformat;
+            if ~ismissing(machineformat)
+                fileobj_obj.machineformat = machineformat;
             end
-            if nargin<4
-                filename = fileobj_obj.fullpathfilename;
+            if ~ismissing(filename)
+                fileobj_obj.fullpathfilename = fullfilename(filename);
             end
-
-            filename = fullfilename(filename);
-            fileobj_obj = fileobj_obj.setproperties('fullpathfilename',filename,...
-                'permission',permission,'machineformat',machineformat);
 
             % now have the right parameters
             fileobj_obj.fid = fopen(fileobj_obj.fullpathfilename,...
                 fileobj_obj.permission,fileobj_obj.machineformat);
-
         end %fopen
 
         function fileobj_obj = fclose(fileobj_obj)
