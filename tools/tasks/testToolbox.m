@@ -1,5 +1,5 @@
 function testToolbox(varargin)
-    installMatBox()
+    installMatBox("commit")
     projectRootDirectory = didtools.projectdir();
     matbox.installRequirements(projectRootDirectory)
     
