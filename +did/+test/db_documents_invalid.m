@@ -15,11 +15,11 @@ function [b,msg] = db_documents_invalid(varargin)
 % -----------------------------------------------------------------------------------------------------
 % | Parameter (default)                        | Description                                          |
 % |--------------------------------------------|------------------------------------------------------|
-% | value_modifier ('sham')                    | How should we modify the value field?                          |
-% | id_modifier ('sham')                    | How should we modify the id field?                          |
-% | dependency_modifier ('sham')                    | How should we modify the doc dependencies?                          |
-% | other_modifier ('sham')                    | How should we modify other fields?                          |
-% | remover ('sham')                    | Which field should we remove?                         |
+% | value_modifier ('sham')                    | How should we modify the value field?                |
+% | id_modifier ('sham')                       | How should we modify the id field?                   |
+% | dependency_modifier ('sham')               | How should we modify the doc dependencies?           |
+% | other_modifier ('sham')                    | How should we modify other fields?                   |
+% | remover ('sham')                           | Which field should we remove?                        |
 % |--------------------------------------------|------------------------------------------------------|
 
 % Step 1: make an empty database with a starting branch
@@ -37,7 +37,7 @@ dependency_modifier = 'sham'; % primarily for demoC
 other_modifier = 'sham';
 remover = 'sham'; 
 did.datastructures.assign(varargin{:});
-[G,node_names,docs] = did.test.documents.make_doc_tree_invalid([30 30 30],... 
+[G,node_names,docs] = did.test.documents.make_doc_tree_invalid([10 10 10],... 
     'value_modifier',value_modifier,... %add assign varargin to make_doc_tree_invalid
     'id_modifier',id_modifier,...
     'dependency_modifier', dependency_modifier,...
