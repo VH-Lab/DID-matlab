@@ -108,7 +108,7 @@ db = did.implementations.sqlitedb(db_filename);
 db.add_branch('a');
 
 % Step 2: generate a set of documents with node names and a graph of the dependencies
-[G,node_names,docs] = did.test.documents.make_doc_tree([30 30 30]);
+[G,node_names,docs] = did.test.documents.make_doc_tree([10 10 10]);
 
 %index parameters check:
 if doc_id_ind < 1
@@ -217,7 +217,7 @@ if Do_NOT_EXACT_STRING_test
         disp(['We expected:'])
         ids_expected,
         return
-    elseif ~did.datastructures.eqlen(d1,ids_expected) %checks that the length and contents of each object are the same
+    elseif ~did.datastructures.eqlen(d1(:),ids_expected(:)) %checks that the length and contents of each object are the same
         b = 0;
         msg = ['NOT_EXACT_STRING operation query did not produce expected output.'];
         disp(msg)

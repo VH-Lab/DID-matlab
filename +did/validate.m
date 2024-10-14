@@ -31,10 +31,12 @@ classdef validate
             end
             
             % Initialization
-            did.globals
-            if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
-                eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
+            ndiValidatorJarFilepath = fullfile(did.common.PathConstants.javapath, ...
+                'ndi-validator-java', 'jar', 'ndi-validator-java.jar');
+            if ~any( strcmp(javaclasspath, ndiValidatorJarFilepath) )
+                javaaddpath(ndiValidatorJarFilepath, 'end');
             end
+
             import com.ndi.*;
             import org.json.*;
             import org.everit.*;
@@ -220,10 +222,12 @@ classdef validate
             %
             %   FORMAT_VALIDATORS = GET_FORMAT_VALIDATOR(SCHEMA)
             %
-            did.globals
-            if ~any(strcmp(javaclasspath,[did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
 
-                eval("javaaddpath([did_globals.path.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
+            didCache = did.common.getCache();
+
+            if ~any(strcmp(javaclasspath,[did.common.PathConstants.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar']))
+
+                eval("javaaddpath([did.common.PathConstants.javapath filesep 'ndi-validator-java' filesep 'jar' filesep 'ndi-validator-java.jar'], 'end')");
             end
             import com.ndi.*;
             import org.json.*;
@@ -234,40 +238,24 @@ classdef validate
             fields = fieldnames(schema.properties);
             for i = 1 : numel(fields)
                 if isfield(schema.properties.(fields{i}), 'format') && isfield(schema.properties.(fields{i}), 'location')
-                    format_validator = did_globals.cache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
+                    format_validator = didCache.lookup(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format);
                     if numel(format_validator) == 0
                         disp(['Loading data from controlled vocabulary for ', schema.properties.(fields{i}).format, '. This might take a while:'])
-                        json_object = JSONObject(fileread(did.validate.replace_didpath(schema.properties.(fields{i}).location)));
+                        json_object = JSONObject(fileread(did.common.utility.replace_didpath(schema.properties.(fields{i}).location)));
                         %for now assume that the definition file json is
                         %formatted correctly
-                        filepath = did.validate.replace_didpath( string(json_object.getString("filePath")) );
+                        filepath = did.common.utility.replace_didpath( string(json_object.getString("filePath")) );
                         json_object = json_object.put("filePath", filepath);
                         if json_object.has("loadTableIntoMemory") == false
                             json_object.put("loadTableIntoMemory", true);
                         end
                         format_validator = EnumFormatValidator.buildFromSingleJSON(json_object);
-                        did_globals.cache.add(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format, format_validator);
+                        didCache.add(schema.properties.(fields{i}).location, schema.properties.(fields{i}).format, format_validator);
                     else
                         format_validator = format_validator.data;
                     end
                     format_validators.add(format_validator);
                 end
-            end
-        end
-        
-        function new_path = replace_didpath(path)
-            %   EXTRACT_SCHEMA - Replace all the definiton names in the
-            %                    path to the actual definition locations
-            %                    defined in did_globals variable
-            %                                                                   
-            %   PATH - a file path that contains definition names                  
-            %
-            %   NEW_PATH = REPLACE_DIDPATH(PATH)
-            %
-            did.globals;
-            new_path = path;
-            for i = 1:numel(did_globals.path.definition_names)
-                new_path = strrep(new_path, did_globals.path.definition_names{i}, did_globals.path.definition_locations{i});
             end
         end
         
@@ -277,11 +265,10 @@ classdef validate
             %
             %   SCHEMA_JSON = EXTRACT_SCHEMA(NDI_DOCUMENT_OBJ)
             %
-            did.globals;
             schema_json = "";
             if isa(document_obj, 'did.document')
                 schema_path = document_obj.document_properties.document_class.validation;
-                schema_path = did.validate.replace_didpath(schema_path);
+                schema_path = did.common.utility.replace_didpath(schema_path);
                 try
                     schema_json = fileread(schema_path);
                 catch
@@ -289,7 +276,7 @@ classdef validate
                 end
             end
             if isa(document_obj, 'char') || isa(document_obj, 'string')
-                schema_json = did.validate.extract_schema( did.document(did.validate.replace_didpath(document_obj)) );
+                schema_json = did.validate.extract_schema( did.document(did.common.utility.replace_didpath(document_obj)) );
             end
         end
         

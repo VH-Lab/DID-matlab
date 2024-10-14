@@ -1,4 +1,4 @@
-function [test_results,test_messages] = run_invalid
+function [b,overall_message,test_results,test_messages] = run_invalid
 %RUN_TEST_INVALID runs tests for catching invalid modification to docs
 %   no output is specified because it is called by did.test.suite.run (through the text
 %   file did.test.suite.list)
@@ -72,10 +72,12 @@ test_messages{end+1} = msg;
 test_results(end+1) = b; 
 expected_results(end+1) = 1; %output should be 1 (invalidated)
 test_messages{end+1} = msg;
-[b,msg] = did.test.db_documents_invalid('dependency_modifier','add dependency');
-test_results(end+1) = b; 
-expected_results(end+1) = 1; %output should be 1 (invalidated)
-test_messages{end+1} = msg;
+  % this actually is not an error; it is okay for 'item3' to be empty
+  % and it is not an error to have an extra dependency
+%[b,msg] = did.test.db_documents_invalid('dependency_modifier','add dependency');
+%test_results(end+1) = b; 
+%expected_results(end+1) = 1; %output should be 1 (invalidated)
+%test_messages{end+1} = msg;
 [b,msg] = did.test.db_documents_invalid('other_modifier','invalid definition');
 test_results(end+1) = b; 
 expected_results(end+1) = 0; %output should be 0 (validated)
@@ -217,10 +219,14 @@ test_messages{end+1} = msg;
 %throw an exception if one of the tests is not producing the correct
 %output:
 %expected_results = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,0,0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1];
-if ~eqlen(test_results,expected_results)
-    ME = MException('MyComponent:run_invalidTestFailed', ...
-        'At least one of the tests failed unexpectedly');
-    throw(ME)
+
+b = eqlen(test_results,expected_results);
+overall_message = cat(2,test_messages);
+
+if ~b,
+    indexes = find(test_results~=expected_results),
+    overall_message = ['MyComponent:run_invalidTestFailed', ...
+        'At least one of the tests failed unexpectedly: ' mat2str(indexes)];
 end
 
 end

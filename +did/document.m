@@ -705,16 +705,16 @@ classdef document
 			%      c) a relative filename with respect to $NDIDOCUMENTPATH
 			%      d) a filename referenced with respect to $NDIDOCUMENTPATH
 			%
-				did.globals;
 
-				jsonfilelocationstring_update = did.document.replace_didpath(jsonfilelocationstring);
+				jsonfilelocationstring_update = did.common.utility.replace_didpath(jsonfilelocationstring);
 
 				if ~strcmp(jsonfilelocationstring_update,jsonfilelocationstring), % insert the location
 					filename = jsonfilelocationstring_update;
 				else,
 					% first, guess that it is a complete path from the first search path
-					for i = 1:numel(did_globals.path.definition_locations)
-						filename = [did_globals.path.definition_locations{i} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
+                    definitionLocations = did.common.PathConstants.definitions.values();
+					for i = 1:numel(definitionLocations)
+						filename = [definitionLocations{i} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
 						if ~exist(filename,'file'),
 							% try adding extension
 							filename = [filename '.json'];
@@ -726,7 +726,7 @@ classdef document
 								filename = [filename '.json'];
 							end;
 							if ~exist(filename,'file'),
-								filename2 = [did_globals.path.definition_locations{i} filesep filename];
+								filename2 = [definitionLocations{i} filesep filename];
 								if ~exist(filename2,'file'),
 									error(['Cannot find file ' filename '.']);
 								else,
@@ -745,21 +745,6 @@ classdef document
 					t = did.file.textfile2char(filename);
 				end
 		end %  did.document.readjsonfilelocation()
-
-		function new_path = replace_didpath(path)
-			%   REPLACE_DIDPATH - Replace all the definiton names in the path to the actual definition locations defined in did_globals variable
-			%
-			%   NEW_PATH = REPLACE_DIDPATH(PATH)
-			%
-			%   PATH - a file path that contains definition names
-			%
-				did.globals;
-				new_path = path;
-				for i = 1:numel(did_globals.path.definition_names),
-					new_path = strrep(new_path, did_globals.path.definition_names{i}, did_globals.path.definition_locations{i});
-				end
-		end; % replace_didpath()
-
     end % methods Static
 end % classdef
 

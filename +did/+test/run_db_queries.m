@@ -1,7 +1,7 @@
-function [test_results,test_messages] = run_db_queries
+function [b,overall_message,test_results,test_messages] = run_db_queries
 %TEST_DID_RUN_QUERY_TESTS runs tests using the function 'test_did_db_queries'
 %
-%   [TEST_RESULTS,TEST_MESSAGES] = TEST_DID_RUN_QUERY_TESTS() 
+%   [B,OVERALL_MESSAGE,TEST_RESULTS,TEST_MESSAGES] = TEST_DID_RUN_QUERY_TESTS() 
 %
 %   returns array of b values: b = 1 if test passes, b = 0 if at least one test fails
 %
@@ -103,10 +103,15 @@ test_messages{end+1} = msg;
 
 %throw an exception if one of the tests is not producing the correct
 %output:
-if ~eqlen(test_results,expected_results)
-    ME = MException('MyComponent:run_db_queriesTestFailed', ...
-        'At least one of the tests failed unexpectedly');
-    throw(ME)
+
+b = eqlen(test_results,expected_results);
+overall_message = '';
+
+if ~b,
+    index = find(test_results~=expected_results);
+    overall_message = ['MyComponent:run_db_queriesTestFailed' ...
+        'At least one of the tests failed unexpectedly; the tests that produced unexpected output are ' mat2str(index)];
 end
+
 end
 

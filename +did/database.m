@@ -1050,11 +1050,10 @@ classdef (Abstract) database < handle
 
         function schemaStruct = get_document_schema(database_obj, schema_filename) %#ok<INUSL>
             % Get the path location of path placeholders
-            global did_globals %#ok<GVMIS>
-            if isempty(did_globals), did_Init; end
-            paths = did_globals.path;
-            try pathDefs = strrep(paths.definition_names,'$','\$');    catch, pathDefs = {}; end
-            try pathLocs = strrep(paths.definition_locations,'\','/'); catch, pathLocs = {}; end
+            definitionNames = did.common.PathConstants.definitions.keys();
+            definitionLocations = did.common.PathConstants.definitions.values();
+            try pathDefs = strrep(definitionNames,'$','\$');    catch, pathDefs = {}; end
+            try pathLocs = strrep(definitionLocations,'\','/'); catch, pathLocs = {}; end
 
             schema_filename_potential = {};
             matches = [];
@@ -1315,6 +1314,9 @@ classdef (Abstract) database < handle
                     assert(isOk,'DID:Database:ValidationFieldInteger', ...
                         'Invalid sub-field %s value found in %s', ...
                         field_name, doc_name);
+                    isInteger = (  abs(value-fix(value)) < 1e-12  );
+                    assert(isInteger,'DID:Database"ValidationFieldInteger',...
+                         'Invalid non-integer value %f provided', value);
 
                 case 'double'
                     assert(isnumeric(value), ...

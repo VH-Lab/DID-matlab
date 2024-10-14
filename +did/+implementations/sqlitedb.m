@@ -550,21 +550,23 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 end
             end
 
-            did.globals();
             % First try to access the global cached file, if defined and if exists
             file_paths = {};
             for uids=1:numel(data),
-                file_paths{end+1} = [did_globals.path.filecachepath filesep data(uids).uid ];
+                file_paths{end+1} = [did.common.PathConstants.filecachepath filesep data(uids).uid ];
                 file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
             end;
+
+            didCache = did.common.getCache();
+
             file_paths = file_paths(~cellfun('isempty',file_paths));
             for idx = 1 : numel(file_paths)
                 this_file = file_paths{idx};
                 if isfile(this_file)
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     parent = fileparts(this_file);
-                    if strcmp(parent,did_globals.path.filecachepath), % fileCache,
-                        did_globals.fileCache.touch(this_file); % we used it so indicate that we did
+                    if strcmp(parent,did.common.PathConstants.filecachepath), % fileCache,
+                        didCache.touch(this_file); % we used it so indicate that we did
                     end;
                     file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
                     return
@@ -575,7 +577,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             for idx = 1 : numel(data)  %data is a struct array
                 this_file_struct = data(idx);
                 sourcePath = this_file_struct.orig_location;
-                destDir =  did_globals.path.temppath;
+                destDir =  did.common.PathConstants.temppath;
                 %destDir = this_obj.FileDir;  % SDV this should be changed to file cache
                 %destDir = this_obj.get_preference('cache_folder');
                 destPath = fullfile(destDir, this_file_struct.uid);
@@ -590,8 +592,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         if ~exist(destPath,'file'), error(' '); end
                     end
                     % now we have the temporary file for the file cache
-                    did_globals.fileCache.addFile(destPath, this_file_struct.uid);
-                    cacheFile = fullfile(did_globals.fileCache.directoryName,this_file_struct.uid);
+                    didCache.addFile(destPath, this_file_struct.uid);
+                    cacheFile = fullfile(didCache.directoryName,this_file_struct.uid);
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin{:});
                     return
