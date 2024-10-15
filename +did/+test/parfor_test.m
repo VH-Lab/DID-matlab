@@ -24,7 +24,7 @@ db.add_branch('a');
 
 % Step 2: generate a set of documents with node names and a graph of the dependencies
   % make 0 of type C because we don't want dependencies here
-[G,node_names,docs] = did.test.documents.make_doc_tree([30 30 0]);
+[G,node_names,docs] = did.test.documents.make_doc_tree([10 10 0]);
 
 figure;
 dG = digraph(G,node_names);

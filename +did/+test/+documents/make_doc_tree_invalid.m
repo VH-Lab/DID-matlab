@@ -1,4 +1,4 @@
-function [G, node_names, docs] = make_doc_tree_invalid(rates,varargin)
+function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
 % MAKE_DOC_TREE - make a "tree" of documents to add to a database
 %
 % [G, NODE_NAMES, DOCS] = MAKE_DOC_TREE_INVALID(RATES)
@@ -18,12 +18,11 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates,varargin)
 % -----------------------------------------------------------------------------------------------------
 % | Parameter (default)                        | Description                                          |
 % |--------------------------------------------|------------------------------------------------------|
-% | value_modifier ('sham')                    | How should we modify the value field?                          |
-% | id_modifier ('sham')                    | How should we modify the id field?                          |
-% | datestamp_modifier ('sham')                    | How should we modify the datestamp field?                          |
-% | session_id_modifier ('sham')                    | How should we modify the session_id field?                          |
-% | dependency_modifier ('sham')                    | How should we modify the doc dependencies?                          |
-% | remover ('sham')                    | Which field should we remove?                         |
+% | value_modifier ('sham')                    | How should we modify the value field?                |
+% | id_modifier ('sham')                       | How should we modify the id field?                   |
+% | dependency_modifier ('sham')               | How should we modify the doc dependencies?           |
+% | other_modifier ('sham')                    | How should we modify other fields?                   |
+% | remover ('sham')                           | Which field should we remove?                        |
 % |--------------------------------------------|------------------------------------------------------|
 %
 % G(i,j) is 1 if document j depends on document i and 0 otherwise.
@@ -36,6 +35,15 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates,varargin)
 %   set(gca,'ydir','reverse');
 %   box off;
 % 
+
+arguments
+    rates (1,3) double
+    options.value_modifier = 'sham';
+    options.id_modifier = 'sham';
+    options.other_modifier = 'sham';
+    options.dependency_modifier = 'sham'; % primarily for demoC
+    options.remover = 'sham'; 
+end
 
 numA = poissrnd(rates(1));
 numB = poissrnd(rates(2));
@@ -51,14 +59,12 @@ ids_A = {};
 ids_B = {};
 ids_C = {};
 
-
 %list of possible tests and their default option
-value_modifier = 'sham';
-id_modifier = 'sham';
-other_modifier = 'sham';
-dependency_modifier = 'sham'; % primarily for demoC
-remover = 'sham';
-did.datastructures.assign(varargin{:});
+value_modifier = options.value_modifier;
+id_modifier = options.id_modifier;
+other_modifier = options.other_modifier;
+dependency_modifier = options.dependency_modifier; % primarily for demoC
+remover = options.remover;
 
 
 for i=1:numA,

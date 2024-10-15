@@ -74,7 +74,7 @@ classdef dumbjsondb
 	end % properties
 
 	methods
-		function dumbjsondb_obj = dumbjsondb(varargin)
+        function dumbjsondb_obj = dumbjsondb(command, filename, propValues)
 			% DUMBJSONDB - create a DUMBJSONDB object
 			%
 			% DUMBJSONDB_OBJ = DUMBJSONDB(COMMAND, ...)
@@ -95,47 +95,30 @@ classdef dumbjsondb
 			%
 			% See also: DUMBJSONDB, DUMBJSONDB/READ, DUMBJSONDB/REMOVE, DUMBJSONDB/DOCVERSIONS, DUMBJSONDB/ALLDOCIDS
 			%
-				command = 'none';
-
-				% default parameters
-
-				paramfilename = '';
-				dirname = '.dumbjsondb';
-				unique_object_id_field = 'id';
-
-				if nargin>0,
-					command = varargin{1};
-				end;
-
+				
+                arguments
+                    command = 'none'
+				    filename = '';
+				    propValues.dirname = '.dumbjsondb';
+				    propValues.unique_object_id_field = 'id';
+                end
+            
 				switch lower(command),
 					case 'new', % create a new object
-						paramfilename = varargin{2};
-						if nargin>2,
-							try,
-								did.datastructures.assign(varargin{3:end});
-							catch,
-								error(['Extra arguments must come in name/value pairs (paramname and then value; see help namevaluepair).']);
-							end
-						end
-						p = properties(dumbjsondb_obj);
-						for i=1:numel(p),
-							eval(['dumbjsondb_obj. ' p{i} ' = eval([p{i}]);']);
-						end
+                        dumbjsondb_obj.paramfilename = filename;
+                        dumbjsondb_obj.assignparameters(propValues)
 						writeparameters(dumbjsondb_obj);
 					case 'load',  % load object from file
-						openfile = varargin{2};
-						dumbjsondb_obj = loadparameters(dumbjsondb_obj, openfile);
+						dumbjsondb_obj = loadparameters(dumbjsondb_obj, filename);
 					case '',
-						p = properties(dumbjsondb_obj);
-						for i=1:numel(p),
-							eval(['dumbjsondb_obj. ' p{i} ' = eval([p{i}]);']);
-						end
+						dumbjsondb_obj.assignparameters(propValues)
+
 					otherwise,
 						error(['Invalid command: ' command]); 
 				end;
 		end % dumbjsondb()
 
-		function dumbjsondb_obj = add(dumbjsondb_obj, doc_object, varargin)
+		function dumbjsondb_obj = add(dumbjsondb_obj, doc_object, options)
 			% ADD - add a document to a DUMBJSONDB
 			%
 			% DUMBJSONDB_OBJ = ADD(DUMBJSONDB_OBJ, DOC_OBJECT, ....)
@@ -155,11 +138,21 @@ classdef dumbjsondb
 			%
 			% See also: DUMBJSONDB, DUMBJSONDB/READ, DUMBJSONDB/REMOVE, DUMBJSONDB/DOCVERSIONS, DUMBJSONDB/ALLDOCIDS
 			%
-				Overwrite = 1;
-				[doc_unique_id] = docstats(dumbjsondb_obj, doc_object);
-				doc_version = dumbjsondb_obj.latestdocversion(doc_unique_id);
-				did.datastructures.assign(varargin{:});
 
+                arguments
+                    dumbjsondb_obj
+                    doc_object
+                    options.Overwrite (1,1) uint8 {mustBeInRange(options.Overwrite, 0, 2)} = 1
+                    options.doc_version = "latest"
+                end
+
+                if options.doc_version == "latest"
+				    [doc_unique_id] = docstats(dumbjsondb_obj, doc_object);
+				    doc_version = dumbjsondb_obj.latestdocversion(doc_unique_id);
+                else
+                    doc_version = options.doc_version;
+                end
+                
 				% does file already exist?
 				p = dumbjsondb_obj.documentpath();
 				f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
@@ -173,22 +166,22 @@ classdef dumbjsondb
 					we_know_we_have_latest_version = 1;
 					can_we_write = 1;
 				else, 
-					if Overwrite==1, %write away, whether it exists or not
+					if options.Overwrite==1, %write away, whether it exists or not
 						can_we_write = 1;
 						we_know_we_have_latest_version = 1;
-					elseif Overwrite==0, % do not overwrite
+					elseif options.Overwrite==0, % do not overwrite
 						versstring = [];
 						if ~isempty(version),
 							versstring = [' and version ' num2str(doc_version) ' '];
 						end
 						error(['Document with document id ' doc_unique_id ' versstring ' already exists, overwrite was not permitted by user request.']);
-					elseif Overwrite==2, % increment version
+					elseif options.Overwrite==2, % increment version
 						v = dumbjsondb_obj.docversions(doc_unique_id);
 						doc_version = max(v) + 1;
 						can_we_write = 1;
 						we_know_we_have_latest_version = 1;
 					else,
-						error(['Unknown Overwrite mode: ' num2str(Overwrite) '.']);
+						error(['Unknown Overwrite mode: ' num2str(options.Overwrite) '.']);
 					end
 				end
 
@@ -346,22 +339,22 @@ classdef dumbjsondb
 				release_lock_file(lockfilename,key);
 		end % closebinaryfile
 
-		function [docs, doc_versions] = search(dumbjsondb_obj, scope, searchParams)
+		function [docs, doc_versions] = search(dumbjsondb_obj, searchParams, scope)
 			% SEARCH - perform a search of DUMBJSONDB documents
 			%
-			% [DOCS, DOC_VERSIONS] = SEARCH(DUMBJSONDB_OBJ, SCOPE, SEARCHPARAMS)
+			% [DOCS, DOC_VERSIONS] = SEARCH(DUMBJSONDB_OBJ, SEARCHPARAMS, SCOPE)
 			%
 			% Performs a search of DUMBJSONDB_OBJ to find matching documents.
 			%
+			% SEARCHPARAMS should be either be {'PARAM1', VALUE1, 'PARAM2', VALUE2, ... }
+			%  or a search structure appropriate for FIELDSEARCH.
+            %
 			% SCOPE is a cell array of name/value pairs that modify the search
 			% scope:
 			% SCOPE parameter (default)    : Description
 			% ----------------------------------------------------------------------
 			% version ('latest')           : Which versions should be searched? Can be
 			%                              :   a specific number, 'latest', or 'all'
-			%
-			% SEARCHPARAMS should be either be {'PARAM1', VALUE1, 'PARAM2', VALUE2, ... }
-			%  or a search structure appropriate for FIELDSEARCH.
 			%
 			% The document parameters PARAM1, PARAM2 are examined for matches.
 			% If VALUEN is a string, then a regular expression
@@ -379,27 +372,34 @@ classdef dumbjsondb
 			%
 			% See also: REGEXPI
 
+                arguments
+                    dumbjsondb_obj
+                end
+                arguments (Repeating)
+                    searchParams
+                end
+                arguments
+                    scope.version = 'latest'
+                end
+
 				docs = {};
 				doc_versions = [];
-
-				version = 'latest';
-				did.datastructures.assign(scope{:});
 
 				docids = dumbjsondb_obj.alldocids();
 
 				for i=1:numel(docids),
-					if strcmpi(version,'latest'),
+					if strcmpi(scope.version,'latest'),
 						v_here = dumbjsondb_obj.docversions(docids{i});
 						v_here = max(v_here);
-					elseif strcmpi(version,'all'),
+					elseif strcmpi(scope.version,'all'),
 						v_here = dumbjsondb_obj.docversions(docids{i});
 					else
-						v_here = version;
+						v_here = scope.version;
 					end;
 
 					for j=1:numel(v_here),
 						[doc_here, version_here] = dumbjsondb_obj.read(docids{i},v_here(j));
-						b = did.file.dumbjsondb.ismatch(doc_here, searchParams);
+						b = did.file.dumbjsondb.ismatch(doc_here, searchParams{:});
 						if b,
 							docs{end+1} = doc_here;
 							doc_versions(end+1) = version_here;
@@ -734,6 +734,13 @@ classdef dumbjsondb
 					eval(['dumbjsondb_obj.' fn{i} ' = getfield(s,fn{i});']);
 				end
 		end % loadparameters()
+
+        function assignparameters(dumbjsondb_obj, propertyValues)
+            propNames = fieldnames(propertyValues);
+            for i = 1:numel(propNames)
+                dumbjsondb_obj.(propNames{i}) = propertyValues(propNames{i});
+            end
+        end
 
 	end % methods protected
 
