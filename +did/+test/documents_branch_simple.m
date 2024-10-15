@@ -25,7 +25,7 @@ db = did.implementations.sqlitedb(db_filename);
 db.add_branch('a');
 
 % Step 2: generate a set of documents with node names and a graph of the dependencies
-[G,node_names,docs] = did.test.documents.make_doc_tree([30 30 30]);
+[G,node_names,docs] = did.test.documents.make_doc_tree([10 10 10]);
 
 figure;
 dG = digraph(G,node_names);

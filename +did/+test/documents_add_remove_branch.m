@@ -24,7 +24,7 @@ db = did.implementations.sqlitedb(db_filename);
 
 [branchG,branch_node_names] = did.test.fun.make_tree(1,4,0.8,10);
 
-[doc_struct.G,doc_struct.node_names,doc_struct.docs] = did.test.documents.make_doc_tree([30 30 30]);
+[doc_struct.G,doc_struct.node_names,doc_struct.docs] = did.test.documents.make_doc_tree([10 10 10]);
 
 [doc_struct_out, branch_node_indexes] = did.test.fun.addrm_docs_to_branches(db,...
 	branchG, branch_node_names, doc_struct);
