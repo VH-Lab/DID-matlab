@@ -37,22 +37,23 @@ classdef PathConstants
         % temppath - The path to a directory that may be used for temporary files
         temppath {mustBeWritable} = fullfile(tempdir, 'didtemp')
         
-        % testpath - A path to a safe place to run test code
-        testpath {mustBeWritable} = fullfile(userpath, 'Documents', 'DID', 'Testcode') % Todo: Use fixtures and test classes
-        
         % filecachepath - A path where files may be cached (not deleted every time)
         filecachepath {mustBeWritable} = fullfile(userpath, 'Documents', 'DID', 'fileCache')
         
         % preferences - A path to a directory of preferences files
         preferences {mustBeWritable} = fullfile(userpath, 'Documents', 'DID', 'Preferences') % Todo: Use prefdir
-    
-        javapath = fullfile(did.common.PathConstants.path, 'java')    
     end
 end
 
 function mustBeWritable(folderPath)
     if ~isfolder(folderPath)
-        mkdir(folderPath)
+        try
+            mkdir(folderPath)
+        catch
+            % See issue #29, R2022a)
+            folderPath = strrep(folderPath, userpath, tempdir);
+            mkdir(folderPath)
+        end
     end
 
 	didido = did.ido();

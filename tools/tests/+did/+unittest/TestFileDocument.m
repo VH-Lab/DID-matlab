@@ -17,6 +17,8 @@ classdef TestFileDocument < matlab.unittest.TestCase
             % Create a temporary working directory to run tests in
             testCase.applyFixture(matlab.unittest.fixtures.WorkingFolderFixture);
 
+            testCase.applyFixture(did.test.fixture.PathConstantFixture)
+
             testCase.db = did.implementations.sqlitedb(testCase.db_filename);
             testCase.db.add_branch('a');
 
