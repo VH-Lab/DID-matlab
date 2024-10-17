@@ -1,5 +1,5 @@
-# DID-matlab
-Data Interface Database
+# DID-matlab: Data Interface Database
+[![codecov](https://codecov.io/gh/VH-Lab/DID-matlab/branch/main_v080_refactor/graph/badge.svg?token=K6D3LWXUGJ)](https://codecov.io/gh/VH-Lab/DID-matlab)
 
 The purpose of this package is to provide an interface to database implementations that provide:
 
