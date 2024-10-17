@@ -3,7 +3,7 @@ name: Run tests
 on:
   # Triggers the workflow on push or pull request events for the "main" branch
   push:
-    branches: [ "refactor-tests" ]
+    branches: [ "main_v080_refactor" ]
     paths-ignore:
       - 'README.md'
       - 'tools/README.md'
