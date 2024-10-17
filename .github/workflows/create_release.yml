@@ -144,5 +144,5 @@ jobs:
           draft: true        
           artifacts: "releases/DID_MATLAB_${{ env.versionNumber }}.mltbx"
           generateReleaseNotes: true
-          body: "![MATLAB Versions Tested](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2F${{ github.repository_owner }}%2F$(basename ${{ github.repository }})%2Fmain_v080_refactor%2F.github%2Fbadges%2F${{  github.ref_name }}%2Ftested_with.json)"
+          body: "![MATLAB Versions Tested](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2F${{ github.repository }}%2Fmain_v080_refactor%2F.github%2Fbadges%2F${{  github.ref_name }}%2Ftested_with.json)"
 
