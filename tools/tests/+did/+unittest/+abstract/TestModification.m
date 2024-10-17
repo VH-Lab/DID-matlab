@@ -67,8 +67,10 @@ classdef TestModification < matlab.unittest.TestCase
                 testCase.db.add_docs(docs);
             catch E
                 b = true; % caught the invalidation
-                getReport(E)
                 testCase.assertSubstring(E.identifier, "DID:Database", "Expected error to be a DID database error")
+                if ~startsWith(E.identifier, "DID:Database")
+                    getReport(E)
+                end
             end
 
             % [b2,msg2] = did.test.documents.verify_db_document_structure(testCase.db, G, docs);
