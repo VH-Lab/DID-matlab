@@ -1,11 +1,14 @@
 {
-    "Identifier": "e9158b26-896e-4cea-8c55-a3e407220868",
-    "ToolboxName": "Data Interface Database",
-    "AuthorName": "Steve Van Hooser",
-    "AuthorEmail": "",
-    "AuthorCompany": "VanHooser Lab",
-    "Summary": "A MATLAB toolbox to provide an interface to database implementations",
-    "Description": "The purpose of this package is to provide an interface to database implementations",
-    "MinimumMatlabRelease": "R2019b",
-    "MaximumMatlabRelease": ""
+    "Namespace" : "did",
+    "ToolboxOptions": {
+        "Identifier": "e9158b26-896e-4cea-8c55-a3e407220868",
+        "ToolboxName": "Data Interface Database",
+        "AuthorName": "Steve Van Hooser",
+        "AuthorEmail": "",
+        "AuthorCompany": "VanHooser Lab",
+        "Summary": "A MATLAB toolbox to provide an interface to database implementations",
+        "Description": "The purpose of this package is to provide an interface to database implementations",
+        "MinimumMatlabRelease": "R2019b",
+        "MaximumMatlabRelease": ""
+    }
 }
