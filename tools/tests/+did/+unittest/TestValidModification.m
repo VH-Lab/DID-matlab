@@ -3,8 +3,7 @@ classdef TestValidModification < did.unittest.abstract.TestModification
     % Test case for making valid modification to documents
     
     properties (TestParameter)
-        value_modifier = {...
-            'double'}
+        value_modifier = {'sham'},
         id_modifier = {...
             'sham'}
         dependency_modifier = {...

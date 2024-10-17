@@ -107,7 +107,7 @@ for i=1:numel(starting_nodes),
 	for j=1:numel(next_nodes),
 		[doc_struct_next,node_indexes_next] = did.test.fun.addrm_docs_to_branches(db, bG, branch_node_names, ...
 			new_doc_struct2, node_here, next_nodes(j));
-		for k=1:size(node_indexes_next), % copy any non-empty node_names
+		for k=1:numel(node_indexes_next), % copy any non-empty node_names
 			index_here = node_indexes_next(k); % global index
 			if isempty(doc_struct_next{index_here}),
 				keyboard;

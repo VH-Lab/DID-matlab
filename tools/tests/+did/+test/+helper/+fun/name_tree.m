@@ -61,7 +61,7 @@ for i=1:numel(starting_nodes),
 	% where do we go from here?
 	next_nodes = find(G(:,node_here)==1); % who is connected to this node?
 	[node_names_next,node_indexes_next] = did.test.fun.name_tree(G, node_names{node_here}, next_nodes);
-	for k=1:size(node_indexes_next), % copy any non-empty node_names
+	for k=1:numel(node_indexes_next), % copy any non-empty node_names
 		index_here = node_indexes_next(k); % global index
 		if isempty(node_names_next{index_here}),
 			keyboard;

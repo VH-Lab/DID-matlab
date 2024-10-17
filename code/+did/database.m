@@ -1042,7 +1042,7 @@ classdef (Abstract) database < handle
             % Validate a single field in a parent struct (existing, non-empty)
             function validateField(parentStruct, parentName, fieldName)
                 assert(isfield(parentStruct,fieldName), ...
-                       'Doc %s %s has no %s field!',doc_id,parentName,fieldName);
+                       'DID:Database:MissingRequiredField','Doc %s %s has no %s field!',doc_id,parentName,fieldName);
                 value = parentStruct.(fieldName);
                 assert(~isempty(value),'Doc %s %s field is empty!',doc_id,fieldName);
             end
@@ -1258,11 +1258,16 @@ classdef (Abstract) database < handle
                         for idx = 1 : numel(actualFileNames),
                             actualFileNames{idx} = char(actualFileNames{idx});
                         end;
-			[isvalid,errmsg] = did.database.checkfiles(expectedNames,mustHaveValue,actualFileNames,doc_name,actual_files_here,file_list);
-			assert(isvalid,'DID:Database:ValidationFiles',errmsg);
+                        [isvalid,errmsg] = did.database.checkfiles(expectedNames,mustHaveValue,actualFileNames,doc_name,actual_files_here,file_list);
+                        assert(isvalid,'DID:Database:ValidationFiles',errmsg);
                    otherwise  % class-specific field
                         % Compare the type and value of all class-specific fields
-                        docValue = docProps.(field);
+                        try,
+                            docValue = docProps.(field);
+                        catch E,
+                            assert(false,'DID:Database:PropertyFieldMissing',E.message);
+                        end
+
                         if isempty(expected), continue; end;
                         expectedSubFields = strjoin(unique({expected.name}),',');
                         docSubFields = strjoin(unique(fieldnames(docValue)),',');
@@ -1305,6 +1310,8 @@ classdef (Abstract) database < handle
                     end;
                     if isempty(value) && canbeempty,
                         isOk = true;
+                    elseif isempty(value) && ~canbeempty,
+                        isOk = false;
                     elseif isnan(value) && expectedParams(3)
                         isOk = true;
                     else,
@@ -1314,6 +1321,9 @@ classdef (Abstract) database < handle
                     assert(isOk,'DID:Database:ValidationFieldInteger', ...
                         'Invalid sub-field %s value found in %s', ...
                         field_name, doc_name);
+                    isInteger = (  abs(value-fix(value)) < 1e-12  );
+                    assert(isInteger,'DID:Database:ValidationFieldInteger',...
+                         'Invalid non-integer value %f provided', value);
 
                 case 'double'
                     assert(isnumeric(value), ...
@@ -1373,8 +1383,13 @@ classdef (Abstract) database < handle
                         'Invalid non-timestamp sub-field %s found in %s', ...
                         field_name, doc_name);
                     value = regexprep(value,'Z$',''); %discard trailing 'Z' (unparsable by LocalDateTime)
-                    jTimestr = java.lang.String(value);
-                    java.time.LocalDateTime.parse(jTimestr);  % will croak if unparsable
+                    try,
+                        jTimestr = java.lang.String(value);
+                        java.time.LocalDateTime.parse(jTimestr);  % will croak if unparsable
+                    catch,
+                        assert(false,'DID:Database:ValidationFieldTimeStamp','Invalid timestamp sub-field %s found in %s',...
+                            field_name, doc_name);
+                    end;
 
                 case {'char','string'}
                     isOk = isempty(value)|ischar(value);

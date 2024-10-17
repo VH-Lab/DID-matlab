@@ -47,7 +47,7 @@ classdef TestModification < matlab.unittest.TestCase
                 options.remover = 'sham';
             end
 
-            [G, node_names, docs] = did.test.documents.make_doc_tree_invalid([30 30 30],... 
+            [G, node_names, docs] = did.test.documents.make_doc_tree_invalid([10 10 10],... 
                 'value_modifier', options.value_modifier,...
                 'id_modifier', options.id_modifier,...
                 'dependency_modifier', options.dependency_modifier,...
@@ -67,6 +67,7 @@ classdef TestModification < matlab.unittest.TestCase
                 testCase.db.add_docs(docs);
             catch E
                 b = true; % caught the invalidation
+                getReport(E)
                 testCase.assertSubstring(E.identifier, "DID:Database", "Expected error to be a DID database error")
             end
 

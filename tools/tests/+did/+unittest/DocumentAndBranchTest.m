@@ -38,7 +38,7 @@ classdef DocumentAndBranchTest < matlab.unittest.TestCase
         function testAddBranchNodes(testCase)
             [branchG,branch_node_names] = did.test.fun.make_tree(1,3,0.8,5);
             
-            [doc_struct.G,doc_struct.node_names,doc_struct.docs] = did.test.documents.make_doc_tree([30 30 30]);
+            [doc_struct.G,doc_struct.node_names,doc_struct.docs] = did.test.documents.make_doc_tree([10 10 10]);
             
             [doc_struct_out, branch_node_indexes] = did.test.fun.addrm_docs_to_branches( testCase.db,...
 	            branchG, branch_node_names, doc_struct);

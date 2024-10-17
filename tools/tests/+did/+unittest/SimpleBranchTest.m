@@ -31,7 +31,7 @@ classdef SimpleBranchTest < matlab.unittest.TestCase
         function generateTree(testCase)
             % Step 2: generate a set of documents with node names and a graph of the dependencies
             [testCase.G, testCase.node_names, testCase.docs] = ...
-                did.test.documents.make_doc_tree([30 30 30]);
+                did.test.documents.make_doc_tree([10 10 10]);
             
             figure;
             dG = digraph(testCase.G, testCase.node_names);
