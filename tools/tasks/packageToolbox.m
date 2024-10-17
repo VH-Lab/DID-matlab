@@ -3,7 +3,7 @@ function packageToolbox(releaseType, versionString)
         releaseType {mustBeTextScalar,mustBeMember(releaseType,["build","major","minor","patch","specific"])} = "build"
         versionString {mustBeTextScalar} = "";
     end
-    installMatBox()
+    installMatBox('commit')
     projectRootDirectory = didtools.projectdir();
-    matbox.tasks.packageToolbox(projectRootDirectory, releaseType, versionString)
+    matbox.tasks.packageToolbox(projectRootDirectory, releaseType, versionString, "ToolboxShortName", "DID_MATLAB")
 end
