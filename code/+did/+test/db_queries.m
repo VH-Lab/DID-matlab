@@ -1,5 +1,5 @@
-function [b,msg] = db_queries(varargin)
-% [B,MSG] = TEST_DID_DB_QUERIES(VARARGIN)
+function [b,msg] = db_queries(options)
+% [B,MSG] = TEST_DID_DB_QUERIES(...)
 % 
 % Tests the functionality of queries using the db.query class, and using the
 % did.implementations.sqlitedb class.
@@ -41,31 +41,34 @@ function [b,msg] = db_queries(varargin)
 
 
  % setup: assign default parameter values
- 
-Do_EXACT_STRING_test = 0; 
-Do_NOT_EXACT_STRING_test = 0; 
-Do_AND_test = 0; 
-doc_id_ind_for_and = 1;
-doc_value_ind_for_and = 2;
-Do_OR_test = 0; 
-Do_NOT_BLUH_test = 0; 
-Do_CONTAINS_STRING_test = 0; 
-param1_contains_string = 'id_substring_chosen';
-Do_NOT_CONTAINS_STRING_test = 0;
-Do_LESSTHAN_test = 0; 
-Do_LESSTHANEQ_test = 0; 
-Do_GREATERTHAN_test = 0; 
-Do_GREATERTHANEQ_test = 0; 
-Do_HASFIELD_test = 0; 
-fieldname = 'demoA';
-Do_HASMEMBER_test = 0;
-param1_hasmember = 1;
-Do_HASANYSUBFIELD_CONTAINS_STRING_test = 0; 
-Do_DEPENDS_ON_test = 0; 
-param1_depends_on = 'item1';
-Do_ISA_test = 0; 
-Do_REGEXP_test = 0; 
-did.datastructures.assign(varargin{:});
+
+arguments
+	options.Do_EXACT_STRING_test = 0; 
+	options.Do_NOT_EXACT_STRING_test = 0; 
+	options.Do_AND_test = 0; 
+	options.doc_id_ind_for_and = 1;
+	options.doc_value_ind_for_and = 2;
+	options.Do_OR_test = 0; 
+	options.Do_NOT_BLUH_test = 0; 
+	options.Do_CONTAINS_STRING_test = 0; 
+	options.param1_contains_string = 'id_substring_chosen';
+	options.Do_NOT_CONTAINS_STRING_test = 0;
+	options.Do_LESSTHAN_test = 0; 
+	options.Do_LESSTHANEQ_test = 0; 
+	options.Do_GREATERTHAN_test = 0; 
+	options.Do_GREATERTHANEQ_test = 0; 
+	options.Do_HASFIELD_test = 0; 
+	options.fieldname = 'demoA';
+	options.Do_HASMEMBER_test = 0;
+	options.param1_hasmember = 1;
+	options.Do_HASANYSUBFIELD_CONTAINS_STRING_test = 0; 
+	options.Do_DEPENDS_ON_test = 0; 
+	options.param1_depends_on = 'item1';
+	options.Do_ISA_test = 0; 
+	options.Do_REGEXP_test = 0; 
+end;
+
+did.datastructures.struct2var(options);
 
 doc_id_ind = 1;
 doc_value_ind = 1;
@@ -108,7 +111,7 @@ db = did.implementations.sqlitedb(db_filename);
 db.add_branch('a');
 
 % Step 2: generate a set of documents with node names and a graph of the dependencies
-[G,node_names,docs] = did.test.documents.make_doc_tree([30 30 30]);
+[G,node_names,docs] = did.test.documents.make_doc_tree([10 10 10]);
 
 %index parameters check:
 if doc_id_ind < 1
@@ -217,7 +220,7 @@ if Do_NOT_EXACT_STRING_test
         disp(['We expected:'])
         ids_expected,
         return
-    elseif ~did.datastructures.eqlen(d1,ids_expected) %checks that the length and contents of each object are the same
+    elseif ~did.datastructures.eqlen(d1(:),ids_expected(:)) %checks that the length and contents of each object are the same
         b = 0;
         msg = ['NOT_EXACT_STRING operation query did not produce expected output.'];
         disp(msg)

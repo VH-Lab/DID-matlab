@@ -25,4 +25,3 @@ for i=1:length(fn),
 	assignin('caller',fn{i}, getfield(s,fn{i}));
 end;
 
-
