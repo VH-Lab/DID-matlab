@@ -63,9 +63,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      # Todo: change ref to: refs/heads/main
       - uses: actions/checkout@v4
         with:
-            ref: refs/heads/main
+            ref: main_v080_refactor
     
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
