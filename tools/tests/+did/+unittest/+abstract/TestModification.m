@@ -47,7 +47,7 @@ classdef TestModification < matlab.unittest.TestCase
                 options.remover = 'sham';
             end
 
-            [G, node_names, docs] = did.test.documents.make_doc_tree_invalid([10 10 10],... 
+            [G, node_names, docs] = did.test.helper.documents.make_doc_tree_invalid([10 10 10],... 
                 'value_modifier', options.value_modifier,...
                 'id_modifier', options.id_modifier,...
                 'dependency_modifier', options.dependency_modifier,...
@@ -73,7 +73,7 @@ classdef TestModification < matlab.unittest.TestCase
                 end
             end
 
-            % [b2,msg2] = did.test.documents.verify_db_document_structure(testCase.db, G, docs);
+            % [b2,msg2] = did.test.helper.documents.verify_db_document_structure(testCase.db, G, docs);
             % b = b & b2;
             % %msg = [msg newline msg2];
 

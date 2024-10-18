@@ -33,14 +33,14 @@ classdef TestDbQueries < matlab.unittest.TestCase
 
             % Step 2: generate a set of documents with node names and a graph of the dependencies
             [testCase.G, testCase.node_names, testCase.docs] = ...
-                did.test.documents.make_doc_tree([10 10 10]);
+                did.test.helper.documents.make_doc_tree([10 10 10]);
 
             for i=1:numel(testCase.docs)
 	            testCase.db.add_doc(testCase.docs{i});
             end
 
             % Step 3: check the database results
-            [b, msg] = did.test.documents.verify_db_document_structure(...
+            [b, msg] = did.test.helper.documents.verify_db_document_structure(...
                 testCase.db, testCase.G, testCase.docs);
         end
     end
@@ -54,7 +54,7 @@ classdef TestDbQueries < matlab.unittest.TestCase
                 'Expected query to produce a cell array of document ids')
             
             % Do manual search to get expected value of fast search
-            [ids_expected, ~] = did.test.fun.apply_didquery(testCase.docs, query);
+            [ids_expected, ~] = did.test.helper.utility.apply_didquery(testCase.docs, query);
             
             if isempty(ids_actual)
                 testCase.assertEmpty(ids_expected)
@@ -112,7 +112,7 @@ classdef TestDbQueries < matlab.unittest.TestCase
             id_chosen = testCase.docs{doc_id_ind_for_and}.id;
 
             value_chosen = doc_value_ind_for_and; %doc values are equivalent to their index
-            demoType = did.test.fun.get_demoType(testCase.docs{doc_value_ind_for_and}); %find the demo type that this doc contains
+            demoType = did.test.helper.utility.get_demoType(testCase.docs{doc_value_ind_for_and}); %find the demo type that this doc contains
             exact_number_field_name = [demoType,'.value']; %the value field can only be accessed by going through the demoType field, which may be named differently for each document 
             
             q = did.query('base.id','exact_string',id_chosen) & did.query(exact_number_field_name,'exact_number',value_chosen); %find docs that have the chosen id AND the chosen value (numerical field located in demoType)
@@ -123,9 +123,9 @@ classdef TestDbQueries < matlab.unittest.TestCase
             id_chosen = testCase.getRandomDocumentId();
             doc_value_for_or = [10 11];
 
-            demoType1 = did.test.fun.get_demoType(testCase.docs{doc_value_for_or(1)}); %check how to access the 'value' field for the document we should find with an exact number query
+            demoType1 = did.test.helper.utility.get_demoType(testCase.docs{doc_value_for_or(1)}); %check how to access the 'value' field for the document we should find with an exact number query
             exact_number_field_name1 = [demoType1,'.value']; %create a fieldname string that will help access the 'value' field for the first exact number query
-            demoType2 = did.test.fun.get_demoType(testCase.docs{doc_value_for_or(2)});
+            demoType2 = did.test.helper.utility.get_demoType(testCase.docs{doc_value_for_or(2)});
             exact_number_field_name2 = [demoType2,'.value']; %create a fieldname string that will help access the 'value' field for the second exact number query
             q = or(did.query('base.id','exact_string',id_chosen),or(did.query(exact_number_field_name1,'exact_number',doc_value_for_or(1)),did.query(exact_number_field_name2,'exact_number',doc_value_for_or(2))));
 
@@ -140,7 +140,7 @@ classdef TestDbQueries < matlab.unittest.TestCase
 
             % Doing this to check whether the apply_didquery function throws an exception or has a real output
             try
-                [~, ~] = did.test.fun.apply_didquery(testCase.docs, q); 
+                [~, ~] = did.test.helper.utility.apply_didquery(testCase.docs, q); 
             catch ME
                 testCase.assertSubstring(ME.message, 'Unknown search operation bluh')
             end

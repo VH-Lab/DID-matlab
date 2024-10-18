@@ -28,7 +28,7 @@ classdef DocumentAndBranchTest < matlab.unittest.TestCase
     methods
         function generateTree(testCase)
             % Step 2: Generate a tree and a set of node names
-            [G, testCase.node_names] = did.test.fun.make_tree(1, 4, 0.8, 10);
+            [G, testCase.node_names] = did.test.helper.utility.make_tree(1, 4, 0.8, 10);
             testCase.dG = digraph(G, testCase.node_names);
             testCase.root_indexes = find(cellfun(@(x) ~any(x == '_'), testCase.node_names));
         end
@@ -36,11 +36,11 @@ classdef DocumentAndBranchTest < matlab.unittest.TestCase
     
     methods (Test)
         function testAddBranchNodes(testCase)
-            [branchG,branch_node_names] = did.test.fun.make_tree(1,3,0.8,5);
+            [branchG,branch_node_names] = did.test.helper.utility.make_tree(1,3,0.8,5);
             
-            [doc_struct.G,doc_struct.node_names,doc_struct.docs] = did.test.documents.make_doc_tree([10 10 10]);
+            [doc_struct.G,doc_struct.node_names,doc_struct.docs] = did.test.helper.documents.make_doc_tree([10 10 10]);
             
-            [doc_struct_out, branch_node_indexes] = did.test.fun.addrm_docs_to_branches( testCase.db,...
+            [doc_struct_out, branch_node_indexes] = did.test.helper.utility.addrm_docs_to_branches( testCase.db,...
 	            branchG, branch_node_names, doc_struct);
             
              % now check all branches
@@ -49,7 +49,7 @@ classdef DocumentAndBranchTest < matlab.unittest.TestCase
             
             for i = 1:numel(doc_struct_out)
 	            testCase.db.set_branch(branch_node_names{i});
-	            [b,msg] = did.test.documents.verify_db_document_structure(testCase.db,...
+	            [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db,...
 		            doc_struct_out{i}.G,doc_struct_out{i}.docs);
                 
                 b = logical(b);

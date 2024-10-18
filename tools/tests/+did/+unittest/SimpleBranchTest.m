@@ -31,7 +31,7 @@ classdef SimpleBranchTest < matlab.unittest.TestCase
         function generateTree(testCase)
             % Step 2: generate a set of documents with node names and a graph of the dependencies
             [testCase.G, testCase.node_names, testCase.docs] = ...
-                did.test.documents.make_doc_tree([10 10 10]);
+                did.test.helper.documents.make_doc_tree([10 10 10]);
             
             figure;
             dG = digraph(testCase.G, testCase.node_names);
@@ -49,10 +49,10 @@ classdef SimpleBranchTest < matlab.unittest.TestCase
             testCase.db.add_branch('a_a');
             
             % Step 4: check the database results
-            [b,msg] = did.test.documents.verify_db_document_structure(testCase.db, testCase.G, testCase.docs);
+            [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, testCase.G, testCase.docs);
             
             testCase.db.set_branch('a');
-            [b,msg] = did.test.documents.verify_db_document_structure(testCase.db, testCase.G, testCase.docs);
+            [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, testCase.G, testCase.docs);
         end
         
         function testRemoveDocumentsFromBranchAndVerifyOtherBranch(testCase)
@@ -69,7 +69,7 @@ classdef SimpleBranchTest < matlab.unittest.TestCase
             testCase.db.remove_docs(docs_to_remove);
             
             testCase.db.set_branch('a');
-            [b, msg] = did.test.documents.verify_db_document_structure(testCase.db, testCase.G, testCase.docs);
+            [b, msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, testCase.G, testCase.docs);
         end
 
     end

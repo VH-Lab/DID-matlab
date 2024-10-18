@@ -29,7 +29,7 @@ classdef DocumentTest < matlab.unittest.TestCase
     methods (Test)
         function testAddDocuments(testCase)
             % Generate a set of documents with node names and a graph of the dependencies
-            [G,node_names,docs] = did.test.documents.make_doc_tree([30 30 30]);
+            [G,node_names,docs] = did.test.helper.documents.make_doc_tree([30 30 30]);
             
             figure;
             testCase.dG = digraph(G,node_names);
@@ -39,7 +39,7 @@ classdef DocumentTest < matlab.unittest.TestCase
             testCase.db.add_docs(docs);
 
             % Step 3: check the database results
-            [b, msg] = did.test.documents.verify_db_document_structure(testCase.db, G, docs);
+            [b, msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G, docs);
 
             b = logical(b);
             testCase.verifyTrue(b, msg);
@@ -47,7 +47,7 @@ classdef DocumentTest < matlab.unittest.TestCase
     
         function testRemoveDocuments(testCase)
             % Step 2: generate a set of documents with node names and a graph of the dependencies
-            [G{1},node_names{1},docs{1}] = did.test.documents.make_doc_tree([30 30 30]);
+            [G{1},node_names{1},docs{1}] = did.test.helper.documents.make_doc_tree([30 30 30]);
             
             figure;
             dG = digraph(G{1},node_names{1});
@@ -60,7 +60,7 @@ classdef DocumentTest < matlab.unittest.TestCase
             %end
             
             % Step 3: check the database results
-            [b, msg] = did.test.documents.verify_db_document_structure(testCase.db, G{1}, docs{1});
+            [b, msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G{1}, docs{1});
             b = logical(b);
             testCase.verifyTrue(b, msg);
 
@@ -69,24 +69,24 @@ classdef DocumentTest < matlab.unittest.TestCase
 	            disp('will now delete some documents/nodes and check.');
             
 	            [docs_to_delete,docs_to_delete_seed,G{i},node_names{i},docs{i}] = ...
-		            did.test.documents.rm_doc_tree(2, G{i-1},node_names{i-1},docs{i-1});
+		            did.test.helper.documents.rm_doc_tree(2, G{i-1},node_names{i-1},docs{i-1});
             
 	            if ~isempty(docs_to_delete_seed),
 		            testCase.db.remove_docs(docs_to_delete_seed);
 	            end;
 	            
-	            [b,msg] = did.test.documents.verify_db_document_structure(testCase.db, G{i}, docs{i});
+	            [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G{i}, docs{i});
 	            b = logical(b);
                 testCase.verifyTrue(b, msg);
             
 	            disp('will now add some documents/nodes and check.');
             
 	            N = numel(docs{i});
-	            [G{i+1},node_names{i+1},docs{i+1}] = did.test.documents.add_doc_tree([5 5 5],...
+	            [G{i+1},node_names{i+1},docs{i+1}] = did.test.helper.documents.add_doc_tree([5 5 5],...
 		            G{i},node_names{i},docs{i});
 	            testCase.db.add_docs(docs{i+1}(N+1:numel(docs{i+1})));
             
-	            [b,msg] = did.test.documents.verify_db_document_structure(testCase.db, G{i+1}, docs{i+1});
+	            [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G{i+1}, docs{i+1});
 	            
                 b = logical(b);
                 testCase.verifyTrue(b, msg);

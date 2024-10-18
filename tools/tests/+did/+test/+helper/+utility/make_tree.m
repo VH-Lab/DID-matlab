@@ -1,7 +1,7 @@
 function [G,node_names] = make_tree(N_initial, children_rate, children_rate_decay, max_depth)
 % MAKE_TREE - construct a random tree structure
 %
-% [G,NODE_NAMES] = did.test.fun.make_tree(N_INITIAL, CHILDREN_RATE, CHILDREN_RATE_DECAY, MAX_DEPTH)
+% [G,NODE_NAMES] = did.test.helper.utility.make_tree(N_INITIAL, CHILDREN_RATE, CHILDREN_RATE_DECAY, MAX_DEPTH)
 %
 % Creates a tree structure starting from N_INITIAL nodes. Each initial node generates
 % a certain number of children according to the Poisson rate CHILDREN_RATE. In each
@@ -16,7 +16,7 @@ function [G,node_names] = make_tree(N_initial, children_rate, children_rate_deca
 % 
 %
 % Example:
-%  [G,node_names] = did.test.fun.make_tree(4, 3, 0.8, 10);
+%  [G,node_names] = did.test.helper.utility.make_tree(4, 3, 0.8, 10);
 %  figure;
 %  plot(digraph(G,node_names),'layout','layered');
 %
@@ -32,7 +32,7 @@ G = sparse(zeros(N_initial));
 for i=1:N_initial,
 	current_nodes = size(G,1);
 	num_children_here = poissrnd(children_rate);
-	G_ = did.test.fun.make_tree(num_children_here, children_rate*children_rate_decay, children_rate_decay, max_depth-1);
+	G_ = did.test.helper.utility.make_tree(num_children_here, children_rate*children_rate_decay, children_rate_decay, max_depth-1);
 	G = [ G zeros(size(G,1),size(G_,2)) ; ...
 		zeros(size(G_,1), size(G,2)) G_ ];
 	if num_children_here>0, 
@@ -40,4 +40,4 @@ for i=1:N_initial,
 	end;
 end;
 
-node_names = did.test.fun.name_tree(G);
+node_names = did.test.helper.utility.name_tree(G);

@@ -5,14 +5,14 @@ function add_branch_nodes(db, starting_db_branch_id, dG, node_start_index)
 %
 % Add a tree of nodes described by a digraph object DG to the did.database
 % object DB. DG should be a graph of a tree, such as that returned by
-% did.test.fun.make_tree().
+% did.test.helper.utility.make_tree().
 %
 % STARTING_DB_BRANCH_ID describes the branch in DB that we should add on
 % to. If it is empty, then we assume we are adding the first branch.
 % NODE_START_INDEX is the index number or numbers of the nodes in
 % DG to add to the database.
 %
-% See also: did.test.fun.make_tree, did.test.branch
+% See also: did.test.helper.utility.make_tree, did.test.helper.branch
 % 
 
 
@@ -38,7 +38,7 @@ for i=1:numel(node_start_index)
 	pre_ID_indexes = find(ismember(dG.Nodes{:,1},pre_ID));
 	if ~isempty(pre_ID_indexes),
 		% call recursively
-    		did.test.branch.add_branch_nodes(db,node_here,dG,pre_ID_indexes);
+    		did.test.helper.branch.add_branch_nodes(db,node_here,dG,pre_ID_indexes);
 	end;
 end;
 

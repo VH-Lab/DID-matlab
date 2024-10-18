@@ -1,7 +1,7 @@
 function [doc_struct_out, branch_node_indexes] = addrm_docs_to_branches(db, bG, branch_node_names, doc_struct, parent_node, node_start)
 % ADDRM_DOCS_TO_BRANCHES - randomly add and remove documents as we add branches, check changes
 %
-% [DOC_STRUCT, BRANCH_NODE_INDEXES] = did.test.fun.addrm_docs_to_branches(DB, BG, NODE_START )
+% [DOC_STRUCT, BRANCH_NODE_INDEXES] = did.test.helper.utility.addrm_docs_to_branches(DB, BG, NODE_START )
 %
 % Names nodes in a tree with connectivity matrix specified by G, where G(i,j) is 1 if
 % and only if node j is connected to i, and 0 otherwise. The connectivity matrix should
@@ -18,8 +18,8 @@ function [doc_struct_out, branch_node_indexes] = addrm_docs_to_branches(db, bG, 
 % index values of the node names that were updated in the call.
 %
 % Example:
-%  G = did.test.fun.make_tree(4, 3, 0.8, 10);
-%  node_names = did.test.fun.name_tree(G);
+%  G = did.test.helper.utility.make_tree(4, 3, 0.8, 10);
+%  node_names = did.test.helper.utility.name_tree(G);
 %  figure;
 %  plot(digraph(G,node_names),'layout','layered');
 %
@@ -72,7 +72,7 @@ for i=1:numel(starting_nodes),
 	% Step 2-2 modify doc_struct from the inputs by removing and adding some docs
 
 	[~,docs_to_rm,new_doc_struct.G,new_doc_struct.node_names,new_doc_struct.docs]=...
-		did.test.documents.rm_doc_tree(2, doc_struct.G, doc_struct.node_names, doc_struct.docs);
+		did.test.helper.documents.rm_doc_tree(2, doc_struct.G, doc_struct.node_names, doc_struct.docs);
 
 	if ~isempty(docs_to_rm)
 		db.remove_docs(docs_to_rm);
@@ -80,7 +80,7 @@ for i=1:numel(starting_nodes),
 
 	N = numel(new_doc_struct.docs);
 	[new_doc_struct2.G,new_doc_struct2.node_names,new_doc_struct2.docs] = ...
-		did.test.documents.add_doc_tree([5 5 5],new_doc_struct.G,...
+		did.test.helper.documents.add_doc_tree([5 5 5],new_doc_struct.G,...
 		new_doc_struct.node_names, new_doc_struct.docs);
 
 	db.add_docs(new_doc_struct2.docs(N+1:numel(new_doc_struct2.docs)));
@@ -92,7 +92,7 @@ for i=1:numel(starting_nodes),
 
 	% Step 2-3 check that the documents match what we expect
 
-	[b,msg] = did.test.documents.verify_db_document_structure(db,...
+	[b,msg] = did.test.helper.documents.verify_db_document_structure(db,...
 		new_doc_struct2.G, new_doc_struct2.docs);
 
 	if ~b,
@@ -105,7 +105,7 @@ for i=1:numel(starting_nodes),
 	next_nodes = find(bG(:,node_here)==1); % who is connected to this node?
 
 	for j=1:numel(next_nodes),
-		[doc_struct_next,node_indexes_next] = did.test.fun.addrm_docs_to_branches(db, bG, branch_node_names, ...
+		[doc_struct_next,node_indexes_next] = did.test.helper.utility.addrm_docs_to_branches(db, bG, branch_node_names, ...
 			new_doc_struct2, node_here, next_nodes(j));
 		for k=1:numel(node_indexes_next), % copy any non-empty node_names
 			index_here = node_indexes_next(k); % global index

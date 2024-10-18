@@ -28,7 +28,7 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
 % G(i,j) is 1 if document j depends on document i and 0 otherwise.
 % 
 % Example:
-%   [G,node_names,docs] = did.test.documents.make_doc_tree([10 10 10]);
+%   [G,node_names,docs] = did.test.helper.documents.make_doc_tree([10 10 10]);
 %   dG = digraph(G,node_names);
 %   figure;
 %   plot(dG,'layout','layered');
