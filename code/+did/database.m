@@ -1608,19 +1608,22 @@ keyboard
           % that matches the EXPECTEDNAME. EXPECTEDNAME can either be an exact match
           % or can a string 'ANYTHING_#' and ACTUALNAMES{INDEX} can have a number (e.g., 'ANYTHING_5').
           %
+             arguments
+                 expectedName (1,:) char 
+                 actualNames cell {mustBeText} 
+             end
              index = find(strcmp(expectedName,actualNames));
-             if isempty(index),
-                if expectedName(end)=='#', 
+             if isempty(index)
+                if expectedName(end)=='#' 
                    tf = startsWith(actualNames,expectedName(1:end-1));
                    indexes = find(tf);
-                   for k=1:numel(indexes),
-                      rest_of_name = docNamesList{i}(numel(expectedNamesList{indexes(k)}):end);
-                      if all(rest_of_name>=double('0') & rest_of_name<=double('9')),
+                   for k=1:numel(indexes)
+                      if did.database.isfilenamematch(expectedName,actualNames{indexes(k)})
                          index(end+1) = k;
-                      end;
-                   end;
-                end;
-             end;
+                      end
+                   end
+                end
+             end
        end; % findfilematch()
        function b = isfilenamematch(expectedName,actualName)
            % ISFILENAMEMATCH - are two file names matched?
