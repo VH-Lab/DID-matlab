@@ -24,12 +24,12 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
 %  calls CHECKOUT_LOCK_FILE is able to create the file (that is, FID>0),
 %  then it should call RELEASE_LOCK_FILE to remove the lock file.
 %  
-%  IMPORANT: FILE CLOSURE: If 2 output arguments are given (that is, KEY is
+%  IMPORTANT: FILE CLOSURE: If 2 output arguments are given (that is, KEY is
 %  examined), then the lock file is closed before CHECKOUT_LOCK_FILE exits.
 %  If KEY is not requested in output, then the FID is left open for 
 %  backwards compatibility.
 %
-%  Depricated release instructions (new code should not use): 
+%  Deprecated release instructions (new code should not use): 
 %  1) close the file with fclose(FID) and 2) delete the file
 %  FILENAME that is created with delete(FILENAME).  If FID<0, then
 %  it should NOT delete the file FILENAME because it is checked out by

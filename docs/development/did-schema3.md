@@ -52,7 +52,7 @@ fieldnames and structure names can be any alphanumeric character but can only ha
 | double | Double precision value | MINVALUE, MAXVALUE, NANOKAY, where NANOKAY is 1 if NaN values are okay |
 | matrix | Double precision matrix | ROWS, COLUMNS (the number of rows and the number of columns in the matrix |
 | timestamp | A timestamp in UTC | no parameters |
-| char | A charcter array | length |
+| char | A character array | length |
 | did_uid   | A DID UID | no parameters |
 
 `superclasses` lists the superclasses by the locations of their schema files.

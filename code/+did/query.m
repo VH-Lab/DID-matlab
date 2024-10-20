@@ -35,7 +35,7 @@ classdef query
 			% SEARCH that is a structure array of search structures
 			% appropriate for use with FIELDSEARCH.
 			%
-			% Tha is, SEARCH has the fields:
+			% That is, SEARCH has the fields:
 			% Field:                   | Description
 			% ---------------------------------------------------------------------------
 			% field                      | A character string of the field of A to examine

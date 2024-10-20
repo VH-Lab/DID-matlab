@@ -3,7 +3,7 @@ classdef dumbjsondb
 	%
 	% DUMBJSONDB implements a very simple JSON-based document database. Each document is
 	% represented as a JSON file. Each document also has an associated binary file that can
-	% be read/written. The search capabilities of DUMBJSONDB are very rudimentory, and every
+	% be read/written. The search capabilities of DUMBJSONDB are very rudimentary, and every
 	% document is read in for examination. Therefore, searching DUMBJSONDB will be very slow.
 	% Furthermore, as all of the documents are stored in a single directory, the database size
 	% will be limited to the number of files that are permitted in a single directory by the
@@ -236,7 +236,7 @@ classdef dumbjsondb
 			%
 			% Attempts to obtain the lock and open the binary file associated with
 			% DOC_UNIQUE_ID and DOC_VERSION for reading/writing. If DOC_VERSION is not present,
-			% then the lastest version is used. All the binary files are in 'big-endian' format and 
+			% then the latest version is used. All the binary files are in 'big-endian' format and 
 			% are opened as such by OPENBINARYFILE. 
 			%
 			% If there is no such file, an error is generated. If the file is locked by another program,
@@ -298,7 +298,7 @@ classdef dumbjsondb
 			% [FID] = CLOSEBINARYFILE(DUMBJSONDB_OBJ, FID, KEY, DOC_UNIQUE_ID, [DOC_VERSION])
 			%
 			% Closes the binary file associated with DUMBJSONDB that has file identifier FID,
-			% DOC_UNIQUE_ID and DOC_VERSION. If DOC_VERSION is not provided, the lastest will be used.
+			% DOC_UNIQUE_ID and DOC_VERSION. If DOC_VERSION is not provided, the latest will be used.
 			% This function closes the file and deletes the lock file. KEY is the key that is returned
 			% by OPENBINARYFILE, and is needed to release the lock on the binary file.
 			%
@@ -530,7 +530,7 @@ classdef dumbjsondb
 		end % docversions()
 
 		function [L,v] = latestdocversion(dumbjsondb_obj, doc_unique_id)
-			% LATESTDOCVERSION - return most recent documnet version number
+			% LATESTDOCVERSION - return most recent document version number
 			%
 			% [L, V] = LATESTDOCVERSION(DUMBJSONDB_OBJ, DOC_UNIQUE_ID)
 			%
@@ -610,7 +610,7 @@ classdef dumbjsondb
 			%
 			% Updates the metadata file(s) given that we just wrote or removed a document from the database.
 			% DOCUMENT is the Matlab object that was just written (can be empty if removed), DOC_UNIQUE_ID 
-			% is the document unique ID, DOC_VERSION is the version that was just manupulated.
+			% is the document unique ID, DOC_VERSION is the version that was just manipulated.
 			% OPERATION can be one of the following entries:
 			% Value                 | Description
 			% -------------------------------------------------------------------------------------------
