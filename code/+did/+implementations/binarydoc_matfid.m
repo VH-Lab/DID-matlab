@@ -35,7 +35,7 @@ classdef binarydoc_matfid < did.binarydoc & did.file.fileobj
 			% FCLOSE - close an BINARYDOC_MATFID object
 			%
 			% Closes the file, but also clears the fullpathfilename and other fields so the 
-			% user cannot re-use the object without checking out another binary document from
+			% user cannot reuse the object without checking out another binary document from
 			% the database.
 			%
 				binarydoc_matfid_obj.fclose@did.file.fileobj();

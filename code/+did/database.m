@@ -592,7 +592,7 @@ classdef (Abstract) database < handle
             % specified using the (mandatory) FILENAME parameter.
 			%
 			% DOCUMENT_ID can be either the document id of a did.document, or a
-            % did.document object itsef.
+            % did.document object itself.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
@@ -622,7 +622,7 @@ classdef (Abstract) database < handle
             % does not exist, this output is an empty character vector.
             %
 			% DOCUMENT_ID can be either the document id of a did.document, or a
-            % did.document object itsef.
+            % did.document object itself.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
@@ -706,7 +706,7 @@ classdef (Abstract) database < handle
             % list of matching did.document IDs.
             %
             % If BRANCH_ID is empty or not specified, the current branch is used.
-            % An error is genereted if the specified BRANCH_ID does not exist.
+            % An error is generated if the specified BRANCH_ID does not exist.
 			% 
 			% This function returns a cell array of did.document IDs. If no
             % documents match the query, an empty cell array ({}) is returned.

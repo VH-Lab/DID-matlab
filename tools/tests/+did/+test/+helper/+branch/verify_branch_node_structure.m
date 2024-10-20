@@ -40,7 +40,7 @@ for i=1:numel(node_names),
 		msg = ['Error in sub_branch of ' node_names{i} '.'];
 	end;
 
-	% now try examing the same by setting the current branch
+	% now try examining the same by setting the current branch
 	
 	db.set_branch(node_names{i});
 	s_ = db.get_branch_parent();

@@ -1,5 +1,5 @@
 %function did_Init
-% DID_INIT - initalize a global variable did_globals with default file paths
+% DID_INIT - initialize a global variable did_globals with default file paths
 
 mydidpath = fileparts(which('did_Init'));
 

@@ -298,7 +298,7 @@ classdef  postgresdb < database
         
         
 		function [data, versions] = do_search(did_postgresdb_obj, searchoptions, searchparams)
-			% Takes in a list of search paramaters (an array of 
+			% Takes in a list of search parameters (an array of 
             % search op
             %
             % Note: searchoptions is not used

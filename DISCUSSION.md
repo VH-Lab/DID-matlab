@@ -104,7 +104,7 @@ document_properties.
 
 ## did_id string
 
-The `did_id string` is an ID constructed out of two 64-bit numbers expressed in hexidecimal with a '_' in between. It is built as
+The `did_id string` is an ID constructed out of two 64-bit numbers expressed in hexadecimal with a '_' in between. It is built as
 
 ```
 serial_date_number = convertTo(datetime('now','TimeZone','UTCLeapSeconds'),'datenum');

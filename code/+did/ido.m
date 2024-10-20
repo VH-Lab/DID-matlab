@@ -58,7 +58,7 @@ classdef ido
 			% ID = DID.IDO.UNIQUE_ID()
 			%
 			% Generates a unique ID character array based on the current time and a random
-			% number. It is a hexidecimal representation of the serial date number in
+			% number. It is a hexadecimal representation of the serial date number in
 			% UTC Leap Seconds time. The serial date number is the number of days since January 0, 0000 at 0:00:00.
 			% The integer portion of the date is the whole number of days and the fractional part of the date number
 			% is the fraction of days.

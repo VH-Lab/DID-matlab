@@ -7,7 +7,7 @@ function [G_out, node_names_out, docs_out] = add_doc_tree(rates, G, node_names, 
 % DOCS, ADD_DOC_TREE adds to these elements by adding new demo documents of
 % type demoA demoB and demoC at poisson rates RATES. RATES(1) is the rate of
 % creation of document type A, RATES(2) is the poisson rate of creation of document
-% type B, and RATES(3) is the poisson rate of createion of document type C.
+% type B, and RATES(3) is the poisson rate of creation of document type C.
 %
 % The As and Bs are created first. When each C type document is created,
 % an A and B document (and C document, if they exist) are randomly selected
