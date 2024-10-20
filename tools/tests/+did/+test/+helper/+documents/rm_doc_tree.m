@@ -17,8 +17,8 @@ function [doc_ids_rm, doc_ids_rm_seed, G_out, node_names_out, docs_out] = rm_doc
 % G_OUT(i,j) is 1 if document j depends on document i and 0 otherwise.
 % 
 % Example:
-%   [G,node_names,docs] = did.test.documents.make_doc_tree([10 10 10]);
-%   [doc_ids_rm,doc_ids_rm_seed,Grm,node_names_rm,docs_rm] = did.test.documents.rm_doc_tree(2, G, node_names, docs);
+%   [G,node_names,docs] = did.test.helper.documents.make_doc_tree([10 10 10]);
+%   [doc_ids_rm,doc_ids_rm_seed,Grm,node_names_rm,docs_rm] = did.test.helper.documents.rm_doc_tree(2, G, node_names, docs);
 %   dG = digraph(Grm,node_names_rm);
 %   figure;
 %   plot(dG,'layout','layered');

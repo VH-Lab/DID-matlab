@@ -1,7 +1,7 @@
 function [node_names, node_indexes] = name_tree(G, initial_node_name_prefix, node_start)
 % NAME_TREE - name the nodes in a tree structure with given adjacency matrix
 %
-% [NODE_NAMES, NODE_INDEXES] = did.test.fun.name_tree(G, [INITAL_NODE_NAME_PREFIX], [NODE_START])
+% [NODE_NAMES, NODE_INDEXES] = did.test.helper.utility.name_tree(G, [INITAL_NODE_NAME_PREFIX], [NODE_START])
 %
 % Names nodes in a tree with connectivity matrix specified by G, where G(i,j) is 1 if
 % and only if node j is connected to i, and 0 otherwise. The connectivity matrix should
@@ -18,8 +18,8 @@ function [node_names, node_indexes] = name_tree(G, initial_node_name_prefix, nod
 % index values of the node names that were updated in the call.
 %
 % Example:
-%  G = did.test.fun.make_tree(4, 3, 0.8, 10);
-%  node_names = did.test.fun.name_tree(G);
+%  G = did.test.helper.utility.make_tree(4, 3, 0.8, 10);
+%  node_names = did.test.helper.utility.name_tree(G);
 %  figure;
 %  plot(digraph(G,node_names),'layout','layered');
 %
@@ -56,11 +56,11 @@ end;
 
 for i=1:numel(starting_nodes),
 	node_here = starting_nodes(i);
-	node_names{node_here} = [initial_node_name_prefix did.test.fun.number_to_alpha_label(i)];
+	node_names{node_here} = [initial_node_name_prefix did.test.helper.utility.number_to_alpha_label(i)];
 	node_indexes(end+1) = node_here;
 	% where do we go from here?
 	next_nodes = find(G(:,node_here)==1); % who is connected to this node?
-	[node_names_next,node_indexes_next] = did.test.fun.name_tree(G, node_names{node_here}, next_nodes);
+	[node_names_next,node_indexes_next] = did.test.helper.utility.name_tree(G, node_names{node_here}, next_nodes);
 	for k=1:numel(node_indexes_next), % copy any non-empty node_names
 		index_here = node_indexes_next(k); % global index
 		if isempty(node_names_next{index_here}),

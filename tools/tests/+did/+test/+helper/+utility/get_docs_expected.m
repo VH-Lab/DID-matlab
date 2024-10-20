@@ -32,7 +32,7 @@ switch query
         end
         %from those docs, find docs that match the value
         for doc_ind = 1:length(docs_id_match)
-            demoType = did.test.fun.get_demoType(docs{doc_ind});
+            demoType = did.test.helper.utility.get_demoType(docs{doc_ind});
             each_value = eval(['docs{doc_ind}.document_properties.',demoType,'.value']);
             if did.datastructures.eqlen(each_value,value_input),
                 docs_expected{end+1} = docs{doc_ind};
@@ -42,7 +42,7 @@ switch query
         %keep adding docs that match the version to the list of docs that
         %match the id (but don't add those that already match id and are in the list)
         for doc_ind = 1:length(docs)
-            demoType = did.test.fun.get_demoType(docs{doc_ind});
+            demoType = did.test.helper.utility.get_demoType(docs{doc_ind});
             each_value = eval(['docs{doc_ind}.document_properties.',demoType,'.value']);
             if ismember(each_value,value_input) | strcmp(docs{doc_ind}.id,id_input)
                 docs_expected{end+1} = docs{doc_ind};
@@ -51,7 +51,7 @@ switch query
     case 'not'
         %add docs that don't match the ID
         for doc_ind = 1:length(docs)
-            demoType = did.test.fun.get_demoType(docs{doc_ind});
+            demoType = did.test.helper.utility.get_demoType(docs{doc_ind});
             each_value = eval(['docs{doc_ind}.document_properties.',demoType,'.value']);
             if ~strcmp(docs{doc_ind}.id,id_input)
                 docs_expected{end+1} = docs{doc_ind};

@@ -16,8 +16,8 @@ function [G_out, node_names_out, docs_out] = add_doc_tree(rates, G, node_names, 
 % G(i,j) is 1 if document j depends on document i and 0 otherwise.
 % 
 % Example:
-%   [G,node_names,docs] = did.test.documents.make_doc_tree([10 10 10]);
-%   [G_out,node_names_out,docs_out] = did.test.documents.add_doc_tree([10 10 10], G, node_names, docs);
+%   [G,node_names,docs] = did.test.helper.documents.make_doc_tree([10 10 10]);
+%   [G_out,node_names_out,docs_out] = did.test.helper.documents.add_doc_tree([10 10 10], G, node_names, docs);
 %   dG = digraph(G_out,node_names_out);
 %   figure;
 %   plot(dG,'layout','layered');

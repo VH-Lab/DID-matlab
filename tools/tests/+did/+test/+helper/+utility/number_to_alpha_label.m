@@ -8,10 +8,10 @@ function s = number_to_alpha_label(n)
 % For example, 1 is 'a', 2 is 'b', 27 is 'aa', etc.
 %
 % Examples:
-%  s1 = did.test.fun.number_to_alpha_label(1)
-%  s2 = did.test.fun.number_to_alpha_label(2)
-%  s27 = did.test.fun.number_to_alpha_label(27)
-%  s1001 = did.test.fun.number_to_alpha_label(1001)
+%  s1 = did.test.helper.utility.number_to_alpha_label(1)
+%  s2 = did.test.helper.utility.number_to_alpha_label(2)
+%  s27 = did.test.helper.utility.number_to_alpha_label(27)
+%  s1001 = did.test.helper.utility.number_to_alpha_label(1001)
 %
 
 base_26 = dec2base(n,26);
