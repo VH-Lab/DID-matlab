@@ -1,5 +1,5 @@
 function codecheckToolbox()
-    installMatBox()
+    installMatBox("commit")
     projectRootDirectory = didtools.projectdir();
-    matbox.tasks.codecheckToolbox(projectRootDirectory)
+    matbox.tasks.codecheckToolbox(projectRootDirectory, "CreateBadge", false)
 end
