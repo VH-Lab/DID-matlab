@@ -732,49 +732,74 @@ classdef document
 			%
 			% A JSONFILELOCATIONSTRING can be:
 			%      a) a url
-			%      b) a filename (full path)
-			%      c) a relative filename with respect to $NDIDOCUMENTPATH
-			%      d) a filename referenced with respect to $NDIDOCUMENTPATH
+			%      b) a full path filename with the .json extension
+			%      c) a full path filename referenced with respect to a $PATH, where $PATH is
+			%         one of the keys in did.common.PathConstants.definitions.keys()
+			%      d) a filename (without the .json extension) located in any directory or subdirectory
+			%         of did.common.PathConstants.definitions.values()
 			%
 
-				jsonfilelocationstring_update = did.common.utility.replace_didpath(jsonfilelocationstring);
+				% step a) do we have a URL?
 
-				if ~strcmp(jsonfilelocationstring_update,jsonfilelocationstring), % insert the location
-					filename = jsonfilelocationstring_update;
-				else,
-					% first, guess that it is a complete path from the first search path
-                    definitionLocations = did.common.PathConstants.definitions.values();
-					for i = 1:numel(definitionLocations)
-						filename = [definitionLocations{i} filesep did.file.filesepconversion(jsonfilelocationstring,did.filesep,filesep)];
-						if ~exist(filename,'file'),
-							% try adding extension
-							filename = [filename '.json'];
+				if did.file.isurl(jsonfilelocationstring),
+					t = urlread(jsonfilelocationstring);
+					return;
+				end;
+
+				% step b) do we have a fullpath filename?
+
+				if isfile(jsonfilelocationstring),
+					t = fileread(jsonfilelocationstring);
+					return;
+				end;
+					
+				% step c) do we have a $PATH reference
+
+				extracted_str = regexp(jsonfilelocationstring, '\$\w+', 'match');
+
+				if ~isempty(extracted_str),
+					if numel(extracted_str)>1,
+						error(['DID:Document:readjsonfilelocation:more than one $PATH indicated.']);
+					end;
+
+					locations = did.common.PathConstants.definitions(extracted_str{1});
+					if ~iscell(locations), 
+						locations = {locations};
+					end;
+					for i=1:numel(locations),
+						filename = strrep(jsonfilelocationstring,extracted_str{1},locations{i});
+						if isfile(filename),
+							t=fileread(filename);
+							return;
 						end;
-						if ~exist(filename,'file'), 
-							filename = jsonfilelocationstring;
-							[p,n,e] = fileparts(filename);
-							if isempty(e),
-								filename = [filename '.json'];
-							end;
-							if ~exist(filename,'file'),
-								filename2 = [definitionLocations{i} filesep filename];
-								if ~exist(filename2,'file'),
-									error(['Cannot find file ' filename '.']);
-								else,
-									filename = filename2;
-								end;
-							end;
+					end;
+					% if we are here, we didn't find it in the locations
+					error(['DID:Document:readjsonfilelocation:could not find a match in ' extract_str{1} ' directories .']);
+				end;
+
+				% step d) look for 'jsonfilelocationstring.json' in our paths
+				defLocs = did.common.PathConstants.definitions.values();
+				for i=1:numel(defLocs),
+					if ~iscell(defLocs{i}),
+						mypaths = {defLocs{i}};
+					else,
+						mypaths = defLocs{i};
+					end;
+					for j=1:numel(mypaths),
+						files = dir([mypaths{j} filesep '**']);
+						index = find( strcmp([jsonfilelocationstring '.json'], {files.name}) );
+						if numel(index)>1,
+							error(['DID:Document:readjsonfilelocation:found multiple matches for ' jsonfilelocationstring '.']);
+						elseif ~isempty(index),
+							t = fileread(fullfile(files(index).folder,files(index).name));
+							return;
 						end;
-					end
-				end
+					end;
+				end;
 
-				% filename could be url or filename
+				% if we are here, we did not find any matches
+				error(['DID:Document:readjsonfilelocation:found no match for ' jsonfilelocationstring '.']);
 
-				if did.file.isurl(filename),
-					t = urlread(filename);
-				else,
-					t = did.file.textfile2char(filename);
-				end
 		end %  did.document.readjsonfilelocation()
     end % methods Static
 end % classdef

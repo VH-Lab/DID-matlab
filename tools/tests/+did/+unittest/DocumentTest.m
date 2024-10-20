@@ -29,7 +29,7 @@ classdef DocumentTest < matlab.unittest.TestCase
     methods (Test)
         function testAddDocuments(testCase)
             % Generate a set of documents with node names and a graph of the dependencies
-            [G,node_names,docs] = did.test.documents.make_doc_tree([30 30 30]);
+            [G,node_names,docs] = did.test.documents.make_doc_tree([10 10 10]);
             
             figure;
             testCase.dG = digraph(G,node_names);

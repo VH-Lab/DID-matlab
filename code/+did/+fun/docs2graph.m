@@ -1,4 +1,4 @@
-function [G,nodes,mdigraph] = ndi_docs2graph(document_obj)
+function [G,nodes,mdigraph] = docs2graph(document_obj)
 % DOCS2GRAPH - create a directed graph from a cell array of DID.DOCUMENT objects
 % 
 % [G,NODES,MDIGRAPH] = DOCS2GRAPH(DOCUMENT_OBJ)

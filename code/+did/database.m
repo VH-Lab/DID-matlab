@@ -1052,9 +1052,19 @@ classdef (Abstract) database < handle
             % Get the path location of path placeholders
             definitionNames = did.common.PathConstants.definitions.keys();
             definitionLocations = did.common.PathConstants.definitions.values();
-            try pathDefs = strrep(definitionNames,'$','\$');    catch, pathDefs = {}; end
-            try pathLocs = strrep(definitionLocations,'\','/'); catch, pathLocs = {}; end
-
+            pathDefs = {};
+            pathLocs = {};
+            for i=1:numel(definitionLocations),
+                if iscell(definitionLocations{i}),
+                    for j=1:numel(definitionLocations{i}),
+                        pathDefs{end+1} = strrep(definitionNames{i},'$','\$');
+                        pathLocs{end+1} = strrep(definitionLocations{i}{j},'\','/');
+                    end;
+                else,
+                    pathDefs{end+1} = strrep(definitionNames{i},'$','\$');
+                    pathLocs{end+1} = strrep(definitionLocations{i},'\','/');
+                end;
+            end;
             schema_filename_potential = {};
             matches = [];
             % could be multiple candidates
