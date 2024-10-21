@@ -15,7 +15,6 @@ classdef document
             %   or
             % DID_DOCUMENT_OBJ = DID_DOCUMENT(MATLAB_STRUCT)
             %
-            %
 
             made_from_struct = 0;
 
@@ -221,7 +220,6 @@ classdef document
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, generate no error but take no action.
             %
-            %
 
             arguments
                 did_document_obj
@@ -267,7 +265,6 @@ classdef document
             % -----------------------------------------------------------------
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, return empty.
-            %
             %
 
             arguments
@@ -316,7 +313,6 @@ classdef document
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, generate no error but take no action.
             %
-            %
 
             arguments
                 did_document_obj
@@ -348,7 +344,6 @@ classdef document
             % -----------------------------------------------------------------
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, generate no error but take no action.
-            %
             %
 
             arguments
@@ -686,7 +681,7 @@ classdef document
                     for i=1:numel(j.document_class.superclasses),
                         item = did.datastructures.celloritem(j.document_class.superclasses, i, 1);
                         s_super{end+1} = did.document.readblankdefinition(item.definition);
-                        %% add more fields besides 'definition' to the document_class.superclasses struct
+                        % add more fields besides 'definition' to the document_class.superclasses struct
                         item.property_list_name = s_super{end}.document_class.property_list_name;
                         item.class_version = s_super{end}.document_class.class_version;
                         superclasses(end+1) = item;

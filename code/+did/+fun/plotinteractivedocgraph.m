@@ -1,5 +1,4 @@
 function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
-    %
     % PLOTINTERACTIVEDOCGRAPH(DOCS, G, MDIGRAPH, NODES, LAYOUT)
     %
     % Given a cell array of NDI_DOCUMENTs DOCS, a connectivity matrix
