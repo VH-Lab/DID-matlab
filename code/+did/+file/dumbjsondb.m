@@ -336,7 +336,7 @@ classdef dumbjsondb
             p = dumbjsondb_obj.documentpath();
 
             lockfilename = [p f '-lock'];
-            release_lock_file(lockfilename,key);
+            did.file.release_lock_file(lockfilename,key);
         end % closebinaryfile
 
         function [docs, doc_versions] = search(dumbjsondb_obj, searchParams, scope)
