@@ -270,7 +270,7 @@ classdef dumbjsondb
             if nargin<3,
                 doc_version = [];
             end;
-            [document, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
+            [~, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
 
             % otherwise, we need to open one
 
@@ -309,7 +309,7 @@ classdef dumbjsondb
             % if the file is open, close it
 
             if fid>0,
-                [fname,perm] = fopen(fid);
+                fname = fopen(fid);
 
                 if numel(fname)>numel('.binary'),
                     if ~strcmpi(fname(end-6:end),'.binary'),
@@ -330,7 +330,7 @@ classdef dumbjsondb
             if nargin<5,
                 doc_version = [];
             end;
-            [document, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
+            [~, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
 
             f = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id, doc_version);
             p = dumbjsondb_obj.documentpath();

@@ -178,7 +178,7 @@ function b = fieldsearch(A, searchstruct)
                         end;
                         b_ = 1; % does this one match?
                         for k=1:numel(searchstruct.param1),
-                            [isthere2,value2] = did.datastructures.isfullfield(item,searchstruct.param1{k});
+                            [~,value2] = did.datastructures.isfullfield(item,searchstruct.param1{k});
                             if ischar(value2) | isempty(value2),
                                 if strcmpi(searchstruct.operation,'hasanysubfield_contains_string'),
                                     b_ = b_ & ~isempty(strfind(value2,searchstruct.param2{k}));

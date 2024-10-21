@@ -213,7 +213,7 @@ classdef binaryTable < handle
             binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
             binaryTableObj.file.fopen();
 
-            [r,c] = binaryTableObj.getSize();
+            [r,~] = binaryTableObj.getSize();
             if isinf(row), % read them all
                 fseek(binaryTableObj.file, binaryTableObj.headerSize+sum(binaryTableObj.recordSize(1:col-1)), 'bof');
                 skipBytes = binaryTableObj.rowSize()-binaryTableObj.recordSize(col);
@@ -260,7 +260,7 @@ classdef binaryTable < handle
                 dataCell cell {mustBeVector}
             end
 
-            [r,c] = binaryTableObj.getSize();
+            [r,~] = binaryTableObj.getSize();
 
             if insertAfter>r+1,
                 error(['Row must be in 0..number of rows (' int2str(r) ').']);
@@ -332,7 +332,7 @@ classdef binaryTable < handle
                 row (1,1) {mustBePositive}
             end
 
-            [r,c] = binaryTableObj.getSize();
+            [r,~] = binaryTableObj.getSize();
 
             if row>r+1,
                 error(['Row must be in 1..number of rows (' int2str(r) ').']);

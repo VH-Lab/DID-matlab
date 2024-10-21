@@ -698,7 +698,7 @@ classdef document
                 if isfield(s,'document_class')&isfield(s_super{i},'document_class'),
                     s.document_class.superclasses = cat(1,s.document_class.superclasses(:),...
                         s_super{i}.document_class.superclasses(:));
-                    [dummy,unique_indexes] = unique({s.document_class.superclasses.definition});
+                    [~,unique_indexes] = unique({s.document_class.superclasses.definition});
                     s.document_class.superclasses = s.document_class.superclasses(unique_indexes);
                 else,
                     error(['Documents lack ''document_class'' fields.']);
@@ -710,7 +710,7 @@ classdef document
                 if isfield(s,'depends_on') & isfield(s_super{i},'depends_on'), % if only s or super_s has it, merge does it right
                     s.depends_on = cat(1,s.depends_on(:),s_super{i}.depends_on(:));
                     s_super{i} = rmfield(s_super{i},'depends_on');
-                    [dummy,unique_indexes] = unique({s.depends_on.name});
+                    [~,unique_indexes] = unique({s.depends_on.name});
                     s.depends_on= s.depends_on(unique_indexes);
                 else,
                     % regular structmerge is fine, will use 'depends_on' field of whichever structure has it, or none
