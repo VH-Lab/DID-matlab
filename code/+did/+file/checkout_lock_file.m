@@ -106,7 +106,7 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
         file_exists = isfile(filename);
 
         if file_exists,
-            C = split(char(fileread(filename)), newline); % Future: replace with readlines
+            C = did.file.readlines(filename);
 
             if ~isempty(C),
                 try,
