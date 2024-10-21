@@ -157,7 +157,7 @@ classdef dumbjsondb
 				p = dumbjsondb_obj.documentpath();
 				f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
 
-				fileexist = exist([p f],'file');
+				fileexist = isfile([p f]);
                 
 				we_know_we_have_latest_version = []; % we will assign this below
 
@@ -220,7 +220,7 @@ classdef dumbjsondb
 				else, % read specific version
 					p = dumbjsondb_obj.documentpath();
 					f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
-					if exist([p f],'file'),
+					if isfile([p f]),
 						t = did.file.textfile2char([p f]); % dev note: should this go in separate function? maybe
 						document = jsondecode(t);
 					else,
@@ -441,11 +441,11 @@ classdef dumbjsondb
 					bfname = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id,version(i));
 
 					% delete the object file
-					if exist([p vfname],'file'),
+					if isfile([p vfname]),
 						delete([p vfname]);
 					end
 					% delete any binary data
-					if exist([p bfname],'file'),
+					if isfile([p bfname]),
 						delete([p bfname]);
 					end
 				end
@@ -584,7 +584,7 @@ classdef dumbjsondb
 				
 				% a) the doc file
 				p = dumbjsondb_obj.documentpath();
-                if ~exist(p,'dir'), 
+                if ~isfolder(p), 
                     mkdir(p);
                 end;
 				docfile = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
@@ -636,13 +636,13 @@ classdef dumbjsondb
 						if numel(v)>0, % we have a version
 							did.file.str2text(metafile,mat2str(max(v)));
 						else,
-							if exist(metafile,'file'),
+							if isfile(metafile),
 								delete(metafile);
 							end;
 						end;
 					case lower('Deleted all versions'), 
 						% if we know we deleted all versions, then we need to delete the metadata file
-						if exist(metafile,'file'),
+						if isfile(metafile),
 							delete(metafile);
 						end;
 					otherwise, 
@@ -686,7 +686,7 @@ classdef dumbjsondb
 
 				% Step 1) make the path directory if needed
 				[filepath] = path(dumbjsondb_obj);
-				if ~exist(filepath,'dir'),
+				if ~isfolder(filepath),
 					try,
 						mkdir(filepath);
 					catch,
@@ -706,7 +706,7 @@ classdef dumbjsondb
 
 				% Step 3) attempt to create the directory
 				thedir = [filepath filesep dumbjsondb_obj.dirname];
-				if ~exist(thedir),
+				if ~isfolder(thedir),
 					try,
 						mkdir([thedir]);
 					catch,
@@ -781,7 +781,7 @@ classdef dumbjsondb
 			% decodes it using JSONDECODE. If FILENAME does not exist, then
 			% DOC_OBJECT is empty ([]).
 			%
-				if exist(filename,'file')
+				if isfile(filename)
 					t = did.file.textfile2char([p f]); 
 					doc_object = jsondecode(t);
 				else,
@@ -878,7 +878,7 @@ classdef dumbjsondb
 			%
 			% Read the parameters from the JSON file
 			%
-				if ~exist(filename,'file'),
+				if ~isfile(filename),
 					error(['File ' filename ' does not exist.']);
 				end
 				t = did.file.textfile2char(filename);

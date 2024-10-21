@@ -339,7 +339,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                                     [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                                 else  % url
                                     websave(destPath, sourcePath);
-                                    status = exist(destPath,'file');
+                                    status = isfile(destPath);
                                 end
                             catch err
                                 status = false;
@@ -589,7 +589,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     elseif strcmpi(file_type,'url'),
 			% call fileCache object to add the file
                         websave(destPath, sourcePath);
-                        if ~exist(destPath,'file'), error(' '); end
+                        if ~isfile(destPath), error(' '); end
                     end
                     % now we have the temporary file for the file cache
                     didCache.addFile(destPath, this_file_struct.uid);
