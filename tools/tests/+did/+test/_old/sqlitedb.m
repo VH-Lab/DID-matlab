@@ -1,17 +1,17 @@
 function doc_ids = test_did_sqlitedb(dirname)
-% TEST_DID_SQLITEDB - Test the functionality of DID_DATABASE SQLite database
-%
-%  DOC_IDS = TEST_DID_SQLITEDB(DIRNAME)
-%
-%  This test function tries to create a DID_DOCUMENT object and store it in a
-%  DID_DATABASE of type SQLite in the specified DIRNAME folder. 
-%
-%  If DIRNAME is not provided, [did.common.PathConstants.testpath] is used. 
-%  If the resulting DIRNAME is invalid, DIRNAME is set to the %TEMPDIR% folder.
-%
-%  Upon completion, the test function removes the database file from DIRNAME and
-%  returns the doc_ids created during the test.
-%
+    % TEST_DID_SQLITEDB - Test the functionality of DID_DATABASE SQLite database
+    %
+    %  DOC_IDS = TEST_DID_SQLITEDB(DIRNAME)
+    %
+    %  This test function tries to create a DID_DOCUMENT object and store it in a
+    %  DID_DATABASE of type SQLite in the specified DIRNAME folder.
+    %
+    %  If DIRNAME is not provided, [did.common.PathConstants.testpath] is used.
+    %  If the resulting DIRNAME is invalid, DIRNAME is set to the %TEMPDIR% folder.
+    %
+    %  Upon completion, the test function removes the database file from DIRNAME and
+    %  returns the doc_ids created during the test.
+    %
 
     if nargin < 1
         try dirname = did.common.PathConstants.testpath; catch, dirname = tempdir; end

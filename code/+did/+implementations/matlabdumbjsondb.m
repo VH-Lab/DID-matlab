@@ -7,17 +7,17 @@ classdef  matlabdumbjsondb < did.database
     methods
 
         function did_matlabdumbjsondb_obj = matlabdumbjsondb(varargin)
-        % DID_MATLABDUMBJSONDB make a new MATLABDUMBJSONDB object
-        % 
-        % DID_MATLABDUMBJSONDB_OBJ = DID_MATLABDUMBJSONDB(COMMAND, PATHNAME)
-        %
-        % Creates a new MATLABDUMBJSONDB object.
-        %
-        % COMMAND can either be 'Load' or 'New'. The second argument
-        % should be the full pathname of the location where the files
-        % should be stored on disk.
-        %
-        % See also: DUMBJSONDB, DUMBJSONDB/DUMBJSONDB
+            % DID_MATLABDUMBJSONDB make a new MATLABDUMBJSONDB object
+            %
+            % DID_MATLABDUMBJSONDB_OBJ = DID_MATLABDUMBJSONDB(COMMAND, PATHNAME)
+            %
+            % Creates a new MATLABDUMBJSONDB object.
+            %
+            % COMMAND can either be 'Load' or 'New'. The second argument
+            % should be the full pathname of the location where the files
+            % should be stored on disk.
+            %
+            % See also: DUMBJSONDB, DUMBJSONDB/DUMBJSONDB
             connection = '';
             if nargin>1,
                 connection = varargin{2};
@@ -26,7 +26,7 @@ classdef  matlabdumbjsondb < did.database
             did_matlabdumbjsondb_obj.db = did.file.dumbjsondb(varargin{1:end},...
                 'dirname','dumbjsondb','unique_object_id_field','base.id');
         end; % did_matlabdumbjsondb()
-    end 
+    end
 
     methods, % public
         function docids = alldocids(did_matlabdumbjsondb_obj)
@@ -37,7 +37,7 @@ classdef  matlabdumbjsondb < did.database
             % Return all document unique reference strings as a cell array of strings. If there
             % are no documents, empty is returned.
             %
-                docids = did_matlabdumbjsondb_obj.db.alldocids();
+            docids = did_matlabdumbjsondb_obj.db.alldocids();
         end; % alldocids()
     end;
 
@@ -49,13 +49,13 @@ classdef  matlabdumbjsondb < did.database
             if nargin>2,
                 fn = fieldnames(add_parameters);
             end;
-            for i=1:numel(fn), 
+            for i=1:numel(fn),
                 if strcmpi(fn{i},'Update'),
                     namevaluepairs{end+1} = 'Overwrite';
                     namevaluepairs{end+1} = getfield(add_parameters,fn{i});
                 end;
             end;
-            
+
             did_matlabdumbjsondb_obj.db = did_matlabdumbjsondb_obj.db.add(did_document_obj.document_properties, namevaluepairs{:});
         end; % do_add
 
@@ -72,7 +72,7 @@ classdef  matlabdumbjsondb < did.database
                 versions = [];
             end;
             did_matlabdumbjsondb_obj = did_matlabdumbjsondb_obj.db.remove(did_document_id, versions);
-            
+
         end; % do_remove
 
         function [did_document_objs,doc_versions] = do_search(did_matlabdumbjsondb_obj, searchoptions, searchparams)
@@ -111,10 +111,10 @@ classdef  matlabdumbjsondb < did.database
             % DID_BINARYDOC_OBJ = DO_CLOSEBINARYDOC(DID_MATLABDUMBJSONDB_OBJ, DID_BINARYDOC_MATFID_OBJ, KEY, DID_DOCUMENT_ID)
             %
             % Close and unlock the binary file associated with DID_BINARYDOC_OBJ.
-            %    
-                did_matlabdumbjsondb_obj.db.closebinaryfile(did_binarydoc_matfid_obj.fid, ...
-                    did_binarydoc_matfid_obj.key, did_binarydoc_matfid_obj.doc_unique_id);
-                did_binarydoc_matfid_obj.fclose(); 
+            %
+            did_matlabdumbjsondb_obj.db.closebinaryfile(did_binarydoc_matfid_obj.fid, ...
+                did_binarydoc_matfid_obj.key, did_binarydoc_matfid_obj.doc_unique_id);
+            did_binarydoc_matfid_obj.fclose();
         end; % do_closebinarydoc()
     end;
 end

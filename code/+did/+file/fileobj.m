@@ -1,10 +1,10 @@
 classdef fileobj < handle
-%FILEOBJ - Matlab object wrapper interface to low-level file access methods
-%
-% This is an object interface to fopen, fread, fwrite, fseek, fclose, and ftell. Why do this?
-% One could imagine one day separating the process of reading and writing a data stream from the file
-% system. For example, one could write to GRIDFS by overriding these functions, and the user's code
-% would never have to know.
+    %FILEOBJ - Matlab object wrapper interface to low-level file access methods
+    %
+    % This is an object interface to fopen, fread, fwrite, fseek, fclose, and ftell. Why do this?
+    % One could imagine one day separating the process of reading and writing a data stream from the file
+    % system. For example, one could write to GRIDFS by overriding these functions, and the user's code
+    % would never have to know.
 
     properties (SetAccess=protected, GetAccess=public)
         % fullpathfilename - The full path file name of the file
@@ -51,7 +51,7 @@ classdef fileobj < handle
             %   fid;              % The Matlab file identifier
             %   permission;       % The file permission
             %   machineformat     % big-endian ('b'), little-endian ('l'), or native ('n')
-            
+
             arguments
                 fileobj_obj
                 propValues.machineformat (1,1) string {did.file.mustBeValidMachineFormat}; % native machine format
@@ -84,7 +84,7 @@ classdef fileobj < handle
             % FILEOBJ_OBJ.fid is -1.
             %
             % See also: FOPEN, FILEOBJ/FCLOSE, FCLOSE
-            
+
             arguments
                 fileobj_obj
                 permission (1,1) string {did.file.mustBeValidPermission} = missing

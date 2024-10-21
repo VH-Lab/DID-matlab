@@ -1,12 +1,12 @@
 classdef readonly_fileobj < fileobj
-%READONLY_FILEOBJ - object wrapper interface to low-level read-only file access methods
-%
-% This is an object interface to fopen, fread, fseek, fclose, and ftell. Why do this?
-% One could imagine one day separating the process of reading and writing a data stream from the file
-% system. For example, one could write to GRIDFS by overriding these functions, and the user's code
-% would never have to know.
-%
-% See also: FILEOBJ
+    %READONLY_FILEOBJ - object wrapper interface to low-level read-only file access methods
+    %
+    % This is an object interface to fopen, fread, fseek, fclose, and ftell. Why do this?
+    % One could imagine one day separating the process of reading and writing a data stream from the file
+    % system. For example, one could write to GRIDFS by overriding these functions, and the user's code
+    % would never have to know.
+    %
+    % See also: FILEOBJ
 
     methods
         function fileobj_obj = readonly_fileobj(varargin)
@@ -27,7 +27,7 @@ classdef readonly_fileobj < fileobj
         end % readonly_fileobj() constructor
 
         function fileobj_obj = fopen(fileobj_obj, permission, varargin)
-            % FOPEN - open a FILEOBJ 
+            % FOPEN - open a FILEOBJ
             %
             % FILEOBJ_OBJ = FOPEN(FILEOBJ_OBJ,[PERMISSION],[MACHINEFORMAT],[FILENAME])
             %

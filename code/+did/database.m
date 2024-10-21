@@ -1,70 +1,70 @@
 classdef (Abstract) database < handle
-% did.database: Abstract superclass for all did.database implementations
-%
-% did.database defines the API for the DID database system.
-% Applications/users interact with its public methods.
-%
-% Developers who create subclass implementations of the did.database class should
-% override the corresponding do_* methods, which are called by the public methods.
-%
-% Properties (read-only):
-%   connection - Database connection details (e.g. file/folder name or a struct)
-%   dbid       - Database ID (set by the specific implementation class)
-%   version    - Database version (set by the specific implementation class)
-%   current_branch_id - Branch ID that we are currently viewing/editing
-%   frozen_branch_ids - Cell array of ids of branches that cannot be modified
-%
-% Properties (read/write):
-%   debug      - Whether to display debug info in console (default: false)
-%
-% Public methods with a default implementation that should not be overloaded:
-%   database - Create a new database object with no branches initially
-%
-%   all_branch_ids     - Return a cell-array of all branch IDs in the database
-%   add_branch         - Create a new branch, at the current or specified branch
-%   set_branch         - Set the current branch used by subsequent queries/actions
-%   get_branch         - Return current branch, used by subsequent queries/actions
-%   get_branch_parent  - Return the parent branch of the current/specified branch
-%   get_sub_branches   - Return array of sub-branches of current/specified branch
-%   freeze_branch      - Mark a branch as protected from further modification
-%   is_branch_editable - Is current/specified branch locked for modification?
-%   delete_branch      - Delete the current or specified branch, if not frozen
-%   display_branches   - Display branches hierarchy under specified branch
-%
-%   all_doc_ids - Return a cell-array of all document IDs in the database
-%   get_doc_ids - Return a cell-array of all document IDs in the specific branch
-%   add_docs    - Add did.document(s) to the current or specified branch
-%   get_docs    - Return did.document(s) that match the specified document ID(s)
-%   remove_docs - Remove did.document(s) from the current or specified branch
-%   open_doc    - Return a did.file.fileobj wrapper for a file in a did.document
-%   close_doc   - Close an open did.binarydoc
-%
-%   get_preference_names - return cell-array of defined database pref names
-%   set_preference - set new value to a preference name in this database
-%   get_preference - get the value of a preference name in this database
-%
-%   search - Search current/specified branch for did.document(s) matching a did.query
-%   run_sql_query - Run the specified SQL query in the database, return results
-%
-% Protected methods with a default implementation that *MAY* be overloaded:
-%   do_search            - core logic for database.search()
-%   do_close_doc         - core logic for database.close_doc()
-%   delete - destructor (typically closes the database connection/file, if open)
-% 
-% Protected methods that *MUST* be overloaded by specific subclass implementations:
-%   do_run_sql_query     - core logic for database.run_sql_query()
-%
-%   do_get_branch_ids    - core logic for database.all_branch_ids()
-%   do_add_branch        - core logic for database.add_branch()
-%   do_delete_branch     - core logic for database.delete_branch()
-%   do_get_branch_parent - core logic for database.get_branch_parent()
-%   do_get_sub_branches  - core logic for database.get_sub_branches()
-%
-%   do_get_doc_ids       - core logic for database.get_doc_ids()
-%   do_add_doc           - core logic for database.add_docs(),    for a single doc
-%   do_get_doc           - core logic for database.get_doc(),     for a single doc
-%   do_open_doc          - core logic for database.open_doc(),    for a single doc
-%   do_remove_doc        - core logic for database.remove_docs(), for a single doc
+    % did.database: Abstract superclass for all did.database implementations
+    %
+    % did.database defines the API for the DID database system.
+    % Applications/users interact with its public methods.
+    %
+    % Developers who create subclass implementations of the did.database class should
+    % override the corresponding do_* methods, which are called by the public methods.
+    %
+    % Properties (read-only):
+    %   connection - Database connection details (e.g. file/folder name or a struct)
+    %   dbid       - Database ID (set by the specific implementation class)
+    %   version    - Database version (set by the specific implementation class)
+    %   current_branch_id - Branch ID that we are currently viewing/editing
+    %   frozen_branch_ids - Cell array of ids of branches that cannot be modified
+    %
+    % Properties (read/write):
+    %   debug      - Whether to display debug info in console (default: false)
+    %
+    % Public methods with a default implementation that should not be overloaded:
+    %   database - Create a new database object with no branches initially
+    %
+    %   all_branch_ids     - Return a cell-array of all branch IDs in the database
+    %   add_branch         - Create a new branch, at the current or specified branch
+    %   set_branch         - Set the current branch used by subsequent queries/actions
+    %   get_branch         - Return current branch, used by subsequent queries/actions
+    %   get_branch_parent  - Return the parent branch of the current/specified branch
+    %   get_sub_branches   - Return array of sub-branches of current/specified branch
+    %   freeze_branch      - Mark a branch as protected from further modification
+    %   is_branch_editable - Is current/specified branch locked for modification?
+    %   delete_branch      - Delete the current or specified branch, if not frozen
+    %   display_branches   - Display branches hierarchy under specified branch
+    %
+    %   all_doc_ids - Return a cell-array of all document IDs in the database
+    %   get_doc_ids - Return a cell-array of all document IDs in the specific branch
+    %   add_docs    - Add did.document(s) to the current or specified branch
+    %   get_docs    - Return did.document(s) that match the specified document ID(s)
+    %   remove_docs - Remove did.document(s) from the current or specified branch
+    %   open_doc    - Return a did.file.fileobj wrapper for a file in a did.document
+    %   close_doc   - Close an open did.binarydoc
+    %
+    %   get_preference_names - return cell-array of defined database pref names
+    %   set_preference - set new value to a preference name in this database
+    %   get_preference - get the value of a preference name in this database
+    %
+    %   search - Search current/specified branch for did.document(s) matching a did.query
+    %   run_sql_query - Run the specified SQL query in the database, return results
+    %
+    % Protected methods with a default implementation that *MAY* be overloaded:
+    %   do_search            - core logic for database.search()
+    %   do_close_doc         - core logic for database.close_doc()
+    %   delete - destructor (typically closes the database connection/file, if open)
+    %
+    % Protected methods that *MUST* be overloaded by specific subclass implementations:
+    %   do_run_sql_query     - core logic for database.run_sql_query()
+    %
+    %   do_get_branch_ids    - core logic for database.all_branch_ids()
+    %   do_add_branch        - core logic for database.add_branch()
+    %   do_delete_branch     - core logic for database.delete_branch()
+    %   do_get_branch_parent - core logic for database.get_branch_parent()
+    %   do_get_sub_branches  - core logic for database.get_sub_branches()
+    %
+    %   do_get_doc_ids       - core logic for database.get_doc_ids()
+    %   do_add_doc           - core logic for database.add_docs(),    for a single doc
+    %   do_get_doc           - core logic for database.get_doc(),     for a single doc
+    %   do_open_doc          - core logic for database.open_doc(),    for a single doc
+    %   do_remove_doc        - core logic for database.remove_docs(), for a single doc
 
     % Read-only properties
     properties (SetAccess=protected, GetAccess=public)
@@ -92,8 +92,8 @@ classdef (Abstract) database < handle
             %
             % DATABASE_OBJ = DATABASE(...)
             %
-            % Creates a new DATABASE object 
-            
+            % Creates a new DATABASE object
+
             connection = '';
             branchId = '';
 
@@ -122,7 +122,7 @@ classdef (Abstract) database < handle
             %
             % Return a cell array of all branch IDs in the database.
             % If there are no branches, an empty cell array is returned.
-            
+
             branch_ids = database_obj.do_get_branch_ids();
         end % all_branch_ids()
 
@@ -271,7 +271,7 @@ classdef (Abstract) database < handle
 
             % Branch is editable only if it's not frozen AND has no sub-branches
             tf = ~ismember(branch_id, database_obj.frozen_branch_ids) && ...
-                 isempty(database_obj.do_get_sub_branches(branch_id));
+                isempty(database_obj.do_get_sub_branches(branch_id));
         end % is_branch_editable()
 
         function delete_branch(database_obj, branch_id)
@@ -360,7 +360,7 @@ classdef (Abstract) database < handle
             %
             % Return a cell array of all document IDs in the database.
             % If there are no documents, an empty cell array is returned.
-            
+
             doc_ids = database_obj.do_get_doc_ids();
         end % all_branch_ids()
 
@@ -455,7 +455,7 @@ classdef (Abstract) database < handle
                             className = '<unknown class>';
                         end
                         fprintf('Adding %s doc %s to database branch %s\n', ...
-                                className, doc_id, branch_id);
+                            className, doc_id, branch_id);
                     catch
                     end
                 end
@@ -466,9 +466,9 @@ classdef (Abstract) database < handle
         function document_objs = get_docs(database_obj, document_ids, varargin)
             % GET_DOCS - Return did.document object(s) that match the specified doc ID(s)
             %
-            % DOCUMENT_OBJS = GET_DOCS(DATABASE_OBJ, [DOCUMENT_IDS], [PARAMETERS...]) 
+            % DOCUMENT_OBJS = GET_DOCS(DATABASE_OBJ, [DOCUMENT_IDS], [PARAMETERS...])
             %
-            % Returns the did.document object for the specified by DOCUMENT_IDS. 
+            % Returns the did.document object for the specified by DOCUMENT_IDS.
             % DOCUMENT_IDS may be a scalar ID string, or an array of IDs
             % (in this case, an array of corresponding doc objects is returned).
             %
@@ -572,10 +572,10 @@ classdef (Abstract) database < handle
             for i = 1 : numel(documents)
                 % Replace did.document object reference with its unique doc id
                 doc_id = database_obj.validate_doc_id(documents{i}, false);
-   
+
                 % Call the specific database's removal method
                 try, % failure is not an error
-                database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
+                    database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
                 end
 
                 % TODO also delete all documents that depend on the deleted doc
@@ -616,7 +616,7 @@ classdef (Abstract) database < handle
             % [TF, FILE_PATH] = exist_doc(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
             %
             % Return a boolean flag indicating whether a specified file
-            % exists for the specified DOCUMENT_ID. The requested filename 
+            % exists for the specified DOCUMENT_ID. The requested filename
             % must be specified using the (mandatory) FILENAME parameter.
             % Also returns the absolute FILE_PATH for the file. If the file
             % does not exist, this output is an empty character vector.
@@ -633,7 +633,7 @@ classdef (Abstract) database < handle
 
             % Validate document ID validity (extract ID from object if needed)
             document_id = database_obj.validate_doc_id(document_id, false);
-            
+
             [tf, file_path] = database_obj.check_exist_doc(document_id, filename, varargin{:});
         end
 
@@ -644,7 +644,7 @@ classdef (Abstract) database < handle
             %
             % Closes a FILE_OBJ that was previously opened with OPEN_DOC().
             %
-            % See also: OPEN_DOC 
+            % See also: OPEN_DOC
 
             database_obj.do_close_doc(file_obj);
         end % close_doc()
@@ -654,17 +654,17 @@ classdef (Abstract) database < handle
     methods
         function data = run_sql_query(sqlitedb_obj, query_str, returnStruct)
             % run_sql_query - run an SQL query on the database
-            % 
+            %
             % Inputs:
             %    sqlitedb_obj - this class object
-            %    query_str - the SQL query string. For example: 
-            %                'SELECT docs.doc_id FROM docs, doc_data, fields 
-            %                 WHERE docs.doc_idx = doc_data.doc_idx 
+            %    query_str - the SQL query string. For example:
+            %                'SELECT docs.doc_id FROM docs, doc_data, fields
+            %                 WHERE docs.doc_idx = doc_data.doc_idx
             %                   AND fields.field_idx = doc_data.field_idx
             %                   AND fields.field_idx = doc_data.field_idx
-            %                   AND ((fields.field_name = "meta.class" AND 
+            %                   AND ((fields.field_name = "meta.class" AND
             %                         doc_data.value = "ndi_documentx") OR
-            %                        (fields.field_name = "meta.superclass" AND 
+            %                        (fields.field_name = "meta.superclass" AND
             %                         doc_data.value like "%ndi_documentx%"))'
             %    returnStruct - true to return a struct (or struct array) of values.
             %                   false (default) to return an array of values.
@@ -695,7 +695,7 @@ classdef (Abstract) database < handle
                 %if numFields == 1, dataCells = dataCells{1}; end  %de-cell
                 data = dataCells;
             end
-        end        
+        end
 
         function document_ids = search(database_obj, query_obj, branch_id)
             % SEARCH - find matching did.documents in the specified branch
@@ -707,7 +707,7 @@ classdef (Abstract) database < handle
             %
             % If BRANCH_ID is empty or not specified, the current branch is used.
             % An error is generated if the specified BRANCH_ID does not exist.
-            % 
+            %
             % This function returns a cell array of did.document IDs. If no
             % documents match the query, an empty cell array ({}) is returned.
 
@@ -749,7 +749,7 @@ classdef (Abstract) database < handle
             switch op
                 case 'or'
                     sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1) ' OR ' ...
-                               query_struct_to_sql_str(sqlitedb_obj, param2)];
+                        query_struct_to_sql_str(sqlitedb_obj, param2)];
                 case 'exact_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1Str '"'];
                 case 'exact_string_anycase'
@@ -757,7 +757,7 @@ classdef (Abstract) database < handle
                 case 'contains_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'exact_number'
-                if ~isempty(param1Val),
+                    if ~isempty(param1Val),
                         sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
                     else,
                         sql_str = [field_check ' AND ' notStr 'doc_data.value > 9e999']; % if is it empty, we have to make it fail
@@ -777,8 +777,8 @@ classdef (Abstract) database < handle
                     field_check = ['(' field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\")'];
                     %value_check= ['(doc_data.value like "%' param1 ',%"' ...
                     value_check = ['(regex(doc_data.value,"^(.*,\s*)*' param1Str '\s*(,.*)*$") NOT NULL' ...
-                                   ' OR doc_data.value='  param1Str ...
-                                   ' OR doc_data.value="' param1Str '")'];
+                        ' OR doc_data.value='  param1Str ...
+                        ' OR doc_data.value="' param1Str '")'];
                     sql_str = [field_check ' AND ' notStr value_check];
                 case 'hasfield'
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
@@ -796,7 +796,7 @@ classdef (Abstract) database < handle
                     sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,"' param1Str '") NOT NULL'];
                 case 'isa'
                     sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
-                               '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\")'];
+                        '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\")'];
                 otherwise
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
             end
@@ -806,13 +806,13 @@ classdef (Abstract) database < handle
         function query_str = get_sql_query_str(sqlitedb_obj, query_structs, branch_id)
             % Convert an array of did.query objects/structs into SQL query string
             query_str = ['SELECT DISTINCT docs.doc_id ' ...
-                         'FROM   docs, branch_docs, doc_data, fields ' ...
-                         'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
-                         '  AND  docs.doc_idx = branch_docs.doc_idx ' ...
-                         '  AND  branch_docs.branch_id = "' branch_id '" ' ...
-                         '  AND  fields.field_idx = doc_data.field_idx ' ...
-                         '  AND  fields.field_idx = doc_data.field_idx'];
-                         %((fields.field_name = "meta.class" AND doc_data.value = "ndi_document") OR (fields.field_name = "meta.superclass" AND doc_data.value like "%ndi_document%"))')';
+                'FROM   docs, branch_docs, doc_data, fields ' ...
+                'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
+                '  AND  docs.doc_idx = branch_docs.doc_idx ' ...
+                '  AND  branch_docs.branch_id = "' branch_id '" ' ...
+                '  AND  fields.field_idx = doc_data.field_idx ' ...
+                '  AND  fields.field_idx = doc_data.field_idx'];
+            %((fields.field_name = "meta.class" AND doc_data.value = "ndi_document") OR (fields.field_name = "meta.superclass" AND doc_data.value like "%ndi_document%"))')';
             for i = 1 : numel(query_structs)
                 sql_str = query_struct_to_sql_str(sqlitedb_obj, query_structs(i));
                 if ~isempty(sql_str)
@@ -859,7 +859,7 @@ classdef (Abstract) database < handle
         end
         function document_ids = do_search(sqlitedb_obj, query_obj, branch_id)
             % do_search - searches a branch for doc_ids that match specified query
-        
+
             % Convert the query object into an SQL query string
             if isa(query_obj,'did.query')
                 query_obj = query_obj.searchstructure;
@@ -867,7 +867,7 @@ classdef (Abstract) database < handle
 
             % Run the SQL query on the DB and return the matching documents
             if isstruct(query_obj)
-            doc_ids = sqlitedb_obj.search_doc_ids(query_obj, branch_id);
+                doc_ids = sqlitedb_obj.search_doc_ids(query_obj, branch_id);
             else  % already in SQL str format
                 query_str = query_obj;
                 doc_ids = sqlitedb_obj.run_sql_query(query_str);
@@ -946,7 +946,7 @@ classdef (Abstract) database < handle
             % Close and unlock the file associated with FILE_OBJ.
 
             %database_obj.db.closebinaryfile(document_obj.fid, document_obj.key, document_obj.doc_unique_id);
-            file_obj.fclose(); 
+            file_obj.fclose();
         end % do_close_doc()
 
         function [branch_id, branch_ids] = validate_branch_id(database_obj, branch_id, check_existance)
@@ -1042,7 +1042,7 @@ classdef (Abstract) database < handle
             % Validate a single field in a parent struct (existing, non-empty)
             function validateField(parentStruct, parentName, fieldName)
                 assert(isfield(parentStruct,fieldName), ...
-                       'DID:Database:MissingRequiredField','Doc %s %s has no %s field!',doc_id,parentName,fieldName);
+                    'DID:Database:MissingRequiredField','Doc %s %s has no %s field!',doc_id,parentName,fieldName);
                 value = parentStruct.(fieldName);
                 assert(~isempty(value),'Doc %s %s field is empty!',doc_id,fieldName);
             end
@@ -1081,11 +1081,11 @@ classdef (Abstract) database < handle
                 if ~isfile(schema_filename_potential{i}),
                     schema_filename_potential{i} = regexprep(schema_filename_potential{i},'\.json$','.schema.json');
                     if ~isfile(schema_filename_potential{i})
-                       schema_filename_potential{i} = strrep(schema_filename_potential{i},'.schema.json','_schema.json');
-                       if isfile(schema_filename_potential{i})
-                           matches(end+1) = i;
-                       end
-                    else, 
+                        schema_filename_potential{i} = strrep(schema_filename_potential{i},'.schema.json','_schema.json');
+                        if isfile(schema_filename_potential{i})
+                            matches(end+1) = i;
+                        end
+                    else,
                         matches(end+1) = i;
                     end
                 else,
@@ -1195,7 +1195,7 @@ classdef (Abstract) database < handle
                         try depends = docProps.depends_on; docNames = {depends.name}; catch, docNames = {}; end
                         if isempty(expected) && isempty(docNames), continue, end
                         docNames_alt = docNames;
-                        for dn=1:numel(docNames_alt), 
+                        for dn=1:numel(docNames_alt),
                             stridx = regexp(docNames{dn},'_(\d*)\>');
                             if isempty(stridx),
                                 stridx = numel(docNames{dn})+1;
@@ -1252,16 +1252,16 @@ classdef (Abstract) database < handle
                     case 'file'
                         % Compare the defined vs. actual file names
                         try
-                           actual_files_here = docProps.files.file_info;
-                           actualFileNames = {actual_files_here.name};
-                           file_list = docProps.files.file_list;
+                            actual_files_here = docProps.files.file_info;
+                            actualFileNames = {actual_files_here.name};
+                            file_list = docProps.files.file_list;
                         catch,
-                           actual_files_here= [];
-                           actualFileNames = {};
-                           file_list = {};
+                            actual_files_here= [];
+                            actualFileNames = {};
+                            file_list = {};
                         end
                         if isempty(expected) && (isSuperClass || isempty(actualFileNames)),
-                           continue,
+                            continue,
                         end
                         expectedNames = {expected.name};
                         mustHaveValue = {expected.mustbenotempty};
@@ -1270,7 +1270,7 @@ classdef (Abstract) database < handle
                         end;
                         [isvalid,errmsg] = did.database.checkfiles(expectedNames,mustHaveValue,actualFileNames,doc_name,actual_files_here,file_list);
                         assert(isvalid,'DID:Database:ValidationFiles',errmsg);
-                   otherwise  % class-specific field
+                    otherwise  % class-specific field
                         % Compare the type and value of all class-specific fields
                         try,
                             docValue = docProps.(field);
@@ -1333,7 +1333,7 @@ classdef (Abstract) database < handle
                         field_name, doc_name);
                     isInteger = (  abs(value-fix(value)) < 1e-12  );
                     assert(isInteger,'DID:Database:ValidationFieldInteger',...
-                         'Invalid non-integer value %f provided', value);
+                        'Invalid non-integer value %f provided', value);
 
                 case 'double'
                     assert(isnumeric(value), ...
@@ -1407,7 +1407,7 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldChar', ...
                         'Invalid non-char sub-field %s found in %s', ...
                         field_name, doc_name);
-                    if numel(expectedParams)==0, 
+                    if numel(expectedParams)==0,
                         isOk = true;
                     else,
                         isOk = length(value) <= expectedParams(1);
@@ -1438,11 +1438,11 @@ classdef (Abstract) database < handle
                     assert(isempty(value)|iscell(value),...
                         'DID:Database:ValidationFieldStructure',...
                         'Invalid cell sub-field %s found in %s',...
-                        field_name, doc_name);                    
+                        field_name, doc_name);
                 otherwise
                     error('DID:Database:ValidationFieldType', ...
-                          'Invalid sub-field %s type "%s" defined in %s', ...
-                          field_name, expectedType, doc_name);
+                        'Invalid sub-field %s type "%s" defined in %s', ...
+                        field_name, expectedType, doc_name);
             end
         end
     end
@@ -1543,139 +1543,139 @@ classdef (Abstract) database < handle
         end
     end
     methods(Static)
-       function [isvalid,errmsg] = checkfiles(expectedNames,mustHaveValue,actualFileNames, doc_name, files, actual_file_list)
-           % CHECKFILES - check to make sure that files that are offered match those that are expected or needed
-           % 
-           % [ISVALID,ERRMSG] = CHECKFILES(EXPECTEDNAMES, MUSTHAVEVALUE, ACTUALFILENAMES, DOC_NAME, files, actual_file_list)
-           %
-           %
-              isvalid = 0;
-              errmsg = '';
+        function [isvalid,errmsg] = checkfiles(expectedNames,mustHaveValue,actualFileNames, doc_name, files, actual_file_list)
+            % CHECKFILES - check to make sure that files that are offered match those that are expected or needed
+            %
+            % [ISVALID,ERRMSG] = CHECKFILES(EXPECTEDNAMES, MUSTHAVEVALUE, ACTUALFILENAMES, DOC_NAME, files, actual_file_list)
+            %
+            %
+            isvalid = 0;
+            errmsg = '';
 
-              % need to check:
-              %  1 - that every entry of the expected file_list is present in the actual document's file_list
-              %  2 - that every entry of the actual document's file_list is valid (it might differ from
-              %      the literal expected file_list if there are enumerated files that end in _##)
-              %  3 - that every file that is required to be present is in fact present
+            % need to check:
+            %  1 - that every entry of the expected file_list is present in the actual document's file_list
+            %  2 - that every entry of the actual document's file_list is valid (it might differ from
+            %      the literal expected file_list if there are enumerated files that end in _##)
+            %  3 - that every file that is required to be present is in fact present
 
-                % check that each expectedName has a match in the actualFileNames
-              expectedNamesList = unique(expectedNames);
-              actualFileNamesList = unique(actualFileNames);
+            % check that each expectedName has a match in the actualFileNames
+            expectedNamesList = unique(expectedNames);
+            actualFileNamesList = unique(actualFileNames);
 
-              % Step 1: are any expectedNames missing in the actual file list?
-              missing_files = setdiff(expectedNamesList,actual_file_list);
-              if ~isempty(missing_files)
-                 errmsg = sprintf('Some required files are missing (including %s) from the file_list in document %s', missing_files{1}, doc_name);
-              end;
+            % Step 1: are any expectedNames missing in the actual file list?
+            missing_files = setdiff(expectedNamesList,actual_file_list);
+            if ~isempty(missing_files)
+                errmsg = sprintf('Some required files are missing (including %s) from the file_list in document %s', missing_files{1}, doc_name);
+            end;
 
-              % Step 2: are all files in the actual document's file_list valid?
-              areSame = 1;
-              for i=1:numel(actualFileNamesList),
-                 exact_match = any(strcmp(actualFileNamesList{i},expectedNames));
-                 begin_match = 0;
-                 if ~exact_match,
+            % Step 2: are all files in the actual document's file_list valid?
+            areSame = 1;
+            for i=1:numel(actualFileNamesList),
+                exact_match = any(strcmp(actualFileNamesList{i},expectedNames));
+                begin_match = 0;
+                if ~exact_match,
                     for j=1:numel(expectedNamesList),
-                       if did.database.isfilenamematch(expectedNamesList{j},actualFileNamesList{i}),
-                          begin_match = 1;
-                          break;
-                       end;
+                        if did.database.isfilenamematch(expectedNamesList{j},actualFileNamesList{i}),
+                            begin_match = 1;
+                            break;
+                        end;
                     end;
-                 end;
-                 areSame = areSame & (exact_match | begin_match);
-                 if ~areSame,
+                end;
+                areSame = areSame & (exact_match | begin_match);
+                if ~areSame,
                     break;
-                 end
-              end;
+                end
+            end;
 
-              if ~areSame,
-                    errmsg=sprintf('Dissimilar files defined/found (including %s) for %s', actualFileNamesList{i}, doc_name);
-keyboard
-                    return;
-              end;
+            if ~areSame,
+                errmsg=sprintf('Dissimilar files defined/found (including %s) for %s', actualFileNamesList{i}, doc_name);
+                keyboard
+                return;
+            end;
 
-              % Loop over all files and ensure they exist
-              for idx = 1 : numel(mustHaveValue)
-                 expectedValue = mustHaveValue{idx};
-                 if ~isempty(expectedValue) && expectedValue
+            % Loop over all files and ensure they exist
+            for idx = 1 : numel(mustHaveValue)
+                expectedValue = mustHaveValue{idx};
+                if ~isempty(expectedValue) && expectedValue
                     item_name = expectedNames{idx};
                     idx2 = did.database.findfilematch(item_name,actualFileNames);
                     for k=1:numel(idx2),
-                       locations = files(idx2(k)).locations;
-                       found = did.database.canfindonefile(locations);
-                       if ~found,
-                          errmsg = sprintf('Missing file %s in %s',item_name,doc_name);
-                          return;
-                       end
+                        locations = files(idx2(k)).locations;
+                        found = did.database.canfindonefile(locations);
+                        if ~found,
+                            errmsg = sprintf('Missing file %s in %s',item_name,doc_name);
+                            return;
+                        end
                     end
-                 end
-              end
-              isvalid = 1;
-       end; % checkfiles()
-       function index = findfilematch(expectedName,actualNames)
-          % INDEX = FINDFILEMATCH(EXPECTEDNAME, ACTUALNAMES)
-          %
-          % Return the index of the item in the cell array of strings ACTUALNAMES
-          % that matches the EXPECTEDNAME. EXPECTEDNAME can either be an exact match
-          % or can a string 'ANYTHING_#' and ACTUALNAMES{INDEX} can have a number (e.g., 'ANYTHING_5').
-          %
-             arguments
-                 expectedName (1,:) char 
-                 actualNames cell {mustBeText} 
-             end
-             index = find(strcmp(expectedName,actualNames));
-             if isempty(index)
-                if expectedName(end)=='#' 
-                   tf = startsWith(actualNames,expectedName(1:end-1));
-                   indexes = find(tf);
-                   for k=1:numel(indexes)
-                      if did.database.isfilenamematch(expectedName,actualNames{indexes(k)})
-                         index(end+1) = k;
-                      end
-                   end
                 end
-             end
-       end; % findfilematch()
-       function b = isfilenamematch(expectedName,actualName)
-           % ISFILENAMEMATCH - are two file names matched?
-           % 
-           % B = ISFILENAMEMATCH(EXPECTEDNAME,ACTUALNAME)
-           %
-           % EXPECTEDNAME and ACTUALNAME can match if 
-           %   1) they are equal
-           %   2) If EXPECTEDNAME ends in a '#', ACTUALNAME can begin
-           %      with EXPECTEDNAME and end in an integer.
-              b = isequal(expectedName,actualName);
-              if ~b,
-                 if expectedName(end)=='#',
+            end
+            isvalid = 1;
+        end; % checkfiles()
+        function index = findfilematch(expectedName,actualNames)
+            % INDEX = FINDFILEMATCH(EXPECTEDNAME, ACTUALNAMES)
+            %
+            % Return the index of the item in the cell array of strings ACTUALNAMES
+            % that matches the EXPECTEDNAME. EXPECTEDNAME can either be an exact match
+            % or can a string 'ANYTHING_#' and ACTUALNAMES{INDEX} can have a number (e.g., 'ANYTHING_5').
+            %
+            arguments
+                expectedName (1,:) char
+                actualNames cell {mustBeText}
+            end
+            index = find(strcmp(expectedName,actualNames));
+            if isempty(index)
+                if expectedName(end)=='#'
+                    tf = startsWith(actualNames,expectedName(1:end-1));
+                    indexes = find(tf);
+                    for k=1:numel(indexes)
+                        if did.database.isfilenamematch(expectedName,actualNames{indexes(k)})
+                            index(end+1) = k;
+                        end
+                    end
+                end
+            end
+        end; % findfilematch()
+        function b = isfilenamematch(expectedName,actualName)
+            % ISFILENAMEMATCH - are two file names matched?
+            %
+            % B = ISFILENAMEMATCH(EXPECTEDNAME,ACTUALNAME)
+            %
+            % EXPECTEDNAME and ACTUALNAME can match if
+            %   1) they are equal
+            %   2) If EXPECTEDNAME ends in a '#', ACTUALNAME can begin
+            %      with EXPECTEDNAME and end in an integer.
+            b = isequal(expectedName,actualName);
+            if ~b,
+                if expectedName(end)=='#',
                     tf = startsWith(actualName,expectedName(1:end-1));
                     if tf,
-                       rest_of_name = actualName(numel(expectedName):end);
-                       b = all(rest_of_name>=double('0') & rest_of_name<=double('9'));
+                        rest_of_name = actualName(numel(expectedName):end);
+                        b = all(rest_of_name>=double('0') & rest_of_name<=double('9'));
                     end
-                 end
-              end
-       end; % isfilenamematch()
-       function found = canfindonefile(locations)
-          % CANFINDONEFILE - can we find at least one file for this?
-              found = false;
-              for idx2 = 1 : numel(locations)
-                 fileLocation = locations(idx2).location;
-                 if isfile(fileLocation)
+                end
+            end
+        end; % isfilenamematch()
+        function found = canfindonefile(locations)
+            % CANFINDONEFILE - can we find at least one file for this?
+            found = false;
+            for idx2 = 1 : numel(locations)
+                fileLocation = locations(idx2).location;
+                if isfile(fileLocation)
                     found = true;
                     break
-                 else
+                else
                     try
-                       filename = websave(tempname,fileLocation);
-                       if isfile(filename)
-                          delete(filename);
-                          found = true;
-                          break
-                       end
+                        filename = websave(tempname,fileLocation);
+                        if isfile(filename)
+                            delete(filename);
+                            found = true;
+                            break
+                        end
                     catch
-                       % ignore this location
+                        % ignore this location
                     end
-                 end
-              end
-       end; % canfindonefile
+                end
+            end
+        end; % canfindonefile
     end; % Static methods
 end % database classdef

@@ -1,7 +1,7 @@
 classdef TestModification < matlab.unittest.TestCase
     % TestValidModification
     % Test case for making modifications to documents
-    
+
     properties (Constant)
         db_filename = 'test_db_docs.sqlite' % Holds the path to the SQLite database
         plot_document_dependencies = getpref('didtools', 'plot_document_dependencies', true)
@@ -29,7 +29,7 @@ classdef TestModification < matlab.unittest.TestCase
         function setupMethod(testCase)
             % Create a temporary working directory to run tests in
             testCase.applyFixture(matlab.unittest.fixtures.WorkingFolderFixture);
-            
+
             % Step 1: make an empty database with a starting branch
             testCase.db = did.implementations.sqlitedb(testCase.db_filename);
             testCase.db.add_branch('a');
@@ -47,13 +47,13 @@ classdef TestModification < matlab.unittest.TestCase
                 options.remover = 'sham';
             end
 
-            [G, node_names, docs] = did.test.helper.documents.make_doc_tree_invalid([10 10 10],... 
+            [G, node_names, docs] = did.test.helper.documents.make_doc_tree_invalid([10 10 10],...
                 'value_modifier', options.value_modifier,...
                 'id_modifier', options.id_modifier,...
                 'dependency_modifier', options.dependency_modifier,...
                 'other_modifier', options.other_modifier,...
                 'remover', options.remover);
-            
+
             if testCase.plot_document_dependencies
                 figure;
                 dG = digraph(G,node_names);
@@ -87,17 +87,17 @@ classdef TestModification < matlab.unittest.TestCase
             b = testCase.createModifiedDocuments('value_modifier', value_modifier);
             testCase.doVerification(b);
         end
-        
+
         function testDependencyModifier(testCase, dependency_modifier)
             b = testCase.createModifiedDocuments('dependency_modifier', dependency_modifier);
             testCase.doVerification(b);
         end
-        
+
         function testIdModifier(testCase, id_modifier)
             b = testCase.createModifiedDocuments('id_modifier', id_modifier);
             testCase.doVerification(b);
         end
-        
+
         function testOtherModifier(testCase, other_modifier)
             b = testCase.createModifiedDocuments('other_modifier', other_modifier);
             testCase.doVerification(b);

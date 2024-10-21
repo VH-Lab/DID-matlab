@@ -8,7 +8,7 @@ classdef dumbjsondb
     % Furthermore, as all of the documents are stored in a single directory, the database size
     % will be limited to the number of files that are permitted in a single directory by the
     % file system divided by 3 (there is a .JSON file, a binary file, and a metadata file for
-    % each document). 
+    % each document).
     %
     % Example: Create and test a DUMBJSONDB object in the current directory.
     %     % create a new db
@@ -18,12 +18,12 @@ classdef dumbjsondb
     %     for i=1:5,
     %         a.id = 2000+i;
     %         a.value = i;
-        %         db.add(a);
+    %         db.add(a);
     %     end;
-    %     
+    %
     %     % read latest version of all the entries
     %     ids = db.alldocids;
-    %     for i=1:numel(ids), 
+    %     for i=1:numel(ids),
     %          db.read(ids{i}), % display the entry
     %     end
     %
@@ -33,7 +33,7 @@ classdef dumbjsondb
     %     [docs,doc_versions] = db.search({},{'value','5'})
     %     % use the struct version of search
     %     [docs,doc_versions] = db.search({},struct('field','value','operation','greaterthan','param1',1,'param2',[]))
-    %      
+    %
     %     % remove an entry
     %     db.remove(2002);
     %
@@ -43,7 +43,7 @@ classdef dumbjsondb
     %
     %     % read first and latest version of all the entries
     %     ids = db.alldocids;
-    %     for i=1:numel(ids), 
+    %     for i=1:numel(ids),
     %          disp(['0th version:']);
     %          db.read(ids{i},0), % display the 0th version
     %          disp(['Latest version:']);
@@ -66,7 +66,7 @@ classdef dumbjsondb
     %
     %     % remove all entries
     %     db.clear('Yes');
-    
+
     properties (SetAccess=protected, GetAccess=public)
         paramfilename            % The full pathname of the parameter file
         dirname                  % The directory name where files are stored (same directory as parameter file)
@@ -84,38 +84,38 @@ classdef dumbjsondb
             % COMMAND options            | Description
             % ----------------------------------------------------------------------------------------
             % 'Load'                     | Second argument should be full path filename of the saved parameter file
-            % 'New'                      | Second argument should be full path filename of the saved parameter file, 
+            % 'New'                      | Second argument should be full path filename of the saved parameter file,
             % (None)                     | Creates an empty object.
             %
-            % This file also accepts additional name/value pairs for arguments 3..end. 
+            % This file also accepts additional name/value pairs for arguments 3..end.
             % Parameter (default)           | Description
             % ----------------------------------------------------------------------------------------
             % dirname ('.dumbjsondb')       | The directory name, relative to the parameter file
-            % unique_object_id_field ('id') | The field name in the database for the unique object identifier 
+            % unique_object_id_field ('id') | The field name in the database for the unique object identifier
             %
             % See also: DUMBJSONDB, DUMBJSONDB/READ, DUMBJSONDB/REMOVE, DUMBJSONDB/DOCVERSIONS, DUMBJSONDB/ALLDOCIDS
             %
-                
-                arguments
-                    command = 'none'
-                    filename = '';
-                    propValues.dirname = '.dumbjsondb';
-                    propValues.unique_object_id_field = 'id';
-                end
-            
-                switch lower(command),
-                    case 'new', % create a new object
-                        dumbjsondb_obj.paramfilename = filename;
-                        dumbjsondb_obj.assignparameters(propValues)
-                        writeparameters(dumbjsondb_obj);
-                    case 'load',  % load object from file
-                        dumbjsondb_obj = loadparameters(dumbjsondb_obj, filename);
-                    case '',
-                        dumbjsondb_obj.assignparameters(propValues)
 
-                    otherwise,
-                        error(['Invalid command: ' command]); 
-                end;
+            arguments
+                command = 'none'
+                filename = '';
+                propValues.dirname = '.dumbjsondb';
+                propValues.unique_object_id_field = 'id';
+            end
+
+            switch lower(command),
+                case 'new', % create a new object
+                    dumbjsondb_obj.paramfilename = filename;
+                    dumbjsondb_obj.assignparameters(propValues)
+                    writeparameters(dumbjsondb_obj);
+                case 'load',  % load object from file
+                    dumbjsondb_obj = loadparameters(dumbjsondb_obj, filename);
+                case '',
+                    dumbjsondb_obj.assignparameters(propValues)
+
+                otherwise,
+                    error(['Invalid command: ' command]);
+            end;
         end % dumbjsondb()
 
         function dumbjsondb_obj = add(dumbjsondb_obj, doc_object, options)
@@ -139,55 +139,55 @@ classdef dumbjsondb
             % See also: DUMBJSONDB, DUMBJSONDB/READ, DUMBJSONDB/REMOVE, DUMBJSONDB/DOCVERSIONS, DUMBJSONDB/ALLDOCIDS
             %
 
-                arguments
-                    dumbjsondb_obj
-                    doc_object
-                    options.Overwrite (1,1) uint8 {mustBeInRange(options.Overwrite, 0, 2)} = 1
-                    options.doc_version = "latest"
-                end
+            arguments
+                dumbjsondb_obj
+                doc_object
+                options.Overwrite (1,1) uint8 {mustBeInRange(options.Overwrite, 0, 2)} = 1
+                options.doc_version = "latest"
+            end
 
-                if options.doc_version == "latest"
-                    [doc_unique_id] = docstats(dumbjsondb_obj, doc_object);
-                    doc_version = dumbjsondb_obj.latestdocversion(doc_unique_id);
-                else
-                    doc_version = options.doc_version;
-                end
-                
-                % does file already exist?
-                p = dumbjsondb_obj.documentpath();
-                f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
+            if options.doc_version == "latest"
+                [doc_unique_id] = docstats(dumbjsondb_obj, doc_object);
+                doc_version = dumbjsondb_obj.latestdocversion(doc_unique_id);
+            else
+                doc_version = options.doc_version;
+            end
 
-                fileexist = isfile([p f]);
-                
-                we_know_we_have_latest_version = []; % we will assign this below
+            % does file already exist?
+            p = dumbjsondb_obj.documentpath();
+            f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
 
-                can_we_write = 0;
-                if ~fileexist, % we are writing for the first time
-                    we_know_we_have_latest_version = 1;
+            fileexist = isfile([p f]);
+
+            we_know_we_have_latest_version = []; % we will assign this below
+
+            can_we_write = 0;
+            if ~fileexist, % we are writing for the first time
+                we_know_we_have_latest_version = 1;
+                can_we_write = 1;
+            else,
+                if options.Overwrite==1, %write away, whether it exists or not
                     can_we_write = 1;
-                else, 
-                    if options.Overwrite==1, %write away, whether it exists or not
-                        can_we_write = 1;
-                        we_know_we_have_latest_version = 1;
-                    elseif options.Overwrite==0, % do not overwrite
-                        versstring = [];
-                        if ~isempty(version),
-                            versstring = [' and version ' num2str(doc_version) ' '];
-                        end
-                        error(['Document with document id ' doc_unique_id ' versstring ' already exists, overwrite was not permitted by user request.']);
-                    elseif options.Overwrite==2, % increment version
-                        v = dumbjsondb_obj.docversions(doc_unique_id);
-                        doc_version = max(v) + 1;
-                        can_we_write = 1;
-                        we_know_we_have_latest_version = 1;
-                    else,
-                        error(['Unknown Overwrite mode: ' num2str(options.Overwrite) '.']);
+                    we_know_we_have_latest_version = 1;
+                elseif options.Overwrite==0, % do not overwrite
+                    versstring = [];
+                    if ~isempty(version),
+                        versstring = [' and version ' num2str(doc_version) ' '];
                     end
+                    error(['Document with document id ' doc_unique_id ' versstring ' already exists, overwrite was not permitted by user request.']);
+                elseif options.Overwrite==2, % increment version
+                    v = dumbjsondb_obj.docversions(doc_unique_id);
+                    doc_version = max(v) + 1;
+                    can_we_write = 1;
+                    we_know_we_have_latest_version = 1;
+                else,
+                    error(['Unknown Overwrite mode: ' num2str(options.Overwrite) '.']);
                 end
+            end
 
-                if can_we_write,
-                    writeobject(dumbjsondb_obj, doc_object, doc_unique_id, doc_version);
-                end
+            if can_we_write,
+                writeobject(dumbjsondb_obj, doc_object, doc_unique_id, doc_version);
+            end
         end % add()
 
         function [document, doc_version] = read(dumbjsondb_obj, doc_unique_id, doc_version)
@@ -208,25 +208,25 @@ classdef dumbjsondb
             %
             % See also: DUMBJSONDB, DUMBJSONDB/ADD, DUMBJSONDB/REMOVE, DUMBJSONDB/DOCVERSIONS, DUMBJSONDB/ALLDOCIDS
             %
-                doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id); % make sure it is a string
-                if nargin<3,
-                    doc_version = [];
-                end;
+            doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id); % make sure it is a string
+            if nargin<3,
+                doc_version = [];
+            end;
 
-                if isempty(doc_version), % read latest
-                    v = dumbjsondb_obj.docversions(doc_unique_id);
-                    doc_version = max(v);
-                    [document,doc_version] = dumbjsondb_obj.read(doc_unique_id,doc_version);
-                else, % read specific version
-                    p = dumbjsondb_obj.documentpath();
-                    f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
-                    if isfile([p f]),
-                        t = did.file.textfile2char([p f]); % dev note: should this go in separate function? maybe
-                        document = jsondecode(t);
-                    else,
-                        document = []; % no such document
-                    end;
-                end
+            if isempty(doc_version), % read latest
+                v = dumbjsondb_obj.docversions(doc_unique_id);
+                doc_version = max(v);
+                [document,doc_version] = dumbjsondb_obj.read(doc_unique_id,doc_version);
+            else, % read specific version
+                p = dumbjsondb_obj.documentpath();
+                f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
+                if isfile([p f]),
+                    t = did.file.textfile2char([p f]); % dev note: should this go in separate function? maybe
+                    document = jsondecode(t);
+                else,
+                    document = []; % no such document
+                end;
+            end
         end % read()
 
         function [fid, key, doc_version] = openbinaryfile(dumbjsondb_obj, doc_unique_id, doc_version)
@@ -236,8 +236,8 @@ classdef dumbjsondb
             %
             % Attempts to obtain the lock and open the binary file associated with
             % DOC_UNIQUE_ID and DOC_VERSION for reading/writing. If DOC_VERSION is not present,
-            % then the latest version is used. All the binary files are in 'big-endian' format and 
-            % are opened as such by OPENBINARYFILE. 
+            % then the latest version is used. All the binary files are in 'big-endian' format and
+            % are opened as such by OPENBINARYFILE.
             %
             % If there is no such file, an error is generated. If the file is locked by another program,
             % then FID is -1.
@@ -251,45 +251,45 @@ classdef dumbjsondb
             % Example:
             %      [fid, key]=mydb.openbinaryfile(doc_unique_id);
             %      if fid>0,
-            %          try, 
-            %              % do something, e.g., fwrite(fid,'my data','char'); 
+            %          try,
+            %              % do something, e.g., fwrite(fid,'my data','char');
             %              [fid] = mydb.closebinaryfile(fid, key, doc_unique_id);
-            %          catch, 
+            %          catch,
             %              [fid] = mydb.closebinaryfile(fid, key, doc_unique_id);
             %              error(['Could not do what I wanted to do.'])
             %          end
             %      end
-            %      
+            %
             %
             % See also: DUMBJSONDB/CLOSEBINARYFILE, DUMBJSONDB/READ, CHECKOUT_LOCK_FILE, FREAD, FWRITE
 
-                fid = -1;
-                lockfid = -1;
-                key = -1;
-                doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id); % make sure it is a string
-                if nargin<3,
-                    doc_version = [];
-                end;
-                [document, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
+            fid = -1;
+            lockfid = -1;
+            key = -1;
+            doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id); % make sure it is a string
+            if nargin<3,
+                doc_version = [];
+            end;
+            [document, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
 
-                % otherwise, we need to open one
-                    
-                f = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id, doc_version);
-                p = dumbjsondb_obj.documentpath();
+            % otherwise, we need to open one
 
-                lockfilename = [p f '-lock'];
-                [lockfid,key] = did.file.checkout_lock_file(lockfilename);
-                if lockfid > 0,
-                    %disp(['about to open file ' [p f] ' with permissions a+']);
-                    fid = fopen([p f], 'a+', 'ieee-le'); % open in read/write mode, impose little-endian for cross-platform compatibility
-                    if fid > 0, % we are okay
-                    else, % need to close and delete the lock file before reporting error
-                        fid = -1;
-                        did.file.release_lock_file(lockfilename,key);
-                    end;
-                else, % we can't obtain the lock but it's not an error, we have to try again later
+            f = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id, doc_version);
+            p = dumbjsondb_obj.documentpath();
+
+            lockfilename = [p f '-lock'];
+            [lockfid,key] = did.file.checkout_lock_file(lockfilename);
+            if lockfid > 0,
+                %disp(['about to open file ' [p f] ' with permissions a+']);
+                fid = fopen([p f], 'a+', 'ieee-le'); % open in read/write mode, impose little-endian for cross-platform compatibility
+                if fid > 0, % we are okay
+                else, % need to close and delete the lock file before reporting error
                     fid = -1;
+                    did.file.release_lock_file(lockfilename,key);
                 end;
+            else, % we can't obtain the lock but it's not an error, we have to try again later
+                fid = -1;
+            end;
         end % openbinaryfile()
 
         function fid = closebinaryfile(dumbjsondb_obj, fid, key, doc_unique_id, doc_version)
@@ -306,37 +306,37 @@ classdef dumbjsondb
             %
             % See also: DUMBJSONDB/OPENBINARYFILE, CHECKOUT_LOCK_FILE
             %
-                % if the file is open, close it
+            % if the file is open, close it
 
-                if fid>0,
-                    [fname,perm] = fopen(fid);
+            if fid>0,
+                [fname,perm] = fopen(fid);
 
-                    if numel(fname)>numel('.binary'),
-                        if ~strcmpi(fname(end-6:end),'.binary'),
-                            error(['This does not appear to be a DUMBJSONDB binary file: ' fname ]);
-                        end
-                    elseif isempty(fname),
-                        % nothing to do, already closed;
-                    else,
-                        fclose(fid);
-                        fid = -1;
+                if numel(fname)>numel('.binary'),
+                    if ~strcmpi(fname(end-6:end),'.binary'),
+                        error(['This does not appear to be a DUMBJSONDB binary file: ' fname ]);
                     end
-                end;
+                elseif isempty(fname),
+                    % nothing to do, already closed;
+                else,
+                    fclose(fid);
+                    fid = -1;
+                end
+            end;
 
-                % if the lock file exists, delete it 
+            % if the lock file exists, delete it
 
-                doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id); % make sure it is a string
+            doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id); % make sure it is a string
 
-                if nargin<5,
-                    doc_version = [];
-                end;
-                [document, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
+            if nargin<5,
+                doc_version = [];
+            end;
+            [document, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
 
-                f = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id, doc_version);
-                p = dumbjsondb_obj.documentpath();
+            f = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id, doc_version);
+            p = dumbjsondb_obj.documentpath();
 
-                lockfilename = [p f '-lock'];
-                release_lock_file(lockfilename,key);
+            lockfilename = [p f '-lock'];
+            release_lock_file(lockfilename,key);
         end % closebinaryfile
 
         function [docs, doc_versions] = search(dumbjsondb_obj, searchParams, scope)
@@ -372,40 +372,40 @@ classdef dumbjsondb
             %
             % See also: REGEXPI
 
-                arguments
-                    dumbjsondb_obj
-                end
-                arguments (Repeating)
-                    searchParams
-                end
-                arguments
-                    scope.version = 'latest'
-                end
+            arguments
+                dumbjsondb_obj
+            end
+            arguments (Repeating)
+                searchParams
+            end
+            arguments
+                scope.version = 'latest'
+            end
 
-                docs = {};
-                doc_versions = [];
+            docs = {};
+            doc_versions = [];
 
-                docids = dumbjsondb_obj.alldocids();
+            docids = dumbjsondb_obj.alldocids();
 
-                for i=1:numel(docids),
-                    if strcmpi(scope.version,'latest'),
-                        v_here = dumbjsondb_obj.docversions(docids{i});
-                        v_here = max(v_here);
-                    elseif strcmpi(scope.version,'all'),
-                        v_here = dumbjsondb_obj.docversions(docids{i});
-                    else
-                        v_here = scope.version;
+            for i=1:numel(docids),
+                if strcmpi(scope.version,'latest'),
+                    v_here = dumbjsondb_obj.docversions(docids{i});
+                    v_here = max(v_here);
+                elseif strcmpi(scope.version,'all'),
+                    v_here = dumbjsondb_obj.docversions(docids{i});
+                else
+                    v_here = scope.version;
+                end;
+
+                for j=1:numel(v_here),
+                    [doc_here, version_here] = dumbjsondb_obj.read(docids{i},v_here(j));
+                    b = did.file.dumbjsondb.ismatch(doc_here, searchParams{:});
+                    if b,
+                        docs{end+1} = doc_here;
+                        doc_versions(end+1) = version_here;
                     end;
-
-                    for j=1:numel(v_here),
-                        [doc_here, version_here] = dumbjsondb_obj.read(docids{i},v_here(j));
-                        b = did.file.dumbjsondb.ismatch(doc_here, searchParams{:});
-                        if b,
-                            docs{end+1} = doc_here;
-                            doc_versions(end+1) = version_here;
-                        end; 
-                    end;
-                end
+                end;
+            end
         end % search()
 
         function dumbjsondb_obj = remove(dumbjsondb_obj, doc_unique_id, version)
@@ -421,66 +421,66 @@ classdef dumbjsondb
             %
             % See also: DUMBJSONDB/CLEAR
             %
-                if nargin<3,
-                    version = 'all';
-                elseif isempty(version),
-                    version = 'all';
-                end;
+            if nargin<3,
+                version = 'all';
+            elseif isempty(version),
+                version = 'all';
+            end;
 
-                if strcmp(lower(version),'all'),
-                    v = dumbjsondb_obj.docversions(doc_unique_id);
-                    version = v;
-                end;
+            if strcmp(lower(version),'all'),
+                v = dumbjsondb_obj.docversions(doc_unique_id);
+                version = v;
+            end;
 
-                % delete the versions requested
+            % delete the versions requested
 
-                p = dumbjsondb_obj.documentpath();
+            p = dumbjsondb_obj.documentpath();
 
-                for i=1:numel(version),
-                    vfname = did.file.dumbjsondb.uniqueid2filename(doc_unique_id,version(i));
-                    bfname = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id,version(i));
+            for i=1:numel(version),
+                vfname = did.file.dumbjsondb.uniqueid2filename(doc_unique_id,version(i));
+                bfname = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id,version(i));
 
-                    % delete the object file
-                    if isfile([p vfname]),
-                        delete([p vfname]);
-                    end
-                    % delete any binary data
-                    if isfile([p bfname]),
-                        delete([p bfname]);
-                    end
+                % delete the object file
+                if isfile([p vfname]),
+                    delete([p vfname]);
                 end
-                if strcmp(version,'all'),
-                    operation = 'Deleted all versions';
-                else,
-                    operation = 'Deleted version';
-                end;
+                % delete any binary data
+                if isfile([p bfname]),
+                    delete([p bfname]);
+                end
+            end
+            if strcmp(version,'all'),
+                operation = 'Deleted all versions';
+            else,
+                operation = 'Deleted version';
+            end;
 
-                updatedocmetadata(dumbjsondb_obj, operation, [], doc_unique_id, version);
+            updatedocmetadata(dumbjsondb_obj, operation, [], doc_unique_id, version);
         end % remove()
 
         function clear(dumbjsondb_obj, areyousure)
             % CLEAR - remove/delete all records from a DUBMJSONDB
-            % 
+            %
             % CLEAR(DUMBJSONDB_OBJ, [AREYOUSURE])
             %
             % Removes all documents from the DUMBJSONDB object.
-            % 
+            %
             % Use with care. If AREYOUSURE is 'yes' then the
             % function will proceed. Otherwise, it will not.
             %
             % See also: DUMBJSONDB/REMOVE
 
-                if nargin<2,
-                    areyousure = 'no';
-                end;
-                if strcmpi(areyousure,'Yes')
-                    ids = dumbjsondb_obj.alldocids;
-                    for i=1:numel(ids), 
-                        dumbjsondb_obj.remove(ids{i}); % remove the entry
-                    end
-                else,
-                    disp(['Not clearing because user did not indicate he/she is sure.']);
-                end;
+            if nargin<2,
+                areyousure = 'no';
+            end;
+            if strcmpi(areyousure,'Yes')
+                ids = dumbjsondb_obj.alldocids;
+                for i=1:numel(ids),
+                    dumbjsondb_obj.remove(ids{i}); % remove the entry
+                end
+            else,
+                disp(['Not clearing because user did not indicate he/she is sure.']);
+            end;
         end % clear
 
         function doc_unique_id = alldocids(dumbjsondb_obj)
@@ -491,14 +491,14 @@ classdef dumbjsondb
             % Return a cell array of all document unique ID(s) (char strings) for the
             % DUMBJSONDB object DUMBJSONDB_OBJ.
             %
-                doc_unique_id = {};
-                d = dir([dumbjsondb_obj.documentpath() 'Object_id_*.txt']);
-                for i=1:numel(d),
-                    mystr = sscanf(d(i).name,'Object_id_%s');
-                    if ~isempty(mystr),
-                        doc_unique_id{end+1} = mystr(1:end-4); % drop '.txt'
-                    end;
-                end
+            doc_unique_id = {};
+            d = dir([dumbjsondb_obj.documentpath() 'Object_id_*.txt']);
+            for i=1:numel(d),
+                mystr = sscanf(d(i).name,'Object_id_%s');
+                if ~isempty(mystr),
+                    doc_unique_id{end+1} = mystr(1:end-4); % drop '.txt'
+                end;
+            end
         end % alldocids()
 
         function v = docversions(dumbjsondb_obj, doc_unique_id)
@@ -513,20 +513,20 @@ classdef dumbjsondb
             %
             % V will be an array of integers with all version numbers. If there are no
             % documents that match DOC_UNIQUE_ID, then empty is returned.
-            % 
-                v = [];
-                fname = did.file.dumbjsondb.uniqueid2filename(doc_unique_id,0);
-                fnamesearch = strrep(fname, '00000', '*');
-                fnamescanf  = strrep(fname, '00000', '%s');
-                p = dumbjsondb_obj.documentpath();
-                d = dir([p fnamesearch]);
-                for i=1:numel(d),
-                    mystr = sscanf(d(i).name, fnamescanf);
-                    if ~isempty(mystr),
-                        v_string = mystr(1:end-5); % drop extension
-                        v(end+1) = hex2dec(v_string);
-                    end
+            %
+            v = [];
+            fname = did.file.dumbjsondb.uniqueid2filename(doc_unique_id,0);
+            fnamesearch = strrep(fname, '00000', '*');
+            fnamescanf  = strrep(fname, '00000', '%s');
+            p = dumbjsondb_obj.documentpath();
+            d = dir([p fnamesearch]);
+            for i=1:numel(d),
+                mystr = sscanf(d(i).name, fnamescanf);
+                if ~isempty(mystr),
+                    v_string = mystr(1:end-5); % drop extension
+                    v(end+1) = hex2dec(v_string);
                 end
+            end
         end % docversions()
 
         function [L,v] = latestdocversion(dumbjsondb_obj, doc_unique_id)
@@ -534,18 +534,18 @@ classdef dumbjsondb
             %
             % [L, V] = LATESTDOCVERSION(DUMBJSONDB_OBJ, DOC_UNIQUE_ID)
             %
-            % Return the latest version (L) of the document with the document unique ID equal to 
+            % Return the latest version (L) of the document with the document unique ID equal to
             % DOC_UNIQUE_ID. A full array of available version numbers V is also returned.
             % If there are no versions, L is empty.
             %
             % See also: DUMBJSONDB/DOCVERSIONS
             %
-                v = dumbjsondb_obj.docversions(doc_unique_id);
-                if ~isempty(v),
-                    L = max(v);
-                else,
-                    L = [];
-                end;
+            v = dumbjsondb_obj.docversions(doc_unique_id);
+            if ~isempty(v),
+                L = max(v);
+            else,
+                L = [];
+            end;
         end % latestdocversion()
 
         function [doc_unique_id] = docstats(dumbjsondb_obj, document_obj)
@@ -560,8 +560,8 @@ classdef dumbjsondb
             % DOCBINARYFILE is 1 if and only if DOC has the field specified in property 'hasbinaryfilefield'
             %      and the value is 1; otherwise DOCBINARYFILE is 0.
             %
-                doc_unique_id = eval(['document_obj.' dumbjsondb_obj.unique_object_id_field ';']);
-                doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
+            doc_unique_id = eval(['document_obj.' dumbjsondb_obj.unique_object_id_field ';']);
+            doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
         end %docstats()
 
     end; % public methods
@@ -576,30 +576,30 @@ classdef dumbjsondb
             % Writes the object data for DOC_OBJECT to disk. DOC_UNIQUE_ID and DOC_VERSION specify
             % the document unique id and document version, respectively. Overwrites any existing files.
             %
-                doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
-                
-                % Write a) doc file 
-                %       b) meta data (if necessary)
-                %       c) create a blank binary file
-                
-                % a) the doc file
-                p = dumbjsondb_obj.documentpath();
-                if ~isfolder(p), 
-                    mkdir(p);
-                end;
-                docfile = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
-                did.file.dumbjsondb.docobject2file(doc_object, [p docfile]);
+            doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
 
-                % b) the meta data file
+            % Write a) doc file
+            %       b) meta data (if necessary)
+            %       c) create a blank binary file
 
-                dumbjsondb_obj.updatedocmetadata('Added new version', doc_object, doc_unique_id, doc_version);
+            % a) the doc file
+            p = dumbjsondb_obj.documentpath();
+            if ~isfolder(p),
+                mkdir(p);
+            end;
+            docfile = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
+            did.file.dumbjsondb.docobject2file(doc_object, [p docfile]);
 
-                % c) the binary file
+            % b) the meta data file
 
-                % just touch the file and leave it blank
-                fb = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id, doc_version);
-                fid=fopen([p fb],'w');
-                fclose(fid);
+            dumbjsondb_obj.updatedocmetadata('Added new version', doc_object, doc_unique_id, doc_version);
+
+            % c) the binary file
+
+            % just touch the file and leave it blank
+            fb = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id, doc_version);
+            fid=fopen([p fb],'w');
+            fclose(fid);
 
         end % writeobject()
 
@@ -609,7 +609,7 @@ classdef dumbjsondb
             % UPDATEDOCMETADATA(DUMBJSONDB_OBJ, OPERATION, DOCUMENT, DOC_UNIQUE_ID, DOC_VERSION)
             %
             % Updates the metadata file(s) given that we just wrote or removed a document from the database.
-            % DOCUMENT is the Matlab object that was just written (can be empty if removed), DOC_UNIQUE_ID 
+            % DOCUMENT is the Matlab object that was just written (can be empty if removed), DOC_UNIQUE_ID
             % is the document unique ID, DOC_VERSION is the version that was just manipulated.
             % OPERATION can be one of the following entries:
             % Value                 | Description
@@ -622,32 +622,32 @@ classdef dumbjsondb
             % In the future, it is expected that subclass databases may override this function to store more
             % types of metadata to ease or speed searching.
             %
-                p = dumbjsondb_obj.documentpath();
-                metafile = [p did.file.dumbjsondb.uniqueid2metafilename(doc_unique_id)];
+            p = dumbjsondb_obj.documentpath();
+            metafile = [p did.file.dumbjsondb.uniqueid2metafilename(doc_unique_id)];
 
-                switch(lower(operation)),
-                    case lower('Added new version'),
-                        % we need to write or update the metadata file with the latest version
-                        did.file.str2text(metafile,mat2str(doc_version));
-                    case lower('Overwrote version'),
-                        % we don't need to do anything, but subclasses might
-                    case lower('Deleted version'), % need to add the max version
-                        v = dumbjsondb_obj.docversions(doc_unique_id);
-                        if numel(v)>0, % we have a version
-                            did.file.str2text(metafile,mat2str(max(v)));
-                        else,
-                            if isfile(metafile),
-                                delete(metafile);
-                            end;
-                        end;
-                    case lower('Deleted all versions'), 
-                        % if we know we deleted all versions, then we need to delete the metadata file
+            switch(lower(operation)),
+                case lower('Added new version'),
+                    % we need to write or update the metadata file with the latest version
+                    did.file.str2text(metafile,mat2str(doc_version));
+                case lower('Overwrote version'),
+                    % we don't need to do anything, but subclasses might
+                case lower('Deleted version'), % need to add the max version
+                    v = dumbjsondb_obj.docversions(doc_unique_id);
+                    if numel(v)>0, % we have a version
+                        did.file.str2text(metafile,mat2str(max(v)));
+                    else,
                         if isfile(metafile),
                             delete(metafile);
                         end;
-                    otherwise, 
-                        error(['Unknown request.']);
-                end
+                    end;
+                case lower('Deleted all versions'),
+                    % if we know we deleted all versions, then we need to delete the metadata file
+                    if isfile(metafile),
+                        delete(metafile);
+                    end;
+                otherwise,
+                    error(['Unknown request.']);
+            end
 
         end % updatedocmetadata
 
@@ -656,10 +656,10 @@ classdef dumbjsondb
             %
             % P = DOCUMENTPATH(DUMBJSONDB_OBJ)
             %
-            % Return the the full directory path to a DUMBJSONDB object. Ends in a 
+            % Return the the full directory path to a DUMBJSONDB object. Ends in a
             % file separator.
             %
-                p = [dumbjsondb_obj.path() filesep dumbjsondb_obj.dirname filesep];
+            p = [dumbjsondb_obj.path() filesep dumbjsondb_obj.dirname filesep];
         end % documentpath()
 
         function p = path(dumbjsondb_obj)
@@ -669,7 +669,7 @@ classdef dumbjsondb
             %
             % Returns the file path for the parameter file.
             %
-                p = fileparts(dumbjsondb_obj.paramfilename);
+            p = fileparts(dumbjsondb_obj.paramfilename);
         end % path()
 
         function b = writeparameters(dumbjsondb_obj)
@@ -680,39 +680,39 @@ classdef dumbjsondb
             % Writes the parameter file in json format and attempts to create the directory for the
             % database files.
             %
-                if isempty(dumbjsondb_obj.paramfilename), % dont do anything if it is empty
-                    return;
-                end; 
+            if isempty(dumbjsondb_obj.paramfilename), % dont do anything if it is empty
+                return;
+            end;
 
-                % Step 1) make the path directory if needed
-                [filepath] = path(dumbjsondb_obj);
-                if ~isfolder(filepath),
-                    try,
-                        mkdir(filepath);
-                    catch,
-                        error(['Could not create directory ' filepath '.']);
-                    end;
-                end
-
-                % Step 2) now can write the parameter file
-                p = properties(dumbjsondb_obj);
-                s.paramfilename = '';
-                for i=1:numel(p),
-                    s=setfield(s,p{i},getfield(dumbjsondb_obj,p{i}));
+            % Step 1) make the path directory if needed
+            [filepath] = path(dumbjsondb_obj);
+            if ~isfolder(filepath),
+                try,
+                    mkdir(filepath);
+                catch,
+                    error(['Could not create directory ' filepath '.']);
                 end;
-                s = rmfield(s,'paramfilename'); % redundant and potentially error-prone if path moved
-                je = jsonencode(s);
-                did.file.str2text(dumbjsondb_obj.paramfilename,je);
+            end
 
-                % Step 3) attempt to create the directory
-                thedir = [filepath filesep dumbjsondb_obj.dirname];
-                if ~isfolder(thedir),
-                    try,
-                        mkdir([thedir]);
-                    catch,
-                        error(['Could not create directory ' thedir '.']);
-                    end
+            % Step 2) now can write the parameter file
+            p = properties(dumbjsondb_obj);
+            s.paramfilename = '';
+            for i=1:numel(p),
+                s=setfield(s,p{i},getfield(dumbjsondb_obj,p{i}));
+            end;
+            s = rmfield(s,'paramfilename'); % redundant and potentially error-prone if path moved
+            je = jsonencode(s);
+            did.file.str2text(dumbjsondb_obj.paramfilename,je);
+
+            % Step 3) attempt to create the directory
+            thedir = [filepath filesep dumbjsondb_obj.dirname];
+            if ~isfolder(thedir),
+                try,
+                    mkdir([thedir]);
+                catch,
+                    error(['Could not create directory ' thedir '.']);
                 end
+            end
         end % writeparameters()
 
         function dumbjsondb_obj = loadparameters(dumbjsondb_obj, filename)
@@ -723,16 +723,16 @@ classdef dumbjsondb
             % Reads the parameters, either from FILENAME if it is provided, or from the DUMBJSONDB property
             % 'paramfilename'. Only parameters that exist in the current class are updated.
             %
-                if nargin>1,
-                    dumbjsondb_obj.paramfilename = filename;
-                end
-                s = did.file.dumbjsondb.readparametersfile(dumbjsondb_obj.paramfilename);
-                % dev note, subclasses will need to override this method
-                fn = intersect(fieldnames(s),properties(dumbjsondb_obj));
-                fn = setdiff(fn,'paramfilename'); % do not allow paramfilename to be set by the contents of the file
-                for i=1:numel(fn),
-                    eval(['dumbjsondb_obj.' fn{i} ' = getfield(s,fn{i});']);
-                end
+            if nargin>1,
+                dumbjsondb_obj.paramfilename = filename;
+            end
+            s = did.file.dumbjsondb.readparametersfile(dumbjsondb_obj.paramfilename);
+            % dev note, subclasses will need to override this method
+            fn = intersect(fieldnames(s),properties(dumbjsondb_obj));
+            fn = setdiff(fn,'paramfilename'); % do not allow paramfilename to be set by the contents of the file
+            for i=1:numel(fn),
+                eval(['dumbjsondb_obj.' fn{i} ' = getfield(s,fn{i});']);
+            end
         end % loadparameters()
 
         function assignparameters(dumbjsondb_obj, propertyValues)
@@ -756,9 +756,9 @@ classdef dumbjsondb
             % In DUMBJSONDB class, this simply encodes the Matlab object
             % DOCOBJECT in JSON using JSONENCODENAN.
             %
-                % encode the document 
+            % encode the document
             try,
-                    js = did.datastructures.jsonencodenan(doc_object);
+                js = did.datastructures.jsonencodenan(doc_object);
             catch,
                 error(['Could not generate JSON code from object.']);
             end;
@@ -781,21 +781,21 @@ classdef dumbjsondb
             % decodes it using JSONDECODE. If FILENAME does not exist, then
             % DOC_OBJECT is empty ([]).
             %
-                if isfile(filename)
-                    t = did.file.textfile2char([p f]); 
-                    doc_object = jsondecode(t);
-                else,
-                    doc_object = [];
-                end
+            if isfile(filename)
+                t = did.file.textfile2char([p f]);
+                doc_object = jsondecode(t);
+            else,
+                doc_object = [];
+            end
         end % file2docobject
-            
+
         function f = uniqueid2filenameprefix(doc_unique_id)
             % UNIQUEID2FILENAMEPREFIX - return the beginning of the file name for document data/metadata
             %
             % F = UNIQUEID2FILENAMEPREFIX(DOC_UNIQUE_ID)
             %
-            % Return the beginning filename for a document given its DOC_UNIQUE_ID.  
-            % The filename contains the the DOC_UNIQUE_ID converted to a valid file name 
+            % Return the beginning filename for a document given its DOC_UNIQUE_ID.
+            % The filename contains the the DOC_UNIQUE_ID converted to a valid file name
             % using STRING2FILESTRING.
             %
             % F is therefore ['Object_id_' CONVERTED_DOC_UNIQUE_ID]
@@ -803,9 +803,9 @@ classdef dumbjsondb
             % See also: DUMBJSONDB/UNIQUEID2FILENAME, DUMBJSONDB/UNIQUEID2BINARYFILENAME, ...
             %    DUMBJSONDB/UNIQUEID2METAFILENAME, STRING2FILESTRING
             %
-                doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
-                f = did.file.string2filestring(doc_unique_id);
-                f = ['Object_id_' f];
+            doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
+            f = did.file.string2filestring(doc_unique_id);
+            f = ['Object_id_' f];
         end % uniqueid2filenameprefix
 
         function f = uniqueid2metafilename(doc_unique_id)
@@ -813,15 +813,15 @@ classdef dumbjsondb
             %
             % F = UNIQUE2METAFILENAME(DOC_UNIQUE_ID)
             %
-            % Return the meta filename for a document given its DOC_UNIQUE_ID.  
-            % The filename contains the the DOC_UNIQUE_ID converted to a valid file name 
+            % Return the meta filename for a document given its DOC_UNIQUE_ID.
+            % The filename contains the the DOC_UNIQUE_ID converted to a valid file name
             % using STRING2FILESTRING. The file extension is '.txt'.
             %
             % F is therefore ['Object_id_' CONVERTED_DOC_UNIQUE_ID '.txt' ];
             %
             % See also: DUMBJSONDB/UNIQUEID2FILENAME, DUMBJSONDB/UNIQUEID2BINARYFILENAME, DUMBJSONDB/UNIQUEID2FILENAMEPREFIX
             %
-                f = [did.file.dumbjsondb.uniqueid2filenameprefix(doc_unique_id) '.txt'];
+            f = [did.file.dumbjsondb.uniqueid2filenameprefix(doc_unique_id) '.txt'];
         end % uniqueid2metafilename()
 
         function f = uniqueid2filename(doc_unique_id, version)
@@ -829,8 +829,8 @@ classdef dumbjsondb
             %
             % F = UNIQUEID2FILENAME(DOC_UNIQUE_ID[, VERSION])
             %
-            % Return the filename for a document given its DOC_UNIQUE_ID.  
-            % The filename contains the the DOC_UNIQUE_ID converted to a valid file name 
+            % Return the filename for a document given its DOC_UNIQUE_ID.
+            % The filename contains the the DOC_UNIQUE_ID converted to a valid file name
             % using STRING2FILESTRING and the VERSION number  '_v#' is appended, where
             % '#' is the hexadecimal VERSION with 5 digits. The file extension is '.json'.
             %
@@ -840,17 +840,17 @@ classdef dumbjsondb
             %
             % See also: DUMBJSONDB/UNIQUEID2FILENAME, DUMBJSONDB/UNIQUEID2METAFILENAME, DUMBJSONDB/UNIQUEID2FILENAMEPREFIX
             %
-                f = did.file.dumbjsondb.uniqueid2filenameprefix(doc_unique_id);
-                if nargin<2,
-                    version = 0;
-                end;
-                if isempty(version),
-                    version = 0;
-                end;
-                if version > hex2dec('FFFFF'),
-                    error(['Version number requested (' num2str(version) ') is larger than max: ' num2str(hex2dec('FFFFF')) '.']);
-                end
-                f = [f '_v' dec2hex(version,5) '.json'];
+            f = did.file.dumbjsondb.uniqueid2filenameprefix(doc_unique_id);
+            if nargin<2,
+                version = 0;
+            end;
+            if isempty(version),
+                version = 0;
+            end;
+            if version > hex2dec('FFFFF'),
+                error(['Version number requested (' num2str(version) ') is larger than max: ' num2str(hex2dec('FFFFF')) '.']);
+            end
+            f = [f '_v' dec2hex(version,5) '.json'];
         end % uniqueid2filename()
 
         function f = uniqueid2binaryfilename(doc_unique_id, version)
@@ -863,12 +863,12 @@ classdef dumbjsondb
             %
             % See also: DUMBJSONDB/UNIQUEID2FILENAME
             %
-                if nargin<2,
-                    f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id);
-                else,
-                    f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, version);
-                end;
-                f = [f '.binary'];
+            if nargin<2,
+                f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id);
+            else,
+                f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, version);
+            end;
+            f = [f '.binary'];
         end % uniqueid2binaryfilename()
 
         function s = readparametersfile(filename)
@@ -878,11 +878,11 @@ classdef dumbjsondb
             %
             % Read the parameters from the JSON file
             %
-                if ~isfile(filename),
-                    error(['File ' filename ' does not exist.']);
-                end
-                t = did.file.textfile2char(filename);
-                s = jsondecode(t);
+            if ~isfile(filename),
+                error(['File ' filename ' does not exist.']);
+            end
+            t = did.file.textfile2char(filename);
+            s = jsondecode(t);
         end; % readparameters
 
         function doc_unique_id = fixdocuniqueid(doc_unique_id)
@@ -892,9 +892,9 @@ classdef dumbjsondb
             %
             % If DOC_UNIQUE_ID is a number, it is turned into a string.
             %
-                if isnumeric(doc_unique_id),
-                    doc_unique_id = mat2str(doc_unique_id);
-                end;
+            if isnumeric(doc_unique_id),
+                doc_unique_id = mat2str(doc_unique_id);
+            end;
         end; % fixdocuniqueid()
 
         function b = ismatch(document, searchParams)
@@ -903,41 +903,41 @@ classdef dumbjsondb
             % B = ISMATCH(DOCUMENT, SEARCHPARAMS)
             %
             % Examines the fields of DOCUMENT to determine if there is a match.
-                if isstruct(searchParams),
-                    b = did.datastructures.fieldsearch(struct(document),searchParams);
-                    return;
+            if isstruct(searchParams),
+                b = did.datastructures.fieldsearch(struct(document),searchParams);
+                return;
+            end;
+            b = 1;
+            for i=1:2:numel(searchParams),
+                hasit = 0;
+                try,
+                    value = eval(['document.' searchParams{i} ';']);
+                    hasit = 1;
                 end;
-                b = 1;
-                for i=1:2:numel(searchParams),
-                    hasit = 0;
-                    try,
-                        value = eval(['document.' searchParams{i} ';']);
-                        hasit = 1;
-                    end;
-                    
-                    if hasit,
-                        % keep checking for matches
-                        if ischar(searchParams{i+1}), % it is a regular expression
-                            if ischar(value),
-                                test = regexpi(value, searchParams{i+1}, 'forceCellOutput');
-                                if isempty(test{1}), % we do not have a match
-                                    b = 0;
-                                end;
-                            else, % value isn't even a string
+
+                if hasit,
+                    % keep checking for matches
+                    if ischar(searchParams{i+1}), % it is a regular expression
+                        if ischar(value),
+                            test = regexpi(value, searchParams{i+1}, 'forceCellOutput');
+                            if isempty(test{1}), % we do not have a match
                                 b = 0;
                             end;
-                        else, % we need an exact match
-                            if ~did.datastructures.eqlen(value,searchParams{i+1}),
-                                b = 0;
-                            end;
+                        else, % value isn't even a string
+                            b = 0;
                         end;
-                    else, % we don't even have the field
-                        b = 0;
+                    else, % we need an exact match
+                        if ~did.datastructures.eqlen(value,searchParams{i+1}),
+                            b = 0;
+                        end;
                     end;
-                    if ~b,
-                        break;
-                    end;
-                                end;
+                else, % we don't even have the field
+                    b = 0;
+                end;
+                if ~b,
+                    break;
+                end;
+            end;
         end % ismatch()
 
     end; % methods (Static, protected)

@@ -1,7 +1,7 @@
 classdef sqlitedb < did.database %#ok<*TNOW1>
-% did.implementations.sqlitedb - An implementation of an SQLite database for DID
-%
-% See also: did.database, did.implementations.dumbjasondb, did.implementations.postgresdb
+    % did.implementations.sqlitedb - An implementation of an SQLite database for DID
+    %
+    % See also: did.database, did.implementations.dumbjasondb, did.implementations.postgresdb
 
     properties
         FileDir % full path to directory where files are stored
@@ -13,7 +13,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % sqlitedb_obj = sqlitedb(filename)
             %
-            % Creates a new sqlitedb object with optional FILENAME. 
+            % Creates a new sqlitedb object with optional FILENAME.
             % If FILENAME parameter is specified, the specified file is opened;
             % otherwise the user is prompted to select a *.sqlite file.
             % In FILENAME exists, the database validity as a DID DB is checked.
@@ -24,8 +24,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 url = 'https://github.com/a-ma72/mksqlite';
                 if ~isdeployed, url = ['<a href="' url '">' url '</a>']; end
                 msg = ['The mksqlite package is not detected on the Matlab path - '   newline ...
-                       'please install it before using did.implementations.sqlitedb.' newline ...
-                       'Download mksqlite from ' url ' and then run buildit.m'];
+                    'please install it before using did.implementations.sqlitedb.' newline ...
+                    'Download mksqlite from ' url ' and then run buildit.m'];
                 error('DID:SQLITEDB:NO_MKSQLITE',msg);
             end
 
@@ -62,7 +62,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             sqlitedb_obj.set_preference('cache_max_files', inf);
             sqlitedb_obj.FileDir = cacheDir;
         end % sqlitedb()
-    end 
+    end
 
     methods % destructor
         function delete(this_obj)
@@ -229,8 +229,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             if nargin > 1 && ~isempty(branch_id)
                 sqlStr = ['SELECT docs.doc_id FROM docs,branch_docs' ...
-                          ' WHERE docs.doc_idx = branch_docs.doc_idx' ...
-                          '   AND branch_id="' branch_id '"'];
+                    ' WHERE docs.doc_idx = branch_docs.doc_idx' ...
+                    '   AND branch_id="' branch_id '"'];
             else
                 sqlStr = 'SELECT docs.doc_id FROM docs';
             end
@@ -295,8 +295,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Handle case of the branch already containing this document
             data = this_obj.run_sql_noOpen(['SELECT doc_idx FROM branch_docs ' ...
-                                            ' WHERE doc_idx=? AND branch_id=?'], ...
-                                           doc_idx, branch_id);
+                ' WHERE doc_idx=? AND branch_id=?'], ...
+                doc_idx, branch_id);
             if ~isempty(data)
                 errMsg = sprintf('Document %s already exists in the %s branch', doc_id, branch_id);
                 %assert(isempty(data),'DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg)
@@ -330,7 +330,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         thisLocation = locations(locIdx);
                         sourcePath = thisLocation.location;
                         if thisLocation.ingest
-                           % destDir = this_obj.get_preference('cache_folder');
+                            % destDir = this_obj.get_preference('cache_folder');
                             destDir = this_obj.FileDir;
                             destPath = fullfile(destDir, thisLocation.uid);
                             try
@@ -366,7 +366,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             sourcePath, destPath, ...
                             thisLocation.location_type, ...
                             thisLocation.parameters);
-            if 0, disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); end; % debugging
+                        if 0, disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); end; % debugging
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
@@ -384,7 +384,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % document_obj = do_get_doc(this_obj, document_id, [params])
             %
-            % Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID. 
+            % Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID.
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
@@ -437,7 +437,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % do_remove_doc(this_obj, document_id, branch_id, [params])
             %
-            % Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID. 
+            % Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID.
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
@@ -465,9 +465,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Handle case of missing document
             sqlStr = ['SELECT docs.doc_idx FROM docs,branch_docs ' ...
-                      ' WHERE docs.doc_idx = branch_docs.doc_idx ' ...
-                      '   AND branch_id="' branch_id '"' ...
-                      '   AND doc_id="' doc_id '"'];
+                ' WHERE docs.doc_idx = branch_docs.doc_idx ' ...
+                '   AND branch_id="' branch_id '"' ...
+                '   AND doc_id="' doc_id '"'];
             %doc_id = [doc_id '/' branch_id];
             data = this_obj.run_sql_noOpen(sqlStr);
             if isempty(data)
@@ -532,9 +532,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Get the cached filepath to the specified document
 
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
-                         '  FROM docs,files ' ...
-                         ' WHERE docs.doc_id="' document_id '" ' ...
-                         '   AND files.doc_idx=docs.doc_idx'];
+                '  FROM docs,files ' ...
+                ' WHERE docs.doc_id="' document_id '" ' ...
+                '   AND files.doc_idx=docs.doc_idx'];
             if nargin > 2 && ~isempty(filename)
                 query_str = [query_str ' AND files.filename="' filename '"'];
             else
@@ -587,7 +587,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                         if ~status, error(errMsg); end
                     elseif strcmpi(file_type,'url'),
-            % call fileCache object to add the file
+                        % call fileCache object to add the file
                         websave(destPath, sourcePath);
                         if ~isfile(destPath), error(' '); end
                     end
@@ -617,7 +617,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % [tf, file_path] = check_exist_doc(this_obj, document_id, filename, [params])
             %
             % Return a boolean flag indicating whether a specified file
-            % exists for the specified DOCUMENT_ID. The requested filename 
+            % exists for the specified DOCUMENT_ID. The requested filename
             % must be specified using the (mandatory) FILENAME parameter.
             %
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
@@ -641,12 +641,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %       exist
 
             file_path = '';
-            
+
             % Get the cached filepath to the specified document
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
-                         '  FROM docs,files ' ...
-                         ' WHERE docs.doc_id="' document_id '" ' ...
-                         '   AND files.doc_idx=docs.doc_idx'];
+                '  FROM docs,files ' ...
+                ' WHERE docs.doc_id="' document_id '" ' ...
+                '   AND files.doc_idx=docs.doc_idx'];
             if nargin > 2 && ~isempty(filename)
                 query_str = [query_str ' AND files.filename="' filename '"'];
             else
@@ -750,8 +750,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function close_db(this_obj)
             % Close the database file (ignore any errors)
-            try 
-                mksqlite(this_obj.dbid, 'close'); 
+            try
+                mksqlite(this_obj.dbid, 'close');
                 this_obj.dbid = [];
             catch ME
                 warning(ME.message)
@@ -763,56 +763,56 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 %% Create "branches" table
                 this_obj.create_table('branches', ...
                     {'branch_id TEXT NOT NULL UNIQUE', ...
-                     'parent_id TEXT', ...
-                     'timestamp NUMERIC', ...
-                     'FOREIGN KEY(parent_id) REFERENCES branches(branch_id)', ...
-                     'PRIMARY KEY(branch_id)'});
+                    'parent_id TEXT', ...
+                    'timestamp NUMERIC', ...
+                    'FOREIGN KEY(parent_id) REFERENCES branches(branch_id)', ...
+                    'PRIMARY KEY(branch_id)'});
 
                 %% Create "docs" table
                 this_obj.create_table('docs', ...
                     {'doc_id    TEXT    NOT NULL UNIQUE', ...
-                     'doc_idx   INTEGER NOT NULL UNIQUE', ...
-                     'json_code TEXT', ...
-                     'timestamp NUMERIC', ...
-                     ... 'object', ... %BLOB
-                     'PRIMARY KEY(doc_idx AUTOINCREMENT)'});
+                    'doc_idx   INTEGER NOT NULL UNIQUE', ...
+                    'json_code TEXT', ...
+                    'timestamp NUMERIC', ...
+                    ... 'object', ... %BLOB
+                    'PRIMARY KEY(doc_idx AUTOINCREMENT)'});
 
                 %% Create "branch_docs" table
                 this_obj.create_table('branch_docs', ...
                     {'branch_id TEXT    NOT NULL', ...
-                     'doc_idx   INTEGER NOT NULL', ...
-                     'timestamp NUMERIC', ...
-                     'FOREIGN KEY(branch_id) REFERENCES branches(branch_id)', ...
-                     'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
-                     'PRIMARY KEY(branch_id,doc_idx)'});
+                    'doc_idx   INTEGER NOT NULL', ...
+                    'timestamp NUMERIC', ...
+                    'FOREIGN KEY(branch_id) REFERENCES branches(branch_id)', ...
+                    'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
+                    'PRIMARY KEY(branch_id,doc_idx)'});
 
                 %% Create "fields" table
                 this_obj.create_table('fields', ...
                     {'class      TEXT NOT NULL', ...
-                     'field_name TEXT NOT NULL UNIQUE', ...
-                     'json_name  TEXT NOT NULL', ...
-                     'field_idx  INTEGER NOT NULL UNIQUE DEFAULT 1', ...
-                     'PRIMARY KEY(field_idx AUTOINCREMENT)'});
+                    'field_name TEXT NOT NULL UNIQUE', ...
+                    'json_name  TEXT NOT NULL', ...
+                    'field_idx  INTEGER NOT NULL UNIQUE DEFAULT 1', ...
+                    'PRIMARY KEY(field_idx AUTOINCREMENT)'});
 
                 %% Create "doc_data" table
                 this_obj.create_table('doc_data', ...
                     {'doc_idx   INTEGER NOT NULL', ...
-                     'field_idx INTEGER NOT NULL', ...
-                     'value', ... %BLOB - any data type
-                     'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
-                     'FOREIGN KEY(field_idx) REFERENCES fields(field_idx)'});
+                    'field_idx INTEGER NOT NULL', ...
+                    'value', ... %BLOB - any data type
+                    'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
+                    'FOREIGN KEY(field_idx) REFERENCES fields(field_idx)'});
 
                 %% Create "files" table
                 this_obj.create_table('files', ...
                     {'doc_idx         INTEGER NOT NULL', ...
-                     'filename        TEXT NOT NULL', ...
-                     'uid             TEXT NOT NULL UNIQUE', ...
-                     'orig_location   TEXT NOT NULL', ...
-                     'cached_location TEXT',          ... % empty if not cached
-                     'type            TEXT NOT NULL', ...
-                     'parameters      TEXT',          ... % normally empty
-                     'FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx)', ...
-                     'PRIMARY KEY(doc_idx,filename,uid)'});
+                    'filename        TEXT NOT NULL', ...
+                    'uid             TEXT NOT NULL UNIQUE', ...
+                    'orig_location   TEXT NOT NULL', ...
+                    'cached_location TEXT',          ... % empty if not cached
+                    'type            TEXT NOT NULL', ...
+                    'parameters      TEXT',          ... % normally empty
+                    'FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx)', ...
+                    'PRIMARY KEY(doc_idx,filename,uid)'});
 
             catch err
                 this_obj.close_db();
@@ -856,10 +856,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % Add a new field with the specified field_id to the doc_data table
                 field_idx = results(1).field_idx;
                 %if ~isempty(value)
-                    this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
+                this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
                 %end
             end
         end
-    end    
+    end
 
 end % sqlitedb classdef

@@ -2,9 +2,9 @@ classdef ido
     % did.ido   Identifier object class; creates globally unique IDs for DID database
     %
     % This class creates and stores globally unique IDs. The ID is based on both the
-    % current time and a random number (see did.unique_id). Therefore, the IDs are 
+    % current time and a random number (see did.unique_id). Therefore, the IDs are
     % globally unique and also sortable (alphanumerically) by the time of creation
-    % (which is in Universal Controlled Time (Leap Seconds), UTC). 
+    % (which is in Universal Controlled Time (Leap Seconds), UTC).
     %
     % did.ido Properties:
     %   identifier - a unique identifier (id) for this did.ido object
@@ -13,7 +13,7 @@ classdef ido
     %   ido - creator that generates a DID globally unique ID (or stores an existing ID)
     %   id - return the identifier of the did.ido object
     %   unique_id - generate a DID globally unique ID (Static function)
-    % 
+    %
     % Examples:
     %   myid = did.ido()
     %   myid.id(), % show the ID
@@ -42,12 +42,12 @@ classdef ido
 
         function identifier = id(ido_obj)
             % ID - return the identifier of an DID.IDO object
-            % 
+            %
             % IDENTIFIER = ID(DID.IDO_OBJ)
             %
             % Returns the unique identifier of an DID.IDO object.
             %
-                identifier = ido_obj.identifier;
+            identifier = ido_obj.identifier;
         end; % id()
     end; % methods
 
@@ -67,9 +67,9 @@ classdef ido
             %
             % See also: NUM2HEX, NOW, RAND
             %
-                serial_date_number = convertTo(datetime('now','TimeZone','UTCLeapSeconds'),'datenum');
-                random_number = rand + randi([-32727 32727],1);
-                id = [num2hex(serial_date_number) '_' num2hex(random_number)];
+            serial_date_number = convertTo(datetime('now','TimeZone','UTCLeapSeconds'),'datenum');
+            random_number = rand + randi([-32727 32727],1);
+            id = [num2hex(serial_date_number) '_' num2hex(random_number)];
 
         end; % did.ido.unique_id()
 
