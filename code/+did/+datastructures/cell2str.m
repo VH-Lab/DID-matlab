@@ -1,7 +1,7 @@
 function str = cell2str(theCell)
     % CELL2STR - Convert 1-D cells to a string
     %
-    %   STR = vlt.data.cell2str(THECELL)
+    %   STR = did.datastructures.cell2str(THECELL)
     %
     % Converts a 1-D cell to a string representation that
     % can be evaluated to reproduce the cell array.
@@ -10,10 +10,10 @@ function str = cell2str(theCell)
     %
     % Example:
     %   A = {'test','test2','test3'};
-    %   str = vlt.data.cell2str(A)
+    %   str = did.datastructures.cell2str(A)
     %    % str = '{ 'test','test2','test3'}'
     %   B = eval(str);
-    %   vlt.data.eqlen(A,B), % should return 1
+    %   did.datastructures.eqlen(A,B), % should return 1
     %
 
     if isempty(theCell), str = '{}'; return; end;
