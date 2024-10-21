@@ -106,7 +106,8 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
         file_exists = isfile(filename);
 
         if file_exists,
-            C = text2cellstr(filename);
+            C = split(char(fileread(filename)), newline); % Future: replace with readlines
+
             if ~isempty(C),
                 try,
                     expiration_time_of_file = datetime(strtrim(C{1}),'TimeZone','UTCLeapSeconds');
