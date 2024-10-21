@@ -1,19 +1,19 @@
 classdef sqlitedb < did.database %#ok<*TNOW1>
-% did.implementations.sqlitedb - An implementation of an SQLite database for DID
-%
-% See also: did.database, did.implementations.dumbjasondb, did.implementations.postgresdb
+    % did.implementations.sqlitedb - An implementation of an SQLite database for DID
+    %
+    % See also: did.database, did.implementations.dumbjasondb, did.implementations.postgresdb
 
     properties
-	    FileDir % full path to directory where files are stored
+        FileDir % full path to directory where files are stored
     end
 
     methods % constructor
         function sqlitedb_obj = sqlitedb(filename)
-    	    % sqlitedb create a new did.implementations.sqlitedb object
-    	    %
-    	    % sqlitedb_obj = sqlitedb(filename)
-    	    %
-    	    % Creates a new sqlitedb object with optional FILENAME. 
+            % sqlitedb create a new did.implementations.sqlitedb object
+            %
+            % sqlitedb_obj = sqlitedb(filename)
+            %
+            % Creates a new sqlitedb object with optional FILENAME.
             % If FILENAME parameter is specified, the specified file is opened;
             % otherwise the user is prompted to select a *.sqlite file.
             % In FILENAME exists, the database validity as a DID DB is checked.
@@ -24,8 +24,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 url = 'https://github.com/a-ma72/mksqlite';
                 if ~isdeployed, url = ['<a href="' url '">' url '</a>']; end
                 msg = ['The mksqlite package is not detected on the Matlab path - '   newline ...
-                       'please install it before using did.implementations.sqlitedb.' newline ...
-                       'Download mksqlite from ' url ' and then run buildit.m'];
+                    'please install it before using did.implementations.sqlitedb.' newline ...
+                    'Download mksqlite from ' url ' and then run buildit.m'];
                 error('DID:SQLITEDB:NO_MKSQLITE',msg);
             end
 
@@ -62,7 +62,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             sqlitedb_obj.set_preference('cache_max_files', inf);
             sqlitedb_obj.FileDir = cacheDir;
         end % sqlitedb()
-    end 
+    end
 
     methods % destructor
         function delete(this_obj)
@@ -102,13 +102,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % disposed when this method returns, using the onCleanup mechanism
         end % do_run_sql_query()
 
-	    function branch_ids = do_get_branch_ids(this_obj)
-    	    % do_get_branch_ids - return all unique branch ids in the database
-    	    %
-    	    % branch_ids = do_get_branch_ids(this_obj)
-    	    %
-    	    % Return all unique branch ids as a cell array of strings.
-    	    % If no branches are defined, an empty cell array is returned.
+        function branch_ids = do_get_branch_ids(this_obj)
+            % do_get_branch_ids - return all unique branch ids in the database
+            %
+            % branch_ids = do_get_branch_ids(this_obj)
+            %
+            % Return all unique branch ids as a cell array of strings.
+            % If no branches are defined, an empty cell array is returned.
 
             % Run the SQL query in the database
             data = this_obj.run_sql_query('SELECT DISTINCT branch_id FROM branches');
@@ -122,14 +122,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     branch_ids = {branch_ids};
                 end
             end
-	    end % do_get_branch_ids()
+        end % do_get_branch_ids()
 
         function do_add_branch(this_obj, branch_id, parent_branch_id, varargin)
-			% do_add_branch - Adds a new database branch based on specified parent branch
-			%
-			% do_add_branch(this_obj, branch_id, parent_branch_id)
-			%
-			% Adds a new branch with the specified BRANCH_ID to the database,
+            % do_add_branch - Adds a new database branch based on specified parent branch
+            %
+            % do_add_branch(this_obj, branch_id, parent_branch_id)
+            %
+            % Adds a new branch with the specified BRANCH_ID to the database,
             % based on (duplicating) the specified PARENT_BRANCH_ID.
             %
             % An error is generated if PARENT_BRANCH_ID does not exist in the
@@ -153,11 +153,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end % do_add_branch()
 
         function do_delete_branch(this_obj, branch_id, varargin)
-			% do_delete_branch - Deletes the specified parent branch from the DB
-			%
-			% do_delete_branch(this_obj, branch_id
-			%
-			% Deletes the branch with the specified BRANCH_ID from the database.
+            % do_delete_branch - Deletes the specified parent branch from the DB
+            %
+            % do_delete_branch(this_obj, branch_id
+            %
+            % Deletes the branch with the specified BRANCH_ID from the database.
             % An error is generated if BRANCH_ID is not a valid branch ID.
 
             % First remove all documents from the branch
@@ -173,11 +173,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end % do_delete_branch()
 
         function parent_branch_id = do_get_branch_parent(this_obj, branch_id, varargin)
-			% do_get_branch_parent - Return the id of the specified branch's parent branch
-			%
-			% parent_branch_id = do_get_branch_parent(this_obj, branch_id)
-			%
-			% Returns the ID of the parent branch for the specified BRANCH_ID.
+            % do_get_branch_parent - Return the id of the specified branch's parent branch
+            %
+            % parent_branch_id = do_get_branch_parent(this_obj, branch_id)
+            %
+            % Returns the ID of the parent branch for the specified BRANCH_ID.
 
             sqlStr = ['SELECT parent_id FROM branches WHERE branch_id="' branch_id '"'];
             data = this_obj.run_sql_query(sqlStr);
@@ -201,11 +201,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end % do_get_branch_parent()
 
         function branch_ids = do_get_sub_branches(this_obj, branch_id, varargin)
-			% do_get_sub_branches - Return the ids of the specified branch's child branches (if any)
-			%
-			% branch_ids = do_get_sub_branches(this_obj, branch_id)
-			%
-			% Returns a cell array of IDs of sub-branches of the specified BRANCH_ID.
+            % do_get_sub_branches - Return the ids of the specified branch's child branches (if any)
+            %
+            % branch_ids = do_get_sub_branches(this_obj, branch_id)
+            %
+            % Returns a cell array of IDs of sub-branches of the specified BRANCH_ID.
             % If BRANCH_ID has no sub-branches, an empty cell array is returned.
 
             sqlStr = ['SELECT branch_id FROM branches WHERE parent_id="' branch_id '"'];
@@ -218,19 +218,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end % do_get_sub_branches()
 
         function doc_ids = do_get_doc_ids(this_obj, branch_id, varargin)
-			% do_get_doc_ids - Return the ids of the specified branch's child branches (if any)
-			%
-			% doc_ids = do_get_doc_ids(this_obj, branch_id)
-			%
-			% Returns a cell array of document IDs contained in the specified BRANCH_ID.
+            % do_get_doc_ids - Return the ids of the specified branch's child branches (if any)
+            %
+            % doc_ids = do_get_doc_ids(this_obj, branch_id)
+            %
+            % Returns a cell array of document IDs contained in the specified BRANCH_ID.
             % If BRANCH_ID has no documents, an empty cell array is returned.
             % If BRANCH_ID  is empty or not specified, all IDs in all branches are
             % returned.
 
             if nargin > 1 && ~isempty(branch_id)
                 sqlStr = ['SELECT docs.doc_id FROM docs,branch_docs' ...
-                          ' WHERE docs.doc_idx = branch_docs.doc_idx' ...
-                          '   AND branch_id="' branch_id '"'];
+                    ' WHERE docs.doc_idx = branch_docs.doc_idx' ...
+                    '   AND branch_id="' branch_id '"'];
             else
                 sqlStr = 'SELECT docs.doc_id FROM docs';
             end
@@ -244,10 +244,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function do_add_doc(this_obj, document_obj, branch_id, varargin)
             % do_add_doc - Add a DID document to a specified branch in the DB
-			%
-			% do_add_doc(this_obj, document_obj, branch_id, [params])
-			%
-			% Adds the specified DID.DOCUMENT object to the specified BRANCH_ID.
+            %
+            % do_add_doc(this_obj, document_obj, branch_id, [params])
+            %
+            % Adds the specified DID.DOCUMENT object to the specified BRANCH_ID.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
@@ -295,8 +295,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Handle case of the branch already containing this document
             data = this_obj.run_sql_noOpen(['SELECT doc_idx FROM branch_docs ' ...
-                                            ' WHERE doc_idx=? AND branch_id=?'], ...
-                                           doc_idx, branch_id);
+                ' WHERE doc_idx=? AND branch_id=?'], ...
+                doc_idx, branch_id);
             if ~isempty(data)
                 errMsg = sprintf('Document %s already exists in the %s branch', doc_id, branch_id);
                 %assert(isempty(data),'DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg)
@@ -330,7 +330,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         thisLocation = locations(locIdx);
                         sourcePath = thisLocation.location;
                         if thisLocation.ingest
-                           % destDir = this_obj.get_preference('cache_folder');
+                            % destDir = this_obj.get_preference('cache_folder');
                             destDir = this_obj.FileDir;
                             destPath = fullfile(destDir, thisLocation.uid);
                             try
@@ -366,7 +366,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             sourcePath, destPath, ...
                             thisLocation.location_type, ...
                             thisLocation.parameters);
-			if 0, disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); end; % debugging
+                        if 0, disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); end; % debugging
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
@@ -380,11 +380,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end % do_add_doc()
 
         function document_obj = do_get_doc(this_obj, document_id, varargin)
-	        % do_get_doc - Return a DID.DOCUMENT for the specified document ID
-	        %
-	        % document_obj = do_get_doc(this_obj, document_id, [params])
-	        %
-			% Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID. 
+            % do_get_doc - Return a DID.DOCUMENT for the specified document ID
+            %
+            % document_obj = do_get_doc(this_obj, document_id, [params])
+            %
+            % Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID.
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
@@ -399,8 +399,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Outputs:
             %    document_obj - a did.document object (possibly empty)
 
-		    %[doc, version] = this_obj.db.read(document_id);
-		    %document_obj = did.document(doc);
+            %[doc, version] = this_obj.db.read(document_id);
+            %document_obj = did.document(doc);
 
             % Run the SQL query in the database
             query_str = ['SELECT json_code FROM docs WHERE doc_id="' document_id '"'];
@@ -430,14 +430,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             json_code = data{1};
             if iscell(json_code), json_code = json_code{1}; end
             document_obj = did.document(jsondecode(json_code));
-	    end % do_get_doc()
+        end % do_get_doc()
 
         function do_remove_doc(this_obj, document_id, branch_id, varargin)
             % do_remove_doc - Remove specified DID document from the specified branch
-	        %
-	        % do_remove_doc(this_obj, document_id, branch_id, [params])
-	        %
-			% Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID. 
+            %
+            % do_remove_doc(this_obj, document_id, branch_id, [params])
+            %
+            % Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID.
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
@@ -465,9 +465,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Handle case of missing document
             sqlStr = ['SELECT docs.doc_idx FROM docs,branch_docs ' ...
-                      ' WHERE docs.doc_idx = branch_docs.doc_idx ' ...
-                      '   AND branch_id="' branch_id '"' ...
-                      '   AND doc_id="' doc_id '"'];
+                ' WHERE docs.doc_idx = branch_docs.doc_idx ' ...
+                '   AND branch_id="' branch_id '"' ...
+                '   AND doc_id="' doc_id '"'];
             %doc_id = [doc_id '/' branch_id];
             data = this_obj.run_sql_noOpen(sqlStr);
             if isempty(data)
@@ -504,14 +504,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end % do_remove_doc()
 
         function file_obj = do_open_doc(this_obj, document_id, filename, varargin)
-	        % do_open_doc - Return a did.file.readonly_fileobj for the specified document ID
-	        %
-	        % file_obj = do_open_doc(this_obj, document_id, [filename], [params])
-	        %
-			% Return a DID.FILE.READONLY_FILEOBJ object for a data file within
+            % do_open_doc - Return a did.file.readonly_fileobj for the specified document ID
+            %
+            % file_obj = do_open_doc(this_obj, document_id, [filename], [params])
+            %
+            % Return a DID.FILE.READONLY_FILEOBJ object for a data file within
             % the specified DOCUMENT_ID. The requested filename must be
             % specified using the (mandatory) FILENAME parameter.
-			%
+            %
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
@@ -532,9 +532,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Get the cached filepath to the specified document
 
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
-                         '  FROM docs,files ' ...
-                         ' WHERE docs.doc_id="' document_id '" ' ...
-                         '   AND files.doc_idx=docs.doc_idx'];
+                '  FROM docs,files ' ...
+                ' WHERE docs.doc_id="' document_id '" ' ...
+                '   AND files.doc_idx=docs.doc_idx'];
             if nargin > 2 && ~isempty(filename)
                 query_str = [query_str ' AND files.filename="' filename '"'];
             else
@@ -587,7 +587,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                         if ~status, error(errMsg); end
                     elseif strcmpi(file_type,'url'),
-			% call fileCache object to add the file
+                        % call fileCache object to add the file
                         websave(destPath, sourcePath);
                         if ~isfile(destPath), error(' '); end
                     end
@@ -617,7 +617,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % [tf, file_path] = check_exist_doc(this_obj, document_id, filename, [params])
             %
             % Return a boolean flag indicating whether a specified file
-            % exists for the specified DOCUMENT_ID. The requested filename 
+            % exists for the specified DOCUMENT_ID. The requested filename
             % must be specified using the (mandatory) FILENAME parameter.
             %
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
@@ -641,12 +641,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %       exist
 
             file_path = '';
-            
+
             % Get the cached filepath to the specified document
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
-                         '  FROM docs,files ' ...
-                         ' WHERE docs.doc_id="' document_id '" ' ...
-                         '   AND files.doc_idx=docs.doc_idx'];
+                '  FROM docs,files ' ...
+                ' WHERE docs.doc_id="' document_id '" ' ...
+                '   AND files.doc_idx=docs.doc_idx'];
             if nargin > 2 && ~isempty(filename)
                 query_str = [query_str ' AND files.filename="' filename '"'];
             else
@@ -750,8 +750,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function close_db(this_obj)
             % Close the database file (ignore any errors)
-            try 
-                mksqlite(this_obj.dbid, 'close'); 
+            try
+                mksqlite(this_obj.dbid, 'close');
                 this_obj.dbid = [];
             catch ME
                 warning(ME.message)
@@ -763,56 +763,56 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 %% Create "branches" table
                 this_obj.create_table('branches', ...
                     {'branch_id TEXT NOT NULL UNIQUE', ...
-                     'parent_id TEXT', ...
-                     'timestamp NUMERIC', ...
-                     'FOREIGN KEY(parent_id) REFERENCES branches(branch_id)', ...
-                     'PRIMARY KEY(branch_id)'});
+                    'parent_id TEXT', ...
+                    'timestamp NUMERIC', ...
+                    'FOREIGN KEY(parent_id) REFERENCES branches(branch_id)', ...
+                    'PRIMARY KEY(branch_id)'});
 
                 %% Create "docs" table
                 this_obj.create_table('docs', ...
                     {'doc_id    TEXT    NOT NULL UNIQUE', ...
-                     'doc_idx   INTEGER NOT NULL UNIQUE', ...
-                     'json_code TEXT', ...
-                     'timestamp NUMERIC', ...
-                     ... 'object', ... %BLOB
-                     'PRIMARY KEY(doc_idx AUTOINCREMENT)'});
+                    'doc_idx   INTEGER NOT NULL UNIQUE', ...
+                    'json_code TEXT', ...
+                    'timestamp NUMERIC', ...
+                    ... 'object', ... %BLOB
+                    'PRIMARY KEY(doc_idx AUTOINCREMENT)'});
 
                 %% Create "branch_docs" table
                 this_obj.create_table('branch_docs', ...
                     {'branch_id TEXT    NOT NULL', ...
-                     'doc_idx   INTEGER NOT NULL', ...
-                     'timestamp NUMERIC', ...
-                     'FOREIGN KEY(branch_id) REFERENCES branches(branch_id)', ...
-                     'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
-                     'PRIMARY KEY(branch_id,doc_idx)'});
+                    'doc_idx   INTEGER NOT NULL', ...
+                    'timestamp NUMERIC', ...
+                    'FOREIGN KEY(branch_id) REFERENCES branches(branch_id)', ...
+                    'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
+                    'PRIMARY KEY(branch_id,doc_idx)'});
 
                 %% Create "fields" table
                 this_obj.create_table('fields', ...
                     {'class      TEXT NOT NULL', ...
-                     'field_name TEXT NOT NULL UNIQUE', ...
-                     'json_name  TEXT NOT NULL', ...
-                     'field_idx  INTEGER NOT NULL UNIQUE DEFAULT 1', ...
-                     'PRIMARY KEY(field_idx AUTOINCREMENT)'});
+                    'field_name TEXT NOT NULL UNIQUE', ...
+                    'json_name  TEXT NOT NULL', ...
+                    'field_idx  INTEGER NOT NULL UNIQUE DEFAULT 1', ...
+                    'PRIMARY KEY(field_idx AUTOINCREMENT)'});
 
                 %% Create "doc_data" table
                 this_obj.create_table('doc_data', ...
                     {'doc_idx   INTEGER NOT NULL', ...
-                     'field_idx INTEGER NOT NULL', ...
-                     'value', ... %BLOB - any data type
-                     'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
-                     'FOREIGN KEY(field_idx) REFERENCES fields(field_idx)'});
+                    'field_idx INTEGER NOT NULL', ...
+                    'value', ... %BLOB - any data type
+                    'FOREIGN KEY(doc_idx)   REFERENCES docs(doc_idx)', ...
+                    'FOREIGN KEY(field_idx) REFERENCES fields(field_idx)'});
 
                 %% Create "files" table
                 this_obj.create_table('files', ...
                     {'doc_idx         INTEGER NOT NULL', ...
-                     'filename        TEXT NOT NULL', ...
-                     'uid             TEXT NOT NULL UNIQUE', ...
-                     'orig_location   TEXT NOT NULL', ...
-                     'cached_location TEXT',          ... % empty if not cached
-                     'type            TEXT NOT NULL', ...
-                     'parameters      TEXT',          ... % normally empty
-                     'FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx)', ...
-                     'PRIMARY KEY(doc_idx,filename,uid)'});
+                    'filename        TEXT NOT NULL', ...
+                    'uid             TEXT NOT NULL UNIQUE', ...
+                    'orig_location   TEXT NOT NULL', ...
+                    'cached_location TEXT',          ... % empty if not cached
+                    'type            TEXT NOT NULL', ...
+                    'parameters      TEXT',          ... % normally empty
+                    'FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx)', ...
+                    'PRIMARY KEY(doc_idx,filename,uid)'});
 
             catch err
                 this_obj.close_db();
@@ -856,10 +856,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % Add a new field with the specified field_id to the doc_data table
                 field_idx = results(1).field_idx;
                 %if ~isempty(value)
-                    this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
+                this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
                 %end
             end
         end
-    end    
+    end
 
 end % sqlitedb classdef

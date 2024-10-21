@@ -1,66 +1,65 @@
 classdef  postgresdb < database
 
-	properties
+    properties
         db          % Stores PostgreSQL database
-		dbname		% Used to specify name of Postgres database
-	end
+        dbname        % Used to specify name of Postgres database
+    end
 
-	methods
+    methods
 
-		function did_postgresdb_obj = did_postgresdb(varargin)
-		% DID_POSTGRESDB make a new DID_POSTGRESDB object
-		% 
-		% DID_POSTGRESDB_OBJ = DID_POSTGRESDB(PATH, SESSION_UNIQUE_REFERENCE, COMMAND, ...)
-		%
-		% Creates a new DID_POSTGRESDB object.
-		%
-        % Assumes metadata is stored in [dbname].public.documents
-        %
-		% COMMAND can either be 'Load' or 'New'. The second argument
-		% should be the full pathname of the location where the files
-		% should be stored on disk.
-		
-            assert(nargin==3 ,"Need 3 variables as input: name of database, username, and password") 
+        function did_postgresdb_obj = did_postgresdb(varargin)
+            % DID_POSTGRESDB make a new DID_POSTGRESDB object
+            %
+            % DID_POSTGRESDB_OBJ = DID_POSTGRESDB(PATH, SESSION_UNIQUE_REFERENCE, COMMAND, ...)
+            %
+            % Creates a new DID_POSTGRESDB object.
+            %
+            % Assumes metadata is stored in [dbname].public.documents
+            %
+            % COMMAND can either be 'Load' or 'New'. The second argument
+            % should be the full pathname of the location where the files
+            % should be stored on disk.
+
+            assert(nargin==3 ,"Need 3 variables as input: name of database, username, and password")
             disp(varargin);
             dbname = varargin{1};
             username = varargin{2};
             password = varargin{3};
 
-    %             did_postgresdb_obj = did_postgresdb_obj@did_database(varargin{:});
-    %             disp('pgobj:')
-    %             disp(did_postgresdb_obj)
-    %             
-    %             disp('objdb:')
-    %                did_postgresdb_obj.db = dumbjsondb(varargin{3:end},...
-    %  				'dirname','dumbjsondb','unique_object_id_field','did_document.id');
+            %             did_postgresdb_obj = did_postgresdb_obj@did_database(varargin{:});
+            %             disp('pgobj:')
+            %             disp(did_postgresdb_obj)
+            %
+            %             disp('objdb:')
+            %                did_postgresdb_obj.db = dumbjsondb(varargin{3:end},...
+            %                  'dirname','dumbjsondb','unique_object_id_field','did_document.id');
 
             conn = database(dbname,username,password);
             did_postgresdb_obj.db = conn;
             did_postgresdb_obj.dbname = dbname;
-        
+
             disp(did_postgresdb_obj.db)
         end % did_postgresdb_obj()
+    end
 
-	end 
-
-	methods, % public
-		function docids = alldocids(did_postgresdb_obj)
-			% ALLDOCIDS - return all document unique reference numbers for the database
-            %              
-			%
-			% DOCIDS = ALLDOCIDS(DID_POSTGRESDB_OBJ, DBNAME)
-			%
-			% Return all document unique reference strings as a cell array of strings. If there
-			% are no documents, empty is returned.
-			%
+    methods, % public
+        function docids = alldocids(did_postgresdb_obj)
+            % ALLDOCIDS - return all document unique reference numbers for the database
+            %
+            %
+            % DOCIDS = ALLDOCIDS(DID_POSTGRESDB_OBJ, DBNAME)
+            %
+            % Return all document unique reference strings as a cell array of strings. If there
+            % are no documents, empty is returned.
+            %
             % NOTE: Requires Database name as input and Assuming data is stored in public.documents
-                % docid_query = "SELECT id FROM " + did_postgresdb_obj.dbname + ".public.documents"
-                % data = select(did_postgresdb_obj.db,docid_query);
+            % docid_query = "SELECT id FROM " + did_postgresdb_obj.dbname + ".public.documents"
+            % data = select(did_postgresdb_obj.db,docid_query);
 
-                table = sqlread(did_postgresdb_obj.db, 'public.documents');
-                docids = table.id;
-		end; % alldocids()
-        
+            table = sqlread(did_postgresdb_obj.db, 'public.documents');
+            docids = table.id;
+        end; % alldocids()
+
         function sqlquery = ndiquery_to_sql(did_postgresdb_obj, ndiquery)
             % Translates an ndiquery into a SQL command
             % Assumes input is a ndiquery converted to struct
@@ -71,169 +70,158 @@ classdef  postgresdb < database
             % q = did_query(‘list’,‘exact_string’,‘abc’,‘’)
             %
             % Example SQL query:
-            % SELECT data ->> 'list' AS list                                                                  
-            % FROM dbname.public.documents                                                           
-            % WHERE data ->> 'list' LIKE ('%abc%')  
+            % SELECT data ->> 'list' AS list
+            % FROM dbname.public.documents
+            % WHERE data ->> 'list' LIKE ('%abc%')
 
-                assert(isa(ndiquery, 'struct'), "did_query not a struct")
-                assert(isfield(ndiquery, 'operation'), "did_query object has no operation")
-                assert(isfield(ndiquery, 'param1'), "did_query object has no param1")
-                assert(isfield(ndiquery, 'param2'), "did_query object has no param2")
-                field = ndiquery.field
-                param1 = ndiquery.param1
-                param2 = ndiquery.param2
+            assert(isa(ndiquery, 'struct'), "did_query not a struct")
+            assert(isfield(ndiquery, 'operation'), "did_query object has no operation")
+            assert(isfield(ndiquery, 'param1'), "did_query object has no param1")
+            assert(isfield(ndiquery, 'param2'), "did_query object has no param2")
+            field = ndiquery.field
+            param1 = ndiquery.param1
+            param2 = ndiquery.param2
 
+            % Basic structure of a SQL query
+            % Assumes metadata is stored in 'data':
+            % Outside of the id, all meta must be accessed through
+            % 'data'
+            select = "SELECT ";
+            not_id = 0;
+            if ~strcmp(ndiquery.field, "id")
+                select = select + "data ->> '" + field + "' AS " + field
+                not_id = 1;
+            else
+                select = select + "id"
+            end
 
-                % Basic structure of a SQL query
-                % Assumes metadata is stored in 'data':        
-                % Outside of the id, all meta must be accessed through
-                % 'data'
-                select = "SELECT "; 
-                not_id = 0;
-                if ~strcmp(ndiquery.field, "id")
-                    select = select + "data ->> '" + field + "' AS " + field
-                    not_id = 1;
-                else 
-                   select = select + "id"
-                   
-                end
-                
-                from = "FROM " + did_postgresdb_obj.dbname + ".public.documents";
-                where = "WHERE";
+            from = "FROM " + did_postgresdb_obj.dbname + ".public.documents";
+            where = "WHERE";
 
-                % Translate the ndi
-                switch ndiquery.operation
-                   case 'regexp' 
-                   % are there any regular expression matches between 
-                   % the field value and 'param1'?
-                   % 
-                   % expects correct SQL regular expression
-                    
-                       where = where + " " + field + " " + param1
-                                      
-                   case 'exact_string'
-                   % is the field value an exact string match for 'param1'?
-                       if not_id 
-                           where = where + " data->>'" + field + "' = '" + param1 + "'";
-                       else 
-                           where = where + " " + field + " = '" + param1 + "'";
-                       end
-                       
+            % Translate the ndi
+            switch ndiquery.operation
+                case 'regexp'
+                    % are there any regular expression matches between
+                    % the field value and 'param1'?
+                    %
+                    % expects correct SQL regular expression
 
-                   case 'contains_string'
-                   % is the field value a char array that contains 'param1'?                  
-                       where = where + " data ->> '" + field + "' LIKE '%" + param1 + "%'";
+                    where = where + " " + field + " " + param1
 
-                   case 'exact_number'
-                   % is the field value exactly 'param1' (same size and values)? 
-                      if not_id 
-                            where = where + " (data->>'" + field + "')::NUMERIC = " + param1;                           
-                      else     
-                            where = where + " (data'" + field + "')::NUMERIC = " + param1;                           
-                      end
-                      
-                      
-                   case 'lessthan'
-                   % is the field value less than 'param1' (and comparable size)
-                      if not_id 
-                            where = where + " (data->>'" + field + "')::NUMERIC < " + param1;                           
-                      else     
-                            where = where + " (data'" + field + "')::NUMERIC < " + param1;                           
-                      end
-                      
-                   case 'lessthaneq'
-                   % is the field value less than or equal to 'param1' (and comparable size)
-                      if not_id 
-                            where = where + " (data->>'" + field + "')::NUMERIC <= " + param1;                           
-                      else     
-                            where = where + " (data'" + field + "')::NUMERIC <= " + param1;                           
-                      end
-                      
-                   case 'greaterthan'
-                   % is the field value greater than 'param1' (and comparable size)  
-                      if not_id 
-                            where = where + " (data->>'" + field + "')::NUMERIC > " + param1;                           
-                      else     
-                            where = where + " (data'" + field + "')::NUMERIC > " + param1;                           
-                      end
-                      
-                      
-                   case 'greaterthaneq'
-                   % is the field value greater than or equal to 'param1' (and comparable size)
-                      if not_id 
-                            where = where + " (data->>'" + field + "')::NUMERIC >= " + param1;                           
-                      else     
-                            where = where + " (data'" + field + "')::NUMERIC >= " + param1;                           
-                      end
-                      
-                      
-                   case 'has_field'
-                   % is the field present? (no role for 'param1' or 'param2')
-                   % find all documents that have that field
-                      if not_id                  
-                           where = where + " LENGTH(data ->> '" + field + "') > 0";
-                      else
-                           where = where + " LENGTH('" + field + "') > 0"; 
-                      end
-                      
-                      
-                   case 'hasanysubfield_contains_string'
-                   % Is the field value an array of structs or cell array of structs
-                   % such that any has a field named 'param1' with a string that 
-                   % TODO contains the string in 'param2'? 
-                   % Note: Assumed it cannot be ID
-                       %where = where + 
-                   
-                   case 'or'
-                   % are any of the searchstruct elements specified in 'param1' true?
-                   % searchstruct can be an array of searches
-                   % param1 is an array of search structs
-                   % do AND of all of these entries
-                   % TODO
-                        for i = 1:length(param1)
-                           % first one
-                           if i==1
-                               where = where + " AND (version = '" + i + "'";
-                           else    
-                               where = where + " OR version = '" + i + "'";
-                           end
-                       
-                        end   
-                        where = where + ")";
-                        
-                        
-                   case 'isa' 
-                   % is 'param1' either a superclass or the document class itself of the DID_DOCUMENT? 
-                   % DID_DOCUMENT is the field?
-                   % TODO     
-                   
-                   case 'depends_on' 
-                   % does the document depend on an item with name 'param1' and value 'param2'?
-                   % field is document?
-                   % TODO do key value pair have to be in different columns, can't have both in one column for sql?
+                case 'exact_string'
+                    % is the field value an exact string match for 'param1'?
+                    if not_id
+                        where = where + " data->>'" + field + "' = '" + param1 + "'";
+                    else
+                        where = where + " " + field + " = '" + param1 + "'";
+                    end
 
-                    otherwise
-                      disp("error: invalid operation")
-                    
+                case 'contains_string'
+                    % is the field value a char array that contains 'param1'?
+                    where = where + " data ->> '" + field + "' LIKE '%" + param1 + "%'";
 
-                end
+                case 'exact_number'
+                    % is the field value exactly 'param1' (same size and values)?
+                    if not_id
+                        where = where + " (data->>'" + field + "')::NUMERIC = " + param1;
+                    else
+                        where = where + " (data'" + field + "')::NUMERIC = " + param1;
+                    end
+
+                case 'lessthan'
+                    % is the field value less than 'param1' (and comparable size)
+                    if not_id
+                        where = where + " (data->>'" + field + "')::NUMERIC < " + param1;
+                    else
+                        where = where + " (data'" + field + "')::NUMERIC < " + param1;
+                    end
+
+                case 'lessthaneq'
+                    % is the field value less than or equal to 'param1' (and comparable size)
+                    if not_id
+                        where = where + " (data->>'" + field + "')::NUMERIC <= " + param1;
+                    else
+                        where = where + " (data'" + field + "')::NUMERIC <= " + param1;
+                    end
+
+                case 'greaterthan'
+                    % is the field value greater than 'param1' (and comparable size)
+                    if not_id
+                        where = where + " (data->>'" + field + "')::NUMERIC > " + param1;
+                    else
+                        where = where + " (data'" + field + "')::NUMERIC > " + param1;
+                    end
+
+                case 'greaterthaneq'
+                    % is the field value greater than or equal to 'param1' (and comparable size)
+                    if not_id
+                        where = where + " (data->>'" + field + "')::NUMERIC >= " + param1;
+                    else
+                        where = where + " (data'" + field + "')::NUMERIC >= " + param1;
+                    end
+
+                case 'has_field'
+                    % is the field present? (no role for 'param1' or 'param2')
+                    % find all documents that have that field
+                    if not_id
+                        where = where + " LENGTH(data ->> '" + field + "') > 0";
+                    else
+                        where = where + " LENGTH('" + field + "') > 0";
+                    end
+
+                case 'hasanysubfield_contains_string'
+                    % Is the field value an array of structs or cell array of structs
+                    % such that any has a field named 'param1' with a string that
+                    % TODO contains the string in 'param2'?
+                    % Note: Assumed it cannot be ID
+                    %where = where +
+
+                case 'or'
+                    % are any of the searchstruct elements specified in 'param1' true?
+                    % searchstruct can be an array of searches
+                    % param1 is an array of search structs
+                    % do AND of all of these entries
+                    % TODO
+                    for i = 1:length(param1)
+                        % first one
+                        if i==1
+                            where = where + " AND (version = '" + i + "'";
+                        else
+                            where = where + " OR version = '" + i + "'";
+                        end
+                    end
+                    where = where + ")";
+
+                case 'isa'
+                    % is 'param1' either a superclass or the document class itself of the DID_DOCUMENT?
+                    % DID_DOCUMENT is the field?
+                    % TODO
+
+                case 'depends_on'
+                    % does the document depend on an item with name 'param1' and value 'param2'?
+                    % field is document?
+                    % TODO do key value pair have to be in different columns, can't have both in one column for sql?
+
+                otherwise
+                    disp("error: invalid operation")
+            end
             sqlquery = select + " " + from + " " + where
-            end; % ndiquery_to_sql
-        
-	end; 
+        end; % ndiquery_to_sql
 
-	methods (Access=protected),
+    end;
 
-		function new_db = do_add(did_postgresdb_obj, did_document_obj, add_parameters)
-			% sqlwrite procedure to insert Matlab data into a database
-			% table
-            % 
-%             did_document_obj = table(30,500000,1000,25,"Rubik's Cube", ...
-%             'VariableNames',{'productNumber' 'stockNumber' ...
-%             'supplierNumber' 'unitCost' 'productDescription'});
-%             
-%             sqlwrite(conn,tablename,data)            
-            
+    methods (Access=protected),
+
+        function new_db = do_add(did_postgresdb_obj, did_document_obj, add_parameters)
+            % sqlwrite procedure to insert Matlab data into a database
+            % table
+            %
+            %             did_document_obj = table(30,500000,1000,25,"Rubik's Cube", ...
+            %             'VariableNames',{'productNumber' 'stockNumber' ...
+            %             'supplierNumber' 'unitCost' 'productDescription'});
+            %
+            %             sqlwrite(conn,tablename,data)
+
             % Note: add_paramters is unused, and it is assumed the data is in
             % public.documents
             %
@@ -244,119 +232,110 @@ classdef  postgresdb < database
 
         end; % do_add
 
-        
-		function [did_document_obj, version] = do_read(did_postgresdb_obj, did_document_id, version);
+        function [did_document_obj, version] = do_read(did_postgresdb_obj, did_document_id, version);
             % reads and shows a document from the database with the unique ndi document ID
             % expects a version, reading the latest by default
-            
+
             sqlquery = "SELECT * FROM public.documents WHERE id = '" + did_document_id + "'"
-            
+
             % First check if versions column exists in the table
             table = sqlread(did_postgresdb_obj.db, 'public.documents');
             Exist_Column = strcmp('version', table.Properties.VariableNames);
             vercol_exists = Exist_Column(Exist_Column==1)
             class(vercol_exists)
-           
-            % TODO: version feature
-                
-            if vercol_exists   
-                 sqlquery = sqlquery + " AND version = '" + version + "'";
-                    
-                
-            
-            end
-            disp(sqlquery)  
-            did_document_obj = select(did_postgresdb_obj.db, sqlquery)
-            
-		end; % do_read
 
-        
-		function did_postgresdb_obj = do_remove(did_postgresdb_obj, did_document_id, versions)
+            % TODO: version feature
+
+            if vercol_exists
+                sqlquery = sqlquery + " AND version = '" + version + "'";
+            end
+            disp(sqlquery)
+            did_document_obj = select(did_postgresdb_obj.db, sqlquery)
+
+        end; % do_read
+
+        function did_postgresdb_obj = do_remove(did_postgresdb_obj, did_document_id, versions)
             % removes a document from the database with the unique ndi document ID
             % expects versions as a column in the table
-            
+
             sqlquery = "DELETE FROM public.documents WHERE id = '" + did_document_id + "'"
-            
+
             if ~isempty(versions)
-         
+
                 for i = 1:length(versions)
-                   % first one
-                   if i==1
-                       sqlquery = sqlquery + " AND (version = '" + i + "'";
-                   else    
-                       sqlquery = sqlquery + " OR version = '" + i + "'";
-                   end
-                end           
+                    % first one
+                    if i==1
+                        sqlquery = sqlquery + " AND (version = '" + i + "'";
+                    else
+                        sqlquery = sqlquery + " OR version = '" + i + "'";
+                    end
+                end
                 sqlquery = sqlquery + ")"
-                
             end
-           
+
             execute(did_postgresdb_obj.db, sqlquery)
-            
-		end; % do_remove
-        
-        
-        
-		function [data, versions] = do_search(did_postgresdb_obj, searchoptions, searchparams)
-			% Takes in a list of search parameters (an array of 
+
+        end; % do_remove
+
+        function [data, versions] = do_search(did_postgresdb_obj, searchoptions, searchparams)
+            % Takes in a list of search parameters (an array of
             % search op
             %
             % Note: searchoptions is not used
-            
+
             assert( isa(searchparams,'did_query'), "search params are not valid")
-				searchparams = searchparams.to_searchstructure;
-				if 0, % display 
-					disp('search params');
-					for i=1:numel(searchparams),
-						searchparams(i),
-						searchparams(i).param1,
-						searchparams(i).param2,
-					end
-				end;
+            searchparams = searchparams.to_searchstructure;
+            if 0, % display
+                disp('search params');
+                for i=1:numel(searchparams),
+                    searchparams(i),
+                    searchparams(i).param1,
+                    searchparams(i).param2,
+                end
+            end;
             sql_query = ndiquery_to_sql(did_postgresdb_obj, searchparams)
             data = select(did_postgresdb_obj.db, sql_query)
-            
+
             table = sqlread(did_postgresdb_obj.db, 'public.documents');
             Exist_Column = strcmp('version', table.Properties.VariableNames);
             vercol_exists = Exist_Column(Exist_Column==1)
             versions = []
-            
+
             % TODO: version feature
-%             if vercol_exists && ~isempty(version) 
-%                 select(did_postgresdb_obj.db, sql_query)
-%                 versions = 
-%             end    
-            
+            %             if vercol_exists && ~isempty(version)
+            %                 select(did_postgresdb_obj.db, sql_query)
+            %                 versions =
+            %             end
 
-% 			did_document_objs = {};
-% 			[docs,doc_versions] = did_postgresdb_obj.db.search(searchoptions, searchparams);
-% 			for i=1:numel(docs),
-% 				did_document_objs{i} = did_document(docs{i});
-			end;
-            
-		end; % do_search()
+            %             did_document_objs = {};
+            %             [docs,doc_versions] = did_postgresdb_obj.db.search(searchoptions, searchparams);
+            %             for i=1:numel(docs),
+            %                 did_document_objs{i} = did_document(docs{i});
+        end;
 
-% 		function [did_binarydoc_obj, key] = do_openbinarydoc(did_matlabdumbjsondb_obj, did_document_id, version)
-% 			did_binarydoc_obj = [];
-% 			[fid, key] = did_matlabdumbjsondb_obj.db.openbinaryfile(did_document_id, version);
-% 			if fid>0,
-% 				[filename,permission,machineformat,encoding] = fopen(fid);
-% 				did_binarydoc_obj = did_binarydoc_matfid('fid',fid,'fullpathfilename',filename,...
-% 					'machineformat',machineformat,'permission',permission, 'doc_unique_id', did_document_id, 'key', key);
-% 				did_binarydoc_obj.frewind(); % move to beginning of the file
-% 			end
-% 		end; % do_binarydoc()
+    end; % do_search()
 
-% 		function [did_binarydoc_matfid_obj] = do_closebinarydoc(did_matlabdumbjsondb_obj, did_binarydoc_matfid_obj)
-% 			% DO_CLOSEBINARYDOC - close and unlock an DID_BINARYDOC_MATFID_OBJ
-% 			%
-% 			% DID_BINARYDOC_OBJ = DO_CLOSEBINARYDOC(DID_MATLABDUMBJSONDB_OBJ, DID_BINARYDOC_MATFID_OBJ, KEY, DID_DOCUMENT_ID)
-% 			%
-% 			% Close and unlock the binary file associated with DID_BINARYDOC_OBJ.
-% 			%	
-% 				did_matlabdumbjsondb_obj.db.closebinaryfile(did_binarydoc_matfid_obj.fid, ...
-% 					did_binarydoc_matfid_obj.key, did_binarydoc_matfid_obj.doc_unique_id);
-% 				did_binarydoc_matfid_obj.fclose(); 
-% 		end; % do_closebinarydoc()
-%	end;
+    %         function [did_binarydoc_obj, key] = do_openbinarydoc(did_matlabdumbjsondb_obj, did_document_id, version)
+    %             did_binarydoc_obj = [];
+    %             [fid, key] = did_matlabdumbjsondb_obj.db.openbinaryfile(did_document_id, version);
+    %             if fid>0,
+    %                 [filename,permission,machineformat,encoding] = fopen(fid);
+    %                 did_binarydoc_obj = did_binarydoc_matfid('fid',fid,'fullpathfilename',filename,...
+    %                     'machineformat',machineformat,'permission',permission, 'doc_unique_id', did_document_id, 'key', key);
+    %                 did_binarydoc_obj.frewind(); % move to beginning of the file
+    %             end
+    %         end; % do_binarydoc()
+
+    %         function [did_binarydoc_matfid_obj] = do_closebinarydoc(did_matlabdumbjsondb_obj, did_binarydoc_matfid_obj)
+    %             % DO_CLOSEBINARYDOC - close and unlock an DID_BINARYDOC_MATFID_OBJ
+    %             %
+    %             % DID_BINARYDOC_OBJ = DO_CLOSEBINARYDOC(DID_MATLABDUMBJSONDB_OBJ, DID_BINARYDOC_MATFID_OBJ, KEY, DID_DOCUMENT_ID)
+    %             %
+    %             % Close and unlock the binary file associated with DID_BINARYDOC_OBJ.
+    %             %
+    %                 did_matlabdumbjsondb_obj.db.closebinaryfile(did_binarydoc_matfid_obj.fid, ...
+    %                     did_binarydoc_matfid_obj.key, did_binarydoc_matfid_obj.doc_unique_id);
+    %                 did_binarydoc_matfid_obj.fclose();
+    %         end; % do_closebinarydoc()
+    %    end;
 end

@@ -1,20 +1,20 @@
 function doc_ids = test_did_sqlitedb(dirname)
-% TEST_DID_SQLITEDB - Test the functionality of DID_DATABASE SQLite database
-%
-%  DOC_IDS = TEST_DID_SQLITEDB(DIRNAME)
-%
-%  This test function tries to create a DID_DOCUMENT object and store it in a
-%  DID_DATABASE of type SQLite in the specified DIRNAME folder. 
-%
-%  If DIRNAME is not provided, [did.common.PathConstants.testpath] is used. 
-%  If the resulting DIRNAME is invalid, DIRNAME is set to the %TEMPDIR% folder.
-%
-%  Upon completion, the test function removes the database file from DIRNAME and
-%  returns the doc_ids created during the test.
-%
+    % TEST_DID_SQLITEDB - Test the functionality of DID_DATABASE SQLite database
+    %
+    %  DOC_IDS = TEST_DID_SQLITEDB(DIRNAME)
+    %
+    %  This test function tries to create a DID_DOCUMENT object and store it in a
+    %  DID_DATABASE of type SQLite in the specified DIRNAME folder.
+    %
+    %  If DIRNAME is not provided, [did.common.PathConstants.testpath] is used.
+    %  If the resulting DIRNAME is invalid, DIRNAME is set to the %TEMPDIR% folder.
+    %
+    %  Upon completion, the test function removes the database file from DIRNAME and
+    %  returns the doc_ids created during the test.
+    %
 
     if nargin < 1
-    	try dirname = did.common.PathConstants.testpath; catch, dirname = tempdir; end
+        try dirname = did.common.PathConstants.testpath; catch, dirname = tempdir; end
     end
     if ~isfolder(dirname), dirname = tempdir; end
     db_filename = fullfile(dirname, 'test.sqlite');
@@ -27,12 +27,12 @@ function doc_ids = test_did_sqlitedb(dirname)
     if remove_old
         % remove any old versions
         %{
-    	doc = db.search(did.query('base.name','exact_string','mytestdocument',''));
-    	if ~isempty(doc)
-    		for i=1:numel(doc)
-    			db.remove(doc{i}.id());
-    		end
-    	end
+        doc = db.search(did.query('base.name','exact_string','mytestdocument',''));
+        if ~isempty(doc)
+            for i=1:numel(doc)
+                db.remove(doc{i}.id());
+            end
+        end
         %}
         warning('off','MATLAB:DELETE:FileNotFound');
         warning('off','MATLAB:DELETE:Permission');
@@ -70,9 +70,9 @@ function doc_ids = test_did_sqlitedb(dirname)
     doc_ids = db.search(did.query({'base.name',''}));
     assert(isequal(doc_ids,{id1;id2;id3}),'Bad results for db query to fetch all doc IDs');
     if ~isempty(doc_ids)
-    	for i = 1 : numel(doc_ids)
-    		db.remove(doc_ids{i});
-    	end
+        for i = 1 : numel(doc_ids)
+            db.remove(doc_ids{i});
+        end
     end
     doc_ids2 = db.search(did.query({'base.name',''}));
     assert(isempty(doc_ids2),'Unsuccessful removal of all docs from the database');

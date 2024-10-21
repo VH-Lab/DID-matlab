@@ -1,18 +1,18 @@
 function sqlMetaData = doc2sql(doc)
-% DOC2SQL analyzes a DID_DOCUMENT or NDI_DOCUMENT object and returns meta-data to be used by SQL
-%
-% sqlMetaData = doc2sql(doc)
-%
-% DOC must be a valid DID_DOCUMENT or NDI_DOCUMENT object.
-%
-% The returned sqlMetaData is a struct array, where each struct element has:
-%    .name = meta-table name
-%    .columns
-%        .name       = meta-table column name
-%        .matlabType = result of class(value)
-%        .sqlType    = result of SQL.getSQLTypeOf(value)
-%        .value      = value if scalar, otherwise []/blob
-% Reference: issue #26
+    % DOC2SQL analyzes a DID_DOCUMENT or NDI_DOCUMENT object and returns meta-data to be used by SQL
+    %
+    % sqlMetaData = doc2sql(doc)
+    %
+    % DOC must be a valid DID_DOCUMENT or NDI_DOCUMENT object.
+    %
+    % The returned sqlMetaData is a struct array, where each struct element has:
+    %    .name = meta-table name
+    %    .columns
+    %        .name       = meta-table column name
+    %        .matlabType = result of class(value)
+    %        .sqlType    = result of SQL.getSQLTypeOf(value)
+    %        .value      = value if scalar, otherwise []/blob
+    % Reference: issue #26
 
     % Input validation
     errMsg = 'doc2sql expects a did.document or ndi.document object as input arg';
@@ -121,7 +121,7 @@ function metaTable = getMetaTableFrom(doc_props, id, name)
             matlabType = class(fieldValue);
             dataSize = size(fieldValue);
             if strcmp(matlabType,'cell')&isvector(fieldValue),
-               fieldValue = vlt.data.cell2str(fieldValue);
+                fieldValue = vlt.data.cell2str(fieldValue);
             elseif ~ischar(fieldValue) && ~isscalar(fieldValue) && ~isempty(fieldValue)
                 if 0&strcmp(matlabType,'double'), % just leave it
                 else,

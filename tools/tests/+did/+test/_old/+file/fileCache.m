@@ -1,134 +1,129 @@
 function b = fileCache()
-% FILECACHE - test the fileCache object
-%
-% B = FILECACHE()
-%
-% Test the fileCache object
-%
+    % FILECACHE - test the fileCache object
+    %
+    % B = FILECACHE()
+    %
+    % Test the fileCache object
+    %
 
-b = 0; 
+    b = 0;
 
-dirname = [did.common.PathConstants.temppath filesep 'file-cache-test'];
+    dirname = [did.common.PathConstants.temppath filesep 'file-cache-test'];
 
-if ~isfolder(dirname),
-	mkdir(dirname);
-end;
+    if ~isfolder(dirname),
+        mkdir(dirname);
+    end;
 
-obj = did.file.fileCache(dirname,33,1000,800); % tiny cache for testing
+    obj = did.file.fileCache(dirname,33,1000,800); % tiny cache for testing
 
-obj.clear();
+    obj.clear();
 
-p = obj.getProperties();
+    p = obj.getProperties();
 
+    tempdir =  [did.common.PathConstants.temppath filesep 'file-cache-test-base'];
 
-tempdir =  [did.common.PathConstants.temppath filesep 'file-cache-test-base'];
+    if ~isfolder(tempdir),
+        mkdir(tempdir);
+    end;
 
-if ~isfolder(tempdir),
-	mkdir(tempdir);
-end;
+    % make fake files
 
- % make fake files
+    files = {};
 
-files = {};
+    for i=1:100,
+        fname = ['f' sprintf('%0.3d',i) '0' repmat('_',1,32-4)];
+        files{i} = fname;
+        fullfiles{i} = fullfile(tempdir,files{i});
+        fid = fopen(fullfiles{i},'w','ieee-le');
+        fwrite(fid,[i*100+[0:99]],'uint16');
+        fclose(fid);
+    end;
 
-for i=1:100,
-	fname = ['f' sprintf('%0.3d',i) '0' repmat('_',1,32-4)];
-	files{i} = fname;
-	fullfiles{i} = fullfile(tempdir,files{i});
-	fid = fopen(fullfiles{i},'w','ieee-le');
-	fwrite(fid,[i*100+[0:99]],'uint16');
-	fclose(fid);
-end;
+    % now insert the files
 
- % now insert the files
+    for i=1:6,
+        obj.addFile(fullfiles{i},'copy',true);
+    end;
 
-for i=1:6,
-	obj.addFile(fullfiles{i},'copy',true);
-end;
+    [fn,sz,la] = obj.fileList(false);
+    p = obj.getProperties()
 
-[fn,sz,la] = obj.fileList(false);
-p = obj.getProperties()
+    disp(['Total size from files is ' int2str(sum(sz)) '.']);
 
-disp(['Total size from files is ' int2str(sum(sz)) '.']); 
+    disp('Manifest:');
 
-disp('Manifest:');
+    fn'
 
-fn'
+    % now touch file 3, and add 3 more files
 
- % now touch file 3, and add 3 more files
+    obj.touch(files{3});
+    for i=27:30,
+        obj.addFile(fullfiles{i},'copy',true);
+        obj.touch(files{3});
+    end;
 
-obj.touch(files{3});
-for i=27:30,
-	obj.addFile(fullfiles{i},'copy',true);
-	obj.touch(files{3});
-end;
+    % reprint manifest
 
- % reprint manifest
+    [fn,sz,la] = obj.fileList(false);
+    p = obj.getProperties()
 
-[fn,sz,la] = obj.fileList(false);
-p = obj.getProperties()
+    disp(['Total size from files is ' int2str(sum(sz)) '.']);
 
-disp(['Total size from files is ' int2str(sum(sz)) '.']); 
+    disp('Manifest:');
 
-disp('Manifest:');
+    fn'
 
-fn'
+    % now delete file 3
 
- % now delete file 3
+    obj.removeFile(files{30})
 
-obj.removeFile(files{30})
+    % reprint manifest
 
- % reprint manifest
+    [fn,sz,la] = obj.fileList(false);
+    p = obj.getProperties()
 
-[fn,sz,la] = obj.fileList(false);
-p = obj.getProperties()
+    disp(['Total size from files is ' int2str(sum(sz)) '.']);
 
-disp(['Total size from files is ' int2str(sum(sz)) '.']); 
+    disp('Manifest:');
 
-disp('Manifest:');
+    fn'
 
-fn'
+    disp(['Is f0100 a file?']);
+    obj.isFile(files{10}),
+    disp(['Is nonsense a file?']);
+    obj.isFile('adslkjfksldjfkljsdf'),
 
-disp(['Is f0100 a file?']);
-obj.isFile(files{10}),
-disp(['Is nonsense a file?']);
-obj.isFile('adslkjfksldjfkljsdf'),
+    % now, add a file at the head
+    disp('Adding file earlier in alphabet')
 
+    obj.touch(files{3});
+    obj.addFile(fullfiles{1},'copy',true);
+    obj.touch(files{3});
 
- % now, add a file at the head
-disp('Adding file earlier in alphabet')
+    % reprint manifest
 
-obj.touch(files{3});
-obj.addFile(fullfiles{1},'copy',true);
-obj.touch(files{3});
+    [fn,sz,la] = obj.fileList(false);
+    p = obj.getProperties()
 
- % reprint manifest
+    disp(['Total size from files is ' int2str(sum(sz)) '.']);
 
-[fn,sz,la] = obj.fileList(false);
-p = obj.getProperties()
+    disp('Manifest:');
 
-disp(['Total size from files is ' int2str(sum(sz)) '.']); 
+    fn'
 
-disp('Manifest:');
+    disp('Adding file in middle of in alphabet')
 
-fn'
+    obj.addFile(fullfiles{4},'copy',true);
 
-disp('Adding file in middle of in alphabet')
+    % reprint manifest
 
-obj.addFile(fullfiles{4},'copy',true);
+    [fn,sz,la] = obj.fileList(false);
+    p = obj.getProperties()
 
- % reprint manifest
+    disp(['Total size from files is ' int2str(sum(sz)) '.']);
 
-[fn,sz,la] = obj.fileList(false);
-p = obj.getProperties()
+    disp('Manifest:');
 
-disp(['Total size from files is ' int2str(sum(sz)) '.']); 
+    fn'
 
-disp('Manifest:');
-
-fn'
-
-
-
-b = 1;
-
+    b = 1;

@@ -1,25 +1,24 @@
 function test_did_validator()
-% TEST_NDI_DOCUMENT - Test the functionality of the NDI_VALIDATE object 
-%
-% TEST_NDI_DOCUMENT()
-%
-% Create a variety of mock ndi_document objects to test if the ndi_validate 
-% can correctly detect ndi_document object with invalid types based on its 
-% corresponding schema
-%
+    % TEST_NDI_DOCUMENT - Test the functionality of the NDI_VALIDATE object
+    %
+    % TEST_NDI_DOCUMENT()
+    %
+    % Create a variety of mock ndi_document objects to test if the ndi_validate
+    % can correctly detect ndi_document object with invalid types based on its
+    % corresponding schema
+    %
 
     % validate classes that don't have depnds-on and have relatively few super-classes
-    
+
     subject_doc = did.document('did_document_subject', ...
-                                'subject.local_identifier', 'sample_subject@brandeis.edu',...
-                                'subject.description', '');
+        'subject.local_identifier', 'sample_subject@brandeis.edu',...
+        'subject.description', '');
     validator = did.validate(subject_doc);
     disp('Test Case 1')
     assert(validator.is_valid == 1, 'fail');
     disp('good')
     disp("" + newline + newline)
-    
-    
+
     subject_doc = subject_doc.setproperties('subject.description', 5);
     validator = did.validate(subject_doc);
     assert(validator.is_valid == 0, 'fail');
@@ -41,7 +40,7 @@ function test_did_validator()
     assert(validator.is_valid == 0, 'fail');
     disp('good');
     disp("" + newline + newline)
-    
+
     disp('Test Case 4')
     try
         validator.throw_error();
@@ -55,24 +54,22 @@ function test_did_validator()
     % validate more complicated classes that may contain depends-on and more
     % super-classes
     dirname = fileparts(which('did.test.test_did_validator'));
-    
+
     try
         E = did.implementations.matlabdumbjsondb('LOAD', [dirname filesep '.test_database', filesep, 'test.db']);
     catch
         E = did.implementations.matlabdumbjsondb('NEW', [dirname filesep '.test_database', filesep, 'test.db']);
     end
-    
-
 
     disp('Let us clear the database first before we proceed')
     E.clear('yes')
     subject_doc = did.document('did_document_subject', ...
-                                'subject.local_identifier', 'sample_subject@brandeis.edu',...
-                                'subject.description', '');
+        'subject.local_identifier', 'sample_subject@brandeis.edu',...
+        'subject.description', '');
     subject_base_id = subject_doc.document_properties.base.id;
     element_id = did.document('did_document_epochid', ...
-                               'epochid', '12345a');
-    element_base_id = element_id.document_properties.base.id;                    
+        'epochid', '12345a');
+    element_base_id = element_id.document_properties.base.id;
 
     E.add(subject_doc);
     E.add(element_id);
@@ -148,11 +145,11 @@ function test_did_validator()
     disp("Here is the error message that is supposed to display" + newline + errormsg)
     disp("")
     disp("" + newline + newline)
-    
+
     %Test invalid superclass
     subject_doc = did.document('did_document_subject', ...
-                               'subject.local_identifier', 'sample_subject@brandeis.edu',...
-                               'subject.description', '');
+        'subject.local_identifier', 'sample_subject@brandeis.edu',...
+        'subject.description', '');
     subject_doc = subject_doc.setproperties('base.document_version', 'not a number');
     disp('Test Case 11')
     validator = did.validate(subject_doc);
@@ -166,9 +163,7 @@ function test_did_validator()
     disp("Here is the error message that is supposed to display" + newline + newline + errormsg)
     disp("")
     disp("" + newline + newline)
-    
-    
-    
+
     disp('All test cases have passed.')
 
     disp('clearing the database')
