@@ -1,4 +1,4 @@
-classdef readonly_fileobj < fileobj
+classdef readonly_fileobj < did.file.fileobj
     %READONLY_FILEOBJ - object wrapper interface to low-level read-only file access methods
     %
     % This is an object interface to fopen, fread, fseek, fclose, and ftell. Why do this?
@@ -18,7 +18,7 @@ classdef readonly_fileobj < fileobj
             % then the filename is stored.
 
             % Call the super-class constructor
-            fileobj_obj@fileobj(varargin{:});
+            fileobj_obj@did.file.fileobj(varargin{:});
 
             % Ensure that the default 'r' permission was not modified
             if ~strcmpi(fileobj_obj.permission(1),'r')
@@ -38,7 +38,7 @@ classdef readonly_fileobj < fileobj
             if nargin > 1 && ~strcmpi(permission,'r')
                 error('DID:File:ReadOnly_Fileobj','Read-only file must be opened with ''r'' permission');
             end
-            fileobj_obj = fopen@fileobj(fileobj_obj,'r',varargin{:});
+            fileobj_obj = fopen@did.file.fileobj(fileobj_obj,'r',varargin{:});
         end %fopen
     end % methods
 

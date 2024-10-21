@@ -21,7 +21,7 @@ function [id,d] = apply_didquery(docs,q)
     id = {};
     d = {};
     for i = 1:numel(docs)
-        b = vlt.data.fieldsearch(docs{i}.document_properties,search_params);
+        b = did.datastructures.fieldsearch(docs{i}.document_properties,search_params);
         if b
             d{end+1,1} = docs{i}; %save the chosen docs in a columnar cell array
             id{end+1,1} = docs{i}.id; %save the chosen docs' ids in a columnar cell array

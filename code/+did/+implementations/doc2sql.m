@@ -121,7 +121,7 @@ function metaTable = getMetaTableFrom(doc_props, id, name)
             matlabType = class(fieldValue);
             dataSize = size(fieldValue);
             if strcmp(matlabType,'cell')&isvector(fieldValue),
-                fieldValue = vlt.data.cell2str(fieldValue);
+                fieldValue = did.datastructures.cell2str(fieldValue);
             elseif ~ischar(fieldValue) && ~isscalar(fieldValue) && ~isempty(fieldValue)
                 if 0&strcmp(matlabType,'double'), % just leave it
                 else,

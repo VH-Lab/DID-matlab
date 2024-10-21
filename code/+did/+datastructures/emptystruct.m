@@ -1,9 +1,9 @@
 function s = emptystruct(varargin)
     % EMPTYSTRUCT - Create a structure with given fieldnames that is empty
     %
-    %   S = EMPTYSTRUCT(fieldname1, fieldname2, ...);
+    %   S = DID.DATASTRUCTURES.EMPTYSTRUCT(fieldname1, fieldname2, ...);
     %     or
-    %   S = EMPTYSTRUCT({fieldname1, fieldname2, ...});
+    %   S = DID.DATASTRUCTURES.EMPTYSTRUCT({fieldname1, fieldname2, ...});
     %
     % Creates an empty structure with a given list of field names.
     %
@@ -11,7 +11,7 @@ function s = emptystruct(varargin)
     % order of the fieldnames for a structure array that will be filled later.
     %
     % Example:
-    %       s = emptystruct('field1','field2');
+    %       s = did.datastructures.emptystruct('field1','field2');
     %       for i=1:5,
     %            s2.field1 = rand;
     %            s2.field2 = rand;
@@ -24,7 +24,7 @@ function s = emptystruct(varargin)
     if ~isempty(varargin),
         if iscell(varargin{1}),
             mycell = varargin{1};
-            s = emptystruct(mycell{:});
+            s = did.datastructures.emptystruct(mycell{:});
             return;
         end;
     end;

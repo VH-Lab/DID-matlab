@@ -38,7 +38,7 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
         X = get(ch(1),'XData');
         Y = get(ch(1),'YData');
         Z = get(ch(1),'ZData'); % in case we want to go to 3-d
-        ind = findclosest( sqrt( (X-pt(1)).^2 + (Y-pt(2)).^2), 0);
+        ind = did.datastructures.findclosest( sqrt( (X-pt(1)).^2 + (Y-pt(2)).^2), 0);
 
         id = ud.nodes(ind);
 

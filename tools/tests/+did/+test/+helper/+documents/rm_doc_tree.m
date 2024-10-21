@@ -45,7 +45,7 @@ function [doc_ids_rm, doc_ids_rm_seed, G_out, node_names_out, docs_out] = rm_doc
     for i=1:numel(node_indexes_to_delete),
         D = distances(dG,node_indexes_to_delete(i));
         additional_indexes_to_delete = cat(1,additional_indexes_to_delete(:),...
-            vlt.data.colvec(find(~isinf(D))));
+            did.datastructures.colvec(find(~isinf(D))));
     end;
 
     node_indexes_to_delete = union(node_indexes_to_delete(:),additional_indexes_to_delete(:));
