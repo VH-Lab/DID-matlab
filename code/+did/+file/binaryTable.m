@@ -401,7 +401,7 @@ classdef binaryTable < handle
                 'bof');
             if status~=0,
                 binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
-                error(['Row ' int2str(row(i)) ' is out of bounds.']);
+                error('Row %d is out of bounds.', row);
             end;
             fwrite(binaryTableObj.file,value,binaryTableObj.recordType{col});
             binaryTableObj.file.fclose();
