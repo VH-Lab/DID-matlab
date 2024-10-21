@@ -51,7 +51,7 @@ function a = loadStructArray(fname,fields)
                 break;
             end
             try,
-                a(count) = vlt.data.tabstr2struct(s,fields);
+                a(count) = did.datastructures.tabstr2struct(s,fields);
             catch,
                 fclose(fid);
                 error(['Error reading data content line ' ...
