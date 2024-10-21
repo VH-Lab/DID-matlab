@@ -560,7 +560,8 @@ classdef dumbjsondb
             % DOCBINARYFILE is 1 if and only if DOC has the field specified in property 'hasbinaryfilefield'
             %      and the value is 1; otherwise DOCBINARYFILE is 0.
             %
-            doc_unique_id = eval(['document_obj.' dumbjsondb_obj.unique_object_id_field ';']);
+            id_field_name = dumbjsondb_obj.unique_object_id_field;
+            doc_unique_id = document_obj.(id_field_name);
             doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
         end %docstats()
 
@@ -731,7 +732,8 @@ classdef dumbjsondb
             fn = intersect(fieldnames(s),properties(dumbjsondb_obj));
             fn = setdiff(fn,'paramfilename'); % do not allow paramfilename to be set by the contents of the file
             for i=1:numel(fn),
-                eval(['dumbjsondb_obj.' fn{i} ' = getfield(s,fn{i});']);
+                iFieldName = fn{i};
+                dumbjsondb_obj.(iFieldName) = s.(iFieldName);
             end
         end % loadparameters()
 
