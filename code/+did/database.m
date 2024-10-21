@@ -1589,7 +1589,6 @@ classdef (Abstract) database < handle
 
             if ~areSame,
                 errmsg=sprintf('Dissimilar files defined/found (including %s) for %s', actualFileNamesList{i}, doc_name);
-                keyboard
                 return;
             end;
 

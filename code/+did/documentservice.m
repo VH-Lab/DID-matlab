@@ -26,7 +26,7 @@ classdef documentservice
             %
         end; % did.documentservice()
 
-        function did_document_obj = newdocument(ndi_documentservice_obj)
+        function did_document_obj = newdocument(ndi_documentservice_obj) %#ok<MANU>
             % NEWDOCUMENT - create a new DOCUMENT based on information in this object
             %
             % DOCUMENT_OBJ = NEWDOCUMENT(DOCUMENTSERVICE_OBJ)
@@ -38,7 +38,7 @@ classdef documentservice
             did_document_obj = [];
         end; % newdocument
 
-        function sq = searchquery(documentservice_obj)
+        function sq = searchquery(documentservice_obj) %#ok<MANU>
             % SEARCHQUERY - create a search query to find this object as an DOCUMENT
             %
             % SQ = SEARCHQUERY(DOCUMENTSERVICE_OBJ)

@@ -19,46 +19,52 @@ function s_out = structmerge(s1, s2, options)
     %
     %  See also: STRUCT
 
+    % Updated Oct 15, 2024
+
     arguments
-        s1
-        s2
+        s1 struct
+        s2 struct
         options.ErrorIfNewField (1,1) logical = false
         options.DoAlphabetical (1,1) logical = true
     end
 
-    f1 = fieldnames(s1);
-    f2 = fieldnames(s2);
+    fieldNames1 = fieldnames(s1);
+    fieldNames2 = fieldnames(s2);
 
     if options.ErrorIfNewField,
-        [c,f1i] = setdiff(f2,f1);
-        if ~isempty(c),
-            error('Some fields of the second structure are not in the first: %s.', ...
-                did.datastructures.cell2str(c));
+        missingFieldNames = setdiff(fieldNames2, fieldNames1);
+        if ~isempty(missingFieldNames),
+            missingFieldNames = join( compose("  ""%s""", string(missingFieldNames)), newline);
+            error('DID:StructMerge:MissingField', ...
+                'Some fields of the second structure are not in the first:\n%s', missingFieldNames);
         end;
     end;
 
     s_out_ = s1;
 
-    for i=1:length(f2),
+    for i = 1:length(fieldNames2),
+        iFieldName = fieldNames2{i};
+        iFieldValue = s2.(iFieldName);
         if isempty(s_out_),
-            v = getfield(s2,f2{i});
-            eval(['s_out_(1).' f2{i} '=v;']);
+            s_out_(1).(iFieldName) = iFieldValue;
         else,
-            s_out_ = setfield(s_out_,f2{i},getfield(s2,f2{i}));
+            s_out_.(iFieldName) = iFieldValue;
         end;
     end;
 
     if options.DoAlphabetical,
         fn = sort(fieldnames(s_out_));
         s_out = did.datastructures.emptystruct(fn{:});
-        for i=1:length(fn),
+        for i = 1:length(fn),
+            iFieldName = fn{i};
+            iFieldValue = s_out_.(fn{i});
             if isempty(s_out),
-                v = getfield(s_out_,fn{i});
-                eval(['s_out(1).' fn{i} '=v;']);
+                s_out(1).(iFieldName) = iFieldValue;
             else,
-                s_out = setfield(s_out,fn{i},getfield(s_out_,fn{i}));
+                s_out.(iFieldName) = iFieldValue;
             end;
         end;
     else,
         s_out = s_out_;
     end;
+end

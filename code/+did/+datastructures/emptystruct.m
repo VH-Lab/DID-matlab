@@ -32,7 +32,8 @@ function s = emptystruct(varargin)
     s = struct();
 
     for i=1:length(varargin),
-        eval(['s.' varargin{i} '=1;']);
+        iFieldName = varargin{i};
+        s.(iFieldName) = 1;
     end;
 
     s = s([]);

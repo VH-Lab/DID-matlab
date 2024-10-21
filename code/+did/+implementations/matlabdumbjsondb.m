@@ -98,7 +98,7 @@ classdef  matlabdumbjsondb < did.database
             did_binarydoc_obj = [];
             [fid, key] = did_matlabdumbjsondb_obj.db.openbinaryfile(did_document_id, version);
             if fid>0,
-                [filename,permission,machineformat,encoding] = fopen(fid);
+                [filename,permission,machineformat,~] = fopen(fid);
                 did_binarydoc_obj = did_binarydoc_matfid('fid',fid,'fullpathfilename',filename,...
                     'machineformat',machineformat,'permission',permission, 'doc_unique_id', did_document_id, 'key', key);
                 did_binarydoc_obj.frewind(); % move to beginning of the file

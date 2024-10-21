@@ -30,7 +30,7 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
 
         f = gcf;
         a = gca;
-        ud = get(f,'userdata');
+        userData = get(f,'userdata');
         pt = get(gca,'CurrentPoint');
 
         pt = pt(1,1:2); % just take first row, live in 2-d only
@@ -40,31 +40,31 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
         Z = get(ch(1),'ZData'); % in case we want to go to 3-d
         ind = did.datastructures.findclosest( sqrt( (X-pt(1)).^2 + (Y-pt(2)).^2), 0);
 
-        id = ud.nodes(ind);
+        id = userData.nodes(ind);
 
         disp(['Doc index ' int2str(ind) ' with id ' id ':']);
-        ud.docs{ind}.document_properties
-        ud.docs{ind}.document_properties.document_class
-        ud.docs{ind}.document_properties.ndi_document
+        userData.docs{ind}.document_properties
+        userData.docs{ind}.document_properties.document_class
+        userData.docs{ind}.document_properties.ndi_document
 
-        clicked_node = ud.docs{ind};
+        clicked_node = userData.docs{ind};
         disp(['Global variable ''clicked_node'' set to clicked document']);
 
         return;
     end;
 
-    docs = varargin{1};
-    G = varargin{2};
-    mdigraph = varargin{3};
-    nodes = varargin{4};
     layout = varargin{5};
 
     f = figure;
+    
+    userData = struct();
+    userData.docs =  varargin{1};
+    userData.G = varargin{2};
+    userData.mdigraph = varargin{3};
+    userData.nodes = varargin{4};
+    
+    set(f,'userdata',userData);
 
-    ud = did.datastructures.var2struct('docs','G','mdigraph','nodes');
-
-    set(f,'userdata',ud);
-
-    plot(mdigraph,'layout',layout);
+    plot(userData.mdigraph,'layout',layout);
 
     set(gca,'ButtonDownFcn','did.fun.plotinteractivedocgraph');

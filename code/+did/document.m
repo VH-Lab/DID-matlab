@@ -427,11 +427,7 @@ classdef document
                 options.delete_original = NaN
                 options.location_type = NaN
             end
-
-            ingest = options.ingest;
-            delete_original = options.delete_original;
-            location_type = options.location_type;
-
+            
             % Step 1: make sure that the did_document_obj has a 'files' portion
             % and that name is one of the listed files.
 
@@ -447,36 +443,39 @@ classdef document
                 detected_location_type = 'url';
             end;
 
-            if isnan(ingest), % assign default value
+            if isnan(options.ingest), % assign default value
                 switch detected_location_type,
                     case 'url',
-                        ingest = 0;
+                        options.ingest = 0;
                     case 'file',
-                        ingest = 1;
+                        options.ingest = 1;
                     otherwise,
                         error(['Unknown detected_location_type ' detected_location_type '.']);
                 end;
             end;
-            if isnan(delete_original), % assign default value
+            if isnan(options.delete_original), % assign default value
                 switch detected_location_type,
                     case 'url',
-                        delete_original = 0;
+                        options.delete_original = 0;
                     case 'file',
-                        delete_original = 1;
+                        options.delete_original = 1;
                     otherwise,
                         error(['Unknown detected_location_type ' detected_location_type '.']);
                 end;
             end;
-            if isnan(location_type), % assign default value
-                location_type = detected_location_type;
+            if isnan(options.location_type), % assign default value
+                options.location_type = detected_location_type;
             end;
 
             % Step 2b: build the structure to add
-            uid = did.ido.unique_id();
-            parameters = '';
 
-            location_here = did.datastructures.var2struct('delete_original','uid','location',...
-                'parameters','location_type','ingest');
+            location_here = struct();
+            location_here.delete_original = options.delete_original;
+            location_here.uid = did.ido.unique_id();
+            location_here.location = location;
+            location_here.parameters = '';
+            location_here.location_type = options.location_type;
+            location_here.ingest = options.ingest;
 
             % Step 3: Add the file to the list
 
@@ -699,7 +698,7 @@ classdef document
                 if isfield(s,'document_class')&isfield(s_super{i},'document_class'),
                     s.document_class.superclasses = cat(1,s.document_class.superclasses(:),...
                         s_super{i}.document_class.superclasses(:));
-                    [dummy,unique_indexes] = unique({s.document_class.superclasses.definition});
+                    [~,unique_indexes] = unique({s.document_class.superclasses.definition});
                     s.document_class.superclasses = s.document_class.superclasses(unique_indexes);
                 else,
                     error(['Documents lack ''document_class'' fields.']);
@@ -711,7 +710,7 @@ classdef document
                 if isfield(s,'depends_on') & isfield(s_super{i},'depends_on'), % if only s or super_s has it, merge does it right
                     s.depends_on = cat(1,s.depends_on(:),s_super{i}.depends_on(:));
                     s_super{i} = rmfield(s_super{i},'depends_on');
-                    [dummy,unique_indexes] = unique({s.depends_on.name});
+                    [~,unique_indexes] = unique({s.depends_on.name});
                     s.depends_on= s.depends_on(unique_indexes);
                 else,
                     % regular structmerge is fine, will use 'depends_on' field of whichever structure has it, or none
@@ -769,7 +768,7 @@ classdef document
                     end;
                 end;
                 % if we are here, we didn't find it in the locations
-                error(['DID:Document:readjsonfilelocation:could not find a match in ' extract_str{1} ' directories .']);
+                error(['DID:Document:readjsonfilelocation:could not find a match in ' extracted_str{1} ' directories .']);
             end;
 
             % step d) look for 'jsonfilelocationstring.json' in our paths

@@ -13,7 +13,8 @@ function lines = readlines(filePath)
         filePath (1,1) string {mustBeFile}
     end
 
-    if isMATLABReleaseOlderThan('R2020b')
+    if verLessThan('matlab','9.9') %#ok<VERLESSMATLAB> R2020b
+        % Use verLessThan, as isMATLABReleaseOlderThan was introduced in R2020b
         fileContent = char(fileread(filePath));
         lines = split(fileContent, newline);
     else

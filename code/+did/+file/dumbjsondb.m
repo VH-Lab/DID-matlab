@@ -270,7 +270,7 @@ classdef dumbjsondb
             if nargin<3,
                 doc_version = [];
             end;
-            [document, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
+            [~, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
 
             % otherwise, we need to open one
 
@@ -309,7 +309,7 @@ classdef dumbjsondb
             % if the file is open, close it
 
             if fid>0,
-                [fname,perm] = fopen(fid);
+                fname = fopen(fid);
 
                 if numel(fname)>numel('.binary'),
                     if ~strcmpi(fname(end-6:end),'.binary'),
@@ -330,7 +330,7 @@ classdef dumbjsondb
             if nargin<5,
                 doc_version = [];
             end;
-            [document, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
+            [~, doc_version] = dumbjsondb_obj.read(doc_unique_id, doc_version);
 
             f = did.file.dumbjsondb.uniqueid2binaryfilename(doc_unique_id, doc_version);
             p = dumbjsondb_obj.documentpath();
@@ -427,7 +427,7 @@ classdef dumbjsondb
                 version = 'all';
             end;
 
-            if strcmp(lower(version),'all'),
+            if strcmpi(version,'all'),
                 v = dumbjsondb_obj.docversions(doc_unique_id);
                 version = v;
             end;
@@ -560,7 +560,8 @@ classdef dumbjsondb
             % DOCBINARYFILE is 1 if and only if DOC has the field specified in property 'hasbinaryfilefield'
             %      and the value is 1; otherwise DOCBINARYFILE is 0.
             %
-            doc_unique_id = eval(['document_obj.' dumbjsondb_obj.unique_object_id_field ';']);
+            id_field_name = dumbjsondb_obj.unique_object_id_field;
+            doc_unique_id = document_obj.(id_field_name);
             doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id);
         end %docstats()
 
@@ -672,10 +673,10 @@ classdef dumbjsondb
             p = fileparts(dumbjsondb_obj.paramfilename);
         end % path()
 
-        function b = writeparameters(dumbjsondb_obj)
+        function writeparameters(dumbjsondb_obj)
             % WRITEPARAMETERS - write the parameters file and create the document directory
             %
-            % B = WRITEPARAMETERS(DUMBJSONDB_OBJ)
+            % WRITEPARAMETERS(DUMBJSONDB_OBJ)
             %
             % Writes the parameter file in json format and attempts to create the directory for the
             % database files.
@@ -731,7 +732,8 @@ classdef dumbjsondb
             fn = intersect(fieldnames(s),properties(dumbjsondb_obj));
             fn = setdiff(fn,'paramfilename'); % do not allow paramfilename to be set by the contents of the file
             for i=1:numel(fn),
-                eval(['dumbjsondb_obj.' fn{i} ' = getfield(s,fn{i});']);
+                iFieldName = fn{i};
+                dumbjsondb_obj.(iFieldName) = s.(iFieldName);
             end
         end % loadparameters()
 

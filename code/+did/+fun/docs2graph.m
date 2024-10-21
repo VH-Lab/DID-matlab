@@ -14,19 +14,19 @@ function [G,nodes,mdigraph] = docs2graph(document_obj)
 
     nodes = {};
 
-    for i=1:numel(ndi_document_obj),
-        nodes{i} = ndi_document_obj{i}.document_properties.ndi_document.id;
+    for i=1:numel(document_obj),
+        nodes{i} = document_obj{i}.document_properties.ndi_document.id;
     end;
 
     % now we have all the nodes, build adjacency matrix
 
     G = sparse(numel(nodes),numel(nodes));
 
-    for i=1:numel(ndi_document_obj),
+    for i=1:numel(document_obj),
         here = i;
-        if isfield(ndi_document_obj{i}.document_properties,'depends_on'),
-            for j=1:numel(ndi_document_obj{i}.document_properties.depends_on),
-                there = find(strcmp(ndi_document_obj{i}.document_properties.depends_on(j).value, nodes));
+        if isfield(document_obj{i}.document_properties,'depends_on'),
+            for j=1:numel(document_obj{i}.document_properties.depends_on),
+                there = find(strcmp(document_obj{i}.document_properties.depends_on(j).value, nodes));
                 G(here,there) = 1;
             end;
         end;

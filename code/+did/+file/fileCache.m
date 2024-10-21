@@ -171,7 +171,7 @@ classdef fileCache < handle
             end
 
             if isempty(fileNameInCache),
-                [dummy,fileNameInCache,ext] = fileparts(fullPathFileName);
+                [~,fileNameInCache,ext] = fileparts(fullPathFileName);
                 fileNameInCache = [char(fileNameInCache) char(ext)];
             end;
 
@@ -181,7 +181,7 @@ classdef fileCache < handle
 
             % make sure file isn't already in there
             [lockfid,key] = fileCacheObj.binaryTable.getLock();
-            [row,wouldbe] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
+            [row,~] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
             if row,
                 fileCacheObj.binaryTable.releaseLock(lockfid,key);
                 error(['There is already a file with name ' fileNameInCache ' in the cache.']);
@@ -208,7 +208,7 @@ classdef fileCache < handle
             % file in the cache.
             %
             [lockfid,key] = fileCacheObj.binaryTable.getLock();
-            [row,wouldbe] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
+            [row,~] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
             if ~row,
                 fileCacheObj.binaryTable.releaseLock(lockfid,key);
                 error(['File ' filename ' is not in file cache manifest.']);
@@ -340,7 +340,7 @@ classdef fileCache < handle
                 % we are full! must delete!
                 %disp(['We are full! must delete...']);
                 [fn,sz,lastaccess] = fileCacheObj.fileList(true);
-                [la_sorted,la_indexes] = sort(lastaccess,'descend');
+                [~,la_indexes] = sort(lastaccess,'descend');
                 cutoff = find(sum(newFileSize)+cumsum(sz(la_indexes))>fileCacheObj.reduceSize,1,'first');
                 DC = mat2cell(fn(la_indexes(cutoff:end),:),repmat(1,-cutoff+numel(la_indexes)+1,1),fileCacheObj.fileNameCharacters);
                 ffn = fullfile(fileCacheObj.directoryName, DC);
@@ -369,7 +369,7 @@ classdef fileCache < handle
                     data_here{i} = newFileName{i};
                     data_here{2} = now;
                     data_here{3} = newFileSize(i);
-                    [row,insertSpot] = fileCacheObj.binaryTable.findRow(1,newFileName{i},'sorted',true);
+                    [~,insertSpot] = fileCacheObj.binaryTable.findRow(1,newFileName{i},'sorted',true);
                     fileCacheObj.binaryTable.insertRow(insertSpot,data_here);
                 end;
                 fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,newTotalSize);

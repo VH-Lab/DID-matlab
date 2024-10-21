@@ -27,4 +27,3 @@ function str = cell2str(theCell)
         end;
     end;
     str = [str(1:end-2) ' }'];
-
