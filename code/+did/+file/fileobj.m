@@ -105,7 +105,7 @@ classdef fileobj < handle
                 fileobj_obj.machineformat = machineformat;
             end
             if ~ismissing(filename)
-                fileobj_obj.fullpathfilename = fullfilename(filename);
+                fileobj_obj.fullpathfilename = did.file.fullfilename(filename);
             end
 
             % now have the right parameters

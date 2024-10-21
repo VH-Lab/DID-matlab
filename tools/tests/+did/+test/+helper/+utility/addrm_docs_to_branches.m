@@ -46,7 +46,7 @@ function [doc_struct_out, branch_node_indexes] = addrm_docs_to_branches(db, bG, 
     branch_node_indexes = [];
 
     for i=1:size(bG,2),
-        doc_struct_out{i} = vlt.data.emptystruct('G','node_names','docs');;
+        doc_struct_out{i} = did.datastructures.emptystruct('G','node_names','docs');;
     end;
 
     for i=1:numel(starting_nodes),

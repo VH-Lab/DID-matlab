@@ -30,7 +30,7 @@ function [b,msg]=verify_db_document_structure(db, G, expected_docs)
                 if hasfield
                     field1 = getfield(expected_docs{i}.document_properties,fieldset{j});
                     field2 = getfield(doc_here.document_properties,fieldset{j});
-                    b = b & vlt.data.eqlen(field1,field2);
+                    b = b & did.datastructures.eqlen(field1,field2);
                     if ~b
                         msg = ['Field ' fieldset{j} ' of document ' expected_docs{i}.document_properties.base.id ' did not match.'];
                         fprintf(2,'%s\n',msg);

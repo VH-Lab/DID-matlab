@@ -36,7 +36,7 @@ function [b] = release_lock_file(fid_or_filename, key)
         return;
     end;
 
-    C = text2cellstr(filename);
+    C = did.file.readlines(filename);
 
     if numel(C)~=2,
         error([filename ' does not appear to be a lock file created by CHECKOUT_LOCK_FILE.']);
