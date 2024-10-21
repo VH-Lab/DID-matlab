@@ -672,10 +672,10 @@ classdef dumbjsondb
             p = fileparts(dumbjsondb_obj.paramfilename);
         end % path()
 
-        function b = writeparameters(dumbjsondb_obj)
+        function writeparameters(dumbjsondb_obj)
             % WRITEPARAMETERS - write the parameters file and create the document directory
             %
-            % B = WRITEPARAMETERS(DUMBJSONDB_OBJ)
+            % WRITEPARAMETERS(DUMBJSONDB_OBJ)
             %
             % Writes the parameter file in json format and attempts to create the directory for the
             % database files.
