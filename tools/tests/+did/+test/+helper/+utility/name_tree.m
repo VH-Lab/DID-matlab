@@ -25,25 +25,25 @@ function [node_names, node_indexes] = name_tree(G, initial_node_name_prefix, nod
 %
 
 if nargin<2,
-	initial_node_name_prefix = '';
+    initial_node_name_prefix = '';
 end;
 
 if nargin<3,
-	node_start = 0;
+    node_start = 0;
 end;
 
-	% if we are building a node name from a previous iteration, make sure to add a '_'
+    % if we are building a node name from a previous iteration, make sure to add a '_'
 if ~isempty(initial_node_name_prefix),
-	if initial_node_name_prefix(end)~='_',
-		initial_node_name_prefix(end+1) = '_';
-	end;
+    if initial_node_name_prefix(end)~='_',
+        initial_node_name_prefix(end+1) = '_';
+    end;
 end;
 
 if node_start==0,
- 	% look for roots
-	starting_nodes = find(sum(G,2)==0);
+     % look for roots
+    starting_nodes = find(sum(G,2)==0);
 else,
-	starting_nodes = node_start;
+    starting_nodes = node_start;
 end;
 
  % initialize the node names
@@ -51,31 +51,31 @@ node_names = {};
 node_indexes = [];
 
 for i=1:size(G,2),
-	node_names{i} = '';
+    node_names{i} = '';
 end;
 
 for i=1:numel(starting_nodes),
-	node_here = starting_nodes(i);
-	node_names{node_here} = [initial_node_name_prefix did.test.helper.utility.number_to_alpha_label(i)];
-	node_indexes(end+1) = node_here;
-	% where do we go from here?
-	next_nodes = find(G(:,node_here)==1); % who is connected to this node?
-	[node_names_next,node_indexes_next] = did.test.helper.utility.name_tree(G, node_names{node_here}, next_nodes);
-	for k=1:numel(node_indexes_next), % copy any non-empty node_names
-		index_here = node_indexes_next(k); % global index
-		if isempty(node_names_next{index_here}),
-			keyboard;
-			% this should not happen
-		end;
-		if ~isempty(node_names_next{index_here}),
-			if ~isempty(node_names{index_here}), 
-				error(['We visited a node twice, should not happen in a real tree.']);
-			else,
-				node_names{index_here} = node_names_next{index_here};
-			end;
-		end;
-	end;
-	node_indexes = cat(1,node_indexes(:),node_indexes_next);
+    node_here = starting_nodes(i);
+    node_names{node_here} = [initial_node_name_prefix did.test.helper.utility.number_to_alpha_label(i)];
+    node_indexes(end+1) = node_here;
+    % where do we go from here?
+    next_nodes = find(G(:,node_here)==1); % who is connected to this node?
+    [node_names_next,node_indexes_next] = did.test.helper.utility.name_tree(G, node_names{node_here}, next_nodes);
+    for k=1:numel(node_indexes_next), % copy any non-empty node_names
+        index_here = node_indexes_next(k); % global index
+        if isempty(node_names_next{index_here}),
+            keyboard;
+            % this should not happen
+        end;
+        if ~isempty(node_names_next{index_here}),
+            if ~isempty(node_names{index_here}), 
+                error(['We visited a node twice, should not happen in a real tree.']);
+            else,
+                node_names{index_here} = node_names_next{index_here};
+            end;
+        end;
+    end;
+    node_indexes = cat(1,node_indexes(:),node_indexes_next);
 end;
 
 

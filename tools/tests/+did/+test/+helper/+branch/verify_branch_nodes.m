@@ -16,6 +16,6 @@ all_branches = db.all_branch_ids();
 missing = setdiff(node_names, all_branches);
 b = 1;
 if ~isempty(missing),
-	b = 0;
+    b = 0;
 end;
 

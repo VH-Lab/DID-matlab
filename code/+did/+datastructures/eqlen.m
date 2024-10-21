@@ -14,8 +14,8 @@ function b = eqlen(x,y)
 %  See also:  EQTOT, EQEMP, EQ
 
 if sizeeq(x,y),
-	b = did.datastructures.eqtot(x,y);
+    b = did.datastructures.eqtot(x,y);
 else,
-	b = 0;
+    b = 0;
 end;
 

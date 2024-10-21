@@ -17,7 +17,7 @@ function [b,msg] = parfor_test(varargin)
 dirname = did.common.PathConstants.testpath;
 db_filename = [dirname filesep 'test_db_docs.sqlite'];
 if isfile(db_filename),
-	delete(db_filename);
+    delete(db_filename);
 end;
 db = did.implementations.sqlitedb(db_filename);
 db.add_branch('a');
@@ -32,7 +32,7 @@ plot(dG,'layout','circle');
 title('The dependency relationships among the randomly generated documents.');
 
 parfor i=1:numel(docs),
-	db.add_docs(docs{i});
+    db.add_docs(docs{i});
 end;
 
 % Step 3: check the database results

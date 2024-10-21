@@ -31,24 +31,24 @@ str = [char(9) s char(9)];
 pos = findstr(str,char(9));
 
 for i=1:length(fields)
-	t = str(pos(i)+1:pos(i+1)-1);
+    t = str(pos(i)+1:pos(i+1)-1);
 
-	if numel(find(t=='/')) > 1, % assume it is a date, pass as string
-		u = []; 
-	else,
-		u = str2num(t);
-		if ~isempty(u),
-			if ~isnumeric(u),
-				u = [];
-			end
-		end
-	end
+    if numel(find(t=='/')) > 1, % assume it is a date, pass as string
+        u = []; 
+    else,
+        u = str2num(t);
+        if ~isempty(u),
+            if ~isnumeric(u),
+                u = [];
+            end
+        end
+    end
 
-	if ~isempty(u)
-		a = setfield(a,fields{i},u);
-	else
-		a = setfield(a,fields{i},t);
-	end
+    if ~isempty(u)
+        a = setfield(a,fields{i},u);
+    else
+        a = setfield(a,fields{i},t);
+    end
 end
 
 

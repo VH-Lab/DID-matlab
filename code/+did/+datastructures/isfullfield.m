@@ -18,8 +18,8 @@ b = 0;
 value = [];
 
 try,
-	value = eval(['A.' field]);
-	b = 1;
+    value = eval(['A.' field]);
+    b = 1;
 end;
 
 

@@ -13,11 +13,11 @@ c = {};
 fid = fopen(filename,'rt');
 
 if fid<0,
-	error(['Could not open file ' filename ' for reading.']);
+    error(['Could not open file ' filename ' for reading.']);
 end;
 
 while ~feof(fid),
-	c{end+1} = fgetl(fid);
+    c{end+1} = fgetl(fid);
 end;
 fclose(fid);
 

@@ -13,7 +13,7 @@ b=1;
 xe=isempty(x);
 ye=isempty(y);
 if (xe&(~ye))|(xe&(~ye)),
-	b=0;
+    b=0;
 elseif ~xe&~ye,
-	b=(x==y);
+    b=(x==y);
 end;

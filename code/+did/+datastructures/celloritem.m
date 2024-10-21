@@ -36,18 +36,18 @@ function item = celloritem(var, index, useindexforvar)
 %     end
 
 if nargin<2,
-	index = 1;
+    index = 1;
 end;
 if nargin<3,
-	useindexforvar = 0;
+    useindexforvar = 0;
 end
 
 if iscell(var),
-	item = var{index};
+    item = var{index};
 else,
-	if useindexforvar,
-		item = var(index);
-	else,
-		item = var;
-	end
+    if useindexforvar,
+        item = var(index);
+    else,
+        item = var;
+    end
 end;

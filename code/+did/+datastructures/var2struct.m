@@ -20,9 +20,9 @@ function output = var2struct(varargin)
 %
 
 for i=1:length(varargin)
-	myval = evalin('caller',varargin{i});
-	eval(['output.' varargin{i} '=myval;']);
-	%output = setfield(output,varargin{i},evalin('caller',varargin{i}));
+    myval = evalin('caller',varargin{i});
+    eval(['output.' varargin{i} '=myval;']);
+    %output = setfield(output,varargin{i},evalin('caller',varargin{i}));
         % why does the line above not work, you ask?  Because when output is 
         % you can write output.a = 5; but you can't write
         % output = setfield(output,'a',5); without getting an error

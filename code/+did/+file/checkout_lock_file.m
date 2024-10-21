@@ -78,21 +78,21 @@ key = [num2hex(now) '_' num2hex(rand)];
  % process inputs
 
 if nargin>1, 
-	if ~isempty(checkloops),
-		loops = checkloops;
-	end;
+    if ~isempty(checkloops),
+        loops = checkloops;
+    end;
 end;
 
 if nargin>2,
-	if ~isempty(throwerror),
-		makeanerror = throwerror;
-	end;
+    if ~isempty(throwerror),
+        makeanerror = throwerror;
+    end;
 end;
 
 if nargin>3,
-	if ~isempty(expiration),
-		expiration_time = expiration;
-	end;
+    if ~isempty(expiration),
+        expiration_time = expiration;
+    end;
 end;
 
  % now check
@@ -103,55 +103,55 @@ expiration_time_of_file = Inf;
 isexpired = 0;
 
 while ( isfile(filename) & loop<loops ),
-	file_exists = isfile(filename);
+    file_exists = isfile(filename);
 
-	if file_exists,
-		C = text2cellstr(filename);
-		if ~isempty(C),
-			try,
-				expiration_time_of_file = datetime(strtrim(C{1}),'TimeZone','UTCLeapSeconds');
-			end;
-		end;
-	end;
-	
-	if ~isinf(expiration_time_of_file),
-		isexpired = expiration_time_of_file < datetime('now','TimeZone','UTCLeapSeconds');
-	end;
+    if file_exists,
+        C = text2cellstr(filename);
+        if ~isempty(C),
+            try,
+                expiration_time_of_file = datetime(strtrim(C{1}),'TimeZone','UTCLeapSeconds');
+            end;
+        end;
+    end;
+    
+    if ~isinf(expiration_time_of_file),
+        isexpired = expiration_time_of_file < datetime('now','TimeZone','UTCLeapSeconds');
+    end;
 
-	if ~isexpired,
-		% some fun debugging statements
-		%if ~isinf(expiration_time_of_file),
-		%	disp('not expired.');
-		%else,
-		%	disp('will not expire.');
-		%end;
-		pause(1);
-	else,	% it is expired; we get to delete it
-		delete(filename);
-	end;
-	loop = loop + 1;
+    if ~isexpired,
+        % some fun debugging statements
+        %if ~isinf(expiration_time_of_file),
+        %    disp('not expired.');
+        %else,
+        %    disp('will not expire.');
+        %end;
+        pause(1);
+    else,    % it is expired; we get to delete it
+        delete(filename);
+    end;
+    loop = loop + 1;
 end;
 
 if loop<loops, % we made it
-	fid = fopen(filename,'wt','ieee-le');
-	t1 = datetime('now','TimeZone','UTCLeapSeconds');
-	t2 = t1 + seconds(expiration_time);
-	exp_str = char(datetime(t2,'TimeZone','UTCLeapSeconds'));
-	fprintf(fid,'%s\n%s\n',exp_str,key);
+    fid = fopen(filename,'wt','ieee-le');
+    t1 = datetime('now','TimeZone','UTCLeapSeconds');
+    t2 = t1 + seconds(expiration_time);
+    exp_str = char(datetime(t2,'TimeZone','UTCLeapSeconds'));
+    fprintf(fid,'%s\n%s\n',exp_str,key);
 else,
-	fid = -1;
+    fid = -1;
 end;
 
 if fid<0, % we never opened it successfully, user might want us to produce an error
-	if makeanerror,
-		error(['Unable to obtain lock with file ' filename ...
-			'.  If you believe a program that has crashed ' ...
-			'created this file then you should manually delete it.']);
-	end;
+    if makeanerror,
+        error(['Unable to obtain lock with file ' filename ...
+            '.  If you believe a program that has crashed ' ...
+            'created this file then you should manually delete it.']);
+    end;
 else,
-	if nargin>1, % if we are getting the key, we should close the lock file
-		fclose(fid);
-	end;
+    if nargin>1, % if we are getting the key, we should close the lock file
+        fclose(fid);
+    end;
 end;
 
 

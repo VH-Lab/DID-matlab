@@ -67,14 +67,14 @@ classdef (Abstract) database < handle
 %   do_remove_doc        - core logic for database.remove_docs(), for a single doc
 
     % Read-only properties
-	properties (SetAccess=protected, GetAccess=public)
-		connection % A variable or struct describing the connection parameters of the database; may be a simple file path
+    properties (SetAccess=protected, GetAccess=public)
+        connection % A variable or struct describing the connection parameters of the database; may be a simple file path
         dbid       % Database ID
         version    % Database version
 
         current_branch_id = '' % The branch ID that we are viewing/editing at the moment
         frozen_branch_ids = {} % Cell array of ids of branches that cannot be modified
-	end % properties
+    end % properties
 
     properties (Access=protected)
         preferences
@@ -86,25 +86,25 @@ classdef (Abstract) database < handle
     end % properties
 
     % Main database constructor
-	methods
-		function database_obj = database(varargin)
-			% DATABASE - create a new DATABASE
-			%
-			% DATABASE_OBJ = DATABASE(...)
-			%
-			% Creates a new DATABASE object 
-			
-			connection = '';
-			branchId = '';
+    methods
+        function database_obj = database(varargin)
+            % DATABASE - create a new DATABASE
+            %
+            % DATABASE_OBJ = DATABASE(...)
+            %
+            % Creates a new DATABASE object 
+            
+            connection = '';
+            branchId = '';
 
-			if nargin>0
-				connection = varargin{1};
-			end
+            if nargin>0
+                connection = varargin{1};
+            end
 
-			database_obj.connection = connection;
-			database_obj.current_branch_id = branchId;
-			database_obj.preferences = containers.Map;
-		end % database
+            database_obj.connection = connection;
+            database_obj.current_branch_id = branchId;
+            database_obj.preferences = containers.Map;
+        end % database
     end
 
     methods % Database open
@@ -115,23 +115,23 @@ classdef (Abstract) database < handle
 
     % Branch-related methods
     methods
-		function branch_ids = all_branch_ids(database_obj)
-			% ALL_BRANCH_IDS - return all branch IDs for a DID database
-			%
-			% BRANCH_IDS = ALL_BRANCH_IDS(DATABASE_OBJ)
-			%
-			% Return a cell array of all branch IDs in the database.
-    	    % If there are no branches, an empty cell array is returned.
+        function branch_ids = all_branch_ids(database_obj)
+            % ALL_BRANCH_IDS - return all branch IDs for a DID database
+            %
+            % BRANCH_IDS = ALL_BRANCH_IDS(DATABASE_OBJ)
+            %
+            % Return a cell array of all branch IDs in the database.
+            % If there are no branches, an empty cell array is returned.
             
             branch_ids = database_obj.do_get_branch_ids();
         end % all_branch_ids()
 
         function add_branch(database_obj, branch_id, parent_branch_id)
-			% ADD_BRANCH - Adds a new database branch based on specified parent branch
-			%
-			% ADD_BRANCH(DATABASE_OBJ, BRANCH_ID, [PARENT_BRANCH_ID])
-			%
-			% Adds a new branch with the specified BRANCH_ID to the database,
+            % ADD_BRANCH - Adds a new database branch based on specified parent branch
+            %
+            % ADD_BRANCH(DATABASE_OBJ, BRANCH_ID, [PARENT_BRANCH_ID])
+            %
+            % Adds a new branch with the specified BRANCH_ID to the database,
             % based on (duplicating) the specified PARENT_BRANCH_ID.
             % If PARENT_BRANCH_ID is empty or not specified, the current branch is used.
             %
@@ -165,11 +165,11 @@ classdef (Abstract) database < handle
         end % add_branch()
 
         function set_branch(database_obj, branch_id)
-			% SET_BRANCH - Sets the current database branch
-			%
-			% SET_BRANCH(DATABASE_OBJ, BRANCH_ID)
-			%
-			% Sets the current database branch to the specified BRANCH_ID.
+            % SET_BRANCH - Sets the current database branch
+            %
+            % SET_BRANCH(DATABASE_OBJ, BRANCH_ID)
+            %
+            % Sets the current database branch to the specified BRANCH_ID.
             % An error is generated if BRANCH_ID does not exist in the database.
 
             % Ensure branch IDs validity
@@ -180,20 +180,20 @@ classdef (Abstract) database < handle
         end % set_branch()
 
         function branch_id = get_branch(database_obj)
-			% GET_BRANCH - Returns the current database branch
-			%
-			% BRANCH_ID = GET_BRANCH(DATABASE_OBJ)
+            % GET_BRANCH - Returns the current database branch
+            %
+            % BRANCH_ID = GET_BRANCH(DATABASE_OBJ)
 
             % Return the current database branch
             branch_id = database_obj.current_branch_id;
         end % get_branch()
 
         function parent_branch_id = get_branch_parent(database_obj, branch_id)
-			% GET_BRANCH_PARENT - Return the id of the specified branch's parent
-			%
-			% PARENT_BRANCH_ID = GET_BRANCH_PARENT(DATABASE_OBJ, [BRANCH_ID])
-			%
-			% Returns the ID of the parent branch for the specified BRANCH_ID.
+            % GET_BRANCH_PARENT - Return the id of the specified branch's parent
+            %
+            % PARENT_BRANCH_ID = GET_BRANCH_PARENT(DATABASE_OBJ, [BRANCH_ID])
+            %
+            % Returns the ID of the parent branch for the specified BRANCH_ID.
             % If BRANCH_ID is empty or not specified, the current branch is used.
             % An error is generated if BRANCH_ID does not exist in the database.
 
@@ -210,11 +210,11 @@ classdef (Abstract) database < handle
         end % get_branch_parent()
 
         function branch_ids = get_sub_branches(database_obj, branch_id)
-			% GET_SUB_BRANCHES - Return the IDs of sub-branches of a branch
-			%
-			% BRANCH_IDS = GET_SUB_BRANCHES(DATABASE_OBJ, [BRANCH_ID])
-			%
-			% Returns the ID of sub-branches for the specified BRANCH_ID.
+            % GET_SUB_BRANCHES - Return the IDs of sub-branches of a branch
+            %
+            % BRANCH_IDS = GET_SUB_BRANCHES(DATABASE_OBJ, [BRANCH_ID])
+            %
+            % Returns the ID of sub-branches for the specified BRANCH_ID.
             % If BRANCH_ID is empty or not specified, the current branch is used.
             % An error is generated if BRANCH_ID does not exist in the database.
 
@@ -231,11 +231,11 @@ classdef (Abstract) database < handle
         end % get_sub_branches()
 
         function freeze_branch(database_obj, branch_id)
-			% FREEZE_BRANCH - Freeses specified branch from further modification
-			%
-			% FREEZE_BRANCH(DATABASE_OBJ, [BRANCH_ID])
-			%
-			% Indicates the specified BRANCH_ID as protected from modification.
+            % FREEZE_BRANCH - Freeses specified branch from further modification
+            %
+            % FREEZE_BRANCH(DATABASE_OBJ, [BRANCH_ID])
+            %
+            % Indicates the specified BRANCH_ID as protected from modification.
             % If BRANCH_ID is empty or not specified, the current branch is used.
             % An error is generated if BRANCH_ID does not exist in the database.
 
@@ -252,11 +252,11 @@ classdef (Abstract) database < handle
         end % freeze_branch()
 
         function tf = is_branch_editable(database_obj, branch_id)
-			% IS_BRANCH_EDITABLE - Returns true if branch has no sub-branches and is not frozen
-			%
-			% TF = IS_BRANCH_EDITABLE(DATABASE_OBJ, [BRANCH_ID])
-			%
-			% Returns a logical true/false flag indicating whether the specified
+            % IS_BRANCH_EDITABLE - Returns true if branch has no sub-branches and is not frozen
+            %
+            % TF = IS_BRANCH_EDITABLE(DATABASE_OBJ, [BRANCH_ID])
+            %
+            % Returns a logical true/false flag indicating whether the specified
             % BRANCH_ID can be modified/deleted (not frozen and no sub-branches).
             % If BRANCH_ID is empty or not specified, the current branch is used.
             % An error is generated if BRANCH_ID does not exist in the database.
@@ -275,11 +275,11 @@ classdef (Abstract) database < handle
         end % is_branch_editable()
 
         function delete_branch(database_obj, branch_id)
-			% DELETE_BRANCH - Deletes the specified branch from the database
-			%
-			% DELETE_BRANCH(DATABASE_OBJ, [BRANCH_ID])
-			%
-			% Removes all documents in the specified BRANCH_ID and then deletes
+            % DELETE_BRANCH - Deletes the specified branch from the database
+            %
+            % DELETE_BRANCH(DATABASE_OBJ, [BRANCH_ID])
+            %
+            % Removes all documents in the specified BRANCH_ID and then deletes
             % the branch itself.
             % If BRANCH_ID is empty or not specified, the current branch is used.
             %
@@ -303,7 +303,7 @@ classdef (Abstract) database < handle
             end
 
             % Delete the branch from the database
-    		database_obj.do_delete_branch(branch_id)
+            database_obj.do_delete_branch(branch_id)
 
             % Remove the branch from the list of frozen branches
             database_obj.frozen_branch_ids = setdiff(database_obj.frozen_branch_ids,branch_id);
@@ -319,11 +319,11 @@ classdef (Abstract) database < handle
         end % delete_branch()
 
         function display_branches(database_obj, branch_id)
-			% DISPLAY_BRANCHES - Display branches hierarchy under specified branch
-			%
-			% DISPLAY_BRANCHES(DATABASE_OBJ, [BRANCH_ID])
-			%
-			% Display all branches whose ancestor is the specified BRANCH_ID.
+            % DISPLAY_BRANCHES - Display branches hierarchy under specified branch
+            %
+            % DISPLAY_BRANCHES(DATABASE_OBJ, [BRANCH_ID])
+            %
+            % Display all branches whose ancestor is the specified BRANCH_ID.
             % If BRANCH_ID is empty or not specified, the current branch is used.
             % An error is generated if BRANCH_ID does not exist in the database.
 
@@ -353,23 +353,23 @@ classdef (Abstract) database < handle
 
     % Document-related methods
     methods
-		function doc_ids = all_doc_ids(database_obj)
-			% ALL_DOC_IDS - return all document IDs for a DID database
-			%
-			% DOC_IDS = ALL_DOC_IDS(DATABASE_OBJ)
-			%
-			% Return a cell array of all document IDs in the database.
-    	    % If there are no documents, an empty cell array is returned.
+        function doc_ids = all_doc_ids(database_obj)
+            % ALL_DOC_IDS - return all document IDs for a DID database
+            %
+            % DOC_IDS = ALL_DOC_IDS(DATABASE_OBJ)
+            %
+            % Return a cell array of all document IDs in the database.
+            % If there are no documents, an empty cell array is returned.
             
             doc_ids = database_obj.do_get_doc_ids();
         end % all_branch_ids()
 
         function doc_ids = get_doc_ids(database_obj, branch_id)
-			% GET_DOC_IDS - return all document identifiers in a database branch
-			%
-			% DOC_IDS = GET_DOC_IDS(DATABASE_OBJ, [BRANCH_ID])
-			%
-			% Return all document unique reference strings as a cell array of
+            % GET_DOC_IDS - return all document identifiers in a database branch
+            %
+            % DOC_IDS = GET_DOC_IDS(DATABASE_OBJ, [BRANCH_ID])
+            %
+            % Return all document unique reference strings as a cell array of
             % strings. If there are no documents, empty is returned.
             %
             % If BRANCH_ID is empty or not specified, the current branch is used.
@@ -387,18 +387,18 @@ classdef (Abstract) database < handle
         end % all_doc_ids()
 
         function add_docs(database_obj, document_objs, branch_id, varargin)
-			% ADD_DOCS - add did.document object(s) to the specified branch
-			%
-			% ADD_DOCS(DATABASE_OBJ, DOCUMENT_OBJS, [BRANCH_ID], [PARAMETERS...])
-			%
-			% Adds the DOCUMENT_OBJS to the specified BRANCH_ID, subject to a
+            % ADD_DOCS - add did.document object(s) to the specified branch
+            %
+            % ADD_DOCS(DATABASE_OBJ, DOCUMENT_OBJS, [BRANCH_ID], [PARAMETERS...])
+            %
+            % Adds the DOCUMENT_OBJS to the specified BRANCH_ID, subject to a
             % schema validation check. DOCUMENT_OBJS may be a single did.document
             % object, struct, or an array of such (either regular or cell array).
             %
             % If BRANCH_ID is empty or not specified, the current branch is used.
             %
             % An error is generated if the branch is frozen and cannot be modified.
-			%
+            %
             % Optional PARAMETERS may be specified as P-V pairs of parameter name
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
@@ -464,11 +464,11 @@ classdef (Abstract) database < handle
         end % add_doc()
 
         function document_objs = get_docs(database_obj, document_ids, varargin)
-			% GET_DOCS - Return did.document object(s) that match the specified doc ID(s)
-			%
-			% DOCUMENT_OBJS = GET_DOCS(DATABASE_OBJ, [DOCUMENT_IDS], [PARAMETERS...]) 
-			%
-			% Returns the did.document object for the specified by DOCUMENT_IDS. 
+            % GET_DOCS - Return did.document object(s) that match the specified doc ID(s)
+            %
+            % DOCUMENT_OBJS = GET_DOCS(DATABASE_OBJ, [DOCUMENT_IDS], [PARAMETERS...]) 
+            %
+            % Returns the did.document object for the specified by DOCUMENT_IDS. 
             % DOCUMENT_IDS may be a scalar ID string, or an array of IDs
             % (in this case, an array of corresponding doc objects is returned).
             %
@@ -521,11 +521,11 @@ classdef (Abstract) database < handle
         end % get_doc()
 
         function remove_docs(database_obj, documents, branch_id, varargin)
-			% REMOVE_DOCS - remove did.document object(s) from a database branch
-			%
-			% REMOVE_DOCS(DATABASE_OBJ, DOCUMENTS, [BRANCH_ID], [PARAMETERS...])
-			%
-			% Removes the specified DOCUMENTS from the specified database branch.
+            % REMOVE_DOCS - remove did.document object(s) from a database branch
+            %
+            % REMOVE_DOCS(DATABASE_OBJ, DOCUMENTS, [BRANCH_ID], [PARAMETERS...])
+            %
+            % Removes the specified DOCUMENTS from the specified database branch.
             % DOCUMENTS may be a single document or an array of documents.
             % Any of the specified DOCUMENTS may be a did.document object,
             % or a unique document ID for a did.document object.
@@ -583,22 +583,22 @@ classdef (Abstract) database < handle
         end % remove_doc()
 
         function file_obj = open_doc(database_obj, document_id, filename, varargin)
-			% OPEN_DOC - open and lock a specified did.document in the database
-			%
-			% FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
-			%
-			% Return a DID.FILE.READONLY_FILEOBJ object for a data file within
+            % OPEN_DOC - open and lock a specified did.document in the database
+            %
+            % FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
+            %
+            % Return a DID.FILE.READONLY_FILEOBJ object for a data file within
             % the specified DOCUMENT_ID. The requested filename should be
             % specified using the (mandatory) FILENAME parameter.
-			%
-			% DOCUMENT_ID can be either the document id of a did.document, or a
+            %
+            % DOCUMENT_ID can be either the document id of a did.document, or a
             % did.document object itself.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
             % constructor method.
-			%
-			% Note: Close the document with FILE_OBJ.close() when finished.
+            %
+            % Note: Close the document with FILE_OBJ.close() when finished.
             %
             % See also: CLOSE_DOC
 
@@ -621,7 +621,7 @@ classdef (Abstract) database < handle
             % Also returns the absolute FILE_PATH for the file. If the file
             % does not exist, this output is an empty character vector.
             %
-			% DOCUMENT_ID can be either the document id of a did.document, or a
+            % DOCUMENT_ID can be either the document id of a did.document, or a
             % did.document object itself.
             %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
@@ -638,13 +638,13 @@ classdef (Abstract) database < handle
         end
 
         function close_doc(database_obj, file_obj)
-			% CLOSE_DOC - close an open did.document file
-			%
-			% CLOSE_DOC(DATABASE_OBJ, FILE_OBJ)
-			%
-			% Closes a FILE_OBJ that was previously opened with OPEN_DOC().
-			%
-			% See also: OPEN_DOC 
+            % CLOSE_DOC - close an open did.document file
+            %
+            % CLOSE_DOC(DATABASE_OBJ, FILE_OBJ)
+            %
+            % Closes a FILE_OBJ that was previously opened with OPEN_DOC().
+            %
+            % See also: OPEN_DOC 
 
             database_obj.do_close_doc(file_obj);
         end % close_doc()
@@ -698,17 +698,17 @@ classdef (Abstract) database < handle
         end        
 
         function document_ids = search(database_obj, query_obj, branch_id)
-			% SEARCH - find matching did.documents in the specified branch
-			%
-			% DOCUMENT_IDS = SEARCH(DATABASE_OBJ, DID.QUERYOBJ, [BRANCH_ID])
-			%
-			% Search the specified BRANCH_ID using a DID QUERY object, return a
+            % SEARCH - find matching did.documents in the specified branch
+            %
+            % DOCUMENT_IDS = SEARCH(DATABASE_OBJ, DID.QUERYOBJ, [BRANCH_ID])
+            %
+            % Search the specified BRANCH_ID using a DID QUERY object, return a
             % list of matching did.document IDs.
             %
             % If BRANCH_ID is empty or not specified, the current branch is used.
             % An error is generated if the specified BRANCH_ID does not exist.
-			% 
-			% This function returns a cell array of did.document IDs. If no
+            % 
+            % This function returns a cell array of did.document IDs. If no
             % documents match the query, an empty cell array ({}) is returned.
 
             % If branch_id was not specified, use the current branch
@@ -721,7 +721,7 @@ classdef (Abstract) database < handle
 
             % Call the specific database's search method, return matching doc IDs
             document_ids = database_obj.do_search(query_obj, branch_id);
-		end % search()
+        end % search()
     end
     methods (Access=protected)
         function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
@@ -757,7 +757,7 @@ classdef (Abstract) database < handle
                 case 'contains_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'exact_number'
-	            if ~isempty(param1Val),
+                if ~isempty(param1Val),
                         sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
                     else,
                         sql_str = [field_check ' AND ' notStr 'doc_data.value > 9e999']; % if is it empty, we have to make it fail
@@ -862,7 +862,7 @@ classdef (Abstract) database < handle
         
             % Convert the query object into an SQL query string
             if isa(query_obj,'did.query')
-			    query_obj = query_obj.searchstructure;
+                query_obj = query_obj.searchstructure;
             end
 
             % Run the SQL query on the DB and return the matching documents
@@ -877,8 +877,8 @@ classdef (Abstract) database < handle
             end
 
             % Return the matching documents' IDs
-		    document_ids = doc_ids;
-	    end % do_search()
+            document_ids = doc_ids;
+        end % do_search()
         function [hCleanup, filename] = open_db(database_obj) %#ok<STOUT,MANU>
             % Subclasses may implement
         end
@@ -905,21 +905,21 @@ classdef (Abstract) database < handle
     end
 
     % These methods *MUST* be overloaded by implementation subclasses
-	methods (Abstract, Access=protected)
+    methods (Abstract, Access=protected)
         results = do_run_sql_query(database_obj, query_str, varargin)
 
         % Branch-related methods
         branch_ids = do_get_branch_ids(database_obj)
         do_add_branch(database_obj, branch_id, parent_branch_id, varargin)
-		do_delete_branch(database_obj, branch_id, varargin)
+        do_delete_branch(database_obj, branch_id, varargin)
         parent_branch_id = do_get_branch_parent(database_obj, branch_id, varargin)
         branch_ids = do_get_sub_branches(database_obj, branch_id, varargin)
 
         % Document-related methods
         doc_ids = do_get_doc_ids(database_obj, branch_id, varargin)
-		do_add_doc(database_obj, document_obj, branch_id, varargin)
-		document_obj = do_get_doc(database_obj, document_id, varargin)
-		do_remove_doc(database_obj, document_id, branch_id, varargin)
+        do_add_doc(database_obj, document_obj, branch_id, varargin)
+        document_obj = do_get_doc(database_obj, document_id, varargin)
+        do_remove_doc(database_obj, document_id, branch_id, varargin)
         file_obj = do_open_doc(database_obj, document_id, filename, varargin)
         [tf, file_path] = check_exist_doc(database_obj, document_id, filename, varargin)
     end
@@ -928,26 +928,26 @@ classdef (Abstract) database < handle
     methods (Access=protected)
         %{
         function document_obj = do_open_doc(database_obj, document_id)
-		    document_obj = [];
-		    [fid, key] = database_obj.db.openbinaryfile(document_id);
-		    if fid>0
-			    [filename,permission,machineformat,encoding] = fopen(fid); %#ok<ASGLU>
-			    document_obj = did_binarydoc_matfid('fid',fid,'fullpathfilename',filename,...
-				    'machineformat',machineformat,'permission',permission, 'doc_unique_id', document_id, 'key', key);
-			    document_obj.frewind(); % move to beginning of the file
+            document_obj = [];
+            [fid, key] = database_obj.db.openbinaryfile(document_id);
+            if fid>0
+                [filename,permission,machineformat,encoding] = fopen(fid); %#ok<ASGLU>
+                document_obj = did_binarydoc_matfid('fid',fid,'fullpathfilename',filename,...
+                    'machineformat',machineformat,'permission',permission, 'doc_unique_id', document_id, 'key', key);
+                document_obj.frewind(); % move to beginning of the file
             end
-	    end % do_binarydoc()
+        end % do_binarydoc()
         %}
         function do_close_doc(database_obj, file_obj) %#ok<INUSL>
-    	    % DO_CLOSE_DOC - close and unlock a did.document object
-    	    %
-    	    % DO_CLOSE_DOC(sqlitedb_obj, FILE_OBJ)
-    	    %
-    	    % Close and unlock the file associated with FILE_OBJ.
+            % DO_CLOSE_DOC - close and unlock a did.document object
+            %
+            % DO_CLOSE_DOC(sqlitedb_obj, FILE_OBJ)
+            %
+            % Close and unlock the file associated with FILE_OBJ.
 
-		    %database_obj.db.closebinaryfile(document_obj.fid, document_obj.key, document_obj.doc_unique_id);
-		    file_obj.fclose(); 
-	    end % do_close_doc()
+            %database_obj.db.closebinaryfile(document_obj.fid, document_obj.key, document_obj.doc_unique_id);
+            file_obj.fclose(); 
+        end % do_close_doc()
 
         function [branch_id, branch_ids] = validate_branch_id(database_obj, branch_id, check_existance)
             % The branch_id must be a non-empty string
@@ -1484,11 +1484,11 @@ classdef (Abstract) database < handle
     % Preferences management
     methods
         function prefNames = get_preference_names(this)
-			% GET_PREFERENCE_NAMES - return a cell-array of all defined pref names
-			%
-			% prefNames = GET_PREFERENCE_NAMES(DATABASE_OBJ)
-			%
-			% Returns a cell-array of all preference names defined in this DB obj.
+            % GET_PREFERENCE_NAMES - return a cell-array of all defined pref names
+            %
+            % prefNames = GET_PREFERENCE_NAMES(DATABASE_OBJ)
+            %
+            % Returns a cell-array of all preference names defined in this DB obj.
             % If no preferences were defined (via SET_PREFERENCE method), an empty
             % cell-array is returned.
             %
@@ -1497,11 +1497,11 @@ classdef (Abstract) database < handle
             prefNames = this.preferences.keys;
         end
         function value = get_preference(this, pref_name, default_value)
-			% GET_PREFERENCE - return value of pre-defined preference in this object.
-			%
-			% value = GET_PREFERENCE(DATABASE_OBJ, PREF_NAME, [DEFAULT_VALUE])
-			%
-			% Return the value pre-stored for the specified PREF_NAME in this obj.
+            % GET_PREFERENCE - return value of pre-defined preference in this object.
+            %
+            % value = GET_PREFERENCE(DATABASE_OBJ, PREF_NAME, [DEFAULT_VALUE])
+            %
+            % Return the value pre-stored for the specified PREF_NAME in this obj.
             % If no value was pre-stored (via the SET_PREFERENCE method), then if
             % the optional DEFAULT_VALUE input parameter was specified it will be
             % returned; otherwise, an error will be generated.
@@ -1524,11 +1524,11 @@ classdef (Abstract) database < handle
             end
         end
         function set_preference(this, pref_name, value)
-			% SET_PREFERENCE - sets value of specified preference in this object.
-			%
-			% SET_PREFERENCE(DATABASE_OBJ, PREF_NAME, [VALUE])
-			%
-			% Sets the value of the specified PREF_NAME preference in this obj.
+            % SET_PREFERENCE - sets value of specified preference in this object.
+            %
+            % SET_PREFERENCE(DATABASE_OBJ, PREF_NAME, [VALUE])
+            %
+            % Sets the value of the specified PREF_NAME preference in this obj.
             % If VALUE is not specified, an empty [] value will be set.
             %
             % See also: GET_PREFERENCE, GET_PREFERENCE_NAMES

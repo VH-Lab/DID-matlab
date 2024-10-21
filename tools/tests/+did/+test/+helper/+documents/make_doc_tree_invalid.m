@@ -68,7 +68,7 @@ remover = options.remover;
 
 
 for i=1:numA,
-	docs{end+1} = did.document('demoA'); %add unmodified document to list
+    docs{end+1} = did.document('demoA'); %add unmodified document to list
     %now can continue modifying docs:
     d = docs{end};
     warnstate = warning('off');
@@ -89,16 +89,16 @@ for i=1:numA,
     else
         docs{end} = did.document(d_struct);
     end
-	node_names{end+1} = int2str(counter);
+    node_names{end+1} = int2str(counter);
     if isfield(docs{end}.document_properties,'base') && isfield(docs{end}.document_properties.base,'id')
         ids_A{end+1} = docs{end}.id();
     end
-	counter = counter + 1;
+    counter = counter + 1;
 end;
 
 for i=1:numB,
-	docs{end+1} = did.document('demoB','demoB.value',counter,...
-		'demoA.value',counter);
+    docs{end+1} = did.document('demoB','demoB.value',counter,...
+        'demoA.value',counter);
     %now can continue modifying docs:
     d = docs{end};
     warnstate = warning('off');
@@ -120,21 +120,21 @@ for i=1:numB,
     else
         docs{end} = did.document(d_struct);
     end
-	node_names{end+1} = int2str(counter);
+    node_names{end+1} = int2str(counter);
     if isfield(docs{end}.document_properties,'base') && isfield(docs{end}.document_properties.base,'id')
         ids_B{end+1} = docs{end}.id();
     end
-	counter = counter + 1;
+    counter = counter + 1;
 end;
 
 c_count = 0;
 
 for i=1:numC,
-	depA = randi([0 numA]);
-	depB = randi([0 numB]);
-	depC = randi([0 c_count]);
+    depA = randi([0 numA]);
+    depB = randi([0 numB]);
+    depC = randi([0 c_count]);
 
-	docs{end+1} = did.document('demoC','demoC.value',counter);
+    docs{end+1} = did.document('demoC','demoC.value',counter);
     %now can continue modifying docs:
     d = docs{end};
     warnstate = warning('off');
@@ -155,11 +155,11 @@ for i=1:numC,
     else
         docs{end} = did.document(d_struct);
     end
-	node_names{end+1} = int2str(counter);
+    node_names{end+1} = int2str(counter);
     if isfield(docs{end}.document_properties,'base') && isfield(docs{end}.document_properties.base,'id')
         ids_C{end+1} = docs{end}.id();
     end
-	if depA>0 
+    if depA>0 
         if numel(ids_A)>0 && ... % check that ids_A is being filled in before accessing its indices 
             isfield(docs{end}.document_properties,'depends_on') % check that depends_on field hasn't been removed
                 % make sure that item1 exists:
@@ -172,9 +172,9 @@ for i=1:numC,
                         ids_A{depA});
                 end
         end
-		G(depA,counter) = 1; %even if dependencies not set, plot still shows them
-	end;
-	if depB>0 
+        G(depA,counter) = 1; %even if dependencies not set, plot still shows them
+    end;
+    if depB>0 
         if numel(ids_B)>0 && isfield(docs{end}.document_properties,'depends_on')  
             % make sure that item2 exists:
             exists_item2 = 0;
@@ -186,9 +186,9 @@ for i=1:numC,
                     ids_B{depB});
             end
         end
-		G(numA+depB,counter) = 1;
-	end;
-	if depC>0 
+        G(numA+depB,counter) = 1;
+    end;
+    if depC>0 
         if numel(ids_C)>0 && isfield(docs{end}.document_properties,'depends_on')  
             % make sure that item3 exists:
             exists_item3 = 0;
@@ -200,8 +200,8 @@ for i=1:numC,
                     ids_C{depC});
             end
         end
-		G(numA+numB+depC,counter) = 1;
-	end;
+        G(numA+numB+depC,counter) = 1;
+    end;
     %modify dependencies after they are set:
     d = docs{end};
     warnstate = warning('off');
@@ -214,8 +214,8 @@ for i=1:numC,
     else
         docs{end} = did.document(d_struct);
     end
-	counter = counter + 1;
-	c_count = c_count + 1;
+    counter = counter + 1;
+    c_count = c_count + 1;
 end;
  
 

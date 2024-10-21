@@ -17,7 +17,7 @@ ranges = [double('a') double('z') ; double('A') double('Z'); double('0') double(
 goodindexes = [];
 
 for i=1:size(ranges,1),
-	goodindexes = union(goodindexes, find(s>=ranges(i,1) & s<=ranges(i,2)));
+    goodindexes = union(goodindexes, find(s>=ranges(i,1) & s<=ranges(i,2)));
 end
 
 fs = repmat('_',1,numel(s));

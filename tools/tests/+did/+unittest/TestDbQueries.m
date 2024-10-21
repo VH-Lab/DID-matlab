@@ -36,7 +36,7 @@ classdef TestDbQueries < matlab.unittest.TestCase
                 did.test.helper.documents.make_doc_tree([10 10 10]);
 
             for i=1:numel(testCase.docs)
-	            testCase.db.add_doc(testCase.docs{i});
+                testCase.db.add_doc(testCase.docs{i});
             end
 
             % Step 3: check the database results

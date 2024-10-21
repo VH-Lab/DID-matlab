@@ -12,13 +12,13 @@ function t=jsonencodenan(obj)
 % See also: JSONENCODE
 
 try,
-	t = jsonencode(obj,'ConvertInfAndNaN',false,'PrettyPrint',true); % newest version
+    t = jsonencode(obj,'ConvertInfAndNaN',false,'PrettyPrint',true); % newest version
 catch,
-	try,
-		t = jsonencode(obj,'ConvertInfAndNaN',false); % for after 2018b
-	catch,
-		t = jsonencode(obj);
-	end;
+    try,
+        t = jsonencode(obj,'ConvertInfAndNaN',false); % for after 2018b
+    catch,
+        t = jsonencode(obj);
+    end;
 end;
 
 

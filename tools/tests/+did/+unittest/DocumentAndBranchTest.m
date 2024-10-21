@@ -41,21 +41,21 @@ classdef DocumentAndBranchTest < matlab.unittest.TestCase
             [doc_struct.G,doc_struct.node_names,doc_struct.docs] = did.test.helper.documents.make_doc_tree([10 10 10]);
             
             [doc_struct_out, branch_node_indexes] = did.test.helper.utility.addrm_docs_to_branches( testCase.db,...
-	            branchG, branch_node_names, doc_struct);
+                branchG, branch_node_names, doc_struct);
             
              % now check all branches
             
             %save graph_output.mat branchG branch_node_names doc_struct_out branch_node_indexes doc_struct -mat
             
             for i = 1:numel(doc_struct_out)
-	            testCase.db.set_branch(branch_node_names{i});
-	            [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db,...
-		            doc_struct_out{i}.G,doc_struct_out{i}.docs);
+                testCase.db.set_branch(branch_node_names{i});
+                [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db,...
+                    doc_struct_out{i}.G,doc_struct_out{i}.docs);
                 
                 b = logical(b);
                 testCase.verifyTrue(b, msg);
                 if ~b
-		            disp(['Failed to validate documents in branch ' branch_node_names{i} '.']);
+                    disp(['Failed to validate documents in branch ' branch_node_names{i} '.']);
                 end
             end
         end

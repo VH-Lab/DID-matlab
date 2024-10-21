@@ -30,36 +30,36 @@ f1 = fieldnames(s1);
 f2 = fieldnames(s2);
 
 if options.ErrorIfNewField,
-	[c,f1i] = setdiff(f2,f1);
-	if ~isempty(c),
-		error(['Some fields of the second structure are not in the first: ' cell2str(c) '.']);
-	end;
+    [c,f1i] = setdiff(f2,f1);
+    if ~isempty(c),
+        error(['Some fields of the second structure are not in the first: ' cell2str(c) '.']);
+    end;
 end;
 
 s_out_ = s1;
 
 for i=1:length(f2),
-	if isempty(s_out_),
-		v = getfield(s2,f2{i});
-		eval(['s_out_(1).' f2{i} '=v;']);
-	else,
-		s_out_ = setfield(s_out_,f2{i},getfield(s2,f2{i}));
-	end;
+    if isempty(s_out_),
+        v = getfield(s2,f2{i});
+        eval(['s_out_(1).' f2{i} '=v;']);
+    else,
+        s_out_ = setfield(s_out_,f2{i},getfield(s2,f2{i}));
+    end;
 end;
 
 if options.DoAlphabetical,
-	fn = sort(fieldnames(s_out_));
-	s_out = did.datastructures.emptystruct(fn{:});
-	for i=1:length(fn),
-		if isempty(s_out),
-			v = getfield(s_out_,fn{i});
-			eval(['s_out(1).' fn{i} '=v;']);
-		else,
-			s_out = setfield(s_out,fn{i},getfield(s_out_,fn{i}));
-		end;
-	end;
+    fn = sort(fieldnames(s_out_));
+    s_out = did.datastructures.emptystruct(fn{:});
+    for i=1:length(fn),
+        if isempty(s_out),
+            v = getfield(s_out_,fn{i});
+            eval(['s_out(1).' fn{i} '=v;']);
+        else,
+            s_out = setfield(s_out,fn{i},getfield(s_out_,fn{i}));
+        end;
+    end;
 else,
-	s_out = s_out_;
+    s_out = s_out_;
 end;
 
 

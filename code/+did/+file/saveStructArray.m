@@ -21,28 +21,28 @@ function saveStructArray(fname,gdi,header)
 %   
 
 if nargin == 2
-	header = 1;
+    header = 1;
 end
 
 [fid,msg] = fopen(fname, 'wt');
 if fid == -1
-	disp(msg);
-	return;
+    disp(msg);
+    return;
 end
 
 if header == 1
-	fn = fieldnames(gdi([]));
-	s = '';
-	for i=1:length(fn)
-		s = [s char(9) fn{i}];
-	end
-	s = s(2:end);
-	fprintf(fid,'%s\n',s);
+    fn = fieldnames(gdi([]));
+    s = '';
+    for i=1:length(fn)
+        s = [s char(9) fn{i}];
+    end
+    s = s(2:end);
+    fprintf(fid,'%s\n',s);
 end
 
 for i=1:length(gdi)
-	s = did.datastructures.struct2tabstr(gdi(i));
-	fprintf(fid,'%s\n',s);
+    s = did.datastructures.struct2tabstr(gdi(i));
+    fprintf(fid,'%s\n',s);
 end
 
 fclose(fid);

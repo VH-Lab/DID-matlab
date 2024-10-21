@@ -56,7 +56,7 @@ classdef DocumentTest < matlab.unittest.TestCase
             
             testCase.db.add_docs(docs{1});
             %for i=1:numel(docs{1})
-            %	db.add_doc(docs{1}{i});
+            %    db.add_doc(docs{1}{i});
             %end
             
             % Step 3: check the database results
@@ -66,28 +66,28 @@ classdef DocumentTest < matlab.unittest.TestCase
 
             for i=[2:2:10],
             
-	            disp('will now delete some documents/nodes and check.');
+                disp('will now delete some documents/nodes and check.');
             
-	            [docs_to_delete,docs_to_delete_seed,G{i},node_names{i},docs{i}] = ...
-		            did.test.helper.documents.rm_doc_tree(2, G{i-1},node_names{i-1},docs{i-1});
+                [docs_to_delete,docs_to_delete_seed,G{i},node_names{i},docs{i}] = ...
+                    did.test.helper.documents.rm_doc_tree(2, G{i-1},node_names{i-1},docs{i-1});
             
-	            if ~isempty(docs_to_delete_seed),
-		            testCase.db.remove_docs(docs_to_delete_seed);
-	            end;
-	            
-	            [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G{i}, docs{i});
-	            b = logical(b);
+                if ~isempty(docs_to_delete_seed),
+                    testCase.db.remove_docs(docs_to_delete_seed);
+                end;
+                
+                [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G{i}, docs{i});
+                b = logical(b);
                 testCase.verifyTrue(b, msg);
             
-	            disp('will now add some documents/nodes and check.');
+                disp('will now add some documents/nodes and check.');
             
-	            N = numel(docs{i});
-	            [G{i+1},node_names{i+1},docs{i+1}] = did.test.helper.documents.add_doc_tree([5 5 5],...
-		            G{i},node_names{i},docs{i});
-	            testCase.db.add_docs(docs{i+1}(N+1:numel(docs{i+1})));
+                N = numel(docs{i});
+                [G{i+1},node_names{i+1},docs{i+1}] = did.test.helper.documents.add_doc_tree([5 5 5],...
+                    G{i},node_names{i},docs{i});
+                testCase.db.add_docs(docs{i+1}(N+1:numel(docs{i+1})));
             
-	            [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G{i+1}, docs{i+1});
-	            
+                [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G{i+1}, docs{i+1});
+                
                 b = logical(b);
                 testCase.verifyTrue(b, msg);
             end

@@ -39,48 +39,48 @@ ids_B = {};
 ids_C = {};
 
 for i=1:numA,
-	docs{end+1} = did.document('demoA','demoA.value',counter);
-	node_names{end+1} = int2str(counter);
-	ids_A{end+1} = docs{end}.id();
-	counter = counter + 1;
+    docs{end+1} = did.document('demoA','demoA.value',counter);
+    node_names{end+1} = int2str(counter);
+    ids_A{end+1} = docs{end}.id();
+    counter = counter + 1;
 end;
 
 for i=1:numB,
-	docs{end+1} = did.document('demoB','demoB.value',counter,...
-		'demoA.value',counter);
-	node_names{end+1} = int2str(counter);
-	ids_B{end+1} = docs{end}.id();
-	counter = counter + 1;
+    docs{end+1} = did.document('demoB','demoB.value',counter,...
+        'demoA.value',counter);
+    node_names{end+1} = int2str(counter);
+    ids_B{end+1} = docs{end}.id();
+    counter = counter + 1;
 end;
 
 c_count = 0;
 
 for i=1:numC,
-	depA = randi([0 numA]);
-	depB = randi([0 numB]);
-	depC = randi([0 c_count]);
+    depA = randi([0 numA]);
+    depB = randi([0 numB]);
+    depC = randi([0 c_count]);
 
-	docs{end+1} = did.document('demoC','demoC.value',counter);
-	node_names{end+1} = int2str(counter);
-	ids_C{end+1} = docs{end}.id();
-	if depA>0,
-		docs{end} = docs{end}.set_dependency_value('item1',...
-			ids_A{depA});
-		G(depA,counter) = 1;
-	end;
-	if depB>0,
-		docs{end} = docs{end}.set_dependency_value('item2',...
-			ids_B{depB});
-		G(numA+depB,counter) = 1;
-	end;
-	if depC>0,
-		docs{end} = docs{end}.set_dependency_value('item3',...
-			ids_C{depC});
-		G(numA+numB+depC,counter) = 1;
-	end;
+    docs{end+1} = did.document('demoC','demoC.value',counter);
+    node_names{end+1} = int2str(counter);
+    ids_C{end+1} = docs{end}.id();
+    if depA>0,
+        docs{end} = docs{end}.set_dependency_value('item1',...
+            ids_A{depA});
+        G(depA,counter) = 1;
+    end;
+    if depB>0,
+        docs{end} = docs{end}.set_dependency_value('item2',...
+            ids_B{depB});
+        G(numA+depB,counter) = 1;
+    end;
+    if depC>0,
+        docs{end} = docs{end}.set_dependency_value('item3',...
+            ids_C{depC});
+        G(numA+numB+depC,counter) = 1;
+    end;
 
-	counter = counter + 1;
-	c_count = c_count + 1;
+    counter = counter + 1;
+    c_count = c_count + 1;
 end;
  
 

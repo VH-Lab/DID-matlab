@@ -22,17 +22,17 @@ function s = emptystruct(varargin)
 %  
 
 if ~isempty(varargin),
-	if iscell(varargin{1}),
-		mycell = varargin{1};
-		s = emptystruct(mycell{:});
-		return;
-	end;
+    if iscell(varargin{1}),
+        mycell = varargin{1};
+        s = emptystruct(mycell{:});
+        return;
+    end;
 end;
 
 s = struct();
 
 for i=1:length(varargin),
-	eval(['s.' varargin{i} '=1;']);
+    eval(['s.' varargin{i} '=1;']);
 end;
 
 s = s([]);

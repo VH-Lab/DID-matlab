@@ -11,9 +11,9 @@ function fid = fileid_value(fid_or_fileobj)
 %
 
 if isa(fid_or_fileobj,'fileobj'),
-	fid = fid_or_fileobj.fid;
+    fid = fid_or_fileobj.fid;
 else,
-	fid = fid_or_fileobj;
+    fid = fid_or_fileobj;
 end;
 
 

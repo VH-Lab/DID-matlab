@@ -15,7 +15,7 @@ remove_old = 1;
 write_binary_file = 0;
 
 if nargin<1,
-	dirname = [did.common.PathConstants.testpath filesep 'exampledb'];
+    dirname = [did.common.PathConstants.testpath filesep 'exampledb'];
 end;
 
 example_session_id = '1234';
@@ -25,12 +25,12 @@ db = did.implementations.matlabdumbjsondb('new',[dirname filesep 'did.dumbjsondb
 
 if remove_old,
   % remove any old versions
-	doc = db.search(did.query('base.name','exact_string','mytestdocument',''));
-	if ~isempty(doc),
-		for i=1:numel(doc),
-			db.remove(doc{i}.id());
-		end;
-	end;
+    doc = db.search(did.query('base.name','exact_string','mytestdocument',''));
+    if ~isempty(doc),
+        for i=1:numel(doc),
+            db.remove(doc{i}.id());
+        end;
+    end;
 end;
 
 disp(['Creating a new document of type did_document_app'])
@@ -45,11 +45,11 @@ disp(['Adding the document to the database']);
 db.add(doc);
 
 if write_binary_file,
-	  % store some data in the binary portion of the file
-	binarydoc = E.database_openbinarydoc(doc);
-	disp(['Storing ' mat2str(0:9) '...'])
-	binarydoc.fwrite(char([0:9]),'char');
-	binarydoc = E.database_closebinarydoc(binarydoc);
+      % store some data in the binary portion of the file
+    binarydoc = E.database_openbinarydoc(doc);
+    disp(['Storing ' mat2str(0:9) '...'])
+    binarydoc.fwrite(char([0:9]),'char');
+    binarydoc = E.database_closebinarydoc(binarydoc);
 end;
 
  % now do some searching
@@ -61,32 +61,32 @@ q2 = did.query('base.session','exact_string',example_session_id,'');
 q_ = q1 & q2;
 doc = db.search(q_)
 if numel(doc)~=1,
-	error(['Found <1 or >1 document with base.name ''mytestdocument''; this means there is a database problem.']);
+    error(['Found <1 or >1 document with base.name ''mytestdocument''; this means there is a database problem.']);
 end;
 doc = doc{1}, % should be only one match
 
 disp(['Now searching for the document'])
 doc = db.search(did.query('','isa','did_document_app.json',''));
 if numel(doc)~=1,
-	error(['Found <1 or >1 document with base.name ''mytestdocument''; this means there is a database problem.']);
+    error(['Found <1 or >1 document with base.name ''mytestdocument''; this means there is a database problem.']);
 end;
 doc = doc{1}, % should be only one match
 
 if write_binary_file,
-	 % read the binary data
-	binarydoc = E.database_openbinarydoc(doc);
-	disp('About to read stored data: ');
-	data = double(binarydoc.fread(10,'char'))',
-	binarydoc = E.database_closebinarydoc(binarydoc);
+     % read the binary data
+    binarydoc = E.database_openbinarydoc(doc);
+    disp('About to read stored data: ');
+    data = double(binarydoc.fread(10,'char'))',
+    binarydoc = E.database_closebinarydoc(binarydoc);
 end;
 
 % remove the document
 
 doc = db.search(did.query({'base.name','mytestdocument'}));
 if ~isempty(doc),
-	for i=1:numel(doc),
-		db.remove(doc{i}.id());
-	end;
+    for i=1:numel(doc),
+        db.remove(doc{i}.id());
+    end;
 end;
 
  % return the first document structure

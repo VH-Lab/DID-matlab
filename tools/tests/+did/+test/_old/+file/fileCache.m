@@ -11,7 +11,7 @@ b = 0;
 dirname = [did.common.PathConstants.temppath filesep 'file-cache-test'];
 
 if ~isfolder(dirname),
-	mkdir(dirname);
+    mkdir(dirname);
 end;
 
 obj = did.file.fileCache(dirname,33,1000,800); % tiny cache for testing
@@ -24,7 +24,7 @@ p = obj.getProperties();
 tempdir =  [did.common.PathConstants.temppath filesep 'file-cache-test-base'];
 
 if ~isfolder(tempdir),
-	mkdir(tempdir);
+    mkdir(tempdir);
 end;
 
  % make fake files
@@ -32,18 +32,18 @@ end;
 files = {};
 
 for i=1:100,
-	fname = ['f' sprintf('%0.3d',i) '0' repmat('_',1,32-4)];
-	files{i} = fname;
-	fullfiles{i} = fullfile(tempdir,files{i});
-	fid = fopen(fullfiles{i},'w','ieee-le');
-	fwrite(fid,[i*100+[0:99]],'uint16');
-	fclose(fid);
+    fname = ['f' sprintf('%0.3d',i) '0' repmat('_',1,32-4)];
+    files{i} = fname;
+    fullfiles{i} = fullfile(tempdir,files{i});
+    fid = fopen(fullfiles{i},'w','ieee-le');
+    fwrite(fid,[i*100+[0:99]],'uint16');
+    fclose(fid);
 end;
 
  % now insert the files
 
 for i=1:6,
-	obj.addFile(fullfiles{i},'copy',true);
+    obj.addFile(fullfiles{i},'copy',true);
 end;
 
 [fn,sz,la] = obj.fileList(false);
@@ -59,8 +59,8 @@ fn'
 
 obj.touch(files{3});
 for i=27:30,
-	obj.addFile(fullfiles{i},'copy',true);
-	obj.touch(files{3});
+    obj.addFile(fullfiles{i},'copy',true);
+    obj.touch(files{3});
 end;
 
  % reprint manifest

@@ -64,15 +64,15 @@ function b = fieldsearch(A, searchstruct)
 b = 1; % assume it matches
 
 if numel(searchstruct)>1,
-	% we need to do an AND, everything has to be true
-	for i=1:numel(searchstruct),
-		b_ = did.datastructures.fieldsearch(A, searchstruct(i));
-		if ~b_,
-			b = 0;
-			break;
-		end;
-	end;
-	return;
+    % we need to do an AND, everything has to be true
+    for i=1:numel(searchstruct),
+        b_ = did.datastructures.fieldsearch(A, searchstruct(i));
+        if ~b_,
+            b = 0;
+            break;
+        end;
+    end;
+    return;
 end;
 
  % if we are here, we will implement the searchstruct
@@ -84,127 +84,127 @@ b = 0; % now it has to pass
 negation = 0;
 
 if searchstruct.operation(1) == '~',
-	negation = 1;
-	searchstruct.operation = searchstruct.operation(2:end);
+    negation = 1;
+    searchstruct.operation = searchstruct.operation(2:end);
 end;
 
 switch(lower(searchstruct.operation)),
-	case 'regexp',
-		if isthere,
-			if ischar(value), % it has to be a char or string to match
-				test = regexpi(value, searchstruct.param1, 'forceCellOutput');
-				if ~isempty(test),
-					b = ~isempty(test{1});
-				end;
-			end;
-		end;
-	case 'exact_string',
-		if isthere,
-			b = strcmp(value,searchstruct.param1);
-		end;
-	case 'exact_string_anycase',
-		if isthere,
-			b = strcmpi(value,searchstruct.param1);
-		end;
-	case 'contains_string',
-		if isthere,
-			try,
-				b = ~isempty(strfind(value,searchstruct.param1));
-			end;
-		end;
-	case 'exact_number',
-		if isthere,
-			b = did.datastructures.eqlen(value,searchstruct.param1);
-		end;
-	case 'lessthan',
-		if isthere,
-			try,
-				b = all(value<searchstruct.param1);
-			end;
-		end;
-	case 'lessthaneq',
-		if isthere,
-			try,
-				b = all(value<=searchstruct.param1);
-			end;
-		end;
-	case 'greaterthan',
-		if isthere,
-			try,
-				b = all(value>searchstruct.param1);
-			end;
-		end;
-	case 'greaterthaneq',
-		if isthere,
-			try,
-				b = all(value>=searchstruct.param1);
-			end;
-		end;
-	case 'hassize',
-		if isthere,
-			try,
-				b = did.datastructures.eqlen(size(value),searchstruct.param1);
-			end;
-		end;
-	case 'hasmember',
-		if isthere,
-			try,
-				b = ismember(searchstruct.param1,value);
-			end;
-		end;
-	case 'hasfield',
-		b = isthere;
-	case 'partial_struct',
-		if isthere,
-			try,
-				b = did.datastructures.structpartialmatch(value,searchstruct.param1);
-			end;
-		end;
-	case {'hasanysubfield_contains_string','hasanysubfield_exact_string'},
-		if isthere,
-			if ~ (isstruct(value) | iscell(value) ), return; end; % must be a structure or cell
-			for i=1:numel(value),
-				if isstruct(value),
-					item = value(i);
-				else,
-					item = value{i};
-				end;
-				if isstruct(item), % item must be a struct,
-					if ~iscell(searchstruct.param1),
-						searchstruct.param1 = {searchstruct.param1};
-					end;
-					if ~iscell(searchstruct.param2),
-						searchstruct.param2 = {searchstruct.param2};
-					end;
-					b_ = 1; % does this one match?
-					for k=1:numel(searchstruct.param1),
-						[isthere2,value2] = did.datastructures.isfullfield(item,searchstruct.param1{k});
-						if ischar(value2) | isempty(value2),
-							if strcmp(lower(searchstruct.operation),'hasanysubfield_contains_string'),
-								b_ = b_ & ~isempty(strfind(value2,searchstruct.param2{k}));
-							elseif strcmp(lower(searchstruct.operation),'hasanysubfield_exact_string');
-								b_ = b_ & strcmp(value2,searchstruct.param2{k});
-							else,
-								error(['Unknown operation; shouldn''t happen.']);
-							end;
-						end;
-					end;
-					b = b_;
-				end;
-				if b, % we found that it matches
-					break;
-				end;
-			end;
-		end;
-	case 'or',
-		if ~isstruct(searchstruct.param1) | ~isstruct(searchstruct.param2),
-			error(['In operation ''or'', searchstruct ''param1'' and ''param2'' must be an array of structures.']);
-		end;
-		b = (did.datastructures.fieldsearch(A,searchstruct.param1) | did.datastructures.fieldsearch(A,searchstruct.param2));
-	otherwise,
-		error(['Unknown search operation ' searchstruct.operation ]);
+    case 'regexp',
+        if isthere,
+            if ischar(value), % it has to be a char or string to match
+                test = regexpi(value, searchstruct.param1, 'forceCellOutput');
+                if ~isempty(test),
+                    b = ~isempty(test{1});
+                end;
+            end;
+        end;
+    case 'exact_string',
+        if isthere,
+            b = strcmp(value,searchstruct.param1);
+        end;
+    case 'exact_string_anycase',
+        if isthere,
+            b = strcmpi(value,searchstruct.param1);
+        end;
+    case 'contains_string',
+        if isthere,
+            try,
+                b = ~isempty(strfind(value,searchstruct.param1));
+            end;
+        end;
+    case 'exact_number',
+        if isthere,
+            b = did.datastructures.eqlen(value,searchstruct.param1);
+        end;
+    case 'lessthan',
+        if isthere,
+            try,
+                b = all(value<searchstruct.param1);
+            end;
+        end;
+    case 'lessthaneq',
+        if isthere,
+            try,
+                b = all(value<=searchstruct.param1);
+            end;
+        end;
+    case 'greaterthan',
+        if isthere,
+            try,
+                b = all(value>searchstruct.param1);
+            end;
+        end;
+    case 'greaterthaneq',
+        if isthere,
+            try,
+                b = all(value>=searchstruct.param1);
+            end;
+        end;
+    case 'hassize',
+        if isthere,
+            try,
+                b = did.datastructures.eqlen(size(value),searchstruct.param1);
+            end;
+        end;
+    case 'hasmember',
+        if isthere,
+            try,
+                b = ismember(searchstruct.param1,value);
+            end;
+        end;
+    case 'hasfield',
+        b = isthere;
+    case 'partial_struct',
+        if isthere,
+            try,
+                b = did.datastructures.structpartialmatch(value,searchstruct.param1);
+            end;
+        end;
+    case {'hasanysubfield_contains_string','hasanysubfield_exact_string'},
+        if isthere,
+            if ~ (isstruct(value) | iscell(value) ), return; end; % must be a structure or cell
+            for i=1:numel(value),
+                if isstruct(value),
+                    item = value(i);
+                else,
+                    item = value{i};
+                end;
+                if isstruct(item), % item must be a struct,
+                    if ~iscell(searchstruct.param1),
+                        searchstruct.param1 = {searchstruct.param1};
+                    end;
+                    if ~iscell(searchstruct.param2),
+                        searchstruct.param2 = {searchstruct.param2};
+                    end;
+                    b_ = 1; % does this one match?
+                    for k=1:numel(searchstruct.param1),
+                        [isthere2,value2] = did.datastructures.isfullfield(item,searchstruct.param1{k});
+                        if ischar(value2) | isempty(value2),
+                            if strcmp(lower(searchstruct.operation),'hasanysubfield_contains_string'),
+                                b_ = b_ & ~isempty(strfind(value2,searchstruct.param2{k}));
+                            elseif strcmp(lower(searchstruct.operation),'hasanysubfield_exact_string');
+                                b_ = b_ & strcmp(value2,searchstruct.param2{k});
+                            else,
+                                error(['Unknown operation; shouldn''t happen.']);
+                            end;
+                        end;
+                    end;
+                    b = b_;
+                end;
+                if b, % we found that it matches
+                    break;
+                end;
+            end;
+        end;
+    case 'or',
+        if ~isstruct(searchstruct.param1) | ~isstruct(searchstruct.param2),
+            error(['In operation ''or'', searchstruct ''param1'' and ''param2'' must be an array of structures.']);
+        end;
+        b = (did.datastructures.fieldsearch(A,searchstruct.param1) | did.datastructures.fieldsearch(A,searchstruct.param2));
+    otherwise,
+        error(['Unknown search operation ' searchstruct.operation ]);
 end;
 
 if negation,
-	b = ~b;
+    b = ~b;
 end;

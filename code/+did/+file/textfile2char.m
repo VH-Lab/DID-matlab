@@ -9,8 +9,8 @@ function str = textfile2char(filename)
 
 fid = fopen(filename,'rt');
 if fid>0,
-	str = char(fread(fid,Inf))';
-	fclose(fid);
+    str = char(fread(fid,Inf))';
+    fclose(fid);
 else,
-	error(['Could not open text file named ' filename '.']);
+    error(['Could not open text file named ' filename '.']);
 end;

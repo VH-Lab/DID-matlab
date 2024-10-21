@@ -10,12 +10,12 @@ classdef readonly_fileobj < fileobj
 
     methods
         function fileobj_obj = readonly_fileobj(varargin)
-			% READONLY_FILEOBJ - create a new read-only binary file object
-			%
-			% FILEOBJ_OBJ = READONLY_FILEOBJ(...)
-			%
-			% Creates an empty FILEOBJ object. If FILENAME is provided,
-			% then the filename is stored.
+            % READONLY_FILEOBJ - create a new read-only binary file object
+            %
+            % FILEOBJ_OBJ = READONLY_FILEOBJ(...)
+            %
+            % Creates an empty FILEOBJ object. If FILENAME is provided,
+            % then the filename is stored.
 
             % Call the super-class constructor
             fileobj_obj@fileobj(varargin{:});
@@ -24,22 +24,22 @@ classdef readonly_fileobj < fileobj
             if ~strcmpi(fileobj_obj.permission(1),'r')
                 error('DID:File:ReadOnly_Fileobj','Read-only file must have ''r'' permission');
             end
-		end % readonly_fileobj() constructor
+        end % readonly_fileobj() constructor
 
         function fileobj_obj = fopen(fileobj_obj, permission, varargin)
-			% FOPEN - open a FILEOBJ 
-			%
-			% FILEOBJ_OBJ = FOPEN(FILEOBJ_OBJ,[PERMISSION],[MACHINEFORMAT],[FILENAME])
-			%
-			% Opens the file associated with a FILEOBJ_OBJ object in read-only mode
+            % FOPEN - open a FILEOBJ 
             %
-			% See also: FOPEN, FILEOBJ/FOPEN, FILEOBJ/FCLOSE, FCLOSE
+            % FILEOBJ_OBJ = FOPEN(FILEOBJ_OBJ,[PERMISSION],[MACHINEFORMAT],[FILENAME])
+            %
+            % Opens the file associated with a FILEOBJ_OBJ object in read-only mode
+            %
+            % See also: FOPEN, FILEOBJ/FOPEN, FILEOBJ/FCLOSE, FCLOSE
 
             if nargin > 1 && ~strcmpi(permission,'r')
                 error('DID:File:ReadOnly_Fileobj','Read-only file must be opened with ''r'' permission');
             end
             fileobj_obj = fopen@fileobj(fileobj_obj,'r',varargin{:});
-		end %fopen
+        end %fopen
     end % methods
 
 end % classdef
