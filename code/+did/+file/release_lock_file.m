@@ -30,7 +30,7 @@ elseif ischar(fid_or_filename),
 	fid = -1;
 end;
 
-if ~exist(filename, 'file'),
+if ~isfile(filename),
 	% the file is gone, so it is already released
 	b = 1;
 	return;

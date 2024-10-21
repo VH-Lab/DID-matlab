@@ -16,7 +16,7 @@ function doc_ids = test_did_sqlitedb(dirname)
     if nargin < 1
     	try dirname = did.common.PathConstants.testpath; catch, dirname = tempdir; end
     end
-    if ~exist(dirname,'dir'), dirname = tempdir; end
+    if ~isfolder(dirname), dirname = tempdir; end
     db_filename = fullfile(dirname, 'test.sqlite');
 
     disp(['Creating a new temp database file: ' db_filename]);
