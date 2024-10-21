@@ -427,11 +427,7 @@ classdef document
                 options.delete_original = NaN
                 options.location_type = NaN
             end
-
-            ingest = options.ingest;
-            delete_original = options.delete_original;
-            location_type = options.location_type;
-
+            
             % Step 1: make sure that the did_document_obj has a 'files' portion
             % and that name is one of the listed files.
 
@@ -447,36 +443,39 @@ classdef document
                 detected_location_type = 'url';
             end;
 
-            if isnan(ingest), % assign default value
+            if isnan(options.ingest), % assign default value
                 switch detected_location_type,
                     case 'url',
-                        ingest = 0;
+                        options.ingest = 0;
                     case 'file',
-                        ingest = 1;
+                        options.ingest = 1;
                     otherwise,
                         error(['Unknown detected_location_type ' detected_location_type '.']);
                 end;
             end;
-            if isnan(delete_original), % assign default value
+            if isnan(options.delete_original), % assign default value
                 switch detected_location_type,
                     case 'url',
-                        delete_original = 0;
+                        options.delete_original = 0;
                     case 'file',
-                        delete_original = 1;
+                        options.delete_original = 1;
                     otherwise,
                         error(['Unknown detected_location_type ' detected_location_type '.']);
                 end;
             end;
-            if isnan(location_type), % assign default value
-                location_type = detected_location_type;
+            if isnan(options.location_type), % assign default value
+                options.location_type = detected_location_type;
             end;
 
             % Step 2b: build the structure to add
-            uid = did.ido.unique_id();
-            parameters = '';
 
-            location_here = did.datastructures.var2struct('delete_original','uid','location',...
-                'parameters','location_type','ingest');
+            location_here = struct();
+            location_here.delete_original = options.delete_original;
+            location_here.uid = did.ido.unique_id();
+            location_here.location = location;
+            location_here.parameters = '';
+            location_here.location_type = options.location_type;
+            location_here.ingest = options.ingest;
 
             % Step 3: Add the file to the list
 
