@@ -427,7 +427,7 @@ classdef dumbjsondb
                 version = 'all';
             end;
 
-            if strcmp(lower(version),'all'),
+            if strcmpi(version,'all'),
                 v = dumbjsondb_obj.docversions(doc_unique_id);
                 version = v;
             end;
