@@ -54,7 +54,6 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
         return;
     end;
 
-
     docs = varargin{1};
     G = varargin{2};
     mdigraph = varargin{3};
@@ -70,4 +69,3 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
     plot(mdigraph,'layout',layout);
 
     set(gca,'ButtonDownFcn','did.fun.plotinteractivedocgraph');
-

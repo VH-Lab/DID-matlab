@@ -34,4 +34,3 @@ function out = equnique(in)
     if any(tf),
         out = cat(1,out,did.datastructures.equnique(in(find(tf))));
     end
-

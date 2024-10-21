@@ -38,4 +38,3 @@ function s = struct2tabstr(a)
     end
 
     s = s(2:end);
-

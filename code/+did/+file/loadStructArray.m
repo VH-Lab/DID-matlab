@@ -62,4 +62,3 @@ function a = loadStructArray(fname,fields)
     end
 
     fclose(fid);
-

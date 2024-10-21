@@ -27,4 +27,3 @@ function output = var2struct(varargin)
         % you can write output.a = 5; but you can't write
         % output = setfield(output,'a',5); without getting an error
     end;
-

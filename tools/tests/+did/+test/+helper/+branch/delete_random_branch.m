@@ -23,4 +23,3 @@ function [dG_out] = delete_random_branch(db, dG)
 
     db.delete_branch(remove_node);
     dG_out = dG.rmnode(remove_node);
-

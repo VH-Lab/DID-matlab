@@ -38,5 +38,3 @@ function [v,i] = struct_name_value_search(thestruct, thename, makeerror)
     if isempty(i) & makeerror,
         error(['No matching entries for ' thename ' were found.']);
     end;
-
-

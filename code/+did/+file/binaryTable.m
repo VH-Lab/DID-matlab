@@ -593,5 +593,4 @@ classdef binaryTable < handle
 
         end; % compare
     end % static methods
-
 end

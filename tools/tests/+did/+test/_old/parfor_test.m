@@ -11,8 +11,6 @@ function [b,msg] = parfor_test(varargin)
     % B is 1 if the test succeeds, and 0 otherwise.
     % MSG has an error message if the test fails.
 
-
-
     % Step 1: make an empty database with a starting branch
     dirname = did.common.PathConstants.testpath;
     db_filename = [dirname filesep 'test_db_docs.sqlite'];
@@ -37,4 +35,3 @@ function [b,msg] = parfor_test(varargin)
 
     % Step 3: check the database results
     [b,msg] = did.test.documents.verify_db_document_structure(db, G, docs);
-

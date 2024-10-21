@@ -63,6 +63,4 @@ function [ids_expected,docs_expected] = get_docs_expected(docs,id_input,value_in
     for i=1:numel(docs_expected),
         ids_expected{i} = docs_expected{i}.id();
     end;
-
 end
-

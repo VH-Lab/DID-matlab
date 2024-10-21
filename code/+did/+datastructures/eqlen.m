@@ -1,5 +1,4 @@
 function b = eqlen(x,y)
-
     %  EQLEN  Returns 1 if objects to compare are equal and have same size
     %
     %    B = EQLEN(X,Y)
@@ -18,4 +17,3 @@ function b = eqlen(x,y)
     else,
         b = 0;
     end;
-

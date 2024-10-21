@@ -55,4 +55,3 @@ function d = finddocs_missing_dependencies(DB, varargin)
     end;
 
     d = d(include);
-

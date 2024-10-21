@@ -36,4 +36,3 @@ function s = emptystruct(varargin)
     end;
 
     s = s([]);
-

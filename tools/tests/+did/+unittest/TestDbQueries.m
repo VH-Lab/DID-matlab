@@ -2,8 +2,6 @@ classdef TestDbQueries < matlab.unittest.TestCase
     % TestDbQueries
     % Test case for verifying database queries using did.test.db_queries
 
-
-
     properties (Constant)
         db_filename = 'test_db_docs.sqlite' % Holds the path to the SQLite database
     end

@@ -45,7 +45,6 @@ classdef binarydoc < handle
 
     end;
 
-
     methods (Abstract)
 
         binarydoc_obj = fopen(binarydoc_obj)
@@ -125,5 +124,4 @@ classdef binarydoc < handle
         %end; % fclose()
 
     end; % Abstract methods
-
 end

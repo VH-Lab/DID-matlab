@@ -15,7 +15,6 @@ function add_branch_nodes(db, starting_db_branch_id, dG, node_start_index)
     % See also: did.test.helper.utility.make_tree, did.test.helper.branch
     %
 
-
     if nargin<3,
         node_start_index = 0;
     end;
@@ -41,5 +40,3 @@ function add_branch_nodes(db, starting_db_branch_id, dG, node_start_index)
             did.test.helper.branch.add_branch_nodes(db,node_here,dG,pre_ID_indexes);
         end;
     end;
-
-

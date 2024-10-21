@@ -20,6 +20,3 @@ function t=jsonencodenan(obj)
             t = jsonencode(obj);
         end;
     end;
-
-
-

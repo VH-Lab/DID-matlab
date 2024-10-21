@@ -67,5 +67,3 @@ function [b,msg] = verify_branch_node_structure(db, dG)
     end;
 
     db.set_branch(current_branch); % return to previous branch
-
-

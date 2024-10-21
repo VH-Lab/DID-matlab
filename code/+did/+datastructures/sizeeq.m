@@ -1,5 +1,4 @@
 function b = sizeeq(x,y)
-
     % SIZEEQ  Determines if size of two variables is same
     %
     %   B = SIZEEQ(X,Y)

@@ -46,4 +46,3 @@ function saveStructArray(fname,gdi,header)
     end
 
     fclose(fid);
-

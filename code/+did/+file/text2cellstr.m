@@ -20,4 +20,3 @@ function c = text2cellstr(filename)
         c{end+1} = fgetl(fid);
     end;
     fclose(fid);
-

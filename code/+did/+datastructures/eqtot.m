@@ -1,5 +1,4 @@
 function b = eqtot(x,y)
-
     % EQTOT
     %
     %   B = EQTOT(X,Y)

@@ -51,4 +51,3 @@ classdef documentservice
         end; % searchquery
     end;
 end
-

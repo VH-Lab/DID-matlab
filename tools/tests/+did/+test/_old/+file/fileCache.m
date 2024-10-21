@@ -20,7 +20,6 @@ function b = fileCache()
 
     p = obj.getProperties();
 
-
     tempdir =  [did.common.PathConstants.temppath filesep 'file-cache-test-base'];
 
     if ~isfolder(tempdir),
@@ -94,7 +93,6 @@ function b = fileCache()
     disp(['Is nonsense a file?']);
     obj.isFile('adslkjfksldjfkljsdf'),
 
-
     % now, add a file at the head
     disp('Adding file earlier in alphabet')
 
@@ -128,7 +126,4 @@ function b = fileCache()
 
     fn'
 
-
-
     b = 1;
-

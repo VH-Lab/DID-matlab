@@ -21,5 +21,3 @@ function [b, value] = isfullfield(A, field)
         value = eval(['A.' field]);
         b = 1;
     end;
-
-

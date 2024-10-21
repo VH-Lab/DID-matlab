@@ -124,5 +124,3 @@ function [doc_struct_out, branch_node_indexes] = addrm_docs_to_branches(db, bG, 
             branch_node_indexes = cat(1,branch_node_indexes(:),node_indexes_next);
         end;
     end;
-
-

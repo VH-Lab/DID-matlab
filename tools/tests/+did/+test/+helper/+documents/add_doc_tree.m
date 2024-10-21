@@ -107,5 +107,3 @@ function [G_out, node_names_out, docs_out] = add_doc_tree(rates, G, node_names, 
     G_out = G;
     node_names_out = node_names;
     docs_out = docs;
-
-

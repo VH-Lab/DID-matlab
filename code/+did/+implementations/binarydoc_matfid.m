@@ -43,4 +43,3 @@ classdef binarydoc_matfid < did.binarydoc & did.file.fileobj
         end % fclose()
     end;
 end
-

@@ -60,5 +60,3 @@ function [doc_ids_rm, doc_ids_rm_seed, G_out, node_names_out, docs_out] = rm_doc
     for i=1:numel(node_indexes_to_delete),
         doc_ids_rm{end+1} = docs{node_indexes_to_delete(i)}.id();
     end;
-
-

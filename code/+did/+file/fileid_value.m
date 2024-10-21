@@ -15,5 +15,3 @@ function fid = fileid_value(fid_or_fileobj)
     else,
         fid = fid_or_fileobj;
     end;
-
-

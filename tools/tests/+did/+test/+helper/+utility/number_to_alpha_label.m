@@ -21,4 +21,3 @@ function s = number_to_alpha_label(n)
     end;
 
     s = base_26;
-

@@ -37,7 +37,6 @@ function installFromRelease()
     end
 end
 
-
 function installFromCommit()
     % Download latest zipped version of repo
     url = "https://github.com/ehennestad/MatBox/archive/refs/heads/main.zip";

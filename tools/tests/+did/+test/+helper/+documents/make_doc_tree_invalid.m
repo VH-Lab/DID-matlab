@@ -66,7 +66,6 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
     dependency_modifier = options.dependency_modifier; % primarily for demoC
     remover = options.remover;
 
-
     for i=1:numA,
         docs{end+1} = did.document('demoA'); %add unmodified document to list
         %now can continue modifying docs:
@@ -217,7 +216,6 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
         counter = counter + 1;
         c_count = c_count + 1;
     end;
-
 
 function value = modifyvalue(method, value)
 
@@ -373,6 +371,3 @@ function struct = remove(method,struct)
         otherwise
             error(['Unknown method ' method '.']);
     end
-
-
-

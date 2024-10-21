@@ -28,4 +28,3 @@ function [id,d] = apply_didquery(docs,q)
         end
     end
 end
-

@@ -71,6 +71,5 @@ classdef SimpleBranchTest < matlab.unittest.TestCase
             testCase.db.set_branch('a');
             [b, msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, testCase.G, testCase.docs);
         end
-
     end
 end

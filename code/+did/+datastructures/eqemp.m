@@ -1,5 +1,4 @@
 function b = eqemp(x,y)
-
     %  EQEMP
     %
     %    B = EQEMP(X,Y)

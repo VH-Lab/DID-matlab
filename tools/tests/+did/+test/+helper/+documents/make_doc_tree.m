@@ -82,5 +82,3 @@ function [G, node_names, docs] = make_doc_tree(rates)
         counter = counter + 1;
         c_count = c_count + 1;
     end;
-
-

@@ -22,5 +22,3 @@ function fs = string2filestring(s)
 
     fs = repmat('_',1,numel(s));
     fs(goodindexes) = s(goodindexes);
-
-

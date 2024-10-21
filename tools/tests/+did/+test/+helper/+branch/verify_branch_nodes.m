@@ -18,4 +18,3 @@ function [b,missing] = verify_branch_nodes(db, dG)
     if ~isempty(missing),
         b = 0;
     end;
-

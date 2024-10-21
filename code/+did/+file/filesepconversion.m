@@ -19,4 +19,3 @@ function newfilestring = filesepconversion(filestring, orig_filesep, new_filesep
     indexes = find(filestring==orig_filesep); % assumes orig_filesep is 1 character
 
     newfilestring(indexes) = new_filesep;  % assumes new_filesep is 1 character
-

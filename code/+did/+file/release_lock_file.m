@@ -49,5 +49,3 @@ function [b] = release_lock_file(fid_or_filename, key)
     else,
         b = 0;
     end;
-
-

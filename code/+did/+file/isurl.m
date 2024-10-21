@@ -7,5 +7,3 @@ function b = isurl(inputstring)
     %
 
     b = ~isempty(strfind(inputstring,'://'));
-
-

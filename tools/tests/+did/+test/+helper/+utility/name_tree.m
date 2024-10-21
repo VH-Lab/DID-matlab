@@ -77,5 +77,3 @@ function [node_names, node_indexes] = name_tree(G, initial_node_name_prefix, nod
         end;
         node_indexes = cat(1,node_indexes(:),node_indexes_next);
     end;
-
-

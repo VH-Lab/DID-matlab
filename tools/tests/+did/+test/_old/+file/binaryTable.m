@@ -6,7 +6,6 @@ function binaryTable
     % Perform a battery of tests on the binaryTable object type.
     %
 
-
     filename = fullfile(did.common.PathConstants.testpath,'myBinTable.bin');
 
     if isfile(filename), % start out deleting the file
@@ -73,7 +72,6 @@ function binaryTable
     if ~isequal(wholec,d),
         error(['whole column read of column 1 failed.']);
     end;
-
 
     % insert a row in the middle
 
@@ -162,8 +160,6 @@ function binaryTable
         end;
     end;
 
-
-
     data2 = {};
 
     for r=1:numel(data),
@@ -205,5 +201,3 @@ function binaryTable
             error(['Data not equal: c == 3, r == ' int2str(i) '.']);
         end;
     end;
-
-

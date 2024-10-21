@@ -33,4 +33,3 @@ function [G,nodes,mdigraph] = docs2graph(document_obj)
     end;
 
     mdigraph = digraph(G, nodes);
-

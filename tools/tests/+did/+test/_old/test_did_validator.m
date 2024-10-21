@@ -19,7 +19,6 @@ function test_did_validator()
     disp('good')
     disp("" + newline + newline)
 
-
     subject_doc = subject_doc.setproperties('subject.description', 5);
     validator = did.validate(subject_doc);
     assert(validator.is_valid == 0, 'fail');
@@ -61,8 +60,6 @@ function test_did_validator()
     catch
         E = did.implementations.matlabdumbjsondb('NEW', [dirname filesep '.test_database', filesep, 'test.db']);
     end
-
-
 
     disp('Let us clear the database first before we proceed')
     E.clear('yes')
@@ -166,8 +163,6 @@ function test_did_validator()
     disp("Here is the error message that is supposed to display" + newline + newline + errormsg)
     disp("")
     disp("" + newline + newline)
-
-
 
     disp('All test cases have passed.')
 

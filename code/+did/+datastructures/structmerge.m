@@ -61,6 +61,3 @@ function s_out = structmerge(s1, s2, options)
     else,
         s_out = s_out_;
     end;
-
-
-

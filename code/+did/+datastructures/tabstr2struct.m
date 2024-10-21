@@ -50,5 +50,3 @@ function a = tabstr2struct(s,fields)
             a = setfield(a,fields{i},t);
         end
     end
-
-

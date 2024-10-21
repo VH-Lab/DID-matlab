@@ -153,5 +153,3 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
             fclose(fid);
         end;
     end;
-
-

@@ -13,4 +13,3 @@ function [demoType] = get_demoType(doc)
     else
         demoType = '';
     end
-
