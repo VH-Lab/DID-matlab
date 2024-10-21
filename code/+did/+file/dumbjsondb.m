@@ -221,7 +221,7 @@ classdef dumbjsondb
                 p = dumbjsondb_obj.documentpath();
                 f = did.file.dumbjsondb.uniqueid2filename(doc_unique_id, doc_version);
                 if isfile([p f]),
-                    t = did.file.textfile2char([p f]); % dev note: should this go in separate function? maybe
+                    t = fileread([p f]); % dev note: should this go in separate function? maybe
                     document = jsondecode(t);
                 else,
                     document = []; % no such document
@@ -336,7 +336,7 @@ classdef dumbjsondb
             p = dumbjsondb_obj.documentpath();
 
             lockfilename = [p f '-lock'];
-            release_lock_file(lockfilename,key);
+            did.file.release_lock_file(lockfilename,key);
         end % closebinaryfile
 
         function [docs, doc_versions] = search(dumbjsondb_obj, searchParams, scope)
@@ -782,7 +782,7 @@ classdef dumbjsondb
             % DOC_OBJECT is empty ([]).
             %
             if isfile(filename)
-                t = did.file.textfile2char([p f]);
+                t = fileread([p f]);
                 doc_object = jsondecode(t);
             else,
                 doc_object = [];
@@ -881,7 +881,7 @@ classdef dumbjsondb
             if ~isfile(filename),
                 error(['File ' filename ' does not exist.']);
             end
-            t = did.file.textfile2char(filename);
+            t = fileread(filename);
             s = jsondecode(t);
         end; % readparameters
 

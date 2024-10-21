@@ -32,7 +32,8 @@ function s_out = structmerge(s1, s2, options)
     if options.ErrorIfNewField,
         [c,f1i] = setdiff(f2,f1);
         if ~isempty(c),
-            error(['Some fields of the second structure are not in the first: ' cell2str(c) '.']);
+            error('Some fields of the second structure are not in the first: %s.', ...
+                did.datastructures.cell2str(c));
         end;
     end;
 
