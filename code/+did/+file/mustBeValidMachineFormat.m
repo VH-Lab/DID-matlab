@@ -1,14 +1,38 @@
 function mustBeValidMachineFormat(value)
+% mustBeValidMachineFormat - Validates machine format (argument for fopen)
+%
+% Supported options:
+%   'n' or 'native'         Your system byte ordering
+%   'b' or 'ieee-be'        Big-endian ordering
+%   'l' or 'ieee-le'        Little-endian ordering
+%   's' or 'ieee-be.l64'    Big-endian ordering, 64-bit long data type
+%   'a' or 'ieee-le.l64'    Little-endian ordering, 64-bit long data type
+
     arguments
         value (1,1) string
     end
 
     if ismissing(value); return; end
 
-    VALID_MACHINE_FORMAT = ["n", "b", "l"];
+    VALID_MACHINE_FORMAT = [...
+        "n", "native", ...
+        "b", "ieee-be", ...
+        "l", "ieee-le", ...
+        "s", "ieee-be.l64", ...
+        "a", "ieee-le.l64"
+        ];
 
-    validFormatsAsString = strjoin( "  " + ["'n' (native)", "'b' (big-endian)", "'l' (little-endian)"], newline);
+    validFormatsForMessage = [...
+        "'n' or 'native'      (system byte ordering)", ...
+        "'b' or 'ieee-be'     (big-endian)", ...
+        "'l' or 'ieee-le'     (little-endian)", ...
+        "'s' or 'ieee-be.l64' (big-endian, 64bit long)", ...
+        "'a' or 'ieee-le.l64' (little-endian, 64bit long)" ...
+        ];
+
+    validFormatsAsString = strjoin( "  " + validFormatsForMessage, newline);
 
     assert(ismember(value, VALID_MACHINE_FORMAT), ...
         'Machine format must be one of:\n%s\n', validFormatsAsString)
 end
+
