@@ -780,7 +780,7 @@ classdef document
                     mypaths = defLocs{i};
                 end;
                 for j=1:numel(mypaths),
-                    files = dir([mypaths{j} filesep '**']);
+                    files = dir([char(mypaths{j}) filesep '**']);
                     index = find( strcmp([jsonfilelocationstring '.json'], {files.name}) );
                     if numel(index)>1,
                         error(['DID:Document:readjsonfilelocation:found multiple matches for ' jsonfilelocationstring '.']);
