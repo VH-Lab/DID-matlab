@@ -73,5 +73,28 @@ classdef ido
 
         end; % did.ido.unique_id()
 
+        function b = isvalid(id)
+            % ISVALID - is a unique ID number valid?
+            %
+            % B = isvalid(ID)
+            %
+            % Returns true if ID matches the structure of a did.ido identifier and
+            % false otherwise. A valid ID must have 16 hexidecimal digits in
+            % 0-9 or a-f, an underscore, and then 16 more hexidecimal digits.
+            % 
+
+                try
+                    id = char(id);
+                    assert(numel(id)==33,'IDs must be 33 characters.');
+                    valid_chars = ['0123456789abcdef'];
+                    assert(all(ismember(id(1:16),valid_chars)),'ID digits 1..16 must be in 0..9abcdef');
+                    assert(all(ismember(id(18:33),valid_chars)),'ID digits 18..33 must be in 0..9abcdef');
+                    b=true;
+                catch
+                    b=false;
+                end
+
+        end % did.ido.isvalid
+
     end % methods(static)
 end
