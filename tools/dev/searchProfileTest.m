@@ -55,7 +55,7 @@ if test_number == 1
     return;
 end;
 
-q2 = ndi.query('demoB.value','exact_number',demoBdocs(5).document_properties.demoB.value);
+q2 = did.query('demoB.value','exact_number',demoBdocs(5).document_properties.demoB.value);
 
 match_ids = db.search(q1&q2);
 match_docs = db.get_docs(match_ids);
@@ -64,11 +64,11 @@ if test_number == 2
     return;
 end
 
-qC = ndi.query('','isa','demoC');
+qC = did.query('','isa','demoC');
 demoCdocID = db.search(qC);
 demoCdocs = db.get_docs(demoCdocID);
 
-q3 = ndi.query('','depends_on','*',demoBdocs(5).document_properties.base.id);
+q3 = did.query('','depends_on','*',demoBdocs(5).document_properties.base.id);
 
 match_ids2 = db.search(q3);
 match_docs2 = db.get_docs(match_ids2);
