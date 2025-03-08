@@ -1,4 +1,4 @@
-classdef (Abstract) database < handle
+classdef (Abstract) database < handle   %#ok<*AGROW>
     % did.database: Abstract superclass for all did.database implementations
     %
     % did.database defines the API for the DID database system.
@@ -107,7 +107,8 @@ classdef (Abstract) database < handle
         end % database
     end
 
-    methods % Database open
+    % Database open
+    methods
         function [hCleanup, filename] = open(database_obj)
             [hCleanup, filename] = database_obj.open_db();
         end
@@ -435,6 +436,9 @@ classdef (Abstract) database < handle
                 branch_id = database_obj.current_branch_id;
             end
 
+            % Open the database (performance)
+            hCleanup = database_obj.open(); %#ok<NASGU>
+
             % Ensure branch IDs validity
             branch_id = database_obj.validate_branch_id(branch_id);
 
@@ -495,6 +499,9 @@ classdef (Abstract) database < handle
 
             % Initialize an empty results array of no objects
             document_objs = did.document.empty;
+
+            % Open the database (performance)
+            hCleanup = database_obj.open(); %#ok<NASGU>
 
             % If document ids were not specified, get them from the current branch
             if nargin < 2
@@ -574,8 +581,10 @@ classdef (Abstract) database < handle
                 doc_id = database_obj.validate_doc_id(documents{i}, false);
 
                 % Call the specific database's removal method
-                try, % failure is not an error
+                try % failure is not an error
                     database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
+                catch
+                    % ignore errors
                 end
 
                 % TODO also delete all documents that depend on the deleted doc
@@ -723,6 +732,7 @@ classdef (Abstract) database < handle
             document_ids = database_obj.do_search(query_obj, branch_id);
         end % search()
     end
+
     methods (Access=protected)
         function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
             % Convert a single did.query object/struct into SQL query string
@@ -757,11 +767,11 @@ classdef (Abstract) database < handle
                 case 'contains_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'exact_number'
-                    if ~isempty(param1Val),
+                    if ~isempty(param1Val)
                         sql_str = [field_check ' AND ' notStr 'doc_data.value = '  param1Val];
-                    else,
+                    else
                         sql_str = [field_check ' AND ' notStr 'doc_data.value > 9e999']; % if is it empty, we have to make it fail
-                    end;
+                    end
                 case 'lessthan'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value < '  param1Val];
                 case 'lessthaneq'
@@ -810,13 +820,12 @@ classdef (Abstract) database < handle
                 'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
                 '  AND  docs.doc_idx = branch_docs.doc_idx ' ...
                 '  AND  branch_docs.branch_id = "' branch_id '" ' ...
-                '  AND  fields.field_idx = doc_data.field_idx ' ...
                 '  AND  fields.field_idx = doc_data.field_idx'];
             %((fields.field_name = "meta.class" AND doc_data.value = "ndi_document") OR (fields.field_name = "meta.superclass" AND doc_data.value like "%ndi_document%"))')';
             for i = 1 : numel(query_structs)
                 sql_str = query_struct_to_sql_str(sqlitedb_obj, query_structs(i));
                 if ~isempty(sql_str)
-                    query_str = [query_str ' AND ' sql_str]; %#ok<AGROW>
+                    query_str = [query_str ' AND ' sql_str];
                 end
             end
             query_str = regexprep(query_str,' +',' ');
@@ -879,8 +888,10 @@ classdef (Abstract) database < handle
             % Return the matching documents' IDs
             document_ids = doc_ids;
         end % do_search()
-        function [hCleanup, filename] = open_db(database_obj) %#ok<STOUT,MANU>
-            % Subclasses may implement
+        function [hCleanup, filename] = open_db(database_obj)
+            % Subclasses may (should!) implement
+            filename = database_obj.connection;
+            hCleanup = [];
         end
     end
 
@@ -1005,7 +1016,7 @@ classdef (Abstract) database < handle
                     doc = document_objs(docIdx);
                     if iscell(doc), doc = doc{1}; end
                     docProps = doc.document_properties;
-                    all_ids{end+1} = docProps.base.id; %#ok<AGROW>
+                    all_ids{end+1} = docProps.base.id;
                 catch
                     % ignore this document
                 end
@@ -1054,52 +1065,52 @@ classdef (Abstract) database < handle
             definitionLocations = did.common.PathConstants.definitions.values();
             pathDefs = {};
             pathLocs = {};
-            for i=1:numel(definitionLocations),
-                if iscell(definitionLocations{i}),
-                    for j=1:numel(definitionLocations{i}),
+            for i=1:numel(definitionLocations)
+                if iscell(definitionLocations{i})
+                    for j=1:numel(definitionLocations{i})
                         pathDefs{end+1} = strrep(definitionNames{i},'$','\$');
                         pathLocs{end+1} = strrep(definitionLocations{i}{j},'\','/');
-                    end;
-                else,
+                    end
+                else
                     pathDefs{end+1} = strrep(definitionNames{i},'$','\$');
                     pathLocs{end+1} = strrep(definitionLocations{i},'\','/');
-                end;
-            end;
+                end
+            end
             schema_filename_potential = {};
             matches = [];
             % could be multiple candidates
-            for i=1:numel(pathDefs),
+            for i=1:numel(pathDefs)
                 schema_filename_potential{i} = regexprep(schema_filename,pathDefs{i},pathLocs{i});
-                if ~strcmp(schema_filename_potential{i},schema_filename),
+                if ~strcmp(schema_filename_potential{i},schema_filename)
                     matches(end+1) = i;
-                end;
-            end;
+                end
+            end
             schema_filename_potential = schema_filename_potential(matches);
 
             matches = [];
-            for i=1:numel(schema_filename_potential),
-                if ~isfile(schema_filename_potential{i}),
+            for i=1:numel(schema_filename_potential)
+                if ~isfile(schema_filename_potential{i})
                     schema_filename_potential{i} = regexprep(schema_filename_potential{i},'\.json$','.schema.json');
                     if ~isfile(schema_filename_potential{i})
                         schema_filename_potential{i} = strrep(schema_filename_potential{i},'.schema.json','_schema.json');
                         if isfile(schema_filename_potential{i})
                             matches(end+1) = i;
                         end
-                    else,
+                    else
                         matches(end+1) = i;
                     end
-                else,
+                else
                     matches(end+1) = i;
                 end
-                if any(matches),
+                if any(matches)
                     schema_filename = schema_filename_potential{i};
                     break;
-                end;
+                end
             end
 
             if ~any(matches)
                 error('DID:Database:ValidationFileMissing','Validation file "%s" not found',schema_filename);
-            end;
+            end
 
             % Read the file contents
             fid = fopen(schema_filename,'r');
@@ -1146,7 +1157,7 @@ classdef (Abstract) database < handle
             end
             superNames = {};
             for i = 1 : numel(superFullNames)
-                [~,superNames{i}] = fileparts(superFullNames{i}); %#ok<AGROW> % keep compatibility with Matlab 2019a
+                [~,superNames{i}] = fileparts(superFullNames{i}); % keep compatibility with Matlab 2019a
             end
             if ~iscell(superNames), superNames = {superNames}; end
             superNames = unique(superNames);
@@ -1195,38 +1206,38 @@ classdef (Abstract) database < handle
                         try depends = docProps.depends_on; docNames = {depends.name}; catch, docNames = {}; end
                         if isempty(expected) && isempty(docNames), continue, end
                         docNames_alt = docNames;
-                        for dn=1:numel(docNames_alt),
+                        for dn=1:numel(docNames_alt)
                             stridx = regexp(docNames{dn},'_(\d*)\>');
-                            if isempty(stridx),
+                            if isempty(stridx)
                                 stridx = numel(docNames{dn})+1;
-                            end;
+                            end
                             docNames_alt{dn}=docNames{dn}(1:stridx-1);
-                        end;
-                        if ~isempty(expected),
+                        end
+                        if ~isempty(expected)
                             expectedNames = {expected.name};
                             mustHaveValue = {expected.mustbenotempty};
-                        else,
+                        else
                             expectedNames = {};
                             mustHaveValue = {};
-                        end;
+                        end
                         areSame = all(ismember(lower(unique(expectedNames)), lower(unique(docNames_alt))));
-                        if ~areSame,
-                            disp(['Expected dependencies:']);
-                            expectedNames(:)'
-                            disp(['Found dependencies:']);
-                            docNames_alt(:)'
-                        end;
+                        if ~areSame
+                            disp('Expected dependencies:');
+                            expectedNames(:)' %#ok<NOPRT>
+                            disp('Found dependencies:');
+                            docNames_alt(:)' %#ok<NOPRT>
+                        end
                         assert(areSame,'DID:Database:ValidationDependsOn', ...
                             'Dissimilar dependencies defined/found for %s', doc_name);
                         % Loop over all dependencies and ensure they exist
                         for idx = 1 : numel(mustHaveValue)
                             item_name = expectedNames{idx};
                             idx2 = find(strcmpi(item_name,docNames),1);
-                            if isempty(idx2),
+                            if isempty(idx2)
                                 value = [];
-                            else,
+                            else
                                 value = depends(idx2).value;
-                            end;
+                            end
                             % If dependency is marked as MustBeNotEmpty, ensure it's not empty
                             expectedValue = mustHaveValue{idx};
                             if ~isempty(expectedValue) && expectedValue
@@ -1255,30 +1266,29 @@ classdef (Abstract) database < handle
                             actual_files_here = docProps.files.file_info;
                             actualFileNames = {actual_files_here.name};
                             file_list = docProps.files.file_list;
-                        catch,
+                        catch
                             actual_files_here= [];
                             actualFileNames = {};
                             file_list = {};
                         end
-                        if isempty(expected) && (isSuperClass || isempty(actualFileNames)),
-                            continue,
+                        if isempty(expected) && (isSuperClass || isempty(actualFileNames))
+                            continue
                         end
                         expectedNames = {expected.name};
                         mustHaveValue = {expected.mustbenotempty};
-                        for idx = 1 : numel(actualFileNames),
+                        for idx = 1 : numel(actualFileNames)
                             actualFileNames{idx} = char(actualFileNames{idx});
-                        end;
+                        end
                         [isvalid,errmsg] = did.database.checkfiles(expectedNames,mustHaveValue,actualFileNames,doc_name,actual_files_here,file_list);
                         assert(isvalid,'DID:Database:ValidationFiles',errmsg);
                     otherwise  % class-specific field
                         % Compare the type and value of all class-specific fields
-                        try,
+                        try
                             docValue = docProps.(field);
-                        catch E,
+                        catch E
                             assert(false,'DID:Database:PropertyFieldMissing',E.message);
                         end
-
-                        if isempty(expected), continue; end;
+                        if isempty(expected), continue; end
                         expectedSubFields = strjoin(unique({expected.name}),',');
                         docSubFields = strjoin(unique(fieldnames(docValue)),',');
                         areSame = strcmpi(expectedSubFields,docSubFields);
@@ -1302,9 +1312,9 @@ classdef (Abstract) database < handle
             expectedParams = definition.parameters;
             switch lower(expectedType)
                 case 'integer'
-                    if islogical(value),
+                    if islogical(value)
                         value = double(value);
-                    end;
+                    end
                     assert(isnumeric(value), ...
                         'DID:Database:ValidationFieldInteger', ...
                         'Invalid non-numeric sub-field %s found in %s', ...
@@ -1313,20 +1323,20 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldInteger', ...
                         '3 or 4 parameters must be defined for Integer fields in a document schema, but %d defined', ...
                         numel(expectedParams))
-                    if numel(expectedParams)>=4,
+                    if numel(expectedParams)>=4
                         canbeempty = expectedParams(4);
-                    else,
+                    else
                         canbeempty = 0;
-                    end;
-                    if isempty(value) && canbeempty,
+                    end
+                    if isempty(value) && canbeempty
                         isOk = true;
-                    elseif isempty(value) && ~canbeempty,
+                    elseif isempty(value) && ~canbeempty
                         isOk = false;
                     elseif isnan(value) && expectedParams(3)
                         isOk = true;
-                    else,
+                    else
                         isOk = value >= expectedParams(1) && ...
-                            value <= expectedParams(2);
+                               value <= expectedParams(2);
                     end
                     assert(isOk,'DID:Database:ValidationFieldInteger', ...
                         'Invalid sub-field %s value found in %s', ...
@@ -1344,16 +1354,16 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldDouble', ...
                         '3 or 4 parameters must be defined for Double fields in a document schema, but %d defined', ...
                         numel(expectedParams))
-                    if numel(expectedParams)>=4,
+                    if numel(expectedParams)>=4
                         canbeempty = expectedParams(4);
-                    else,
+                    else
                         canbeempty = 0;
-                    end;
-                    if isempty(value) && canbeempty,
+                    end
+                    if isempty(value) && canbeempty
                         isOk = true;
                     elseif isnan(value) && expectedParams(3)
                         isOk = true;
-                    else,
+                    else
                         isOk = value >= expectedParams(1) && ...
                             value <= expectedParams(2);
                     end
@@ -1375,13 +1385,13 @@ classdef (Abstract) database < handle
                     sz = size(value);
                     sz = sz(:);
                     nonNans = find(~isnan(expectedParams));
-                    if numel(nonNans)==0,
+                    if numel(nonNans)==0
                         isOk = true;
-                    elseif any(expectedParams(nonNans)==1),
+                    elseif any(expectedParams(nonNans)==1)
                         isOk = any(sz==1); % allow column/row switch, a vector is a vector; this is temporary
-                    else,
+                    else
                         isOk = isequal(sz(nonNans),expectedParams(nonNans));
-                    end;
+                    end
                     assert(isOk,'DID:Database:ValidationFieldMatrix', ...
                         'Invalid sub-field %s size %dx%d found in %s', ...
                         field_name, size(value,1), size(value,2), ...
@@ -1393,13 +1403,13 @@ classdef (Abstract) database < handle
                         'Invalid non-timestamp sub-field %s found in %s', ...
                         field_name, doc_name);
                     value = regexprep(value,'Z$',''); %discard trailing 'Z' (unparsable by LocalDateTime)
-                    try,
+                    try
                         jTimestr = java.lang.String(value);
                         java.time.LocalDateTime.parse(jTimestr);  % will croak if unparsable
-                    catch,
+                    catch
                         assert(false,'DID:Database:ValidationFieldTimeStamp','Invalid timestamp sub-field %s found in %s',...
                             field_name, doc_name);
-                    end;
+                    end
 
                 case {'char','string'}
                     isOk = isempty(value)|ischar(value);
@@ -1407,11 +1417,11 @@ classdef (Abstract) database < handle
                         'DID:Database:ValidationFieldChar', ...
                         'Invalid non-char sub-field %s found in %s', ...
                         field_name, doc_name);
-                    if numel(expectedParams)==0,
+                    if numel(expectedParams)==0
                         isOk = true;
-                    else,
+                    else
                         isOk = length(value) <= expectedParams(1);
-                    end;
+                    end
                     assert(isOk,'DID:Database:ValidationFieldChar', ...
                         'Invalid sub-field %s length %d found in %s', ...
                         field_name, length(value), doc_name);
@@ -1542,6 +1552,8 @@ classdef (Abstract) database < handle
             this.preferences(pref_name) = value;
         end
     end
+
+    % Static methods (not database-specific)
     methods(Static)
         function [isvalid,errmsg] = checkfiles(expectedNames,mustHaveValue,actualFileNames, doc_name, files, actual_file_list)
             % CHECKFILES - check to make sure that files that are offered match those that are expected or needed
@@ -1566,11 +1578,11 @@ classdef (Abstract) database < handle
             missing_files = setdiff(expectedNamesList,actual_file_list);
             if ~isempty(missing_files)
                 errmsg = sprintf('Some required files are missing (including %s) from the file_list in document %s', missing_files{1}, doc_name);
-            end;
+            end
 
             % Step 2: are all files in the actual document's file_list valid?
             areSame = 1;
-            for i=1:numel(actualFileNamesList),
+            for i=1:numel(actualFileNamesList)
                 exact_match = any(strcmp(actualFileNamesList{i},expectedNames));
                 begin_match = 0;
                 if ~exact_match,
@@ -1587,10 +1599,10 @@ classdef (Abstract) database < handle
                 end
             end;
 
-            if ~areSame,
+            if ~areSame
                 errmsg=sprintf('Dissimilar files defined/found (including %s) for %s', actualFileNamesList{i}, doc_name);
                 return;
-            end;
+            end
 
             % Loop over all files and ensure they exist
             for idx = 1 : numel(mustHaveValue)
@@ -1609,7 +1621,7 @@ classdef (Abstract) database < handle
                 end
             end
             isvalid = 1;
-        end; % checkfiles()
+        end % checkfiles()
         function index = findfilematch(expectedName,actualNames)
             % INDEX = FINDFILEMATCH(EXPECTEDNAME, ACTUALNAMES)
             %
@@ -1622,18 +1634,16 @@ classdef (Abstract) database < handle
                 actualNames cell {mustBeText}
             end
             index = find(strcmp(expectedName,actualNames));
-            if isempty(index)
-                if expectedName(end)=='#'
-                    tf = startsWith(actualNames,expectedName(1:end-1));
-                    indexes = find(tf);
-                    for k=1:numel(indexes)
-                        if did.database.isfilenamematch(expectedName,actualNames{indexes(k)})
-                            index(end+1) = k;
-                        end
+            if isempty(index) && expectedName(end)=='#'
+                tf = startsWith(actualNames,expectedName(1:end-1));
+                indexes = find(tf);
+                for k=1:numel(indexes)
+                    if did.database.isfilenamematch(expectedName,actualNames{indexes(k)})
+                        index(end+1) = k;
                     end
                 end
             end
-        end; % findfilematch()
+        end % findfilematch()
         function b = isfilenamematch(expectedName,actualName)
             % ISFILENAMEMATCH - are two file names matched?
             %
@@ -1644,16 +1654,16 @@ classdef (Abstract) database < handle
             %   2) If EXPECTEDNAME ends in a '#', ACTUALNAME can begin
             %      with EXPECTEDNAME and end in an integer.
             b = isequal(expectedName,actualName);
-            if ~b,
-                if expectedName(end)=='#',
+            if ~b
+                if expectedName(end)=='#'
                     tf = startsWith(actualName,expectedName(1:end-1));
-                    if tf,
+                    if tf
                         rest_of_name = actualName(numel(expectedName):end);
                         b = all(rest_of_name>=double('0') & rest_of_name<=double('9'));
                     end
                 end
             end
-        end; % isfilenamematch()
+        end % isfilenamematch()
         function found = canfindonefile(locations)
             % CANFINDONEFILE - can we find at least one file for this?
             found = false;
@@ -1675,6 +1685,6 @@ classdef (Abstract) database < handle
                     end
                 end
             end
-        end; % canfindonefile
-    end; % Static methods
+        end % canfindonefile
+    end % Static methods
 end % database classdef

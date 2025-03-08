@@ -53,9 +53,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Set some default database preferences
             cacheDir_parent = fileparts(filename);
             cacheDir = fullfile(cacheDir_parent, 'files');
-            if ~isfolder(cacheDir),
+            if ~isfolder(cacheDir)
                 mkdir(cacheDir);
-            end;
+            end
             %sqlitedb_obj.set_preference('remote_folder',  fileparts(which(filename)));
             sqlitedb_obj.set_preference('cache_folder',    cacheDir);
             sqlitedb_obj.set_preference('cache_duration',  1.0); %[days]
@@ -295,8 +295,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Handle case of the branch already containing this document
             data = this_obj.run_sql_noOpen(['SELECT doc_idx FROM branch_docs ' ...
-                ' WHERE doc_idx=? AND branch_id=?'], ...
-                doc_idx, branch_id);
+                                            ' WHERE doc_idx=? AND branch_id=?'], ...
+                                            doc_idx, branch_id);
             if ~isempty(data)
                 errMsg = sprintf('Document %s already exists in the %s branch', doc_id, branch_id);
                 %assert(isempty(data),'DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg)
@@ -366,7 +366,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             sourcePath, destPath, ...
                             thisLocation.location_type, ...
                             thisLocation.parameters);
-                        if 0, disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); end; % debugging
+                        if 0, disp(['Inserted ' filename ' with absolute location ' destPath ' and ID ' thisLocation.uid]); end %#ok<UNRCH> % debugging
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
@@ -429,7 +429,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Document found: return a did.document object of the decoded JSON code
             json_code = data{1};
             if iscell(json_code), json_code = json_code{1}; end
-            document_obj = did.document(jsondecode(json_code));
+            doc_struct = jsondecode(json_code);
+            document_obj = did.document(doc_struct);
         end % do_get_doc()
 
         function do_remove_doc(this_obj, document_id, branch_id, varargin)
@@ -532,9 +533,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Get the cached filepath to the specified document
 
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
-                '  FROM docs,files ' ...
-                ' WHERE docs.doc_id="' document_id '" ' ...
-                '   AND files.doc_idx=docs.doc_idx'];
+                         '  FROM docs,files ' ...
+                         ' WHERE docs.doc_id="' document_id '" ' ...
+                         '   AND files.doc_idx=docs.doc_idx'];
             if nargin > 2 && ~isempty(filename)
                 query_str = [query_str ' AND files.filename="' filename '"'];
             else
@@ -552,10 +553,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % First try to access the global cached file, if defined and if exists
             file_paths = {};
-            for uids=1:numel(data),
-                file_paths{end+1} = [did.common.PathConstants.filecachepath filesep data(uids).uid ];
-                file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid];
-            end;
+            for uids=1:numel(data)
+                file_paths{end+1} = [did.common.PathConstants.filecachepath filesep data(uids).uid ]; %#ok<AGROW>
+                file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid]; %#ok<AGROW>
+            end
 
             didCache = did.common.getCache();
 
@@ -565,9 +566,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 if isfile(this_file)
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     parent = fileparts(this_file);
-                    if strcmp(parent,did.common.PathConstants.filecachepath), % fileCache,
+                    if strcmp(parent,did.common.PathConstants.filecachepath) % fileCache,
                         didCache.touch(this_file); % we used it so indicate that we did
-                    end;
+                    end
                     file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
                     return
                 end
@@ -586,7 +587,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     if strcmpi(file_type,'file')
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                         if ~status, error(errMsg); end
-                    elseif strcmpi(file_type,'url'),
+                    elseif strcmpi(file_type,'url')
                         % call fileCache object to add the file
                         websave(destPath, sourcePath);
                         if ~isfile(destPath), error(' '); end
@@ -695,6 +696,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Is this a new or existing file?
             filename = this_obj.connection;
             isNew = ~isfile(filename);
+
+            % Bail out without validation if the DB is already open (performance)
+            if ~isNew && ~isempty(this_obj.dbid)
+                hCleanup = [];
+                return
+            end
 
             % Open the specified filename
             this_obj.dbid = mksqlite('open',filename);
@@ -814,6 +821,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     'FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx)', ...
                     'PRIMARY KEY(doc_idx,filename,uid)'});
 
+                %% Add indexes (performance)
+                this_obj.run_sql_noOpen('CREATE INDEX "docs_doc_id"       ON "docs"     ("doc_id")');
+                this_obj.run_sql_noOpen('CREATE INDEX "doc_data_value"    ON "doc_data" ("value")');
+                this_obj.run_sql_noOpen('CREATE INDEX "fields_field_name" ON "fields"   ("field_name")');
             catch err
                 this_obj.close_db();
                 try delete(filename); catch, end

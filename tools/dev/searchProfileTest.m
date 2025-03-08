@@ -38,8 +38,9 @@ function db = searchProfileTest(db, test_number)
 
 if nargin<1
     % need to create database
-    db_filename = tempname;
-    [G,node_names,docs] = did.test.helper.documents.make_doc_tree([1e4 1e4 1e4]);
+    size = 1e4;
+    [G,node_names,docs] = did.test.helper.documents.make_doc_tree(size*[1,1,1]);
+    db_filename = [tempname '.sqlite'];
     db = did.implementations.sqlitedb(db_filename);
     db.add_branch('a');
     db.add_docs(docs);
@@ -48,6 +49,7 @@ end
 
 q1 = did.query('','isa','demoB');
 
+hCleanup = db.open(); %#ok<NASGU>
 demoBdocID = db.search(q1);
 demoBdocs = db.get_docs(demoBdocID);
 
