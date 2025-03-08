@@ -49,6 +49,8 @@ classdef (Abstract) database < handle   %#ok<*AGROW>
     % Protected methods with a default implementation that *MAY* be overloaded:
     %   do_search            - core logic for database.search()
     %   do_close_doc         - core logic for database.close_doc()
+    %   open_db              - opens the database for subsequent queries
+    %   close_db             - close the database
     %   delete - destructor (typically closes the database connection/file, if open)
     %
     % Protected methods that *MUST* be overloaded by specific subclass implementations:
@@ -107,10 +109,18 @@ classdef (Abstract) database < handle   %#ok<*AGROW>
         end % database
     end
 
-    % Database open
+    % Database open/close
     methods
         function [hCleanup, filename] = open(database_obj)
-            [hCleanup, filename] = database_obj.open_db();
+            if nargout
+                [hCleanup, filename] = database_obj.open_db();
+            else
+                database_obj.open_db();
+            end
+        end
+
+        function close(database_obj)
+            database_obj.close_db();
         end
     end
 
@@ -892,6 +902,9 @@ classdef (Abstract) database < handle   %#ok<*AGROW>
             % Subclasses may (should!) implement
             filename = database_obj.connection;
             hCleanup = [];
+        end
+        function close_db(database_obj) %#ok<MANU>
+            % Subclasses may (should!) implement
         end
     end
 

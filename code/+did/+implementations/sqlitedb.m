@@ -696,10 +696,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Is this a new or existing file?
             filename = this_obj.connection;
             isNew = ~isfile(filename);
+            hCleanup = [];
 
             % Bail out without validation if the DB is already open (performance)
             if ~isNew && ~isempty(this_obj.dbid)
-                hCleanup = [];
                 return
             end
 
@@ -723,8 +723,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     error('DID:SQLITEDB:OPEN','Error opening %s as a DID SQLite database: %s',filename,err.message);
                 end
 
-                % Create a cleanup object to close the DB file once usage is done
-                hCleanup = onCleanup(@()this_obj.close_db());
+                % Create a cleanup object to close the DB file once usage is done (if requested)
+                if nargout
+                    hCleanup = onCleanup(@()this_obj.close_db());
+                end
 
             else % new database
 
@@ -739,7 +741,6 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 this_obj.close_db();
 
                 % No cleanup object in this case
-                hCleanup = [];
             end
         end
 
