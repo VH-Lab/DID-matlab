@@ -703,8 +703,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 return
             end
 
-            % Open the specified filename
-            this_obj.dbid = mksqlite('open',filename);
+            % Open the specified filename. Use 0 to get the next free dbid
+            this_obj.dbid = mksqlite(0, 'open', filename);
 
             % If this is an existing file
             if ~isNew
@@ -769,10 +769,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function close_db(this_obj)
             % Close the database file (ignore any errors)
-            try dbid = this_obj.dbid; catch, return, end %bail out if object is no longer valid
+            
+            try 
+                dbid = this_obj.dbid; 
+            catch
+                % bail out if object is no longer valid
+                return
+            end
+            
             try
-                mksqlite(dbid, 'close');
-                this_obj.dbid = [];
+                if ~isempty(dbid)
+                    mksqlite(dbid, 'close');
+                    this_obj.dbid = [];
+                end
             catch ME
                 warning(ME.message)
             end
