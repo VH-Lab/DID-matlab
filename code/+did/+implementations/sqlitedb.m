@@ -749,11 +749,22 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             try
                 %query_str  %debug
                 data = mksqlite(this_obj.dbid, query_str, varargin{:});
+                return
             catch err
-                query_str = regexprep(query_str, {' +',' = '}, {' ','='});
-                fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\nError cause: %s\n',query_str,err.message)
-                rethrow(err)
             end
+            if strcmpi(strtrim(err.message),'database not open')
+                try
+                    warning('Database is in an incosistent state - reopening');
+                    dbstack
+                    this_obj.open_db(); %hCleanup = 
+                    data = mksqlite(this_obj.dbid, query_str, varargin{:});
+                    return
+                catch err
+                end
+            end
+            query_str = regexprep(query_str, {' +',' = '}, {' ','='});
+            fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\nError cause: %s\n',query_str,err.message)
+            rethrow(err)
         end
 
         function close_db(this_obj)
