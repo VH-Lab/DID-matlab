@@ -769,8 +769,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function close_db(this_obj)
             % Close the database file (ignore any errors)
+            try dbid = this_obj.dbid; catch, return, end %bail out if object is no longer valid
             try
-                mksqlite(this_obj.dbid, 'close');
+                mksqlite(dbid, 'close');
                 this_obj.dbid = [];
             catch ME
                 warning(ME.message)
