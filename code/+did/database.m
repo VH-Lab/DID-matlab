@@ -71,19 +71,22 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
     % Read-only properties
     properties (SetAccess=protected, GetAccess=public)
         connection % A variable or struct describing the connection parameters of the database; may be a simple file path
-        dbid       % Database ID
         version    % Database version
 
         current_branch_id = '' % The branch ID that we are viewing/editing at the moment
         frozen_branch_ids = {} % Cell array of ids of branches that cannot be modified
     end % properties
 
+    properties (SetAccess=protected, GetAccess=public, Transient)
+        dbid       % Database ID
+    end
+
     properties (Access=protected)
         preferences
     end % properties
 
     % Public read/write properties
-    properties (Access=public)
+    properties (Access=public, Transient)
         debug (1,1) logical = false  % Display debug info in console? (default: false)
     end % properties
 
