@@ -43,7 +43,7 @@ if nargin<1
     db_filename = [tempname '.sqlite'];
     db = did.implementations.sqlitedb(db_filename);
     db.add_branch('a');
-    db.add_docs(docs);
+    db.add_docs(docs, 'validate',false);
     return;
 end
 
@@ -55,7 +55,7 @@ demoBdocs = db.get_docs(demoBdocID);
 
 if test_number == 1
     return;
-end;
+end
 
 q2 = did.query('demoB.value','exact_number',demoBdocs(5).document_properties.demoB.value);
 
@@ -74,8 +74,3 @@ q3 = did.query('','depends_on','*',demoBdocs(5).document_properties.base.id);
 
 match_ids2 = db.search(q3);
 match_docs2 = db.get_docs(match_ids2);
-
-
-
-
-          

@@ -7,6 +7,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         FileDir % full path to directory where files are stored
     end
 
+    properties (Access=protected)
+        fields_cache = cell(0,2)
+    end
+
     methods % constructor
         function sqlitedb_obj = sqlitedb(filename)
             % sqlitedb create a new did.implementations.sqlitedb object
@@ -871,17 +875,28 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             field_name = regexprep(field_name,['^' group_name '\.'],''); % strip group_name
             field_name = [group_name '.' field_name];                    % add group_name
             json_name = regexprep(field_name,{'\.','\s+'},{'___','_'});  % . => ___
-            results = this_obj.run_sql_noOpen('SELECT field_idx FROM fields WHERE field_name=?', field_name);
-            if isempty(results)
-                % Insert a new field key and rerun the query
-                this_obj.insert_into_table('fields','class,field_name,json_name', group_name, field_name, json_name);
-                this_obj.insert_doc_data_field(doc_idx, group_name, field_name, value);
-            else
-                % Add a new field with the specified field_id to the doc_data table
-                field_idx = results(1).field_idx;
-                %if ~isempty(value)
+
+            % Try to reuse the field_idx, if known
+            row = find(strcmp(this_obj.fields_cache(:,1), field_name),1);
+            if isempty(row)
+                % field_name's field_idx is unknown - get it from DB, or add new
+                results = this_obj.run_sql_noOpen('SELECT field_idx FROM fields WHERE field_name=?', field_name);
+                if isempty(results)
+                    % Insert a new field key and rerun the query
+                    this_obj.insert_into_table('fields','class,field_name,json_name', group_name, field_name, json_name);
+                    this_obj.insert_doc_data_field(doc_idx, group_name, field_name, value);
+                else
+                    % Add a new field with the specified field_id to the doc_data table
+                    field_idx = results(1).field_idx;
+                    %if ~isempty(value)
+                    this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
+                    %end
+                    % Cache the field_idxx for later reuse
+                    this_obj.fields_cache(end+1,:) = {field_name, field_idx};
+                end
+            else  % cached field_idx found for this field_name
+                field_idx = this_obj.fields_cache{row,2};
                 this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
-                %end
             end
         end
     end

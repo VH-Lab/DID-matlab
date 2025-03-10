@@ -432,6 +432,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Optional PARAMETERS may be specified as P-V pairs of parameter name
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
+            %   - 'Validate' - folowed by false or true (default)
 
             % Ensure we got a valid input doc object
             if isempty(document_objs)
@@ -453,10 +454,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     % the specified branch_id is actually a param name
                     branch_id = database_obj.current_branch_id;
                     varargin = ['OnDuplicate' varargin];
+                elseif any(strcmpi(branch_id,'Validate'))
+                    branch_id = database_obj.current_branch_id;
+                    varargin = ['Validate' varargin];
                 else
                     error('DID:Database:InvalidParams','Invalid parameters specified in did.database.add_doc() call');
                 end
-            elseif nargin > 3 && ~any(strcmpi(varargin{1},'OnDuplicate'))
+            elseif nargin > 3 && ~any(strcmpi(varargin{1},{'OnDuplicate','Validate'}))
                 error('DID:Database:InvalidParams','Invalid parameters specified in did.database.add_doc() call');
             end
 
@@ -465,14 +469,30 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 branch_id = database_obj.current_branch_id;
             end
 
-            % Open the database (performance)
+            % Open the database, if it is not already open (performance)
             hCleanup = database_obj.open(); %#ok<NASGU>
 
-            % Ensure branch IDs validity
-            branch_id = database_obj.validate_branch_id(branch_id);
+            % Is validation requested?
+            validateIdx = find(strcmpi(varargin,'Validate'));
+            if isempty(validateIdx)
+                doValidation = true;  %default = validate
+            else
+                doValidation = varargin{validateIdx+1};
+                varargin(validateIdx:validateIdx+1) = [];  %remove from varargin
+            end
 
-            % Ensure that all the input docs pass schema validation
-            database_obj.validate_docs(document_objs);
+            % Disable database journalling if no validation requested
+            if ~doValidation
+                try database_obj.run_sql_query('pragma journal_mode=OFF'); catch, end
+            end
+
+            % Ensure branch IDs validity (unless requested not to)
+            branch_id = database_obj.validate_branch_id(branch_id, doValidation);
+
+            % Ensure all input docs pass schema validation (unless requested not to)
+            if doValidation
+                database_obj.validate_docs(document_objs);
+            end
 
             % Call the database's addition method separately for each doc
             for idx = 1 : numel(document_objs)
@@ -493,6 +513,11 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     end
                 end
                 database_obj.do_add_doc(doc, branch_id, varargin{:});
+            end
+
+            % Restore journaling if no validation requested
+            if ~doValidation
+                try database_obj.run_sql_query('pragma journal_mode=DELETE'); catch, end
             end
         end % add_doc()
 

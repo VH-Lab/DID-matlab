@@ -63,20 +63,50 @@ function sqlMetaData = doc2sql(doc)
 end
 
 % Extract data field values based on a priorities list of field names
-function value = getField(doc_props, fields) %#ok<INUSL>
-    value = '';
-    if ~iscell(fields), fields = {fields}; end
+function value = getField(doc_props, fields)
+    if ~iscell(fields), fields = {fields}; end %fields = cellstr(fields);
+    %doc_fields = fieldnames(doc_props);
     for fieldIdx = 1 : numel(fields)
-        try
-            val = eval(['doc_props.' fields{fieldIdx}]); %#ok<EVLDOT>
-            if ~isempty(val)
-                value = val;
-                return
+        this_field = fields{fieldIdx};
+        %numDots = sum(this_field=='.');
+        dotIdx = find(this_field=='.');
+        if isempty(dotIdx) %numDots == 0
+            if isfield(doc_props,this_field) %ismember(this_field,doc_fields)
+                value = doc_props.(this_field);
+                if ~isempty(value)
+                    return
+                end
+            else
+                continue
             end
-        catch
-            % ignore this field
+        elseif numel(dotIdx) == 1 %numDots == 1
+            %[parent,child] = strtok(this_field,'.');
+            parent = this_field(1:dotIdx-1);
+            if isfield(doc_props,parent) %ismember(parent,doc_fields)
+                %child(1) = '';
+                child = this_field(dotIdx+1:end);
+                value = doc_props.(parent);
+                if ~isempty(value) && isstruct(value) && isfield(value,child)
+                    value = value.(child);
+                end
+                if ~isempty(value)
+                    return
+                end
+            else
+                continue
+            end
+        else %multiple dots e.g., 'a.b.c'
+            try
+                value = eval(['doc_props.' this_field]); %#ok<EVLDOT>
+                if ~isempty(value)
+                    return
+                end
+            catch
+                % ignore this field
+            end
         end
     end
+    value = '';
 end
 
 % Create a meta-data column
