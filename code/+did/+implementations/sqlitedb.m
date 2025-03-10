@@ -758,7 +758,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
             if strcmpi(strtrim(err.message),'database not open')
                 try
-                    warning('Database is in an incosistent state - reopening');
+                    warning('Database is in an inconsistent state - reopening');
                     dbstack
                     this_obj.open_db(); %hCleanup = 
                     data = mksqlite(this_obj.dbid, query_str, varargin{:});
