@@ -1,4 +1,4 @@
-classdef (Abstract) database < handle   %#ok<*AGROW>
+classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
     % did.database: Abstract superclass for all did.database implementations
     %
     % did.database defines the API for the DID database system.
@@ -87,7 +87,7 @@ classdef (Abstract) database < handle   %#ok<*AGROW>
         debug (1,1) logical = false  % Display debug info in console? (default: false)
     end % properties
 
-    % Main database constructor
+    % Main database constructor, destructor
     methods
         function database_obj = database(varargin)
             % DATABASE - create a new DATABASE
@@ -107,6 +107,10 @@ classdef (Abstract) database < handle   %#ok<*AGROW>
             database_obj.current_branch_id = branchId;
             database_obj.preferences = containers.Map;
         end % database
+
+        function delete(database_obj)
+            try database_obj.close(); catch, end
+        end
     end
 
     % Database open/close
