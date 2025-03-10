@@ -119,6 +119,14 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
     % Database open/close
     methods
         function [hCleanup, filename] = open(database_obj)
+            % open - Open the underlying database for subsequent SQL queries
+            %
+            % This is a public method that uses the internal open_db() method,
+            % which is typically overloaded by the specific db implementation.
+            %
+            % If (and only if!) output arg(s) is/are requested, return:
+            %   - hCleanup - function handle to close db when hCleanup is deleted/cleared
+            %   - filename - the underlying database's filename
             if nargout
                 [hCleanup, filename] = database_obj.open_db();
             else
@@ -127,6 +135,10 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
         end
 
         function close(database_obj)
+            % close - Close the underlying database
+            %
+            % This is a public method that uses the internal close_db() method,
+            % which is typically overloaded by the specific db implementation.
             database_obj.close_db();
         end
     end
