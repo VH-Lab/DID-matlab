@@ -282,6 +282,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % Add the document fields to doc_data table (possibly also fields entries)
                 %this_obj.insert_doc_data_field(doc_idx,'app','name',filename);
                 field_groups = fieldnames(meta_data_struct);
+                doc_data_vals = {};
+                num_rows = 0;
                 for groupIdx = 1 : numel(field_groups)
                     group_name = field_groups{groupIdx};
                     group_data = meta_data_struct.(group_name);
@@ -290,8 +292,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         field_name  = field_data.name;
                         if strcmpi(field_name,'doc_id'), continue, end
                         field_value = field_data.value;
-                        this_obj.insert_doc_data_field(doc_idx, group_name, field_name, field_value);
+                        %this_obj.insert_doc_data_field(doc_idx, group_name, field_name, field_value);
+                        field_idx = this_obj.get_field_idx(group_name, field_name);
+                        doc_data_vals(end+1:end+3) = {doc_idx, field_idx, field_value};
+                        num_rows = num_rows + 1;
                     end
+                end
+                % Insert multiple new row records to the doc_data table, en-bulk
+                if num_rows > 0
+                    this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_data_vals{:});
                 end
             else
                 doc_idx = data(1).doc_idx;
@@ -873,40 +882,55 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
         end
 
         function insert_into_table(this_obj, table_name, field_names, varargin)
+            num_values = numel(varargin);
+            num_fields = sum(field_names==',') + 1;
             queryStrs = regexprep(field_names,'[^,]+','?');
+            if num_values > num_fields
+                num_rows = round(num_values/num_fields);  % should be an integer
+                queryStrs = repmat([queryStrs '),('],1,num_rows);
+                queryStrs(end-2:end) = '';  % remove the trailing '),('
+            end
             sqlStr = ['INSERT INTO ' table_name ' (' field_names ') VALUES (' queryStrs ')'];
             this_obj.run_sql_noOpen(sqlStr, varargin{:});
         end
 
-        function insert_doc_data_field(this_obj, doc_idx, group_name, field_name, value)
-            % Fetch the field_id (auto-incremented) for the specified field_name
-            field_name = regexprep(strtrim(field_name),'___','.');       % ___ => .
-            field_name = regexprep(field_name,['^' group_name '\.'],''); % strip group_name
-            field_name = [group_name '.' field_name];                    % add group_name
-            json_name = regexprep(field_name,{'\.','\s+'},{'___','_'});  % . => ___
+        function field_idx = get_field_idx(this_obj, group_name, field_name)
+            % Fetch the field_idx (auto-incremented) for the specified field_name
+            field_name = strrep(strtrim(field_name),'___','.');  % ___ => .
+            field_name = strrep(field_name,[group_name '.'],''); % strip group_name
+            field_name = [group_name '.' field_name];            % add group_name
 
             % Try to reuse the field_idx, if known
-            row = find(strcmp(this_obj.fields_cache(:,1), field_name),1);
+            cached_field_names = this_obj.fields_cache(:,1);
+            row = find(strcmp(cached_field_names, field_name),1);
             if isempty(row)
                 % field_name's field_idx is unknown - get it from DB, or add new
                 results = this_obj.run_sql_noOpen('SELECT field_idx FROM fields WHERE field_name=?', field_name);
                 if isempty(results)
                     % Insert a new field key and rerun the query
+                    json_name = regexprep(field_name,{'\.','\s+'},{'___','_'});  % . => ___
                     this_obj.insert_into_table('fields','class,field_name,json_name', group_name, field_name, json_name);
-                    this_obj.insert_doc_data_field(doc_idx, group_name, field_name, value);
+                    field_idx = this_obj.get_field_idx(group_name, field_name);
                 else
                     % Add a new field with the specified field_id to the doc_data table
                     field_idx = results(1).field_idx;
-                    %if ~isempty(value)
-                    this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
-                    %end
+
                     % Cache the field_idxx for later reuse
                     this_obj.fields_cache(end+1,:) = {field_name, field_idx};
                 end
             else  % cached field_idx found for this field_name
                 field_idx = this_obj.fields_cache{row,2};
-                this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
             end
+        end
+
+        function insert_doc_data_field(this_obj, doc_idx, group_name, field_name, value)
+            % Insert a new row record to the doc_data table
+
+            % Fetch the field_idx (auto-incremented) for the specified field_name
+            field_idx = this_obj.get_field_idx(group_name, field_name);
+
+            % Insert a new row record to the doc_data table
+            this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
         end
     end
 
