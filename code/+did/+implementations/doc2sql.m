@@ -28,7 +28,7 @@ function sqlMetaData = doc2sql(doc)
     % Create some common columns
     sqlMetaData.columns = struct('name',{}, 'matlabType',{}, 'sqlType',{}, 'value',{}); %initialize
 
-    id = getField(doc_props, {'app.id', 'base.id', 'ndi_document.id'});
+    id = getField(doc_props, {'base.id', 'ndi_document.id'});
     sqlMetaData.columns(end+1) = newColumn('doc_id', id);
 
     className = getField(doc_props, {'document_class.class_name','ndi_document.type'});
