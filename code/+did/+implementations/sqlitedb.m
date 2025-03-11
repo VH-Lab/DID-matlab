@@ -719,6 +719,24 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Open the specified filename. Use 0 to get the next free dbid
             this_obj.dbid = mksqlite(0, 'open', filename);
 
+            % Create a cleanup object to close the DB file once usage is done (if requested)
+            if nargout
+                hCleanup = onCleanup(@()this_obj.close_db());
+            end
+
+            % Disable OS file synchronization (performance)
+            % https://www.sqlite.org/pragma.html#pragma_synchronous
+            % https://stackoverflow.com/questions/1711631/improve-insert-per-second-performance-of-sqlite
+            mksqlite(this_obj.dbid,'pragma synchronous=OFF'); %default=DELETE
+
+            % Set the max memory cache size to 1M pages = 4GB (performance)
+            % https://www.sqlite.org/pragma.html#pragma_cache_size
+            mksqlite(this_obj.dbid,'pragma cache_size=1000000'); %default=-2000=2MB
+
+            % Use exclusive database connection locking mode (performance, DANGEROUS?)
+            % https://www.sqlite.org/pragma.html#pragma_locking_mode
+            %mksqlite(this_obj.dbid,'pragma locking_mode=EXCLUSIVE'); %default=NORMAL
+
             % If this is an existing file
             if ~isNew
 
@@ -736,11 +754,6 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     error('DID:SQLITEDB:OPEN','Error opening %s as a DID SQLite database: %s',filename,err.message);
                 end
 
-                % Create a cleanup object to close the DB file once usage is done (if requested)
-                if nargout
-                    hCleanup = onCleanup(@()this_obj.close_db());
-                end
-
             else % new database
 
                 % Use Types BLOBs to store data values of any type/size
@@ -750,8 +763,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % Create empty default tables in the newly-created database
                 this_obj.create_db_tables();
 
-                % Close the database
-                this_obj.close_db();
+                % Close the database - Actually NOT: keep it open!
+                %this_obj.close_db();
 
                 % No cleanup object in this case
             end
