@@ -127,8 +127,10 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % If (and only if!) output arg(s) is/are requested, return:
             %   - hCleanup - function handle to close db when hCleanup is deleted/cleared
             %   - filename - the underlying database's filename
-            if nargout
+            if nargout > 1
                 [hCleanup, filename] = database_obj.open_db();
+            elseif nargout
+                hCleanup = database_obj.open_db();
             else
                 database_obj.open_db();
             end

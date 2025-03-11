@@ -88,7 +88,7 @@ function value = getField(doc_props, fields)
                 value = doc_props.(parent);
                 if ~isempty(value) && isstruct(value) && isfield(value,child)
                     value = value.(child);
-                else,
+                else
                     value = '';
                 end
                 if ~isempty(value)
@@ -143,7 +143,7 @@ function metaTable = getMetaTableFrom(doc_props, id, name)
                 for idx3 = 1 : numel(subFields)
                     fieldName = subFields{idx3};
                     newCumulFieldName = [cumulFieldName '___' fieldName];
-                    if (numElements > 1),
+                    if (numElements > 1)
                         newCumulFieldName = [newCumulFieldName '_' num2str(idx2)]; %#ok<AGROW>
                     end
                     recurseFields(dataStruct, fieldName, newCumulFieldName);
@@ -152,14 +152,14 @@ function metaTable = getMetaTableFrom(doc_props, id, name)
         else
             matlabType = class(fieldValue);
             dataSize = size(fieldValue);
-            if strcmp(matlabType,'cell')&isvector(fieldValue),
+            if iscell(matlabType) && any(dataSize==1) %isvector(fieldValue)
                 fieldValue = did.datastructures.cell2str(fieldValue);
             elseif ~ischar(fieldValue) && ~isscalar(fieldValue) && ~isempty(fieldValue)
-                if 0&strcmp(matlabType,'double'), % just leave it
-                else,
+                if false %strcmp(matlabType,'double') % just leave it
+                else
                     sizeStr = regexprep(mat2str(dataSize), '\s+', 'x'); %'×'
                     fieldValue = sprintf('%s %s', sizeStr, matlabType);
-                end;
+                end
             end
             metaTable.columns(end+1) = newColumn(cumulFieldName, fieldValue, matlabType);
         end

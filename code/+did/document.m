@@ -14,35 +14,34 @@ classdef document
             % DID_DOCUMENT_OBJ = DID_DOCUMENT(DOCUMENT_TYPE, 'PARAM1', VALUE1, ...)
             %   or
             % DID_DOCUMENT_OBJ = DID_DOCUMENT(MATLAB_STRUCT)
-            %
 
             made_from_struct = 0;
 
-            if nargin<1,
+            if nargin<1
                 document_type = 'base';
             end
 
-            if isstruct(document_type),
+            if isstruct(document_type)
                 document_properties = document_type;
                 made_from_struct = 1;
-            else,  % create blank from definitions
+            else  % create blank from definitions
                 document_properties = did.document.readblankdefinition(document_type);
                 document_properties.base.id = did.ido.unique_id();
                 document_properties.base.datestamp = char(datetime('now','TimeZone','UTCLeapSeconds'));
 
-                if numel(varargin)==1, % see if user put it all as one cell array
-                    if iscell(varargin{1}),
+                if numel(varargin)==1 % see if user put it all as one cell array
+                    if iscell(varargin{1})
                         varargin = varargin{1};
                     end
                 end
-                if mod(numel(varargin),2)~=0,
-                    error(['Variable inputs must be name/value pairs'.']);
-                end;
+                if mod(numel(varargin),2)~=0
+                    error('Variable inputs must be name/value pairs');
+                end
 
-                for i=1:2:numel(varargin), % assign variable arguments
-                    try,
+                for i=1:2:numel(varargin) % assign variable arguments
+                    try
                         eval(['document_properties.' varargin{i} '= varargin{i+1};']);
-                    catch,
+                    catch
                         error(['Could not assign document_properties.' varargin{i} '.']);
                     end
                 end
@@ -50,9 +49,9 @@ classdef document
 
             did_document_obj.document_properties = document_properties;
 
-            if ~made_from_struct,
+            if ~made_from_struct
                 did_document_obj = did_document_obj.reset_file_info();
-            end;
+            end
 
         end % document() creator
 
@@ -85,7 +84,7 @@ classdef document
             % (Found at DID_DOCUMENT_OBJ.documentproperties.base.id)
             %
             uid = did_document_obj.document_properties.base.id;
-        end; % id()
+        end % id()
 
         function did_document_obj = setproperties(did_document_obj, varargin)
             % SETPROPERTIES - Set property values of an DID_DOCUMENT object
@@ -101,16 +100,16 @@ classdef document
             %   mydoc = mydoc.setproperties('base.name','mydoc name');
 
             newproperties = did_document_obj.document_properties;
-            for i=1:2:numel(varargin),
-                try,
+            for i=1:2:numel(varargin)
+                try
                     eval(['newproperties.' varargin{i} '=varargin{i+1};']);
-                catch,
+                catch
                     error(['Error in assigning ' varargin{i} '.']);
                 end
             end
 
             did_document_obj.document_properties = newproperties;
-        end; % setproperties
+        end % setproperties
 
         function did_document_obj_out = plus(did_document_obj_a, did_document_obj_b)
             % PLUS - merge two DID_DOCUMENT objects
@@ -122,7 +121,7 @@ classdef document
             % are added to A. The result is returned in DID_DOCUMENT_OBJ_OUT.
             % Note that any fields that A has that are also in B will be preserved; no elements of
             % those fields of B will be combined with A.
-            %
+
             did_document_obj_out = did_document_obj_a;
             % Step 1): Merge superclasses
             did_document_obj_out.document_properties.document_class.superclasses = ...
@@ -131,38 +130,38 @@ classdef document
             otherproperties = rmfield(did_document_obj_b.document_properties, 'document_class');
 
             % Step 2): Merge dependencies if we have to
-            if isfield(did_document_obj_out.document_properties,'depends_on') & ...
-                    isfield(did_document_obj_b.document_properties,'depends_on'),
+            if isfield(did_document_obj_out.document_properties,'depends_on') && ...
+               isfield(did_document_obj_b.document_properties,'depends_on')
                 % we need to merge dependencies
                 did_document_obj_out.document_properties.depends_on = cat(1,...
                     did_document_obj_out.document_properties.depends_on(:),...
                     did_document_obj_b.document_properties.depends_on(:));
                 otherproperties = rmfield(otherproperties,'depends_on');
-            end;
+            end
 
             % Step 3): Merge file_list
-            if isfield(did_document_obj_b.document_properties,'files'),
+            if isfield(did_document_obj_b.document_properties,'files')
                 % does doc a also have it?
-                if isfield(did_document_obj_out.document_properties,'files'),
+                if isfield(did_document_obj_out.document_properties,'files')
                     file_list = cat(2,did_document_obj_out.document_properties.files.file_list(:)', ...
                         did_document_obj_b.document_properties.files.file_list(:)');
                     file_info = cat(1,did_document_obj_out.document_properties.files.file_info(:),...
                         did_document_obj_b.document_properties.files.file_info(:));
-                    if numel(unique(file_list))~=numel(file_list),
-                        error(['Documents have files of the same name. Cannot be combined.']);
-                    end;
+                    if numel(unique(file_list))~=numel(file_list)
+                        error('Documents have files of the same name. Cannot be combined.');
+                    end
                     did_document_obj_out.document_properties.files.file_list = file_list;
                     did_document_obj_out.document_properties.files.file_info = file_info;
-                else,
+                else
                     % doc a doesn't have it, just use doc b's info
                     did_document_obj_out.document_properties.files = did_document_obj_b.document_properties.files;
-                end;
-            end;
+                end
+            end
 
             % Step 4): Merge the other fields
             did_document_obj_out.document_properties = did.datastructures.structmerge(did_document_obj_out.document_properties,...
                 otherproperties);
-        end; % plus()
+        end % plus()
 
         function d = dependency_value(did_document_obj, dependency_name, options)
             % DEPENDENCY_VALUE - return dependency value given dependency name
@@ -178,8 +177,6 @@ classdef document
             % -----------------------------------------------------------------
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, return empty.
-            %
-            %
 
             arguments
                 did_document_obj
@@ -192,18 +189,18 @@ classdef document
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
 
-            if hasdependencies,
+            if hasdependencies
                 matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
-                if numel(matches)>0,
+                if numel(matches)>0
                     notfound = 0;
                     d = getfield(did_document_obj.document_properties.depends_on(matches(1)),'value');
-                end;
-            end;
+                end
+            end
 
-            if notfound & options.ErrorIfNotFound,
+            if notfound && options.ErrorIfNotFound
                 error(['Dependency name ' dependency_name ' not found.']);
-            end;
-        end; %
+            end
+        end %
 
         function did_document_obj = set_dependency_value(did_document_obj, dependency_name, value, options)
             % SET_DEPENDENCY_VALUE - set the value of a dependency field
@@ -219,7 +216,6 @@ classdef document
             % -----------------------------------------------------------------
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, generate no error but take no action.
-            %
 
             arguments
                 did_document_obj
@@ -233,22 +229,22 @@ classdef document
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
             d_struct = struct('name',dependency_name,'value',value);
 
-            if hasdependencies,
+            if hasdependencies
                 matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
-                if numel(matches)>0,
+                if numel(matches)>0
                     notfound = 0;
                     did_document_obj.document_properties.depends_on(matches(1)).value = value;
-                elseif ~options.ErrorIfNotFound, % add it
+                elseif ~options.ErrorIfNotFound % add it
                     did_document_obj.document_properties.depends_on(end+1) = d_struct;
-                end;
-            elseif ~options.ErrorIfNotFound,
+                end
+            elseif ~options.ErrorIfNotFound
                 did_document_obj.document_properties.depends_on = d_struct;
-            end;
+            end
 
-            if notfound & options.ErrorIfNotFound,
+            if notfound && options.ErrorIfNotFound
                 error(['Dependency name ' dependency_name ' not found.']);
-            end;
-        end; %
+            end
+        end %
 
         function d = dependency_value_n(did_document_obj, dependency_name, options)
             % DEPENDENCY_VALUE_N - return dependency values from list given dependency name
@@ -265,7 +261,6 @@ classdef document
             % -----------------------------------------------------------------
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, return empty.
-            %
 
             arguments
                 did_document_obj
@@ -278,24 +273,24 @@ classdef document
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
 
-            if hasdependencies,
+            if hasdependencies
                 finished = 0;
                 i = 1;
-                while ~finished,
+                while ~finished
                     matches = find(strcmpi([dependency_name '_' int2str(i)],{did_document_obj.document_properties.depends_on.name}));
-                    if numel(matches)>0,
+                    if numel(matches)>0
                         notfound = 0;
                         d{i} = getfield(did_document_obj.document_properties.depends_on(matches(1)),'value');
-                    end;
+                    end
                     finished = numel(matches)==0;
                     i = i + 1;
-                end;
-            end;
+                end
+            end
 
-            if notfound & options.ErrorIfNotFound,
+            if notfound && options.ErrorIfNotFound
                 error(['Dependency name ' dependency_name ' not found.']);
-            end;
-        end; %
+            end
+        end %
 
         function did_document_obj = add_dependency_value_n(did_document_obj, dependency_name, value, options)
             % ADD_DEPENDENCY_VALUE_N - add a dependency to a named list
@@ -312,7 +307,6 @@ classdef document
             % -----------------------------------------------------------------
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, generate no error but take no action.
-            %
 
             arguments
                 did_document_obj
@@ -323,13 +317,13 @@ classdef document
 
             d = dependency_value_n(did_document_obj, dependency_name, 'ErrorIfNotFound', 0);
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
-            if ~hasdependencies & options.ErrorIfNotFound,
-                error(['This document does not have any dependencies.']);
-            else,
+            if ~hasdependencies && options.ErrorIfNotFound
+                error('This document does not have any dependencies.');
+            else
                 d_struct = struct('name',[dependency_name '_' int2str(numel(d)+1)],'value',value);
                 did_document_obj = set_dependency_value(did_document_obj, d_struct.name, d_struct.value, 'ErrorIfNotFound', 0);
-            end;
-        end; %
+            end
+        end %
 
         function did_document_obj = remove_dependency_value_n(did_document_obj, dependency_name, value, n, options)
             % REMOVE_DEPENDENCY_VALUE_N - remove a dependency from a named list
@@ -344,7 +338,6 @@ classdef document
             % -----------------------------------------------------------------
             % ErrorIfNotFound (1)      | If 1, generate an error if the entry is
             %                          |   not found. Otherwise, generate no error but take no action.
-            %
 
             arguments
                 did_document_obj
@@ -356,29 +349,29 @@ classdef document
 
             d = dependency_value_n(did_document_obj, dependency_name, 'ErrorIfNotFound', 0);
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
-            if ~hasdependencies & options.ErrorIfNotFound,
-                error(['This document does not have any dependencies.']);
-            end;
+            if ~hasdependencies && options.ErrorIfNotFound
+                error('This document does not have any dependencies.');
+            end
 
-            if n>numel(d) & options.ErrorIfNotFound,
+            if n>numel(d) && options.ErrorIfNotFound
                 error(['Number to be removed ' int2str(n) ' is greater than total number of entries ' int2str(numel(d)) '.']);
-            end;
+            end
 
             match = find(strcmpi([dependency_name '_' int2str(n)],{did_document_obj.document_properties.depends_on.name}));
-            if numel(match)~=1,
+            if numel(match)~=1
                 error(['Could not locate entry ' dependency_name '_' int2str(n)]);
-            end;
+            end
 
             did_document_obj.document_properties.depends_on = did_document_obj.document_properties.depends_on([1:match-1 match+1:end]);
 
-            for i=n+1:numel(d),
+            for i=n+1:numel(d)
                 match = find(strcmpi([dependency_name '_' int2str(i)],{did_document_obj.document_properties.depends_on.name}));
-                if numel(match)~=1,
+                if numel(match)~=1
                     error(['Could not locate entry ' dependency_name '_' int2str(i)]);
-                end;
+                end
                 did_document_obj.document_properties.depends_on(match).name = [dependency_name '_' int2str(i-1)];
-            end;
-        end; %
+            end
+        end %
 
         function did_document_obj = add_file(did_document_obj, name, location, options)
             % ADD_FILE - add a file to a did.document
@@ -417,7 +410,6 @@ classdef document
             % location_type ('file' or | Can be 'file' or 'url'. By default, it is set
             %   'url')                 |   to 'file' if LOCATION does not begin with
             %                          |   'http://' or 'https://', and 'url' otherwise.
-            %
 
             arguments
                 did_document_obj
@@ -432,40 +424,41 @@ classdef document
             % and that name is one of the listed files.
 
             [b,msg,fI_index] = did_document_obj.is_in_file_list(name);
-            if ~b,
+            if ~b
                 error(msg);
-            end;
+            end
 
             % Step 2: detect the default property values, if necessary, and build the structure
             detected_location_type = 'file'; % default
             location = strip(location);  % remove whitespace
-            if (startsWith(location,'https://','IgnoreCase',true) | startsWith(location,'http://','IgnoreCase',true)),
+            if (startsWith(location,'https://','IgnoreCase',true) || ...
+                startsWith(location,'http://','IgnoreCase',true))
                 detected_location_type = 'url';
-            end;
+            end
 
-            if isnan(options.ingest), % assign default value
-                switch detected_location_type,
-                    case 'url',
+            if isnan(options.ingest) % assign default value
+                switch detected_location_type
+                    case 'url'
                         options.ingest = 0;
-                    case 'file',
+                    case 'file'
                         options.ingest = 1;
-                    otherwise,
+                    otherwise
                         error(['Unknown detected_location_type ' detected_location_type '.']);
-                end;
-            end;
-            if isnan(options.delete_original), % assign default value
-                switch detected_location_type,
-                    case 'url',
+                end
+            end
+            if isnan(options.delete_original) % assign default value
+                switch detected_location_type
+                    case 'url'
                         options.delete_original = 0;
-                    case 'file',
+                    case 'file'
                         options.delete_original = 1;
-                    otherwise,
+                    otherwise
                         error(['Unknown detected_location_type ' detected_location_type '.']);
-                end;
-            end;
-            if isnan(options.location_type), % assign default value
+                end
+            end
+            if isnan(options.location_type) % assign default value
                 options.location_type = detected_location_type;
-            end;
+            end
 
             % Step 2b: build the structure to add
 
@@ -479,15 +472,15 @@ classdef document
 
             % Step 3: Add the file to the list
 
-            if isempty(fI_index),
+            if isempty(fI_index)
                 fI_index = numel(did_document_obj.document_properties.files.file_info)+1;
                 file_info_here = struct('name',name,'locations',location_here);
                 did_document_obj.document_properties.files.file_info(fI_index) = file_info_here;
-            else,
+            else
                 did_document_obj.document_properties.files.file_info(fI_index).locations(end+1) = location_here;
-            end;
+            end
 
-        end; % add_file
+        end % add_file
 
         function did_document_obj = remove_file(did_document_obj, name, location, options)
             % REMOVE_FILE - remove file information from a did.document
@@ -517,33 +510,33 @@ classdef document
             end
 
             [b,msg,fI_index] = did_document_obj.is_in_file_list(name);
-            if ~b,
+            if ~b
                 error(msg);
-            end;
+            end
 
-            if isempty(fI_index),
-                if options.ErrorIfNoFileInfo,
+            if isempty(fI_index)
+                if options.ErrorIfNoFileInfo
                     error(['No file_info for name ' name ' .']);
-                end;
-            end;
+                end
+            end
 
-            if isempty(location),
+            if isempty(location)
                 did_document_obj.document_properties.files.file_info(fI_index) = [];
                 return;
-            end;
+            end
 
             location_match_index = find(strcmpi(location,{did_document_obj.document_properties.files.file_info(fI_index).locations.location}));
 
-            if isempty(location_match_index),
-                if options.ErrorIfNoFileInfo,
+            if isempty(location_match_index)
+                if options.ErrorIfNoFileInfo
                     error(['No match found for file ' name ' with location ' location '.']);
-                end;
-            else,
+                end
+            else
                 did_document_obj.document_properties.files.file_info(fI_index).locations = ...
                     did_document_obj.document_properties.files.file_info(fI_index).locations([1:location_match_index-1 location_match_index+1:end]);
-            end;
+            end
 
-        end; % remove_file
+        end % remove_file
 
         function [b, msg, fI_index] = is_in_file_list(did_document_obj, name)
             % IS_IN_FILE_LIST - is a file name in a did.document's file list?
@@ -564,18 +557,18 @@ classdef document
             % If it is a valid file NAME, then the index value of NAME
             % in DID_DOCUMENT_OBJ.DOCUMENT_PROPERTIES.FILES.FILE_INFO is also
             % returned.
-            %
+
             b = 1;
             msg = '';
             fi_index = [];
 
             % Step 1: does this did.document have 'files' at all?
 
-            if ~isfield(did_document_obj.document_properties,'files'),
+            if ~isfield(did_document_obj.document_properties,'files')
                 b = 0;
                 msg = 'This type of document does not accept files; it has no ''files'' field';
                 return;
-            end;
+            end
 
             % Step 2: is it a valid filename for this document? It must appear in files.file_list
             %   or be a proper numbered file if files.file_list{i} has has the form 'filename.ext_#'.
@@ -586,29 +579,29 @@ classdef document
             ends_with_number = 0; % assume not at first
             number = NaN;
             underscores = find(name=='_');
-            if ~isempty(underscores),
+            if ~isempty(underscores)
                 n = str2num(name(underscores(end)+1:end));
-                if ~isempty(n), % we have a number
+                if ~isempty(n) % we have a number
                     number = n;
                     ends_with_number = 1;
                     search_name = [name(1:underscores(end)) '#'];
-                end;
-            end;
+                end
+            end
 
             % Step 2b: now we have the name to search for; make sure it is in the file list
 
             I = find(strcmpi(search_name,did_document_obj.document_properties.files.file_list));
-            if isempty(I),
+            if isempty(I)
                 b = 0;
                 msg = ['No such file ' name ' in file_list of did.document; file must match an expected name.'];
                 return;
-            end;
+            end
 
             % Step 3: now, find which file_info corresponds to search_name, if any
 
             fI_index = find(strcmpi(name,{did_document_obj.document_properties.files.file_info.name}));
 
-        end; % is_in_file_list()
+        end % is_in_file_list()
 
         function did_document_obj = reset_file_info(did_document_obj)
             % RESET_FILE_INFO - reset the file information parameters for a new did.document
@@ -618,17 +611,16 @@ classdef document
             % Reset (make empty) all file info structures for a new did.document object.
             %
             % Sets document_properties.files.file_info to an empty structure
-            %
 
             % First, check if we even have file info
-            if ~isfield(did_document_obj.document_properties,'files'),
+            if ~isfield(did_document_obj.document_properties,'files')
                 return;
-            end;
+            end
 
             % Now, clear it out:
             did_document_obj.document_properties.files.file_info = did.datastructures.emptystruct('name','locations');
 
-        end; % reset_file_info()
+        end % reset_file_info()
 
         function b = eq(did_document_obj1, did_document_obj2)
             % EQ - are two DID_DOCUMENT objects equal?
@@ -637,10 +629,10 @@ classdef document
             %
             % Returns 1 if and only if the objects have identical document_properties.did_document.id
             % fields.
-            %
+
             b = strcmp(did_document_obj1.document_properties.did_document.id,...
                 did_document_obj2.document_properties.did_document.id);
-        end; % eq()
+        end % eq()
 
     end % methods
 
@@ -658,12 +650,14 @@ classdef document
             %       c) a filename referenced with respect to $NDIDOCUMENTPATH
             %
             % See also: READJSONFILELOCATION
-            %
+
+            %{
             s_is_empty = 0;
-            if nargin<2,
+            if nargin<2
                 s_is_empty = 1;
                 s = did.datastructures.emptystruct;
             end
+            %}
 
             % Step 1): read the information we have here
 
@@ -675,9 +669,9 @@ classdef document
 
             s_super = {};
             superclasses = did.datastructures.emptystruct('definition','property_list_name','class_version');
-            if isfield(j,'document_class'),
-                if isfield(j.document_class,'superclasses'),
-                    for i=1:numel(j.document_class.superclasses),
+            if isfield(j,'document_class')
+                if isfield(j.document_class,'superclasses')
+                    for i=1:numel(j.document_class.superclasses)
                         item = did.datastructures.celloritem(j.document_class.superclasses, i, 1);
                         s_super{end+1} = did.document.readblankdefinition(item.definition);
                         % add more fields besides 'definition' to the document_class.superclasses struct
@@ -686,37 +680,37 @@ classdef document
                         superclasses(end+1) = item;
                     end
                     j.document_class.superclasses = superclasses;
-                end;
-            end;
+                end
+            end
 
             % Step 2): integrate the superclasses into the document we are building
 
-            for i=1:numel(s_super),
+            for i=1:numel(s_super)
                 % merge s and s_super{i}
                 % part 1: do we need to merge superclass labels?
 
-                if isfield(s,'document_class')&isfield(s_super{i},'document_class'),
+                if isfield(s,'document_class') && isfield(s_super{i},'document_class')
                     s.document_class.superclasses = cat(1,s.document_class.superclasses(:),...
                         s_super{i}.document_class.superclasses(:));
                     [~,unique_indexes] = unique({s.document_class.superclasses.definition});
                     s.document_class.superclasses = s.document_class.superclasses(unique_indexes);
-                else,
-                    error(['Documents lack ''document_class'' fields.']);
-                end;
+                else
+                    error('Documents lack ''document_class'' fields.');
+                end
 
                 s_super{i} = rmfield(s_super{i},'document_class');
 
                 % part 2: merge dependencies
-                if isfield(s,'depends_on') & isfield(s_super{i},'depends_on'), % if only s or super_s has it, merge does it right
+                if isfield(s,'depends_on') && isfield(s_super{i},'depends_on') % if only s or super_s has it, merge does it right
                     s.depends_on = cat(1,s.depends_on(:),s_super{i}.depends_on(:));
                     s_super{i} = rmfield(s_super{i},'depends_on');
                     [~,unique_indexes] = unique({s.depends_on.name});
                     s.depends_on= s.depends_on(unique_indexes);
-                else,
+                else
                     % regular structmerge is fine, will use 'depends_on' field of whichever structure has it, or none
-                end;
+                end
                 s = did.datastructures.structmerge(s,s_super{i});
-            end;
+            end
         end % readblankdefinition()
 
         function t = readjsonfilelocation(jsonfilelocationstring)
@@ -731,65 +725,64 @@ classdef document
             %         one of the keys in did.common.PathConstants.definitions.keys()
             %      d) a filename (without the .json extension) located in any directory or subdirectory
             %         of did.common.PathConstants.definitions.values()
-            %
 
             % step a) do we have a URL?
 
-            if did.file.isurl(jsonfilelocationstring),
+            if did.file.isurl(jsonfilelocationstring)
                 t = urlread(jsonfilelocationstring);
-                return;
-            end;
+                return
+            end
 
             % step b) do we have a fullpath filename?
 
-            if isfile(jsonfilelocationstring),
+            if any(jsonfilelocationstring=='.') && isfile(jsonfilelocationstring)
                 t = fileread(jsonfilelocationstring);
-                return;
-            end;
+                return
+            end
 
             % step c) do we have a $PATH reference
 
             extracted_str = regexp(jsonfilelocationstring, '\$\w+', 'match');
 
-            if ~isempty(extracted_str),
-                if numel(extracted_str)>1,
-                    error(['DID:Document:readjsonfilelocation:more than one $PATH indicated.']);
-                end;
+            if ~isempty(extracted_str)
+                if numel(extracted_str)>1
+                    error('DID:Document:readjsonfilelocation:more than one $PATH indicated.');
+                end
 
                 locations = did.common.PathConstants.definitions(extracted_str{1});
-                if ~iscell(locations),
+                if ~iscell(locations)
                     locations = {locations};
-                end;
-                for i=1:numel(locations),
+                end
+                for i=1:numel(locations)
                     filename = strrep(jsonfilelocationstring,extracted_str{1},locations{i});
-                    if isfile(filename),
+                    if isfile(filename)
                         t=fileread(filename);
-                        return;
-                    end;
-                end;
+                        return
+                    end
+                end
                 % if we are here, we didn't find it in the locations
                 error(['DID:Document:readjsonfilelocation:could not find a match in ' extracted_str{1} ' directories .']);
-            end;
+            end
 
             % step d) look for 'jsonfilelocationstring.json' in our paths
             defLocs = did.common.PathConstants.definitions.values();
-            for i=1:numel(defLocs),
-                if ~iscell(defLocs{i}),
-                    mypaths = {defLocs{i}};
-                else,
+            for i=1:numel(defLocs)
+                if ~iscell(defLocs{i})
+                    mypaths = defLocs(i);
+                else
                     mypaths = defLocs{i};
-                end;
-                for j=1:numel(mypaths),
-                    files = dir([char(mypaths{j}) filesep '**']);
-                    index = find( strcmp([jsonfilelocationstring '.json'], {files.name}) );
-                    if numel(index)>1,
+                end
+                for j=1:numel(mypaths)
+                    files = dir([char(mypaths{j}) filesep jsonfilelocationstring '.json']); %'**'
+                    %index = find( strcmp([jsonfilelocationstring '.json'], {files.name}) );
+                    if numel(files)>1
                         error(['DID:Document:readjsonfilelocation:found multiple matches for ' jsonfilelocationstring '.']);
-                    elseif ~isempty(index),
-                        t = fileread(fullfile(files(index).folder,files(index).name));
-                        return;
-                    end;
-                end;
-            end;
+                    elseif ~isempty(files)
+                        t = fileread(fullfile(files.folder, files.name)); %files(index)
+                        return
+                    end
+                end
+            end
 
             % if we are here, we did not find any matches
             error(['DID:Document:readjsonfilelocation:found no match for ' jsonfilelocationstring '.']);

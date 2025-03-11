@@ -19,21 +19,23 @@ function s = emptystruct(varargin)
     %       end;
     %
     % See also: VAR2STRUCT
-    %
 
-    if ~isempty(varargin),
-        if iscell(varargin{1}),
-            mycell = varargin{1};
-            s = did.datastructures.emptystruct(mycell{:});
-            return;
-        end;
-    end;
+    if isempty(varargin)
+        s = struct([]);
+    else
+        if iscell(varargin{1})
+            fields = varargin{1};
+        else
+            fields = varargin;
+        end
 
-    s = struct();
-
-    for i=1:length(varargin),
-        iFieldName = varargin{i};
-        s.(iFieldName) = 1;
-    end;
-
-    s = s([]);
+        %{
+        s = struct();
+        for i=1:length(fields)
+            iFieldName = fields{i};
+            s.(iFieldName) = 1;
+        end
+        s = s([]);
+        %}
+        s = cell2struct(cell(numel(fields),0), fields');
+    end

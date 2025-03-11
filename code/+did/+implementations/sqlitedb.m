@@ -96,7 +96,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Open the database for query
             if isempty(this_obj.dbid)
-                [hCleanup, filename] = this_obj.open_db(); %#ok<ASGLU>
+                hCleanup = this_obj.open_db(); %#ok<NASGU>
             end
 
             % Run the SQL query in the database
@@ -467,7 +467,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %    document_obj - a did.document object (possibly empty)
 
             % Open the database for update
-            [hCleanup, filename] = this_obj.open_db(); %#ok<ASGLU>
+            hCleanup = this_obj.open_db(); %#ok<NASGU>
 
             % Get the document id (ensure that we have a string if doc object was specified)
             if ~ischar(document_id)
@@ -706,17 +706,22 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %               when the calling function concludes (returns/errors)
             %    filename - name of the database file (used in error messages)
 
-            % Is this a new or existing file?
-            filename = this_obj.connection;
-            isNew = ~isfile(filename);
+            % Initialize
             hCleanup = [];
+            if nargout > 1
+                filename = this_obj.connection;
+            else
+                filename = '';
+            end
 
             % Bail out without validation if the DB is already open (performance)
-            if ~isNew && ~isempty(this_obj.dbid)
+            if ~isempty(this_obj.dbid) % && ~isNew
                 return
             end
 
             % Open the specified filename. Use 0 to get the next free dbid
+            filename = this_obj.connection;
+            isNew = ~isfile(filename);
             this_obj.dbid = mksqlite(0, 'open', filename);
 
             % Create a cleanup object to close the DB file once usage is done (if requested)
