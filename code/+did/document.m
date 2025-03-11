@@ -736,7 +736,7 @@ classdef document
             % step b) do we have a fullpath filename?
 
             if any(jsonfilelocationstring=='.') && isfile(jsonfilelocationstring)
-                t = fileread(jsonfilelocationstring);
+                t = fileread_(jsonfilelocationstring);
                 return
             end
 
@@ -756,7 +756,7 @@ classdef document
                 for i=1:numel(locations)
                     filename = strrep(jsonfilelocationstring,extracted_str{1},locations{i});
                     if isfile(filename)
-                        t=fileread(filename);
+                        t = fileread_(filename);
                         return
                     end
                 end
@@ -765,6 +765,7 @@ classdef document
             end
 
             % step d) look for 'jsonfilelocationstring.json' in our paths
+            fname = [jsonfilelocationstring '.json'];
             defLocs = did.common.PathConstants.definitions.values();
             for i=1:numel(defLocs)
                 if ~iscell(defLocs{i})
@@ -773,14 +774,22 @@ classdef document
                     mypaths = defLocs{i};
                 end
                 for j=1:numel(mypaths)
-                    files = dir([char(mypaths{j}) filesep jsonfilelocationstring '.json']); %'**'
+                    filename = [char(mypaths{j}) filesep fname];
+                    if isfile(filename)
+                        t = fileread_(filename);
+                        return
+                    end
+                    %{
+                    files = dir(filename); %'**'
                     %index = find( strcmp([jsonfilelocationstring '.json'], {files.name}) );
                     if numel(files)>1
                         error(['DID:Document:readjsonfilelocation:found multiple matches for ' jsonfilelocationstring '.']);
                     elseif ~isempty(files)
-                        t = fileread(fullfile(files.folder, files.name)); %files(index)
+                        filename = fullfile(files.folder, files.name); %files(index)
+                        t = fileread(filename);
                         return
                     end
+                    %}
                 end
             end
 
@@ -790,3 +799,10 @@ classdef document
         end %  did.document.readjsonfilelocation()
     end % methods Static
 end % classdef
+
+% Faster alternative than the built-in fileread()
+function text = fileread_(filename)
+    fid = fopen(filename,'r');
+    text = fread(fid,'*char')';
+    fclose(fid);
+end
