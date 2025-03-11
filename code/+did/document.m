@@ -773,12 +773,13 @@ classdef document
                     mypaths = defLocs{i};
                 end
                 for j=1:numel(mypaths)
-                    files = dir([char(mypaths{j}) filesep jsonfilelocationstring '.json']); %'**'
-                    %index = find( strcmp([jsonfilelocationstring '.json'], {files.name}) );
-                    if numel(files)>1
+                    files = dir([char(mypaths{j}) filesep '**']);
+                    %files = dir([char(mypaths{j}) filesep jsonfilelocationstring '.json']); %'**' this fails for some reason 
+                    index = find( strcmp([jsonfilelocationstring '.json'], {files.name}) );
+                    if numel(index)>1
                         error(['DID:Document:readjsonfilelocation:found multiple matches for ' jsonfilelocationstring '.']);
-                    elseif ~isempty(files)
-                        t = fileread(fullfile(files.folder, files.name)); %files(index)
+                    elseif ~isempty(index) % files
+                        t = fileread(fullfile(files(index).folder, files(index).name)); %files(index)
                         return
                     end
                 end
