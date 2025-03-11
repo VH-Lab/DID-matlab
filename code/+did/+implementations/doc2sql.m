@@ -88,6 +88,8 @@ function value = getField(doc_props, fields)
                 value = doc_props.(parent);
                 if ~isempty(value) && isstruct(value) && isfield(value,child)
                     value = value.(child);
+                else,
+                    value = '';
                 end
                 if ~isempty(value)
                     return
