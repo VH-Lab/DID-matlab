@@ -77,23 +77,23 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
 
     % process inputs
 
-    if nargin>1,
-        if ~isempty(checkloops),
+    if nargin>1
+        if ~isempty(checkloops)
             loops = checkloops;
-        end;
-    end;
+        end
+    end
 
-    if nargin>2,
-        if ~isempty(throwerror),
+    if nargin>2
+        if ~isempty(throwerror)
             makeanerror = throwerror;
-        end;
-    end;
+        end
+    end
 
-    if nargin>3,
-        if ~isempty(expiration),
+    if nargin>3
+        if ~isempty(expiration)
             expiration_time = expiration;
-        end;
-    end;
+        end
+    end
 
     % now check
 
@@ -102,24 +102,24 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     expiration_time_of_file = Inf;
     isexpired = 0;
 
-    while ( isfile(filename) & loop<loops ),
+    while ( isfile(filename) & loop<loops )
         file_exists = isfile(filename);
 
-        if file_exists,
+        if file_exists
             C = did.file.readlines(filename);
 
-            if ~isempty(C),
-                try,
+            if ~isempty(C)
+                try
                     expiration_time_of_file = datetime(strtrim(C{1}),'TimeZone','UTCLeapSeconds');
-                end;
-            end;
-        end;
+                end
+            end
+        end
 
-        if ~isinf(expiration_time_of_file),
+        if ~isinf(expiration_time_of_file)
             isexpired = expiration_time_of_file < datetime('now','TimeZone','UTCLeapSeconds');
-        end;
+        end
 
-        if ~isexpired,
+        if ~isexpired
             % some fun debugging statements
             %if ~isinf(expiration_time_of_file),
             %    disp('not expired.');
@@ -127,30 +127,30 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
             %    disp('will not expire.');
             %end;
             pause(1);
-        else,    % it is expired; we get to delete it
+        else    % it is expired; we get to delete it
             delete(filename);
-        end;
+        end
         loop = loop + 1;
-    end;
+    end
 
-    if loop<loops, % we made it
+    if loop<loops % we made it
         fid = fopen(filename,'wt','ieee-le');
         t1 = datetime('now','TimeZone','UTCLeapSeconds');
         t2 = t1 + seconds(expiration_time);
         exp_str = char(datetime(t2,'TimeZone','UTCLeapSeconds'));
         fprintf(fid,'%s\n%s\n',exp_str,key);
-    else,
+    else
         fid = -1;
-    end;
+    end
 
-    if fid<0, % we never opened it successfully, user might want us to produce an error
-        if makeanerror,
+    if fid<0 % we never opened it successfully, user might want us to produce an error
+        if makeanerror
             error(['Unable to obtain lock with file ' filename ...
                 '.  If you believe a program that has crashed ' ...
                 'created this file then you should manually delete it.']);
-        end;
-    else,
-        if nargin>1, % if we are getting the key, we should close the lock file
+        end
+    else
+        if nargin>1 % if we are getting the key, we should close the lock file
             fclose(fid);
-        end;
-    end;
+        end
+    end

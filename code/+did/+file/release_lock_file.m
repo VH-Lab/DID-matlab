@@ -20,32 +20,32 @@ function [b] = release_lock_file(fid_or_filename, key)
     % For an example, see CHECKOUT_LOCK_FILE
     %
 
-    if isnumeric(fid_or_filename),
+    if isnumeric(fid_or_filename)
         % we have a fid
         fid = fid_or_filename;
         filename = fopen(fid);
         fclose(fid);
-    elseif ischar(fid_or_filename),
+    elseif ischar(fid_or_filename)
         filename = fid_or_filename;
         fid = -1;
-    end;
+    end
 
-    if ~isfile(filename),
+    if ~isfile(filename)
         % the file is gone, so it is already released
         b = 1;
         return;
-    end;
+    end
 
     C = did.file.readlines(filename);
 
-    if numel(C)~=2,
+    if numel(C)~=2
         error([filename ' does not appear to be a lock file created by CHECKOUT_LOCK_FILE.']);
-    end;
+    end
 
-    if strcmp(strtrim(C{2}),key),
+    if strcmp(strtrim(C{2}),key)
         % we have the correct key
         b = 1;
         delete(filename);
-    else,
+    else
         b = 0;
-    end;
+    end

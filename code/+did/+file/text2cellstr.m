@@ -12,11 +12,11 @@ function c = text2cellstr(filename)
 
     fid = fopen(filename,'rt');
 
-    if fid<0,
+    if fid<0
         error(['Could not open file ' filename ' for reading.']);
-    end;
+    end
 
-    while ~feof(fid),
+    while ~feof(fid)
         c{end+1} = fgetl(fid);
-    end;
+    end
     fclose(fid);

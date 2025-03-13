@@ -35,19 +35,19 @@ function item = celloritem(var, index, useindexforvar)
     %           celloritem(myotherlist2,i,1),
     %     end
 
-    if nargin<2,
+    if nargin<2
         index = 1;
-    end;
-    if nargin<3,
+    end
+    if nargin<3
         useindexforvar = 0;
     end
 
-    if iscell(var),
+    if iscell(var)
         item = var{index};
-    else,
-        if useindexforvar,
+    else
+        if useindexforvar
             item = var(index);
-        else,
+        else
             item = var;
         end
-    end;
+    end

@@ -26,14 +26,14 @@ function b = isfilepathroot(filepath)
 
     b = 0;
 
-    if ispc,
+    if ispc
         b1 = ~isempty(strfind(filepath,':\'));
         b2 = filepath(1)=='/'; % unix file separator is valid on Windows
         b = b1 | b2;
-    elseif isunix,
+    elseif isunix
         b = filepath(1)=='/';
-    else,
+    else
         error(['Not PC and not UNIX. Do not know how to proceed.']);
-    end;
+    end
 
 

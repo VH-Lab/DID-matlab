@@ -31,40 +31,40 @@ function s_out = structmerge(s1, s2, options)
     fieldNames1 = fieldnames(s1);
     fieldNames2 = fieldnames(s2);
 
-    if options.ErrorIfNewField,
+    if options.ErrorIfNewField
         missingFieldNames = setdiff(fieldNames2, fieldNames1);
-        if ~isempty(missingFieldNames),
+        if ~isempty(missingFieldNames)
             missingFieldNames = join( compose("  ""%s""", string(missingFieldNames)), newline);
             error('DID:StructMerge:MissingField', ...
                 'Some fields of the second structure are not in the first:\n%s', missingFieldNames);
-        end;
-    end;
+        end
+    end
 
     s_out_ = s1;
 
-    for i = 1:length(fieldNames2),
+    for i = 1:length(fieldNames2)
         iFieldName = fieldNames2{i};
         iFieldValue = s2.(iFieldName);
-        if isempty(s_out_),
+        if isempty(s_out_)
             s_out_(1).(iFieldName) = iFieldValue;
-        else,
+        else
             s_out_.(iFieldName) = iFieldValue;
-        end;
-    end;
+        end
+    end
 
-    if options.DoAlphabetical,
+    if options.DoAlphabetical
         fn = sort(fieldnames(s_out_));
         s_out = did.datastructures.emptystruct(fn{:});
-        for i = 1:length(fn),
+        for i = 1:length(fn)
             iFieldName = fn{i};
             iFieldValue = s_out_.(fn{i});
-            if isempty(s_out),
+            if isempty(s_out)
                 s_out(1).(iFieldName) = iFieldValue;
-            else,
+            else
                 s_out.(iFieldName) = iFieldValue;
-            end;
-        end;
-    else,
+            end
+        end
+    else
         s_out = s_out_;
-    end;
+    end
 end

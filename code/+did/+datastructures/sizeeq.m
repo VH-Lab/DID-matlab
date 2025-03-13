@@ -8,10 +8,10 @@ function b = sizeeq(x,y)
     sz1 = size(x);
     sz2 = size(y);
 
-    if length(sz1)==length(sz2),
+    if length(sz1)==length(sz2)
         f=double(did.datastructures.eqemp(sz1,sz2));
         sz=size(f);
         b=prod(reshape(f,1,prod(sz)));
-    else,
+    else
         b=0;
-    end;
+    end

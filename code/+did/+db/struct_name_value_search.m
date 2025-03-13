@@ -14,27 +14,27 @@ function [v,i] = struct_name_value_search(thestruct, thename, makeerror)
     % not the function will generate an error if THENAME is not found.
     %
 
-    if nargin<3,
+    if nargin<3
         makerror = 1;
-    end;
+    end
 
-    if ~isstruct(thestruct),
+    if ~isstruct(thestruct)
         error(['THESTRUCT must be a struct array.']);
-    end;
+    end
 
-    if ~isfield(thestruct,'name'),
+    if ~isfield(thestruct,'name')
         error(['THESTRUCT must have a field named ''name''.']);
-    end;
+    end
 
-    if ~isfield(thestruct,'value'),
+    if ~isfield(thestruct,'value')
         error(['THESTRUCT must have a field named ''value''.']);
-    end;
+    end
 
     tf = strcmp(thename,{thestruct.name});
 
     i = find(tf);
     v = thestruct(i(1)).value;
 
-    if isempty(i) & makeerror,
+    if isempty(i) & makeerror
         error(['No matching entries for ' thename ' were found.']);
-    end;
+    end
