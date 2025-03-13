@@ -9,7 +9,7 @@ function str2text(filename, str)
     fid = fopen(filename,'wt');
 
     if fid>=0
-        fwrite(fid,[str]);
+        fwrite(fid,str);
         fclose(fid);
     else
         error(['Could not open ' filename ' for writing.']);

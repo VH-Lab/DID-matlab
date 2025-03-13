@@ -48,7 +48,7 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
         userData.docs{ind}.document_properties.ndi_document
 
         clicked_node = userData.docs{ind};
-        disp(['Global variable ''clicked_node'' set to clicked document']);
+        disp('Global variable ''clicked_node'' set to clicked document');
 
         return;
     end

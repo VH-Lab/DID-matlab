@@ -42,5 +42,5 @@ function [d] = findalldependencies(DB, visited, varargin)
     end
 
     if ~iscell(d)
-        error(['This should always return a cell list, even if it is empty. Some element is wrong, debug necessary.']);
+        error('This should always return a cell list, even if it is empty. Some element is wrong, debug necessary.');
     end

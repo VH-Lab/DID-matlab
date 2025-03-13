@@ -19,15 +19,15 @@ function [v,i] = struct_name_value_search(thestruct, thename, makeerror)
     end
 
     if ~isstruct(thestruct)
-        error(['THESTRUCT must be a struct array.']);
+        error('THESTRUCT must be a struct array.');
     end
 
     if ~isfield(thestruct,'name')
-        error(['THESTRUCT must have a field named ''name''.']);
+        error('THESTRUCT must have a field named ''name''.');
     end
 
     if ~isfield(thestruct,'value')
-        error(['THESTRUCT must have a field named ''value''.']);
+        error('THESTRUCT must have a field named ''value''.');
     end
 
     tf = strcmp(thename,{thestruct.name});

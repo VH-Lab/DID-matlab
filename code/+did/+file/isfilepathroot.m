@@ -33,7 +33,7 @@ function b = isfilepathroot(filepath)
     elseif isunix
         b = filepath(1)=='/';
     else
-        error(['Not PC and not UNIX. Do not know how to proceed.']);
+        error('Not PC and not UNIX. Do not know how to proceed.');
     end
 
 

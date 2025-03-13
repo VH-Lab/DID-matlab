@@ -59,7 +59,7 @@ classdef fileCache < handle
 
                 if nargin>1
                     if savedFileCacheParams.fileNameCharacters ~= fileNameCharacters
-                        error(['fileNameCharacters may not be altered once established.']);
+                        error('fileNameCharacters may not be altered once established.');
                     end
                 end
             end
@@ -96,7 +96,7 @@ classdef fileCache < handle
             end
 
             if reduceSize>=maxSize
-                error(['reduceSize must be less than maxSize.']);
+                error('reduceSize must be less than maxSize.');
             end
 
             iFileName = infoFileName(fileCacheObj);
@@ -329,7 +329,7 @@ classdef fileCache < handle
             end
 
             if sum(newFileSize)>fileCacheObj.maxSize
-                error(['New files to be added exceed cache allowed size by themselves.']);
+                error('New files to be added exceed cache allowed size by themselves.');
             end
 
             [lockfid,key] = fileCacheObj.binaryTable.getLock();

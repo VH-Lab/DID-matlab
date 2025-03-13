@@ -479,7 +479,7 @@ classdef dumbjsondb
                     dumbjsondb_obj.remove(ids{i}); % remove the entry
                 end
             else
-                disp(['Not clearing because user did not indicate he/she is sure.']);
+                disp('Not clearing because user did not indicate he/she is sure.');
             end
         end % clear
 
@@ -647,7 +647,7 @@ classdef dumbjsondb
                         delete(metafile);
                     end
                 otherwise
-                    error(['Unknown request.']);
+                    error('Unknown request.');
             end
 
         end % updatedocmetadata
@@ -709,7 +709,7 @@ classdef dumbjsondb
             thedir = [filepath filesep dumbjsondb_obj.dirname];
             if ~isfolder(thedir)
                 try
-                    mkdir([thedir]);
+                    mkdir(thedir);
                 catch
                     error(['Could not create directory ' thedir '.']);
                 end
@@ -762,12 +762,12 @@ classdef dumbjsondb
             try
                 js = did.datastructures.jsonencodenan(doc_object);
             catch
-                error(['Could not generate JSON code from object.']);
+                error('Could not generate JSON code from object.');
             end
             try
-                did.file.str2text([filename], js);
+                did.file.str2text(filename, js);
             catch
-                error(['Could not write to file ' [filename ] '; ' lasterr '.']);
+                error(['Could not write to file ' filename  '; ' lasterr '.']);
             end
         end % docobject2file()
 

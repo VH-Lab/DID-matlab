@@ -38,7 +38,7 @@ classdef binaryTable < handle
             binaryTableObj.elementsPerColumn = elementsPerColumn;
             binaryTableObj.headerSize = headerSize;
             if isempty(binaryTableObj.file.fullpathfilename)
-                error(['A full path file name must be given to the file object.']);
+                error('A full path file name must be given to the file object.');
             end
         end % creator
 
@@ -287,7 +287,7 @@ classdef binaryTable < handle
                 copied = 0;
                 fid = fopen(binaryTableObj.tempFileName(),'w');
                 if fid<0
-                    error(['Could not open temporary file for reading.']);
+                    error('Could not open temporary file for reading.');
                 end
                 while(copied<beforeBytes)
                     chunkSize = min(bufferSize, beforeBytes-copied);
@@ -348,7 +348,7 @@ classdef binaryTable < handle
             copied = 0;
             fid = fopen(binaryTableObj.tempFileName(),'w');
             if fid<0
-                error(['Could not open temporary file for reading.']);
+                error('Could not open temporary file for reading.');
             end
             while(copied<beforeBytes)
                 chunkSize = min(bufferSize, beforeBytes-copied);
@@ -385,7 +385,7 @@ classdef binaryTable < handle
             % Overwrite the value of an entry in a binaryTable object.
             %
             if ~strcmp(class(value),binaryTableObj.recordType{col})
-                error(['Data value of wrong type.']);
+                error('Data value of wrong type.');
             end
             if numel(value)~=binaryTableObj.elementsPerColumn(col)
                 error(['value is wrong size; should be 1x' intstr(binaryTableObj.elementsPerColumn(col)) '.']);
@@ -428,7 +428,7 @@ classdef binaryTable < handle
             fid = fopen(binaryTableObj.tempFileName(),'w');
 
             if fid<0
-                error(['Could not open temporary file for reading.']);
+                error('Could not open temporary file for reading.');
             end
 
             % step 1: copy the header
@@ -580,7 +580,7 @@ classdef binaryTable < handle
                 c = 1 * (value1<value2) - 1 * (value1>value2);
                 if c==0
                     if value1~=value2
-                        error(['VALUE1 and VALUE2 cannot be compared numerically.']);
+                        error('VALUE1 and VALUE2 cannot be compared numerically.');
                     end
                 end
             elseif ischar(value1) & ischar(value2)
@@ -588,7 +588,7 @@ classdef binaryTable < handle
                 c = diff(x) * ~strcmp(value1,value2);
             end
             if isnan(c)
-                error(['Could not make comparison.']);
+                error('Could not make comparison.');
             end
 
         end % compare
