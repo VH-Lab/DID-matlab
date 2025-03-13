@@ -360,7 +360,10 @@ classdef binaryTable < handle
                 copied = copied + chunkSize;
             end
             % skip the row to be deleted
-            status=fseek(binaryTableObj.file, binaryTableObj.headerSize+(row)*binaryTableObj.rowSize(), 'bof');
+            status = fseek(binaryTableObj.file, binaryTableObj.headerSize+(row)*binaryTableObj.rowSize(), 'bof');
+            if status ~= 0
+                warning(ferror(binaryTableObj.file))
+            end
             copied = copied + binaryTableObj.rowSize();
             while(copied<totalBytes)
                 chunkSize = min(bufferSize, totalBytes-copied);

@@ -12,6 +12,9 @@ function [i,nv] = findclosest(arr,v)
     %
     % See also: FIND
 
-    if isempty(arr), i = []; nv = []; end
-    [~,i]=nanmin(abs(arr-v));
-    nv = arr(i);
+    if isempty(arr)
+        i = []; nv = [];
+    else
+        [~, i] = nanmin(abs(arr-v));
+        nv = arr(i);
+    end
