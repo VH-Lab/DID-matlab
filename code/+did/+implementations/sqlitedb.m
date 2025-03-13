@@ -777,12 +777,21 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function data = run_sql_noOpen(this_obj, query_str, varargin)
             % Run the SQL query in an open database
+
+            % Convert any strings => char arrays (not supported by mksqlite)
+            if ~isempty(varargin)  % bind values
+                try varargin = controllib.internal.util.hString2Char(varargin); catch, end
+            end
+
+            % Try to run the query assuming that the database is already open
             try
                 %query_str  %debug
                 data = mksqlite(this_obj.dbid, query_str, varargin{:});
                 return
             catch err
             end
+
+            % Alert, reopen & retry the query if database was now actually open
             if strcmpi(strtrim(err.message),'database not open')
                 try
                     warning('Database is in an inconsistent state - reopening');
@@ -793,11 +802,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 catch err
                 end
             end
+
+            % Report the error to the user
             query_str = regexprep(query_str, {' +',' = '}, {' ','='});
             if ~isempty(varargin)
+                numRows = 1 + numel(strfind(query_str,'?),(?'));
+                if numRows > 1
+                    try varargin = reshape(varargin,[],numRows)'; catch, end %#ok<NASGU>
+                end
                 values_str = strtrim(evalc('disp(varargin);'));
-                values_str = regexprep(values_str, '[{}\[\] ]+', ',');
-                query_str = [query_str newline 'Values: ' values_str(2:end-1)];
+                regexpIn  = {'[{}\[\]]+', ' +', ' ?, ,', ', *\n *,? *', '^ *, *', ' *, *$'};
+                regexpOut = {',',         ' ',  ',',     '\n',          '',       ''};
+                values_str = regexprep(values_str, regexpIn, regexpOut);
+                query_str = [query_str newline 'Values: ' values_str];
             end
             fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\nError cause: %s\n',query_str,err.message)
             rethrow(err)
