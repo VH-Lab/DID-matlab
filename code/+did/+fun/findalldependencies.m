@@ -29,7 +29,7 @@ function [d] = findalldependencies(DB, visited, varargin)
             id_here = bb{j}.id();
             if ~any(strcmp(id_here,visited)) % we don't already know about it
                 visited = cat(1,visited,{id_here});
-                d = cat(1,d,{bb{j}});
+                d = cat(1,d,bb(j));
                 newdocs = did.fun.finddocs_missing_dependencies(E,visited,bb{j});
                 if ~isempty(newdocs)
                     for k=1:numel(newdocs)
