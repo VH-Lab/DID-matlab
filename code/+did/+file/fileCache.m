@@ -233,7 +233,7 @@ classdef fileCache < handle
             data = {};
             fileCacheObj.binaryTable.writeTable(data);
             fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,uint16(0));
-            fullnames = fullfile(fileCacheObj.directoryName,fn)
+            fullnames = fullfile(fileCacheObj.directoryName,fn);
             if ~isempty(fullnames)
                 delete(fullnames{:});
             end
