@@ -794,6 +794,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 end
             end
             query_str = regexprep(query_str, {' +',' = '}, {' ','='});
+            if ~isempty(varargin)
+                values_str = strtrim(evalc('disp(varargin);'));
+                values_str = regexprep(values_str, '[{}\[\] ]+', ',');
+                query_str = [query_str newline 'Values: ' values_str(2:end-1)];
+            end
             fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\nError cause: %s\n',query_str,err.message)
             rethrow(err)
         end
@@ -878,6 +883,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 this_obj.run_sql_noOpen('CREATE INDEX "docs_doc_id"       ON "docs"     ("doc_id")');
                 this_obj.run_sql_noOpen('CREATE INDEX "doc_data_value"    ON "doc_data" ("value")');
                 this_obj.run_sql_noOpen('CREATE INDEX "fields_field_name" ON "fields"   ("field_name")');
+                %% Optimize
+                mksqlite(this_obj.dbid,'pragma optimize');
             catch err
                 this_obj.close_db();
                 try delete(filename); catch, end
