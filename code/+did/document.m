@@ -729,7 +729,7 @@ classdef document
             % step a) do we have a URL?
 
             if did.file.isurl(jsonfilelocationstring)
-                t = urlread(jsonfilelocationstring);
+                t = webread(jsonfilelocationstring);
                 return
             end
 
