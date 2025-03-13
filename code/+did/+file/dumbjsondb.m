@@ -161,7 +161,7 @@ classdef dumbjsondb
 
             we_know_we_have_latest_version = []; % we will assign this below
             can_we_write = 0;
-            
+
             if ~fileexist % we are writing for the first time
                 we_know_we_have_latest_version = 1;
                 can_we_write = 1;
@@ -916,7 +916,7 @@ classdef dumbjsondb
             for i=1:2:numel(searchParams)
                 hasit = 0;
                 try
-                    value = eval(['document.' searchParams{i} ';']);
+                    value = document.(searchParams{i});
                     hasit = 1;
                 end
 

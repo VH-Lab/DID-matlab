@@ -26,7 +26,7 @@ function out = equnique(in)
         out = [];
     end
 
-    tf=[];
+    tf=false(1,n);
     for i=1:n
         tf(i) = ~did.datastructures.eqlen(in(i),out);
     end
