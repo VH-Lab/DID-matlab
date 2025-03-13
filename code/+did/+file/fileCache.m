@@ -273,9 +273,8 @@ classdef fileCache < handle
                 useCatalog (1,1) logical = true
             end
 
-            this_function_made_lockfile = 0;
-
-            iFileName = infoFileName(fileCacheObj);
+            this_function_made_lockfile = 0; %#ok<NASGU> % Currently unused
+            iFileName = infoFileName(fileCacheObj); %#ok<NASGU> % Currently unused
 
             if useCatalog
                 % lock for sequential ops, will save a little time
@@ -286,16 +285,10 @@ classdef fileCache < handle
                 fileCacheObj.binaryTable.releaseLock(lockfid,key);
             else
                 d = dir(fileCacheObj.directoryName);
-                fileIndexes = find([d.isdir]==0);
-                d = d(fileIndexes);
-                % leave hidden files
-                include = [];
-                for i=1:numel(d)
-                    if d(i).name(1)~='.'
-                        include(end+1) = i;
-                    end
-                end
-                d = d(include);
+                isFolder = [d.isdir];
+                d(isFolder) = [];
+                isHidden = strncmp({d.name}, '.', 1);
+                d(isHidden) = [];
                 fn = {d.name};
                 sz = [d.bytes];
                 lastAccess = NaN*sz;

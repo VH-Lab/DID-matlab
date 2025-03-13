@@ -27,7 +27,6 @@ function [b] = release_lock_file(fid_or_filename, key)
         fclose(fid);
     elseif ischar(fid_or_filename)
         filename = fid_or_filename;
-        fid = -1;
     end
 
     if ~isfile(filename)

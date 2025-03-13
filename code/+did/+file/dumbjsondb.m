@@ -160,8 +160,8 @@ classdef dumbjsondb
             fileexist = isfile([p f]);
 
             we_know_we_have_latest_version = []; % we will assign this below
-
             can_we_write = 0;
+            
             if ~fileexist % we are writing for the first time
                 we_know_we_have_latest_version = 1;
                 can_we_write = 1;
@@ -269,9 +269,6 @@ classdef dumbjsondb
             %
             % See also: DUMBJSONDB/CLOSEBINARYFILE, DUMBJSONDB/READ, CHECKOUT_LOCK_FILE, FREAD, FWRITE
 
-            fid = -1;
-            lockfid = -1;
-            key = -1;
             doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id); % make sure it is a string
             if nargin<3
                 doc_version = [];
