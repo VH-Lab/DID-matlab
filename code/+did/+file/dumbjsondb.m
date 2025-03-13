@@ -170,11 +170,17 @@ classdef dumbjsondb
                     can_we_write = 1;
                     we_know_we_have_latest_version = 1;
                 elseif options.Overwrite==0 % do not overwrite
-                    versstring = [];
-                    if ~isempty(version)
-                        versstring = [' and version ' num2str(doc_version) ' '];
+                    if isempty(doc_version)
+                        versstring = '';
+                    else
+                        if isnumeric(doc_version)
+                            versstring = sprintf(' and version "%s"', num2str(doc_version));
+                        else
+                            versstring = sprintf(' and version "%s"', doc_version);
+                        end
                     end
-                    error(['Document with document id ' doc_unique_id ' versstring ' already exists, overwrite was not permitted by user request.']);
+                    error(['Document with document id "%s"%s already exists, ', ...
+                           'overwrite was not permitted by user request.'], doc_unique_id, versstring);
                 elseif options.Overwrite==2 % increment version
                     v = dumbjsondb_obj.docversions(doc_unique_id);
                     doc_version = max(v) + 1;
