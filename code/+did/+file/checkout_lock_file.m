@@ -102,7 +102,7 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     expiration_time_of_file = Inf;
     isexpired = 0;
 
-    while ( isfile(filename) & loop<loops )
+    while ( isfile(filename) && loop<loops )
         file_exists = isfile(filename);
 
         if file_exists
