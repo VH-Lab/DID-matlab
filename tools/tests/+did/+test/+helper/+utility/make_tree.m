@@ -21,23 +21,23 @@ function [G,node_names] = make_tree(N_initial, children_rate, children_rate_deca
     %  plot(digraph(G,node_names),'layout','layered');
     %
 
-    if max_depth < 0,
+    if max_depth < 0
         children_rate = 0;
-    end;
+    end
 
     G = sparse(zeros(N_initial));
 
     % now work on children
 
-    for i=1:N_initial,
+    for i=1:N_initial
         current_nodes = size(G,1);
         num_children_here = poissrnd(children_rate);
         G_ = did.test.helper.utility.make_tree(num_children_here, children_rate*children_rate_decay, children_rate_decay, max_depth-1);
         G = [ G zeros(size(G,1),size(G_,2)) ; ...
             zeros(size(G_,1), size(G,2)) G_ ];
-        if num_children_here>0,
+        if num_children_here>0
             G(current_nodes+[1:num_children_here],i) = 1; % connect it to the existing graph
-        end;
-    end;
+        end
+    end
 
     node_names = did.test.helper.utility.name_tree(G);

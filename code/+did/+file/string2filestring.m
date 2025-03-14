@@ -16,7 +16,7 @@ function fs = string2filestring(s)
 
     goodindexes = [];
 
-    for i=1:size(ranges,1),
+    for i=1:size(ranges,1)
         goodindexes = union(goodindexes, find(s>=ranges(i,1) & s<=ranges(i,2)));
     end
 

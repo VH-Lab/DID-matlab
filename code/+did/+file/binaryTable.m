@@ -37,10 +37,10 @@ classdef binaryTable < handle
             binaryTableObj.recordSize = recordSize;
             binaryTableObj.elementsPerColumn = elementsPerColumn;
             binaryTableObj.headerSize = headerSize;
-            if isempty(binaryTableObj.file.fullpathfilename),
+            if isempty(binaryTableObj.file.fullpathfilename)
                 error(['A full path file name must be given to the file object.']);
-            end;
-        end; % creator
+            end
+        end % creator
 
         function [r,c,dataSize] = getSize(binaryTableObj)
             % GETSIZE - get the rows, columns, and total file size of a BINARYTABLE object
@@ -58,16 +58,16 @@ classdef binaryTable < handle
             end
 
             dataSize = 0;
-            if isfile(binaryTableObj.file.fullpathfilename),
+            if isfile(binaryTableObj.file.fullpathfilename)
                 d = dir(binaryTableObj.file.fullpathfilename);
                 sz = d(1).bytes;
                 dataSize = sz - binaryTableObj.headerSize;
-            end;
+            end
 
             c = numel(binaryTableObj.recordSize);
             rowSize = sum(binaryTableObj.recordSize);
             r = dataSize/rowSize;
-        end; % getSize()
+        end % getSize()
 
         function headerData = readHeader(binaryTableObj)
             % READHEADER - read header information to binary data
@@ -84,7 +84,7 @@ classdef binaryTable < handle
             headerData = uint8(fread(binaryTableObj.file,binaryTableObj.headerSize,'uint8'));
             binaryTableObj.file.fclose();
             binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
-        end; % readHeader
+        end % readHeader
 
         function writeHeader(binaryTableObj, headerdata)
             % WRITEHEADER - write header data to a binaryTable object
@@ -101,22 +101,22 @@ classdef binaryTable < handle
             % The header allows the user to save custom information about the
             % table.
             %
-            if numel(headerdata)>binaryTableObj.headerSize,
+            if numel(headerdata)>binaryTableObj.headerSize
                 error(['Header data to write is larger ' int2str(numel(headerdata)) ...
                     ' than the header size of the file ' int2str(binaryTableObj.headerSize) '.']);
-            end;
+            end
             [lockfid,key] = binaryTableObj.getLock();
             binaryTableObj.file.fclose();
-            if isfile(binaryTableObj.file.fullpathfilename),
+            if isfile(binaryTableObj.file.fullpathfilename)
                 binaryTableObj.file = binaryTableObj.file.setproperties('permission','r+');
-            else,
+            else
                 binaryTableObj.file = binaryTableObj.file.setproperties('permission','w');
-            end;
+            end
             binaryTableObj.file.fopen();
             fwrite(binaryTableObj.file,headerdata,'uint8');
             binaryTableObj.file.fclose();
             binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
-        end; % writeHeader
+        end % writeHeader
 
         function [lockfid,key] = getLock(binaryTableObj)
             % GETLOCK - obtain the lock file to ensure only one process writes to binaryTableObj at a time
@@ -132,12 +132,12 @@ classdef binaryTable < handle
             %
             key = '';
             lockfid = [];
-            if binaryTableObj.hasLock == false,
+            if binaryTableObj.hasLock == false
                 [lockfid,key] = did.file.checkout_lock_file(binaryTableObj.lockFileName(),...
                     30,1,20);
                 binaryTableObj.hasLock = true;
-            end;
-        end; %
+            end
+        end %
 
         function releaseLock(binaryTableObj, lockfid, key)
             % RELEASELOCK - release the lock on the file
@@ -147,11 +147,11 @@ classdef binaryTable < handle
             % If LOCKFID and KEY are not empty, release the
             % lock on the file associated with BINARYTABLEOBJ.
             %
-            if ~isempty(key),
+            if ~isempty(key)
                 did.file.release_lock_file(binaryTableObj.lockFileName(),key);
                 binaryTableObj.hasLock = false;
-            end;
-        end;
+            end
+        end
 
         function lFileName = lockFileName(binaryTableObj)
             % LOCKFILENAME - return the lock file name for a binaryTable object
@@ -163,7 +163,7 @@ classdef binaryTable < handle
             %
 
             lFileName = [binaryTableObj.file.fullpathfilename '-lock'];
-        end;
+        end
 
         function tFileName = tempFileName(binaryTableObj)
             % TEMPFILENAME - return the temporary file name for a binaryTable object
@@ -174,7 +174,7 @@ classdef binaryTable < handle
             % the binaryTable object.
             %
             tFileName = [binaryTableObj.file.fullpathfilename '-temp'];
-        end;
+        end
 
         function s = rowSize(binaryTableObj)
             % ROWSIZE - row byte size
@@ -184,7 +184,7 @@ classdef binaryTable < handle
             % The size of each row of the binaryTable object file, in bytes.
             %
             s = sum(binaryTableObj.recordSize);
-        end; % rowSize()
+        end % rowSize()
 
         function data = readRow(binaryTableObj, row, col)
             % READROW - read row or rows from a particular column of a binaryTable object
@@ -204,9 +204,9 @@ classdef binaryTable < handle
                 col (1,1) uint16 {mustBePositive}
             end
 
-            if col>numel(binaryTableObj.recordSize),
+            if col>numel(binaryTableObj.recordSize)
                 error(['Column must be in 1..number of columns (' int2str(numel(binaryTableObj.recordSize)) ').']);
-            end;
+            end
 
             % obtain the lock so the file can't change while we read it
             [lockfid,key] = binaryTableObj.getLock();
@@ -214,7 +214,7 @@ classdef binaryTable < handle
             binaryTableObj.file.fopen();
 
             [r,~] = binaryTableObj.getSize();
-            if isinf(row), % read them all
+            if isinf(row) % read them all
                 fseek(binaryTableObj.file, binaryTableObj.headerSize+sum(binaryTableObj.recordSize(1:col-1)), 'bof');
                 skipBytes = binaryTableObj.rowSize()-binaryTableObj.recordSize(col);
                 data = fread(binaryTableObj.file, Inf, ...
@@ -222,29 +222,29 @@ classdef binaryTable < handle
                     skipBytes);
                 data = reshape(data,prod(size(data))/r,r)';
                 data = feval(binaryTableObj.recordType{col},data);
-            else,
-                if any(row>r),
+            else
+                if any(row>r)
                     binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
                     error(['Rows must be in 1..' int2str(r) '.']);
-                end;
+                end
                 data = feval(binaryTableObj.recordType{col},zeros(numel(row),binaryTableObj.elementsPerColumn(col)));
-                for i=1:numel(row),
+                for i=1:numel(row)
                     status=fseek(binaryTableObj.file,...
                         binaryTableObj.headerSize+(row(i)-1)*binaryTableObj.rowSize()+...
                         sum(binaryTableObj.recordSize(1:col-1)),...
                         'bof');
-                    if status~=0,
+                    if status~=0
                         binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
                         error(['Row ' int2str(row(i)) ' is out of bounds.']);
-                    end;
+                    end
                     dRead = fread(binaryTableObj.file,binaryTableObj.elementsPerColumn(col),...
                         binaryTableObj.recordType{col})'; % make sure to transpose
                     data(i,:) = feval(binaryTableObj.recordType{col},dRead);
-                end;
-            end;
+                end
+            end
             binaryTableObj.file.fclose();
             binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
-        end; % readRow()
+        end % readRow()
 
         function insertRow(binaryTableObj, insertAfter, dataCell)
             % INSERTROW- insert or add a row of data to a binaryTable object file
@@ -262,23 +262,23 @@ classdef binaryTable < handle
 
             [r,~] = binaryTableObj.getSize();
 
-            if insertAfter>r+1,
+            if insertAfter>r+1
                 error(['Row must be in 0..number of rows (' int2str(r) ').']);
-            end;
+            end
 
             [lockfid,key] = binaryTableObj.getLock();
             binaryTableObj.file.fclose();
             % now there are two strategies; if insertAfter == r, then we can append to the file
             % if not, we must copy the file
 
-            if insertAfter==r, % append a new row
+            if insertAfter==r % append a new row
                 binaryTableObj.file = binaryTableObj.file.setproperties('permission','a');
                 binaryTableObj.file.fopen();
-                for i=1:numel(binaryTableObj.recordType),
+                for i=1:numel(binaryTableObj.recordType)
                     binaryTableObj.file.fwrite(dataCell{1,i},binaryTableObj.recordType{i});
-                end;
+                end
                 binaryTableObj.file.fclose();
-            else, % copy over everything to temp file before inserting and moving back
+            else % copy over everything to temp file before inserting and moving back
                 binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
                 binaryTableObj.file.fopen();
                 beforeBytes = binaryTableObj.headerSize + insertAfter * binaryTableObj.rowSize();
@@ -286,37 +286,37 @@ classdef binaryTable < handle
                 bufferSize = 1e6; % 1 MB buffer
                 copied = 0;
                 fid = fopen(binaryTableObj.tempFileName(),'w');
-                if fid<0,
+                if fid<0
                     error(['Could not open temporary file for reading.']);
-                end;
-                while(copied<beforeBytes),
+                end
+                while(copied<beforeBytes)
                     chunkSize = min(bufferSize, beforeBytes-copied);
                     [data,count] = fread(binaryTableObj.file,chunkSize,'uint8');
-                    if count~=chunkSize,
+                    if count~=chunkSize
                         warning('chunkSize not fully read.');
-                    end;
+                    end
                     fwrite(fid,data,'uint8');
                     copied = copied + chunkSize;
-                end;
-                for i=1:numel(binaryTableObj.recordType),
+                end
+                for i=1:numel(binaryTableObj.recordType)
                     fwrite(fid,dataCell{1,i},binaryTableObj.recordType{i});
-                end;
-                while(copied<totalBytes),
+                end
+                while(copied<totalBytes)
                     chunkSize = min(bufferSize, totalBytes-copied);
                     [data,count] = fread(binaryTableObj.file,chunkSize,'uint8');
-                    if count~=chunkSize,
+                    if count~=chunkSize
                         warning('chunkSize not fully read.');
-                    end;
+                    end
                     fwrite(fid,data,'uint8');
                     copied = copied + chunkSize;
-                end;
+                end
                 fclose(fid);
                 binaryTableObj.file.fclose();
                 movefile(binaryTableObj.tempFileName,binaryTableObj.file.fullpathfilename);
-            end;
+            end
 
             binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
-        end; % insertRow()
+        end % insertRow()
 
         function deleteRow(binaryTableObj, row)
             % DELETEROW - delete a row from a binaryTable object
@@ -334,9 +334,9 @@ classdef binaryTable < handle
 
             [r,~] = binaryTableObj.getSize();
 
-            if row>r+1,
+            if row>r+1
                 error(['Row must be in 1..number of rows (' int2str(r) ').']);
-            end;
+            end
 
             [lockfid,key] = binaryTableObj.getLock();
             binaryTableObj.file.fclose();
@@ -347,35 +347,35 @@ classdef binaryTable < handle
             bufferSize = 1e6; % 1 MB buffer
             copied = 0;
             fid = fopen(binaryTableObj.tempFileName(),'w');
-            if fid<0,
+            if fid<0
                 error(['Could not open temporary file for reading.']);
-            end;
-            while(copied<beforeBytes),
+            end
+            while(copied<beforeBytes)
                 chunkSize = min(bufferSize, beforeBytes-copied);
                 [data,count] = fread(binaryTableObj.file,chunkSize,'uint8');
-                if count~=chunkSize,
+                if count~=chunkSize
                     warning('chunkSize not fully read.');
-                end;
+                end
                 fwrite(fid,data,'uint8');
                 copied = copied + chunkSize;
-            end;
+            end
             % skip the row to be deleted
             status=fseek(binaryTableObj.file, binaryTableObj.headerSize+(row)*binaryTableObj.rowSize(), 'bof');
             copied = copied + binaryTableObj.rowSize();
-            while(copied<totalBytes),
+            while(copied<totalBytes)
                 chunkSize = min(bufferSize, totalBytes-copied);
                 [data,count] = fread(binaryTableObj.file,chunkSize,'uint8');
-                if count~=chunkSize,
+                if count~=chunkSize
                     warning('chunkSize not fully read.');
-                end;
+                end
                 fwrite(fid,data,'uint8');
                 copied = copied + chunkSize;
-            end;
+            end
             fclose(fid);
             binaryTableObj.file.fclose();
             movefile(binaryTableObj.tempFileName,binaryTableObj.file.fullpathfilename);
             binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
-        end; % deleteRow()
+        end % deleteRow()
 
         function writeEntry(binaryTableObj, row, col, value)
             % WRITEENTRY - overwrite an entry in a binaryTable object
@@ -384,12 +384,12 @@ classdef binaryTable < handle
             %
             % Overwrite the value of an entry in a binaryTable object.
             %
-            if ~strcmp(class(value),binaryTableObj.recordType{col}),
+            if ~strcmp(class(value),binaryTableObj.recordType{col})
                 error(['Data value of wrong type.']);
-            end;
-            if numel(value)~=binaryTableObj.elementsPerColumn(col),
+            end
+            if numel(value)~=binaryTableObj.elementsPerColumn(col)
                 error(['value is wrong size; should be 1x' intstr(binaryTableObj.elementsPerColumn(col)) '.']);
-            end;
+            end
             [lockfid,key] = binaryTableObj.getLock();
             binaryTableObj.file.fclose();
             binaryTableObj.file = binaryTableObj.file.setproperties('permission','r+');
@@ -399,14 +399,14 @@ classdef binaryTable < handle
                 binaryTableObj.headerSize+(row-1)*binaryTableObj.rowSize()+...
                 sum(binaryTableObj.recordSize(1:col-1)),...
                 'bof');
-            if status~=0,
+            if status~=0
                 binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
                 error('Row %d is out of bounds.', row);
-            end;
+            end
             fwrite(binaryTableObj.file,value,binaryTableObj.recordType{col});
             binaryTableObj.file.fclose();
             binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
-        end; % writeEntry()
+        end % writeEntry()
 
         function writeTable(binaryTableObj, data)
             % WRITETABLE - write (or re-write) a binaryTable obj table file
@@ -427,9 +427,9 @@ classdef binaryTable < handle
             binaryTableObj.file.fopen();
             fid = fopen(binaryTableObj.tempFileName(),'w');
 
-            if fid<0,
+            if fid<0
                 error(['Could not open temporary file for reading.']);
-            end;
+            end
 
             % step 1: copy the header
             hd = binaryTableObj.readHeader();
@@ -437,17 +437,17 @@ classdef binaryTable < handle
 
             % step 2: write each row
 
-            for r=1:size(data,1),
-                for c = 1:size(data,2),
+            for r=1:size(data,1)
+                for c = 1:size(data,2)
                     fwrite(fid,data{r,c},binaryTableObj.recordType{c});
-                end;
-            end;
+                end
+            end
 
             fclose(fid);
             binaryTableObj.file.fclose();
             movefile(binaryTableObj.tempFileName,binaryTableObj.file.fullpathfilename);
             binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
-        end; % writeTable()
+        end % writeTable()
 
         function [row,wouldBe] = findRow(binaryTableObj, col, value, option)
             % FINDROW - find data in an ordered column
@@ -480,73 +480,73 @@ classdef binaryTable < handle
             row = 0;
             wouldBe = NaN;
 
-            if ~option.isRecurrent,
+            if ~option.isRecurrent
                 [lockfid,key] = binaryTableObj.getLock();
                 binaryTableObj.file.fclose();
                 binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
                 binaryTableObj.file.fopen();
-            end;
+            end
 
-            if ~option.sorted,
+            if ~option.sorted
                 % then we just have to read each entry one by one
                 r = binaryTableObj.getSize();
-                for i=1:r,
+                for i=1:r
                     data = binaryTableObj.readRow(i,col);
-                    if isequal(data,value),
+                    if isequal(data,value)
                         row = i;
                         break;
-                    end;
-                end;
-            else,
+                    end
+                end
+            else
                 rTotal = binaryTableObj.getSize();
-                if isinf(option.lower_bound),
+                if isinf(option.lower_bound)
                     option.lower_bound = 1;
-                end;
-                if isinf(option.upper_bound),
+                end
+                if isinf(option.upper_bound)
                     option.upper_bound = rTotal;
-                end;
+                end
 
                 r_look = floor(option.lower_bound + double(option.upper_bound-option.lower_bound)/2);
-                if r_look < 1 | r_look > rTotal, % we are out of bounds, probably because there's no data
+                if r_look < 1 | r_look > rTotal % we are out of bounds, probably because there's no data
                     row = 0;
                     wouldBe = 0;
-                else,
+                else
                     v_here = binaryTableObj.readRow(r_look,col);
                     c = did.file.binaryTable.compare(v_here,value);
                     have_equality = 0;
                     lastmove = 0;
-                    if option.upper_bound<=option.lower_bound,
+                    if option.upper_bound<=option.lower_bound
                         lastmove = 1;
-                    end;
+                    end
 
-                    if c<0, % value here is greater than we are looking for
+                    if c<0 % value here is greater than we are looking for
                         new_upper_bound = r_look - 1;
                         new_lower_bound = option.lower_bound;
-                    elseif c>0, % value_here is less than we are looking for
+                    elseif c>0 % value_here is less than we are looking for
                         new_lower_bound = r_look + 1;
                         new_upper_bound = option.upper_bound;
-                    else, % equality!
+                    else % equality!
                         have_equality = 1;
-                    end;
+                    end
 
-                    if ~have_equality & ~lastmove,
+                    if ~have_equality & ~lastmove
                         [row,wouldBe] = binaryTableObj.findRow(col, value, 'sorted', true,...
                             'lower_bound',new_lower_bound,'upper_bound',new_upper_bound,...
                             'isRecurrent',true);
                     else
-                        if have_equality,
+                        if have_equality
                             row = r_look;
-                        else, % is lastmovie
+                        else % is lastmovie
                             wouldBe = r_look -1 *(c<0); %
-                        end;
-                    end;
-                end;
-            end;
-            if ~option.isRecurrent,
+                        end
+                    end
+                end
+            end
+            if ~option.isRecurrent
                 binaryTableObj.file.fclose();
                 binaryTableObj.releaseLock(lockfid,key);
-            end;
-        end; % findRow()
+            end
+        end % findRow()
     end
 
     methods (Static)
@@ -564,33 +564,33 @@ classdef binaryTable < handle
             % If VALUE1 < VALUE2, c is 1.
             %
             c = NaN;
-            if iscell(value1),
+            if iscell(value1)
                 value1 = value1{1};
-            end;
-            if iscell(value2),
+            end
+            if iscell(value2)
                 value2 = value2{1};
-            end;
-            if isstring(value1),
+            end
+            if isstring(value1)
                 value1 = char(value1);
-            end;
-            if isstring(value2),
+            end
+            if isstring(value2)
                 value2 = char(value2);
-            end;
-            if isscalar(value1) & isscalar(value2),
+            end
+            if isscalar(value1) & isscalar(value2)
                 c = 1 * (value1<value2) - 1 * (value1>value2);
-                if c==0,
-                    if value1~=value2,
+                if c==0
+                    if value1~=value2
                         error(['VALUE1 and VALUE2 cannot be compared numerically.']);
-                    end;
-                end;
-            elseif ischar(value1) & ischar(value2),
+                    end
+                end
+            elseif ischar(value1) & ischar(value2)
                 [~,x] = sort({value1,value2});
                 c = diff(x) * ~strcmp(value1,value2);
-            end;
-            if isnan(c),
+            end
+            if isnan(c)
                 error(['Could not make comparison.']);
-            end;
+            end
 
-        end; % compare
+        end % compare
     end % static methods
 end

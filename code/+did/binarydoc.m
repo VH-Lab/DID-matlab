@@ -41,9 +41,9 @@ classdef binarydoc < handle
             %
             fclose(binarydoc_obj);
             delete@handle(binarydoc_obj); % call superclass
-        end; % delete()
+        end % delete()
 
-    end;
+    end
 
     methods (Abstract)
 
@@ -123,5 +123,5 @@ classdef binarydoc < handle
 
         %end; % fclose()
 
-    end; % Abstract methods
+    end % Abstract methods
 end

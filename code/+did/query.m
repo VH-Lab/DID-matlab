@@ -169,7 +169,7 @@ classdef query
                         ss_here(1).operation = 'or';
                         ss_here(1).param1 = findinsubfield;
                         ss_here(1).param2 = findinmainfield;
-                    elseif strcmpi('~isa',did_query_obj(i).searchstructure(j).operation), % replace with search structures
+                    elseif strcmpi('~isa',did_query_obj(i).searchstructure(j).operation) % replace with search structures
                         % use one of DeMorgan's law: not(A or B) = not(A) AND not(B)
                         findinsubfield = struct('field','document_class.superclasses',...
                             'operation','~hasanysubfield_contains_string',...
@@ -190,13 +190,13 @@ classdef query
                         ss_here = struct('field','depends_on','operation','hasanysubfield_exact_string');
                         ss_here(1).param1 = param1;
                         ss_here(1).param2 = param2;
-                    elseif strcmpi('~depends_on',did_query_obj(i).searchstructure(j).operation),
+                    elseif strcmpi('~depends_on',did_query_obj(i).searchstructure(j).operation)
                         param1 = {'name','value'};
                         param2 = { did_query_obj(i).searchstructure(j).param1 did_query_obj(i).searchstructure(j).param2 };
-                        if strcmp(param2{1},'*'), % ignore the name
+                        if strcmp(param2{1},'*') % ignore the name
                             param1 = param1(2);
                             param2 = param2(2);
-                        end;
+                        end
                         ss_here = struct('field','depends_on','operation','~hasanysubfield_exact_string');
                         ss_here(1).param1 = param1;
                         ss_here(1).param2 = param2;

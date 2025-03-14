@@ -24,7 +24,7 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
     %   did.fun.plotinteractivedocgraph(docs,G,mdigraph,nodes,'layered');
     %
 
-    if nargin==0,
+    if nargin==0
 
         global clicked_node;
 
@@ -51,7 +51,7 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
         disp(['Global variable ''clicked_node'' set to clicked document']);
 
         return;
-    end;
+    end
 
     layout = varargin{5};
 

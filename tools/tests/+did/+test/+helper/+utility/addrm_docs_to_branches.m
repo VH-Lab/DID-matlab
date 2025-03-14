@@ -24,37 +24,37 @@ function [doc_struct_out, branch_node_indexes] = addrm_docs_to_branches(db, bG, 
     %  plot(digraph(G,node_names),'layout','layered');
     %
 
-    if nargin<5,
+    if nargin<5
         parent_node = 0;
-    end;
+    end
 
-    if nargin<6,
+    if nargin<6
         node_start = 0;
-    end;
+    end
 
     isroot = 0;
-    if node_start==0,
+    if node_start==0
         isroot = 1;
         % look for roots
         starting_nodes = find(sum(bG,2)==0);
-    else,
+    else
         starting_nodes = node_start;
-    end;
+    end
 
     % initialize the outputs
     doc_struct_out = {};
     branch_node_indexes = [];
 
-    for i=1:size(bG,2),
-        doc_struct_out{i} = did.datastructures.emptystruct('G','node_names','docs');;
-    end;
+    for i=1:size(bG,2)
+        doc_struct_out{i} = did.datastructures.emptystruct('G','node_names','docs');
+    end
 
-    for i=1:numel(starting_nodes),
+    for i=1:numel(starting_nodes)
         % Step 2-1: set up our branch
 
-        if parent_node~=0,
+        if parent_node~=0
             db.set_branch(branch_node_names{parent_node});
-        end;
+        end
 
         node_here = starting_nodes(i);
         branch_node_indexes(end+1) = node_here;
@@ -62,12 +62,12 @@ function [doc_struct_out, branch_node_indexes] = addrm_docs_to_branches(db, bG, 
         disp(['About to add branch ' branch_node_names{node_here} '.'])
         db.add_branch(branch_node_names{node_here});
 
-        if isroot, % need to add the documents from doc_struct
+        if isroot % need to add the documents from doc_struct
             db.add_docs(doc_struct.docs);
             %for d=1:numel(doc_struct.docs),
             %    db.add_doc(doc_struct.docs{d});
             %end;
-        end;
+        end
 
         % Step 2-2 modify doc_struct from the inputs by removing and adding some docs
 
@@ -76,7 +76,7 @@ function [doc_struct_out, branch_node_indexes] = addrm_docs_to_branches(db, bG, 
 
         if ~isempty(docs_to_rm)
             db.remove_docs(docs_to_rm);
-        end;
+        end
 
         N = numel(new_doc_struct.docs);
         [new_doc_struct2.G,new_doc_struct2.node_names,new_doc_struct2.docs] = ...
@@ -95,32 +95,32 @@ function [doc_struct_out, branch_node_indexes] = addrm_docs_to_branches(db, bG, 
         [b,msg] = did.test.helper.documents.verify_db_document_structure(db,...
             new_doc_struct2.G, new_doc_struct2.docs);
 
-        if ~b,
+        if ~b
             msg,
             error(['Error adding branch ' branch_node_names(node_here) '...']);
-        end;
+        end
 
         % Step 2-4 Now continue to traverse the branch tree
 
         next_nodes = find(bG(:,node_here)==1); % who is connected to this node?
 
-        for j=1:numel(next_nodes),
+        for j=1:numel(next_nodes)
             [doc_struct_next,node_indexes_next] = did.test.helper.utility.addrm_docs_to_branches(db, bG, branch_node_names, ...
                 new_doc_struct2, node_here, next_nodes(j));
-            for k=1:numel(node_indexes_next), % copy any non-empty node_names
+            for k=1:numel(node_indexes_next) % copy any non-empty node_names
                 index_here = node_indexes_next(k); % global index
-                if isempty(doc_struct_next{index_here}),
+                if isempty(doc_struct_next{index_here})
                     keyboard;
                     % this should not happen
-                end;
-                if ~isempty(doc_struct_next{index_here}),
-                    if ~isempty(doc_struct_out{index_here}),
+                end
+                if ~isempty(doc_struct_next{index_here})
+                    if ~isempty(doc_struct_out{index_here})
                         error(['We visited a node twice, should not happen in a real tree.']);
-                    else,
+                    else
                         doc_struct_out{index_here} = doc_struct_next{index_here};
-                    end;
-                end;
-            end;
+                    end
+                end
+            end
             branch_node_indexes = cat(1,branch_node_indexes(:),node_indexes_next);
-        end;
-    end;
+        end
+    end

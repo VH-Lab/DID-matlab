@@ -34,7 +34,7 @@ function [ids_expected,docs_expected] = get_docs_expected(docs,id_input,value_in
             for doc_ind = 1:length(docs_id_match)
                 demoType = did.test.helper.utility.get_demoType(docs{doc_ind});
                 each_value = eval(['docs{doc_ind}.document_properties.',demoType,'.value']);
-                if did.datastructures.eqlen(each_value,value_input),
+                if did.datastructures.eqlen(each_value,value_input)
                     docs_expected{end+1} = docs{doc_ind};
                 end
             end
@@ -60,7 +60,7 @@ function [ids_expected,docs_expected] = get_docs_expected(docs,id_input,value_in
     end % switch
 
     ids_expected = {};
-    for i=1:numel(docs_expected),
+    for i=1:numel(docs_expected)
         ids_expected{i} = docs_expected{i}.id();
-    end;
+    end
 end

@@ -16,8 +16,8 @@ function s = number_to_alpha_label(n)
 
     base_26 = dec2base(n,26);
 
-    for i=1:numel(base_26),
+    for i=1:numel(base_26)
         base_26(i) = char(48+int8(base_26(i)));
-    end;
+    end
 
     s = base_26;

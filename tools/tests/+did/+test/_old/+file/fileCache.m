@@ -10,9 +10,9 @@ function b = fileCache()
 
     dirname = [did.common.PathConstants.temppath filesep 'file-cache-test'];
 
-    if ~isfolder(dirname),
+    if ~isfolder(dirname)
         mkdir(dirname);
-    end;
+    end
 
     obj = did.file.fileCache(dirname,33,1000,800); % tiny cache for testing
 
@@ -22,28 +22,28 @@ function b = fileCache()
 
     tempdir =  [did.common.PathConstants.temppath filesep 'file-cache-test-base'];
 
-    if ~isfolder(tempdir),
+    if ~isfolder(tempdir)
         mkdir(tempdir);
-    end;
+    end
 
     % make fake files
 
     files = {};
 
-    for i=1:100,
+    for i=1:100
         fname = ['f' sprintf('%0.3d',i) '0' repmat('_',1,32-4)];
         files{i} = fname;
         fullfiles{i} = fullfile(tempdir,files{i});
         fid = fopen(fullfiles{i},'w','ieee-le');
         fwrite(fid,[i*100+[0:99]],'uint16');
         fclose(fid);
-    end;
+    end
 
     % now insert the files
 
-    for i=1:6,
+    for i=1:6
         obj.addFile(fullfiles{i},'copy',true);
-    end;
+    end
 
     [fn,sz,la] = obj.fileList(false);
     p = obj.getProperties()
@@ -57,10 +57,10 @@ function b = fileCache()
     % now touch file 3, and add 3 more files
 
     obj.touch(files{3});
-    for i=27:30,
+    for i=27:30
         obj.addFile(fullfiles{i},'copy',true);
         obj.touch(files{3});
-    end;
+    end
 
     % reprint manifest
 

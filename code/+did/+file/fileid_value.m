@@ -10,8 +10,8 @@ function fid = fileid_value(fid_or_fileobj)
     % or a FILEOBJ.
     %
 
-    if isa(fid_or_fileobj,'did.file.fileobj'),
+    if isa(fid_or_fileobj,'did.file.fileobj')
         fid = fid_or_fileobj.fid;
-    else,
+    else
         fid = fid_or_fileobj;
-    end;
+    end
