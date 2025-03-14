@@ -39,41 +39,41 @@ function [G_out, node_names_out, docs_out] = add_doc_tree(rates, G, node_names, 
     ids_C = {};
     node_ids = {};
 
-    for i=1:numel(docs),
+    for i=1:numel(docs)
         node_ids{end+1} = docs{i}.id();
-        switch(docs{i}.document_properties.document_class.class_name),
-            case {'demoA'},
+        switch(docs{i}.document_properties.document_class.class_name)
+            case {'demoA'}
                 ids_A{end+1} = docs{i}.id();
-            case {'demoB'},
+            case {'demoB'}
                 ids_B{end+1} = docs{i}.id();
-            case {'demoC'},
+            case {'demoC'}
                 ids_C{end+1} = docs{i}.id();
-            otherwise,
+            otherwise
                 error(['Unknown document class ' docs{i}.document_properties.document_class.class_name '.']);
-        end;
+        end
         counter = max(counter,str2num(node_names{i}));
-    end;
+    end
 
     counter = counter + 1;
 
-    for i=1:numA,
+    for i=1:numA
         docs{end+1} = did.document('demoA','demoA.value',counter);
         node_names{end+1} = int2str(counter);
         ids_A{end+1} = docs{end}.id();
         node_ids{end+1} = ids_A{end};
         counter = counter + 1;
-    end;
+    end
 
-    for i=1:numB,
+    for i=1:numB
         docs{end+1} = did.document('demoB','demoB.value',counter,...
             'demoA.value',counter);
         node_names{end+1} = int2str(counter);
         ids_B{end+1} = docs{end}.id();
         node_ids{end+1} = ids_B{end};
         counter = counter + 1;
-    end;
+    end
 
-    for i=1:numC,
+    for i=1:numC
         depA = randi([0 numel(ids_A)]);
         depB = randi([0 numel(ids_B)]);
         depC = randi([0 numel(ids_C)]);
@@ -82,27 +82,27 @@ function [G_out, node_names_out, docs_out] = add_doc_tree(rates, G, node_names, 
         node_names{end+1} = int2str(counter);
         ids_C{end+1} = docs{end}.id();
         node_ids{end+1} = ids_C{end};
-        if depA>0,
+        if depA>0
             docs{end} = docs{end}.set_dependency_value('item1',...
                 ids_A{depA});
             depA_index = find(strcmp(ids_A{depA},node_ids));
             G(depA_index,numel(docs)) = 1;
-        end;
-        if depB>0,
+        end
+        if depB>0
             docs{end} = docs{end}.set_dependency_value('item2',...
                 ids_B{depB});
             depB_index = find(strcmp(ids_B{depB},node_ids));
             G(depB_index,numel(docs)) = 1;
-        end;
-        if depC>0,
+        end
+        if depC>0
             docs{end} = docs{end}.set_dependency_value('item3',...
                 ids_C{depC});
             depC_index = find(strcmp(ids_C{depC},node_ids));
             G(depC_index,numel(docs)) = 1;
-        end;
+        end
 
         counter = counter + 1;
-    end;
+    end
 
     G_out = G;
     node_names_out = node_names;

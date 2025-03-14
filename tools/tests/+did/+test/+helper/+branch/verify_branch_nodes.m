@@ -15,6 +15,6 @@ function [b,missing] = verify_branch_nodes(db, dG)
     all_branches = db.all_branch_ids();
     missing = setdiff(node_names, all_branches);
     b = 1;
-    if ~isempty(missing),
+    if ~isempty(missing)
         b = 0;
-    end;
+    end

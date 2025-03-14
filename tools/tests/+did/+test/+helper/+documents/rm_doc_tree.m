@@ -25,28 +25,28 @@ function [doc_ids_rm, doc_ids_rm_seed, G_out, node_names_out, docs_out] = rm_doc
     %   box off;
     %
 
-    if N > numel(node_names),
+    if N > numel(node_names)
         N = numel(node_names);
-    end;
+    end
 
     node_indexes_to_delete = randperm(numel(node_names));
     node_indexes_to_delete = node_indexes_to_delete(1:N);
 
     doc_ids_rm_seed = {};
 
-    for i=1:numel(node_indexes_to_delete),
+    for i=1:numel(node_indexes_to_delete)
         doc_ids_rm_seed{end+1} = docs{node_indexes_to_delete(i)}.id();
-    end;
+    end
 
     dG = digraph(G,node_names);
 
     additional_indexes_to_delete = [];
 
-    for i=1:numel(node_indexes_to_delete),
+    for i=1:numel(node_indexes_to_delete)
         D = distances(dG,node_indexes_to_delete(i));
         additional_indexes_to_delete = cat(1,additional_indexes_to_delete(:),...
             did.datastructures.colvec(find(~isinf(D))));
-    end;
+    end
 
     node_indexes_to_delete = union(node_indexes_to_delete(:),additional_indexes_to_delete(:));
     node_indexes_to_keep = setdiff(1:numel(node_names),node_indexes_to_delete);
@@ -57,6 +57,6 @@ function [doc_ids_rm, doc_ids_rm_seed, G_out, node_names_out, docs_out] = rm_doc
 
     doc_ids_rm = {};
 
-    for i=1:numel(node_indexes_to_delete),
+    for i=1:numel(node_indexes_to_delete)
         doc_ids_rm{end+1} = docs{node_indexes_to_delete(i)}.id();
-    end;
+    end

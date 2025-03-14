@@ -66,7 +66,7 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
     dependency_modifier = options.dependency_modifier; % primarily for demoC
     remover = options.remover;
 
-    for i=1:numA,
+    for i=1:numA
         docs{end+1} = did.document('demoA'); %add unmodified document to list
         %now can continue modifying docs:
         d = docs{end};
@@ -93,9 +93,9 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
             ids_A{end+1} = docs{end}.id();
         end
         counter = counter + 1;
-    end;
+    end
 
-    for i=1:numB,
+    for i=1:numB
         docs{end+1} = did.document('demoB','demoB.value',counter,...
             'demoA.value',counter);
         %now can continue modifying docs:
@@ -124,11 +124,11 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
             ids_B{end+1} = docs{end}.id();
         end
         counter = counter + 1;
-    end;
+    end
 
     c_count = 0;
 
-    for i=1:numC,
+    for i=1:numC
         depA = randi([0 numA]);
         depB = randi([0 numB]);
         depC = randi([0 c_count]);
@@ -172,7 +172,7 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
                 end
             end
             G(depA,counter) = 1; %even if dependencies not set, plot still shows them
-        end;
+        end
         if depB>0
             if numel(ids_B)>0 && isfield(docs{end}.document_properties,'depends_on')
                 % make sure that item2 exists:
@@ -186,7 +186,7 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
                 end
             end
             G(numA+depB,counter) = 1;
-        end;
+        end
         if depC>0
             if numel(ids_C)>0 && isfield(docs{end}.document_properties,'depends_on')
                 % make sure that item3 exists:
@@ -200,7 +200,7 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
                 end
             end
             G(numA+numB+depC,counter) = 1;
-        end;
+        end
         %modify dependencies after they are set:
         d = docs{end};
         warnstate = warning('off');
@@ -215,7 +215,7 @@ function [G, node_names, docs] = make_doc_tree_invalid(rates, options)
         end
         counter = counter + 1;
         c_count = c_count + 1;
-    end;
+    end
 
 function value = modifyvalue(method, value)
 
@@ -237,7 +237,7 @@ function value = modifyvalue(method, value)
         case 'sham'
         otherwise
             error(['Unknown method ' method '.']);
-    end;
+    end
 
 function id = modifyid(method,id)
     switch method

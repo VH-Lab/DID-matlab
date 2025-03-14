@@ -8,9 +8,9 @@ function binaryTable
 
     filename = fullfile(did.common.PathConstants.testpath,'myBinTable.bin');
 
-    if isfile(filename), % start out deleting the file
+    if isfile(filename) % start out deleting the file
         delete(filename);
-    end;
+    end
 
     bT = did.file.binaryTable(did.file.fileobj('fullpathfilename',filename),...
         {'char','double','uint64'},[33*1 8 8],[33 1 1],2+8+8+8);
@@ -28,9 +28,9 @@ function binaryTable
 
     hd = bT.readHeader();
 
-    if ~isequal(hd(:),headerData(:)),
+    if ~isequal(hd(:),headerData(:))
         error(['Header data not written correctly.']);
-    end;
+    end
 
     % use fileCache details as a test case for this table
     id = {};
@@ -38,40 +38,40 @@ function binaryTable
     filesize = [];
     data = {};
 
-    for i=1:20,
+    for i=1:20
         id{i} = getfield(did.ido,'identifier');
         timestamps(i) = now;
         filesize(i) = uint64(1e9*rand);
         data{i} = {id{i} timestamps(i) filesize(i)};
         bT.insertRow(i-1,data{i});
-    end;
+    end
 
-    for i=1:20,
+    for i=1:20
         d = bT.readRow(i,1);
-        if ~isequal(data{i}{1},d),
+        if ~isequal(data{i}{1},d)
             error(['Data not equal: c == 1, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,2);
-        if ~isequal(data{i}{2},d),
+        if ~isequal(data{i}{2},d)
             error(['Data not equal: c == 2, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,3);
-        if ~isequal(data{i}{3},d),
+        if ~isequal(data{i}{3},d)
             error(['Data not equal: c == 3, r == ' int2str(i) '.']);
-        end;
-    end;
+        end
+    end
 
     wholec = char([]);
 
-    for i=1:20,
+    for i=1:20
         wholec(i,:) = data{i}{1};
-    end;
+    end
 
     d = bT.readRow(Inf,1);
 
-    if ~isequal(wholec,d),
+    if ~isequal(wholec,d)
         error(['whole column read of column 1 failed.']);
-    end;
+    end
 
     % insert a row in the middle
 
@@ -81,20 +81,20 @@ function binaryTable
     data = cat(2,data(1:10),{{id{11} timestamps(11) filesize(11)}}, data(11:end));
     bT.insertRow(10,data{11});
 
-    for i=1:size(data),
+    for i=1:size(data)
         d = bT.readRow(i,1);
-        if ~isequal(data{i}{1},d),
+        if ~isequal(data{i}{1},d)
             error(['Data not equal: c == 1, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,2);
-        if ~isequal(data{i}{2},d),
+        if ~isequal(data{i}{2},d)
             error(['Data not equal: c == 2, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,3);
-        if ~isequal(data{i}{3},d),
+        if ~isequal(data{i}{3},d)
             error(['Data not equal: c == 3, r == ' int2str(i) '.']);
-        end;
-    end;
+        end
+    end
 
     % now delete that row
 
@@ -104,100 +104,100 @@ function binaryTable
     filesize = filesize([1:10 12:end]);
     data = data([1:10 12:end]);
 
-    for i=1:size(data),
+    for i=1:size(data)
         d = bT.readRow(i,1);
-        if ~isequal(data{i}{1},d),
+        if ~isequal(data{i}{1},d)
             error(['Data not equal: c == 1, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,2);
-        if ~isequal(data{i}{2},d),
+        if ~isequal(data{i}{2},d)
             error(['Data not equal: c == 2, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,3);
-        if ~isequal(data{i}{3},d),
+        if ~isequal(data{i}{3},d)
             error(['Data not equal: c == 3, r == ' int2str(i) '.']);
-        end;
-    end;
+        end
+    end
 
     % test search/find
 
-    for i=1:size(data),
+    for i=1:size(data)
 
         value = id{i};
         myrow = bT.findRow(1,value);
-        if myrow~=i,
+        if myrow~=i
             error(['Wrong row.']);
-        end;
+        end
 
         myrow = bT.findRow(1,value,'sorted',true);
-        if myrow~=i,
+        if myrow~=i
             error(['Wrong row.']);
-        end;
+        end
 
         myrow = bT.findRow(1,'24234234','sorted',true);
-        if myrow~=0,
+        if myrow~=0
             error(['Should not have found a match but did.']);
-        end;
-    end;
+        end
+    end
 
     % test search/find w/ miss
 
-    for i=1:size(data),
+    for i=1:size(data)
         value = id{i};
         value(end) = value(end)-1;
         [myrow,wouldbe] = bT.findRow(1,value,'sorted',true);
-        if wouldbe~=i-1,
+        if wouldbe~=i-1
             myrow,
             error(['1 Wrong row: got ' int2str(wouldbe) ' expected ' int2str(i-1)]);
-        end;
+        end
 
         value = id{i};
         value(end) = value(end)+1;
         [myrow,wouldbe] = bT.findRow(1,value,'sorted',true);
-        if wouldbe~=i,
+        if wouldbe~=i
             myrow,
             error(['2 Wrong row: got ' int2str(wouldbe) ' expected ' int2str(i)]);
-        end;
-    end;
+        end
+    end
 
     data2 = {};
 
-    for r=1:numel(data),
-        for c=1:3,
+    for r=1:numel(data)
+        for c=1:3
             data2{r,c} = data{r}{c};
-        end;
-    end;
+        end
+    end
 
-    for i=1:size(data),
+    for i=1:size(data)
         d = bT.readRow(i,1);
-        if ~isequal(data{i}{1},d),
+        if ~isequal(data{i}{1},d)
             error(['Data not equal: c == 1, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,2);
-        if ~isequal(data{i}{2},d),
+        if ~isequal(data{i}{2},d)
             error(['Data not equal: c == 2, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,3);
-        if ~isequal(data{i}{3},d),
+        if ~isequal(data{i}{3},d)
             error(['Data not equal: c == 3, r == ' int2str(i) '.']);
-        end;
-    end;
+        end
+    end
 
     data{10}{2} = now;
 
     bT.writeEntry(10,2,data{10}{2});
 
-    for i=1:size(data),
+    for i=1:size(data)
         d = bT.readRow(i,1);
-        if ~isequal(data{i}{1},d),
+        if ~isequal(data{i}{1},d)
             error(['Data not equal: c == 1, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,2);
-        if ~isequal(data{i}{2},d),
+        if ~isequal(data{i}{2},d)
             error(['Data not equal: c == 2, r == ' int2str(i) '.']);
-        end;
+        end
         d = bT.readRow(i,3);
-        if ~isequal(data{i}{3},d),
+        if ~isequal(data{i}{3},d)
             error(['Data not equal: c == 3, r == ' int2str(i) '.']);
-        end;
-    end;
+        end
+    end
