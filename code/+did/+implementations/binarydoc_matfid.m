@@ -1,11 +1,11 @@
 classdef binarydoc_matfid < did.binarydoc & did.file.fileobj
 
-    properties,
+    properties
         key            %  The key that is created when the binary doc is locked
         doc_unique_id  %  The document unique id
-    end;
+    end
 
-    methods,
+    methods
         function binarydoc_matfid_obj = binarydoc_matfid(fileProps, matfidProps)
             % BINARYDOC_MATFID - create a new BINARYDOC_MATFID object
             %
@@ -29,7 +29,7 @@ classdef binarydoc_matfid < did.binarydoc & did.file.fileobj
             binarydoc_matfid_obj.machineformat = 'l'; %'ieee-le'; % Todo: is this supposed to always be this format
             binarydoc_matfid_obj.key = matfidProps.key;
             binarydoc_matfid_obj.doc_unique_id = matfidProps.doc_unique_id;
-        end; % binarydoc_matfid() creator
+        end % binarydoc_matfid() creator
 
         function binarydoc_matfid_obj = fclose(binarydoc_matfid_obj)
             % FCLOSE - close an BINARYDOC_MATFID object
@@ -41,5 +41,5 @@ classdef binarydoc_matfid < did.binarydoc & did.file.fileobj
             binarydoc_matfid_obj.fclose@did.file.fileobj();
             binarydoc_matfid_obj.permission = 'r';
         end % fclose()
-    end;
+    end
 end

@@ -19,26 +19,26 @@ function fullname = fullfilename(filename, usewhich)
 
     fullname = '';
 
-    if nargin<2,
+    if nargin<2
         usewhich = 1;
     end
 
     [foldername,fname] = fileparts(filename);
 
-    if isempty(foldername),
-        if usewhich, % try to find it somewhere
+    if isempty(foldername)
+        if usewhich % try to find it somewhere
             fullname = which(filename);
         end
 
-        if isempty(fullname), % we did not find it above, doesn't exist yet
+        if isempty(fullname) % we did not find it above, doesn't exist yet
             fullname = [pwd filesep filename];
         end
-    else, % we have a foldername
-        if did.file.isfilepathroot(foldername), % then we already have full filename
+    else % we have a foldername
+        if did.file.isfilepathroot(foldername) % then we already have full filename
             fullname = filename;
-        else,
+        else
             fullname = [pwd filesep foldername filesep fname];
         end
-    end;
+    end
 
 

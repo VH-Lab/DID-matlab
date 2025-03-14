@@ -15,28 +15,28 @@ function add_branch_nodes(db, starting_db_branch_id, dG, node_start_index)
     % See also: did.test.helper.utility.make_tree, did.test.helper.branch
     %
 
-    if nargin<3,
+    if nargin<3
         node_start_index = 0;
-    end;
+    end
 
-    if node_start_index == 0, % find the roots
+    if node_start_index == 0 % find the roots
         node_start_index = cellfun(@(x) ~any(x=='_'), dG.Nodes{:,1});
-    end;
+    end
 
     for i=1:numel(node_start_index)
         node_here = dG.Nodes{node_start_index(i),1};
         % drop out of cell, should be a 1x1 cell
         node_here = node_here{1,1};
-        if ~isempty(starting_db_branch_id),
+        if ~isempty(starting_db_branch_id)
             % if empty, assume we are at the beginning with no parent branch
             db.set_branch(starting_db_branch_id);
-        end;
+        end
         %disp(['Adding branch ' node_here ' to parent ' starting_db_branch_id '.']);
         db.add_branch(node_here);
         pre_ID = dG.predecessors(node_here);
         pre_ID_indexes = find(ismember(dG.Nodes{:,1},pre_ID));
-        if ~isempty(pre_ID_indexes),
+        if ~isempty(pre_ID_indexes)
             % call recursively
             did.test.helper.branch.add_branch_nodes(db,node_here,dG,pre_ID_indexes);
-        end;
-    end;
+        end
+    end

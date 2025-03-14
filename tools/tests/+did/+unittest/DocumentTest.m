@@ -64,16 +64,16 @@ classdef DocumentTest < matlab.unittest.TestCase
             b = logical(b);
             testCase.verifyTrue(b, msg);
 
-            for i=[2:2:10],
+            for i=[2:2:10]
 
                 disp('will now delete some documents/nodes and check.');
 
                 [docs_to_delete,docs_to_delete_seed,G{i},node_names{i},docs{i}] = ...
                     did.test.helper.documents.rm_doc_tree(2, G{i-1},node_names{i-1},docs{i-1});
 
-                if ~isempty(docs_to_delete_seed),
+                if ~isempty(docs_to_delete_seed)
                     testCase.db.remove_docs(docs_to_delete_seed);
-                end;
+                end
 
                 [b,msg] = did.test.helper.documents.verify_db_document_structure(testCase.db, G{i}, docs{i});
                 b = logical(b);

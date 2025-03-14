@@ -16,14 +16,14 @@ function str = cell2str(theCell)
     %   did.datastructures.eqlen(A,B), % should return 1
     %
 
-    if isempty(theCell), str = '{}'; return; end;
+    if isempty(theCell), str = '{}'; return; end
 
     str = '{ ';
-    for i=1:length(theCell),
+    for i=1:length(theCell)
         if ischar(theCell{i})
             str = [str '''' theCell{i} ''', '];
-        elseif isnumeric(theCell{i}),
+        elseif isnumeric(theCell{i})
             str = [str mat2str(theCell{i}) ', '];
-        end;
-    end;
+        end
+    end
     str = [str(1:end-2) ' }'];

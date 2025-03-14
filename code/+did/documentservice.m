@@ -16,7 +16,7 @@ classdef documentservice
     %
     properties (SetAccess=protected, GetAccess=public)
 
-    end; % properties
+    end % properties
 
     methods
         function documentservice_obj = documentservice()
@@ -24,7 +24,7 @@ classdef documentservice
             %
             % DOCUMENTSERVICE_OBJ = DOCUMENTSERVICE();
             %
-        end; % did.documentservice()
+        end % did.documentservice()
 
         function did_document_obj = newdocument(ndi_documentservice_obj) %#ok<MANU>
             % NEWDOCUMENT - create a new DOCUMENT based on information in this object
@@ -36,7 +36,7 @@ classdef documentservice
             % The base DID.DOCUMENTSERVICE class returns empty.
             %
             did_document_obj = [];
-        end; % newdocument
+        end % newdocument
 
         function sq = searchquery(documentservice_obj) %#ok<MANU>
             % SEARCHQUERY - create a search query to find this object as an DOCUMENT
@@ -48,6 +48,6 @@ classdef documentservice
             %
             % The base class DID.DOCUMENTSERVICE just returns empty.
             sq = [];
-        end; % searchquery
-    end;
+        end % searchquery
+    end
 end

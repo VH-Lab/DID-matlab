@@ -20,17 +20,17 @@ function out = equnique(in)
 
     n = numel(in);
 
-    if n>=1,
+    if n>=1
         out = in(1);
-    else,
+    else
         out = [];
     end
 
     tf=[];
-    for i=1:n,
+    for i=1:n
         tf(i) = ~did.datastructures.eqlen(in(i),out);
     end
 
-    if any(tf),
+    if any(tf)
         out = cat(1,out,did.datastructures.equnique(in(find(tf))));
     end

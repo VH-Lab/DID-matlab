@@ -11,8 +11,8 @@ function b = eqemp(x,y)
     b=1;
     xe=isempty(x);
     ye=isempty(y);
-    if (xe&(~ye))|(xe&(~ye)),
+    if (xe&(~ye))|(xe&(~ye))
         b=0;
-    elseif ~xe&~ye,
+    elseif ~xe&~ye
         b=(x==y);
-    end;
+    end

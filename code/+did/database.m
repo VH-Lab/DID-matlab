@@ -1644,19 +1644,19 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             for i=1:numel(actualFileNamesList)
                 exact_match = any(strcmp(actualFileNamesList{i},expectedNames));
                 begin_match = 0;
-                if ~exact_match,
-                    for j=1:numel(expectedNamesList),
-                        if did.database.isfilenamematch(expectedNamesList{j},actualFileNamesList{i}),
+                if ~exact_match
+                    for j=1:numel(expectedNamesList)
+                        if did.database.isfilenamematch(expectedNamesList{j},actualFileNamesList{i})
                             begin_match = 1;
                             break;
-                        end;
-                    end;
-                end;
+                        end
+                    end
+                end
                 areSame = areSame & (exact_match | begin_match);
-                if ~areSame,
+                if ~areSame
                     break;
                 end
-            end;
+            end
 
             if ~areSame
                 errmsg=sprintf('Dissimilar files defined/found (including %s) for %s', actualFileNamesList{i}, doc_name);
@@ -1669,10 +1669,10 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 if ~isempty(expectedValue) && expectedValue
                     item_name = expectedNames{idx};
                     idx2 = did.database.findfilematch(item_name,actualFileNames);
-                    for k=1:numel(idx2),
+                    for k=1:numel(idx2)
                         locations = files(idx2(k)).locations;
                         found = did.database.canfindonefile(locations);
-                        if ~found,
+                        if ~found
                             errmsg = sprintf('Missing file %s in %s',item_name,doc_name);
                             return;
                         end

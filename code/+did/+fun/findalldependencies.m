@@ -13,34 +13,34 @@ function [d] = findalldependencies(DB, visited, varargin)
 
     d = {};
 
-    if isempty(visited),
+    if isempty(visited)
         visited = {};
-    end;
+    end
 
-    for i=1:numel(varargin),
+    for i=1:numel(varargin)
         visited = cat(1,visited,{varargin{i}.id()});
-    end;
+    end
 
-    for i=1:numel(varargin),
+    for i=1:numel(varargin)
         q_v = ndi_query('','depends_on','*',varargin{i}.id());
         bb = DB.database_search(q_v);
 
-        for j=1:numel(bb),
+        for j=1:numel(bb)
             id_here = bb{j}.id();
-            if ~any(strcmp(id_here,visited)), % we don't already know about it
+            if ~any(strcmp(id_here,visited)) % we don't already know about it
                 visited = cat(1,visited,{id_here});
                 d = cat(1,d,{bb{j}});
                 newdocs = did.fun.finddocs_missing_dependencies(E,visited,bb{j});
-                if ~isempty(newdocs),
-                    for k=1:numel(newdocs),
+                if ~isempty(newdocs)
+                    for k=1:numel(newdocs)
                         visited = cat(1,visited,newdocs{k}.id());
-                    end;
+                    end
                     d = cat(1,d,newdocs(:));
-                end;
-            end;
-        end;
-    end;
+                end
+            end
+        end
+    end
 
-    if ~iscell(d),
+    if ~iscell(d)
         error(['This should always return a cell list, even if it is empty. Some element is wrong, debug necessary.']);
-    end;
+    end
