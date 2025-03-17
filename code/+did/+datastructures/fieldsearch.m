@@ -185,7 +185,7 @@ function b = fieldsearch(A, searchstruct)
                                 elseif strcmpi(searchstruct.operation,'hasanysubfield_exact_string')
                                     b_ = b_ & strcmp(value2,searchstruct.param2{k});
                                 else
-                                    error(['Unknown operation; shouldn''t happen.']);
+                                    error('Unknown operation; shouldn''t happen.');
                                 end
                             end
                         end
@@ -198,7 +198,7 @@ function b = fieldsearch(A, searchstruct)
             end
         case 'or'
             if ~isstruct(searchstruct.param1) | ~isstruct(searchstruct.param2)
-                error(['In operation ''or'', searchstruct ''param1'' and ''param2'' must be an array of structures.']);
+                error('In operation ''or'', searchstruct ''param1'' and ''param2'' must be an array of structures.');
             end
             b = (did.datastructures.fieldsearch(A,searchstruct.param1) | did.datastructures.fieldsearch(A,searchstruct.param2));
         otherwise

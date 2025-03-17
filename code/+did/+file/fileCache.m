@@ -59,7 +59,7 @@ classdef fileCache < handle
 
                 if nargin>1
                     if savedFileCacheParams.fileNameCharacters ~= fileNameCharacters
-                        error(['fileNameCharacters may not be altered once established.']);
+                        error('fileNameCharacters may not be altered once established.');
                     end
                 end
             end
@@ -96,7 +96,7 @@ classdef fileCache < handle
             end
 
             if reduceSize>=maxSize
-                error(['reduceSize must be less than maxSize.']);
+                error('reduceSize must be less than maxSize.');
             end
 
             iFileName = infoFileName(fileCacheObj);
@@ -233,7 +233,7 @@ classdef fileCache < handle
             data = {};
             fileCacheObj.binaryTable.writeTable(data);
             fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,uint16(0));
-            fullnames = fullfile(fileCacheObj.directoryName,fn)
+            fullnames = fullfile(fileCacheObj.directoryName,fn);
             if ~isempty(fullnames)
                 delete(fullnames{:});
             end
@@ -273,9 +273,8 @@ classdef fileCache < handle
                 useCatalog (1,1) logical = true
             end
 
-            this_function_made_lockfile = 0;
-
-            iFileName = infoFileName(fileCacheObj);
+            this_function_made_lockfile = 0; %#ok<NASGU> % Currently unused
+            iFileName = infoFileName(fileCacheObj); %#ok<NASGU> % Currently unused
 
             if useCatalog
                 % lock for sequential ops, will save a little time
@@ -286,16 +285,10 @@ classdef fileCache < handle
                 fileCacheObj.binaryTable.releaseLock(lockfid,key);
             else
                 d = dir(fileCacheObj.directoryName);
-                fileIndexes = find([d.isdir]==0);
-                d = d(fileIndexes);
-                % leave hidden files
-                include = [];
-                for i=1:numel(d)
-                    if d(i).name(1)~='.'
-                        include(end+1) = i;
-                    end
-                end
-                d = d(include);
+                isFolder = [d.isdir];
+                d(isFolder) = [];
+                isHidden = strncmp({d.name}, '.', 1);
+                d(isHidden) = [];
                 fn = {d.name};
                 sz = [d.bytes];
                 lastAccess = NaN*sz;
@@ -329,7 +322,7 @@ classdef fileCache < handle
             end
 
             if sum(newFileSize)>fileCacheObj.maxSize
-                error(['New files to be added exceed cache allowed size by themselves.']);
+                error('New files to be added exceed cache allowed size by themselves.');
             end
 
             [lockfid,key] = fileCacheObj.binaryTable.getLock();

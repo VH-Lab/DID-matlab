@@ -1,7 +1,7 @@
 function [v,i] = struct_name_value_search(thestruct, thename, makeerror)
-    % vlt.db.struct_name_value_search - search a struct with fields 'name' and 'value'
+    % struct_name_value_search - search a struct with fields 'name' and 'value'
     %
-    % [V,I] = STRUCT_NAME_VALUE_SEARCH(THESTRUCT, THENAME, [MAKEERROR])
+    % [V,I] = did.db.STRUCT_NAME_VALUE_SEARCH(THESTRUCT, THENAME, [MAKEERROR])
     %
     % Searches a structure array THESTRUCT that is expected to have fields
     % 'name' and 'value'. If there is a name matching THENAME, then the
@@ -14,20 +14,20 @@ function [v,i] = struct_name_value_search(thestruct, thename, makeerror)
     % not the function will generate an error if THENAME is not found.
     %
 
-    if nargin<3
-        makerror = 1;
+    if nargin < 3
+        makeerror = 1;
     end
 
     if ~isstruct(thestruct)
-        error(['THESTRUCT must be a struct array.']);
+        error('THESTRUCT must be a struct array.');
     end
 
     if ~isfield(thestruct,'name')
-        error(['THESTRUCT must have a field named ''name''.']);
+        error('THESTRUCT must have a field named ''name''.');
     end
 
     if ~isfield(thestruct,'value')
-        error(['THESTRUCT must have a field named ''value''.']);
+        error('THESTRUCT must have a field named ''value''.');
     end
 
     tf = strcmp(thename,{thestruct.name});

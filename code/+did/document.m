@@ -560,7 +560,7 @@ classdef document
 
             b = 1;
             msg = '';
-            fi_index = [];
+            fI_index = [];
 
             % Step 1: does this did.document have 'files' at all?
 
@@ -576,14 +576,10 @@ classdef document
             % Step 2a: see if name ends in '_#', where # is a non-negative integer.
 
             search_name = name;
-            ends_with_number = 0; % assume not at first
-            number = NaN;
             underscores = find(name=='_');
             if ~isempty(underscores)
                 n = str2num(name(underscores(end)+1:end));
                 if ~isempty(n) % we have a number
-                    number = n;
-                    ends_with_number = 1;
                     search_name = [name(1:underscores(end)) '#'];
                 end
             end
@@ -765,7 +761,6 @@ classdef document
             end
 
             % step d) look for 'jsonfilelocationstring.json' in our paths
-            fname = [jsonfilelocationstring '.json'];
             defLocs = did.common.PathConstants.definitions.values();
             for i=1:numel(defLocs)
                 if ~iscell(defLocs{i})

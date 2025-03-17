@@ -160,8 +160,8 @@ classdef dumbjsondb
             fileexist = isfile([p f]);
 
             we_know_we_have_latest_version = []; % we will assign this below
-
             can_we_write = 0;
+
             if ~fileexist % we are writing for the first time
                 we_know_we_have_latest_version = 1;
                 can_we_write = 1;
@@ -170,11 +170,17 @@ classdef dumbjsondb
                     can_we_write = 1;
                     we_know_we_have_latest_version = 1;
                 elseif options.Overwrite==0 % do not overwrite
-                    versstring = [];
-                    if ~isempty(version)
-                        versstring = [' and version ' num2str(doc_version) ' '];
+                    if isempty(doc_version)
+                        versstring = '';
+                    else
+                        if isnumeric(doc_version)
+                            versstring = sprintf(' and version "%s"', num2str(doc_version));
+                        else
+                            versstring = sprintf(' and version "%s"', doc_version);
+                        end
                     end
-                    error(['Document with document id ' doc_unique_id ' versstring ' already exists, overwrite was not permitted by user request.']);
+                    error(['Document with document id "%s"%s already exists, ', ...
+                           'overwrite was not permitted by user request.'], doc_unique_id, versstring);
                 elseif options.Overwrite==2 % increment version
                     v = dumbjsondb_obj.docversions(doc_unique_id);
                     doc_version = max(v) + 1;
@@ -263,9 +269,6 @@ classdef dumbjsondb
             %
             % See also: DUMBJSONDB/CLOSEBINARYFILE, DUMBJSONDB/READ, CHECKOUT_LOCK_FILE, FREAD, FWRITE
 
-            fid = -1;
-            lockfid = -1;
-            key = -1;
             doc_unique_id = did.file.dumbjsondb.fixdocuniqueid(doc_unique_id); % make sure it is a string
             if nargin<3
                 doc_version = [];
@@ -479,7 +482,7 @@ classdef dumbjsondb
                     dumbjsondb_obj.remove(ids{i}); % remove the entry
                 end
             else
-                disp(['Not clearing because user did not indicate he/she is sure.']);
+                disp('Not clearing because user did not indicate he/she is sure.');
             end
         end % clear
 
@@ -647,7 +650,7 @@ classdef dumbjsondb
                         delete(metafile);
                     end
                 otherwise
-                    error(['Unknown request.']);
+                    error('Unknown request.');
             end
 
         end % updatedocmetadata
@@ -709,7 +712,7 @@ classdef dumbjsondb
             thedir = [filepath filesep dumbjsondb_obj.dirname];
             if ~isfolder(thedir)
                 try
-                    mkdir([thedir]);
+                    mkdir(thedir);
                 catch
                     error(['Could not create directory ' thedir '.']);
                 end
@@ -762,12 +765,12 @@ classdef dumbjsondb
             try
                 js = did.datastructures.jsonencodenan(doc_object);
             catch
-                error(['Could not generate JSON code from object.']);
+                error('Could not generate JSON code from object.');
             end
             try
-                did.file.str2text([filename], js);
+                did.file.str2text(filename, js);
             catch
-                error(['Could not write to file ' [filename ] '; ' lasterr '.']);
+                error(['Could not write to file ' filename  '; ' lasterr '.']);
             end
         end % docobject2file()
 
