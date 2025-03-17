@@ -916,7 +916,7 @@ classdef dumbjsondb
             for i=1:2:numel(searchParams)
                 hasit = 0;
                 try
-                    value = document.(searchParams{i});
+                    value = eval(['document.' searchParams{i} ';']);
                     hasit = 1;
                 end
 
