@@ -757,7 +757,7 @@ classdef document
                     end
                 end
                 % if we are here, we didn't find it in the locations
-                error(['DID:Document:readjsonfilelocation:could not find a match in ' extracted_str{1} ' directories .']);
+                error(['DID:Document:readjsonfilelocation:could not find a match for ' jsonfilelocationstring ' in ' extracted_str{1} ' directories .']);
             end
 
             % step d) look for 'jsonfilelocationstring.json' in our paths
