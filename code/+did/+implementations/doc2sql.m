@@ -115,6 +115,11 @@ end
 function colData = newColumn(name, value, matlabType)
     if nargin < 3, matlabType = class(value); end
     colData.name       = name;
+    if iscellstr(value)&~isempty(value)  % cell arrays of strings are now coming through as BLOBs, not sure why, this makes them comma separated strings as they used to be
+        newvalue = char(join(value,','));
+        if nargin < 3, matlabType = class(newvalue); end
+        value = newvalue;
+    end
     colData.matlabType = matlabType;
     colData.sqlType    = sqlTypeOf(matlabType);
     colData.value      = value;
