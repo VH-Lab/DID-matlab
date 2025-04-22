@@ -861,8 +861,11 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 case 'regexp'
                     sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,"' param1Str '") NOT NULL'];
                 case 'isa'
+                    %sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
+                    %    '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\")'];
+                    param1regExp = ['(^|, )' param1Str '(,|$)'];
                     sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
-                        '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\")'];
+                        '(fields.field_name="meta.superclass" AND ' notStr 'regex(doc_data.value,"' param1regExp '") NOT NULL)'];
                 otherwise
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
             end
