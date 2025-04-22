@@ -60,9 +60,9 @@ fieldnames and structure names can be any alphanumeric character but can only ha
 | integer | Integer (single value) | should be MINVALUE, MAXVALUE, NANOKAY, where NANOKAY is 1 if NaN values are okay |
 | double | Double precision value | MINVALUE, MAXVALUE, NANOKAY,EMPTYOK where NANOKAY is 1 if NaN values are okay and EMPTYOK is 1 if empty values are okay |
 | matrix | Double precision matrix | ROWS, COLUMNS (the number of rows and the number of columns in the matrix. NaN can be used to specify that the size of a particular dimension is flexible. Example: [2,1] says the matrix must be 2 rows by 1 column. [NaN, 1] says the matrix must be a vector with any number of rows allowed and exactly 1 column. |
-| stringarray | Array of strings | [MIN_NUMBER, MAX_NUMBER]. The MINIMUM and MAXIMUM number of string arrays allowed. Use NaN to ignore the limit. For example: [1, 2] means the string array can have 1 or 2 enteries. [Nan, 2] means the string array can have at most 2 entries with no minimum. |
+| stringarray | Array of strings | [MIN_NUMBER, MAX_NUMBER]. The MINIMUM and MAXIMUM number of string arrays allowed. Use NaN to ignore the limit. For example: [1, 2] means the string array can have 1 or 2 entries. [Nan, 2] means the string array can have at most 2 entries with no minimum. |
 | timestamp | A timestamp in UTC | no parameters |
-| char | A charcter array | maximum length |
+| char | A character array | maximum length |
 | did_uid   | A DID UID | no parameters |
 
 In the future, there will be more types, including a type that must match an entry in a table or a type that must match a node in an ontology.
