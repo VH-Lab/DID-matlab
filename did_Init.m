@@ -10,4 +10,4 @@ pathstoremove = char(strjoin(pathsnow_cell(matches),pathsep));
 rmpath(pathstoremove);
 
 % Add the code subdirectory to MATLAB's search path
-pathstoadd = genpath( fullfile(mydidpath, 'code') );
+pathstoadd = addpath(genpath(fullfile(mydidpath, 'code')));
