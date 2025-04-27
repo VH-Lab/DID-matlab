@@ -90,7 +90,7 @@ classdef query
             %   q = did.query('base.id','regexp','(.*)') % match any base.id
             %   q = did.query('','isa','base') % match any document that is member of class 'base'
 
-            arguments (Input)
+            arguments
                 field % Type checking depends on nargin, handled below
                 % Operation is required if nargin >= 2, must be member of valid list
                 op (1,:) {mustBeMember(op, {'regexp', 'exact_string', 'contains_string', ...
