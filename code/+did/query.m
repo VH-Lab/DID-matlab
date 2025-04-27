@@ -90,7 +90,7 @@ classdef query
             %   q = did.query('base.id','regexp','(.*)') % match any base.id
             %   q = did.query('','isa','base') % match any document that is member of class 'base'
 
-            arguments (Input)
+            arguments
                 field % Type checking depends on nargin, handled below
                 % Operation is required if nargin >= 2, must be member of valid list
                 op (1,:) {mustBeMember(op, {'regexp', 'exact_string', 'contains_string', ...
@@ -142,10 +142,10 @@ classdef query
             % Combines the searches from A and B into a search C. The searchstructure field of
             % C will be a concatenated version of those from A and B. The query C will only pass if
             % all of the characteristics of A and B are satisfied.
-             arguments (Input)
-                 A (1,1) did.query % Validate the object itself
-                 B (1,1) did.query % Validate the second argument
-             end
+            arguments
+                A (1,1) did.query % Validate the object itself
+                B (1,1) did.query % Validate the second argument
+            end
 
             C = A;
             C.searchstructure = [C.searchstructure(:); B.searchstructure(:)];
@@ -157,7 +157,7 @@ classdef query
             % C = OR(A,B) or C = A | B
             %
             % Produces a new DID.QUERY object C that is true if either DID.QUERY A or DID.QUERY B is true.
-            arguments (Input)
+            arguments
                 A (1,1) did.query
                 B (1,1) did.query
             end
@@ -175,7 +175,7 @@ classdef query
             % DID.QUERY dependencies (see FIELDSEARCH).
             %
             % See also: FIELDSEARCH
-            arguments (Input)
+            arguments
                 did_query_obj (:,:) did.query % Allow scalar or array of query objects
             end
 
@@ -259,7 +259,7 @@ classdef query
             % operator in the case of a non-character value.
             %
             % See also: FIELDSEARCH, DID.QUERY/DID.QUERY
-            arguments (Input)
+            arguments
                 searchcellarray (1,:) cell
             end
 
