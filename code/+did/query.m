@@ -90,6 +90,24 @@ classdef query
             %   q = did.query('base.id','regexp','(.*)') % match any base.id
             %   q = did.query('','isa','base') % match any document that is member of class 'base'
 
+            arguments (Input)
+                field % Type checking depends on nargin, handled below
+                % Operation is required if nargin >= 2, must be member of valid list
+                op (1,:) {mustBeMember(op, {'regexp', 'exact_string', 'contains_string', ...
+                                           'exact_number', 'lessthan', 'lessthaneq', ...
+                                           'greaterthan', 'greaterthaneq', 'hasfield', ...
+                                           'hasanysubfield_contains_string', 'isa', 'depends_on', ...
+                                           'hasmember',...
+                                           'or', ... % Keep 'or' (cannot be negated)
+                                           '~regexp', '~exact_string', '~contains_string', ...
+                                           '~exact_number', '~lessthan', '~lessthaneq', ...
+                                           '~greaterthan', '~greaterthaneq', '~hasfield', ...
+                                           '~hasmember',...
+                                           '~hasanysubfield_contains_string', '~isa', '~depends_on'})} = 'regexp'
+                param1 = '' % Optional
+                param2 = '' % Optional
+            end
+
             if nargin == 0 % not an error => empty query
                 query_struct = did.datastructures.emptystruct('field','operation','param1','param2');
             elseif nargin == 1
@@ -103,12 +121,12 @@ classdef query
                     query_struct = did.query.searchcellarray2searchstructure(field);
                 elseif isa(field,'did_query') % just copy search structure
                     query_struct = field.searchstructure;
+                elseif isempty(field)
+                    query_struct = did.datastructures.emptystruct('field','operation','param1','param2');
                 else
                     error('No operation specified for did.query.');
                 end
             else
-                if nargin < 3, param1 = ''; end
-                if nargin < 4, param2 = ''; end
                 query_struct = struct('field',field,'operation',op,'param1',param1,'param2',param2);
             end
             did_query_obj.searchstructure = query_struct;
@@ -124,6 +142,10 @@ classdef query
             % Combines the searches from A and B into a search C. The searchstructure field of
             % C will be a concatenated version of those from A and B. The query C will only pass if
             % all of the characteristics of A and B are satisfied.
+             arguments (Input)
+                 A (1,1) did.query % Validate the object itself
+                 B (1,1) did.query % Validate the second argument
+             end
 
             C = A;
             C.searchstructure = [C.searchstructure(:); B.searchstructure(:)];
@@ -135,8 +157,12 @@ classdef query
             % C = OR(A,B) or C = A | B
             %
             % Produces a new DID.QUERY object C that is true if either DID.QUERY A or DID.QUERY B is true.
+            arguments (Input)
+                A (1,1) did.query
+                B (1,1) did.query
+            end
 
-            C = did.query();
+            C = did.query('');
             C.searchstructure = did.query.searchstruct('','or',A.searchstructure(:),B.searchstructure(:));
         end % or()
 
@@ -149,6 +175,9 @@ classdef query
             % DID.QUERY dependencies (see FIELDSEARCH).
             %
             % See also: FIELDSEARCH
+            arguments (Input)
+                did_query_obj (:,:) did.query % Allow scalar or array of query objects
+            end
 
             searchstructure = did.datastructures.emptystruct('field','operation','param1','param2');
             for i=1:numel(did_query_obj)
@@ -230,6 +259,9 @@ classdef query
             % operator in the case of a non-character value.
             %
             % See also: FIELDSEARCH, DID.QUERY/DID.QUERY
+            arguments (Input)
+                searchcellarray (1,:) cell
+            end
 
             if ~iscell(searchcellarray) || mod(numel(searchcellarray),2) ~= 0
                 error('Input must be a cell array in the form {''property1'',value1,...}');
@@ -257,7 +289,27 @@ classdef query
             % Creates search structure with the given fields FIELD, OPERATION, PARAM1, PARAM2.
             %
             % See also: FIELDSEARCH, DID.QUERY/DID.QUERY
-
+            arguments
+                field (1,:) char 
+                % Operation must be one of the valid strings (includes internal ops & negations)
+                operation (1,:) {mustBeMember(operation, ...
+                                          {'regexp', 'exact_string', 'contains_string', ...
+                                           'exact_number', 'lessthan', 'lessthaneq', ...
+                                           'greaterthan', 'greaterthaneq', 'hasfield', ...
+                                           'hasanysubfield_contains_string', 'isa', 'depends_on', ...
+                                           'hasmember',...
+                                           'or', ...
+                                           '~regexp', '~exact_string', '~contains_string', ...
+                                           '~exact_number', '~lessthan', '~lessthaneq', ...
+                                           '~greaterthan', '~greaterthaneq', '~hasfield', ...
+                                           '~hasanysubfield_contains_string', '~isa', '~depends_on', ...
+                                           '~hasmember',...
+                                           'hasanysubfield_exact_string', ... % Internal op from depends_on
+                                           '~hasanysubfield_exact_string' ... % Internal op from ~depends_on
+                                           })} % '~contains_string' is covered by the general negation
+                param1 % Can be anything
+                param2 % Can be anything
+            end
             searchstruct_out = struct('field',field,'operation',operation,'param1',param1,'param2',param2);
         end
     end % methods (Static)

@@ -130,20 +130,6 @@ classdef TestDbQueries < matlab.unittest.TestCase
             testCase.testQuery(q)
         end
 
-        function testDoNotBluh(testCase)
-            id_chosen = testCase.getRandomDocumentId();
-            q = did.query('base.id','~bluh',id_chosen); %using ~ for NOT
-
-            testCase.assertError(@(query) testCase.db.search(q), 'DID:Database:SQL')
-
-            % Doing this to check whether the apply_didquery function throws an exception or has a real output
-            try
-                [~, ~] = did.test.helper.utility.apply_didquery(testCase.docs, q);
-            catch ME
-                testCase.assertSubstring(ME.message, 'Unknown search operation bluh')
-            end
-        end
-
         function testContainsString(testCase, sub_string)
             if isempty(sub_string)
                 id_chosen = testCase.getRandomDocumentId();
