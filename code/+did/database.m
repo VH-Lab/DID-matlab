@@ -1022,7 +1022,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             file_obj.fclose();
         end % do_close_doc()
 
-        function [branch_id, branch_ids] = validate_branch_id(database_obj, branch_id, check_existance)
+        function [branch_id, branch_ids] = validate_branch_id(database_obj, branch_id, check_existence)
             % The branch_id must be a non-empty string
             if isstring(branch_id), branch_id = char(branch_id); end
             if isempty(branch_id) || ~ischar(branch_id)
@@ -1030,7 +1030,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
 
             % Optionally ensure that the branch exists in the database
-            if nargin < 3 || check_existance
+            if nargin < 3 || check_existence
                 branch_ids = database_obj.all_branch_ids();
                 if ~ismember(branch_id, branch_ids)
                     error('DID:Database:InvalidBranch','Branch ID "%s" does not exist in the database',branch_id);
@@ -1040,7 +1040,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
         end
 
-        function doc_id = validate_doc_id(database_obj, doc_id, check_existance)
+        function doc_id = validate_doc_id(database_obj, doc_id, check_existence)
             % The doc_id must be a non-empty string or char-array
             if isstring(doc_id)
                 doc_id = char(doc_id);  % "id" => 'id'
@@ -1060,7 +1060,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
 
             % Optionally ensure that the branch exists in the database
-            if nargin < 3 || check_existance
+            if nargin < 3 || check_existence
                 doc_ids = database_obj.get_doc_ids();
                 if ~ismember(doc_id, doc_ids)
                     error('DID:Database:InvalidDocID','Document ID "%s" does not exist in the database',doc_id);
