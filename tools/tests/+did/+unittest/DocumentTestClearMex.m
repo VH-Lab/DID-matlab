@@ -28,6 +28,10 @@ classdef DocumentTestClearMex < matlab.unittest.TestCase
 
     methods (Test)
         function testAddDocuments(testCase)
+            import matlab.unittest.fixtures.SuppressedWarningsFixture
+            % This warning is expected when using "clear mex" below:
+            testCase.applyFixture(SuppressedWarningsFixture('DID:SQLITEDB:InvalidDatabaseId'))
+
             % Generate a set of documents with node names and a graph of the dependencies
             [G,node_names,docs] = did.test.helper.documents.make_doc_tree([10 10 10]);
 
