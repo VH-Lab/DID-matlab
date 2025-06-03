@@ -655,7 +655,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     ME = MException('DID:SQLITEDB:FileRetrieval:CustomHandlerFailed', ...
                         'Failed to retrieve file of type "%s" using customFileHandler', file_type);
                     ME = ME.addCause(MECause);
-                    throw(ME);
+                    throwAsCaller(ME);
                 end
             end
         end
