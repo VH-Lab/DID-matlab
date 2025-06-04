@@ -528,23 +528,36 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
-            % Optional PARAMS may be specified as P-V pairs of a parameter name
-            % followed by parameter value, as accepted by the DID.FILE.FILEOBJ
-            % constructor method.
+            % Optional PARAMS may be specified as name-value pairs, including any
+            % parameters accepted by the DID.FILE.FILEOBJ constructor, as well as:
+            %
+            %    'customFileHandler' — a function handle used to resolve file types
+            %    not handled by default (e.g., non-'file' or 'url' types). It should
+            %    accept (destPath, sourcePath) as inputs and produce a local file at
+            %    destPath.
             %
             % Only the first matching file that is found is returned.
             %
             % Inputs:
-            %    this_obj - this class object
-            %    document_id - unique document ID for the requested document
-            %    filename - name of requested data file referenced in the document
-            %    params - optional parameters to DID.FILE.FILEOBJ constructor
+            %    this_obj        - this class object
+            %    document_id     - unique document ID for the requested document
+            %    filename        - name of requested data file referenced in the document
+            %    params          - optional name-value parameters, including:
+            %                      - DID.FILE.FILEOBJ constructor options
+            %                      - 'customFileHandler' for resolving custom file types
             %
             % Outputs:
             %    file_obj - a did.file.readonly_fileobj object (possibly empty)
 
-            % Get the cached filepath to the specified document
+            % Process varargin
+            argNames = varargin(1:2:end);
+            if any(strcmp(argNames, 'customFileHandler'))
+                idx = find(strcmp(argNames, 'customFileHandler'));
+                customFileHandler = varargin{idx+1};
+                varargin([idx, idx+1]) = [];
+            end
 
+            % Get the cached filepath to the specified document
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
                          '  FROM docs,files ' ...
                          ' WHERE docs.doc_id="' document_id '" ' ...
@@ -604,6 +617,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         % call fileCache object to add the file
                         websave(destPath, sourcePath);
                         if ~isfile(destPath), error(' '); end
+                    else
+                        if exist('customFileHandler', 'var')
+                            tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
+                        else
+                            error('DID:SQLITEDB:FileRetrieval:UnsupportedType', ...
+                                'File type "%s" is not supported and no custom handler is defined.', file_type);
+                        end
                     end
                     % now we have the temporary file for the file cache
                     didCache.addFile(destPath, this_file_struct.uid);
@@ -622,6 +642,21 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 error('DID:SQLITEDB:open','No file in document "%s" can be accessed',document_id);
             else
                 error('DID:SQLITEDB:open','The file "%s" in document "%s" cannot be accessed',filename,document_id);
+            end
+
+            function tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
+                try
+                    customFileHandler(destPath, sourcePath);
+                    if ~isfile(destPath)
+                        error('DID:SQLITEDB:FileRetrieval:CustomHandlerMissing', ...
+                            'customFileHandler did not produce a file at "%s"', destPath);
+                    end
+                catch MECause
+                    ME = MException('DID:SQLITEDB:FileRetrieval:CustomHandlerFailed', ...
+                        'Failed to retrieve file of type "%s" using customFileHandler', file_type);
+                    ME = ME.addCause(MECause);
+                    throwAsCaller(ME);
+                end
             end
         end
 
