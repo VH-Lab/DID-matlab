@@ -23,7 +23,7 @@ concurrency:
 jobs:
   call-reusable-test-toolbox-workflow:
     name: Test and analyse code
-    uses: ehennestad/matbox/.github/workflows/reusable_test_workflow.yml@add-reusable-test-workflow
+    uses: ehennestad/matbox/.github/workflows/reusable_test_workflow.yml@v0.9
     with:
       matlab_release: R2021b
       matlab_use_cache: true
