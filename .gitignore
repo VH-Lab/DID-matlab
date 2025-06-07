@@ -1,7 +1,6 @@
 # Ignore Mac DS_Store files and other known temporary files
 .DS_Store
 docs/reports/*
-!docs/reports/badge
 releases/
 *.tmp
 *.swp

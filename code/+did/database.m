@@ -434,7 +434,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Optional PARAMETERS may be specified as P-V pairs of parameter name
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
-            %   - 'Validate' - folowed by false or true (default)
+            %   - 'Validate' - followed by false or true (default)
 
             % Ensure we got a valid input doc object
             if isempty(document_objs)
