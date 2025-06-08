@@ -29,6 +29,8 @@ jobs:
       # Path to directory containing tools and MLToolboxInfo.json. Used for finding
       # unit tests, running customized MatBox tasks, and determining toolbox metadata
       tools_directory: tools
+
+      matlab_products: Statistics_and_Machine_Learning_Toolbox
       
     secrets:
       # SSH deploy key for pushing to protected branches. Required for creating
