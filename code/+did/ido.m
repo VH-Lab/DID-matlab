@@ -84,8 +84,8 @@ classdef ido
             % B = isvalid(ID)
             %
             % Returns true if ID matches the structure of a did.ido identifier and
-            % false otherwise. A valid ID must have 16 hexidecimal digits in
-            % 0-9 or a-f, an underscore, and then 16 more hexidecimal digits.
+            % false otherwise. A valid ID must have 16 hexadecimal digits in
+            % 0-9 or a-f, an underscore, and then 16 more hexadecimal digits.
 
             try
                 id = char(id);
