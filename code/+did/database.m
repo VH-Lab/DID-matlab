@@ -1734,17 +1734,21 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 if isfile(fileLocation)
                     found = true;
                     break
-                else
+                elseif startsWith(fileLocation, 'http')
                     try
-                        filename = websave(tempname,fileLocation);
-                        if isfile(filename)
-                            delete(filename);
+                        req = matlab.net.http.RequestMessage('HEAD');
+                        response = req.send(url);
+                        if strcmp( response.StatusCode, 'OK' )
                             found = true;
-                            break
                         end
                     catch
                         % ignore this location
                     end
+                else
+                    % If it is neither a local file nor an HTTP URL,
+                    % existence will not be pre-checked, but will be 
+                    % evaluated when attempting to read or download the file.
+                    found = true;
                 end
             end
         end % canfindonefile
