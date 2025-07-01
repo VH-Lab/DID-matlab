@@ -19,7 +19,6 @@ concurrency:
 
 jobs:
   test-code:
-    if: github.run_number > 1
     name: Analyse and test code
     uses: ehennestad/matbox-actions/.github/workflows/test-code-workflow.yml@v1
     with:
