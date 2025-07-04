@@ -1,5 +1,8 @@
 function testToolbox(varargin)
     projectRootDirectory = didtools.projectdir();
     matbox.installRequirements(projectRootDirectory)
-    matbox.tasks.testToolbox(projectRootDirectory, "CreateBadge", false, varargin{:})
+    matbox.tasks.testToolbox(projectRootDirectory, ...
+        "CreateBadge", false, ...
+        "TestsFolderName", 'tests', ...
+        varargin{:})
 end
