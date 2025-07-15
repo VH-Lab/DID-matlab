@@ -1284,13 +1284,14 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         end
                         areSame = all(ismember(lower(unique(expectedNames)), lower(unique(docNames_alt))));
                         if ~areSame
-                            disp('Expected dependencies:');
-                            expectedNames(:)' %#ok<NOPRT>
-                            disp('Found dependencies:');
-                            docNames_alt(:)' %#ok<NOPRT>
+                            errorMsgFormat = ['Dissimilar dependencies defined/found for %s.\n\n' ...
+                                'Expected dependencies: {%s}\n' ...
+                                'Found dependencies:    {%s}'];
+                            expectedStr = strjoin(string(expectedNames), ', ');
+                            foundStr = strjoin(string(docNames_alt), ', ');
+                            assert(areSame,'DID:Database:ValidationDependsOn', ...
+                                errorMsgFormat, doc_name, expectedStr, foundStr);
                         end
-                        assert(areSame,'DID:Database:ValidationDependsOn', ...
-                            'Dissimilar dependencies defined/found for %s', doc_name);
                         % Loop over all dependencies and ensure they exist
                         for idx = 1 : numel(mustHaveValue)
                             item_name = expectedNames{idx};
