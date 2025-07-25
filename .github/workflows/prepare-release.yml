@@ -19,6 +19,7 @@ jobs:
       version: ${{ inputs.version }}    # Do not change
       ref_name: ${{ github.ref_name }}  # Do not change
       matlab_products: Statistics_and_Machine_Learning_Toolbox
+      source_directory: src
       
     secrets:
       # SSH deploy key for pushing to protected branches. Required for creating
