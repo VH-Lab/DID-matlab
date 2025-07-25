@@ -12,25 +12,14 @@ on:
         type: string
 
 jobs:
-  reuse-workflow-release:
+  prepare-release:
     name: Prepare toolbox release
-    uses: ehennestad/matbox/.github/workflows/reusable_release_workflow.yml@make-release-workflow-reusable
+    uses: ehennestad/matbox-actions/.github/workflows/prepare-release-workflow.yml@v1
     with:
-      # Do not change
-      version: ${{ inputs.version }}
-      
-      # Do not change
-      ref_name: ${{ github.ref_name }}
-      
-      # Path to directory containing source code. This directory will be packaged
-      # into the toolbox. Important: This should not be a namespace directory
-      code_directory: code
-      
-      # Path to directory containing tools and MLToolboxInfo.json. Used for finding
-      # unit tests, running customized MatBox tasks, and determining toolbox metadata
-      tools_directory: tools
-
+      version: ${{ inputs.version }}    # Do not change
+      ref_name: ${{ github.ref_name }}  # Do not change
       matlab_products: Statistics_and_Machine_Learning_Toolbox
+      source_directory: src
       
     secrets:
       # SSH deploy key for pushing to protected branches. Required for creating
