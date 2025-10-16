@@ -6,7 +6,7 @@ classdef  matlabdumbjsondb < did.database
 
     methods
 
-        function did_matlabdumbjsondb_obj = matlabdumbjsondb(varargin)
+        function did_matlabdumbjsondb_obj = matlabdumbjsondb(command, path, options)
             % DID_MATLABDUMBJSONDB make a new MATLABDUMBJSONDB object
             %
             % DID_MATLABDUMBJSONDB_OBJ = DID_MATLABDUMBJSONDB(COMMAND, PATHNAME)
@@ -18,13 +18,19 @@ classdef  matlabdumbjsondb < did.database
             % should be stored on disk.
             %
             % See also: DUMBJSONDB, DUMBJSONDB/DUMBJSONDB
+            arguments
+                command char
+                path char
+                options.dirname char = 'dumbjsondb'
+                options.unique_object_id_field char = 'base.id'
+            end
             connection = '';
             if nargin>1
-                connection = varargin{2};
+                connection = path;
             end
             did_matlabdumbjsondb_obj = did_matlabdumbjsondb_obj@did.database(connection);
-            did_matlabdumbjsondb_obj.db = did.file.dumbjsondb(varargin{1:end},...
-                'dirname','dumbjsondb','unique_object_id_field','base.id');
+            did_matlabdumbjsondb_obj.db = did.file.dumbjsondb(command, path,...
+                'dirname',options.dirname,'unique_object_id_field',options.unique_object_id_field);
         end % did_matlabdumbjsondb()
     end
 

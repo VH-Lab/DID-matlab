@@ -19,6 +19,9 @@ function s = emptystruct(varargin)
     %       end;
     %
     % See also: VAR2STRUCT
+    arguments (Repeating)
+        varargin
+    end
 
     if isempty(varargin)
         s = struct([]);
@@ -37,5 +40,5 @@ function s = emptystruct(varargin)
         end
         s = s([]);
         %}
-        s = cell2struct(cell(numel(fields),0), fields');
+        s = cell2struct(cell(numel(fields),0), fields(:));
     end

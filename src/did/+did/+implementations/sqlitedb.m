@@ -93,6 +93,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %                         doc_data.value = "ndi_documentx") OR
             %                        (fields.field_name = "meta.superclass" AND
             %                         doc_data.value like "%ndi_documentx%"))'
+            arguments
+                this_obj
+                query_str
+            end
+            arguments (Repeating)
+                varargin
+            end
 
             % Open the database for query
             if isempty(this_obj.dbid)
@@ -100,7 +107,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
 
             % Run the SQL query in the database
-            data = this_obj.run_sql_noOpen(query_str);
+            data = this_obj.run_sql_noOpen(query_str, varargin{:});
 
             % Close the DB file - this happens automatically when hCleanup is
             % disposed when this method returns, using the onCleanup mechanism
@@ -246,7 +253,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
         end % do_get_doc_ids()
 
-        function do_add_doc(this_obj, document_obj, branch_id, varargin)
+        function do_add_doc(this_obj, document_obj, branch_id, options)
             % do_add_doc - Add a DID document to a specified branch in the DB
             %
             % do_add_doc(this_obj, document_obj, branch_id, [params])
@@ -256,6 +263,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
+            arguments
+                this_obj
+                document_obj
+                branch_id
+                options.OnDuplicate {mustBeMember(options.OnDuplicate,{'ignore','warn','error'})} = 'error'
+            end
 
             % Open the database for update
             hCleanup = this_obj.open_db(); %#ok<NASGU>
@@ -313,9 +326,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             if ~isempty(data)
                 errMsg = sprintf('Document %s already exists in the %s branch', doc_id, branch_id);
                 %assert(isempty(data),'DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg)
-                params = this_obj.parseOptionalParams(varargin{:});
-                try doOnDuplicate = params.OnDuplicate; catch, doOnDuplicate = 'error'; end
-                doOnDuplicate = lower(doOnDuplicate(doOnDuplicate~=' '));
+                doOnDuplicate = lower(options.OnDuplicate);
                 switch doOnDuplicate
                     case 'ignore'
                         % do nothing
@@ -392,7 +403,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %}
         end % do_add_doc()
 
-        function document_obj = do_get_doc(this_obj, document_id, varargin)
+        function document_obj = do_get_doc(this_obj, document_id, options)
             % do_get_doc - Return a DID.DOCUMENT for the specified document ID
             %
             % document_obj = do_get_doc(this_obj, document_id, [params])
@@ -411,6 +422,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % Outputs:
             %    document_obj - a did.document object (possibly empty)
+            arguments
+                this_obj
+                document_id
+                options.OnMissing {mustBeMember(options.OnMissing,{'ignore','warn','error'})} = 'error'
+            end
 
             %[doc, version] = this_obj.db.read(document_id);
             %document_obj = did.document(doc);
@@ -422,17 +438,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Process missing document results
             if isempty(data)
                 % Handle case of missing document
-                params = this_obj.parseOptionalParams(varargin{:});
-                try doOnMissing = params.OnMissing; catch, doOnMissing = 'error'; end
                 errMsg = sprintf('Document id "%s" was not found in the database',document_id);
-                %assert(~isempty(data),'DID:SQLITEDB:NO_SUCH_DOC','%s',errMsg)
-                doOnMissing = lower(doOnMissing(doOnMissing~=' '));
+                doOnMissing = lower(options.OnMissing);
                 switch doOnMissing
                     case 'ignore'
                         document_obj = did.document.empty; %return empty document
                         return
                     case 'warn'
                         warning('DID:SQLITEDB:NO_SUCH_DOC','%s',errMsg);
+                        document_obj = did.document.empty;
                         return
                     otherwise %case 'error'
                         error('DID:SQLITEDB:DOC_ID','%s',errMsg);
@@ -446,7 +460,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             document_obj = did.document(doc_struct);
         end % do_get_doc()
 
-        function do_remove_doc(this_obj, document_id, branch_id, varargin)
+        function do_remove_doc(this_obj, document_id, branch_id, options)
             % do_remove_doc - Remove specified DID document from the specified branch
             %
             % do_remove_doc(this_obj, document_id, branch_id, [params])
@@ -465,6 +479,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % Outputs:
             %    document_obj - a did.document object (possibly empty)
+            arguments
+                this_obj
+                document_id
+                branch_id
+                options.OnMissing {mustBeMember(options.OnMissing,{'ignore','warn','error'})} = 'error'
+            end
 
             % Open the database for update
             hCleanup = this_obj.open_db(); %#ok<NASGU>
@@ -487,9 +507,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             if isempty(data)
                 errMsg = sprintf('Cannot remove document %s - document not found in the %s branch', doc_id, branch_id);
                 %assert(~isempty(data),'DID:SQLITEDB:NO_SUCH_DOC','%s',errMsg)
-                params = this_obj.parseOptionalParams(varargin{:});
-                try doOnMissing = params.OnMissing; catch, doOnMissing = 'error'; end
-                doOnMissing = lower(doOnMissing(doOnMissing~=' '));
+                doOnMissing = lower(options.OnMissing);
                 switch doOnMissing
                     case 'ignore'
                         return
@@ -548,13 +566,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % Outputs:
             %    file_obj - a did.file.readonly_fileobj object (possibly empty)
-
-            % Process varargin
-            argNames = varargin(1:2:end);
-            if any(strcmp(argNames, 'customFileHandler'))
-                idx = find(strcmp(argNames, 'customFileHandler'));
-                customFileHandler = varargin{idx+1};
-                varargin([idx, idx+1]) = [];
+            customFileHandler = [];
+            varargin_to_pass = varargin;
+            for i=1:2:numel(varargin)
+                if strcmpi(varargin{i},'customFileHandler')
+                    customFileHandler = varargin{i+1};
+                    varargin_to_pass([i i+1]) = [];
+                    break;
+                end
             end
 
             % Get the cached filepath to the specified document
@@ -595,7 +614,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     if strcmp(parent,did.common.PathConstants.filecachepath) % fileCache,
                         didCache.touch(this_file); % we used it so indicate that we did
                     end
-                    file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin_to_pass{:});
                     return
                 end
             end
@@ -618,7 +637,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         websave(destPath, sourcePath);
                         if ~isfile(destPath), error(' '); end
                     else
-                        if exist('customFileHandler', 'var')
+                        if ~isempty(customFileHandler)
                             tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
                         else
                             error('DID:SQLITEDB:FileRetrieval:UnsupportedType', ...
@@ -629,7 +648,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     didCache.addFile(destPath, this_file_struct.uid);
                     cacheFile = fullfile(didCache.directoryName,this_file_struct.uid);
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
-                    file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin{:});
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
                     return
                 catch err
                     errMsg = strtrim(err.message); if ~isempty(errMsg), errMsg=[': ' errMsg]; end %#ok<AGROW>
@@ -859,14 +878,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
         function close_db(this_obj)
             % Close the database file (ignore any errors)
-            
-            try 
-                dbid = this_obj.dbid; 
+
+            try
+                dbid = this_obj.dbid;
             catch
                 % bail out if object is no longer valid
                 return
             end
-            
+
             try
                 if ~isempty(dbid)
                     mksqlite(dbid, 'close');

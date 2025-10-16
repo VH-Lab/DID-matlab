@@ -6,7 +6,7 @@ classdef (Abstract) sqldb < did.database
     end
 
     methods % constructor
-        function sqldb_obj = sqldb(varargin)
+        function sqldb_obj = sqldb(command, path)
             % SQLDB create a new SQLDB object
             %
             % SQLDB_OBJ = SQLDB(...)
@@ -17,9 +17,13 @@ classdef (Abstract) sqldb < did.database
             % the full pathname of where the files should be stored on disk.
             %
             % See also: DUMBJSONDB, SQLITEDB, POSTGRESDB
+            arguments
+                command char
+                path char
+            end
             connection = '';
             if nargin>1
-                connection = varargin{2};
+                connection = path;
             end
             sqldb_obj = sqldb_obj@did.database(connection);
         end % sqldb()

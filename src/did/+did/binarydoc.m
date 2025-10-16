@@ -22,13 +22,16 @@ classdef binarydoc < handle
     end  % protected, accessible
 
     methods
-        function binarydoc_obj = binarydoc(varargin)
+        function binarydoc_obj = binarydoc(options)
             % BINARYDOC - create a new BINARYDOC object
             %
             % BINARYDOC_OBJ = BINARYDOC()
             %
             % This is an abstract class, so the creator does nothing.
             %
+            arguments (Repeating)
+                options
+            end
 
         end % binarydoc()
 

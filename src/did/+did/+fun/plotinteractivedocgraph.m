@@ -1,4 +1,4 @@
-function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
+function plotinteractivedocgraph(docs, G, mdigraph, nodes, layout)
     % PLOTINTERACTIVEDOCGRAPH(DOCS, G, MDIGRAPH, NODES, LAYOUT)
     %
     % Given a cell array of NDI_DOCUMENTs DOCS, a connectivity matrix
@@ -23,6 +23,13 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
     %   [G,nodes,mdigraph] = did.fun.docs2graph(docs);
     %   did.fun.plotinteractivedocgraph(docs,G,mdigraph,nodes,'layered');
     %
+    arguments
+        docs cell
+        G
+        mdigraph
+        nodes
+        layout char
+    end
 
     if nargin==0
 
@@ -53,15 +60,13 @@ function plotinteractivedocgraph(varargin) %(docs, G, mdigraph, nodes)
         return;
     end
 
-    layout = varargin{5};
-
     f = figure;
     
     userData = struct();
-    userData.docs =  varargin{1};
-    userData.G = varargin{2};
-    userData.mdigraph = varargin{3};
-    userData.nodes = varargin{4};
+    userData.docs =  docs;
+    userData.G = G;
+    userData.mdigraph = mdigraph;
+    userData.nodes = nodes;
     
     set(f,'userdata',userData);
 

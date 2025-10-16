@@ -9,16 +9,23 @@ classdef readonly_fileobj < did.file.fileobj
     % See also: FILEOBJ
 
     methods
-        function fileobj_obj = readonly_fileobj(varargin)
+        function fileobj_obj = readonly_fileobj(options)
             % READONLY_FILEOBJ - create a new read-only binary file object
             %
             % FILEOBJ_OBJ = READONLY_FILEOBJ(...)
             %
             % Creates an empty FILEOBJ object. If FILENAME is provided,
             % then the filename is stored.
+            arguments
+                options.machineformat (1,1) string {did.file.mustBeValidMachineFormat} = 'n'; % native machine format
+                options.permission (1,1) string {did.file.mustBeValidPermission} = "r"
+                options.fid (1,1) int64 = -1
+                options.fullpathfilename = '';
+            end
 
             % Call the super-class constructor
-            fileobj_obj@did.file.fileobj(varargin{:});
+            super_options = namedargs2cell(options);
+            fileobj_obj@did.file.fileobj(super_options{:});
 
             % Ensure that the default 'r' permission was not modified
             if ~strcmpi(fileobj_obj.permission(1),'r')

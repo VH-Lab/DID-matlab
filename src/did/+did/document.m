@@ -8,12 +8,18 @@ classdef document
     end
 
     methods
-        function did_document_obj = document(document_type, varargin)
+        function did_document_obj = document(document_type, options)
             % DID_DOCUMENT - create a new DID_DATABASE object
             %
             % DID_DOCUMENT_OBJ = DID_DOCUMENT(DOCUMENT_TYPE, 'PARAM1', VALUE1, ...)
             %   or
             % DID_DOCUMENT_OBJ = DID_DOCUMENT(MATLAB_STRUCT)
+            arguments
+                document_type
+            end
+            arguments (Repeating)
+                options
+            end
 
             made_from_struct = 0;
 
@@ -29,20 +35,20 @@ classdef document
                 document_properties.base.id = did.ido.unique_id();
                 document_properties.base.datestamp = char(datetime('now','TimeZone','UTCLeapSeconds'));
 
-                if numel(varargin)==1 % see if user put it all as one cell array
-                    if iscell(varargin{1})
-                        varargin = varargin{1};
+                if numel(options)==1 % see if user put it all as one cell array
+                    if iscell(options{1})
+                        options = options{1};
                     end
                 end
-                if mod(numel(varargin),2)~=0
+                if mod(numel(options),2)~=0
                     error('Variable inputs must be name/value pairs');
                 end
 
-                for i=1:2:numel(varargin) % assign variable arguments
+                for i=1:2:numel(options) % assign variable arguments
                     try
-                        eval(['document_properties.' varargin{i} '= varargin{i+1};']);
+                        eval(['document_properties.' options{i} '= options{i+1};']);
                     catch
-                        error(['Could not assign document_properties.' varargin{i} '.']);
+                        error(['Could not assign document_properties.' options{i} '.']);
                     end
                 end
             end
@@ -86,7 +92,7 @@ classdef document
             uid = did_document_obj.document_properties.base.id;
         end % id()
 
-        function did_document_obj = setproperties(did_document_obj, varargin)
+        function did_document_obj = setproperties(did_document_obj, options)
             % SETPROPERTIES - Set property values of an DID_DOCUMENT object
             %
             % DID_DOCUMENT_OBJ = SETPROPERTIES(DID_DOCUMENT_OBJ, 'PROPERTY1', VALUE1, ...)
@@ -98,13 +104,19 @@ classdef document
             %
             % Example:
             %   mydoc = mydoc.setproperties('base.name','mydoc name');
+            arguments
+                did_document_obj
+            end
+            arguments (Repeating)
+                options
+            end
 
             newproperties = did_document_obj.document_properties;
-            for i=1:2:numel(varargin)
+            for i=1:2:numel(options)
                 try
-                    eval(['newproperties.' varargin{i} '=varargin{i+1};']);
+                    eval(['newproperties.' options{i} '=options{i+1};']);
                 catch
-                    error(['Error in assigning ' varargin{i} '.']);
+                    error(['Error in assigning ' options{i} '.']);
                 end
             end
 
