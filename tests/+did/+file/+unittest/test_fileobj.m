@@ -2,11 +2,11 @@ classdef test_fileobj < matlab.unittest.TestCase
     methods (Test)
         function test_constructor(testCase)
             % Test creating a fileobj
-            fo = did.file.fileobj();
-            testCase.verifyEqual(fo.fid, -1);
-            testCase.verifyEqual(fo.permission, 'r');
-            testCase.verifyEqual(fo.machineformat, 'n');
-            testCase.verifyEqual(fo.fullpathfilename, '');
+            theFileObj = did.file.fileobj();
+            testCase.verifyEqual(theFileObj.fid, -1);
+            testCase.verifyEqual(theFileObj.permission, 'r');
+            testCase.verifyEqual(theFileObj.machineformat, 'n');
+            testCase.verifyEqual(theFileObj.fullpathfilename, '');
         end
 
         function test_custom_file_handler_error(testCase)
