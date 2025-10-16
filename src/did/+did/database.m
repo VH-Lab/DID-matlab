@@ -479,7 +479,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 database_obj.validate_docs(document_objs);
             end
 
-            varargin = namedargs2cell(options);
+            downstream_options.OnDuplicate = options.OnDuplicate;
+            varargin_to_pass = namedargs2cell(downstream_options);
 
             % Call the database's addition method separately for each doc
             for idx = 1 : numel(document_objs)
@@ -499,7 +500,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     catch
                     end
                 end
-                database_obj.do_add_doc(doc, branch_id, varargin{:});
+                database_obj.do_add_doc(doc, branch_id, varargin_to_pass{:});
             end
 
             % Restore journaling if no validation requested
