@@ -28,7 +28,7 @@ classdef test_document < matlab.unittest.TestCase
             % Add a file and verify it was added
             doc = doc.add_file('filename1.ext', '/path/to/file1.txt');
             [isIn, ~, fI_index] = doc.is_in_file_list('filename1.ext');
-            testCase.verifyTrue(isIn, "File 'filename1.ext' should be in the file list.");
+            testCase.verifyThat(isIn, matlab.unittest.constraints.IsTrue, "File 'filename1.ext' should be in the file list.");
             testCase.verifyNotEmpty(fI_index, "File info index should not be empty after adding a file.");
 
             % Verify the location of the added file
