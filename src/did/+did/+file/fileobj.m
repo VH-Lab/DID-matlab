@@ -329,7 +329,7 @@ classdef fileobj < handle
             end
         end % fscanf()
 
-        function count = fprintf(fileobj_obj, varargin)
+        function count = fprintf(fileobj_obj, args)
             % FPRINTF - print data to a FILEOBJ_OBJ
             %
             % [COUNT] = FPRINTF(FID,FORMAT,A, ...)
@@ -337,7 +337,7 @@ classdef fileobj < handle
             % Call FPRINTF (see FPRINTF for inputs) for the file associated with
             % FILEOBJ_OBJ.
             arguments (Repeating)
-                varargin
+                args
             end
 
             if strcmpi(fileobj_obj.permission,'r')
@@ -345,7 +345,7 @@ classdef fileobj < handle
             end
             count = 0;
             if fileobj_obj.fid >= 0
-                count = fprintf(fileobj_obj.fid,varargin{:});
+                count = fprintf(fileobj_obj.fid,args{:});
             end
         end % fprintf()
 
