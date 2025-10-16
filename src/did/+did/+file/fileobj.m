@@ -18,6 +18,8 @@ classdef fileobj < handle
 
         % machineformat - big-endian ('b'), little-endian ('l'), or native ('n')
         machineformat (1,:) char {did.file.mustBeValidMachineFormat} = 'n'
+
+        customFileHandler = []
     end % properties
 
     methods
@@ -33,6 +35,7 @@ classdef fileobj < handle
                 propValues.permission (1,1) string {did.file.mustBeValidPermission} = "r"
                 propValues.fid (1,1) int64 = -1
                 propValues.fullpathfilename = '';
+                propValues.customFileHandler = [];
             end
 
             nvPairs = namedargs2cell(propValues);
@@ -58,6 +61,7 @@ classdef fileobj < handle
                 propValues.permission (1,1) string {did.file.mustBeValidPermission}
                 propValues.fid (1,1) int64
                 propValues.fullpathfilename;
+                propValues.customFileHandler;
             end
 
             propNames = fieldnames(propValues);
