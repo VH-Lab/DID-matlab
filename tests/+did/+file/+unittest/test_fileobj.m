@@ -14,8 +14,8 @@ classdef test_fileobj < matlab.unittest.TestCase
             my_handler = @(x) disp(['File operation: ' x]);
 
             testCase.verifyError(@() did.file.fileobj('customFileHandler', my_handler), ...
-                'MATLAB:InputParser:ArgumentFailedValidation', ...
-                'The constructor should throw an error when ''customFileHandler'' is passed.');
+                'MATLAB:InputParser:UnmatchedParameter', ...
+                'The constructor should throw a standard parser error for an unmatched parameter.');
         end
     end
 end

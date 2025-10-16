@@ -34,9 +34,6 @@ classdef fileobj < handle
                 propValues.fid (1,1) int64 = -1
                 propValues.fullpathfilename = '';
             end
-            if isfield(propValues,'customFileHandler')
-                error('The property ''customFileHandler'' cannot be set through the constructor or setproperties.');
-            end
 
             nvPairs = namedargs2cell(propValues);
             fileobj_obj = fileobj_obj.setproperties(nvPairs{:});
