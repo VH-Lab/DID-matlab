@@ -1,4 +1,4 @@
-function d = finddocs_missing_dependencies(DB, varargin)
+function d = finddocs_missing_dependencies(DB, names)
     % FINDDOCS_MISSING_DEPENDENCIES - find documents that have dependencies on documents that do not exist
     %
     % D = FINDDOCS_MISSING_DEPENDENCIES(DB)
@@ -14,6 +14,12 @@ function d = finddocs_missing_dependencies(DB, varargin)
     % works similarly except that it only examines variables with depends_on
     % fields with names NAME1, NAME2, etc.
     %
+    arguments
+        DB did.database
+    end
+    arguments (Repeating)
+        names
+    end
 
     documents_observed = {}; % keep track of what we have seen so we don't have to search multiple times
 
@@ -30,7 +36,7 @@ function d = finddocs_missing_dependencies(DB, varargin)
     for i=1:numel(d)
         for j=1:numel(d{i}.document_properties.depends_on)
             if nargin>1
-                match = any(strcmpi(d{i}.document_properties.depends_on(j).name,varargin));
+                match = any(strcmpi(d{i}.document_properties.depends_on(j).name,names));
             else
                 match = 1;
             end

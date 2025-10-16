@@ -1,4 +1,4 @@
-function [b,msg] = parfor_test(varargin)
+function [b,msg] = parfor_test(options)
     % did.test.parfor_test - test the ability of did.database class to handle parallel processing
     %
     % [B,MSG] = did.test.parfor_test()
@@ -10,6 +10,9 @@ function [b,msg] = parfor_test(varargin)
     %
     % B is 1 if the test succeeds, and 0 otherwise.
     % MSG has an error message if the test fails.
+    arguments (Repeating)
+        options
+    end
 
     % Step 1: make an empty database with a starting branch
     dirname = did.common.PathConstants.testpath;

@@ -336,6 +336,9 @@ classdef fileobj < handle
             %
             % Call FPRINTF (see FPRINTF for inputs) for the file associated with
             % FILEOBJ_OBJ.
+            arguments (Repeating)
+                varargin
+            end
 
             if strcmpi(fileobj_obj.permission,'r')
                 error('DID:File:Fileobj','Cannot use fprintf() method with read-only file');

@@ -92,19 +92,17 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
     % Main database constructor, destructor
     methods
-        function database_obj = database(varargin)
+        function database_obj = database(connection)
             % DATABASE - create a new DATABASE
             %
             % DATABASE_OBJ = DATABASE(...)
             %
             % Creates a new DATABASE object
-
-            connection = '';
-            branchId = '';
-
-            if nargin>0
-                connection = varargin{1};
+            arguments
+                connection = ''
             end
+
+            branchId = '';
 
             database_obj.connection = connection;
             database_obj.current_branch_id = branchId;
@@ -418,7 +416,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             doc_ids = database_obj.do_get_doc_ids(branch_id);
         end % all_doc_ids()
 
-        function add_docs(database_obj, document_objs, branch_id, varargin)
+        function add_docs(database_obj, document_objs, branch_id, options)
             % ADD_DOCS - add did.document object(s) to the specified branch
             %
             % ADD_DOCS(DATABASE_OBJ, DOCUMENT_OBJS, [BRANCH_ID], [PARAMETERS...])
@@ -435,6 +433,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
             %   - 'Validate' - followed by false or true (default)
+            arguments
+                database_obj
+                document_objs
+                branch_id = ''
+                options.OnDuplicate {mustBeMember(options.OnDuplicate,{'ignore','warn','error'})} = 'error'
+                options.Validate {mustBeNumericOrLogical} = true
+            end
 
             % Ensure we got a valid input doc object
             if isempty(document_objs)
@@ -450,24 +455,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 end
             end
 
-            % Parse the input parameters
-            if mod(numel(varargin),2) == 1  % odd number of values
-                if any(strcmpi(branch_id,'OnDuplicate'))
-                    % the specified branch_id is actually a param name
-                    branch_id = database_obj.current_branch_id;
-                    varargin = ['OnDuplicate' varargin];
-                elseif any(strcmpi(branch_id,'Validate'))
-                    branch_id = database_obj.current_branch_id;
-                    varargin = ['Validate' varargin];
-                else
-                    error('DID:Database:InvalidParams','Invalid parameters specified in did.database.add_doc() call');
-                end
-            elseif nargin > 3 && ~any(strcmpi(varargin{1},{'OnDuplicate','Validate'}))
-                error('DID:Database:InvalidParams','Invalid parameters specified in did.database.add_doc() call');
-            end
-
             % If branch_id was not specified, use the current branch
-            if nargin < 3 || isempty(branch_id)
+            if isempty(branch_id)
                 branch_id = database_obj.current_branch_id;
             end
 
@@ -475,13 +464,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             hCleanup = database_obj.open(); %#ok<NASGU>
 
             % Is validation requested?
-            validateIdx = find(strcmpi(varargin,'Validate'));
-            if isempty(validateIdx)
-                doValidation = true;  %default = validate
-            else
-                doValidation = varargin{validateIdx+1};
-                varargin(validateIdx:validateIdx+1) = [];  %remove from varargin
-            end
+            doValidation = options.Validate;
 
             % Disable database journalling if no validation requested
             if ~doValidation
@@ -495,6 +478,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             if doValidation
                 database_obj.validate_docs(document_objs);
             end
+
+            varargin = namedargs2cell(options);
 
             % Call the database's addition method separately for each doc
             for idx = 1 : numel(document_objs)
@@ -523,7 +508,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
         end % add_doc()
 
-        function document_objs = get_docs(database_obj, document_ids, varargin)
+        function document_objs = get_docs(database_obj, document_ids, options)
             % GET_DOCS - Return did.document object(s) that match the specified doc ID(s)
             %
             % DOCUMENT_OBJS = GET_DOCS(DATABASE_OBJ, [DOCUMENT_IDS], [PARAMETERS...])
@@ -539,18 +524,10 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Optional PARAMETERS may be specified as P-V pairs of parameter name
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnMissing' - followed by 'ignore', 'warn', or 'error' (default)
-
-            % Parse the input parameters
-            if mod(nargin,2) == 1  % odd number of input args
-                if any(strcmpi(document_ids,'OnMissing'))
-                    % the specified document_ids is actually a param name
-                    document_ids = database_obj.get_doc_ids();
-                    varargin = ['OnMissing' varargin];
-                else
-                    error('DID:Database:InvalidParams','Invalid parameters specified in did.database.get_doc() call');
-                end
-            elseif nargin > 2 && ~any(strcmpi(varargin{1},'OnMissing'))
-                error('DID:Database:InvalidParams','Invalid parameters specified in did.database.get_doc() call');
+            arguments
+                database_obj
+                document_ids = ''
+                options.OnMissing {mustBeMember(options.OnMissing,{'ignore','warn','error'})} = 'error'
             end
 
             % Initialize an empty results array of no objects
@@ -560,13 +537,15 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             hCleanup = database_obj.open(); %#ok<NASGU>
 
             % If document ids were not specified, get them from the current branch
-            if nargin < 2
+            if isempty(document_ids)
                 document_ids = database_obj.get_doc_ids();
             end
             if isempty(document_ids)
                 document_objs = did.document.empty;
                 return
             end
+
+            varargin = namedargs2cell(options);
 
             % Loop over all specified doc_ids
             document_ids = database_obj.normalizeDocIDs(document_ids);
@@ -583,7 +562,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
         end % get_doc()
 
-        function remove_docs(database_obj, documents, branch_id, varargin)
+        function remove_docs(database_obj, documents, branch_id, options)
             % REMOVE_DOCS - remove did.document object(s) from a database branch
             %
             % REMOVE_DOCS(DATABASE_OBJ, DOCUMENTS, [BRANCH_ID], [PARAMETERS...])
@@ -603,6 +582,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Optional PARAMETERS may be specified as P-V pairs of parameter name
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnMissing' - followed by 'ignore', 'warn', or 'error' (default)
+            arguments
+                database_obj
+                documents
+                branch_id = ''
+                options.OnMissing {mustBeMember(options.OnMissing,{'ignore','warn','error'})} = 'error'
+            end
 
             % Parse the input document_ids, convert to a cell-array of char ids
             if isempty(documents)
@@ -610,26 +595,15 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
             documents = database_obj.normalizeDocIDs(documents);
 
-            % Parse the input parameters
-            if mod(numel(varargin),2) == 1  % odd number of values
-                if any(strcmpi(branch_id,'OnMissing'))
-                    % the specified branch_id is actually a param name
-                    branch_id = database_obj.current_branch_id;
-                    varargin = ['OnMissing' varargin];
-                else
-                    error('DID:Database:InvalidParams','Invalid parameters specified in did.database.remove_doc() call');
-                end
-            elseif nargin > 3 && ~any(strcmpi(varargin{1},'OnMissing'))
-                error('DID:Database:InvalidParams','Invalid parameters specified in did.database.remove_doc() call');
-            end
-
             % If branch_id was not specified, use the current branch
-            if nargin < 3 || isempty(branch_id)
+            if isempty(branch_id)
                 branch_id = database_obj.current_branch_id;
             end
 
             % Ensure branch IDs validity
             branch_id = database_obj.validate_branch_id(branch_id);
+
+            varargin = namedargs2cell(options);
 
             % Loop over all the specified documents
             for i = 1 : numel(documents)
@@ -647,7 +621,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
         end % remove_doc()
 
-        function file_obj = open_doc(database_obj, document_id, filename, varargin)
+        function file_obj = open_doc(database_obj, document_id, filename, options)
             % OPEN_DOC - open and lock a specified did.document in the database
             %
             % FILE_OBJ = OPEN_DOC(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
@@ -666,16 +640,23 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Note: Close the document with FILE_OBJ.close() when finished.
             %
             % See also: CLOSE_DOC
+            arguments
+                database_obj
+                document_id
+                filename
+            end
+            arguments (Repeating)
+                options
+            end
 
             % Validate document ID validity (extract ID from object if needed)
             document_id = database_obj.validate_doc_id(document_id, false);
 
             % Open the document
-            %if nargin > 2, varargin = [filename, varargin]; end %filename is NOT optional!
-            file_obj = database_obj.do_open_doc(document_id, filename, varargin{:});
+            file_obj = database_obj.do_open_doc(document_id, filename, options{:});
         end % open_doc()
 
-        function [tf, file_path] = exist_doc(database_obj, document_id, filename, varargin)
+        function [tf, file_path] = exist_doc(database_obj, document_id, filename, options)
             % EXIST_DOC - Check if a did.document exists as a file
             %
             % [TF, FILE_PATH] = exist_doc(DATABASE_OBJ, DOCUMENT_ID, FILENAME, [PARAMS])
@@ -695,11 +676,19 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             %
             % If multiple files are found, only the file path for the first
             % document is returned.
+            arguments
+                database_obj
+                document_id
+                filename
+            end
+            arguments (Repeating)
+                options
+            end
 
             % Validate document ID validity (extract ID from object if needed)
             document_id = database_obj.validate_doc_id(document_id, false);
 
-            [tf, file_path] = database_obj.check_exist_doc(document_id, filename, varargin{:});
+            [tf, file_path] = database_obj.check_exist_doc(document_id, filename, options{:});
         end
 
         function close_doc(database_obj, file_obj)
