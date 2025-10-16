@@ -1,5 +1,5 @@
 # DID-matlab: Data Interface Database
-[![Run tests](https://github.com/VH-Lab/DID-matlab/actions/workflows/run_tests.yml/badge.svg?branch=main)](https://github.com/VH-Lab/DID-matlab/actions/workflows/run_tests.yml)
+[![Run tests](https://github.com/VH-Lab/DID-matlab/actions/workflows/test-code.yml/badge.svg?branch=main)](https://github.com/VH-Lab/DID-matlab/actions/workflows/test-code.yml)
 [![codecov](https://codecov.io/gh/VH-Lab/DID-matlab/branch/main/graph/badge.svg?token=K6D3LWXUGJ)](https://codecov.io/gh/VH-Lab/DID-matlab)
 
 The purpose of this package is to provide an interface to database implementations that provide:
