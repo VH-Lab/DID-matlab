@@ -18,8 +18,6 @@ classdef fileobj < handle
 
         % machineformat - big-endian ('b'), little-endian ('l'), or native ('n')
         machineformat (1,:) char {did.file.mustBeValidMachineFormat} = 'n'
-
-        customFileHandler = []
     end % properties
 
     methods
@@ -35,7 +33,6 @@ classdef fileobj < handle
                 propValues.permission (1,1) string {did.file.mustBeValidPermission} = "r"
                 propValues.fid (1,1) int64 = -1
                 propValues.fullpathfilename = '';
-                propValues.customFileHandler = [];
             end
 
             nvPairs = namedargs2cell(propValues);
@@ -61,7 +58,6 @@ classdef fileobj < handle
                 propValues.permission (1,1) string {did.file.mustBeValidPermission}
                 propValues.fid (1,1) int64
                 propValues.fullpathfilename;
-                propValues.customFileHandler;
             end
 
             propNames = fieldnames(propValues);
@@ -333,7 +329,7 @@ classdef fileobj < handle
             end
         end % fscanf()
 
-        function count = fprintf(fileobj_obj, varargin)
+        function count = fprintf(fileobj_obj, format, varargin)
             % FPRINTF - print data to a FILEOBJ_OBJ
             %
             % [COUNT] = FPRINTF(FID,FORMAT,A, ...)
@@ -341,7 +337,8 @@ classdef fileobj < handle
             % Call FPRINTF (see FPRINTF for inputs) for the file associated with
             % FILEOBJ_OBJ.
             arguments
-                fileobj_obj (1,1) did.file.fileobj
+                fileobj_obj
+                format (1,:) char
             end
             arguments (Repeating)
                 varargin
@@ -352,7 +349,7 @@ classdef fileobj < handle
             end
             count = 0;
             if fileobj_obj.fid >= 0
-                count = fprintf(fileobj_obj.fid,varargin{:});
+                count = fprintf(fileobj_obj.fid,format,varargin{:});
             end
         end % fprintf()
 

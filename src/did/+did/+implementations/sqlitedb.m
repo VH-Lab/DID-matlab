@@ -566,11 +566,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % Outputs:
             %    file_obj - a did.file.readonly_fileobj object (possibly empty)
-            options = cell2struct(varargin(2:2:end),varargin(1:2:end),2);
-            if isfield(options,'customFileHandler')
-                customFileHandler = options.customFileHandler;
-            else
-                customFileHandler = [];
+            customFileHandler = [];
+            varargin_to_pass = varargin;
+            for i=1:2:numel(varargin)
+                if strcmpi(varargin{i},'customFileHandler')
+                    customFileHandler = varargin{i+1};
+                    varargin_to_pass([i i+1]) = [];
+                    break;
+                end
             end
 
             % Get the cached filepath to the specified document
@@ -611,7 +614,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     if strcmp(parent,did.common.PathConstants.filecachepath) % fileCache,
                         didCache.touch(this_file); % we used it so indicate that we did
                     end
-                    file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin{:});
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin_to_pass{:});
                     return
                 end
             end
@@ -645,7 +648,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     didCache.addFile(destPath, this_file_struct.uid);
                     cacheFile = fullfile(didCache.directoryName,this_file_struct.uid);
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
-                    file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin{:});
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
                     return
                 catch err
                     errMsg = strtrim(err.message); if ~isempty(errMsg), errMsg=[': ' errMsg]; end %#ok<AGROW>
