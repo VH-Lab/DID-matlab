@@ -13,11 +13,15 @@ This folder contains MATLAB unit tests whose purpose is to read standard DID art
    - `<class_name>`: The name of the test class (e.g., `buildDatabase`).
    - `<test_name>`: The specific name of the test method that was executed (e.g., `testBuildDatabaseArtifacts`).
 
-3. **Testing Goals**: The MATLAB tests located in this `+readArtifacts` package should define assertions that:
-   - Load the JSON branch audit files created by the target suite.
-   - Load the actual DID database (SQLite) produced by the target suite.
-   - Assert that the DID documents retrieved by MATLAB match the expected JSON structure dumped by the test suite.
+3. **Testing Goals**: The MATLAB tests located in this `+readArtifacts` package should:
+   - Load the `summary.json` file saved by the makeArtifacts test (or its Python equivalent).
+   - Open the actual DID database (SQLite) from the artifact directory.
+   - Re-summarize the live database using `did.util.databaseSummary(db)`.
+   - Compare the saved summary against the live summary using `did.util.compareDatabaseSummary()`.
+   - Additionally verify per-branch JSON files against the live database.
    - Run across both `pythonArtifacts` and `matlabArtifacts` using parameterized testing to ensure parity.
+
+4. **Utility Functions**: Use `did.util.databaseSummary(db)` to produce a summary from a live database, and `did.util.compareDatabaseSummary(savedSummary, liveSummary)` to compare. The comparison returns a report with `.isEqual` and `.messages` fields.
 
 ## Example:
 
@@ -35,7 +39,17 @@ classdef buildDatabase < matlab.unittest.TestCase
                 'database', 'buildDatabase', 'testBuildDatabaseArtifacts');
             testCase.assumeTrue(isfolder(artifactDir), ...
                 ['Artifact directory from ' SourceType ' does not exist.']);
-            % ... load database, compare with JSON branch files ...
+
+            % Load saved summary
+            savedSummary = jsondecode(fileread(fullfile(artifactDir, 'summary.json')));
+
+            % Open database and produce live summary
+            db = did.implementations.sqlitedb(fullfile(artifactDir, savedSummary.dbFilename));
+            liveSummary = did.util.databaseSummary(db);
+
+            % Compare
+            report = did.util.compareDatabaseSummary(savedSummary, liveSummary);
+            testCase.verifyTrue(report.isEqual, strjoin(report.messages, '; '));
         end
     end
 end

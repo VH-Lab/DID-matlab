@@ -2,8 +2,8 @@ classdef buildDatabase < matlab.unittest.TestCase
     % BUILDDATABASE - Generate DID database artifacts for cross-language symmetry testing
     %
     % This test creates a small DID database with random documents (demoA, demoB, demoC)
-    % across multiple branches, then exports the database file and per-branch JSON
-    % audit files as artifacts for comparison with other DID implementations (e.g., Python).
+    % across multiple branches, then uses did.util.databaseSummary to export a JSON
+    % summary of each branch for comparison with other DID implementations (e.g., Python).
 
     properties (Constant)
         dbFilename = 'symmetry_test.sqlite'
@@ -55,59 +55,37 @@ classdef buildDatabase < matlab.unittest.TestCase
             %     └── branch_feature
             branchNames = {'branch_main', 'branch_dev', 'branch_feature'};
 
-            % Create the root branch
+            % Create the root branch and add documents
             testCase.db.add_branch(branchNames{1});
-
-            % Generate initial documents for the root branch (small counts)
             [~, ~, rootDocs] = did.test.helper.documents.make_doc_tree([3 3 3]);
             testCase.db.add_docs(rootDocs);
 
-            % Create branch_dev as child of branch_main
+            % Create branch_dev as child of branch_main and add documents
             testCase.db.set_branch(branchNames{1});
             testCase.db.add_branch(branchNames{2});
-
-            % Add some additional documents to branch_dev
             [~, ~, devDocs] = did.test.helper.documents.make_doc_tree([2 2 2]);
             testCase.db.add_docs(devDocs);
 
-            % Create branch_feature as child of branch_main
+            % Create branch_feature as child of branch_main and add documents
             testCase.db.set_branch(branchNames{1});
             testCase.db.add_branch(branchNames{3});
-
-            % Add some additional documents to branch_feature
             [~, ~, featureDocs] = did.test.helper.documents.make_doc_tree([2 1 2]);
             testCase.db.add_docs(featureDocs);
 
-            % Step 3: Export per-branch JSON audit files
+            % Step 3: Generate summary using did.util.databaseSummary
+            summary = did.util.databaseSummary(testCase.db);
+            summary.dbFilename = testCase.dbFilename;
+
+            % Step 4: Write summary JSON (one file per branch + overall summary)
             jsonBranchesDir = fullfile(artifactDir, 'jsonBranches');
             mkdir(jsonBranchesDir);
 
-            % Build metadata structure
-            metadata = struct();
-            metadata.branchNames = {branchNames{:}}; %#ok<CCAT>
-            metadata.branchHierarchy = struct();
-            metadata.branchHierarchy.branch_main = {{'branch_dev', 'branch_feature'}};
-            metadata.branchHierarchy.branch_dev = {{}};
-            metadata.branchHierarchy.branch_feature = {{}};
-            metadata.dbFilename = testCase.dbFilename;
-            branchDocCounts = struct();
-
             for i = 1:numel(branchNames)
                 branchName = branchNames{i};
-                testCase.db.set_branch(branchName);
+                safeName = matlab.lang.makeValidName(branchName);
+                branchData = summary.branches.(safeName);
 
-                % Get all document IDs in this branch
-                docIds = testCase.db.get_doc_ids(branchName);
-
-                % Retrieve full documents
-                branchDocsData = cell(1, numel(docIds));
-                for j = 1:numel(docIds)
-                    doc = testCase.db.get_docs(docIds{j});
-                    branchDocsData{j} = doc.document_properties;
-                end
-
-                % Write the branch JSON file
-                branchJsonStr = did.datastructures.jsonencodenan(branchDocsData);
+                branchJsonStr = did.datastructures.jsonencodenan(branchData);
                 branchJsonFile = fullfile(jsonBranchesDir, ['branch_' branchName '.json']);
                 fid = fopen(branchJsonFile, 'w');
                 testCase.verifyGreaterThan(fid, 0, ...
@@ -116,31 +94,33 @@ classdef buildDatabase < matlab.unittest.TestCase
                     fprintf(fid, '%s', branchJsonStr);
                     fclose(fid);
                 end
-
-                % Track document counts for metadata
-                branchDocCounts.(branchName) = numel(docIds);
             end
 
-            % Step 4: Write metadata.json
-            metadata.branchDocCounts = branchDocCounts;
-            metadataJsonStr = did.datastructures.jsonencodenan(metadata);
-            fid = fopen(fullfile(artifactDir, 'metadata.json'), 'w');
-            testCase.verifyGreaterThan(fid, 0, 'Could not create metadata.json');
+            % Write the full summary JSON
+            summaryJsonStr = did.datastructures.jsonencodenan(summary);
+            fid = fopen(fullfile(artifactDir, 'summary.json'), 'w');
+            testCase.verifyGreaterThan(fid, 0, 'Could not create summary.json');
             if fid > 0
-                fprintf(fid, '%s', metadataJsonStr);
+                fprintf(fid, '%s', summaryJsonStr);
                 fclose(fid);
             end
 
-            % Verify artifacts were created
+            % Step 5: Verify artifacts were created
             testCase.verifyTrue(isfile(dbPath), 'Database file was not created.');
-            testCase.verifyTrue(isfolder(jsonBranchesDir), 'jsonBranches directory was not created.');
-            testCase.verifyTrue(isfile(fullfile(artifactDir, 'metadata.json')), 'metadata.json was not created.');
-
+            testCase.verifyTrue(isfile(fullfile(artifactDir, 'summary.json')), ...
+                'summary.json was not created.');
             for i = 1:numel(branchNames)
                 branchFile = fullfile(jsonBranchesDir, ['branch_' branchNames{i} '.json']);
                 testCase.verifyTrue(isfile(branchFile), ...
                     ['Branch JSON file missing for ' branchNames{i}]);
             end
+
+            % Step 6: Self-check — re-summarize and compare to verify consistency
+            summaryCheck = did.util.databaseSummary(testCase.db);
+            summaryCheck.dbFilename = testCase.dbFilename;
+            selfReport = did.util.compareDatabaseSummary(summary, summaryCheck);
+            testCase.verifyTrue(selfReport.isEqual, ...
+                ['Self-check failed: ' strjoin(selfReport.messages, '; ')]);
         end
     end
 end
