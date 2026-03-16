@@ -1,0 +1,63 @@
+name: Test symmetry
+
+on:
+  push:
+    branches: main
+
+  pull_request:
+    branches: main
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-symmetry:
+    name: Run symmetry tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+          products: Statistics_and_Machine_Learning_Toolbox
+
+      - name: Run makeArtifacts tests
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            import matlab.unittest.plugins.DiagnosticsOutputPlugin;
+            runner = TestRunner.withTextOutput;
+            makeSuite = TestSuite.fromPackage("did.symmetry.makeArtifacts", "IncludingSubpackages", true);
+            makeResults = runner.run(makeSuite);
+            disp(table(makeResults));
+            assert(all([makeResults.Passed]), "makeArtifacts tests failed");
+
+      - name: Run readArtifacts tests
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            runner = TestRunner.withTextOutput;
+            readSuite = TestSuite.fromPackage("did.symmetry.readArtifacts", "IncludingSubpackages", true);
+            readResults = runner.run(readSuite);
+            disp(table(readResults));
+            nSkipped = sum([readResults.Incomplete]);
+            nPassed = sum([readResults.Passed]);
+            nFailed = sum([readResults.Failed]);
+            fprintf("Results: %d passed, %d failed, %d skipped\n", nPassed, nFailed, nSkipped);
+            assert(nFailed == 0, "readArtifacts tests failed");
