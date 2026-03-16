@@ -1,46 +1,43 @@
-function report = compareDatabaseSummary(summaryA, summaryB)
+function report = compareDatabaseSummary(summaryA, summaryB, options)
     % COMPAREDATABASESUMMARY - compare two database summaries and return a report
     %
-    % REPORT = did.util.compareDatabaseSummary(SUMMARYA, SUMMARYB)
+    % REPORT = did.util.compareDatabaseSummary(SUMMARYA, SUMMARYB, ...)
     %
     % Compares two database summary structs (as produced by did.util.databaseSummary
-    % or loaded from JSON) and returns a report struct describing any differences.
+    % or loaded from JSON) and returns a cell array of character arrays describing
+    % any differences found. If no differences are found, returns an empty cell
+    % array {}.
     %
     % SUMMARYA and SUMMARYB may be:
     %   - structs returned by did.util.databaseSummary()
     %   - file paths to JSON files containing serialized summaries
     %   - did.database objects (which will be summarized automatically)
     %
-    % The returned REPORT struct contains:
-    %   .isEqual          - true if the two summaries match on all checked fields
-    %   .messages         - cell array of human-readable difference descriptions
-    %   .branchComparison - struct with per-branch comparison details:
-    %       .<branchName>.inBoth     - true if branch exists in both summaries
-    %       .<branchName>.docCountA  - document count in summary A
-    %       .<branchName>.docCountB  - document count in summary B
-    %       .<branchName>.docCountMatch - true if counts match
-    %       .<branchName>.missingInA - cell array of doc IDs in B but not A
-    %       .<branchName>.missingInB - cell array of doc IDs in A but not B
-    %       .<branchName>.valueMismatches - cell array of mismatch descriptions
+    % This function accepts name-value pair arguments:
+    %   'excludeFields' - A cell array of top-level field names to skip
+    %                     when comparing (e.g., {'dbId'} to ignore database IDs).
     %
     % Example:
     %   summaryA = did.util.databaseSummary(dbA);
     %   summaryB = did.util.databaseSummary(dbB);
     %   report = did.util.compareDatabaseSummary(summaryA, summaryB);
-    %   if ~report.isEqual
-    %       disp(report.messages);
+    %   if ~isempty(report)
+    %       cellfun(@disp, report);
     %   end
     %
     % See also: did.util.databaseSummary
+
+    arguments
+        summaryA
+        summaryB
+        options.excludeFields (1,:) cell = {}
+    end
 
     % Convert inputs to summary structs if needed
     summaryA = toSummaryStruct(summaryA);
     summaryB = toSummaryStruct(summaryB);
 
-    report = struct();
-    report.isEqual = true;
-    report.messages = {};
-    report.branchComparison = struct();
+    report = {};
 
     % Compare branch names
     branchesA = summaryA.branchNames;
@@ -48,83 +45,67 @@ function report = compareDatabaseSummary(summaryA, summaryB)
     if ischar(branchesA), branchesA = {branchesA}; end
     if ischar(branchesB), branchesB = {branchesB}; end
 
-    allBranches = union(branchesA, branchesB);
-
     onlyInA = setdiff(branchesA, branchesB);
     onlyInB = setdiff(branchesB, branchesA);
 
-    if ~isempty(onlyInA)
-        report.isEqual = false;
-        for i = 1:numel(onlyInA)
-            report.messages{end+1} = ['Branch "' onlyInA{i} '" exists only in summary A.'];
-        end
+    for i = 1:numel(onlyInA)
+        report{end+1} = sprintf('Branch "%s" exists only in summary A.', onlyInA{i}); %#ok<*AGROW>
     end
-    if ~isempty(onlyInB)
-        report.isEqual = false;
-        for i = 1:numel(onlyInB)
-            report.messages{end+1} = ['Branch "' onlyInB{i} '" exists only in summary B.'];
+    for i = 1:numel(onlyInB)
+        report{end+1} = sprintf('Branch "%s" exists only in summary B.', onlyInB{i});
+    end
+
+    % Compare branch hierarchy if present in both
+    if isfield(summaryA, 'branchHierarchy') && isfield(summaryB, 'branchHierarchy') ...
+            && ~ismember('branchHierarchy', options.excludeFields)
+        commonBranches = intersect(branchesA, branchesB);
+        for i = 1:numel(commonBranches)
+            branchName = commonBranches{i};
+            safeName = matlab.lang.makeValidName(branchName);
+            if isfield(summaryA.branchHierarchy, safeName) && isfield(summaryB.branchHierarchy, safeName)
+                parentA = summaryA.branchHierarchy.(safeName).parent;
+                parentB = summaryB.branchHierarchy.(safeName).parent;
+                if ~strcmp(parentA, parentB)
+                    report{end+1} = sprintf('Branch "%s": parent mismatch ("%s" vs "%s").', branchName, parentA, parentB);
+                end
+            end
         end
     end
 
-    % Compare each branch that exists in both
-    for i = 1:numel(allBranches)
-        branchName = allBranches{i};
+    % Compare each branch's documents
+    commonBranches = intersect(branchesA, branchesB);
+    for i = 1:numel(commonBranches)
+        branchName = commonBranches{i};
         safeName = matlab.lang.makeValidName(branchName);
 
-        comp = struct();
-        comp.inBoth = ismember(branchName, branchesA) && ismember(branchName, branchesB);
-
-        if ~comp.inBoth
-            comp.docCountA = 0;
-            comp.docCountB = 0;
-            comp.docCountMatch = false;
-            comp.missingInA = {};
-            comp.missingInB = {};
-            comp.valueMismatches = {};
-            report.branchComparison.(safeName) = comp;
+        if ~isfield(summaryA.branches, safeName) || ~isfield(summaryB.branches, safeName)
             continue;
         end
 
-        % Get branch data from each summary
         branchA = summaryA.branches.(safeName);
         branchB = summaryB.branches.(safeName);
 
-        comp.docCountA = branchA.docCount;
-        comp.docCountB = branchB.docCount;
-        comp.docCountMatch = (branchA.docCount == branchB.docCount);
-        comp.missingInA = {};
-        comp.missingInB = {};
-        comp.valueMismatches = {};
-
-        if ~comp.docCountMatch
-            report.isEqual = false;
-            report.messages{end+1} = ['Branch "' branchName '": doc count mismatch (' ...
-                num2str(branchA.docCount) ' vs ' num2str(branchB.docCount) ').'];
+        % Compare document counts
+        if branchA.docCount ~= branchB.docCount
+            report{end+1} = sprintf('Branch "%s": doc count mismatch (%d vs %d).', ...
+                branchName, branchA.docCount, branchB.docCount);
         end
 
         % Build lookup maps by document ID
-        docsA = branchA.documents;
-        docsB = branchB.documents;
-        mapA = buildDocMap(docsA);
-        mapB = buildDocMap(docsB);
+        mapA = buildDocMap(branchA.documents);
+        mapB = buildDocMap(branchB.documents);
 
         idsA = keys(mapA);
         idsB = keys(mapB);
 
-        comp.missingInA = setdiff(idsB, idsA);
-        comp.missingInB = setdiff(idsA, idsB);
+        missingInA = setdiff(idsB, idsA);
+        missingInB = setdiff(idsA, idsB);
 
-        if ~isempty(comp.missingInA)
-            report.isEqual = false;
-            for j = 1:numel(comp.missingInA)
-                report.messages{end+1} = ['Branch "' branchName '": doc "' comp.missingInA{j} '" missing in summary A.'];
-            end
+        for j = 1:numel(missingInA)
+            report{end+1} = sprintf('Branch "%s": doc "%s" missing in summary A.', branchName, missingInA{j});
         end
-        if ~isempty(comp.missingInB)
-            report.isEqual = false;
-            for j = 1:numel(comp.missingInB)
-                report.messages{end+1} = ['Branch "' branchName '": doc "' comp.missingInB{j} '" missing in summary B.'];
-            end
+        for j = 1:numel(missingInB)
+            report{end+1} = sprintf('Branch "%s": doc "%s" missing in summary B.', branchName, missingInB{j});
         end
 
         % Compare documents present in both
@@ -138,16 +119,14 @@ function report = compareDatabaseSummary(summaryA, summaryB)
             classA = getClassName(docA);
             classB = getClassName(docB);
             if ~strcmp(classA, classB)
-                report.isEqual = false;
-                msg = ['Branch "' branchName '", doc "' docId '": class name mismatch ("' classA '" vs "' classB '").'];
-                report.messages{end+1} = msg;
-                comp.valueMismatches{end+1} = msg;
+                report{end+1} = sprintf('Branch "%s", doc "%s": class name mismatch ("%s" vs "%s").', ...
+                    branchName, docId, classA, classB);
             end
 
             % Compare demo-type value fields
-            demoFields = {'demoA', 'demoB', 'demoC'};
             propsA = getProperties(docA);
             propsB = getProperties(docB);
+            demoFields = {'demoA', 'demoB', 'demoC'};
             for k = 1:numel(demoFields)
                 fieldName = demoFields{k};
                 hasA = isfield(propsA, fieldName);
@@ -156,17 +135,12 @@ function report = compareDatabaseSummary(summaryA, summaryB)
                     valA = propsA.(fieldName).value;
                     valB = propsB.(fieldName).value;
                     if ~isequal(valA, valB)
-                        report.isEqual = false;
-                        msg = ['Branch "' branchName '", doc "' docId '": ' fieldName '.value mismatch (' ...
-                            num2str(valA) ' vs ' num2str(valB) ').'];
-                        report.messages{end+1} = msg;
-                        comp.valueMismatches{end+1} = msg;
+                        report{end+1} = sprintf('Branch "%s", doc "%s": %s.value mismatch (%s vs %s).', ...
+                            branchName, docId, fieldName, num2str(valA), num2str(valB));
                     end
                 elseif hasA ~= hasB
-                    report.isEqual = false;
-                    msg = ['Branch "' branchName '", doc "' docId '": field "' fieldName '" present in one summary but not the other.'];
-                    report.messages{end+1} = msg;
-                    comp.valueMismatches{end+1} = msg;
+                    report{end+1} = sprintf('Branch "%s", doc "%s": field "%s" present in one summary but not the other.', ...
+                        branchName, docId, fieldName);
                 end
             end
 
@@ -174,23 +148,16 @@ function report = compareDatabaseSummary(summaryA, summaryB)
             hasDepsA = isfield(propsA, 'depends_on');
             hasDepsB = isfield(propsB, 'depends_on');
             if hasDepsA && hasDepsB
-                depsA = propsA.depends_on;
-                depsB = propsB.depends_on;
-                if ~isequal(normalizeDeps(depsA), normalizeDeps(depsB))
-                    report.isEqual = false;
-                    msg = ['Branch "' branchName '", doc "' docId '": depends_on mismatch.'];
-                    report.messages{end+1} = msg;
-                    comp.valueMismatches{end+1} = msg;
+                depsA = normalizeDeps(propsA.depends_on);
+                depsB = normalizeDeps(propsB.depends_on);
+                if ~isequal(depsA, depsB)
+                    report{end+1} = sprintf('Branch "%s", doc "%s": depends_on mismatch.', branchName, docId);
                 end
             elseif hasDepsA ~= hasDepsB
-                report.isEqual = false;
-                msg = ['Branch "' branchName '", doc "' docId '": depends_on present in one summary but not the other.'];
-                report.messages{end+1} = msg;
-                comp.valueMismatches{end+1} = msg;
+                report{end+1} = sprintf('Branch "%s", doc "%s": depends_on present in one summary but not the other.', ...
+                    branchName, docId);
             end
         end
-
-        report.branchComparison.(safeName) = comp;
     end
 end
 

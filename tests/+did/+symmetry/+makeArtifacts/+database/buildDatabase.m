@@ -119,8 +119,8 @@ classdef buildDatabase < matlab.unittest.TestCase
             summaryCheck = did.util.databaseSummary(testCase.db);
             summaryCheck.dbFilename = testCase.dbFilename;
             selfReport = did.util.compareDatabaseSummary(summary, summaryCheck);
-            testCase.verifyTrue(selfReport.isEqual, ...
-                ['Self-check failed: ' strjoin(selfReport.messages, '; ')]);
+            testCase.verifyEmpty(selfReport, ...
+                ['Self-check failed: ' strjoin(selfReport, '; ')]);
         end
     end
 end

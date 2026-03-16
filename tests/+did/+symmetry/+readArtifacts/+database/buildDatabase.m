@@ -46,9 +46,9 @@ classdef buildDatabase < matlab.unittest.TestCase
             % Step 3: Compare the saved summary against the live database summary
             report = did.util.compareDatabaseSummary(savedSummary, liveSummary);
 
-            testCase.verifyTrue(report.isEqual, ...
+            testCase.verifyEmpty(report, ...
                 ['Database summary mismatch for ' SourceType ': ' ...
-                strjoin(report.messages, '; ')]);
+                strjoin(report, '; ')]);
 
             % Step 4: Also verify per-branch JSON files match the live database
             branchNames = savedSummary.branchNames;
