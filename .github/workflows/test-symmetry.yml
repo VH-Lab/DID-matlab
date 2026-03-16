@@ -29,6 +29,17 @@ jobs:
           cache: true
           products: Statistics_and_Machine_Learning_Toolbox
 
+      - name: Install MatBox
+        uses: ehennestad/matbox-actions/install-matbox@v1
+
+      - name: Install dependencies (mksqlite etc.)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+
       - name: Run makeArtifacts tests
         uses: matlab-actions/run-command@v2
         with:
