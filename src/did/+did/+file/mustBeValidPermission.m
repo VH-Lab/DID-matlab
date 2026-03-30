@@ -9,8 +9,8 @@ function mustBeValidPermission(value)
     
     permissionsAsString = strjoin( "  " + VALID_PERMISSIONS, newline);
 
-    % Add text modes:
-    VALID_PERMISSIONS = [VALID_PERMISSIONS, insertAfter(VALID_PERMISSIONS, 1, "t")];
+    % Add text and binary modes:
+    VALID_PERMISSIONS = [VALID_PERMISSIONS, insertAfter(VALID_PERMISSIONS, 1, "t"), insertAfter(VALID_PERMISSIONS, 1, "b")];
 
     assert(ismember(value, VALID_PERMISSIONS), ...
         'File permission must be one of:\n%s\n', permissionsAsString)
