@@ -362,8 +362,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                                 if strcmpi(file_type, 'file')
                                     [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                                 else  % url
-                                    websave(destPath, sourcePath);
-                                    status = isfile(destPath);
+                                    [status] = ndi.cloud.api.files.getFile(sourcePath, destPath);
+                                    if ~status, errMsg = 'ndi.cloud.api.files.getFile failed'; end
                                 end
                             catch err
                                 status = false;
@@ -633,9 +633,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                         if ~status, error(errMsg); end
                     elseif strcmpi(file_type,'url')
-                        % call fileCache object to add the file
-                        websave(destPath, sourcePath);
-                        if ~isfile(destPath), error(' '); end
+                        % call ndi cloud API for reliable file downloads (esp. AWS)
+                        [dlStatus] = ndi.cloud.api.files.getFile(sourcePath, destPath);
+                        if ~dlStatus, error('ndi.cloud.api.files.getFile failed'); end
                     else
                         if ~isempty(customFileHandler)
                             tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
