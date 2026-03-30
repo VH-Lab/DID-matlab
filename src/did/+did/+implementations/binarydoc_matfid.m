@@ -39,7 +39,7 @@ classdef binarydoc_matfid < did.binarydoc & did.file.fileobj
             % the database.
             %
             binarydoc_matfid_obj.fclose@did.file.fileobj();
-            binarydoc_matfid_obj.permission = 'r';
+            binarydoc_matfid_obj.permission = 'rb';
         end % fclose()
     end
 end

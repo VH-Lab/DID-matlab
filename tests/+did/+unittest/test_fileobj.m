@@ -4,7 +4,7 @@ classdef test_fileobj < matlab.unittest.TestCase
             % Test creating a fileobj
             theFileObj = did.file.fileobj();
             testCase.verifyEqual(theFileObj.fid, -1);
-            testCase.verifyEqual(theFileObj.permission, 'r');
+            testCase.verifyEqual(theFileObj.permission, 'rb');
             testCase.verifyEqual(theFileObj.machineformat, 'n');
             testCase.verifyEqual(theFileObj.fullpathfilename, '');
         end
