@@ -18,7 +18,7 @@ classdef readonly_fileobj < did.file.fileobj
             % then the filename is stored.
             arguments
                 options.machineformat (1,1) string {did.file.mustBeValidMachineFormat} = 'n'; % native machine format
-                options.permission (1,1) string {did.file.mustBeValidPermission} = "r"
+                options.permission (1,1) string {did.file.mustBeValidPermission} = "rb"
                 options.fid (1,1) int64 = -1
                 options.fullpathfilename = '';
             end
@@ -29,7 +29,7 @@ classdef readonly_fileobj < did.file.fileobj
 
             % Ensure that the default 'r' permission was not modified
             if ~strcmpi(fileobj_obj.permission(1),'r')
-                error('DID:File:ReadOnly_Fileobj','Read-only file must have ''r'' permission');
+                error('DID:File:ReadOnly_Fileobj','Read-only file must have ''rb'' permission');
             end
         end % readonly_fileobj() constructor
 
@@ -42,10 +42,10 @@ classdef readonly_fileobj < did.file.fileobj
             %
             % See also: FOPEN, FILEOBJ/FOPEN, FILEOBJ/FCLOSE, FCLOSE
 
-            if nargin > 1 && ~strcmpi(permission,'r')
-                error('DID:File:ReadOnly_Fileobj','Read-only file must be opened with ''r'' permission');
+            if nargin > 1 && ~strcmpi(permission,'rb')
+                error('DID:File:ReadOnly_Fileobj','Read-only file must be opened with ''rb'' permission');
             end
-            fileobj_obj = fopen@did.file.fileobj(fileobj_obj,'r',varargin{:});
+            fileobj_obj = fopen@did.file.fileobj(fileobj_obj,'rb',varargin{:});
         end %fopen
     end % methods
 

@@ -14,7 +14,7 @@ classdef fileobj < handle
         fid (1,1) double = -1
 
         % permission - The file permission
-        permission (1,:) char {did.file.mustBeValidPermission} = 'r'
+        permission (1,:) char {did.file.mustBeValidPermission} = 'rb'
 
         % machineformat - big-endian ('b'), little-endian ('l'), or native ('n')
         machineformat (1,:) char {did.file.mustBeValidMachineFormat} = 'n'
@@ -30,7 +30,7 @@ classdef fileobj < handle
             % then the filename is stored.
             arguments
                 propValues.machineformat (1,1) string {did.file.mustBeValidMachineFormat} = 'n'; % native machine format
-                propValues.permission (1,1) string {did.file.mustBeValidPermission} = "r"
+                propValues.permission (1,1) string {did.file.mustBeValidPermission} = "rb"
                 propValues.fid (1,1) int64 = -1
                 propValues.fullpathfilename = '';
             end
@@ -207,7 +207,7 @@ classdef fileobj < handle
             %
             % See also: FWRITE
 
-            if strcmpi(fileobj_obj.permission,'r')
+            if strcmpi(fileobj_obj.permission(1),'r')
                 error('DID:File:Fileobj','Cannot use fwrite() method with read-only file');
             end
 
@@ -233,7 +233,7 @@ classdef fileobj < handle
             % [DATA,COUNT] = FREAD(FILEOBJ_OBJ, COUNT, [PRECISION], [SKIP], [MACHINEFORMAT])
             %
             % Attempts to read COUNT elements with resolution PRECISION. If PRECISION is not
-            % provided, then 'char' is assumed. If SKIP is provided, then SKIP is in number of bytes, unless
+            % provided, then 'uint8' is assumed. If SKIP is provided, then SKIP is in number of bytes, unless
             % PRECISION is in bits, in which case SKIP is in bits. MACHINEFORMAT is the machine format to use.
             %
             % See FREAD for a full description of these input arguments.
@@ -243,7 +243,7 @@ classdef fileobj < handle
             data = [];
 
             if nargin<3
-                precision = 'char';
+                precision = 'uint8';
             end
             if nargin<4
                 skip = 0;
@@ -344,7 +344,7 @@ classdef fileobj < handle
                 varargin
             end
 
-            if strcmpi(fileobj_obj.permission,'r')
+            if strcmpi(fileobj_obj.permission(1),'r')
                 error('DID:File:Fileobj','Cannot use fprintf() method with read-only file');
             end
             count = 0;
