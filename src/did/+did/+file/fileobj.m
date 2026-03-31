@@ -207,7 +207,7 @@ classdef fileobj < handle
             %
             % See also: FWRITE
 
-            if strcmpi(fileobj_obj.permission(1),'r')
+            if strcmpi(fileobj_obj.permission(1),'r') && ~contains(fileobj_obj.permission,'+')
                 error('DID:File:Fileobj','Cannot use fwrite() method with read-only file');
             end
 
