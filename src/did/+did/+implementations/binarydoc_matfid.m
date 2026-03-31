@@ -18,7 +18,7 @@ classdef binarydoc_matfid < did.binarydoc & did.file.fileobj
 
             arguments
                 fileProps.machineformat (1,1) string {did.file.mustBeValidMachineFormat} = 'l'; % native machine format
-                fileProps.permission (1,1) string {did.file.mustBeValidPermission} = "r"
+                fileProps.permission (1,1) string {did.file.mustBeValidPermission} = "rb"
                 fileProps.fid (1,1) int64 = -1
                 fileProps.fullpathfilename = '';
                 matfidProps.key = ''
