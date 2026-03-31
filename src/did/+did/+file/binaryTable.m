@@ -79,7 +79,7 @@ classdef binaryTable < handle
             %
             [lockfid,key] = binaryTableObj.getLock();
             binaryTableObj.file.fclose();
-            binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
+            binaryTableObj.file = binaryTableObj.file.setproperties('permission','rb');
             binaryTableObj.file.fopen();
             headerData = uint8(fread(binaryTableObj.file,binaryTableObj.headerSize,'uint8'));
             binaryTableObj.file.fclose();
@@ -210,7 +210,7 @@ classdef binaryTable < handle
 
             % obtain the lock so the file can't change while we read it
             [lockfid,key] = binaryTableObj.getLock();
-            binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
+            binaryTableObj.file = binaryTableObj.file.setproperties('permission','rb');
             binaryTableObj.file.fopen();
 
             [r,~] = binaryTableObj.getSize();
@@ -279,7 +279,7 @@ classdef binaryTable < handle
                 end
                 binaryTableObj.file.fclose();
             else % copy over everything to temp file before inserting and moving back
-                binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
+                binaryTableObj.file = binaryTableObj.file.setproperties('permission','rb');
                 binaryTableObj.file.fopen();
                 beforeBytes = binaryTableObj.headerSize + insertAfter * binaryTableObj.rowSize();
                 totalBytes = (binaryTableObj.headerSize + r * binaryTableObj.rowSize());
@@ -340,7 +340,7 @@ classdef binaryTable < handle
 
             [lockfid,key] = binaryTableObj.getLock();
             binaryTableObj.file.fclose();
-            binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
+            binaryTableObj.file = binaryTableObj.file.setproperties('permission','rb');
             binaryTableObj.file.fopen();
             beforeBytes = binaryTableObj.headerSize + (row-1) * binaryTableObj.rowSize();
             totalBytes = (binaryTableObj.headerSize + r * binaryTableObj.rowSize());
@@ -426,7 +426,7 @@ classdef binaryTable < handle
             %
             [lockfid,key] = binaryTableObj.getLock();
             binaryTableObj.file.fclose();
-            binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
+            binaryTableObj.file = binaryTableObj.file.setproperties('permission','rb');
             binaryTableObj.file.fopen();
             fid = fopen(binaryTableObj.tempFileName(),'w');
 
@@ -486,7 +486,7 @@ classdef binaryTable < handle
             if ~option.isRecurrent
                 [lockfid,key] = binaryTableObj.getLock();
                 binaryTableObj.file.fclose();
-                binaryTableObj.file = binaryTableObj.file.setproperties('permission','r');
+                binaryTableObj.file = binaryTableObj.file.setproperties('permission','rb');
                 binaryTableObj.file.fopen();
             end
 
