@@ -46,6 +46,7 @@ jobs:
           command: |
             addpath(genpath("src"));
             addpath(genpath("tests"));
+            addpath(genpath("tests_symmetry"));
             import matlab.unittest.TestRunner;
             import matlab.unittest.TestSuite;
             import matlab.unittest.plugins.DiagnosticsOutputPlugin;
@@ -61,6 +62,7 @@ jobs:
           command: |
             addpath(genpath("src"));
             addpath(genpath("tests"));
+            addpath(genpath("tests_symmetry"));
             import matlab.unittest.TestRunner;
             import matlab.unittest.TestSuite;
             runner = TestRunner.withTextOutput;
