@@ -22,10 +22,13 @@ concurrency:
 jobs:
   test-code:
     # Flat workflow modeled on NDI-matlab/.github/workflows/run-tests.yml.
-    # Uses release: latest because the current matbox MATLAB toolbox
-    # (called via check-code) requires features beyond R2021b; on
-    # R2021b check-code fails with "codecheckToolbox: Too many input
-    # arguments".
+    # Order matters: check-code runs immediately after install-matbox,
+    # before any other step touches the MATLAB path. An earlier ordering
+    # that ran matbox.installRequirements() first made check-code fail
+    # with "codecheckToolbox: Too many input arguments" even on
+    # release: latest. installRequirements is moved after check-code
+    # since the tests need mksqlite + vhlab-toolbox-matlab but the
+    # static analysis does not.
     name: Analyse and test code
     runs-on: ubuntu-latest
     steps:
@@ -42,18 +45,19 @@ jobs:
       - name: Install MatBox
         uses: ehennestad/matbox-actions/install-matbox@v1
 
+      - name: Check code
+        uses: ehennestad/matbox-actions/check-code@v1
+        with:
+          source_directory: 'src'
+
       - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
         uses: matlab-actions/run-command@v2
+        if: always()
         with:
           command: |
             addpath(genpath("src"));
             addpath(genpath("tools"));
             matbox.installRequirements(didtools.projectdir());
-
-      - name: Check code
-        uses: ehennestad/matbox-actions/check-code@v1
-        with:
-          source_directory: 'src'
 
       - name: Run tests
         uses: matlab-actions/run-command@v2
