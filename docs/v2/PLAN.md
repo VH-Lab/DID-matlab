@@ -19,6 +19,7 @@ users.
 | 4 | Keep the `matlabdumbjsondb` backend. | Useful for tests, trivial deployments, and as a non-SQL reference implementation of the query model. |
 | 5 | Validate on insert by default; expose an `unsafe_insert` escape hatch for bulk loads; offer a `revalidate_all` maintenance op. | Schema files are the source of truth for what "valid" means. |
 | 6 | Plan lives at `docs/v2/PLAN.md` on the v2 development branch. | This file. |
+| 7 | Provisional namespace: `+did2`. | Picked from §10 option A for the scaffold. Revisit before v2 reaches `main`. |
 
 Open questions are in §10.
 
@@ -293,3 +294,43 @@ no-op, so it no longer appears in `compile_options`. The functional tests
 Test 4 passing is the decisive simplification: queryable scalar paths can
 live as `STORED` generated columns on `documents` with their own indexes
 (§3.2), with no separate sidecar table for scalars.
+
+---
+
+## 12. Progress log
+
+### 2026-05-11 — step 1 scaffold
+
+Started step 1 of §9 on branch `claude/start-v2-development-tA41P`.
+
+Added:
+
+- `src/did/+did2/document.m` — V_gamma document object. API surface
+  in place (construct from JSON / struct / `(className, values)`,
+  `get` / `set` / `iterate`, `toJSON` / `toStruct`, `className` /
+  `classVersion`, `validate`, plus static `fromJSON` / `fromStruct` /
+  `blank`). Dot-path get/set is implemented in full. The `[*]` array
+  iterator is implemented via `iterate(arrayPath)`; the bare `get`
+  rejects paths containing `[*]` to keep the scalar/array distinction
+  honest. `validate` and `blank` delegate to the schema cache.
+- `src/did/+did2/+schema/cache.m` — schema cache class. Singleton
+  bootstrap, schema-path resolution (env override
+  `DID_SCHEMA_PATH`, or sibling `did-schema/schemas/V_gamma` checkout),
+  `getClass`, and `superclasses` traversal are implemented; the
+  heavier methods (`fieldsFor`, `queryablePaths`,
+  `buildBlankDocument`, `validateDocument`) currently throw
+  `did2:notImplemented` and will be filled in next.
+- `src/did/+did2/Contents.m` — package overview.
+- `tests/+did2/testDocumentScaffold.m` — function-based unit tests
+  covering construction, dot-path get/set, iterate, round-trip JSON,
+  and the documented error IDs. Tests that depend on the schema cache
+  beyond what is implemented are deferred.
+
+Provisional decision (logged in §1 as #7): use `+did2` for the v2
+namespace during the scaffold, leaving the §10 rename-vs-parallel
+question open for resolution before v2 reaches `main`.
+
+Next up: fill in `did2.schema.cache.fieldsFor`,
+`queryablePaths`, and `buildBlankDocument`; then `validateDocument`
+against the V_gamma meta-schema; then start the in-memory query
+evaluator (step 2).
