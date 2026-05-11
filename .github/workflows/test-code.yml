@@ -21,16 +21,12 @@ concurrency:
 
 jobs:
   test-code:
-    # Flat workflow that just runs the self-test suite. The
-    # ehennestad/matbox-actions/check-code@v1 step that this used to
-    # call breaks on fresh runners with "codecheckToolbox: Too many
-    # input arguments" — the matbox MATLAB toolbox installed by
-    # install-matbox no longer matches what check-code passes to it.
-    # NDI-matlab's CI still passes because its setup-matlab cache
-    # predates the matbox change; ours is cold. Drop the static-
-    # analysis step for now; re-add either when matbox-actions is
-    # fixed upstream, or via MATLAB's built-in codeAnalyzer.
-    name: Run self-tests
+    # Flat workflow modeled on NDI-matlab/.github/workflows/run-tests.yml.
+    # Uses release: latest because the current matbox MATLAB toolbox
+    # (called via check-code) requires features beyond R2021b; on
+    # R2021b check-code fails with "codecheckToolbox: Too many input
+    # arguments".
+    name: Analyse and test code
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -54,8 +50,14 @@ jobs:
             addpath(genpath("tools"));
             matbox.installRequirements(didtools.projectdir());
 
+      - name: Check code
+        uses: ehennestad/matbox-actions/check-code@v1
+        with:
+          source_directory: 'src'
+
       - name: Run tests
         uses: matlab-actions/run-command@v2
+        if: always()
         with:
           command: |
             addpath(genpath("src"));
