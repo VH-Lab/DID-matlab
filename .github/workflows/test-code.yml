@@ -22,7 +22,12 @@ concurrency:
 jobs:
   test-code:
     name: Analyse and test code
-    uses: ehennestad/matbox-actions/.github/workflows/test-code-workflow.yml@v1
+    # Pinned to the matbox-actions SHA that main's last green CI run used
+    # (Nov 2025). The floating @v1 tag was moved on 2026-05-01/02 to a
+    # commit that calls codecheckToolbox with arguments the installed
+    # matbox MATLAB toolbox does not accept ("Too many input arguments").
+    # Revisit once upstream is fixed.
+    uses: ehennestad/matbox-actions/.github/workflows/test-code-workflow.yml@4132d36
     with:
       matlab_release: R2021b
       matlab_use_cache: true
