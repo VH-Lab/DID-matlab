@@ -2,13 +2,13 @@ name: Test code
 
 on:
   push:
-    branches: main
+    branches: [main, V2]
     paths-ignore:
       - '*.md'
       - '.github/**'
 
   pull_request:
-    branches: main
+    branches: [main, V2]
     paths-ignore:
       - '*.md'
       - '.github/**'
