@@ -303,8 +303,12 @@ classdef sqlitedb < handle
         end
 
         function names = currentQueryableColumns(obj)
+            % sqlite's table-valued pragmas only accept literal-constant
+            % arguments, not bound `?` placeholders — pragma_table_info(?)
+            % silently returns zero rows. The table name is internal to
+            % this class and never user-controlled, so we inline it.
             rows = mksqlite(obj.dbid, ...
-                'SELECT name FROM pragma_table_info(?)', 'documents');
+                'SELECT name FROM pragma_table_info(''documents'')');
             names = {};
             for k = 1:numel(rows)
                 if startsWith(rows(k).name, 'q_')
