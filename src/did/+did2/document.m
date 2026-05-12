@@ -1,16 +1,20 @@
 classdef document < handle
-    % did2.document  V_gamma document object (DID v2 scaffold).
+    % did2.document  V_gamma document object.
     %
-    %   A did2.document holds a single DID document in its V_gamma JSON
-    %   shape, validates it against the V_gamma schema set, and serialises
-    %   it back to JSON. Unlike did.document, the internal representation
-    %   is the flat V_gamma shape directly — no translation to/from the
-    %   V_alpha base.* / document_class.* / <property_list_name> nesting.
+    %   Holds a single V_gamma document in the class-scoped wire shape
+    %   (see V_gamma_SPEC.md "JSON Format: Document Instances"), validates
+    %   it against the V_gamma schema set, and serialises it back to JSON.
     %
-    %   This is the v2 development scaffold (PLAN.md §9, item 1). The
-    %   outer API is intended to stabilise here; internal methods are
-    %   filled in iteratively. Stubs throw 'did2:notImplemented' so that
-    %   missing pieces surface loudly rather than silently no-op.
+    %   In-memory representation. MATLAB struct field names cannot start
+    %   with an underscore, so the four leading-underscore top-level
+    %   keys (`_classname`, `_class_version`, `_superclasses`,
+    %   `_depends_on`) are stored as `x_classname`, `x_class_version`,
+    %   `x_superclasses`, `x_depends_on`, mirroring what `jsondecode`
+    %   produces. Class-block keys (`base`, `daqsystem`, ...) are valid
+    %   MATLAB identifiers and stay verbatim. `toJSON` rewrites
+    %   `"x_<name>":` back to `"_<name>":` on the encoded output so the
+    %   serialised form matches the spec; `fromJSON` relies on
+    %   `jsondecode`'s default rename to read it back in.
     %
     %   did2.document Properties:
     %       documentProperties - struct mirroring the V_gamma JSON shape.
@@ -20,12 +24,11 @@ classdef document < handle
     %                      (className, valueStruct).
     %       get          - dot-path getter into documentProperties.
     %       set          - dot-path setter into documentProperties.
-    %       iterate      - element iterator over an array-of-structure path
-    %                      (used by the in-memory query evaluator for [*]).
-    %       toJSON       - serialise to a JSON string.
+    %       iterate      - element iterator over an array-of-structure path.
+    %       toJSON       - serialise to V_gamma JSON text.
     %       toStruct     - return the underlying struct.
-    %       className    - shorthand for get('_class.name').
-    %       classVersion - shorthand for get('_class.version').
+    %       className    - shorthand for the document's `_classname`.
+    %       classVersion - shorthand for the document's `_class_version`.
     %       validate     - validate this document against its schema.
     %
     %   did2.document Static Methods:
@@ -33,18 +36,13 @@ classdef document < handle
     %       fromStruct   - construct from a struct.
     %       blank        - construct a blank instance of the named class.
     %
-    %   See also: did2.schema.cache, did.document, docs/v2/PLAN.md.
+    %   See also: did2.schema.cache, docs/v2/PLAN.md.
 
     properties
-        % documentProperties - struct mirroring the V_gamma JSON shape.
-        %   Top-level keys are flat snake_case (e.g., id, session_id,
-        %   name, datestamp) plus class-defined fields. System metadata
-        %   carries a leading underscore (_class, _depends_on, _files).
         documentProperties (1,1) struct = struct()
     end
 
     properties (Access = private)
-        % schemaCacheHandle - lazily resolved did2.schema.cache instance.
         schemaCacheHandle = []
     end
 
@@ -81,10 +79,9 @@ classdef document < handle
         function value = get(obj, fieldPath)
             % get - read documentProperties at a dot-path.
             %
-            %   v = doc.get('sample_rate.hertz') returns the hertz field
-            %   inside the sample_rate named composite. The [*] array
-            %   iteration suffix is not handled here — use iterate() for
-            %   that, since [*] returns a struct array rather than a scalar.
+            %   v = doc.get('base.id') returns the id from the base
+            %   property block. `[*]` array iteration is handled by
+            %   `iterate(arrayPath)`, not by this method.
             arguments
                 obj
                 fieldPath (1,:) char
@@ -94,9 +91,6 @@ classdef document < handle
 
         function obj = set(obj, fieldPath, value)
             % set - write a value at a dot-path inside documentProperties.
-            %
-            %   doc.set('app.app_name', 'ndi_app_spikeextractor') sets the
-            %   nested field, creating intermediate structs as needed.
             arguments
                 obj
                 fieldPath (1,:) char
@@ -108,11 +102,6 @@ classdef document < handle
 
         function elements = iterate(obj, arrayPath)
             % iterate - return the element list at an array-of-structure path.
-            %
-            %   els = doc.iterate('axes') returns the struct array stored
-            %   at the 'axes' path. Used by the in-memory query evaluator
-            %   to implement the V_gamma '[*]' existential semantics
-            %   described in did_query_model.md.
             arguments
                 obj
                 arrayPath (1,:) char
@@ -127,40 +116,44 @@ classdef document < handle
         end
 
         function jsonText = toJSON(obj, opts)
-            % toJSON - serialise documentProperties to JSON text.
+            % toJSON - serialise documentProperties to V_gamma JSON text.
+            %   Internal `x_<name>` keys are rewritten to `_<name>` on
+            %   the encoded output to match the spec.
             arguments
                 obj
                 opts.PrettyPrint (1,1) logical = false
             end
-            jsonText = jsonencode(obj.documentProperties, ...
+            raw = jsonencode(obj.documentProperties, ...
                 'PrettyPrint', opts.PrettyPrint);
+            jsonText = did2.document.rewriteXUnderscoreKeys(raw);
         end
 
         function s = toStruct(obj)
-            % toStruct - return the underlying documentProperties struct.
             s = obj.documentProperties;
         end
 
         function name = className(obj)
-            % className - shorthand for get('_class.name').
-            name = obj.get('_class.name');
+            % className - the document's `_classname` value.
+            if isfield(obj.documentProperties, 'x_classname')
+                name = char(obj.documentProperties.x_classname);
+            else
+                error('did2:document:missingField', ...
+                    'Document has no _classname.');
+            end
         end
 
         function v = classVersion(obj)
-            % classVersion - shorthand for get('_class.version').
-            v = obj.get('_class.version');
+            % classVersion - the document's `_class_version` value.
+            if isfield(obj.documentProperties, 'x_class_version')
+                v = char(obj.documentProperties.x_class_version);
+            else
+                error('did2:document:missingField', ...
+                    'Document has no _class_version.');
+            end
         end
 
         function validate(obj, opts)
             % validate - check this document against its V_gamma schema.
-            %
-            %   doc.validate() resolves the schema cache from the default
-            %   path, looks up the document's class definition, and
-            %   verifies required fields, type constraints, and the named
-            %   composite layouts (ontology_term, duration, length, ...).
-            %
-            %   doc.validate(SchemaCache=cache) uses the supplied cache
-            %   instead of the shared singleton.
             arguments
                 obj
                 opts.SchemaCache = []
@@ -172,7 +165,6 @@ classdef document < handle
 
     methods (Static)
         function obj = fromJSON(jsonText)
-            % fromJSON - construct a did2.document from a JSON string.
             arguments
                 jsonText (1,:) char
             end
@@ -180,7 +172,6 @@ classdef document < handle
         end
 
         function obj = fromStruct(s)
-            % fromStruct - construct a did2.document from a struct.
             arguments
                 s (1,1) struct
             end
@@ -189,12 +180,6 @@ classdef document < handle
 
         function obj = blank(className, opts)
             % blank - construct a blank V_gamma document of the named class.
-            %
-            %   d = did2.document.blank('app') builds an instance of the
-            %   'app' class with every field set to its '_blank_value' as
-            %   declared by the V_gamma schema. _class metadata is filled
-            %   from the schema; id and datestamp are populated with a
-            %   freshly generated did_uid and the current UTC timestamp.
             arguments
                 className (1,:) char
                 opts.SchemaCache = []
@@ -204,7 +189,6 @@ classdef document < handle
         end
 
         function value = dotPathGet(s, fieldPath)
-            % dotPathGet - read a nested value out of struct s by dot-path.
             arguments
                 s
                 fieldPath (1,:) char
@@ -228,7 +212,6 @@ classdef document < handle
         end
 
         function s = dotPathSet(s, fieldPath, value)
-            % dotPathSet - write value into struct s at the given dot-path.
             arguments
                 s (1,1) struct
                 fieldPath (1,:) char
@@ -264,9 +247,6 @@ classdef document < handle
         end
 
         function s = mergeStruct(base, overlay)
-            % mergeStruct - shallow overlay of overlay onto base.
-            %   Scalar struct fields in overlay overwrite base; nested
-            %   structs recurse. Non-struct values overwrite.
             s = base;
             if ~isstruct(overlay)
                 return;
@@ -283,11 +263,6 @@ classdef document < handle
         end
 
         function s = buildBlank(className, cacheOverride)
-            % buildBlank - assemble a blank V_gamma document by walking
-            %   the schema cache for className and its superclasses,
-            %   populating each field with its _blank_value, then filling
-            %   _class metadata, id (freshly minted), session_id (blank),
-            %   and datestamp (current UTC).
             if nargin < 2
                 cacheOverride = [];
             end
@@ -297,6 +272,15 @@ classdef document < handle
                 cache = cacheOverride;
             end
             s = cache.buildBlankDocument(className);
+        end
+
+        function out = rewriteXUnderscoreKeys(jsonText)
+            % rewriteXUnderscoreKeys - convert `"x_<name>":` keys to
+            %   `"_<name>":` on the encoded JSON text. The regex matches
+            %   only JSON keys (colon-terminated, with optional
+            %   whitespace) so values that happen to start with `x_`
+            %   are unaffected.
+            out = regexprep(jsonText, '"x_([a-zA-Z][a-zA-Z0-9_]*)"(\s*):', '"_$1"$2:');
         end
     end
 
