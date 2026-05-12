@@ -5,15 +5,17 @@ classdef document < handle
     %   (see V_gamma_SPEC.md "JSON Format: Document Instances"), validates
     %   it against the V_gamma schema set, and serialises it back to JSON.
     %
-    %   In-memory representation. MATLAB struct field names cannot start
-    %   with an underscore, so the four leading-underscore top-level
-    %   keys (`_classname`, `_class_version`, `_superclasses`,
-    %   `_depends_on`) are stored as `x_classname`, `x_class_version`,
-    %   `x_superclasses`, `x_depends_on`, mirroring what `jsondecode`
-    %   produces. Class-block keys (`base`, `daqsystem`, ...) are valid
-    %   MATLAB identifiers and stay verbatim. `toJSON` rewrites
-    %   `"x_<name>":` back to `"_<name>":` on the encoded output so the
-    %   serialised form matches the spec; `fromJSON` relies on
+    %   In-memory representation. The V_gamma document shape carries a
+    %   top-level `document_class` header (with sub-keys `class_name`,
+    %   `class_version`, `superclasses`), plus a top-level `_depends_on`
+    %   array, plus one property block per class in the chain keyed by
+    %   class name. `document_class` and its sub-keys, and the class
+    %   block keys, are all valid MATLAB identifiers and stay verbatim.
+    %   Only `_depends_on` (top-level) and `_name` (inside its entries)
+    %   keep MATLAB's `x_` rename — stored as `x_depends_on` and
+    %   `x_name`, matching what `jsondecode` produces. `toJSON`
+    %   rewrites `"x_<name>":` back to `"_<name>":` on the encoded
+    %   output so the wire form matches the spec; `fromJSON` relies on
     %   `jsondecode`'s default rename to read it back in.
     %
     %   did2.document Properties:
@@ -27,8 +29,8 @@ classdef document < handle
     %       iterate      - element iterator over an array-of-structure path.
     %       toJSON       - serialise to V_gamma JSON text.
     %       toStruct     - return the underlying struct.
-    %       className    - shorthand for the document's `_classname`.
-    %       classVersion - shorthand for the document's `_class_version`.
+    %       className    - shorthand for document_class.class_name.
+    %       classVersion - shorthand for document_class.class_version.
     %       validate     - validate this document against its schema.
     %
     %   did2.document Static Methods:
@@ -118,7 +120,10 @@ classdef document < handle
         function jsonText = toJSON(obj, opts)
             % toJSON - serialise documentProperties to V_gamma JSON text.
             %   Internal `x_<name>` keys are rewritten to `_<name>` on
-            %   the encoded output to match the spec.
+            %   the encoded output to match the spec. Currently the
+            %   only two such keys at the document-instance level are
+            %   `x_depends_on` (top-level) and `x_name` (inside each
+            %   `_depends_on` entry); everything else is already plain.
             arguments
                 obj
                 opts.PrettyPrint (1,1) logical = false
@@ -133,22 +138,26 @@ classdef document < handle
         end
 
         function name = className(obj)
-            % className - the document's `_classname` value.
-            if isfield(obj.documentProperties, 'x_classname')
-                name = char(obj.documentProperties.x_classname);
+            % className - the document's `document_class.class_name`.
+            if isfield(obj.documentProperties, 'document_class') ...
+                    && isstruct(obj.documentProperties.document_class) ...
+                    && isfield(obj.documentProperties.document_class, 'class_name')
+                name = char(obj.documentProperties.document_class.class_name);
             else
                 error('did2:document:missingField', ...
-                    'Document has no _classname.');
+                    'Document has no document_class.class_name.');
             end
         end
 
         function v = classVersion(obj)
-            % classVersion - the document's `_class_version` value.
-            if isfield(obj.documentProperties, 'x_class_version')
-                v = char(obj.documentProperties.x_class_version);
+            % classVersion - the document's `document_class.class_version`.
+            if isfield(obj.documentProperties, 'document_class') ...
+                    && isstruct(obj.documentProperties.document_class) ...
+                    && isfield(obj.documentProperties.document_class, 'class_version')
+                v = char(obj.documentProperties.document_class.class_version);
             else
                 error('did2:document:missingField', ...
-                    'Document has no _class_version.');
+                    'Document has no document_class.class_version.');
             end
         end
 
