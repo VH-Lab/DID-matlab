@@ -5,35 +5,35 @@
         "superclasses": [
             {
                 "class_name": "base",
-                "_schema": "$DIDSCHEMAPATH/base.json"
+                "schema": "$DIDSCHEMAPATH/base.json"
             }
         ]
     },
-    "_maturity_level": "work_in_progress",
-    "_depends_on": [],
-    "_file": [
+    "maturity_level": "work_in_progress",
+    "depends_on": [],
+    "file": [
         {
-            "_name": "filename1.ext",
-            "_documentation": "First demo binary file attached to the document."
+            "name": "filename1.ext",
+            "documentation": "First demo binary file attached to the document."
         },
         {
-            "_name": "filename2.ext2",
-            "_documentation": "Second demo binary file attached to the document."
+            "name": "filename2.ext2",
+            "documentation": "Second demo binary file attached to the document."
         }
     ],
-    "_fields": [
+    "fields": [
         {
-            "_name": "value",
+            "name": "value",
             "type": "char",
-            "_blank_value": "",
-            "_default_value": "",
-            "_mustBeNonEmpty": false,
-            "_mustBeScalar": true,
-            "_mustNotHaveNaN": false,
-            "_queryable": true,
-            "_ontology": null,
-            "_documentation": "A demo scalar value carried alongside the file attachments.",
-            "_constraints": {
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": true,
+            "ontology": null,
+            "documentation": "A demo scalar value carried alongside the file attachments.",
+            "constraints": {
                 "maxLength": 256
             }
         }

@@ -5,26 +5,26 @@
         "superclasses": [
             {
                 "class_name": "base",
-                "_schema": "$DIDSCHEMAPATH/base.json"
+                "schema": "$DIDSCHEMAPATH/base.json"
             }
         ]
     },
-    "_maturity_level": "work_in_progress",
-    "_depends_on": [],
-    "_file": [],
-    "_fields": [
+    "maturity_level": "work_in_progress",
+    "depends_on": [],
+    "file": [],
+    "fields": [
         {
-            "_name": "value",
+            "name": "value",
             "type": "char",
-            "_blank_value": "",
-            "_default_value": "",
-            "_mustBeNonEmpty": false,
-            "_mustBeScalar": true,
-            "_mustNotHaveNaN": false,
-            "_queryable": true,
-            "_ontology": null,
-            "_documentation": "A demo scalar value used by the +did2 self-tests.",
-            "_constraints": {
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": true,
+            "ontology": null,
+            "documentation": "A demo scalar value used by the +did2 self-tests.",
+            "constraints": {
                 "maxLength": 256
             }
         }

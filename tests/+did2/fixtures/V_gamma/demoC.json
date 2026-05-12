@@ -5,45 +5,45 @@
         "superclasses": [
             {
                 "class_name": "base",
-                "_schema": "$DIDSCHEMAPATH/base.json"
+                "schema": "$DIDSCHEMAPATH/base.json"
             }
         ]
     },
-    "_maturity_level": "work_in_progress",
-    "_depends_on": [
+    "maturity_level": "work_in_progress",
+    "depends_on": [
         {
-            "_name": "item1",
-            "_mustBeNonEmpty": true,
-            "_documentation": "The first dependency item, by id.",
-            "_must_refer_to_document_class": ""
+            "name": "item1",
+            "mustBeNonEmpty": true,
+            "documentation": "The first dependency item, by id.",
+            "must_refer_to_document_class": ""
         },
         {
-            "_name": "item2",
-            "_mustBeNonEmpty": true,
-            "_documentation": "The second dependency item, by id.",
-            "_must_refer_to_document_class": ""
+            "name": "item2",
+            "mustBeNonEmpty": true,
+            "documentation": "The second dependency item, by id.",
+            "must_refer_to_document_class": ""
         },
         {
-            "_name": "item3",
-            "_mustBeNonEmpty": false,
-            "_documentation": "The third dependency item; optional.",
-            "_must_refer_to_document_class": ""
+            "name": "item3",
+            "mustBeNonEmpty": false,
+            "documentation": "The third dependency item; optional.",
+            "must_refer_to_document_class": ""
         }
     ],
-    "_file": [],
-    "_fields": [
+    "file": [],
+    "fields": [
         {
-            "_name": "value",
+            "name": "value",
             "type": "char",
-            "_blank_value": "",
-            "_default_value": "",
-            "_mustBeNonEmpty": false,
-            "_mustBeScalar": true,
-            "_mustNotHaveNaN": false,
-            "_queryable": true,
-            "_ontology": null,
-            "_documentation": "A demo scalar value carried alongside the dependencies.",
-            "_constraints": {
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": true,
+            "ontology": null,
+            "documentation": "A demo scalar value carried alongside the dependencies.",
+            "constraints": {
                 "maxLength": 256
             }
         }

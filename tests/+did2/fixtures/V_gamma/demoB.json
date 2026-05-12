@@ -5,26 +5,26 @@
         "superclasses": [
             {
                 "class_name": "demoA",
-                "_schema": "$DIDSCHEMAPATH/demoA.json"
+                "schema": "$DIDSCHEMAPATH/demoA.json"
             }
         ]
     },
-    "_maturity_level": "work_in_progress",
-    "_depends_on": [],
-    "_file": [],
-    "_fields": [
+    "maturity_level": "work_in_progress",
+    "depends_on": [],
+    "file": [],
+    "fields": [
         {
-            "_name": "value_b",
+            "name": "value_b",
             "type": "char",
-            "_blank_value": "",
-            "_default_value": "",
-            "_mustBeNonEmpty": false,
-            "_mustBeScalar": true,
-            "_mustNotHaveNaN": false,
-            "_queryable": true,
-            "_ontology": null,
-            "_documentation": "A second demo scalar value, declared by demoB on top of demoA.",
-            "_constraints": {
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": true,
+            "ontology": null,
+            "documentation": "A second demo scalar value, declared by demoB on top of demoA.",
+            "constraints": {
                 "maxLength": 256
             }
         }
