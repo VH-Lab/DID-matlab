@@ -234,7 +234,7 @@ classdef document < handle
 
         function s = assignNested(s, parts, value)
             head = parts{1};
-            if numel(parts) == 1
+            if isscalar(parts)
                 s.(head) = value;
                 return;
             end
