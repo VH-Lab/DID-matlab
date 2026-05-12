@@ -69,7 +69,12 @@ jobs:
             import matlab.unittest.TestRunner;
             import matlab.unittest.TestSuite;
             runner = TestRunner.withTextOutput;
-            suite = TestSuite.fromFolder("tests", "IncludingSubfolders", true);
+            % did2 self-tests live under tests/+did2/+unittest/ now (the
+            % legacy +did/+unittest/ layout). TestSuite.fromPackage with
+            % IncludingSubpackages=true picks up the function-based test
+            % files and any future +abstract base classes. Mirrors the
+            % discovery pattern in test-symmetry.yml.
+            suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
             results = runner.run(suite);
             disp(table(results));
             nFailed = sum([results.Failed]);
