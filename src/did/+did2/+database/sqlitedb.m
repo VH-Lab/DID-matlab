@@ -491,7 +491,7 @@ classdef sqlitedb < handle
             obj.ensureSidecarTable();
             stored = obj.readArrayPathsMeta();
             desired = obj.queryableArrayPaths;
-            if isequal(sort(stored(:)'), sort(desired(:)'))
+            if isequal(sort(stored), sort(desired))
                 return;
             end
             obj.repopulateSidecarFromBodies();
