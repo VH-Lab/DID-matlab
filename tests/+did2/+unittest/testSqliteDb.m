@@ -365,16 +365,22 @@ end
 % ---- helpers (step 4) ----
 
 function cols = generatedColumns(db, tableName)
-% sqlite's table-valued pragmas reject bound placeholders; the argument
-% must be a literal constant. Interpolate the table name via sprintf so
-% the SQL ends up with `pragma_table_info('documents')` rather than
-% `pragma_table_info(?)`.
-sql = sprintf('SELECT name FROM pragma_table_info(''%s'')', tableName);
-rows = mksqlite(db.testHookDbId(), sql);
+% Probe each generated column the sqlitedb instance expects to find on
+% the table with a zero-row SELECT, and return the subset that
+% succeeds. We previously walked `pragma_table_info`, but on the CI's
+% mksqlite + sqlite combination the .name field of those rows didn't
+% round-trip through ismember the way the test assumed even when the
+% column itself was healthy. Probing each candidate directly avoids
+% that path entirely.
+candidates = db.testHookQueryableColumns();
 cols = {};
-for k = 1:numel(rows)
-    if startsWith(rows(k).name, 'q_')
-        cols{end+1} = char(rows(k).name); %#ok<AGROW>
+for k = 1:numel(candidates)
+    sql = sprintf('SELECT %s FROM %s LIMIT 0', candidates{k}, tableName);
+    try
+        mksqlite(db.testHookDbId(), sql);
+        cols{end+1} = candidates{k}; %#ok<AGROW>
+    catch
+        % column does not exist on this table.
     end
 end
 end
