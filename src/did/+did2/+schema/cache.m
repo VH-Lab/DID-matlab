@@ -412,8 +412,14 @@ classdef cache < handle
 
         function name = columnNameFor(path)
             % columnNameFor - canonical SQLite generated-column name for a
-            %   class-qualified dot-path. 'base.session_id' -> 'q_base_session_id'.
-            name = ['q_' strrep(path, '.', '_')];
+            %   class-qualified dot-path. 'base.session_id' ->
+            %   'q_base_session_id'; 'demoA.value' -> 'q_demoa_value'.
+            %   Always lowercase so the convention round-trips cleanly
+            %   through `pragma_table_info` (which reports column names
+            %   in the case SQLite parses them) regardless of how the
+            %   class names happen to be spelled in the V_gamma schema
+            %   files.
+            name = ['q_' lower(strrep(path, '.', '_'))];
         end
 
         function aff = affinityFor(fieldType)
