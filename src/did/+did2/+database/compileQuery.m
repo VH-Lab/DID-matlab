@@ -32,9 +32,12 @@ function [whereSQL, params] = compileQuery(q, opts)
 arguments
     q (1,1) did2.query
     opts.QueryablePaths cell = {}
+    opts.QueryableArrayPaths = []
 end
 
-ctx = struct('queryablePaths', {asPathSet(opts.QueryablePaths)});
+ctx = struct( ...
+    'queryablePaths', {asPathSet(opts.QueryablePaths)}, ...
+    'queryableArrayPaths', {asArrayPathMap(opts.QueryableArrayPaths)});
 [whereSQL, params] = compileSearchstructArray(q.searchstructure, ctx);
 end
 
@@ -47,6 +50,37 @@ for k = 1:numel(paths)
         continue;
     end
     set(p) = true;
+end
+end
+
+function map = asArrayPathMap(arrayDefs)
+% Normalise the QueryableArrayPaths input into a path -> affinity map.
+% Accepts a struct array (one entry per sidecar-indexed path; the
+% schema-cache shape with `.path` and `.affinity`), a cellstr of bare
+% paths (assumes TEXT affinity), or empty for "no indexed array paths."
+map = containers.Map('KeyType', 'char', 'ValueType', 'char');
+if isempty(arrayDefs)
+    return;
+end
+if isstruct(arrayDefs)
+    for k = 1:numel(arrayDefs)
+        p = char(arrayDefs(k).path);
+        if isempty(p)
+            continue;
+        end
+        if isfield(arrayDefs(k), 'affinity') && ~isempty(arrayDefs(k).affinity)
+            map(p) = char(arrayDefs(k).affinity);
+        else
+            map(p) = 'TEXT';
+        end
+    end
+elseif iscell(arrayDefs)
+    for k = 1:numel(arrayDefs)
+        p = char(arrayDefs{k});
+        if ~isempty(p)
+            map(p) = 'TEXT';
+        end
+    end
 end
 end
 
@@ -248,7 +282,8 @@ end
 end
 
 function [sql, params] = compileScalar(op, fieldPath, target, isNeg, ctx)
-% Scalar operators. With `[*]` segments, lowers to EXISTS over json_each.
+% Scalar operators. With `[*]` segments, lowers to EXISTS over json_each
+% (or against the queryable_array_elem sidecar when the path is indexed).
 [stars, prefix, leaf] = splitPathOnStar(fieldPath);
 
 if isempty(stars)
@@ -264,6 +299,11 @@ if isempty(stars)
     return;
 end
 
+if arrayPathIsIndexed(fieldPath, ctx)
+    [sql, params] = compileScalarFromSidecar(op, fieldPath, target, isNeg, ctx);
+    return;
+end
+
 [joinSQL, witnessAlias] = buildArrayJoin(stars);
 witnessExpr = leafValueExpression(witnessAlias, leaf);
 [predicate, params] = scalarPredicate(op, witnessExpr, target);
@@ -273,6 +313,74 @@ if isNeg
     sql = sprintf('(NOT %s)', existsSQL);
 else
     sql = existsSQL;
+end
+end
+
+function tf = arrayPathIsIndexed(fieldPath, ctx)
+% True iff this exact '[*]'-bearing path is in the sidecar set.
+tf = false;
+if ~isfield(ctx, 'queryableArrayPaths')
+    return;
+end
+m = ctx.queryableArrayPaths;
+if ~isa(m, 'containers.Map') || m.Count == 0
+    return;
+end
+tf = m.isKey(fieldPath);
+end
+
+function affinity = arrayPathAffinity(fieldPath, ctx)
+% Look up the declared SQLite affinity for an indexed array path.
+% Defaults to 'TEXT' when the path is present but lacks an affinity.
+affinity = 'TEXT';
+if ~isfield(ctx, 'queryableArrayPaths')
+    return;
+end
+m = ctx.queryableArrayPaths;
+if ~isa(m, 'containers.Map') || ~m.isKey(fieldPath)
+    return;
+end
+v = m(fieldPath);
+if ~isempty(v)
+    affinity = v;
+end
+end
+
+function [sql, params] = compileScalarFromSidecar(op, fieldPath, target, isNeg, ctx)
+% Compile a scalar `[*]` predicate against queryable_array_elem.
+%
+% Positive predicates compile to `EXISTS (SELECT 1 FROM
+% queryable_array_elem qae WHERE qae.doc_id = documents.id
+% AND qae.path = ? AND <predicate>)`. Negation flips to `NOT EXISTS
+% (...)` — which also matches docs with no sidecar rows at this path,
+% preserving the in-memory rule that an unresolvable path under `~op`
+% matches.
+%
+% Operators sqlite cannot express natively (regexp, multi-element
+% exact_number) compile to a permissive `1=1` predicate; the
+% in-memory post-filter in did2.database.sqlitedb.search enforces
+% correctness regardless.
+affinity = arrayPathAffinity(fieldPath, ctx);
+valueExpr = sidecarValueExpression(affinity);
+[predicate, params] = scalarPredicate(op, valueExpr, target);
+inner = sprintf(['SELECT 1 FROM queryable_array_elem qae ' ...
+    'WHERE qae.doc_id = documents.id AND qae.path = ? AND %s'], predicate);
+params = [{fieldPath}, params];
+existsSQL = sprintf('EXISTS (%s)', inner);
+if isNeg
+    sql = sprintf('(NOT %s)', existsSQL);
+else
+    sql = existsSQL;
+end
+end
+
+function expr = sidecarValueExpression(affinity)
+% Pick the right value_* column on queryable_array_elem for an affinity.
+switch upper(char(affinity))
+    case {'REAL', 'INTEGER'}
+        expr = 'qae.value_num';
+    otherwise
+        expr = 'qae.value_text';
 end
 end
 

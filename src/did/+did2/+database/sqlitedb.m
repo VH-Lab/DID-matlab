@@ -45,6 +45,8 @@ classdef sqlitedb < handle
         schemaCache = []
         queryableScalarColumns = []  % struct array from did2.schema.cache.queryablePaths
         queryableScalarPaths = {}    % cellstr mirror, passed to compileQuery
+        queryableArrayPathDefs = []  % struct array; one per [*]-bearing sub-field
+        queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
         queryableBootstrapOk (1,1) logical = false
     end
 
@@ -75,6 +77,7 @@ classdef sqlitedb < handle
             else
                 obj.assertSchema();
                 obj.reconcileQueryableColumns();
+                obj.reconcileQueryableArrayPaths();
             end
         end
 
@@ -163,7 +166,8 @@ classdef sqlitedb < handle
                 q (1,1) did2.query
             end
             [whereSQL, params] = did2.database.compileQuery(q, ...
-                'QueryablePaths', obj.queryableScalarPaths);
+                'QueryablePaths', obj.queryableScalarPaths, ...
+                'QueryableArrayPaths', obj.queryableArrayPathDefs);
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
             rows = mksqlite(obj.dbid, sql, params{:});
@@ -201,20 +205,29 @@ classdef sqlitedb < handle
             %   documents table. Hidden helper for unit tests.
             cols = {obj.queryableScalarColumns.column};
         end
+
+        function paths = testHookQueryableArrayPaths(obj)
+            % testHookQueryableArrayPaths - cellstr of the '[*]'-bearing
+            %   sidecar paths this instance expects in queryable_array_elem.
+            %   Hidden helper for unit tests.
+            paths = obj.queryableArrayPaths;
+        end
     end
 
     % ---- schema bootstrap ----
     methods (Access = private)
         function bootstrapQueryableColumns(obj)
             % Resolve the schema cache and snapshot the queryable scalar
-            % paths once per instance. Failures (missing schema dir,
-            % cache errors) degrade gracefully: queryableBootstrapOk
-            % stays false, the JSON1 fallback path stays in effect,
-            % and reconcileQueryableColumns becomes a no-op (so we
-            % don't strip a healthy DB's q_* columns on a host that
-            % temporarily lacks the schema dir).
+            % and array-iteration paths once per instance. Failures
+            % (missing schema dir, cache errors) degrade gracefully:
+            % queryableBootstrapOk stays false, the JSON1 fallback path
+            % stays in effect, and the reconcile* methods become no-ops
+            % (so we don't strip a healthy DB's q_* columns or sidecar
+            % rows on a host that temporarily lacks the schema dir).
             obj.queryableScalarColumns = obj.emptyColumnStruct();
             obj.queryableScalarPaths = {};
+            obj.queryableArrayPathDefs = obj.emptyArrayPathStruct();
+            obj.queryableArrayPaths = {};
             obj.queryableBootstrapOk = false;
             try
                 cache = obj.resolveSchemaCache();
@@ -223,18 +236,27 @@ classdef sqlitedb < handle
             catch
                 return;
             end
-            if isempty(info) || ~isstruct(info) || ~isfield(info, 'scalar') ...
-                    || isempty(info.scalar)
+            if isempty(info) || ~isstruct(info)
                 return;
             end
-            % Sort deterministically by `column` so the CREATE TABLE,
-            % reconciliation, and tests all see the same order.
-            scalar = info.scalar;
-            cols = {scalar.column};
-            [~, order] = sort(cols);
-            scalar = scalar(order);
-            obj.queryableScalarColumns = scalar;
-            obj.queryableScalarPaths = {scalar.path};
+            if isfield(info, 'scalar') && ~isempty(info.scalar)
+                % Sort deterministically by `column` so the CREATE
+                % TABLE, reconciliation, and tests all see the same
+                % order.
+                scalar = info.scalar;
+                cols = {scalar.column};
+                [~, order] = sort(cols);
+                scalar = scalar(order);
+                obj.queryableScalarColumns = scalar;
+                obj.queryableScalarPaths = {scalar.path};
+            end
+            if isfield(info, 'array') && ~isempty(info.array)
+                arrayDefs = info.array;
+                [~, order] = sort({arrayDefs.path});
+                arrayDefs = arrayDefs(order);
+                obj.queryableArrayPathDefs = arrayDefs;
+                obj.queryableArrayPaths = {arrayDefs.path};
+            end
             obj.queryableBootstrapOk = true;
         end
 
@@ -268,6 +290,20 @@ classdef sqlitedb < handle
                     'CREATE INDEX depends_on_name_value ON depends_on(name, value)');
 
                 mksqlite(obj.dbid, [ ...
+                    'CREATE TABLE queryable_array_elem (' ...
+                    'doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,' ...
+                    'path TEXT NOT NULL,' ...
+                    'elem_index INTEGER NOT NULL,' ...
+                    'value_text TEXT,' ...
+                    'value_num REAL)']);
+                mksqlite(obj.dbid, ...
+                    'CREATE INDEX qae_path_text ON queryable_array_elem(path, value_text)');
+                mksqlite(obj.dbid, ...
+                    'CREATE INDEX qae_path_num ON queryable_array_elem(path, value_num)');
+                mksqlite(obj.dbid, ...
+                    'CREATE INDEX qae_doc_id ON queryable_array_elem(doc_id)');
+
+                mksqlite(obj.dbid, [ ...
                     'CREATE TABLE meta (' ...
                     'key TEXT PRIMARY KEY, value TEXT NOT NULL)']);
                 mksqlite(obj.dbid, ...
@@ -276,6 +312,10 @@ classdef sqlitedb < handle
                 mksqlite(obj.dbid, ...
                     'INSERT INTO meta(key, value) VALUES(?, ?)', ...
                     'schema_generation', 'V_gamma');
+                mksqlite(obj.dbid, ...
+                    'INSERT INTO meta(key, value) VALUES(?, ?)', ...
+                    'queryable_array_paths', ...
+                    did2.database.sqlitedb.serialisePathSet(obj.queryableArrayPaths));
 
                 mksqlite(obj.dbid, 'COMMIT');
             catch err
@@ -432,6 +472,196 @@ classdef sqlitedb < handle
                 'column', {}, 'affinity', {});
         end
 
+        function s = emptyArrayPathStruct(~)
+            s = struct('path', {}, 'declaringClass', {}, ...
+                'parentField', {}, 'parentPath', {}, ...
+                'subField', {}, 'type', {}, 'affinity', {});
+        end
+
+        function reconcileQueryableArrayPaths(obj)
+            % Compare the configured queryable array-iteration path set
+            % to the snapshot recorded in the meta table. If they
+            % differ, drop every queryable_array_elem row and rebuild
+            % from the stored document bodies. Skipped when bootstrap
+            % degraded so a host that temporarily lacks the schema
+            % directory doesn't strip a healthy sidecar.
+            if ~obj.queryableBootstrapOk
+                return;
+            end
+            obj.ensureSidecarTable();
+            stored = obj.readArrayPathsMeta();
+            desired = obj.queryableArrayPaths;
+            if isequal(sort(stored(:)'), sort(desired(:)'))
+                return;
+            end
+            obj.repopulateSidecarFromBodies();
+            obj.writeArrayPathsMeta();
+        end
+
+        function ensureSidecarTable(obj)
+            % Create the queryable_array_elem table if it isn't present
+            % yet. Used when reopening a database that was created
+            % before step 5 landed (no sidecar at create time).
+            try
+                mksqlite(obj.dbid, ...
+                    'SELECT 1 FROM queryable_array_elem LIMIT 0');
+                return;
+            catch
+            end
+            mksqlite(obj.dbid, [ ...
+                'CREATE TABLE queryable_array_elem (' ...
+                'doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,' ...
+                'path TEXT NOT NULL,' ...
+                'elem_index INTEGER NOT NULL,' ...
+                'value_text TEXT,' ...
+                'value_num REAL)']);
+            mksqlite(obj.dbid, ...
+                'CREATE INDEX qae_path_text ON queryable_array_elem(path, value_text)');
+            mksqlite(obj.dbid, ...
+                'CREATE INDEX qae_path_num ON queryable_array_elem(path, value_num)');
+            mksqlite(obj.dbid, ...
+                'CREATE INDEX qae_doc_id ON queryable_array_elem(doc_id)');
+        end
+
+        function paths = readArrayPathsMeta(obj)
+            paths = {};
+            try
+                row = mksqlite(obj.dbid, ...
+                    'SELECT value FROM meta WHERE key = ?', ...
+                    'queryable_array_paths');
+            catch
+                return;
+            end
+            if isempty(row) || isempty(row(1).value)
+                return;
+            end
+            paths = did2.database.sqlitedb.deserialisePathSet(row(1).value);
+        end
+
+        function writeArrayPathsMeta(obj)
+            encoded = did2.database.sqlitedb.serialisePathSet(obj.queryableArrayPaths);
+            mksqlite(obj.dbid, ...
+                'INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)', ...
+                'queryable_array_paths', encoded);
+        end
+
+        function repopulateSidecarFromBodies(obj)
+            % Drop every sidecar row and rebuild from the stored
+            % document bodies under the currently-configured array
+            % path set. O(numDocuments * numArrayPaths * elemsPerArray);
+            % acceptable while DBs are small (see PLAN.md Decision 9).
+            mksqlite(obj.dbid, 'BEGIN IMMEDIATE');
+            try
+                mksqlite(obj.dbid, 'DELETE FROM queryable_array_elem');
+                if isempty(obj.queryableArrayPathDefs)
+                    mksqlite(obj.dbid, 'COMMIT');
+                    return;
+                end
+                rows = mksqlite(obj.dbid, ...
+                    'SELECT id, body FROM documents ORDER BY rowid ASC');
+                for k = 1:numel(rows)
+                    docStruct = jsondecode(rows(k).body);
+                    obj.insertSidecarRowsFromStruct(rows(k).id, docStruct);
+                end
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
+        end
+
+        function insertSidecarRowsFromStruct(obj, docId, s)
+            % Walk every configured queryable array path and INSERT one
+            % row per array element into queryable_array_elem.
+            for k = 1:numel(obj.queryableArrayPathDefs)
+                def = obj.queryableArrayPathDefs(k);
+                elems = obj.resolveParentArray(s, def.parentPath);
+                for idx = 1:numel(elems)
+                    elem = obj.elementAt(elems, idx);
+                    if ~isstruct(elem) || ~isfield(elem, def.subField)
+                        continue;
+                    end
+                    value = elem.(def.subField);
+                    if obj.isEmptyLeaf(value)
+                        continue;
+                    end
+                    [textValue, numValue] = obj.coerceLeafValue(value, def.affinity);
+                    mksqlite(obj.dbid, ...
+                        ['INSERT INTO queryable_array_elem' ...
+                         '(doc_id, path, elem_index, value_text, value_num) ' ...
+                         'VALUES(?, ?, ?, ?, ?)'], ...
+                        docId, def.path, idx, textValue, numValue);
+                end
+            end
+        end
+
+        function elems = resolveParentArray(~, s, parentPath)
+            % Navigate a dot-path with no [*] segments down to the value
+            % stored at parentPath. Returns a struct array, cell array
+            % of structs, or [] if the path is unresolvable.
+            elems = [];
+            if isempty(parentPath)
+                return;
+            end
+            parts = strsplit(parentPath, '.');
+            cursor = s;
+            for k = 1:numel(parts)
+                if ~isstruct(cursor) || ~isscalar(cursor) ...
+                        || ~isfield(cursor, parts{k})
+                    return;
+                end
+                cursor = cursor.(parts{k});
+            end
+            elems = cursor;
+        end
+
+        function elem = elementAt(~, container, idx)
+            if iscell(container)
+                elem = container{idx};
+            elseif isstruct(container)
+                elem = container(idx);
+            else
+                elem = [];
+            end
+        end
+
+        function tf = isEmptyLeaf(~, value)
+            if isstring(value)
+                tf = isscalar(value) && strlength(value) == 0;
+            elseif ischar(value)
+                tf = isempty(value);
+            else
+                tf = isempty(value);
+            end
+        end
+
+        function [textValue, numValue] = coerceLeafValue(~, value, affinity)
+            textValue = [];
+            numValue = [];
+            switch affinity
+                case 'TEXT'
+                    if ischar(value)
+                        textValue = value;
+                    elseif isstring(value) && isscalar(value)
+                        textValue = char(value);
+                    else
+                        textValue = jsonencode(value);
+                    end
+                case {'REAL', 'INTEGER'}
+                    if isnumeric(value) && isscalar(value)
+                        numValue = double(value);
+                    elseif islogical(value) && isscalar(value)
+                        numValue = double(value);
+                    end
+                otherwise
+                    if ischar(value) || (isstring(value) && isscalar(value))
+                        textValue = char(value);
+                    elseif isnumeric(value) && isscalar(value)
+                        numValue = double(value);
+                    end
+            end
+        end
+
         function assertSchema(obj)
             try
                 row = mksqlite(obj.dbid, ...
@@ -482,6 +712,8 @@ classdef sqlitedb < handle
                         'INSERT INTO depends_on(doc_id, name, value) VALUES(?, ?, ?)', ...
                         id, deps{k}.name, deps{k}.value);
                 end
+
+                obj.insertSidecarRowsFromStruct(id, s);
 
                 mksqlite(obj.dbid, 'COMMIT');
             catch err
@@ -632,6 +864,34 @@ classdef sqlitedb < handle
     end
 
     methods (Static, Access = private)
+        function out = serialisePathSet(paths)
+            % Encode a cellstr path set as a newline-delimited string.
+            % Newline-joining sidesteps the jsondecode-shape variability
+            % (string array vs char matrix vs cell array) that JSON
+            % would otherwise introduce; queryable paths never contain
+            % newlines themselves. The empty set is stored as the
+            % literal '<none>' sentinel so the meta column's NOT NULL
+            % constraint doesn't trip on a binding-as-NULL of MATLAB ''.
+            if isempty(paths)
+                out = '<none>';
+                return;
+            end
+            out = strjoin(paths(:)', char(10));
+        end
+
+        function paths = deserialisePathSet(text)
+            paths = {};
+            if isempty(text)
+                return;
+            end
+            text = char(text);
+            if strcmp(text, '<none>')
+                return;
+            end
+            parts = strsplit(text, char(10));
+            paths = parts(~cellfun('isempty', parts));
+        end
+
         function out = computeHash(text)
             % Lightweight, dependency-free content hash for body_hash.
             try

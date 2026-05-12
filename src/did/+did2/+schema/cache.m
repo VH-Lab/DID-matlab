@@ -212,17 +212,35 @@ classdef cache < handle
             %                  .affinity       SQLite type affinity for
             %                                  the column ('TEXT', 'REAL',
             %                                  or 'INTEGER').
-            %     .array   - cellstr of '[*]'-bearing dot-paths from
-            %                array-of-structure fields. Populated for
-            %                step 5; step 4 only consumes .scalar.
+            %     .array   - struct array; one entry per queryable scalar
+            %                sub-field of an array-of-structure field.
+            %                Each entry has:
+            %                  .path           full '[*]'-bearing dot-path
+            %                                  (e.g., 'demoArray.axes[*].unit').
+            %                  .declaringClass declaring class name.
+            %                  .parentField    the array-of-structure field
+            %                                  name (e.g., 'axes').
+            %                  .parentPath     class-qualified parent path
+            %                                  (e.g., 'demoArray.axes').
+            %                  .subField       the queryable sub-field name
+            %                                  inside each element
+            %                                  (e.g., 'unit').
+            %                  .type           the sub-field's schema type
+            %                                  string.
+            %                  .affinity       SQLite type affinity for the
+            %                                  sub-field ('TEXT', 'REAL',
+            %                                  or 'INTEGER').
             %
             %   Run loadAllSchemas() first if you need a deterministic
             %   set independent of which classes have been touched.
             scalar = struct('path', {}, 'declaringClass', {}, ...
                 'fieldName', {}, 'type', {}, ...
                 'column', {}, 'affinity', {});
-            arrayPaths = {};
-            seenPaths = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+            arrayPaths = struct('path', {}, 'declaringClass', {}, ...
+                'parentField', {}, 'parentPath', {}, ...
+                'subField', {}, 'type', {}, 'affinity', {});
+            seenScalar = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+            seenArray  = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 
             keys = obj.loadedClasses.keys();
             for k = 1:numel(keys)
@@ -235,17 +253,14 @@ classdef cache < handle
                 own = obj.toCellArray(schema.fields);
                 for f = 1:numel(own)
                     fieldDef = own{f};
-                    if ~obj.fieldIsQueryable(fieldDef)
-                        continue;
-                    end
                     fieldName = char(fieldDef.name);
                     fieldType = char(fieldDef.type);
                     path = sprintf('%s.%s', className, fieldName);
                     if obj.fieldIsScalar(fieldDef)
-                        if seenPaths.isKey(path)
+                        if ~obj.fieldIsQueryable(fieldDef) || seenScalar.isKey(path)
                             continue;
                         end
-                        seenPaths(path) = true;
+                        seenScalar(path) = true;
                         scalar(end+1) = struct( ...
                             'path', path, ...
                             'declaringClass', className, ...
@@ -253,13 +268,40 @@ classdef cache < handle
                             'type', fieldType, ...
                             'column', did2.schema.cache.columnNameFor(path), ...
                             'affinity', did2.schema.cache.affinityFor(fieldType)); %#ok<AGROW>
-                    else
-                        arrayPaths{end+1} = sprintf('%s[*]', path); %#ok<AGROW>
+                    elseif strcmp(fieldType, 'structure') ...
+                            && obj.fieldIsQueryable(fieldDef) ...
+                            && isfield(fieldDef, 'fields') ...
+                            && ~isempty(fieldDef.fields)
+                        % Array-of-structure: emit one entry per queryable
+                        % scalar sub-field inside the element template.
+                        subEntries = obj.toCellArray(fieldDef.fields);
+                        for s = 1:numel(subEntries)
+                            subDef = subEntries{s};
+                            if ~obj.fieldIsQueryable(subDef) ...
+                                    || ~obj.fieldIsScalar(subDef)
+                                continue;
+                            end
+                            subName = char(subDef.name);
+                            subType = char(subDef.type);
+                            fullPath = sprintf('%s[*].%s', path, subName);
+                            if seenArray.isKey(fullPath)
+                                continue;
+                            end
+                            seenArray(fullPath) = true;
+                            arrayPaths(end+1) = struct( ...
+                                'path', fullPath, ...
+                                'declaringClass', className, ...
+                                'parentField', fieldName, ...
+                                'parentPath', path, ...
+                                'subField', subName, ...
+                                'type', subType, ...
+                                'affinity', did2.schema.cache.affinityFor(subType)); %#ok<AGROW>
+                        end
                     end
                 end
             end
 
-            paths = struct('scalar', scalar, 'array', {arrayPaths});
+            paths = struct('scalar', {scalar}, 'array', {arrayPaths});
         end
 
         function doc = buildBlankDocument(obj, className)

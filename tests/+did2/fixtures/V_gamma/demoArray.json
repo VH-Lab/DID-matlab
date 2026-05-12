@@ -1,0 +1,75 @@
+{
+    "document_class": {
+        "class_name": "demoArray",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base",
+                "schema": "$DIDSCHEMAPATH/base.json"
+            }
+        ],
+        "maturity_level": "work_in_progress"
+    },
+    "depends_on": [],
+    "file": [],
+    "fields": [
+        {
+            "name": "axes",
+            "type": "structure",
+            "blank_value": [],
+            "default_value": [],
+            "mustBeNonEmpty": false,
+            "mustBeScalar": false,
+            "mustNotHaveNaN": false,
+            "queryable": true,
+            "ontology": null,
+            "documentation": "Array of axis descriptors used by the +did2 self-tests to exercise queryable array-of-structure sub-fields (PLAN.md §3.3).",
+            "constraints": {},
+            "fields": [
+                {
+                    "name": "name",
+                    "type": "char",
+                    "blank_value": "",
+                    "default_value": "",
+                    "mustBeNonEmpty": false,
+                    "mustBeScalar": true,
+                    "mustNotHaveNaN": false,
+                    "queryable": false,
+                    "ontology": null,
+                    "documentation": "Human-readable axis label (not queryable).",
+                    "constraints": {
+                        "maxLength": 64
+                    }
+                },
+                {
+                    "name": "unit",
+                    "type": "char",
+                    "blank_value": "",
+                    "default_value": "",
+                    "mustBeNonEmpty": false,
+                    "mustBeScalar": true,
+                    "mustNotHaveNaN": false,
+                    "queryable": true,
+                    "ontology": null,
+                    "documentation": "Per-axis unit string. Queryable: drives the queryable_array_elem sidecar in tests.",
+                    "constraints": {
+                        "maxLength": 64
+                    }
+                },
+                {
+                    "name": "size",
+                    "type": "integer",
+                    "blank_value": 0,
+                    "default_value": 0,
+                    "mustBeNonEmpty": false,
+                    "mustBeScalar": true,
+                    "mustNotHaveNaN": false,
+                    "queryable": true,
+                    "ontology": null,
+                    "documentation": "Number of samples along the axis. Queryable numeric sub-field used by the value_num sidecar path.",
+                    "constraints": {}
+                }
+            ]
+        }
+    ]
+}

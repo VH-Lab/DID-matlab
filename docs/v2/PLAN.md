@@ -708,3 +708,117 @@ field gets queried.
 
 Next up: step 5 — the `queryable_array_elem` sidecar table for
 `[*]` paths.
+
+### 2026-05-12 — step 5 queryable_array_elem sidecar
+
+Implemented step 5 of §9 on branch
+`claude/add-array-fixtures-v2-CbcV2`.
+
+The previous agent's hand-off flagged that the demo fixtures had no
+array-of-structure queryable fields, so the integration tests
+couldn't exercise the sidecar end-to-end. Step 5 starts with a
+fixture extension and then layers the schema-cache / database /
+query-compiler changes on top.
+
+- `tests/+did2/fixtures/V_gamma/demoArray.json` — new class
+  extending base with a single field `axes` (type `structure`,
+  `mustBeScalar: false`, `queryable: true`) whose element template
+  declares three sub-fields: `name` (char, non-queryable label),
+  `unit` (char, queryable TEXT-affinity), and `size` (integer,
+  queryable INTEGER-affinity). The class exercises both
+  `value_text` and `value_num` sidecar columns from a single
+  fixture.
+
+- `src/did/+did2/+schema/cache.m` — `queryablePaths().array` now
+  returns a struct array with the leaf metadata the database
+  backend needs to populate and the compiler needs to route:
+    `path`           — full `[*]`-bearing dot-path
+                       (e.g., `demoArray.axes[*].unit`).
+    `declaringClass` — class that declares the parent array field.
+    `parentField`    — array-of-structure field name (`axes`).
+    `parentPath`     — class-qualified parent path (`demoArray.axes`).
+    `subField`       — queryable sub-field name (`unit`).
+    `type`           — schema type of the sub-field.
+    `affinity`       — SQLite type affinity (`TEXT` / `REAL` /
+                       `INTEGER`) used to pick the sidecar's
+                       `value_text` vs. `value_num` column.
+  The discovery walk now expects an array-of-structure field to be
+  `mustBeScalar: false`, `type: structure`, `queryable: true`, and
+  to declare its element template under `fields`. Sub-fields are
+  emitted only when they are themselves queryable scalars.
+
+- `src/did/+did2/+database/sqlitedb.m` — `createSchema` installs the
+  `queryable_array_elem(doc_id, path, elem_index, value_text,
+  value_num)` table from §3.3 with foreign-key cascades and the
+  `qae_path_text` / `qae_path_num` / `qae_doc_id` indexes.
+  `addOne` populates the sidecar in the same transaction as the
+  `documents` / `superclasses` / `depends_on` inserts, picking the
+  right value column per path's affinity and skipping empty leaves.
+  Bootstrap caches the array-path definitions alongside the
+  scalar columns and threads both into `compileQuery`.
+  Reconciliation:
+    - The configured array-paths set is recorded in the `meta`
+      table under `queryable_array_paths`, newline-delimited (a
+      sentinel `<none>` covers the empty-set case so the column's
+      `NOT NULL` constraint doesn't depend on mksqlite binding
+      `''` literally).
+    - At open, `reconcileQueryableArrayPaths` compares the stored
+      set to the current one. On a mismatch it wipes the sidecar
+      and re-populates by replaying every stored document body
+      through the new path set, then refreshes the meta row.
+    - `ensureSidecarTable` lazily installs the table when the
+      database predates step 5.
+    - The reconcile path degrades gracefully (no-op) when the
+      bootstrap couldn't resolve the schema cache, so a host
+      that temporarily lacks the schema directory doesn't strip
+      a healthy sidecar.
+
+- `src/did/+did2/+database/compileQuery.m` — new
+  `'QueryableArrayPaths'` name-value option, accepting either the
+  schema-cache struct array (so the affinity travels through) or a
+  cellstr of bare paths (defaults to TEXT affinity). When a
+  scalar `[*]`-leaf's dot-path is in the indexed set, the compiler
+  emits `EXISTS (SELECT 1 FROM queryable_array_elem qae WHERE
+  qae.doc_id = documents.id AND qae.path = ? AND <leaf-predicate>)`
+  against the affinity-appropriate `qae.value_*` column.
+  Negation flips to `NOT EXISTS (...)`, which also matches docs
+  with no rows at that path (preserving the in-memory rule that
+  an unresolvable path under `~op` matches). Paths not in the set
+  still take the `json_each` fallback, so ad-hoc exploration over
+  unindexed array shapes keeps working. `hasmember`,
+  `hasanysubfield_contains_string`, and
+  `hasanysubfield_exact_string` continue to use `json_each`:
+  the sidecar stores one row per (element, queryable sub-field)
+  and can't natively serve correlated multi-sub-field predicates.
+
+- `tests/+did2/+unittest/testSchemaCache.m` — three new tests
+  cover the `.array` struct-array shape, the per-entry leaf
+  metadata (`parentPath`, `subField`, `type`, `affinity`), and
+  the count match against the fixtures.
+- `tests/+did2/+unittest/testCompileQuery.m` — five new tests
+  cover the sidecar EXISTS expansion, the json_each fallback for
+  unindexed paths, the negation flip to `NOT EXISTS`, the
+  numeric-affinity routing to `qae.value_num`, and the
+  regexp pre-filter remaining a permissive `1=1` even when the
+  surrounding subquery narrows to `qae.path = ?`.
+- `tests/+did2/+unittest/testSqliteDb.m` — six integration tests
+  cover sidecar population at insert (TEXT and numeric paths),
+  indexed-`[*]` search routing matching the in-memory evaluator,
+  numeric comparison via `value_num`, `ON DELETE CASCADE`
+  cleanup, the `meta` row tracking the configured path set, and
+  the reconcile-on-mismatch flow rebuilding the sidecar from
+  stored bodies.
+
+`did2.database.sqlitedb` grew a `testHookQueryableArrayPaths`
+helper alongside the existing scalar-column hook, so the unit
+tests can introspect the configured set without round-tripping
+through public methods.
+
+Step 5 leaves the in-memory evaluator and the JSON1 fallback
+both untouched, so the SQL compiler's sidecar path is a routing
+optimisation only: every test that exercises the compiler also
+post-filters through `did2.query.matches`, and any divergence
+between the sidecar pre-filter and the reference evaluator would
+surface as a search-result mismatch immediately.
+
+Next up: step 6 — the v1 → v2 converter (PLAN.md §7).

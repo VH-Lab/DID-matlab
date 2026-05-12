@@ -248,6 +248,35 @@ expected = {'base.datestamp', 'base.id', 'base.name', 'base.session_id', ...
 verifyEqual(testCase, sort(paths), expected);
 end
 
+function testQueryablePathsArrayListsDemoArraySubfields(testCase)
+% The demoArray fixture declares an `axes` array-of-structure field
+% with two queryable scalar sub-fields (`unit` and `size`).
+cache = testCase.TestData.cache;
+cache.loadAllSchemas();
+info = cache.queryablePaths();
+paths = sort({info.array.path});
+verifyEqual(testCase, paths, ...
+    {'demoArray.axes[*].size', 'demoArray.axes[*].unit'});
+end
+
+function testQueryablePathsArrayLeafMetadata(testCase)
+cache = testCase.TestData.cache;
+cache.loadAllSchemas();
+info = cache.queryablePaths();
+unitEntry = info.array(strcmp({info.array.path}, 'demoArray.axes[*].unit'));
+verifyEqual(testCase, numel(unitEntry), 1);
+verifyEqual(testCase, unitEntry.declaringClass, 'demoArray');
+verifyEqual(testCase, unitEntry.parentField, 'axes');
+verifyEqual(testCase, unitEntry.parentPath, 'demoArray.axes');
+verifyEqual(testCase, unitEntry.subField, 'unit');
+verifyEqual(testCase, unitEntry.type, 'char');
+verifyEqual(testCase, unitEntry.affinity, 'TEXT');
+
+sizeEntry = info.array(strcmp({info.array.path}, 'demoArray.axes[*].size'));
+verifyEqual(testCase, sizeEntry.type, 'integer');
+verifyEqual(testCase, sizeEntry.affinity, 'INTEGER');
+end
+
 function testQueryablePathsColumnNames(testCase)
 cache = testCase.TestData.cache;
 cache.loadAllSchemas();
@@ -269,12 +298,13 @@ info = cache.queryablePaths();
 verifyTrue(testCase, all(strcmp({info.scalar.affinity}, 'TEXT')));
 end
 
-function testQueryablePathsArrayEmptyForFixtures(testCase)
+function testQueryablePathsArrayCountMatchesFixtures(testCase)
+% The demo fixtures declare exactly two queryable array sub-fields,
+% both on demoArray.axes (`unit` and `size`).
 cache = testCase.TestData.cache;
 cache.loadAllSchemas();
 info = cache.queryablePaths();
-% No array-of-structure queryable fields in the demo fixtures.
-verifyEqual(testCase, info.array, {});
+verifyEqual(testCase, numel(info.array), 2);
 end
 
 function testLoadAllSchemasIsIdempotent(testCase)
