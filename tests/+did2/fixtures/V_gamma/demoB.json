@@ -1,13 +1,15 @@
 {
-    "_classname": "demoB",
-    "_class_version": "1.0.0",
+    "document_class": {
+        "class_name": "demoB",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "demoA",
+                "_schema": "$DIDSCHEMAPATH/demoA.json"
+            }
+        ]
+    },
     "_maturity_level": "work_in_progress",
-    "_superclasses": [
-        {
-            "_classname": "demoA",
-            "_schema": "$DIDSCHEMAPATH/demoA.json"
-        }
-    ],
     "_depends_on": [],
     "_file": [],
     "_fields": [

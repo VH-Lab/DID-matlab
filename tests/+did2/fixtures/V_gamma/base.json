@@ -1,8 +1,10 @@
 {
-    "_classname": "base",
-    "_class_version": "1.0.0",
+    "document_class": {
+        "class_name": "base",
+        "class_version": "1.0.0",
+        "superclasses": []
+    },
     "_maturity_level": "work_in_progress",
-    "_superclasses": [],
     "_depends_on": [],
     "_file": [],
     "_fields": [
