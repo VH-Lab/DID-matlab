@@ -405,12 +405,16 @@ db.add(doc);
 rows = mksqlite(db.testHookDbId(), ...
     'SELECT path, elem_index, value_text, value_num FROM queryable_array_elem ORDER BY path, elem_index');
 verifyEqual(testCase, numel(rows), 6);
-unitRows = rows(strcmp({rows.path}, 'demoArray.axes[*].unit'));
-verifyEqual(testCase, ...
-    arrayfun(@(r) char(r.value_text), unitRows, 'UniformOutput', false), ...
-    {'um','um','deg'});
-sizeRows = rows(strcmp({rows.path}, 'demoArray.axes[*].size'));
-verifyEqual(testCase, [sizeRows.value_num], [10 20 5]);
+% mksqlite returns N x 1 struct arrays; flatten via comma-list packing so
+% shape mismatches don't trip the equality checks below.
+unitMask = strcmp({rows.path}, 'demoArray.axes[*].unit');
+unitRows = rows(unitMask);
+unitValues = cellfun(@char, {unitRows.value_text}, 'UniformOutput', false);
+verifyEqual(testCase, unitValues, {'um','um','deg'});
+sizeMask = strcmp({rows.path}, 'demoArray.axes[*].size');
+sizeRows = rows(sizeMask);
+sizeValues = [sizeRows.value_num];
+verifyEqual(testCase, sizeValues(:)', [10 20 5]);
 end
 
 function testSidecarRoutesIndexedStarSearch(testCase)
