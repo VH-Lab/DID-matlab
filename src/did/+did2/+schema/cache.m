@@ -42,7 +42,9 @@ classdef cache < handle
     %       ownFields           - the `fields` list a class declares directly.
     %       fieldsFor           - merged inherited fields tagged with the
     %                             declaring class (struct array).
-    %       queryablePaths      - scalar and array-iteration paths (stub).
+    %       loadAllSchemas      - parse every *.json in the schema dir.
+    %       queryablePaths      - scalar and array-iteration paths
+    %                             declared by the loaded schemas.
     %       buildBlankDocument  - blank V_gamma document in the wire shape.
     %       validateDocument    - validate a did2.document instance.
     %
@@ -166,15 +168,98 @@ classdef cache < handle
             end
         end
 
-        function paths = queryablePaths(~, ~) %#ok<STOUT>
-            % queryablePaths - planned for steps 3 & 4. Will return
-            %   .scalar (cellstr of class-qualified dot-paths like
-            %   'daqsystem.sample_rate.hertz') and .array (cellstr of
-            %   '[*]'-suffixed paths). Used by the SQL backend to drive
-            %   generated columns (§3.2) and the queryable_array_elem
-            %   sidecar (§3.3).
-            error('did2:notImplemented', ...
-                'did2.schema.cache.queryablePaths is not yet implemented (step 3/4).');
+        function loadAllSchemas(obj)
+            % loadAllSchemas - parse every *.json schema in the schema
+            %   directory and populate the loaded-classes map. Skips
+            %   meta files (CURIE_lookups_meta.json, ndi_reserved_keys.json).
+            %   Used by the SQLite backend at open-time so queryablePaths
+            %   returns a deterministic set independent of which classes
+            %   have been touched so far in this session.
+            if ~isfolder(obj.schemaPath)
+                return;
+            end
+            entries = dir(fullfile(obj.schemaPath, '*.json'));
+            for k = 1:numel(entries)
+                [~, name, ~] = fileparts(entries(k).name);
+                if endsWith(name, '_meta') ...
+                        || strcmp(name, 'ndi_reserved_keys')
+                    continue;
+                end
+                if ~obj.loadedClasses.isKey(name)
+                    obj.getClass(name);  % side effect: caches the parse.
+                end
+            end
+        end
+
+        function paths = queryablePaths(obj)
+            % queryablePaths - the set of class-qualified queryable
+            %   dot-paths declared by the schemas currently loaded in
+            %   the cache. Used by the SQL backend to drive the
+            %   generated columns (§3.2) and (eventually) the
+            %   queryable_array_elem sidecar (§3.3).
+            %
+            %   Returns a struct with two fields:
+            %     .scalar  - struct array; one entry per scalar queryable
+            %                path. Each entry has:
+            %                  .path           class-qualified dot-path
+            %                                  (e.g., 'base.session_id').
+            %                  .declaringClass declaring class name.
+            %                  .fieldName      the field's own name.
+            %                  .type           the schema's type string
+            %                                  ('char', 'did_uid', ...).
+            %                  .column         generated-column name
+            %                                  ('q_' + path with '.' -> '_').
+            %                  .affinity       SQLite type affinity for
+            %                                  the column ('TEXT', 'REAL',
+            %                                  or 'INTEGER').
+            %     .array   - cellstr of '[*]'-bearing dot-paths from
+            %                array-of-structure fields. Populated for
+            %                step 5; step 4 only consumes .scalar.
+            %
+            %   Run loadAllSchemas() first if you need a deterministic
+            %   set independent of which classes have been touched.
+            scalar = struct('path', {}, 'declaringClass', {}, ...
+                'fieldName', {}, 'type', {}, ...
+                'column', {}, 'affinity', {});
+            arrayPaths = {};
+            seenPaths = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+
+            keys = obj.loadedClasses.keys();
+            for k = 1:numel(keys)
+                className = keys{k};
+                schema = obj.loadedClasses(className);
+                if ~isstruct(schema) || ~isfield(schema, 'fields') ...
+                        || isempty(schema.fields)
+                    continue;
+                end
+                own = obj.toCellArray(schema.fields);
+                for f = 1:numel(own)
+                    fieldDef = own{f};
+                    if ~obj.fieldIsQueryable(fieldDef)
+                        continue;
+                    end
+                    fieldName = char(fieldDef.name);
+                    fieldType = char(fieldDef.type);
+                    path = sprintf('%s.%s', className, fieldName);
+                    if obj.fieldIsScalar(fieldDef)
+                        if seenPaths.isKey(path)
+                            continue;
+                        end
+                        seenPaths(path) = true;
+                        scalar(end+1) = struct( ...
+                            'path', path, ...
+                            'declaringClass', className, ...
+                            'fieldName', fieldName, ...
+                            'type', fieldType, ...
+                            'column', did2.schema.cache.columnNameFor(path), ...
+                            'affinity', did2.schema.cache.affinityFor(fieldType)); %#ok<AGROW>
+                    else
+                        arrayPaths{end+1} = sprintf('%s[*]', path); %#ok<AGROW>
+                    end
+                end
+            end
+
+            paths = struct('scalar', scalar, 'array', {arrayPaths});
         end
 
         function doc = buildBlankDocument(obj, className)
@@ -324,6 +409,26 @@ classdef cache < handle
                 len = 0;
             end
         end
+
+        function name = columnNameFor(path)
+            % columnNameFor - canonical SQLite generated-column name for a
+            %   class-qualified dot-path. 'base.session_id' -> 'q_base_session_id'.
+            name = ['q_' strrep(path, '.', '_')];
+        end
+
+        function aff = affinityFor(fieldType)
+            % affinityFor - SQLite type affinity for a V_gamma scalar type.
+            switch fieldType
+                case {'char', 'did_uid', 'timestamp', 'string'}
+                    aff = 'TEXT';
+                case {'boolean', 'integer'}
+                    aff = 'INTEGER';
+                case {'double', 'matrix'}
+                    aff = 'REAL';
+                otherwise
+                    aff = '';  % no declared affinity for unknown types
+            end
+        end
     end
 
     methods (Access = private)
@@ -341,6 +446,21 @@ classdef cache < handle
                 out = arrayfun(@(i) raw(i), 1:numel(raw), 'UniformOutput', false);
             else
                 out = {raw};
+            end
+        end
+
+        function tf = fieldIsQueryable(~, fieldDef)
+            tf = isstruct(fieldDef) && isfield(fieldDef, 'queryable') ...
+                && logical(fieldDef.queryable);
+        end
+
+        function tf = fieldIsScalar(~, fieldDef)
+            % Treat queryable mustBeScalar fields as scalar paths. Fields
+            % without an explicit mustBeScalar default to scalar; only
+            % mustBeScalar==false marks a field as an array.
+            tf = true;
+            if isstruct(fieldDef) && isfield(fieldDef, 'mustBeScalar')
+                tf = logical(fieldDef.mustBeScalar);
             end
         end
 
