@@ -10,19 +10,24 @@
 %   Files
 %     document      - V_gamma document object (load / validate /
 %                     serialise / dot-path access).
+%     query         - V_gamma query value and in-memory evaluator
+%                     (the executable spec for the SQL compiler).
 %     Contents      - this overview.
 %
 %   Subpackages
 %     +schema       - schema cache and validation entry points.
+%     +database     - storage backends. Currently `sqlitedb` (sqlite3
+%                     + JSON1 fallback) and `compileQuery` (the JSON1
+%                     SQL compiler). See docs/v2/PLAN.md §3, §9 step 3.
 %     +convert      - (planned) v1-to-v2 conversion utilities.
-%     +query        - (planned) query tree, in-memory evaluator,
-%                     SQLite/JSON1 compiler.
 %
 %   Conventions
 %     - New code uses camelCase identifiers and arguments-block input
 %       validation, per AGENTS.md.
-%     - Document data is the flat V_gamma JSON shape (top-level
-%       snake_case keys; system metadata prefixed with `_`).
+%     - Document data is the V_gamma class-scoped JSON shape
+%       (top-level `document_class` header, top-level `depends_on`
+%       array, and one property block per class in the chain keyed
+%       by class name; no underscore-prefixed keys).
 %     - The schema cache is the single source of truth for what
 %       "valid" means; runtime reflection over values never substitutes
 %       for the schema.
