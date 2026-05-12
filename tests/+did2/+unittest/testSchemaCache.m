@@ -244,7 +244,7 @@ cache.loadAllSchemas();
 info = cache.queryablePaths();
 paths = {info.scalar.path};
 expected = {'base.datestamp', 'base.id', 'base.name', 'base.session_id', ...
-    'demoA.value', 'demoB.value_b', 'demoC.value'};
+    'demoA.value', 'demoB.value_b', 'demoC.value', 'demoFile.value'};
 verifyEqual(testCase, sort(paths), expected);
 end
 
@@ -254,9 +254,9 @@ cache.loadAllSchemas();
 info = cache.queryablePaths();
 paths = {info.scalar.path};
 columns = {info.scalar.column};
-% Column convention: 'q_' + dot-path with '.' -> '_'.
+% Column convention: 'q_' + dot-path with '.' -> '_', always lowercase.
 for k = 1:numel(paths)
-    expected = ['q_' strrep(paths{k}, '.', '_')];
+    expected = ['q_' lower(strrep(paths{k}, '.', '_'))];
     verifyEqual(testCase, columns{k}, expected);
 end
 end
