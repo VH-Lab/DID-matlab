@@ -191,3 +191,53 @@ function verifySubstring(testCase, haystack, needle)
 testCase.verifyTrue(contains(haystack, needle), ...
     sprintf('Expected "%s" to contain "%s".', haystack, needle));
 end
+
+% ---- step 4: routing to generated columns ----
+
+function testScalarLeafRoutesToGeneratedColumn(testCase)
+% With base.name declared queryable, the compiler should emit a
+% comparison against q_base_name instead of json_extract.
+q = did2.query('base.name', 'exact_string', 'alice');
+[sql, params] = did2.database.compileQuery(q, ...
+    'QueryablePaths', {'base.name'});
+verifySubstring(testCase, sql, 'q_base_name = ?');
+testCase.verifyFalse(contains(sql, 'json_extract'));
+verifyEqual(testCase, params, {'alice'});
+end
+
+function testScalarLeafFallsBackForUnqueryablePath(testCase)
+% A path not in the set falls back to json_extract.
+q = did2.query('demoA.value', 'exact_string', 'a1');
+[sql, ~] = did2.database.compileQuery(q, ...
+    'QueryablePaths', {'base.name'});
+verifySubstring(testCase, sql, 'json_extract(body, ''$.demoA.value'')');
+end
+
+function testNegationRoutesWithGuardOnGeneratedColumn(testCase)
+% Negation still needs the NULL guard so missing values flip to true
+% under `~`. The guard should target the generated column.
+q = did2.query('base.name', '~exact_string', 'alice');
+[sql, ~] = did2.database.compileQuery(q, ...
+    'QueryablePaths', {'base.name'});
+verifySubstring(testCase, sql, 'q_base_name IS NULL');
+verifySubstring(testCase, sql, 'NOT (');
+end
+
+function testHasfieldNotAffectedByQueryablePaths(testCase)
+% `hasfield` is a presence check: it must read json_type, not the
+% generated column (which would also be NULL for a JSON null value).
+q = did2.query('base.name', 'hasfield', '');
+[sql, ~] = did2.database.compileQuery(q, ...
+    'QueryablePaths', {'base.name'});
+verifySubstring(testCase, sql, 'json_type(body, ''$.base.name'')');
+end
+
+function testStarPathIgnoresQueryablePaths(testCase)
+% Array-iteration paths use json_each; queryable-paths set should not
+% interfere (step 5 will route these to the queryable_array_elem
+% sidecar).
+q = did2.query('demoA.axes[*].name', 'exact_string', 'x');
+[sql, ~] = did2.database.compileQuery(q, ...
+    'QueryablePaths', {'demoA.axes[*].name', 'base.name'});
+verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.axes''))');
+end
