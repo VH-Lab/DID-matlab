@@ -7,16 +7,13 @@ classdef document < handle
     %
     %   In-memory representation. The V_gamma document shape carries a
     %   top-level `document_class` header (with sub-keys `class_name`,
-    %   `class_version`, `superclasses`), plus a top-level `_depends_on`
+    %   `class_version`, `superclasses`), plus a top-level `depends_on`
     %   array, plus one property block per class in the chain keyed by
-    %   class name. `document_class` and its sub-keys, and the class
-    %   block keys, are all valid MATLAB identifiers and stay verbatim.
-    %   Only `_depends_on` (top-level) and `_name` (inside its entries)
-    %   keep MATLAB's `x_` rename — stored as `x_depends_on` and
-    %   `x_name`, matching what `jsondecode` produces. `toJSON`
-    %   rewrites `"x_<name>":` back to `"_<name>":` on the encoded
-    %   output so the wire form matches the spec; `fromJSON` relies on
-    %   `jsondecode`'s default rename to read it back in.
+    %   class name. After V_gamma's "drop underscore prefixes" pass,
+    %   every key in the wire shape is a valid MATLAB struct field name,
+    %   so the in-memory representation is the JSON shape verbatim.
+    %   `jsonencode`/`jsondecode` round-trip without any name-rewrite
+    %   pass.
     %
     %   did2.document Properties:
     %       documentProperties - struct mirroring the V_gamma JSON shape.
@@ -119,18 +116,12 @@ classdef document < handle
 
         function jsonText = toJSON(obj, opts)
             % toJSON - serialise documentProperties to V_gamma JSON text.
-            %   Internal `x_<name>` keys are rewritten to `_<name>` on
-            %   the encoded output to match the spec. Currently the
-            %   only two such keys at the document-instance level are
-            %   `x_depends_on` (top-level) and `x_name` (inside each
-            %   `_depends_on` entry); everything else is already plain.
             arguments
                 obj
                 opts.PrettyPrint (1,1) logical = false
             end
-            raw = jsonencode(obj.documentProperties, ...
+            jsonText = jsonencode(obj.documentProperties, ...
                 'PrettyPrint', opts.PrettyPrint);
-            jsonText = did2.document.rewriteXUnderscoreKeys(raw);
         end
 
         function s = toStruct(obj)
@@ -281,15 +272,6 @@ classdef document < handle
                 cache = cacheOverride;
             end
             s = cache.buildBlankDocument(className);
-        end
-
-        function out = rewriteXUnderscoreKeys(jsonText)
-            % rewriteXUnderscoreKeys - convert `"x_<name>":` keys to
-            %   `"_<name>":` on the encoded JSON text. The regex matches
-            %   only JSON keys (colon-terminated, with optional
-            %   whitespace) so values that happen to start with `x_`
-            %   are unaffected.
-            out = regexprep(jsonText, '"x_([a-zA-Z][a-zA-Z0-9_]*)"(\s*):', '"_$1"$2:');
         end
     end
 
