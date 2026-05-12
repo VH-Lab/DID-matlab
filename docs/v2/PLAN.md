@@ -526,3 +526,96 @@ plain-struct vs `did2.document` input branches.
 Next up: step 3 — the SQLite backend with the JSON1 fallback path.
 The in-memory evaluator becomes the reference implementation the
 SQL compiler is tested against.
+
+### 2026-05-12 — step 3 SQLite + JSON1 fallback backend
+
+Implemented step 3 of §9 on branch
+`claude/did-matlab-v2-step3-JxBfW`.
+
+Added the `+did2/+database` subpackage with two pieces:
+
+- **`src/did/+did2/+database/sqlitedb.m`** — first v2 storage
+  backend. Opens or creates a sqlite3 file via `mksqlite` and
+  installs the body + sidecar schema from §3.1:
+    `documents(id, classname, class_version, session_id, datestamp,
+               body, body_hash)` — full V_gamma JSON in `body`.
+    `superclasses(doc_id, classname)` — indexed by classname; one
+    row per class in the chain *including* the concrete class
+    itself, so `isa` is a single indexed lookup.
+    `depends_on(doc_id, name, value)` — indexed by `(name, value)`.
+    `meta(key, value)` — schema generation + version markers; the
+    constructor uses these to reject files that aren't V_gamma
+    databases (`did2:database:notV2Database`).
+  Foreign-key cascades drop the sidecar rows when a document is
+  removed. The class is `handle`-typed and tracks the mksqlite dbid
+  itself; `delete`/`close` are idempotent.
+
+  API (deliberately small for step 3):
+    `add(doc | {doc1,...}, Validate=true)`
+    `remove(id | document)`
+    `get(id)` returns a `did2.document`
+    `has(id)` / `count()` / `allIds()`
+    `search(q)` / `searchIds(q)`
+  `Validate=false` skips `cache.validateDocument` for bulk loads
+  (the `unsafe_insert` escape hatch noted in §1).
+
+- **`src/did/+did2/+database/compileQuery.m`** — translates a
+  `did2.query` to a SQL `WHERE` clause plus a parameter cell array.
+  Implements the JSON1 fallback path described in §3.4 and §6.1:
+    Scalar leaves -> `json_extract(body, '$.<path>')` against `?`,
+    with negation guarded by `IS NULL OR NOT (...)` so unresolvable
+    paths flip to true under `~`.
+    Array-iteration `[*]` paths -> `EXISTS (FROM json_each(...) je1
+    [, json_each(...) jeK ...] WHERE <leaf-predicate>)`. Multiple
+    `[*]` segments compose as a cross-product of `json_each` joins.
+    `isa` -> `EXISTS (FROM superclasses WHERE doc_id = ? AND
+    classname = ?)` against the sidecar table.
+    `depends_on` -> `EXISTS (FROM depends_on WHERE ... )`; the `*`
+    wildcard on `name` drops the name predicate.
+    `hasfield` -> `json_type(body, '$.<path>') IS NOT NULL`, so a
+    JSON `null` still counts as "present" (matches in-memory
+    semantics that `hasfield` is presence, not truthiness).
+    `hasmember`, `hasanysubfield_contains_string`,
+    `hasanysubfield_exact_string` — all desugar onto the same
+    `json_each` machinery; the contains-string sugar is rewritten
+    to a `[*]`-path + `contains_string`.
+    `and()` -> `( ... ) AND ( ... )`; `or()` -> `( ... ) OR ( ... )`.
+
+  Two operators are compiled to a permissive `1=1` pre-filter
+  because sqlite3 cannot natively express them: `regexp` (the
+  `REGEXP` UDF is not registered by mksqlite) and `exact_number`
+  against multi-element targets. `did2.database.sqlitedb.search`
+  always runs `did2.query.matches` over the SQL result set as a
+  correctness backstop, so the SQL pre-filter is only ever an
+  over-approximation. This is exactly the "slow but complete"
+  contract called for in §9 step 3.
+
+- **`tests/+did2/+unittest/testCompileQuery.m`** — string-based
+  smoke tests over the compiler output (no mksqlite required).
+  Covers every operator, the negation guard for missing paths,
+  single and nested `[*]` expansions, sidecar lookups for `isa`
+  and `depends_on`, and AND/OR composition.
+
+- **`tests/+did2/+unittest/testSqliteDb.m`** — integration tests
+  that round-trip V_gamma documents through a real SQLite file
+  and verify that the compiled queries plus the post-filter return
+  the same hits as the in-memory evaluator. Covers add / get /
+  remove, allIds ordering, reopen, foreign-file rejection,
+  `Validate=false`, every body operator, sidecar-table lookups
+  for `isa` / `depends_on`, AND/OR composition, and the `regexp`
+  post-filter path. The whole file filters itself out when
+  `mksqlite` is not on the MATLAB path (via `assumeFail`), so
+  CI runs without the MEX still pass.
+
+Updated `src/did/+did2/Contents.m` to document the new
+`+database` subpackage and to reflect the class-scoped V_gamma
+shape in the conventions block.
+
+Step 4 (schema-driven scalar generated columns + indexes, per
+§3.2) and step 5 (the `queryable_array_elem` sidecar, per §3.3)
+both layer cleanly on top of what landed here: the JSON1
+fallback compile path remains the correctness baseline; step 4
+just adds routing to the generated columns when the path is in
+the schema's queryable set, and step 5 adds routing to the
+sidecar for `[*]` paths. No data-shape changes to `documents`,
+`superclasses`, or `depends_on` are required.
