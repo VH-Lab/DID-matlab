@@ -21,6 +21,7 @@ users.
 | 6 | Plan lives at `docs/v2/PLAN.md` on the v2 development branch. | This file. |
 | 7 | Provisional namespace: `+did2`. | Picked from §10 option A for the scaffold. Revisit before v2 reaches `main`. |
 | 8 | Document instances use a top-level `document_class` header plus class-scoped property blocks (one block per class in the chain, keyed by `class_name` verbatim). | See §4.1. Matches V_gamma_SPEC.md "JSON Format: Document Instances" after the SPEC's two-step revision: (i) restore class-scoped blocks; (ii) drop the underscore prefix on all NDI-extension keys. Every key in the wire shape is a plain MATLAB identifier, so the in-memory MATLAB struct is the JSON shape verbatim. |
+| 9 | When the queryable-paths set declared by the schemas changes between sessions, **rebuild** the `documents` table via table-swap rather than ALTER TABLE incrementally. | V_gamma is still evolving and ALTER's main downside (orphan / dead columns accumulating over schema bumps) hits exactly when it's least tolerable. Rebuild keeps the schema canonical and pays a one-time O(n) IO cost we can afford while DBs are small. Closes §10 question 2. |
 
 Open questions are in §10.
 
@@ -303,10 +304,10 @@ Each step is shippable; nothing requires the next step to land first.
 - Final namespace choice: `+did2` (parallel) vs. rename `+did` → `+did_legacy`
   and reuse `+did` for v2. Parallel is friendlier during the transition,
   the rename is cleaner long-term.
-- ALTER TABLE add-column for new queryable paths after the first DB open:
-  acceptable for occasional schema bumps, painful for rapid development.
-  Decide whether to rebuild the `documents` table on schema-cache mismatch or
-  to ALTER incrementally.
+- ~~ALTER TABLE add-column for new queryable paths after the first DB open~~
+  Resolved in Decision 9: rebuild the `documents` table by table-swap on
+  schema-cache mismatch. Revisit if DBs grow large enough that rebuild IO
+  becomes a problem.
 - Whether to keep `+did/+implementations/sqldb.m` (Postgres) as a v2 target or
   drop it for now and reintroduce later. The query-compiler split (§6) makes
   re-adding it cheaper than today.
@@ -619,3 +620,91 @@ just adds routing to the generated columns when the path is in
 the schema's queryable set, and step 5 adds routing to the
 sidecar for `[*]` paths. No data-shape changes to `documents`,
 `superclasses`, or `depends_on` are required.
+
+### 2026-05-12 — step 4 indexed scalar paths + rebuild-on-mismatch
+
+Implemented step 4 of §9 on branch
+`claude/did-matlab-v2-step4-Pn8Rk`.
+
+`did2.schema.cache` gained the two methods step 4 needs:
+
+- `loadAllSchemas()` — parse every `*.json` in the schema directory
+  into the cache (skipping `*_meta.json` / `ndi_reserved_keys.json`).
+  Run once at sqlitedb-open so `queryablePaths()` returns a
+  deterministic set independent of which classes have happened to be
+  touched in this MATLAB session.
+- `queryablePaths()` — walks the loaded classes and returns
+    `.scalar` — struct array; one entry per scalar `queryable: true`
+                field (`path`, `declaringClass`, `fieldName`, `type`,
+                `column`, `affinity`).  `column` is the canonical
+                `q_<dot-path-with-underscores>` name; `affinity` is the
+                SQLite type affinity (TEXT for char/did_uid/timestamp,
+                INTEGER for boolean/integer, REAL for double/matrix).
+    `.array`  — cellstr of `[*]`-bearing dot-paths from array-of-
+                structure queryable fields. Populated for step 5;
+                step 4 only consumes `.scalar`.
+
+`did2.database.sqlitedb` now installs one STORED generated column on
+the `documents` table per scalar queryable path, plus a covering index
+(§3.2):
+
+    q_base_name TEXT GENERATED ALWAYS AS (json_extract(body, '$.base.name')) STORED
+    CREATE INDEX documents_q_base_name ON documents(q_base_name)
+
+…and so on for every entry in `.scalar`. At open time, the
+constructor:
+
+1. Resolves the schema cache, loads all schemas, snapshots the
+   queryable-paths set onto the instance. Failures (no schema dir,
+   broken cache) degrade gracefully to pure JSON1 fallback.
+2. For a new DB, calls `createSchema()` which emits the table with
+   the q_* columns from the start.
+3. For an existing DB, calls `assertSchema()` + the new
+   `reconcileQueryableColumns()`. If the installed q_* column set
+   doesn't match what the cache now declares, the table is rebuilt
+   by table-swap (Decision 9, §3.2 +PLAN.md §10 question 2 resolved):
+   create `documents_new` with the current generated columns, copy
+   the canonical columns over (the generated columns auto-populate
+   from `body`), drop the old table, rename, recreate the indexes.
+   Foreign keys on `superclasses`/`depends_on` are temporarily
+   disabled around the swap per the recommended SQLite pattern
+   (sqlite.org/lang_altertable.html §7).
+
+`did2.database.compileQuery` gained a `'QueryablePaths', PATHS`
+name-value pair. With a non-empty PATHS, scalar leaves whose dot-path
+is in the set compile to `<column> OP ?` directly against the
+generated column instead of `json_extract(body, '$.<path>')`,
+letting SQLite use the column's index. NULL-guarded negation,
+`json_each` array iteration, and `json_type` `hasfield` are
+unchanged. Paths not in the set still take the JSON1 fallback.
+`did2.database.sqlitedb.search` threads the snapshotted path set
+into the compiler.
+
+Two Hidden test hooks on `sqlitedb` (`testHookDbId`,
+`testHookQueryableColumns`) let the unit tests assert on the raw
+generated-column state without round-tripping through public methods.
+
+- `tests/+did2/+unittest/testSchemaCache.m` — five new tests cover
+  the queryable-path discovery, column-name convention, TEXT
+  affinity on the fixture's all-string scalars, the empty array
+  bucket, and the idempotence of `loadAllSchemas`.
+- `tests/+did2/+unittest/testCompileQuery.m` — five new tests cover
+  the generated-column routing (positive and fallback), the
+  NULL-guarded negation against the column, the carve-out for
+  `hasfield` (which must keep using `json_type`), and the fact that
+  `[*]`-bearing paths ignore the scalar queryable set.
+- `tests/+did2/+unittest/testSqliteDb.m` — three integration tests
+  cover the generated columns appearing at create-time, the
+  indexed-scalar search matching the fallback, and the
+  rebuild-on-mismatch flow (which `assumeFail`s on SQLite versions
+  that don't support `ALTER TABLE ... DROP COLUMN`, i.e. <3.35).
+
+Updated Decision 9 in §1 and struck §10 question 2 (resolved).
+Composite-type sub-path expansion (`sample_rate.hertz`, etc.) is
+the next obvious extension to `queryablePaths` — none of the demo
+fixtures exercise it yet, so it landed as a follow-up for whenever
+a real V_gamma schema with a `duration`/`frequency`/`ontology_term`
+field gets queried.
+
+Next up: step 5 — the `queryable_array_elem` sidecar table for
+`[*]` paths.
