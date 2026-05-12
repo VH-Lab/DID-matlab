@@ -1,0 +1,32 @@
+{
+    "document_class": {
+        "class_name": "demoA",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base",
+                "schema": "$DIDSCHEMAPATH/base.json"
+            }
+        ],
+        "maturity_level": "work_in_progress"
+    },
+    "depends_on": [],
+    "file": [],
+    "fields": [
+        {
+            "name": "value",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": true,
+            "ontology": null,
+            "documentation": "A demo scalar value used by the +did2 self-tests.",
+            "constraints": {
+                "maxLength": 256
+            }
+        }
+    ]
+}

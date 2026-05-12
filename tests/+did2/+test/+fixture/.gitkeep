@@ -1,0 +1,4 @@
+% Placeholder. did2 test fixture helpers go here, matching the
+% legacy tests/+did/+test/+fixture/ slot. Static V_gamma JSON
+% fixtures live as a sibling at tests/+did2/fixtures/V_gamma/ —
+% this MATLAB package is for fixture-helper code, not data files.

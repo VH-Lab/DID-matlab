@@ -1,0 +1,36 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://did-schema.example.org/meta/CURIE_lookups_meta.json",
+    "title": "CURIE Registry for DID/NDI V_gamma",
+    "description": "Registry mapping CURIE prefixes (used in ontology_term.node values and in field-level _ontology._node annotations) to their authoritative URI base and metadata. Consumer tooling uses this file to expand a CURIE such as 'uberon:0002436' into the full URI 'http://purl.obolibrary.org/obo/UBERON_0002436'. Prefixes are matched case-insensitively; by convention prefixes are written in lowercase inside documents and annotations.",
+    "_format_version": "1.0.3",
+    "_prefixes": {
+        "iao": {
+            "_label": "Information Artifact Ontology",
+            "_uri_base": "http://purl.obolibrary.org/obo/IAO_",
+            "_uri_style": "obo_underscore",
+            "_approximate": false,
+            "_documentation": "OBO Foundry ontology for information entities. Expansion rule: 'iao:NNNNNNN' -> 'http://purl.obolibrary.org/obo/IAO_NNNNNNN'."
+        },
+        "schema": {
+            "_label": "Schema.org",
+            "_uri_base": "https://schema.org/",
+            "_uri_style": "direct",
+            "_approximate": false,
+            "_documentation": "General-purpose linked-data vocabulary. CURIE local part is the term name (e.g., 'schema:name' -> 'https://schema.org/name')."
+        },
+        "placeholder": {
+            "_label": "Placeholder namespace for example and in-progress data",
+            "_uri_base": "",
+            "_uri_style": "local",
+            "_approximate": true,
+            "_documentation": "Reserved placeholder for documentation examples and for values that have not yet been mapped to a real ontology."
+        }
+    },
+    "_uri_styles": {
+        "obo_underscore": "Concatenate _uri_base with the CURIE local part verbatim; underscore-separated form.",
+        "direct": "Concatenate _uri_base with the CURIE local part verbatim.",
+        "local": "No URI expansion; the CURIE is the authoritative identifier."
+    },
+    "_documentation": "Test fixture subset of upstream CURIE_lookups_meta.json. The +did2 self-tests only need this registry to be parseable and non-empty."
+}

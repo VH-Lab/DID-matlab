@@ -19,6 +19,8 @@ users.
 | 4 | Keep the `matlabdumbjsondb` backend. | Useful for tests, trivial deployments, and as a non-SQL reference implementation of the query model. |
 | 5 | Validate on insert by default; expose an `unsafe_insert` escape hatch for bulk loads; offer a `revalidate_all` maintenance op. | Schema files are the source of truth for what "valid" means. |
 | 6 | Plan lives at `docs/v2/PLAN.md` on the v2 development branch. | This file. |
+| 7 | Provisional namespace: `+did2`. | Picked from §10 option A for the scaffold. Revisit before v2 reaches `main`. |
+| 8 | Document instances use a top-level `document_class` header plus class-scoped property blocks (one block per class in the chain, keyed by `class_name` verbatim). | See §4.1. Matches V_gamma_SPEC.md "JSON Format: Document Instances" after the SPEC's two-step revision: (i) restore class-scoped blocks; (ii) drop the underscore prefix on all NDI-extension keys. Every key in the wire shape is a plain MATLAB identifier, so the in-memory MATLAB struct is the JSON shape verbatim. |
 
 Open questions are in §10.
 
@@ -87,7 +89,7 @@ CREATE INDEX depends_on_name_value   ON depends_on(name, value);
 
 Test 4 in the JSON1 probe confirmed that `STORED GENERATED ALWAYS AS
 (json_extract(body, '$.foo.bar'))` works with `mksqlite`. So for each scalar
-`_queryable: true` path declared by the V_gamma schemas, we add a stored
+`queryable: true` path declared by the V_gamma schemas, we add a stored
 generated column directly on `documents` plus an index on it.
 
 The set of paths is computed at database open by walking the loaded schemas:
@@ -154,6 +156,51 @@ Validation timing: explicit, deferred. The database layer calls
 bulk loads. A `revalidate_all(db)` maintenance op exists for the case where
 schemas change.
 
+### 4.1 In-memory document shape
+
+A `did2.document`'s `documentProperties` is a MATLAB struct that mirrors the
+V_gamma JSON shape *as specified in V_gamma_SPEC.md, "JSON Format: Document
+Instances"*, exactly. After V_gamma's "drop underscore prefixes" pass,
+every key in the wire shape is a plain identifier with no leading
+underscore, so the MATLAB struct field names match the JSON keys
+one-to-one. `jsonencode` / `jsondecode` round-trip without any rewrite.
+
+Top-level keys populated by `did2.schema.cache.buildBlankDocument`:
+
+| Key              | Type         | Contents |
+|------------------|--------------|----------|
+| `document_class` | struct       | `class_name` (concrete class), `class_version` (semver), `superclasses` (struct array; each entry has `class_name` + `class_version` — the document-instance form). |
+| `depends_on`     | struct array | Each entry: `name` (role) and `value` (the referenced document's id). Empty by default. |
+| `base`           | struct       | Property block with the four base fields (`id`, `session_id`, `name`, `datestamp`). `id` auto-minted via `did.ido.unique_id`, `datestamp` set to current UTC millisecond ISO-8601 with trailing `Z`. |
+| `<class_name>`   | struct       | One property block per class in the chain (root through concrete class). Each populated with `blank_value` for the fields *that class* declares. Empty `{}` if it declares none. |
+
+Field identity is `(declaring_class, name)`. Same-named fields in
+different classes of the chain are distinct paths (`base.id` vs.
+`<subclass>.id`), not an override.
+
+V_alpha → V_gamma at the document level:
+
+```
+V_alpha                                  V_gamma
+-------                                  -------
+document_class.class_name                document_class.class_name
+document_class.class_version             document_class.class_version
+document_class.superclasses              document_class.superclasses
+document_class.property_list_name        (gone; block key == class_name)
+document_class.definition                (gone; schema files own this)
+document_class.validation                (gone; schema files own this)
+base.id, base.session_id, ...            base.id, base.session_id, ...
+<property_list_name>.<field>             <class_name>.<field>
+depends_on                               depends_on
+```
+
+The converter (§7) is now a thin per-document data migration: strip the
+extra `document_class` sub-keys (`property_list_name`, `definition`,
+`validation`); rename each property block whose `property_list_name`
+differs from its `class_name` so the block key equals the class name;
+done. NDI-matlab consumers that already speak the V_alpha class-scoped
+layout need no source-code rewrites for the wire shape itself.
+
 ---
 
 ## 5. Schema cache
@@ -162,7 +209,7 @@ A `+did2/+schema/cache.m` (or similar) loads all V_gamma schema files once,
 resolves superclass chains, and pre-computes:
 
 - For each classname: the full inherited field list.
-- The subset of fields with `_queryable: true`, split into scalar paths and
+- The subset of fields with `queryable: true`, split into scalar paths and
   array-iteration paths.
 - The named composite type expansions (`duration` → `.seconds`,
   `.approximate`, `.source_unit`, `.source_value`).
@@ -210,7 +257,7 @@ A `+did2/+convert/v1_to_v2.m` tool:
    the table lives next to the v2 schema package).
 3. Renames top-level keys (`base.id` → `id`, etc.), rewrites collapsed fields
    on classes that bumped to `2.0.0` (`probe_location`, `treatment`,
-   `ontology_image`, `ontology_label`), and reshapes `_ontology` annotations
+   `ontology_image`, `ontology_label`), and reshapes `ontology` annotations
    to the V_gamma two-key form.
 4. Validates against V_gamma. Successful docs insert into the new DB; failures
    land in a `quarantine` table with the original body and a reason string.
@@ -293,3 +340,115 @@ no-op, so it no longer appears in `compile_options`. The functional tests
 Test 4 passing is the decisive simplification: queryable scalar paths can
 live as `STORED` generated columns on `documents` with their own indexes
 (§3.2), with no separate sidecar table for scalars.
+
+---
+
+## 12. Progress log
+
+### 2026-05-11 — step 1 scaffold
+
+Started step 1 of §9 on branch `claude/start-v2-development-tA41P`.
+
+Added:
+
+- `src/did/+did2/document.m` — V_gamma document object. API surface
+  in place (construct from JSON / struct / `(className, values)`,
+  `get` / `set` / `iterate`, `toJSON` / `toStruct`, `className` /
+  `classVersion`, `validate`, plus static `fromJSON` / `fromStruct` /
+  `blank`). Dot-path get/set is implemented in full. The `[*]` array
+  iterator is implemented via `iterate(arrayPath)`; the bare `get`
+  rejects paths containing `[*]` to keep the scalar/array distinction
+  honest. `validate` and `blank` delegate to the schema cache.
+- `src/did/+did2/+schema/cache.m` — schema cache class. Singleton
+  bootstrap, schema-path resolution (env override
+  `DID_SCHEMA_PATH`, or sibling `did-schema/schemas/V_gamma` checkout),
+  `getClass`, and `superclasses` traversal are implemented; the
+  heavier methods (`fieldsFor`, `queryablePaths`,
+  `buildBlankDocument`, `validateDocument`) currently throw
+  `did2:notImplemented` and will be filled in next.
+- `src/did/+did2/Contents.m` — package overview.
+- `tests/+did2/testDocumentScaffold.m` — function-based unit tests
+  covering construction, dot-path get/set, iterate, round-trip JSON,
+  and the documented error IDs. Tests that depend on the schema cache
+  beyond what is implemented are deferred.
+
+Provisional decision (logged in §1 as #7): use `+did2` for the v2
+namespace during the scaffold, leaving the §10 rename-vs-parallel
+question open for resolution before v2 reaches `main`.
+
+Next up: fill in `did2.schema.cache.fieldsFor`,
+`queryablePaths`, and `buildBlankDocument`; then `validateDocument`
+against the V_gamma meta-schema; then start the in-memory query
+evaluator (step 2).
+
+### 2026-05-12 — class-scoped property blocks, then drop underscores
+
+Two upstream did-schema SPEC revisions landed back-to-back and both
+required reworking the +did2 in-memory shape:
+
+1. **Class-scoped property blocks restored** (did-schema commit
+   `137f583`). V_gamma was amended to organise document instances
+   into per-class property blocks keyed by class name (one per class
+   in the chain), instead of the earlier flat namespace. Also moved
+   `class_name`/`class_version`/`superclasses` under a top-level
+   `document_class` header.
+2. **Drop underscore prefixes** (did-schema commit `77c6363`). The
+   `_<key>` convention for NDI-extension keys was replaced by plain
+   keys (`maturity_level`, `depends_on`, `file`, `fields`,
+   `mustBeNonEmpty`, `blank_value`, `ontology`, etc.). The
+   authoritative reserved-name list moved to upstream
+   `ndi_reserved_keys.json`.
+
+Combined, every key in a V_gamma wire shape is now a plain MATLAB
+identifier, so the in-memory MATLAB struct is the JSON shape verbatim
+— no `x_<name>` aliasing, no `jsonencode`-time rewrite pass, no
+`extractField` underscore-probe helper. Round-tripping a V_gamma
+document is `jsondecode` then `jsonencode`.
+
+Implemented in `src/did/+did2/+schema/cache.m`:
+
+- `classChain(className)` — root-first list including the class itself
+  (e.g., `demoB -> {base, demoA, demoB}`).
+- `ownFields(className)` — the `fields` list the class declares
+  directly (no inheritance), via direct `s.fields` access.
+- `fieldsFor(className)` — merged inherited fields tagged with their
+  declaring class. Returns a struct array
+  `{declaringClass, fieldDef}`.
+- `superclasses(className)` — walks
+  `s.document_class.superclasses[i].class_name` up the chain.
+- `buildBlankDocument(className)` — class-scoped V_gamma document:
+    `doc.document_class.{class_name, class_version, superclasses}`
+    `doc.depends_on` — empty struct array of `{name, value}`
+    `doc.<class_name>` for each class in the chain
+  Base block has `id` auto-minted via `did.ido.unique_id()` and
+  `datestamp` set to current UTC ISO-8601.
+- `validateDocument(docOrStruct)` — accepts a `did2.document` or its
+  underlying struct, walks the class chain, and validates each
+  class's `fields` against its property block. Error messages use
+  the qualified `<class>.<name>` form; new error IDs
+  `did2:validation:missingClassBlock` and `:badClassBlock`.
+- `queryablePaths` stays a stub (belongs to steps 3 and 4).
+
+In `src/did/+did2/document.m`:
+
+- `className` / `classVersion` read
+  `documentProperties.document_class.class_name` /
+  `documentProperties.document_class.class_version`.
+- `toJSON` is a bare `jsonencode` (no rewrite pass). The previous
+  `rewriteXUnderscoreKeys` helper is removed.
+
+Fixtures at `tests/+did2/fixtures/V_gamma/` (`base.json`,
+`demoA.json`, `demoB.json`, `demoC.json`, `demoFile.json`,
+`CURIE_lookups_meta.json`, `README.md`) rewritten to the
+plain-key V_gamma shape.
+
+`tests/+did2/testSchemaCache.m` updated: 22 tests assert on the
+plain-key shape (`doc.document_class.class_name`, `doc.depends_on`,
+etc.) and check that a V_gamma document round-trips through
+`toJSON`/`fromJSON` unchanged.
+
+Step 1 is complete to the level the rest of the plan needs.
+`queryablePaths` is the only intentional stub left in the cache;
+detailed per-named-composite validation and dependency-value checks
+are deferred to focused follow-ups. Next up: step 2 — the in-memory
+query evaluator over the class-qualified dot-paths.

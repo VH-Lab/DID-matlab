@@ -1,0 +1,41 @@
+{
+    "document_class": {
+        "class_name": "demoFile",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base",
+                "schema": "$DIDSCHEMAPATH/base.json"
+            }
+        ],
+        "maturity_level": "work_in_progress"
+    },
+    "depends_on": [],
+    "file": [
+        {
+            "name": "filename1.ext",
+            "documentation": "First demo binary file attached to the document."
+        },
+        {
+            "name": "filename2.ext2",
+            "documentation": "Second demo binary file attached to the document."
+        }
+    ],
+    "fields": [
+        {
+            "name": "value",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": true,
+            "ontology": null,
+            "documentation": "A demo scalar value carried alongside the file attachments.",
+            "constraints": {
+                "maxLength": 256
+            }
+        }
+    ]
+}

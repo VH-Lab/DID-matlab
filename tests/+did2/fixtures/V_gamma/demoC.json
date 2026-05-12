@@ -1,0 +1,51 @@
+{
+    "document_class": {
+        "class_name": "demoC",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base",
+                "schema": "$DIDSCHEMAPATH/base.json"
+            }
+        ],
+        "maturity_level": "work_in_progress"
+    },
+    "depends_on": [
+        {
+            "name": "item1",
+            "mustBeNonEmpty": true,
+            "documentation": "The first dependency item, by id.",
+            "must_refer_to_document_class": ""
+        },
+        {
+            "name": "item2",
+            "mustBeNonEmpty": true,
+            "documentation": "The second dependency item, by id.",
+            "must_refer_to_document_class": ""
+        },
+        {
+            "name": "item3",
+            "mustBeNonEmpty": false,
+            "documentation": "The third dependency item; optional.",
+            "must_refer_to_document_class": ""
+        }
+    ],
+    "file": [],
+    "fields": [
+        {
+            "name": "value",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": true,
+            "ontology": null,
+            "documentation": "A demo scalar value carried alongside the dependencies.",
+            "constraints": {
+                "maxLength": 256
+            }
+        }
+    ]
+}

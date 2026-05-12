@@ -2,10 +2,12 @@ name: Run Codespell
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "V2" ]
     
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "V2" ]
+
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
