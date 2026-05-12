@@ -340,7 +340,9 @@ function expr = scalarValueExpression(dotPath, ctx)
 if ~isempty(dotPath) && isfield(ctx, 'queryablePaths') ...
         && isa(ctx.queryablePaths, 'containers.Map') ...
         && ctx.queryablePaths.isKey(dotPath)
-    expr = ['q_' strrep(dotPath, '.', '_')];
+    % Match did2.schema.cache.columnNameFor: always lowercase so the
+    % SQL identifier matches the column name SQLite ended up storing.
+    expr = ['q_' lower(strrep(dotPath, '.', '_'))];
 else
     expr = sprintf('json_extract(body, ''%s'')', jsonPath(dotPath));
 end
