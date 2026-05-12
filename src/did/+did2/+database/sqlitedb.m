@@ -303,16 +303,24 @@ classdef sqlitedb < handle
         end
 
         function names = currentQueryableColumns(obj)
-            % sqlite's table-valued pragmas only accept literal-constant
-            % arguments, not bound `?` placeholders — pragma_table_info(?)
-            % silently returns zero rows. The table name is internal to
-            % this class and never user-controlled, so we inline it.
-            rows = mksqlite(obj.dbid, ...
-                'SELECT name FROM pragma_table_info(''documents'')');
+            % Probe each expected generated column with a zero-row SELECT
+            % and collect the ones that succeed. We previously walked
+            % `pragma_table_info('documents')` but the mksqlite + sqlite
+            % combo on CI was returning rows whose `.name` field didn't
+            % round-trip cleanly through ismember even though
+            % `SELECT q_base_name FROM documents` (and the column itself)
+            % worked fine. Probing the columns directly avoids that
+            % layer entirely. Returns the subset of the expected columns
+            % that currently exist on the table.
             names = {};
-            for k = 1:numel(rows)
-                if startsWith(rows(k).name, 'q_')
-                    names{end+1} = char(rows(k).name); %#ok<AGROW>
+            for k = 1:numel(obj.queryableScalarColumns)
+                col = obj.queryableScalarColumns(k);
+                sql = sprintf('SELECT %s FROM documents LIMIT 0', col.column);
+                try
+                    mksqlite(obj.dbid, sql);
+                    names{end+1} = col.column; %#ok<AGROW>
+                catch
+                    % column does not exist on this table.
                 end
             end
         end
