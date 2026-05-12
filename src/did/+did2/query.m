@@ -140,11 +140,7 @@ classdef query
                 out = mask;
                 return;
             end
-            if iscell(docs)
-                out = docs(mask);
-            else
-                out = docs(mask);
-            end
+            out = docs(mask);
         end
     end
 
@@ -410,10 +406,16 @@ classdef query
                 end
             end
             for k = 1:numel(arr)
-                if isstruct(arr), e = arr(k);
-                elseif iscell(arr), e = arr{k};
-                else, continue; end
-                if ~isstruct(e), continue; end
+                if isstruct(arr)
+                    e = arr(k);
+                elseif iscell(arr)
+                    e = arr{k};
+                else
+                    continue;
+                end
+                if ~isstruct(e)
+                    continue;
+                end
                 allMatch = true;
                 for j = 1:numel(subFieldNames)
                     sn = char(subFieldNames{j});
@@ -525,11 +527,7 @@ classdef query
                             end
                         end
                     else
-                        if isstruct(sub) && ~isscalar(sub)
-                            next{end+1} = sub; %#ok<AGROW>
-                        else
-                            next{end+1} = sub; %#ok<AGROW>
-                        end
+                        next{end+1} = sub; %#ok<AGROW>
                     end
                 end
                 current = next;
