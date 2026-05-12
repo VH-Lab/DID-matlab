@@ -1,0 +1,76 @@
+{
+    "_classname": "base",
+    "_class_version": "1.0.0",
+    "_maturity_level": "work_in_progress",
+    "_superclasses": [],
+    "_depends_on": [],
+    "_file": [],
+    "_fields": [
+        {
+            "_name": "id",
+            "type": "did_uid",
+            "_blank_value": "",
+            "_default_value": "",
+            "_mustBeNonEmpty": true,
+            "_mustBeScalar": true,
+            "_mustNotHaveNaN": false,
+            "_queryable": true,
+            "_ontology": {
+                "_node": "iao:0000578",
+                "_name": "centrally registered identifier"
+            },
+            "_documentation": "Unique identifier for this document instance.",
+            "_constraints": {}
+        },
+        {
+            "_name": "session_id",
+            "type": "did_uid",
+            "_blank_value": "",
+            "_default_value": "",
+            "_mustBeNonEmpty": true,
+            "_mustBeScalar": true,
+            "_mustNotHaveNaN": false,
+            "_queryable": true,
+            "_ontology": {
+                "_node": "ncit:C169028",
+                "_name": "Study Unique Identifier"
+            },
+            "_documentation": "Unique identifier of the session this document belongs to.",
+            "_constraints": {}
+        },
+        {
+            "_name": "name",
+            "type": "char",
+            "_blank_value": "",
+            "_default_value": "",
+            "_mustBeNonEmpty": false,
+            "_mustBeScalar": true,
+            "_mustNotHaveNaN": false,
+            "_queryable": true,
+            "_ontology": {
+                "_node": "schema:name",
+                "_name": "name"
+            },
+            "_documentation": "Human-readable name for this document.",
+            "_constraints": {
+                "maxLength": 256
+            }
+        },
+        {
+            "_name": "datestamp",
+            "type": "timestamp",
+            "_blank_value": "",
+            "_default_value": "2018-12-05T18:36:47.241Z",
+            "_mustBeNonEmpty": true,
+            "_mustBeScalar": true,
+            "_mustNotHaveNaN": false,
+            "_queryable": true,
+            "_ontology": {
+                "_node": "schema:dateCreated",
+                "_name": "dateCreated"
+            },
+            "_documentation": "UTC timestamp of document creation in ISO 8601 format.",
+            "_constraints": {}
+        }
+    ]
+}

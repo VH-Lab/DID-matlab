@@ -1,0 +1,30 @@
+{
+    "_classname": "demoB",
+    "_class_version": "1.0.0",
+    "_maturity_level": "work_in_progress",
+    "_superclasses": [
+        {
+            "_classname": "demoA",
+            "_schema": "$DIDSCHEMAPATH/demoA.json"
+        }
+    ],
+    "_depends_on": [],
+    "_file": [],
+    "_fields": [
+        {
+            "_name": "value_b",
+            "type": "char",
+            "_blank_value": "",
+            "_default_value": "",
+            "_mustBeNonEmpty": false,
+            "_mustBeScalar": true,
+            "_mustNotHaveNaN": false,
+            "_queryable": true,
+            "_ontology": null,
+            "_documentation": "A second demo scalar value, declared by demoB on top of demoA.",
+            "_constraints": {
+                "maxLength": 256
+            }
+        }
+    ]
+}
