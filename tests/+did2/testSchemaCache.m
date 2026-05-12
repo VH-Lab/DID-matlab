@@ -3,12 +3,11 @@ function tests = testSchemaCache
 %   V_gamma fixtures at tests/+did2/fixtures/V_gamma/. Also covers
 %   did2.document.blank() and did2.document.validate() end-to-end.
 %
-%   Documents in V_gamma use class-scoped property blocks (see
-%   V_gamma_SPEC.md "JSON Format: Document Instances"): top-level
-%   `_classname`, `_class_version`, `_superclasses`, `_depends_on`, plus
-%   one property block per class in the chain. MATLAB stores the four
-%   underscore-prefixed system keys as `x_<name>` (mirroring jsondecode);
-%   class-block keys (`base`, `demoA`, ...) are plain MATLAB identifiers.
+%   Documents in V_gamma use a top-level `document_class` header plus
+%   class-scoped property blocks (see V_gamma_SPEC.md "JSON Format:
+%   Document Instances"). After V_gamma's "drop underscore prefixes"
+%   pass, every key in the wire shape is a valid MATLAB struct field
+%   name, so `jsonencode`/`jsondecode` round-trip without any rewrite.
 
 tests = functiontests(localfunctions);
 end
@@ -34,6 +33,7 @@ end
 function testGetClassLoadsBase(testCase)
 s = testCase.TestData.cache.getClass('base');
 verifyTrue(testCase, isstruct(s));
+verifyTrue(testCase, isfield(s, 'document_class'));
 end
 
 function testGetClassMissingThrows(testCase)
@@ -88,21 +88,22 @@ verifyEqual(testCase, tagged(5).declaringClass, 'demoA');
 verifyEqual(testCase, tagged(6).declaringClass, 'demoB');
 end
 
-% ---- buildBlankDocument: top-level metadata ----
+% ---- buildBlankDocument: document_class header ----
 
-function testBuildBlankDocumentTopLevelMetadata(testCase)
+function testBuildBlankDocumentHeader(testCase)
 doc = testCase.TestData.cache.buildBlankDocument('demoB');
-verifyEqual(testCase, doc.x_classname, 'demoB');
-verifyEqual(testCase, doc.x_class_version, '1.0.0');
-verifyEqual(testCase, numel(doc.x_superclasses), 2);
-verifyEqual(testCase, doc.x_superclasses(1).x_classname, 'demoA');
-verifyEqual(testCase, doc.x_superclasses(2).x_classname, 'base');
+verifyTrue(testCase, isfield(doc, 'document_class'));
+verifyEqual(testCase, doc.document_class.class_name, 'demoB');
+verifyEqual(testCase, doc.document_class.class_version, '1.0.0');
+verifyEqual(testCase, numel(doc.document_class.superclasses), 2);
+verifyEqual(testCase, doc.document_class.superclasses(1).class_name, 'demoA');
+verifyEqual(testCase, doc.document_class.superclasses(2).class_name, 'base');
 end
 
 function testBuildBlankDocumentEmptyDependsOn(testCase)
 doc = testCase.TestData.cache.buildBlankDocument('demoA');
-verifyTrue(testCase, isfield(doc, 'x_depends_on'));
-verifyEmpty(testCase, doc.x_depends_on);
+verifyTrue(testCase, isfield(doc, 'depends_on'));
+verifyEmpty(testCase, doc.depends_on);
 end
 
 % ---- buildBlankDocument: class-scoped blocks ----
@@ -214,12 +215,16 @@ doc.set('demoA.value', 'hello');
 doc.validate();
 end
 
-function testDocumentToJSONRewritesUnderscoreKeys(testCase)
+function testDocumentToJSONRoundTrip(testCase)
+% V_gamma has no leading-underscore keys, so jsonencode/jsondecode is
+% identity for any well-formed document. Confirm the wire shape uses
+% the V_gamma key names and re-parses to an equivalent document.
 doc = did2.document.blank('demoA');
 text = doc.toJSON();
-verifyTrue(testCase, contains(text, '"_classname":"demoA"'));
-verifyFalse(testCase, contains(text, '"x_classname"'));
+verifyTrue(testCase, contains(text, '"document_class"'));
+verifyTrue(testCase, contains(text, '"class_name":"demoA"'));
 doc2 = did2.document.fromJSON(text);
 verifyEqual(testCase, doc2.className(), 'demoA');
 verifyTrue(testCase, isfield(doc2.toStruct(), 'base'));
+verifyTrue(testCase, isfield(doc2.toStruct(), 'demoA'));
 end
