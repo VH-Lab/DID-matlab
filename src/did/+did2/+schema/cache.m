@@ -11,20 +11,19 @@ classdef cache < handle
     %       .class_name       string         concrete class
     %       .class_version    string         semver of the concrete class
     %       .superclasses     array          [{class_name, class_version}]
-    %     _depends_on         array          [{_name, value}]
+    %     depends_on          array          [{name, value}]
     %     <class_name>        object         one property block per class
     %                                        in the chain. Contains the
     %                                        field values that class
     %                                        declared (empty {} if it
     %                                        declares no fields).
     %
-    %   MATLAB representation: the `document_class` header and its
-    %   sub-keys (`class_name`, `class_version`, `superclasses`) are
-    %   already valid MATLAB struct field names and stay as written.
-    %   Only `_depends_on` (top-level) and `_name` (inside its entries)
-    %   keep MATLAB's `x_` rename — stored as `x_depends_on` and
-    %   `x_name`. did2.document.toJSON rewrites `"x_<name>":` back to
-    %   `"_<name>":` on serialisation.
+    %   MATLAB representation: every key in the V_gamma wire shape is a
+    %   valid MATLAB struct field name (no leading underscores anywhere
+    %   after the V_gamma SPEC's "drop underscore prefixes" update), so
+    %   the in-memory representation is the JSON shape verbatim.
+    %   `jsondecode` returns a struct with the same field names, and
+    %   `jsonencode` writes them back without any rename pass.
     %
     %   did2.schema.cache Properties:
     %       schemaPath      - filesystem path to a V_gamma schema dir.
@@ -40,7 +39,7 @@ classdef cache < handle
     %       getClass            - resolved class definition for a name.
     %       superclasses        - ancestor chain (parent first, root last).
     %       classChain          - root-first list including the class itself.
-    %       ownFields           - the _fields list a class declares directly.
+    %       ownFields           - the `fields` list a class declares directly.
     %       fieldsFor           - merged inherited fields tagged with the
     %                             declaring class (struct array).
     %       queryablePaths      - scalar and array-iteration paths (stub).
@@ -105,18 +104,19 @@ classdef cache < handle
                 end
                 visited(current) = true;
                 s = obj.getClass(current);
-                dc = obj.extractField(s, 'document_class');
-                if isempty(dc)
+                if ~isstruct(s) || ~isfield(s, 'document_class') ...
+                        || ~isstruct(s.document_class) ...
+                        || ~isfield(s.document_class, 'superclasses') ...
+                        || isempty(s.document_class.superclasses)
                     break;
                 end
-                parents = obj.extractField(dc, 'superclasses');
-                if isempty(parents)
+                parent = obj.elementAt(s.document_class.superclasses, 1);
+                if ~isstruct(parent) || ~isfield(parent, 'class_name')
                     break;
                 end
-                parent = obj.elementAt(parents, 1);
-                parentName = obj.extractField(parent, 'class_name');
-                names{end+1} = char(parentName); %#ok<AGROW>
-                current = char(parentName);
+                parentName = char(parent.class_name);
+                names{end+1} = parentName; %#ok<AGROW>
+                current = parentName;
             end
         end
 
@@ -138,19 +138,18 @@ classdef cache < handle
                 className (1,:) char
             end
             s = obj.getClass(className);
-            raw = obj.extractField(s, '_fields');
-            if isempty(raw)
+            if ~isstruct(s) || ~isfield(s, 'fields') || isempty(s.fields)
                 fields = {};
-            else
-                fields = obj.toCellArray(raw);
+                return;
             end
+            fields = obj.toCellArray(s.fields);
         end
 
         function tagged = fieldsFor(obj, className)
             % fieldsFor - merged inherited fields tagged with the
             %   declaring class. Returns a struct array with fields
             %   `declaringClass` (char) and `fieldDef` (the schema's
-            %   _fields entry).
+            %   `fields` entry).
             arguments
                 obj
                 className (1,:) char
@@ -187,36 +186,28 @@ classdef cache < handle
                 className (1,:) char
             end
             doc = struct();
-            % document_class header.
             schema = obj.getClass(className);
-            schemaDC = obj.extractField(schema, 'document_class');
-            classNameVal = char(obj.extractField(schemaDC, 'class_name'));
-            classVersionVal = char(obj.extractField(schemaDC, 'class_version'));
+            schemaDC = schema.document_class;
 
             ancestors = obj.superclasses(className);
             sc = struct('class_name', {}, 'class_version', {});
             for k = 1:numel(ancestors)
-                ancSchema = obj.getClass(ancestors{k});
-                ancDC = obj.extractField(ancSchema, 'document_class');
+                ancDC = obj.getClass(ancestors{k}).document_class;
                 sc(end+1) = struct( ...
-                    'class_name', char(obj.extractField(ancDC, 'class_name')), ...
-                    'class_version', char(obj.extractField(ancDC, 'class_version'))); %#ok<AGROW>
+                    'class_name', char(ancDC.class_name), ...
+                    'class_version', char(ancDC.class_version)); %#ok<AGROW>
             end
-            dc = struct( ...
-                'class_name', classNameVal, ...
-                'class_version', classVersionVal, ...
+            doc.document_class = struct( ...
+                'class_name', char(schemaDC.class_name), ...
+                'class_version', char(schemaDC.class_version), ...
                 'superclasses', sc);
-            doc.document_class = dc;
 
-            % Top-level _depends_on (empty struct array of {_name, value}).
-            doc.x_depends_on = struct('x_name', {}, 'value', {});
+            doc.depends_on = struct('name', {}, 'value', {});
 
-            % One property block per class in the chain.
             chain = obj.classChain(className);
             for k = 1:numel(chain)
                 blockClass = chain{k};
-                block = obj.buildBlockForClass(blockClass);
-                doc.(blockClass) = block;
+                doc.(blockClass) = obj.buildBlockForClass(blockClass);
             end
         end
 
@@ -263,8 +254,7 @@ classdef cache < handle
                 own = obj.ownFields(blockClass);
                 for f = 1:numel(own)
                     fieldDef = own{f};
-                    fieldName = char(obj.extractField(fieldDef, '_name'));
-                    obj.validateField(block, fieldDef, blockClass, fieldName);
+                    obj.validateField(block, fieldDef, blockClass, char(fieldDef.name));
                 end
             end
         end
@@ -344,26 +334,6 @@ classdef cache < handle
             end
         end
 
-        function value = extractField(~, s, name)
-            % extractField - tolerate jsondecode's leading-underscore
-            %   rewrites (`_<x>` becomes `x_<x>`). Used for both schema
-            %   keys with leading underscores (e.g. `_fields`,
-            %   `_maturity_level`) and plain non-prefixed keys (e.g.
-            %   `document_class`, `class_name`).
-            if ~isstruct(s) && ~isobject(s)
-                value = [];
-                return;
-            end
-            candidates = {name, ['x' name], strrep(name, '_', '')};
-            for k = 1:numel(candidates)
-                if isfield(s, candidates{k})
-                    value = s.(candidates{k});
-                    return;
-                end
-            end
-            value = [];
-        end
-
         function out = toCellArray(~, raw)
             if iscell(raw)
                 out = raw(:)';
@@ -381,16 +351,16 @@ classdef cache < handle
 
         function block = buildBlockForClass(obj, className)
             % buildBlockForClass - one property block populated with
-            %   _blank_value for every field the class declares
+            %   `blank_value` for every field the class declares
             %   directly. Base block also receives a fresh did_uid for
             %   `id` and the current UTC timestamp for `datestamp`.
             block = struct();
             own = obj.ownFields(className);
             for f = 1:numel(own)
                 fieldDef = own{f};
-                fieldName = char(obj.extractField(fieldDef, '_name'));
-                blank = obj.extractField(fieldDef, '_blank_value');
-                fieldType = char(obj.extractField(fieldDef, 'type'));
+                fieldName = char(fieldDef.name);
+                blank = fieldDef.blank_value;
+                fieldType = char(fieldDef.type);
                 if strcmp(fieldType, 'structure') ...
                         && (isempty(blank) || (isstruct(blank) && isempty(fieldnames(blank))))
                     block.(fieldName) = obj.buildBlankStructure(fieldDef);
@@ -409,17 +379,16 @@ classdef cache < handle
         end
 
         function s = buildBlankStructure(obj, fieldDef)
-            nested = obj.extractField(fieldDef, '_fields');
             s = struct();
-            if isempty(nested)
+            if ~isfield(fieldDef, 'fields') || isempty(fieldDef.fields)
                 return;
             end
-            entries = obj.toCellArray(nested);
+            entries = obj.toCellArray(fieldDef.fields);
             for k = 1:numel(entries)
                 subDef = entries{k};
-                subName = char(obj.extractField(subDef, '_name'));
-                subBlank = obj.extractField(subDef, '_blank_value');
-                subType = char(obj.extractField(subDef, 'type'));
+                subName = char(subDef.name);
+                subBlank = subDef.blank_value;
+                subType = char(subDef.type);
                 if strcmp(subType, 'structure') ...
                         && (isempty(subBlank) || (isstruct(subBlank) && isempty(fieldnames(subBlank))))
                     s.(subName) = obj.buildBlankStructure(subDef);
@@ -430,12 +399,13 @@ classdef cache < handle
         end
 
         function validateField(obj, block, fieldDef, blockClass, fieldName)
-            % validateField - apply type, _mustBe* flags, and
-            %   _constraints for one field against the property block.
+            % validateField - apply type, mustBe* flags, and
+            %   constraints for one field against the property block.
             %   Skips absent fields unless the schema marks them
-            %   _mustBeNonEmpty.
+            %   mustBeNonEmpty.
+            mustBeNonEmpty = logical(fieldDef.mustBeNonEmpty);
             if ~isfield(block, fieldName)
-                if obj.extractField(fieldDef, '_mustBeNonEmpty')
+                if mustBeNonEmpty
                     error('did2:validation:missingField', ...
                         'Required field "%s.%s" is missing.', ...
                         blockClass, fieldName);
@@ -443,13 +413,12 @@ classdef cache < handle
                 return;
             end
             value = block.(fieldName);
-            fieldType = char(obj.extractField(fieldDef, 'type'));
+            fieldType = char(fieldDef.type);
             qualifiedName = sprintf('%s.%s', blockClass, fieldName);
             obj.validateTypeShape(value, fieldType, qualifiedName);
 
-            mustBeNonEmpty = logical(obj.extractField(fieldDef, '_mustBeNonEmpty'));
-            mustBeScalar   = logical(obj.extractField(fieldDef, '_mustBeScalar'));
-            mustNotHaveNaN = logical(obj.extractField(fieldDef, '_mustNotHaveNaN'));
+            mustBeScalar   = logical(fieldDef.mustBeScalar);
+            mustNotHaveNaN = logical(fieldDef.mustNotHaveNaN);
             if mustBeNonEmpty && obj.isEmptyValue(value)
                 error('did2:validation:emptyField', ...
                     'Field "%s" is required to be non-empty.', qualifiedName);
@@ -462,7 +431,7 @@ classdef cache < handle
                 error('did2:validation:nanValue', ...
                     'Field "%s" contains NaN.', qualifiedName);
             end
-            constraints = obj.extractField(fieldDef, '_constraints');
+            constraints = fieldDef.constraints;
             if isstruct(constraints) && ~isempty(fieldnames(constraints))
                 obj.validateConstraints(value, constraints, fieldType, qualifiedName);
             end
