@@ -43,7 +43,15 @@ for k = 1:numel(ssArray)
     [parts{k}, sub] = compileSearchstruct(ssArray(k));
     params = [params, sub]; %#ok<AGROW>
 end
-sql = ['(' strjoin(parts, ') AND (') ')'];
+if isscalar(parts)
+    % A single conjunct doesn't need outer parens; this keeps the SQL
+    % readable and lets `compileQuery(did2.query('x','regexp','y'))`
+    % return its scalar leaf verbatim ('1=1' for unsupported leaves,
+    % `EXISTS (...)` for indexed lookups).
+    sql = parts{1};
+else
+    sql = ['(' strjoin(parts, ') AND (') ')'];
+end
 end
 
 function [sql, params] = compileSearchstruct(ss)
