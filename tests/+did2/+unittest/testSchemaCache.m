@@ -235,3 +235,53 @@ verifyEqual(testCase, doc2.className(), 'demoA');
 verifyTrue(testCase, isfield(doc2.toStruct(), 'base'));
 verifyTrue(testCase, isfield(doc2.toStruct(), 'demoA'));
 end
+
+% ---- queryablePaths (step 4) ----
+
+function testQueryablePathsListsBaseAndDemoScalars(testCase)
+cache = testCase.TestData.cache;
+cache.loadAllSchemas();
+info = cache.queryablePaths();
+paths = {info.scalar.path};
+expected = {'base.datestamp', 'base.id', 'base.name', 'base.session_id', ...
+    'demoA.value', 'demoB.value_b', 'demoC.value', 'demoFile.value'};
+verifyEqual(testCase, sort(paths), expected);
+end
+
+function testQueryablePathsColumnNames(testCase)
+cache = testCase.TestData.cache;
+cache.loadAllSchemas();
+info = cache.queryablePaths();
+paths = {info.scalar.path};
+columns = {info.scalar.column};
+% Column convention: 'q_' + dot-path with '.' -> '_', always lowercase.
+for k = 1:numel(paths)
+    expected = ['q_' lower(strrep(paths{k}, '.', '_'))];
+    verifyEqual(testCase, columns{k}, expected);
+end
+end
+
+function testQueryablePathsAffinity(testCase)
+cache = testCase.TestData.cache;
+cache.loadAllSchemas();
+info = cache.queryablePaths();
+% All fixture queryable scalars are char/did_uid/timestamp => TEXT.
+verifyTrue(testCase, all(strcmp({info.scalar.affinity}, 'TEXT')));
+end
+
+function testQueryablePathsArrayEmptyForFixtures(testCase)
+cache = testCase.TestData.cache;
+cache.loadAllSchemas();
+info = cache.queryablePaths();
+% No array-of-structure queryable fields in the demo fixtures.
+verifyEqual(testCase, info.array, {});
+end
+
+function testLoadAllSchemasIsIdempotent(testCase)
+cache = testCase.TestData.cache;
+cache.loadAllSchemas();
+n1 = numel(cache.queryablePaths().scalar);
+cache.loadAllSchemas();
+n2 = numel(cache.queryablePaths().scalar);
+verifyEqual(testCase, n1, n2);
+end

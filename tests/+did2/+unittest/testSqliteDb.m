@@ -298,3 +298,102 @@ doc = doc.set('base.name', name);
 doc = doc.set('demoA.value', valueA);
 doc = doc.set('demoB.value_b', valueB);
 end
+
+% ---- step 4: generated columns + rebuild-on-mismatch ----
+
+function testGeneratedColumnsExistAtCreate(testCase)
+% A freshly-created DB should already have the q_* columns and their
+% indexes derived from the loaded schemas.
+db = testCase.TestData.db;
+cols = generatedColumns(db, 'documents');
+verifyTrue(testCase, ismember('q_base_name', cols));
+verifyTrue(testCase, ismember('q_base_id', cols));
+verifyTrue(testCase, ismember('q_demoa_value', cols));
+end
+
+function testIndexedScalarMatchesFallback(testCase)
+% Searching by base.name should hit the generated column and return
+% the same docs as the JSON1 fallback would.
+db = testCase.TestData.db;
+d1 = makeDemoA('alice', 'a1'); db.add(d1);
+d2 = makeDemoA('bob',   'a2'); db.add(d2);
+hits = db.search(did2.query('base.name', 'exact_string', 'alice'));
+verifyEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, hits{1}.get('base.id'), d1.get('base.id'));
+end
+
+function testGeneratedColumnPopulatesFromBody(testCase)
+% Direct query against the generated column should reflect the
+% just-inserted body — confirms the STORED column expression fires.
+db = testCase.TestData.db;
+doc = makeDemoA('carol', 'cv');
+db.add(doc);
+rows = mksqlite(db.testHookDbId(), ...
+    'SELECT q_base_name, q_demoa_value FROM documents WHERE id = ?', ...
+    doc.get('base.id'));
+verifyEqual(testCase, char(rows(1).q_base_name), 'carol');
+verifyEqual(testCase, char(rows(1).q_demoa_value), 'cv');
+end
+
+function testRebuildPreservesDataOnSchemaMismatch(testCase)
+% Manually drop a generated column from the table (simulating an
+% older queryable-paths set), then reopen. The constructor should
+% rebuild the table to match the current schema while preserving
+% every body verbatim.
+db = testCase.TestData.db;
+d1 = makeDemoA('alice', 'a1'); db.add(d1);
+d2 = makeDemoB('bob', 'a2', 'b2'); db.add(d2);
+
+% SQLite 3.35+ supports DROP COLUMN. The CI MATLAB ships with mksqlite
+% bound to a >=3.35 sqlite, but skip the test gracefully on older.
+ok = tryDropColumn(db.testHookDbId(), 'documents', 'q_demoa_value');
+if ~ok
+    assumeFail(testCase, 'sqlite DROP COLUMN unavailable on this build');
+end
+db.close();
+
+db2 = did2.database.sqlitedb(testCase.TestData.tmpFile);
+cleanup = onCleanup(@() db2.close()); %#ok<NASGU>
+cols = generatedColumns(db2, 'documents');
+verifyTrue(testCase, ismember('q_demoa_value', cols), ...
+    'rebuild should restore the missing generated column');
+verifyEqual(testCase, db2.count(), 2);
+verifyTrue(testCase, db2.has(d1.get('base.id')));
+verifyTrue(testCase, db2.has(d2.get('base.id')));
+end
+
+% ---- helpers (step 4) ----
+
+function cols = generatedColumns(db, tableName)
+% Probe each generated column the sqlitedb instance expects to find on
+% the table with a zero-row SELECT, and return the subset that
+% succeeds. We previously walked `pragma_table_info`, but on the CI's
+% mksqlite + sqlite combination the .name field of those rows didn't
+% round-trip through ismember the way the test assumed even when the
+% column itself was healthy. Probing each candidate directly avoids
+% that path entirely.
+candidates = db.testHookQueryableColumns();
+cols = {};
+for k = 1:numel(candidates)
+    sql = sprintf('SELECT %s FROM %s LIMIT 0', candidates{k}, tableName);
+    try
+        mksqlite(db.testHookDbId(), sql);
+        cols{end+1} = candidates{k}; %#ok<AGROW>
+    catch
+        % column does not exist on this table.
+    end
+end
+end
+
+function ok = tryDropColumn(dbid, table, column)
+% SQLite refuses ALTER TABLE DROP COLUMN if the column has a dependent
+% index, so drop the matching `<table>_<column>` index first. Returns
+% false on any SQL failure (older mksqlite without DROP COLUMN support).
+try
+    mksqlite(dbid, sprintf('DROP INDEX IF EXISTS %s_%s', table, column));
+    mksqlite(dbid, sprintf('ALTER TABLE %s DROP COLUMN %s', table, column));
+    ok = true;
+catch
+    ok = false;
+end
+end

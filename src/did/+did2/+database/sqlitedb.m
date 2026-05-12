@@ -43,6 +43,9 @@ classdef sqlitedb < handle
     properties (Access = private)
         dbid = []
         schemaCache = []
+        queryableScalarColumns = []  % struct array from did2.schema.cache.queryablePaths
+        queryableScalarPaths = {}    % cellstr mirror, passed to compileQuery
+        queryableBootstrapOk (1,1) logical = false
     end
 
     properties (Constant, Access = private)
@@ -63,6 +66,7 @@ classdef sqlitedb < handle
             end
             obj.filename = filename;
             obj.schemaCache = opts.SchemaCache;
+            obj.bootstrapQueryableColumns();
             isNew = ~isfile(filename);
             obj.dbid = mksqlite(0, 'open', filename);
             mksqlite(obj.dbid, 'pragma foreign_keys = ON');
@@ -70,6 +74,7 @@ classdef sqlitedb < handle
                 obj.createSchema();
             else
                 obj.assertSchema();
+                obj.reconcileQueryableColumns();
             end
         end
 
@@ -157,7 +162,8 @@ classdef sqlitedb < handle
                 obj
                 q (1,1) did2.query
             end
-            [whereSQL, params] = did2.database.compileQuery(q);
+            [whereSQL, params] = did2.database.compileQuery(q, ...
+                'QueryablePaths', obj.queryableScalarPaths);
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
             rows = mksqlite(obj.dbid, sql, params{:});
@@ -178,26 +184,71 @@ classdef sqlitedb < handle
         end
     end
 
+    % ---- test-only hooks ----
+    methods (Hidden)
+        function id = testHookDbId(obj)
+            % testHookDbId - return the underlying mksqlite dbid.
+            %   Hidden helper for the +did2.unittest suite; lets tests
+            %   inspect generated columns and table schema directly
+            %   without round-tripping through public methods. Not part
+            %   of the public API.
+            id = obj.dbid;
+        end
+
+        function cols = testHookQueryableColumns(obj)
+            % testHookQueryableColumns - cellstr of the q_<flat>
+            %   generated-column names this instance expects on the
+            %   documents table. Hidden helper for unit tests.
+            cols = {obj.queryableScalarColumns.column};
+        end
+    end
+
     % ---- schema bootstrap ----
     methods (Access = private)
+        function bootstrapQueryableColumns(obj)
+            % Resolve the schema cache and snapshot the queryable scalar
+            % paths once per instance. Failures (missing schema dir,
+            % cache errors) degrade gracefully: queryableBootstrapOk
+            % stays false, the JSON1 fallback path stays in effect,
+            % and reconcileQueryableColumns becomes a no-op (so we
+            % don't strip a healthy DB's q_* columns on a host that
+            % temporarily lacks the schema dir).
+            obj.queryableScalarColumns = obj.emptyColumnStruct();
+            obj.queryableScalarPaths = {};
+            obj.queryableBootstrapOk = false;
+            try
+                cache = obj.resolveSchemaCache();
+                cache.loadAllSchemas();
+                info = cache.queryablePaths();
+            catch
+                return;
+            end
+            if isempty(info) || ~isstruct(info) || ~isfield(info, 'scalar') ...
+                    || isempty(info.scalar)
+                return;
+            end
+            % Sort deterministically by `column` so the CREATE TABLE,
+            % reconciliation, and tests all see the same order.
+            scalar = info.scalar;
+            cols = {scalar.column};
+            [~, order] = sort(cols);
+            scalar = scalar(order);
+            obj.queryableScalarColumns = scalar;
+            obj.queryableScalarPaths = {scalar.path};
+            obj.queryableBootstrapOk = true;
+        end
+
         function createSchema(obj)
             mksqlite(obj.dbid, 'BEGIN');
             try
-                mksqlite(obj.dbid, [ ...
-                    'CREATE TABLE documents (' ...
-                    'id TEXT PRIMARY KEY,' ...
-                    'classname TEXT NOT NULL,' ...
-                    'class_version TEXT NOT NULL,' ...
-                    'session_id TEXT,' ...
-                    'datestamp TEXT NOT NULL,' ...
-                    'body TEXT NOT NULL,' ...
-                    'body_hash TEXT NOT NULL)']);
+                mksqlite(obj.dbid, obj.documentsTableSQL());
                 mksqlite(obj.dbid, ...
                     'CREATE INDEX documents_classname ON documents(classname)');
                 mksqlite(obj.dbid, ...
                     'CREATE INDEX documents_session_id ON documents(session_id)');
                 mksqlite(obj.dbid, ...
                     'CREATE INDEX documents_datestamp ON documents(datestamp)');
+                obj.createQueryableColumnIndexes();
 
                 mksqlite(obj.dbid, [ ...
                     'CREATE TABLE superclasses (' ...
@@ -232,6 +283,153 @@ classdef sqlitedb < handle
                 error('did2:database:createFailed', ...
                     'Failed to create v2 SQLite schema: %s', err.message);
             end
+        end
+
+        function reconcileQueryableColumns(obj)
+            % Compare the currently-installed `q_*` columns on documents
+            % to the desired set. If they differ, rebuild the documents
+            % table by table-swap. Bodies are preserved verbatim; the
+            % generated columns repopulate themselves from json_extract.
+            % Skipped when bootstrap degraded — see bootstrapQueryableColumns.
+            if ~obj.queryableBootstrapOk
+                return;
+            end
+            desired = sort({obj.queryableScalarColumns.column});
+            current = obj.currentQueryableColumns();
+            if isequal(sort(current(:)'), desired(:)')
+                return;
+            end
+            obj.rebuildDocumentsTable();
+        end
+
+        function names = currentQueryableColumns(obj)
+            % Probe each expected generated column with a zero-row SELECT
+            % and collect the ones that succeed. We previously walked
+            % `pragma_table_info('documents')` but the mksqlite + sqlite
+            % combo on CI was returning rows whose `.name` field didn't
+            % round-trip cleanly through ismember even though
+            % `SELECT q_base_name FROM documents` (and the column itself)
+            % worked fine. Probing the columns directly avoids that
+            % layer entirely. Returns the subset of the expected columns
+            % that currently exist on the table.
+            names = {};
+            for k = 1:numel(obj.queryableScalarColumns)
+                col = obj.queryableScalarColumns(k);
+                sql = sprintf('SELECT %s FROM documents LIMIT 0', col.column);
+                try
+                    mksqlite(obj.dbid, sql);
+                    names{end+1} = col.column; %#ok<AGROW>
+                catch
+                    % column does not exist on this table.
+                end
+            end
+        end
+
+        function rebuildDocumentsTable(obj)
+            % Table-swap: build documents_new with the current generated
+            % columns, copy the canonical columns over, drop the old
+            % table, rename. Indexes on classname/session_id/datestamp
+            % and every q_* column are recreated against the new table.
+            %
+            % Foreign keys must be disabled outside the transaction —
+            % the superclasses and depends_on tables reference
+            % documents(id), and DROP TABLE documents would fault on FK
+            % enforcement otherwise. The recommended SQLite pattern
+            % (https://www.sqlite.org/lang_altertable.html section 7).
+            mksqlite(obj.dbid, 'PRAGMA foreign_keys = OFF');
+            mksqlite(obj.dbid, 'BEGIN IMMEDIATE');
+            try
+                % SQLite doesn't allow renaming TABLE references inside
+                % the existing index DDL; we just drop and re-create.
+                obj.dropQueryableColumnIndexes();
+                mksqlite(obj.dbid, ...
+                    'DROP INDEX IF EXISTS documents_classname');
+                mksqlite(obj.dbid, ...
+                    'DROP INDEX IF EXISTS documents_session_id');
+                mksqlite(obj.dbid, ...
+                    'DROP INDEX IF EXISTS documents_datestamp');
+
+                mksqlite(obj.dbid, ...
+                    strrep(obj.documentsTableSQL(), ...
+                           'CREATE TABLE documents (', ...
+                           'CREATE TABLE documents_new ('));
+                mksqlite(obj.dbid, [ ...
+                    'INSERT INTO documents_new(id, classname, class_version, ' ...
+                    'session_id, datestamp, body, body_hash) ' ...
+                    'SELECT id, classname, class_version, session_id, ' ...
+                    'datestamp, body, body_hash FROM documents']);
+                mksqlite(obj.dbid, 'DROP TABLE documents');
+                mksqlite(obj.dbid, ...
+                    'ALTER TABLE documents_new RENAME TO documents');
+
+                mksqlite(obj.dbid, ...
+                    'CREATE INDEX documents_classname ON documents(classname)');
+                mksqlite(obj.dbid, ...
+                    'CREATE INDEX documents_session_id ON documents(session_id)');
+                mksqlite(obj.dbid, ...
+                    'CREATE INDEX documents_datestamp ON documents(datestamp)');
+                obj.createQueryableColumnIndexes();
+
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                mksqlite(obj.dbid, 'PRAGMA foreign_keys = ON');
+                error('did2:database:rebuildFailed', ...
+                    'Failed to rebuild documents table: %s', err.message);
+            end
+            mksqlite(obj.dbid, 'PRAGMA foreign_keys = ON');
+        end
+
+        function sql = documentsTableSQL(obj)
+            % Compose the CREATE TABLE documents (...) statement,
+            % appending one `q_<flat> <affinity> GENERATED ALWAYS AS
+            % (json_extract(body, '$.<path>')) STORED` clause per
+            % queryable scalar path.
+            base = ['CREATE TABLE documents (' ...
+                'id TEXT PRIMARY KEY,' ...
+                'classname TEXT NOT NULL,' ...
+                'class_version TEXT NOT NULL,' ...
+                'session_id TEXT,' ...
+                'datestamp TEXT NOT NULL,' ...
+                'body TEXT NOT NULL,' ...
+                'body_hash TEXT NOT NULL'];
+            for k = 1:numel(obj.queryableScalarColumns)
+                col = obj.queryableScalarColumns(k);
+                affinity = col.affinity;
+                if isempty(affinity)
+                    affinityClause = '';
+                else
+                    affinityClause = [' ' affinity];
+                end
+                base = [base sprintf( ...
+                    [',%s%s GENERATED ALWAYS AS ' ...
+                     '(json_extract(body, ''$.%s'')) STORED'], ...
+                    col.column, affinityClause, col.path)]; %#ok<AGROW>
+            end
+            sql = [base ')'];
+        end
+
+        function createQueryableColumnIndexes(obj)
+            for k = 1:numel(obj.queryableScalarColumns)
+                col = obj.queryableScalarColumns(k);
+                mksqlite(obj.dbid, sprintf( ...
+                    'CREATE INDEX documents_%s ON documents(%s)', ...
+                    col.column, col.column));
+            end
+        end
+
+        function dropQueryableColumnIndexes(obj)
+            for k = 1:numel(obj.queryableScalarColumns)
+                col = obj.queryableScalarColumns(k);
+                mksqlite(obj.dbid, sprintf( ...
+                    'DROP INDEX IF EXISTS documents_%s', col.column));
+            end
+        end
+
+        function s = emptyColumnStruct(~)
+            s = struct('path', {}, 'declaringClass', {}, ...
+                'fieldName', {}, 'type', {}, ...
+                'column', {}, 'affinity', {});
         end
 
         function assertSchema(obj)
