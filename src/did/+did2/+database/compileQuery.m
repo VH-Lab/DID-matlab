@@ -1,4 +1,4 @@
-function [whereSQL, params] = compileQuery(q)
+function [whereSQL, params] = compileQuery(q, opts)
 % did2.database.compileQuery  Compile a did2.query to a SQL WHERE clause.
 %
 %   [WHERESQL, PARAMS] = did2.database.compileQuery(Q) returns a SQL WHERE
@@ -7,6 +7,15 @@ function [whereSQL, params] = compileQuery(q)
 %   classname, class_version, session_id, datestamp, body, body_hash,
 %   plus the `superclasses(doc_id, classname)` and
 %   `depends_on(doc_id, name, value)` sidecar tables).
+%
+%   [WHERESQL, PARAMS] = did2.database.compileQuery(Q, 'QueryablePaths',
+%   PATHS) tells the compiler that the dot-paths listed in the cellstr
+%   PATHS are surfaced as `q_<flat>` STORED generated columns on the
+%   documents table (PLAN.md §3.2). Scalar predicates against those
+%   paths compile to a direct comparison against the column instead of
+%   `json_extract(body, '$.<path>')`, which lets sqlite use the column's
+%   index. Predicates against paths not in the set fall back to
+%   json_extract.
 %
 %   This is the "JSON1 fallback" compiler called for in PLAN.md §9 step 3.
 %   It uses sqlite3 json_extract / json_each / json_type for every
@@ -22,16 +31,30 @@ function [whereSQL, params] = compileQuery(q)
 
 arguments
     q (1,1) did2.query
+    opts.QueryablePaths cell = {}
 end
 
-[whereSQL, params] = compileSearchstructArray(q.searchstructure);
+ctx = struct('queryablePaths', {asPathSet(opts.QueryablePaths)});
+[whereSQL, params] = compileSearchstructArray(q.searchstructure, ctx);
+end
+
+function set = asPathSet(paths)
+% Normalise a cellstr of paths into a containers.Map for O(1) lookup.
+set = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:numel(paths)
+    p = char(paths{k});
+    if isempty(p)
+        continue;
+    end
+    set(p) = true;
+end
 end
 
 % -----------------------------------------------------------------------
 % compile entry points
 % -----------------------------------------------------------------------
 
-function [sql, params] = compileSearchstructArray(ssArray)
+function [sql, params] = compileSearchstructArray(ssArray, ctx)
 % Conjunction over the elements of a search-structure array.
 params = {};
 if isempty(ssArray)
@@ -40,7 +63,7 @@ if isempty(ssArray)
 end
 parts = cell(1, numel(ssArray));
 for k = 1:numel(ssArray)
-    [parts{k}, sub] = compileSearchstruct(ssArray(k));
+    [parts{k}, sub] = compileSearchstruct(ssArray(k), ctx);
     params = [params, sub]; %#ok<AGROW>
 end
 if isscalar(parts)
@@ -54,7 +77,7 @@ else
 end
 end
 
-function [sql, params] = compileSearchstruct(ss)
+function [sql, params] = compileSearchstruct(ss, ctx)
 op = ss.operation;
 isNeg = ~isempty(op) && op(1) == '~';
 if isNeg
@@ -66,8 +89,8 @@ switch op
             error('did2:database:badOperator', ...
                 'The `or` operator cannot be negated; negate the leaves.');
         end
-        [a, pa] = compileSearchstructArray(asStructArray(ss.param1));
-        [b, pb] = compileSearchstructArray(asStructArray(ss.param2));
+        [a, pa] = compileSearchstructArray(asStructArray(ss.param1), ctx);
+        [b, pb] = compileSearchstructArray(asStructArray(ss.param2), ctx);
         sql = ['((' a ') OR (' b '))'];
         params = [pa, pb];
         return;
@@ -86,7 +109,7 @@ switch op
     case 'hasanysubfield_contains_string'
         % Sugar: <field>[*].<sub> + contains_string
         subPath = sprintf('%s[*].%s', ss.field, char(ss.param1));
-        [sql, params] = compileScalar('contains_string', subPath, ss.param2, isNeg);
+        [sql, params] = compileScalar('contains_string', subPath, ss.param2, isNeg, ctx);
         return;
     case 'hasanysubfield_exact_string'
         [sql, params] = compileHasAnySubfieldExact(ss.field, ...
@@ -95,7 +118,7 @@ switch op
     case {'exact_string', 'exact_string_anycase', 'contains_string', ...
           'regexp', 'exact_number', ...
           'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'}
-        [sql, params] = compileScalar(op, ss.field, ss.param1, isNeg);
+        [sql, params] = compileScalar(op, ss.field, ss.param1, isNeg, ctx);
         return;
     otherwise
         error('did2:database:unknownOperator', ...
@@ -224,15 +247,16 @@ else
 end
 end
 
-function [sql, params] = compileScalar(op, fieldPath, target, isNeg)
+function [sql, params] = compileScalar(op, fieldPath, target, isNeg, ctx)
 % Scalar operators. With `[*]` segments, lowers to EXISTS over json_each.
 [stars, prefix, leaf] = splitPathOnStar(fieldPath);
 
 if isempty(stars)
-    valueExpr = sprintf('json_extract(body, ''%s'')', jsonPath(prefix));
+    valueExpr = scalarValueExpression(prefix, ctx);
     [predicate, params] = scalarPredicate(op, valueExpr, target);
     if isNeg
-        % Missing path -> ~op should be true. json_extract returns NULL.
+        % Missing path -> ~op should be true. The generated column (or
+        % `json_extract` fallback) returns NULL for unresolvable paths.
         sql = sprintf('(%s IS NULL OR NOT (%s))', valueExpr, predicate);
     else
         sql = predicate;
@@ -308,6 +332,19 @@ end
 % -----------------------------------------------------------------------
 % path utilities
 % -----------------------------------------------------------------------
+
+function expr = scalarValueExpression(dotPath, ctx)
+% scalarValueExpression - the SQL value expression for a (no-[*]) scalar
+%   path. Routes to the `q_<flat>` generated column when the path is
+%   declared queryable; otherwise falls back to `json_extract(body, ...)`.
+if ~isempty(dotPath) && isfield(ctx, 'queryablePaths') ...
+        && isa(ctx.queryablePaths, 'containers.Map') ...
+        && ctx.queryablePaths.isKey(dotPath)
+    expr = ['q_' strrep(dotPath, '.', '_')];
+else
+    expr = sprintf('json_extract(body, ''%s'')', jsonPath(dotPath));
+end
+end
 
 function out = jsonPath(dotPath)
 % Convert a dot-path like 'base.name' to a JSON1 path '$.base.name'.
