@@ -7,9 +7,9 @@
                 "class_name": "demoA",
                 "schema": "$DIDSCHEMAPATH/demoA.json"
             }
-        ]
+        ],
+        "maturity_level": "work_in_progress"
     },
-    "maturity_level": "work_in_progress",
     "depends_on": [],
     "file": [],
     "fields": [
