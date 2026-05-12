@@ -308,7 +308,7 @@ db = testCase.TestData.db;
 cols = generatedColumns(db, 'documents');
 verifyTrue(testCase, ismember('q_base_name', cols));
 verifyTrue(testCase, ismember('q_base_id', cols));
-verifyTrue(testCase, ismember('q_demoA_value', cols));
+verifyTrue(testCase, ismember('q_demoa_value', cols));
 end
 
 function testIndexedScalarMatchesFallback(testCase)
@@ -329,10 +329,10 @@ db = testCase.TestData.db;
 doc = makeDemoA('carol', 'cv');
 db.add(doc);
 rows = mksqlite(db.testHookDbId(), ...
-    'SELECT q_base_name, q_demoA_value FROM documents WHERE id = ?', ...
+    'SELECT q_base_name, q_demoa_value FROM documents WHERE id = ?', ...
     doc.get('base.id'));
 verifyEqual(testCase, char(rows(1).q_base_name), 'carol');
-verifyEqual(testCase, char(rows(1).q_demoA_value), 'cv');
+verifyEqual(testCase, char(rows(1).q_demoa_value), 'cv');
 end
 
 function testRebuildPreservesDataOnSchemaMismatch(testCase)
@@ -346,7 +346,7 @@ d2 = makeDemoB('bob', 'a2', 'b2'); db.add(d2);
 
 % SQLite 3.35+ supports DROP COLUMN. The CI MATLAB ships with mksqlite
 % bound to a >=3.35 sqlite, but skip the test gracefully on older.
-ok = tryDropColumn(db.testHookDbId(), 'documents', 'q_demoA_value');
+ok = tryDropColumn(db.testHookDbId(), 'documents', 'q_demoa_value');
 if ~ok
     assumeFail(testCase, 'sqlite DROP COLUMN unavailable on this build');
 end
@@ -355,7 +355,7 @@ db.close();
 db2 = did2.database.sqlitedb(testCase.TestData.tmpFile);
 cleanup = onCleanup(@() db2.close()); %#ok<NASGU>
 cols = generatedColumns(db2, 'documents');
-verifyTrue(testCase, ismember('q_demoA_value', cols), ...
+verifyTrue(testCase, ismember('q_demoa_value', cols), ...
     'rebuild should restore the missing generated column');
 verifyEqual(testCase, db2.count(), 2);
 verifyTrue(testCase, db2.has(d1.get('base.id')));
@@ -365,7 +365,12 @@ end
 % ---- helpers (step 4) ----
 
 function cols = generatedColumns(db, tableName)
-rows = mksqlite(db.testHookDbId(), 'SELECT name FROM pragma_table_info(?)', tableName);
+% sqlite's table-valued pragmas reject bound placeholders; the argument
+% must be a literal constant. Interpolate the table name via sprintf so
+% the SQL ends up with `pragma_table_info('documents')` rather than
+% `pragma_table_info(?)`.
+sql = sprintf('SELECT name FROM pragma_table_info(''%s'')', tableName);
+rows = mksqlite(db.testHookDbId(), sql);
 cols = {};
 for k = 1:numel(rows)
     if startsWith(rows(k).name, 'q_')
