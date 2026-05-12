@@ -7,24 +7,24 @@ classdef cache < handle
     %   docs/v2/PLAN.md §5.
     %
     %   Document shape (V_gamma "JSON Format: Document Instances"):
-    %     _classname      string         concrete class
-    %     _class_version  string         semver of the concrete class
-    %     _superclasses   array          [{_classname, _class_version}]
-    %     _depends_on     array          [{_name, value}]
-    %     <classname>     object         one property block per class in
-    %                                    the chain, keyed by _classname.
-    %                                    Contains the field values that
-    %                                    class declared (empty {} if the
-    %                                    class declares no fields).
+    %     document_class
+    %       .class_name       string         concrete class
+    %       .class_version    string         semver of the concrete class
+    %       .superclasses     array          [{class_name, class_version}]
+    %     _depends_on         array          [{_name, value}]
+    %     <class_name>        object         one property block per class
+    %                                        in the chain. Contains the
+    %                                        field values that class
+    %                                        declared (empty {} if it
+    %                                        declares no fields).
     %
-    %   MATLAB representation: leading-underscore JSON keys can't be
-    %   MATLAB struct field names, so we store them with the same `x_`
-    %   prefix MATLAB's `jsondecode` produces — `x_classname`,
-    %   `x_class_version`, `x_superclasses`, `x_depends_on`. The
-    %   class-block keys (`base`, `demoA`, ...) are plain snake_case
-    %   identifiers and stay as written. did2.document.toJSON rewrites
-    %   `"x_<name>":` back to `"_<name>":` on serialisation; jsondecode
-    %   reverses that on parse.
+    %   MATLAB representation: the `document_class` header and its
+    %   sub-keys (`class_name`, `class_version`, `superclasses`) are
+    %   already valid MATLAB struct field names and stay as written.
+    %   Only `_depends_on` (top-level) and `_name` (inside its entries)
+    %   keep MATLAB's `x_` rename — stored as `x_depends_on` and
+    %   `x_name`. did2.document.toJSON rewrites `"x_<name>":` back to
+    %   `"_<name>":` on serialisation.
     %
     %   did2.schema.cache Properties:
     %       schemaPath      - filesystem path to a V_gamma schema dir.
@@ -89,7 +89,8 @@ classdef cache < handle
 
         function names = superclasses(obj, className)
             % superclasses - ancestor chain (parent first, root last).
-            %   For 'demoA' -> {'base'}. For 'base' -> {}.
+            %   Walks `document_class.superclasses[i].class_name` up the
+            %   chain. For 'demoA' -> {'base'}. For 'base' -> {}.
             arguments
                 obj
                 className (1,:) char
@@ -104,12 +105,16 @@ classdef cache < handle
                 end
                 visited(current) = true;
                 s = obj.getClass(current);
-                parents = obj.extractField(s, '_superclasses');
+                dc = obj.extractField(s, 'document_class');
+                if isempty(dc)
+                    break;
+                end
+                parents = obj.extractField(dc, 'superclasses');
                 if isempty(parents)
                     break;
                 end
                 parent = obj.elementAt(parents, 1);
-                parentName = obj.extractField(parent, '_classname');
+                parentName = obj.extractField(parent, 'class_name');
                 names{end+1} = char(parentName); %#ok<AGROW>
                 current = char(parentName);
             end
@@ -182,21 +187,31 @@ classdef cache < handle
                 className (1,:) char
             end
             doc = struct();
+            % document_class header.
             schema = obj.getClass(className);
-            doc.x_classname     = char(obj.extractField(schema, '_classname'));
-            doc.x_class_version = char(obj.extractField(schema, '_class_version'));
+            schemaDC = obj.extractField(schema, 'document_class');
+            classNameVal = char(obj.extractField(schemaDC, 'class_name'));
+            classVersionVal = char(obj.extractField(schemaDC, 'class_version'));
 
             ancestors = obj.superclasses(className);
-            sc = struct('x_classname', {}, 'x_class_version', {});
+            sc = struct('class_name', {}, 'class_version', {});
             for k = 1:numel(ancestors)
                 ancSchema = obj.getClass(ancestors{k});
+                ancDC = obj.extractField(ancSchema, 'document_class');
                 sc(end+1) = struct( ...
-                    'x_classname', char(obj.extractField(ancSchema, '_classname')), ...
-                    'x_class_version', char(obj.extractField(ancSchema, '_class_version'))); %#ok<AGROW>
+                    'class_name', char(obj.extractField(ancDC, 'class_name')), ...
+                    'class_version', char(obj.extractField(ancDC, 'class_version'))); %#ok<AGROW>
             end
-            doc.x_superclasses = sc;
+            dc = struct( ...
+                'class_name', classNameVal, ...
+                'class_version', classVersionVal, ...
+                'superclasses', sc);
+            doc.document_class = dc;
+
+            % Top-level _depends_on (empty struct array of {_name, value}).
             doc.x_depends_on = struct('x_name', {}, 'value', {});
 
+            % One property block per class in the chain.
             chain = obj.classChain(className);
             for k = 1:numel(chain)
                 blockClass = chain{k};
@@ -222,11 +237,16 @@ classdef cache < handle
                     'validateDocument expects a did2.document or a struct, got %s.', ...
                     class(docOrStruct));
             end
-            if ~isfield(s, 'x_classname') || isempty(s.x_classname)
+            if ~isfield(s, 'document_class') || ~isstruct(s.document_class)
                 error('did2:validation:missingClassName', ...
-                    'Document has no _classname; cannot validate.');
+                    'Document has no document_class header; cannot validate.');
             end
-            className = char(s.x_classname);
+            dc = s.document_class;
+            if ~isfield(dc, 'class_name') || isempty(dc.class_name)
+                error('did2:validation:missingClassName', ...
+                    'Document has no document_class.class_name; cannot validate.');
+            end
+            className = char(dc.class_name);
             chain = obj.classChain(className);
             for k = 1:numel(chain)
                 blockClass = chain{k};
@@ -326,8 +346,10 @@ classdef cache < handle
 
         function value = extractField(~, s, name)
             % extractField - tolerate jsondecode's leading-underscore
-            %   rewrites (`_<x>` becomes `x_<x>`), with backwards-compat
-            %   probes for older quirks.
+            %   rewrites (`_<x>` becomes `x_<x>`). Used for both schema
+            %   keys with leading underscores (e.g. `_fields`,
+            %   `_maturity_level`) and plain non-prefixed keys (e.g.
+            %   `document_class`, `class_name`).
             if ~isstruct(s) && ~isobject(s)
                 value = [];
                 return;
