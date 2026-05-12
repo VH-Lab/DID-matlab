@@ -452,3 +452,77 @@ Step 1 is complete to the level the rest of the plan needs.
 detailed per-named-composite validation and dependency-value checks
 are deferred to focused follow-ups. Next up: step 2 — the in-memory
 query evaluator over the class-qualified dot-paths.
+
+### 2026-05-12 — step 2 in-memory query evaluator
+
+Implemented step 2 of §9 on branch
+`claude/did-v2-schema-stage2-nGrJx`.
+
+Added `src/did/+did2/query.m` — a four-tuple
+`{field, operation, param1, param2}` search-structure query value
+that evaluates directly against the V_gamma class-scoped wire shape
+(`did2.document` or its underlying struct). The implementation is the
+executable spec described in
+`did-schema/schemas/did_query_model.md`.
+
+Operators implemented (every operator named in the model spec):
+
+- Scalar: `exact_string`, `exact_string_anycase`, `contains_string`,
+  `regexp`, `exact_number`, `lessthan`, `lessthaneq`, `greaterthan`,
+  `greaterthaneq`, `hasfield`.
+- Array: `hasmember`, `hasanysubfield_contains_string` (legacy
+  shorthand for `<field>[*].<sub>` + `contains_string`),
+  `hasanysubfield_exact_string` (correlated lowering used by
+  `depends_on`).
+- Document-level: `isa` (matches concrete class or any entry of
+  `document_class.superclasses[*].class_name`), `depends_on` (with
+  `*` wildcard on the name).
+- Negation: `~`-prefix on every operator except `or`. `~or` is
+  rejected at construction time with `did2:query:badOperator`.
+
+Composition:
+
+- `and(q1, q2)` concatenates search-structure arrays.
+- `or(q1, q2)` builds a single search structure whose operation is
+  `or` and whose `param1` / `param2` are the sub-search-structure
+  arrays. `evaluateAll` AND-s its struct array (empty matches
+  vacuously); the `or` branch shortcircuits on `param1`.
+
+Field selector:
+
+- Dot-paths resolve via `did2.query.resolvePath(s, fieldPath)`, which
+  returns a cell array of leaf values.
+- A path segment ending in `[*]` expands array-of-structure
+  iteration with existential semantics. Multiple `[*]` segments
+  compose as a cross-product of expansions.
+- Unresolvable paths return `{}`. With a scalar operator that means
+  no match; with `~`-negation the match flips to true (literal
+  reading of the model spec).
+- Per the model spec, two `[*]` predicates over the same array
+  combined with `and()` are evaluated independently (not correlated
+  to the same element).
+
+API surface:
+
+- `did2.query()` empty query — matches everything (vacuous AND).
+- `did2.query(field, op, param1, param2)` four-tuple constructor;
+  `param1` / `param2` default to `''`.
+- `did2.query(searchstruct)` wraps an existing struct.
+- `did2.query.all()` and `did2.query.none()` syntactic sugar built on
+  `isa`.
+- `q.matches(docOrStruct)` returns logical scalar.
+- `q.filter(docs)` returns the matching subset of a list of
+  documents; `q.filter(docs, AsMask=true)` returns a logical mask.
+- `did2.query.resolvePath(s, fieldPath)` and
+  `did2.query.evaluate(ss, docStruct)` are exposed for the SQL
+  compiler's test harness (§6.2).
+
+Added `tests/+did2/+unittest/testQuery.m` — function-based tests
+covering every operator above, the negation prefix, AND/OR
+composition, `[*]` iteration (single and nested), the independent
+quantifier semantics, the filter/asMask path, and the
+plain-struct vs `did2.document` input branches.
+
+Next up: step 3 — the SQLite backend with the JSON1 fallback path.
+The in-memory evaluator becomes the reference implementation the
+SQL compiler is tested against.
