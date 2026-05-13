@@ -1,8 +1,8 @@
 classdef sqlitedb < handle
-    % did2.database.sqlitedb  SQLite + JSON1 backend for V_gamma documents.
+    % did2.database.sqlitedb  SQLite + JSON1 backend for V_delta documents.
     %
     %   First database backend in the v2 line. Stores each document's full
-    %   V_gamma JSON body in a single TEXT column on the `documents`
+    %   V_delta JSON body in a single TEXT column on the `documents`
     %   table; the `superclasses` and `depends_on` sidecar tables hold
     %   the entries needed for `isa` and `depends_on` queries without
     %   walking JSON.
@@ -311,7 +311,7 @@ classdef sqlitedb < handle
                     'schema_version', num2str(obj.SchemaVersion));
                 mksqlite(obj.dbid, ...
                     'INSERT INTO meta(key, value) VALUES(?, ?)', ...
-                    'schema_generation', 'V_gamma');
+                    'schema_generation', 'V_delta');
                 mksqlite(obj.dbid, ...
                     'INSERT INTO meta(key, value) VALUES(?, ?)', ...
                     'queryable_array_paths', ...
@@ -671,9 +671,9 @@ classdef sqlitedb < handle
                     '%s is not a v2 SQLite database (missing meta table).', ...
                     obj.filename);
             end
-            if isempty(row) || ~strcmp(row(1).value, 'V_gamma')
+            if isempty(row) || ~strcmp(row(1).value, 'V_delta')
                 error('did2:database:notV2Database', ...
-                    '%s is not a V_gamma database.', obj.filename);
+                    '%s is not a V_delta database.', obj.filename);
             end
         end
 

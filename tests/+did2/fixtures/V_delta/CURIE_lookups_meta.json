@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "https://did-schema.example.org/meta/CURIE_lookups_meta.json",
-    "title": "CURIE Registry for DID/NDI V_gamma",
+    "title": "CURIE Registry for DID/NDI V_delta",
     "description": "Registry mapping CURIE prefixes (used in ontology_term.node values and in field-level _ontology._node annotations) to their authoritative URI base and metadata. Consumer tooling uses this file to expand a CURIE such as 'uberon:0002436' into the full URI 'http://purl.obolibrary.org/obo/UBERON_0002436'. Prefixes are matched case-insensitively; by convention prefixes are written in lowercase inside documents and annotations.",
     "_format_version": "1.0.3",
     "_prefixes": {

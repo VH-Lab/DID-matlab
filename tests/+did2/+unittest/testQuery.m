@@ -1,5 +1,5 @@
 function tests = testQuery
-% testQuery - exercises did2.query against V_gamma documents.
+% testQuery - exercises did2.query against V_delta documents.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testQuery');
@@ -14,7 +14,7 @@ end
 
 function setupOnce(testCase)
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_gamma');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
 did2.schema.cache.setSchemaPath(fixtureDir);
 testCase.TestData.fixtureDir = fixtureDir;
 testCase.TestData.cache = did2.schema.cache.shared();
@@ -179,7 +179,7 @@ end
 
 function testArrayStarExistential(testCase)
 doc = makeDemoA(testCase, 'alice', 'a1');
-% Inject an ad-hoc array-of-structure field (not in V_gamma schema, but
+% Inject an ad-hoc array-of-structure field (not in V_delta schema, but
 % the evaluator is schema-agnostic over its dot-paths).
 axes = struct('name', {'x','y','z'}, 'unit', {'micrometer','micrometer','degrees'});
 doc = doc.set('demoA.axes', axes);

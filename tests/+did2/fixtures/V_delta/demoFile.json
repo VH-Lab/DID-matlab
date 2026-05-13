@@ -1,20 +1,28 @@
 {
     "document_class": {
-        "class_name": "demoB",
+        "class_name": "demoFile",
         "class_version": "1.0.0",
         "superclasses": [
             {
-                "class_name": "demoA",
-                "schema": "$DIDSCHEMAPATH/demoA.json"
+                "class_name": "base"
             }
         ],
-        "maturity_level": "work_in_progress"
+        "maturity_level": "stable"
     },
     "depends_on": [],
-    "file": [],
+    "file": [
+        {
+            "name": "filename1.ext",
+            "documentation": "First demo binary file attached to the document."
+        },
+        {
+            "name": "filename2.ext2",
+            "documentation": "Second demo binary file attached to the document."
+        }
+    ],
     "fields": [
         {
-            "name": "value_b",
+            "name": "value",
             "type": "char",
             "blank_value": "",
             "default_value": "",
@@ -23,7 +31,7 @@
             "mustNotHaveNaN": false,
             "queryable": true,
             "ontology": null,
-            "documentation": "A second demo scalar value, declared by demoB on top of demoA.",
+            "documentation": "A demo scalar value carried alongside the file attachments.",
             "constraints": {
                 "maxLength": 256
             }

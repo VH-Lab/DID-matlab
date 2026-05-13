@@ -1,22 +1,22 @@
 classdef document < handle
-    % did2.document  V_gamma document object.
+    % did2.document  V_delta document object.
     %
-    %   Holds a single V_gamma document in the class-scoped wire shape
-    %   (see V_gamma_SPEC.md "JSON Format: Document Instances"), validates
-    %   it against the V_gamma schema set, and serialises it back to JSON.
+    %   Holds a single V_delta document in the class-scoped wire shape
+    %   (see V_delta_SPEC.md "JSON Format: Document Instances"), validates
+    %   it against the V_delta schema set, and serialises it back to JSON.
     %
-    %   In-memory representation. The V_gamma document shape carries a
+    %   In-memory representation. The V_delta document shape carries a
     %   top-level `document_class` header (with sub-keys `class_name`,
     %   `class_version`, `superclasses`), plus a top-level `depends_on`
     %   array, plus one property block per class in the chain keyed by
-    %   class name. After V_gamma's "drop underscore prefixes" pass,
+    %   class name. After V_delta's "drop underscore prefixes" pass,
     %   every key in the wire shape is a valid MATLAB struct field name,
     %   so the in-memory representation is the JSON shape verbatim.
     %   `jsonencode`/`jsondecode` round-trip without any name-rewrite
     %   pass.
     %
     %   did2.document Properties:
-    %       documentProperties - struct mirroring the V_gamma JSON shape.
+    %       documentProperties - struct mirroring the V_delta JSON shape.
     %
     %   did2.document Methods:
     %       document     - construct from JSON text, a struct, or
@@ -24,7 +24,7 @@ classdef document < handle
     %       get          - dot-path getter into documentProperties.
     %       set          - dot-path setter into documentProperties.
     %       iterate      - element iterator over an array-of-structure path.
-    %       toJSON       - serialise to V_gamma JSON text.
+    %       toJSON       - serialise to V_delta JSON text.
     %       toStruct     - return the underlying struct.
     %       className    - shorthand for document_class.class_name.
     %       classVersion - shorthand for document_class.class_version.
@@ -115,7 +115,7 @@ classdef document < handle
         end
 
         function jsonText = toJSON(obj, opts)
-            % toJSON - serialise documentProperties to V_gamma JSON text.
+            % toJSON - serialise documentProperties to V_delta JSON text.
             arguments
                 obj
                 opts.PrettyPrint (1,1) logical = false
@@ -153,7 +153,7 @@ classdef document < handle
         end
 
         function validate(obj, opts)
-            % validate - check this document against its V_gamma schema.
+            % validate - check this document against its V_delta schema.
             arguments
                 obj
                 opts.SchemaCache = []
@@ -179,7 +179,7 @@ classdef document < handle
         end
 
         function obj = blank(className, opts)
-            % blank - construct a blank V_gamma document of the named class.
+            % blank - construct a blank V_delta document of the named class.
             arguments
                 className (1,:) char
                 opts.SchemaCache = []
