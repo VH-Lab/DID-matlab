@@ -233,11 +233,77 @@ verifySubstring(testCase, sql, 'json_type(body, ''$.base.name'')');
 end
 
 function testStarPathIgnoresQueryablePaths(testCase)
-% Array-iteration paths use json_each; queryable-paths set should not
-% interfere (step 5 will route these to the queryable_array_elem
-% sidecar).
+% The scalar QueryablePaths set is for non-`[*]` paths only. With no
+% QueryableArrayPaths supplied, `[*]`-bearing paths still expand to
+% json_each, regardless of what's listed in QueryablePaths.
 q = did2.query('demoA.axes[*].name', 'exact_string', 'x');
 [sql, ~] = did2.database.compileQuery(q, ...
     'QueryablePaths', {'demoA.axes[*].name', 'base.name'});
 verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.axes''))');
+end
+
+% ---- step 5: routing [*] paths to queryable_array_elem ----
+
+function testIndexedStarPathRoutesToSidecar(testCase)
+% With the path in QueryableArrayPaths, the compiler should emit an
+% EXISTS over queryable_array_elem (qae) instead of a json_each
+% expansion. The path string is bound first, then the predicate target.
+q = did2.query('demoArray.axes[*].unit', 'exact_string', 'um');
+[sql, params] = did2.database.compileQuery(q, ...
+    'QueryableArrayPaths', {'demoArray.axes[*].unit'});
+verifySubstring(testCase, sql, 'FROM queryable_array_elem qae');
+verifySubstring(testCase, sql, 'qae.doc_id = documents.id');
+verifySubstring(testCase, sql, 'qae.path = ?');
+verifySubstring(testCase, sql, 'qae.value_text = ?');
+testCase.verifyFalse(contains(sql, 'json_each'));
+verifyEqual(testCase, params, {'demoArray.axes[*].unit', 'um'});
+end
+
+function testIndexedStarPathFallsBackForUnknownPath(testCase)
+% A `[*]` path not present in QueryableArrayPaths should still use the
+% json_each fallback.
+q = did2.query('demoA.axes[*].name', 'exact_string', 'x');
+[sql, ~] = did2.database.compileQuery(q, ...
+    'QueryableArrayPaths', {'demoArray.axes[*].unit'});
+verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.axes''))');
+testCase.verifyFalse(contains(sql, 'queryable_array_elem'));
+end
+
+function testIndexedStarNegationFlipsToNotExists(testCase)
+% Negated leaf becomes NOT EXISTS, which also matches docs with no
+% sidecar rows at this path (preserving the in-memory rule that an
+% unresolvable path under `~op` matches).
+q = did2.query('demoArray.axes[*].unit', '~exact_string', 'um');
+[sql, ~] = did2.database.compileQuery(q, ...
+    'QueryableArrayPaths', {'demoArray.axes[*].unit'});
+verifySubstring(testCase, sql, '(NOT EXISTS');
+verifySubstring(testCase, sql, 'queryable_array_elem qae');
+end
+
+function testIndexedStarNumericAffinityUsesValueNum(testCase)
+% A REAL/INTEGER-affinity path lands on qae.value_num rather than
+% qae.value_text.
+arrayDefs = struct( ...
+    'path', 'demoArray.axes[*].size', 'affinity', 'INTEGER', ...
+    'declaringClass', 'demoArray', 'parentField', 'axes', ...
+    'parentPath', 'demoArray.axes', 'subField', 'size', 'type', 'integer');
+q = did2.query('demoArray.axes[*].size', 'lessthan', 100);
+[sql, params] = did2.database.compileQuery(q, ...
+    'QueryableArrayPaths', arrayDefs);
+verifySubstring(testCase, sql, 'queryable_array_elem qae');
+verifySubstring(testCase, sql, 'CAST(qae.value_num AS REAL) < ?');
+verifyEqual(testCase, params, {'demoArray.axes[*].size', 100});
+end
+
+function testIndexedStarRegexpRoutesPermissivelyToSidecar(testCase)
+% Regexp can't be expressed in sqlite, but we can still narrow on the
+% sidecar's `path = ?`, which is a strictly tighter pre-filter than
+% the json_each fallback's bare `1=1`.
+q = did2.query('demoArray.axes[*].unit', 'regexp', '^um');
+[sql, params] = did2.database.compileQuery(q, ...
+    'QueryableArrayPaths', {'demoArray.axes[*].unit'});
+verifySubstring(testCase, sql, 'queryable_array_elem qae');
+verifySubstring(testCase, sql, 'qae.path = ?');
+verifySubstring(testCase, sql, '1=1');
+verifyEqual(testCase, params, {'demoArray.axes[*].unit'});
 end

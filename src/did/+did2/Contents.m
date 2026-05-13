@@ -17,8 +17,14 @@
 %   Subpackages
 %     +schema       - schema cache and validation entry points.
 %     +database     - storage backends. Currently `sqlitedb` (sqlite3
-%                     + JSON1 fallback) and `compileQuery` (the JSON1
-%                     SQL compiler). See docs/v2/PLAN.md §3, §9 step 3.
+%                     + JSON1 fallback, with the step-4 generated
+%                     columns for queryable scalars and the step-5
+%                     queryable_array_elem sidecar for queryable
+%                     array-iteration paths) and `compileQuery` (the
+%                     JSON1 SQL compiler that routes scalar leaves to
+%                     the generated columns and `[*]` leaves to the
+%                     sidecar when their dot-path is in the indexed
+%                     set). See docs/v2/PLAN.md §3, §9 steps 3–5.
 %     +convert      - (planned) v1-to-v2 conversion utilities.
 %
 %   Conventions

@@ -299,6 +299,13 @@ doc = doc.set('demoA.value', valueA);
 doc = doc.set('demoB.value_b', valueB);
 end
 
+function doc = makeDemoArray(name, axes)
+doc = did2.document.blank('demoArray');
+doc = doc.set('base.session_id', sprintf('session-%s', name));
+doc = doc.set('base.name', name);
+doc = doc.set('demoArray.axes', axes);
+end
+
 % ---- step 4: generated columns + rebuild-on-mismatch ----
 
 function testGeneratedColumnsExistAtCreate(testCase)
@@ -383,6 +390,110 @@ for k = 1:numel(candidates)
         % column does not exist on this table.
     end
 end
+end
+
+% ---- step 5: queryable_array_elem sidecar ----
+
+function testSidecarPopulatedAtInsert(testCase)
+% A demoArray document with three axes should yield three sidecar rows
+% for each queryable sub-field path.
+db = testCase.TestData.db;
+axes = struct('name', {'x','y','z'}, 'unit', {'um','um','deg'}, ...
+    'size', {10, 20, 5});
+doc = makeDemoArray('layered', axes);
+db.add(doc);
+rows = mksqlite(db.testHookDbId(), ...
+    'SELECT path, elem_index, value_text, value_num FROM queryable_array_elem ORDER BY path, elem_index');
+verifyEqual(testCase, numel(rows), 6);
+% mksqlite returns N x 1 struct arrays; flatten via comma-list packing so
+% shape mismatches don't trip the equality checks below.
+unitMask = strcmp({rows.path}, 'demoArray.axes[*].unit');
+unitRows = rows(unitMask);
+unitValues = cellfun(@char, {unitRows.value_text}, 'UniformOutput', false);
+verifyEqual(testCase, unitValues, {'um','um','deg'});
+sizeMask = strcmp({rows.path}, 'demoArray.axes[*].size');
+sizeRows = rows(sizeMask);
+sizeValues = [sizeRows.value_num];
+verifyEqual(testCase, sizeValues(:)', [10 20 5]);
+end
+
+function testSidecarRoutesIndexedStarSearch(testCase)
+% A search on the indexed array path should hit the sidecar and return
+% the same docs as the in-memory evaluator.
+db = testCase.TestData.db;
+ax1 = struct('name', {'x','y'}, 'unit', {'um','um'}, 'size', {1, 2});
+ax2 = struct('name', {'x'},     'unit', {'deg'},     'size', {3});
+d1 = makeDemoArray('d1', ax1); db.add(d1);
+d2 = makeDemoArray('d2', ax2); db.add(d2);
+hits = db.search(did2.query('demoArray.axes[*].unit', 'exact_string', 'deg'));
+verifyEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, hits{1}.get('base.id'), d2.get('base.id'));
+end
+
+function testSidecarNumericComparisonRoutes(testCase)
+% lessthan against the INTEGER-affinity `size` sub-field should land
+% on value_num via the sidecar and select the right doc.
+db = testCase.TestData.db;
+big = struct('name', {'x'}, 'unit', {'um'}, 'size', {1000});
+small = struct('name', {'x'}, 'unit', {'um'}, 'size', {5});
+d1 = makeDemoArray('big',   big);   db.add(d1);
+d2 = makeDemoArray('small', small); db.add(d2);
+hits = db.search(did2.query('demoArray.axes[*].size', 'lessthan', 10));
+verifyEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, hits{1}.get('base.name'), 'small');
+end
+
+function testSidecarRemovedOnDocDelete(testCase)
+% Deleting the document should cascade to queryable_array_elem.
+db = testCase.TestData.db;
+axes = struct('name', {'x'}, 'unit', {'um'}, 'size', {7});
+doc = makeDemoArray('delme', axes);
+db.add(doc);
+docId = doc.get('base.id');
+preRows = mksqlite(db.testHookDbId(), ...
+    'SELECT COUNT(*) AS n FROM queryable_array_elem WHERE doc_id = ?', docId);
+verifyEqual(testCase, double(preRows(1).n), 2);
+db.remove(docId);
+postRows = mksqlite(db.testHookDbId(), ...
+    'SELECT COUNT(*) AS n FROM queryable_array_elem WHERE doc_id = ?', docId);
+verifyEqual(testCase, double(postRows(1).n), 0);
+end
+
+function testSidecarMetaTracksPathSet(testCase)
+% The configured array-paths set should be recorded in the meta table
+% so the next open can detect a mismatch.
+db = testCase.TestData.db;
+row = mksqlite(db.testHookDbId(), ...
+    'SELECT value FROM meta WHERE key = ?', 'queryable_array_paths');
+verifyEqual(testCase, numel(row), 1);
+parts = strsplit(char(row(1).value), char(10));
+expected = {'demoArray.axes[*].size', 'demoArray.axes[*].unit'};
+verifyEqual(testCase, sort(parts), expected);
+end
+
+function testSidecarReconcileRepopulates(testCase)
+% Manually clobber the sidecar's path set in `meta` and wipe its rows
+% to simulate a previous schema generation. Reopening should rebuild
+% the sidecar from the stored bodies under the current path set.
+db = testCase.TestData.db;
+axes = struct('name', {'x','y'}, 'unit', {'um','deg'}, 'size', {1, 2});
+doc = makeDemoArray('reb', axes);
+db.add(doc);
+docId = doc.get('base.id');
+mksqlite(db.testHookDbId(), 'DELETE FROM queryable_array_elem');
+mksqlite(db.testHookDbId(), ...
+    'INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)', ...
+    'queryable_array_paths', 'stale.other[*].field');
+db.close();
+
+db2 = did2.database.sqlitedb(testCase.TestData.tmpFile);
+cleanup = onCleanup(@() db2.close()); %#ok<NASGU>
+rows = mksqlite(db2.testHookDbId(), ...
+    'SELECT COUNT(*) AS n FROM queryable_array_elem WHERE doc_id = ?', docId);
+verifyEqual(testCase, double(rows(1).n), 4);
+% A search on the indexed path now goes through the rebuilt sidecar.
+hits = db2.search(did2.query('demoArray.axes[*].unit', 'exact_string', 'deg'));
+verifyEqual(testCase, numel(hits), 1);
 end
 
 function ok = tryDropColumn(dbid, table, column)
