@@ -3,7 +3,7 @@
         "class_name": "base",
         "class_version": "1.0.0",
         "superclasses": [],
-        "maturity_level": "work_in_progress"
+        "maturity_level": "stable"
     },
     "depends_on": [],
     "file": [],

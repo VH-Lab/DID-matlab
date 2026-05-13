@@ -1,7 +1,7 @@
 function tests = testSqliteDb
 % testSqliteDb - did2.database.sqlitedb integration tests.
 %
-%   Round-trips V_gamma documents through a real SQLite file via
+%   Round-trips V_delta documents through a real SQLite file via
 %   mksqlite, and verifies that the JSON1 query compiler + post-filter
 %   returns the same hits as the in-memory reference evaluator
 %   (did2.query.matches).
@@ -23,7 +23,7 @@ if isempty(which('mksqlite'))
         'mksqlite is not on the MATLAB path; skipping the v2 SQLite tests.');
 end
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_gamma');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
 did2.schema.cache.setSchemaPath(fixtureDir);
 testCase.TestData.fixtureDir = fixtureDir;
 end

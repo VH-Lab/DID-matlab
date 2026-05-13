@@ -1,12 +1,12 @@
 classdef cache < handle
-    % did2.schema.cache  V_gamma schema cache.
+    % did2.schema.cache  V_delta schema cache.
     %
-    %   Loads V_gamma schema files lazily, resolves superclass chains,
-    %   builds blank documents in the V_gamma class-scoped wire shape,
+    %   Loads V_delta schema files lazily, resolves superclass chains,
+    %   builds blank documents in the V_delta class-scoped wire shape,
     %   and validates documents against their class definitions. See
     %   docs/v2/PLAN.md §5.
     %
-    %   Document shape (V_gamma "JSON Format: Document Instances"):
+    %   Document shape (V_delta "JSON Format: Document Instances"):
     %     document_class
     %       .class_name       string         concrete class
     %       .class_version    string         semver of the concrete class
@@ -18,15 +18,15 @@ classdef cache < handle
     %                                        declared (empty {} if it
     %                                        declares no fields).
     %
-    %   MATLAB representation: every key in the V_gamma wire shape is a
+    %   MATLAB representation: every key in the V_delta wire shape is a
     %   valid MATLAB struct field name (no leading underscores anywhere
-    %   after the V_gamma SPEC's "drop underscore prefixes" update), so
+    %   after the V_delta SPEC's "drop underscore prefixes" update), so
     %   the in-memory representation is the JSON shape verbatim.
     %   `jsondecode` returns a struct with the same field names, and
     %   `jsonencode` writes them back without any rename pass.
     %
     %   did2.schema.cache Properties:
-    %       schemaPath      - filesystem path to a V_gamma schema dir.
+    %       schemaPath      - filesystem path to a V_delta schema dir.
     %       loadedClasses   - containers.Map of classname -> raw schema.
     %       curieRegistry   - parsed CURIE_lookups_meta.json contents.
     %
@@ -45,7 +45,7 @@ classdef cache < handle
     %       loadAllSchemas      - parse every *.json in the schema dir.
     %       queryablePaths      - scalar and array-iteration paths
     %                             declared by the loaded schemas.
-    %       buildBlankDocument  - blank V_gamma document in the wire shape.
+    %       buildBlankDocument  - blank V_delta document in the wire shape.
     %       validateDocument    - validate a did2.document instance.
     %
     %   See also: did2.document, docs/v2/PLAN.md.
@@ -305,7 +305,7 @@ classdef cache < handle
         end
 
         function doc = buildBlankDocument(obj, className)
-            % buildBlankDocument - blank V_gamma document in the
+            % buildBlankDocument - blank V_delta document in the
             %   class-scoped wire shape. Mints a fresh did_uid for
             %   base.id and the current UTC timestamp for base.datestamp.
             arguments
@@ -430,7 +430,7 @@ classdef cache < handle
                 return;
             end
             toolboxDir = did.toolboxdir();
-            p = fullfile(toolboxDir, '..', '..', 'did-schema', 'schemas', 'V_gamma');
+            p = fullfile(toolboxDir, '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
         end
 
         function ts = currentUTCTimestamp()
@@ -459,13 +459,13 @@ classdef cache < handle
             %   Always lowercase so the convention round-trips cleanly
             %   through `pragma_table_info` (which reports column names
             %   in the case SQLite parses them) regardless of how the
-            %   class names happen to be spelled in the V_gamma schema
+            %   class names happen to be spelled in the V_delta schema
             %   files.
             name = ['q_' lower(strrep(path, '.', '_'))];
         end
 
         function aff = affinityFor(fieldType)
-            % affinityFor - SQLite type affinity for a V_gamma scalar type.
+            % affinityFor - SQLite type affinity for a V_delta scalar type.
             switch fieldType
                 case {'char', 'did_uid', 'timestamp', 'string'}
                     aff = 'TEXT';

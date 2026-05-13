@@ -1,9 +1,9 @@
 classdef query
-    % did2.query  Query value + in-memory evaluator for V_gamma documents.
+    % did2.query  Query value + in-memory evaluator for V_delta documents.
     %
     %   did2.query implements the abstract query model documented in
     %   did-schema/schemas/did_query_model.md, evaluated directly against
-    %   the V_gamma class-scoped wire shape (see did2.document).
+    %   the V_delta class-scoped wire shape (see did2.document).
     %
     %   The query value is a tree of search structures combined by boolean
     %   composition. A search structure has four parts:

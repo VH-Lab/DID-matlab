@@ -1,8 +1,8 @@
-# DID-matlab v2 Plan — V_gamma support
+# DID-matlab v2 Plan — V_delta support
 
 **Status:** living document. Edit freely as decisions are made or revised.
 
-**Scope:** transform DID-matlab so it consumes `did-schema` V_gamma (and later
+**Scope:** transform DID-matlab so it consumes `did-schema` V_delta (and later
 releases) end-to-end — document model, validation, storage, and queries — while
 keeping the current V_alpha-compatible code on a maintenance line for existing
 users.
@@ -20,8 +20,8 @@ users.
 | 5 | Validate on insert by default; expose an `unsafe_insert` escape hatch for bulk loads; offer a `revalidate_all` maintenance op. | Schema files are the source of truth for what "valid" means. |
 | 6 | Plan lives at `docs/v2/PLAN.md` on the v2 development branch. | This file. |
 | 7 | Provisional namespace: `+did2`. | Picked from §10 option A for the scaffold. Revisit before v2 reaches `main`. |
-| 8 | Document instances use a top-level `document_class` header plus class-scoped property blocks (one block per class in the chain, keyed by `class_name` verbatim). | See §4.1. Matches V_gamma_SPEC.md "JSON Format: Document Instances" after the SPEC's two-step revision: (i) restore class-scoped blocks; (ii) drop the underscore prefix on all NDI-extension keys. Every key in the wire shape is a plain MATLAB identifier, so the in-memory MATLAB struct is the JSON shape verbatim. |
-| 9 | When the queryable-paths set declared by the schemas changes between sessions, **rebuild** the `documents` table via table-swap rather than ALTER TABLE incrementally. | V_gamma is still evolving and ALTER's main downside (orphan / dead columns accumulating over schema bumps) hits exactly when it's least tolerable. Rebuild keeps the schema canonical and pays a one-time O(n) IO cost we can afford while DBs are small. Closes §10 question 2. |
+| 8 | Document instances use a top-level `document_class` header plus class-scoped property blocks (one block per class in the chain, keyed by `class_name` verbatim). | See §4.1. Matches V_delta_SPEC.md "JSON Format: Document Instances" after the SPEC's two-step revision: (i) restore class-scoped blocks; (ii) drop the underscore prefix on all NDI-extension keys. Every key in the wire shape is a plain MATLAB identifier, so the in-memory MATLAB struct is the JSON shape verbatim. |
+| 9 | When the queryable-paths set declared by the schemas changes between sessions, **rebuild** the `documents` table via table-swap rather than ALTER TABLE incrementally. | V_delta is still evolving and ALTER's main downside (orphan / dead columns accumulating over schema bumps) hits exactly when it's least tolerable. Rebuild keeps the schema canonical and pays a one-time O(n) IO cost we can afford while DBs are small. Closes §10 question 2. |
 
 Open questions are in §10.
 
@@ -29,7 +29,7 @@ Open questions are in §10.
 
 ## 2. Why a clean break (and not a coexistence shim)
 
-The V_gamma document shape is structurally different from the current MATLAB
+The V_delta document shape is structurally different from the current MATLAB
 `document_properties` layout in three ways that compound:
 
 - Top-level keys are snake_case (`id`, `class_version`, `depends_on`) instead of
@@ -37,7 +37,7 @@ The V_gamma document shape is structurally different from the current MATLAB
 - Several classes bumped to `_class_version: 2.0.0` and collapsed multiple
   coordinated fields into a single named composite (e.g. `probe_location` lost
   `ontology_name`+`name`, gained `location` as an `ontology_term`).
-- V_gamma adds named composite types (`ontology_term`, plus SI-dimensioned
+- V_delta adds named composite types (`ontology_term`, plus SI-dimensioned
   `duration`/`voltage`/`length`/...). A single field carries a fixed sub-field
   layout, e.g. `sample_rate.hertz`, `sample_rate.approximate`,
   `sample_rate.source_unit`, `sample_rate.source_value`.
@@ -63,7 +63,7 @@ CREATE TABLE documents (
     class_version TEXT NOT NULL,
     session_id    TEXT,
     datestamp     TEXT NOT NULL,                  -- ISO-8601 UTC
-    body          TEXT NOT NULL,                  -- full V_gamma JSON
+    body          TEXT NOT NULL,                  -- full V_delta JSON
     body_hash     TEXT NOT NULL                   -- content hash for dedup/audit
 );
 CREATE INDEX documents_classname     ON documents(classname);
@@ -90,7 +90,7 @@ CREATE INDEX depends_on_name_value   ON depends_on(name, value);
 
 Test 4 in the JSON1 probe confirmed that `STORED GENERATED ALWAYS AS
 (json_extract(body, '$.foo.bar'))` works with `mksqlite`. So for each scalar
-`queryable: true` path declared by the V_gamma schemas, we add a stored
+`queryable: true` path declared by the V_delta schemas, we add a stored
 generated column directly on `documents` plus an index on it.
 
 The set of paths is computed at database open by walking the loaded schemas:
@@ -143,9 +143,9 @@ shadowing `documents.body` can be added later. Not on the critical path.
 
 A new `+did2/document.m` (or rename) class that:
 
-- Holds the V_gamma JSON shape directly. No translation to/from `base.*`
+- Holds the V_delta JSON shape directly. No translation to/from `base.*`
   nesting.
-- Loads, serialises, and validates against `did-schema` V_gamma schema files
+- Loads, serialises, and validates against `did-schema` V_delta schema files
   resolved through the schema cache (see §5).
 - Exposes a dot-path getter (`doc.get('sample_rate.hertz')`) and array-aware
   iterator that the query layer uses.
@@ -160,8 +160,8 @@ schemas change.
 ### 4.1 In-memory document shape
 
 A `did2.document`'s `documentProperties` is a MATLAB struct that mirrors the
-V_gamma JSON shape *as specified in V_gamma_SPEC.md, "JSON Format: Document
-Instances"*, exactly. After V_gamma's "drop underscore prefixes" pass,
+V_delta JSON shape *as specified in V_delta_SPEC.md, "JSON Format: Document
+Instances"*, exactly. After V_delta's "drop underscore prefixes" pass,
 every key in the wire shape is a plain identifier with no leading
 underscore, so the MATLAB struct field names match the JSON keys
 one-to-one. `jsonencode` / `jsondecode` round-trip without any rewrite.
@@ -179,10 +179,10 @@ Field identity is `(declaring_class, name)`. Same-named fields in
 different classes of the chain are distinct paths (`base.id` vs.
 `<subclass>.id`), not an override.
 
-V_alpha → V_gamma at the document level:
+V_alpha → V_delta at the document level:
 
 ```
-V_alpha                                  V_gamma
+V_alpha                                  V_delta
 -------                                  -------
 document_class.class_name                document_class.class_name
 document_class.class_version             document_class.class_version
@@ -206,7 +206,7 @@ layout need no source-code rewrites for the wire shape itself.
 
 ## 5. Schema cache
 
-A `+did2/+schema/cache.m` (or similar) loads all V_gamma schema files once,
+A `+did2/+schema/cache.m` (or similar) loads all V_delta schema files once,
 resolves superclass chains, and pre-computes:
 
 - For each classname: the full inherited field list.
@@ -259,13 +259,77 @@ A `+did2/+convert/v1_to_v2.m` tool:
 3. Renames top-level keys (`base.id` → `id`, etc.), rewrites collapsed fields
    on classes that bumped to `2.0.0` (`probe_location`, `treatment`,
    `ontology_image`, `ontology_label`), and reshapes `ontology` annotations
-   to the V_gamma two-key form.
-4. Validates against V_gamma. Successful docs insert into the new DB; failures
+   to the V_delta two-key form.
+4. Validates against V_delta. Successful docs insert into the new DB; failures
    land in a `quarantine` table with the original body and a reason string.
    Nothing is silently dropped.
 
 The converter ships in v2, not v1, so v1 users aren't forced to upgrade their
 existing read-only workflows.
+
+### 7.1 Per-class conversion specs live in `did-schema`
+
+As of the V_delta cutover, the human-readable specification of *what each
+per-classname migration does* lives in `did-schema` at
+`schemas/V_delta/conversions/from_did_v1/<class_name>.md`. One markdown
+per class, following the template at `_TEMPLATE.md` in that directory.
+
+The 13 NDIcalc-vis-matlab types (`contrast_tuning`, `contrast_tuning_calc`,
+`hartley_calc`, `reverse_correlation`, etc.) have full conversion
+markdowns. The 88 V_gamma-inherited types currently do not; the rules for
+them live only in this PLAN's §7 prose and in head-knowledge. **Writing
+conversion markdowns for the four `2.0.0`-bumped classes** (`probe_location`,
+`treatment`, `ontology_image`, `ontology_label`) is a prerequisite to
+completing the converter, and should land as a separate did-schema PR
+before the corresponding MATLAB migration functions are written.
+
+The markdowns are documentation, not code. MATLAB migration functions
+implement the rules; CI verifies the implementations against the
+markdowns by hand-checked correspondence (not by parsing the markdown).
+Schema-driven migration (parsing the markdown to drive the engine) is a
+future direction once the corpus stabilises.
+
+### 7.2 Quarantine, not silent drop
+
+Documents that fail to migrate land in a `quarantine` table on the v2
+database with three columns: `original_body` (TEXT, the v1 JSON
+verbatim), `reason` (TEXT, the error message), and `failed_at`
+(timestamp). The CLI prints a summary at end of run and exits with
+non-zero status if any quarantine rows were created, so CI catches
+regressions.
+
+### 7.3 Migrator API and registration
+
+Migration functions live under `+did2/+convert/+migrators/`, named
+`<v1_class_name>.m`. Each implements:
+
+```matlab
+function v2_body = migrate(v1_body)
+```
+
+The dispatcher (`v1_to_v2.m`) reads each v1 document's class_name and
+calls the matching `migrators.(class_name)`. Unknown classes default to
+an **identity migrator** that performs only the universal renames
+(`base.id` → `id`, ontology reshape, etc.) and emits a warning. Sites
+with ad-hoc classes register their own migrators by adding a file in
+the same directory.
+
+### 7.4 What still uses head-knowledge
+
+These conversions are documented only in conversation history / commit
+messages today:
+
+- The four `2.0.0`-bumped classes (`probe_location`, `treatment`,
+  `ontology_image`, `ontology_label`). Their pre/post field-by-field
+  shape exists in PRs against did-schema but not as conversion
+  markdowns.
+- Universal renames: top-level `base.id` → `id` etc. Should be
+  documented in the `conversions/from_did_v1/_files.md` meta-doc
+  (currently a TODO skeleton).
+- The ontology annotation reshape (V_alpha 4-key → V_delta `{node,
+  name}`).
+
+Writing these down in did-schema is part of step 6.
 
 ---
 
@@ -281,7 +345,7 @@ existing read-only workflows.
 
 ## 9. Order of work
 
-1. **`+did2/document.m`** — V_gamma document object with load/validate/
+1. **`+did2/document.m`** — V_delta document object with load/validate/
    serialise. No DB dependency. Unblocks everything else.
 2. **In-memory query evaluator** — port `+did/query.m` operator set; add
    dot-paths and `[*]`. Becomes the executable spec.
@@ -292,10 +356,107 @@ existing read-only workflows.
    (§3.2). Query compiler routes to them when available.
 5. **`queryable_array_elem` sidecar** — schema-driven population, query
    compiler routes `[*]` to it.
-6. **v1 → v2 converter** — §7.
+6. **v1 → v2 converter + CI test data pipeline** — §7 plus end-to-end
+   validation against real NDI datasets. See §9.6 for sub-steps.
 7. **NDI-matlab port** on a feature branch; iterate until parity.
 
 Each step is shippable; nothing requires the next step to land first.
+
+### 9.6 Step 6 sub-steps
+
+Step 6 is bigger than the previous steps because it combines the
+migration engine with the end-to-end CI test that validates it. Break
+into the following sub-PRs:
+
+#### 6a. Converter skeleton + identity path
+
+- `+did2/+convert/v1_to_v2.m` with the dispatcher, quarantine table,
+  CLI entry point, and a summary-at-end-of-run report.
+- `+did2/+convert/+migrators/_identity.m` — the universal-rename
+  migrator (top-level key rename, ontology reshape) that all unknown
+  classes fall back to.
+- Unit tests against synthetic v1 documents (no real datasets yet).
+
+#### 6b. Per-class conversion markdowns for the four `2.0.0`-bumped classes
+
+This is a did-schema PR, not did-matlab:
+
+- `schemas/V_delta/conversions/from_did_v1/probe_location.md`
+- `schemas/V_delta/conversions/from_did_v1/treatment.md`
+- `schemas/V_delta/conversions/from_did_v1/ontology_image.md`
+- `schemas/V_delta/conversions/from_did_v1/ontology_label.md`
+- Updates `_files.md` and `_index.md` to record the rules and status.
+
+Should land before 6c so the implementations have a written spec to
+review against.
+
+#### 6c. Migrator implementations for the bumped classes
+
+One MATLAB file per class under `+did2/+convert/+migrators/`,
+implementing the rules in the 6b markdowns. Unit tests built from the
+"worked example" sections of each markdown.
+
+#### 6d. CI test data pipeline
+
+The original step-6 motivating problem: get real NDI datasets running
+through the converter on every PR.
+
+- Pick a hosting location for the small (~16 MB) and large (~192 MB)
+  datasets. Options: GitHub Release asset on `vh-lab/did-matlab`,
+  Zenodo (citable DOI), or a project-owned S3 bucket. Datasets must
+  be downloadable without authentication.
+- Add a `tests/+did2/+integration/` directory for tests that download
+  and exercise real data. These run under a separate test profile
+  from the existing hermetic unit tests.
+- Add a CI workflow `did-matlab.yml` (or extend an existing one) with
+  two jobs:
+  - **`integration-small`** — runs on every PR. Downloads the 16 MB
+    dataset, runs the converter end-to-end, asserts zero quarantine
+    rows, runs a small set of golden queries against the v2 result.
+    Cache the dataset by URL+hash.
+  - **`integration-nightly`** — scheduled or `nightly`-label-gated.
+    Runs the 192 MB dataset with the same assertions plus larger-scale
+    performance probes.
+- Both jobs gate on `mksqlite` availability (the docker image or
+  GitHub Actions runner must have it; document the requirement).
+
+#### 6e. NDIcalc-vis-matlab migrators
+
+The 13 NDIcalc-vis types added to V_delta on did-schema PR #26 already
+have conversion markdowns. Implementing their migrators is independent
+from 6a-6d (they don't appear in most v1 datasets) but should be done
+in lockstep with NDI-matlab adopting V_delta-format calculator outputs.
+
+This is a follow-up after 6d ships, gated on whether the test datasets
+include calculator outputs (most don't).
+
+### 9.7 Cross-cutting work that's not in any single step
+
+These touch multiple steps; track separately:
+
+- **V_delta switch in steps 1-5 code** — completed. Schema cache now
+  points at `did-schema/schemas/V_delta/stable/`; sqlitedb tags
+  databases with `schema_generation: V_delta`; test fixtures renamed.
+  See progress log entry "V_delta switch".
+- **`index.json` resolution** — currently the schema cache resolves
+  by reading sibling JSON files from `schemaPath`. Once `did-schema`
+  has tier folders (`stable/draft/deprecated`) the cache should
+  optionally consult `schemas/V_delta/index.json` to find draft and
+  deprecated classes too. For now the cache only sees `stable/`,
+  which is sufficient because every V_delta class lives there.
+- **Microschemas implementation** — design lives in
+  `did-schema/schemas/V_delta/microschemas/_DESIGN.md`. Implementation
+  is downstream of the schema-side meta-schema additions. DID-matlab
+  needs to read the discriminator field, look up the microschema, and
+  validate the body field — adds one new code path in
+  `+did2/+schema/cache.m`'s `validateDocument`. Defer until the
+  schema-side mechanism lands.
+- **`abstract_fields` enforcement** — design discussed in PR #26
+  conversation. The validator gains a rule: any concrete class whose
+  superclass chain includes a class with `abstract_fields: [...]`
+  must declare every named field in its own `fields`. Small change to
+  `validateDocument`; defer until any V_delta class actually declares
+  `abstract_fields`.
 
 ---
 
@@ -311,8 +472,8 @@ Each step is shippable; nothing requires the next step to land first.
 - Whether to keep `+did/+implementations/sqldb.m` (Postgres) as a v2 target or
   drop it for now and reintroduce later. The query-compiler split (§6) makes
   re-adding it cheaper than today.
-- Migration map completeness: the V_gamma `2.0.0` bumps listed in
-  `V_gamma_notes.md` are mechanical, but real v1 databases may carry
+- Migration map completeness: the V_delta `2.0.0` bumps listed in
+  `V_delta_notes.md` are mechanical, but real v1 databases may carry
   ad-hoc/user-defined classes that need bespoke migration. Probably a
   registration API for site-local migrations.
 
@@ -352,7 +513,7 @@ Started step 1 of §9 on branch `claude/start-v2-development-tA41P`.
 
 Added:
 
-- `src/did/+did2/document.m` — V_gamma document object. API surface
+- `src/did/+did2/document.m` — V_delta document object. API surface
   in place (construct from JSON / struct / `(className, values)`,
   `get` / `set` / `iterate`, `toJSON` / `toStruct`, `className` /
   `classVersion`, `validate`, plus static `fromJSON` / `fromStruct` /
@@ -362,7 +523,7 @@ Added:
   honest. `validate` and `blank` delegate to the schema cache.
 - `src/did/+did2/+schema/cache.m` — schema cache class. Singleton
   bootstrap, schema-path resolution (env override
-  `DID_SCHEMA_PATH`, or sibling `did-schema/schemas/V_gamma` checkout),
+  `DID_SCHEMA_PATH`, or sibling `did-schema/schemas/V_delta` checkout),
   `getClass`, and `superclasses` traversal are implemented; the
   heavier methods (`fieldsFor`, `queryablePaths`,
   `buildBlankDocument`, `validateDocument`) currently throw
@@ -379,7 +540,7 @@ question open for resolution before v2 reaches `main`.
 
 Next up: fill in `did2.schema.cache.fieldsFor`,
 `queryablePaths`, and `buildBlankDocument`; then `validateDocument`
-against the V_gamma meta-schema; then start the in-memory query
+against the V_delta meta-schema; then start the in-memory query
 evaluator (step 2).
 
 ### 2026-05-12 — class-scoped property blocks, then drop underscores
@@ -388,7 +549,7 @@ Two upstream did-schema SPEC revisions landed back-to-back and both
 required reworking the +did2 in-memory shape:
 
 1. **Class-scoped property blocks restored** (did-schema commit
-   `137f583`). V_gamma was amended to organise document instances
+   `137f583`). V_delta was amended to organise document instances
    into per-class property blocks keyed by class name (one per class
    in the chain), instead of the earlier flat namespace. Also moved
    `class_name`/`class_version`/`superclasses` under a top-level
@@ -400,10 +561,10 @@ required reworking the +did2 in-memory shape:
    authoritative reserved-name list moved to upstream
    `ndi_reserved_keys.json`.
 
-Combined, every key in a V_gamma wire shape is now a plain MATLAB
+Combined, every key in a V_delta wire shape is now a plain MATLAB
 identifier, so the in-memory MATLAB struct is the JSON shape verbatim
 — no `x_<name>` aliasing, no `jsonencode`-time rewrite pass, no
-`extractField` underscore-probe helper. Round-tripping a V_gamma
+`extractField` underscore-probe helper. Round-tripping a V_delta
 document is `jsondecode` then `jsonencode`.
 
 Implemented in `src/did/+did2/+schema/cache.m`:
@@ -417,7 +578,7 @@ Implemented in `src/did/+did2/+schema/cache.m`:
   `{declaringClass, fieldDef}`.
 - `superclasses(className)` — walks
   `s.document_class.superclasses[i].class_name` up the chain.
-- `buildBlankDocument(className)` — class-scoped V_gamma document:
+- `buildBlankDocument(className)` — class-scoped V_delta document:
     `doc.document_class.{class_name, class_version, superclasses}`
     `doc.depends_on` — empty struct array of `{name, value}`
     `doc.<class_name>` for each class in the chain
@@ -438,14 +599,14 @@ In `src/did/+did2/document.m`:
 - `toJSON` is a bare `jsonencode` (no rewrite pass). The previous
   `rewriteXUnderscoreKeys` helper is removed.
 
-Fixtures at `tests/+did2/fixtures/V_gamma/` (`base.json`,
+Fixtures at `tests/+did2/fixtures/V_delta/` (`base.json`,
 `demoA.json`, `demoB.json`, `demoC.json`, `demoFile.json`,
 `CURIE_lookups_meta.json`, `README.md`) rewritten to the
-plain-key V_gamma shape.
+plain-key V_delta shape.
 
 `tests/+did2/testSchemaCache.m` updated: 22 tests assert on the
 plain-key shape (`doc.document_class.class_name`, `doc.depends_on`,
-etc.) and check that a V_gamma document round-trips through
+etc.) and check that a V_delta document round-trips through
 `toJSON`/`fromJSON` unchanged.
 
 Step 1 is complete to the level the rest of the plan needs.
@@ -461,7 +622,7 @@ Implemented step 2 of §9 on branch
 
 Added `src/did/+did2/query.m` — a four-tuple
 `{field, operation, param1, param2}` search-structure query value
-that evaluates directly against the V_gamma class-scoped wire shape
+that evaluates directly against the V_delta class-scoped wire shape
 (`did2.document` or its underlying struct). The implementation is the
 executable spec described in
 `did-schema/schemas/did_query_model.md`.
@@ -539,13 +700,13 @@ Added the `+did2/+database` subpackage with two pieces:
   backend. Opens or creates a sqlite3 file via `mksqlite` and
   installs the body + sidecar schema from §3.1:
     `documents(id, classname, class_version, session_id, datestamp,
-               body, body_hash)` — full V_gamma JSON in `body`.
+               body, body_hash)` — full V_delta JSON in `body`.
     `superclasses(doc_id, classname)` — indexed by classname; one
     row per class in the chain *including* the concrete class
     itself, so `isa` is a single indexed lookup.
     `depends_on(doc_id, name, value)` — indexed by `(name, value)`.
     `meta(key, value)` — schema generation + version markers; the
-    constructor uses these to reject files that aren't V_gamma
+    constructor uses these to reject files that aren't V_delta
     databases (`did2:database:notV2Database`).
   Foreign-key cascades drop the sidecar rows when a document is
   removed. The class is `handle`-typed and tracks the mksqlite dbid
@@ -598,7 +759,7 @@ Added the `+did2/+database` subpackage with two pieces:
   and `depends_on`, and AND/OR composition.
 
 - **`tests/+did2/+unittest/testSqliteDb.m`** — integration tests
-  that round-trip V_gamma documents through a real SQLite file
+  that round-trip V_delta documents through a real SQLite file
   and verify that the compiled queries plus the post-filter return
   the same hits as the in-memory evaluator. Covers add / get /
   remove, allIds ordering, reopen, foreign-file rejection,
@@ -609,7 +770,7 @@ Added the `+did2/+database` subpackage with two pieces:
   CI runs without the MEX still pass.
 
 Updated `src/did/+did2/Contents.m` to document the new
-`+database` subpackage and to reflect the class-scoped V_gamma
+`+database` subpackage and to reflect the class-scoped V_delta
 shape in the conventions block.
 
 Step 4 (schema-driven scalar generated columns + indexes, per
@@ -703,7 +864,7 @@ Updated Decision 9 in §1 and struck §10 question 2 (resolved).
 Composite-type sub-path expansion (`sample_rate.hertz`, etc.) is
 the next obvious extension to `queryablePaths` — none of the demo
 fixtures exercise it yet, so it landed as a follow-up for whenever
-a real V_gamma schema with a `duration`/`frequency`/`ontology_term`
+a real V_delta schema with a `duration`/`frequency`/`ontology_term`
 field gets queried.
 
 Next up: step 5 — the `queryable_array_elem` sidecar table for
@@ -720,7 +881,7 @@ couldn't exercise the sidecar end-to-end. Step 5 starts with a
 fixture extension and then layers the schema-cache / database /
 query-compiler changes on top.
 
-- `tests/+did2/fixtures/V_gamma/demoArray.json` — new class
+- `tests/+did2/fixtures/V_delta/demoArray.json` — new class
   extending base with a single field `axes` (type `structure`,
   `mustBeScalar: false`, `queryable: true`) whose element template
   declares three sub-fields: `name` (char, non-queryable label),
@@ -822,3 +983,59 @@ between the sidecar pre-filter and the reference evaluator would
 surface as a search-result mismatch immediately.
 
 Next up: step 6 — the v1 → v2 converter (PLAN.md §7).
+
+### 2026-05-13 — V_delta switch
+
+did-schema landed `V_delta` as the new sandbox schema set (PR
+`Waltham-Data-Science/did-schema#26`, merged). V_delta supersedes
+V_gamma. The set version replaces V_gamma without back-compat: V_gamma
+was sandbox with no production consumers; V_delta absorbs its content
+plus 13 new NDIcalc-vis-matlab document types (contrast_tuning,
+spatial_frequency_tuning, hartley_calc, reverse_correlation, ...).
+
+Shape changes from V_gamma worth knowing for the +did2 loader:
+
+- **Tier layout.** Schemas now live under `schemas/V_delta/stable/`
+  rather than the flat `schemas/V_gamma/`. `draft/` and `deprecated/`
+  tier folders exist but are empty in the initial cutover.
+- **Superclass references** are now `{class_name}` only — the
+  `schema: "$NDISCHEMAPATH/..."` path key is gone. Consumer tooling
+  resolves superclasses by class_name. The +did2 schema cache was
+  already class_name-driven, so no behavioral fix was needed.
+- **`maturity_level`** vocabulary replaced `{work_in_progress, mature}`
+  with `{stable, draft, deprecated}`. The +did2 loader doesn't read
+  this field, so no fix needed beyond updating test fixtures.
+- **Meta-schema** at `schemas/V_delta/stable/did_schema_meta.json` is
+  V_delta-specific (new enum, dropped `schema` key in superclass
+  reference object).
+- **`index.json`** at the V_delta root is the new resolution source
+  of truth for class_name → path lookups. The +did2 loader is not yet
+  consuming it; planned for the cross-cutting work in §9.7.
+
+Changes to +did2 on the `claude/setup-ci-test-data-XV7F3` branch:
+
+- `+did2/+schema/cache.m`: `defaultSchemaPath()` returns
+  `…/did-schema/schemas/V_delta/stable/` instead of `…/V_gamma/`.
+- `+did2/+database/sqlitedb.m`: `schema_generation` is written and
+  asserted as `V_delta`. Old V_gamma databases are rejected at open
+  time; no upgrade path provided (V_gamma was internal sandbox).
+- Test fixtures: `tests/+did2/fixtures/V_gamma/` renamed to
+  `tests/+did2/fixtures/V_delta/`; `maturity_level` values updated to
+  `stable`; `schema` keys dropped from superclass refs.
+- Comments and docstrings sweep V_gamma → V_delta throughout `src/`
+  and `tests/`.
+
+Discussions captured in did-schema PR #26 also produced design
+decisions that are not yet implemented anywhere:
+
+- **Microschemas** for open-ended document-variant registries
+  (treatments, measurements). Design at
+  `did-schema/schemas/V_delta/microschemas/_DESIGN.md`. Implementation
+  is downstream of meta-schema additions on the schema side.
+- **Abstract fields** (`abstract_fields` on a parent class declaring
+  fields that concrete subclasses must implement). Picked for the
+  `calculator_base` pattern. Implementation deferred until any
+  V_delta class actually uses it.
+
+Next up: step 6 — the v1 → v2 converter (PLAN.md §7) plus the CI
+test data pipeline (§9.6 sub-steps).

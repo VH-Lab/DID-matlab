@@ -1,14 +1,14 @@
 function tests = testSchemaCache
 % testSchemaCache - exercises did2.schema.cache against the in-repo
-%   V_gamma fixtures at tests/+did2/fixtures/V_gamma/. Also covers
+%   V_delta fixtures at tests/+did2/fixtures/V_delta/. Also covers
 %   did2.document.blank() and did2.document.validate() end-to-end.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testSchemaCache');
 %
-%   Documents in V_gamma use a top-level `document_class` header plus
-%   class-scoped property blocks (see V_gamma_SPEC.md "JSON Format:
-%   Document Instances"). After V_gamma's "drop underscore prefixes"
+%   Documents in V_delta use a top-level `document_class` header plus
+%   class-scoped property blocks (see V_delta_SPEC.md "JSON Format:
+%   Document Instances"). After V_delta's "drop underscore prefixes"
 %   pass, every key in the wire shape is a valid MATLAB struct field
 %   name, so `jsonencode`/`jsondecode` round-trip without any rewrite.
 
@@ -16,11 +16,11 @@ tests = functiontests(localfunctions);
 end
 
 function setupOnce(testCase)
-% Fixtures live at tests/+did2/fixtures/V_gamma/. This file is at
+% Fixtures live at tests/+did2/fixtures/V_delta/. This file is at
 % tests/+did2/+unittest/testSchemaCache.m, so the fixture directory is
 % two `fileparts` levels above mfilename's directory.
 thisDir = fileparts(mfilename('fullpath'));
-fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_gamma');
+fixtureDir = fullfile(fileparts(thisDir), 'fixtures', 'V_delta');
 did2.schema.cache.setSchemaPath(fixtureDir);
 testCase.TestData.fixtureDir = fixtureDir;
 testCase.TestData.cache = did2.schema.cache.shared();
@@ -223,9 +223,9 @@ doc.validate();
 end
 
 function testDocumentToJSONRoundTrip(testCase)
-% V_gamma has no leading-underscore keys, so jsonencode/jsondecode is
+% V_delta has no leading-underscore keys, so jsonencode/jsondecode is
 % identity for any well-formed document. Confirm the wire shape uses
-% the V_gamma key names and re-parses to an equivalent document.
+% the V_delta key names and re-parses to an equivalent document.
 doc = did2.document.blank('demoA');
 text = doc.toJSON();
 verifyTrue(testCase, contains(text, '"document_class"'));
