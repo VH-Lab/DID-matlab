@@ -60,8 +60,9 @@ for k = 1:numel(bodies)
         preBody = ensureStruct(rawBody);
         postUniversalBody = did2.convert.universalRenames(preBody);
         className = char(postUniversalBody.document_class.class_name);
+        v2Body = applySuperclassMigrators(postUniversalBody, className);
         migratorFcn = lookupMigrator(className);
-        v2Body = migratorFcn(postUniversalBody);
+        v2Body = migratorFcn(v2Body);
         doc = did2.document(v2Body);
         if options.Validate
             doc.validate('SchemaCache', options.SchemaCache);
@@ -136,6 +137,38 @@ if ~isempty(which(fqn))
     fcn = str2func(fqn);
 else
     fcn = @did2.convert.migrators.identity;
+end
+end
+
+function body = applySuperclassMigrators(body, concreteClassName)
+% Walk document_class.superclasses (as normalised by universalRenames)
+% and run any matching +migrators/<superclass>.m before the
+% concrete-class migrator runs. Skips entries whose name matches the
+% concrete class or is empty, and skips entries that have no
+% registered migrator (silent no-op, same convention as the identity
+% fallback).
+if ~isfield(body, 'document_class') ...
+        || ~isfield(body.document_class, 'superclasses') ...
+        || ~isstruct(body.document_class.superclasses) ...
+        || isempty(body.document_class.superclasses)
+    return;
+end
+sc = body.document_class.superclasses;
+seen = {};
+for k = 1:numel(sc)
+    if ~isfield(sc(k), 'class_name')
+        continue;
+    end
+    name = char(sc(k).class_name);
+    if isempty(name) || strcmp(name, concreteClassName) ...
+            || any(strcmp(seen, name))
+        continue;
+    end
+    seen{end+1} = name; %#ok<AGROW>
+    fqn = ['did2.convert.migrators.', name];
+    if ~isempty(which(fqn))
+        body = feval(fqn, body);
+    end
 end
 end
 

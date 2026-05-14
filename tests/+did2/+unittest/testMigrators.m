@@ -139,3 +139,90 @@ verifyEqual(testCase, doc.className(), 'ontology_label');
 verifyEqual(testCase, doc.get('ontology_label.term.node'), ...
     'allen_ccf_v3:12345');
 end
+
+function testDaqreaderNdrRenamesFileType(testCase)
+v1 = wrap('daqreader_ndr', 'daqreader_ndr', struct( ...
+    'ndr_reader_string',        'intan', ...
+    'ndi_daqreader_ndr_class',  'ndi.daq.reader.mfdaq.ndr'));
+out = did2.convert.migrators.daqreader_ndr( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.daqreader_ndr.file_type, 'intan');
+verifyFalse(testCase, isfield(out.daqreader_ndr, 'ndr_reader_string'));
+verifyFalse(testCase, isfield(out.daqreader_ndr, 'ndi_daqreader_ndr_class'));
+end
+
+function testDaqmetadatareaderRenamesReaderClass(testCase)
+v1 = wrap('daqmetadatareader', 'daqmetadatareader', struct( ...
+    'ndi_daqmetadatareader_class',  'ndi.daq.metadatareader.RayoLabStims', ...
+    'tab_separated_file_parameter', 'something'));
+out = did2.convert.migrators.daqmetadatareader( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.daqmetadatareader.reader_class, ...
+    'ndi.daq.metadatareader.RayoLabStims');
+verifyFalse(testCase, isfield(out.daqmetadatareader, ...
+    'ndi_daqmetadatareader_class'));
+verifyFalse(testCase, isfield(out.daqmetadatareader, ...
+    'tab_separated_file_parameter'));
+end
+
+function testElementRenamesAndCoerces(testCase)
+v1 = wrap('element', 'element', struct( ...
+    'ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
+    'name',              'electrode16', ...
+    'reference',         1, ...
+    'type',              'n-trode', ...
+    'direct',            true));
+out = did2.convert.migrators.element( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.element.element_name, 'electrode16');
+verifyEqual(testCase, out.element.element_type, 'n-trode');
+verifyEqual(testCase, out.element.reference, '1');
+verifyEqual(testCase, out.element.direct, 1);
+verifyFalse(testCase, isfield(out.element, 'name'));
+verifyFalse(testCase, isfield(out.element, 'type'));
+verifyEqual(testCase, out.element.ndi_element_class, ...
+    'ndi.probe.timeseries.mfdaq');
+end
+
+function testEpochclocktimesSplitsTimeRange(testCase)
+v1 = wrap('pyraview', 'pyraview', struct('label', 'high'));
+v1.epochclocktimes = struct( ...
+    'clocktype', 'dev_local_time', ...
+    't0_t1',     [0 28.12495]);
+v1.document_class.superclasses = struct( ...
+    'class_name', {'base', 'epochclocktimes'});
+out = did2.convert.migrators.epochclocktimes( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.epochclocktimes.epoch_clock, 'dev_local_time');
+verifyEqual(testCase, out.epochclocktimes.t0, 0);
+verifyEqual(testCase, out.epochclocktimes.t1, 28.12495);
+verifyFalse(testCase, isfield(out.epochclocktimes, 'clocktype'));
+verifyFalse(testCase, isfield(out.epochclocktimes, 't0_t1'));
+end
+
+function testEpochclocktimesSuperclassMigratorAppliedByDispatcher(testCase)
+% An unregistered concrete class with epochclocktimes as a
+% superclass: the dispatcher should run the epochclocktimes
+% migrator even though the concrete class falls back to identity.
+v1 = wrap('pyraview', 'pyraview', struct('label', 'high'));
+v1.epochclocktimes = struct('clocktype', 'dev_local_time', ...
+    't0_t1', [0 1]);
+v1.document_class.superclasses = struct( ...
+    'class_name', {'base', 'epochclocktimes'});
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('epochclocktimes.epoch_clock'), ...
+    'dev_local_time');
+verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1);
+end
+
+function testEndToEndDispatcherForDaqreaderNdr(testCase)
+v1 = wrap('daqreader_ndr', 'daqreader_ndr', struct( ...
+    'ndr_reader_string',       'intan', ...
+    'ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr'));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('daqreader_ndr.file_type'), 'intan');
+end

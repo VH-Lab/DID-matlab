@@ -430,7 +430,11 @@ classdef cache < handle
                 return;
             end
             toolboxDir = did.toolboxdir();
-            p = fullfile(toolboxDir, '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
+            % did.toolboxdir() resolves to <DID-matlab>/src/did, so
+            % three '..'s land at the *sibling* of DID-matlab where a
+            % did-schema checkout typically lives. (The previous two
+            % '..'s expected did-schema *inside* DID-matlab.)
+            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
         end
 
         function ts = currentUTCTimestamp()
