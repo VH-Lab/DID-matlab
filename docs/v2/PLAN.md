@@ -1039,3 +1039,132 @@ decisions that are not yet implemented anywhere:
 
 Next up: step 6 — the v1 → v2 converter (PLAN.md §7) plus the CI
 test data pipeline (§9.6 sub-steps).
+
+
+### 2026-05-13 — step 6a + 6c v1->V_delta converter skeleton + 4 migrators
+
+Started step 6 on branch `claude/v2-update-step-6-qhmu3`. Sub-steps
+6a (converter skeleton + identity path) and 6c (migrator
+implementations for the four 2.0.0-bumped classes) landed together.
+Sub-step 6b (the per-class conversion markdowns in did-schema) was
+already complete on the prep branch
+`claude/did-matlab-step-6-prep-sWvHr`; the designated did-schema
+branch `claude/v2-update-step-6-qhmu3` is forked off the prep branch
+so the four ontology-collapse markdowns
+(`probe_location.md`, `treatment.md`, `ontology_image.md`,
+`ontology_label.md`), `_universal_renames.md`, and the new
+`schema_version` field on `base.json` are the substrate this work
+sits on. 6d (CI test data pipeline) and 6e (NDIcalc-vis migrators)
+remain.
+
+Added the `+did2/+convert` subpackage on the did-matlab side:
+
+- `src/did/+did2/+convert/v1_to_v2.m` — dispatcher and CLI entry
+  point. Accepts a struct, struct array, cell array of structs, or
+  JSON char (or any cell-array mix of those). Runs each input
+  through `universalRenames` + the matching per-class migrator
+  under `+migrators`, then wraps the v2 body in a `did2.document`
+  and optionally validates it via `did2.schema.cache`. Documents
+  that fail any step end up in a quarantine struct array with
+  `original_body` (the JSON-encoded input), `class_name`
+  (post-universal-rename, or `<unknown>` if the header was
+  unreadable), `reason` (the captured error message), and
+  `failed_at` (UTC ISO-8601 timestamp). Returns
+  `{migrated, quarantine, summary}`; `summary` tracks totals plus
+  a `by_class` struct mapping class names to migrated counts.
+  Three name-value options: `Validate` (default true),
+  `SchemaCache` (default the shared cache), `Verbose` (default
+  false, prints the end-of-run summary report).
+
+- `src/did/+did2/+convert/universalRenames.m` — the cross-cutting
+  did_v1 -> V_delta rewrites from did-schema's
+  `_universal_renames.md`:
+    - snake_case `document_class.class_name` (so e.g. legacy
+      `ontologyImage` becomes `ontology_image`) and rename the
+      matching top-level property-block key in lockstep.
+    - snake_case any `document_class.superclasses[i].class_name`.
+    - promote V_alpha `depends_on[i].id` -> V_delta
+      `depends_on[i].value`, leaving an existing non-empty
+      `value` alone; drop the legacy `version` key.
+    - default `base.schema_version` to `'V_delta'` when absent so
+      the new V_delta-required field on base is satisfied.
+  Internal helpers (`snakeCase`, `renameDependsOnEntries`) are
+  local functions; no public surface beyond `universalRenames`
+  itself.
+
+- `src/did/+did2/+convert/+migrators/identity.m` — the
+  post-universal-rename passthrough used as the default fallback
+  by the dispatcher. Named `identity` rather than `_identity`
+  because a leading underscore is not a valid MATLAB identifier;
+  PLAN.md §9.6's `_identity.m` label is a documentation typo and
+  has been left as-is in §9.6 with a note in the file header that
+  the file is on disk as `identity.m`.
+
+- `src/did/+did2/+convert/+migrators/{probe_location, treatment,
+  ontology_image, ontology_label}.m` — per-class migrators for
+  the four 2.0.0-bumped classes, implementing the field-level
+  rules in the corresponding conversion markdowns:
+    - `probe_location`: collapse `(ontology_name, name)` into a
+      `location` ontology_term composite.
+    - `treatment`: collapse `(ontologyName | ontology_name, name)`
+      into a `treatment_name` ontology_term; pass through
+      `numeric_value` and `string_value`. The dual-spelling input
+      on the source CURIE field handles both V_alpha (camelCase
+      `ontologyName`) and V_beta-housekept (snake-case
+      `ontology_name`) sources.
+    - `ontology_image`: collapse `(ontology_name,
+      ontology_region)` into a `region` ontology_term. Universal
+      renames take care of the `ontologyImage -> ontology_image`
+      class rename.
+    - `ontology_label`: collapse `(ontology_name, label_id,
+      label)` into a `term` ontology_term, composing the CURIE
+      as `<lowercased, space-to-underscore ontology_name>:<label_id>`.
+      `label_id` is stringified whether numeric or already-char.
+
+Tests landed alongside the implementations:
+
+- `tests/+did2/+unittest/testConvertV1ToV2.m` — function-based
+  tests covering the universal-rename effects (schema_version
+  default + preservation when already set, snake-casing of
+  camelCase class names with the matching property-block key
+  rename, `depends_on` id -> value promotion + version drop,
+  preservation of an existing non-empty `value`), the
+  identity-migrator passthrough, the dispatcher with struct,
+  JSON, and cell-array inputs, the quarantine path on a
+  malformed input, mixed migrated+quarantine results, and the
+  `by_class` summary table.
+- `tests/+did2/+unittest/testMigrators.m` — function-based
+  tests built from the worked examples in each conversion
+  markdown: probe_location's two-char collapse, treatment from
+  both `ontologyName` and `ontology_name` sources,
+  ontology_image's class rename plus region composition,
+  ontology_label's CURIE composition with prefix normalisation
+  (lower-casing, space -> underscore) and stringified
+  `label_id`, the `did2:convert:missingBlock` error on a body
+  missing the expected property block, and end-to-end
+  dispatcher routing through `did2.document` for probe_location
+  and ontology_label.
+
+Test runs use `'Validate', false` end-to-end and skip the
+schema-cache layer entirely so they do not depend on a
+checked-out did-schema directory at the runner's working
+directory. A follow-up PR can add an opt-in suite that
+validates the migrated documents against the cached V_delta
+schemas when the schema dir is reachable.
+
+What remains in step 6 after this PR:
+
+- **6b** (did-schema markdowns) — done on the prep branch, now
+  inherited by the designated step-6 branch on did-schema. The
+  ontology-collapse markdowns are read-but-not-parsed during this
+  work; the MATLAB migrators encode the same rules by hand.
+- **6d** (CI test data pipeline) — separate PR. Needs decisions
+  on dataset hosting (GitHub Release asset vs Zenodo vs S3),
+  mksqlite availability in the CI runner image, and the
+  `integration-small` / `integration-nightly` workflow gates.
+- **6e** (NDIcalc-vis-matlab migrators) — separate PR, gated on
+  6d once the test datasets are wired up. The 13 NDIcalc-vis
+  conversion markdowns already exist on the prep branch; the
+  migrator implementations are mechanical from there.
+
+Next up: 6d.
