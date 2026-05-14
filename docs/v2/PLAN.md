@@ -1168,3 +1168,109 @@ What remains in step 6 after this PR:
   migrator implementations are mechanical from there.
 
 Next up: 6d.
+
+
+### 2026-05-14 — step 6 readers: v1 DB readers + fromV1Database
+
+Landed on branch `claude/v2-update-step-6-readers-qhmu3` after the
+6a + 6c PR (#126) merged into V2. Adds the input side of the
+converter so a real legacy v1 DID database (sqlite or
+matlabdumbjsondb) can be opened, every document body read out as
+raw JSON, and the whole batch piped through
+`did2.convert.v1_to_v2` into a fresh v2 sqlitedb file. Closes
+the "tool that opens NDI datasets or sessions, grabs all the
+documents in JSON, and runs the conversion tool" line of work
+from the architecture discussion in conversation. The NDI-layer
+wrapper (a `ndi.convert.session(S, dstPath)` shim) is
+deliberately kept out of `+did2` and lives in NDI-matlab to keep
+`+did2` namespace-clean.
+
+Added under `src/did/+did2/+convert/`:
+
+- **`+readers/sqliteV1.m`** — reader for `did.implementations.sqlitedb`
+  files. Opens the .sqlite via mksqlite (the same MEX +did2's own
+  storage already requires), runs `SELECT json_code FROM docs`, and
+  returns the bodies as a cellstr. The v1 schema was discovered by
+  reading `src/did/+did/+implementations/sqlitedb.m`:
+    - documents table: `docs(doc_id TEXT UNIQUE, doc_idx INTEGER
+      AUTOINCREMENT PK, timestamp NUMERIC, json_code TEXT)`
+    - other v1 tables (`branches`, `branch_docs`, `doc_data`,
+      `fields`, `files`) are out of scope at this layer; the
+      reader is body-level only.
+  Errors flow through `did2:convert:readerFailed` (e.g. file
+  missing, table missing, mksqlite missing).
+
+- **`+readers/dumbJsonV1.m`** — reader for `matlabdumbjsondb`
+  directories. Walks `<dbdir>/{.dumbjsondb,dumbjsondb}/` for the
+  `Object_id_<ID>_v<HEX5>.json` body files, picks the highest-version
+  body per id (matching `latestdocversion` semantics), and returns
+  the bodies as a cellstr. Layout discovered by reading
+  `src/did/+did/+implementations/matlabdumbjsondb.m` +
+  `src/did/+did/+file/dumbjsondb.m`:
+    - `Object_id_<ID>_v<HEX5>.json` — document JSON body
+      (`HEX5 = dec2hex(version, 5)`).
+    - `Object_id_<ID>.txt` — meta file pointing at the latest
+      version number.
+    - `Object_id_<ID>_v<HEX5>.json.binary` — associated binary
+      file (touched empty by default; out of scope for this layer).
+
+- **`fromV1Database.m`** — the end-to-end orchestrator. Sniffs
+  `srcPath`:
+    - file path -> `sqliteV1` reader,
+    - directory -> `dumbJsonV1` reader,
+    - anything else -> `did2:convert:badSourcePath`.
+  Pipes the bodies through `did2.convert.v1_to_v2`, inserts the
+  successful `did2.document` instances into a fresh
+  `did2.database.sqlitedb` at `dstPath`, and writes the
+  quarantine struct array (if any) to `<dstPath>.quarantine.json`
+  via `jsonencode`. Refuses to overwrite an existing `dstPath`
+  unless `Overwrite=true` is passed. Returns the same
+  `{migrated, quarantine, summary}` struct that `v1_to_v2`
+  returns. Name-value options: `Validate` (default true),
+  `SchemaCache` (default []), `Verbose` (default false),
+  `Overwrite` (default false).
+
+Tests landed alongside:
+
+- `tests/+did2/+unittest/testReaders.m` — synthesises tiny v1
+  databases in tempfiles for both flavours and asserts the
+  readers return the expected bodies. Covers empty databases,
+  empty directories, the highest-version-wins rule for the
+  dumbjsondb reader, and the malformed-source error paths.
+  Gated via `assumeFail` when mksqlite is not on the MATLAB
+  path (matches the existing `testSqliteDb` pattern).
+- `tests/+did2/+unittest/testFromV1Database.m` — end-to-end
+  tests through the orchestrator: build a synthetic v1 sqlite
+  source, run `fromV1Database` to a tempfile v2 sqlite, verify
+  every doc round-trips and `summary.migrated_count` matches;
+  same for a dumbjsondb source; verify quarantine on a
+  malformed input lands in `<dstPath>.quarantine.json`; verify
+  `Overwrite=false` (default) refuses an existing dst and
+  `Overwrite=true` proceeds. Tests use `'Validate', false` so
+  they do not depend on a checked-out did-schema directory.
+
+Updates `src/did/+did2/+convert/Contents.m` to document the
+new `+readers` subpackage and the `fromV1Database` entry. New
+`+readers/Contents.m` file documents the reader convention.
+
+Files in v1 docs — deliberate out-of-scope follow-up:
+
+V1 DID documents whose body contains a populated `files.file_info`
+array reference binary blobs that live in the v1
+database's `<dbdir>/files/<uid>` cache (for sqlitedb) or in
+`Object_id_<ID>_v<HEX5>.json.binary` sidecars (for dumbjsondb).
+The readers ignore these blobs entirely — they only return the
+body JSON. A future pass needs to (a) copy the file blobs into
+a v2 file store and (b) ensure migrators preserve the `files`
+block in the body so v2 docs can resolve their attachments. In
+practice this affects image-flavoured / raw-data classes (e.g.
+`ontology_image` and NDI subclasses like `epoch`, `element`).
+
+No tests were run locally — the authoring environment has no
+MATLAB. CI will verify on merge.
+
+Next up: 6d (CI test data pipeline). With the readers in place,
+6d can wire a real ~16 MB v1 NDI sqlite into the per-PR
+`integration-small` job and feed it through `fromV1Database`
+end-to-end, asserting zero quarantine rows + a small set of
+golden queries against the v2 result.
