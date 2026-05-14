@@ -25,7 +25,15 @@
 %                     the generated columns and `[*]` leaves to the
 %                     sidecar when their dot-path is in the indexed
 %                     set). See docs/v2/PLAN.md §3, §9 steps 3–5.
-%     +convert      - (planned) v1-to-v2 conversion utilities.
+%     +convert      - did_v1 -> V_delta document migration utilities.
+%                     `v1_to_v2` is the dispatcher / CLI entry;
+%                     `universalRenames` runs the cross-cutting did_v1
+%                     -> V_delta rewrites; `+migrators` holds the
+%                     per-class migrators (currently `identity` plus
+%                     the four 2.0.0-bumped classes `probe_location`,
+%                     `treatment`, `ontology_image`, and
+%                     `ontology_label`). See docs/v2/PLAN.md §7,
+%                     §9 step 6.
 %
 %   Conventions
 %     - New code uses camelCase identifiers and arguments-block input
