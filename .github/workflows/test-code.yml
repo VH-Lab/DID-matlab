@@ -91,3 +91,15 @@ jobs:
             disp(table(results));
             nFailed = sum([results.Failed]);
             assert(nFailed == 0, sprintf("%d test(s) failed", nFailed));
+
+      - name: Upload corpus discovery reports
+        # Discovery-mode corpus tests (e.g., testCorpus20211116) write
+        # JSON summaries into corpus-reports/. Upload them as a CI
+        # artifact regardless of test outcome so the migrated/quarantine
+        # signal survives the run.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-discovery-reports
+          path: corpus-reports/
+          if-no-files-found: ignore
