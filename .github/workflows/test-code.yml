@@ -35,6 +35,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Check out did-schema (sibling, for V_delta validation)
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          # V_delta currently lives on the V2-import working branch
+          # in did-schema; switch this ref to `main` once V_delta
+          # lands on did-schema main.
+          ref: claude/did-matlab-v2-import-Rs8AX
+          path: did-schema
+
+      - name: Export DID_SCHEMA_PATH
+        run: |
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/did-schema/schemas/V_delta/stable" \
+            >> "$GITHUB_ENV"
+
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
         with:

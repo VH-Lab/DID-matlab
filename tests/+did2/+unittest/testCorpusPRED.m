@@ -30,25 +30,36 @@ tests = functiontests(localfunctions);
 end
 
 function setupOnce(testCase)
+% Capture the inbound DID_SCHEMA_PATH *before* anything that could
+% throw or filter the suite, so teardownOnce always has it to
+% restore.
+testCase.TestData.previousSchemaPath = getenv('DID_SCHEMA_PATH');
+testCase.TestData.didOverrideSchemaPath = false;
+testCase.TestData.predDir = '';
+
 schemaPath = resolveSchemaPath();
 if isempty(schemaPath)
     assumeFail(testCase, ...
         ['V_delta schemas not found. Set DID_SCHEMA_PATH or check out ', ...
          'did-schema as a sibling of DID-matlab; skipping PRED corpus test.']);
 end
-testCase.TestData.previousSchemaPath = getenv('DID_SCHEMA_PATH');
 setenv('DID_SCHEMA_PATH', schemaPath);
+testCase.TestData.didOverrideSchemaPath = true;
 did2.schema.cache.resetSingleton();
 
-predDir = ensurePREDCorpus();
-testCase.TestData.predDir = predDir;
+testCase.TestData.predDir = ensurePREDCorpus();
 end
 
 function teardownOnce(testCase)
 % Restore the original DID_SCHEMA_PATH so we don't leak the test
-% override into subsequent test files.
-setenv('DID_SCHEMA_PATH', testCase.TestData.previousSchemaPath);
-did2.schema.cache.resetSingleton();
+% override into subsequent test files. Both fields are seeded at
+% the top of setupOnce so this teardown is safe even if setupOnce
+% filtered the suite via assumeFail.
+if isfield(testCase.TestData, 'didOverrideSchemaPath') ...
+        && testCase.TestData.didOverrideSchemaPath
+    setenv('DID_SCHEMA_PATH', testCase.TestData.previousSchemaPath);
+    did2.schema.cache.resetSingleton();
+end
 end
 
 function testPREDCorpusMigratesCleanly(testCase)
