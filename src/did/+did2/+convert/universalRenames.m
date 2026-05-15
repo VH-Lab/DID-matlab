@@ -26,6 +26,12 @@ function postBody = universalRenames(preBody)
 %       version]) shape to the V_delta (name, value) shape. An
 %       existing non-empty `value` is preserved; the `id` and
 %       `version` keys are removed.
+%     - rename `app.name` -> `app.app_name` and `app.version` ->
+%       `app.app_version` on any document carrying a top-level `app`
+%       block. V_delta's `app` schema names these fields with the
+%       `app_` prefix; v1 carries the same data under the unprefixed
+%       names. Documents whose v1 class did not include the `app`
+%       superclass (most non-calc docs) are unaffected.
 %     - default base.schema_version to 'V_delta' when absent so the
 %       new V_delta-required field on base is satisfied.
 %
@@ -73,10 +79,36 @@ end
 
 postBody = snakeCasePropertyBlocks(postBody);
 
+if isfield(postBody, 'app') && isstruct(postBody.app) ...
+        && isscalar(postBody.app)
+    postBody.app = renameAppBlockFields(postBody.app);
+end
+
 if isfield(postBody, 'base') && isstruct(postBody.base) ...
         && isscalar(postBody.base) ...
         && ~isfield(postBody.base, 'schema_version')
     postBody.base.schema_version = 'V_delta';
+end
+end
+
+function block = renameAppBlockFields(block)
+% V_delta `app` declares `app_name` and `app_version`; v1 carries the
+% same data under `name` and `version`. Apply the rename whenever a
+% v1 document ships an `app` block, regardless of its concrete class.
+% (7 v1 classes in the 20211116 corpus carry an app block: every
+% calculator class plus jrclust_clusters, neuron_extracellular,
+% stimulus_presentation, control_stimulus_ids.)
+if isfield(block, 'name') && ~isfield(block, 'app_name')
+    block.app_name = block.name;
+    block = rmfield(block, 'name');
+elseif isfield(block, 'name')
+    block = rmfield(block, 'name');
+end
+if isfield(block, 'version') && ~isfield(block, 'app_version')
+    block.app_version = block.version;
+    block = rmfield(block, 'version');
+elseif isfield(block, 'version')
+    block = rmfield(block, 'version');
 end
 end
 

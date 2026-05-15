@@ -40,19 +40,17 @@
 %                           migrator runs.
 %
 %   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
-%   each calls did2.convert.calcCommon with the right calculator name
-%   so input_parameters moves into the inherited `calculator` block
-%   and `calculator.calculator_name` is populated:
+%   each calls did2.convert.calcCommon to move v1's
+%   `<class>.input_parameters` into a new inherited `calculator` block.
+%   The calculator-identity string lives in `app.app_name` (carried in
+%   v1 as `app.name`) and is handled by the universal app-block field
+%   rename in did2.convert.universalRenames; the per-class wrapper does
+%   not have to know its own calculator-name string.
 %
-%     tuningcurve_calc                    -> ndi.calc.stimulus.tuningcurve
-%     oridirtuning_calc                   -> ndi.calc.vis.oridir_tuning
-%     hartley_calc                        -> ndi.calc.vis.hartley
-%     contrast_sensitivity_calc           -> ndi.calc.vis.contrast_sensitivity
-%     contrast_tuning_calc                -> ndi.calc.vis.contrast_tuning
-%     spatial_frequency_tuning_calc       -> ndi.calc.vis.spatial_frequency_tuning
-%     speed_tuning_calc                   -> ndi.calc.vis.speed_tuning
-%     temporal_frequency_tuning_calc      -> ndi.calc.vis.temporal_frequency_tuning
-%     simple_calc                         -> ndi.calc.example.simple
+%     tuningcurve_calc, oridirtuning_calc, hartley_calc,
+%     contrast_sensitivity_calc, contrast_tuning_calc,
+%     spatial_frequency_tuning_calc, speed_tuning_calc,
+%     temporal_frequency_tuning_calc, simple_calc
 %
 %   See did-schema's
 %   schemas/V_delta/conversions/from_did_v1/<class_name>.md for the

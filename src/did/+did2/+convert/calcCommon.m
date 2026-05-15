@@ -1,26 +1,32 @@
-function v2Body = calcCommon(preBody, v1ClassName, calculatorName)
+function v2Body = calcCommon(preBody, v1ClassName)
 %CALCCOMMON Shared migrator body for V_delta `*_calc` classes.
 %
-%   v2Body = did2.convert.calcCommon(PREBODY, V1CLASSNAME, CALCULATORNAME)
-%   reshapes a did_v1 calculator document body to match the V_delta
+%   v2Body = did2.convert.calcCommon(PREBODY, V1CLASSNAME) reshapes a
+%   did_v1 calculator document body to match the V_delta
 %   `calculator`-base inheritance: the v1 `<class>.input_parameters`
 %   field is moved into a new top-level `calculator` block, the
-%   migrator sets `calculator.calculator_name` to CALCULATORNAME, and
-%   redundant v1-only entries on the concrete class block are dropped.
+%   value is coerced to a struct (v1 frequently ships an empty
+%   array), and v1-only fields on the concrete class block that
+%   V_delta does not declare are dropped.
+%
+%   The calculator-identity string lives in `app.app_name`, not in a
+%   `calculator.calculator_name` field; that rename is handled
+%   universally by did2.convert.universalRenames against the v1
+%   top-level `app` block, which calc documents already carry. So
+%   this helper does not have to (and must not) populate calculator
+%   identity per concrete class.
 %
 %   Each per-class calc migrator under +did2/+convert/+migrators/
-%   is a 3-line wrapper that calls this helper with the right
-%   CALCULATORNAME, e.g.:
+%   is a 3-line wrapper that calls this helper, e.g.:
 %
 %       function v2Body = oridirtuning_calc(preBody)
-%           v2Body = did2.convert.calcCommon(preBody, ...
-%               'oridirtuning_calc', 'ndi.calc.vis.oridir_tuning');
+%           v2Body = did2.convert.calcCommon(preBody, 'oridirtuning_calc');
 %       end
 %
 %   The dispatcher's downstream ensureClassBlocks pass adds empty
 %   `{}` property blocks for the rest of the V_delta inheritance
 %   chain (e.g., `tuning_fit`, the measurement parent), so this
-%   helper does not need to manufacture them itself.
+%   helper does not need to manufacture them.
 %
 %   See did-schema's schemas/V_delta/conversions/from_did_v1/
 %   oridirtuning_calc.md for the full conversion spec.
@@ -28,7 +34,6 @@ function v2Body = calcCommon(preBody, v1ClassName, calculatorName)
 arguments
     preBody (1,1) struct
     v1ClassName (1,:) char
-    calculatorName (1,:) char
 end
 
 v2Body = preBody;
@@ -55,17 +60,9 @@ if isfield(block, 'depends_on')
     block = rmfield(block, 'depends_on');
 end
 
-% Drop any v1 calculator_name; this migrator always sets ours so
-% the value is uniform per concrete class regardless of v1 drift.
-if isfield(block, 'calculator_name')
-    block = rmfield(block, 'calculator_name');
-end
-
 v2Body.(v1ClassName) = block;
 
-v2Body.calculator = struct( ...
-    'calculator_name', calculatorName, ...
-    'input_parameters', inputParams);
+v2Body.calculator = struct('input_parameters', inputParams);
 end
 
 function out = coerceToStruct(value)

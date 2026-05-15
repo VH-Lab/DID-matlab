@@ -233,12 +233,12 @@ function testCalcCommonMovesInputParametersIntoCalculatorBlock(testCase)
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', struct('algorithm', 'best')));
 out = did2.convert.calcCommon( ...
-    did2.convert.universalRenames(v1), ...
-    'oridirtuning_calc', 'ndi.calc.vis.oridir_tuning');
-verifyEqual(testCase, out.calculator.calculator_name, ...
-    'ndi.calc.vis.oridir_tuning');
+    did2.convert.universalRenames(v1), 'oridirtuning_calc');
 verifyEqual(testCase, out.calculator.input_parameters.algorithm, 'best');
 verifyFalse(testCase, isfield(out.oridirtuning_calc, 'input_parameters'));
+% calcCommon does not populate calculator-identity; that lives on
+% the inherited app block, handled by universalRenames upstream.
+verifyFalse(testCase, isfield(out.calculator, 'calculator_name'));
 end
 
 function testCalcCommonCoercesEmptyArrayInputParametersToStruct(testCase)
@@ -247,27 +247,19 @@ function testCalcCommonCoercesEmptyArrayInputParametersToStruct(testCase)
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', []));
 out = did2.convert.calcCommon( ...
-    did2.convert.universalRenames(v1), ...
-    'oridirtuning_calc', 'ndi.calc.vis.oridir_tuning');
+    did2.convert.universalRenames(v1), 'oridirtuning_calc');
 verifyTrue(testCase, isstruct(out.calculator.input_parameters));
 verifyTrue(testCase, isempty(fieldnames(out.calculator.input_parameters)));
 end
 
-function testCalcCommonDropsInnerDependsOnAndCalculatorName(testCase)
+function testCalcCommonDropsInnerDependsOn(testCase)
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', [], ...
     'depends_on',       struct('name', 'stimulus_tuningcurve_id', ...
-                                'value', 'abc'), ...
-    'calculator_name',  'ndi.calc.WRONG'));
+                                'value', 'abc')));
 out = did2.convert.calcCommon( ...
-    did2.convert.universalRenames(v1), ...
-    'oridirtuning_calc', 'ndi.calc.vis.oridir_tuning');
-% Inner depends_on and v1 calculator_name are stripped from the
-% class block; the migrator-supplied calculator_name wins.
+    did2.convert.universalRenames(v1), 'oridirtuning_calc');
 verifyFalse(testCase, isfield(out.oridirtuning_calc, 'depends_on'));
-verifyFalse(testCase, isfield(out.oridirtuning_calc, 'calculator_name'));
-verifyEqual(testCase, out.calculator.calculator_name, ...
-    'ndi.calc.vis.oridir_tuning');
 end
 
 function testCalcCommonMissingBlockErrors(testCase)
@@ -275,41 +267,84 @@ v1 = struct( ...
     'document_class', struct('class_name', 'oridirtuning_calc'), ...
     'base',           struct());
 verifyError(testCase, ...
-    @() did2.convert.calcCommon(v1, 'oridirtuning_calc', 'x'), ...
+    @() did2.convert.calcCommon(v1, 'oridirtuning_calc'), ...
     'did2:convert:missingBlock');
 end
 
-function testOridirtuningCalcWrapperUsesRightCalculatorName(testCase)
+function testCalcWrapperPipesThroughHelper(testCase)
+% Each per-class wrapper is a thin call to calcCommon; verify the
+% wrapper produces the same shape (input_parameters lifted into
+% calculator block) as a direct calcCommon call.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', []));
 out = did2.convert.migrators.oridirtuning_calc( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.calculator.calculator_name, ...
-    'ndi.calc.vis.oridir_tuning');
+verifyTrue(testCase, isstruct(out.calculator.input_parameters));
+verifyFalse(testCase, isfield(out.oridirtuning_calc, 'input_parameters'));
 end
 
-function testCalcMigratorLookupTable(testCase)
-% Spot-check the per-class lookup table by exercising each wrapper.
-pairs = {
-    'tuningcurve_calc',              'ndi.calc.stimulus.tuningcurve';
-    'oridirtuning_calc',             'ndi.calc.vis.oridir_tuning';
-    'hartley_calc',                  'ndi.calc.vis.hartley';
-    'contrast_sensitivity_calc',     'ndi.calc.vis.contrast_sensitivity';
-    'contrast_tuning_calc',          'ndi.calc.vis.contrast_tuning';
-    'spatial_frequency_tuning_calc', 'ndi.calc.vis.spatial_frequency_tuning';
-    'speed_tuning_calc',             'ndi.calc.vis.speed_tuning';
-    'temporal_frequency_tuning_calc','ndi.calc.vis.temporal_frequency_tuning';
-    'simple_calc',                   'ndi.calc.example.simple';
+function testCalcMigratorWrappersAllResolve(testCase)
+% Smoke: every concrete *_calc wrapper exists and runs cleanly on a
+% minimal v1 body. The wrapper does not vary by class today (the
+% calculator-identity lookup is handled by app-block rename upstream),
+% but exercising each entry catches accidental deletions and ensures
+% the dispatcher can still resolve the migrator by class name.
+classes = {
+    'tuningcurve_calc';
+    'oridirtuning_calc';
+    'hartley_calc';
+    'contrast_sensitivity_calc';
+    'contrast_tuning_calc';
+    'spatial_frequency_tuning_calc';
+    'speed_tuning_calc';
+    'temporal_frequency_tuning_calc';
+    'simple_calc';
 };
-for k = 1:size(pairs, 1)
-    cls  = pairs{k, 1};
-    want = pairs{k, 2};
+for k = 1:numel(classes)
+    cls = classes{k};
     v1 = wrap(cls, cls, struct('input_parameters', []));
     migratorFcn = str2func(['did2.convert.migrators.' cls]);
     out = migratorFcn(did2.convert.universalRenames(v1));
-    verifyEqual(testCase, out.calculator.calculator_name, want, ...
-        sprintf('Mismatch for %s', cls));
+    verifyTrue(testCase, isstruct(out.calculator.input_parameters), ...
+        sprintf('Wrapper %s did not produce a calculator block', cls));
 end
+end
+
+function testUniversalRenamesAppBlockNameAndVersion(testCase)
+% v1 carries app.name / app.version; V_delta uses app.app_name /
+% app.app_version. The rename is in universalRenames so it applies
+% to every doc that ships an app block, not just calc docs.
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', []));
+v1.app = struct( ...
+    'name',                'ndi.calc.vis.oridir_tuning', ...
+    'version',             'fa67d45...', ...
+    'url',                 'https://github.com/VH-lab/NDI-matlab', ...
+    'os',                  'MACA64', ...
+    'os_version',          '15.6.1', ...
+    'interpreter',         'MATLAB', ...
+    'interpreter_version', '24.2');
+out = did2.convert.universalRenames(v1);
+verifyEqual(testCase, out.app.app_name, 'ndi.calc.vis.oridir_tuning');
+verifyEqual(testCase, out.app.app_version, 'fa67d45...');
+verifyFalse(testCase, isfield(out.app, 'name'));
+verifyFalse(testCase, isfield(out.app, 'version'));
+% Other app fields pass through unchanged.
+verifyEqual(testCase, out.app.interpreter, 'MATLAB');
+verifyEqual(testCase, out.app.os_version, '15.6.1');
+end
+
+function testUniversalRenamesAppBlockIsNoOpWithoutAppBlock(testCase)
+% Documents without an app block should be unaffected by the
+% app-block rename pass.
+v1 = wrap('probe_location', 'probe_location', struct( ...
+    'ontology_name', 'uberon:0002436', ...
+    'name',          'primary visual cortex'));
+out = did2.convert.universalRenames(v1);
+verifyFalse(testCase, isfield(out, 'app'));
+% probe_location.name is a *block field*, not the app.name field; it
+% should be left for the per-class migrator.
+verifyEqual(testCase, out.probe_location.name, 'primary visual cortex');
 end
 
 function testDispatcherPadsEmptyChainBlocks(testCase)
