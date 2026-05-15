@@ -38,6 +38,11 @@
 %                           that lists epochclocktimes among its
 %                           superclasses, before the concrete-class
 %                           migrator runs.
+%     element_epoch       - concrete-class twin of epochclocktimes;
+%                           splits t0_t1 -> (t0, t1). epoch_clock is
+%                           already snake_case in v1, no rename
+%                           needed. Accepts the older `clocktype`
+%                           spelling defensively.
 %
 %   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
 %   each calls did2.convert.calcCommon to move v1's

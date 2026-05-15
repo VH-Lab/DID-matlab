@@ -365,3 +365,49 @@ doc = result.migrated{1};
 % by universalRenames) and is absent from the calculator block.
 verifyTrue(testCase, isstruct(doc.get('calculator.input_parameters')));
 end
+
+% --- element_epoch (20211116 corpus: 252 docs) ---
+
+function testElementEpochSplitsT0T1(testCase)
+v1 = wrap('element_epoch', 'element_epoch', struct( ...
+    'epoch_clock', 'dev_local_time', ...
+    't0_t1',       [0 930.34795]));
+out = did2.convert.migrators.element_epoch( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.element_epoch.epoch_clock, 'dev_local_time');
+verifyEqual(testCase, out.element_epoch.t0, 0);
+verifyEqual(testCase, out.element_epoch.t1, 930.34795);
+verifyFalse(testCase, isfield(out.element_epoch, 't0_t1'));
+end
+
+function testElementEpochAcceptsLegacyClocktype(testCase)
+% Some v1 generations stored `clocktype` (matching the
+% epochclocktimes superclass naming); the migrator renames it.
+v1 = wrap('element_epoch', 'element_epoch', struct( ...
+    'clocktype', 'dev_local_time', ...
+    't0_t1',     [0 1.5]));
+out = did2.convert.migrators.element_epoch( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.element_epoch.epoch_clock, 'dev_local_time');
+verifyFalse(testCase, isfield(out.element_epoch, 'clocktype'));
+end
+
+function testElementEpochMissingBlockErrors(testCase)
+v1 = struct( ...
+    'document_class', struct('class_name', 'element_epoch'), ...
+    'base',           struct());
+verifyError(testCase, ...
+    @() did2.convert.migrators.element_epoch(v1), ...
+    'did2:convert:missingBlock');
+end
+
+function testEndToEndDispatcherForElementEpoch(testCase)
+v1 = wrap('element_epoch', 'element_epoch', struct( ...
+    'epoch_clock', 'dev_local_time', ...
+    't0_t1',       [0 42]));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('element_epoch.t0'), 0);
+verifyEqual(testCase, doc.get('element_epoch.t1'), 42);
+end
