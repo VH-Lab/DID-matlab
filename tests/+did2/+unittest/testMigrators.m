@@ -360,6 +360,8 @@ v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
-verifyEqual(testCase, doc.get('calculator.calculator_name'), ...
-    'ndi.calc.vis.oridir_tuning');
+% calcCommon produced a calculator block with input_parameters
+% coerced to struct; calculator-identity is now app.app_name (set
+% by universalRenames) and is absent from the calculator block.
+verifyTrue(testCase, isstruct(doc.get('calculator.input_parameters')));
 end
