@@ -143,3 +143,75 @@ v1.unknown_class = struct('foo', 'bar');
 result = did2.convert.v1_to_v2({v1, v1, v1}, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 3);
 end
+
+function testUniversalRenamesSnakeCasesBlockFieldNames(testCase)
+% camelCase field names inside a class property block become
+% snake_case after the universal pass; already-snake fields are
+% untouched.
+v1 = makeV1Skeleton('pyraview');
+v1.pyraview = struct( ...
+    'label',         'high', ...
+    'nativeRate',    20000, ...
+    'nativeStartTime', 0, ...
+    'channels',      16, ...
+    'dataType',      'double', ...
+    'decimationLevels', [100 10 10]);
+out = did2.convert.universalRenames(v1);
+verifyTrue(testCase, isfield(out.pyraview, 'native_rate'));
+verifyTrue(testCase, isfield(out.pyraview, 'native_start_time'));
+verifyTrue(testCase, isfield(out.pyraview, 'data_type'));
+verifyTrue(testCase, isfield(out.pyraview, 'decimation_levels'));
+verifyEqual(testCase, out.pyraview.label, 'high');
+verifyEqual(testCase, out.pyraview.channels, 16);
+verifyFalse(testCase, isfield(out.pyraview, 'nativeRate'));
+verifyFalse(testCase, isfield(out.pyraview, 'dataType'));
+end
+
+function testUniversalRenamesDoesNotTouchStructuralKeys(testCase)
+% document_class.class_name should still be snake_cased, but the
+% structural top-level keys themselves (document_class, depends_on)
+% should not be visited as property blocks.
+v1 = makeV1Skeleton('unknown_class');
+v1.unknown_class = struct();
+v1.depends_on = struct( ...
+    'name', {'subject_id'}, ...
+    'value', {'abcdef0123456789_0123456789abcdef'});
+out = did2.convert.universalRenames(v1);
+verifyTrue(testCase, isfield(out, 'document_class'));
+verifyTrue(testCase, isfield(out, 'depends_on'));
+verifyEqual(testCase, out.depends_on(1).name, 'subject_id');
+end
+
+function testUniversalRenamesDerivesSuperclassNamesFromDefinition(testCase)
+% v1 records superclasses as { definition: $NDIDOCUMENTPATH/foo.json
+% }; universalRenames normalises that to { class_name: 'foo' }.
+v1 = makeV1Skeleton('unknown_class');
+v1.unknown_class = struct();
+v1.document_class.superclasses = struct( ...
+    'definition', {'$NDIDOCUMENTPATH/base.json', ...
+                   '$NDIDOCUMENTPATH/data/filter.json'});
+out = did2.convert.universalRenames(v1);
+sc = out.document_class.superclasses;
+verifyEqual(testCase, numel(sc), 2);
+verifyEqual(testCase, sc(1).class_name, 'base');
+verifyEqual(testCase, sc(2).class_name, 'filter');
+end
+
+function testDispatcherRunsSuperclassMigratorBeforeConcreteMigrator(testCase)
+% A document whose superclasses include `epochclocktimes` should pick
+% up the superclass migrator (split t0_t1 + rename clocktype). The
+% concrete class is unregistered so the identity fallback runs after.
+v1 = makeV1Skeleton('some_unregistered_class');
+v1.some_unregistered_class = struct('foo', 'bar');
+v1.epochclocktimes = struct('clocktype', 'dev_local_time', ...
+    't0_t1', [0 1.5]);
+v1.document_class.superclasses = struct( ...
+    'class_name', {'base', 'epochclocktimes'});
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('epochclocktimes.epoch_clock'), ...
+    'dev_local_time');
+verifyEqual(testCase, doc.get('epochclocktimes.t0'), 0);
+verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1.5);
+end

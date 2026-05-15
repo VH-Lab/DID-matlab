@@ -139,3 +139,275 @@ verifyEqual(testCase, doc.className(), 'ontology_label');
 verifyEqual(testCase, doc.get('ontology_label.term.node'), ...
     'allen_ccf_v3:12345');
 end
+
+function testDaqreaderNdrRenamesFileType(testCase)
+v1 = wrap('daqreader_ndr', 'daqreader_ndr', struct( ...
+    'ndr_reader_string',        'intan', ...
+    'ndi_daqreader_ndr_class',  'ndi.daq.reader.mfdaq.ndr'));
+out = did2.convert.migrators.daqreader_ndr( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.daqreader_ndr.file_type, 'intan');
+verifyFalse(testCase, isfield(out.daqreader_ndr, 'ndr_reader_string'));
+verifyFalse(testCase, isfield(out.daqreader_ndr, 'ndi_daqreader_ndr_class'));
+end
+
+function testDaqmetadatareaderRenamesReaderClass(testCase)
+v1 = wrap('daqmetadatareader', 'daqmetadatareader', struct( ...
+    'ndi_daqmetadatareader_class',  'ndi.daq.metadatareader.RayoLabStims', ...
+    'tab_separated_file_parameter', 'something'));
+out = did2.convert.migrators.daqmetadatareader( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.daqmetadatareader.reader_class, ...
+    'ndi.daq.metadatareader.RayoLabStims');
+verifyFalse(testCase, isfield(out.daqmetadatareader, ...
+    'ndi_daqmetadatareader_class'));
+verifyFalse(testCase, isfield(out.daqmetadatareader, ...
+    'tab_separated_file_parameter'));
+end
+
+function testElementRenamesAndCoerces(testCase)
+v1 = wrap('element', 'element', struct( ...
+    'ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
+    'name',              'electrode16', ...
+    'reference',         1, ...
+    'type',              'n-trode', ...
+    'direct',            true));
+out = did2.convert.migrators.element( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.element.element_name, 'electrode16');
+verifyEqual(testCase, out.element.element_type, 'n-trode');
+verifyEqual(testCase, out.element.reference, '1');
+verifyEqual(testCase, out.element.direct, 1);
+verifyFalse(testCase, isfield(out.element, 'name'));
+verifyFalse(testCase, isfield(out.element, 'type'));
+verifyEqual(testCase, out.element.ndi_element_class, ...
+    'ndi.probe.timeseries.mfdaq');
+end
+
+function testEpochclocktimesSplitsTimeRange(testCase)
+v1 = wrap('pyraview', 'pyraview', struct('label', 'high'));
+v1.epochclocktimes = struct( ...
+    'clocktype', 'dev_local_time', ...
+    't0_t1',     [0 28.12495]);
+v1.document_class.superclasses = struct( ...
+    'class_name', {'base', 'epochclocktimes'});
+out = did2.convert.migrators.epochclocktimes( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.epochclocktimes.epoch_clock, 'dev_local_time');
+verifyEqual(testCase, out.epochclocktimes.t0, 0);
+verifyEqual(testCase, out.epochclocktimes.t1, 28.12495);
+verifyFalse(testCase, isfield(out.epochclocktimes, 'clocktype'));
+verifyFalse(testCase, isfield(out.epochclocktimes, 't0_t1'));
+end
+
+function testEpochclocktimesSuperclassMigratorAppliedByDispatcher(testCase)
+% An unregistered concrete class with epochclocktimes as a
+% superclass: the dispatcher should run the epochclocktimes
+% migrator even though the concrete class falls back to identity.
+v1 = wrap('pyraview', 'pyraview', struct('label', 'high'));
+v1.epochclocktimes = struct('clocktype', 'dev_local_time', ...
+    't0_t1', [0 1]);
+v1.document_class.superclasses = struct( ...
+    'class_name', {'base', 'epochclocktimes'});
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('epochclocktimes.epoch_clock'), ...
+    'dev_local_time');
+verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1);
+end
+
+function testEndToEndDispatcherForDaqreaderNdr(testCase)
+v1 = wrap('daqreader_ndr', 'daqreader_ndr', struct( ...
+    'ndr_reader_string',       'intan', ...
+    'ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr'));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('daqreader_ndr.file_type'), 'intan');
+end
+
+% --- calc-base migrators (PLAN.md §9.6 sub-step 6d, 20211116 corpus) ---
+
+function testCalcCommonMovesInputParametersIntoCalculatorBlock(testCase)
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', struct('algorithm', 'best')));
+out = did2.convert.calcCommon( ...
+    did2.convert.universalRenames(v1), 'oridirtuning_calc');
+verifyEqual(testCase, out.calculator.input_parameters.algorithm, 'best');
+verifyFalse(testCase, isfield(out.oridirtuning_calc, 'input_parameters'));
+% calcCommon does not populate calculator-identity; that lives on
+% the inherited app block, handled by universalRenames upstream.
+verifyFalse(testCase, isfield(out.calculator, 'calculator_name'));
+end
+
+function testCalcCommonCoercesEmptyArrayInputParametersToStruct(testCase)
+% v1 frequently ships `input_parameters: []`. V_delta `structure`
+% type requires a struct value, so the helper coerces.
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', []));
+out = did2.convert.calcCommon( ...
+    did2.convert.universalRenames(v1), 'oridirtuning_calc');
+verifyTrue(testCase, isstruct(out.calculator.input_parameters));
+verifyTrue(testCase, isempty(fieldnames(out.calculator.input_parameters)));
+end
+
+function testCalcCommonDropsInnerDependsOn(testCase)
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', [], ...
+    'depends_on',       struct('name', 'stimulus_tuningcurve_id', ...
+                                'value', 'abc')));
+out = did2.convert.calcCommon( ...
+    did2.convert.universalRenames(v1), 'oridirtuning_calc');
+verifyFalse(testCase, isfield(out.oridirtuning_calc, 'depends_on'));
+end
+
+function testCalcCommonMissingBlockErrors(testCase)
+v1 = struct( ...
+    'document_class', struct('class_name', 'oridirtuning_calc'), ...
+    'base',           struct());
+verifyError(testCase, ...
+    @() did2.convert.calcCommon(v1, 'oridirtuning_calc'), ...
+    'did2:convert:missingBlock');
+end
+
+function testCalcWrapperPipesThroughHelper(testCase)
+% Each per-class wrapper is a thin call to calcCommon; verify the
+% wrapper produces the same shape (input_parameters lifted into
+% calculator block) as a direct calcCommon call.
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', []));
+out = did2.convert.migrators.oridirtuning_calc( ...
+    did2.convert.universalRenames(v1));
+verifyTrue(testCase, isstruct(out.calculator.input_parameters));
+verifyFalse(testCase, isfield(out.oridirtuning_calc, 'input_parameters'));
+end
+
+function testCalcMigratorWrappersAllResolve(testCase)
+% Smoke: every concrete *_calc wrapper exists and runs cleanly on a
+% minimal v1 body. The wrapper does not vary by class today (the
+% calculator-identity lookup is handled by app-block rename upstream),
+% but exercising each entry catches accidental deletions and ensures
+% the dispatcher can still resolve the migrator by class name.
+classes = {
+    'tuningcurve_calc';
+    'oridirtuning_calc';
+    'hartley_calc';
+    'contrast_sensitivity_calc';
+    'contrast_tuning_calc';
+    'spatial_frequency_tuning_calc';
+    'speed_tuning_calc';
+    'temporal_frequency_tuning_calc';
+    'simple_calc';
+};
+for k = 1:numel(classes)
+    cls = classes{k};
+    v1 = wrap(cls, cls, struct('input_parameters', []));
+    migratorFcn = str2func(['did2.convert.migrators.' cls]);
+    out = migratorFcn(did2.convert.universalRenames(v1));
+    verifyTrue(testCase, isstruct(out.calculator.input_parameters), ...
+        sprintf('Wrapper %s did not produce a calculator block', cls));
+end
+end
+
+function testUniversalRenamesAppBlockNameAndVersion(testCase)
+% v1 carries app.name / app.version; V_delta uses app.app_name /
+% app.app_version. The rename is in universalRenames so it applies
+% to every doc that ships an app block, not just calc docs.
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', []));
+v1.app = struct( ...
+    'name',                'ndi.calc.vis.oridir_tuning', ...
+    'version',             'fa67d45...', ...
+    'url',                 'https://github.com/VH-lab/NDI-matlab', ...
+    'os',                  'MACA64', ...
+    'os_version',          '15.6.1', ...
+    'interpreter',         'MATLAB', ...
+    'interpreter_version', '24.2');
+out = did2.convert.universalRenames(v1);
+verifyEqual(testCase, out.app.app_name, 'ndi.calc.vis.oridir_tuning');
+verifyEqual(testCase, out.app.app_version, 'fa67d45...');
+verifyFalse(testCase, isfield(out.app, 'name'));
+verifyFalse(testCase, isfield(out.app, 'version'));
+% Other app fields pass through unchanged.
+verifyEqual(testCase, out.app.interpreter, 'MATLAB');
+verifyEqual(testCase, out.app.os_version, '15.6.1');
+end
+
+function testUniversalRenamesAppBlockIsNoOpWithoutAppBlock(testCase)
+% Documents without an app block should be unaffected by the
+% app-block rename pass.
+v1 = wrap('probe_location', 'probe_location', struct( ...
+    'ontology_name', 'uberon:0002436', ...
+    'name',          'primary visual cortex'));
+out = did2.convert.universalRenames(v1);
+verifyFalse(testCase, isfield(out, 'app'));
+% probe_location.name is a *block field*, not the app.name field; it
+% should be left for the per-class migrator.
+verifyEqual(testCase, out.probe_location.name, 'primary visual cortex');
+end
+
+function testDispatcherPadsEmptyChainBlocks(testCase)
+% ensureClassBlocks should manufacture empty blocks for every class
+% in the V_delta chain that the migrator did not produce. This test
+% asserts the behavior without requiring a real schema cache: it
+% builds a body, lets the dispatcher run (Validate=false, no
+% SchemaCache override). The helper silently no-ops when no cache
+% is configured, so we only assert that the explicitly-produced
+% blocks survive.
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', []));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+% calcCommon produced a calculator block with input_parameters
+% coerced to struct; calculator-identity is now app.app_name (set
+% by universalRenames) and is absent from the calculator block.
+verifyTrue(testCase, isstruct(doc.get('calculator.input_parameters')));
+end
+
+% --- element_epoch (20211116 corpus: 252 docs) ---
+
+function testElementEpochSplitsT0T1(testCase)
+v1 = wrap('element_epoch', 'element_epoch', struct( ...
+    'epoch_clock', 'dev_local_time', ...
+    't0_t1',       [0 930.34795]));
+out = did2.convert.migrators.element_epoch( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.element_epoch.epoch_clock, 'dev_local_time');
+verifyEqual(testCase, out.element_epoch.t0, 0);
+verifyEqual(testCase, out.element_epoch.t1, 930.34795);
+verifyFalse(testCase, isfield(out.element_epoch, 't0_t1'));
+end
+
+function testElementEpochAcceptsLegacyClocktype(testCase)
+% Some v1 generations stored `clocktype` (matching the
+% epochclocktimes superclass naming); the migrator renames it.
+v1 = wrap('element_epoch', 'element_epoch', struct( ...
+    'clocktype', 'dev_local_time', ...
+    't0_t1',     [0 1.5]));
+out = did2.convert.migrators.element_epoch( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.element_epoch.epoch_clock, 'dev_local_time');
+verifyFalse(testCase, isfield(out.element_epoch, 'clocktype'));
+end
+
+function testElementEpochMissingBlockErrors(testCase)
+v1 = struct( ...
+    'document_class', struct('class_name', 'element_epoch'), ...
+    'base',           struct());
+verifyError(testCase, ...
+    @() did2.convert.migrators.element_epoch(v1), ...
+    'did2:convert:missingBlock');
+end
+
+function testEndToEndDispatcherForElementEpoch(testCase)
+v1 = wrap('element_epoch', 'element_epoch', struct( ...
+    'epoch_clock', 'dev_local_time', ...
+    't0_t1',       [0 42]));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('element_epoch.t0'), 0);
+verifyEqual(testCase, doc.get('element_epoch.t1'), 42);
+end

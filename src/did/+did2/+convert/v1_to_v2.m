@@ -3,10 +3,20 @@ function result = v1_to_v2(v1Bodies, options)
 %
 %   RESULT = did2.convert.v1_to_v2(V1BODIES) takes one or more
 %   did_v1-shaped document bodies (struct, struct array, cell array, or
-%   JSON char) and runs each through did2.convert.universalRenames
-%   followed by the matching class migrator under
-%   did2.convert.migrators.<class_name>. Unregistered classes fall back
-%   to did2.convert.migrators.identity (post-universal passthrough).
+%   JSON char) and runs each through this pipeline:
+%
+%     1. did2.convert.universalRenames    (cross-cutting renames)
+%     2. matching superclass migrators under
+%        +did2.+convert.+migrators.<superclass_name>
+%     3. concrete-class migrator under
+%        +did2.+convert.+migrators.<class_name>  (identity fallback)
+%     4. ensureClassBlocks: pad empty `struct()` property blocks for
+%        every class in the V_delta inheritance chain that the v1
+%        source or the migrators did not already produce. Lets the
+%        validator pass without each migrator having to manufacture
+%        placeholder blocks for inherited classes. Silent no-op if
+%        the schema cache cannot resolve the chain.
+%
 %   Documents that fail any step land in the quarantine table; nothing
 %   is silently dropped.
 %
@@ -60,8 +70,10 @@ for k = 1:numel(bodies)
         preBody = ensureStruct(rawBody);
         postUniversalBody = did2.convert.universalRenames(preBody);
         className = char(postUniversalBody.document_class.class_name);
+        v2Body = applySuperclassMigrators(postUniversalBody, className);
         migratorFcn = lookupMigrator(className);
-        v2Body = migratorFcn(postUniversalBody);
+        v2Body = migratorFcn(v2Body);
+        v2Body = ensureClassBlocks(v2Body, options.SchemaCache);
         doc = did2.document(v2Body);
         if options.Validate
             doc.validate('SchemaCache', options.SchemaCache);
@@ -136,6 +148,81 @@ if ~isempty(which(fqn))
     fcn = str2func(fqn);
 else
     fcn = @did2.convert.migrators.identity;
+end
+end
+
+function body = ensureClassBlocks(body, schemaCacheOverride)
+% Make sure every class in the V_delta schema chain for the body's
+% concrete class has a property block in the document, manufacturing
+% empty `struct()` blocks for any chain entry that the v1 source did
+% not provide. V_delta's validator rejects documents whose chain
+% blocks are missing, so this padding lets the per-class migrators
+% stay focused on real field moves rather than placeholder
+% bookkeeping.
+%
+% Silent no-op if the schema cache cannot resolve the class chain
+% (e.g., the class is unknown to the cache, or the cache itself is
+% not configured). In that case validation will catch the underlying
+% issue downstream; this function does not raise.
+if ~isfield(body, 'document_class') ...
+        || ~isstruct(body.document_class) ...
+        || ~isfield(body.document_class, 'class_name')
+    return;
+end
+className = char(body.document_class.class_name);
+cache = schemaCacheOverride;
+if isempty(cache)
+    try
+        cache = did2.schema.cache.shared();
+    catch
+        return;
+    end
+end
+if isempty(cache)
+    return;
+end
+try
+    chain = cache.classChain(className);
+catch
+    return;
+end
+for k = 1:numel(chain)
+    cls = chain{k};
+    if ~isfield(body, cls)
+        body.(cls) = struct();
+    end
+end
+end
+
+function body = applySuperclassMigrators(body, concreteClassName)
+% Walk document_class.superclasses (as normalised by universalRenames)
+% and run any matching +migrators/<superclass>.m before the
+% concrete-class migrator runs. Skips entries whose name matches the
+% concrete class or is empty, and skips entries that have no
+% registered migrator (silent no-op, same convention as the identity
+% fallback).
+if ~isfield(body, 'document_class') ...
+        || ~isfield(body.document_class, 'superclasses') ...
+        || ~isstruct(body.document_class.superclasses) ...
+        || isempty(body.document_class.superclasses)
+    return;
+end
+sc = body.document_class.superclasses;
+seen = {};
+for k = 1:numel(sc)
+    if ~isfield(sc(k), 'class_name')
+        continue;
+    end
+    name = char(sc(k).class_name);
+    if isempty(name) || strcmp(name, concreteClassName) ...
+            || any(strcmp(seen, name))
+        continue;
+    end
+    seen{end+1} = name; %#ok<AGROW>
+    fqn = ['did2.convert.migrators.', name];
+    if ~isempty(which(fqn))
+        body = feval(fqn, body);
+    end
 end
 end
 

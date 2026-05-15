@@ -89,36 +89,51 @@ classdef cache < handle
         end
 
         function names = superclasses(obj, className)
-            % superclasses - ancestor chain (parent first, root last).
-            %   Walks `document_class.superclasses[i].class_name` up the
-            %   chain. For 'demoA' -> {'base'}. For 'base' -> {}.
+            % superclasses - transitive ancestor list across multiple
+            %   inheritance. BFS over every parent class_name in each
+            %   ancestor's `document_class.superclasses` array, deduped
+            %   by class name. Order: direct parents first (in their
+            %   schema-declared order), then grandparents, etc.
+            %
+            %   For single-inheritance schemas the order matches the
+            %   leaf-first convention used before the multi-parent fix
+            %   (e.g., 'demoB' -> {'demoA', 'base'}); multi-parent
+            %   classes flatten their ancestor DAG in BFS order. The
+            %   classChain() wrapper still applies fliplr to put
+            %   deepest-discovered ancestors at the front and the
+            %   class itself at the back.
             arguments
                 obj
                 className (1,:) char
             end
             names = {};
-            current = className;
             visited = containers.Map('KeyType', 'char', 'ValueType', 'logical');
-            while true
-                if visited.isKey(current)
-                    error('did2:schema:cycle', ...
-                        'Superclass cycle detected starting at "%s".', className);
-                end
-                visited(current) = true;
+            visited(className) = true;
+            queue = {className};
+            while ~isempty(queue)
+                current = queue{1};
+                queue(1) = [];
                 s = obj.getClass(current);
                 if ~isstruct(s) || ~isfield(s, 'document_class') ...
                         || ~isstruct(s.document_class) ...
                         || ~isfield(s.document_class, 'superclasses') ...
                         || isempty(s.document_class.superclasses)
-                    break;
+                    continue;
                 end
-                parent = obj.elementAt(s.document_class.superclasses, 1);
-                if ~isstruct(parent) || ~isfield(parent, 'class_name')
-                    break;
+                sc = s.document_class.superclasses;
+                for k = 1:numel(sc)
+                    parent = obj.elementAt(sc, k);
+                    if ~isstruct(parent) || ~isfield(parent, 'class_name')
+                        continue;
+                    end
+                    parentName = char(parent.class_name);
+                    if isempty(parentName) || visited.isKey(parentName)
+                        continue;
+                    end
+                    visited(parentName) = true;
+                    names{end+1} = parentName; %#ok<AGROW>
+                    queue{end+1} = parentName; %#ok<AGROW>
                 end
-                parentName = char(parent.class_name);
-                names{end+1} = parentName; %#ok<AGROW>
-                current = parentName;
             end
         end
 
@@ -365,6 +380,15 @@ classdef cache < handle
                     'Document has no document_class.class_name; cannot validate.');
             end
             className = char(dc.class_name);
+            classSchema = obj.getClass(className);
+            if isfield(classSchema, 'document_class') ...
+                    && isstruct(classSchema.document_class) ...
+                    && isfield(classSchema.document_class, 'abstract') ...
+                    && classSchema.document_class.abstract == true
+                error('did2:validation:abstractInstantiation', ...
+                    ['Class "%s" is declared abstract; documents must ' ...
+                     'instantiate a concrete subclass.'], className);
+            end
             chain = obj.classChain(className);
             for k = 1:numel(chain)
                 blockClass = chain{k};
@@ -430,7 +454,11 @@ classdef cache < handle
                 return;
             end
             toolboxDir = did.toolboxdir();
-            p = fullfile(toolboxDir, '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
+            % did.toolboxdir() resolves to <DID-matlab>/src/did, so
+            % three '..'s land at the *sibling* of DID-matlab where a
+            % did-schema checkout typically lives. (The previous two
+            % '..'s expected did-schema *inside* DID-matlab.)
+            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
         end
 
         function ts = currentUTCTimestamp()

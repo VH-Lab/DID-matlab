@@ -12,17 +12,33 @@ function postBody = universalRenames(preBody)
 %     - snake_case document_class.class_name (e.g., ontologyImage ->
 %       ontology_image) and rename the matching top-level property
 %       block key in lockstep.
-%     - snake_case any document_class.superclasses[i].class_name.
+%     - normalise document_class.superclasses[i] entries: derive
+%       class_name from a v1 `definition` path when absent (the
+%       basename of the path, stripped of `.json`), and snake_case
+%       the result.
+%     - field-level snake_case pass inside every class property block
+%       (e.g., pyraview.nativeRate -> pyraview.native_rate,
+%       pyraview.dataType -> pyraview.data_type). Only the *immediate*
+%       field names of each block are renamed; nested struct values
+%       (e.g., filter.parameters.sampleFrequency) are left alone for
+%       per-class migrators to handle if needed.
 %     - rewrite depends_on entries from the V_alpha (name, id [,
 %       version]) shape to the V_delta (name, value) shape. An
 %       existing non-empty `value` is preserved; the `id` and
 %       `version` keys are removed.
+%     - rename `app.name` -> `app.app_name` and `app.version` ->
+%       `app.app_version` on any document carrying a top-level `app`
+%       block. V_delta's `app` schema names these fields with the
+%       `app_` prefix; v1 carries the same data under the unprefixed
+%       names. Documents whose v1 class did not include the `app`
+%       superclass (most non-calc docs) are unaffected.
 %     - default base.schema_version to 'V_delta' when absent so the
 %       new V_delta-required field on base is satisfied.
 %
-%   Field-level renames inside a class's property block are
-%   class-specific (see the conversion markdowns under did-schema's
-%   schemas/V_delta/conversions/from_did_v1/) and are not handled here.
+%   Field-level renames that change identifiers (not just case) inside
+%   a class's property block are class-specific (see the conversion
+%   markdowns under did-schema's schemas/V_delta/conversions/from_did_v1/)
+%   and are handled by per-class migrators, not here.
 %
 %   Throws did2:convert:missingDocumentClass when PREBODY has no
 %   document_class.class_name.
@@ -51,13 +67,8 @@ end
 if isfield(postBody.document_class, 'superclasses') ...
         && isstruct(postBody.document_class.superclasses) ...
         && ~isempty(postBody.document_class.superclasses)
-    sc = postBody.document_class.superclasses;
-    for k = 1:numel(sc)
-        if isfield(sc(k), 'class_name')
-            sc(k).class_name = snakeCase(char(sc(k).class_name));
-        end
-    end
-    postBody.document_class.superclasses = sc;
+    postBody.document_class.superclasses = ...
+        normaliseSuperclasses(postBody.document_class.superclasses);
 end
 
 if isfield(postBody, 'depends_on') ...
@@ -66,10 +77,38 @@ if isfield(postBody, 'depends_on') ...
     postBody.depends_on = renameDependsOnEntries(postBody.depends_on);
 end
 
+postBody = snakeCasePropertyBlocks(postBody);
+
+if isfield(postBody, 'app') && isstruct(postBody.app) ...
+        && isscalar(postBody.app)
+    postBody.app = renameAppBlockFields(postBody.app);
+end
+
 if isfield(postBody, 'base') && isstruct(postBody.base) ...
         && isscalar(postBody.base) ...
         && ~isfield(postBody.base, 'schema_version')
     postBody.base.schema_version = 'V_delta';
+end
+end
+
+function block = renameAppBlockFields(block)
+% V_delta `app` declares `app_name` and `app_version`; v1 carries the
+% same data under `name` and `version`. Apply the rename whenever a
+% v1 document ships an `app` block, regardless of its concrete class.
+% (7 v1 classes in the 20211116 corpus carry an app block: every
+% calculator class plus jrclust_clusters, neuron_extracellular,
+% stimulus_presentation, control_stimulus_ids.)
+if isfield(block, 'name') && ~isfield(block, 'app_name')
+    block.app_name = block.name;
+    block = rmfield(block, 'name');
+elseif isfield(block, 'name')
+    block = rmfield(block, 'name');
+end
+if isfield(block, 'version') && ~isfield(block, 'app_version')
+    block.app_version = block.version;
+    block = rmfield(block, 'version');
+elseif isfield(block, 'version')
+    block = rmfield(block, 'version');
 end
 end
 
@@ -95,6 +134,64 @@ if ~isempty(result) && result(1) >= 'A' && result(1) <= 'Z'
     result(1) = char(result(1) + ('a' - 'A'));
 end
 out = result;
+end
+
+function out = normaliseSuperclasses(sc)
+% Make sure each superclass entry has a class_name field, deriving it
+% from a v1 `definition` path (e.g., $NDIDOCUMENTPATH/data/filter.json
+% -> filter) when absent. snake_case any class_name found.
+names = cell(1, numel(sc));
+for k = 1:numel(sc)
+    if isfield(sc(k), 'class_name') && ~isempty(sc(k).class_name)
+        names{k} = snakeCase(char(sc(k).class_name));
+    elseif isfield(sc(k), 'definition') && ~isempty(sc(k).definition)
+        names{k} = snakeCase(deriveClassNameFromDefinition(sc(k).definition));
+    else
+        names{k} = '';
+    end
+end
+out = struct('class_name', names);
+end
+
+function name = deriveClassNameFromDefinition(definition)
+[~, name, ~] = fileparts(char(definition));
+end
+
+function postBody = snakeCasePropertyBlocks(postBody)
+% Rename camelCase field names inside every class property block to
+% snake_case. The property blocks are scalar struct values at the
+% document top level; structural keys are skipped.
+skip = {'document_class', 'depends_on', 'file', 'files'};
+topKeys = fieldnames(postBody);
+for k = 1:numel(topKeys)
+    key = topKeys{k};
+    if any(strcmp(key, skip))
+        continue;
+    end
+    value = postBody.(key);
+    if ~isstruct(value) || ~isscalar(value)
+        continue;
+    end
+    postBody.(key) = snakeCaseBlockFields(value);
+end
+end
+
+function block = snakeCaseBlockFields(block)
+fns = fieldnames(block);
+for k = 1:numel(fns)
+    fn = fns{k};
+    sc = snakeCase(fn);
+    if ~strcmp(fn, sc)
+        if isfield(block, sc)
+            % A snake_case field already exists; keep it and drop the
+            % camelCase duplicate to avoid clobbering.
+            block = rmfield(block, fn);
+        else
+            block.(sc) = block.(fn);
+            block = rmfield(block, fn);
+        end
+    end
+end
 end
 
 function out = renameDependsOnEntries(entries)
