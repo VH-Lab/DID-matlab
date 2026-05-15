@@ -39,11 +39,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          # TEMPORARY: pinned to the V2-import working branch until the
-          # paired did-schema PR (calculator base, abstract marker, calc
-          # cleanups) merges to did-schema main. Flip back to `main`
-          # after that merges.
-          ref: claude/did-matlab-v2-import-Rs8AX
+          ref: main
           path: did-schema
 
       - name: Export DID_SCHEMA_PATH
