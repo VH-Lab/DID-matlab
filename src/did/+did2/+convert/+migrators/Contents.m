@@ -43,6 +43,12 @@
 %                           already snake_case in v1, no rename
 %                           needed. Accepts the older `clocktype`
 %                           spelling defensively.
+%     ngrid               - SUPERCLASS migrator; rename data_dim ->
+%                           dim_sizes and derive ndims = numel(data_dim).
+%                           Drops v1-only data_size and coordinates.
+%                           Applied to any document that lists ngrid
+%                           in its superclass chain (e.g., hartley_calc
+%                           via reverse_correlation).
 %
 %   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
 %   each calls did2.convert.calcCommon to move v1's

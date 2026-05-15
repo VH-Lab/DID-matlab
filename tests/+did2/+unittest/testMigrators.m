@@ -411,3 +411,62 @@ doc = result.migrated{1};
 verifyEqual(testCase, doc.get('element_epoch.t0'), 0);
 verifyEqual(testCase, doc.get('element_epoch.t1'), 42);
 end
+
+% --- ngrid superclass migrator (20211116 corpus: 210 hartley_calc) ---
+
+function testNgridDerivesNdimsFromDataDim(testCase)
+v1 = wrap('hartley_calc', 'ngrid', struct( ...
+    'data_size',   8, ...
+    'data_type',   'double', ...
+    'data_dim',    [200 200 36 2], ...
+    'coordinates', [0 1 2 3]));
+out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.ngrid.ndims, 4);
+verifyEqual(testCase, out.ngrid.dim_sizes, [200 200 36 2]);
+verifyEqual(testCase, out.ngrid.data_type, 'double');
+verifyFalse(testCase, isfield(out.ngrid, 'data_dim'));
+verifyFalse(testCase, isfield(out.ngrid, 'data_size'));
+verifyFalse(testCase, isfield(out.ngrid, 'coordinates'));
+end
+
+function testNgridPreservesExplicitNdims(testCase)
+v1 = wrap('hartley_calc', 'ngrid', struct( ...
+    'ndims',    7, ...
+    'data_dim', [10 10]));
+out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
+% Even though numel(data_dim) is 2, the migrator preserves an
+% explicit v1 ndims rather than overwriting it. (If consumers ever
+% surface a conflict between the two, we can promote to an error.)
+verifyEqual(testCase, out.ngrid.ndims, 7);
+verifyEqual(testCase, out.ngrid.dim_sizes, [10 10]);
+end
+
+function testNgridNoOpWhenBlockAbsent(testCase)
+v1 = wrap('hartley_calc', 'hartley_calc', struct('input_parameters', []));
+out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
+verifyFalse(testCase, isfield(out, 'ngrid'));
+end
+
+function testNgridDerivesFromExistingDimSizes(testCase)
+v1 = wrap('hartley_calc', 'ngrid', struct('dim_sizes', [5 5 5]));
+out = did2.convert.migrators.ngrid(did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.ngrid.ndims, 3);
+end
+
+function testEndToEndDispatcherForHartleyCalc(testCase)
+% End-to-end: hartley_calc body with v1-shaped ngrid block migrates
+% through the calc helper, the ngrid superclass migrator, and the
+% dispatcher's chain-padding step without quarantine.
+v1 = wrap('hartley_calc', 'hartley_calc', struct('input_parameters', []));
+v1.ngrid = struct( ...
+    'data_size', 8, ...
+    'data_type', 'double', ...
+    'data_dim',  [200 200 36 2]);
+v1.document_class.superclasses = struct('class_name', ...
+    {'base', 'hartley_reverse_correlation', 'ngrid'});
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('ngrid.ndims'), 4);
+verifyEqual(testCase, doc.get('ngrid.dim_sizes'), [200 200 36 2]);
+end
