@@ -38,7 +38,7 @@ if isfield(block, 't0_t1')
     if numel(pair) >= 2
         block.t0 = double(pair(1));
         block.t1 = double(pair(2));
-    elseif numel(pair) == 1
+    elseif isscalar(pair)
         block.t0 = double(pair(1));
     end
     block = rmfield(block, 't0_t1');
