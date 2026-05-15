@@ -491,3 +491,21 @@ doc = result.migrated{1};
 verifyEqual(testCase, doc.get('ngrid.ndims'), 4);
 verifyEqual(testCase, doc.get('ngrid.dim_sizes'), [200 200 36 2]);
 end
+
+% --- ontology_label node-only idiom (JH corpus: 7007 docs) ---
+
+function testOntologyLabelNodeOnlyV1(testCase)
+% v1 docs in some corpora carry only `ontologyNode` (the CURIE), no
+% label/label_id pair. The migrator should still produce a valid
+% term composite, with name resolved via ndi.ontology.lookup when
+% available and left empty when not (no quarantine).
+v1 = wrap('ontologyLabel', 'ontologyLabel', struct( ...
+    'ontologyNode', 'EMPTY:0000129'));
+out = did2.convert.migrators.ontology_label( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.ontology_label.term.node, 'EMPTY:0000129');
+verifyTrue(testCase, ischar(out.ontology_label.term.name));
+% The name resolution is best-effort: if ndi.ontology is not on the
+% path the lookup falls back to '' and the doc still validates
+% (ontology_term is open-struct). We only assert it is a char.
+end
