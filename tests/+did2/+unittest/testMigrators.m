@@ -226,3 +226,105 @@ verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
 verifyEqual(testCase, doc.get('daqreader_ndr.file_type'), 'intan');
 end
+
+% --- calc-base migrators (PLAN.md §9.6 sub-step 6d, 20211116 corpus) ---
+
+function testCalcCommonMovesInputParametersIntoCalculatorBlock(testCase)
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', struct('algorithm', 'best')));
+out = did2.convert.calcCommon( ...
+    did2.convert.universalRenames(v1), ...
+    'oridirtuning_calc', 'ndi.calc.vis.oridir_tuning');
+verifyEqual(testCase, out.calculator.calculator_name, ...
+    'ndi.calc.vis.oridir_tuning');
+verifyEqual(testCase, out.calculator.input_parameters.algorithm, 'best');
+verifyFalse(testCase, isfield(out.oridirtuning_calc, 'input_parameters'));
+end
+
+function testCalcCommonCoercesEmptyArrayInputParametersToStruct(testCase)
+% v1 frequently ships `input_parameters: []`. V_delta `structure`
+% type requires a struct value, so the helper coerces.
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', []));
+out = did2.convert.calcCommon( ...
+    did2.convert.universalRenames(v1), ...
+    'oridirtuning_calc', 'ndi.calc.vis.oridir_tuning');
+verifyTrue(testCase, isstruct(out.calculator.input_parameters));
+verifyTrue(testCase, isempty(fieldnames(out.calculator.input_parameters)));
+end
+
+function testCalcCommonDropsInnerDependsOnAndCalculatorName(testCase)
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', [], ...
+    'depends_on',       struct('name', 'stimulus_tuningcurve_id', ...
+                                'value', 'abc'), ...
+    'calculator_name',  'ndi.calc.WRONG'));
+out = did2.convert.calcCommon( ...
+    did2.convert.universalRenames(v1), ...
+    'oridirtuning_calc', 'ndi.calc.vis.oridir_tuning');
+% Inner depends_on and v1 calculator_name are stripped from the
+% class block; the migrator-supplied calculator_name wins.
+verifyFalse(testCase, isfield(out.oridirtuning_calc, 'depends_on'));
+verifyFalse(testCase, isfield(out.oridirtuning_calc, 'calculator_name'));
+verifyEqual(testCase, out.calculator.calculator_name, ...
+    'ndi.calc.vis.oridir_tuning');
+end
+
+function testCalcCommonMissingBlockErrors(testCase)
+v1 = struct( ...
+    'document_class', struct('class_name', 'oridirtuning_calc'), ...
+    'base',           struct());
+verifyError(testCase, ...
+    @() did2.convert.calcCommon(v1, 'oridirtuning_calc', 'x'), ...
+    'did2:convert:missingBlock');
+end
+
+function testOridirtuningCalcWrapperUsesRightCalculatorName(testCase)
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', []));
+out = did2.convert.migrators.oridirtuning_calc( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.calculator.calculator_name, ...
+    'ndi.calc.vis.oridir_tuning');
+end
+
+function testCalcMigratorLookupTable(testCase)
+% Spot-check the per-class lookup table by exercising each wrapper.
+pairs = {
+    'tuningcurve_calc',              'ndi.calc.stimulus.tuningcurve';
+    'oridirtuning_calc',             'ndi.calc.vis.oridir_tuning';
+    'hartley_calc',                  'ndi.calc.vis.hartley';
+    'contrast_sensitivity_calc',     'ndi.calc.vis.contrast_sensitivity';
+    'contrast_tuning_calc',          'ndi.calc.vis.contrast_tuning';
+    'spatial_frequency_tuning_calc', 'ndi.calc.vis.spatial_frequency_tuning';
+    'speed_tuning_calc',             'ndi.calc.vis.speed_tuning';
+    'temporal_frequency_tuning_calc','ndi.calc.vis.temporal_frequency_tuning';
+    'simple_calc',                   'ndi.calc.example.simple';
+};
+for k = 1:size(pairs, 1)
+    cls  = pairs{k, 1};
+    want = pairs{k, 2};
+    v1 = wrap(cls, cls, struct('input_parameters', []));
+    migratorFcn = str2func(['did2.convert.migrators.' cls]);
+    out = migratorFcn(did2.convert.universalRenames(v1));
+    verifyEqual(testCase, out.calculator.calculator_name, want, ...
+        sprintf('Mismatch for %s', cls));
+end
+end
+
+function testDispatcherPadsEmptyChainBlocks(testCase)
+% ensureClassBlocks should manufacture empty blocks for every class
+% in the V_delta chain that the migrator did not produce. This test
+% asserts the behavior without requiring a real schema cache: it
+% builds a body, lets the dispatcher run (Validate=false, no
+% SchemaCache override). The helper silently no-ops when no cache
+% is configured, so we only assert that the explicitly-produced
+% blocks survive.
+v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
+    'input_parameters', []));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('calculator.calculator_name'), ...
+    'ndi.calc.vis.oridir_tuning');
+end

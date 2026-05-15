@@ -39,6 +39,21 @@
 %                           superclasses, before the concrete-class
 %                           migrator runs.
 %
+%   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
+%   each calls did2.convert.calcCommon with the right calculator name
+%   so input_parameters moves into the inherited `calculator` block
+%   and `calculator.calculator_name` is populated:
+%
+%     tuningcurve_calc                    -> ndi.calc.stimulus.tuningcurve
+%     oridirtuning_calc                   -> ndi.calc.vis.oridir_tuning
+%     hartley_calc                        -> ndi.calc.vis.hartley
+%     contrast_sensitivity_calc           -> ndi.calc.vis.contrast_sensitivity
+%     contrast_tuning_calc                -> ndi.calc.vis.contrast_tuning
+%     spatial_frequency_tuning_calc       -> ndi.calc.vis.spatial_frequency_tuning
+%     speed_tuning_calc                   -> ndi.calc.vis.speed_tuning
+%     temporal_frequency_tuning_calc      -> ndi.calc.vis.temporal_frequency_tuning
+%     simple_calc                         -> ndi.calc.example.simple
+%
 %   See did-schema's
 %   schemas/V_delta/conversions/from_did_v1/<class_name>.md for the
 %   per-class specifications.
