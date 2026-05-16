@@ -403,9 +403,47 @@ classdef cache < handle
                         blockClass, class(block));
                 end
                 own = obj.ownFields(blockClass);
+                declaredNames = cell(1, numel(own));
                 for f = 1:numel(own)
                     fieldDef = own{f};
-                    obj.validateField(block, fieldDef, blockClass, char(fieldDef.name));
+                    fieldName = char(fieldDef.name);
+                    declaredNames{f} = fieldName;
+                    obj.validateField(block, fieldDef, blockClass, fieldName);
+                end
+                % Strict-fields check: every property-block field must be
+                % declared by the class schema. Anything else is mis-keyed
+                % data (e.g., a v1 field name the migrator forgot to map)
+                % or a v1-only field that needs an explicit drop. Loud
+                % failure beats silent passthrough.
+                blockFns = fieldnames(block);
+                for fk = 1:numel(blockFns)
+                    fn = blockFns{fk};
+                    if ~any(strcmp(fn, declaredNames))
+                        error('did2:validation:undeclaredField', ...
+                            ['Property block "%s" carries undeclared ' ...
+                             'field "%s". V_delta requires every block ' ...
+                             'field to be declared by the schema; v1 ' ...
+                             'fields without a V_delta counterpart must ' ...
+                             'be migrated or explicitly dropped.'], ...
+                            blockClass, fn);
+                    end
+                end
+            end
+            % Strict top-level check: every top-level key must be either
+            % a structural key, a chain block, or the optional file/files
+            % wrapper. Anything else is a v1 block whose key did not get
+            % snake-cased (e.g., `imageStack_parameters` should become
+            % `image_stack_parameters`) or a class not modelled by V_delta.
+            allowedTop = [chain, {'document_class', 'depends_on', 'file', 'files'}];
+            topFns = fieldnames(s);
+            for tk = 1:numel(topFns)
+                tn = topFns{tk};
+                if ~any(strcmp(tn, allowedTop))
+                    error('did2:validation:undeclaredBlock', ...
+                        ['Document carries undeclared top-level block ' ...
+                         '"%s". Either snake_case the key to match a ' ...
+                         'V_delta chain class or remove it in a per-class ' ...
+                         'migrator.'], tn);
                 end
             end
         end
