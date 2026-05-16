@@ -701,7 +701,17 @@ classdef cache < handle
                             'Field "%s" must be char/string (type %s).', qualifiedName, fieldType);
                     end
                 case 'string'
-                    if ~(ischar(value) || isstring(value))
+                    % Accept char, string array, or cell-of-chars.
+                    % MATLAB's jsondecode produces a cell-of-chars for
+                    % JSON arrays of strings (e.g., `["a", "b"]`); the
+                    % string-type field is intended to hold either a
+                    % single string or an array, so all three forms
+                    % are equivalent for the type-shape check.
+                    ok = ischar(value) || isstring(value);
+                    if ~ok && iscell(value)
+                        ok = all(cellfun(@(c) ischar(c) || (isstring(c) && isscalar(c)), value(:)));
+                    end
+                    if ~ok
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be string.', qualifiedName);
                     end
