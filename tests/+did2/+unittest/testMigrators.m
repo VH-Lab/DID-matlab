@@ -509,3 +509,56 @@ verifyTrue(testCase, ischar(out.ontology_label.term.name));
 % path the lookup falls back to '' and the doc still validates
 % (ontology_term is open-struct). We only assert it is a char.
 end
+
+% --- position_metadata semantic shape (JH corpus: 2078 docs) ---
+
+function testPositionMetadataBuildsOntologyComposites(testCase)
+v1 = wrap('position_metadata', 'position_metadata', struct( ...
+    'ontologyNode', 'EMPTY:0000137', ...
+    'units',        'NCIT:C48367', ...
+    'dimensions',   'NCIT:C44477,NCIT:C44478'));
+out = did2.convert.migrators.position_metadata( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, out.position_metadata.measurement.node, ...
+    'EMPTY:0000137');
+verifyEqual(testCase, out.position_metadata.units.node, 'NCIT:C48367');
+verifyEqual(testCase, numel(out.position_metadata.dimensions), 2);
+verifyEqual(testCase, out.position_metadata.dimensions(1).axis, 'axis_1');
+verifyEqual(testCase, out.position_metadata.dimensions(1).node, 'NCIT:C44477');
+verifyEqual(testCase, out.position_metadata.dimensions(2).axis, 'axis_2');
+verifyEqual(testCase, out.position_metadata.dimensions(2).node, 'NCIT:C44478');
+end
+
+function testPositionMetadataHandlesEmptyDimensions(testCase)
+v1 = wrap('position_metadata', 'position_metadata', struct( ...
+    'ontologyNode', 'EMPTY:0000137', ...
+    'units',        'NCIT:C48367', ...
+    'dimensions',   ''));
+out = did2.convert.migrators.position_metadata( ...
+    did2.convert.universalRenames(v1));
+verifyEqual(testCase, numel(out.position_metadata.dimensions), 0);
+end
+
+function testPositionMetadataNamesEmptyWhenLookupUnavailable(testCase)
+% When ndi.ontology.lookup is not on the path, name fields stay
+% empty -- the doc still validates because ontology_term only
+% requires struct shape, not non-empty inner fields.
+v1 = wrap('position_metadata', 'position_metadata', struct( ...
+    'ontologyNode', 'EMPTY:0000137', ...
+    'units',        'NCIT:C48367', ...
+    'dimensions',   'NCIT:C44477'));
+out = did2.convert.migrators.position_metadata( ...
+    did2.convert.universalRenames(v1));
+verifyTrue(testCase, ischar(out.position_metadata.measurement.name));
+verifyTrue(testCase, ischar(out.position_metadata.units.name));
+verifyTrue(testCase, ischar(out.position_metadata.dimensions(1).name));
+end
+
+function testPositionMetadataMissingBlockErrors(testCase)
+v1 = struct( ...
+    'document_class', struct('class_name', 'position_metadata'), ...
+    'base',           struct());
+verifyError(testCase, ...
+    @() did2.convert.migrators.position_metadata(v1), ...
+    'did2:convert:missingBlock');
+end
