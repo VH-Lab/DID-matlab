@@ -203,10 +203,40 @@ function name = deriveClassNameFromDefinition(definition)
 end
 
 function postBody = snakeCasePropertyBlocks(postBody)
-% Rename camelCase field names inside every class property block to
-% snake_case. The property blocks are scalar struct values at the
-% document top level; structural keys are skipped.
+% Rename top-level property-block keys to snake_case (so v1
+% inherited blocks with camelCase names like `imageStack_parameters`
+% match V_delta's snake-cased class names), and rename camelCase
+% field names inside each block to snake_case. Structural keys
+% (document_class, depends_on, file, files) are skipped.
 skip = {'document_class', 'depends_on', 'file', 'files'};
+topKeys = fieldnames(postBody);
+% First pass: snake_case top-level block keys for any property
+% block whose value is a struct. (The concrete-class block key has
+% already been moved by the caller; this catches inherited blocks
+% like the v1 `imageStack_parameters` parent of `imageStack`.)
+for k = 1:numel(topKeys)
+    key = topKeys{k};
+    if any(strcmp(key, skip))
+        continue;
+    end
+    value = postBody.(key);
+    if ~isstruct(value) || ~isscalar(value)
+        continue;
+    end
+    snakeKey = snakeCase(key);
+    if ~strcmp(snakeKey, key)
+        if isfield(postBody, snakeKey)
+            % Snake-case form already exists; drop the camel
+            % duplicate to avoid clobbering.
+            postBody = rmfield(postBody, key);
+        else
+            postBody.(snakeKey) = value;
+            postBody = rmfield(postBody, key);
+        end
+    end
+end
+% Second pass: snake_case the field names inside each property
+% block.
 topKeys = fieldnames(postBody);
 for k = 1:numel(topKeys)
     key = topKeys{k};
