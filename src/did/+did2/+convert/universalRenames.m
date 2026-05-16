@@ -135,25 +135,48 @@ out = name;
 end
 
 function out = snakeCase(name)
+% Acronym-aware snake_case.
+%
+% A run of two or more consecutive uppercase letters is treated as a
+% single acronym and lowercased without internal underscores
+% ('sensitivity_RBNS' -> 'sensitivity_rbns'; 'XMLParser' ->
+% 'xml_parser'). The conventional camelCase boundary (lowercase
+% followed by uppercase, or acronym followed by mixed-case word) is
+% preserved.
+%
+% Specifically, an uppercase letter at position k inserts a `_`
+% before its lowercased form if EITHER:
+%   - the previous input char is not uppercase (classic camelCase
+%     boundary, e.g., 'data' -> 'T'), OR
+%   - the previous input char IS uppercase AND the next input char
+%     is lowercase (acronym -> word transition, e.g., 'XML' -> 'P'
+%     in 'XMLParser')
+% otherwise the uppercase letter is appended without a separator
+% (continuing an acronym, or sitting just after an existing `_`).
 name = char(name);
-if isempty(name)
+n = numel(name);
+if n == 0
     out = name;
     return;
 end
-result = name(1);
-for k = 2:numel(name)
+result = lower(name(1));
+for k = 2:n
     c = name(k);
     isUpper = c >= 'A' && c <= 'Z';
-    if isUpper && result(end) ~= '_'
-        result = [result, '_', char(c + ('a' - 'A'))]; %#ok<AGROW>
-    elseif isUpper
-        result = [result, char(c + ('a' - 'A'))]; %#ok<AGROW>
-    else
+    if ~isUpper
         result = [result, c]; %#ok<AGROW>
+        continue;
     end
-end
-if ~isempty(result) && result(1) >= 'A' && result(1) <= 'Z'
-    result(1) = char(result(1) + ('a' - 'A'));
+    prev = name(k-1);
+    prevUpper = prev >= 'A' && prev <= 'Z';
+    nextLower = (k < n) && (name(k+1) >= 'a' && name(k+1) <= 'z');
+    needSep = (~prevUpper || (prevUpper && nextLower)) ...
+        && result(end) ~= '_';
+    if needSep
+        result = [result, '_', char(c + ('a' - 'A'))]; %#ok<AGROW>
+    else
+        result = [result, char(c + ('a' - 'A'))]; %#ok<AGROW>
+    end
 end
 out = result;
 end
