@@ -58,6 +58,7 @@ postBody = preBody;
 
 v1ClassName = char(postBody.document_class.class_name);
 v2ClassName = snakeCase(v1ClassName);
+v2ClassName = v1ToVDeltaClassName(v2ClassName);
 postBody.document_class.class_name = v2ClassName;
 if ~strcmp(v1ClassName, v2ClassName) && isfield(postBody, v1ClassName)
     postBody.(v2ClassName) = postBody.(v1ClassName);
@@ -110,6 +111,27 @@ if isfield(block, 'version') && ~isfield(block, 'app_version')
 elseif isfield(block, 'version')
     block = rmfield(block, 'version');
 end
+end
+
+function out = v1ToVDeltaClassName(name)
+% Map v1 class names that drift from V_delta's underscore-separated
+% canonical form. v1 occasionally drops the underscore between
+% adjacent words in a calc class name (e.g., `contrasttuning_calc`
+% instead of `contrast_tuning_calc`); V_delta keeps the
+% underscored convention to match the NDI calculator class
+% hierarchy (`ndi.calc.vis.contrast_tuning`, etc.). This rename
+% pass bridges the two without forcing V_delta names to be
+% inconsistent.
+table = { ...
+    'contrasttuning_calc',      'contrast_tuning_calc'; ...
+    'contrastsensitivity_calc', 'contrast_sensitivity_calc'};
+for k = 1:size(table, 1)
+    if strcmp(name, table{k, 1})
+        out = table{k, 2};
+        return;
+    end
+end
+out = name;
 end
 
 function out = snakeCase(name)
