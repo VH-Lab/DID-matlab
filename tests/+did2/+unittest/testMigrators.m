@@ -32,42 +32,40 @@ v1.base = struct( ...
 v1.(blockKey) = block;
 end
 
-function testProbeLocationCollapsesTwoChars(testCase)
+function testProbeLocationPassesThroughFlatV1Shape(testCase)
 v1 = wrap('probe_location', 'probe_location', struct( ...
     'ontology_name', 'uberon:0002436', ...
     'name',          'primary visual cortex'));
-out = did2.convert.migrators.probe_location( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.probe_location.location.node, 'uberon:0002436');
-verifyEqual(testCase, out.probe_location.location.name, 'primary visual cortex');
-verifyFalse(testCase, isfield(out.probe_location, 'ontology_name'));
-verifyFalse(testCase, isfield(out.probe_location, 'name'));
+out = did2.convert.v1_to_v2(v1, 'Validate', false);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('probe_location.ontology_name'), 'uberon:0002436');
+verifyEqual(testCase, doc.get('probe_location.name'), 'primary visual cortex');
 end
 
-function testTreatmentMigrationFromCamelCase(testCase)
+function testTreatmentSnakeCasesCamelOntologyName(testCase)
 v1 = wrap('treatment', 'treatment', struct( ...
     'ontologyName',  'chebi:6015', ...
     'name',          'isoflurane', ...
     'numeric_value', 2.0, ...
     'string_value',  '2 percent in O2'));
-out = did2.convert.migrators.treatment( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.treatment.treatment_name.node, 'chebi:6015');
-verifyEqual(testCase, out.treatment.treatment_name.name, 'isoflurane');
-verifyEqual(testCase, out.treatment.numeric_value, 2.0);
-verifyEqual(testCase, out.treatment.string_value, '2 percent in O2');
+out = did2.convert.v1_to_v2(v1, 'Validate', false);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('treatment.ontology_name'), 'chebi:6015');
+verifyEqual(testCase, doc.get('treatment.name'), 'isoflurane');
+verifyEqual(testCase, doc.get('treatment.numeric_value'), 2.0);
+verifyEqual(testCase, doc.get('treatment.string_value'), '2 percent in O2');
 end
 
-function testTreatmentMigrationFromSnakeCase(testCase)
+function testTreatmentSnakeOntologyNameRoundTrips(testCase)
 v1 = wrap('treatment', 'treatment', struct( ...
     'ontology_name', 'chebi:6015', ...
     'name',          'isoflurane', ...
     'numeric_value', 2.0, ...
     'string_value',  '2 percent in O2'));
-out = did2.convert.migrators.treatment( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.treatment.treatment_name.node, 'chebi:6015');
-verifyEqual(testCase, out.treatment.treatment_name.name, 'isoflurane');
+out = did2.convert.v1_to_v2(v1, 'Validate', false);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('treatment.ontology_name'), 'chebi:6015');
+verifyEqual(testCase, doc.get('treatment.name'), 'isoflurane');
 end
 
 function testOntologyImageRenamesClassAndCollapsesFields(testCase)
@@ -104,14 +102,6 @@ out = did2.convert.migrators.ontology_label( ...
 verifyEqual(testCase, out.ontology_label.term.node, 'allen_ccf_v3:12345');
 end
 
-function testProbeLocationMissingBlockErrors(testCase)
-v1 = struct( ...
-    'document_class', struct('class_name', 'probe_location'), ...
-    'base',           struct());
-verifyError(testCase, @() did2.convert.migrators.probe_location(v1), ...
-    'did2:convert:missingBlock');
-end
-
 function testEndToEndDispatcherForProbeLocation(testCase)
 v1 = wrap('probe_location', 'probe_location', struct( ...
     'ontology_name', 'uberon:0002436', ...
@@ -119,9 +109,9 @@ v1 = wrap('probe_location', 'probe_location', struct( ...
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
-verifyEqual(testCase, doc.get('probe_location.location.node'), ...
+verifyEqual(testCase, doc.get('probe_location.ontology_name'), ...
     'uberon:0002436');
-verifyEqual(testCase, doc.get('probe_location.location.name'), ...
+verifyEqual(testCase, doc.get('probe_location.name'), ...
     'primary visual cortex');
 verifyEqual(testCase, doc.get('base.schema_version'), 'V_delta');
 end
