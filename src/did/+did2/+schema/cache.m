@@ -706,10 +706,17 @@ classdef cache < handle
                     % JSON arrays of strings (e.g., `["a", "b"]`); the
                     % string-type field is intended to hold either a
                     % single string or an array, so all three forms
-                    % are equivalent for the type-shape check.
+                    % are equivalent for the type-shape check. Also
+                    % accept an empty numeric array as a degenerate
+                    % "no value set" sentinel (matches what jsondecode
+                    % returns for JSON `[]`, and what schemas declare
+                    % as the default `blank_value`).
                     ok = ischar(value) || isstring(value);
                     if ~ok && iscell(value)
                         ok = all(cellfun(@(c) ischar(c) || (isstring(c) && isscalar(c)), value(:)));
+                    end
+                    if ~ok && isnumeric(value) && isempty(value)
+                        ok = true;
                     end
                     if ~ok
                         error('did2:validation:typeMismatch', ...
