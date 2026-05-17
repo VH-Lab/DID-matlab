@@ -81,7 +81,6 @@ function name = lookupOntologyName(curie)
 % Returns '' if the lookup is unavailable or fails; the V_delta
 % ontology_term composite type tolerates an empty name (the
 % validator only requires the value to be a struct).
-name = '';
 try
     [~, name] = ndi.ontology.lookup(curie);
 catch

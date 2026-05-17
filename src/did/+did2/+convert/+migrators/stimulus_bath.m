@@ -91,7 +91,7 @@ if isempty(raw); return; end
 if isstring(raw) && isscalar(raw); raw = char(raw); end
 if ~ischar(raw); return; end
 
-lines = strsplit(raw, sprintf('\n'));
+lines = strsplit(raw, newline);
 lines = lines(~cellfun('isempty', lines));
 if isempty(lines); return; end
 
@@ -199,11 +199,11 @@ end
 end
 
 function tf = isMassFractionUnit(u)
-u = lower(char(u));
-tf = any(strcmp(u, {'w/w', '%w/w', '%(w/w)'}));
+u = char(u);
+tf = any(strcmpi(u, {'w/w', '%w/w', '%(w/w)'}));
 end
 
 function tf = isVolumeFractionUnit(u)
-u = lower(char(u));
-tf = any(strcmp(u, {'v/v', '%v/v', '%(v/v)'}));
+u = char(u);
+tf = any(strcmpi(u, {'v/v', '%v/v', '%(v/v)'}));
 end

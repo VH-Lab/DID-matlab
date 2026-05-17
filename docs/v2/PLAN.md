@@ -1415,7 +1415,7 @@ did-matlab, paired with did-schema #43):
 - **`abstract_fields` enforcement** — V_delta abstract primitive
   works; the abstract-class instantiation block is in place but
   the broader "abstract fields don't appear on subclasses unless
-  re-declared" mechanism from the V_gamma spec is still
+  redeclared" mechanism from the V_gamma spec is still
   unimplemented.
 - **mksqlite + matbox CI installation** — current workflow
   installs both via `matbox.installRequirements` after MATLAB
