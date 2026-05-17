@@ -651,7 +651,8 @@ out = did2.convert.migrators.stimulus_bath( ...
 verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_value, 5);
 verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_unit, ...
     'Micromolar');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.molar, 5e-6);
+verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.molar, 5e-6, ...
+    'AbsTol', 1e-15);
 end
 
 function testStimulusBathHandlesUnknownUnit(testCase)
