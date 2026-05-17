@@ -32,6 +32,11 @@ function postBody = universalRenames(preBody)
 %       `app_` prefix; v1 carries the same data under the unprefixed
 %       names. Documents whose v1 class did not include the `app`
 %       superclass (most non-calc docs) are unaffected.
+%     - reconcile legacy `ndi_document` block: pre-base v1 documents
+%       carried document-identity fields under `ndi_document` rather
+%       than `base`. If a v1 body has `ndi_document` but no `base`,
+%       rename `ndi_document` -> `base`. If both are present, discard
+%       `ndi_document` (base wins; ndi_document is stale).
 %     - default base.schema_version to 'V_delta' when absent so the
 %       new V_delta-required field on base is satisfied.
 %
@@ -79,6 +84,15 @@ if isfield(postBody, 'depends_on') ...
 end
 
 postBody = snakeCasePropertyBlocks(postBody);
+
+if isfield(postBody, 'ndi_document')
+    if isfield(postBody, 'base')
+        postBody = rmfield(postBody, 'ndi_document');
+    else
+        postBody.base = postBody.ndi_document;
+        postBody = rmfield(postBody, 'ndi_document');
+    end
+end
 
 if isfield(postBody, 'app') && isstruct(postBody.app) ...
         && isscalar(postBody.app)
