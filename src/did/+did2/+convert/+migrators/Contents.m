@@ -49,6 +49,28 @@
 %                           Applied to any document that lists ngrid
 %                           in its superclass chain (e.g., hartley_calc
 %                           via reverse_correlation).
+%     ontology_label      - extended to handle the JH single-`ontologyNode`
+%                           idiom (no label/label_id). Looks up the
+%                           name via ndi.ontology.lookup; falls back to
+%                           empty name when the lookup is unavailable.
+%     position_metadata   - semantic-shape migrator: builds
+%                           measurement (ontology_term), units
+%                           (ontology_term), and dimensions
+%                           (array-of-records with axis_1, axis_2 labels)
+%                           from v1 ontologyNode/units/dimensions.
+%     distance_metadata   - paired A/B endpoint migrator: discovers
+%                           labels by regex-scanning ontology_node_X
+%                           keys and builds an endpoints array-of-records
+%                           with measurement, integer_ids, string_ids,
+%                           numeric_values per endpoint.
+%     stimulus_bath       - rename location.ontologyNode -> .node;
+%                           parse the v1 CSV mixture_table into a
+%                           mixture array-of-records; each amount is a
+%                           V_delta `concentration` composite with
+%                           source_unit / source_value preserved and
+%                           the appropriate canonical sub-field (molar,
+%                           grams_per_liter, mass_fraction,
+%                           volume_fraction) populated when computable.
 %
 %   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
 %   each calls did2.convert.calcCommon to move v1's

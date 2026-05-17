@@ -1274,3 +1274,162 @@ Next up: 6d (CI test data pipeline). With the readers in place,
 `integration-small` job and feed it through `fromV1Database`
 end-to-end, asserting zero quarantine rows + a small set of
 golden queries against the v2 result.
+
+### 2026-05-15 — step 6d + 6e v1 corpus round-trip
+
+Closes out the converter line for the two v1 corpora we currently
+have public fixtures for. Cumulative end state (PRs #128 + #129 on
+did-matlab, paired with did-schema #43):
+
+- **PRED** (14 docs, 10 classes, public S3 fixture `PRED.zip`):
+  14/14 migrated, 0 quarantined under `Validate=true`.
+  `tests/+did2/+unittest/testCorpusPRED.m` is the gate test —
+  assertions fail the build if quarantine_count regresses.
+- **20211116** (1220 docs, 21 classes, public S3 fixture
+  `20211116.zip`): 1220/1220 migrated, 0 quarantined.
+  `testCorpus20211116.m` runs in **discovery mode** — does not
+  fail the build on quarantine, writes a per-class summary into
+  `corpus-reports/20211116-summary.json` which the workflow uploads
+  as the `corpus-discovery-reports` artifact. Matches the step-6d
+  RFC default of "discover-not-gate" for coverage corpora.
+
+#### What 6d added on top of 6a + 6b + 6c
+
+- `+did2/+convert/universalRenames.m` grew three new universal
+  passes triggered by 20211116 corpus drift:
+  - **Property-block field-level snake_case** for every class
+    property block (pyraview's `nativeRate -> native_rate`,
+    `dataType -> data_type`, `decimationLevels -> decimation_levels`,
+    etc.).
+  - **Superclass-entry normalisation**: when a v1 entry carries
+    only a `definition` path, derive `class_name` from the basename.
+  - **`app` block field rename** on any doc carrying a top-level
+    `app` block: `name -> app_name`, `version -> app_version`.
+    Applies to all 7 v1 classes in 20211116 that ship app metadata
+    (calc types plus `jrclust_clusters`, `neuron_extracellular`,
+    `stimulus_presentation`, `control_stimulus_ids`).
+- `+did2/+convert/v1_to_v2.m` gained a **dispatcher
+  empty-block-pad** step (`ensureClassBlocks`) that walks the
+  V_delta inheritance chain via the schema cache and manufactures
+  empty `struct()` blocks for any chain entry the migrators did
+  not produce. Lets per-class migrators stay focused on real field
+  moves; the validator's "every chain block must exist" rule is
+  satisfied by the pad.
+- `+did2/+schema/cache.m` gained two behavioral changes:
+  - **`abstract: true` honored** by `validateDocument` (throws
+    `did2:validation:abstractInstantiation`). New V_delta primitive
+    used by `calculator` and `tuning_fit`.
+  - **`superclasses()` walks every parent** (multi-inheritance BFS,
+    deduped) instead of just the first entry. The single-parent
+    walk had been silently skipping mixin ancestors (e.g.,
+    `hartley_calc`'s `hartley_reverse_correlation` branch), so
+    required fields on those ancestors went unenforced. Cost: 210
+    `hartley_calc` documents that had been silently passing now
+    surface real data shape issues (resolved below). Win:
+    `app.app_name` is finally enforced on every calc class.
+- `+did2/+convert/+migrators/` expanded from 4 to 16 files:
+  - **Field-level migrators** (concrete classes from PRED):
+    `daqreader_ndr` (`ndr_reader_string -> file_type`),
+    `daqmetadatareader` (`ndi_daqmetadatareader_class ->
+    reader_class`), `element` (`name -> element_name`,
+    `type -> element_type`, `reference` numeric → char,
+    `direct` logical → integer).
+  - **Time-pair migrators** (`t0_t1: [t0, t1] -> (t0, t1)`):
+    `epochclocktimes` (superclass migrator, also renames
+    `clocktype -> epoch_clock`), `element_epoch` (concrete twin
+    that also accepts legacy `clocktype`).
+  - **Calc-base wrappers** (9 thin wrappers on a shared
+    `+did2/+convert/calcCommon.m`): `tuningcurve_calc`,
+    `oridirtuning_calc`, `hartley_calc`,
+    `contrast_sensitivity_calc`, `contrast_tuning_calc`,
+    `spatial_frequency_tuning_calc`, `speed_tuning_calc`,
+    `temporal_frequency_tuning_calc`, `simple_calc`. Each call
+    moves v1's `<class>.input_parameters` into a new top-level
+    `calculator` block; the calculator-identity string comes from
+    the inherited `app.app_name` (set upstream by the universal
+    app-block rename).
+  - **`ngrid`** (superclass migrator added in 6e):
+    `data_dim -> dim_sizes`, derive `ndims = numel(data_dim)`,
+    drop v1-only `data_size`/`coordinates`. Clears the residual
+    `hartley_calc` cluster surfaced by the multi-inheritance walk.
+- **Side-quest fix**: `+did2/+schema/cache.m::defaultSchemaPath`
+  had two `..`s where three were needed for the sibling-checkout
+  convention (`<DID-matlab>/src/did/+did2/+schema/cache.m` ->
+  `<parent>/did-schema/...`). Fixed.
+
+#### What changed on the schema side (did-schema PR #43)
+
+- New abstract bases: `calculator` (superclasses
+  `[base, app]`; one field `input_parameters` structure
+  optional) and `tuning_fit` (superclass `calculator`; no own
+  fields).
+- All 9 `*_calc` schemas restructured to inherit from `calculator`
+  (directly, or via `tuning_fit` for the visual tuning fits:
+  `oridirtuning_calc`, `contrast_tuning_calc`,
+  `spatial_frequency_tuning_calc`, `speed_tuning_calc`,
+  `temporal_frequency_tuning_calc`). `input_parameters` and any
+  per-class `calculator_name` are dropped from the subclasses
+  (inherited).
+- Class rename: `orientation_direction_tuning_calc -> oridirtuning_calc`
+  — earlier draft had over-normalised the v1 name to match its
+  parent measurement class, but the long form does not appear in
+  the NDI calculator hierarchy
+  (`ndi.calc.vis.oridir_tuning`).
+- Field corrections from corpus evidence:
+  `neuron_extracellular.cluster_id -> cluster_index`,
+  `stimulus_presentation.stimulus_type` removed,
+  `hartley_reverse_correlation.hartley_numbers` retyped from
+  `matrix` to `structure` (v1 carries `{S, KXV, KYV, ORDER}`).
+- `abstract: true` is honored by the meta-schema (the primitive
+  was already declared); `calculator` and `tuning_fit` are the
+  first concrete users.
+
+#### CI test corpora
+
+- `tests/+did2/+unittest/testCorpusPRED.m` (gate mode) — downloads
+  PRED.zip from S3, runs `v1_to_v2(Validate=true)`, asserts
+  zero quarantine. Schema-path resolution probes `DID_SCHEMA_PATH`
+  env then the sibling-checkout default; skips via `assumeFail`
+  if neither resolves.
+- `tests/+did2/+unittest/testCorpus20211116.m` (discovery mode) —
+  same plumbing, writes JSON summary instead of asserting,
+  printed top-15 quarantine reasons to stdout for the CI log.
+- `.github/workflows/test-code.yml` checks out did-schema as a
+  sibling and exports `DID_SCHEMA_PATH` so the V_delta validator
+  is reachable in CI. Adds a `corpus-discovery-reports`
+  artifact-upload step that runs `if: always()`.
+
+#### Open follow-ups
+
+- **`did2.validate.references`** — the converter and the writer
+  do not check that `depends_on[i].value` resolves to a doc in
+  the same import batch or already in the DB. Orphan edges land
+  silently as `depends_on` sidecar rows today. This will matter
+  the moment a real v1 → v2 ingest runs in NDI-matlab. Implement
+  as a post-`fromV1Database` audit pass that returns an
+  unresolved-edge table; flag-controlled fail-loud vs warn.
+- **More corpora** — third+ datasets (with calc / image / sorting
+  variants) opportunistically, to keep stretching coverage. Both
+  current corpora round-trip clean, so each additional one is
+  signal rather than gate.
+- **`abstract_fields` enforcement** — V_delta abstract primitive
+  works; the abstract-class instantiation block is in place but
+  the broader "abstract fields don't appear on subclasses unless
+  redeclared" mechanism from the V_gamma spec is still
+  unimplemented.
+- **mksqlite + matbox CI installation** — current workflow
+  installs both via `matbox.installRequirements` after MATLAB
+  setup; this is sometimes flaky. RFC at
+  `claude/v2-update-step-6-ci-qhmu3` covers a longer-term plan
+  (build mksqlite from source, deterministic pinned versions);
+  fold in once it lands.
+
+No tests were run locally — the authoring environment has no
+MATLAB. Both corpus tests passed in CI on PR #128 after
+8336bc3, and the projection-by-simulator for PR #129 was 0
+quarantine. Real MATLAB verification on the user's side
+confirmed all unit tests and the corpus runs pass before merge.
+
+Next up: step 7 (NDI-matlab port) on a feature branch, with the
+`depends_on` referential-integrity validator as the natural first
+small piece since the port will trip on it immediately.

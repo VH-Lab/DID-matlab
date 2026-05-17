@@ -80,19 +80,24 @@ own = testCase.TestData.cache.ownFields('base');
 verifyEqual(testCase, numel(own), 4);
 end
 
-function testOwnFieldsDemoAHasOne(testCase)
+function testOwnFieldsDemoAHasFour(testCase)
+% demoA declares: value (char) + axes/multiscales (structure) + tags
+% (string). The latter three exist as open-shape declarations so
+% testSqliteDb can set ad-hoc data on those keys without tripping the
+% strict-fields validator.
 own = testCase.TestData.cache.ownFields('demoA');
-verifyEqual(testCase, numel(own), 1);
+verifyEqual(testCase, numel(own), 4);
 end
 
 function testFieldsForTagsDeclaringClass(testCase)
 tagged = testCase.TestData.cache.fieldsFor('demoB');
-% base(4) + demoA(1) + demoB(1) = 6 entries
-verifyEqual(testCase, numel(tagged), 6);
+% base(4) + demoA(4) + demoB(1) = 9 entries
+verifyEqual(testCase, numel(tagged), 9);
 verifyEqual(testCase, tagged(1).declaringClass, 'base');
 verifyEqual(testCase, tagged(4).declaringClass, 'base');
 verifyEqual(testCase, tagged(5).declaringClass, 'demoA');
-verifyEqual(testCase, tagged(6).declaringClass, 'demoB');
+verifyEqual(testCase, tagged(8).declaringClass, 'demoA');
+verifyEqual(testCase, tagged(9).declaringClass, 'demoB');
 end
 
 % ---- buildBlankDocument: document_class header ----

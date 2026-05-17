@@ -403,9 +403,47 @@ classdef cache < handle
                         blockClass, class(block));
                 end
                 own = obj.ownFields(blockClass);
+                declaredNames = cell(1, numel(own));
                 for f = 1:numel(own)
                     fieldDef = own{f};
-                    obj.validateField(block, fieldDef, blockClass, char(fieldDef.name));
+                    fieldName = char(fieldDef.name);
+                    declaredNames{f} = fieldName;
+                    obj.validateField(block, fieldDef, blockClass, fieldName);
+                end
+                % Strict-fields check: every property-block field must be
+                % declared by the class schema. Anything else is mis-keyed
+                % data (e.g., a v1 field name the migrator forgot to map)
+                % or a v1-only field that needs an explicit drop. Loud
+                % failure beats silent passthrough.
+                blockFns = fieldnames(block);
+                for fk = 1:numel(blockFns)
+                    fn = blockFns{fk};
+                    if ~any(strcmp(fn, declaredNames))
+                        error('did2:validation:undeclaredField', ...
+                            ['Property block "%s" carries undeclared ' ...
+                             'field "%s". V_delta requires every block ' ...
+                             'field to be declared by the schema; v1 ' ...
+                             'fields without a V_delta counterpart must ' ...
+                             'be migrated or explicitly dropped.'], ...
+                            blockClass, fn);
+                    end
+                end
+            end
+            % Strict top-level check: every top-level key must be either
+            % a structural key, a chain block, or the optional file/files
+            % wrapper. Anything else is a v1 block whose key did not get
+            % snake-cased (e.g., `imageStack_parameters` should become
+            % `image_stack_parameters`) or a class not modelled by V_delta.
+            allowedTop = [chain, {'document_class', 'depends_on', 'file', 'files'}];
+            topFns = fieldnames(s);
+            for tk = 1:numel(topFns)
+                tn = topFns{tk};
+                if ~any(strcmp(tn, allowedTop))
+                    error('did2:validation:undeclaredBlock', ...
+                        ['Document carries undeclared top-level block ' ...
+                         '"%s". Either snake_case the key to match a ' ...
+                         'V_delta chain class or remove it in a per-class ' ...
+                         'migrator.'], tn);
                 end
             end
         end
@@ -663,7 +701,24 @@ classdef cache < handle
                             'Field "%s" must be char/string (type %s).', qualifiedName, fieldType);
                     end
                 case 'string'
-                    if ~(ischar(value) || isstring(value))
+                    % Accept char, string array, or cell-of-chars.
+                    % MATLAB's jsondecode produces a cell-of-chars for
+                    % JSON arrays of strings (e.g., `["a", "b"]`); the
+                    % string-type field is intended to hold either a
+                    % single string or an array, so all three forms
+                    % are equivalent for the type-shape check. Also
+                    % accept an empty numeric array as a degenerate
+                    % "no value set" sentinel (matches what jsondecode
+                    % returns for JSON `[]`, and what schemas declare
+                    % as the default `blank_value`).
+                    ok = ischar(value) || isstring(value);
+                    if ~ok && iscell(value)
+                        ok = all(cellfun(@(c) ischar(c) || (isstring(c) && isscalar(c)), value(:)));
+                    end
+                    if ~ok && isnumeric(value) && isempty(value)
+                        ok = true;
+                    end
+                    if ~ok
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be string.', qualifiedName);
                     end
@@ -687,7 +742,7 @@ classdef cache < handle
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be a struct.', qualifiedName);
                     end
-                case {'duration','volume','mass','length','voltage','current','frequency','ontology_term'}
+                case {'duration','volume','mass','length','voltage','current','frequency','concentration','ontology_term'}
                     if ~isstruct(value)
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be a struct (named composite type %s).', ...

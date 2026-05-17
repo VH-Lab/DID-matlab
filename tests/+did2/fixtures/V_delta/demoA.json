@@ -26,6 +26,47 @@
             "constraints": {
                 "maxLength": 256
             }
+        },
+        {
+            "name": "axes",
+            "type": "structure",
+            "blank_value": [],
+            "default_value": [],
+            "mustBeNonEmpty": false,
+            "mustBeScalar": false,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "documentation": "Open-shape struct array used by testSqliteDb to exercise array-star queries (sub-fields are unconstrained).",
+            "constraints": {},
+            "fields": []
+        },
+        {
+            "name": "multiscales",
+            "type": "structure",
+            "blank_value": [],
+            "default_value": [],
+            "mustBeNonEmpty": false,
+            "mustBeScalar": false,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "documentation": "Open-shape nested struct array used by testSqliteDb to exercise nested array-star queries.",
+            "constraints": {},
+            "fields": []
+        },
+        {
+            "name": "tags",
+            "type": "string",
+            "blank_value": [],
+            "default_value": [],
+            "mustBeNonEmpty": false,
+            "mustBeScalar": false,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "documentation": "String array used by testSqliteDb to exercise hasmember queries.",
+            "constraints": {}
         }
     ]
 }

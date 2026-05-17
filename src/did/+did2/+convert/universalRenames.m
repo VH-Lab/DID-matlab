@@ -32,6 +32,11 @@ function postBody = universalRenames(preBody)
 %       `app_` prefix; v1 carries the same data under the unprefixed
 %       names. Documents whose v1 class did not include the `app`
 %       superclass (most non-calc docs) are unaffected.
+%     - reconcile legacy `ndi_document` block: pre-base v1 documents
+%       carried document-identity fields under `ndi_document` rather
+%       than `base`. If a v1 body has `ndi_document` but no `base`,
+%       rename `ndi_document` -> `base`. If both are present, discard
+%       `ndi_document` (base wins; ndi_document is stale).
 %     - default base.schema_version to 'V_delta' when absent so the
 %       new V_delta-required field on base is satisfied.
 %
@@ -58,6 +63,7 @@ postBody = preBody;
 
 v1ClassName = char(postBody.document_class.class_name);
 v2ClassName = snakeCase(v1ClassName);
+v2ClassName = v1ToVDeltaClassName(v2ClassName);
 postBody.document_class.class_name = v2ClassName;
 if ~strcmp(v1ClassName, v2ClassName) && isfield(postBody, v1ClassName)
     postBody.(v2ClassName) = postBody.(v1ClassName);
@@ -78,6 +84,15 @@ if isfield(postBody, 'depends_on') ...
 end
 
 postBody = snakeCasePropertyBlocks(postBody);
+
+if isfield(postBody, 'ndi_document')
+    if isfield(postBody, 'base')
+        postBody = rmfield(postBody, 'ndi_document');
+    else
+        postBody.base = postBody.ndi_document;
+        postBody = rmfield(postBody, 'ndi_document');
+    end
+end
 
 if isfield(postBody, 'app') && isstruct(postBody.app) ...
         && isscalar(postBody.app)
@@ -112,26 +127,70 @@ elseif isfield(block, 'version')
 end
 end
 
+function out = v1ToVDeltaClassName(name)
+% Map v1 class names that drift from V_delta's underscore-separated
+% canonical form. v1 occasionally drops the underscore between
+% adjacent words in a calc class name (e.g., `contrasttuning_calc`
+% instead of `contrast_tuning_calc`); V_delta keeps the
+% underscored convention to match the NDI calculator class
+% hierarchy (`ndi.calc.vis.contrast_tuning`, etc.). This rename
+% pass bridges the two without forcing V_delta names to be
+% inconsistent.
+table = { ...
+    'contrasttuning_calc',      'contrast_tuning_calc'; ...
+    'contrastsensitivity_calc', 'contrast_sensitivity_calc'};
+for k = 1:size(table, 1)
+    if strcmp(name, table{k, 1})
+        out = table{k, 2};
+        return;
+    end
+end
+out = name;
+end
+
 function out = snakeCase(name)
+% Acronym-aware snake_case.
+%
+% A run of two or more consecutive uppercase letters is treated as a
+% single acronym and lowercased without internal underscores
+% ('sensitivity_RBNS' -> 'sensitivity_rbns'; 'XMLParser' ->
+% 'xml_parser'). The conventional camelCase boundary (lowercase
+% followed by uppercase, or acronym followed by mixed-case word) is
+% preserved.
+%
+% Specifically, an uppercase letter at position k inserts a `_`
+% before its lowercased form if EITHER:
+%   - the previous input char is not uppercase (classic camelCase
+%     boundary, e.g., 'data' -> 'T'), OR
+%   - the previous input char IS uppercase AND the next input char
+%     is lowercase (acronym -> word transition, e.g., 'XML' -> 'P'
+%     in 'XMLParser')
+% otherwise the uppercase letter is appended without a separator
+% (continuing an acronym, or sitting just after an existing `_`).
 name = char(name);
-if isempty(name)
+n = numel(name);
+if n == 0
     out = name;
     return;
 end
-result = name(1);
-for k = 2:numel(name)
+result = lower(name(1));
+for k = 2:n
     c = name(k);
     isUpper = c >= 'A' && c <= 'Z';
-    if isUpper && result(end) ~= '_'
-        result = [result, '_', char(c + ('a' - 'A'))]; %#ok<AGROW>
-    elseif isUpper
-        result = [result, char(c + ('a' - 'A'))]; %#ok<AGROW>
-    else
+    if ~isUpper
         result = [result, c]; %#ok<AGROW>
+        continue;
     end
-end
-if ~isempty(result) && result(1) >= 'A' && result(1) <= 'Z'
-    result(1) = char(result(1) + ('a' - 'A'));
+    prev = name(k-1);
+    prevUpper = prev >= 'A' && prev <= 'Z';
+    nextLower = (k < n) && (name(k+1) >= 'a' && name(k+1) <= 'z');
+    needSep = (~prevUpper || (prevUpper && nextLower)) ...
+        && result(end) ~= '_';
+    if needSep
+        result = [result, '_', char(c + ('a' - 'A'))]; %#ok<AGROW>
+    else
+        result = [result, char(c + ('a' - 'A'))]; %#ok<AGROW>
+    end
 end
 out = result;
 end
@@ -158,10 +217,40 @@ function name = deriveClassNameFromDefinition(definition)
 end
 
 function postBody = snakeCasePropertyBlocks(postBody)
-% Rename camelCase field names inside every class property block to
-% snake_case. The property blocks are scalar struct values at the
-% document top level; structural keys are skipped.
+% Rename top-level property-block keys to snake_case (so v1
+% inherited blocks with camelCase names like `imageStack_parameters`
+% match V_delta's snake-cased class names), and rename camelCase
+% field names inside each block to snake_case. Structural keys
+% (document_class, depends_on, file, files) are skipped.
 skip = {'document_class', 'depends_on', 'file', 'files'};
+topKeys = fieldnames(postBody);
+% First pass: snake_case top-level block keys for any property
+% block whose value is a struct. (The concrete-class block key has
+% already been moved by the caller; this catches inherited blocks
+% like the v1 `imageStack_parameters` parent of `imageStack`.)
+for k = 1:numel(topKeys)
+    key = topKeys{k};
+    if any(strcmp(key, skip))
+        continue;
+    end
+    value = postBody.(key);
+    if ~isstruct(value) || ~isscalar(value)
+        continue;
+    end
+    snakeKey = snakeCase(key);
+    if ~strcmp(snakeKey, key)
+        if isfield(postBody, snakeKey)
+            % Snake-case form already exists; drop the camel
+            % duplicate to avoid clobbering.
+            postBody = rmfield(postBody, key);
+        else
+            postBody.(snakeKey) = value;
+            postBody = rmfield(postBody, key);
+        end
+    end
+end
+% Second pass: snake_case the field names inside each property
+% block.
 topKeys = fieldnames(postBody);
 for k = 1:numel(topKeys)
     key = topKeys{k};

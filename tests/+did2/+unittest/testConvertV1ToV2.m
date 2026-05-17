@@ -46,6 +46,31 @@ out = did2.convert.universalRenames(v1);
 verifyEqual(testCase, out.base.schema_version, 'did_v1');
 end
 
+function testUniversalRenamesDiscardsNdiDocumentWhenBasePresent(testCase)
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct();
+v1.ndi_document = struct('name', 'jrclust.prm');
+out = did2.convert.universalRenames(v1);
+verifyFalse(testCase, isfield(out, 'ndi_document'));
+verifyEqual(testCase, out.base.id, 'aabb1122ccdd3344_1122334455667788');
+end
+
+function testUniversalRenamesPromotesNdiDocumentWhenBaseMissing(testCase)
+v1 = struct();
+v1.document_class = struct('class_name', 'treatment');
+v1.treatment = struct();
+v1.ndi_document = struct( ...
+    'id',         'aabb1122ccdd3344_1122334455667788', ...
+    'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name',       'legacy-doc', ...
+    'datestamp',  '2024-06-01T12:00:00.000Z');
+out = did2.convert.universalRenames(v1);
+verifyFalse(testCase, isfield(out, 'ndi_document'));
+verifyTrue(testCase, isfield(out, 'base'));
+verifyEqual(testCase, out.base.id, 'aabb1122ccdd3344_1122334455667788');
+verifyEqual(testCase, out.base.schema_version, 'V_delta');
+end
+
 function testUniversalRenamesSnakeCasesCamelClassName(testCase)
 v1 = makeV1Skeleton('ontologyImage');
 v1.ontologyImage = struct('ontology_name', 'allen_ccf_v3:12345', ...
