@@ -33,13 +33,25 @@ function result = v1_to_v2(v1Bodies, options)
 %                  the post-universal class name to its migrated count.
 %
 %   Options (name-value):
-%     Validate     (1,1 logical, default true) - validate each migrated
-%                  document via did2.schema.cache.validateDocument.
-%                  Validation failures route to quarantine.
-%     SchemaCache  ([] or a did2.schema.cache handle, default []) -
-%                  override the shared schema cache. Used by tests.
-%     Verbose      (1,1 logical, default false) - print the end-of-run
-%                  summary report to stdout.
+%     Validate         (1,1 logical, default true) - validate each
+%                      migrated document via
+%                      did2.schema.cache.validateDocument. Validation
+%                      failures route to quarantine.
+%     SchemaCache      ([] or a did2.schema.cache handle, default []) -
+%                      override the shared schema cache. Used by tests.
+%     Verbose          (1,1 logical, default false) - print the
+%                      end-of-run summary report to stdout.
+%     CheckReferences  (1,1 logical, default false) - after the per-doc
+%                      pipeline finishes, run did2.validate.references
+%                      against the migrated batch. The result lands
+%                      under result.references. Orphan edges are NOT
+%                      routed to quarantine; the report lets callers
+%                      decide how to react.
+%     ReferenceDatabase (did2.database.sqlitedb or [], default []) -
+%                      if supplied, references-check accepts edges
+%                      that resolve to documents already stored in
+%                      this DB (e.g. when ingesting an incremental
+%                      batch on top of a populated database).
 %
 %   See also: did2.convert.universalRenames, did2.convert.migrators,
 %   docs/v2/PLAN.md §9.6.
@@ -49,6 +61,8 @@ arguments
     options.Validate (1,1) logical = true
     options.SchemaCache = []
     options.Verbose (1,1) logical = false
+    options.CheckReferences (1,1) logical = false
+    options.ReferenceDatabase = []
 end
 
 bodies = normaliseInput(v1Bodies);
@@ -99,6 +113,15 @@ result.summary = struct( ...
     'migrated_count',   numel(migrated), ...
     'quarantine_count', numel(quarantine), ...
     'by_class',         buildByClassTable(classCountNames, classCountValues));
+
+if options.CheckReferences
+    if ~isempty(options.ReferenceDatabase)
+        result.references = did2.validate.references(migrated, ...
+            'Database', options.ReferenceDatabase);
+    else
+        result.references = did2.validate.references(migrated);
+    end
+end
 
 if options.Verbose
     printSummary(result);
