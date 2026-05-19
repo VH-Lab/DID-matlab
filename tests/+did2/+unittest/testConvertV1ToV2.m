@@ -240,3 +240,123 @@ verifyEqual(testCase, doc.get('epochclocktimes.epoch_clock'), ...
 verifyEqual(testCase, doc.get('epochclocktimes.t0'), 0);
 verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1.5);
 end
+
+function vDelta = makeVDeltaSkeleton(className)
+% Build a body that is already V_delta-shaped: schema_version stamped,
+% snake-cased class name, depends_on uses `value` (not `id`).
+vDelta = struct();
+vDelta.document_class = struct( ...
+    'class_name',    className, ...
+    'class_version', '1.0.0', ...
+    'superclasses',  struct( ...
+        'class_name',    'base', ...
+        'class_version', '1.0.0'));
+vDelta.depends_on = struct('name', {}, 'value', {});
+vDelta.base = struct( ...
+    'id',             'aabb1122ccdd3344_1122334455667788', ...
+    'session_id',     'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name',           'unit-test', ...
+    'datestamp',      '2024-06-01T12:00:00.000Z', ...
+    'schema_version', 'V_delta');
+end
+
+function testShortCircuitOnAlreadyVDeltaBody(testCase)
+% A body that already declares base.schema_version=='V_delta' skips
+% universalRenames and the per-class migrators. The epochclocktimes
+% block carries v1-shaped fields (clocktype, t0_t1); under the short-
+% circuit those stay verbatim because the superclass migrator never
+% runs. ensureClassBlocks still runs (rebuilds the chain) and the
+% body still becomes a did2.document.
+vDelta = makeVDeltaSkeleton('some_unregistered_class');
+vDelta.some_unregistered_class = struct('foo', 'bar');
+vDelta.epochclocktimes = struct('clocktype', 'dev_local_time', ...
+    't0_t1', [0 1.5]);
+vDelta.document_class.superclasses = struct( ...
+    'class_name', {'base', 'epochclocktimes'});
+result = did2.convert.v1_to_v2(vDelta, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+verifyEqual(testCase, result.summary.quarantine_count, 0);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('epochclocktimes.clocktype'), ...
+    'dev_local_time');
+verifyEqual(testCase, doc.get('epochclocktimes.t0_t1'), [0 1.5]);
+verifyEqual(testCase, doc.get('base.schema_version'), 'V_delta');
+% Per-class summary keys off the unchanged class_name.
+verifyEqual(testCase, result.summary.by_class.some_unregistered_class, 1);
+end
+
+function testIdempotencyOfDoubleRun(testCase)
+% Running v1_to_v2 twice on the same v1 body produces the same
+% migrated output the second time as the first. The second pass hits
+% the short-circuit because the first pass stamped schema_version.
+v1 = makeV1Skeleton('some_unregistered_class');
+v1.some_unregistered_class = struct('foo', 'bar');
+v1.epochclocktimes = struct('clocktype', 'dev_local_time', ...
+    't0_t1', [0 1.5]);
+v1.document_class.superclasses = struct( ...
+    'class_name', {'base', 'epochclocktimes'});
+
+first = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, first.summary.migrated_count, 1);
+firstBody = first.migrated{1}.toStruct();
+
+second = did2.convert.v1_to_v2(firstBody, 'Validate', false);
+verifyEqual(testCase, second.summary.migrated_count, 1);
+verifyEqual(testCase, second.summary.quarantine_count, 0);
+secondBody = second.migrated{1}.toStruct();
+
+verifyEqual(testCase, secondBody.base.schema_version, 'V_delta');
+verifyEqual(testCase, secondBody.epochclocktimes.epoch_clock, ...
+    'dev_local_time');
+verifyEqual(testCase, secondBody.epochclocktimes.t0, 0);
+verifyEqual(testCase, secondBody.epochclocktimes.t1, 1.5);
+verifyEqual(testCase, secondBody, firstBody);
+end
+
+function testMixedBatchOfV1AndVDeltaBodies(testCase)
+% A batch with both v1 bodies (need full migration) and V_delta
+% bodies (short-circuit) migrates every document successfully.
+v1A = makeV1Skeleton('unknown_class');
+v1A.unknown_class = struct('foo', 'bar_v1');
+vDeltaA = makeVDeltaSkeleton('unknown_class');
+vDeltaA.unknown_class = struct('foo', 'bar_vdelta');
+v1B = makeV1Skeleton('some_other_class');
+v1B.some_other_class = struct('n', 42);
+vDeltaB = makeVDeltaSkeleton('some_other_class');
+vDeltaB.some_other_class = struct('n', 99);
+
+result = did2.convert.v1_to_v2( ...
+    {v1A, vDeltaA, v1B, vDeltaB}, 'Validate', false);
+
+verifyEqual(testCase, result.summary.total, 4);
+verifyEqual(testCase, result.summary.migrated_count, 4);
+verifyEqual(testCase, result.summary.quarantine_count, 0);
+verifyEqual(testCase, result.summary.by_class.unknown_class, 2);
+verifyEqual(testCase, result.summary.by_class.some_other_class, 2);
+% Every migrated doc carries the V_delta schema_version stamp (v1
+% bodies pick it up from universalRenames; V_delta bodies kept their
+% own).
+for k = 1:numel(result.migrated)
+    doc = result.migrated{k};
+    verifyEqual(testCase, doc.get('base.schema_version'), 'V_delta');
+end
+end
+
+function testShortCircuitSkippedWhenSchemaVersionMissing(testCase)
+% A body that lacks base.schema_version takes the full pipeline even
+% when it has no v1-only underscore markers. Guards against the
+% "either condition is enough" reading that would silently skip
+% bulk v1 corpora.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', ...
+    'isoflurane', 'numeric_value', 2.0, 'string_value', '2 percent');
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+% universalRenames ran: schema_version got stamped.
+verifyEqual(testCase, doc.get('base.schema_version'), 'V_delta');
+% treatment migrator ran: ontology_name + name collapsed into
+% treatment_name (ontology_term composite).
+verifyTrue(testCase, isfield(doc.toStruct().treatment, 'treatment_name'));
+end
+
