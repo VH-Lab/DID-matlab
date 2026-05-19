@@ -17,6 +17,13 @@ function result = v1_to_v2(v1Bodies, options)
 %        placeholder blocks for inherited classes. Silent no-op if
 %        the schema cache cannot resolve the chain.
 %
+%   Bodies that are already V_delta-shaped (base.schema_version ==
+%   'V_delta' AND no v1-only underscore-prefixed top-level markers)
+%   short-circuit steps 1-3 and go straight to ensureClassBlocks +
+%   validate. Makes the converter safely re-runnable so a partial
+%   normalisation or migration run can resume after an interruption
+%   without corrupting already-converted docs.
+%
 %   Documents that fail any step land in the quarantine table; nothing
 %   is silently dropped.
 %
@@ -82,11 +89,27 @@ for k = 1:numel(bodies)
     className = '<unknown>';
     try
         preBody = ensureStruct(rawBody);
-        postUniversalBody = did2.convert.universalRenames(preBody);
-        className = char(postUniversalBody.document_class.class_name);
-        v2Body = applySuperclassMigrators(postUniversalBody, className);
-        migratorFcn = lookupMigrator(className);
-        v2Body = migratorFcn(v2Body);
+        if isAlreadyVDelta(preBody)
+            % Idempotency short-circuit: the body is already V_delta,
+            % so skip universalRenames and the per-class migrators.
+            % ensureClassBlocks still runs (it rebuilds the V_delta
+            % superclass chain — required) and validate still runs
+            % (gate against drift). Keeps the database normalisation
+            % and migration commands safely re-runnable after an
+            % interruption.
+            v2Body = preBody;
+            if isfield(v2Body, 'document_class') ...
+                    && isstruct(v2Body.document_class) ...
+                    && isfield(v2Body.document_class, 'class_name')
+                className = char(v2Body.document_class.class_name);
+            end
+        else
+            postUniversalBody = did2.convert.universalRenames(preBody);
+            className = char(postUniversalBody.document_class.class_name);
+            v2Body = applySuperclassMigrators(postUniversalBody, className);
+            migratorFcn = lookupMigrator(className);
+            v2Body = migratorFcn(v2Body);
+        end
         v2Body = ensureClassBlocks(v2Body, options.SchemaCache);
         doc = did2.document(v2Body);
         if options.Validate
@@ -163,6 +186,47 @@ else
     error('did2:convert:badInput', ...
         'v1 body must be a scalar struct or JSON char (got %s).', class(body));
 end
+end
+
+function tf = isAlreadyVDelta(body)
+% Return true when BODY is already a V_delta-shaped document so the
+% per-body migration loop can skip universalRenames and the per-class
+% migrators. Both conditions must hold so the short-circuit only fires
+% when we have high confidence the body is V_delta:
+%   (a) base.schema_version is the literal char 'V_delta' (set by the
+%       last run of universalRenames, or by the writer), AND
+%   (b) the body carries no v1-only structural markers — underscore-
+%       prefixed top-level keys (e.g., legacy _classname,
+%       _class_version) that predate the document_class header and
+%       could not survive a real V_delta build.
+%
+% (a) alone would misclassify a body that was tagged V_delta out-of-
+% band but still carries legacy field shapes; (b) alone would skip
+% the bulk of v1 corpora, which do not happen to use the underscore
+% markers but still need every other v1->V_delta rewrite.
+tf = false;
+if ~isstruct(body) || ~isscalar(body)
+    return;
+end
+if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base) ...
+        || ~isfield(body.base, 'schema_version')
+    return;
+end
+sv = body.base.schema_version;
+if isstring(sv) && isscalar(sv)
+    sv = char(sv);
+end
+if ~ischar(sv) || ~strcmp(sv, 'V_delta')
+    return;
+end
+topKeys = fieldnames(body);
+for k = 1:numel(topKeys)
+    name = topKeys{k};
+    if ~isempty(name) && name(1) == '_'
+        return;
+    end
+end
+tf = true;
 end
 
 function fcn = lookupMigrator(className)
