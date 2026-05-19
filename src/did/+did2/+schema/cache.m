@@ -389,6 +389,34 @@ classdef cache < handle
                     ['Class "%s" is declared abstract; documents must ' ...
                      'instantiate a concrete subclass.'], className);
             end
+            % V_gamma_SPEC §"Validation checklist": the
+            % document_class.superclasses snapshot must equal the chain
+            % derived from the schema files (same set, same order,
+            % class-name-by-class-name). buildBlankDocument and the
+            % v1->v2 migrator both honour this by construction; this
+            % check catches hand-built docs and serialisers that emit
+            % only the immediate parent — a truncated chain breaks
+            % isa-style queries downstream (e.g., classLineage on the
+            % cloud), so flag it at the boundary.
+            if ~isfield(dc, 'superclasses')
+                error('did2:validation:missingSuperclasses', ...
+                    ['document_class.superclasses is required (empty ' ...
+                     '[] for base). Class "%s" expects %d entries.'], ...
+                    className, numel(obj.superclasses(className)));
+            end
+            expectedAncestors = obj.superclasses(className);
+            declaredAncestors = obj.superclassClassNames(dc.superclasses);
+            if numel(declaredAncestors) ~= numel(expectedAncestors) ...
+                    || ~all(cellfun(@strcmp, declaredAncestors, expectedAncestors))
+                error('did2:validation:superclassesChainMismatch', ...
+                    ['document_class.superclasses for "%s" is {%s} but ' ...
+                     'the schema chain is {%s}. V_delta requires the ' ...
+                     'snapshot to match the schema-derived chain ' ...
+                     'class-name-by-class-name.'], ...
+                    className, ...
+                    strjoin(declaredAncestors, ', '), ...
+                    strjoin(expectedAncestors, ', '));
+            end
             chain = obj.classChain(className);
             for k = 1:numel(chain)
                 blockClass = chain{k};
@@ -581,6 +609,31 @@ classdef cache < handle
         function elem = elementAt(obj, raw, idx)
             cells = obj.toCellArray(raw);
             elem = cells{idx};
+        end
+
+        function names = superclassClassNames(obj, raw)
+            % Extract the class_name from each entry of a
+            % document_class.superclasses array. Accepts the empty
+            % array `[]` (jsondecode of `[]`), an empty struct array,
+            % a single struct, or an N-element struct array. Raises
+            % did2:validation:badSuperclassEntry on malformed entries.
+            if isempty(raw)
+                names = {};
+                return;
+            end
+            cells = obj.toCellArray(raw);
+            names = cell(1, numel(cells));
+            for k = 1:numel(cells)
+                entry = cells{k};
+                if ~isstruct(entry) || ~isfield(entry, 'class_name') ...
+                        || isempty(entry.class_name)
+                    error('did2:validation:badSuperclassEntry', ...
+                        ['document_class.superclasses(%d) is missing ' ...
+                         'class_name; every snapshot entry must carry ' ...
+                         'at least class_name.'], k);
+                end
+                names{k} = char(entry.class_name);
+            end
         end
 
         function block = buildBlockForClass(obj, className)

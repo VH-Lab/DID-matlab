@@ -211,6 +211,82 @@ verifyError(testCase, ...
     'did2:validation:missingClassBlock');
 end
 
+function testValidateTruncatedSuperclassesChainThrows(testCase)
+% V_gamma_SPEC "Validation checklist": the document_class.superclasses
+% snapshot must match the schema-derived chain. demoB's chain is
+% {demoA, base}; truncating to {demoA} must fail loudly so consumers
+% (e.g., cloud classLineage) get a complete is-a transitive closure.
+cache = testCase.TestData.cache;
+doc = cache.buildBlankDocument('demoB');
+doc.base.session_id = did.ido.unique_id();
+doc.demoA.value = 'x';
+doc.demoB.value_b = 'y';
+% Sanity: blank doc validates first.
+cache.validateDocument(doc);
+truncated = doc;
+truncated.document_class.superclasses = ...
+    doc.document_class.superclasses(1);
+verifyError(testCase, ...
+    @() cache.validateDocument(truncated), ...
+    'did2:validation:superclassesChainMismatch');
+end
+
+function testValidateReorderedSuperclassesChainThrows(testCase)
+% Spec requires same order, not just same set.
+cache = testCase.TestData.cache;
+doc = cache.buildBlankDocument('demoB');
+doc.base.session_id = did.ido.unique_id();
+doc.demoA.value = 'x';
+doc.demoB.value_b = 'y';
+reordered = doc;
+reordered.document_class.superclasses = ...
+    doc.document_class.superclasses([2 1]);
+verifyError(testCase, ...
+    @() cache.validateDocument(reordered), ...
+    'did2:validation:superclassesChainMismatch');
+end
+
+function testValidateMissingSuperclassesFieldThrows(testCase)
+cache = testCase.TestData.cache;
+doc = cache.buildBlankDocument('demoA');
+doc.base.session_id = did.ido.unique_id();
+doc.demoA.value = 'x';
+doc.document_class = rmfield(doc.document_class, 'superclasses');
+verifyError(testCase, ...
+    @() cache.validateDocument(doc), ...
+    'did2:validation:missingSuperclasses');
+end
+
+function testValidateBadSuperclassEntryThrows(testCase)
+cache = testCase.TestData.cache;
+doc = cache.buildBlankDocument('demoA');
+doc.base.session_id = did.ido.unique_id();
+doc.demoA.value = 'x';
+doc.document_class.superclasses(1).class_name = '';
+verifyError(testCase, ...
+    @() cache.validateDocument(doc), ...
+    'did2:validation:badSuperclassEntry');
+end
+
+function testValidateBaseAcceptsEmptySuperclasses(testCase)
+% Spec: superclasses must be `[]` for base. buildBlankDocument cannot
+% mint a `base` doc (`base` lacks the concrete declarations it needs),
+% so build the smallest valid base doc by hand and confirm it passes.
+cache = testCase.TestData.cache;
+doc = struct();
+doc.document_class = struct( ...
+    'class_name',    'base', ...
+    'class_version', '1.0.0', ...
+    'superclasses',  []);
+doc.depends_on = struct('name', {}, 'value', {});
+doc.base = struct( ...
+    'id',         did.ido.unique_id(), ...
+    'session_id', did.ido.unique_id(), ...
+    'name',       'rig_1', ...
+    'datestamp',  '2026-01-01T00:00:00.000Z');
+cache.validateDocument(doc);
+end
+
 % ---- end-to-end through did2.document ----
 
 function testDocumentBlankConvenience(testCase)
