@@ -347,16 +347,25 @@ function testShortCircuitSkippedWhenSchemaVersionMissing(testCase)
 % when it has no v1-only underscore markers. Guards against the
 % "either condition is enough" reading that would silently skip
 % bulk v1 corpora.
-v1 = makeV1Skeleton('treatment');
-v1.treatment = struct('ontology_name', 'chebi:6015', 'name', ...
-    'isoflurane', 'numeric_value', 2.0, 'string_value', '2 percent');
+v1 = makeV1Skeleton('unknown_class');
+v1.unknown_class = struct('foo', 'bar');
+% v1-shaped depends_on: carries `id`, no `value` — universalRenames
+% promotes id->value, drops the legacy keys.
+v1.depends_on = struct( ...
+    'name', {'subject_id'}, ...
+    'id',   {'aabb1122ccdd3344_aaaa1111bbbb2222'}, ...
+    'version', {'1'});
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
 % universalRenames ran: schema_version got stamped.
 verifyEqual(testCase, doc.get('base.schema_version'), 'V_delta');
-% treatment migrator ran: ontology_name + name collapsed into
-% treatment_name (ontology_term composite).
-verifyTrue(testCase, isfield(doc.toStruct().treatment, 'treatment_name'));
+% universalRenames ran: depends_on(1).id was promoted to .value, and
+% the legacy id/version keys were dropped.
+dependsOn = doc.toStruct().depends_on;
+verifyEqual(testCase, dependsOn(1).value, ...
+    'aabb1122ccdd3344_aaaa1111bbbb2222');
+verifyFalse(testCase, isfield(dependsOn, 'id'));
+verifyFalse(testCase, isfield(dependsOn, 'version'));
 end
 
