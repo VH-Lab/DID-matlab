@@ -40,5 +40,27 @@ classdef test_query < matlab.unittest.TestCase
             testCase.verifyEqual(q_or.searchstructure.param2(1).operation, 'greaterthan');
             testCase.verifyEqual(q_or.searchstructure.param2(1).param1, 30);
         end
+
+        function test_struct_input_accepted(testCase)
+            % did.query accepts a pre-built searchstructure as a
+            % one-arg input. Regression test for the shape-strict
+            % eqlen check that previously rejected every struct
+            % input because sort(fieldnames(...)) returns a 4x1
+            % cell and the validator compared it against a 1x4
+            % cell literal.
+            ss = struct('field', 'base.name', 'operation', 'exact_string', ...
+                'param1', 'myname', 'param2', '');
+            q = did.query(ss);
+            testCase.verifyEqual(q.searchstructure.field, 'base.name');
+            testCase.verifyEqual(q.searchstructure.operation, 'exact_string');
+            testCase.verifyEqual(q.searchstructure.param1, 'myname');
+        end
+
+        function test_struct_input_rejects_unknown_fields(testCase)
+            % The shape fix must NOT loosen the field-set check.
+            ss = struct('field', 'base.name', 'operation', 'exact_string', ...
+                'param1', 'myname', 'extra', 'X');
+            testCase.verifyError(@() did.query(ss), '');
+        end
     end
 end
