@@ -26,7 +26,8 @@ function [G,nodes,mdigraph] = docs2graph(document_obj)
         here = i;
         if isfield(document_obj{i}.document_properties,'depends_on')
             for j=1:numel(document_obj{i}.document_properties.depends_on)
-                there = find(strcmp(document_obj{i}.document_properties.depends_on(j).value, nodes));
+                depTarget = did.document.i_readDependencyTarget(document_obj{i}.document_properties.depends_on(j));
+                there = find(strcmp(depTarget, nodes));
                 G(here,there) = 1;
             end
         end
