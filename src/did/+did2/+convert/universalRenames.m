@@ -22,10 +22,13 @@ function postBody = universalRenames(preBody)
 %       field names of each block are renamed; nested struct values
 %       (e.g., filter.parameters.sampleFrequency) are left alone for
 %       per-class migrators to handle if needed.
-%     - rewrite depends_on entries from the V_alpha (name, id [,
-%       version]) shape to the V_delta (name, value) shape. An
-%       existing non-empty `value` is preserved; the `id` and
-%       `version` keys are removed.
+%     - rewrite depends_on entries to the V_delta (name,
+%       document_id) shape. Accepts v1 (name, id [, version]) and
+%       the earlier V_delta draft (name, value); precedence is
+%       document_id > value > id when more than one is populated.
+%       `version` is always dropped (V_delta does not support
+%       per-document version branches). See did-schema#52 for the
+%       V_delta-side rename rationale.
 %     - rename `app.name` -> `app.app_name` and `app.version` ->
 %       `app.app_version` on any document carrying a top-level `app`
 %       block. V_delta's `app` schema names these fields with the
@@ -284,26 +287,56 @@ end
 end
 
 function out = renameDependsOnEntries(entries)
+%RENAMEDEPENDSONENTRIES Migrate depends_on entries to the V_delta shape.
+%
+%   V_delta entries carry `name` and `document_id`. Accepts three
+%   input shapes and normalises to V_delta:
+%     - v1 (V_alpha): {name, id [, version]}        - id -> document_id
+%     - old V_delta draft: {name, value}             - value -> document_id
+%     - current V_delta: {name, document_id}         - identity
+%
+%   When multiple legacy keys are present (an in-flight migration
+%   that already wrote a value but left the v1 id behind), the
+%   precedence is: document_id wins if non-empty, else value,
+%   else id. `version` is always dropped (V_delta does not
+%   support per-document version branches).
 out = entries;
-if ~isfield(out, 'id')
+
+hasId        = isfield(out, 'id');
+hasValue     = isfield(out, 'value');
+hasDocId     = isfield(out, 'document_id');
+
+if ~hasId && ~hasValue && ~hasDocId
     return;
 end
-ids = {out.id};
-if isfield(out, 'value')
-    values = {out.value};
-else
-    values = repmat({''}, 1, numel(out));
-end
-for k = 1:numel(out)
-    if isempty(values{k})
-        values{k} = ids{k};
+
+n = numel(out);
+docIds = cell(1, n);
+for k = 1:n
+    if hasDocId && ~isempty(out(k).document_id)
+        docIds{k} = out(k).document_id;
+    elseif hasValue && ~isempty(out(k).value)
+        docIds{k} = out(k).value;
+    elseif hasId
+        docIds{k} = out(k).id;
+    else
+        docIds{k} = '';
     end
 end
-out = rmfield(out, 'id');
+
+% Drop the legacy keys so the struct array's field schema is
+% exactly {name, document_id} after the migration.
+if hasId
+    out = rmfield(out, 'id');
+end
+if hasValue
+    out = rmfield(out, 'value');
+end
 if isfield(out, 'version')
     out = rmfield(out, 'version');
 end
-for k = 1:numel(out)
-    out(k).value = values{k};
+
+for k = 1:n
+    out(k).document_id = docIds{k};
 end
 end

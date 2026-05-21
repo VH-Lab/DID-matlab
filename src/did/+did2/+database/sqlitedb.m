@@ -284,10 +284,10 @@ classdef sqlitedb < handle
                     'CREATE TABLE depends_on (' ...
                     'doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,' ...
                     'name TEXT NOT NULL,' ...
-                    'value TEXT NOT NULL,' ...
+                    'document_id TEXT NOT NULL,' ...
                     'PRIMARY KEY (doc_id, name))']);
                 mksqlite(obj.dbid, ...
-                    'CREATE INDEX depends_on_name_value ON depends_on(name, value)');
+                    'CREATE INDEX depends_on_name_document_id ON depends_on(name, document_id)');
 
                 mksqlite(obj.dbid, [ ...
                     'CREATE TABLE queryable_array_elem (' ...
@@ -675,6 +675,43 @@ classdef sqlitedb < handle
                 error('did2:database:notV2Database', ...
                     '%s is not a V_delta database.', obj.filename);
             end
+            obj.migrateDependsOnValueToDocumentId();
+        end
+
+        function migrateDependsOnValueToDocumentId(obj)
+            % migrateDependsOnValueToDocumentId - rename the legacy
+            % `value` column on the `depends_on` sidecar to
+            % `document_id` (see did-schema#52). One-shot migration:
+            % introspect the table, and if the old column name is
+            % still present, ALTER TABLE RENAME COLUMN + rebuild the
+            % index. Idempotent on already-migrated databases.
+            cols = mksqlite(obj.dbid, 'pragma_table_info(''depends_on'')');
+            if isempty(cols)
+                return;
+            end
+            names = {cols.name};
+            hasValue  = any(strcmp(names, 'value'));
+            hasDocId  = any(strcmp(names, 'document_id'));
+            if hasDocId
+                return;
+            end
+            if ~hasValue
+                return;
+            end
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                mksqlite(obj.dbid, ...
+                    'DROP INDEX IF EXISTS depends_on_name_value');
+                mksqlite(obj.dbid, ...
+                    'ALTER TABLE depends_on RENAME COLUMN value TO document_id');
+                mksqlite(obj.dbid, ...
+                    ['CREATE INDEX IF NOT EXISTS depends_on_name_document_id ' ...
+                     'ON depends_on(name, document_id)']);
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                mksqlite(obj.dbid, 'ROLLBACK');
+                rethrow(err);
+            end
         end
 
         function addOne(obj, doc, doValidate)
@@ -709,8 +746,8 @@ classdef sqlitedb < handle
                 deps = obj.dependsOnEntries(s);
                 for k = 1:numel(deps)
                     mksqlite(obj.dbid, ...
-                        'INSERT INTO depends_on(doc_id, name, value) VALUES(?, ?, ?)', ...
-                        id, deps{k}.name, deps{k}.value);
+                        'INSERT INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
+                        id, deps{k}.name, deps{k}.document_id);
                 end
 
                 obj.insertSidecarRowsFromStruct(id, s);
@@ -851,14 +888,26 @@ classdef sqlitedb < handle
                 else
                     continue;
                 end
-                if ~isstruct(e) || ~isfield(e, 'name') || ~isfield(e, 'value')
+                if ~isstruct(e) || ~isfield(e, 'name')
                     continue;
                 end
-                if isempty(e.name) || isempty(e.value)
+                % V_delta uses `document_id`; tolerate the earlier
+                % `value` draft and the raw v1 `id` so mid-migration
+                % bodies still write their sidecar rows.
+                if isfield(e, 'document_id')
+                    documentId = char(e.document_id);
+                elseif isfield(e, 'value')
+                    documentId = char(e.value);
+                elseif isfield(e, 'id')
+                    documentId = char(e.id);
+                else
+                    continue;
+                end
+                if isempty(e.name) || isempty(documentId)
                     continue;
                 end
                 entries{end+1} = struct('name', char(e.name), ...
-                    'value', char(e.value)); %#ok<AGROW>
+                    'document_id', documentId); %#ok<AGROW>
             end
         end
     end

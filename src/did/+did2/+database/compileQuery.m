@@ -6,7 +6,7 @@ function [whereSQL, params] = compileQuery(q, opts)
 %   the `documents` table laid out in docs/v2/PLAN.md §3 (columns: id,
 %   classname, class_version, session_id, datestamp, body, body_hash,
 %   plus the `superclasses(doc_id, classname)` and
-%   `depends_on(doc_id, name, value)` sidecar tables).
+%   `depends_on(doc_id, name, document_id)` sidecar tables).
 %
 %   [WHERESQL, PARAMS] = did2.database.compileQuery(Q, 'QueryablePaths',
 %   PATHS) tells the compiler that the dot-paths listed in the cellstr
@@ -184,11 +184,11 @@ name  = char(name);
 value = char(value);
 if strcmp(name, '*')
     existsSQL = ['EXISTS (SELECT 1 FROM depends_on d ' ...
-        'WHERE d.doc_id = documents.id AND d.value = ?)'];
+        'WHERE d.doc_id = documents.id AND d.document_id = ?)'];
     params = {value};
 else
     existsSQL = ['EXISTS (SELECT 1 FROM depends_on d ' ...
-        'WHERE d.doc_id = documents.id AND d.name = ? AND d.value = ?)'];
+        'WHERE d.doc_id = documents.id AND d.name = ? AND d.document_id = ?)'];
     params = {name, value};
 end
 if isNeg

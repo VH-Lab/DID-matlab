@@ -344,7 +344,7 @@ classdef cache < handle
                 'class_version', char(schemaDC.class_version), ...
                 'superclasses', sc);
 
-            doc.depends_on = struct('name', {}, 'value', {});
+            doc.depends_on = struct('name', {}, 'document_id', {});
 
             chain = obj.classChain(className);
             for k = 1:numel(chain)

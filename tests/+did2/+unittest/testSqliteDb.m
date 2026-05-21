@@ -237,7 +237,7 @@ function testSearchDependsOn(testCase)
 db = testCase.TestData.db;
 d1 = makeDemoA('a', 'x');
 d1 = d1.set('depends_on', struct('name', {'parent','sibling'}, ...
-    'value', {'id-1','id-2'}));
+    'document_id', {'id-1','id-2'}));
 db.add(d1, 'Validate', false);
 d2 = makeDemoA('b', 'y'); db.add(d2);
 hits = db.search(did2.query('', 'depends_on', 'parent', 'id-1'));

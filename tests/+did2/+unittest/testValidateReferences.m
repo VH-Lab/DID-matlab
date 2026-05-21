@@ -49,7 +49,7 @@ child = setDependsOn(child, 'parent_id', ...
 report = did2.validate.references({child});
 verifyEqual(testCase, report.orphan_count, 1);
 verifyEqual(testCase, report.orphans(1).edge_name, 'parent_id');
-verifyEqual(testCase, report.orphans(1).edge_value, ...
+verifyEqual(testCase, report.orphans(1).edge_document_id, ...
     'deadbeefdeadbeef_0000111122223333');
 verifyEqual(testCase, report.orphans(1).doc_id, child.get('base.id'));
 verifyEqual(testCase, report.orphans(1).doc_class, 'demoA');
@@ -152,11 +152,11 @@ end
 if ischar(values)
     values = {values};
 end
-deps = struct('name', {}, 'value', {});
+deps = struct('name', {}, 'document_id', {});
 for k = 1:numel(names)
     deps(end+1) = struct( ...
-        'name',  names{k}, ...
-        'value', values{k}); %#ok<AGROW>
+        'name',        names{k}, ...
+        'document_id', values{k}); %#ok<AGROW>
 end
 s = doc.toStruct();
 s.depends_on = deps;

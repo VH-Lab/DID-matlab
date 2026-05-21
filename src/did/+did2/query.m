@@ -330,7 +330,19 @@ classdef query
                 if strcmp(name, '*')
                     gotName = true;
                 end
-                gotValue = isfield(e, 'value') && did2.query.charEq(e.value, value);
+                % Accept document_id (V_delta canonical), value
+                % (earlier draft), and id (raw v1) so this in-memory
+                % evaluator works on bodies at any stage of the
+                % migration pipeline.
+                if isfield(e, 'document_id')
+                    gotValue = did2.query.charEq(e.document_id, value);
+                elseif isfield(e, 'value')
+                    gotValue = did2.query.charEq(e.value, value);
+                elseif isfield(e, 'id')
+                    gotValue = did2.query.charEq(e.id, value);
+                else
+                    gotValue = false;
+                end
                 if gotName && gotValue
                     tf = true;
                     return;
