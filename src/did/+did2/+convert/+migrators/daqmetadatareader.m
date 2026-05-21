@@ -3,10 +3,14 @@ function v2Body = daqmetadatareader(preBody)
 %
 %   Renames the v1 `ndi_daqmetadatareader_class` field on the
 %   daqmetadatareader property block to the V_delta-required
-%   `reader_class` field. The v1 `tab_separated_file_parameter` field
-%   has no V_delta counterpart and is dropped (per
-%   docs/v2/RFC-step6d-ci-pipeline.md decision-default Q1: drop v1
-%   fields that V_delta does not declare).
+%   `reader_class` field. Preserves the optional v1
+%   `tab_separated_file_parameter` field as a V_delta pass-through:
+%   it is the "lazy hook" for TSV-per-epoch metadata sources and
+%   real v1 corpora populate it. See
+%   `did-schema/schemas/V_delta/conversions/from_did_v1/daqmetadatareader.md`
+%   and `did-schema#50` for the V_delta-side decision to keep the
+%   field rather than force per-doc synthesis of a
+%   `daqmetadatareader_tsv` subclass.
 
 arguments
     preBody (1,1) struct
@@ -30,6 +34,10 @@ else
 end
 if isfield(block, 'metadata_names')
     newBlock.metadata_names = char(block.metadata_names);
+end
+if isfield(block, 'tab_separated_file_parameter')
+    newBlock.tab_separated_file_parameter = ...
+        char(block.tab_separated_file_parameter);
 end
 v2Body.daqmetadatareader = newBlock;
 end
