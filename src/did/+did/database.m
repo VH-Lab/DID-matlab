@@ -1289,7 +1289,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             if isempty(idx2)
                                 value = [];
                             else
-                                value = depends(idx2).value;
+                                value = did.document.i_readDependencyTarget(depends(idx2));
                             end
                             % If dependency is marked as MustBeNotEmpty, ensure it's not empty
                             expectedValue = mustHaveValue{idx};

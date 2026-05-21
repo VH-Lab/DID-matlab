@@ -53,6 +53,14 @@ classdef document
                 end
             end
 
+            % Canonicalize depends_on entry keys to `document_id`
+            % (V_delta). Accepts v1 `id` and the earlier draft
+            % `value` as synonyms. Establishes the invariant that
+            % every dependency accessor on this class can rely on:
+            % after construction, depends_on entries use
+            % document_id. See did-schema#52 and ndi-matlab#801.
+            document_properties = did.document.i_normalizeDependsOn(document_properties);
+
             did_document_obj.document_properties = document_properties;
 
             if ~made_from_struct
@@ -205,7 +213,8 @@ classdef document
                 matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
                 if numel(matches)>0
                     notfound = 0;
-                    d = getfield(did_document_obj.document_properties.depends_on(matches(1)),'value');
+                    d = did.document.i_readDependencyTarget( ...
+                        did_document_obj.document_properties.depends_on(matches(1)));
                 end
             end
 
@@ -239,13 +248,17 @@ classdef document
             notfound = 1;
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
-            d_struct = struct('name',dependency_name,'value',value);
+            % The constructor's i_normalizeDependsOn pass guarantees
+            % depends_on entries use the V_delta canonical key
+            % `document_id`. Build d_struct with the same key so
+            % struct-array assignment / append stays consistent.
+            d_struct = struct('name', dependency_name, 'document_id', value);
 
             if hasdependencies
                 matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
                 if numel(matches)>0
                     notfound = 0;
-                    did_document_obj.document_properties.depends_on(matches(1)).value = value;
+                    did_document_obj.document_properties.depends_on(matches(1)).document_id = value;
                 elseif ~options.ErrorIfNotFound % add it
                     did_document_obj.document_properties.depends_on(end+1) = d_struct;
                 end
@@ -292,7 +305,8 @@ classdef document
                     matches = find(strcmpi([dependency_name '_' int2str(i)],{did_document_obj.document_properties.depends_on.name}));
                     if numel(matches)>0
                         notfound = 0;
-                        d{i} = getfield(did_document_obj.document_properties.depends_on(matches(1)),'value');
+                        d{i} = did.document.i_readDependencyTarget( ...
+                            did_document_obj.document_properties.depends_on(matches(1)));
                     end
                     finished = numel(matches)==0;
                     i = i + 1;
@@ -332,8 +346,8 @@ classdef document
             if ~hasdependencies && options.ErrorIfNotFound
                 error('This document does not have any dependencies.');
             else
-                d_struct = struct('name',[dependency_name '_' int2str(numel(d)+1)],'value',value);
-                did_document_obj = set_dependency_value(did_document_obj, d_struct.name, d_struct.value, 'ErrorIfNotFound', 0);
+                newName = [dependency_name '_' int2str(numel(d)+1)];
+                did_document_obj = set_dependency_value(did_document_obj, newName, value, 'ErrorIfNotFound', 0);
             end
         end %
 
@@ -643,6 +657,92 @@ classdef document
         end % eq()
 
     end % methods
+
+    methods (Static, Hidden)
+
+        function targetId = i_readDependencyTarget(entry)
+            % i_readDependencyTarget - read the cross-document target
+            % id from a single depends_on struct entry.
+            %
+            % The constructor's i_normalizeDependsOn pass guarantees
+            % entries carry `document_id` (V_delta canonical), but
+            % callers occasionally hand us hand-built structs that
+            % skip the constructor and still use `value` (earlier
+            % V_delta draft) or `id` (V_alpha legacy). This helper
+            % accepts all three with precedence
+            % document_id > value > id.
+            if ~isstruct(entry) || ~isscalar(entry)
+                targetId = '';
+                return;
+            end
+            if isfield(entry, 'document_id') && ~isempty(entry.document_id)
+                targetId = entry.document_id;
+            elseif isfield(entry, 'value') && ~isempty(entry.value)
+                targetId = entry.value;
+            elseif isfield(entry, 'id')
+                targetId = entry.id;
+            else
+                targetId = '';
+            end
+        end % i_readDependencyTarget
+
+        function body = i_normalizeDependsOn(body)
+            % i_normalizeDependsOn - canonicalise depends_on entry
+            % keys to V_delta `document_id`. Accepts `id` (V_alpha)
+            % and `value` (earlier V_delta draft) as synonyms with
+            % precedence document_id > value > id. The resulting
+            % depends_on struct schema is exactly {name, document_id}.
+            %
+            % Called from the constructor so every dependency
+            % accessor on this class can rely on the invariant
+            % "after construction, depends_on uses document_id".
+            if ~isstruct(body) || ~isfield(body, 'depends_on') ...
+                    || isempty(body.depends_on)
+                return;
+            end
+            deps = body.depends_on;
+            if ~isstruct(deps)
+                return;
+            end
+            hasId    = isfield(deps, 'id');
+            hasValue = isfield(deps, 'value');
+            hasDocId = isfield(deps, 'document_id');
+            if ~hasId && ~hasValue
+                if hasDocId
+                    return;
+                end
+                for k = 1:numel(deps)
+                    deps(k).document_id = '';
+                end
+                body.depends_on = deps;
+                return;
+            end
+            n = numel(deps);
+            docIds = cell(1, n);
+            for k = 1:n
+                if hasDocId && ~isempty(deps(k).document_id)
+                    docIds{k} = deps(k).document_id;
+                elseif hasValue && ~isempty(deps(k).value)
+                    docIds{k} = deps(k).value;
+                elseif hasId
+                    docIds{k} = deps(k).id;
+                else
+                    docIds{k} = '';
+                end
+            end
+            if hasId
+                deps = rmfield(deps, 'id');
+            end
+            if hasValue
+                deps = rmfield(deps, 'value');
+            end
+            for k = 1:n
+                deps(k).document_id = docIds{k};
+            end
+            body.depends_on = deps;
+        end % i_normalizeDependsOn
+
+    end % methods (Static, Hidden)
 
     methods (Static)
         function s = readblankdefinition(jsonfilelocationstring, s)

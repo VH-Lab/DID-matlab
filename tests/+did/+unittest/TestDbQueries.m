@@ -229,7 +229,7 @@ classdef TestDbQueries < matlab.unittest.TestCase
             if numel(testCase.docs{doc_ind}.document_properties.depends_on)>0 %so we don't try to access indices of an array that don't exist
                 %dependency_name = docs{doc_ind}.document_properties.depends_on(1).name;
                 dependency_name = param1_depends_on;
-                dependency_value = testCase.docs{doc_ind}.document_properties.depends_on(2).value;
+                dependency_value = did.document.i_readDependencyTarget(testCase.docs{doc_ind}.document_properties.depends_on(2));
             else %maybe do a try catch to check if you get an expected error
                 dependency_name = '';
                 dependency_value = '';
