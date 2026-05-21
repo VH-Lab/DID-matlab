@@ -699,19 +699,18 @@ classdef document
             %
             % Currently covers only `daqmetadatareader.reader_class`
             % (V_delta) -> `ndi_daqmetadatareader_class` (V_alpha).
-            % Extend the rename map below as additional block-level
-            % renames surface. The probe_location / treatment /
-            % ontology_image / ontology_label rows are
-            % subfield-level (location.node, treatment_name.node, ...)
-            % and do not appear as direct property-block fields, so
-            % they're not in this table.
+            % Extend the rename map (i_propertyBlockRenameMap) as
+            % additional block-level renames surface. The
+            % probe_location / treatment / ontology_image /
+            % ontology_label rows are subfield-level
+            % (location.node, treatment_name.node, ...) and do not
+            % appear as direct property-block fields, so they're
+            % not in this table.
             arguments
                 blockName (1,:) char
                 names cell
             end
-            renames = containers.Map( ...
-                {'daqmetadatareader.reader_class'}, ...
-                {'ndi_daqmetadatareader_class'});
+            renames = did.document.i_propertyBlockRenameMap();
             for k = 1:numel(names)
                 key = [blockName '.' names{k}];
                 if isKey(renames, key)
@@ -719,6 +718,50 @@ classdef document
                 end
             end
         end % i_normalizePropertyBlockFields
+
+        function aliased = i_aliasV_alphaToV_delta(blockName, vAlphaName)
+            % i_aliasV_alphaToV_delta - inverse of the rename map
+            % above: given a V_alpha legacy field name (e.g.,
+            % `ndi_daqmetadatareader_class`), return the V_delta
+            % canonical name (e.g., `reader_class`). Returns '' if
+            % the name is not aliased.
+            %
+            % Used by did.database/validate_doc_vs_schema when the
+            % schema-declared subfield isn't on the V_delta body and
+            % we need to look up the body via the V_delta-renamed
+            % key.
+            arguments
+                blockName (1,:) char
+                vAlphaName (1,:) char
+            end
+            renames = did.document.i_propertyBlockRenameMap();
+            % Map values back to keys: O(N) iteration is fine for
+            % the tiny rename table.
+            allKeys = renames.keys();
+            for k = 1:numel(allKeys)
+                key = allKeys{k};
+                if strcmp(renames(key), vAlphaName)
+                    % key has the form "<block>.<vDeltaName>".
+                    dotIdx = find(key == '.', 1, 'first');
+                    if isempty(dotIdx), continue; end
+                    keyBlock = key(1:dotIdx-1);
+                    if strcmp(keyBlock, blockName)
+                        aliased = key(dotIdx+1:end);
+                        return;
+                    end
+                end
+            end
+            aliased = '';
+        end % i_aliasV_alphaToV_delta
+
+        function map = i_propertyBlockRenameMap()
+            % i_propertyBlockRenameMap - source-of-truth rename map
+            % for V_alpha <-> V_delta property-block field renames.
+            % Keys: "<block>.<v_delta_name>". Values: V_alpha name.
+            map = containers.Map( ...
+                {'daqmetadatareader.reader_class'}, ...
+                {'ndi_daqmetadatareader_class'});
+        end % i_propertyBlockRenameMap
 
         function body = i_normalizeDependsOn(body)
             % i_normalizeDependsOn - canonicalise depends_on entry

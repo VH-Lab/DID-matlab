@@ -1367,7 +1367,21 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             definition = expected(idx);
                             subfield = definition.name;
                             field_name = [field '.' subfield];
-                            docSubValue = docValue.(subfield);
+                            % Tolerate V_alpha->V_delta property-block
+                            % renames the schema does not know about:
+                            % if the schema's declared subfield isn't on
+                            % the body, look for the V_delta canonical
+                            % via the rename map. See #801.
+                            if isfield(docValue, subfield)
+                                docSubValue = docValue.(subfield);
+                            else
+                                aliased = did.document.i_aliasV_alphaToV_delta(field, subfield);
+                                if ~isempty(aliased) && isfield(docValue, aliased)
+                                    docSubValue = docValue.(aliased);
+                                else
+                                    docSubValue = docValue.(subfield); % fire the original error
+                                end
+                            end
                             database_obj.validate_field_type_and_value(doc_name, field_name, docSubValue, definition)
                         end
                 end
