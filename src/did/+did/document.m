@@ -686,6 +686,40 @@ classdef document
             end
         end % i_readDependencyTarget
 
+        function names = i_normalizePropertyBlockFields(blockName, names)
+            % i_normalizePropertyBlockFields - normalise a list of
+            % field names inside a class property block so V_delta
+            % renames compare equal to their V_alpha originals.
+            %
+            % Used by did.database/validate_doc_vs_schema when the
+            % schema (V_alpha-shaped) declares field names that
+            % V_delta migrators have since renamed. Rather than
+            % maintain two copies of every schema, normalise both
+            % sides via this map and compare.
+            %
+            % Currently covers only `daqmetadatareader.reader_class`
+            % (V_delta) -> `ndi_daqmetadatareader_class` (V_alpha).
+            % Extend the rename map below as additional block-level
+            % renames surface. The probe_location / treatment /
+            % ontology_image / ontology_label rows are
+            % subfield-level (location.node, treatment_name.node, ...)
+            % and do not appear as direct property-block fields, so
+            % they're not in this table.
+            arguments
+                blockName (1,:) char
+                names cell
+            end
+            renames = containers.Map( ...
+                {'daqmetadatareader.reader_class'}, ...
+                {'ndi_daqmetadatareader_class'});
+            for k = 1:numel(names)
+                key = [blockName '.' names{k}];
+                if isKey(renames, key)
+                    names{k} = renames(key);
+                end
+            end
+        end % i_normalizePropertyBlockFields
+
         function body = i_normalizeDependsOn(body)
             % i_normalizeDependsOn - canonicalise depends_on entry
             % keys to V_delta `document_id`. Accepts `id` (V_alpha)
@@ -696,8 +730,7 @@ classdef document
             % Called from the constructor so every dependency
             % accessor on this class can rely on the invariant
             % "after construction, depends_on uses document_id".
-            if ~isstruct(body) || ~isfield(body, 'depends_on') ...
-                    || isempty(body.depends_on)
+            if ~isstruct(body) || ~isfield(body, 'depends_on')
                 return;
             end
             deps = body.depends_on;
@@ -707,6 +740,13 @@ classdef document
             hasId    = isfield(deps, 'id');
             hasValue = isfield(deps, 'value');
             hasDocId = isfield(deps, 'document_id');
+            if numel(deps) == 0
+                % Empty struct array: rebuild with canonical
+                % {name, document_id} schema so subsequent
+                % set_dependency_value appends are uniform.
+                body.depends_on = struct('name', {}, 'document_id', {});
+                return;
+            end
             if ~hasId && ~hasValue
                 if hasDocId
                     return;

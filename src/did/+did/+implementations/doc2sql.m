@@ -49,7 +49,9 @@ function sqlMetaData = doc2sql(doc)
 
     dependsOn = getField(doc_props, 'depends_on');
     if isstruct(dependsOn)
-        allData = [{dependsOn.name}; {dependsOn.value}];
+        targets = arrayfun(@(e) did.document.i_readDependencyTarget(e), ...
+            dependsOn, 'UniformOutput', false);
+        allData = [{dependsOn.name}; targets];
         dependsOn = sprintf('%s,%s;',allData{:});
     end
     sqlMetaData.columns(end+1) = newColumn('depends_on', dependsOn);
