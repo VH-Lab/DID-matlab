@@ -682,19 +682,20 @@ classdef sqlitedb < handle
             % migrateDependsOnValueToDocumentId - rename the legacy
             % `value` column on the `depends_on` sidecar to
             % `document_id` (see did-schema#52). One-shot migration:
-            % introspect the table, and if the old column name is
-            % still present, ALTER TABLE RENAME COLUMN + rebuild the
-            % index. Idempotent on already-migrated databases.
-            cols = mksqlite(obj.dbid, 'pragma_table_info(''depends_on'')');
-            if isempty(cols)
-                return;
-            end
-            names = {cols.name};
-            hasValue  = any(strcmp(names, 'value'));
-            hasDocId  = any(strcmp(names, 'document_id'));
+            % if the old column name is still present, ALTER TABLE
+            % RENAME COLUMN + rebuild the index. Idempotent on
+            % already-migrated databases.
+            %
+            % We probe column existence with zero-row SELECTs rather
+            % than pragma_table_info -- the same workaround
+            % currentQueryableColumns() uses, for the same reason
+            % (the mksqlite + sqlite combo on CI returns rows whose
+            % `.name` doesn't round-trip cleanly through ismember).
+            hasDocId = obj.dependsOnHasColumn('document_id');
             if hasDocId
                 return;
             end
+            hasValue = obj.dependsOnHasColumn('value');
             if ~hasValue
                 return;
             end
@@ -711,6 +712,19 @@ classdef sqlitedb < handle
             catch err
                 mksqlite(obj.dbid, 'ROLLBACK');
                 rethrow(err);
+            end
+        end
+
+        function tf = dependsOnHasColumn(obj, columnName)
+            % Probe the depends_on sidecar for a given column name
+            % via a zero-row SELECT. Returns true iff the column
+            % exists (the SELECT does not raise).
+            sql = sprintf('SELECT %s FROM depends_on LIMIT 0', columnName);
+            try
+                mksqlite(obj.dbid, sql);
+                tf = true;
+            catch
+                tf = false;
             end
         end
 
