@@ -2,11 +2,13 @@ function report = references(docs, opts)
 %REFERENCES Validate did2 document `depends_on` referential integrity.
 %
 %   REPORT = did2.validate.references(DOCS) checks that every
-%   non-empty `depends_on[i].value` on every document in DOCS
-%   resolves to the id of another document in DOCS. Edges whose
-%   value is empty (the schema's `mustBeNonEmpty=false` case) are
-%   skipped — they represent intentionally unfilled optional
-%   dependencies.
+%   non-empty `depends_on[i].document_id` on every document in
+%   DOCS resolves to the id of another document in DOCS. Edges
+%   whose document_id is empty (the schema's `mustBeNonEmpty=false`
+%   case) are skipped — they represent intentionally unfilled
+%   optional dependencies. The function also tolerates the earlier
+%   draft key `value` and the raw v1 key `id` on input, so it
+%   works on bodies at any stage of the migration pipeline.
 %
 %   REPORT = did2.validate.references(DOCS, 'Database', DB) also
 %   accepts edges that resolve to documents already stored in DB
@@ -23,10 +25,10 @@ function report = references(docs, opts)
 %       edges_examined   - number of non-empty depends_on edges
 %       orphans          - struct array (one entry per dangling
 %                          edge) with fields:
-%                              doc_id     - id of the source document
-%                              doc_class  - className() of the source
-%                              edge_name  - depends_on[i].name
-%                              edge_value - the unresolved id string
+%                              doc_id          - id of the source document
+%                              doc_class       - className() of the source
+%                              edge_name       - depends_on[i].name
+%                              edge_document_id - the unresolved id string
 %       orphan_count     - numel(orphans)
 %
 %   The function does not throw on orphan edges — it returns a
@@ -76,7 +78,7 @@ if useDb
 end
 
 orphans = struct('doc_id', {}, 'doc_class', {}, ...
-    'edge_name', {}, 'edge_value', {});
+    'edge_name', {}, 'edge_document_id', {});
 edgesExamined = 0;
 for k = 1:numel(list)
     doc = list{k};
@@ -84,19 +86,19 @@ for k = 1:numel(list)
     sourceId = docId(doc);
     sourceClass = docClass(doc);
     for j = 1:numel(deps)
-        value = char(deps{j}.value);
-        if isempty(value)
+        documentId = char(deps{j}.document_id);
+        if isempty(documentId)
             continue;
         end
         edgesExamined = edgesExamined + 1;
-        if isfield(knownIds, idKey(value))
+        if isfield(knownIds, idKey(documentId))
             continue;
         end
         orphans(end+1) = struct( ...
-            'doc_id',     sourceId, ...
-            'doc_class',  sourceClass, ...
-            'edge_name',  char(deps{j}.name), ...
-            'edge_value', value); %#ok<AGROW>
+            'doc_id',           sourceId, ...
+            'doc_class',        sourceClass, ...
+            'edge_name',        char(deps{j}.name), ...
+            'edge_document_id', documentId); %#ok<AGROW>
     end
 end
 
@@ -166,12 +168,23 @@ for k = 1:numel(d)
     else
         continue;
     end
-    if ~isstruct(e) || ~isfield(e, 'name') || ~isfield(e, 'value')
+    if ~isstruct(e) || ~isfield(e, 'name')
+        continue;
+    end
+    % Tolerate V_delta canonical, the earlier `value` draft, and the
+    % raw v1 `id` key so the validator can run mid-migration.
+    if isfield(e, 'document_id')
+        documentId = char(e.document_id);
+    elseif isfield(e, 'value')
+        documentId = char(e.value);
+    elseif isfield(e, 'id')
+        documentId = char(e.id);
+    else
         continue;
     end
     entries{end+1} = struct( ...
-        'name',  char(e.name), ...
-        'value', char(e.value)); %#ok<AGROW>
+        'name',        char(e.name), ...
+        'document_id', documentId); %#ok<AGROW>
 end
 end
 

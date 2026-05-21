@@ -22,7 +22,7 @@ v1Body.document_class = struct( ...
     'superclasses',  struct( ...
         'class_name',    'base', ...
         'class_version', '1.0.0'));
-v1Body.depends_on = struct('name', {}, 'value', {});
+v1Body.depends_on = struct('name', {}, 'document_id', {});
 v1Body.base = struct( ...
     'id',         'aabb1122ccdd3344_1122334455667788', ...
     'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
@@ -81,7 +81,7 @@ verifyTrue(testCase, isfield(out, 'ontology_image'));
 verifyFalse(testCase, isfield(out, 'ontologyImage'));
 end
 
-function testUniversalRenamesPromotesDependsOnIdToValue(testCase)
+function testUniversalRenamesPromotesDependsOnIdToDocumentId(testCase)
 v1 = makeV1Skeleton('treatment');
 v1.depends_on = struct( ...
     'name',    {'subject_id', 'protocol_id'}, ...
@@ -89,13 +89,17 @@ v1.depends_on = struct( ...
     'version', {'1', '1'});
 v1.treatment = struct();
 out = did2.convert.universalRenames(v1);
-verifyEqual(testCase, out.depends_on(1).value, 'aabb1122ccdd3344_aaaa1111bbbb2222');
-verifyEqual(testCase, out.depends_on(2).value, '');
+verifyEqual(testCase, out.depends_on(1).document_id, 'aabb1122ccdd3344_aaaa1111bbbb2222');
+verifyEqual(testCase, out.depends_on(2).document_id, '');
 verifyFalse(testCase, isfield(out.depends_on, 'id'));
+verifyFalse(testCase, isfield(out.depends_on, 'value'));
 verifyFalse(testCase, isfield(out.depends_on, 'version'));
 end
 
-function testUniversalRenamesPreservesExistingDependsOnValue(testCase)
+function testUniversalRenamesPreservesExistingDependsOnDocumentId(testCase)
+% Earlier V_delta drafts used `value`; the rename treats that as a
+% synonym so already-migrated bodies don't lose information when
+% re-run.
 v1 = makeV1Skeleton('treatment');
 v1.depends_on = struct( ...
     'name',  {'subject_id'}, ...
@@ -103,7 +107,7 @@ v1.depends_on = struct( ...
     'value', {'existing_value'});
 v1.treatment = struct();
 out = did2.convert.universalRenames(v1);
-verifyEqual(testCase, out.depends_on(1).value, 'existing_value');
+verifyEqual(testCase, out.depends_on(1).document_id, 'existing_value');
 end
 
 function testIdentityMigratorPassthrough(testCase)
@@ -199,8 +203,8 @@ function testUniversalRenamesDoesNotTouchStructuralKeys(testCase)
 v1 = makeV1Skeleton('unknown_class');
 v1.unknown_class = struct();
 v1.depends_on = struct( ...
-    'name', {'subject_id'}, ...
-    'value', {'abcdef0123456789_0123456789abcdef'});
+    'name',        {'subject_id'}, ...
+    'document_id', {'abcdef0123456789_0123456789abcdef'});
 out = did2.convert.universalRenames(v1);
 verifyTrue(testCase, isfield(out, 'document_class'));
 verifyTrue(testCase, isfield(out, 'depends_on'));
@@ -243,7 +247,8 @@ end
 
 function vDelta = makeVDeltaSkeleton(className)
 % Build a body that is already V_delta-shaped: schema_version stamped,
-% snake-cased class name, depends_on uses `value` (not `id`).
+% snake-cased class name, depends_on uses `document_id` (not `id` or
+% the earlier-draft `value`).
 vDelta = struct();
 vDelta.document_class = struct( ...
     'class_name',    className, ...
@@ -251,7 +256,7 @@ vDelta.document_class = struct( ...
     'superclasses',  struct( ...
         'class_name',    'base', ...
         'class_version', '1.0.0'));
-vDelta.depends_on = struct('name', {}, 'value', {});
+vDelta.depends_on = struct('name', {}, 'document_id', {});
 vDelta.base = struct( ...
     'id',             'aabb1122ccdd3344_1122334455667788', ...
     'session_id',     'aabb1122ccdd3344_9900aabbccddeeff', ...
@@ -349,8 +354,8 @@ function testShortCircuitSkippedWhenSchemaVersionMissing(testCase)
 % bulk v1 corpora.
 v1 = makeV1Skeleton('unknown_class');
 v1.unknown_class = struct('foo', 'bar');
-% v1-shaped depends_on: carries `id`, no `value` — universalRenames
-% promotes id->value, drops the legacy keys.
+% v1-shaped depends_on: carries `id`, no `document_id` —
+% universalRenames promotes id->document_id, drops the legacy keys.
 v1.depends_on = struct( ...
     'name', {'subject_id'}, ...
     'id',   {'aabb1122ccdd3344_aaaa1111bbbb2222'}, ...
@@ -360,12 +365,13 @@ verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
 % universalRenames ran: schema_version got stamped.
 verifyEqual(testCase, doc.get('base.schema_version'), 'V_delta');
-% universalRenames ran: depends_on(1).id was promoted to .value, and
-% the legacy id/version keys were dropped.
+% universalRenames ran: depends_on(1).id was promoted to
+% .document_id, and the legacy id/version keys were dropped.
 dependsOn = doc.toStruct().depends_on;
-verifyEqual(testCase, dependsOn(1).value, ...
+verifyEqual(testCase, dependsOn(1).document_id, ...
     'aabb1122ccdd3344_aaaa1111bbbb2222');
 verifyFalse(testCase, isfield(dependsOn, 'id'));
+verifyFalse(testCase, isfield(dependsOn, 'value'));
 verifyFalse(testCase, isfield(dependsOn, 'version'));
 end
 

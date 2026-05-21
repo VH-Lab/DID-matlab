@@ -134,14 +134,14 @@ q = did2.query('', 'depends_on', 'parent', 'id-1');
 [sql, params] = did2.database.compileQuery(q);
 verifySubstring(testCase, sql, 'FROM depends_on d');
 verifySubstring(testCase, sql, 'd.name = ?');
-verifySubstring(testCase, sql, 'd.value = ?');
+verifySubstring(testCase, sql, 'd.document_id = ?');
 verifyEqual(testCase, params, {'parent', 'id-1'});
 end
 
 function testDependsOnWildcard(testCase)
 q = did2.query('', 'depends_on', '*', 'id-1');
 [sql, params] = did2.database.compileQuery(q);
-verifySubstring(testCase, sql, 'd.value = ?');
+verifySubstring(testCase, sql, 'd.document_id = ?');
 % No `d.name = ?` clause when the wildcard is in effect.
 verifyEmpty(testCase, regexp(sql, 'd\.name\s*=\s*\?', 'once'));
 verifyEqual(testCase, params, {'id-1'});

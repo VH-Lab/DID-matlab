@@ -156,7 +156,7 @@ end
 function testDependsOnMatchesExactEntry(testCase)
 doc = makeDemoA(testCase, 'alice', 'a1');
 doc = doc.set('depends_on', struct('name', {'parent','sibling'}, ...
-    'value', {'id-1','id-2'}));
+    'document_id', {'id-1','id-2'}));
 verifyTrue(testCase, did2.query('', 'depends_on', 'parent', 'id-1').matches(doc));
 verifyTrue(testCase, did2.query('', 'depends_on', 'sibling', 'id-2').matches(doc));
 verifyFalse(testCase, did2.query('', 'depends_on', 'parent', 'id-2').matches(doc));
@@ -165,7 +165,7 @@ end
 
 function testDependsOnWildcardName(testCase)
 doc = makeDemoA(testCase, 'alice', 'a1');
-doc = doc.set('depends_on', struct('name', {'parent'}, 'value', {'id-9'}));
+doc = doc.set('depends_on', struct('name', {'parent'}, 'document_id', {'id-9'}));
 verifyTrue(testCase, did2.query('', 'depends_on', '*', 'id-9').matches(doc));
 verifyFalse(testCase, did2.query('', 'depends_on', '*', 'id-X').matches(doc));
 end
