@@ -49,10 +49,17 @@ function sqlMetaData = doc2sql(doc)
 
     dependsOn = getField(doc_props, 'depends_on');
     if isstruct(dependsOn)
-        targets = arrayfun(@(e) did.document.i_readDependencyTarget(e), ...
-            dependsOn, 'UniformOutput', false);
-        allData = [{dependsOn.name}; targets];
-        dependsOn = sprintf('%s,%s;',allData{:});
+        % Build a 2xN cell of (name, target) pairs by index. Direct
+        % cell-of-fields concatenation tripped MATLAB:catenate:dimensionMismatch
+        % when dependsOn was a column struct array vs a row, since
+        % {struct.field} and arrayfun return different orientations.
+        n = numel(dependsOn);
+        allData = cell(2, n);
+        for k = 1:n
+            allData{1, k} = dependsOn(k).name;
+            allData{2, k} = did.document.i_readDependencyTarget(dependsOn(k));
+        end
+        dependsOn = sprintf('%s,%s;', allData{:});
     end
     sqlMetaData.columns(end+1) = newColumn('depends_on', dependsOn);
 
