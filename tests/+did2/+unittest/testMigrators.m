@@ -130,14 +130,15 @@ verifyEqual(testCase, doc.get('ontology_label.term.node'), ...
     'allen_ccf_v3:12345');
 end
 
-function testElementBodyPassesThroughIdentity(testCase)
-% V_delta schema keeps the v1 element.name/element.type field names,
-% so the v1 body should round-trip through the dispatcher unchanged
-% (no per-class migrator registered for element any more).
+function testElementBodyPassesThroughExceptDirectCoercion(testCase)
+% V_delta keeps element.name/element.type/element.reference and
+% element.ndi_element_class verbatim; only element.direct needs
+% coercion (logical -> integer) because some v1 producers emit it
+% as a JSON boolean even though the v1 schema declares it integer.
 v1 = wrap('element', 'element', struct( ...
     'ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
     'name',              'electrode16', ...
-    'reference',         '1', ...
+    'reference',         1, ...
     'type',              'n-trode', ...
     'direct',            1));
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
@@ -147,6 +148,25 @@ verifyEqual(testCase, doc.get('element.name'),               'electrode16');
 verifyEqual(testCase, doc.get('element.type'),               'n-trode');
 verifyEqual(testCase, doc.get('element.ndi_element_class'),  ...
     'ndi.probe.timeseries.mfdaq');
+verifyEqual(testCase, doc.get('element.direct'), 1);
+end
+
+function testElementDirectLogicalCoercedToInteger(testCase)
+% The PRED corpus (and writes in the larger public corpora) emits
+% element.direct as a JSON boolean. After jsondecode that arrives
+% as MATLAB `logical`, which V_delta's validator rejects with
+% `Field "element.direct" must be integer.`. The element migrator
+% canonicalises it to a numeric integer.
+v1 = wrap('element', 'element', struct( ...
+    'ndi_element_class', 'ndi.probe.timeseries.stimulator', ...
+    'name',              'rayostim', ...
+    'reference',         1, ...
+    'type',              'stimulator', ...
+    'direct',            true));
+out = did2.convert.migrators.element( ...
+    did2.convert.universalRenames(v1));
+verifyTrue(testCase, isnumeric(out.element.direct));
+verifyEqual(testCase, out.element.direct, 1);
 end
 
 function testDaqreaderNdrBodyPassesThroughIdentity(testCase)
