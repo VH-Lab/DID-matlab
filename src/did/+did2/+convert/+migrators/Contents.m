@@ -24,14 +24,6 @@
 %     ontology_label      - collapse (ontology_name, label_id, label)
 %                           -> term, with the CURIE composed from the
 %                           first two.
-%     daqreader_ndr       - rename ndr_reader_string -> file_type;
-%                           drop v1-only ndi_daqreader_ndr_class.
-%     daqmetadatareader   - rename ndi_daqmetadatareader_class ->
-%                           reader_class; drop v1-only
-%                           tab_separated_file_parameter.
-%     element             - rename name -> element_name, type ->
-%                           element_type; coerce reference to char
-%                           and direct to integer.
 %     epochclocktimes     - SUPERCLASS migrator; rename clocktype ->
 %                           epoch_clock and split t0_t1 -> (t0, t1).
 %                           Applied by the dispatcher to any document
