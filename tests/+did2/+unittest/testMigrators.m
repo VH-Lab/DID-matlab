@@ -113,7 +113,7 @@ verifyEqual(testCase, doc.get('probe_location.ontology_name'), ...
     'uberon:0002436');
 verifyEqual(testCase, doc.get('probe_location.name'), ...
     'primary visual cortex');
-verifyEqual(testCase, doc.get('base.schema_version'), 'V_delta');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
 end
 
 function testEndToEndDispatcherForOntologyLabel(testCase)

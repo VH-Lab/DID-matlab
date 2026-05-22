@@ -40,8 +40,11 @@ function postBody = universalRenames(preBody)
 %       than `base`. If a v1 body has `ndi_document` but no `base`,
 %       rename `ndi_document` -> `base`. If both are present, discard
 %       `ndi_document` (base wins; ndi_document is stale).
-%     - default base.schema_version to 'V_delta' when absent so the
-%       new V_delta-required field on base is satisfied.
+%     - default document_class.schema_version to 'V_delta' when absent
+%       so every migrated body self-identifies as V_delta-shaped. The
+%       tag lives alongside class_name/class_version/superclasses on
+%       document_class (it identifies the schema set, not a payload
+%       field on any class) — never under `base`.
 %
 %   Field-level renames that change identifiers (not just case) inside
 %   a class's property block are class-specific (see the conversion
@@ -102,10 +105,21 @@ if isfield(postBody, 'app') && isstruct(postBody.app) ...
     postBody.app = renameAppBlockFields(postBody.app);
 end
 
+% Migrate a stale base.schema_version (left over from an earlier
+% V_delta-draft migrator that stamped the tag on the base block) to
+% document_class.schema_version, then default to 'V_delta' if absent.
+% base.schema_version is not a declared V_delta field; leaving it on
+% base would trip the strict-fields validator on the next write.
 if isfield(postBody, 'base') && isstruct(postBody.base) ...
         && isscalar(postBody.base) ...
-        && ~isfield(postBody.base, 'schema_version')
-    postBody.base.schema_version = 'V_delta';
+        && isfield(postBody.base, 'schema_version')
+    if ~isfield(postBody.document_class, 'schema_version')
+        postBody.document_class.schema_version = postBody.base.schema_version;
+    end
+    postBody.base = rmfield(postBody.base, 'schema_version');
+end
+if ~isfield(postBody.document_class, 'schema_version')
+    postBody.document_class.schema_version = 'V_delta';
 end
 end
 
