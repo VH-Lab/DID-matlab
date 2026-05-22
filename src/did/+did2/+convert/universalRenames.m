@@ -201,18 +201,50 @@ end
 function out = normaliseSuperclasses(sc)
 % Make sure each superclass entry has a class_name field, deriving it
 % from a v1 `definition` path (e.g., $NDIDOCUMENTPATH/data/filter.json
-% -> filter) when absent. snake_case any class_name found.
-names = cell(1, numel(sc));
-for k = 1:numel(sc)
-    if isfield(sc(k), 'class_name') && ~isempty(sc(k).class_name)
-        names{k} = snakeCase(char(sc(k).class_name));
-    elseif isfield(sc(k), 'definition') && ~isempty(sc(k).definition)
-        names{k} = snakeCase(deriveClassNameFromDefinition(sc(k).definition));
+% -> filter) when absent. snake_case any class_name found. Preserve
+% the entry's other fields (`definition`, `class_version`,
+% `property_list_name`, ...) so did.database/validate_doc_vs_schema
+% can still walk the superclass chain via the path in `definition`.
+n = numel(sc);
+% Collect each entry with its derived/normalised class_name, then
+% rebuild a homogeneous struct array spanning the union of fields.
+entries = cell(1, n);
+for k = 1:n
+    entry = sc(k);
+    if isfield(entry, 'class_name') && ~isempty(entry.class_name)
+        entry.class_name = snakeCase(char(entry.class_name));
+    elseif isfield(entry, 'definition') && ~isempty(entry.definition)
+        entry.class_name = snakeCase(deriveClassNameFromDefinition(entry.definition));
     else
-        names{k} = '';
+        entry.class_name = '';
+    end
+    entries{k} = entry;
+end
+allFields = {};
+for k = 1:n
+    allFields = union(allFields, fieldnames(entries{k}), 'stable');
+end
+out = repmat(buildEmptyEntry(allFields), 1, max(n, 1));
+if n == 0
+    out = out([]);  % preserve empty when input was empty
+    return;
+end
+for k = 1:n
+    e = entries{k};
+    for f = 1:numel(allFields)
+        fn = allFields{f};
+        if isfield(e, fn)
+            out(k).(fn) = e.(fn);
+        end
     end
 end
-out = struct('class_name', names);
+end
+
+function blank = buildEmptyEntry(fieldList)
+blank = struct();
+for f = 1:numel(fieldList)
+    blank.(fieldList{f}) = [];
+end
 end
 
 function name = deriveClassNameFromDefinition(definition)

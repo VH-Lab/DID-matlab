@@ -130,83 +130,55 @@ verifyEqual(testCase, doc.get('ontology_label.term.node'), ...
     'allen_ccf_v3:12345');
 end
 
-function testDaqreaderNdrRenamesFileType(testCase)
-v1 = wrap('daqreader_ndr', 'daqreader_ndr', struct( ...
-    'ndr_reader_string',        'intan', ...
-    'ndi_daqreader_ndr_class',  'ndi.daq.reader.mfdaq.ndr'));
-out = did2.convert.migrators.daqreader_ndr( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.daqreader_ndr.file_type, 'intan');
-verifyFalse(testCase, isfield(out.daqreader_ndr, 'ndr_reader_string'));
-verifyFalse(testCase, isfield(out.daqreader_ndr, 'ndi_daqreader_ndr_class'));
-end
-
-function testDaqmetadatareaderRenamesReaderClass(testCase)
-v1 = wrap('daqmetadatareader', 'daqmetadatareader', struct( ...
-    'ndi_daqmetadatareader_class',  'ndi.daq.metadatareader.RayoLabStims', ...
-    'tab_separated_file_parameter', 'something'));
-out = did2.convert.migrators.daqmetadatareader( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.daqmetadatareader.reader_class, ...
-    'ndi.daq.metadatareader.RayoLabStims');
-verifyFalse(testCase, isfield(out.daqmetadatareader, ...
-    'ndi_daqmetadatareader_class'));
-% tab_separated_file_parameter is the optional V_delta "lazy hook"
-% field for TSV-per-epoch metadata sources. Real v1 corpora populate
-% it; the migrator preserves the value rather than dropping (see
-% did-schema#50).
-verifyTrue(testCase, isfield(out.daqmetadatareader, ...
-    'tab_separated_file_parameter'));
-verifyEqual(testCase, ...
-    out.daqmetadatareader.tab_separated_file_parameter, 'something');
-end
-
-function testDaqmetadatareaderTabSeparatedHookAbsentStaysAbsent(testCase)
-% A v1 body without the optional TSV hook should not gain an empty
-% one after migration.
-v1 = wrap('daqmetadatareader', 'daqmetadatareader', struct( ...
-    'ndi_daqmetadatareader_class', 'ndi.daq.metadatareader'));
-out = did2.convert.migrators.daqmetadatareader( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.daqmetadatareader.reader_class, ...
-    'ndi.daq.metadatareader');
-verifyFalse(testCase, isfield(out.daqmetadatareader, ...
-    'tab_separated_file_parameter'));
-end
-
-function testDaqmetadatareaderTabSeparatedHookRoundtripsAlreadyVDelta(testCase)
-% A body already in V_delta shape (reader_class +
-% tab_separated_file_parameter) should pass through the migrator
-% unchanged.
-v1 = wrap('daqmetadatareader', 'daqmetadatareader', struct( ...
-    'reader_class',                 'ndi.daq.metadatareader', ...
-    'tab_separated_file_parameter', 'epoch_metadata.tsv'));
-out = did2.convert.migrators.daqmetadatareader( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.daqmetadatareader.reader_class, ...
-    'ndi.daq.metadatareader');
-verifyEqual(testCase, ...
-    out.daqmetadatareader.tab_separated_file_parameter, ...
-    'epoch_metadata.tsv');
-end
-
-function testElementRenamesAndCoerces(testCase)
+function testElementBodyPassesThroughIdentity(testCase)
+% V_delta schema keeps the v1 element.name/element.type field names,
+% so the v1 body should round-trip through the dispatcher unchanged
+% (no per-class migrator registered for element any more).
 v1 = wrap('element', 'element', struct( ...
     'ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
     'name',              'electrode16', ...
-    'reference',         1, ...
+    'reference',         '1', ...
     'type',              'n-trode', ...
-    'direct',            true));
-out = did2.convert.migrators.element( ...
-    did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.element.element_name, 'electrode16');
-verifyEqual(testCase, out.element.element_type, 'n-trode');
-verifyEqual(testCase, out.element.reference, '1');
-verifyEqual(testCase, out.element.direct, 1);
-verifyFalse(testCase, isfield(out.element, 'name'));
-verifyFalse(testCase, isfield(out.element, 'type'));
-verifyEqual(testCase, out.element.ndi_element_class, ...
+    'direct',            1));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('element.name'),               'electrode16');
+verifyEqual(testCase, doc.get('element.type'),               'n-trode');
+verifyEqual(testCase, doc.get('element.ndi_element_class'),  ...
     'ndi.probe.timeseries.mfdaq');
+end
+
+function testDaqreaderNdrBodyPassesThroughIdentity(testCase)
+% V_delta schema keeps daqreader_ndr.ndr_reader_string and
+% daqreader_ndr.ndi_daqreader_ndr_class, so the v1 body survives the
+% dispatcher unchanged.
+v1 = wrap('daqreader_ndr', 'daqreader_ndr', struct( ...
+    'ndr_reader_string',        'intan', ...
+    'ndi_daqreader_ndr_class',  'ndi.daq.reader.mfdaq.ndr'));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.get('daqreader_ndr.ndr_reader_string'),       'intan');
+verifyEqual(testCase, doc.get('daqreader_ndr.ndi_daqreader_ndr_class'), ...
+    'ndi.daq.reader.mfdaq.ndr');
+end
+
+function testDaqmetadatareaderBodyPassesThroughIdentity(testCase)
+% V_delta schema keeps daqmetadatareader.ndi_daqmetadatareader_class and
+% the optional tab_separated_file_parameter hook.
+v1 = wrap('daqmetadatareader', 'daqmetadatareader', struct( ...
+    'ndi_daqmetadatareader_class',  'ndi.daq.metadatareader.RayoLabStims', ...
+    'tab_separated_file_parameter', 'epoch_metadata.tsv'));
+result = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, ...
+    doc.get('daqmetadatareader.ndi_daqmetadatareader_class'), ...
+    'ndi.daq.metadatareader.RayoLabStims');
+verifyEqual(testCase, ...
+    doc.get('daqmetadatareader.tab_separated_file_parameter'), ...
+    'epoch_metadata.tsv');
 end
 
 function testEpochclocktimesSplitsTimeRange(testCase)
@@ -240,16 +212,6 @@ doc = result.migrated{1};
 verifyEqual(testCase, doc.get('epochclocktimes.epoch_clock'), ...
     'dev_local_time');
 verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1);
-end
-
-function testEndToEndDispatcherForDaqreaderNdr(testCase)
-v1 = wrap('daqreader_ndr', 'daqreader_ndr', struct( ...
-    'ndr_reader_string',       'intan', ...
-    'ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr'));
-result = did2.convert.v1_to_v2(v1, 'Validate', false);
-verifyEqual(testCase, result.summary.migrated_count, 1);
-doc = result.migrated{1};
-verifyEqual(testCase, doc.get('daqreader_ndr.file_type'), 'intan');
 end
 
 % --- calc-base migrators (PLAN.md §9.6 sub-step 6d, 20211116 corpus) ---
