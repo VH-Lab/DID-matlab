@@ -17,11 +17,12 @@ function result = v1_to_v2(v1Bodies, options)
 %        placeholder blocks for inherited classes. Silent no-op if
 %        the schema cache cannot resolve the chain.
 %
-%   Bodies that are already V_delta-shaped (base.schema_version ==
-%   'V_delta' AND no v1-only underscore-prefixed top-level markers)
-%   short-circuit steps 1-3 and go straight to ensureClassBlocks +
-%   validate. Makes the converter safely re-runnable so a partial
-%   normalisation or migration run can resume after an interruption
+%   Bodies that are already V_delta-shaped
+%   (document_class.schema_version == 'V_delta' AND no v1-only
+%   underscore-prefixed top-level markers) short-circuit steps 1-3 and
+%   go straight to ensureClassBlocks + validate. Makes the converter
+%   safely re-runnable so a partial normalisation or migration run can
+%   resume after an interruption
 %   without corrupting already-converted docs.
 %
 %   Documents that fail any step land in the quarantine table; nothing
@@ -193,8 +194,9 @@ function tf = isAlreadyVDelta(body)
 % per-body migration loop can skip universalRenames and the per-class
 % migrators. Both conditions must hold so the short-circuit only fires
 % when we have high confidence the body is V_delta:
-%   (a) base.schema_version is the literal char 'V_delta' (set by the
-%       last run of universalRenames, or by the writer), AND
+%   (a) document_class.schema_version is the literal char 'V_delta'
+%       (set by the last run of universalRenames, or by the writer),
+%       AND
 %   (b) the body carries no v1-only structural markers — underscore-
 %       prefixed top-level keys (e.g., legacy _classname,
 %       _class_version) that predate the document_class header and
@@ -208,11 +210,13 @@ tf = false;
 if ~isstruct(body) || ~isscalar(body)
     return;
 end
-if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base) ...
-        || ~isfield(body.base, 'schema_version')
+if ~isfield(body, 'document_class') ...
+        || ~isstruct(body.document_class) ...
+        || ~isscalar(body.document_class) ...
+        || ~isfield(body.document_class, 'schema_version')
     return;
 end
-sv = body.base.schema_version;
+sv = body.document_class.schema_version;
 if isstring(sv) && isscalar(sv)
     sv = char(sv);
 end

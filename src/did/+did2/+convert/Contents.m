@@ -23,7 +23,7 @@
 %                        and `summary` fields.
 %     universalRenames - the cross-cutting did_v1 -> V_delta rewrites
 %                        (snake-case class names, schema_version on
-%                        base, depends_on entry shape) from
+%                        document_class, depends_on entry shape) from
 %                        did-schema's _universal_renames.md.
 %
 %   Subpackages
