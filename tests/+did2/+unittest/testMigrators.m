@@ -390,7 +390,11 @@ verifyFalse(testCase, isfield(out.element_epoch, 'epoch_clock'));
 end
 
 function testElementEpochMultiClockBuildsArrayOfRecords(testCase)
-% JH corpus case: epoch_clock is comma-separated, t0_t1 is N-by-2.
+% Multi-clock case: epoch_clock is comma-separated, t0_t1 is the
+% canonical 2-by-N (per NDI element_epoch_schema.json:
+% "parameters":[2,NaN], "Each column is for a different epoch clock
+% type"). This is what ndi.element.addepoch and oneepoch actually
+% write.
 v1 = wrap('element_epoch', 'element_epoch', struct( ...
     'epoch_clock', 'dev_local_time,exp_global_time', ...
     't0_t1',       [0           738553.4082; ...
@@ -400,9 +404,9 @@ out = did2.convert.migrators.element_epoch( ...
 verifyEqual(testCase, numel(out.element_epoch.clocks), 2);
 verifyEqual(testCase, out.element_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.element_epoch.clocks(1).t0, 0);
-verifyEqual(testCase, out.element_epoch.clocks(1).t1, 738553.4082);
+verifyEqual(testCase, out.element_epoch.clocks(1).t1, 3599.69855);
 verifyEqual(testCase, out.element_epoch.clocks(2).name, 'exp_global_time');
-verifyEqual(testCase, out.element_epoch.clocks(2).t0, 3599.69855);
+verifyEqual(testCase, out.element_epoch.clocks(2).t0, 738553.4082);
 verifyEqual(testCase, out.element_epoch.clocks(2).t1, 738553.4498);
 end
 
