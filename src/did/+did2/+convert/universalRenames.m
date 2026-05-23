@@ -1,4 +1,4 @@
-function postBody = universalRenames(preBody)
+function postBody = universalRenames(preBody, options)
 %UNIVERSALRENAMES Apply did_v1 -> V_delta universal renames.
 %
 %   POSTBODY = did2.convert.universalRenames(PREBODY) returns a copy of
@@ -7,21 +7,34 @@ function postBody = universalRenames(preBody)
 %   applied. Per-class migrators run after this pass and assume their
 %   input is the semi-V_delta shape produced here.
 %
+%   POSTBODY = did2.convert.universalRenames(PREBODY, 'RenameClassNames', false)
+%   skips the identifier-level snake_case sweep: document_class.class_name,
+%   document_class.superclasses[i].class_name, top-level property-block
+%   keys, and field names inside property blocks are left untouched.
+%   Callers reading bodies whose schemas still spell identifiers in
+%   the legacy (camelCase) form pass false so the body stays
+%   schema-compatible while still gaining the V_delta shape
+%   transformations (schema_version stamping, base reconciliation,
+%   app block renames, depends_on rewrite). Default is true (full
+%   V_delta normalisation).
+%
 %   Transformations applied:
 %
 %     - snake_case document_class.class_name (e.g., ontologyImage ->
 %       ontology_image) and rename the matching top-level property
-%       block key in lockstep.
+%       block key in lockstep. [gated by RenameClassNames]
 %     - normalise document_class.superclasses[i] entries: derive
 %       class_name from a v1 `definition` path when absent (the
 %       basename of the path, stripped of `.json`), and snake_case
-%       the result.
+%       the result. [snake_case gated by RenameClassNames; the
+%       derivation from definition runs unconditionally]
 %     - field-level snake_case pass inside every class property block
 %       (e.g., pyraview.nativeRate -> pyraview.native_rate,
 %       pyraview.dataType -> pyraview.data_type). Only the *immediate*
 %       field names of each block are renamed; nested struct values
 %       (e.g., filter.parameters.sampleFrequency) are left alone for
-%       per-class migrators to handle if needed.
+%       per-class migrators to handle if needed. [gated by
+%       RenameClassNames]
 %     - rewrite depends_on entries to the V_delta (name,
 %       document_id) shape. Accepts v1 (name, id [, version]) and
 %       the earlier V_delta draft (name, value); precedence is
@@ -56,6 +69,7 @@ function postBody = universalRenames(preBody)
 
 arguments
     preBody (1,1) struct
+    options.RenameClassNames (1,1) logical = true
 end
 
 if ~isfield(preBody, 'document_class') ...
@@ -67,20 +81,23 @@ end
 
 postBody = preBody;
 
-v1ClassName = char(postBody.document_class.class_name);
-v2ClassName = snakeCase(v1ClassName);
-v2ClassName = v1ToVDeltaClassName(v2ClassName);
-postBody.document_class.class_name = v2ClassName;
-if ~strcmp(v1ClassName, v2ClassName) && isfield(postBody, v1ClassName)
-    postBody.(v2ClassName) = postBody.(v1ClassName);
-    postBody = rmfield(postBody, v1ClassName);
+if options.RenameClassNames
+    v1ClassName = char(postBody.document_class.class_name);
+    v2ClassName = snakeCase(v1ClassName);
+    v2ClassName = v1ToVDeltaClassName(v2ClassName);
+    postBody.document_class.class_name = v2ClassName;
+    if ~strcmp(v1ClassName, v2ClassName) && isfield(postBody, v1ClassName)
+        postBody.(v2ClassName) = postBody.(v1ClassName);
+        postBody = rmfield(postBody, v1ClassName);
+    end
 end
 
 if isfield(postBody.document_class, 'superclasses') ...
         && isstruct(postBody.document_class.superclasses) ...
         && ~isempty(postBody.document_class.superclasses)
     postBody.document_class.superclasses = ...
-        normaliseSuperclasses(postBody.document_class.superclasses);
+        normaliseSuperclasses(postBody.document_class.superclasses, ...
+            options.RenameClassNames);
 end
 
 if isfield(postBody, 'depends_on') ...
@@ -89,7 +106,9 @@ if isfield(postBody, 'depends_on') ...
     postBody.depends_on = renameDependsOnEntries(postBody.depends_on);
 end
 
-postBody = snakeCasePropertyBlocks(postBody);
+if options.RenameClassNames
+    postBody = snakeCasePropertyBlocks(postBody);
+end
 
 if isfield(postBody, 'ndi_document')
     if isfield(postBody, 'base')
@@ -165,6 +184,14 @@ end
 out = name;
 end
 
+function out = maybeSnakeCase(name, doRename)
+if doRename
+    out = snakeCase(name);
+else
+    out = name;
+end
+end
+
 function out = snakeCase(name)
 % Acronym-aware snake_case.
 %
@@ -212,13 +239,19 @@ end
 out = result;
 end
 
-function out = normaliseSuperclasses(sc)
+function out = normaliseSuperclasses(sc, renameClassNames)
 % Make sure each superclass entry has a class_name field, deriving it
 % from a v1 `definition` path (e.g., $NDIDOCUMENTPATH/data/filter.json
-% -> filter) when absent. snake_case any class_name found. Preserve
-% the entry's other fields (`definition`, `class_version`,
+% -> filter) when absent. When RENAMECLASSNAMES is true, snake_case
+% any class_name found; when false, leave class_name spellings as-is
+% (still derive from `definition` when class_name is absent — that
+% derivation is not a rename, just a normalisation). Preserve the
+% entry's other fields (`definition`, `class_version`,
 % `property_list_name`, ...) so did.database/validate_doc_vs_schema
 % can still walk the superclass chain via the path in `definition`.
+if nargin < 2
+    renameClassNames = true;
+end
 n = numel(sc);
 % Collect each entry with its derived/normalised class_name, then
 % rebuild a homogeneous struct array spanning the union of fields.
@@ -226,9 +259,10 @@ entries = cell(1, n);
 for k = 1:n
     entry = sc(k);
     if isfield(entry, 'class_name') && ~isempty(entry.class_name)
-        entry.class_name = snakeCase(char(entry.class_name));
+        entry.class_name = maybeSnakeCase(char(entry.class_name), renameClassNames);
     elseif isfield(entry, 'definition') && ~isempty(entry.definition)
-        entry.class_name = snakeCase(deriveClassNameFromDefinition(entry.definition));
+        entry.class_name = maybeSnakeCase( ...
+            deriveClassNameFromDefinition(entry.definition), renameClassNames);
     else
         entry.class_name = '';
     end

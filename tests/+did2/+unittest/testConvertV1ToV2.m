@@ -370,6 +370,117 @@ for k = 1:numel(result.migrated)
 end
 end
 
+function testUniversalRenamesRenameClassNamesFalsePreservesClassName(testCase)
+% When RenameClassNames=false the document_class.class_name and the
+% matching top-level property block key are left untouched. This is
+% the contract callers like NDI's applyReadNormalization rely on:
+% their on-disk schemas still spell classnames in camelCase
+% (e.g., demoNDI) and the legacy v1 validator compares the strings
+% by exact match.
+v1 = makeV1Skeleton('demoNDI');
+v1.demoNDI = struct('value', 5);
+out = did2.convert.universalRenames(v1, 'RenameClassNames', false);
+verifyEqual(testCase, out.document_class.class_name, 'demoNDI');
+verifyTrue(testCase, isfield(out, 'demoNDI'));
+verifyFalse(testCase, isfield(out, 'demo_ndi'));
+verifyEqual(testCase, out.demoNDI.value, 5);
+% schema_version stamping still runs — that's the V_delta shape
+% transformation the gate flip actually needs.
+verifyEqual(testCase, out.document_class.schema_version, 'V_delta');
+end
+
+function testUniversalRenamesRenameClassNamesFalsePreservesSuperclassNames(testCase)
+% Superclass entries that already carry a class_name keep its
+% spelling. Entries that only carry a v1 `definition` path still
+% have their class_name derived from the basename (that derivation
+% is not a rename — it just surfaces the name v1 stored under a
+% different key), but with no snake_case sweep applied.
+v1 = makeV1Skeleton('demoNDIMock');
+v1.demoNDIMock = struct();
+v1.document_class.superclasses = struct( ...
+    'class_name', {'base', 'mock', 'demoNDI'});
+out = did2.convert.universalRenames(v1, 'RenameClassNames', false);
+sc = out.document_class.superclasses;
+verifyEqual(testCase, numel(sc), 3);
+verifyEqual(testCase, sc(1).class_name, 'base');
+verifyEqual(testCase, sc(2).class_name, 'mock');
+verifyEqual(testCase, sc(3).class_name, 'demoNDI');
+end
+
+function testUniversalRenamesRenameClassNamesFalseDerivesSuperclassFromDefinition(testCase)
+% definition-derived superclass names are still produced (the
+% derivation is not a rename), but no snake_case sweep is applied
+% to the result.
+v1 = makeV1Skeleton('demoNDI');
+v1.demoNDI = struct();
+v1.document_class.superclasses = struct( ...
+    'definition', {'$NDIDOCUMENTPATH/base.json', ...
+                   '$NDIDOCUMENTPATH/data/demoNDIMock.json'});
+out = did2.convert.universalRenames(v1, 'RenameClassNames', false);
+sc = out.document_class.superclasses;
+verifyEqual(testCase, sc(1).class_name, 'base');
+verifyEqual(testCase, sc(2).class_name, 'demoNDIMock');
+end
+
+function testUniversalRenamesRenameClassNamesFalseSkipsBlockFieldRenames(testCase)
+% Field names inside a class property block are part of the
+% identifier sweep too: leaving them snake_cased while the schema
+% still declares them in camelCase would trip the field validator.
+% RenameClassNames=false preserves the camelCase field names.
+v1 = makeV1Skeleton('demoNDI');
+v1.demoNDI = struct('nativeRate', 20000, 'dataType', 'double');
+out = did2.convert.universalRenames(v1, 'RenameClassNames', false);
+verifyTrue(testCase, isfield(out.demoNDI, 'nativeRate'));
+verifyTrue(testCase, isfield(out.demoNDI, 'dataType'));
+verifyFalse(testCase, isfield(out.demoNDI, 'native_rate'));
+verifyFalse(testCase, isfield(out.demoNDI, 'data_type'));
+end
+
+function testUniversalRenamesRenameClassNamesFalseStillRewritesDependsOn(testCase)
+% depends_on rewrites are V_delta shape changes, not identifier
+% renames, so they still run under RenameClassNames=false.
+v1 = makeV1Skeleton('demoNDI');
+v1.demoNDI = struct();
+v1.depends_on = struct( ...
+    'name',    {'subject_id'}, ...
+    'id',      {'aabb1122ccdd3344_aaaa1111bbbb2222'}, ...
+    'version', {'1'});
+out = did2.convert.universalRenames(v1, 'RenameClassNames', false);
+verifyEqual(testCase, out.depends_on(1).document_id, ...
+    'aabb1122ccdd3344_aaaa1111bbbb2222');
+verifyFalse(testCase, isfield(out.depends_on, 'id'));
+verifyFalse(testCase, isfield(out.depends_on, 'version'));
+end
+
+function testUniversalRenamesRenameClassNamesFalseStillRewritesAppBlock(testCase)
+% app.name -> app.app_name is a V_delta field rename to match
+% V_delta's `app` schema declaration. It is not gated by
+% RenameClassNames (it's a fixed-target rename, not an identifier
+% sweep).
+v1 = makeV1Skeleton('demoNDI');
+v1.demoNDI = struct();
+v1.app = struct('name', 'ndi', 'version', '1.0.0');
+out = did2.convert.universalRenames(v1, 'RenameClassNames', false);
+verifyEqual(testCase, out.app.app_name, 'ndi');
+verifyEqual(testCase, out.app.app_version, '1.0.0');
+verifyFalse(testCase, isfield(out.app, 'name'));
+verifyFalse(testCase, isfield(out.app, 'version'));
+end
+
+function testV1ToV2RenameClassNamesFalseThreadsThrough(testCase)
+% The dispatcher option threads down to universalRenames, so a
+% caller that needs the legacy-name-preserving behaviour can pass
+% it at the top level.
+v1 = makeV1Skeleton('demoNDI');
+v1.demoNDI = struct('value', 5);
+result = did2.convert.v1_to_v2(v1, 'Validate', false, ...
+    'RenameClassNames', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+doc = result.migrated{1};
+verifyEqual(testCase, doc.className(), 'demoNDI');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+end
+
 function testShortCircuitSkippedWhenSchemaVersionMissing(testCase)
 % A body that lacks document_class.schema_version takes the full
 % pipeline even when it has no v1-only underscore markers. Guards
