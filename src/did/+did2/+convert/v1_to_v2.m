@@ -60,6 +60,12 @@ function result = v1_to_v2(v1Bodies, options)
 %                      that resolve to documents already stored in
 %                      this DB (e.g. when ingesting an incremental
 %                      batch on top of a populated database).
+%     RenameClassNames (1,1 logical, default true) - forward to
+%                      did2.convert.universalRenames. Pass false on
+%                      read paths whose bodies still spell their
+%                      identifiers in the legacy (camelCase) form so
+%                      the body stays schema-compatible while still
+%                      gaining the V_delta shape transformations.
 %
 %   See also: did2.convert.universalRenames, did2.convert.migrators,
 %   docs/v2/PLAN.md §9.6.
@@ -71,6 +77,7 @@ arguments
     options.Verbose (1,1) logical = false
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
+    options.RenameClassNames (1,1) logical = true
 end
 
 bodies = normaliseInput(v1Bodies);
@@ -105,7 +112,8 @@ for k = 1:numel(bodies)
                 className = char(v2Body.document_class.class_name);
             end
         else
-            postUniversalBody = did2.convert.universalRenames(preBody);
+            postUniversalBody = did2.convert.universalRenames(preBody, ...
+                'RenameClassNames', options.RenameClassNames);
             className = char(postUniversalBody.document_class.class_name);
             v2Body = applySuperclassMigrators(postUniversalBody, className);
             migratorFcn = lookupMigrator(className);
