@@ -407,3 +407,123 @@ cache.loadAllSchemas();
 n2 = numel(cache.queryablePaths().scalar);
 verifyEqual(testCase, n1, n2);
 end
+
+% ---- resolvePlacement (V_gamma_SPEC.md "Field placement") ----
+
+function testResolvePlacementDefaultsToDeclaringClass(testCase)
+% demoB extends base with one own field; no fixture uses placement,
+% so every field is declaring_class-placed and every chain class
+% contributes a body block.
+cache = testCase.TestData.cache;
+info = cache.resolvePlacement('demoB');
+verifyEqual(testCase, info.chain, {'base', 'demoA', 'demoB'});
+% All three classes contribute body blocks under default placement.
+verifyEqual(testCase, sort(info.blocksContributed), sort({'base', 'demoA', 'demoB'}));
+% Each field lands in its declaring class's block.
+baseEntries  = info.fieldsByBlock('base');
+demoAEntries = info.fieldsByBlock('demoA');
+verifyTrue(testCase, all(strcmp({baseEntries.declaringClass}, 'base')));
+verifyTrue(testCase, all(strcmp({demoAEntries.declaringClass}, 'demoA')));
+verifyTrue(testCase, all(strcmp({baseEntries.placement}, 'declaring_class')));
+end
+
+function testResolvePlacementRoutesAbstractFieldOntoConcreteBlock(testCase)
+% demoAbstractPlacement (abstract) declares shared_field with
+% placement=concrete_class; demoPlaceConcrete extends it and adds
+% own_field. Both fields should land in demoPlaceConcrete's block,
+% and demoAbstractPlacement should not contribute a block.
+cache = testCase.TestData.cache;
+info = cache.resolvePlacement('demoPlaceConcrete');
+verifyTrue(testCase, any(strcmp(info.blocksContributed, 'demoPlaceConcrete')));
+verifyTrue(testCase, any(strcmp(info.blocksContributed, 'base')));
+verifyFalse(testCase, any(strcmp(info.blocksContributed, 'demoAbstractPlacement')));
+entries = info.fieldsByBlock('demoPlaceConcrete');
+fieldNames = arrayfun(@(e) char(e.fieldDef.name), entries, 'UniformOutput', false);
+declarings  = {entries.declaringClass};
+placements  = {entries.placement};
+verifyTrue(testCase, any(strcmp(fieldNames, 'shared_field')));
+verifyTrue(testCase, any(strcmp(fieldNames, 'own_field')));
+sharedIdx = find(strcmp(fieldNames, 'shared_field'), 1);
+ownIdx    = find(strcmp(fieldNames, 'own_field'),    1);
+verifyEqual(testCase, declarings{sharedIdx}, 'demoAbstractPlacement');
+verifyEqual(testCase, placements{sharedIdx}, 'concrete_class');
+verifyEqual(testCase, declarings{ownIdx},    'demoPlaceConcrete');
+verifyEqual(testCase, placements{ownIdx},    'declaring_class');
+end
+
+function testResolvePlacementMixedAbstractStillContributesBlock(testCase)
+% demoMixedPlacement (abstract) has one declaring_class field
+% (stays_on_parent) and one concrete_class field (moves_to_child).
+% It must still contribute a body block holding stays_on_parent.
+% moves_to_child lands on the concrete demoMixedConcrete block.
+cache = testCase.TestData.cache;
+info = cache.resolvePlacement('demoMixedConcrete');
+verifyTrue(testCase, any(strcmp(info.blocksContributed, 'demoMixedPlacement')));
+verifyTrue(testCase, any(strcmp(info.blocksContributed, 'demoMixedConcrete')));
+parentEntries = info.fieldsByBlock('demoMixedPlacement');
+childEntries  = info.fieldsByBlock('demoMixedConcrete');
+parentFieldNames = arrayfun(@(e) char(e.fieldDef.name), parentEntries, 'UniformOutput', false);
+childFieldNames  = arrayfun(@(e) char(e.fieldDef.name), childEntries,  'UniformOutput', false);
+verifyTrue(testCase,  any(strcmp(parentFieldNames, 'stays_on_parent')));
+verifyFalse(testCase, any(strcmp(parentFieldNames, 'moves_to_child')));
+verifyTrue(testCase,  any(strcmp(childFieldNames,  'moves_to_child')));
+verifyTrue(testCase,  any(strcmp(childFieldNames,  'own_field')));
+end
+
+function testResolvePlacementRaisesOnSubclassRedeclaration(testCase)
+% demoCollideConcrete declares a field whose name matches
+% demoCollideAbstract's placement=concrete_class field. Both would
+% land in demoCollideConcrete's block under the same name; this is
+% a hard schema error (V_gamma_SPEC.md "Field placement").
+cache = testCase.TestData.cache;
+verifyError(testCase, ...
+    @() cache.resolvePlacement('demoCollideConcrete'), ...
+    'did2:schema:placementCollision');
+end
+
+function testResolvePlacementRaisesOnConcreteClassPlacement(testCase)
+% demoBadConcrete is a concrete class declaring placement=concrete_class
+% on one of its own fields; that's a schema error.
+cache = testCase.TestData.cache;
+verifyError(testCase, ...
+    @() cache.resolvePlacement('demoBadConcrete'), ...
+    'did2:schema:placementOnConcreteClass');
+end
+
+function testBuildBlankDocumentOmitsAbstractBlockWhenAllPlaced(testCase)
+% demoPlaceConcrete inherits demoAbstractPlacement; abstract class
+% has only placement=concrete_class fields, so its block does not
+% appear on instance bodies.
+cache = testCase.TestData.cache;
+doc = cache.buildBlankDocument('demoPlaceConcrete');
+verifyTrue(testCase,  isfield(doc, 'base'));
+verifyTrue(testCase,  isfield(doc, 'demoPlaceConcrete'));
+verifyFalse(testCase, isfield(doc, 'demoAbstractPlacement'));
+% Both routed fields are present on the concrete block.
+verifyTrue(testCase, isfield(doc.demoPlaceConcrete, 'shared_field'));
+verifyTrue(testCase, isfield(doc.demoPlaceConcrete, 'own_field'));
+end
+
+function testValidateAcceptsConcretePlacedFieldOnLeafBlock(testCase)
+% Build the blank doc, fill in the required base.session_id, validate.
+% No errors expected even though shared_field comes from an abstract
+% ancestor with placement=concrete_class.
+cache = testCase.TestData.cache;
+doc = cache.buildBlankDocument('demoPlaceConcrete');
+doc.base.session_id = did.ido.unique_id();
+cache.validateDocument(doc);
+end
+
+function testValidateRejectsPhantomAbstractBlock(testCase)
+% Attach a `demoAbstractPlacement` block to a doc whose chain
+% includes that abstract class — under the placement rule it should
+% NOT have a body block — and verify the validator flags it as an
+% undeclared top-level block.
+cache = testCase.TestData.cache;
+doc = cache.buildBlankDocument('demoPlaceConcrete');
+doc.base.session_id = did.ido.unique_id();
+doc.demoAbstractPlacement = struct();
+verifyError(testCase, ...
+    @() cache.validateDocument(doc), ...
+    'did2:validation:undeclaredBlock');
+end
