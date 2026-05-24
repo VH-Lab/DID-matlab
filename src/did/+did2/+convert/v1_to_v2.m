@@ -285,13 +285,18 @@ if isempty(cache)
     return;
 end
 try
-    chain = cache.classChain(className);
+    placementInfo = cache.resolvePlacement(className);
     ancestors = cache.superclasses(className);
 catch
     return;
 end
-for k = 1:numel(chain)
-    cls = chain{k};
+% Placement-aware: only classes that contribute a body block (per
+% V_gamma_SPEC.md "Field placement") get an empty struct manufactured
+% for them. An abstract class whose declared fields are all
+% `placement: "concrete_class"` (e.g., `calculator`) does NOT
+% materialize on the instance body.
+for k = 1:numel(placementInfo.blocksContributed)
+    cls = placementInfo.blocksContributed{k};
     if ~isfield(body, cls)
         body.(cls) = struct();
     end

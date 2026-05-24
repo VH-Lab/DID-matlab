@@ -1,0 +1,32 @@
+{
+    "document_class": {
+        "class_name": "demoCollideConcrete",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base"
+            },
+            {
+                "class_name": "demoCollideAbstract"
+            }
+        ],
+        "maturity_level": "stable"
+    },
+    "depends_on": [],
+    "file": [],
+    "fields": [
+        {
+            "name": "collidingName",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "documentation": "Concrete-class redeclaration of a name already placed by demoCollideAbstract. Used to verify resolvePlacement raises placementCollision.",
+            "constraints": {}
+        }
+    ]
+}

@@ -236,27 +236,31 @@ end
 
 % --- calc-base migrators (PLAN.md §9.6 sub-step 6d, 20211116 corpus) ---
 
-function testCalcCommonMovesInputParametersIntoCalculatorBlock(testCase)
+function testCalcCommonKeepsInputParametersOnSubclassBlock(testCase)
+% V_delta `calculator.input_parameters` declares `placement:
+% "concrete_class"` (DID-schema V_delta calculator.json), so the
+% field lives on the concrete subclass's block on instance bodies,
+% not in a `calculator` block. v1 already stores it there, so no
+% structural move is required.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', struct('algorithm', 'best')));
 out = did2.convert.calcCommon( ...
     did2.convert.universalRenames(v1), 'oridirtuning_calc');
-verifyEqual(testCase, out.calculator.input_parameters.algorithm, 'best');
-verifyFalse(testCase, isfield(out.oridirtuning_calc, 'input_parameters'));
-% calcCommon does not populate calculator-identity; that lives on
-% the inherited app block, handled by universalRenames upstream.
-verifyFalse(testCase, isfield(out.calculator, 'calculator_name'));
+verifyEqual(testCase, out.oridirtuning_calc.input_parameters.algorithm, 'best');
+verifyFalse(testCase, isfield(out, 'calculator'));
 end
 
 function testCalcCommonCoercesEmptyArrayInputParametersToStruct(testCase)
 % v1 frequently ships `input_parameters: []`. V_delta `structure`
-% type requires a struct value, so the helper coerces.
+% type requires a struct value, so the helper coerces in place on
+% the subclass block.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', []));
 out = did2.convert.calcCommon( ...
     did2.convert.universalRenames(v1), 'oridirtuning_calc');
-verifyTrue(testCase, isstruct(out.calculator.input_parameters));
-verifyTrue(testCase, isempty(fieldnames(out.calculator.input_parameters)));
+verifyTrue(testCase, isstruct(out.oridirtuning_calc.input_parameters));
+verifyTrue(testCase, isempty(fieldnames(out.oridirtuning_calc.input_parameters)));
+verifyFalse(testCase, isfield(out, 'calculator'));
 end
 
 function testCalcCommonDropsInnerDependsOn(testCase)
@@ -280,14 +284,15 @@ end
 
 function testCalcWrapperPipesThroughHelper(testCase)
 % Each per-class wrapper is a thin call to calcCommon; verify the
-% wrapper produces the same shape (input_parameters lifted into
-% calculator block) as a direct calcCommon call.
+% wrapper produces the same shape (input_parameters preserved on
+% the subclass block, no calculator block) as a direct calcCommon
+% call.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', []));
 out = did2.convert.migrators.oridirtuning_calc( ...
     did2.convert.universalRenames(v1));
-verifyTrue(testCase, isstruct(out.calculator.input_parameters));
-verifyFalse(testCase, isfield(out.oridirtuning_calc, 'input_parameters'));
+verifyTrue(testCase, isstruct(out.oridirtuning_calc.input_parameters));
+verifyFalse(testCase, isfield(out, 'calculator'));
 end
 
 function testCalcMigratorWrappersAllResolve(testCase)
@@ -312,8 +317,10 @@ for k = 1:numel(classes)
     v1 = wrap(cls, cls, struct('input_parameters', []));
     migratorFcn = str2func(['did2.convert.migrators.' cls]);
     out = migratorFcn(did2.convert.universalRenames(v1));
-    verifyTrue(testCase, isstruct(out.calculator.input_parameters), ...
-        sprintf('Wrapper %s did not produce a calculator block', cls));
+    verifyTrue(testCase, isstruct(out.(cls).input_parameters), ...
+        sprintf('Wrapper %s did not produce input_parameters on the subclass block', cls));
+    verifyFalse(testCase, isfield(out, 'calculator'), ...
+        sprintf('Wrapper %s synthesized a phantom calculator block', cls));
 end
 end
 
@@ -356,21 +363,24 @@ end
 
 function testDispatcherPadsEmptyChainBlocks(testCase)
 % ensureClassBlocks should manufacture empty blocks for every class
-% in the V_delta chain that the migrator did not produce. This test
-% asserts the behavior without requiring a real schema cache: it
-% builds a body, lets the dispatcher run (Validate=false, no
-% SchemaCache override). The helper silently no-ops when no cache
-% is configured, so we only assert that the explicitly-produced
-% blocks survive.
+% in the V_delta chain that the migrator did not produce AND that
+% contributes a body block (i.e., not an abstract class with all
+% placement="concrete_class" fields). This test asserts the behavior
+% without requiring a real schema cache: it builds a body, lets the
+% dispatcher run (Validate=false, no SchemaCache override). The
+% helper silently no-ops when no cache is configured, so we only
+% assert that calcCommon's explicit work survives.
 v1 = wrap('oridirtuning_calc', 'oridirtuning_calc', struct( ...
     'input_parameters', []));
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
-% calcCommon produced a calculator block with input_parameters
-% coerced to struct; calculator-identity is now app.app_name (set
-% by universalRenames) and is absent from the calculator block.
-verifyTrue(testCase, isstruct(doc.get('calculator.input_parameters')));
+% calcCommon coerces input_parameters to a struct in place on the
+% concrete subclass block; per V_delta calculator.input_parameters
+% placement="concrete_class", the abstract `calculator` class
+% contributes no body block. Calculator-identity is on app.app_name
+% (set by universalRenames).
+verifyTrue(testCase, isstruct(doc.get('oridirtuning_calc.input_parameters')));
 end
 
 % --- element_epoch (20211116 corpus: 252 docs; JH corpus: 4156 multi-clock) ---

@@ -42,6 +42,8 @@ classdef cache < handle
     %       ownFields           - the `fields` list a class declares directly.
     %       fieldsFor           - merged inherited fields tagged with the
     %                             declaring class (struct array).
+    %       resolvePlacement    - per-block field layout for a concrete class,
+    %                             honoring per-field `placement`.
     %       loadAllSchemas      - parse every *.json in the schema dir.
     %       queryablePaths      - scalar and array-iteration paths
     %                             declared by the loaded schemas.
@@ -181,6 +183,147 @@ classdef cache < handle
                         'fieldDef', own{f}); %#ok<AGROW>
                 end
             end
+        end
+
+        function info = resolvePlacement(obj, className)
+            % resolvePlacement - per-block field layout for a concrete
+            %   class, honoring the per-field `placement` attribute
+            %   (V_gamma_SPEC.md "Field placement"). For each field
+            %   declared anywhere in the class chain, decides which
+            %   property block hosts the field on instance bodies:
+            %
+            %     placement = "declaring_class" (default)
+            %       -> hosted on the declaring class's block.
+            %     placement = "concrete_class"
+            %       -> hosted on the concrete (leaf) class's block.
+            %         Only valid on fields declared by an abstract
+            %         class.
+            %
+            %   Returns a struct with three fields:
+            %
+            %     info.blocksContributed
+            %       cellstr of block names (each a class name in the
+            %       chain) that contribute a property block on instance
+            %       bodies. A concrete class always contributes. An
+            %       abstract class contributes only if at least one of
+            %       its own fields uses placement="declaring_class".
+            %
+            %     info.fieldsByBlock
+            %       containers.Map keyed by block name; each value is a
+            %       struct array with fields:
+            %         .fieldDef        the raw schema field entry
+            %         .declaringClass  the class that declared it
+            %         .placement       'declaring_class' | 'concrete_class'
+            %
+            %     info.chain
+            %       cellstr root-first class chain (same as classChain).
+            %
+            %   Raises did2:schema:* on:
+            %     placementOnConcreteClass  field with placement="concrete_class"
+            %                               declared by a non-abstract class.
+            %     invalidPlacement          placement value other than the two
+            %                               allowed strings.
+            %     placementCollision        same field name lands twice in the
+            %                               same block (either two ancestors
+            %                               both place into the concrete-class
+            %                               block, or any class redeclares a
+            %                               name an ancestor has placed).
+            arguments
+                obj
+                className (1,:) char
+            end
+
+            chain = obj.classChain(className);
+            leaf  = className;
+
+            entriesByBlock = containers.Map();
+            blocksContributedSet = containers.Map();
+
+            for k = 1:numel(chain)
+                cls = chain{k};
+                clsSchema = obj.getClass(cls);
+                isAbstract = obj.classIsAbstract(clsSchema);
+                own = obj.ownFields(cls);
+
+                clsContributesOwnBlock = ~isAbstract;
+                for f = 1:numel(own)
+                    fdef = own{f};
+                    fieldName = char(fdef.name);
+                    placement = obj.fieldPlacement(fdef);
+
+                    if strcmp(placement, 'concrete_class')
+                        if ~isAbstract
+                            error('did2:schema:placementOnConcreteClass', ...
+                                ['Field "%s" on class "%s" sets ', ...
+                                 'placement="concrete_class" but "%s" is ', ...
+                                 'not abstract. placement="concrete_class" ', ...
+                                 'is only valid on fields declared by ', ...
+                                 'abstract classes (V_gamma_SPEC.md ', ...
+                                 '"Field placement").'], ...
+                                fieldName, cls, cls);
+                        end
+                        targetBlock = leaf;
+                    elseif strcmp(placement, 'declaring_class')
+                        targetBlock = cls;
+                        clsContributesOwnBlock = true;
+                    else
+                        error('did2:schema:invalidPlacement', ...
+                            ['Field "%s" on class "%s" has invalid ', ...
+                             'placement value "%s". Allowed values are ', ...
+                             '"declaring_class" and "concrete_class".'], ...
+                            fieldName, cls, placement);
+                    end
+
+                    entry = struct( ...
+                        'fieldDef',       fdef, ...
+                        'declaringClass', cls, ...
+                        'placement',      placement);
+
+                    if isKey(entriesByBlock, targetBlock)
+                        existing = entriesByBlock(targetBlock);
+                        for j = 1:numel(existing)
+                            if strcmp(existing(j).fieldDef.name, fieldName)
+                                error('did2:schema:placementCollision', ...
+                                    ['Field name "%s" collides in ', ...
+                                     'block "%s" of class chain for ', ...
+                                     '"%s": declared by "%s" ', ...
+                                     '(placement="%s") and "%s" ', ...
+                                     '(placement="%s"). No class in ', ...
+                                     'the chain may declare a field ', ...
+                                     'whose name matches a ', ...
+                                     'placement="concrete_class" ', ...
+                                     'declaration on any ancestor ', ...
+                                     '(V_gamma_SPEC.md "Field placement").'], ...
+                                    fieldName, targetBlock, leaf, ...
+                                    existing(j).declaringClass, ...
+                                    existing(j).placement, ...
+                                    cls, placement);
+                            end
+                        end
+                        existing(end+1) = entry; %#ok<AGROW>
+                        entriesByBlock(targetBlock) = existing;
+                    else
+                        entriesByBlock(targetBlock) = entry;
+                    end
+                end
+
+                if clsContributesOwnBlock
+                    blocksContributedSet(cls) = true;
+                end
+            end
+
+            % Preserve root-first chain order for blocksContributed.
+            blocksContributed = {};
+            for k = 1:numel(chain)
+                if isKey(blocksContributedSet, chain{k})
+                    blocksContributed{end+1} = chain{k}; %#ok<AGROW>
+                end
+            end
+
+            info = struct();
+            info.blocksContributed = blocksContributed;
+            info.fieldsByBlock     = entriesByBlock;
+            info.chain             = chain;
         end
 
         function loadAllSchemas(obj)
@@ -347,10 +490,16 @@ classdef cache < handle
 
             doc.depends_on = struct('name', {}, 'document_id', {});
 
-            chain = obj.classChain(className);
-            for k = 1:numel(chain)
-                blockClass = chain{k};
-                doc.(blockClass) = obj.buildBlockForClass(blockClass);
+            % Placement-aware block layout: only contributing blocks
+            % appear on the body, each populated with the fields routed
+            % to it (the class's own declaring-class fields plus any
+            % concrete-class-placed fields from abstract ancestors when
+            % this is the leaf).
+            info = obj.resolvePlacement(className);
+            for k = 1:numel(info.blocksContributed)
+                blockClass = info.blocksContributed{k};
+                doc.(blockClass) = obj.buildBlockFromEntries( ...
+                    blockClass, info.fieldsByBlock);
             end
         end
 
@@ -418,9 +567,14 @@ classdef cache < handle
                     strjoin(declaredAncestors, ', '), ...
                     strjoin(expectedAncestors, ', '));
             end
-            chain = obj.classChain(className);
-            for k = 1:numel(chain)
-                blockClass = chain{k};
+            % Placement-aware: a class in the chain whose declared
+            % fields are all `placement: "concrete_class"` does not
+            % contribute a body block. Inherited fields routed onto the
+            % concrete leaf's block are validated there against their
+            % declaring class's field definition.
+            info = obj.resolvePlacement(className);
+            for k = 1:numel(info.blocksContributed)
+                blockClass = info.blocksContributed{k};
                 if ~isfield(s, blockClass)
                     error('did2:validation:missingClassBlock', ...
                         'Document is missing the "%s" property block.', blockClass);
@@ -431,19 +585,24 @@ classdef cache < handle
                         'Property block "%s" must be a struct, got %s.', ...
                         blockClass, class(block));
                 end
-                own = obj.ownFields(blockClass);
-                declaredNames = cell(1, numel(own));
-                for f = 1:numel(own)
-                    fieldDef = own{f};
+                if isKey(info.fieldsByBlock, blockClass)
+                    entries = info.fieldsByBlock(blockClass);
+                else
+                    entries = struct('fieldDef', {}, 'declaringClass', {}, 'placement', {});
+                end
+                declaredNames = cell(1, numel(entries));
+                for f = 1:numel(entries)
+                    fieldDef = entries(f).fieldDef;
                     fieldName = char(fieldDef.name);
                     declaredNames{f} = fieldName;
                     obj.validateField(block, fieldDef, blockClass, fieldName);
                 end
                 % Strict-fields check: every property-block field must be
-                % declared by the class schema. Anything else is mis-keyed
-                % data (e.g., a v1 field name the migrator forgot to map)
-                % or a v1-only field that needs an explicit drop. Loud
-                % failure beats silent passthrough.
+                % declared by the (placement-resolved) schema layout for
+                % this block. Anything else is mis-keyed data (e.g., a
+                % v1 field name the migrator forgot to map) or a v1-only
+                % field that needs an explicit drop. Loud failure beats
+                % silent passthrough.
                 blockFns = fieldnames(block);
                 for fk = 1:numel(blockFns)
                     fn = blockFns{fk};
@@ -459,11 +618,13 @@ classdef cache < handle
                 end
             end
             % Strict top-level check: every top-level key must be either
-            % a structural key, a chain block, or the optional file/files
-            % wrapper. Anything else is a v1 block whose key did not get
-            % snake-cased (e.g., `imageStack_parameters` should become
-            % `image_stack_parameters`) or a class not modelled by V_delta.
-            allowedTop = [chain, {'document_class', 'depends_on', 'file', 'files'}];
+            % a structural key, a contributing chain block, or the
+            % optional file/files wrapper. A chain class that does not
+            % contribute a body block (all of its declared fields placed
+            % at concrete_class) appearing as a top-level key on the
+            % body is treated as an undeclared block — the abstract
+            % class has no fields of its own to host on the instance.
+            allowedTop = [info.blocksContributed, {'document_class', 'depends_on', 'file', 'files'}];
             topFns = fieldnames(s);
             for tk = 1:numel(topFns)
                 tn = topFns{tk};
@@ -637,26 +798,30 @@ classdef cache < handle
             end
         end
 
-        function block = buildBlockForClass(obj, className)
-            % buildBlockForClass - one property block populated with
-            %   `blank_value` for every field the class declares
-            %   directly. Base block also receives a fresh did_uid for
-            %   `id` and the current UTC timestamp for `datestamp`.
+        function block = buildBlockFromEntries(obj, blockClass, fieldsByBlock)
+            % buildBlockFromEntries - populate one property block from
+            %   the placement-resolved field entries for `blockClass`
+            %   (from resolvePlacement(.).fieldsByBlock). Honors
+            %   `blank_value` per field. Base block also receives a
+            %   fresh did_uid for `id` and a UTC timestamp for
+            %   `datestamp`.
             block = struct();
-            own = obj.ownFields(className);
-            for f = 1:numel(own)
-                fieldDef = own{f};
-                fieldName = char(fieldDef.name);
-                blank = fieldDef.blank_value;
-                fieldType = char(fieldDef.type);
-                if strcmp(fieldType, 'structure') ...
-                        && (isempty(blank) || (isstruct(blank) && isempty(fieldnames(blank))))
-                    block.(fieldName) = obj.buildBlankStructure(fieldDef);
-                else
-                    block.(fieldName) = blank;
+            if isKey(fieldsByBlock, blockClass)
+                entries = fieldsByBlock(blockClass);
+                for f = 1:numel(entries)
+                    fieldDef = entries(f).fieldDef;
+                    fieldName = char(fieldDef.name);
+                    blank = fieldDef.blank_value;
+                    fieldType = char(fieldDef.type);
+                    if strcmp(fieldType, 'structure') ...
+                            && (isempty(blank) || (isstruct(blank) && isempty(fieldnames(blank))))
+                        block.(fieldName) = obj.buildBlankStructure(fieldDef);
+                    else
+                        block.(fieldName) = blank;
+                    end
                 end
             end
-            if strcmp(className, 'base')
+            if strcmp(blockClass, 'base')
                 if isfield(block, 'id')
                     block.id = did.ido.unique_id();
                 end
@@ -848,6 +1013,37 @@ classdef cache < handle
                         % `pattern` and similar can be added later.
                 end
             end
+        end
+
+        function tf = classIsAbstract(~, classSchema)
+            % classIsAbstract - true if the document_class header carries
+            %   `abstract: true`.
+            tf = false;
+            if ~isstruct(classSchema) || ~isfield(classSchema, 'document_class')
+                return;
+            end
+            dc = classSchema.document_class;
+            if ~isstruct(dc) || ~isfield(dc, 'abstract')
+                return;
+            end
+            abstractVal = dc.abstract;
+            tf = (islogical(abstractVal) && abstractVal) ...
+                || (isnumeric(abstractVal) && abstractVal == 1);
+        end
+
+        function placement = fieldPlacement(~, fieldDef)
+            % fieldPlacement - return the field's `placement` value,
+            %   defaulting to 'declaring_class' when the key is absent
+            %   or empty.
+            placement = 'declaring_class';
+            if ~isstruct(fieldDef) || ~isfield(fieldDef, 'placement')
+                return;
+            end
+            raw = fieldDef.placement;
+            if isempty(raw)
+                return;
+            end
+            placement = char(raw);
         end
     end
 end
