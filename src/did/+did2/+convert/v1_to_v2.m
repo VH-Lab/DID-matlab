@@ -1,32 +1,49 @@
 function result = v1_to_v2(v1Bodies, options)
-%V1_TO_V2 Convert did_v1 document bodies to V_delta.
+%V1_TO_V2 Convert did_v1 document bodies to the active schema set.
+%
+%   The target schema set is whatever the active did2.schema.cache is
+%   pointed at — V_epsilon by default (NDI/DID ship pointed at the
+%   V_epsilon set-version root). The function name is retained for
+%   continuity; "v2" denotes the DID/NDI 2.0 wire format, not a fixed
+%   set version. did_v1 corpora migrate straight to the active set.
 %
 %   RESULT = did2.convert.v1_to_v2(V1BODIES) takes one or more
 %   did_v1-shaped document bodies (struct, struct array, cell array, or
 %   JSON char) and runs each through this pipeline:
 %
-%     1. did2.convert.universalRenames    (cross-cutting renames)
+%     1. did2.convert.universalRenames    (cross-cutting renames;
+%        stamps document_class.schema_version with the active set
+%        version)
 %     2. matching superclass migrators under
 %        +did2.+convert.+migrators.<superclass_name>
 %     3. concrete-class migrator under
-%        +did2.+convert.+migrators.<class_name>  (identity fallback)
+%        +did2.+convert.+migrators.<class_name>  (identity fallback).
+%        A migrator may *fan out*: returning a cell array of bodies
+%        when the migration mints companion documents (e.g. a treatment
+%        split that also emits a time_reference, or a subject_group that
+%        emits a subject plus per-member group_assignments). The first
+%        returned body is the primary; the rest are companions already
+%        in target-set shape.
 %     4. ensureClassBlocks: pad empty `struct()` property blocks for
-%        every class in the V_delta inheritance chain that the v1
-%        source or the migrators did not already produce. Lets the
-%        validator pass without each migrator having to manufacture
-%        placeholder blocks for inherited classes. Silent no-op if
-%        the schema cache cannot resolve the chain.
+%        every class in the target inheritance chain that the v1
+%        source or the migrators did not already produce, and fill any
+%        unset document_class.class_version / schema_version from the
+%        schema set. Lets the validator pass without each migrator
+%        having to manufacture placeholder blocks for inherited
+%        classes. Silent no-op if the schema cache cannot resolve the
+%        chain. Runs on every produced body (primary + companions).
 %
-%   Bodies that are already V_delta-shaped
-%   (document_class.schema_version == 'V_delta' AND no v1-only
-%   underscore-prefixed top-level markers) short-circuit steps 1-3 and
-%   go straight to ensureClassBlocks + validate. Makes the converter
-%   safely re-runnable so a partial normalisation or migration run can
-%   resume after an interruption
-%   without corrupting already-converted docs.
+%   Bodies that are already target-set-shaped
+%   (document_class.schema_version == the active set version AND no
+%   v1-only underscore-prefixed top-level markers) short-circuit steps
+%   1-3 and go straight to ensureClassBlocks + validate. Makes the
+%   converter safely re-runnable so a partial normalisation or
+%   migration run can resume after an interruption without corrupting
+%   already-converted docs.
 %
 %   Documents that fail any step land in the quarantine table; nothing
-%   is silently dropped.
+%   is silently dropped. A fan-out is all-or-nothing: if any produced
+%   body fails, the whole source document quarantines.
 %
 %   The result struct has three fields:
 %     migrated   - cell array of did2.document instances that survived
@@ -82,6 +99,11 @@ end
 
 bodies = normaliseInput(v1Bodies);
 
+% Resolve the target set-version string once, from the active cache
+% (override-aware), so universalRenames stamps and the idempotency
+% short-circuit both key off a single source of truth.
+targetSchemaVersion = resolveSchemaVersion(options.SchemaCache);
+
 migrated = {};
 quarantine = struct( ...
     'original_body', {}, ...
@@ -97,10 +119,10 @@ for k = 1:numel(bodies)
     className = '<unknown>';
     try
         preBody = ensureStruct(rawBody);
-        if isAlreadyVDelta(preBody)
-            % Idempotency short-circuit: the body is already V_delta,
-            % so skip universalRenames and the per-class migrators.
-            % ensureClassBlocks still runs (it rebuilds the V_delta
+        if isAlreadyTarget(preBody, targetSchemaVersion)
+            % Idempotency short-circuit: the body is already target-set
+            % shaped, so skip universalRenames and the per-class
+            % migrators. ensureClassBlocks still runs (it rebuilds the
             % superclass chain — required) and validate still runs
             % (gate against drift). Keeps the database normalisation
             % and migration commands safely re-runnable after an
@@ -111,20 +133,39 @@ for k = 1:numel(bodies)
                     && isfield(v2Body.document_class, 'class_name')
                 className = char(v2Body.document_class.class_name);
             end
+            producedBodies = {v2Body};
         else
             postUniversalBody = did2.convert.universalRenames(preBody, ...
-                'RenameClassNames', options.RenameClassNames);
+                'RenameClassNames', options.RenameClassNames, ...
+                'SchemaVersion', targetSchemaVersion);
             className = char(postUniversalBody.document_class.class_name);
             v2Body = applySuperclassMigrators(postUniversalBody, className);
             migratorFcn = lookupMigrator(className);
-            v2Body = migratorFcn(v2Body);
+            % A migrator may fan out: returning a single body (struct)
+            % for a 1:1 rewrite, or a cell array of bodies when the
+            % migration mints companion documents (e.g. a treatment
+            % split that also emits a time_reference, or a subject_group
+            % that emits a subject plus per-member group_assignments).
+            % The first element is the primary document; the rest are
+            % companions already in target-set shape.
+            migratorOut = migratorFcn(v2Body);
+            producedBodies = normaliseMigratorOutput(migratorOut);
         end
-        v2Body = ensureClassBlocks(v2Body, options.SchemaCache);
-        doc = did2.document(v2Body);
-        if options.Validate
-            doc.validate('SchemaCache', options.SchemaCache);
+        % ensureClassBlocks + validate run per produced body; nothing is
+        % migrated unless *every* produced body passes, so a fan-out is
+        % all-or-nothing (no half-written companion sets).
+        producedDocs = cell(1, numel(producedBodies));
+        for b = 1:numel(producedBodies)
+            bodyOut = ensureClassBlocks(producedBodies{b}, options.SchemaCache);
+            docOut = did2.document(bodyOut);
+            if options.Validate
+                docOut.validate('SchemaCache', options.SchemaCache);
+            end
+            producedDocs{b} = docOut;
         end
-        migrated{end+1} = doc; %#ok<AGROW>
+        for b = 1:numel(producedDocs)
+            migrated{end+1} = producedDocs{b}; %#ok<AGROW>
+        end
         [classCountNames, classCountValues] = bumpClassCounter( ...
             classCountNames, classCountValues, className);
     catch err
@@ -197,23 +238,62 @@ else
 end
 end
 
-function tf = isAlreadyVDelta(body)
-% Return true when BODY is already a V_delta-shaped document so the
-% per-body migration loop can skip universalRenames and the per-class
-% migrators. Both conditions must hold so the short-circuit only fires
-% when we have high confidence the body is V_delta:
-%   (a) document_class.schema_version is the literal char 'V_delta'
+function v = resolveSchemaVersion(schemaCacheOverride)
+% Resolve the target set-version string the pipeline migrates *to*.
+% Prefer an explicitly supplied cache (tests), else the shared cache,
+% else the 'V_delta' back-compat default if no cache is configured.
+v = 'V_delta';
+cache = schemaCacheOverride;
+if isempty(cache)
+    try
+        cache = did2.schema.cache.shared();
+    catch
+        return;
+    end
+end
+if ~isempty(cache)
+    try
+        v = cache.schemaVersion();
+    catch
+        % leave default
+    end
+end
+end
+
+function bodies = normaliseMigratorOutput(out)
+% A migrator returns either a single body struct (1:1 rewrite) or a
+% cell array of body structs (a fan-out that mints companion docs).
+% Normalise to a cell array of scalar structs.
+if iscell(out)
+    bodies = out(:)';
+elseif isstruct(out) && isscalar(out)
+    bodies = {out};
+elseif isstruct(out)
+    bodies = arrayfun(@(i) out(i), 1:numel(out), 'UniformOutput', false);
+else
+    error('did2:convert:badMigratorOutput', ...
+        ['A migrator must return a body struct or a cell array of ' ...
+         'body structs (got %s).'], class(out));
+end
+end
+
+function tf = isAlreadyTarget(body, targetSchemaVersion)
+% Return true when BODY is already shaped for the target set version so
+% the per-body migration loop can skip universalRenames and the
+% per-class migrators. Both conditions must hold so the short-circuit
+% only fires when we have high confidence the body is target-shaped:
+%   (a) document_class.schema_version equals TARGETSCHEMAVERSION
 %       (set by the last run of universalRenames, or by the writer),
 %       AND
 %   (b) the body carries no v1-only structural markers — underscore-
 %       prefixed top-level keys (e.g., legacy _classname,
 %       _class_version) that predate the document_class header and
-%       could not survive a real V_delta build.
+%       could not survive a real target-set build.
 %
-% (a) alone would misclassify a body that was tagged V_delta out-of-
-% band but still carries legacy field shapes; (b) alone would skip
-% the bulk of v1 corpora, which do not happen to use the underscore
-% markers but still need every other v1->V_delta rewrite.
+% (a) alone would misclassify a body that was tagged out-of-band but
+% still carries legacy field shapes; (b) alone would skip the bulk of
+% v1 corpora, which do not happen to use the underscore markers but
+% still need every other v1->target rewrite.
 tf = false;
 if ~isstruct(body) || ~isscalar(body)
     return;
@@ -228,7 +308,7 @@ sv = body.document_class.schema_version;
 if isstring(sv) && isscalar(sv)
     sv = char(sv);
 end
-if ~ischar(sv) || ~strcmp(sv, 'V_delta')
+if ~ischar(sv) || ~strcmp(sv, targetSchemaVersion)
     return;
 end
 topKeys = fieldnames(body);
@@ -309,6 +389,19 @@ for k = 1:numel(ancestors)
         'class_version', char(ancDC.class_version)); %#ok<AGROW>
 end
 body.document_class.superclasses = sc;
+% Fill class_version and schema_version from the schema set when a
+% (fan-out) migrator emitted a minimal body that set only class_name.
+% Existing values are left untouched so an already-stamped body is not
+% rewritten.
+if ~isfield(body.document_class, 'class_version') ...
+        || isempty(body.document_class.class_version)
+    body.document_class.class_version = ...
+        char(cache.getClass(className).document_class.class_version);
+end
+if ~isfield(body.document_class, 'schema_version') ...
+        || isempty(body.document_class.schema_version)
+    body.document_class.schema_version = cache.schemaVersion();
+end
 end
 
 function body = applySuperclassMigrators(body, concreteClassName)

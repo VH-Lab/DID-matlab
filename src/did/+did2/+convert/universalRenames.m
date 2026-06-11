@@ -1,11 +1,19 @@
 function postBody = universalRenames(preBody, options)
-%UNIVERSALRENAMES Apply did_v1 -> V_delta universal renames.
+%UNIVERSALRENAMES Apply did_v1 -> target-set universal renames.
 %
 %   POSTBODY = did2.convert.universalRenames(PREBODY) returns a copy of
 %   PREBODY with the cross-cutting transformations from
-%   did-schema/schemas/V_delta/conversions/from_did_v1/_universal_renames.md
+%   did-schema/schemas/<set>/conversions/from_did_v1/_universal_renames.md
 %   applied. Per-class migrators run after this pass and assume their
-%   input is the semi-V_delta shape produced here.
+%   input is the semi-target shape produced here.
+%
+%   The set-version string stamped onto document_class.schema_version is
+%   resolved from the active schema cache (did2.schema.cache.shared) so
+%   the pipeline targets whatever set the cache is pointed at
+%   (V_epsilon by default). Override with the 'SchemaVersion' option.
+%   These renames are otherwise set-version-independent (the underscore,
+%   snake_case, depends_on and app/base reconciliations are the same for
+%   V_delta and V_epsilon).
 %
 %   POSTBODY = did2.convert.universalRenames(PREBODY, 'RenameClassNames', false)
 %   skips the identifier-level snake_case sweep: document_class.class_name,
@@ -70,6 +78,20 @@ function postBody = universalRenames(preBody, options)
 arguments
     preBody (1,1) struct
     options.RenameClassNames (1,1) logical = true
+    options.SchemaVersion (1,:) char = ''
+end
+
+% Resolve the target set-version string once. Callers (v1_to_v2) pass
+% the active schema cache's version so the whole pipeline stamps a
+% single source of truth; when unset, fall back to the shared cache and
+% finally to 'V_delta' so the function is still usable standalone.
+targetSchemaVersion = options.SchemaVersion;
+if isempty(targetSchemaVersion)
+    try
+        targetSchemaVersion = did2.schema.cache.shared().schemaVersion();
+    catch
+        targetSchemaVersion = 'V_delta';
+    end
 end
 
 if ~isfield(preBody, 'document_class') ...
@@ -138,7 +160,7 @@ if isfield(postBody, 'base') && isstruct(postBody.base) ...
     postBody.base = rmfield(postBody.base, 'schema_version');
 end
 if ~isfield(postBody.document_class, 'schema_version')
-    postBody.document_class.schema_version = 'V_delta';
+    postBody.document_class.schema_version = targetSchemaVersion;
 end
 end
 
