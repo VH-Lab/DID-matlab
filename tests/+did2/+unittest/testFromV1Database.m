@@ -40,7 +40,7 @@ end
 % ---- sqlite -> v2 ----
 
 function testFromSqliteRoundTripsAllDocs(testCase)
-b1 = jsonencode(makeV1Body('treatment', 'alpha'));
+b1 = jsonencode(makeV1Body('daqreader_ndr', 'alpha'));
 b2 = jsonencode(makeV1Body('ontology_image', 'beta'));
 b3 = jsonencode(makeV1Body('probe_location', 'gamma'));
 buildV1Sqlite(testCase.TestData.srcSqlite, {b1, b2, b3});
@@ -64,7 +64,7 @@ end
 % ---- dumbjsondb -> v2 ----
 
 function testFromDumbJsonRoundTripsAllDocs(testCase)
-b1 = jsonencode(makeV1Body('treatment', 'alpha'));
+b1 = jsonencode(makeV1Body('daqreader_ndr', 'alpha'));
 b2 = jsonencode(makeV1Body('ontology_image', 'beta'));
 writeDumbJsonDoc(testCase.TestData.tmpDir, 'id_alpha', 0, b1);
 writeDumbJsonDoc(testCase.TestData.tmpDir, 'id_beta',  0, b2);
@@ -86,7 +86,7 @@ end
 % ---- quarantine ----
 
 function testQuarantineFileWrittenForMalformedDoc(testCase)
-goodBody = jsonencode(makeV1Body('treatment', 'alpha'));
+goodBody = jsonencode(makeV1Body('daqreader_ndr', 'alpha'));
 malformed = 'not json {';
 buildV1Sqlite(testCase.TestData.srcSqlite, {goodBody, malformed});
 
@@ -112,7 +112,7 @@ end
 % ---- overwrite policy ----
 
 function testOverwriteFalseRefusesExistingDst(testCase)
-goodBody = jsonencode(makeV1Body('treatment', 'alpha'));
+goodBody = jsonencode(makeV1Body('daqreader_ndr', 'alpha'));
 buildV1Sqlite(testCase.TestData.srcSqlite, {goodBody});
 
 % Touch the destination so it exists before the call.
@@ -126,7 +126,7 @@ verifyError(testCase, @() did2.convert.fromV1Database( ...
 end
 
 function testOverwriteTrueReplacesExistingDst(testCase)
-goodBody = jsonencode(makeV1Body('treatment', 'alpha'));
+goodBody = jsonencode(makeV1Body('daqreader_ndr', 'alpha'));
 buildV1Sqlite(testCase.TestData.srcSqlite, {goodBody});
 
 fid = fopen(testCase.TestData.dstPath, 'w');
