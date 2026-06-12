@@ -113,6 +113,25 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % disposed when this method returns, using the onCleanup mechanism
         end % do_run_sql_query()
 
+        function s = escapeSqlLiteral(~, s)
+            % escapeSqlLiteral - escape a value for a double-quoted SQL literal
+            %
+            % S = escapeSqlLiteral(THIS_OBJ, S)
+            %
+            % Several queries below interpolate identifiers (branch_id, doc_id,
+            % filename) into SQL string literals delimited by double quotes,
+            % e.g. ['... WHERE doc_id="' document_id '"']. run_sql_query() does
+            % not forward bind parameters to mksqlite (it calls
+            % do_run_sql_query without varargin), so those values cannot be
+            % passed as '?' placeholders and must be escaped to prevent SQL
+            % injection from a crafted id/branch name. Inside a double-quoted
+            % token SQLite treats "" as an escaped ", so doubling the double
+            % quotes neutralizes any attempt to break out of the literal. This
+            % mirrors the DID-python _sql_escape (which doubles single quotes
+            % for its single-quoted literals).
+            s = strrep(char(s), '"', '""');
+        end % escapeSqlLiteral()
+
         function branch_ids = do_get_branch_ids(this_obj)
             % do_get_branch_ids - return all unique branch ids in the database
             %
@@ -153,7 +172,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             this_obj.insert_into_table('branches', 'branch_id,parent_id,timestamp', branch_id, parent_branch_id, tnow);
 
             % Duplicate the docs from parent branch to the newly-created branch
-            sqlStr = ['SELECT doc_idx FROM branch_docs WHERE branch_id="' parent_branch_id '"'];
+            sqlStr = ['SELECT doc_idx FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(parent_branch_id) '"'];
             data = this_obj.run_sql_noOpen(sqlStr);
             if ~isempty(data)
                 doc_idx = [data.doc_idx];
@@ -176,11 +195,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             if ~isempty(doc_ids)
                 % Remove all documents from the branch_docs table
                 % TODO: also delete records of unreferenced docs ???
-                this_obj.run_sql_query(['DELETE FROM branch_docs WHERE branch_id="' branch_id '"']);
+                this_obj.run_sql_query(['DELETE FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
             end
 
             % Now delete the branch record
-            this_obj.run_sql_query(['DELETE FROM branches WHERE branch_id="' branch_id '"']);
+            this_obj.run_sql_query(['DELETE FROM branches WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
         end % do_delete_branch()
 
         function parent_branch_id = do_get_branch_parent(this_obj, branch_id, varargin)
@@ -190,7 +209,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % Returns the ID of the parent branch for the specified BRANCH_ID.
 
-            sqlStr = ['SELECT parent_id FROM branches WHERE branch_id="' branch_id '"'];
+            sqlStr = ['SELECT parent_id FROM branches WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"'];
             data = this_obj.run_sql_query(sqlStr);
             if isempty(data)
                 parent_branch_id = '';
@@ -219,7 +238,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Returns a cell array of IDs of sub-branches of the specified BRANCH_ID.
             % If BRANCH_ID has no sub-branches, an empty cell array is returned.
 
-            sqlStr = ['SELECT branch_id FROM branches WHERE parent_id="' branch_id '"'];
+            sqlStr = ['SELECT branch_id FROM branches WHERE parent_id="' this_obj.escapeSqlLiteral(branch_id) '"'];
             data = this_obj.run_sql_query(sqlStr);
             if isempty(data)
                 branch_ids = {};
@@ -241,7 +260,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             if nargin > 1 && ~isempty(branch_id)
                 sqlStr = ['SELECT docs.doc_id FROM docs,branch_docs' ...
                     ' WHERE docs.doc_idx = branch_docs.doc_idx' ...
-                    '   AND branch_id="' branch_id '"'];
+                    '   AND branch_id="' this_obj.escapeSqlLiteral(branch_id) '"'];
             else
                 sqlStr = 'SELECT docs.doc_id FROM docs';
             end
@@ -432,7 +451,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %document_obj = did.document(doc);
 
             % Run the SQL query in the database
-            query_str = ['SELECT json_code FROM docs WHERE doc_id="' document_id '"'];
+            query_str = ['SELECT json_code FROM docs WHERE doc_id="' this_obj.escapeSqlLiteral(document_id) '"'];
             data = this_obj.run_sql_query(query_str);
 
             % Process missing document results
@@ -500,8 +519,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Handle case of missing document
             sqlStr = ['SELECT docs.doc_idx FROM docs,branch_docs ' ...
                 ' WHERE docs.doc_idx = branch_docs.doc_idx ' ...
-                '   AND branch_id="' branch_id '"' ...
-                '   AND doc_id="' doc_id '"'];
+                '   AND branch_id="' this_obj.escapeSqlLiteral(branch_id) '"' ...
+                '   AND doc_id="' this_obj.escapeSqlLiteral(doc_id) '"'];
             %doc_id = [doc_id '/' branch_id];
             data = this_obj.run_sql_noOpen(sqlStr);
             if isempty(data)
@@ -521,7 +540,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             doc_idx = data(1).doc_idx;
 
             % Remove the document from the branch_docs table
-            this_obj.run_sql_noOpen(['DELETE FROM branch_docs WHERE branch_id="' branch_id '" AND doc_idx=?'], doc_idx);
+            this_obj.run_sql_noOpen(['DELETE FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '" AND doc_idx=?'], doc_idx);
 
             % TODO - remove all document records if no branch references remain?
             %{
@@ -579,10 +598,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Get the cached filepath to the specified document
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
                          '  FROM docs,files ' ...
-                         ' WHERE docs.doc_id="' document_id '" ' ...
+                         ' WHERE docs.doc_id="' this_obj.escapeSqlLiteral(document_id) '" ' ...
                          '   AND files.doc_idx=docs.doc_idx'];
             if nargin > 2 && ~isempty(filename)
-                query_str = [query_str ' AND files.filename="' filename '"'];
+                query_str = [query_str ' AND files.filename="' this_obj.escapeSqlLiteral(filename) '"'];
             else
                 error('DID:SQLITEDB:open','The requested filename must be specified in open_doc()');
                 %filename = '';  % used in catch block below
@@ -713,10 +732,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Get the cached filepath to the specified document
             query_str = ['SELECT cached_location,orig_location,uid,type ' ...
                 '  FROM docs,files ' ...
-                ' WHERE docs.doc_id="' document_id '" ' ...
+                ' WHERE docs.doc_id="' this_obj.escapeSqlLiteral(document_id) '" ' ...
                 '   AND files.doc_idx=docs.doc_idx'];
             if nargin > 2 && ~isempty(filename)
-                query_str = [query_str ' AND files.filename="' filename '"'];
+                query_str = [query_str ' AND files.filename="' this_obj.escapeSqlLiteral(filename) '"'];
             else
                 error('DID:SQLITEDB:open','The requested filename must be specified in check_exist_doc()');
             end
