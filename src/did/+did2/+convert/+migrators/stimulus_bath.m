@@ -31,10 +31,11 @@ end
 
 ic = did2.convert.interactionCommon;
 
-block = struct();
-if isfield(preBody, 'stimulus_bath') && isstruct(preBody.stimulus_bath)
-    block = preBody.stimulus_bath;
+if ~isfield(preBody, 'stimulus_bath') || ~isstruct(preBody.stimulus_bath)
+    error('did2:convert:missingBlock', ...
+        'stimulus_bath body is missing the stimulus_bath property block.');
 end
+block = preBody.stimulus_bath;
 
 mixture = ic.mixtureFromTable(getField(block, 'mixture_table', ''));
 if isempty(mixture)

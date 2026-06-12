@@ -656,8 +656,8 @@ v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
     'mixture_table', ''));
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.stimulus_bath.location.node, 'NCIm:C0179246');
-verifyEqual(testCase, out.stimulus_bath.location.name, ...
+verifyEqual(testCase, out.bath.location.node, 'NCIm:C0179246');
+verifyEqual(testCase, out.bath.location.name, ...
     'Baths, Water, Laboratory');
 end
 
@@ -669,14 +669,14 @@ v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
                        'NCIm:C1098706,arginine-vasopressin,2e-07,OM:MolarVolumeUnit,Molar' newline]));
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, numel(out.stimulus_bath.mixture), 1);
-verifyEqual(testCase, out.stimulus_bath.mixture(1).chemical.node, ...
+verifyEqual(testCase, numel(out.pharmacological_manipulation.mixture), 1);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).chemical.node, ...
     'NCIm:C1098706');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).chemical.name, ...
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).chemical.name, ...
     'arginine-vasopressin');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_unit, 'Molar');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_value, 2e-7);
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.molar, 2e-7);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_unit, 'Molar');
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_value, 2e-7);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.molar, 2e-7);
 end
 
 function testStimulusBathScalesMicromolarToMolar(testCase)
@@ -686,10 +686,10 @@ v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
                        'CHEBI:1234,sample,5,OM:Micromolar,Micromolar']));
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_value, 5);
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_unit, ...
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_value, 5);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_unit, ...
     'Micromolar');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.molar, 5e-6, ...
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.molar, 5e-6, ...
     'AbsTol', 1e-15);
 end
 
@@ -701,20 +701,26 @@ v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
 % Unknown unit: source preserved, no canonical populated.
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_value, 42);
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_unit, ...
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_value, 42);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_unit, ...
     'WeirdUnit');
-verifyFalse(testCase, isfield(out.stimulus_bath.mixture(1).amount, 'molar'));
-verifyFalse(testCase, isfield(out.stimulus_bath.mixture(1).amount, 'grams_per_liter'));
+verifyFalse(testCase, isfield(out.pharmacological_manipulation.mixture(1).amount, 'molar'));
+verifyFalse(testCase, isfield(out.pharmacological_manipulation.mixture(1).amount, 'grams_per_liter'));
 end
 
-function testStimulusBathEmptyMixtureTableIsZeroLengthArray(testCase)
+function testStimulusBathEmptyMixtureTablePadsBackfillEntry(testCase)
+% V_epsilon roots the mixture on pharmacological_manipulation, whose
+% `mixture` is required non-empty. An empty mixture_table (e.g. a wash
+% bath) therefore yields a single blank backfill record (blank
+% chemical/amount) rather than a zero-length array, so the document
+% stays valid; the curator fills in the chemical during the soak.
 v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
     'location', struct('ontologyNode', 'NCIm:C0179246', 'name', 'water'), ...
     'mixture_table', ''));
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, numel(out.stimulus_bath.mixture), 0);
+verifyEqual(testCase, numel(out.pharmacological_manipulation.mixture), 1);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).chemical.node, '');
 end
 
 function testStimulusBathMissingBlockErrors(testCase)

@@ -156,12 +156,37 @@ classdef interactionCommon
         end
 
         function c = concentration(sourceUnit, sourceValue)
-            %CONCENTRATION Minimal concentration composite (source-only).
-            %   Canonical sub-fields are left for curator/tooling
-            %   backfill; the source unit/value are always preserved.
+            %CONCENTRATION concentration composite from a source unit/value.
+            %   Always preserves source_unit / source_value, and
+            %   populates one canonical sub-field (molar, grams_per_liter,
+            %   mass_fraction or volume_fraction) when the source unit is
+            %   recognised. Unknown units stay source-only (no canonical),
+            %   so consumers can backfill once conventions firm up.
+            unit = charOrEmpty(sourceUnit);
+            value = toScalarNumber(sourceValue);
             c = struct('approximate', false, ...
-                'source_unit', charOrEmpty(sourceUnit), ...
-                'source_value', toScalarNumber(sourceValue));
+                'source_unit', unit, ...
+                'source_value', value);
+            if isnan(value)
+                return;
+            end
+            molarScale = molarScaleFor(unit);
+            if ~isnan(molarScale)
+                c.molar = value * molarScale;
+                return;
+            end
+            gplScale = gramsPerLiterScaleFor(unit);
+            if ~isnan(gplScale)
+                c.grams_per_liter = value * gplScale;
+                return;
+            end
+            if isMassFractionUnit(unit)
+                c.mass_fraction = value;
+                return;
+            end
+            if isVolumeFractionUnit(unit)
+                c.volume_fraction = value;
+            end
         end
 
         function v = volume(sourceUnit, sourceValue)
@@ -270,4 +295,47 @@ if isnumeric(v) && isscalar(v)
 else
     x = 0;
 end
+end
+
+function s = molarScaleFor(u)
+% Scalar that converts a source unit to mol/L. Unknown -> NaN.
+u = lower(char(u));
+switch u
+    case {'molar', 'm', 'mol/l', 'mol l-1'}
+        s = 1;
+    case {'millimolar', 'mm', 'mmol/l'}
+        s = 1e-3;
+    case {'micromolar', 'um', 'mumolar', 'umol/l'}
+        s = 1e-6;
+    case {'nanomolar', 'nm', 'nmol/l'}
+        s = 1e-9;
+    case {'picomolar', 'pm', 'pmol/l'}
+        s = 1e-12;
+    otherwise
+        s = NaN;
+end
+end
+
+function s = gramsPerLiterScaleFor(u)
+u = lower(char(u));
+switch u
+    case {'g/l', 'g l-1', 'grams per liter', 'grams per litre', 'mg/ml', 'mg ml-1'}
+        s = 1;
+    case {'mg/l', 'mg l-1'}
+        s = 1e-3;
+    case {'ug/ml', 'ug ml-1', 'mug/ml'}
+        s = 1e-3;
+    case {'ug/l', 'ug l-1'}
+        s = 1e-6;
+    otherwise
+        s = NaN;
+end
+end
+
+function tf = isMassFractionUnit(u)
+tf = any(strcmpi(char(u), {'w/w', '%w/w', '%(w/w)'}));
+end
+
+function tf = isVolumeFractionUnit(u)
+tf = any(strcmpi(char(u), {'v/v', '%v/v', '%(v/v)'}));
 end
