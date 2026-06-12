@@ -148,7 +148,8 @@ fwrite(fid, jsonencode(report, 'PrettyPrint', true));
 end
 
 function p = resolveSchemaPath()
-% Return a directory that holds V_delta `*.json` schema files, or ''
+% Return a directory that holds the active schema set (a V_epsilon
+% set-version root with index.json, or any dir of `*.json`), or ''
 % if none can be found. Probe order: DID_SCHEMA_PATH env, then the
 % sibling-checkout default (matches did2.schema.cache).
 candidates = {};
@@ -158,7 +159,7 @@ if ~isempty(envPath)
 end
 toolboxDir = did.toolboxdir();
 candidates{end+1} = fullfile(toolboxDir, '..', '..', '..', ...
-    'did-schema', 'schemas', 'V_delta', 'stable'); %#ok<AGROW>
+    'did-schema', 'schemas', 'V_epsilon'); %#ok<AGROW>
 
 p = '';
 for k = 1:numel(candidates)
