@@ -95,9 +95,10 @@ end
 end
 
 function iso = datenumToISO(dn)
-iso = '';
 try
-    iso = [datestr(dn, 'yyyy-mm-ddTHH:MM:SS') 'Z'];
+    dt = datetime(dn, 'ConvertFrom', 'datenum');
+    dt.Format = 'yyyy-MM-dd''T''HH:mm:ss''Z''';
+    iso = char(string(dt));
 catch
     iso = '';
 end

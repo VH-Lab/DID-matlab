@@ -108,7 +108,10 @@ end
 
 % ---- classification -------------------------------------------------
 
-function branch = classifyTreatment(name, ontologyNode, stringValue)
+function branch = classifyTreatment(name, ~, stringValue)
+% The ontology node is not used for routing (the legacy `name` carries
+% the semantic signal); it is accepted positionally for call-site
+% symmetry with the field mapping.
 n = lower(name);
 % Not a manipulation -> caller quarantines.
 if contains(n, 'date of birth') || contains(n, 'non-survival') ...
