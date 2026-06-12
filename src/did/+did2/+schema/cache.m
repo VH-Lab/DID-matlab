@@ -25,10 +25,37 @@ classdef cache < handle
     %   `jsondecode` returns a struct with the same field names, and
     %   `jsonencode` writes them back without any rename pass.
     %
+    %   Schema-set resolution. The cache works in one of two modes,
+    %   selected automatically at construction:
+    %
+    %     index mode  - schemaPath is a set-version root directory that
+    %                   contains an `index.json` (the V_delta/V_epsilon
+    %                   layout). Classes are resolved by `class_name`
+    %                   through the index to their tier folder
+    %                   (`stable/`, `draft/`, `deprecated/`), so a set
+    %                   whose classes are spread across tiers loads
+    %                   correctly. The set-version string carried on
+    %                   every built document is read from the index's
+    %                   `schema_version_value`.
+    %     flat mode   - schemaPath is a single directory of `*.json`
+    %                   schema files with no `index.json` (the legacy
+    %                   pre-index layout, e.g. a bare `.../stable`
+    %                   folder). Classes resolve as
+    %                   `fullfile(schemaPath, [class_name '.json'])`
+    %                   and the set-version string defaults to
+    %                   'V_delta'. Retained for back-compat.
+    %
     %   did2.schema.cache Properties:
-    %       schemaPath      - filesystem path to a V_delta schema dir.
+    %       schemaPath      - filesystem path handed to the cache (a set-
+    %                         version root in index mode, a tier dir in
+    %                         flat mode).
     %       loadedClasses   - containers.Map of classname -> raw schema.
     %       curieRegistry   - parsed CURIE_lookups_meta.json contents.
+    %       schemaVersionValue - the set-version string ('V_epsilon',
+    %                         'V_delta', ...) stamped on built documents.
+    %       indexEntries    - containers.Map class_name -> struct with
+    %                         `tier`, `path`, `is_meta` (index mode only;
+    %                         empty in flat mode).
     %
     %   did2.schema.cache Static Methods:
     %       shared          - return the process-wide singleton cache.
@@ -56,6 +83,8 @@ classdef cache < handle
         schemaPath (1,:) char = ''
         loadedClasses
         curieRegistry struct = struct()
+        schemaVersionValue (1,:) char = 'V_delta'
+        indexEntries  % containers.Map class_name -> struct(tier,path,is_meta); [] in flat mode
     end
 
     methods (Access = private)
@@ -66,6 +95,8 @@ classdef cache < handle
             end
             obj.schemaPath = schemaPath;
             obj.loadedClasses = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.indexEntries = [];
+            obj.loadIndexIfPresent();
             obj.loadRegistry();
         end
     end
@@ -81,13 +112,22 @@ classdef cache < handle
                 s = obj.loadedClasses(className);
                 return;
             end
-            schemaFile = fullfile(obj.schemaPath, [className '.json']);
-            if ~isfile(schemaFile)
+            schemaFile = obj.classFilePath(className);
+            if isempty(schemaFile) || ~isfile(schemaFile)
                 error('did2:schema:missingClass', ...
                     'No schema file for class "%s" at %s.', className, schemaFile);
             end
             s = jsondecode(fileread(schemaFile));
             obj.loadedClasses(className) = s;
+        end
+
+        function v = schemaVersion(obj)
+            % schemaVersion - the set-version string ('V_epsilon',
+            %   'V_delta', ...) this cache stamps onto built and
+            %   migrated documents. Read from index.json's
+            %   `schema_version_value` in index mode; defaults to
+            %   'V_delta' in flat mode.
+            v = obj.schemaVersionValue;
         end
 
         function names = superclasses(obj, className)
@@ -333,6 +373,22 @@ classdef cache < handle
             %   Used by the SQLite backend at open-time so queryablePaths
             %   returns a deterministic set independent of which classes
             %   have been touched so far in this session.
+            if ~isempty(obj.indexEntries)
+                % Index mode: iterate the authoritative class list, skip
+                % meta entries, resolve each through the index.
+                names = obj.indexEntries.keys();
+                for k = 1:numel(names)
+                    name = names{k};
+                    entry = obj.indexEntries(name);
+                    if entry.is_meta
+                        continue;
+                    end
+                    if ~obj.loadedClasses.isKey(name)
+                        obj.getClass(name);  % side effect: caches the parse.
+                    end
+                end
+                return;
+            end
             if ~isfolder(obj.schemaPath)
                 return;
             end
@@ -486,7 +542,7 @@ classdef cache < handle
                 'class_name', char(schemaDC.class_name), ...
                 'class_version', char(schemaDC.class_version), ...
                 'superclasses', sc, ...
-                'schema_version', 'V_delta');
+                'schema_version', obj.schemaVersionValue);
 
             doc.depends_on = struct('name', {}, 'document_id', {});
 
@@ -686,7 +742,14 @@ classdef cache < handle
             % three '..'s land at the *sibling* of DID-matlab where a
             % did-schema checkout typically lives. (The previous two
             % '..'s expected did-schema *inside* DID-matlab.)
-            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
+            %
+            % Point at the V_epsilon set-version *root* (not a tier
+            % folder): it carries an index.json, so the cache resolves
+            % classes across stable/draft/deprecated tiers and reads the
+            % set-version string from the index. (Pre-index sets like a
+            % bare `.../V_delta/stable` still work via flat mode if a
+            % caller points the cache there.)
+            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_epsilon');
         end
 
         function ts = currentUTCTimestamp()
@@ -736,8 +799,92 @@ classdef cache < handle
     end
 
     methods (Access = private)
+        function loadIndexIfPresent(obj)
+            % loadIndexIfPresent - detect and parse an index.json under
+            %   schemaPath. When present (index mode), populate
+            %   obj.indexEntries (class_name -> {tier, path, is_meta})
+            %   and read obj.schemaVersionValue from the index's
+            %   `schema_version_value`/`set_version`. When absent (flat
+            %   mode) leave indexEntries empty and schemaVersionValue at
+            %   its 'V_delta' back-compat default.
+            indexFile = fullfile(obj.schemaPath, 'index.json');
+            if ~isfile(indexFile)
+                return;
+            end
+            idx = jsondecode(fileread(indexFile));
+            if isfield(idx, 'schema_version_value') && ~isempty(idx.schema_version_value)
+                obj.schemaVersionValue = char(idx.schema_version_value);
+            elseif isfield(idx, 'set_version') && ~isempty(idx.set_version)
+                obj.schemaVersionValue = char(idx.set_version);
+            end
+            obj.indexEntries = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            if ~isfield(idx, 'schemas') || isempty(idx.schemas)
+                return;
+            end
+            schemas = idx.schemas;
+            for k = 1:numel(schemas)
+                entry = obj.elementAt(schemas, k);
+                if ~isfield(entry, 'class_name') || isempty(entry.class_name)
+                    continue;
+                end
+                name = char(entry.class_name);
+                tier = '';
+                if isfield(entry, 'tier') && ~isempty(entry.tier)
+                    tier = char(entry.tier);
+                end
+                relPath = '';
+                if isfield(entry, 'path') && ~isempty(entry.path)
+                    relPath = char(entry.path);
+                end
+                isMeta = false;
+                if isfield(entry, 'is_meta') && ~isempty(entry.is_meta)
+                    isMeta = (islogical(entry.is_meta) && entry.is_meta) ...
+                        || (isnumeric(entry.is_meta) && entry.is_meta == 1);
+                end
+                obj.indexEntries(name) = struct( ...
+                    'tier', tier, 'path', relPath, 'is_meta', isMeta);
+            end
+        end
+
+        function p = classFilePath(obj, className)
+            % classFilePath - absolute path to a class's schema file.
+            %   Index mode: resolve through the index to the class's
+            %   tier folder under the set-version root
+            %   (fullfile(root, tier, [class '.json'])), robust to the
+            %   set being relocated (e.g. into NDI's per-user cache).
+            %   Falls back to the index `path` joined to the inferred
+            %   repo root if the tier-relative file is missing. Flat
+            %   mode: fullfile(schemaPath, [class '.json']).
+            if ~isempty(obj.indexEntries) && obj.indexEntries.isKey(className)
+                entry = obj.indexEntries(className);
+                if ~isempty(entry.tier)
+                    candidate = fullfile(obj.schemaPath, entry.tier, [className '.json']);
+                    if isfile(candidate)
+                        p = candidate;
+                        return;
+                    end
+                end
+                if ~isempty(entry.path)
+                    % index `path` is repo-root-relative; schemaPath is
+                    % <root>/schemas/<set_version>, so the repo root is
+                    % two levels up.
+                    repoRoot = fileparts(fileparts(obj.schemaPath));
+                    candidate = fullfile(repoRoot, entry.path);
+                    if isfile(candidate)
+                        p = candidate;
+                        return;
+                    end
+                end
+            end
+            p = fullfile(obj.schemaPath, [className '.json']);
+        end
+
         function loadRegistry(obj)
             registryFile = fullfile(obj.schemaPath, 'CURIE_lookups_meta.json');
+            if (~isfile(registryFile)) && ~isempty(obj.indexEntries) ...
+                    && obj.indexEntries.isKey('CURIE_lookups_meta')
+                registryFile = obj.classFilePath('CURIE_lookups_meta');
+            end
             if isfile(registryFile)
                 obj.curieRegistry = jsondecode(fileread(registryFile));
             end

@@ -101,7 +101,8 @@ end
 % --- helpers ---
 
 function p = resolveSchemaPath()
-% Return a directory that holds V_delta `*.json` schema files, or '' if
+% Return a directory that holds the active schema set (a V_epsilon
+% set-version root with index.json, or any dir of `*.json`), or '' if
 % none can be found. Probe order matches the docstring above.
 candidates = {};
 envPath = getenv('DID_SCHEMA_PATH');
@@ -112,7 +113,7 @@ end
 % did-schema is a sibling of the DID-matlab checkout.
 toolboxDir = did.toolboxdir();
 candidates{end+1} = fullfile(toolboxDir, '..', '..', '..', ...
-    'did-schema', 'schemas', 'V_delta', 'stable'); %#ok<AGROW>
+    'did-schema', 'schemas', 'V_epsilon'); %#ok<AGROW>
 
 p = '';
 for k = 1:numel(candidates)

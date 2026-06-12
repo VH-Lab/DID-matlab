@@ -1,11 +1,19 @@
-% +convert  did_v1 -> V_delta document conversion utilities.
+% +convert  did_v1 -> active-set document conversion utilities.
 %
 %   The +convert subpackage implements PLAN.md §7 plus the step-6
-%   sub-steps in §9.6: the v1-to-V_delta migration dispatcher, the
-%   universal-rename pass, per-class migrator functions for the
-%   four 2.0.0-bumped classes, and the legacy-database readers plus
-%   end-to-end orchestrator that drive the dispatcher off real v1
-%   database files.
+%   sub-steps in §9.6: the v1-to-active-set migration dispatcher, the
+%   universal-rename pass, per-class migrator functions, and the
+%   legacy-database readers plus end-to-end orchestrator that drive the
+%   dispatcher off real v1 database files.
+%
+%   The target schema set is whatever did2.schema.cache is pointed at —
+%   V_epsilon by default. The dispatcher reads the set-version string
+%   from the cache (index.json `schema_version_value`) and stamps it on
+%   every migrated document, so retargeting a new set version needs no
+%   code change here. Migrators may fan out (return a cell array of
+%   bodies) when a single v1 document maps to several target documents
+%   (e.g. the treatment split, subject_group -> subject + group
+%   assignments, and any interaction that mints a time_reference).
 %
 %   Files
 %     fromV1Database   - end-to-end orchestrator. Sniffs the source

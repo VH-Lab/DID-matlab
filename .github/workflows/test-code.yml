@@ -35,7 +35,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check out did-schema (sibling, for V_delta validation)
+      - name: Check out did-schema (sibling, for V_epsilon validation)
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
@@ -44,7 +44,7 @@ jobs:
 
       - name: Export DID_SCHEMA_PATH
         run: |
-          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/did-schema/schemas/V_delta/stable" \
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/did-schema/schemas/V_epsilon" \
             >> "$GITHUB_ENV"
 
       - name: Set up MATLAB

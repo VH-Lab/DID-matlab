@@ -1,13 +1,14 @@
 function tests = testMigrators
-%TESTMIGRATORS Per-class did_v1 -> V_delta migrator tests.
+%TESTMIGRATORS Per-class did_v1 -> V_epsilon migrator tests.
 %
-%   Exercises the four 2.0.0-bumped class migrators (PLAN.md §9.6
-%   sub-step 6c) against the worked examples in
-%   did-schema/schemas/V_delta/conversions/from_did_v1/<class>.md.
+%   Exercises the per-class migrators against the worked examples in
+%   did-schema/schemas/V_epsilon/conversions/from_did_v1/<class>.md,
+%   including the V_epsilon active conversion of the deprecated
+%   families (e.g. the `treatment` split).
 %
 %   Tests run with Validate=false on the end-to-end dispatcher case
 %   so they do not depend on the schema cache being able to resolve
-%   V_delta schemas at the test-runner working directory.
+%   schemas at the test-runner working directory.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testMigrators');
@@ -42,30 +43,36 @@ verifyEqual(testCase, doc.get('probe_location.ontology_name'), 'uberon:0002436')
 verifyEqual(testCase, doc.get('probe_location.name'), 'primary visual cortex');
 end
 
-function testTreatmentSnakeCasesCamelOntologyName(testCase)
+function testTreatmentSplitsProceduralToManipulation(testCase)
+% V_epsilon actively splits the legacy `treatment` catch-all. A
+% surgical/procedural name routes to `procedural_manipulation`, with
+% the legacy ontology+name on `procedure` and string_value on `notes`.
+v1 = wrap('treatment', 'treatment', struct( ...
+    'ontologyName',  'ncit:c15329', ...
+    'name',          'craniotomy', ...
+    'numeric_value', [], ...
+    'string_value',  '5 mm window, left hemisphere'));
+out = did2.convert.v1_to_v2(v1, 'Validate', false);
+verifyEqual(testCase, out.summary.migrated_count, 1);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.className(), 'procedural_manipulation');
+verifyEqual(testCase, doc.get('procedural_manipulation.procedure.node'), 'ncit:c15329');
+verifyEqual(testCase, doc.get('procedural_manipulation.procedure.name'), 'craniotomy');
+verifyEqual(testCase, doc.get('procedural_manipulation.notes'), '5 mm window, left hemisphere');
+end
+
+function testTreatmentUnresolvedQuarantines(testCase)
+% A treatment whose name matches no manipulation branch (and is not a
+% recognized non-manipulation record) is quarantined for curator
+% review rather than mis-routed (report-only-first mandate).
 v1 = wrap('treatment', 'treatment', struct( ...
     'ontologyName',  'chebi:6015', ...
     'name',          'isoflurane', ...
-    'numeric_value', 2.0, ...
-    'string_value',  '2 percent in O2'));
+    'numeric_value', [], ...
+    'string_value',  ''));
 out = did2.convert.v1_to_v2(v1, 'Validate', false);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('treatment.ontology_name'), 'chebi:6015');
-verifyEqual(testCase, doc.get('treatment.name'), 'isoflurane');
-verifyEqual(testCase, doc.get('treatment.numeric_value'), 2.0);
-verifyEqual(testCase, doc.get('treatment.string_value'), '2 percent in O2');
-end
-
-function testTreatmentSnakeOntologyNameRoundTrips(testCase)
-v1 = wrap('treatment', 'treatment', struct( ...
-    'ontology_name', 'chebi:6015', ...
-    'name',          'isoflurane', ...
-    'numeric_value', 2.0, ...
-    'string_value',  '2 percent in O2'));
-out = did2.convert.v1_to_v2(v1, 'Validate', false);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('treatment.ontology_name'), 'chebi:6015');
-verifyEqual(testCase, doc.get('treatment.name'), 'isoflurane');
+verifyEqual(testCase, out.summary.migrated_count, 0);
+verifyEqual(testCase, out.summary.quarantine_count, 1);
 end
 
 function testOntologyImageRenamesClassAndCollapsesFields(testCase)
@@ -113,7 +120,7 @@ verifyEqual(testCase, doc.get('probe_location.ontology_name'), ...
     'uberon:0002436');
 verifyEqual(testCase, doc.get('probe_location.name'), ...
     'primary visual cortex');
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_epsilon');
 end
 
 function testEndToEndDispatcherForOntologyLabel(testCase)
@@ -649,8 +656,8 @@ v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
     'mixture_table', ''));
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.stimulus_bath.location.node, 'NCIm:C0179246');
-verifyEqual(testCase, out.stimulus_bath.location.name, ...
+verifyEqual(testCase, out.bath.location.node, 'NCIm:C0179246');
+verifyEqual(testCase, out.bath.location.name, ...
     'Baths, Water, Laboratory');
 end
 
@@ -662,14 +669,14 @@ v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
                        'NCIm:C1098706,arginine-vasopressin,2e-07,OM:MolarVolumeUnit,Molar' newline]));
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, numel(out.stimulus_bath.mixture), 1);
-verifyEqual(testCase, out.stimulus_bath.mixture(1).chemical.node, ...
+verifyEqual(testCase, numel(out.pharmacological_manipulation.mixture), 1);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).chemical.node, ...
     'NCIm:C1098706');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).chemical.name, ...
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).chemical.name, ...
     'arginine-vasopressin');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_unit, 'Molar');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_value, 2e-7);
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.molar, 2e-7);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_unit, 'Molar');
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_value, 2e-7);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.molar, 2e-7);
 end
 
 function testStimulusBathScalesMicromolarToMolar(testCase)
@@ -679,10 +686,10 @@ v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
                        'CHEBI:1234,sample,5,OM:Micromolar,Micromolar']));
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_value, 5);
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_unit, ...
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_value, 5);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_unit, ...
     'Micromolar');
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.molar, 5e-6, ...
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.molar, 5e-6, ...
     'AbsTol', 1e-15);
 end
 
@@ -694,20 +701,26 @@ v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
 % Unknown unit: source preserved, no canonical populated.
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_value, 42);
-verifyEqual(testCase, out.stimulus_bath.mixture(1).amount.source_unit, ...
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_value, 42);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).amount.source_unit, ...
     'WeirdUnit');
-verifyFalse(testCase, isfield(out.stimulus_bath.mixture(1).amount, 'molar'));
-verifyFalse(testCase, isfield(out.stimulus_bath.mixture(1).amount, 'grams_per_liter'));
+verifyFalse(testCase, isfield(out.pharmacological_manipulation.mixture(1).amount, 'molar'));
+verifyFalse(testCase, isfield(out.pharmacological_manipulation.mixture(1).amount, 'grams_per_liter'));
 end
 
-function testStimulusBathEmptyMixtureTableIsZeroLengthArray(testCase)
+function testStimulusBathEmptyMixtureTablePadsBackfillEntry(testCase)
+% V_epsilon roots the mixture on pharmacological_manipulation, whose
+% `mixture` is required non-empty. An empty mixture_table (e.g. a wash
+% bath) therefore yields a single blank backfill record (blank
+% chemical/amount) rather than a zero-length array, so the document
+% stays valid; the curator fills in the chemical during the soak.
 v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
     'location', struct('ontologyNode', 'NCIm:C0179246', 'name', 'water'), ...
     'mixture_table', ''));
 out = did2.convert.migrators.stimulus_bath( ...
     did2.convert.universalRenames(v1));
-verifyEqual(testCase, numel(out.stimulus_bath.mixture), 0);
+verifyEqual(testCase, numel(out.pharmacological_manipulation.mixture), 1);
+verifyEqual(testCase, out.pharmacological_manipulation.mixture(1).chemical.node, '');
 end
 
 function testStimulusBathMissingBlockErrors(testCase)

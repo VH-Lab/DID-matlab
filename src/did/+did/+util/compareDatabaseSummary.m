@@ -241,18 +241,30 @@ function props = getProperties(docStruct)
 end
 
 function deps = normalizeDeps(depsInput)
-    % Normalize depends_on to a consistent sortable form for comparison
-    if isstruct(depsInput)
-        deps = struct();
-        for i = 1:numel(depsInput)
-            if isfield(depsInput(i), 'name') && isfield(depsInput(i), 'value')
-                deps(i).name = depsInput(i).name;
-                deps(i).value = depsInput(i).value;
-            else
-                deps(i) = depsInput(i);
-            end
-        end
-    else
+    % Normalize depends_on to a consistent sortable form for comparison.
+    % Accepts the legacy {name, value}, the V_delta/V_epsilon
+    % {name, document_id}, and the v1 {name, id} entry shapes, mapping the
+    % reference key onto `value` so summaries built under either shape
+    % compare equal. A homogeneous {name, value} struct array is built
+    % field-by-field to avoid 'heterogeneousStrucAssignment' when entries
+    % carry dissimilar key sets.
+    if ~isstruct(depsInput)
         deps = depsInput;
+        return;
+    end
+    n = numel(depsInput);
+    deps = repmat(struct('name', '', 'value', ''), 1, n);
+    for i = 1:n
+        entry = depsInput(i);
+        if isfield(entry, 'name')
+            deps(i).name = entry.name;
+        end
+        if isfield(entry, 'document_id') && ~isempty(entry.document_id)
+            deps(i).value = entry.document_id;
+        elseif isfield(entry, 'value') && ~isempty(entry.value)
+            deps(i).value = entry.value;
+        elseif isfield(entry, 'id') && ~isempty(entry.id)
+            deps(i).value = entry.id;
+        end
     end
 end

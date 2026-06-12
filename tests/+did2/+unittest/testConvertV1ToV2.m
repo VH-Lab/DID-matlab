@@ -1,5 +1,5 @@
 function tests = testConvertV1ToV2
-%TESTCONVERTV1TOV2 Smoke tests for the did2.convert v1->V_delta dispatcher.
+%TESTCONVERTV1TOV2 Smoke tests for the did2.convert v1->active-set dispatcher.
 %
 %   Exercises the converter skeleton (PLAN.md §9.6 sub-step 6a): the
 %   dispatcher's input normalisation, the universal-rename pass, the
@@ -31,7 +31,8 @@ v1Body.base = struct( ...
 end
 
 function testUniversalRenamesSetsSchemaVersion(testCase)
-% Every v1 body picks up `document_class.schema_version = 'V_delta'`
+% Every v1 body picks up `document_class.schema_version` set to the
+% active set version (V_epsilon)
 % so the next dispatcher pass takes the short-circuit. The tag lives
 % in document_class (set-version metadata, sibling of class_name /
 % class_version / superclasses), never on the base block.
@@ -39,7 +40,7 @@ v1 = makeV1Skeleton('treatment');
 v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
     'numeric_value', 2.0, 'string_value', '2 percent');
 out = did2.convert.universalRenames(v1);
-verifyEqual(testCase, out.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, out.document_class.schema_version, 'V_epsilon');
 verifyFalse(testCase, isfield(out.base, 'schema_version'));
 end
 
@@ -90,7 +91,7 @@ out = did2.convert.universalRenames(v1);
 verifyFalse(testCase, isfield(out, 'ndi_document'));
 verifyTrue(testCase, isfield(out, 'base'));
 verifyEqual(testCase, out.base.id, 'aabb1122ccdd3344_1122334455667788');
-verifyEqual(testCase, out.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, out.document_class.schema_version, 'V_epsilon');
 end
 
 function testUniversalRenamesSnakeCasesCamelClassName(testCase)
@@ -267,8 +268,8 @@ verifyEqual(testCase, doc.get('epochclocktimes.t0'), 0);
 verifyEqual(testCase, doc.get('epochclocktimes.t1'), 1.5);
 end
 
-function vDelta = makeVDeltaSkeleton(className)
-% Build a body that is already V_delta-shaped: schema_version stamped
+function vDelta = makeTargetSkeleton(className)
+% Build a body that is already target-set-shaped: schema_version stamped
 % on document_class, snake-cased class name, depends_on uses
 % `document_id` (not `id` or the earlier-draft `value`).
 vDelta = struct();
@@ -278,7 +279,7 @@ vDelta.document_class = struct( ...
     'superclasses',   struct( ...
         'class_name',    'base', ...
         'class_version', '1.0.0'), ...
-    'schema_version', 'V_delta');
+    'schema_version', 'V_epsilon');
 vDelta.depends_on = struct('name', {}, 'document_id', {});
 vDelta.base = struct( ...
     'id',         'aabb1122ccdd3344_1122334455667788', ...
@@ -295,7 +296,7 @@ function testShortCircuitOnAlreadyVDeltaBody(testCase)
 % stay verbatim because the superclass migrator never runs.
 % ensureClassBlocks still runs (rebuilds the chain) and the body
 % still becomes a did2.document.
-vDelta = makeVDeltaSkeleton('some_unregistered_class');
+vDelta = makeTargetSkeleton('some_unregistered_class');
 vDelta.some_unregistered_class = struct('foo', 'bar');
 vDelta.epochclocktimes = struct('clocktype', 'dev_local_time', ...
     't0_t1', [0 1.5]);
@@ -308,7 +309,7 @@ doc = result.migrated{1};
 verifyEqual(testCase, doc.get('epochclocktimes.clocktype'), ...
     'dev_local_time');
 verifyEqual(testCase, doc.get('epochclocktimes.t0_t1'), [0 1.5]);
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_epsilon');
 % Per-class summary keys off the unchanged class_name.
 verifyEqual(testCase, result.summary.by_class.some_unregistered_class, 1);
 end
@@ -333,7 +334,7 @@ verifyEqual(testCase, second.summary.migrated_count, 1);
 verifyEqual(testCase, second.summary.quarantine_count, 0);
 secondBody = second.migrated{1}.toStruct();
 
-verifyEqual(testCase, secondBody.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, secondBody.document_class.schema_version, 'V_epsilon');
 verifyEqual(testCase, secondBody.epochclocktimes.epoch_clock, ...
     'dev_local_time');
 verifyEqual(testCase, secondBody.epochclocktimes.t0, 0);
@@ -346,11 +347,11 @@ function testMixedBatchOfV1AndVDeltaBodies(testCase)
 % bodies (short-circuit) migrates every document successfully.
 v1A = makeV1Skeleton('unknown_class');
 v1A.unknown_class = struct('foo', 'bar_v1');
-vDeltaA = makeVDeltaSkeleton('unknown_class');
+vDeltaA = makeTargetSkeleton('unknown_class');
 vDeltaA.unknown_class = struct('foo', 'bar_vdelta');
 v1B = makeV1Skeleton('some_other_class');
 v1B.some_other_class = struct('n', 42);
-vDeltaB = makeVDeltaSkeleton('some_other_class');
+vDeltaB = makeTargetSkeleton('some_other_class');
 vDeltaB.some_other_class = struct('n', 99);
 
 result = did2.convert.v1_to_v2( ...
@@ -366,7 +367,7 @@ verifyEqual(testCase, result.summary.by_class.some_other_class, 2);
 % V_delta bodies kept their own).
 for k = 1:numel(result.migrated)
     doc = result.migrated{k};
-    verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+    verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_epsilon');
 end
 end
 
@@ -386,7 +387,7 @@ verifyFalse(testCase, isfield(out, 'demo_ndi'));
 verifyEqual(testCase, out.demoNDI.value, 5);
 % schema_version stamping still runs — that's the V_delta shape
 % transformation the gate flip actually needs.
-verifyEqual(testCase, out.document_class.schema_version, 'V_delta');
+verifyEqual(testCase, out.document_class.schema_version, 'V_epsilon');
 end
 
 function testUniversalRenamesRenameClassNamesFalsePreservesSuperclassNames(testCase)
@@ -478,7 +479,7 @@ result = did2.convert.v1_to_v2(v1, 'Validate', false, ...
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
 verifyEqual(testCase, doc.className(), 'demoNDI');
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_epsilon');
 end
 
 function testShortCircuitSkippedWhenSchemaVersionMissing(testCase)
@@ -498,7 +499,7 @@ result = did2.convert.v1_to_v2(v1, 'Validate', false);
 verifyEqual(testCase, result.summary.migrated_count, 1);
 doc = result.migrated{1};
 % universalRenames ran: schema_version got stamped on document_class.
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_delta');
+verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_epsilon');
 % universalRenames ran: depends_on(1).id was promoted to
 % .document_id, and the legacy id/version keys were dropped.
 dependsOn = doc.toStruct().depends_on;

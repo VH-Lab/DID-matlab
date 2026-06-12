@@ -1,24 +1,66 @@
-% +migrators  Per-class did_v1 -> V_delta migrator functions.
+% +migrators  Per-class did_v1 -> active-set migrator functions.
 %
 %   Each file in this package is named after the post-universal-rename
 %   v1 class name (snake_case) and exports a single function:
 %
-%       v2Body = <class_name>(preUniversalBody)
+%       out = <class_name>(preUniversalBody)
 %
-%   The dispatcher (did2.convert.v1_to_v2) applies the universal
-%   renames first, then looks up the matching migrator by class name.
-%   If no migrator exists, the dispatcher falls back to `identity`,
-%   which returns the post-universal body unchanged.
+%   OUT is either a single body struct (1:1 rewrite) or a cell array of
+%   body structs when the migration fans out into companion documents
+%   (see the subject_interaction family below). The dispatcher
+%   (did2.convert.v1_to_v2) applies the universal renames first, then
+%   looks up the matching migrator by class name. If no migrator exists,
+%   the dispatcher falls back to `identity`, which returns the
+%   post-universal body unchanged.
 %
-%   Currently registered migrators implement the four 2.0.0-bumped
-%   classes from PLAN.md §7 plus the PRED-driven §9.6 sub-step 6d
-%   additions:
+%   subject_interaction family (V_epsilon active conversion). These
+%   migrators implement the "fully active" did_v1 -> V_epsilon
+%   conversion of the five deprecated families, per the ndi-next-steps
+%   Summer 2026/1_Ingestion proposals. They build target documents in
+%   the new observation / manipulation / annotation families and share
+%   did2.convert.interactionCommon for identity carryover, ontology_term
+%   / concentration / volume composites, and minting time_reference
+%   companions:
+%
+%     treatment           - SPLIT on name/ontology into
+%                           temperature_manipulation (thermal),
+%                           procedural_manipulation (surgical/minor; and
+%                           the Dab "...Target Location" case where
+%                           string_value is the target_structure), or
+%                           environmental_manipulation (husbandry/
+%                           sensory/behavioral). A non-empty
+%                           numeric_value is preserved as a companion
+%                           generic_scalar_observation. Records that are
+%                           not manipulations (DOB, session metadata) or
+%                           cannot be routed are quarantined (the
+%                           function throws), per the report-only-first
+%                           mandate.
+%     treatment_drug      - -> injection (kind="drug"); mixture_table ->
+%                           mixture; location -> target_structure;
+%                           administration onset/offset -> companion
+%                           utc_reference.
+%     virus_injection     - -> injection (kind="virus"); construct (+
+%                           diluent) -> mixture; location ->
+%                           target_structure; administration date ->
+%                           companion (approximate) utc_reference.
+%     treatment_transfer  - -> biological_transfer; method_* ->
+%                           inherited procedure; entity_* -> entity;
+%                           recipient_id -> subject_id; donor_id carried;
+%                           global-clock timestamp -> companion
+%                           utc_reference.
+%     subject_group       - -> subject (is_group=true), carrying the
+%                           legacy id so references resolve; an optional
+%                           member is re-expressed as a companion
+%                           group_assignment.
+%     stimulus_bath       - re-rooted under `bath`: mixture_table ->
+%                           pharmacological_manipulation.mixture;
+%                           location -> bath.location; bath.kind defaults
+%                           to "drug"; stimulus_element_id carried.
+%
+%   Other registered migrators (carried over; retargeted to the active
+%   set via the version-agnostic dispatcher):
 %
 %     identity            - default passthrough.
-%     probe_location      - collapse (ontology_name, name) -> location.
-%     treatment           - collapse (ontologyName | ontology_name,
-%                           name) -> treatment_name; pass through
-%                           numeric_value and string_value.
 %     ontology_image      - collapse (ontology_name, ontology_region)
 %                           -> region.
 %     ontology_label      - collapse (ontology_name, label_id, label)
@@ -55,14 +97,6 @@
 %                           keys and builds an endpoints array-of-records
 %                           with measurement, integer_ids, string_ids,
 %                           numeric_values per endpoint.
-%     stimulus_bath       - rename location.ontologyNode -> .node;
-%                           parse the v1 CSV mixture_table into a
-%                           mixture array-of-records; each amount is a
-%                           V_delta `concentration` composite with
-%                           source_unit / source_value preserved and
-%                           the appropriate canonical sub-field (molar,
-%                           grams_per_liter, mass_fraction,
-%                           volume_fraction) populated when computable.
 %
 %   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
 %   each calls did2.convert.calcCommon to move v1's
