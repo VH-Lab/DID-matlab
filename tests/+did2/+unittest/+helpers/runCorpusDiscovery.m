@@ -1,4 +1,4 @@
-function corpusDir = runCorpusDiscovery(testCase, corpusName, corpusURL, innerDir)
+function corpusDir = runCorpusDiscovery(testCase, corpusName, corpusURL, innerDir, options)
 %RUNCORPUSDISCOVERY Shared driver for v1 corpus discovery-mode tests.
 %
 %   CORPUSDIR = did2.unittest.helpers.runCorpusDiscovery(TESTCASE, CORPUSNAME,
