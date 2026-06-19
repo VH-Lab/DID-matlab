@@ -66,6 +66,14 @@ function result = v1_to_v2(v1Bodies, options)
 %                      identifiers in the legacy (camelCase) form so
 %                      the body stays schema-compatible while still
 %                      gaining the V_delta shape transformations.
+%     TargetVersion    (1,:) char, default 'V_delta') - migration target.
+%                      'V_delta' (default) preserves the historical
+%                      class-preserving 1->1 behaviour. 'V_epsilon' routes
+%                      classes that have a Brainstorm-E split migrator
+%                      under +did2.+convert.+migrators_e (treatment,
+%                      ontology_table_row) through that migrator instead,
+%                      which may fan one source body out to several
+%                      destination documents (1 -> N).
 %
 %   See also: did2.convert.universalRenames, did2.convert.migrators,
 %   docs/v2/PLAN.md §9.6.
@@ -78,6 +86,7 @@ arguments
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
+    options.TargetVersion (1,:) char = 'V_delta'
 end
 
 bodies = normaliseInput(v1Bodies);
@@ -111,22 +120,41 @@ for k = 1:numel(bodies)
                     && isfield(v2Body.document_class, 'class_name')
                 className = char(v2Body.document_class.class_name);
             end
+            v2Bodies = {v2Body};
         else
             postUniversalBody = did2.convert.universalRenames(preBody, ...
                 'RenameClassNames', options.RenameClassNames);
             className = char(postUniversalBody.document_class.class_name);
             v2Body = applySuperclassMigrators(postUniversalBody, className);
-            migratorFcn = lookupMigrator(className);
-            v2Body = migratorFcn(v2Body);
+            % runConcreteMigrator returns a CELL of one-or-more bodies.
+            % Default (TargetVersion 'V_delta') always returns a single
+            % body via the existing per-class migrator, so behaviour is
+            % unchanged. Under TargetVersion 'V_epsilon' a class with a
+            % Brainstorm-E split migrator (treatment, ontology_table_row)
+            % may fan out to several bodies (1 -> N).
+            v2Bodies = runConcreteMigrator(v2Body, className, ...
+                options.TargetVersion);
         end
-        v2Body = ensureClassBlocks(v2Body, options.SchemaCache);
-        doc = did2.document(v2Body);
-        if options.Validate
-            doc.validate('SchemaCache', options.SchemaCache);
+        % Collect every produced body. Each is padded, optionally
+        % validated, and counted independently so a 1 -> N split lands
+        % N documents in `migrated` (or quarantines the whole source
+        % body on the first failure, as before).
+        for bi = 1:numel(v2Bodies)
+            outBody = ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+            doc = did2.document(outBody);
+            if options.Validate
+                doc.validate('SchemaCache', options.SchemaCache);
+            end
+            migrated{end+1} = doc; %#ok<AGROW>
+            outName = className;
+            if isfield(outBody, 'document_class') ...
+                    && isstruct(outBody.document_class) ...
+                    && isfield(outBody.document_class, 'class_name')
+                outName = char(outBody.document_class.class_name);
+            end
+            [classCountNames, classCountValues] = bumpClassCounter( ...
+                classCountNames, classCountValues, outName);
         end
-        migrated{end+1} = doc; %#ok<AGROW>
-        [classCountNames, classCountValues] = bumpClassCounter( ...
-            classCountNames, classCountValues, className);
     catch err
         entry = struct( ...
             'original_body', originalJSON, ...
@@ -247,6 +275,47 @@ if ~isempty(which(fqn))
     fcn = str2func(fqn);
 else
     fcn = @did2.convert.migrators.identity;
+end
+end
+
+function bodies = runConcreteMigrator(v2Body, className, targetVersion)
+%RUNCONCRETEMIGRATOR Run the concrete-class migrator, return a cell of bodies.
+%   Default ('V_delta') preserves the historical 1 -> 1 behaviour: the
+%   per-class migrator under +did2.+convert.+migrators is applied and a
+%   single-element cell is returned. Under 'V_epsilon', a class that has
+%   a Brainstorm-E split migrator under +did2.+convert.+migrators_e is
+%   routed there instead; that migrator may return either a single body
+%   (struct) or several (struct array / cell), enabling the treatment ->
+%   manipulation and ontology_table_row -> observations (1 -> N) splits.
+if strcmp(targetVersion, 'V_epsilon')
+    fqn = ['did2.convert.migrators_e.', className];
+    if ~isempty(which(fqn))
+        out = feval(str2func(fqn), v2Body);
+        bodies = normaliseMigratorOutput(out);
+        return;
+    end
+end
+migratorFcn = lookupMigrator(className);
+bodies = {migratorFcn(v2Body)};
+end
+
+function bodies = normaliseMigratorOutput(out)
+%NORMALISEMIGRATOROUTPUT Coerce a migrator's output to a cell of bodies.
+if iscell(out)
+    bodies = out(:)';
+elseif isstruct(out)
+    if isscalar(out)
+        bodies = {out};
+    else
+        bodies = cell(1, numel(out));
+        for k = 1:numel(out)
+            bodies{k} = out(k);
+        end
+    end
+else
+    error('did2:convert:badMigratorOutput', ...
+        'A split migrator must return a struct or cell of bodies (got %s).', ...
+        class(out));
 end
 end
 
