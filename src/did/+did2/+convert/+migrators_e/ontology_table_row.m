@@ -229,9 +229,13 @@ function s = getCharField(block, name)
 s = '';
 if isfield(block, name)
     v = block.(name);
-    if ischar(v); s = v;
-    elseif isstring(v) && isscalar(v); s = char(v);
-    elseif isnumeric(v) && isscalar(v); s = num2str(v); end
+    if ischar(v)
+        s = v;
+    elseif isstring(v) && isscalar(v)
+        s = char(v);
+    elseif isnumeric(v) && isscalar(v)
+        s = num2str(v);
+    end
 end
 end
 
