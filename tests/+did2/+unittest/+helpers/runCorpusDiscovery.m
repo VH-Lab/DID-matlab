@@ -25,7 +25,7 @@ arguments
     corpusName (1,:) char
     corpusURL  (1,:) char
     innerDir   (1,:) char
-    options.TargetVersion (1,:) char = 'V_delta'
+    options.TargetVersion (1,:) char = 'V_epsilon'
 end
 
 did2.unittest.helpers.installSchemaPath(testCase, sprintf('skipping %s corpus test', corpusName));

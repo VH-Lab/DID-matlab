@@ -141,6 +141,11 @@ for k = 1:numel(bodies)
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
             outBody = ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+            if strcmp(options.TargetVersion, 'V_epsilon') ...
+                    && isfield(outBody, 'document_class') ...
+                    && isstruct(outBody.document_class)
+                outBody.document_class.schema_version = 'V_epsilon';
+            end
             doc = did2.document(outBody);
             if options.Validate
                 doc.validate('SchemaCache', options.SchemaCache);
