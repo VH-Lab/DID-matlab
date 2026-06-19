@@ -92,6 +92,38 @@ jobs:
             nFailed = sum([results.Failed]);
             assert(nFailed == 0, sprintf("%d test(s) failed", nFailed));
 
+      - name: Assemble V_epsilon schema set (stable + draft)
+        # The schema cache loads a single flat dir of *.json. The
+        # Brainstorm-E observation/manipulation classes live in
+        # V_epsilon/draft while base/element/etc. live in V_epsilon/stable,
+        # so combine both tiers (class names are disjoint across tiers)
+        # into one directory for the V_epsilon corpus discovery step.
+        if: always()
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/epsilon-schemas"
+          cp did-schema/schemas/V_epsilon/stable/*.json "${GITHUB_WORKSPACE}/epsilon-schemas/"
+          cp did-schema/schemas/V_epsilon/draft/*.json  "${GITHUB_WORKSPACE}/epsilon-schemas/"
+
+      - name: Run V_epsilon corpus discovery (Brainstorm E split)
+        # Isolated from the default V_delta test run above: its own
+        # DID_SCHEMA_PATH (the combined V_epsilon dir) and the
+        # DID_RUN_EPSILON_CORPUS gate that un-skips testCorpusEpsilon.
+        # Discovery mode — the report is the deliverable; test failures
+        # (errors, not quarantine) still surface.
+        if: always()
+        uses: matlab-actions/run-command@v2
+        env:
+          DID_SCHEMA_PATH: ${{ github.workspace }}/epsilon-schemas
+          DID_RUN_EPSILON_CORPUS: '1'
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            results = runtests("did2.unittest.testCorpusEpsilon");
+            disp(table(results));
+            nFailed = sum([results.Failed]);
+            assert(nFailed == 0, sprintf("%d V_epsilon corpus test(s) failed", nFailed));
+
       - name: Upload corpus discovery reports
         # Discovery-mode corpus tests (e.g., testCorpus20211116) write
         # JSON summaries into corpus-reports/. Upload them as a CI

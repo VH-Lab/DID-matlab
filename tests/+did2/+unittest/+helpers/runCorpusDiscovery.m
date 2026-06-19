@@ -25,6 +25,7 @@ arguments
     corpusName (1,:) char
     corpusURL  (1,:) char
     innerDir   (1,:) char
+    options.TargetVersion (1,:) char = 'V_delta'
 end
 
 did2.unittest.helpers.installSchemaPath(testCase, sprintf('skipping %s corpus test', corpusName));
@@ -42,12 +43,14 @@ for k = 1:numel(files)
     bodies{k} = fileread(fullfile(files(k).folder, files(k).name));
 end
 
-result = did2.convert.v1_to_v2(bodies, 'Validate', true);
+result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
+    'TargetVersion', options.TargetVersion);
 
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 
-fprintf('\n=== Corpus %s discovery summary ===\n', corpusName);
+fprintf('\n=== Corpus %s discovery summary (target %s) ===\n', ...
+    corpusName, options.TargetVersion);
 fprintf('total:            %d\n', result.summary.total);
 fprintf('migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('quarantine_count: %d\n', result.summary.quarantine_count);
