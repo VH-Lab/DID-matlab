@@ -134,6 +134,37 @@ id2 = out.migrated{2}.get('base.id');
 verifyNotEqual(testCase, id1, id2);
 end
 
+function testTableRowCharFieldLayoutSplitsByColumn(testCase)
+% The real v1 layout: parallel char fields + a data struct keyed by
+% variable_names (one document = one row; each column = one observation).
+block = struct( ...
+    'names', 'weight,life cycle stage', ...
+    'variable_names', 'weight,stage', ...
+    'ontology_nodes', 'schema:weight,uberon:0000105', ...
+    'data', struct('weight', 22.5, 'stage', 'fbdv:00005336'));
+v1 = wrap('ontology_table_row', 'ontology_table_row', block);
+out = runE(v1);
+% 2 columns -> 2 observations + 1 shared session anchor.
+verifyEqual(testCase, numel(out.migrated), 3);
+verifyTrue(testCase, isfield(out.summary.by_class, 'body_weight_observation'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'developmental_stage_observation'));
+end
+
+function testTableRowCharFieldEmptyValuesSkipped(testCase)
+% Columns with no usable value (missing key / NaN) are skipped, not
+% turned into empty observations.
+block = struct( ...
+    'names', 'weight,missing', ...
+    'variable_names', 'weight,missing', ...
+    'ontology_nodes', 'schema:weight,schema:missing', ...
+    'data', struct('weight', 22.5, 'missing', nan));
+v1 = wrap('ontology_table_row', 'ontology_table_row', block);
+out = runE(v1);
+% only the weight column survives -> 1 observation + 1 anchor.
+verifyEqual(testCase, numel(out.migrated), 2);
+verifyTrue(testCase, isfield(out.summary.by_class, 'body_weight_observation'));
+end
+
 % ===================== backward compatibility ==========================
 
 function testDefaultTargetLeavesTreatmentUnchanged(testCase)

@@ -231,7 +231,14 @@ comp = struct(canonField, double(numVal), 'source_unit', unit, ...
 end
 
 function rows = extractRows(block)
-%EXTRACTROWS Normalise the legacy table to a cell of row structs.
+%EXTRACTROWS Normalise an ontology_table_row body to a cell of column structs
+%   (each {ontology_name, name, value}), one per measured property.
+%
+%   The real v1 layout (per the schema) is column-parallel: comma-separated
+%   `names` / `variable_names` / `ontology_nodes` plus a `data` struct keyed
+%   by the variable_names. One document is one table ROW; each COLUMN is a
+%   property measurement and becomes one observation. (Also accepts the
+%   synthetic `rows`-array and single-row shapes used by tests.)
 rows = {};
 if isfield(block, 'rows')
     r = block.rows;
@@ -240,9 +247,45 @@ if isfield(block, 'rows')
     elseif isstruct(r)
         rows = arrayfun(@(x) x, r(:)', 'UniformOutput', false);
     end
-elseif isfield(block, 'ontology_name') || isfield(block, 'name')
-    % single-row legacy shape (the table block IS one row)
-    rows = {block};
+    return;
+end
+if isfield(block, 'variable_names')
+    vars  = splitCSV(getCharField(block, 'variable_names'));
+    names = splitCSV(getCharField(block, 'names'));
+    nodes = splitCSV(getCharField(block, 'ontology_nodes'));
+    data = struct();
+    if isfield(block, 'data') && isstruct(block.data)
+        data = block.data;
+    end
+    for i = 1:numel(vars)
+        key = vars{i};
+        nm = ''; nd = '';
+        if i <= numel(names); nm = names{i}; end
+        if i <= numel(nodes); nd = nodes{i}; end
+        val = [];
+        if ~isempty(key) && isfield(data, key)
+            val = data.(key);
+        end
+        % Skip columns with no usable value (missing key, [], '', NaN).
+        if isempty(val) || (isnumeric(val) && isscalar(val) && isnan(val))
+            continue;
+        end
+        rows{end+1} = struct('ontology_name', nd, 'name', nm, 'value', val); %#ok<AGROW>
+    end
+    return;
+end
+if isfield(block, 'ontology_name') || isfield(block, 'name')
+    rows = {block};   % single-row legacy shape (the block IS one row)
+end
+end
+
+function parts = splitCSV(s)
+parts = {};
+if isempty(s)
+    return;
+end
+raw = strsplit(char(s), ',');
+parts = cellfun(@strtrim, raw, 'UniformOutput', false);
 end
 end
 
