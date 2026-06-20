@@ -287,7 +287,6 @@ end
 raw = strsplit(char(s), ',');
 parts = cellfun(@strtrim, raw, 'UniformOutput', false);
 end
-end
 
 function [isNumeric, numVal] = rowNumericValue(row)
 isNumeric = false; numVal = [];
