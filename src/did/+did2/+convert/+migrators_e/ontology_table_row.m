@@ -259,9 +259,9 @@ if isfield(block, 'variable_names')
     end
     for i = 1:numel(vars)
         key = vars{i};
-        nm = ''; nd = '';
-        if i <= numel(names); nm = names{i}; end
-        if i <= numel(nodes); nd = nodes{i}; end
+        label = ''; node = '';
+        if i <= numel(names); label = names{i}; end
+        if i <= numel(nodes); node = nodes{i}; end
         val = [];
         if ~isempty(key) && isfield(data, key)
             val = data.(key);
@@ -270,7 +270,7 @@ if isfield(block, 'variable_names')
         if isempty(val) || (isnumeric(val) && isscalar(val) && isnan(val))
             continue;
         end
-        rows{end+1} = struct('ontology_name', nd, 'name', nm, 'value', val); %#ok<AGROW>
+        rows{end+1} = struct('ontology_name', node, 'name', label, 'value', val); %#ok<AGROW>
     end
     return;
 end
