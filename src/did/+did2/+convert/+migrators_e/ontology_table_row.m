@@ -39,10 +39,18 @@ if isempty(rows)
         'ontology_table_row has no rows to migrate.');
 end
 
-bodies = cell(1, numel(rows));
+% One session-relative anchor is shared by every observation from this
+% table (they are all in the same session). 'during' is the honest
+% fallback when the row carries no epoch and no UTC date.
+anchor = makeSessionAnchor(preBody, 'during');
+bodies = cell(1, numel(rows) + 1);
 for k = 1:numel(rows)
-    bodies{k} = migrateRow(preBody, rows{k}, k);
+    b = migrateRow(preBody, rows{k}, k);
+    b.depends_on(end+1) = struct('name', 'time_reference_1', ...
+        'value', anchor.base.id);
+    bodies{k} = b;
 end
+bodies{end} = anchor;
 end
 
 % ===================== per-row migration ===============================
@@ -163,17 +171,15 @@ end
 body = struct();
 body.document_class = struct('class_name', className, 'class_version', '1.0.0', ...
     'superclasses', supers, 'schema_version', 'V_epsilon');
-body.depends_on = carrySubjectAndTime(preBody);
+body.depends_on = carrySubject(preBody);
 if isfield(preBody, 'base') && isstruct(preBody.base)
     base = preBody.base;
-    if isfield(base, 'id') && ~isempty(base.id)
-        base.id = sprintf('%s_row%02d', char(base.id), rowIndex);
-    end
+    base.id = did.ido.unique_id();   % each row becomes its own document
     body.base = base;
 end
 end
 
-function deps = carrySubjectAndTime(preBody)
+function deps = carrySubject(preBody)
 deps = struct('name', {}, 'value', {});
 subjectVal = '';
 if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
@@ -186,7 +192,30 @@ if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
     end
 end
 deps(end+1) = struct('name', 'subject_id', 'value', subjectVal);
-deps(end+1) = struct('name', 'time_reference_1', 'value', '');
+end
+
+function anchor = makeSessionAnchor(preBody, relation)
+%MAKESESSIONANCHOR Session_relative_reference document (ordinal, no metric)
+%   shared by all observations from this table; anchored to the source's
+%   session via base.session_id.
+sessionId = '';
+ds = '2024-01-01T00:00:00.000Z';
+if isfield(preBody, 'base') && isstruct(preBody.base)
+    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
+    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
+        ds = preBody.base.datestamp;
+    end
+end
+anchor = struct();
+anchor.document_class = struct('class_name', 'session_relative_reference', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
+    'schema_version', 'V_epsilon');
+anchor.depends_on = struct('name', 'session_id', 'value', sessionId);
+anchor.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+    'name', 'migrated_session_anchor', 'datestamp', ds);
+anchor.time_reference = struct('is_approximate', true);
+anchor.session_relative_reference = struct('relation', relation);
 end
 
 function comp = canonicalComposite(canonField, unit, numVal)

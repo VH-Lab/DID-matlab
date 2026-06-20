@@ -85,6 +85,17 @@ else
         ['treatment "%s" (%s) could not be routed to a manipulation ', ...
          'family; curator review required.'], label, node);
 end
+
+% Attach a session-relative anchor. v1 treatment rows have no DAQ epoch and
+% (often) no UTC date, so the honest fallback is an ordinal claim against the
+% session. 'during' is correct for any migrated interaction (it happened
+% within the session); 'at_end_of' is reserved for interactions known to be
+% terminal and is not asserted blanket here. Emitting the time_reference as
+% its own document makes this a 1 -> 2 migration.
+anchor = makeSessionAnchor(preBody, 'during');
+v2Body.depends_on(end+1) = struct('name', 'time_reference_1', ...
+    'value', anchor.base.id); %#ok<AGROW>
+v2Body = {v2Body, anchor};
 end
 
 % ===================== destination builders ============================
@@ -148,17 +159,15 @@ body = struct();
 body.document_class = struct( ...
     'class_name', className, 'class_version', '1.0.0', ...
     'superclasses', supers, 'schema_version', 'V_epsilon');
-body.depends_on = carrySubjectAndTime(preBody);
+body.depends_on = carrySubject(preBody);
 if isfield(preBody, 'base')
     body.base = preBody.base;
 end
 end
 
-function deps = carrySubjectAndTime(preBody)
-%CARRYSUBJECTANDTIME Keep subject_id; add a time_reference_1 slot.
-%   The time_reference value is left empty for curator/tooling backfill
-%   (real synthesis from session/epoch metadata is a follow-up; see
-%   treatment.md "time_reference synthesis fidelity").
+function deps = carrySubject(preBody)
+%CARRYSUBJECT Carry the subject_id dependency forward (time_reference is
+%   attached separately, pointing at the migrated session anchor).
 deps = struct('name', {}, 'value', {});
 subjectVal = '';
 if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
@@ -170,7 +179,30 @@ if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
     end
 end
 deps(end+1) = struct('name', 'subject_id', 'value', subjectVal);
-deps(end+1) = struct('name', 'time_reference_1', 'value', '');
+end
+
+function anchor = makeSessionAnchor(preBody, relation)
+%MAKESESSIONANCHOR Build a session_relative_reference document (ordinal,
+%   no metric) anchored to the source document's session. Returned as a
+%   sibling body so the interaction can depend_on it as its time_reference.
+sessionId = '';
+ds = '2024-01-01T00:00:00.000Z';
+if isfield(preBody, 'base') && isstruct(preBody.base)
+    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
+    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
+        ds = preBody.base.datestamp;
+    end
+end
+anchor = struct();
+anchor.document_class = struct('class_name', 'session_relative_reference', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
+    'schema_version', 'V_epsilon');
+anchor.depends_on = struct('name', 'session_id', 'value', sessionId);
+anchor.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+    'name', 'migrated_session_anchor', 'datestamp', ds);
+anchor.time_reference = struct('is_approximate', true);
+anchor.session_relative_reference = struct('relation', relation);
 end
 
 function v = depValue(d)

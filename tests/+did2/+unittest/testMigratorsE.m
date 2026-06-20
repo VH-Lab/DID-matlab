@@ -41,13 +41,18 @@ v1 = wrap('treatment', 'treatment', struct( ...
     'ontology_name', 'ndic:0000nnnn', 'name', 'focal cortical cooling', ...
     'numeric_value', 12.0, 'string_value', 'Peltier'));
 out = runE(v1);
-verifyEqual(testCase, numel(out.migrated), 1);
+% 1 -> 2: the manipulation plus its session_relative_reference anchor.
+verifyEqual(testCase, numel(out.migrated), 2);
 doc = out.migrated{1};
 verifyTrue(testCase, isfield(out.summary.by_class, 'temperature_manipulation'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
 val = doc.get('scalar_temperature.value');
 verifyEqual(testCase, val.celsius, 12.0);
 ap = doc.get('scalar_manipulation.applied_property');
 verifyEqual(testCase, ap.name, 'focal cortical cooling');
+% the anchor is an ordinal 'during' session reference
+anchor = out.migrated{2};
+verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
 end
 
 function testDrugTreatmentBecomesInjection(testCase)
@@ -55,7 +60,7 @@ v1 = wrap('treatment', 'treatment', struct( ...
     'ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
     'numeric_value', [], 'string_value', ''));
 out = runE(v1);
-verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.migrated), 2);   % injection + session anchor
 verifyTrue(testCase, isfield(out.summary.by_class, 'injection'));
 end
 
@@ -102,9 +107,11 @@ rows = {struct('ontology_name', 'schema:weight', 'name', 'weight', ...
         'value', 'fbdv:00005336')};
 v1 = wrap('ontology_table_row', 'ontology_table_row', struct('rows', {rows}));
 out = runE(v1);
-verifyEqual(testCase, numel(out.migrated), 2);
+% 2 rows -> 2 observations + 1 shared session anchor.
+verifyEqual(testCase, numel(out.migrated), 3);
 verifyTrue(testCase, isfield(out.summary.by_class, 'body_weight_observation'));
 verifyTrue(testCase, isfield(out.summary.by_class, 'developmental_stage_observation'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
 end
 
 function testTableRowScalarValueLandsTyped(testCase)
