@@ -46,10 +46,10 @@ identity = struct('node', node, 'name', label);
 hay = lower([node ' ' label]);   % search text for the heuristic branch
 
 % --- Dab edge case: string_value is an ontology target, not prose ------
-targetStructure = {};
+targetStructure = struct('node', {}, 'name', {});   % empty ontology_term array
 notesText = strValue;
 if endsWith(lower(strtrim(label)), 'target location') || looksLikeCURIE(strValue)
-    targetStructure = {struct('node', strValue, 'name', '')};
+    targetStructure = struct('node', strValue, 'name', '');
     notesText = '';
     identity.name = strtrim(regexprep(label, '(?i)\s*target location$', ''));
 end

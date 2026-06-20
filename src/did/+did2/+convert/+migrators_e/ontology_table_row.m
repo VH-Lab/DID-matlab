@@ -35,8 +35,14 @@ if ~isfield(preBody, 'ontology_table_row') || ~isstruct(preBody.ontology_table_r
 end
 rows = extractRows(preBody.ontology_table_row);
 if isempty(rows)
-    error('did2:convert:emptyTable', ...
-        'ontology_table_row has no rows to migrate.');
+    % Unrecognised row layout (e.g. the real v1 form stores parallel
+    % char fields names / variable_names / ontology_nodes / data rather
+    % than a 'rows' array). Rather than quarantine, migrate the document
+    % unchanged as an ontology_table_row -- the class still exists in
+    % V_epsilon, so it validates. Splitting that char-field layout into
+    % per-row observations is a follow-up (see ontology_table_row.md).
+    bodies = {preBody};
+    return;
 end
 
 % One session-relative anchor is shared by every observation from this
@@ -138,14 +144,16 @@ end
 
 function body = makeScalarObservation(preBody, className, shapeClass, identity, valueStruct)
 body = startObservation(preBody, className, {'scalar_observation', shapeClass});
-body.observation = struct('measured_property', identity, 'target_structure', {{}});
+body.observation = struct('measured_property', identity, ...
+    'target_structure', {struct('node', {}, 'name', {})});
 body.(shapeClass) = struct('value', valueStruct);
 end
 
 function body = makeCategoricalObservation(preBody, className, identity, valueTerm)
 body = startObservation(preBody, className, ...
     {'categorical_observation', 'categorical_concept'});
-body.observation = struct('measured_property', identity, 'target_structure', {{}});
+body.observation = struct('measured_property', identity, ...
+    'target_structure', {struct('node', {}, 'name', {})});
 % `value` lives in the block of the class that DECLARES it: the two
 % overriders (developmental_stage / generic_categorical) declare their own
 % value; every other categorical property class inherits it from the
