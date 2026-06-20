@@ -45,7 +45,7 @@ end
 anchor = makeSessionAnchor(preBody, 'during');
 bodies = cell(1, numel(rows) + 1);
 for k = 1:numel(rows)
-    b = migrateRow(preBody, rows{k}, k);
+    b = migrateRow(preBody, rows{k});
     b.depends_on(end+1) = struct('name', 'time_reference_1', ...
         'value', anchor.base.id);
     bodies{k} = b;
@@ -55,7 +55,7 @@ end
 
 % ===================== per-row migration ===============================
 
-function body = migrateRow(preBody, row, rowIndex)
+function body = migrateRow(preBody, row)
 node  = getCharField(row, 'ontology_name');
 label = getCharField(row, 'name');
 identity = struct('node', node, 'name', label);
@@ -65,12 +65,11 @@ hay = lower([node ' ' label]);
 
 if isNumeric
     [className, shapeClass, valueStruct] = dispatchScalar(hay, row, numVal);
-    body = makeScalarObservation(preBody, rowIndex, className, shapeClass, ...
+    body = makeScalarObservation(preBody, className, shapeClass, ...
         identity, valueStruct);
 else
     [className, valueTerm] = dispatchCategorical(hay, row);
-    body = makeCategoricalObservation(preBody, rowIndex, className, ...
-        identity, valueTerm);
+    body = makeCategoricalObservation(preBody, className, identity, valueTerm);
 end
 end
 
@@ -137,14 +136,14 @@ end
 
 % ===================== destination builders ============================
 
-function body = makeScalarObservation(preBody, rowIndex, className, shapeClass, identity, valueStruct)
-body = startObservation(preBody, rowIndex, className, {'scalar_observation', shapeClass});
+function body = makeScalarObservation(preBody, className, shapeClass, identity, valueStruct)
+body = startObservation(preBody, className, {'scalar_observation', shapeClass});
 body.observation = struct('measured_property', identity, 'target_structure', {{}});
 body.(shapeClass) = struct('value', valueStruct);
 end
 
-function body = makeCategoricalObservation(preBody, rowIndex, className, identity, valueTerm)
-body = startObservation(preBody, rowIndex, className, ...
+function body = makeCategoricalObservation(preBody, className, identity, valueTerm)
+body = startObservation(preBody, className, ...
     {'categorical_observation', 'categorical_concept'});
 body.observation = struct('measured_property', identity, 'target_structure', {{}});
 % `value` lives in the block of the class that DECLARES it: the two
@@ -162,7 +161,7 @@ end
 
 % ===================== shared helpers ==================================
 
-function body = startObservation(preBody, rowIndex, className, extraSupers)
+function body = startObservation(preBody, className, extraSupers)
 chain = [{'observation'}, extraSupers];
 supers = struct('class_name', {}, 'class_version', {});
 for k = 1:numel(chain)

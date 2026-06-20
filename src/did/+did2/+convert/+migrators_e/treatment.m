@@ -94,7 +94,7 @@ end
 % its own document makes this a 1 -> 2 migration.
 anchor = makeSessionAnchor(preBody, 'during');
 v2Body.depends_on(end+1) = struct('name', 'time_reference_1', ...
-    'value', anchor.base.id); %#ok<AGROW>
+    'value', anchor.base.id);
 v2Body = {v2Body, anchor};
 end
 
