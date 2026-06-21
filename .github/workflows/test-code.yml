@@ -39,7 +39,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: main
+          # Track the matching did-schema E branch: the Brainstorm-E classes
+          # (observation property classes, shape library, session_relative_
+          # reference, subject_statement, etc.) live on this branch and are
+          # not yet on did-schema main. Revert to `main` once DID-schema#62
+          # merges. Falls back to main off-PR (e.g. direct pushes to V2).
+          ref: ${{ github.head_ref || 'main' }}
           path: did-schema
 
       - name: Assemble V_epsilon schema set (stable + draft)
