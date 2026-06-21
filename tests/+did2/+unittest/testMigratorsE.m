@@ -165,6 +165,21 @@ verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, isfield(out.summary.by_class, 'body_weight_observation'));
 end
 
+% ===================== context-dependent deferral =====================
+
+function testStimulusBathDefersToNdiLayer(testCase)
+% stimulus_bath is migrated to a `bath` in the NDI layer (it needs the
+% stimulator element for its subject + epoch anchor), so the per-document
+% converter defers it with a clear reason rather than emitting a partial.
+v1 = wrap('stimulus_bath', 'stimulus_bath', struct( ...
+    'location', struct('ontologyNode', 'uberon:0001017', 'name', 'CNS'), ...
+    'mixture_table', ''));
+out = runE(v1);
+verifyEqual(testCase, numel(out.migrated), 0);
+verifyEqual(testCase, numel(out.quarantine), 1);
+verifyTrue(testCase, contains(out.quarantine(1).reason, 'NDI layer'));
+end
+
 % ===================== backward compatibility ==========================
 
 function testDefaultTargetLeavesTreatmentUnchanged(testCase)
