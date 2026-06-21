@@ -1,4 +1,4 @@
-function v2Body = stimulus_bath(preBody)
+function v2Body = stimulus_bath(~)
 %STIMULUS_BATH Deferred: stimulus_bath migrates to a `bath` in the NDI layer.
 %
 %   The legacy stimulus_bath is really a bath (pharmacological_manipulation):
@@ -17,12 +17,12 @@ function v2Body = stimulus_bath(preBody)
 %   it, so it defers here with a clear, queryable reason rather than emitting a
 %   partial (or a wrong-block fallback that reads as "mixture missing").
 %
-%   See ndi.migrate.context.stimulus_bath (NDI-matlab) for the actual build.
+%   See ndi.migrate.internal.stimulusBathToBath (NDI-matlab) for the build.
 
+v2Body = struct(); %#ok<NASGU>  % required output; this migrator always defers
 error('did2:convert:needsSessionContext', ...
     ['stimulus_bath -> bath is migrated in the NDI layer ', ...
      '(ndi.migrate.local): the bath''s subject (from the stimulator ', ...
      'element) and its epoch_bounded_reference time anchor (the ', ...
      'stimulator''s epoch) require the session/element graph. Deferred.']);
-v2Body = preBody; %#ok<UNRCH>  % unreachable; satisfies the output signature
 end
