@@ -106,7 +106,7 @@ for k = 1:numel(bodies)
     className = '<unknown>';
     try
         preBody = ensureStruct(rawBody);
-        if isAlreadyVDelta(preBody)
+        if isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already V_delta,
             % so skip universalRenames and the per-class migrators.
             % ensureClassBlocks still runs (it rebuilds the V_delta
@@ -230,14 +230,17 @@ else
 end
 end
 
-function tf = isAlreadyVDelta(body)
-% Return true when BODY is already a V_delta-shaped document so the
+function tf = isAlreadyTarget(body, targetVersion)
+% Return true when BODY is already a TARGETVERSION-shaped document so the
 % per-body migration loop can skip universalRenames and the per-class
-% migrators. Both conditions must hold so the short-circuit only fires
-% when we have high confidence the body is V_delta:
-%   (a) document_class.schema_version is the literal char 'V_delta'
-%       (set by the last run of universalRenames, or by the writer),
-%       AND
+% migrators (it still gets ensureClassBlocks + validate). Both conditions
+% must hold so the short-circuit only fires when we have high confidence
+% the body is already at the target:
+%   (a) document_class.schema_version is the literal char TARGETVERSION
+%       (set by the last run of universalRenames, the writer, or -- for
+%       'V_epsilon' -- a context assembler such as
+%       ndi.migrate.internal.stimulusBathToBath that emits ready-made
+%       target bodies), AND
 %   (b) the body carries no v1-only structural markers — underscore-
 %       prefixed top-level keys (e.g., legacy _classname,
 %       _class_version) that predate the document_class header and
@@ -261,7 +264,7 @@ sv = body.document_class.schema_version;
 if isstring(sv) && isscalar(sv)
     sv = char(sv);
 end
-if ~ischar(sv) || ~strcmp(sv, 'V_delta')
+if ~ischar(sv) || ~strcmp(sv, targetVersion)
     return;
 end
 topKeys = fieldnames(body);

@@ -180,6 +180,18 @@ verifyEqual(testCase, numel(out.quarantine), 1);
 verifyTrue(testCase, contains(out.quarantine(1).reason, 'NDI layer'));
 end
 
+function testAlreadyEpsilonBodyShortCircuits(testCase)
+% A body already tagged schema_version 'V_epsilon' (e.g. emitted by an NDI
+% context assembler) short-circuits the migration loop and is just
+% padded/validated, not re-migrated. This is what lets ndi.migrate.local
+% feed assembled bath/time-reference bodies back through v1_to_v2.
+v1 = wrap('mock', 'mock', struct());
+v1.document_class.schema_version = 'V_epsilon';
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_epsilon');
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.quarantine), 0);
+end
+
 % ===================== backward compatibility ==========================
 
 function testDefaultTargetLeavesTreatmentUnchanged(testCase)
