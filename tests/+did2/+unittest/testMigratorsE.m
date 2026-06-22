@@ -192,6 +192,30 @@ verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, numel(out.quarantine), 0);
 end
 
+% ===================== subject_group -> subject =======================
+
+function testSubjectGroupBecomesGroupSubject(testCase)
+% subject_group folds into the subject tier as a subject flagged is_group.
+v1 = wrap('subject_group', 'subject_group', struct());
+out = runE(v1);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyTrue(testCase, isfield(out.summary.by_class, 'subject'));
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('subject.is_group'), true);
+verifyEqual(testCase, doc.get('subject.is_biological'), false);
+end
+
+function testSubjectGroupCarriesOptionalNameAndDescription(testCase)
+% Newer subject_group docs may carry group_name / description; they map
+% onto the subject block's local_identifier / description.
+v1 = wrap('subject_group', 'subject_group', struct( ...
+    'group_name', 'control', 'description', 'untreated cohort'));
+out = runE(v1);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('subject.local_identifier'), 'control');
+verifyEqual(testCase, doc.get('subject.description'), 'untreated cohort');
+end
+
 % ===================== backward compatibility ==========================
 
 function testDefaultTargetLeavesTreatmentUnchanged(testCase)
