@@ -154,17 +154,11 @@ body = startObservation(preBody, className, ...
     {'categorical_observation', 'categorical_concept'});
 body.observation = struct('measured_property', identity, ...
     'target_structure', {struct('node', {}, 'name', {})});
-% `value` lives in the block of the class that DECLARES it: the two
-% overriders (developmental_stage / generic_categorical) declare their own
-% value; every other categorical property class inherits it from the
-% categorical_concept shape mixin, so its value lives in that block.
-if any(strcmp(className, {'developmental_stage_observation', ...
-        'generic_categorical_observation'}))
-    valueBlock = className;
-else
-    valueBlock = 'categorical_concept';
-end
-body.(valueBlock) = struct('value', valueTerm);
+% categorical_concept declares `value` with placement: concrete_class, so
+% the bound term lives in the concrete observation class's OWN block and
+% categorical_concept contributes no block. One value, one block, uniform
+% across every categorical observation (no per-class branching).
+body.(className) = struct('value', valueTerm);
 end
 
 % ===================== shared helpers ==================================
