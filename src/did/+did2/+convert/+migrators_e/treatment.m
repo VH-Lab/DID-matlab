@@ -110,23 +110,26 @@ body.scalar_manipulation = struct( ...
 body.scalar_temperature = struct('value', temperatureComposite(numValue));
 end
 
-function body = makeInjection(preBody, identity, targetStructure, notesText)
+function body = makeInjection(preBody, identity, targetStructure, ~)
 body = startBody(preBody, 'injection', {'pharmacological_manipulation'});
+% mixture records are {chemical: ontology_term, amount: concentration}.
 body.pharmacological_manipulation = struct('mixture', ...
-    struct('agent', identity, 'concentration', emptyConcentration()));
+    struct('chemical', identity, 'amount', emptyConcentration()));
+% injection declares kind/volume/route/target_structure (no `notes`);
+% volume + route are required and emitted blank for curator fill-in.
 body.injection = struct( ...
     'kind', 'drug', ...
+    'volume', blankVolume(), ...
     'route', struct('node', '', 'name', ''), ...
-    'target_structure', {targetStructure}, ...
-    'notes', notesText);
+    'target_structure', {targetStructure});
 end
 
-function body = makeBath(preBody, identity, notesText)
+function body = makeBath(preBody, identity, ~)
 body = startBody(preBody, 'bath', {'pharmacological_manipulation'});
 body.pharmacological_manipulation = struct('mixture', ...
-    struct('agent', identity, 'concentration', emptyConcentration()));
-body.bath = struct('kind', 'drug', ...
-    'location', struct('node', '', 'name', ''), 'notes', notesText);
+    struct('chemical', identity, 'amount', emptyConcentration()));
+% bath declares only kind/location (no `notes`).
+body.bath = struct('kind', 'drug', 'location', struct('node', '', 'name', ''));
 end
 
 function body = makeProceduralManipulation(preBody, identity, targetStructure, notesText)
@@ -227,6 +230,11 @@ end
 
 function c = emptyConcentration()
 c = struct('source_unit', '', 'source_value', 0.0, 'approximate', false);
+end
+
+function v = blankVolume()
+v = struct('liters', 0.0, 'source_unit', '', 'source_value', 0.0, ...
+    'approximate', false);
 end
 
 function s = getCharField(block, name)
