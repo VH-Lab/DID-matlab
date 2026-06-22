@@ -34,6 +34,18 @@ function out = runE(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_epsilon');
 end
 
+function v = depVal(doc, name)
+% Fetch a depends_on value by name from a migrated did2.document.
+v = '';
+deps = doc.get('depends_on');
+for k = 1:numel(deps)
+    if isfield(deps(k), 'name') && strcmp(deps(k).name, name)
+        v = deps(k).value;
+        return;
+    end
+end
+end
+
 % ===================== treatment -> manipulation =======================
 
 function testThermalTreatmentBecomesTemperatureManipulation(testCase)
@@ -190,6 +202,63 @@ v1.document_class.schema_version = 'V_epsilon';
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_epsilon');
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, numel(out.quarantine), 0);
+end
+
+% ===================== deprecated treatment family -> injection/transfer =
+
+function testTreatmentDrugBecomesInjection(testCase)
+v1 = wrap('treatment_drug', 'treatment_drug', struct( ...
+    'location_ontologyNode', 'uberon:0000955', 'location_name', 'brain', ...
+    'mixture_table', 'chebi:6904,muscimol,5,mg/ml'));
+out = runE(v1);
+verifyEqual(testCase, numel(out.migrated), 2);   % injection + session anchor
+verifyTrue(testCase, isfield(out.summary.by_class, 'injection'));
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('injection.kind'), 'drug');
+mix = doc.get('pharmacological_manipulation.mixture');
+verifyEqual(testCase, mix(1).chemical.name, 'muscimol');
+end
+
+function testVirusInjectionBecomesVirusInjection(testCase)
+v1 = wrap('virus_injection', 'virus_injection', struct( ...
+    'virus_OntologyName', 'addgene:26973', 'virus_name', 'AAV9-CaMKII-GCaMP', ...
+    'virusLocation_OntologyName', 'uberon:0001950', 'virusLocation_name', 'neocortex', ...
+    'dilution', 0.5, 'diluent_OntologyName', '', 'diluent_name', 'saline'));
+out = runE(v1);
+verifyEqual(testCase, numel(out.migrated), 2);
+verifyTrue(testCase, isfield(out.summary.by_class, 'injection'));
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('injection.kind'), 'virus');
+mix = doc.get('pharmacological_manipulation.mixture');
+verifyEqual(testCase, mix(1).chemical.name, 'AAV9-CaMKII-GCaMP');
+verifyEqual(testCase, mix(1).amount.source_value, 0.5);
+end
+
+function testTreatmentTransferBecomesBiologicalTransfer(testCase)
+% treatment_transfer carries recipient_id + donor_id (not subject_id).
+v1 = struct();
+v1.document_class = struct('class_name', 'treatment_transfer', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct( ...
+    'name', {'recipient_id', 'donor_id'}, ...
+    'value', {'aabb1122ccdd3344_1111111111111111', ...
+              'aabb1122ccdd3344_2222222222222222'});
+v1.base = struct('id', 'aabb1122ccdd3344_3333333333333333', ...
+    'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name', 'transfer-example', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.treatment_transfer = struct('entity_name', 'donor retina', ...
+    'entity_ontologyNode', 'uberon:0000966', ...
+    'method_name', 'transplant', 'method_ontologyNode', 'ncit:C15282');
+out = runE(v1);
+verifyEqual(testCase, numel(out.migrated), 2);
+verifyTrue(testCase, isfield(out.summary.by_class, 'biological_transfer'));
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('biological_transfer.entity').name, 'donor retina');
+verifyEqual(testCase, doc.get('biological_transfer.kind'), 'transplant');
+% recipient -> subject_id; donor carried as donor_id
+verifyEqual(testCase, depVal(doc, 'subject_id'), 'aabb1122ccdd3344_1111111111111111');
+verifyEqual(testCase, depVal(doc, 'donor_id'), 'aabb1122ccdd3344_2222222222222222');
 end
 
 % ===================== subject_group -> subject =======================

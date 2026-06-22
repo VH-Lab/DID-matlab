@@ -64,6 +64,13 @@ jobs:
           echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/epsilon-schemas" \
             >> "$GITHUB_ENV"
 
+      # Discovery run: include the large Soph corpus (~446 MB, ~101k docs)
+      # so its V_epsilon quarantine is surfaced alongside the others. This
+      # is opt-in (the test skips without it); gate it back off once the
+      # Soph coverage is characterised, since it adds significant CI time.
+      - name: Enable Soph corpus discovery
+        run: echo "DID_RUN_SOPH_TEST=1" >> "$GITHUB_ENV"
+
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
         with:
