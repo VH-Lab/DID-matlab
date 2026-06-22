@@ -378,6 +378,23 @@ for k = 1:numel(placementInfo.blocksContributed)
         body.(cls) = struct();
     end
 end
+% Drop stray EMPTY blocks left by v1 for chain classes that the target
+% schema does NOT host on the instance. v1 documents carried a property
+% block for every class in their hierarchy, including parents that became
+% abstract / fieldless in V_delta/V_epsilon (abstract classes are new
+% here). Those arrive as empty structs and would trip the strict
+% undeclared-top-level-block check. Only EMPTY such blocks are removed --
+% a non-empty one signals real data a migrator must place, so it is left
+% to fail loudly rather than be silently dropped.
+chainClasses = [reshape(ancestors, 1, []), {className}];
+nonContributing = setdiff(chainClasses, placementInfo.blocksContributed);
+for k = 1:numel(nonContributing)
+    cls = nonContributing{k};
+    if isfield(body, cls) && isstruct(body.(cls)) ...
+            && (numel(body.(cls)) == 0 || isempty(fieldnames(body.(cls))))
+        body = rmfield(body, cls);
+    end
+end
 sc = struct('class_name', {}, 'class_version', {});
 for k = 1:numel(ancestors)
     ancDC = cache.getClass(ancestors{k}).document_class;
