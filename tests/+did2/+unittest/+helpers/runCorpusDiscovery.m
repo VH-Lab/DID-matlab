@@ -49,6 +49,16 @@ result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 
+% Per-term routing inventory (best-effort): makes the heuristic
+% treatment / ontology_table_row routing auditable against real corpus
+% terms so the authoritative per-term tables can be curated. Never let it
+% break the discovery run -- the summary is the primary deliverable.
+try
+    did2.unittest.helpers.writeRoutingReport(corpusName, result.migrated);
+catch routingErr
+    fprintf('routing report skipped: %s\n', routingErr.message);
+end
+
 fprintf('\n=== Corpus %s discovery summary (target %s) ===\n', ...
     corpusName, options.TargetVersion);
 fprintf('total:            %d\n', result.summary.total);
