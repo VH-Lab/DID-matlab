@@ -81,36 +81,48 @@ end
 
 function [className, shapeClass, valueStruct] = dispatchScalar(hay, row, numVal)
 unit = getCharField(row, 'unit');
-if containsAny(hay, {'weight', 'mass'})
+% Conservative, high-confidence routing only: match SPECIFIC terms at word
+% boundaries (containsAny is word-boundary, so "average" !-> age,
+% "encounter" !-> count, "sampling rate" !-> heart rate). Anything not
+% confidently a known property falls to the generic_scalar escape hatch --
+% the corpora are dominated by lab-specific terms that belong there.
+if containsAny(hay, {'body weight', 'body mass', 'weight'})
     className = 'body_weight_observation'; shapeClass = 'scalar_mass';
     valueStruct = canonicalComposite('kilograms', unit, numVal);
-elseif containsAny(hay, {'length', 'tibia', 'tail'})
+elseif containsAny(hay, {'body length', 'tibia', 'tail length', 'snout-vent', 'body size'})
     className = 'body_length_observation'; shapeClass = 'scalar_length';
     valueStruct = canonicalComposite('meters', unit, numVal);
-elseif containsAny(hay, {'age', 'duration', 'latency'})
+elseif containsAny(hay, {'age'})
     className = 'age_observation'; shapeClass = 'scalar_duration';
     valueStruct = canonicalComposite('seconds', unit, numVal);
 elseif containsAny(hay, {'temperature'})
     className = 'core_temperature_observation'; shapeClass = 'scalar_temperature';
     valueStruct = canonicalComposite('celsius', unit, numVal);
-elseif containsAny(hay, {'heart rate', 'respiration', 'rate', 'frequency'})
+elseif containsAny(hay, {'heart rate'})
     className = 'heart_rate_observation'; shapeClass = 'scalar_frequency';
     valueStruct = canonicalComposite('hertz', unit, numVal);
-elseif containsAny(hay, {'pressure'})
+elseif containsAny(hay, {'respiration rate', 'respiratory rate', 'breathing rate'})
+    className = 'respiration_rate_observation'; shapeClass = 'scalar_frequency';
+    valueStruct = canonicalComposite('hertz', unit, numVal);
+elseif containsAny(hay, {'blood pressure', 'arterial pressure'})
     className = 'blood_pressure_observation'; shapeClass = 'scalar_pressure';
     valueStruct = canonicalComposite('mmhg', unit, numVal);
-elseif containsAny(hay, {'litter', 'count', 'number of'})
+elseif containsAny(hay, {'litter size'})
     className = 'litter_size_observation'; shapeClass = 'scalar_count';
     valueStruct = struct('value', round(numVal), ...
         'unit', struct('node', '', 'name', ''), 'approximate', false);
-elseif containsAny(hay, {'score', 'condition'})
+elseif containsAny(hay, {'cell count'})
+    className = 'cell_count_observation'; shapeClass = 'scalar_count';
+    valueStruct = struct('value', round(numVal), ...
+        'unit', struct('node', '', 'name', ''), 'approximate', false);
+elseif containsAny(hay, {'body condition'})
     className = 'body_condition_observation'; shapeClass = 'scalar_score';
     valueStruct = struct('value', numVal, 'scale', struct('node', '', 'name', ''), ...
         'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false);
-elseif containsAny(hay, {'concentration', 'glucose', 'cortisol', 'titer'})
+elseif containsAny(hay, {'concentration', 'glucose', 'cortisol', 'titer', 'titre'})
     className = 'concentration_observation'; shapeClass = 'scalar_concentration';
     valueStruct = struct('source_unit', unit, 'source_value', numVal, 'approximate', false);
-elseif containsAny(hay, {'volume'})
+elseif containsAny(hay, {'organ volume'})
     className = 'organ_volume_observation'; shapeClass = 'scalar_volume';
     valueStruct = canonicalComposite('liters', unit, numVal);
 else
@@ -125,15 +137,18 @@ if isempty(termValue)
     termValue = getCharField(row, 'string_value');
 end
 valueTerm = struct('node', termValue, 'name', '');
-if containsAny(hay, {'stage', 'life cycle', 'developmental'})
+% Specific phrases only (word-boundary); ambiguous singletons like
+% "status"/"stage"/"behavior" caused false positives, so require the full
+% property phrase and let everything else fall to the generic escape hatch.
+if containsAny(hay, {'life cycle stage', 'developmental stage', 'life stage'})
     className = 'developmental_stage_observation';
-elseif containsAny(hay, {'health', 'status'})
+elseif containsAny(hay, {'health status'})
     className = 'health_status_observation';
-elseif containsAny(hay, {'coat', 'pigment'})
+elseif containsAny(hay, {'coat color', 'coat colour', 'pigmentation'})
     className = 'pigmentation_observation';
 elseif containsAny(hay, {'estrous', 'estrus'})
     className = 'estrous_stage_observation';
-elseif containsAny(hay, {'behavior', 'phenotype'})
+elseif containsAny(hay, {'behavioral phenotype', 'behavioural phenotype'})
     className = 'behavioral_phenotype_observation';
 else
     className = 'generic_categorical_observation';
@@ -312,8 +327,15 @@ end
 end
 
 function tf = containsAny(hay, needles)
+% Word-boundary match: a needle matches only as a whole word/phrase, not as
+% a substring inside another word. This prevents the heuristic false
+% positives the routing inventory exposed -- e.g. "average" -> "age",
+% "encounter" -> "count", "sampling rate" -> "rate".
 tf = false;
 for k = 1:numel(needles)
-    if contains(hay, needles{k}); tf = true; return; end
+    pat = ['\<', regexptranslate('escape', needles{k}), '\>'];
+    if ~isempty(regexp(hay, pat, 'once'))
+        tf = true; return;
+    end
 end
 end
