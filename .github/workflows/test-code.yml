@@ -35,16 +35,33 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check out did-schema (sibling, for V_delta validation)
+      - name: Check out did-schema (sibling, for V_epsilon validation)
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: main
+          # Track the matching did-schema E branch: the Brainstorm-E classes
+          # (observation property classes, shape library, session_relative_
+          # reference, subject_statement, etc.) live on this branch and are
+          # not yet on did-schema main. Revert to `main` once DID-schema#62
+          # merges. Falls back to main off-PR (e.g. direct pushes to V2).
+          ref: ${{ github.head_ref || 'main' }}
           path: did-schema
+
+      - name: Assemble V_epsilon schema set (stable + draft)
+        # V_epsilon replaces V_delta as the migration/validation target.
+        # The schema cache loads a single flat dir of *.json, but the
+        # Brainstorm-E observation/manipulation classes live in
+        # V_epsilon/draft while base/element/etc. live in V_epsilon/stable
+        # (class names are disjoint across tiers), so combine both tiers
+        # into one directory for DID_SCHEMA_PATH.
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/epsilon-schemas"
+          cp did-schema/schemas/V_epsilon/stable/*.json "${GITHUB_WORKSPACE}/epsilon-schemas/"
+          cp did-schema/schemas/V_epsilon/draft/*.json  "${GITHUB_WORKSPACE}/epsilon-schemas/"
 
       - name: Export DID_SCHEMA_PATH
         run: |
-          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/did-schema/schemas/V_delta/stable" \
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/epsilon-schemas" \
             >> "$GITHUB_ENV"
 
       - name: Set up MATLAB
