@@ -77,6 +77,27 @@ if fid < 0
 end
 cleanup = onCleanup(@() fclose(fid)); %#ok<NASGU>
 fwrite(fid, jsonencode(report, 'PrettyPrint', true));
+
+% Echo the actionable breakdown to stdout so the CI log carries it (the
+% JSON also ships as an artifact). The terms routed to the generic_*
+% escape hatches are the UNMATCHED ones -- they need a minted class or a
+% routing rule -- so list those in full, then the top routes overall.
+fprintf('\n--- routing inventory (%s): %d distinct term->class routes ---\n', ...
+    corpusName, numel(entries));
+nUnmatched = 0;
+for i = 1:numel(entries)
+    if startsWith(entries(i).class_name, 'generic_')
+        nUnmatched = nUnmatched + 1;
+        fprintf('  UNMATCHED %6d  %-28s [%s] -> %s\n', entries(i).count, ...
+            entries(i).term_node, entries(i).term_name, entries(i).class_name);
+    end
+end
+fprintf('  (%d unmatched term routes to generic_*)\n', nUnmatched);
+fprintf('  top routes:\n');
+for i = 1:min(numel(entries), 30)
+    fprintf('  %6d  %-28s [%s] -> %s\n', entries(i).count, ...
+        entries(i).term_node, entries(i).term_name, entries(i).class_name);
+end
 end
 
 % ===================== helpers ============================================
