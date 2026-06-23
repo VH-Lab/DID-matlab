@@ -72,8 +72,8 @@ try
     for i = 1:numel(orphNames)
         fprintf('  %6d  %s\n', orphCounts(i), orphNames{i});
     end
-catch refErr
-    fprintf('reference report skipped: %s\n', refErr.message);
+catch refReportErr
+    fprintf('reference report skipped: %s\n', refReportErr.message);
 end
 
 fprintf('\n=== Corpus %s discovery summary (target %s) ===\n', ...
