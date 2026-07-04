@@ -1211,6 +1211,19 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             for i = 1 : numel(superFullNames)
                 [~,superNames{i}] = fileparts(superFullNames{i}); % keep compatibility with Matlab 2019a
             end
+            % did2-form documents carry superclass names directly in
+            % `.class_name` (e.g. {class_name:'base'}) and have no
+            % `.definition` path. Fall back to those names so the legacy
+            % validator recognises did2-shaped documents during the
+            % v1->v2 transition (otherwise superNames is empty and every
+            % such doc fails the superclasses check spuriously).
+            if isempty(superNames)
+                try
+                    superNames = {classProps.superclasses.class_name};
+                catch
+                    superNames = {};
+                end
+            end
             if ~iscell(superNames), superNames = {superNames}; end
             superNames = unique(superNames);
             schemaFields = fieldnames(schemaStruct);
@@ -1238,8 +1251,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         assert(areSame,'DID:Database:ValidationSuperClasses', ...
                             'Dissimilar superclasses defined/found for %s ("%s" <=> "%s")', ...
                             doc_name, expectedStr, superNamesStr);
-                        % Recursively validate all superNames against this doc:
-                        for idx = 1 : numel(superNames)
+                        % Recursively validate all superclasses against this
+                        % doc. Bound by superFullNames (the `.definition`
+                        % paths): did2-form docs expose names but no paths, so
+                        % superFullNames is empty and the deeper recursion is
+                        % skipped -- the concrete class is still validated, and
+                        % the superclasses-name check above already passed.
+                        for idx = 1 : numel(superFullNames)
                             % First get the superClass' definition struct
                             defStruct = database_obj.get_document_schema(superFullNames{idx});
                             % Extract validation file from definition
