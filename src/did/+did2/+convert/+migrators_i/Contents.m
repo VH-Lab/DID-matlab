@@ -41,6 +41,12 @@
 %     stimulus_bath      - DEFERS (errors): the bath's subject + epoch anchor
 %                          need the stimulator element graph; assembled in
 %                          ndi.migrate.local (NDI-matlab), not per-document.
+%     image_stack        - 1 -> 6. Retires the standalone image doc onto NDI's
+%                          imaging stack: imageseries_observation (discoverable
+%                          handle) + daqreader_image_epochdata_ingested (the
+%                          DIGITAL ingested frames.bin + YXCZT header) +
+%                          ndi.element.image + element_epoch + daqreader + the
+%                          shared anchor. Drops the legacy document_id orphan.
 %
 %   Any non-'V_delta' target stamps document_class.schema_version with the
 %   target name ('V_zeta' here).

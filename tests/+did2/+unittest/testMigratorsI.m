@@ -382,6 +382,57 @@ verifyNotEmpty(testCase, anchor.get('base.session_id'), ...
     'anchor must still carry session identity via base.session_id');
 end
 
+% ===================== image_stack -> ingested imageseries =============
+
+function testImageStackFoldsToIngestedImageseries(testCase)
+% did_v1 image_stack folds to the NDI imaging stack: a discoverable
+% imageseries_observation handle + the DIGITAL ingested frames
+% (daqreader_image_epochdata_ingested) + element / element_epoch / daqreader.
+v1 = struct();
+v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'image_stack_parameters', 'class_version', '1.0.0')]);
+v1.depends_on = [ ...
+    struct('name', 'subject_id',  'value', 'aabb1122ccdd3344_5500000000000001'), ...
+    struct('name', 'document_id', 'value', 'aabb1122ccdd3344_deadbeefdeadbeef')];
+v1.base = struct('id', 'aabb1122ccdd3344_5500000000000009', ...
+    'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image_stack = struct('label', 'processed fluorescence', ...
+    'format_ontology', 'NCIT:C70631');
+v1.image_stack_parameters = struct( ...
+    'dimension_order', 'YX', 'dimension_size', [2208, 2752], ...
+    'dimension_scale', [94.89, 94.89], 'dimension_scale_units', 'micrometer,micrometer', ...
+    'data_type', 'uint16', 'data_limits', [0, 65535], ...
+    'timestamp', 0.0, 'clocktype', 'no_time');
+v1.files = struct('name', {'imagestack'}, 'location', {'stack.tif'});
+
+out = runI(v1);
+b = out.summary.by_class;
+for cls = {'imageseries_observation', 'element', 'element_epoch', ...
+           'daqreader_image_epochdata_ingested', 'daqreader', ...
+           'session_relative_reference'}
+    verifyTrue(testCase, isfield(b, cls{1}), ...
+        sprintf('image_stack fold missing %s', cls{1}));
+end
+
+% the discoverable handle keeps the subject and the source base.id
+obs = findMigratedByClass(out, 'imageseries_observation');
+verifyNotEmpty(testCase, obs);
+verifyEqual(testCase, obs.get('base.id'), 'aabb1122ccdd3344_5500000000000009');
+verifyEqual(testCase, depVal(obs, 'subject_id'), 'aabb1122ccdd3344_5500000000000001');
+verifyEqual(testCase, obs.get('imageseries_observation.kind').node, 'NCIT:C70631');
+verifyEqual(testCase, obs.get('dataseries_observation.label'), 'processed fluorescence');
+% the legacy document_id orphan edge is dropped
+verifyEmpty(testCase, depVal(obs, 'document_id'));
+
+% the digital ingested frames carry the YXCZT header + the pixel file
+ing = findMigratedByClass(out, 'daqreader_image_epochdata_ingested');
+verifyNotEmpty(testCase, ing);
+verifyEqual(testCase, ing.get('daqreader_image_epochdata_ingested.data_type'), 'uint16');
+verifyEqual(testCase, ing.get('daqreader_image_epochdata_ingested.clocktype'), 'no_time');
+end
+
 function doc = findMigratedByClass(out, className)
 doc = [];
 for k = 1:numel(out.migrated)
