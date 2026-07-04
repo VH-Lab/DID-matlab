@@ -73,7 +73,17 @@ function result = v1_to_v2(v1Bodies, options)
 %                      under +did2.+convert.+migrators_e (treatment,
 %                      ontology_table_row) through that migrator instead,
 %                      which may fan one source body out to several
-%                      destination documents (1 -> N).
+%                      destination documents (1 -> N). 'V_zeta' routes
+%                      classes that have a Brainstorm-I split/fold migrator
+%                      under +did2.+convert.+migrators_i (treatment,
+%                      ontology_table_row, subject_group, treatment_drug,
+%                      virus_injection, treatment_transfer, stimulus_bath)
+%                      through that migrator, targeting the Brainstorm-I
+%                      classes (the subject_interaction spine with
+%                      method/variable/target_structure, shape-typed
+%                      observation leaves, and generic_manipulation). Any
+%                      non-'V_delta' target stamps
+%                      document_class.schema_version with the target name.
 %
 %   See also: did2.convert.universalRenames, did2.convert.migrators,
 %   docs/v2/PLAN.md §9.6.
@@ -129,9 +139,10 @@ for k = 1:numel(bodies)
             % runConcreteMigrator returns a CELL of one-or-more bodies.
             % Default (TargetVersion 'V_delta') always returns a single
             % body via the existing per-class migrator, so behaviour is
-            % unchanged. Under TargetVersion 'V_epsilon' a class with a
-            % Brainstorm-E split migrator (treatment, ontology_table_row)
-            % may fan out to several bodies (1 -> N).
+            % unchanged. Under TargetVersion 'V_epsilon' (+migrators_e) or
+            % 'V_zeta' (+migrators_i) a class with a split/fold migrator
+            % (treatment, ontology_table_row, ...) may fan out to several
+            % bodies (1 -> N).
             v2Bodies = runConcreteMigrator(v2Body, className, ...
                 options.TargetVersion);
         end
@@ -141,10 +152,10 @@ for k = 1:numel(bodies)
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
             outBody = ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
-            if strcmp(options.TargetVersion, 'V_epsilon') ...
+            if ~strcmp(options.TargetVersion, 'V_delta') ...
                     && isfield(outBody, 'document_class') ...
                     && isstruct(outBody.document_class)
-                outBody.document_class.schema_version = 'V_epsilon';
+                outBody.document_class.schema_version = options.TargetVersion;
             end
             doc = did2.document(outBody);
             if options.Validate
@@ -295,8 +306,14 @@ function bodies = runConcreteMigrator(v2Body, className, targetVersion)
 %   routed there instead; that migrator may return either a single body
 %   (struct) or several (struct array / cell), enabling the treatment ->
 %   manipulation and ontology_table_row -> observations (1 -> N) splits.
+splitPackage = '';
 if strcmp(targetVersion, 'V_epsilon')
-    fqn = ['did2.convert.migrators_e.', className];
+    splitPackage = 'did2.convert.migrators_e.';
+elseif strcmp(targetVersion, 'V_zeta')
+    splitPackage = 'did2.convert.migrators_i.';
+end
+if ~isempty(splitPackage)
+    fqn = [splitPackage, className];
     if ~isempty(which(fqn))
         out = feval(str2func(fqn), v2Body);
         bodies = normaliseMigratorOutput(out);
