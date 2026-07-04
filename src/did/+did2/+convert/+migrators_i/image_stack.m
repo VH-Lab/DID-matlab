@@ -182,12 +182,12 @@ end
 
 function [nm, term, isTime] = axisKind(c)
 switch c
-    case 'Y', nm = 'y';       term = ot('space_y'); isTime = false;
-    case 'X', nm = 'x';       term = ot('space_x'); isTime = false;
-    case 'Z', nm = 'z';       term = ot('space_z'); isTime = false;
-    case 'T', nm = 'time';    term = ot('time');    isTime = true;
-    case 'C', nm = 'channel'; term = ot('index');   isTime = false;
-    otherwise, nm = lower(c); term = ot('index');   isTime = false;
+    case 'Y', nm = 'y';       term = otTerm('space_y'); isTime = false;
+    case 'X', nm = 'x';       term = otTerm('space_x'); isTime = false;
+    case 'Z', nm = 'z';       term = otTerm('space_z'); isTime = false;
+    case 'T', nm = 'time';    term = otTerm('time');    isTime = true;
+    case 'C', nm = 'channel'; term = otTerm('index');   isTime = false;
+    otherwise, nm = lower(c); term = otTerm('index');   isTime = false;
 end
 end
 
@@ -224,7 +224,7 @@ end
 end
 
 function ch = pixelChannel()
-ch = struct('name', 'pixel', 'native_unit', ot('digital_count'), ...
+ch = struct('name', 'pixel', 'native_unit', otTerm('digital_count'), ...
     'gain', 1.0, 'offset', 0.0);
 end
 
@@ -233,13 +233,13 @@ end
 function dc = classBlock(name, supers, tv)
 sc = struct('class_name', {}, 'class_version', {});
 for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0'); %#ok<AGROW>
+    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
 end
 dc = struct('class_name', name, 'class_version', '1.0.0', ...
     'superclasses', sc, 'schema_version', tv);
 end
 
-function t = ot(name)
+function t = otTerm(name)
 t = struct('node', '', 'name', name);
 end
 
@@ -304,9 +304,13 @@ if isfield(body, 'depends_on') && isstruct(body.depends_on)
     for k = 1:numel(body.depends_on)
         d = body.depends_on(k);
         if isfield(d, 'name') && strcmp(d.name, name)
-            if isfield(d, 'value') && ~isempty(d.value); v = char(d.value);
-            elseif isfield(d, 'document_id') && ~isempty(d.document_id); v = char(d.document_id);
-            elseif isfield(d, 'id') && ~isempty(d.id); v = char(d.id); end
+            if isfield(d, 'value') && ~isempty(d.value)
+                v = char(d.value);
+            elseif isfield(d, 'document_id') && ~isempty(d.document_id)
+                v = char(d.document_id);
+            elseif isfield(d, 'id') && ~isempty(d.id)
+                v = char(d.id);
+            end
             return;
         end
     end
