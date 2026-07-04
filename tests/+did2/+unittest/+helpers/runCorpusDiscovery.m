@@ -46,6 +46,15 @@ end
 result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
     'TargetVersion', options.TargetVersion);
 
+% Coarse, DID-only second pass: resolve the stimulus_baths the per-document
+% converter deferred (needsSessionContext), using the migrated element docs
+% already in this batch for subject_id + a session_relative anchor. This is
+% the standalone/corpus counterpart to ndi.migrate.local's precise
+% (epoch-bounded) resolution; without a live NDI session it is the honest
+% best. A stimulus_bath whose element is not in the corpus stays quarantined.
+result = did2.convert.resolveDeferredBaths(result, ...
+    'Validate', true, 'TargetVersion', options.TargetVersion);
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 

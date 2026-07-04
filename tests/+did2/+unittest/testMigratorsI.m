@@ -315,6 +315,76 @@ verifyEqual(testCase, doc.get('subject.local_identifier'), 'control');
 verifyEqual(testCase, doc.get('subject.description'), 'untreated cohort');
 end
 
+% ===================== deferred bath: coarse batch resolution ==========
+
+function testDeferredBathResolvedFromBatch(testCase)
+% stimulus_bath defers per-document (needsSessionContext). The DID-only
+% resolveDeferredBaths pass resolves it from the migrated stimulator element
+% in the same batch: subject_id from the element, a session_relative anchor,
+% and the primary chemical as the spine `variable`.
+subjId = 'aabb1122ccdd3344_5500000000000001';
+stimId = 'aabb1122ccdd3344_5500000000000002';
+
+elem = struct();
+elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
+elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+elem.element = struct('ndi_element_class', 'ndi.element', 'name', 'stim', ...
+    'reference', 1, 'type', 'stimulator', 'direct', 0);
+
+bath = struct();
+bath.document_class = struct('class_name', 'stimulus_bath', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+bath.depends_on = struct('name', {'stimulus_element_id'}, 'value', {stimId});
+bath.base = struct('id', 'aabb1122ccdd3344_5500000000000004', ...
+    'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name', 'bath', 'datestamp', '2024-06-01T12:00:00.000Z');
+bath.epochid = struct('epochid', 'epoch_t00001');
+bath.stimulus_bath = struct( ...
+    'location', struct('ontologyNode', 'uberon:0001017', 'name', 'CNS'), ...
+    'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+
+out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(bath)}, ...
+    'Validate', false, 'TargetVersion', 'V_zeta');
+% the bath is deferred per-document
+verifyTrue(testCase, any(arrayfun(@(q) strcmp(q.class_name, 'stimulus_bath'), ...
+    out.quarantine)), 'stimulus_bath was not deferred');
+
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
+    'TargetVersion', 'V_zeta');
+
+% now a bath exists and nothing is left deferred for context
+verifyTrue(testCase, isfield(out.summary.by_class, 'bath'), 'no bath produced');
+for k = 1:numel(out.quarantine)
+    verifyEmpty(testCase, regexp(out.quarantine(k).reason, ...
+        'needsSessionContext|NDI layer', 'once'), ...
+        sprintf('bath left deferred: %s', out.quarantine(k).reason));
+end
+
+bathDoc = findMigratedByClass(out, 'bath');
+verifyNotEmpty(testCase, bathDoc);
+verifyEqual(testCase, depVal(bathDoc, 'subject_id'), subjId);
+verifyNotEmpty(testCase, depVal(bathDoc, 'time_reference_1'));
+verifyEqual(testCase, bathDoc.get('subject_interaction.variable').name, 'muscimol');
+% the anchor is an ordinal session_relative_reference
+anchor = findMigratedByClass(out, 'session_relative_reference');
+verifyNotEmpty(testCase, anchor);
+verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+end
+
+function doc = findMigratedByClass(out, className)
+doc = [];
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.className(), className)
+        doc = out.migrated{k};
+        return;
+    end
+end
+end
+
 % ===================== backward compatibility ==========================
 
 function testDefaultTargetLeavesTreatmentUnchanged(testCase)
