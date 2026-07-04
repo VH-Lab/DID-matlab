@@ -373,6 +373,13 @@ verifyEqual(testCase, bathDoc.get('subject_interaction.variable').name, 'muscimo
 anchor = findMigratedByClass(out, 'session_relative_reference');
 verifyNotEmpty(testCase, anchor);
 verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+% the ordinal anchor carries NO redundant session_id depends_on edge: session
+% identity rides on base.session_id, so migrated anchors don't orphan against
+% a session document that is absent from a corpus dump (V_zeta orphan fix).
+verifyEmpty(testCase, depVal(anchor, 'session_id'), ...
+    'anchor should not declare a redundant session_id depends_on edge');
+verifyNotEmpty(testCase, anchor.get('base.session_id'), ...
+    'anchor must still carry session identity via base.session_id');
 end
 
 function doc = findMigratedByClass(out, className)

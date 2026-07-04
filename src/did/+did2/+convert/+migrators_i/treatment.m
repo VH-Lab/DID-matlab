@@ -208,7 +208,12 @@ anchor.document_class = struct('class_name', 'session_relative_reference', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
     'schema_version', 'V_zeta');
-anchor.depends_on = struct('name', 'session_id', 'value', sessionId);
+% Session identity rides on base.session_id (every DID document carries it),
+% so the anchor needs no session_id depends_on edge -- that edge was redundant
+% with base and only produced discovery-mode reference-integrity orphans (the
+% session document is not part of a corpus dump). See the V_zeta
+% session_relative_reference schema, whose depends_on is now empty.
+anchor.depends_on = struct('name', {}, 'value', {});
 anchor.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', 'migrated_session_anchor', 'datestamp', ds);
 anchor.time_reference = struct('is_approximate', true);

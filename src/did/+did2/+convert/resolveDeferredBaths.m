@@ -144,7 +144,10 @@ anchorBody.document_class = struct('class_name', 'session_relative_reference', .
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
     'schema_version', targetVersion);
-anchorBody.depends_on = struct('name', 'session_id', 'value', sessionId);
+% Session identity rides on base.session_id; no redundant session_id edge
+% (it only produced discovery-mode orphans). See V_zeta
+% session_relative_reference (depends_on now empty).
+anchorBody.depends_on = struct('name', {}, 'value', {});
 anchorBody.base = struct('id', anchorId, 'session_id', sessionId, ...
     'name', 'migrated_session_anchor', 'datestamp', datestamp);
 anchorBody.time_reference = struct('is_approximate', true);
