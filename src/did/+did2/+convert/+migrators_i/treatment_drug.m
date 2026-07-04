@@ -123,7 +123,7 @@ end
 if ~isempty(raw)
     lines = strsplit(raw, newline);
     for i = 1:numel(lines)
-        cols = strsplit(strtrim(lines{i}), ',');
+        cols = strsplit(strtrim(lines{i}), ',', 'CollapseDelimiters', false);
         if numel(cols) < 2 || isempty(strtrim(cols{1}))
             continue;
         end
