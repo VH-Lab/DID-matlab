@@ -25,7 +25,8 @@ arguments
     corpusName (1,:) char
     corpusURL  (1,:) char
     innerDir   (1,:) char
-    options.TargetVersion (1,:) char = 'V_epsilon'
+    options.TargetVersion (1,:) char = 'V_zeta'
+    options.AssertNoOrphans (1,1) logical = true
 end
 
 did2.unittest.helpers.installSchemaPath(testCase, sprintf('skipping %s corpus test', corpusName));
@@ -46,6 +47,15 @@ end
 result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
     'TargetVersion', options.TargetVersion);
 
+% Coarse, DID-only second pass: resolve the stimulus_baths the per-document
+% converter deferred (needsSessionContext), using the migrated element docs
+% already in this batch for subject_id + a session_relative anchor. This is
+% the standalone/corpus counterpart to ndi.migrate.local's precise
+% (epoch-bounded) resolution; without a live NDI session it is the honest
+% best. A stimulus_bath whose element is not in the corpus stays quarantined.
+result = did2.convert.resolveDeferredBaths(result, ...
+    'Validate', true, 'TargetVersion', options.TargetVersion);
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 
@@ -59,21 +69,39 @@ catch routingErr
     fprintf('routing report skipped: %s\n', routingErr.message);
 end
 
-% Reference-integrity sweep (best-effort): after the 1->N splits and class
-% folds, confirm every depends_on edge in the migrated batch resolves to a
-% document in that batch. Orphans = dangling references the migration would
-% introduce (e.g. a split that didn't preserve a referenced id, or a ref to
-% a deferred/quarantined doc). Reported, not fatal -- discovery mode.
+% Reference-integrity sweep: after the 1->N splits and class folds, every
+% depends_on edge in the migrated batch must resolve to a document in that
+% batch. Orphans = dangling references the migration would introduce (e.g. a
+% split that didn't preserve a referenced id, or a ref to a
+% deferred/quarantined doc). As of the V_zeta line every corpus migrates
+% orphan-free, so this is now a HARD GATE (AssertNoOrphans, default true): a
+% migrator change that reintroduces an orphan fails the corpus test instead of
+% only logging it. Building the report is still best-effort (a failure to run
+% the validator must not mask the migrated/quarantine signal), but the
+% resulting orphan_count is asserted below, outside the catch.
+refRep = [];
 try
     refRep = did2.validate.references(result.migrated);
+catch refReportErr
+    fprintf('reference report skipped: %s\n', refReportErr.message);
+end
+if ~isempty(refRep)
     fprintf('\n--- reference integrity (%s): %d orphan(s) of %d edges ---\n', ...
         corpusName, refRep.orphan_count, refRep.edges_examined);
     [orphNames, orphCounts] = aggregateOrphans(refRep.orphans);
     for i = 1:numel(orphNames)
         fprintf('  %6d  %s\n', orphCounts(i), orphNames{i});
     end
-catch refReportErr
-    fprintf('reference report skipped: %s\n', refReportErr.message);
+    if options.AssertNoOrphans
+        breakdown = '';
+        for i = 1:numel(orphNames)
+            breakdown = sprintf('%s\n  %d  %s', breakdown, orphCounts(i), orphNames{i});
+        end
+        verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
+            ['%s: migration introduced %d orphan depends_on edge(s) ', ...
+             '(dangling references) of %d examined:%s'], ...
+            corpusName, refRep.orphan_count, refRep.edges_examined, breakdown));
+    end
 end
 
 fprintf('\n=== Corpus %s discovery summary (target %s) ===\n', ...
