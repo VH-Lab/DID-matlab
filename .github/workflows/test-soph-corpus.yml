@@ -12,6 +12,19 @@ name: Soph (Griswold) corpus discovery
 # did-schema ref fallback to `main` once the V_zeta branch merges.
 
 on:
+  # workflow_dispatch is only exposed for workflows on the default branch, so
+  # while this lives on the feature branch it is driven by a scoped push
+  # trigger: it re-runs only when the conversion engine, the Soph test, or this
+  # workflow change -- not on unrelated pushes. Once merged to the default
+  # branch, the workflow_dispatch entry below becomes the on-demand trigger and
+  # the push block can be dropped.
+  push:
+    branches: [claude/did-schema-v-zeta-johipc]
+    paths:
+      - 'src/did/+did2/+convert/**'
+      - 'tests/+did2/+unittest/testCorpusSoph.m'
+      - 'tests/+did2/+unittest/+helpers/**'
+      - '.github/workflows/test-soph-corpus.yml'
   workflow_dispatch:
     inputs:
       did_schema_ref:
