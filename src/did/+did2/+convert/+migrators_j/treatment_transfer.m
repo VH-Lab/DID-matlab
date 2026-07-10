@@ -36,8 +36,11 @@ block = preBody.treatment_transfer;
 recipientId = namedDep(preBody, 'recipient_id');
 donorId     = namedDep(preBody, 'donor_id');
 
-material = ontologyTerm(getCharField(block, 'entity_ontologyNode'), ...
-    getCharField(block, 'entity_name'));         % the transferred material
+% universalRenames snake_cases block fields (entity_ontologyNode ->
+% entity_ontology_node); read the snake form first, camelCase as a fallback.
+matNode = getCharField(block, 'entity_ontology_node');
+if isempty(matNode); matNode = getCharField(block, 'entity_ontologyNode'); end
+material = ontologyTerm(matNode, getCharField(block, 'entity_name'));  % transferred material
 methodName = getCharField(block, 'method_name');
 if isempty(methodName); methodName = 'transfer'; end
 

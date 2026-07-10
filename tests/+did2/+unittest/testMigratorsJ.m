@@ -234,6 +234,11 @@ chem = d.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
 verifyEqual(testCase, chem(1).amount.source_value, 5);
 verifyEqual(testCase, d.get('subject_statement.variable').name, 'haloperidol');
+% the site node survives the universalRenames snake-casing (location_ontologyNode
+% -> location_ontology_node)
+site = out.migrated{2};
+verifyEqual(testCase, site.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, site.get('term_observation.value').node, 'uberon:0002436');
 end
 
 function testVirusInjectionBecomesDoseManipulation(testCase)
@@ -254,6 +259,9 @@ chem = d.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chem(1).substance.name, 'AAV-ChR2');
 verifyEqual(testCase, chem(1).amount.source_value, 1000);
 verifyEqual(testCase, d.get('subject_statement.variable').node, 'addgene:26973');
+% site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
+site = out.migrated{2};
+verifyEqual(testCase, site.get('term_observation.value').node, 'uberon:0002436');
 end
 
 % ===================== probe_location / ontology_label =================

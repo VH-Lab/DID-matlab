@@ -35,8 +35,11 @@ anchor = jSessionAnchor(preBody, 'during');
 dose.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
 
 bodies = {dose};
-siteTerm = jOntologyTerm(jGetChar(block, 'location_ontologyNode'), ...
-    jGetChar(block, 'location_name'));
+% universalRenames snake_cases block fields (location_ontologyNode ->
+% location_ontology_node); read the snake form first, camelCase as a fallback.
+siteTerm = jOntologyTerm( ...
+    jGetCharAny(block, {'location_ontology_node', 'location_ontologyNode'}), ...
+    jGetCharAny(block, {'location_name'}));
 if ~isempty(siteTerm.node) || ~isempty(siteTerm.name)
     obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
         {}, jOntologyTerm('', 'anatomical location'), {'subject_id'}, true);

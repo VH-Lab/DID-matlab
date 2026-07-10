@@ -20,8 +20,11 @@ if ~isfield(preBody, 'virus_injection') || ~isstruct(preBody.virus_injection)
 end
 block = preBody.virus_injection;
 
-virusTerm = jOntologyTerm(jGetChar(block, 'virus_OntologyName'), ...
-    jGetChar(block, 'virus_name'));
+% universalRenames snake_cases block fields (virus_OntologyName ->
+% virus_ontology_name); read the snake form first, camelCase as a fallback.
+virusTerm = jOntologyTerm( ...
+    jGetCharAny(block, {'virus_ontology_name', 'virus_OntologyName'}), ...
+    jGetCharAny(block, {'virus_name'}));
 amount = jConcentration();
 if isfield(block, 'dilution') && isnumeric(block.dilution) && ~isempty(block.dilution)
     amount.source_value = double(block.dilution(1));
@@ -29,8 +32,8 @@ if isfield(block, 'dilution') && isnumeric(block.dilution) && ~isempty(block.dil
 end
 chemicals = struct('substance', virusTerm, 'amount', amount);
 
-diluentNode = jGetChar(block, 'diluent_OntologyName');
-diluentName = jGetChar(block, 'diluent_name');
+diluentNode = jGetCharAny(block, {'diluent_ontology_name', 'diluent_OntologyName'});
+diluentName = jGetCharAny(block, {'diluent_name'});
 if ~isempty(diluentNode) || ~isempty(diluentName)
     chemicals(end+1) = struct('substance', jOntologyTerm(diluentNode, diluentName), ...
         'amount', jConcentration());
@@ -44,8 +47,9 @@ anchor = jSessionAnchor(preBody, 'during');
 dose.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
 
 bodies = {dose};
-siteTerm = jOntologyTerm(jGetChar(block, 'virusLocation_OntologyName'), ...
-    jGetChar(block, 'virusLocation_name'));
+siteTerm = jOntologyTerm( ...
+    jGetCharAny(block, {'virus_location_ontology_name', 'virusLocation_OntologyName'}), ...
+    jGetCharAny(block, {'virus_location_name', 'virusLocation_name'}));
 if ~isempty(siteTerm.node) || ~isempty(siteTerm.name)
     obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
         {}, jOntologyTerm('', 'anatomical location'), {'subject_id'}, true);
