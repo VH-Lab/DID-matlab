@@ -35,10 +35,18 @@
 %     treatment_transfer - 1 -> 3. -> term_manipulation (the act) + a
 %                          provenance directed_relation (recipient <- donor,
 %                          derived_from) + the shared session anchor (D4).
+%     ontology_table_row - 1 -> N. Each column -> a subject_assertion leaf
+%                          (timeless: term_/date_assertion) OR a
+%                          subject_observation leaf (timed: <dim>_observation by
+%                          value shape / term_observation for strings);
+%                          identity columns skipped; a.u. numerics ->
+%                          intensity_observation (J §7, no escape hatch, D8).
+%                          + one shared session anchor. Dispatch seeded from the
+%                          Dab (FPS/EPM) and JH (C. elegans) corpora.
 %
 %   PENDING (need MATLAB + discovery-mode iteration against the corpora, exactly
-%   as the +migrators_i versions were seeded; the spine/composite/assertion
-%   retarget is non-trivial and must be validated against real datasets):
+%   as the +migrators_i versions were seeded; these depend on the still-open
+%   instrument-as-subject (D2) / Path-S handling):
 %
 %     treatment          - dispatch by structure: dose_manipulation (substance
 %                          -> dose/formulation composite), temperature_manipulation
@@ -46,12 +54,11 @@
 %                          procedure/regime). Route -> method; attributed site
 %                          -> a Path S part-subject + part_of (NDI pass);
 %                          merely-located site -> a term_observation value.
-%                          + shared anchor.
-%     ontology_table_row - 1 -> N. Each column -> a subject_assertion leaf
-%                          (timeless: term_/date_/<dim>_assertion) OR a
-%                          subject_observation leaf (timed: <dim>_observation /
-%                          term_observation), classified by timelessness; anatomy
-%                          column -> Path S. + one shared anchor.
+%                          + shared anchor. (Dab = 100% the Target-Location
+%                          locus pattern; JH = food-restriction regime + time.)
+%     probe_location     - -> term_observation about the probe (D5); needs the
+%                          instrument-as-subject decision (D2).
+%     ontology_label     - -> term_observation / term_assertion (D5).
 %     treatment_drug     - -> dose_manipulation (drug on the chemical term;
 %                          mixture -> formulation composite; route -> method).
 %     virus_injection    - -> dose_manipulation / formulation_manipulation

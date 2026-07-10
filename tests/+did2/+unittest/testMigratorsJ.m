@@ -93,3 +93,59 @@ verifyEqual(testCase, rel.get('directed_relation.relation').name, 'derived_from'
 anchor = out.migrated{3};
 verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
 end
+
+% ============ ontology_table_row -> assertions/observations (1 -> N) ====
+
+function otr = tableRow()
+otr = struct();
+otr.document_class = struct('class_name', 'ontology_table_row', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+otr.depends_on = struct('name', {'subject_id'}, 'value', {'subj_001'});
+otr.base = struct('id', 'otr_01', 'session_id', 'sess_09', ...
+    'name', 'row', 'datestamp', '2024-06-01T12:00:00.000Z');
+otr.ontology_table_row = struct( ...
+    'variable_names', 'BodyWeight,StartleAmplitude,TrialType,SubjectLocalIdentifier', ...
+    'names', 'body weight,acoustic startle maximum amplitude,trial type,subject local identifier', ...
+    'ontology_nodes', 'EMPTY:1,EMPTY:2,EMPTY:3,EMPTY:4', ...
+    'data', struct('BodyWeight', 24.3, 'StartleAmplitude', 38, ...
+        'TrialType', 'Startle 95 dB', 'SubjectLocalIdentifier', 'rat_1'));
+end
+
+function testOntologyTableRowSplitsByShape(testCase)
+out = runJ(tableRow());
+% 3 kept columns (identity skipped) + 1 shared anchor
+verifyEqual(testCase, numel(out.migrated), 4);
+verifyTrue(testCase, isfield(out.summary.by_class, 'mass_observation'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'intensity_observation'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'term_observation'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
+% identity column is skipped, not an observation
+verifyFalse(testCase, isfield(out.summary.by_class, 'local_identifier'));
+end
+
+function testOntologyTableRowNumericColumn(testCase)
+out = runJ(tableRow());
+mass = out.migrated{1};   % BodyWeight -> mass_observation
+verifyEqual(testCase, mass.get('document_class.class_name'), 'mass_observation');
+% identity is on the spine variable (subject_statement), value on the mass leaf
+verifyEqual(testCase, mass.get('subject_statement.variable').name, 'body weight');
+verifyEqual(testCase, mass.get('mass.value').source_value, 24.3);
+verifyEqual(testCase, mass.get('subject_statement.storage_mode'), 'inline');
+% the spine: subject_id carried, shared time anchor wired on
+verifyEqual(testCase, depVal(mass, 'subject_id'), 'subj_001');
+verifyEqual(testCase, depVal(mass, 'time_reference_1'), out.migrated{4}.get('base.id'));
+end
+
+function testOntologyTableRowStringColumnIsTermObservation(testCase)
+out = runJ(tableRow());
+term = out.migrated{3};   % TrialType -> term_observation (string value)
+verifyEqual(testCase, term.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, term.get('term_observation.value').name, 'Startle 95 dB');
+end
+
+function testOntologyTableRowAmplitudeIsIntensity(testCase)
+out = runJ(tableRow());
+amp = out.migrated{2};   % a.u. amplitude -> intensity_observation (J §7)
+verifyEqual(testCase, amp.get('document_class.class_name'), 'intensity_observation');
+verifyEqual(testCase, amp.get('intensity.value').source_value, 38);
+end

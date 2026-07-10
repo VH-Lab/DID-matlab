@@ -1,0 +1,95 @@
+name: Quick migrator tests
+
+# Fast feedback for migrator work: runs the did2.unittest suite EXCEPT the
+# testCorpus* discovery tests, which download and validate all six corpora and
+# take ~110 minutes. The migrator transform tests (testMigrators / _E / _I / _J,
+# testConvertV1ToV2, testValidateReferences, ...) run in seconds, so this job
+# finishes in ~2-3 minutes. The full corpus suite still runs in test-code.yml.
+
+on:
+  push:
+    branches: ['claude/**']
+    paths-ignore:
+      - '*.md'
+      - '.github/**'
+  pull_request:
+    branches: [main, V2]
+    paths-ignore:
+      - '*.md'
+      - '.github/**'
+  workflow_dispatch:
+
+concurrency:
+  group: quick-migrators-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick-migrators:
+    name: Migrator transform tests (no corpora)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out did-schema (sibling, for schema validation)
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: ${{ github.head_ref || 'main' }}
+          path: did-schema
+
+      - name: Assemble V_zeta schema set (stable + draft)
+        # The migrator transform tests run Validate=false, but a few unit tests
+        # touch the schema cache; assemble V_zeta (still present on the branch)
+        # so DID_SCHEMA_PATH resolves, exactly as test-code.yml does.
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/zeta-schemas"
+          cp did-schema/schemas/V_zeta/stable/*.json "${GITHUB_WORKSPACE}/zeta-schemas/"
+          cp did-schema/schemas/V_zeta/draft/*.json  "${GITHUB_WORKSPACE}/zeta-schemas/"
+
+      - name: Export DID_SCHEMA_PATH
+        run: |
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/zeta-schemas" \
+            >> "$GITHUB_ENV"
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+          products: Statistics_and_Machine_Learning_Toolbox
+
+      - name: Install MatBox
+        uses: ehennestad/matbox-actions/install-matbox@v1
+
+      - name: Check code
+        uses: ehennestad/matbox-actions/check-code@v1
+        with:
+          source_directory: 'src'
+
+      - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        uses: matlab-actions/run-command@v2
+        if: always()
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+
+      - name: Run migrator tests (excluding corpora)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            runner = TestRunner.withTextOutput;
+            suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
+            % Drop the heavy corpus-discovery tests; keep every transform test.
+            names = string({suite.Name});
+            suite = suite(~contains(names, "testCorpus"));
+            results = runner.run(suite);
+            disp(table(results));
+            nFailed = sum([results.Failed]);
+            assert(nFailed == 0, sprintf("%d test(s) failed", nFailed));
