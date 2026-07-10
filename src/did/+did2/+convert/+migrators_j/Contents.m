@@ -41,28 +41,49 @@
 %                          value shape / term_observation for strings);
 %                          identity columns skipped; a.u. numerics ->
 %                          intensity_observation (J §7, no escape hatch, D8).
-%                          + one shared session anchor. Dispatch seeded from the
-%                          Dab (FPS/EPM) and JH (C. elegans) corpora.
+%                          + one shared session anchor. NOTE: this is the naive
+%                          per-column seed; the flat-table column-role model
+%                          (D10) and per-column subject resolution (D11) are
+%                          still OPEN, so a qualifier column (e.g. trial type) is
+%                          knowingly mis-modelled as an observation until those
+%                          resolve. See V_eta_migration_plan.md D10/D11.
+%     treatment          - 1 -> 2/3. Dispatch by structure into strict-J leaves:
+%                          temperature_manipulation (typed value),
+%                          dose_manipulation (substance -> dose/formulation
+%                          composite; the substance is the spine variable), or
+%                          term_manipulation (payload-free procedure/regime; no
+%                          escape hatch, D8). A merely-located site becomes a
+%                          term_observation value (located-by-default, D3); an
+%                          attributed site is promoted to a Path-S part-subject +
+%                          part_of by the NDI second pass. + shared anchor.
+%                          Not-a-manipulation / unresolved rows -> quarantine.
+%     treatment_drug     - 1 -> 2/3. -> dose_manipulation (mixture_table ->
+%                          dose.value.formulation.chemicals; primary drug is the
+%                          spine variable) + optional site term_observation.
+%     virus_injection    - 1 -> 2/3. -> dose_manipulation (virus is the spine
+%                          variable + first chemical; dilution -> concentration;
+%                          diluent -> a second chemical) + optional site obs.
+%     probe_location     - 1 -> 2. -> term_observation about the probe-subject
+%                          (device-as-subject, D2/D5): variable = a spatial
+%                          relation, value = the atlas term. + anchor.
+%     ontology_label     - 1 -> 2. -> term_observation about the labeled subject
+%                          (D5): label term (either did_v1 idiom) as value. +
+%                          anchor.
 %
-%   PENDING (need MATLAB + discovery-mode iteration against the corpora, exactly
-%   as the +migrators_i versions were seeded; these depend on the still-open
-%   instrument-as-subject (D2) / Path-S handling):
+%   PENDING (need discovery-mode iteration against the corpora and/or the still
+%   -open flat-table decisions):
 %
-%     treatment          - dispatch by structure: dose_manipulation (substance
-%                          -> dose/formulation composite), temperature_manipulation
-%                          (typed value), term_manipulation (payload-free
-%                          procedure/regime). Route -> method; attributed site
-%                          -> a Path S part-subject + part_of (NDI pass);
-%                          merely-located site -> a term_observation value.
-%                          + shared anchor. (Dab = 100% the Target-Location
-%                          locus pattern; JH = food-restriction regime + time.)
-%     probe_location     - -> term_observation about the probe (D5); needs the
-%                          instrument-as-subject decision (D2).
-%     ontology_label     - -> term_observation / term_assertion (D5).
-%     treatment_drug     - -> dose_manipulation (drug on the chemical term;
-%                          mixture -> formulation composite; route -> method).
-%     virus_injection    - -> dose_manipulation / formulation_manipulation
-%                          (virus on the chemical term; titer -> concentration).
+%     ontology_table_row - rewrite to the D10 column-role rule + chosen qualifier
+%                          shape and D11 per-column subject resolution once those
+%                          decisions land (the current split is the interim seed).
+%     ontology_image     - -> term_observation about the imaged subject + an
+%                          opaque_body/sampled_body for the image file (D5).
 %
 %   Classes with no did_v1 -> V_eta split fall through to the default
 %   +migrators/<class> (1 -> 1) migrator, gaining only the schema_version tag.
+%
+%   Shared spine/composite helpers live in private/ (jStartInteraction,
+%   jSessionAnchor, jCarrySubject, jDoseValue, jConcentration, jOntologyTerm,
+%   jGetChar) so each migrator stays short; the older self-contained migrators
+%   (subject_group, treatment_transfer, ontology_table_row) keep their own local
+%   copies (local functions shadow the private ones, so there is no conflict).

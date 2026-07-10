@@ -2,13 +2,19 @@ function tests = testMigratorsJ
 %TESTMIGRATORSJ Brainstorm-J split/fold migrator tests (TargetVersion 'V_eta').
 %
 %   Exercises the did_v1 -> V_eta migrators routed by did2.convert.v1_to_v2
-%   when TargetVersion == 'V_eta'. Covers the migrators implemented so far:
+%   when TargetVersion == 'V_eta'. Covers:
 %     - subject_group      -> bare `subject` (v3.0.0; no is_group/is_biological)
 %     - treatment_transfer -> term_manipulation + provenance directed_relation
 %                             + session anchor (1 -> 3, D4)
-%   The remaining J migrators (treatment, ontology_table_row, treatment_drug,
-%   virus_injection) are pending discovery-mode iteration against the corpora
-%   (see +migrators_j/Contents.m).
+%     - ontology_table_row -> per-column assertions/observations (1 -> N)
+%     - treatment          -> temperature_/dose_/term_manipulation by structure,
+%                             + a site term_observation for a located site (D3)
+%     - treatment_drug     -> dose_manipulation (mixture -> dose composite)
+%     - virus_injection    -> dose_manipulation (virus + dilution)
+%     - probe_location     -> term_observation about the probe-subject (D5)
+%     - ontology_label     -> term_observation about the labeled subject (D5)
+%   The flat-table column-role model (D10/D11) is still open, so the
+%   ontology_table_row split is the naive per-column seed (see Contents.m).
 %
 %   Runs with Validate=false so they assert the TRANSFORM (routing + field
 %   placement) without a V_eta schema cache at the runner working directory.
@@ -148,4 +154,141 @@ out = runJ(tableRow());
 amp = out.migrated{2};   % a.u. amplitude -> intensity_observation (J §7)
 verifyEqual(testCase, amp.get('document_class.class_name'), 'intensity_observation');
 verifyEqual(testCase, amp.get('intensity.value').source_value, 38);
+end
+
+% ===================== treatment -> manipulation leaves ================
+
+function v1 = treatmentDoc(node, name, numeric, stringValue)
+v1 = struct();
+v1.document_class = struct('class_name', 'treatment', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'tr_01', 'session_id', 'sess_09', ...
+    'name', 'trt', 'datestamp', '2024-06-01T12:00:00.000Z');
+t = struct('ontology_name', node, 'name', name);
+if ~isempty(numeric); t.numeric_value = numeric; end
+if nargin >= 4 && ~isempty(stringValue); t.string_value = stringValue; end
+v1.treatment = t;
+end
+
+function testTreatmentTemperatureIsTemperatureManipulation(testCase)
+out = runJ(treatmentDoc('', 'cold exposure', 4.0, ''));
+verifyEqual(testCase, numel(out.migrated), 2);   % manip + anchor
+m = out.migrated{1};
+verifyEqual(testCase, m.get('document_class.class_name'), 'temperature_manipulation');
+verifyEqual(testCase, m.get('temperature.value').source_value, 4.0);
+verifyEqual(testCase, m.get('subject_statement.variable').name, 'cold exposure');
+verifyEqual(testCase, depVal(m, 'subject_id'), 'subj_007');
+% shared session anchor wired on as the time_reference
+verifyEqual(testCase, depVal(m, 'time_reference_1'), out.migrated{2}.get('base.id'));
+end
+
+function testTreatmentSubstanceIsDoseManipulation(testCase)
+out = runJ(treatmentDoc('chebi:28001', 'haloperidol', [], ''));
+m = out.migrated{1};
+verifyEqual(testCase, m.get('document_class.class_name'), 'dose_manipulation');
+chem = m.get('dose.value').formulation.chemicals;
+verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
+% the substance is BOTH the spine identity and the dose chemical
+verifyEqual(testCase, m.get('subject_statement.variable').node, 'chebi:28001');
+end
+
+function testTreatmentProcedureIsTermManipulation(testCase)
+out = runJ(treatmentDoc('', 'craniotomy', [], ''));
+m = out.migrated{1};
+verifyEqual(testCase, m.get('document_class.class_name'), 'term_manipulation');
+verifyEqual(testCase, m.get('term_manipulation.value').name, 'craniotomy');
+end
+
+function testTreatmentTargetLocationEmitsSiteObservation(testCase)
+% Dab "Target Location" idiom: the site rides in string_value; strict J has no
+% target_structure, so a located site becomes a term_observation (D3).
+out = runJ(treatmentDoc('chebi:28001', 'muscimol Target Location', [], 'uberon:0002436'));
+verifyEqual(testCase, numel(out.migrated), 3);   % dose manip + site obs + anchor
+verifyTrue(testCase, isfield(out.summary.by_class, 'dose_manipulation'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'term_observation'));
+% " Target Location" stripped from the manipulation's spine variable
+verifyEqual(testCase, out.migrated{1}.get('subject_statement.variable').name, 'muscimol');
+site = out.migrated{2};
+verifyEqual(testCase, site.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, site.get('term_observation.value').node, 'uberon:0002436');
+end
+
+% ===================== treatment_drug / virus_injection ================
+
+function testTreatmentDrugBecomesDoseManipulation(testCase)
+v1 = struct();
+v1.document_class = struct('class_name', 'treatment_drug', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'td_01', 'session_id', 'sess_09', ...
+    'name', 'td', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.treatment_drug = struct('mixture_table', 'chebi:28001,haloperidol,5', ...
+    'location_ontologyNode', 'uberon:0002436', 'location_name', 'primary visual cortex');
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 3);   % dose + site obs + anchor
+d = out.migrated{1};
+verifyEqual(testCase, d.get('document_class.class_name'), 'dose_manipulation');
+chem = d.get('dose.value').formulation.chemicals;
+verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
+verifyEqual(testCase, chem(1).amount.source_value, 5);
+verifyEqual(testCase, d.get('subject_statement.variable').name, 'haloperidol');
+end
+
+function testVirusInjectionBecomesDoseManipulation(testCase)
+v1 = struct();
+v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'vi_01', 'session_id', 'sess_09', ...
+    'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
+    'virus_name', 'AAV-ChR2', 'dilution', 1000, ...
+    'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1');
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 3);   % dose + site obs + anchor
+d = out.migrated{1};
+verifyEqual(testCase, d.get('document_class.class_name'), 'dose_manipulation');
+chem = d.get('dose.value').formulation.chemicals;
+verifyEqual(testCase, chem(1).substance.name, 'AAV-ChR2');
+verifyEqual(testCase, chem(1).amount.source_value, 1000);
+verifyEqual(testCase, d.get('subject_statement.variable').node, 'addgene:26973');
+end
+
+% ===================== probe_location / ontology_label =================
+
+function testProbeLocationBecomesTermObservation(testCase)
+v1 = struct();
+v1.document_class = struct('class_name', 'probe_location', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_42'});
+v1.base = struct('id', 'pl_01', 'session_id', 'sess_09', ...
+    'name', 'pl', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.probe_location = struct('ontology_name', 'uberon:0002436', 'name', 'primary visual cortex');
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 2);   % obs + anchor
+o = out.migrated{1};
+verifyEqual(testCase, o.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, o.get('term_observation.value').node, 'uberon:0002436');
+% the probe is the subject (device-as-subject, D2)
+verifyEqual(testCase, depVal(o, 'subject_id'), 'probe_42');
+end
+
+function testOntologyLabelBecomesTermObservation(testCase)
+v1 = struct();
+v1.document_class = struct('class_name', 'ontology_label', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_9'});
+v1.base = struct('id', 'ol_01', 'session_id', 'sess_09', ...
+    'name', 'ol', 'datestamp', '2024-06-01T12:00:00.000Z');
+% idiom 1: three coordinated fields -> a composed CURIE
+v1.ontology_label = struct('ontology_name', 'Allen CCF v3', 'label_id', 12345, ...
+    'label', 'primary visual cortex');
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 2);   % obs + anchor
+o = out.migrated{1};
+verifyEqual(testCase, o.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, o.get('term_observation.value').node, 'allen_ccf_v3:12345');
+verifyEqual(testCase, o.get('term_observation.value').name, 'primary visual cortex');
+verifyEqual(testCase, depVal(o, 'subject_id'), 'elem_9');
 end
