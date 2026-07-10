@@ -81,8 +81,16 @@ function result = v1_to_v2(v1Bodies, options)
 %                      through that migrator, targeting the Brainstorm-I
 %                      classes (the subject_interaction spine with
 %                      method/variable/target_structure, shape-typed
-%                      observation leaves, and generic_manipulation). Any
-%                      non-'V_delta' target stamps
+%                      observation leaves, and generic_manipulation).
+%                      'V_eta' routes classes that have a Brainstorm-J
+%                      split/fold migrator under +did2.+convert.+migrators_j
+%                      through that migrator, targeting the Brainstorm-J
+%                      subject model (bare-identity subject, restored
+%                      subject_statement owning `variable`, subject_observation/
+%                      subject_manipulation, data-type-named leaves +
+%                      dose/formulation/chemical composites, term_manipulation,
+%                      and subject_relation documents; no injection/bath, no
+%                      escape hatch). Any non-'V_delta' target stamps
 %                      document_class.schema_version with the target name.
 %
 %   See also: did2.convert.universalRenames, did2.convert.migrators,
@@ -311,6 +319,8 @@ if strcmp(targetVersion, 'V_epsilon')
     splitPackage = 'did2.convert.migrators_e.';
 elseif strcmp(targetVersion, 'V_zeta')
     splitPackage = 'did2.convert.migrators_i.';
+elseif strcmp(targetVersion, 'V_eta')
+    splitPackage = 'did2.convert.migrators_j.';
 end
 if ~isempty(splitPackage)
     fqn = [splitPackage, className];
