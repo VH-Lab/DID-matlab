@@ -13,6 +13,7 @@ function tests = testMigratorsJ
 %     - virus_injection    -> dose_manipulation (virus + dilution)
 %     - probe_location     -> term_observation about the probe-subject (D5)
 %     - ontology_label     -> term_observation about the labeled subject (D5)
+%     - image_stack        -> body-backed image_observation + sampled_body (§C.4)
 %   The flat-table column-role model (D10/D11) is still open, so the
 %   ontology_table_row split is the naive per-column seed (see Contents.m).
 %
@@ -291,4 +292,37 @@ verifyEqual(testCase, o.get('document_class.class_name'), 'term_observation');
 verifyEqual(testCase, o.get('term_observation.value').node, 'allen_ccf_v3:12345');
 verifyEqual(testCase, o.get('term_observation.value').name, 'primary visual cortex');
 verifyEqual(testCase, depVal(o, 'subject_id'), 'elem_9');
+end
+
+% ===================== image_stack -> body-backed observation ==========
+
+function testImageStackBecomesBodyBackedObservation(testCase)
+v1 = struct();
+v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'is_01', 'session_id', 'sess_09', ...
+    'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image_stack = struct('format_ontology', 'edam:3382', ...
+    'label', 'a two-photon stack', 'format', 'tiff');
+v1.image_stack_parameters = struct('data_type', 'uint16', ...
+    'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
+    'dimension_scale', [0.5 0.5 1 1 1], 'clocktype', 'dev_local_time', 'timestamp', 0);
+out = runJ(v1);
+% 1 -> 3: image_observation + sampled_body + anchor
+verifyEqual(testCase, numel(out.migrated), 3);
+verifyTrue(testCase, isfield(out.summary.by_class, 'image_observation'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'sampled_body'));
+verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
+obs = out.migrated{1};
+verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+% the value lives in the body: storage_mode: body on the statement
+verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
+verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');
+% frames in the sampled_body; cadence n = T*Z = 10*1
+sb = out.migrated{2};
+verifyEqual(testCase, sb.get('document_class.class_name'), 'sampled_body');
+verifyEqual(testCase, sb.get('sampled_body.sample_time').n, 10);
+% the body belongs to the image_observation statement
+verifyEqual(testCase, depVal(sb, 'statement'), obs.get('base.id'));
 end

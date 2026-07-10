@@ -69,6 +69,15 @@
 %     ontology_label     - 1 -> 2. -> term_observation about the labeled subject
 %                          (D5): label term (either did_v1 idiom) as value. +
 %                          anchor.
+%     image_stack        - 1 -> 3. -> a body-backed image_observation
+%                          (storage_mode: body; modality on the spine variable,
+%                          geometry/format inline on the `image` mixin) + a
+%                          sampled_body holding the carried pixel frames
+%                          (datum + sample_time; `statement` -> the observation)
+%                          + shared anchor (§C.4). The element_epoch/ingested
+%                          quartet the V_zeta fold minted collapses into the one
+%                          sampled_body; NDI-side imaging element/daqreader infra
+%                          is left to the NDI second pass (D2). 7,007 docs in JH.
 %
 %   PENDING (need discovery-mode iteration against the corpora and/or the still
 %   -open flat-table decisions):
