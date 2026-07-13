@@ -35,33 +35,35 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check out did-schema (sibling, for V_zeta validation)
+      - name: Check out did-schema (sibling, for V_eta validation)
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          # Track the matching did-schema V_zeta (Brainstorm-I) branch: the
-          # subject_interaction spine, shape-typed observation leaves,
-          # generic_manipulation, etc. live on this branch (did-schema PR #63)
-          # and are not yet on did-schema main. Revert to `main` once that
-          # merges. Falls back to main off-PR (e.g. direct pushes to V2).
-          ref: ${{ github.head_ref || 'main' }}
+          # Track the matching did-schema V_eta (Brainstorm-J) branch: the
+          # bare-identity subject, subject_statement `parameters` (D10),
+          # session_bounded_reference + directed_relation time_reference (D10
+          # multi-party binding), the strict-J leaf tier, etc. live on this
+          # branch and are not yet on did-schema main. The three repos share the
+          # branch name, so off-PR (push / workflow_dispatch, where head_ref is
+          # empty) track the same-named did-schema branch via ref_name; that
+          # resolves to `main` for base-branch runs.
+          ref: ${{ github.head_ref || github.ref_name }}
           path: did-schema
 
-      - name: Assemble V_zeta schema set (stable + draft)
-        # V_zeta (Brainstorm I) replaces V_epsilon as the migration/validation
-        # target. The schema cache loads a single flat dir of *.json; the
-        # Brainstorm-I migration classes live in V_zeta/stable and the
-        # genomics/dataseries data-format families in V_zeta/draft (class
-        # names are disjoint across tiers), so combine both tiers into one
-        # directory for DID_SCHEMA_PATH.
+      - name: Assemble V_eta schema set (stable + draft)
+        # V_eta (Brainstorm J) is the migration/validation target. The schema
+        # cache loads a single flat dir of *.json; the Brainstorm-J classes live
+        # in V_eta/stable and the genomics/dataseries data-format families in
+        # V_eta/draft (class names are disjoint across tiers), so combine both
+        # tiers into one directory for DID_SCHEMA_PATH.
         run: |
-          mkdir -p "${GITHUB_WORKSPACE}/zeta-schemas"
-          cp did-schema/schemas/V_zeta/stable/*.json "${GITHUB_WORKSPACE}/zeta-schemas/"
-          cp did-schema/schemas/V_zeta/draft/*.json  "${GITHUB_WORKSPACE}/zeta-schemas/"
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
 
       - name: Export DID_SCHEMA_PATH
         run: |
-          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/zeta-schemas" \
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" \
             >> "$GITHUB_ENV"
 
       - name: Set up MATLAB
