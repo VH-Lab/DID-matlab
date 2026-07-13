@@ -6,7 +6,9 @@ function tests = testMigratorsJ
 %     - subject_group      -> bare `subject` (v3.0.0; no is_group/is_biological)
 %     - treatment_transfer -> term_manipulation + provenance directed_relation
 %                             + session anchor (1 -> 3, D4)
-%     - ontology_table_row -> per-column assertions/observations (1 -> N)
+%     - ontology_table_row -> per-column assertions/observations (1 -> N), and
+%                             the per-table map for the C. elegans encounter
+%                             (worm obs + shared time_reference + patch relation)
 %     - treatment          -> temperature_/dose_/term_manipulation by structure,
 %                             + a site term_observation for a located site (D3)
 %     - treatment_drug     -> dose_manipulation (mixture -> dose composite)
@@ -14,8 +16,9 @@ function tests = testMigratorsJ
 %     - probe_location     -> term_observation about the probe-subject (D5)
 %     - ontology_label     -> term_observation about the labeled subject (D5)
 %     - image_stack        -> body-backed image_observation + sampled_body (§C.4)
-%   The flat-table column-role model (D10/D11) is still open, so the
-%   ontology_table_row split is the naive per-column seed (see Contents.m).
+%   D10/D11 are decided (parameters on subject_statement; per-table subject
+%   maps; multi-party events bind via a shared time_reference). Tables are moved
+%   off the naive per-column seed onto their maps one at a time (see Contents.m).
 %
 %   Runs with Validate=false so they assert the TRANSFORM (routing + field
 %   placement) without a V_eta schema cache at the runner working directory.
@@ -333,4 +336,79 @@ verifyEqual(testCase, sb.get('document_class.class_name'), 'sampled_body');
 verifyEqual(testCase, sb.get('sampled_body.sample_time').n, 10);
 % the body belongs to the image_observation statement
 verifyEqual(testCase, depVal(sb, 'statement'), obs.get('base.id'));
+end
+
+% ============ ontology_table_row per-table map: C. elegans encounter ====
+
+function otr = encounterRow()
+P = 'CElegansBehavioralAssay_';
+keys = {'SubjectDocumentIdentifier', [P 'EncounterIdentifier'], ...
+    'BacterialPatchDocumentIdentifier', [P 'EncounterOnsetTime'], ...
+    [P 'EncounterOffsetTime'], [P 'DecelerationUponEncounter'], ...
+    [P 'MinimumVelocityDuringEncounter'], [P 'PeakVelocityBeforeEncounterOnset'], ...
+    [P 'MinimumVelocityAfterEncounterOffset'], [P 'PosteriorProbabilityOfExploitation'], ...
+    [P 'PosteriorProbabilityOfSensing'], [P 'RelativeDensityOfEncounteredBacteria'], ...
+    [P 'RelativeDensityOfCultivationBacteria']};
+data = struct();
+data.SubjectDocumentIdentifier = 'worm_1';
+data.([P 'EncounterIdentifier']) = 5;
+data.BacterialPatchDocumentIdentifier = 'patch_1';
+data.([P 'EncounterOnsetTime']) = 1249.72;
+data.([P 'EncounterOffsetTime']) = 1265.39;
+data.([P 'DecelerationUponEncounter']) = 3.15;
+data.([P 'MinimumVelocityDuringEncounter']) = 130.4;
+data.([P 'PeakVelocityBeforeEncounterOnset']) = 196.3;
+data.([P 'MinimumVelocityAfterEncounterOffset']) = 130.4;
+data.([P 'PosteriorProbabilityOfExploitation']) = 1.99e-5;
+data.([P 'PosteriorProbabilityOfSensing']) = 7.5e-4;
+data.([P 'RelativeDensityOfEncounteredBacteria']) = 0.557;
+data.([P 'RelativeDensityOfCultivationBacteria']) = 2.238;
+nodes = strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ',');
+otr = struct();
+otr.document_class = struct('class_name', 'ontology_table_row', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+otr.depends_on = struct('name', {}, 'value', {});
+otr.base = struct('id', 'otr_enc', 'session_id', 'sess_1', ...
+    'name', 'row', 'datestamp', '2024-06-01T12:00:00.000Z');
+otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
+    'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
+end
+
+function d = firstOfClassJ(migrated, className)
+d = [];
+for k = 1:numel(migrated)
+    if strcmp(migrated{k}.get('document_class.class_name'), className)
+        d = migrated{k}; return;
+    end
+end
+end
+
+function testEncounterTableMap(testCase)
+out = runJ(encounterRow());
+% 8 worm observations + 1 relation + 1 shared time_reference
+verifyEqual(testCase, numel(out.migrated), 10);
+bc = out.summary.by_class;
+verifyTrue(testCase, isfield(bc, 'velocity_observation'));
+verifyTrue(testCase, isfield(bc, 'acceleration_observation'));
+verifyTrue(testCase, isfield(bc, 'score_observation'));
+verifyTrue(testCase, isfield(bc, 'concentration_observation'));
+verifyTrue(testCase, isfield(bc, 'directed_relation'));
+verifyTrue(testCase, isfield(bc, 'event_relative_reference'));
+% onset/offset are the window (not observations); encounter # is derived (dropped)
+verifyFalse(testCase, isfield(bc, 'duration_observation'));
+verifyFalse(testCase, isfield(bc, 'count_observation'));
+verifyEqual(testCase, bc.velocity_observation, 3);
+% a measurement is about the worm and shares the encounter window
+tref = firstOfClassJ(out.migrated, 'event_relative_reference');
+vel = firstOfClassJ(out.migrated, 'velocity_observation');
+verifyEqual(testCase, depVal(vel, 'subject_id'), 'worm_1');
+verifyEqual(testCase, depVal(vel, 'time_reference_1'), tref.get('base.id'));
+% the relation is the encounter record: worm --encountered--> patch, same window
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+verifyEqual(testCase, depVal(rel, 'child'), 'worm_1');
+verifyEqual(testCase, depVal(rel, 'parent'), 'patch_1');
+verifyEqual(testCase, rel.get('directed_relation.relation').name, 'encountered');
+verifyEqual(testCase, depVal(rel, 'time_reference_1'), tref.get('base.id'));
+% the window carries onset/offset
+verifyEqual(testCase, tref.get('event_relative_reference.start').source_value, 1249.72);
 end

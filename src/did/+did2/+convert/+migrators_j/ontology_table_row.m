@@ -23,11 +23,22 @@ function bodies = ontology_table_row(preBody)
 %
 %   Brainstorm J puts identity on the spine `variable` (owned by
 %   subject_statement), the verb on subject_interaction.method, and the
-%   per-sample cadence in subject_interaction.sample_time (D1). Returns a CELL
-%   of body structs (one per kept column + a shared session anchor for the
-%   observations); the dispatcher lands each as its own document. Dispatch is a
-%   keyword heuristic seeded from the Dab (fear-potentiated-startle / EPM) and
-%   JH (C. elegans) corpora; the per-term table is finalised in discovery mode.
+%   per-sample cadence in subject_interaction.sample_time (D1).
+%
+%   PER-TABLE MAP DISPATCH (D10/D11). A table whose column SIGNATURE is
+%   recognised is migrated by its map instead of the per-column seed: the map
+%   resolves which entity each measurement is about (subject_id), mints one
+%   shared bounded `time_reference` for a multi-party event, turns reference
+%   columns into `directed_relation`s, and drops derived columns. The first map
+%   implemented is the JH *C. elegans* encounter (`isEncounterTable` /
+%   `applyEncounterMap`): worm behaviours -> worm observations sharing one
+%   `event_relative_reference` window (onset..offset); `BacterialPatchDocument-
+%   Identifier` -> a `worm --encountered--> patch` relation on that window; the
+%   derived `EncounterIdentifier` dropped; OD600 stays on the patch document.
+%   Unmapped tables fall back to the per-column seed below (still knowingly-wrong
+%   for qualifiers; retired one table at a time). Dispatch is seeded from the Dab
+%   (FPS / EPM) and JH (C. elegans) corpora; the per-table maps grow in discovery
+%   mode.
 
 arguments
     preBody (1,1) struct
@@ -37,6 +48,19 @@ if ~isfield(preBody, 'ontology_table_row') || ~isstruct(preBody.ontology_table_r
     error('did2:convert:missingBlock', ...
         'ontology_table_row body is missing the ontology_table_row property block.');
 end
+
+% --- per-table map dispatch (D10/D11) --------------------------------------
+% A table with a recognised column signature is migrated by its per-table map:
+% subject resolution (which entity each measurement is about), a shared bounded
+% time_reference for multi-party events, references -> directed_relations, and
+% derived columns dropped. Unmapped tables fall back to the legacy per-column
+% seed below (still knowingly-wrong for qualifiers; retired table by table).
+cols = extractColumns(preBody.ontology_table_row);
+if isEncounterTable(cols)
+    bodies = applyEncounterMap(preBody, cols);
+    return;
+end
+
 rows = extractRows(preBody.ontology_table_row);
 if isempty(rows)
     % Unrecognised layout: carry the document unchanged (the class still exists
@@ -65,6 +89,195 @@ if usedAnchor
 end
 if isempty(bodies)
     bodies = {preBody};   % every column skipped -> carry unchanged
+end
+end
+
+% ===================== per-table map: C. elegans encounter =============
+%
+%   The JH encounter table (20,411 rows) binds a multi-party event without a
+%   trial document (D10/D11): the worm's behaviour measurements land on the
+%   worm; onset/offset become ONE shared bounded time_reference (the encounter
+%   window); the BacterialPatchDocumentIdentifier becomes a
+%   `worm --encountered--> patch` directed_relation carrying that same
+%   time_reference; the derived EncounterIdentifier is dropped (= onset rank).
+%   OD600 etc. are NOT here -- they live on the referenced patch document.
+
+function tf = isEncounterTable(cols)
+tf = ~isempty(colByKey(cols, 'CElegansBehavioralAssay_EncounterIdentifier')) ...
+    && ~isempty(colByKey(cols, 'BacterialPatchDocumentIdentifier'));
+end
+
+function bodies = applyEncounterMap(preBody, cols)
+P = 'CElegansBehavioralAssay_';
+wormId  = colVal(cols, 'SubjectDocumentIdentifier');
+patchId = colVal(cols, 'BacterialPatchDocumentIdentifier');
+onset   = colNum(cols, [P 'EncounterOnsetTime']);
+offset  = colNum(cols, [P 'EncounterOffsetTime']);
+
+% one shared bounded time_reference = the encounter window
+tref = makeEncounterWindow(preBody, onset, offset);
+
+% behaviour measurements -> worm observations, all sharing the window
+%   key suffix -> {leafClass, shapeClass}. Onset/offset are the window (not
+%   observations); the EncounterIdentifier is derived (dropped).
+measures = {
+    'DecelerationUponEncounter',            'acceleration_observation', 'acceleration'
+    'MinimumVelocityDuringEncounter',       'velocity_observation',     'velocity'
+    'PeakVelocityBeforeEncounterOnset',     'velocity_observation',     'velocity'
+    'MinimumVelocityAfterEncounterOffset',  'velocity_observation',     'velocity'
+    'PosteriorProbabilityOfExploitation',   'score_observation',        'score'
+    'PosteriorProbabilityOfSensing',        'score_observation',        'score'
+    'RelativeDensityOfEncounteredBacteria', 'concentration_observation','concentration'
+    'RelativeDensityOfCultivationBacteria', 'concentration_observation','concentration'};
+
+bodies = {};
+for i = 1:size(measures, 1)
+    c = colByKey(cols, [P measures{i, 1}]);
+    if isempty(c); continue; end
+    [ok, num] = numericValue(c{1});
+    if ~ok; continue; end
+    variable = struct('node', '', 'name', c{1}.name);
+    bodies{end+1} = makeEncObs(preBody, measures{i, 2}, measures{i, 3}, ...
+        variable, num, wormId, tref.base.id); %#ok<AGROW>
+end
+
+% the reference: worm --encountered--> patch, on the same window
+bodies{end+1} = makeEncounterRelation(preBody, wormId, patchId, tref.base.id);
+bodies{end+1} = tref;
+end
+
+function body = makeEncObs(preBody, leafClass, shapeClass, variable, num, wormId, trefId)
+body = struct();
+body.document_class = struct('class_name', leafClass, 'class_version', '1.0.0', ...
+    'superclasses', supersOf({'subject_observation', shapeClass}), ...
+    'schema_version', 'V_eta');
+body.depends_on = [ ...
+    struct('name', 'subject_id',       'value', wormId), ...
+    struct('name', 'time_reference_1', 'value', trefId)];
+body.base = freshBase(preBody, 'migrated_encounter_measure');
+body.subject_statement  = struct('variable', variable, 'storage_mode', 'inline');
+body.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
+    'sample_time', struct('kind', 'point'));
+body.subject_observation = struct();
+if strcmp(shapeClass, 'score')
+    body.score = struct('value', struct('value', num, ...
+        'scale', struct('node', '', 'name', ''), ...
+        'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false));
+else
+    body.(shapeClass) = struct('value', ...
+        struct('source_unit', '', 'source_value', double(num), 'approximate', false));
+end
+end
+
+function tref = makeEncounterWindow(preBody, onset, offset)
+tref = struct();
+tref.document_class = struct('class_name', 'event_relative_reference', ...
+    'class_version', '1.0.0', 'superclasses', supersOf({'time_reference'}), ...
+    'schema_version', 'V_eta');
+% reference_event (the assay frame) is left empty for pass 1 -- discovery-tuned.
+tref.depends_on = struct('name', 'reference_event', 'value', '');
+tref.base = freshBase(preBody, 'migrated_encounter_window');
+tref.time_reference = struct('is_approximate', false);
+tref.event_relative_reference = struct( ...
+    'start', durationSeconds(onset), 'end', durationSeconds(offset));
+end
+
+function rel = makeEncounterRelation(preBody, wormId, patchId, trefId)
+rel = struct();
+rel.document_class = struct('class_name', 'directed_relation', ...
+    'class_version', '1.0.0', 'superclasses', supersOf({'subject_relation'}), ...
+    'schema_version', 'V_eta');
+rel.depends_on = [ ...
+    struct('name', 'child',            'value', wormId), ...   % subject of the verb
+    struct('name', 'parent',           'value', patchId), ...  % object of the verb
+    struct('name', 'time_reference_1', 'value', trefId)];      % when it happened
+rel.base = freshBase(preBody, 'migrated_encounter');
+rel.subject_relation = struct();
+rel.directed_relation = struct('relation', struct('node', '', 'name', 'encountered'));
+end
+
+% ---- encounter helpers ------------------------------------------------
+
+function supers = supersOf(chain)
+supers = struct('class_name', {}, 'class_version', {});
+for k = 1:numel(chain)
+    supers(end+1) = struct('class_name', chain{k}, 'class_version', '1.0.0'); %#ok<AGROW>
+end
+end
+
+function base = freshBase(preBody, name)
+sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
+if isfield(preBody, 'base') && isstruct(preBody.base)
+    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
+    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
+        ds = preBody.base.datestamp;
+    end
+end
+base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+    'name', name, 'datestamp', ds);
+end
+
+function d = durationSeconds(x)
+d = struct('source_unit', 's', 'source_value', double(x), 'approximate', false);
+end
+
+function cols = extractColumns(block)
+%EXTRACTCOLUMNS Like extractRows, but keep each column's variable_names KEY so a
+%   per-table map can dispatch on it. Returns a cell of structs
+%   {key, name, node, value}.
+cols = {};
+if ~isfield(block, 'variable_names'); return; end
+vars  = splitCSV(getCharField(block, 'variable_names'));
+names = splitCSV(getCharField(block, 'names'));
+nodes = splitCSV(getCharField(block, 'ontology_nodes'));
+data = struct();
+if isfield(block, 'data') && isstruct(block.data); data = block.data; end
+for i = 1:numel(vars)
+    key = vars{i};
+    nm = ''; nd = '';
+    if i <= numel(names); nm = names{i}; end
+    if i <= numel(nodes); nd = nodes{i}; end
+    val = [];
+    if ~isempty(key) && isfield(data, key); val = data.(key); end
+    cols{end+1} = struct('key', key, 'name', nm, 'node', nd, 'value', val); %#ok<AGROW>
+end
+end
+
+function c = colByKey(cols, key)
+c = {};
+for i = 1:numel(cols)
+    if strcmp(cols{i}.key, key); c = cols(i); return; end
+end
+end
+
+function v = colVal(cols, key)
+v = '';
+c = colByKey(cols, key);
+if ~isempty(c)
+    x = c{1}.value;
+    if ischar(x); v = x;
+    elseif isstring(x) && isscalar(x); v = char(x);
+    elseif isnumeric(x) && isscalar(x); v = num2str(x); end
+end
+end
+
+function n = colNum(cols, key)
+n = 0;
+c = colByKey(cols, key);
+if ~isempty(c)
+    [ok, num] = numericValue(c{1});
+    if ok; n = num; end
+end
+end
+
+function [ok, num] = numericValue(col)
+ok = false; num = [];
+x = col.value;
+if isnumeric(x) && isscalar(x) && isfinite(x)
+    ok = true; num = double(x);
+elseif (ischar(x) || (isstring(x) && isscalar(x)))
+    d = str2double(char(x));
+    if ~isnan(d); ok = true; num = d; end
 end
 end
 
