@@ -467,3 +467,69 @@ od = firstOfClassJ(out.migrated, 'concentration_observation');
 verifyEqual(testCase, depVal(od, 'subject_id'), 'otr_patch');
 verifyEqual(testCase, depVal(od, 'time_reference_1'), anchor.get('base.id'));
 end
+
+% ============ deferred stimulus_bath -> dose_manipulation (V_eta) =======
+
+function testDeferredBathBecomesDoseManipulation(testCase)
+% A stimulus_bath defers per-document (needsSessionContext). At V_eta the
+% resolveDeferredBaths pass must assemble a strict-J `dose_manipulation` (D8
+% retired the `bath`/`pharmacological_manipulation` family), NOT a `bath`:
+% subject_id from the stimulator element, a session_relative anchor, the primary
+% chemical as the spine variable, and the mixture as the dose formulation.
+subjId = 'aabb1122ccdd3344_5500000000000001';
+stimId = 'aabb1122ccdd3344_5500000000000002';
+
+elem = struct();
+elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
+elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+elem.element = struct('ndi_element_class', 'ndi.element', 'name', 'stim', ...
+    'reference', 1, 'type', 'stimulator', 'direct', 0);
+
+bath = struct();
+bath.document_class = struct('class_name', 'stimulus_bath', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+bath.depends_on = struct('name', {'stimulus_element_id'}, 'value', {stimId});
+bath.base = struct('id', 'aabb1122ccdd3344_5500000000000004', ...
+    'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name', 'bath', 'datestamp', '2024-06-01T12:00:00.000Z');
+bath.epochid = struct('epochid', 'epoch_t00001');
+bath.stimulus_bath = struct( ...
+    'location', struct('ontologyNode', 'uberon:0001017', 'name', 'CNS'), ...
+    'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+
+out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(bath)}, ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+verifyTrue(testCase, any(arrayfun(@(q) strcmp(q.class_name, 'stimulus_bath'), ...
+    out.quarantine)), 'stimulus_bath was not deferred');
+
+out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
+    'TargetVersion', 'V_eta');
+
+% strict J: a dose_manipulation, and NEVER the retired `bath` class
+verifyTrue(testCase, isfield(out.summary.by_class, 'dose_manipulation'), ...
+    'no dose_manipulation produced');
+verifyFalse(testCase, isfield(out.summary.by_class, 'bath'), ...
+    'retired `bath` class must not be emitted at V_eta');
+for k = 1:numel(out.quarantine)
+    verifyEmpty(testCase, regexp(out.quarantine(k).reason, ...
+        'needsSessionContext|NDI layer|class "bath"', 'once'), ...
+        sprintf('bath left unresolved: %s', out.quarantine(k).reason));
+end
+
+dose = firstOfClassJ(out.migrated, 'dose_manipulation');
+verifyNotEmpty(testCase, dose);
+verifyEqual(testCase, depVal(dose, 'subject_id'), subjId);
+verifyNotEmpty(testCase, depVal(dose, 'time_reference_1'));
+% the primary chemical is the spine identity and seeds the dose formulation
+verifyEqual(testCase, dose.get('subject_statement.variable').name, 'muscimol');
+chems = dose.get('dose.value').formulation.chemicals;
+verifyEqual(testCase, chems(1).substance.name, 'muscimol');
+% the anchor is an ordinal session_relative_reference
+anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
+verifyNotEmpty(testCase, anchor);
+verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+end

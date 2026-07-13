@@ -62,8 +62,8 @@ for k = 1:numel(q)
         v1Body = jsondecode(q(k).original_body);
         stimulatorId = dependencyValue(v1Body, 'stimulus_element_id');
         subjectId = subjectOfElement(byElement, stimulatorId);   % errors if none
-        [bathBody, anchorBody] = makeBath(v1Body, subjectId, options.TargetVersion);
-        assembled = [assembled, {anchorBody, bathBody}]; %#ok<AGROW>
+        bathBodies = makeBath(v1Body, subjectId, options.TargetVersion);
+        assembled = [assembled, bathBodies]; %#ok<AGROW>
         keep(k) = false;   % resolved -> drop the original deferral
     catch
         % element not in batch (or unresolvable): leave it quarantined with
@@ -131,7 +131,18 @@ end
 
 % ===================== bath assembly (coarse) ==============================
 
-function [bathBody, anchorBody] = makeBath(v1Body, subjectId, targetVersion)
+function bodies = makeBath(v1Body, subjectId, targetVersion)
+%MAKEBATH Assemble the resolved bath (+ its anchor) for TARGETVERSION. Returns a
+%   cell of bodies {anchor, manipulation, ...} to fold back through v1_to_v2.
+%   Strict J (V_eta) retired the `bath`/`pharmacological_manipulation` family
+%   (D8): a bath is a delivered substance -> a `dose_manipulation`
+%   subject_manipulation leaf, exactly as migrators_j.treatment routes a `bath`
+%   keyword. Earlier targets (V_zeta/E) keep the `bath` class.
+if strcmp(targetVersion, 'V_eta')
+    bodies = makeBathVEta(v1Body, subjectId);
+    return;
+end
+
 sessionId = baseField(v1Body, 'session_id', '');
 datestamp = baseField(v1Body, 'datestamp', '');
 bathId    = baseField(v1Body, 'id', did.ido.unique_id());
@@ -172,6 +183,71 @@ if strcmp(targetVersion, 'V_zeta')
 end
 bathBody.pharmacological_manipulation = struct('mixture', mixture);
 bathBody.bath = struct('kind', 'drug', 'location', locationTerm(v1Body));
+bodies = {anchorBody, bathBody};
+end
+
+function bodies = makeBathVEta(v1Body, subjectId)
+%MAKEBATHVETA Assemble a strict-J `dose_manipulation` (+ session anchor) from a
+%   deferred stimulus_bath. Mirrors migrators_j.treatment.makeDoseManipulation:
+%   the primary chemical is the spine identity (subject_statement.variable), the
+%   whole bath mixture becomes the dose formulation's chemicals, and the bath
+%   rides on the resolved subject over a session-relative window. The bath
+%   `location` has no strict-J home on the subject (it is the chamber, not a
+%   subject site) and is dropped -- a discovery follow-up if it proves needed.
+sessionId = baseField(v1Body, 'session_id', '');
+datestamp = baseField(v1Body, 'datestamp', '');
+bathId    = baseField(v1Body, 'id', did.ido.unique_id());
+mixture   = parseMixture(v1Body);
+variable  = primaryChemical(mixture);
+
+% session-relative anchor (the ordinal fallback; base.session_id carries session)
+anchorId = did.ido.unique_id();
+anchorBody = struct();
+anchorBody.document_class = struct('class_name', 'session_relative_reference', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
+    'schema_version', 'V_eta');
+anchorBody.depends_on = struct('name', {}, 'value', {});
+anchorBody.base = struct('id', anchorId, 'session_id', sessionId, ...
+    'name', 'migrated_session_anchor', 'datestamp', datestamp);
+anchorBody.time_reference = struct('is_approximate', true);
+anchorBody.session_relative_reference = struct('relation', 'during');
+
+% the bath mixture -> dose formulation chemicals ({substance, amount}).
+% `substance` is a non-empty ontology_term, so skip parseMixture's blank
+% fallback entry (both node and name empty) rather than emit an invalid chemical.
+chemicals = struct('substance', {}, 'amount', {});
+for i = 1:numel(mixture)
+    chem = mixture(i).chemical;
+    if isempty(chem.node) && isempty(chem.name)
+        continue;
+    end
+    chemicals(end+1) = struct('substance', chem, ...
+        'amount', mixture(i).amount); %#ok<AGROW>
+end
+formulation = struct();
+formulation.chemicals = chemicals;
+
+dose = struct();
+dose.document_class = struct('class_name', 'dose_manipulation', 'class_version', '1.0.0', ...
+    'superclasses', [ ...
+        struct('class_name', 'subject_manipulation', 'class_version', '1.0.0'), ...
+        struct('class_name', 'dose',                 'class_version', '1.0.0')], ...
+    'schema_version', 'V_eta');
+dose.depends_on = [ ...
+    struct('name', 'subject_id',       'value', subjectId), ...
+    struct('name', 'time_reference_1', 'value', anchorId)];
+dose.base = struct('id', bathId, 'session_id', sessionId, ...
+    'name', 'migrated_bath', 'datestamp', datestamp);
+dose.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
+dose.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
+    'sample_time', struct('kind', 'point'));
+dose.subject_manipulation = struct('notes', '');
+dose.dose = struct('value', struct('formulation', formulation, ...
+    'volume', struct('source_unit', '', 'source_value', 0.0, 'approximate', false), ...
+    'route', struct('node', '', 'name', '')));
+
+bodies = {anchorBody, dose};
 end
 
 function variable = primaryChemical(mixture)

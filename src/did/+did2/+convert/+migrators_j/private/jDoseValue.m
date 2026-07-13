@@ -20,6 +20,9 @@ formulation.chemicals = chemicals;
 
 v = struct();
 v.formulation = formulation;
-v.volume = 0.0;
+% `volume` is a dimensioned composite type ({source_unit, source_value,
+% approximate}), not a bare double -- a scalar would fail validation. Blank
+% (0.0, '') is the curator's signal that a delivered volume was not recovered.
+v.volume = struct('source_unit', '', 'source_value', 0.0, 'approximate', false);
 v.route = jOntologyTerm('', '');
 end
