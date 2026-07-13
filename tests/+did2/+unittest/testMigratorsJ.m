@@ -393,13 +393,13 @@ verifyTrue(testCase, isfield(bc, 'acceleration_observation'));
 verifyTrue(testCase, isfield(bc, 'score_observation'));
 verifyTrue(testCase, isfield(bc, 'concentration_observation'));
 verifyTrue(testCase, isfield(bc, 'directed_relation'));
-verifyTrue(testCase, isfield(bc, 'event_relative_reference'));
+verifyTrue(testCase, isfield(bc, 'session_bounded_reference'));
 % onset/offset are the window (not observations); encounter # is derived (dropped)
 verifyFalse(testCase, isfield(bc, 'duration_observation'));
 verifyFalse(testCase, isfield(bc, 'count_observation'));
 verifyEqual(testCase, bc.velocity_observation, 3);
 % a measurement is about the worm and shares the encounter window
-tref = firstOfClassJ(out.migrated, 'event_relative_reference');
+tref = firstOfClassJ(out.migrated, 'session_bounded_reference');
 vel = firstOfClassJ(out.migrated, 'velocity_observation');
 verifyEqual(testCase, depVal(vel, 'subject_id'), 'worm_1');
 verifyEqual(testCase, depVal(vel, 'time_reference_1'), tref.get('base.id'));
@@ -410,5 +410,5 @@ verifyEqual(testCase, depVal(rel, 'parent'), 'patch_1');
 verifyEqual(testCase, rel.get('directed_relation.relation').name, 'encountered');
 verifyEqual(testCase, depVal(rel, 'time_reference_1'), tref.get('base.id'));
 % the window carries onset/offset
-verifyEqual(testCase, tref.get('event_relative_reference.start').source_value, 1249.72);
+verifyEqual(testCase, tref.get('session_bounded_reference.start').source_value, 1249.72);
 end

@@ -32,7 +32,7 @@ function bodies = ontology_table_row(preBody)
 %   columns into `directed_relation`s, and drops derived columns. The first map
 %   implemented is the JH *C. elegans* encounter (`isEncounterTable` /
 %   `applyEncounterMap`): worm behaviours -> worm observations sharing one
-%   `event_relative_reference` window (onset..offset); `BacterialPatchDocument-
+%   `session_bounded_reference` window (onset..offset); `BacterialPatchDocument-
 %   Identifier` -> a `worm --encountered--> patch` relation on that window; the
 %   derived `EncounterIdentifier` dropped; OD600 stays on the patch document.
 %   Unmapped tables fall back to the per-column seed below (still knowingly-wrong
@@ -170,15 +170,18 @@ end
 end
 
 function tref = makeEncounterWindow(preBody, onset, offset)
+% A bounded [onset, offset] window relative to the session/assay -- a
+% session_bounded_reference (no parent interaction/epoch required; session rides
+% on base.session_id). The encounter's measurements and its relation all depend
+% on this one document, so the encounter is exactly "everything on it".
 tref = struct();
-tref.document_class = struct('class_name', 'event_relative_reference', ...
+tref.document_class = struct('class_name', 'session_bounded_reference', ...
     'class_version', '1.0.0', 'superclasses', supersOf({'time_reference'}), ...
     'schema_version', 'V_eta');
-% reference_event (the assay frame) is left empty for pass 1 -- discovery-tuned.
-tref.depends_on = struct('name', 'reference_event', 'value', '');
+tref.depends_on = struct('name', {}, 'value', {});
 tref.base = freshBase(preBody, 'migrated_encounter_window');
 tref.time_reference = struct('is_approximate', false);
-tref.event_relative_reference = struct( ...
+tref.session_bounded_reference = struct('relation', 'during', ...
     'start', durationSeconds(onset), 'end', durationSeconds(offset));
 end
 
