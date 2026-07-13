@@ -27,11 +27,13 @@ arguments
     innerDir   (1,:) char
     options.TargetVersion (1,:) char = 'V_eta'
     % V_eta (Brainstorm J) is the migration/validation target. Orphan-freeness
-    % is a HARD GATE only once a target migrates the whole corpus orphan-free
-    % (true for the V_zeta line). V_eta is still building out its per-table maps
-    % (D10/D11), so the orphan sweep is reported but NOT asserted for now; flip
-    % this back to true once every corpus migrates orphan-free under V_eta.
-    options.AssertNoOrphans (1,1) logical = false
+    % is a HARD GATE once a target migrates the whole corpus orphan-free. The
+    % full V_eta run now does: every corpus (20211116, B, Dab, JH, Soph)
+    % migrates with 0 orphans of >900k edges after the per-table maps (JH patch
+    % subject) and the bath -> dose_manipulation retarget, so the sweep is
+    % asserted again -- a migrator change that reintroduces an orphan fails the
+    % corpus test instead of only logging it.
+    options.AssertNoOrphans (1,1) logical = true
 end
 
 did2.unittest.helpers.installSchemaPath(testCase, sprintf('skipping %s corpus test', corpusName));
