@@ -60,6 +60,10 @@ if isEncounterTable(cols)
     bodies = applyEncounterMap(preBody, cols);
     return;
 end
+if isPatchGeometryTable(cols)
+    bodies = applyPatchGeometryMap(preBody, cols);
+    return;
+end
 
 rows = extractRows(preBody.ontology_table_row);
 if isempty(rows)
@@ -197,6 +201,82 @@ rel.depends_on = [ ...
 rel.base = freshBase(preBody, 'migrated_encounter');
 rel.subject_relation = struct();
 rel.directed_relation = struct('relation', struct('node', '', 'name', 'encountered'));
+end
+
+% ===================== per-table map: C. elegans bacterial patch =======
+%
+%   The JH bacterial-patch geometry table (6,206 rows). Each row IS a bacterial
+%   patch -- and the encounter table above references it by document id as the
+%   `worm --encountered--> patch` relation's parent. So this map MINTS a bare
+%   `subject` that PRESERVES the source document id (otherwise the per-column
+%   fan-out would give every output a fresh id and the encounter parent would
+%   dangle). The patch's geometry (OD600, volume, radius, circularity, centre)
+%   becomes observations on that patch, all sharing one session-relative anchor.
+%   The BacterialPatch/PlateIdentifier columns are bare local labels (e.g.
+%   "0017"), not document ids, so they name the patch (local_identifier) rather
+%   than becoming relations -- relating to a non-existent plate document would
+%   only trade one orphan for another.
+
+function tf = isPatchGeometryTable(cols)
+% OD600-at-seeding is unique to the geometry table; it separates it from the
+% fluorescence table (MicroscopyImageIdentifier + BacterialPatchIdentifier +
+% radius, no OD600) and, with the DocumentIdentifier exclusion, from the
+% encounter table.
+tf = ~isempty(colByKey(cols, 'BacterialOD600TargetAtSeeding')) ...
+    && ~isempty(colByKey(cols, 'BacterialPatchIdentifier')) ...
+    && isempty(colByKey(cols, 'BacterialPatchDocumentIdentifier'));
+end
+
+function bodies = applyPatchGeometryMap(preBody, cols)
+% the patch as a declared subject, id preserved so the encounter parent resolves
+subjectDoc = makePatchSubject(preBody, colVal(cols, 'BacterialPatchIdentifier'));
+patchId = subjectDoc.base.id;
+
+% one session-relative anchor shared by the geometry observations (the patch
+% geometry has no meaningful per-reading time; it is a static property set)
+anchor = makeSessionAnchor(preBody, 'during');
+
+% geometry columns -> observations on the patch. Identifier columns are the
+% patch's identity (skipped); centre X/Y are positions carried as lengths.
+measures = {
+    'BacterialOD600TargetAtSeeding',    'concentration_observation','concentration'
+    'BacterialPatchVolume',             'volume_observation',       'volume'
+    'BacterialPatchRadius',             'length_observation',       'length'
+    'BacterialPatchCircularity',        'score_observation',        'score'
+    'BacterialPatchCenter_XCoordinate', 'length_observation',       'length'
+    'BacterialPatchCenter_YCoordinate', 'length_observation',       'length'};
+
+bodies = {subjectDoc};
+usedAnchor = false;
+for i = 1:size(measures, 1)
+    c = colByKey(cols, measures{i, 1});
+    if isempty(c); continue; end
+    [ok, num] = numericValue(c{1});
+    if ~ok; continue; end
+    variable = struct('node', '', 'name', c{1}.name);
+    bodies{end+1} = makeEncObs(preBody, measures{i, 2}, measures{i, 3}, ...
+        variable, num, patchId, anchor.base.id); %#ok<AGROW>
+    usedAnchor = true;
+end
+if usedAnchor
+    bodies{end+1} = anchor;
+end
+end
+
+function body = makePatchSubject(preBody, localId)
+%MAKEPATCHSUBJECT Bare V_eta subject PRESERVING the source document id. Mirrors
+%   subject_group -> subject (class subject v3.0.0, bare identity). The id must
+%   be preserved because the encounter table's directed_relation names this
+%   document as its parent.
+body = struct();
+body.document_class = struct('class_name', 'subject', 'class_version', '3.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
+    'schema_version', 'V_eta');
+body.depends_on = struct('name', {}, 'value', {});
+if isfield(preBody, 'base') && isstruct(preBody.base)
+    body.base = preBody.base;   % PRESERVE id -> encounter parent resolves
+end
+body.subject = struct('local_identifier', localId, 'description', 'bacterial patch');
 end
 
 % ---- encounter helpers ------------------------------------------------

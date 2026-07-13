@@ -412,3 +412,58 @@ verifyEqual(testCase, depVal(rel, 'time_reference_1'), tref.get('base.id'));
 % the window carries onset/offset
 verifyEqual(testCase, tref.get('session_bounded_reference.start').source_value, 1249.72);
 end
+
+% ==== ontology_table_row per-table map: C. elegans bacterial patch ======
+
+function otr = patchGeometryRow()
+keys = {'BacterialPlateIdentifier', 'BacterialPatchIdentifier', ...
+    'BacterialOD600TargetAtSeeding', 'BacterialPatchVolume', ...
+    'BacterialPatchCenter_XCoordinate', 'BacterialPatchCenter_YCoordinate', ...
+    'BacterialPatchRadius', 'BacterialPatchCircularity'};
+data = struct();
+data.BacterialPlateIdentifier = '0061';
+data.BacterialPatchIdentifier = '0017';
+data.BacterialOD600TargetAtSeeding = 0.05;
+data.BacterialPatchVolume = 0.5;
+data.BacterialPatchCenter_XCoordinate = 806.3578700078308;
+data.BacterialPatchCenter_YCoordinate = 684.8410336726703;
+data.BacterialPatchRadius = 28.512513907289925;
+data.BacterialPatchCircularity = 0.9847680561323107;
+nodes = strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ',');
+otr = struct();
+otr.document_class = struct('class_name', 'ontology_table_row', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+otr.depends_on = struct('name', {}, 'value', {});
+otr.base = struct('id', 'otr_patch', 'session_id', 'sess_1', ...
+    'name', 'row', 'datestamp', '2024-06-01T12:00:00.000Z');
+otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
+    'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
+end
+
+function testPatchGeometryTableMap(testCase)
+out = runJ(patchGeometryRow());
+% 1 subject + 6 geometry observations + 1 shared session anchor
+verifyEqual(testCase, numel(out.migrated), 8);
+bc = out.summary.by_class;
+% the patch is declared as a bare subject
+verifyTrue(testCase, isfield(bc, 'subject'));
+verifyEqual(testCase, bc.subject, 1);
+% geometry -> observations (OD600, volume, radius + centre X/Y, circularity)
+verifyEqual(testCase, bc.concentration_observation, 1);
+verifyEqual(testCase, bc.volume_observation, 1);
+verifyEqual(testCase, bc.length_observation, 3);   % radius + centre X + centre Y
+verifyEqual(testCase, bc.score_observation, 1);
+verifyTrue(testCase, isfield(bc, 'session_relative_reference'));
+% identity columns are not measurements
+verifyFalse(testCase, isfield(bc, 'count_observation'));
+% the minted subject PRESERVES the source document id (the encounter table's
+% directed_relation parent points at it) and names the patch
+sub = firstOfClassJ(out.migrated, 'subject');
+verifyEqual(testCase, sub.get('base.id'), 'otr_patch');
+verifyEqual(testCase, sub.get('subject.local_identifier'), '0017');
+% every geometry observation is about that patch and shares the anchor
+anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
+od = firstOfClassJ(out.migrated, 'concentration_observation');
+verifyEqual(testCase, depVal(od, 'subject_id'), 'otr_patch');
+verifyEqual(testCase, depVal(od, 'time_reference_1'), anchor.get('base.id'));
+end
