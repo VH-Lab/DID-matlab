@@ -98,6 +98,52 @@ end
 verifyEqual(testCase, sort(children), {'m_1', 'm_2', 'm_3'});
 end
 
+% ============ openminds_subject -> term_assertion (decompose) ==========
+
+function testOpenmindsSubjectBecomesTermAssertion(testCase)
+% Brainstorm J does not store the openMINDS bundle: each openMINDS entity about
+% a subject (Species / Strain / Sex) decomposes into one term_assertion on that
+% subject. The entity type names the variable; the ontology id is the value.
+v1 = struct();
+v1.document_class = struct('class_name', 'openminds_subject', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id', 'openminds'}, 'value', {'subj_007', ''});
+v1.base = struct('id', 'om_1', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Species', ...
+    'matlab_type', 'openminds.controlledterms.Species', ...
+    'fields', struct('name', 'Caenorhabditis elegans', ...
+        'preferredOntologyIdentifier', 'NCBITaxon:6239', 'synonym', 'C. elegans'));
+out = runJ(v1);
+
+verifyEqual(testCase, numel(out.migrated), 1);
+a = out.migrated{1};
+verifyEqual(testCase, a.get('document_class.class_name'), 'term_assertion');
+% the entity type -> the asserted variable; the ontology id + label -> the value
+verifyEqual(testCase, a.get('subject_statement.variable').name, 'species');
+verifyEqual(testCase, a.get('term_assertion.value').node, 'NCBITaxon:6239');
+verifyEqual(testCase, a.get('term_assertion.value').name, 'Caenorhabditis elegans');
+verifyEqual(testCase, depVal(a, 'subject_id'), 'subj_007');
+% an assertion is timeless: it is a subject_assertion, not an interaction
+supers = a.get('document_class.superclasses');
+verifyEqual(testCase, supers(1).class_name, 'subject_assertion');
+end
+
+function testOpenmindsGeneticStrainTypeVariableIsDeCamelCased(testCase)
+v1 = struct();
+v1.document_class = struct('class_name', 'openminds_subject', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'om_2', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/GeneticStrainType', ...
+    'fields', struct('name', 'knockout', 'ontologyIdentifier', 'X:1'));
+out = runJ(v1);
+a = out.migrated{1};
+verifyEqual(testCase, a.get('subject_statement.variable').name, 'genetic strain type');
+verifyEqual(testCase, a.get('term_assertion.value').node, 'X:1');
+end
+
 % ============ treatment_transfer -> term_manipulation + relation =======
 
 function testTreatmentTransferBecomesTermManipulationPlusProvenance(testCase)
