@@ -144,6 +144,49 @@ verifyEqual(testCase, a.get('subject_statement.variable').name, 'genetic strain 
 verifyEqual(testCase, a.get('term_assertion.value').node, 'X:1');
 end
 
+% ============ element -> subject (+ kind assertions + lineage) =========
+
+function el = elementDoc(name, typ, ndiClass, direct, subjectId, underlyingId)
+el = struct();
+el.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+deps = struct('name', {'subject_id'}, 'value', {subjectId});
+if ~isempty(underlyingId)
+    deps(end+1) = struct('name', 'underlying_element_id', 'value', underlyingId);
+end
+el.depends_on = deps;
+el.base = struct('id', 'el_1', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+el.element = struct('ndi_element_class', ndiClass, 'name', name, ...
+    'reference', '1', 'type', typ, 'direct', direct);
+end
+
+function testElementDerivedBecomesSubjectDerivedFrom(testCase)
+% A derived element (direct=0 with an underlying element) -> a subject (id
+% preserved) + kind assertions (nothing dropped) + a derived_from lineage edge.
+out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
+sub = firstOfClassJ(out.migrated, 'subject');
+verifyEqual(testCase, sub.get('base.id'), 'el_1');                 % id preserved
+verifyEqual(testCase, sub.get('subject.local_identifier'), 'unit3 (ref 1)');
+% type + ndi_element_class preserved as term_assertions (no silent drop)
+verifyEqual(testCase, out.summary.by_class.term_assertion, 2);
+% lineage: derived_from the underlying element (safe computational lineage)
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+verifyEqual(testCase, rel.get('directed_relation.relation').name, 'derived_from');
+verifyEqual(testCase, depVal(rel, 'child'), 'el_1');
+verifyEqual(testCase, depVal(rel, 'parent'), 'probe_1');
+end
+
+function testElementDirectDeviceObservesSpecimen(testCase)
+% A direct device (direct=1, no underlying) observes the specimen -- the
+% instrument-agent role, NOT part_of (a probe is not part of the animal).
+out = runJ(elementDoc('probeA', 'n-trode', 'ndi.probe.timeseries', 1, 'subj_007', ''));
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+verifyEqual(testCase, rel.get('directed_relation.relation').name, 'observes');
+verifyEqual(testCase, depVal(rel, 'child'), 'el_1');
+verifyEqual(testCase, depVal(rel, 'parent'), 'subj_007');   % the specimen
+end
+
 % ============ treatment_transfer -> term_manipulation + relation =======
 
 function testTreatmentTransferBecomesTermManipulationPlusProvenance(testCase)
