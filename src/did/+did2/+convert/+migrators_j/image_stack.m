@@ -10,11 +10,15 @@ function bodies = image_stack(preBody)
 %   discoverable subject-side view is a plain `subject_observation` data-type
 %   leaf whose value is body-backed --
 %
-%       image_observation   the spine handle: subject_id, a shared time anchor,
-%                           the modality on `subject_statement.variable`, the
-%                           inline image geometry/format on the `image` mixin,
-%                           and `storage_mode: body` (so the statement carries no
-%                           sample_time -- the cadence lives in the body, D1/§A.7).
+%       image_observation   the spine handle: subject_id, a shared time anchor, a
+%                           placeholder `subject_statement.variable` (the observed
+%                           quantity is the linked ontology label, set by a
+%                           second-pass join -- see V_eta_discovery_notes.md; NOT
+%                           the file format), the inline image geometry on the
+%                           `image` mixin, and `storage_mode: body` (so the
+%                           statement carries no sample_time -- the cadence lives
+%                           in the body, D1/§A.7). The prose `label` and the
+%                           `format_ontology` file-type are dropped as derivable.
 %       sampled_body        the DIGITAL frames: datum (kind/dtype/unit/shape) +
 %                           sample_time (t0/dt/n) + the carried pixel bytes;
 %                           `statement` -> the image_observation it belongs to.
@@ -47,8 +51,10 @@ sessionId = baseField(preBody, 'session_id', '');
 datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
 stackId   = baseField(preBody, 'id', did.ido.unique_id());
 
-modality = ontologyTermFromCurie(firstNonEmpty( ...
-    getCharField(stk, 'format_ontology'), getCharField(stk, 'formatOntology')));
+% format_ontology is the FILE TYPE (an NCIT file-format CURIE like TIFF / MP4).
+% It is NOT the observed quantity, and it is NOT stored: a file's container format
+% is derivable from the bytes themselves (and the short form already rides on
+% image.image_format), so an ontology term for it would be a redundant projection.
 dataType = getCharField(params, 'data_type');
 dimOrder = firstNonEmpty(getCharField(params, 'dimension_order'), 'YXCZT');
 dimSize  = numVec(getField(params, 'dimension_size'));
@@ -83,7 +89,13 @@ obs.base = struct('id', stackId, 'session_id', sessionId, ...
     'name', 'migrated_image', 'datestamp', datestamp);
 % storage_mode: body -> the value is in the sampled_body; the statement carries
 % no sample_time (the body owns the cadence).
-obs.subject_statement = struct('variable', modality, 'storage_mode', 'body');
+% variable is the OBSERVED QUANTITY. On the source that is the linked ontology
+% label (via the image's document_id), not the file format -- resolving it is a
+% second-pass cross-document join (discovery; see V_eta_discovery_notes.md). A
+% non-empty placeholder is emitted here so the statement validates; the second
+% pass replaces it with the label's ontology term.
+obs.subject_statement = struct('variable', struct('node', '', 'name', 'image'), ...
+    'storage_mode', 'body');
 obs.subject_interaction = struct('method', otTerm(''));
 obs.subject_observation = struct();
 obs.image = struct( ...
@@ -166,14 +178,6 @@ end
 
 function t = otTerm(name)
 t = struct('node', '', 'name', name);
-end
-
-function t = ontologyTermFromCurie(curie)
-if isempty(curie)
-    t = struct('node', '', 'name', 'image');
-else
-    t = struct('node', curie, 'name', '');
-end
 end
 
 function b = getBlock(bodyStruct, name)
