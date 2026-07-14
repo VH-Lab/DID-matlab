@@ -450,8 +450,10 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'sampled_body'));
 verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
 obs = out.migrated{1};
 verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
-% the source stack's label is carried onto the observation (not dropped)
-verifyEqual(testCase, obs.get('base.name'), 'a two-photon stack');
+% the source `label` is NOT carried -- it is the definition of the modality
+% ontology term (on variable), reconstructable as a projection, so base.name is
+% a short generic name rather than the prose label.
+verifyEqual(testCase, obs.get('base.name'), 'migrated_image');
 % the value lives in the body: storage_mode: body on the statement
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');

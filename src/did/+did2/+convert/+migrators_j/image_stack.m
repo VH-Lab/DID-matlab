@@ -73,17 +73,14 @@ obs.document_class = classBlock('image_observation', {'subject_observation', 'im
 obs.depends_on = [ ...
     struct('name', 'subject_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
-% carry the source stack's human-readable label onto the observation's name
-% (otherwise it is lost -- the migrator consumes format/geometry/clock but the
-% label has no other home); fall back to a generic name when absent. base.name is
-% capped at maxLength 256, so a longer label (some JH stacks run to ~350 chars) is
-% truncated to fit -- full-fidelity label carriage would need an uncapped field.
-imgLabel = firstNonEmpty(getCharField(stk, 'label'), 'migrated_image');
-if numel(imgLabel) > 256
-    imgLabel = imgLabel(1:256);
-end
+% The source `label` is NOT carried: it is a templated prose *definition* of the
+% image type (e.g. "A video recording capturing the behavior of C. elegans...")
+% -- i.e. the definition of the modality ontology term that already rides on
+% subject_statement.variable (from format_ontology). Storing it per-document
+% would duplicate the ontology term's definition; it is reconstructable as a
+% projection. base.name is a short generic name.
 obs.base = struct('id', stackId, 'session_id', sessionId, ...
-    'name', imgLabel, 'datestamp', datestamp);
+    'name', 'migrated_image', 'datestamp', datestamp);
 % storage_mode: body -> the value is in the sampled_body; the statement carries
 % no sample_time (the body owns the cadence).
 obs.subject_statement = struct('variable', modality, 'storage_mode', 'body');
