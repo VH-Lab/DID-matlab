@@ -75,7 +75,7 @@ if containsAny(hay, {'cool', 'cold', 'heat', 'warm', 'thermal', 'temperature'})
 elseif containsAny(hay, {'inject', 'virus', 'aav', 'tracer', 'drug', ...
         'vehicle', 'bath', 'infusion', 'perfusate'}) ...
         || startsWith(lower(node), 'chebi:')
-    manip = makeDoseManipulation(preBody, variable, notesText);
+    manip = makeDoseManipulation(preBody, variable, notesText, numValue);
 elseif containsAny(hay, {'craniotomy', 'implant', 'lesion', 'perfus', ...
         'eye opening', 'eyelid', 'ear notch', 'ear punch', 'tail clip', ...
         'toe clip', 'whisker', 'suture', 'surgery', 'transection', ...
@@ -115,12 +115,19 @@ body.subject_manipulation.notes = notesText;
 body.temperature = struct('value', temperatureSeries(numValue));
 end
 
-function body = makeDoseManipulation(preBody, variable, notesText)
+function body = makeDoseManipulation(preBody, variable, notesText, numValue)
 body = jStartInteraction(preBody, 'dose_manipulation', ...
     'subject_manipulation', {'dose'}, variable);
 body.subject_manipulation.notes = notesText;
-% the treatment substance is the spine identity AND the (single) dose chemical
-chemicals = struct('substance', variable, 'amount', jConcentration());
+% the treatment substance is the spine identity AND the (single) dose chemical.
+% Carry a source numeric_value as the amount (otherwise dropped -- only the
+% temperature branch used to consume it); the source unit is left blank for
+% discovery-mode fill-in.
+amount = jConcentration();
+if nargin >= 4 && ~isempty(numValue) && isnumeric(numValue)
+    amount.source_value = double(numValue(1));
+end
+chemicals = struct('substance', variable, 'amount', amount);
 body.dose = struct('value', jDoseValue(chemicals));
 end
 

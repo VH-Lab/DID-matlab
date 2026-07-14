@@ -66,6 +66,38 @@ verifyFalse(testCase, isfield(sub, 'is_group'));
 verifyFalse(testCase, isfield(sub, 'is_biological'));
 end
 
+function testSubjectGroupMintsMemberRelations(testCase)
+% A subject_group carrying member links (subject_id_1..N) becomes the bare
+% subject PLUS one member_of directed_relation per member (child = member,
+% parent = the group), so the membership is preserved rather than dropped.
+v1 = struct();
+v1.document_class = struct('class_name', 'subject_group', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id_1', 'subject_id_2', 'subject_id_3'}, ...
+    'value', {'m_1', 'm_2', 'm_3'});
+v1.base = struct('id', 'grp_1', 'session_id', 'aa_99', ...
+    'name', 'cohortB', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.subject_group = struct('group_name', 'cohortB', 'description', '');
+out = runJ(v1);
+
+% 1 subject + 3 member_of relations
+verifyEqual(testCase, numel(out.migrated), 4);
+sub = firstOfClassJ(out.migrated, 'subject');
+verifyEqual(testCase, sub.get('base.id'), 'grp_1');   % group id preserved
+verifyEqual(testCase, out.summary.by_class.directed_relation, 3);
+% each relation is member --member_of--> group
+children = {};
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'directed_relation')
+        verifyEqual(testCase, d.get('directed_relation.relation').name, 'member_of');
+        verifyEqual(testCase, depVal(d, 'parent'), 'grp_1');   % the group
+        children{end+1} = depVal(d, 'child'); %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, sort(children), {'m_1', 'm_2', 'm_3'});
+end
+
 % ============ treatment_transfer -> term_manipulation + relation =======
 
 function testTreatmentTransferBecomesTermManipulationPlusProvenance(testCase)
@@ -188,11 +220,13 @@ verifyEqual(testCase, depVal(m, 'time_reference_1'), out.migrated{2}.get('base.i
 end
 
 function testTreatmentSubstanceIsDoseManipulation(testCase)
-out = runJ(treatmentDoc('chebi:28001', 'haloperidol', [], ''));
+out = runJ(treatmentDoc('chebi:28001', 'haloperidol', 2.5, ''));
 m = out.migrated{1};
 verifyEqual(testCase, m.get('document_class.class_name'), 'dose_manipulation');
 chem = m.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
+% the source numeric_value is carried as the dose amount (not dropped)
+verifyEqual(testCase, chem(1).amount.source_value, 2.5);
 % the substance is BOTH the spine identity and the dose chemical
 verifyEqual(testCase, m.get('subject_statement.variable').node, 'chebi:28001');
 end
@@ -327,6 +361,8 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'sampled_body'));
 verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
 obs = out.migrated{1};
 verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+% the source stack's label is carried onto the observation (not dropped)
+verifyEqual(testCase, obs.get('base.name'), 'a two-photon stack');
 % the value lives in the body: storage_mode: body on the statement
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');
@@ -532,4 +568,9 @@ verifyEqual(testCase, chems(1).substance.name, 'muscimol');
 anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
 verifyNotEmpty(testCase, anchor);
 verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+% the bath location is carried as a term_observation (not dropped)
+locObs = firstOfClassJ(out.migrated, 'term_observation');
+verifyNotEmpty(testCase, locObs);
+verifyEqual(testCase, locObs.get('term_observation.value').name, 'CNS');
+verifyEqual(testCase, depVal(locObs, 'subject_id'), subjId);
 end

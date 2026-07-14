@@ -248,6 +248,36 @@ dose.dose = struct('value', struct('formulation', formulation, ...
     'route', struct('node', '', 'name', '')));
 
 bodies = {anchorBody, dose};
+
+% carry the bath location (otherwise dropped): a merely-located site is a
+% term_observation about the subject (D3), the same disposition treatment /
+% virus_injection give a site. Emitted only when the source names a location.
+loc = locationTerm(v1Body);
+if ~isempty(loc.node) || ~isempty(loc.name)
+    bodies{end+1} = makeLocationObs(v1Body, subjectId, anchorId, loc);
+end
+end
+
+function obs = makeLocationObs(v1Body, subjectId, anchorId, loc)
+%MAKELOCATIONOBS A term_observation carrying the bath's location term, about the
+%   bathed subject, on the same session anchor as the dose.
+sessionId = baseField(v1Body, 'session_id', '');
+datestamp = baseField(v1Body, 'datestamp', '');
+obs = struct();
+obs.document_class = struct('class_name', 'term_observation', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'subject_observation', 'class_version', '1.0.0'), ...
+    'schema_version', 'V_eta');
+obs.depends_on = [ ...
+    struct('name', 'subject_id',       'value', subjectId), ...
+    struct('name', 'time_reference_1', 'value', anchorId)];
+obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+    'name', 'migrated_bath_location', 'datestamp', datestamp);
+obs.subject_statement = struct('variable', struct('node', '', 'name', 'anatomical location'), ...
+    'storage_mode', 'inline');
+obs.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
+    'sample_time', struct('kind', 'point'));
+obs.subject_observation = struct();
+obs.term_observation = struct('value', loc);
 end
 
 function variable = primaryChemical(mixture)
