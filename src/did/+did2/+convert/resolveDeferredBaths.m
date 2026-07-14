@@ -88,40 +88,63 @@ end
 
 % ===================== element -> subject index ============================
 
-function byElement = indexElements(migrated)
-%INDEXELEMENTS Map every migrated element's base.id -> its did2.document.
-byElement = containers.Map('KeyType', 'char', 'ValueType', 'any');
+function idx = indexElements(migrated)
+%INDEXELEMENTS Index the batch for stimulator -> specimen resolution under BOTH
+%   subject models: the `elements` map (base.id -> element doc, the V_zeta model
+%   where the stimulator is still an `element`) and the `relParent` map (a
+%   directed_relation's child -> parent, the V_eta model where the element has
+%   become a `subject` whose lineage relation points at its specimen).
+idx = struct();
+idx.elements = containers.Map('KeyType', 'char', 'ValueType', 'any');
+idx.relParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
 for k = 1:numel(migrated)
     doc = migrated{k};
     try
-        if strcmp(doc.className(), 'element')
+        cn = doc.className();
+        if strcmp(cn, 'element')
             id = char(doc.get('base.id'));
-            if ~isempty(id)
-                byElement(id) = doc;
+            if ~isempty(id); idx.elements(id) = doc; end
+        elseif strcmp(cn, 'directed_relation')
+            deps = docDeps(doc);
+            child = depFrom(deps, 'child');
+            parent = depFrom(deps, 'parent');
+            if ~isempty(child) && ~isempty(parent) && ~isKey(idx.relParent, child)
+                idx.relParent(child) = parent;
             end
         end
     catch
-        % skip docs whose class/id cannot be read
+        % skip docs whose class/id/deps cannot be read
     end
 end
 end
 
-function subjectId = subjectOfElement(byElement, elementId)
-%SUBJECTOFELEMENT Follow underlying_element_id up the chain to a subject_id.
-visited = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+function subjectId = subjectOfElement(idx, elementId)
+%SUBJECTOFELEMENT Resolve the specimen the stimulator belongs to.
+%   V_eta: the stimulator is now a `subject`; follow its lineage
+%   directed_relation(s) (child -> parent) up to the specimen. V_zeta fallback:
+%   walk the `element` docs' underlying_element_id chain to a subject_id.
+
+% -- V_eta: walk the directed_relation lineage from the element-subject --------
 cur = char(elementId);
+visited = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+while isKey(idx.relParent, cur) && ~isKey(visited, cur)
+    visited(cur) = true;
+    cur = idx.relParent(cur);
+end
+if ~isempty(cur) && ~strcmp(cur, char(elementId))
+    subjectId = cur;   % reached the specimen via the lineage graph
+    return;
+end
+
+% -- V_zeta fallback: walk the element docs -----------------------------------
+cur = char(elementId);
+visited = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 while ~isempty(cur) && ~isKey(visited, cur)
     visited(cur) = true;
-    if ~isKey(byElement, cur)
-        break;
-    end
-    doc = byElement(cur);
-    deps = docDeps(doc);
+    if ~isKey(idx.elements, cur); break; end
+    deps = docDeps(idx.elements(cur));
     sid = depFrom(deps, 'subject_id');
-    if ~isempty(sid)
-        subjectId = sid;
-        return;
-    end
+    if ~isempty(sid); subjectId = sid; return; end
     cur = depFrom(deps, 'underlying_element_id');
 end
 error('did2:convert:noSubjectForElement', ...
