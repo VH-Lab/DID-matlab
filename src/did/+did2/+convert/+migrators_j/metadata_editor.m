@@ -59,7 +59,12 @@ if isfield(block, 'metadata_structure') && isstruct(block.metadata_structure) ..
     ms = block.metadata_structure(1);      % scalar struct; guard array shape
 end
 
-datasetId = baseId(preBody);
+% The dataset entity is keyed on the DATASET id (D.id() = base.session_id), the
+% id every dataset-level doc and every dataset-referencing relation converges on
+% -- NOT this metadata_editor doc's own base.id. That is what makes the
+% session_in_a_dataset / dataset_remote edges resolve to THIS dataset, and lets
+% resolveDatasetEntities dedup the bare stubs against this rich entity.
+datasetId = jDatasetId(preBody);
 orgIds = containers.Map('KeyType', 'char', 'ValueType', 'char');  % name -> id (dedup)
 bodies = {};
 

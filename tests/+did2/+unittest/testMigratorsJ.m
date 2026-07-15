@@ -741,7 +741,8 @@ end
 function testMetadataEditorDatasetEntity(testCase)
 out = runJ(metadataEditorDoc());
 ds = firstOfClassJ(out.migrated, 'dataset');
-verifyEqual(testCase, ds.get('base.id'), 'me_01');            % source id preserved
+% keyed on the DATASET id (base.session_id), not the metadata_editor doc's base.id
+verifyEqual(testCase, ds.get('base.id'), 'sess_09');
 verifyEqual(testCase, ds.get('dataset.full_name'), 'The Big Worm Dataset');
 verifyEqual(testCase, ds.get('dataset.short_name'), 'BigWorm');
 verifyEqual(testCase, ds.get('dataset.version'), '1.0.0');
@@ -846,6 +847,137 @@ for k = 1:numel(migrated)
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
             && strcmp(d.get('directed_relation.relation').name, relName)
         r = d; return;
+    end
+end
+end
+
+% ============ dataset containers -> entity + relations (D-F) ============
+
+function v1 = datasetRemoteDoc()
+v1 = struct();
+v1.document_class = struct('class_name', 'dataset_remote', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', 'dr_01', 'session_id', 'dsid_1', ...
+    'name', 'remote', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.dataset_remote = struct('dataset_id', 'd-12345', 'organization_id', 'ndicloud-lab');
+end
+
+function testDatasetRemoteDissolves(testCase)
+% dataset_remote -> bare dataset (keyed on D.id()=base.session_id) + web_resource
+% (cloud id on global_identifier) + stored_at + organization + hosted_by.
+out = runJ(datasetRemoteDoc());
+bc = out.summary.by_class;
+verifyEqual(testCase, bc.dataset, 1);
+verifyEqual(testCase, bc.web_resource, 1);
+verifyEqual(testCase, bc.organization, 1);
+verifyEqual(testCase, bc.directed_relation, 2);   % stored_at + hosted_by
+% the dataset entity is keyed on the dataset id, not the source doc id
+ds = firstOfClassJ(out.migrated, 'dataset');
+verifyEqual(testCase, ds.get('base.id'), 'dsid_1');
+% the cloud id rides on the web_resource's global_identifier
+wr = firstOfClassJ(out.migrated, 'web_resource');
+wgid = wr.get('entity.global_identifier');
+verifyEqual(testCase, wgid(1).scheme, 'NDICloud');
+verifyEqual(testCase, wgid(1).value, 'd-12345');
+% dataset -stored_at-> web_resource ; web_resource -hosted_by-> organization
+stored = relByName(out.migrated, 'stored_at');
+verifyEqual(testCase, depVal(stored, 'child'), 'dsid_1');
+verifyEqual(testCase, depVal(stored, 'parent'), wr.get('base.id'));
+hosted = relByName(out.migrated, 'hosted_by');
+verifyEqual(testCase, depVal(hosted, 'child'), wr.get('base.id'));
+org = firstOfClassJ(out.migrated, 'organization');
+verifyEqual(testCase, org.get('organization.name'), 'ndicloud-lab');
+verifyEqual(testCase, depVal(hosted, 'parent'), org.get('base.id'));
+end
+
+function v1 = sessionInADatasetDoc(memberSession)
+v1 = struct();
+v1.document_class = struct('class_name', 'session_in_a_dataset', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', 'sid_01', 'session_id', 'dsid_1', ...
+    'name', 'sid', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.session_in_a_dataset = struct('session_id', memberSession, ...
+    'session_reference', 'exp_demo', 'is_linked', 0, ...
+    'session_creator', 'ndi.session.dir', 'session_creator_input1', 'exp_demo', ...
+    'session_creator_input2', '', 'session_creator_input3', '', ...
+    'session_creator_input4', '', 'session_creator_input5', '', ...
+    'session_creator_input6', '');
+end
+
+function testSessionInADatasetMembership(testCase)
+% -> bare dataset (id = base.session_id) + session -part_of-> dataset.
+out = runJ(sessionInADatasetDoc('member_sess_9'));
+bc = out.summary.by_class;
+verifyEqual(testCase, bc.dataset, 1);
+verifyEqual(testCase, bc.directed_relation, 1);
+ds = firstOfClassJ(out.migrated, 'dataset');
+verifyEqual(testCase, ds.get('base.id'), 'dsid_1');
+rel = firstOfClassJ(out.migrated, 'directed_relation');
+verifyEqual(testCase, rel.get('directed_relation.relation').name, 'part_of');
+verifyEqual(testCase, depVal(rel, 'child'), 'member_sess_9');   % the member session
+verifyEqual(testCase, depVal(rel, 'parent'), 'dsid_1');          % the dataset
+% the edge is tagged so the post-pass can prune it if the session is absent
+verifyEqual(testCase, rel.get('base.name'), 'migrated_session_membership');
+end
+
+function testDatasetSessionInfoAggregate(testCase)
+% the legacy AGGREGATE form: a nested dataset_session_info struct array, one
+% entry per member session -> bare dataset + one part_of per member.
+v1 = struct();
+v1.document_class = struct('class_name', 'dataset_session_info', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', 'dsi_01', 'session_id', 'dsid_1', ...
+    'name', 'dsi', 'datestamp', '2024-06-01T12:00:00.000Z');
+e1 = struct('session_id', 'member_a', 'is_linked', 0);
+e2 = struct('session_id', 'member_b', 'is_linked', 1);
+v1.dataset_session_info = struct('dataset_session_info', [e1 e2]);
+out = runJ(v1);
+verifyEqual(testCase, out.summary.by_class.dataset, 1);
+verifyEqual(testCase, out.summary.by_class.directed_relation, 2);   % two members
+children = {};
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'directed_relation')
+        verifyEqual(testCase, d.get('directed_relation.relation').name, 'part_of');
+        verifyEqual(testCase, depVal(d, 'parent'), 'dsid_1');
+        children{end+1} = depVal(d, 'child'); %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, sort(children), {'member_a', 'member_b'});
+end
+
+function testResolveDatasetEntitiesDedupAndPrune(testCase)
+% The batch post-pass: a rich metadata_editor dataset and a bare dataset_remote
+% stub share the dataset id -> deduped to ONE (rich wins); a membership edge to
+% an absent linked session is pruned so it never orphans the corpus.
+editor = metadataEditorDoc();                 % base.session_id = sess_09
+editor.base.session_id = 'dsid_1';            % put it on the same dataset id
+remote = datasetRemoteDoc();                  % base.session_id = dsid_1 (bare stub)
+member = sessionInADatasetDoc('absent_sess'); % member session NOT in the batch
+batch = {jsonencode(editor), jsonencode(remote), jsonencode(member)};
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+% before the pass: >1 dataset entity on the shared id, and a membership edge
+verifyGreaterThan(testCase, out.summary.by_class.dataset, 1);
+out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+% after: exactly one dataset entity on dsid_1, and it is the RICH one
+datasets = {};
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('document_class.class_name'), 'dataset')
+        datasets{end+1} = out.migrated{k}; %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, numel(datasets), 1);
+verifyEqual(testCase, datasets{1}.get('base.id'), 'dsid_1');
+verifyEqual(testCase, datasets{1}.get('dataset.full_name'), 'The Big Worm Dataset');
+% the unresolvable membership edge was pruned
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
+            && strcmp(d.get('directed_relation.relation').name, 'part_of')
+        verifyNotEqual(testCase, depVal(d, 'child'), 'absent_sess');
     end
 end
 end

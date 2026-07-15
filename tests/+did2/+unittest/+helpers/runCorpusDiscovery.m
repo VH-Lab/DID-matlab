@@ -63,6 +63,16 @@ result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
 result = did2.convert.resolveDeferredBaths(result, ...
     'Validate', true, 'TargetVersion', options.TargetVersion);
 
+% Finalize the dataset entity layer (V_eta): dedup the `dataset` entities that
+% the dataset-level containers each mint on the shared dataset id (richest wins,
+% so the metadata_editor dataset beats the bare stubs), and drop best-effort
+% session-membership edges whose linked member session is not in this batch.
+% The DID-only counterpart to ndi.migrate's dataset-aware second pass.
+if strcmp(options.TargetVersion, 'V_eta')
+    result = did2.convert.resolveDatasetEntities(result, ...
+        'Validate', true, 'TargetVersion', options.TargetVersion);
+end
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 

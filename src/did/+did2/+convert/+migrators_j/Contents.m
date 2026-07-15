@@ -102,6 +102,34 @@
 %                            projections off the subjects' own term_assertions
 %                            (D-D). Bucket 3 (editor GUI state / version prose) ->
 %                            DROPPED. metadata_editor is KEPT as the source class.
+%     dataset_remote     - 1 -> N. The remote copy as an entity relation:
+%                          a bare `dataset` entity (keyed on the dataset id =
+%                          base.session_id) + a `web_resource` (cloud id ->
+%                          global_identifier scheme 'NDICloud') + dataset
+%                          -stored_at-> web_resource + (if a remote org namespace)
+%                          organization + web_resource -hosted_by-> organization.
+%                          All endpoints minted here -> no orphan risk.
+%     session_in_a_dataset / dataset_session_info
+%                        - 1 -> N. session<->dataset membership as a relation now
+%                          that `session` is an entity: a bare `dataset` entity +
+%                          one `session -part_of-> dataset` per member session
+%                          (dataset_session_info is the legacy aggregate: a nested
+%                          struct array, one entry per session; session_in_a_dataset
+%                          is the flat single-session form). The membership edge is
+%                          BEST-EFFORT (tagged base.name = migrated_session_membership):
+%                          a linked member session may not be in the batch, so
+%                          resolveDatasetEntities drops the edge if the child does
+%                          not resolve. The assembly/reconstruction fields
+%                          (is_linked, session_creator, inputs, session_reference)
+%                          are dropped as NDI-internal handles.
+%
+%   POST-PASS (batch-level, did2.convert.resolveDatasetEntities): dedups the
+%   `dataset` entities that the containers each mint on the shared dataset id
+%   (richest wins -> the metadata_editor dataset beats the bare stubs, so every
+%   dataset ends with exactly one), and prunes the best-effort membership edges
+%   whose member session is absent. Run after resolveDeferredBaths (see
+%   runCorpusDiscovery); the precise, always-resolvable wiring is ndi.migrate's
+%   dataset-aware second pass.
 %
 %   PENDING (need discovery-mode iteration against the corpora and/or the still
 %   -open flat-table decisions):
