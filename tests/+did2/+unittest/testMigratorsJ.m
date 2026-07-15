@@ -1017,21 +1017,26 @@ end
 % ============ regression: pyraview drops the retired epochclocktimes block =====
 
 function testPyraviewDropsEpochclocktimesBlock(testCase)
-v1 = struct();
-v1.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
+% Test the migrator FUNCTION directly: it removes the retired epochclocktimes
+% block while preserving everything else. (We cannot assert absence through the
+% full v1_to_v2 pipeline here because the quick CI assembles the V_zeta schema,
+% where pyraview still descends from epochclocktimes, so ensureClassBlocks would
+% re-manufacture an empty block. Under the V_eta schema -- the real corpus run --
+% epochclocktimes is not in pyraview's chain, so the drop sticks and validates.)
+body = struct();
+body.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'epochclocktimes', 'class_version', '1.0.0'), ...
                       struct('class_name', 'filter', 'class_version', '1.0.0')]);
-v1.depends_on = struct('name', {'element_id'}, 'value', {'el_9'});
-v1.base = struct('id', 'pv_1', 'session_id', 'sess_09', ...
+body.depends_on = struct('name', {'element_id'}, 'value', {'el_9'});
+body.base = struct('id', 'pv_1', 'session_id', 'sess_09', ...
     'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
-v1.pyraview = struct('label', 'pyr', 'native_rate', 30000);
-v1.epochid = struct('epochid', 'epoch_t00001');
-v1.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', '0 10');
-out = runJ(v1);
-verifyEqual(testCase, numel(out.migrated), 1);
-d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'pyraview');
-% the stale block is gone; the epoch identity survives on the epochid mixin
-verifyError(testCase, @() d.get('epochclocktimes'), ?MException);
-verifyEqual(testCase, d.get('epochid.epochid'), 'epoch_t00001');
+body.pyraview = struct('label', 'pyr', 'native_rate', 30000);
+body.epochid = struct('epochid', 'epoch_t00001');
+body.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', '0 10');
+out = did2.convert.migrators_j.pyraview(body);
+% the migrator drops the stale block and touches nothing else
+verifyFalse(testCase, isfield(out, 'epochclocktimes'));
+verifyTrue(testCase, isfield(out, 'pyraview'));
+verifyEqual(testCase, out.epochid.epochid, 'epoch_t00001');
+verifyEqual(testCase, out.pyraview.native_rate, 30000);
 end
