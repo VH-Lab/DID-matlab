@@ -981,3 +981,57 @@ for k = 1:numel(out.migrated)
     end
 end
 end
+
+% ============ regression: relations carry no stale subject_relation block =====
+
+function testDirectedRelationsHaveNoSubjectRelationBlock(testCase)
+% subject_relation was renamed to `relation` (abstract, no fields) -> migrators
+% must NOT emit a subject_relation property block, or the doc fails validation
+% with "undeclared top-level block subject_relation" and quarantines (the JH
+% 163k-orphan regression). Check the element + subject_group relation emitters.
+outs = {runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1')), ...
+        runJ(subjectGroupWithMembers())};
+for i = 1:numel(outs)
+    for k = 1:numel(outs{i}.migrated)
+        d = outs{i}.migrated{k};
+        if strcmp(d.get('document_class.class_name'), 'directed_relation')
+            verifyError(testCase, @() d.get('subject_relation'), ?MException, ...
+                'a directed_relation still carries a subject_relation block');
+            supers = d.get('document_class.superclasses');
+            verifyEqual(testCase, supers(1).class_name, 'relation');
+        end
+    end
+end
+end
+
+function v1 = subjectGroupWithMembers()
+v1 = struct();
+v1.document_class = struct('class_name', 'subject_group', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id_1', 'subject_id_2'}, 'value', {'m_1', 'm_2'});
+v1.base = struct('id', 'grp_9', 'session_id', 'aa_99', ...
+    'name', 'cohortC', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.subject_group = struct('group_name', 'cohortC', 'description', '');
+end
+
+% ============ regression: pyraview drops the retired epochclocktimes block =====
+
+function testPyraviewDropsEpochclocktimesBlock(testCase)
+v1 = struct();
+v1.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'epochclocktimes', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'filter', 'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {'el_9'});
+v1.base = struct('id', 'pv_1', 'session_id', 'sess_09', ...
+    'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.pyraview = struct('label', 'pyr', 'native_rate', 30000);
+v1.epochid = struct('epochid', 'epoch_t00001');
+v1.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', '0 10');
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 1);
+d = out.migrated{1};
+verifyEqual(testCase, d.get('document_class.class_name'), 'pyraview');
+% the stale block is gone; the epoch identity survives on the epochid mixin
+verifyError(testCase, @() d.get('epochclocktimes'), ?MException);
+verifyEqual(testCase, d.get('epochid.epochid'), 'epoch_t00001');
+end

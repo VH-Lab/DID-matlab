@@ -192,14 +192,14 @@ end
 function rel = makeEncounterRelation(preBody, wormId, patchId, trefId)
 rel = struct();
 rel.document_class = struct('class_name', 'directed_relation', ...
-    'class_version', '1.0.0', 'superclasses', supersOf({'subject_relation'}), ...
+    'class_version', '1.0.0', 'superclasses', supersOf({'relation'}), ...
     'schema_version', 'V_eta');
 rel.depends_on = [ ...
     struct('name', 'child',            'value', wormId), ...   % subject of the verb
     struct('name', 'parent',           'value', patchId), ...  % object of the verb
     struct('name', 'time_reference_1', 'value', trefId)];      % when it happened
 rel.base = freshBase(preBody, 'migrated_encounter');
-rel.subject_relation = struct();
+% `relation` (renamed from subject_relation) is abstract with no fields -> no block.
 rel.directed_relation = struct('relation', struct('node', '', 'name', 'encountered'));
 end
 

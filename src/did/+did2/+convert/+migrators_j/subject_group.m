@@ -89,14 +89,14 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
 end
 rel = struct();
 rel.document_class = struct('class_name', 'directed_relation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'subject_relation', 'class_version', '1.0.0'), ...
+    'superclasses', struct('class_name', 'relation', 'class_version', '1.0.0'), ...
     'schema_version', 'V_eta');
 rel.depends_on = [ ...
     struct('name', 'child',  'value', memberId), ...   % the member
     struct('name', 'parent', 'value', groupId)];       % the group
 rel.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', 'migrated_group_membership', 'datestamp', ds);
-rel.subject_relation = struct();
+% `relation` (renamed from subject_relation) is abstract with no fields -> no block.
 rel.directed_relation = struct('relation', struct('node', '', 'name', 'member_of'));
 end
 
