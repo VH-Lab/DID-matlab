@@ -78,6 +78,30 @@
 %                          quartet the V_zeta fold minted collapses into the one
 %                          sampled_body; NDI-side imaging element/daqreader infra
 %                          is left to the NDI second pass (D2). 7,007 docs in JH.
+%     metadata_editor    - 1 -> N. Decompose the NDIMetaDataEditorApp
+%                          `metadata_structure` blob into first-class entities +
+%                          relations (the dataset-metadata analogue of retiring the
+%                          openMINDS bundle on the subject side):
+%                            Bucket 1 (identity) -> a `dataset` entity (id
+%                            preserved; full_name/short_name/version/description/
+%                            license/release_date) + `person` (one per Author;
+%                            given/family/email, ORCID -> global_identifier),
+%                            `organization` (author affiliations + funders,
+%                            name-deduped), `award` (Funding; awardNumber ->
+%                            global_identifier), `publication` (RelatedPublication;
+%                            DOI/PMID/PMCID -> global_identifier), `web_resource`
+%                            (FullDocumentation IRI -> global_identifier scheme
+%                            URL). Relationships are `directed_relation`s:
+%                            dataset -has_author-> person (sequence = position),
+%                            person -affiliated_with-> organization,
+%                            dataset -funded_by-> award -issued_by-> organization,
+%                            dataset -cites-> publication,
+%                            dataset -documented_by-> web_resource.
+%                            Bucket 2 (Subjects/species/strain/sex, DataType,
+%                            ExperimentalApproach, TechniquesEmployed) -> DROPPED:
+%                            projections off the subjects' own term_assertions
+%                            (D-D). Bucket 3 (editor GUI state / version prose) ->
+%                            DROPPED. metadata_editor is KEPT as the source class.
 %
 %   PENDING (need discovery-mode iteration against the corpora and/or the still
 %   -open flat-table decisions):

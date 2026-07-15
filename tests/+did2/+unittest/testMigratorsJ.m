@@ -665,3 +665,187 @@ verifyNotEmpty(testCase, locObs);
 verifyEqual(testCase, locObs.get('term_observation.value').name, 'CNS');
 verifyEqual(testCase, depVal(locObs, 'subject_id'), subjId);
 end
+
+% ============ metadata_editor -> dataset + entities + relations =========
+
+function ds = allOfClassJ(migrated, className)
+ds = {};
+for k = 1:numel(migrated)
+    if strcmp(migrated{k}.get('document_class.class_name'), className)
+        ds{end+1} = migrated{k}; %#ok<AGROW>
+    end
+end
+end
+
+function v1 = metadataEditorDoc()
+% A representative metadata_editor: the NDIMetaDataEditorApp `metadata_structure`
+% blob (built by metadata_ds_core.convertDatasetInfoToDocument). Nested field
+% names are PascalCase and are LEFT UNTOUCHED by universalRenames (only immediate
+% block-field names are snake-cased), so the migrator reads them as-is.
+v1 = struct();
+v1.document_class = struct('class_name', 'metadata_editor', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', 'me_01', 'session_id', 'sess_09', ...
+    'name', 'ds_meta', 'datestamp', '2024-06-01T12:00:00.000Z');
+ms = struct();
+ms.DatasetFullName = 'The Big Worm Dataset';
+ms.DatasetShortName = 'BigWorm';
+ms.VersionIdentifier = '1.0.0';
+ms.Description = 'A dataset of worms.';
+ms.License = 'CC-BY-4.0';
+ms.ReleaseDate = '2024-01-15';
+ms.VersionInnovation = 'first release';        % bucket 3 (GUI/prose) -> dropped
+% two authors, both affiliated to the SAME organization (dedup to one org)
+a1 = struct('givenName', 'Ada', 'familyName', 'Lovelace', ...
+    'digitalIdentifier', struct('identifier', '0000-0001-2345-6789'), ...
+    'contactInformation', struct('email', 'ada@example.org'), ...
+    'affiliation', struct('memberOf', struct('fullName', 'Analytical Society')), ...
+    'authorRole', 'Custodian');
+a2 = struct('givenName', 'Alan', 'familyName', 'Turing', ...
+    'digitalIdentifier', struct('identifier', ''), ...
+    'contactInformation', struct('email', ''), ...
+    'affiliation', struct('memberOf', struct('fullName', 'Analytical Society')), ...
+    'authorRole', '');
+ms.Author = [a1 a2];
+ms.Funding = struct('funder', 'NIH', 'awardTitle', 'BRAIN Initiative', ...
+    'awardNumber', 'R01-12345');
+ms.RelatedPublication = struct('Publication', 'On Worms', 'DOI', '10.1/worm', ...
+    'PMID', '123', 'PMCID', 'PMC9');
+ms.FullDocumentation = 'https://example.org/docs';
+% bucket 2 (projections off subject statements) -> dropped
+ms.TechniquesEmployed = 'patch clamp';
+ms.Subjects = struct('SubjectName', 'worm_1', 'BiologicalSexList', 'male');
+v1.metadata_editor = struct('metadata_structure', ms);
+end
+
+function testMetadataEditorDecomposes(testCase)
+out = runJ(metadataEditorDoc());
+bc = out.summary.by_class;
+% dataset + 2 persons + 2 orgs (deduped) + 1 award + 1 publication + 1 web_resource
+% + 8 relations (has_author x2, affiliated_with x2, funded_by, issued_by, cites,
+%   documented_by) = 16
+verifyEqual(testCase, numel(out.migrated), 16);
+verifyEqual(testCase, bc.dataset, 1);
+verifyEqual(testCase, bc.person, 2);
+verifyEqual(testCase, bc.organization, 2);   % Analytical Society (deduped) + NIH
+verifyEqual(testCase, bc.award, 1);
+verifyEqual(testCase, bc.publication, 1);
+verifyEqual(testCase, bc.web_resource, 1);
+verifyEqual(testCase, bc.directed_relation, 8);
+% projections and GUI prose are NOT persisted as classes
+verifyFalse(testCase, isfield(bc, 'subject'));
+verifyFalse(testCase, isfield(bc, 'term_assertion'));
+end
+
+function testMetadataEditorDatasetEntity(testCase)
+out = runJ(metadataEditorDoc());
+ds = firstOfClassJ(out.migrated, 'dataset');
+verifyEqual(testCase, ds.get('base.id'), 'me_01');            % source id preserved
+verifyEqual(testCase, ds.get('dataset.full_name'), 'The Big Worm Dataset');
+verifyEqual(testCase, ds.get('dataset.short_name'), 'BigWorm');
+verifyEqual(testCase, ds.get('dataset.version'), '1.0.0');
+verifyEqual(testCase, ds.get('dataset.license'), 'CC-BY-4.0');
+verifyEqual(testCase, ds.get('dataset.release_date'), '2024-01-15');
+% documentation is NOT a dataset field -- it is a relation -> web_resource
+verifyFalse(testCase, isfield(ds.get('dataset'), 'documentation'));
+end
+
+function testMetadataEditorAuthorsAndOrcid(testCase)
+out = runJ(metadataEditorDoc());
+persons = allOfClassJ(out.migrated, 'person');
+verifyEqual(testCase, numel(persons), 2);
+% the first author carries given/family/email and an ORCID global_identifier
+ada = personByFamily(persons, 'Lovelace');
+verifyEqual(testCase, ada.get('person.given_name'), 'Ada');
+verifyEqual(testCase, ada.get('person.email'), 'ada@example.org');
+gid = ada.get('entity.global_identifier');
+verifyEqual(testCase, gid(1).scheme, 'ORCID');
+verifyEqual(testCase, gid(1).value, '0000-0001-2345-6789');
+% the second author had no ORCID -> empty global_identifier
+alan = personByFamily(persons, 'Turing');
+verifyEmpty(testCase, alan.get('entity.global_identifier'));
+% has_author edges: dataset -> each person, carrying the author position
+ds = firstOfClassJ(out.migrated, 'dataset');
+seqs = [];
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
+            && strcmp(d.get('directed_relation.relation').name, 'has_author')
+        verifyEqual(testCase, depVal(d, 'child'), ds.get('base.id'));
+        seqs(end+1) = d.get('directed_relation.sequence'); %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, sort(seqs), [1 2]);
+end
+
+function p = personByFamily(persons, family)
+p = [];
+for k = 1:numel(persons)
+    if strcmp(persons{k}.get('person.family_name'), family); p = persons{k}; return; end
+end
+end
+
+function testMetadataEditorOrgDedupAndAffiliation(testCase)
+out = runJ(metadataEditorDoc());
+% both authors share one org: exactly one 'Analytical Society' organization
+orgs = allOfClassJ(out.migrated, 'organization');
+names = cellfun(@(o) o.get('organization.name'), orgs, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(names, 'Analytical Society')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'NIH')), 1);
+% both affiliated_with edges point at the single shared org id
+society = orgs{strcmp(names, 'Analytical Society')};
+affParents = {};
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
+            && strcmp(d.get('directed_relation.relation').name, 'affiliated_with')
+        affParents{end+1} = depVal(d, 'parent'); %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, numel(affParents), 2);
+verifyEqual(testCase, unique(affParents), {society.get('base.id')});
+end
+
+function testMetadataEditorFundingPublicationDocumentation(testCase)
+out = runJ(metadataEditorDoc());
+ds = firstOfClassJ(out.migrated, 'dataset');
+% award: title + award-number identifier; dataset -funded_by-> award -issued_by-> NIH
+award = firstOfClassJ(out.migrated, 'award');
+verifyEqual(testCase, award.get('award.title'), 'BRAIN Initiative');
+agid = award.get('entity.global_identifier');
+verifyEqual(testCase, agid(1).scheme, 'AwardNumber');
+verifyEqual(testCase, agid(1).value, 'R01-12345');
+funded = relByName(out.migrated, 'funded_by');
+verifyEqual(testCase, depVal(funded, 'child'), ds.get('base.id'));
+verifyEqual(testCase, depVal(funded, 'parent'), award.get('base.id'));
+issued = relByName(out.migrated, 'issued_by');
+verifyEqual(testCase, depVal(issued, 'child'), award.get('base.id'));
+% publication: title + DOI/PMID/PMCID identifiers; dataset -cites-> publication
+pub = firstOfClassJ(out.migrated, 'publication');
+verifyEqual(testCase, pub.get('publication.title'), 'On Worms');
+pgid = pub.get('entity.global_identifier');
+schemes = {pgid.scheme};
+verifyTrue(testCase, all(ismember({'DOI', 'PMID', 'PMCID'}, schemes)));
+cites = relByName(out.migrated, 'cites');
+verifyEqual(testCase, depVal(cites, 'parent'), pub.get('base.id'));
+% web_resource: the documentation IRI is a resource referenced by a relation
+wr = firstOfClassJ(out.migrated, 'web_resource');
+wgid = wr.get('entity.global_identifier');
+verifyEqual(testCase, wgid(1).scheme, 'URL');
+verifyEqual(testCase, wgid(1).value, 'https://example.org/docs');
+documented = relByName(out.migrated, 'documented_by');
+verifyEqual(testCase, depVal(documented, 'child'), ds.get('base.id'));
+verifyEqual(testCase, depVal(documented, 'parent'), wr.get('base.id'));
+end
+
+function r = relByName(migrated, relName)
+r = [];
+for k = 1:numel(migrated)
+    d = migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
+            && strcmp(d.get('directed_relation.relation').name, relName)
+        r = d; return;
+    end
+end
+end
