@@ -74,10 +74,22 @@ for k = 1:numel(files)
     bodies{k} = fileread(fullfile(files(k).folder, files(k).name));
 end
 
-result = did2.convert.v1_to_v2(bodies, 'Validate', true);
+% Migrate to V_eta (the branch's target and the schema DID_SCHEMA_PATH points
+% at), then run the same DID-side post-passes as the other corpus tests
+% (runCorpusDiscovery): resolve deferred stimulus_baths and finalize the dataset
+% entity layer. Previously this called v1_to_v2 with no TargetVersion, defaulting
+% to V_delta -- but validation is against the V_eta schema, so a V_delta-shaped
+% output (e.g. pyraview still carrying the retired epochclocktimes block) fails
+% with an "undeclared block" error. Targeting V_eta runs the strict-J migrators
+% (migrators_j) so the corpus migrates cleanly under the schema it is checked
+% against.
+result = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'V_eta');
+result = did2.convert.resolveDeferredBaths(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+result = did2.convert.resolveDatasetEntities(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
 
-% Build a readable diagnostic so a failure tells us *which* doc and
-% *why*, not just the bare count mismatch.
+% Build a readable diagnostic so a failure tells us *which* doc and *why*.
 if result.summary.quarantine_count > 0
     lines = cell(1, numel(result.quarantine));
     for k = 1:numel(result.quarantine)
@@ -93,9 +105,12 @@ else
     diag = '';
 end
 
-verifyEqual(testCase, result.summary.migrated_count, ...
-    result.summary.total, diag);
+% The gate is zero quarantine: every source document migrates cleanly under the
+% V_eta schema. (The old migrated_count == total check assumed 1 -> 1 migration;
+% under V_eta the strict-J migrators fan out 1 -> N, so migrated_count > total.)
 verifyEqual(testCase, result.summary.quarantine_count, 0, diag);
+verifyGreaterThanOrEqual(testCase, result.summary.migrated_count, ...
+    result.summary.total, diag);
 end
 
 % --- helpers ---
