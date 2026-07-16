@@ -49,6 +49,7 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
     subjectDoc.base = preBody.base;   % preserve id -> member edges' parent resolves
 end
 % bare identity: no is_group / is_biological in V_eta
+groupName = jEnsureLocalId(groupName, preBody);   % local_identifier is REQUIRED
 subjectDoc.subject = struct('local_identifier', groupName, 'description', desc);
 
 bodies = {subjectDoc};

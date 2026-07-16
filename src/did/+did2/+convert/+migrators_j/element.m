@@ -47,6 +47,7 @@ underlyingId = depValue(preBody, 'underlying_element_id');
 
 localId = name;
 if ~isempty(reference); localId = strtrim(sprintf('%s (ref %s)', name, reference)); end
+localId = jEnsureLocalId(localId, preBody);   % subject.local_identifier is REQUIRED
 
 % --- the element as a bare subject (id preserved) ---------------------------
 subjectDoc = struct();

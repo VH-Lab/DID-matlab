@@ -66,6 +66,51 @@ verifyFalse(testCase, isfield(sub, 'is_group'));
 verifyFalse(testCase, isfield(sub, 'is_biological'));
 end
 
+function testSubjectGroupEmptyNameFallsBackToId(testCase)
+% local_identifier is REQUIRED on a V_eta subject; a subject_group with no
+% group_name must still be nameable -- it falls back to the document id.
+v1 = struct();
+v1.document_class = struct('class_name', 'subject_group', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'document_id', {});
+v1.base = struct('id', 'grp_noname', 'session_id', 'aa_99', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.subject_group = struct('group_name', '', 'description', '');
+out = runJ(v1);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('subject.local_identifier'), 'grp_noname');
+end
+
+function testSubjectCarryForwardFillsLocalId(testCase)
+% A plain v1 subject with an empty/missing local_identifier is filled from the
+% document id (the required-handle carry-forward path).
+v1 = struct();
+v1.document_class = struct('class_name', 'subject', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'document_id', {});
+v1.base = struct('id', 'sub_bare', 'session_id', 'sess_09', ...
+    'name', 'subject', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.subject = struct('local_identifier', '', 'description', '');
+out = runJ(v1);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('document_class.class_name'), 'subject');
+verifyEqual(testCase, doc.get('subject.local_identifier'), 'sub_bare');
+end
+
+function testSubjectCarryForwardPreservesLocalId(testCase)
+% A v1 subject that already has a handle keeps it (fallback only fires when empty).
+v1 = struct();
+v1.document_class = struct('class_name', 'subject', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'document_id', {});
+v1.base = struct('id', 'sub_named', 'session_id', 'sess_09', ...
+    'name', 'subject', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.subject = struct('local_identifier', 'mouse_42@lab', 'description', '');
+out = runJ(v1);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('subject.local_identifier'), 'mouse_42@lab');
+end
+
 function testSubjectGroupMintsMemberRelations(testCase)
 % A subject_group carrying member links (subject_id_1..N) becomes the bare
 % subject PLUS one member_of directed_relation per member (child = member,

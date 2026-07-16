@@ -276,6 +276,7 @@ body.depends_on = struct('name', {}, 'value', {});
 if isfield(preBody, 'base') && isstruct(preBody.base)
     body.base = preBody.base;   % PRESERVE id -> encounter parent resolves
 end
+localId = jEnsureLocalId(localId, preBody);   % subject.local_identifier is REQUIRED
 body.subject = struct('local_identifier', localId, 'description', 'bacterial patch');
 end
 
