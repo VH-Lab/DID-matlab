@@ -1085,3 +1085,28 @@ verifyTrue(testCase, isfield(out, 'pyraview'));
 verifyEqual(testCase, out.epochid.epochid, 'epoch_t00001');
 verifyEqual(testCase, out.pyraview.native_rate, 30000);
 end
+
+function testDaqreaderNdrDeEncodesToDaqreader(testCase)
+% Chunk c: daqreader_ndr de-encodes onto daqreader -- the ndr subtype fields move
+% (ndr_reader_string -> reader_string, file_extension carried, ndi_daqreader_ndr_class
+% dropped) and the daqreader_ndr block is removed. Tested on the migrator FUNCTION
+% directly (the quick CI's V_zeta schema still has daqreader_ndr; under the V_eta
+% corpus run daqreader_ndr is gone and the folded daqreader validates).
+body = struct();
+body.document_class = struct('class_name', 'daqreader_ndr', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base',      'class_version', '1.0.0'), ...
+                      struct('class_name', 'daqreader', 'class_version', '1.0.0')]);
+body.depends_on = struct('name', {}, 'value', {});
+body.base = struct('id', 'ndr_1', 'session_id', 'sess_09', ...
+    'name', 'reader', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.daqreader = struct('ndi_daqreader_class', 'ndi.daq.reader.mfdaq.ndr');
+body.daqreader_ndr = struct('ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr', ...
+    'ndr_reader_string', 'intan', 'file_extension', '.rhd');
+out = did2.convert.migrators_j.daqreader_ndr(body);
+verifyEqual(testCase, out.document_class.class_name, 'daqreader');
+verifyEqual(testCase, out.daqreader.reader_string, 'intan');
+verifyEqual(testCase, out.daqreader.file_extension, '.rhd');
+verifyEqual(testCase, out.daqreader.ndi_daqreader_class, 'ndi.daq.reader.mfdaq.ndr');
+% the subtype block is gone
+verifyFalse(testCase, isfield(out, 'daqreader_ndr'));
+end
