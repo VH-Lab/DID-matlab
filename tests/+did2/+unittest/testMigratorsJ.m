@@ -1059,33 +1059,6 @@ v1.base = struct('id', 'grp_9', 'session_id', 'aa_99', ...
 v1.subject_group = struct('group_name', 'cohortC', 'description', '');
 end
 
-% ============ regression: pyraview drops the retired epochclocktimes block =====
-
-function testPyraviewDropsEpochclocktimesBlock(testCase)
-% Test the migrator FUNCTION directly: it removes the retired epochclocktimes
-% block while preserving everything else. (We cannot assert absence through the
-% full v1_to_v2 pipeline here because the quick CI assembles the V_zeta schema,
-% where pyraview still descends from epochclocktimes, so ensureClassBlocks would
-% re-manufacture an empty block. Under the V_eta schema -- the real corpus run --
-% epochclocktimes is not in pyraview's chain, so the drop sticks and validates.)
-body = struct();
-body.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
-    'superclasses', [ struct('class_name', 'epochclocktimes', 'class_version', '1.0.0'), ...
-                      struct('class_name', 'filter', 'class_version', '1.0.0')]);
-body.depends_on = struct('name', {'element_id'}, 'value', {'el_9'});
-body.base = struct('id', 'pv_1', 'session_id', 'sess_09', ...
-    'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
-body.pyraview = struct('label', 'pyr', 'native_rate', 30000);
-body.epochid = struct('epochid', 'epoch_t00001');
-body.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', '0 10');
-out = did2.convert.migrators_j.pyraview(body);
-% the migrator drops the stale block and touches nothing else
-verifyFalse(testCase, isfield(out, 'epochclocktimes'));
-verifyTrue(testCase, isfield(out, 'pyraview'));
-verifyEqual(testCase, out.epochid.epochid, 'epoch_t00001');
-verifyEqual(testCase, out.pyraview.native_rate, 30000);
-end
-
 function testDaqreaderNdrDeEncodesToDaqreader(testCase)
 % Chunk c: daqreader_ndr de-encodes onto daqreader -- the ndr subtype fields move
 % (ndr_reader_string -> reader_string, file_extension carried, ndi_daqreader_ndr_class
@@ -1162,4 +1135,47 @@ verifyFalse(testCase, isfield(out, 'element_epoch'));
 verifyEqual(testCase, out.acquisition_epoch.clocks(1).name, 'dev_local_time');
 verifyEqual(testCase, out.acquisition_epoch.clocks(1).t0, 0);
 verifyEqual(testCase, out.acquisition_epoch.clocks(1).t1, 930.35);
+end
+
+function testPyraviewFoldsToObservationPlusSampledBody(testCase)
+% #9 pattern-setter: pyraview (a multi-resolution signal pyramid) dissolves into a
+% body-backed dataseries_observation + a sampled_body (native signal) + a session
+% anchor. 1->3. The decimated levels are dropped (regenerable cache).
+body = struct();
+body.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'filter',  'class_version', '1.0.0'), ...
+                      struct('class_name', 'base',    'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_7'});
+body.base = struct('id', 'pv_1', 'session_id', 'sess_09', ...
+    'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.pyraview = struct('label', 'lfp', 'native_rate', 1000, ...
+    'native_start_time', 0, 'channels', 4, 'data_type', 'int16');
+
+out = did2.convert.migrators_j.pyraview(body);
+verifyClass(testCase, out, 'cell');
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'dataseries_observation')));
+verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+
+obs  = out{find(strcmp(names, 'dataseries_observation'), 1)};
+sbod = out{find(strcmp(names, 'sampled_body'), 1)};
+% the observation keeps the source id and is body-backed
+verifyEqual(testCase, obs.base.id, 'pv_1');
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
+verifyEqual(testCase, obs.subject_statement.variable.name, 'lfp');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_7');
+% the body carries the signal and points back at the observation
+verifyEqual(testCase, depValue(sbod, 'statement'), 'pv_1');
+verifyEqual(testCase, sbod.sampled_body.datum.dtype, 'int16');
+verifyEqual(testCase, sbod.sampled_body.sample_time.dt.source_value, 1e-3);
+end
+
+function v = depValue(b, name)
+v = '';
+for k = 1:numel(b.depends_on)
+    if strcmp(b.depends_on(k).name, name); v = b.depends_on(k).value; return; end
+end
 end
