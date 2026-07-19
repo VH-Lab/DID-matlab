@@ -1140,3 +1140,26 @@ verifyTrue(testCase, isfield(out.daqreader_epochdata_ingested, 'epochtable'));
 verifyFalse(testCase, isfield(out, 'daqreader_mfdaq_epochdata_ingested'));
 verifyFalse(testCase, isfield(out, 'epochid'));
 end
+
+function testElementEpochRenamedToAcquisitionEpoch(testCase)
+% Chunk e: element is retired, so element_epoch is renamed to acquisition_epoch.
+% The V_eta migrator reuses the base clocks-block transform (epoch_clock/t0_t1 ->
+% clocks array-of-records) and then renames the class and its property block.
+body = struct();
+body.document_class = struct('class_name', 'element_epoch', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base',    'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_1'});
+body.base = struct('id', 'ee_1', 'session_id', 'sess_09', ...
+    'name', 't00001', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.epochid = struct('epochid', 't00001');
+body.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0; 930.35]);
+out = did2.convert.migrators_j.element_epoch(body);
+verifyEqual(testCase, out.document_class.class_name, 'acquisition_epoch');
+% the property block is renamed too, and the base clocks transform ran
+verifyTrue(testCase, isfield(out, 'acquisition_epoch'));
+verifyFalse(testCase, isfield(out, 'element_epoch'));
+verifyEqual(testCase, out.acquisition_epoch.clocks(1).name, 'dev_local_time');
+verifyEqual(testCase, out.acquisition_epoch.clocks(1).t0, 0);
+verifyEqual(testCase, out.acquisition_epoch.clocks(1).t1, 930.35);
+end
