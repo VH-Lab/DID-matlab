@@ -13,9 +13,16 @@ function v2Body = metadata_editor(preBody)
 %
 %   Bucket 1 -- INTRINSIC IDENTITY -> typed entity fields (kept):
 %     - dataset       full_name<-DatasetFullName, short_name<-DatasetShortName,
-%                     version<-VersionIdentifier, description<-Description,
-%                     license<-License, release_date<-ReleaseDate. (id preserved
-%                     from the source doc's base.id.)
+%                     version<-VersionIdentifier, version_innovation<-VersionInnovation,
+%                     description<-Description, how_to_cite<-HowToCite,
+%                     license<-License, release_date<-ReleaseDate, keyword<-Keyword,
+%                     support_channel<-SupportChannel, and the openMINDS controlled-term
+%                     fields accessibility<-Accessibility, ethics_assessment<-
+%                     EthicsAssessment, experimental_approach<-ExperimentalApproach
+%                     (each an ontology_term with an open node until the openMINDS
+%                     instance IRI is resolved). (id preserved from base.id.) These
+%                     openMINDS DatasetVersion properties now have field homes
+%                     (openMINDS full-field parity), so they are stored, not dropped.
 %     - person        one per Author: given_name<-givenName,
 %                     family_name<-familyName, email<-contactInformation.email,
 %                     ORCID -> global_identifier{scheme='ORCID'}.
@@ -35,15 +42,19 @@ function v2Body = metadata_editor(preBody)
 %     dataset -cites-> publication
 %     dataset -documented_by-> web_resource
 %
-%   Bucket 2 -- PROJECTIONS -> dropped. Subjects (SpeciesList / StrainList /
-%     BiologicalSexList), DataType, ExperimentalApproach, TechniquesEmployed are
+%   Bucket 2 -- PER-SUBJECT PROJECTIONS -> dropped. Subjects (SpeciesList /
+%     StrainList / BiologicalSexList), DataType, and TechniquesEmployed are
 %     summaries derivable from the dataset's subject `term_assertion`s /
 %     `subject_statement`s (D-D "drop-fully-with-projection"): storing them here
 %     would duplicate the per-subject truth and drift from it. They are recomputed
-%     as a query-time projection, not persisted.
+%     as a query-time projection, not persisted. (ExperimentalApproach was
+%     previously dropped here too, but is a dataset-level openMINDS property with its
+%     own field home now, so it moves to bucket 1 -- author intent is preserved on
+%     migration rather than recomputed.)
 %
 %   Bucket 3 -- GUI STATE -> dropped. Any editor-app view state (selected tab,
-%     visibility, tooltips, VersionInnovation prose) is not dataset identity.
+%     visibility, tooltips) is not dataset identity. (VersionInnovation is genuine
+%     dataset metadata, not view state, so it moves to bucket 1.)
 
 arguments
     preBody (1,1) struct
@@ -69,15 +80,26 @@ orgIds = containers.Map('KeyType', 'char', 'ValueType', 'char');  % name -> id (
 bodies = {};
 
 % --- the dataset entity (id preserved) --------------------------------------
+% Scalar fields via struct(); list/term fields assigned after (a cell/array value
+% inside struct() would fan the struct into an array -- MATLAB gotcha).
 fullName = firstChar(getChar(ms, 'DatasetFullName'), getChar(ms, 'DatasetShortName'));
 if isempty(fullName); fullName = '(unnamed dataset)'; end   % full_name is required
 datasetBlock = struct( ...
-    'full_name',    fullName, ...
-    'short_name',   getChar(ms, 'DatasetShortName'), ...
-    'version',      getChar(ms, 'VersionIdentifier'), ...
-    'description',  getChar(ms, 'Description'), ...
-    'license',      getChar(ms, 'License'), ...
-    'release_date', getChar(ms, 'ReleaseDate'));
+    'full_name',          fullName, ...
+    'short_name',         getChar(ms, 'DatasetShortName'), ...
+    'version',            getChar(ms, 'VersionIdentifier'), ...
+    'version_innovation', getChar(ms, 'VersionInnovation'), ...
+    'description',        getChar(ms, 'Description'), ...
+    'how_to_cite',        getChar(ms, 'HowToCite'), ...
+    'license',            getChar(ms, 'License'), ...
+    'accessibility',      termOrBlank(getChar(ms, 'Accessibility')), ...
+    'ethics_assessment',  termOrBlank(getChar(ms, 'EthicsAssessment')), ...
+    'release_date',       getChar(ms, 'ReleaseDate'));
+% Repeatable fields (empty -> conventional empty list; controlled terms carry an
+% open node until the openMINDS instance IRI is resolved at projection time).
+datasetBlock.keyword               = getStrList(ms, 'Keyword');
+datasetBlock.support_channel       = getStrList(ms, 'SupportChannel');
+datasetBlock.experimental_approach = termList(getStrList(ms, 'ExperimentalApproach'));
 bodies{end+1} = entityDoc(preBody, 'dataset', datasetId, datasetBlock, ...
     emptyGids(), false);
 
@@ -282,5 +304,48 @@ function arr = getStructArray(block, name)
 arr = struct([]);
 if isstruct(block) && isfield(block, name) && isstruct(block.(name))
     arr = block.(name);
+end
+end
+
+function c = getStrList(block, name)
+%GETSTRLIST Read a field as a cellstr row (empty entries dropped). Handles char,
+%   cellstr, string array, or a struct array carrying a name-like field -- the
+%   shapes the NDIMetaDataEditorApp uses for its list-valued metadata.
+c = {};
+if ~(isstruct(block) && isfield(block, name)); return; end
+v = block.(name);
+if isempty(v); return; end
+if ischar(v)
+    c = {v};
+elseif isstring(v)
+    c = cellstr(v(:).');
+elseif iscell(v)
+    for k = 1:numel(v)
+        if ischar(v{k}); c{end+1} = v{k}; %#ok<AGROW>
+        elseif isstring(v{k}) && isscalar(v{k}); c{end+1} = char(v{k}); end %#ok<AGROW>
+    end
+elseif isstruct(v)
+    for k = 1:numel(v)
+        for nm = {'name', 'label', 'value'}
+            s = getChar(v(k), nm{1});
+            if ~isempty(s); c{end+1} = s; break; end %#ok<AGROW>
+        end
+    end
+end
+c = c(~cellfun(@isempty, c));
+end
+
+function t = termOrBlank(str)
+%TERMORBLANK A scalar ontology_term {node, name}; name '' when absent (== the field
+%   blank). node stays open ('') until the openMINDS instance IRI is resolved.
+t = jOntologyTerm('', str);
+end
+
+function terms = termList(strs)
+%TERMLIST Wrap a cellstr as a 1xN ontology_term array {node, name} (node open).
+%   Empty -> a 0x0 ontology_term array (the conventional empty list value).
+terms = struct('node', {}, 'name', {});
+for k = 1:numel(strs)
+    terms(end+1) = jOntologyTerm('', strs{k}); %#ok<AGROW>
 end
 end
