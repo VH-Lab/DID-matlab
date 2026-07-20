@@ -1267,6 +1267,78 @@ freq = out{find(strcmp(names, 'frequency_observation'), 1)};
 verifyEqual(testCase, freq.frequency.value.source_value, 8.3, 'AbsTol', 1e-9);
 end
 
+function testContrastTuningFoldsToInlineTuningObservation(testCase)
+% #9 tuning pattern-setter: contrast_tuning -> an INLINE tuning observation (the
+% response curve as a length-N `value`, one measurement per reading) + a
+% derived_from relation to the raw stimulus_tuningcurve + a session anchor.
+% 1 -> 3. The stimulus parameter (contrast) rides on subject_statement.parameters
+% (the D10 "axis" qualifier -- one quantity level per reading). This is the first
+% migrator to populate a D10 parameters qualifier.
+body = struct();
+body.document_class = struct('class_name', 'contrast_tuning', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'sub_8'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_1')];
+body.base = struct('id', 'ct_1', 'session_id', 'sess_09', 'name', 'ct', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.contrast_tuning = struct( ...
+    'properties', struct('response_units', 'spikes/s', 'response_type', 'mean'), ...
+    'tuning_curve', struct('contrast', [0 0.25 0.5 1], 'mean', [2 5 9 12]));
+
+out = did2.convert.migrators_j.contrast_tuning(body);
+verifyClass(testCase, out, 'cell');
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));   % spikes/s -> frequency
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
+
+obs = out{find(strcmp(names, 'frequency_observation'), 1)};
+% the response curve is the length-N inline value (one measurement per reading)
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'inline');
+verifyEqual(testCase, obs.subject_statement.variable.name, 'contrast tuning');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_8');
+resp = obs.frequency.value;
+verifyEqual(testCase, numel(resp), 4);
+verifyEqual(testCase, [resp.source_value], [2 5 9 12], 'AbsTol', 1e-9);
+verifyEqual(testCase, resp(1).source_unit, 'spikes/s');
+% the stimulus parameter (contrast) is the D10 axis qualifier (one level per reading)
+params = obs.subject_statement.parameters;
+verifyEqual(testCase, params.variable.name, 'contrast');
+axisVals = params.quantity.value;
+verifyEqual(testCase, numel(axisVals), 4);
+verifyEqual(testCase, [axisVals.source_value], [0 0.25 0.5 1], 'AbsTol', 1e-9);
+% derived_from: the tuning obs (child) <- the raw stimulus_tuningcurve (parent)
+rel = out{find(strcmp(names, 'directed_relation'), 1)};
+verifyEqual(testCase, depValue(rel, 'child'), obs.base.id);
+verifyEqual(testCase, depValue(rel, 'parent'), 'tc_1');
+verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
+end
+
+function testContrastTuningDimensionlessResponseIsIntensity(testCase)
+% dF/F (dimensionless a.u.) responses land on intensity, NOT score -- score/count
+% carry a different value composite shape, so the measurement-shaped leaves
+% (frequency/voltage/intensity) are the only tuning-response homes (J §7).
+body = struct();
+body.document_class = struct('class_name', 'contrast_tuning', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_9'});
+body.base = struct('id', 'ct_2', 'session_id', 'sess_09', 'name', 'ct', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.contrast_tuning = struct( ...
+    'properties', struct('response_units', 'dF/F', 'response_type', 'mean'), ...
+    'tuning_curve', struct('contrast', [0.25 0.5 1], 'mean', [0.1 0.3 0.7]));
+
+out = did2.convert.migrators_j.contrast_tuning(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+% no stimulus_tuningcurve_id -> no derived_from relation (1 -> 2)
+verifyEqual(testCase, numel(out), 2);
+verifyTrue(testCase, any(strcmp(names, 'intensity_observation')));
+obs = out{find(strcmp(names, 'intensity_observation'), 1)};
+verifyEqual(testCase, numel(obs.intensity.value), 3);
+verifyEqual(testCase, obs.intensity.value(2).source_value, 0.3, 'AbsTol', 1e-9);
+end
+
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
 % recording. neuron_extracellular -> subject + derived_from relation (unit <- the
