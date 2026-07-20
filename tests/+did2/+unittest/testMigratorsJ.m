@@ -1267,6 +1267,39 @@ freq = out{find(strcmp(names, 'frequency_observation'), 1)};
 verifyEqual(testCase, freq.frequency.value.source_value, 8.3, 'AbsTol', 1e-9);
 end
 
+function testNeuronExtracellularMintsDerivedSubject(testCase)
+% #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
+% recording. neuron_extracellular -> subject + derived_from relation (unit <- the
+% recording subject) + a score_observation of the unit + anchor. 1 -> 4.
+body = struct();
+body.document_class = struct('class_name', 'neuron_extracellular', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'rec_sub_1'});
+body.base = struct('id', 'ne_1', 'session_id', 'sess_09', ...
+    'name', 'ne', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
+    'number_of_channels', 4);
+
+out = did2.convert.migrators_j.neuron_extracellular(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyEqual(testCase, numel(out), 4);
+verifyTrue(testCase, any(strcmp(names, 'subject')));
+verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
+verifyTrue(testCase, any(strcmp(names, 'score_observation')));
+
+neuron = out{find(strcmp(names, 'subject'), 1)};
+verifyEqual(testCase, neuron.subject.local_identifier, 'unit_7');
+rel = out{find(strcmp(names, 'directed_relation'), 1)};
+% derived_from: unit (child) <- recording subject (parent)
+verifyEqual(testCase, depValue(rel, 'child'), neuron.base.id);
+verifyEqual(testCase, depValue(rel, 'parent'), 'rec_sub_1');
+verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
+% the quality observation is about the minted unit
+qobs = out{find(strcmp(names, 'score_observation'), 1)};
+verifyEqual(testCase, depValue(qobs, 'subject_id'), neuron.base.id);
+verifyEqual(testCase, qobs.score.value.value, 3, 'AbsTol', 1e-9);
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
