@@ -1214,6 +1214,30 @@ verifyEqual(testCase, sbod.sampled_body.datum.shape, 32);
 verifyEqual(testCase, numel(sbod.files.file_list), 2);
 end
 
+function testBinnedSpikeRateFoldsToObservationPlusSampledBody(testCase)
+% #9 (direct-subject regular timeseries): binnedspikeratevm -> dataseries_observation
+% + a sampled_body (one scalar rate per bin; regular, dt = bin_size) + anchor.
+body = struct();
+body.document_class = struct('class_name', 'binnedspikeratevm', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_3'});
+body.base = struct('id', 'br_1', 'session_id', 'sess_09', ...
+    'name', 'br', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.binnedspikeratevm = struct('bin_size', 0.05, 'num_bins', 600);
+body.files = struct('file_list', {{'rate.bin'}});
+
+out = did2.convert.migrators_j.binnedspikeratevm(body);
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'dataseries_observation')));
+sbod = out{find(strcmp(names, 'sampled_body'), 1)};
+verifyEqual(testCase, depValue(sbod, 'statement'), 'br_1');
+verifyEqual(testCase, sbod.sampled_body.datum.kind, 'scalar');
+verifyEqual(testCase, sbod.sampled_body.sample_time.n, 600);
+% bin_size (raw seconds) -> a duration composite dt
+verifyEqual(testCase, sbod.sampled_body.sample_time.dt.source_value, 0.05, 'AbsTol', 1e-12);
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
