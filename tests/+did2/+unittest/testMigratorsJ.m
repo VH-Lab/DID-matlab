@@ -1300,6 +1300,30 @@ verifyEqual(testCase, depValue(qobs, 'subject_id'), neuron.base.id);
 verifyEqual(testCase, qobs.score.value.value, 3, 'AbsTol', 1e-9);
 end
 
+function testSpikeClustersFoldsToCountObservation(testCase)
+% #9 (pattern 1, body-backed): spike_clusters (per-spike cluster labels) ->
+% count_observation + sampled_body (one datum per spike) + anchor. 1->3.
+body = struct();
+body.document_class = struct('class_name', 'spike_clusters', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'sub_8'), ...
+                    struct('name', 'sorting_parameters_id', 'value', 'sp_1')];
+body.base = struct('id', 'sc_1', 'session_id', 'sess_09', ...
+    'name', 'sc', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.spike_clusters = struct('num_clusters', 5, 'num_spikes', 400);
+body.files = struct('file_list', {{'clusters.bin'}});
+
+out = did2.convert.migrators_j.spike_clusters(body);
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'count_observation')));
+obs = out{find(strcmp(names, 'count_observation'), 1)};
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
+sbod = out{find(strcmp(names, 'sampled_body'), 1)};
+verifyEqual(testCase, depValue(sbod, 'statement'), 'sc_1');
+verifyEqual(testCase, sbod.sampled_body.sample_time.n, 400);
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
