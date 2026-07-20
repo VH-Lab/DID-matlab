@@ -19,9 +19,11 @@ function bodies = pyraview(preBody)
 %                           DAQ epoch -- the honest fallback the treatment/image
 %                           folds use).
 %
-%   1 -> 3. The decimated levels 2..10 and the decimation_* descriptors are DROPPED:
-%   a pyramid is a regenerable rendering cache derived from the native signal, so
-%   it is no information loss (keeps sampled_body lean, per the 2.D Option-1 design).
+%   1 -> (2 + N): the observation, ONE sampled_body per stored resolution level
+%   (all sharing the statement -- the multi-body stream sampled_body was designed
+%   for; levels told apart by sample_time.dt), and the anchor. Each level keeps its
+%   own bytes (a pyramid is a precomputed performance cache, not a disposable
+%   thumbnail), so nothing is dropped.
 %
 %   NOTE: dataseries_observation and the *_body classes are `draft` in V_eta. This
 %   is the pattern-setter for the #9 analysis-tier folds (mint observation + attach
@@ -79,24 +81,48 @@ obs.subject_observation = struct();
 % lives on the body's datum/sample_time; ensureClassBlocks fills the defaults.
 obs.dataseries_observation = struct();
 
-% ---- the sampled_body holding the native-resolution signal ------------------
-body = struct();
-body.document_class = classBlock('sampled_body', {'data_body'}, TV);
-body.depends_on = struct('name', {'statement'}, 'value', {obsId});
-body.base = struct('id', bodyId, 'session_id', sessionId, ...
-    'name', 'migrated_signal_body', 'datestamp', datestamp);
-body.sampled_body = struct( ...
-    'datum', struct('kind', 'array', 'dtype', dataType, 'unit', '', 'shape', channels), ...
-    'sample_time', struct('regular', true, ...
-        't0', durationComposite(t0), 'dt', durationComposite(dt), 'n', 0), ...
-    'summary', struct('value', struct(), 'time', struct()));
-% carry the native bytes over verbatim (universal renames leave file/files
-% untouched; this doc owns the digital bytes now). The decimated pyramid levels
-% are a regenerable cache and are not re-declared.
-if isfield(preBody, 'files'); body.files = preBody.files; end
-if isfield(preBody, 'file');  body.file  = preBody.file;  end
+% ---- one sampled_body per stored resolution level ---------------------------
+% Each pyramid level is its own sampled_body, all sharing the statement (the
+% observation) -- the multi-body-per-statement stream sampled_body was designed
+% for ("append more bodies without rewriting the anchor"). Levels are told apart
+% by sample_time.dt (the per-level sampling rate); level 1 is native. Each body
+% owns one level_k.bin (files.file_list re-keys the bytes to the minting doc, as
+% the image_stack fold does for its single body).
+fileList = {};
+if isfield(preBody, 'files') && isstruct(preBody.files) ...
+        && isfield(preBody.files, 'file_list')
+    fileList = preBody.files.file_list;
+    if ~iscell(fileList); fileList = {fileList}; end
+end
+if isempty(fileList); fileList = {''}; end   % at least the native body
 
-bodies = {obs, body, anchor};
+rates  = numVec(getField(blk, 'decimation_sampling_rates'));
+starts = numVec(getField(blk, 'decimation_start_times'));
+
+bodies = {obs};
+for k = 1:numel(fileList)
+    rate_k = nativeRt;
+    if k <= numel(rates) && rates(k) > 0; rate_k = rates(k); end
+    dt_k = 0.0;
+    if rate_k > 0; dt_k = 1.0 / rate_k; end
+    t0_k = t0;
+    if k <= numel(starts); t0_k = starts(k); end
+
+    b = struct();
+    b.document_class = classBlock('sampled_body', {'data_body'}, TV);
+    b.depends_on = struct('name', {'statement'}, 'value', {obsId});
+    b.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+        'name', 'migrated_signal_body', 'datestamp', datestamp);
+    b.sampled_body = struct( ...
+        'datum', struct('kind', 'array', 'dtype', dataType, 'unit', '', 'shape', channels), ...
+        'sample_time', struct('regular', true, ...
+            't0', durationComposite(t0_k), 'dt', durationComposite(dt_k), 'n', 0), ...
+        'summary', struct('value', struct(), 'time', struct()));
+    % this body owns exactly its level's file
+    b.files = struct('file_list', {fileList(k)});
+    bodies{end+1} = b; %#ok<AGROW>
+end
+bodies{end+1} = anchor;
 end
 
 % ===================== small helpers =======================================
@@ -139,6 +165,19 @@ end
 function v = numScalar(x, default)
 v = default;
 if ~isempty(x) && isnumeric(x) && isscalar(x); v = double(x); end
+end
+
+function v = numVec(x)
+v = [];
+if isempty(x); return; end
+if isnumeric(x); v = double(x(:)'); return; end
+if ischar(x) || (isstring(x) && isscalar(x))
+    parts = strsplit(char(x), {',', ' '});
+    for k = 1:numel(parts)
+        nn = str2double(parts{k});
+        if ~isnan(nn); v(end+1) = nn; end %#ok<AGROW>
+    end
+end
 end
 
 function s = firstNonEmpty(varargin)

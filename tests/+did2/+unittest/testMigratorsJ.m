@@ -1150,27 +1150,33 @@ body.depends_on = struct('name', {'element_id'}, 'value', {'sub_7'});
 body.base = struct('id', 'pv_1', 'session_id', 'sess_09', ...
     'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
 body.pyraview = struct('label', 'lfp', 'native_rate', 1000, ...
-    'native_start_time', 0, 'channels', 4, 'data_type', 'int16');
+    'native_start_time', 0, 'channels', 4, 'data_type', 'int16', ...
+    'decimation_sampling_rates', [1000 500]);
+body.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
 
 out = did2.convert.migrators_j.pyraview(body);
 verifyClass(testCase, out, 'cell');
-verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'dataseries_observation')));
-verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+% ONE sampled_body per stored level (2 here) -> 1 obs + 2 bodies + 1 anchor
+sbods = out(strcmp(names, 'sampled_body'));
+verifyEqual(testCase, numel(sbods), 2);
 
-obs  = out{find(strcmp(names, 'dataseries_observation'), 1)};
-sbod = out{find(strcmp(names, 'sampled_body'), 1)};
-% the observation keeps the source id and is body-backed
+obs = out{find(strcmp(names, 'dataseries_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'pv_1');
 verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
 verifyEqual(testCase, obs.subject_statement.variable.name, 'lfp');
 verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_7');
-% the body carries the signal and points back at the observation
-verifyEqual(testCase, depValue(sbod, 'statement'), 'pv_1');
-verifyEqual(testCase, sbod.sampled_body.datum.dtype, 'int16');
-verifyEqual(testCase, sbod.sampled_body.sample_time.dt.source_value, 1e-3);
+% every level body shares the statement (the observation) and owns one file;
+% levels are told apart by dt (native 1/1000 vs decimated 1/500)
+for j = 1:numel(sbods)
+    verifyEqual(testCase, depValue(sbods{j}, 'statement'), 'pv_1');
+    verifyEqual(testCase, sbods{j}.sampled_body.datum.dtype, 'int16');
+    verifyEqual(testCase, numel(sbods{j}.files.file_list), 1);
+end
+dts = sort(cellfun(@(b) b.sampled_body.sample_time.dt.source_value, sbods));
+verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
 end
 
 function v = depValue(b, name)
