@@ -1,6 +1,6 @@
 function v2Body = metadata_editor(preBody)
 %METADATA_EDITOR Brainstorm-J migrator: did_v1 metadata_editor -> a structured
-%   `dataset` entity + the person / organization / award / publication /
+%   `dataset` entity + the person / organization / funding / publication /
 %   web_resource entities it references + the `directed_relation`s that connect
 %   them. Strict J stops storing dataset metadata as one opaque
 %   `metadata_structure` blob (the NDIMetaDataEditorApp serialization) and
@@ -21,7 +21,7 @@ function v2Body = metadata_editor(preBody)
 %                     ORCID -> global_identifier{scheme='ORCID'}.
 %     - organization  author affiliations (affiliation.memberOf.fullName) and
 %                     funders (Funding.funder), name-deduplicated.
-%     - award         one per Funding: title<-awardTitle,
+%     - funding       one per Funding: title<-awardTitle,
 %                     awardNumber -> global_identifier{scheme='AwardNumber'}.
 %     - publication   RelatedPublication: title<-Publication,
 %                     DOI/PMID/PMCID -> global_identifier.
@@ -30,8 +30,8 @@ function v2Body = metadata_editor(preBody)
 %   Bucket 1 -- RELATIONSHIPS -> directed_relation (kept, as edges not fields):
 %     dataset -has_author-> person       (sequence = author position)
 %     person  -affiliated_with-> organization
-%     dataset -funded_by-> award
-%     award   -issued_by-> organization  (the funder)
+%     dataset -funded_by-> funding
+%     funding -issued_by-> organization  (the funder)
 %     dataset -cites-> publication
 %     dataset -documented_by-> web_resource
 %
@@ -103,7 +103,7 @@ for i = 1:numel(authors)
     end
 end
 
-% --- funding -> award entities + funded_by / issued_by relations -------------
+% --- funding -> funding entities + funded_by / issued_by relations -------------
 funding = getStructArray(ms, 'Funding');
 for i = 1:numel(funding)
     f = funding(i);
@@ -113,7 +113,7 @@ for i = 1:numel(funding)
         continue;   % an empty funding slot carries nothing
     end
     awardId = did.ido.unique_id();
-    bodies{end+1} = entityDoc(preBody, 'award', awardId, ...
+    bodies{end+1} = entityDoc(preBody, 'funding', awardId, ...
         struct('title', awardTitle), buildGids({'AwardNumber', awardNumber}), true);
     bodies{end+1} = relationDoc(preBody, datasetId, awardId, 'funded_by', []);
 
@@ -197,7 +197,7 @@ end
 orgId = did.ido.unique_id();
 orgIds(key) = orgId;   % containers.Map is a handle: the update persists to the caller
 orgBody = entityDoc(preBody, 'organization', orgId, ...
-    struct('name', name), emptyGids(), true);
+    struct('full_name', name), emptyGids(), true);
 end
 
 % ===================== global_identifier ================================

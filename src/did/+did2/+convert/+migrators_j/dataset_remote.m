@@ -62,7 +62,7 @@ end
 function d = orgDoc(preBody, docId, name)
 d = entityShell(preBody, 'organization', docId, ...
     struct('scheme', {}, 'value', {}));
-d.organization = struct('name', name);
+d.organization = struct('full_name', name);
 end
 
 function d = entityShell(preBody, className, docId, gids)

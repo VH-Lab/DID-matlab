@@ -767,14 +767,14 @@ end
 function testMetadataEditorDecomposes(testCase)
 out = runJ(metadataEditorDoc());
 bc = out.summary.by_class;
-% dataset + 2 persons + 2 orgs (deduped) + 1 award + 1 publication + 1 web_resource
+% dataset + 2 persons + 2 orgs (deduped) + 1 funding + 1 publication + 1 web_resource
 % + 8 relations (has_author x2, affiliated_with x2, funded_by, issued_by, cites,
 %   documented_by) = 16
 verifyEqual(testCase, numel(out.migrated), 16);
 verifyEqual(testCase, bc.dataset, 1);
 verifyEqual(testCase, bc.person, 2);
 verifyEqual(testCase, bc.organization, 2);   % Analytical Society (deduped) + NIH
-verifyEqual(testCase, bc.award, 1);
+verifyEqual(testCase, bc.funding, 1);
 verifyEqual(testCase, bc.publication, 1);
 verifyEqual(testCase, bc.web_resource, 1);
 verifyEqual(testCase, bc.directed_relation, 8);
@@ -836,7 +836,7 @@ function testMetadataEditorOrgDedupAndAffiliation(testCase)
 out = runJ(metadataEditorDoc());
 % both authors share one org: exactly one 'Analytical Society' organization
 orgs = allOfClassJ(out.migrated, 'organization');
-names = cellfun(@(o) o.get('organization.name'), orgs, 'UniformOutput', false);
+names = cellfun(@(o) o.get('organization.full_name'), orgs, 'UniformOutput', false);
 verifyEqual(testCase, sum(strcmp(names, 'Analytical Society')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'NIH')), 1);
 % both affiliated_with edges point at the single shared org id
@@ -856,9 +856,9 @@ end
 function testMetadataEditorFundingPublicationDocumentation(testCase)
 out = runJ(metadataEditorDoc());
 ds = firstOfClassJ(out.migrated, 'dataset');
-% award: title + award-number identifier; dataset -funded_by-> award -issued_by-> NIH
-award = firstOfClassJ(out.migrated, 'award');
-verifyEqual(testCase, award.get('award.title'), 'BRAIN Initiative');
+% funding: title + award-number identifier; dataset -funded_by-> funding -issued_by-> NIH
+award = firstOfClassJ(out.migrated, 'funding');
+verifyEqual(testCase, award.get('funding.title'), 'BRAIN Initiative');
 agid = award.get('entity.global_identifier');
 verifyEqual(testCase, agid(1).scheme, 'AwardNumber');
 verifyEqual(testCase, agid(1).value, 'R01-12345');
@@ -932,7 +932,7 @@ verifyEqual(testCase, depVal(stored, 'parent'), wr.get('base.id'));
 hosted = relByName(out.migrated, 'hosted_by');
 verifyEqual(testCase, depVal(hosted, 'child'), wr.get('base.id'));
 org = firstOfClassJ(out.migrated, 'organization');
-verifyEqual(testCase, org.get('organization.name'), 'ndicloud-lab');
+verifyEqual(testCase, org.get('organization.full_name'), 'ndicloud-lab');
 verifyEqual(testCase, depVal(hosted, 'parent'), org.get('base.id'));
 end
 
