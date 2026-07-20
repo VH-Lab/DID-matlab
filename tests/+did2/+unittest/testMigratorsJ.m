@@ -1368,6 +1368,63 @@ verifyEqual(testCase, axisVals(2).source_unit, 'deg');
 verifyEqual(testCase, [obs.frequency.value.source_value], [10 2 9 3], 'AbsTol', 1e-9);
 end
 
+function testOrientationDirectionTuningDecomposesComputedScalars(testCase)
+% D-C decomposition (grain A): the vector/fit/significance scalars become computed
+% angle/score observations of the neuron, each with subject_interaction.method =
+% the algorithm and derived_from_1 -> the curve observation. No new subject/relation.
+body = struct();
+body.document_class = struct('class_name', 'orientation_direction_tuning', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_1'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_1')];
+body.base = struct('id', 'odt_1', 'session_id', 'sess_09', 'name', 'odt', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.orientation_direction_tuning = struct( ...
+    'properties', struct('response_units', 'spikes/s'), ...
+    'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
+    'vector', struct('orientation_preference', 47.5, 'circular_variance', 0.3, ...
+        'direction_preference', 227.5, 'direction_circular_variance', 0.6), ...
+    'significance', struct('visual_response_anova_p', 0.002, 'across_stimuli_anova_p', 0.04), ...
+    'fit', struct('orientation_angle_preference', 46.0, 'hwhh', 22.0, ...
+        'orientation_preferred_orthogonal_ratio', 0.8, 'direction_preferred_null_ratio', 0.5));
+
+out = did2.convert.migrators_j.orientation_direction_tuning(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));   % the curve
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+% 4 angles (orientation/direction pref + fitted orientation pref + hwhh),
+% 6 scores (2 circular variance + 2 anova p + OSI + DSI)
+verifyEqual(testCase, sum(strcmp(names, 'angle_observation')), 4);
+verifyEqual(testCase, sum(strcmp(names, 'score_observation')), 6);
+
+curve = out{find(strcmp(names, 'frequency_observation'), 1)};
+op = firstByVariable(out, 'orientation preference');
+verifyEqual(testCase, op.document_class.class_name, 'angle_observation');
+verifyEqual(testCase, op.angle.value(1).source_value, 47.5, 'AbsTol', 1e-9);
+verifyEqual(testCase, op.angle.value(1).source_unit, 'deg');
+verifyEqual(testCase, op.subject_interaction.method.name, 'vector sum');   % computed
+verifyEqual(testCase, depValue(op, 'derived_from_1'), curve.base.id);      % <- the curve
+verifyEqual(testCase, depValue(op, 'subject_id'), 'neuron_1');             % grain A: the neuron
+
+osi = firstByVariable(out, 'orientation selectivity index');
+verifyEqual(testCase, osi.document_class.class_name, 'score_observation');
+verifyEqual(testCase, osi.score.value.value, 0.8, 'AbsTol', 1e-9);
+verifyEqual(testCase, osi.subject_interaction.method.name, 'double gaussian fit');
+verifyEqual(testCase, depValue(osi, 'derived_from_1'), curve.base.id);
+end
+
+function d = firstByVariable(migrated, varName)
+d = [];
+for k = 1:numel(migrated)
+    m = migrated{k};
+    if isfield(m, 'subject_statement') && isfield(m.subject_statement, 'variable') ...
+            && strcmp(m.subject_statement.variable.name, varName)
+        d = m; return;
+    end
+end
+end
+
 function testSpeedTuningDerivesSpeedAxis(testCase)
 % #9 tuning (derived axis): speed_tuning -> frequency_observation whose D10 axis
 % qualifier is SPEED = temporal_frequency / spatial_frequency (deg/s), computed
