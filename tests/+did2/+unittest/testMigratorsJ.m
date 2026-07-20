@@ -1339,6 +1339,61 @@ verifyEqual(testCase, numel(obs.intensity.value), 3);
 verifyEqual(testCase, obs.intensity.value(2).source_value, 0.3, 'AbsTol', 1e-9);
 end
 
+function testOrientationDirectionTuningFoldsWithDirectionAxis(testCase)
+% #9 tuning (shared jTuningFold): orientation_direction_tuning ->
+% frequency_observation (the firing-rate response) with the stimulus DIRECTION
+% (deg) as the D10 axis qualifier + derived_from + anchor. 1 -> 3.
+body = struct();
+body.document_class = struct('class_name', 'orientation_direction_tuning', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'sub_o'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_o')];
+body.base = struct('id', 'od_1', 'session_id', 'sess_09', 'name', 'od', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.orientation_direction_tuning = struct( ...
+    'properties', struct('response_units', 'spikes/s'), ...
+    'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]));
+
+out = did2.convert.migrators_j.orientation_direction_tuning(body);
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
+obs = out{find(strcmp(names, 'frequency_observation'), 1)};
+verifyEqual(testCase, obs.subject_statement.variable.name, 'orientation direction tuning');
+verifyEqual(testCase, obs.subject_statement.parameters.variable.name, 'direction');
+axisVals = obs.subject_statement.parameters.quantity.value;
+verifyEqual(testCase, [axisVals.source_value], [0 90 180 270], 'AbsTol', 1e-9);
+verifyEqual(testCase, axisVals(2).source_unit, 'deg');
+verifyEqual(testCase, [obs.frequency.value.source_value], [10 2 9 3], 'AbsTol', 1e-9);
+end
+
+function testSpeedTuningDerivesSpeedAxis(testCase)
+% #9 tuning (derived axis): speed_tuning -> frequency_observation whose D10 axis
+% qualifier is SPEED = temporal_frequency / spatial_frequency (deg/s), computed
+% from the stored (SF, TF) pair. No stimulus_tuningcurve_id here -> 1 -> 2.
+body = struct();
+body.document_class = struct('class_name', 'speed_tuning', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_s'});
+body.base = struct('id', 'sp_1', 'session_id', 'sess_09', 'name', 'sp', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.speed_tuning = struct( ...
+    'properties', struct('response_units', 'spikes/s'), ...
+    'tuning_curve', struct('spatial_frequency', [0.5 0.5 1], ...
+        'temporal_frequency', [2 4 4], 'mean', [5 8 6]));
+
+out = did2.convert.migrators_j.speed_tuning(body);
+verifyEqual(testCase, numel(out), 2);   % no tuningcurve id -> obs + anchor
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+obs = out{find(strcmp(names, 'frequency_observation'), 1)};
+verifyEqual(testCase, obs.subject_statement.parameters.variable.name, 'speed');
+speedVals = obs.subject_statement.parameters.quantity.value;
+% speed = TF ./ SF = [2/0.5, 4/0.5, 4/1] = [4 8 4] deg/s
+verifyEqual(testCase, [speedVals.source_value], [4 8 4], 'AbsTol', 1e-9);
+verifyEqual(testCase, speedVals(1).source_unit, 'deg/s');
+end
+
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
 % recording. neuron_extracellular -> subject + derived_from relation (unit <- the
