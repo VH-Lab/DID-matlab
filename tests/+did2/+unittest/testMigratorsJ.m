@@ -1373,6 +1373,29 @@ obs = out{find(strcmp(names, 'frequency_observation'), 1)};
 verifyEqual(testCase, obs.frequency.value.source_value, 12.5, 'AbsTol', 1e-9);
 end
 
+function testVmneuralresponseresidualsFold(testCase)
+% #9 (scalar + provenance): vmneuralresponseresiduals -> voltage_observation
+% (mean_residual) + derived_from relation to the vmspikefit + anchor. 1->3.
+body = struct();
+body.document_class = struct('class_name', 'vmneuralresponseresiduals', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'sub_c'), ...
+                    struct('name', 'vmspikefit_id', 'value', 'vf_9')];
+body.base = struct('id', 'rr_1', 'session_id', 'sess_09', 'name', 'rr', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.vmneuralresponseresiduals = struct('mean_residual', 1.7);
+out = did2.convert.migrators_j.vmneuralresponseresiduals(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyEqual(testCase, numel(out), 3);
+obs = out{find(strcmp(names, 'voltage_observation'), 1)};
+verifyEqual(testCase, obs.voltage.value.source_value, 1.7, 'AbsTol', 1e-9);
+rel = out{find(strcmp(names, 'directed_relation'), 1)};
+verifyEqual(testCase, depValue(rel, 'child'), obs.base.id);
+verifyEqual(testCase, depValue(rel, 'parent'), 'vf_9');
+verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
