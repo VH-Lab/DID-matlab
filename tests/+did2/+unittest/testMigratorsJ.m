@@ -1941,6 +1941,46 @@ verifyEqual(testCase, depValue(rel, 'parent'), 'vf_9');
 verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
 end
 
+function testSyncruleMappingEpochnodeToTimeReference(testCase)
+% gov part 3: each epochnode_*'s bare epoch_clock + epoch_id are nested under a
+% time_reference sub-structure (epoch_bounded_reference shape). 1 -> 1; cost,
+% mapping, node metadata, and the deps (syncrule_id + epochid) carry through.
+body = struct();
+body.document_class = struct('class_name', 'syncrule_mapping', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'syncrule_id', 'value', 'sr_1'), ...
+                    struct('name', 'epochid', 'value', 't00001') ];
+body.base = struct('id', 'sm_1', 'session_id', 'sess_09', 'name', 'sm', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+nodeA = struct('epoch_clock', 'dev_local_time', 'epoch_id', 't00001', ...
+    'epoch_session_id', 'sess_09', 'epochprobemap', struct('a', 1), ...
+    'objectclass', 'ndi.time.syncrule.filematch');
+nodeB = struct('epoch_clock', 'utc', 'epoch_id', 't00002', ...
+    'epoch_session_id', 'sess_09', 'epochprobemap', struct(), 'objectclass', '');
+body.syncrule_mapping = struct('cost', 1.0, 'mapping', [1 0; 0 1], ...
+    'epochnode_a', nodeA, 'epochnode_b', nodeB);
+
+out = did2.convert.migrators_j.syncrule_mapping(body);
+verifyEqual(testCase, out.document_class.schema_version, 'V_eta');
+% epoch_clock / epoch_id are no longer bare on the node -- they moved under
+% time_reference (epoch_bounded_reference shape)
+na = out.syncrule_mapping.epochnode_a;
+verifyFalse(testCase, isfield(na, 'epoch_clock'));
+verifyFalse(testCase, isfield(na, 'epoch_id'));
+verifyEqual(testCase, na.time_reference.kind, 'epoch_bounded_reference');
+verifyEqual(testCase, na.time_reference.epoch_clock, 'dev_local_time');
+verifyEqual(testCase, na.time_reference.epoch_id, 't00001');
+% node metadata retained
+verifyEqual(testCase, na.epoch_session_id, 'sess_09');
+verifyEqual(testCase, na.objectclass, 'ndi.time.syncrule.filematch');
+verifyEqual(testCase, out.syncrule_mapping.epochnode_b.time_reference.epoch_clock, 'utc');
+% cost / mapping / deps preserved
+verifyEqual(testCase, out.syncrule_mapping.cost, 1.0);
+verifyEqual(testCase, depValue(out, 'syncrule_id'), 'sr_1');
+verifyEqual(testCase, depValue(out, 'epochid'), 't00001');
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
