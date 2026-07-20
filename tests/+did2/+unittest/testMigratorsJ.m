@@ -1724,6 +1724,48 @@ verifyEqual(testCase, anchor.document_class.class_name, 'session_relative_refere
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 end
 
+function testSpatialFrequencyTuningDecomposesScalars(testCase)
+% D-C decomposition: SF-tuning scalars -> frequency observations (preferred SF /
+% 50%% cutoffs, cyc/deg) + score observations (bandwidth, pass indices, ANOVA p,
+% r2), each subject_interaction.method = algorithm and derived_from_1 -> the curve
+% observation. Grain A. Exercises jDecomposeScalars + the frequency dim.
+body = struct();
+body.document_class = struct('class_name', 'spatial_frequency_tuning', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_2'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_2')];
+body.base = struct('id', 'sf_1', 'session_id', 'sess_09', 'name', 'sf', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.spatial_frequency_tuning = struct( ...
+    'properties', struct('response_units', 'spikes/s'), ...
+    'tuning_curve', struct('spatial_frequency', [0.05 0.1 0.2 0.5], 'mean', [2 8 5 1]), ...
+    'significance', struct('visual_response_anova_p', 0.01, 'across_stimuli_anova_p', 0.03), ...
+    'fitless', struct('pref', 0.12, 'l50', 0.06, 'h50', 0.28, 'bandwidth', 2.2, ...
+        'low_pass_index', 0.3, 'high_pass_index', 0.7), ...
+    'fit_dog', struct('r2', 0.95, 'pref', 0.13));
+
+out = did2.convert.migrators_j.spatial_frequency_tuning(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+% 6 scores: 2 anova + bandwidth + 2 pass indices + fit r2
+verifyEqual(testCase, sum(strcmp(names, 'score_observation')), 6);
+% 5 frequency observations: the response curve + preferred SF + l50 + h50 + fitted pref
+verifyEqual(testCase, sum(strcmp(names, 'frequency_observation')), 5);
+
+curve = out{1};   % base{1} is the response curve
+verifyEqual(testCase, curve.document_class.class_name, 'frequency_observation');
+prefSF = firstByVariable(out, 'preferred spatial frequency');
+verifyEqual(testCase, prefSF.document_class.class_name, 'frequency_observation');
+verifyEqual(testCase, prefSF.frequency.value(1).source_value, 0.12, 'AbsTol', 1e-9);
+verifyEqual(testCase, prefSF.frequency.value(1).source_unit, 'cyc/deg');
+verifyEqual(testCase, prefSF.subject_interaction.method.name, 'empirical');
+verifyEqual(testCase, depValue(prefSF, 'derived_from_1'), curve.base.id);
+verifyEqual(testCase, depValue(prefSF, 'subject_id'), 'neuron_2');
+bw = firstByVariable(out, 'spatial-frequency bandwidth (octaves)');
+verifyEqual(testCase, bw.document_class.class_name, 'score_observation');
+verifyEqual(testCase, bw.score.value.value, 2.2, 'AbsTol', 1e-9);
+end
+
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
 % recording. neuron_extracellular -> subject + derived_from relation (unit <- the

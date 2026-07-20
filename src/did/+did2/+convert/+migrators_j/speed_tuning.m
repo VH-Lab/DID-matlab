@@ -12,15 +12,22 @@ function bodies = speed_tuning(preBody)
 %   unusable (length mismatch / a zero spatial frequency) it falls back to the
 %   temporal-frequency axis. DEFERRED: the separable SF/TF surface (a 2-D map ->
 %   two qualifiers) is a follow-up; the marginal speed axis is the honest scalar.
+%
+%   D-C analysis-tier decomposition (grain A): the interpretable computed scalars
+%   also fold onto the neuron, each with subject_interaction.method = the algorithm
+%   and derived_from_1 -> the curve obs. speed_tuning has NO fitless block, so the
+%   scalars come from the canonical Priebe `fit` (the other Priebe variants
+%   fit_no_speed / fit_fullspeed and the fit CURVES are deferred): the speed tuning
+%   index -> score, the preferred SF/TF -> frequency_observation (cyc/deg | Hz),
+%   ANOVA p / r_squared -> score.
 arguments
     preBody (1,1) struct
 end
-curve = struct();
-if isfield(preBody, 'speed_tuning') && isstruct(preBody.speed_tuning) ...
-        && isfield(preBody.speed_tuning, 'tuning_curve') ...
-        && isstruct(preBody.speed_tuning.tuning_curve)
-    curve = preBody.speed_tuning.tuning_curve;
+blk = struct();
+if isfield(preBody, 'speed_tuning') && isstruct(preBody.speed_tuning)
+    blk = preBody.speed_tuning;
 end
+curve = subBlk(blk, 'tuning_curve');
 sf = getVec(curve, 'spatial_frequency');
 tf = getVec(curve, 'temporal_frequency');
 if ~isempty(sf) && numel(sf) == numel(tf) && all(sf ~= 0)
@@ -28,10 +35,34 @@ if ~isempty(sf) && numel(sf) == numel(tf) && all(sf ~= 0)
 else
     speed = tf;                     % fallback: the temporal-frequency axis
 end
-bodies = jTuningFold(preBody, 'speed_tuning', 'speed', 'deg/s', '', speed);
+base = jTuningFold(preBody, 'speed_tuning', 'speed', 'deg/s', '', speed);
+if numel(base) < 2
+    bodies = base;
+    return;
+end
+curveId  = base{1}.base.id;
+anchorId = base{2}.base.id;
+
+sig = subBlk(blk, 'significance');
+fit = subBlk(blk, 'fit');
+specs = {
+    sig, 'visual_response_anova_p',                  'score',     'visual response anova p',      'anova',       '';
+    sig, 'across_stimuli_anova_p',                   'score',     'across stimuli anova p',       'anova',       '';
+    fit, 'priebe_fit_speed_tuning_index',            'score',     'speed tuning index',           'priebe fit',  '';
+    fit, 'priebe_fit_spatial_frequency_preference',  'frequency', 'preferred spatial frequency',  'priebe fit',  'cyc/deg';
+    fit, 'priebe_fit_temporal_frequency_preference', 'frequency', 'preferred temporal frequency', 'priebe fit',  'Hz';
+    fit, 'r_squared',                                'score',     'fit r-squared',                'priebe fit',  '';
+};
+
+bodies = [base, jDecomposeScalars(preBody, curveId, anchorId, specs)];
+end
+
+function b = subBlk(s, name)
+b = struct();
+if isstruct(s) && isfield(s, name) && isstruct(s.(name)); b = s.(name); end
 end
 
 function v = getVec(s, name)
 v = [];
-if isfield(s, name) && isnumeric(s.(name)); v = double(s.(name)(:)'); end
+if isstruct(s) && isfield(s, name) && isnumeric(s.(name)); v = double(s.(name)(:)'); end
 end
