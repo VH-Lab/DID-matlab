@@ -1724,6 +1724,41 @@ verifyEqual(testCase, anchor.document_class.class_name, 'session_relative_refere
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 end
 
+function testOridirtuningCalcDecomposesAndRetainsParams(testCase)
+% The class the REAL corpus stores (oridirtuning_calc, the calc IS-A its result):
+% it must decompose the result block exactly like orientation_direction_tuning AND
+% retain the calculator's input_parameters on the packet-head curve observation
+% (subject_interaction.method_parameters), so the graph packet stays reproducible.
+body = struct();
+body.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'orientation_direction_tuning'; 'tuning_fit'}, ...
+        'class_version', {'1.0.0'; '1.0.0'; '1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_9'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_9')];
+body.base = struct('id', 'oc_1', 'session_id', 'sess_09', 'name', 'oc', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.oridirtuning_calc = struct('input_parameters', ...
+    struct('independent_variable', 'direction', 'selection', 'best'));
+body.orientation_direction_tuning = struct( ...
+    'properties', struct('response_units', 'spikes/s'), ...
+    'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
+    'vector', struct('orientation_preference', 47.5, 'circular_variance', 0.3), ...
+    'significance', struct('visual_response_anova_p', 0.002));
+
+out = did2.convert.migrators_j.oridirtuning_calc(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+% decomposed exactly like the result migrator: curve + computed scalars
+verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));
+verifyTrue(testCase, any(strcmp(names, 'angle_observation')));
+verifyTrue(testCase, any(strcmp(names, 'score_observation')));
+% the calc's input_parameters ride on the packet-head curve observation
+curve = out{1};
+verifyEqual(testCase, curve.document_class.class_name, 'frequency_observation');
+verifyEqual(testCase, curve.subject_interaction.method_parameters.independent_variable, 'direction');
+verifyEqual(testCase, curve.subject_interaction.method_parameters.selection, 'best');
+verifyEqual(testCase, depValue(curve, 'subject_id'), 'neuron_9');
+end
+
 function testSpatialFrequencyTuningDecomposesScalars(testCase)
 % D-C decomposition: SF-tuning scalars -> frequency observations (preferred SF /
 % 50%% cutoffs, cyc/deg) + score observations (bandwidth, pass indices, ANOVA p,
