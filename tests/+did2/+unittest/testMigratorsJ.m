@@ -742,7 +742,7 @@ ms.License = 'CC-BY-4.0';
 ms.ReleaseDate = '2024-01-15';
 ms.VersionInnovation = 'first release';        % bucket 1 (dataset metadata) -> kept
 ms.Keyword = {'worm', 'calcium imaging'};      % bucket 1 (repeatable) -> kept
-ms.ExperimentalApproach = {'electrophysiology', 'behavior'};  % bucket 1 term -> kept
+ms.ExperimentalApproach = {'electrophysiology', 'behavior'};  % bucket 2 projection -> not stored
 % two authors, both affiliated to the SAME organization (dedup to one org)
 a1 = struct('givenName', 'Ada', 'familyName', 'Lovelace', ...
     'digitalIdentifier', struct('identifier', '0000-0001-2345-6789'), ...
@@ -795,17 +795,17 @@ verifyEqual(testCase, ds.get('dataset.short_name'), 'BigWorm');
 verifyEqual(testCase, ds.get('dataset.version'), '1.0.0');
 verifyEqual(testCase, ds.get('dataset.license'), 'CC-BY-4.0');
 verifyEqual(testCase, ds.get('dataset.release_date'), '2024-01-15');
-% openMINDS DatasetVersion fields now have homes -> stored, not dropped
+% openMINDS DatasetVersion fields with homes -> stored, not dropped
 verifyEqual(testCase, ds.get('dataset.version_innovation'), 'first release');
 kw = ds.get('dataset.keyword');
 verifyEqual(testCase, sort(kw(:)'), {'calcium imaging', 'worm'});
-% experimental_approach is an ontology_term list (open node, name from source)
-ea = ds.get('dataset.experimental_approach');
-verifyEqual(testCase, numel(ea), 2);
-verifyEqual(testCase, {ea.name}, {'electrophysiology', 'behavior'});
-verifyEqual(testCase, ea(1).node, '');            % open until openMINDS IRI resolved
+% experimental_approach is a per-subject PROJECTION -> NOT populated on migration
+% (the field stays for openMINDS import; the did_v1 blob's value is not stored)
+dsb = ds.get('dataset');
+verifyFalse(testCase, isfield(dsb, 'experimental_approach') ...
+    && ~isempty(dsb.experimental_approach));
 % documentation is NOT a dataset field -- it is a relation -> web_resource
-verifyFalse(testCase, isfield(ds.get('dataset'), 'documentation'));
+verifyFalse(testCase, isfield(dsb, 'documentation'));
 end
 
 function testMetadataEditorAuthorsAndOrcid(testCase)

@@ -18,11 +18,11 @@ function v2Body = metadata_editor(preBody)
 %                     license<-License, release_date<-ReleaseDate, keyword<-Keyword,
 %                     support_channel<-SupportChannel, and the openMINDS controlled-term
 %                     fields accessibility<-Accessibility, ethics_assessment<-
-%                     EthicsAssessment, experimental_approach<-ExperimentalApproach
-%                     (each an ontology_term with an open node until the openMINDS
-%                     instance IRI is resolved). (id preserved from base.id.) These
-%                     openMINDS DatasetVersion properties now have field homes
-%                     (openMINDS full-field parity), so they are stored, not dropped.
+%                     EthicsAssessment (ontology_terms, open node until the openMINDS
+%                     IRI is resolved). (id preserved from base.id.) These openMINDS
+%                     DatasetVersion properties have field homes (full-field parity),
+%                     so they are stored, not dropped. experimental_approach is the
+%                     exception -- see bucket 2 (it is a per-subject projection).
 %     - person        one per Author: given_name<-givenName,
 %                     family_name<-familyName, email<-contactInformation.email,
 %                     ORCID -> global_identifier{scheme='ORCID'}.
@@ -42,15 +42,14 @@ function v2Body = metadata_editor(preBody)
 %     dataset -cites-> publication
 %     dataset -documented_by-> web_resource
 %
-%   Bucket 2 -- PER-SUBJECT PROJECTIONS -> dropped. Subjects (SpeciesList /
-%     StrainList / BiologicalSexList), DataType, and TechniquesEmployed are
-%     summaries derivable from the dataset's subject `term_assertion`s /
-%     `subject_statement`s (D-D "drop-fully-with-projection"): storing them here
-%     would duplicate the per-subject truth and drift from it. They are recomputed
-%     as a query-time projection, not persisted. (ExperimentalApproach was
-%     previously dropped here too, but is a dataset-level openMINDS property with its
-%     own field home now, so it moves to bucket 1 -- author intent is preserved on
-%     migration rather than recomputed.)
+%   Bucket 2 -- PER-SUBJECT PROJECTIONS -> not persisted on migration. Subjects
+%     (SpeciesList / StrainList / BiologicalSexList), DataType, TechniquesEmployed,
+%     and ExperimentalApproach are summaries derivable from the dataset's subject
+%     `term_assertion`s / `subject_statement`s (D-D "drop-fully-with-projection"):
+%     storing them here would duplicate the per-subject truth and drift from it, so
+%     they are recomputed as a query-time projection. (The dataset schema keeps an
+%     experimental_approach field, but only openMINDS IMPORT populates it -- a
+%     DatasetVersion states it explicitly; the did_v1 corpus migration does not.)
 %
 %   Bucket 3 -- GUI STATE -> dropped. Any editor-app view state (selected tab,
 %     visibility, tooltips) is not dataset identity. (VersionInnovation is genuine
@@ -95,11 +94,14 @@ datasetBlock = struct( ...
     'accessibility',      termOrBlank(getChar(ms, 'Accessibility')), ...
     'ethics_assessment',  termOrBlank(getChar(ms, 'EthicsAssessment')), ...
     'release_date',       getChar(ms, 'ReleaseDate'));
-% Repeatable fields (empty -> conventional empty list; controlled terms carry an
-% open node until the openMINDS instance IRI is resolved at projection time).
-datasetBlock.keyword               = getStrList(ms, 'Keyword');
-datasetBlock.support_channel       = getStrList(ms, 'SupportChannel');
-datasetBlock.experimental_approach = termList(getStrList(ms, 'ExperimentalApproach'));
+% Repeatable fields (empty -> conventional empty list).
+datasetBlock.keyword         = getStrList(ms, 'Keyword');
+datasetBlock.support_channel = getStrList(ms, 'SupportChannel');
+% experimental_approach is DELIBERATELY not populated here: it is a per-subject
+% projection (bucket 2), derivable from the dataset's subject term_assertions, so
+% the v1 migration leaves it empty. The schema field remains for openMINDS-IMPORT
+% round-trip (an imported DatasetVersion carries it explicitly), just not for the
+% did_v1 corpus migration.
 bodies{end+1} = entityDoc(preBody, 'dataset', datasetId, datasetBlock, ...
     emptyGids(), false);
 
@@ -339,13 +341,4 @@ function t = termOrBlank(str)
 %TERMORBLANK A scalar ontology_term {node, name}; name '' when absent (== the field
 %   blank). node stays open ('') until the openMINDS instance IRI is resolved.
 t = jOntologyTerm('', str);
-end
-
-function terms = termList(strs)
-%TERMLIST Wrap a cellstr as a 1xN ontology_term array {node, name} (node open).
-%   Empty -> a 0x0 ontology_term array (the conventional empty list value).
-terms = struct('node', {}, 'name', {});
-for k = 1:numel(strs)
-    terms(end+1) = jOntologyTerm('', strs{k}); %#ok<AGROW>
-end
 end
