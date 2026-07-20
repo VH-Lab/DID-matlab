@@ -1615,6 +1615,31 @@ verifyEqual(testCase, numel(vals), numel(v1.probe_geometry.channel_positions)); 
 verifyEqual(testCase, vals(1).source_unit, 'um');
 end
 
+function testSite2ChannelMapBecomesCountObservation(testCase)
+% site2channelmap -> one INLINE count_observation (num_sites) on the probe-subject
+% + a session anchor. 1 -> 2. The site->channel wiring map itself is deferred
+% (instrument-layer config, not a subject observation).
+body = struct();
+body.document_class = struct('class_name', 'site2channelmap', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'probe_id'}, 'value', {'probe_6'});
+body.base = struct('id', 's2c_1', 'session_id', 'sess_09', ...
+    'name', 's2c', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.site2channelmap = struct('num_sites', 32, ...
+    'site_to_channel', struct('site', 1, 'channel', 5));
+
+out = did2.convert.migrators_j.site2channelmap(body);
+verifyEqual(testCase, numel(out), 2);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'count_observation')));
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+obs = out{find(strcmp(names, 'count_observation'), 1)};
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'inline');
+verifyEqual(testCase, obs.subject_statement.variable.name, 'number of recording sites');
+verifyEqual(testCase, obs.count.value.value, 32);
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'probe_6');
+end
+
 function testPositionMetadataBecomesTermObservation(testCase)
 % position_metadata carries only DESCRIPTIVE ontology fields -- the numeric
 % coordinates live in the separate element/timeseries doc that element_id points
