@@ -1324,6 +1324,55 @@ verifyEqual(testCase, depValue(sbod, 'statement'), 'sc_1');
 verifyEqual(testCase, sbod.sampled_body.sample_time.n, 400);
 end
 
+function testFitcurveFoldsToGoodnessScore(testCase)
+% #9 (scalar, pragmatic): fitcurve -> a goodness-of-fit score_observation (method =
+% fit function). 1->2. fit_parameters deferred.
+body = struct();
+body.document_class = struct('class_name', 'fitcurve', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_9'});
+body.base = struct('id', 'fc_1', 'session_id', 'sess_09', 'name', 'fc', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.fitcurve = struct('fit_function', 'gaussian', 'goodness_of_fit', 0.94);
+out = did2.convert.migrators_j.fitcurve(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'score_observation')));
+obs = out{find(strcmp(names, 'score_observation'), 1)};
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_9');
+verifyEqual(testCase, obs.score.value.value, 0.94, 'AbsTol', 1e-9);
+verifyEqual(testCase, obs.subject_interaction.method.name, 'gaussian');
+end
+
+function testVmspikefitFoldsToGoodnessScore(testCase)
+body = struct();
+body.document_class = struct('class_name', 'vmspikefit', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_a'});
+body.base = struct('id', 'vf_1', 'session_id', 'sess_09', 'name', 'vf', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.vmspikefit = struct('fit_function', 'exp2', 'r_squared', 0.88);
+out = did2.convert.migrators_j.vmspikefit(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+obs = out{find(strcmp(names, 'score_observation'), 1)};
+verifyEqual(testCase, obs.score.value.value, 0.88, 'AbsTol', 1e-9);
+end
+
+function testSimpleCalcUnitMappedScalar(testCase)
+% #9 (scalar): simple_calc -> a single inline observation typed by units.
+body = struct();
+body.document_class = struct('class_name', 'simple_calc', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_b'});
+body.base = struct('id', 'sm_1', 'session_id', 'sess_09', 'name', 'sm', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.simple_calc = struct('result_value', 12.5, 'result_units', 'Hz');
+out = did2.convert.migrators_j.simple_calc(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));
+obs = out{find(strcmp(names, 'frequency_observation'), 1)};
+verifyEqual(testCase, obs.frequency.value.source_value, 12.5, 'AbsTol', 1e-9);
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
