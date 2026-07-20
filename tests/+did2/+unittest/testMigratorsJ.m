@@ -1179,6 +1179,41 @@ dts = sort(cellfun(@(b) b.sampled_body.sample_time.dt.source_value, sbods));
 verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
 end
 
+function testSpikewavesFoldsToObservationPlusSampledBody(testCase)
+% #9 (direct-subject binary fold, pyraview-twin): spikewaves -> a body-backed
+% dataseries_observation + a sampled_body (one datum per spike) + anchor. 1->3.
+body = struct();
+body.document_class = struct('class_name', 'spikewaves', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'sub_5'), ...
+                    struct('name', 'spike_extraction_parameters_id', 'value', 'sep_1')];
+body.base = struct('id', 'sw_1', 'session_id', 'sess_09', ...
+    'name', 'sw', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.spikewaves = struct('extraction_name', 'thresh_5sd', ...
+    'num_spikes', 120, 'samples_per_spike', 32, 'sample_rate', 30000);
+body.files = struct('file_list', {{'spikewaves.vsw', 'spiketimes.bin'}});
+
+out = did2.convert.migrators_j.spikewaves(body);
+verifyClass(testCase, out, 'cell');
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'dataseries_observation')));
+verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+
+obs  = out{find(strcmp(names, 'dataseries_observation'), 1)};
+sbod = out{find(strcmp(names, 'sampled_body'), 1)};
+verifyEqual(testCase, obs.base.id, 'sw_1');
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
+verifyEqual(testCase, obs.subject_statement.variable.name, 'thresh_5sd');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_5');
+verifyEqual(testCase, depValue(sbod, 'statement'), 'sw_1');
+% one datum per spike: n = num_spikes, datum shape = samples_per_spike
+verifyEqual(testCase, sbod.sampled_body.sample_time.n, 120);
+verifyEqual(testCase, sbod.sampled_body.datum.shape, 32);
+verifyEqual(testCase, numel(sbod.files.file_list), 2);
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
