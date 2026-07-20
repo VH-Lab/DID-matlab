@@ -40,7 +40,6 @@ numSpikes      = numScalar(getField(blk, 'num_spikes'), 0);
 samplesPerSpike = numScalar(getField(blk, 'samples_per_spike'), 0);
 
 anchorId = did.ido.unique_id();
-bodyId   = did.ido.unique_id();
 
 % ---- the session-relative time anchor ('during') ----------------------------
 anchor = struct();
@@ -73,16 +72,10 @@ obs.voltage = struct();   % value is body-backed
 % ---- the sampled_body holding the waveform snippets -------------------------
 % One datum per spike (shape = [samples_per_spike]); the timeline is the (irregular)
 % spike events, n = num_spikes.
-body = struct();
-body.document_class = classBlock('sampled_body', {'data_body'}, TV);
-body.depends_on = struct('name', {'statement'}, 'value', {obsId});
-body.base = struct('id', bodyId, 'session_id', sessionId, ...
-    'name', 'migrated_spikewaves_body', 'datestamp', datestamp);
-body.sampled_body = struct( ...
-    'datum', struct('kind', 'array', 'dtype', '', 'unit', '', 'shape', samplesPerSpike), ...
-    'sample_time', struct('regular', false, ...
-        't0', durationComposite(0), 'dt', durationComposite(0), 'n', numSpikes), ...
-    'summary', struct('value', struct(), 'time', struct()));
+body = jSampledBody(obsId, sessionId, datestamp, 'migrated_spikewaves_body', ...
+    struct('kind', 'array', 'dtype', '', 'unit', '', 'shape', samplesPerSpike), ...
+    struct('regular', false, ...
+        't0', durationComposite(0), 'dt', durationComposite(0), 'n', numSpikes));
 % carry the waveform + spiketime bytes over verbatim (this doc owns them now).
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end

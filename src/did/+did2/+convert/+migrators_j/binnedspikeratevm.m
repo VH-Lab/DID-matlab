@@ -34,7 +34,6 @@ numBins = numScalar(getField(blk, 'num_bins'), 0);
 binSize = durationOf(getField(blk, 'bin_size'));
 
 anchorId = did.ido.unique_id();
-bodyId   = did.ido.unique_id();
 
 % ---- the session-relative time anchor ('during') ----------------------------
 anchor = struct();
@@ -64,16 +63,9 @@ obs.subject_observation = struct();
 obs.frequency = struct();   % value is body-backed
 
 % ---- the sampled_body holding the binned rate series ------------------------
-body = struct();
-body.document_class = classBlock('sampled_body', {'data_body'}, TV);
-body.depends_on = struct('name', {'statement'}, 'value', {obsId});
-body.base = struct('id', bodyId, 'session_id', sessionId, ...
-    'name', 'migrated_binnedrate_body', 'datestamp', datestamp);
-body.sampled_body = struct( ...
-    'datum', struct('kind', 'scalar', 'dtype', '', 'unit', 'Hz', 'shape', []), ...
-    'sample_time', struct('regular', true, ...
-        't0', durationComposite(0), 'dt', binSize, 'n', numBins), ...
-    'summary', struct('value', struct(), 'time', struct()));
+body = jSampledBody(obsId, sessionId, datestamp, 'migrated_binnedrate_body', ...
+    struct('kind', 'scalar', 'dtype', '', 'unit', 'Hz', 'shape', []), ...
+    struct('regular', true, 't0', durationComposite(0), 'dt', binSize, 'n', numBins));
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 

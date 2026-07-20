@@ -51,7 +51,6 @@ dt       = 0.0;
 if nativeRt > 0; dt = 1.0 / nativeRt; end
 
 anchorId = did.ido.unique_id();
-bodyId   = did.ido.unique_id();
 
 % ---- the session-relative time anchor ('during') ----------------------------
 anchor = struct();
@@ -111,16 +110,10 @@ for k = 1:numel(fileList)
     t0_k = t0;
     if k <= numel(starts); t0_k = starts(k); end
 
-    b = struct();
-    b.document_class = classBlock('sampled_body', {'data_body'}, TV);
-    b.depends_on = struct('name', {'statement'}, 'value', {obsId});
-    b.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-        'name', 'migrated_signal_body', 'datestamp', datestamp);
-    b.sampled_body = struct( ...
-        'datum', struct('kind', 'array', 'dtype', dataType, 'unit', '', 'shape', channels), ...
-        'sample_time', struct('regular', true, ...
-            't0', durationComposite(t0_k), 'dt', durationComposite(dt_k), 'n', 0), ...
-        'summary', struct('value', struct(), 'time', struct()));
+    b = jSampledBody(obsId, sessionId, datestamp, 'migrated_signal_body', ...
+        struct('kind', 'array', 'dtype', dataType, 'unit', '', 'shape', channels), ...
+        struct('regular', true, ...
+            't0', durationComposite(t0_k), 'dt', durationComposite(dt_k), 'n', 0));
     % this body owns exactly its level's file
     b.files = struct('file_list', {fileList(k)});
     bodies{end+1} = b; %#ok<AGROW>

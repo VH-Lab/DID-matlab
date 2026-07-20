@@ -38,7 +38,6 @@ obsId     = baseField(preBody, 'id', did.ido.unique_id());
 numSpikes = numScalar(getField(blk, 'num_spikes'), 0);
 
 anchorId = did.ido.unique_id();
-bodyId   = did.ido.unique_id();
 
 % ---- the session-relative time anchor ('during') ----------------------------
 anchor = struct();
@@ -65,16 +64,10 @@ obs.subject_observation = struct();
 obs.count = struct();   % value is body-backed
 
 % ---- the sampled_body: one cluster index per spike --------------------------
-body = struct();
-body.document_class = classBlock('sampled_body', {'data_body'}, TV);
-body.depends_on = struct('name', {'statement'}, 'value', {obsId});
-body.base = struct('id', bodyId, 'session_id', sessionId, ...
-    'name', 'migrated_spike_clusters_body', 'datestamp', datestamp);
-body.sampled_body = struct( ...
-    'datum', struct('kind', 'scalar', 'dtype', '', 'unit', '', 'shape', []), ...
-    'sample_time', struct('regular', false, ...
-        't0', durationComposite(0), 'dt', durationComposite(0), 'n', numSpikes), ...
-    'summary', struct('value', struct(), 'time', struct()));
+body = jSampledBody(obsId, sessionId, datestamp, 'migrated_spike_clusters_body', ...
+    struct('kind', 'scalar', 'dtype', '', 'unit', '', 'shape', []), ...
+    struct('regular', false, ...
+        't0', durationComposite(0), 'dt', durationComposite(0), 'n', numSpikes));
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 
