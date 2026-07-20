@@ -1470,6 +1470,178 @@ verifyEqual(testCase, vals(1).source_unit, 'micrometer');
 verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_3');
 end
 
+function testOpenmindsElementBecomesTermAssertion(testCase)
+% openminds_element mirrors openminds_subject, but the openMINDS entity is about
+% an ELEMENT/DEVICE: the subject is carried from element_id (fallback subject_id).
+% Each openMINDS controlled-term entity decomposes into one term_assertion on the
+% element-subject: the entity type names the variable; the ontology id is the value.
+body = struct();
+body.document_class = struct('class_name', 'openminds_element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+body.depends_on = struct('name', {'element_id', 'openminds'}, 'value', {'elem_9', ''});
+body.base = struct('id', 'ome_1', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Species', ...
+    'matlab_type', 'openminds.controlledterms.Species', ...
+    'fields', struct('name', 'Caenorhabditis elegans', ...
+        'preferredOntologyIdentifier', 'NCBITaxon:6239', 'synonym', 'C. elegans'));
+
+out = did2.convert.migrators_j.openminds_element(body);
+verifyEqual(testCase, numel(out), 1);
+a = out{1};
+verifyEqual(testCase, a.document_class.class_name, 'term_assertion');
+verifyEqual(testCase, a.subject_statement.variable.name, 'species');
+verifyEqual(testCase, a.term_assertion.value.node, 'NCBITaxon:6239');
+verifyEqual(testCase, a.term_assertion.value.name, 'Caenorhabditis elegans');
+verifyEqual(testCase, depValue(a, 'subject_id'), 'elem_9');
+supers = a.document_class.superclasses;
+verifyEqual(testCase, supers(1).class_name, 'subject_assertion');
+end
+
+function testOpenmindsStimulusBecomesTermAssertion(testCase)
+% Same decomposition as openminds_subject, but the stimulus is the subject:
+% the subject_id is carried from the stimulus_id dependency.
+body = struct();
+body.document_class = struct('class_name', 'openminds_stimulus', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+body.depends_on = struct('name', {'stimulus_id', 'openminds'}, 'value', {'stim_042', ''});
+body.base = struct('id', 'om_s1', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Species', ...
+    'matlab_type', 'openminds.controlledterms.Species', ...
+    'fields', struct('name', 'Caenorhabditis elegans', ...
+        'preferredOntologyIdentifier', 'NCBITaxon:6239', 'synonym', 'C. elegans'));
+
+out = did2.convert.migrators_j.openminds_stimulus(body);
+verifyEqual(testCase, out.document_class.class_name, 'term_assertion');
+verifyEqual(testCase, out.document_class.superclasses(1).class_name, 'subject_assertion');
+verifyEqual(testCase, out.subject_statement.variable.name, 'species');
+verifyEqual(testCase, out.term_assertion.value.node, 'NCBITaxon:6239');
+verifyEqual(testCase, out.term_assertion.value.name, 'Caenorhabditis elegans');
+verifyEqual(testCase, depValue(out, 'subject_id'), 'stim_042');
+end
+
+function testJrclustClustersFoldsToCountObservation(testCase)
+% #9 (pattern 1, body-backed): jrclust_clusters (per-spike JRCLUST cluster
+% labels) -> count_observation + sampled_body (one datum per spike) + anchor.
+% 1->3. No num_spikes metadata on this class, so sample_time.n == 0.
+body = struct();
+body.document_class = struct('class_name', 'jrclust_clusters', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'app'}, 'class_version', {'1.0.0'; '1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_8'});
+body.base = struct('id', 'jc_1', 'session_id', 'sess_09', ...
+    'name', 'jc', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.jrclust_clusters = struct('res_mat_md5_checksum', 'd41d8cd98f00b204e9800998ecf8427e');
+body.files = struct('file_list', {{'clusters.mat'}});
+
+out = did2.convert.migrators_j.jrclust_clusters(body);
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'count_observation')));
+verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+
+obs = out{find(strcmp(names, 'count_observation'), 1)};
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_8');
+
+sbod = out{find(strcmp(names, 'sampled_body'), 1)};
+verifyEqual(testCase, depValue(sbod, 'statement'), obs.base.id);   % == 'jc_1'
+verifyEqual(testCase, sbod.sampled_body.datum.kind, 'scalar');
+verifyEqual(testCase, sbod.sampled_body.sample_time.n, 0);         % unknown length
+verifyEqual(testCase, sbod.files.file_list{1}, 'clusters.mat');
+end
+
+function testSpikeInterfaceSortingOutputsBecomesCountObservation(testCase)
+% #9 fold: spike_interface_sorting_outputs -> one INLINE count_observation
+% (num_units = the cardinality of the sorted-unit set) on the recording subject
+% (carried from element_id) + a shared session anchor. 1 -> 2. Per-unit subjects
+% are NOT minted here (neuron_extracellular's / the NDI second pass's job).
+body = struct();
+body.document_class = struct('class_name', 'spike_interface_sorting_outputs', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_4'});
+body.base = struct('id', 'sis_1', 'session_id', 'sess_09', ...
+    'name', 'sis', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.spike_interface_sorting_outputs = struct('sorter_name', 'kilosort', ...
+    'num_units', 12, 'sample_rate', 30000);
+
+out = did2.convert.migrators_j.spike_interface_sorting_outputs(body);
+verifyClass(testCase, out, 'cell');
+verifyEqual(testCase, numel(out), 2);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'count_observation')));
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+
+obs = out{find(strcmp(names, 'count_observation'), 1)};
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'inline');
+verifyEqual(testCase, obs.subject_statement.variable.name, 'number of sorted units');
+verifyEqual(testCase, obs.count.value.value, 12);
+verifyEqual(testCase, obs.count.value.approximate, false);
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_4');
+anchor = out{find(strcmp(names, 'session_relative_reference'), 1)};
+verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.base.id);
+verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
+end
+
+function testProbeGeometryBecomesLengthObservation(testCase)
+% probe_geometry -> a length_observation whose INLINE value is the FLATTENED
+% channel_positions matrix (one measurement per coordinate) about the
+% probe-subject + anchor, plus a probe-type term_assertion. 1 -> 3.
+v1 = struct();
+v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_5'});
+v1.base = struct('id', 'pg_1', 'session_id', 'sess_09', 'name', 'pg', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.probe_geometry = struct('num_channels', 2, ...
+    'channel_positions', [0 0; 20 0], ...
+    'position_units', 'um', ...
+    'probe_type', 'linear');
+
+out = did2.convert.migrators_j.probe_geometry(v1);
+obs = [];
+for k = 1:numel(out)
+    if strcmp(out{k}.document_class.class_name, 'length_observation')
+        obs = out{k}; break;
+    end
+end
+verifyNotEmpty(testCase, obs);
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'inline');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'probe_5');
+vals = obs.length.value;
+verifyEqual(testCase, numel(vals), numel(v1.probe_geometry.channel_positions));  % == 4
+verifyEqual(testCase, vals(1).source_unit, 'um');
+end
+
+function testPositionMetadataBecomesTermObservation(testCase)
+% position_metadata carries only DESCRIPTIVE ontology fields -- the numeric
+% coordinates live in the separate element/timeseries doc that element_id points
+% at, NOT here. So it folds to a term_observation of the element-subject naming
+% the measurement term (value = the ontologyNode CURIE), plus a session anchor.
+% 1 -> 2. No values are invented.
+body = struct();
+body.document_class = struct('class_name', 'position_metadata', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+body.depends_on = struct('name', {'element_id'}, 'value', {'pos_elem_7'});
+body.base = struct('id', 'pm_01', 'session_id', 'sess_09', ...
+    'name', 'pm', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.position_metadata = struct('ontology_node', 'EMPTY:0000200', ...
+    'units', 'NCIT:C48367', 'dimensions', 'NCIT:C44477,NCIT:C44478');
+
+bodies = did2.convert.migrators_j.position_metadata(body);
+verifyEqual(testCase, numel(bodies), 2);              % obs + anchor
+obs = bodies{1};
+verifyEqual(testCase, obs.document_class.class_name, 'term_observation');
+verifyEqual(testCase, obs.term_observation.value.node, 'EMPTY:0000200');
+verifyEqual(testCase, obs.subject_statement.variable.name, 'position');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'pos_elem_7');
+anchor = bodies{2};
+verifyEqual(testCase, anchor.document_class.class_name, 'session_relative_reference');
+verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
+end
+
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
 % recording. neuron_extracellular -> subject + derived_from relation (unit <- the
