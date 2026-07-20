@@ -46,8 +46,11 @@ anchor.time_reference = struct('is_approximate', true);
 anchor.session_relative_reference = struct('relation', 'during');
 
 % ---- the discoverable, body-backed dataseries_observation -------------------
+% a binned spike RATE is a frequency (Hz) -> the quantity-typed leaf
+% frequency_observation (not the abstract/collapsed dataseries_observation branch).
+% The rate value lives in the body.
 obs = struct();
-obs.document_class = classBlock('dataseries_observation', {'subject_observation'}, TV);
+obs.document_class = classBlock('frequency_observation', {'subject_observation', 'frequency'}, TV);
 obs.depends_on = [ ...
     struct('name', 'subject_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
@@ -58,7 +61,7 @@ obs.subject_statement = struct( ...
     'storage_mode', 'body');
 obs.subject_interaction = struct('method', otTerm(''));
 obs.subject_observation = struct();
-obs.dataseries_observation = struct();
+obs.frequency = struct();   % value is body-backed
 
 % ---- the sampled_body holding the binned rate series ------------------------
 body = struct();

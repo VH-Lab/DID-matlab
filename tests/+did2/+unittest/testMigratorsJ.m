@@ -1139,7 +1139,7 @@ end
 
 function testPyraviewFoldsToObservationPlusSampledBody(testCase)
 % #9 pattern-setter: pyraview (a multi-resolution signal pyramid) dissolves into a
-% body-backed dataseries_observation + a sampled_body (native signal) + a session
+% body-backed voltage_observation + a sampled_body (native signal) + a session
 % anchor. 1->3. The decimated levels are dropped (regenerable cache).
 body = struct();
 body.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
@@ -1157,13 +1157,13 @@ body.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
 out = did2.convert.migrators_j.pyraview(body);
 verifyClass(testCase, out, 'cell');
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'dataseries_observation')));
+verifyTrue(testCase, any(strcmp(names, 'voltage_observation')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 % ONE sampled_body per stored level (2 here) -> 1 obs + 2 bodies + 1 anchor
 sbods = out(strcmp(names, 'sampled_body'));
 verifyEqual(testCase, numel(sbods), 2);
 
-obs = out{find(strcmp(names, 'dataseries_observation'), 1)};
+obs = out{find(strcmp(names, 'voltage_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'pv_1');
 verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
 verifyEqual(testCase, obs.subject_statement.variable.name, 'lfp');
@@ -1181,7 +1181,7 @@ end
 
 function testSpikewavesFoldsToObservationPlusSampledBody(testCase)
 % #9 (direct-subject binary fold, pyraview-twin): spikewaves -> a body-backed
-% dataseries_observation + a sampled_body (one datum per spike) + anchor. 1->3.
+% voltage_observation + a sampled_body (one datum per spike) + anchor. 1->3.
 body = struct();
 body.document_class = struct('class_name', 'spikewaves', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -1197,11 +1197,11 @@ out = did2.convert.migrators_j.spikewaves(body);
 verifyClass(testCase, out, 'cell');
 verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'dataseries_observation')));
+verifyTrue(testCase, any(strcmp(names, 'voltage_observation')));
 verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 
-obs  = out{find(strcmp(names, 'dataseries_observation'), 1)};
+obs  = out{find(strcmp(names, 'voltage_observation'), 1)};
 sbod = out{find(strcmp(names, 'sampled_body'), 1)};
 verifyEqual(testCase, obs.base.id, 'sw_1');
 verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
@@ -1215,7 +1215,7 @@ verifyEqual(testCase, numel(sbod.files.file_list), 2);
 end
 
 function testBinnedSpikeRateFoldsToObservationPlusSampledBody(testCase)
-% #9 (direct-subject regular timeseries): binnedspikeratevm -> dataseries_observation
+% #9 (direct-subject regular timeseries): binnedspikeratevm -> frequency_observation
 % + a sampled_body (one scalar rate per bin; regular, dt = bin_size) + anchor.
 body = struct();
 body.document_class = struct('class_name', 'binnedspikeratevm', 'class_version', '1.0.0', ...
@@ -1229,7 +1229,7 @@ body.files = struct('file_list', {{'rate.bin'}});
 out = did2.convert.migrators_j.binnedspikeratevm(body);
 verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'dataseries_observation')));
+verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));
 sbod = out{find(strcmp(names, 'sampled_body'), 1)};
 verifyEqual(testCase, depValue(sbod, 'statement'), 'br_1');
 verifyEqual(testCase, sbod.sampled_body.datum.kind, 'scalar');

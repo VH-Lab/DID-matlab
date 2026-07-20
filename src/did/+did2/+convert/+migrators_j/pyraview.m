@@ -62,9 +62,14 @@ anchor.base = struct('id', anchorId, 'session_id', sessionId, ...
 anchor.time_reference = struct('is_approximate', true);
 anchor.session_relative_reference = struct('relation', 'during');
 
-% ---- the discoverable, body-backed dataseries_observation -------------------
+% ---- the discoverable, body-backed voltage_observation ----------------------
+% A pyraview is a decimated view of a continuous recorded signal -> default to the
+% voltage_observation quantity leaf (the abstract/collapsed dataseries_observation
+% branch is not a valid concrete class). NOTE: the physical quantity is not carried
+% on the doc; voltage is the dominant NDI case (ephys), but a non-voltage pyraview
+% would need per-signal quantity typing (a discovery/second-pass refinement).
 obs = struct();
-obs.document_class = classBlock('dataseries_observation', {'subject_observation'}, TV);
+obs.document_class = classBlock('voltage_observation', {'subject_observation', 'voltage'}, TV);
 obs.depends_on = [ ...
     struct('name', 'subject_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
@@ -77,9 +82,7 @@ obs.subject_statement = struct( ...
     'storage_mode', 'body');
 obs.subject_interaction = struct('method', otTerm(''));
 obs.subject_observation = struct();
-% empty geometry block -- axes/channels/label are optional and the value detail
-% lives on the body's datum/sample_time; ensureClassBlocks fills the defaults.
-obs.dataseries_observation = struct();
+obs.voltage = struct();   % value is body-backed
 
 % ---- one sampled_body per stored resolution level ---------------------------
 % Each pyramid level is its own sampled_body, all sharing the statement (the

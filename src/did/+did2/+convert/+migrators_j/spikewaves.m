@@ -52,8 +52,12 @@ anchor.time_reference = struct('is_approximate', true);
 anchor.session_relative_reference = struct('relation', 'during');
 
 % ---- the discoverable, body-backed dataseries_observation -------------------
+% spike waveforms are a voltage measurement -> the quantity-typed leaf
+% voltage_observation (the dataseries/timeseries/imageseries_observation branch is
+% abstract/collapsed; the go-forward observation is the data-type leaf, as
+% image_stack uses image_observation). The voltage value lives in the body.
 obs = struct();
-obs.document_class = classBlock('dataseries_observation', {'subject_observation'}, TV);
+obs.document_class = classBlock('voltage_observation', {'subject_observation', 'voltage'}, TV);
 obs.depends_on = [ ...
     struct('name', 'subject_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
@@ -64,7 +68,7 @@ obs.subject_statement = struct( ...
     'storage_mode', 'body');
 obs.subject_interaction = struct('method', otTerm(''));
 obs.subject_observation = struct();
-obs.dataseries_observation = struct();
+obs.voltage = struct();   % value is body-backed
 
 % ---- the sampled_body holding the waveform snippets -------------------------
 % One datum per spike (shape = [samples_per_spike]); the timeline is the (irregular)
