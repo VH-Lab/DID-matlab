@@ -1238,6 +1238,35 @@ verifyEqual(testCase, sbod.sampled_body.sample_time.n, 600);
 verifyEqual(testCase, sbod.sampled_body.sample_time.dt.source_value, 0.05, 'AbsTol', 1e-12);
 end
 
+function testVmspikesummaryDecomposesToInlineScalarObservations(testCase)
+% #9 scalar-decomposition pattern: vmspikesummary -> one INLINE quantity
+% observation per summary scalar (voltage/frequency/count/duration) + a shared
+% anchor. 1 -> (N+1). Values are inline (storage_mode 'inline').
+body = struct();
+body.document_class = struct('class_name', 'vmspikesummary', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_2'});
+body.base = struct('id', 'vs_1', 'session_id', 'sess_09', ...
+    'name', 'vs', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.vmspikesummary = struct('mean_vm', -62.5, 'mean_firing_rate', 8.3, ...
+    'num_spikes', 249, 'recording_duration', 30.0);
+
+out = did2.convert.migrators_j.vmspikesummary(body);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+% 4 scalar observations + 1 anchor
+verifyEqual(testCase, numel(out), 5);
+for want = {'voltage_observation', 'frequency_observation', 'count_observation', ...
+        'duration_observation', 'session_relative_reference'}
+    verifyTrue(testCase, any(strcmp(names, want{1})), want{1});
+end
+volt = out{find(strcmp(names, 'voltage_observation'), 1)};
+verifyEqual(testCase, volt.subject_statement.storage_mode, 'inline');
+verifyEqual(testCase, depValue(volt, 'subject_id'), 'sub_2');
+verifyEqual(testCase, volt.voltage.value.source_value, -62.5, 'AbsTol', 1e-9);
+freq = out{find(strcmp(names, 'frequency_observation'), 1)};
+verifyEqual(testCase, freq.frequency.value.source_value, 8.3, 'AbsTol', 1e-9);
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
