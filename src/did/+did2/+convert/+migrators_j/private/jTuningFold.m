@@ -52,8 +52,8 @@ obs = jStartInteraction(preBody, leaf, 'subject_observation', {mixin}, ...
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
 obs.subject_statement.parameters = struct( ...
     'variable', jOntologyTerm('', axisName), ...
-    'quantity', struct('value', measArray(indep, axisUnit)));
-obs.(mixin) = struct('value', measArray(response, respUnits));   % length-N inline value
+    'quantity', struct('value', jMeasureArray(indep, axisUnit)));
+obs.(mixin) = struct('value', jMeasureArray(response, respUnits));   % length-N inline value
 
 bodies = {obs, anchor};
 tcId = subDep(preBody, 'stimulus_tuningcurve_id');
@@ -82,15 +82,6 @@ rel.depends_on = [struct('name', 'child', 'value', childId), ...
 rel.base = struct('id', did.ido.unique_id(), 'session_id', sid, ...
     'name', 'derived_from', 'datestamp', ds);
 rel.directed_relation = struct('relation', jOntologyTerm('ro:0001000', 'derived_from'));
-end
-
-function m = measArray(vals, unit)
-% a length-N inline value: an array of measurement composites (one per reading).
-m = struct('source_unit', {}, 'source_value', {}, 'approximate', {});
-for k = 1:numel(vals)
-    m(k) = struct('source_unit', char(unit), 'source_value', double(vals(k)), ...
-        'approximate', false);
-end
 end
 
 function [leaf, mixin] = tuningLeaf(unit)

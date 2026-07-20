@@ -1394,6 +1394,82 @@ verifyEqual(testCase, [speedVals.source_value], [4 8 4], 'AbsTol', 1e-9);
 verifyEqual(testCase, speedVals(1).source_unit, 'deg/s');
 end
 
+function testOntologyImageBecomesTermObservation(testCase)
+% ontology_image -> term_observation (the imaged region) about the imaged
+% subject + the shared session anchor. 1 -> 2.
+v1 = struct();
+v1.document_class = struct('class_name', 'ontology_image', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_9'});
+v1.base = struct('id', 'oi_1', 'session_id', 'sess_09', 'name', 'oi', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.ontology_image = struct('region', ...
+    struct('node', 'uberon:0002436', 'name', 'primary visual cortex'));
+
+out = did2.convert.migrators_j.ontology_image(v1);
+verifyEqual(testCase, numel(out), 2);
+o = out{1};
+verifyEqual(testCase, o.document_class.class_name, 'term_observation');
+verifyEqual(testCase, o.subject_statement.variable.name, 'imaged region');
+verifyEqual(testCase, o.term_observation.value.node, 'uberon:0002436');
+verifyEqual(testCase, o.term_observation.value.name, 'primary visual cortex');
+verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_9');
+end
+
+function testElectrodeOffsetVoltageBecomesVoltageObservation(testCase)
+% electrode_offset_voltage -> a voltage_observation whose INLINE value is the
+% per-channel offsets (one measurement per channel) about the probe-subject +
+% anchor. 1 -> 2.
+v1 = struct();
+v1.document_class = struct('class_name', 'electrode_offset_voltage', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_7'});
+v1.base = struct('id', 'eo_1', 'session_id', 'sess_09', 'name', 'eo', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.electrode_offset_voltage = struct('offset_voltages', [0.5 -0.3 1.2 0.0], ...
+    'voltage_units', 'mV');
+
+out = did2.convert.migrators_j.electrode_offset_voltage(v1);
+verifyEqual(testCase, numel(out), 2);
+o = out{1};
+verifyEqual(testCase, o.document_class.class_name, 'voltage_observation');
+verifyEqual(testCase, o.subject_statement.storage_mode, 'inline');
+verifyEqual(testCase, depValue(o, 'subject_id'), 'probe_7');
+vals = o.voltage.value;
+verifyEqual(testCase, numel(vals), 4);
+verifyEqual(testCase, [vals.source_value], [0.5 -0.3 1.2 0.0], 'AbsTol', 1e-9);
+verifyEqual(testCase, vals(1).source_unit, 'mV');
+end
+
+function testDistanceMetadataBecomesLengthObservation(testCase)
+% distance_metadata -> a length_observation (numeric_values as the inline value)
+% about the element-subject + anchor. 1 -> 2. The measurement term names the
+% spine variable; the units ontology term supplies source_unit.
+v1 = struct();
+v1.document_class = struct('class_name', 'distance_metadata', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_3'});
+v1.base = struct('id', 'dm_1', 'session_id', 'sess_09', 'name', 'dm', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.distance_metadata = struct( ...
+    'endpoints', struct('label', 'soma-to-tip', ...
+        'measurement', struct('node', 'PATO:0000915', 'name', 'distance'), ...
+        'numeric_values', [42.5 43.1]), ...
+    'units', struct('node', 'uo:0000017', 'name', 'micrometer'));
+
+out = did2.convert.migrators_j.distance_metadata(v1);
+verifyEqual(testCase, numel(out), 2);
+o = out{1};
+verifyEqual(testCase, o.document_class.class_name, 'length_observation');
+verifyEqual(testCase, o.subject_statement.variable.name, 'distance');
+vals = o.length.value;
+verifyEqual(testCase, numel(vals), 2);
+verifyEqual(testCase, [vals.source_value], [42.5 43.1], 'AbsTol', 1e-9);
+verifyEqual(testCase, vals(1).source_unit, 'micrometer');
+verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_3');
+end
+
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
 % recording. neuron_extracellular -> subject + derived_from relation (unit <- the
