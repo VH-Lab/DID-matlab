@@ -1510,12 +1510,10 @@ verifyEqual(testCase, [vals.source_value], [0.5 -0.3 1.2 0.0], 'AbsTol', 1e-9);
 verifyEqual(testCase, vals(1).source_unit, 'mV');
 end
 
-function testDistanceMetadataBecomesEndpointRelation(testCase)
-% The v1 distance_metadata is FLAT (ontologyNode_A/_B = the two endpoint subject
-% doc ids; numeric values empty -- the distance lives on the element). Its endpoint
-% IDENTITIES become a measured_distance_to directed_relation (child A -> parent B),
-% both id-preserved so the relation resolves. 1 -> 1. (The length_observation with
-% values is Part B, the NDI second-pass element-data decomposition -- TaskList #18.)
+function testDistanceMetadataBecomesLengthObservation(testCase)
+% distance_metadata -> a length_observation (numeric_values as the inline value)
+% about the element-subject + anchor. 1 -> 2. The measurement term names the
+% spine variable; the units ontology term supplies source_unit.
 v1 = struct();
 v1.document_class = struct('class_name', 'distance_metadata', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -1523,19 +1521,21 @@ v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_3'});
 v1.base = struct('id', 'dm_1', 'session_id', 'sess_09', 'name', 'dm', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 v1.distance_metadata = struct( ...
-    'ontologyNode_A', 'worm_sub_1', 'integerIDs_A', 1, ...
-    'ontologyNumericValues_A', [], 'ontologyStringValues_A', 'worm_1', ...
-    'ontologyNode_B', 'patch_row_7', 'integerIDs_B', [3 4], ...
-    'ontologyNumericValues_B', [], 'ontologyStringValues_B', 'patch_3,patch_4', ...
-    'units', 'NCIT:C48367');
+    'endpoints', struct('label', 'soma-to-tip', ...
+        'measurement', struct('node', 'PATO:0000915', 'name', 'distance'), ...
+        'numeric_values', [42.5 43.1]), ...
+    'units', struct('node', 'uo:0000017', 'name', 'micrometer'));
 
 out = did2.convert.migrators_j.distance_metadata(v1);
-verifyEqual(testCase, numel(out), 1);
-rel = out{1};
-verifyEqual(testCase, rel.document_class.class_name, 'directed_relation');
-verifyEqual(testCase, rel.directed_relation.relation.name, 'measured_distance_to');
-verifyEqual(testCase, depValue(rel, 'child'), 'worm_sub_1');   % the animal
-verifyEqual(testCase, depValue(rel, 'parent'), 'patch_row_7'); % the patch
+verifyEqual(testCase, numel(out), 2);
+o = out{1};
+verifyEqual(testCase, o.document_class.class_name, 'length_observation');
+verifyEqual(testCase, o.subject_statement.variable.name, 'distance');
+vals = o.length.value;
+verifyEqual(testCase, numel(vals), 2);
+verifyEqual(testCase, [vals.source_value], [42.5 43.1], 'AbsTol', 1e-9);
+verifyEqual(testCase, vals(1).source_unit, 'micrometer');
+verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_3');
 end
 
 function testOpenmindsElementBecomesTermAssertion(testCase)
