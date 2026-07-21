@@ -54,31 +54,29 @@ function node = reshapeEpochNode(src)
 %RESHAPEEPOCHNODE Nest epoch_clock + epoch_id under a time_reference sub-structure
 %   (epoch_bounded_reference shape); carry the node metadata through. Built with
 %   exactly the four V_eta sub-fields so the reshaped node matches the schema.
+%   The epochnode sub-fields are NESTED, so universalRenames (which snake_cases only
+%   immediate block fields) leaves their raw v1 casing untouched -- read snake-first
+%   with a camelCase fallback (jGetCharAny), as the other +migrators_j migrators do,
+%   so a camelCase source does not silently read empty.
 tr = struct('kind', 'epoch_bounded_reference', ...
-    'epoch_clock', getCharField(src, 'epoch_clock'), ...
-    'epoch_id',    getCharField(src, 'epoch_id'));
+    'epoch_clock', jGetCharAny(src, {'epoch_clock', 'epochClock'}), ...
+    'epoch_id',    jGetCharAny(src, {'epoch_id', 'epochId', 'epochID'}));
 node = struct( ...
     'time_reference',   tr, ...
-    'epoch_session_id', getCharField(src, 'epoch_session_id'), ...
-    'epochprobemap',    getStructField(src, 'epochprobemap'), ...
-    'objectclass',      getCharField(src, 'objectclass'));
+    'epoch_session_id', jGetCharAny(src, {'epoch_session_id', 'epochSessionId', 'epochSessionID'}), ...
+    'epochprobemap',    getStructAny(src, {'epochprobemap', 'epochProbeMap'}), ...
+    'objectclass',      jGetCharAny(src, {'objectclass', 'objectClass'}));
 end
 
-function s = getStructField(block, name)
-%GETSTRUCTFIELD A scalar struct field ('empty' 1x1 struct if absent / not a struct).
+function s = getStructAny(block, names)
+%GETSTRUCTANY First scalar-struct field among candidate names (empty 1x1 struct if
+%   none / not a struct). Snake-first with a camelCase fallback, like jGetCharAny.
 s = struct();
-if isstruct(block) && isfield(block, name) && isstruct(block.(name)) ...
-        && isscalar(block.(name))
-    s = block.(name);
-end
-end
-
-function s = getCharField(block, name)
-s = '';
-if isstruct(block) && isfield(block, name)
-    v = block.(name);
-    if ischar(v); s = v;
-    elseif isstring(v) && isscalar(v); s = char(v);
+if ~isstruct(block); return; end
+for i = 1:numel(names)
+    if isfield(block, names{i}) && isstruct(block.(names{i})) && isscalar(block.(names{i}))
+        s = block.(names{i});
+        return;
     end
 end
 end
