@@ -19,19 +19,9 @@ if isfield(preBody, 'distance_metadata') && isstruct(preBody.distance_metadata)
 end
 endpoints = struct();
 if isfield(blk, 'endpoints') && isstruct(blk.endpoints); endpoints = blk.endpoints; end
-% `numeric_values` is NESTED inside the endpoints structure, so universalRenames
-% (which snake_cases only immediate block fields) leaves its raw v1 casing
-% untouched. Read snake-first with a camelCase fallback so a camelCase source is
-% not silently read empty (which would drop to the passthrough branch and
-% quarantine on the required non-empty `endpoints` -- the JH files DO carry
-% distance values, so an empty read there is a bug, not real missing data).
 vals = [];
-for nm = {'numeric_values', 'numericValues'}
-    if isfield(endpoints, nm{1}) && isnumeric(endpoints.(nm{1})) ...
-            && ~isempty(endpoints.(nm{1}))
-        vals = double(endpoints.(nm{1})(:)');
-        break;
-    end
+if isfield(endpoints, 'numeric_values') && isnumeric(endpoints.numeric_values)
+    vals = double(endpoints.numeric_values(:)');
 end
 unit = '';
 if isfield(blk, 'units') && isstruct(blk.units); unit = jGetChar(blk.units, 'name'); end
