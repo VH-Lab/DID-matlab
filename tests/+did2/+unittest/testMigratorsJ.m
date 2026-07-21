@@ -1538,6 +1538,29 @@ verifyEqual(testCase, vals(1).source_unit, 'micrometer');
 verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_3');
 end
 
+function testDistanceMetadataCamelCaseNumericValuesFolds(testCase)
+% Regression: the JH files carry distance values under a camelCase nested field
+% (`endpoints.numericValues`). universalRenames does not touch nested sub-fields,
+% so a snake-only read would come back empty -> passthrough -> quarantine. The
+% snake+camelCase fallback must still fold it into a length_observation.
+v1 = struct();
+v1.document_class = struct('class_name', 'distance_metadata', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_7'});
+v1.base = struct('id', 'dm_2', 'session_id', 'sess_09', 'name', 'dm', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.distance_metadata = struct( ...
+    'endpoints', struct('label', 'soma-to-tip', 'numericValues', [12.0 13.5]), ...
+    'units', struct('node', 'uo:0000017', 'name', 'micrometer'));
+
+out = did2.convert.migrators_j.distance_metadata(v1);
+verifyEqual(testCase, numel(out), 2);                       % obs + anchor, not passthrough
+o = out{1};
+verifyEqual(testCase, o.document_class.class_name, 'length_observation');
+vals = o.length.value;
+verifyEqual(testCase, [vals.source_value], [12.0 13.5], 'AbsTol', 1e-9);
+end
+
 function testOpenmindsElementBecomesTermAssertion(testCase)
 % openminds_element mirrors openminds_subject, but the openMINDS entity is about
 % an ELEMENT/DEVICE: the subject is carried from element_id (fallback subject_id).
