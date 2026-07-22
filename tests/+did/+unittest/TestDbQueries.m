@@ -248,5 +248,31 @@ classdef TestDbQueries < matlab.unittest.TestCase
             q = did.query('base.datestamp','regexp',regexp_chosen);
             testCase.testQuery(q)
         end
+
+        function testExactStringSqlInjection(testCase)
+            % Regression: a crafted did.query value must not break out of the
+            % SQL string literal and return the whole branch. Without escaping,
+            % 'x" OR "1"="1' makes the parenthesized predicate unconditionally
+            % TRUE and search returns every document id; with escaping it
+            % matches no document.
+            payload = 'x" OR "1"="1';
+            q = did.query('base.id', 'exact_string', payload);
+            ids = testCase.db.search(q);
+            testCase.verifyEmpty(ids, ...
+                'SQL-injection payload in exact_string must match no documents');
+        end
+
+        function testInvalidFieldNameRejected(testCase)
+            % Regression: field names are interpolated into the SQL search
+            % string, so a field name outside [A-Za-z0-9_.] must be a hard
+            % error rather than a silent wrong-result / injection vector.
+            qQuote = did.query('base.id" OR "1"="1', 'exact_string', 'anything');
+            testCase.verifyError(@() testCase.db.search(qQuote), ...
+                'DID:Database:InvalidFieldName');
+
+            qSpace = did.query('base id', 'exact_string', 'anything');
+            testCase.verifyError(@() testCase.db.search(qSpace), ...
+                'DID:Database:InvalidFieldName');
+        end
     end
 end
