@@ -74,3 +74,11 @@ jobs:
             nFailed = sum([readResults.Failed]);
             fprintf("Results: %d passed, %d failed, %d skipped\n", nPassed, nFailed, nSkipped);
             assert(nFailed == 0, "readArtifacts tests failed");
+            % A skipped variant (e.g. the pythonArtifacts leg when its artifacts
+            % were never generated) must NOT report green: the gate previously
+            % asserted only on nFailed, so an all-skipped run passed and the
+            % "Test symmetry" badge meant only that MATLAB could read its own
+            % output. Fail when anything was skipped, and require at least one
+            % pass so an empty suite cannot slip through.
+            assert(nSkipped == 0, "readArtifacts had skipped (Incomplete) variants - the cross-language leg did not run");
+            assert(nPassed > 0, "readArtifacts ran no passing tests");
