@@ -35,7 +35,62 @@ fixtures = [ ...
     manipulationBatch(), ...
     observationBatch(), ...
     zooBatch(), ...
+    gapBatch(), ...
     ];
+end
+
+% ----- batch 4: the new-on-main NDI app outputs (ex-ledger gaps). These have no
+% bespoke migrator yet -- they carry PASSTHROUGH (class retained) against the new
+% V_eta schemas (ensemble in_progress; kilosort/kiasort_clusters retire, analysis
+% tier). Each rides on a minted recording subject; element_epoch_id is left empty
+% (no in-batch epoch needed). Confirms the passthrough validates.
+function batch = gapBatch()
+batch = [ fx_ensemble(), fx_kilosort_clusters(), fx_kiasort_clusters() ];
+end
+
+function batch = fx_kilosort_clusters()
+sub = subjDoc('ks_sub', 'recSubKS');
+d = struct();
+d.document_class = struct('class_name','kilosort_clusters','class_version','1.0.0', ...
+    'superclasses', [ struct('class_name','base','class_version','1.0.0'), ...
+                      struct('class_name','app','class_version','1.0.0') ]);
+d.depends_on = struct('name','element_id','value','ks_sub');
+d.base = struct('id','ks_01','session_id','sess_09','name','ks','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.app.kilosort','version','1.0');
+d.kilosort_clusters = struct('kilosort_directory','ks_out', ...
+    'curated_output_MD5_checksum','d41d8cd98f00b204e9800998ecf8427e');
+batch = { sub, d };
+end
+
+function batch = fx_kiasort_clusters()
+sub = subjDoc('ka_sub', 'recSubKA');
+d = struct();
+d.document_class = struct('class_name','kiasort_clusters','class_version','1.0.0', ...
+    'superclasses', [ struct('class_name','base','class_version','1.0.0'), ...
+                      struct('class_name','app','class_version','1.0.0') ]);
+d.depends_on = struct('name','element_id','value','ka_sub');
+d.base = struct('id','ka_01','session_id','sess_09','name','ka','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.app.kiasort','version','1.0');
+d.kiasort_clusters = struct('kiasort_directory','ka_out', ...
+    'curated_output_MD5_checksum','d41d8cd98f00b204e9800998ecf8427e');
+batch = { sub, d };
+end
+
+function batch = fx_ensemble()
+sub = subjDoc('en_sub', 'recSubEN');
+d = struct();
+d.document_class = struct('class_name','ensemble','class_version','1.0.0', ...
+    'superclasses', [ struct('class_name','base','class_version','1.0.0'), ...
+                      struct('class_name','epochid','class_version','1.0.0'), ...
+                      struct('class_name','app','class_version','1.0.0') ]);
+d.depends_on = [ struct('name','element_id','value','en_sub'), ...
+                 struct('name','element_epoch_id','value','') ];
+d.base = struct('id','en_01','session_id','sess_09','name','ens','datestamp','2024-06-01T12:00:00.000Z');
+d.epochid = struct('epochid','t00001');
+d.app = struct('name','ndi.app.ensemble','version','1.0');
+d.ensemble = struct('ensemble_name','ens1','value_type','rate', ...
+    'value_description','firing rate','num_neurons',12,'clocktype','dev_local_time');
+batch = { sub, d };
 end
 
 % ----- batch 3: the observation/analysis/entity/rename zoo. Shapes harvested
