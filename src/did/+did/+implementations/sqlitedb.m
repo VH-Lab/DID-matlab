@@ -352,9 +352,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 doOnDuplicate = lower(options.OnDuplicate);
                 switch doOnDuplicate
                     case 'ignore'
-                        % do nothing
+                        % Document already in this branch: return early. Falling
+                        % through to the branch_docs INSERT below would violate
+                        % PRIMARY KEY(branch_id,doc_idx) and throw, and re-running
+                        % the file-caching loop would be duplicate work - so
+                        % 'ignore' must be a genuine no-op, not merely non-erroring.
+                        return
                     case 'warn'
                         warning('DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg);
+                        return
                     otherwise %case 'error'
                         error('DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg);
                 end

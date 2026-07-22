@@ -479,7 +479,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
             % Disable database journalling if no validation requested
             if ~doValidation
-                try database_obj.run_sql_query('pragma journal_mode=OFF'); catch, end
+                try
+                    database_obj.run_sql_query('pragma journal_mode=OFF');
+                    % Restore journalling on ANY exit, including a throw in the
+                    % document loop below (e.g. an OnDuplicate UNIQUE-constraint
+                    % error). Previously the restore lived only on the normal
+                    % exit path, so a throw left journal_mode=OFF - and hence no
+                    % rollback protection - for the rest of the connection's life.
+                    restoreJournalCleanup = onCleanup(@() restoreJournalMode(database_obj)); %#ok<NASGU>
+                catch
+                end
             end
 
             % Ensure branch IDs validity (unless requested not to)
@@ -515,10 +524,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 database_obj.do_add_doc(doc, branch_id, varargin_to_pass{:});
             end
 
-            % Restore journaling if no validation requested
-            if ~doValidation
-                try database_obj.run_sql_query('pragma journal_mode=DELETE'); catch, end
-            end
+            % Journalling (if it was disabled above) is restored by the
+            % restoreJournalCleanup onCleanup object when this method returns.
         end % add_doc()
 
         function document_objs = get_docs(database_obj, document_ids, options)
@@ -1846,3 +1853,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
         end % canfindonefile
     end % Static methods
 end % database classdef
+
+function restoreJournalMode(database_obj)
+    % restoreJournalMode - restore the SQLite rollback journal.
+    %
+    % Local helper used by add_docs' onCleanup so that journal_mode is
+    % restored to DELETE even if the document insertion loop throws. Failures
+    % to restore are best-effort and ignored (mirrors the original guarded call).
+    try
+        database_obj.run_sql_query('pragma journal_mode=DELETE');
+    catch
+        % best-effort restore; ignore failures
+    end
+end
