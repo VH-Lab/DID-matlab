@@ -96,5 +96,34 @@ classdef TestFileDocument < matlab.unittest.TestCase
                     ['Data for file ', testCase.fname{i}, ' did not match.']);
             end
         end
+
+        function testExistDocRequiresFileOnDisk(testCase)
+            % Regression: check_exist_doc must verify the file is actually on
+            % disk (isfile), not merely that a files-table row exists, and must
+            % return a path that points to a real file. Previously the
+            % single-row branch returned tf = true without ever calling isfile.
+            g = testCase.db.search(did.query('', 'isa', 'demoFile', ''));
+            doc_id = g{1};
+
+            % After setup the file is cached, so it exists and the returned
+            % path must be a real file.
+            [tf, fpath] = testCase.db.exist_doc(doc_id, testCase.fname{1});
+            testCase.verifyTrue(logical(tf), ...
+                'exist_doc should report the cached file as existing');
+            testCase.verifyTrue(isfile(fpath), ...
+                'exist_doc must return a path that points to a real file');
+
+            % Remove the cached file from disk (the files-table row remains).
+            % Restore it immediately afterwards so shared fixture state used by
+            % other Test methods is unaffected, then assert.
+            backup = [fpath '.existdoc.bak'];
+            copyfile(fpath, backup);
+            delete(fpath);
+            tf2 = testCase.db.exist_doc(doc_id, testCase.fname{1});
+            movefile(backup, fpath);   % restore before asserting
+
+            testCase.verifyFalse(logical(tf2), ...
+                'exist_doc must return false when no cached file is on disk');
+        end
     end
 end
