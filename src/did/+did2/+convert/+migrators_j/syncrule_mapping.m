@@ -41,8 +41,8 @@ end
 smBlock = struct();
 if isfield(block, 'cost');    smBlock.cost = block.cost;       end
 if isfield(block, 'mapping'); smBlock.mapping = block.mapping; end
-smBlock.epochnode_a = reshapeEpochNode(getStructField(block, 'epochnode_a'));
-smBlock.epochnode_b = reshapeEpochNode(getStructField(block, 'epochnode_b'));
+smBlock.epochnode_a = reshapeEpochNode(getStructAny(block, {'epochnode_a', 'epochNodeA'}));
+smBlock.epochnode_b = reshapeEpochNode(getStructAny(block, {'epochnode_b', 'epochNodeB'}));
 out.syncrule_mapping = smBlock;
 
 v2Body = out;

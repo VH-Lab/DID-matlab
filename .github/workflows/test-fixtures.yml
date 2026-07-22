@@ -64,13 +64,18 @@ jobs:
             addpath(genpath("tools"));
             matbox.installRequirements(didtools.projectdir());
 
-      - name: Run fixture corpus (fast, validation on)
+      - name: Run fixture corpus + migrator unit tests (fast, validation on)
         uses: matlab-actions/run-command@v2
         with:
           command: |
             addpath(genpath("src"));
             addpath(genpath("tests"));
-            results = runtests("did2.unittest.testFixtureCorpus");
+            % testFixtureCorpus: full-pipeline schema validation (0 quarantine/orphan).
+            % testMigratorsJ: per-migrator STRUCTURAL assertions (the shapes the
+            % schema check can't see) -- both are corpus-free and run in seconds, so
+            % they belong on the fast gate together.
+            results = runtests(["did2.unittest.testFixtureCorpus", ...
+                                "did2.unittest.testMigratorsJ"]);
             disp(table(results));
             assert(sum([results.Failed]) == 0, ...
-                sprintf("%d fixture-corpus test(s) failed", sum([results.Failed])));
+                sprintf("%d fast-gate test(s) failed", sum([results.Failed])));
