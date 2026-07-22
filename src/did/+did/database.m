@@ -618,12 +618,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 % Replace did.document object reference with its unique doc id
                 doc_id = database_obj.validate_doc_id(documents{i}, false);
 
-                % Call the specific database's removal method
-                try % failure is not an error
-                    database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
-                catch
-                    % ignore errors
-                end
+                % Call the specific database's removal method. do_remove_doc
+                % already honours OnMissing (ignore/warn return quietly, error
+                % raises DID:SQLITEDB:NO_SUCH_DOC), so it is called directly:
+                % the previous bare try/catch with an empty handler nullified
+                % every failure - read-only file, lock, and even the requested
+                % OnMissing='error' - so removal always reported success.
+                database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
 
                 % TODO also delete all documents that depend on the deleted doc
             end

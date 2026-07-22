@@ -93,6 +93,23 @@ classdef DocumentTest < matlab.unittest.TestCase
             end
         end
 
+        function testRemoveDocsHonorsOnMissing(testCase)
+            % Regression: remove_docs wrapped do_remove_doc in a bare try/catch
+            % with an empty handler, so every failure - including the documented
+            % OnMissing='error' -> DID:SQLITEDB:NO_SUCH_DOC - was swallowed and
+            % removal always reported success. Errors must now propagate.
+            missingId = '0123456789abcdef_fedcba9876543210';  % valid shape, not in db
+
+            % OnMissing='error' must surface NO_SUCH_DOC
+            testCase.verifyError(...
+                @() testCase.db.remove_docs(missingId,'a','OnMissing','error'), ...
+                'DID:SQLITEDB:NO_SUCH_DOC');
+
+            % OnMissing='ignore' must remain a quiet no-op
+            testCase.verifyWarningFree(...
+                @() testCase.db.remove_docs(missingId,'a','OnMissing','ignore'));
+        end
+
         function testOnDuplicateIgnoreAndWarn(testCase)
             % Regression: OnDuplicate 'ignore'/'warn' previously detected the
             % duplicate but still fell through to the branch_docs INSERT, which
