@@ -1399,39 +1399,13 @@ verifyEqual(testCase, numel(obs.intensity.value), 3);
 verifyEqual(testCase, obs.intensity.value(2).source_value, 0.3, 'AbsTol', 1e-9);
 end
 
-function testOrientationDirectionTuningFoldsWithDirectionAxis(testCase)
-% #9 tuning (shared jTuningFold): orientation_direction_tuning ->
-% frequency_observation (the firing-rate response) with the stimulus DIRECTION
-% (deg) as the D10 axis qualifier + derived_from + anchor. 1 -> 3.
-body = struct();
-body.document_class = struct('class_name', 'orientation_direction_tuning', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = [ struct('name', 'element_id', 'value', 'sub_o'), ...
-                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_o')];
-body.base = struct('id', 'od_1', 'session_id', 'sess_09', 'name', 'od', ...
-    'datestamp', '2024-06-01T12:00:00.000Z');
-body.orientation_direction_tuning = struct( ...
-    'properties', struct('response_units', 'spikes/s'), ...
-    'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]));
-
-out = did2.convert.migrators_j.orientation_direction_tuning(body);
-verifyEqual(testCase, numel(out), 3);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
-obs = out{find(strcmp(names, 'frequency_observation'), 1)};
-verifyEqual(testCase, obs.subject_statement.variable.name, 'orientation direction tuning');
-verifyEqual(testCase, obs.subject_statement.conditions.variable.name, 'direction');
-axisVals = obs.subject_statement.conditions.quantity.value;
-verifyEqual(testCase, [axisVals.source_value], [0 90 180 270], 'AbsTol', 1e-9);
-verifyEqual(testCase, axisVals(2).source_unit, 'deg');
-verifyEqual(testCase, [obs.frequency.value.source_value], [10 2 9 3], 'AbsTol', 1e-9);
-end
-
-function testOrientationDirectionTuningDecomposesComputedScalars(testCase)
-% D-C decomposition (grain A): the vector/fit/significance scalars become computed
-% angle/score observations of the neuron, each with subject_interaction.method =
-% the algorithm and derived_from_1 -> the curve observation. No new subject/relation.
+function testOrientationDirectionTuningFoldsToCalculationLeaf(testCase)
+% Calculator composite-leaf model (Lepsky et al.): orientation_direction_tuning ->
+% the subject_calculation LEAF orientation_direction_tuning_calculation
+% (id-preserved) + a session anchor. 1 -> 2. The structured result is kept VERBATIM
+% as the composite value; base.id + depends_on preserved so downstream refs resolve;
+% the raw stimulus_tuningcurve becomes derived_from_1; the algorithm names the
+% method. Supersedes the earlier grain-A decomposition into observations.
 body = struct();
 body.document_class = struct('class_name', 'orientation_direction_tuning', ...
     'class_version', '1.0.0', ...
@@ -1443,35 +1417,30 @@ body.base = struct('id', 'odt_1', 'session_id', 'sess_09', 'name', 'odt', ...
 body.orientation_direction_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s'), ...
     'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
-    'vector', struct('orientation_preference', 47.5, 'circular_variance', 0.3, ...
-        'direction_preference', 227.5, 'direction_circular_variance', 0.6), ...
-    'significance', struct('visual_response_anova_p', 0.002, 'across_stimuli_anova_p', 0.04), ...
-    'fit', struct('orientation_angle_preference', 46.0, 'hwhh', 22.0, ...
-        'orientation_preferred_orthogonal_ratio', 0.8, 'direction_preferred_null_ratio', 0.5));
+    'vector', struct('orientation_preference', 47.5, 'circular_variance', 0.3), ...
+    'significance', struct('visual_response_anova_p', 0.002), ...
+    'fit', struct('hwhh', 22.0));
 
 out = did2.convert.migrators_j.orientation_direction_tuning(body);
+verifyEqual(testCase, numel(out), 2);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));   % the curve
+verifyTrue(testCase, any(strcmp(names, 'orientation_direction_tuning_calculation')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
-% 4 angles (orientation/direction pref + fitted orientation pref + hwhh),
-% 6 scores (2 circular variance + 2 anova p + OSI + DSI)
-verifyEqual(testCase, sum(strcmp(names, 'angle_observation')), 4);
-verifyEqual(testCase, sum(strcmp(names, 'score_observation')), 6);
+% NOT decomposed into observations any more (calculators are composite leafs now)
+verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
+verifyFalse(testCase, any(strcmp(names, 'angle_observation')));
 
-curve = out{find(strcmp(names, 'frequency_observation'), 1)};
-op = firstByVariable(out, 'orientation preference');
-verifyEqual(testCase, op.document_class.class_name, 'angle_observation');
-verifyEqual(testCase, op.angle.value(1).source_value, 47.5, 'AbsTol', 1e-9);
-verifyEqual(testCase, op.angle.value(1).source_unit, 'deg');
-verifyEqual(testCase, op.subject_interaction.method.name, 'vector sum');   % computed
-verifyEqual(testCase, depValue(op, 'derived_from_1'), curve.base.id);      % <- the curve
-verifyEqual(testCase, depValue(op, 'subject_id'), 'neuron_1');             % grain A: the neuron
-
-osi = firstByVariable(out, 'orientation selectivity index');
-verifyEqual(testCase, osi.document_class.class_name, 'score_observation');
-verifyEqual(testCase, osi.score.value.value, 0.8, 'AbsTol', 1e-9);
-verifyEqual(testCase, osi.subject_interaction.method.name, 'double gaussian fit');
-verifyEqual(testCase, depValue(osi, 'derived_from_1'), curve.base.id);
+leaf = out{find(strcmp(names, 'orientation_direction_tuning_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'odt_1');                               % id preserved
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_1');           % neuron carried
+verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.oridir');
+verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_1');           % provenance
+verifyNotEmpty(testCase, depValue(leaf, 'time_reference_1'));              % session anchor
+verifyEqual(testCase, leaf.subject_statement.storage_mode, 'inline');
+% the structured result kept VERBATIM as the composite value
+verifyEqual(testCase, leaf.orientation_direction_tuning.tuning_curve.direction, [0 90 180 270]);
+verifyEqual(testCase, leaf.orientation_direction_tuning.vector.orientation_preference, ...
+    47.5, 'AbsTol', 1e-9);
 end
 
 function d = firstByVariable(migrated, varName)
