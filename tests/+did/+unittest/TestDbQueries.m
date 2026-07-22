@@ -274,5 +274,31 @@ classdef TestDbQueries < matlab.unittest.TestCase
             testCase.verifyError(@() testCase.db.search(qSpace), ...
                 'DID:Database:InvalidFieldName');
         end
+
+        function testExactNumberFullPrecision(testCase)
+            % Regression: numeric query operands were rendered with num2str,
+            % which emits only ~5 significant digits, so a stored full-precision
+            % double could never be matched by exact_number. The operand is now
+            % rendered with sprintf('%.17g',...). A 15-significant-digit value
+            % must round-trip through exact_number search.
+            testCase.applyFixture(matlab.unittest.fixtures.WorkingFolderFixture);
+            db = did.implementations.sqlitedb('precision_db.sqlite');
+            db.add_branch('a');
+
+            v = 12.3456789012345;
+            doc = did.document('demoA', 'demoA.value', v);
+            db.add_doc(doc);
+
+            % Full-precision operand matches the stored value.
+            idsHit = db.search(did.query('demoA.value', 'exact_number', v));
+            testCase.verifyNumElements(idsHit, 1, ...
+                'exact_number must match a stored full-precision double');
+
+            % A ~5-sig-digit rounding of the value is a genuinely different
+            % number and must NOT match (confirms the comparison is exact).
+            idsMiss = db.search(did.query('demoA.value', 'exact_number', 12.3457));
+            testCase.verifyEmpty(idsMiss, ...
+                'A rounded operand must not match the full-precision value');
+        end
     end
 end
