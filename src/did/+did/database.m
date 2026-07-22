@@ -1723,6 +1723,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             missing_files = setdiff(expectedNamesList,actual_file_list);
             if ~isempty(missing_files)
                 errmsg = sprintf('Some required files are missing (including %s) from the file_list in document %s', missing_files{1}, doc_name);
+                % A required file_list entry is absent - reject the document.
+                % Previously execution fell through to isvalid = 1, so add_docs
+                % committed a document that was missing a required file (schema
+                % validation failed open).
+                isvalid = 0;
+                return;
             end
 
             % Step 2: are all files in the actual document's file_list valid?
@@ -1820,18 +1826,29 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 elseif startsWith(fileLocation, 'http')
                     try
                         req = matlab.net.http.RequestMessage('HEAD');
-                        response = req.send(url);
+                        response = req.send(fileLocation);  % was undefined variable `url`
                         if strcmp( response.StatusCode, 'OK' )
                             found = true;
+                            break
                         end
-                    catch
-                        % ignore this location
+                    catch ME
+                        % A network/auth failure is NOT the same as a genuinely
+                        % absent file. Warn (instead of silently swallowing the
+                        % error) so an http HEAD failure is distinguishable from
+                        % a file that truly does not exist.
+                        warning('DID:Database:FileCheck', ...
+                            'Could not verify http file location "%s": %s', ...
+                            fileLocation, ME.message);
                     end
                 else
-                    % If it is neither a local file nor an HTTP URL,
-                    % existence will not be pre-checked, but will be 
-                    % evaluated when attempting to read or download the file.
-                    found = true;
+                    % Neither a local file nor an HTTP URL. Existence cannot be
+                    % pre-checked here. NOTE (Steve review): previously this
+                    % branch set found = true unconditionally (fail-open), so an
+                    % unrecognised location type was always accepted. That
+                    % default is removed - such a location is now left
+                    % unverified (found stays false unless another location for
+                    % the same file resolves). This tightens add_docs validation
+                    % for documents whose only location is an unrecognised type.
                 end
             end
         end % canfindonefile
