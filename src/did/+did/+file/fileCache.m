@@ -359,7 +359,13 @@ classdef fileCache < handle
             else
                 %disp(['Not full, total size is ' int2str(newTotalSize) ' and maxSize is ' int2str(fileCacheObj.maxSize) '.']);
                 for i=1:numel(newFileName)
-                    data_here{i} = newFileName{i};
+                    % Reset the row each iteration and write the filename into
+                    % slot 1 (was data_here{i}, indexed by the loop counter): from
+                    % i=2 the filename slot kept the first file's name while the
+                    % time/size slots were overwritten, corrupting the manifest
+                    % and size accounting for multi-file adds.
+                    data_here = cell(1,3);
+                    data_here{1} = newFileName{i};
                     data_here{2} = now;
                     data_here{3} = newFileSize(i);
                     [~,insertSpot] = fileCacheObj.binaryTable.findRow(1,newFileName{i},'sorted',true);
