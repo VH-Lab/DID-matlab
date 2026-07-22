@@ -1648,6 +1648,65 @@ verifyEqual(testCase, sbod.sampled_body.sample_time.n, 0);         % unknown len
 verifyEqual(testCase, sbod.files.file_list{1}, 'clusters.mat');
 end
 
+function testKilosortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
+% #9 D-C (spike-sorting family, external-directory variant): kilosort_clusters (a
+% Kilosort RUN referencing a session-relative output DIRECTORY + curated MD5) ->
+% an id-preserved count_observation handle on the recording subject + an
+% opaque_body (the directory) + a session anchor. 1->3. Sibling of
+% jrclust_clusters, but the sorter output is an external dir (opaque_body), not
+% attached bytes (sampled_body).
+body = struct();
+body.document_class = struct('class_name', 'kilosort_clusters', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'app'}, 'class_version', {'1.0.0'; '1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_ks'});
+body.base = struct('id', 'ks_1', 'session_id', 'sess_09', ...
+    'name', 'ks', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = struct('name', 'ndi.app.kilosort', 'version', '1.0');
+body.kilosort_clusters = struct('kilosort_directory', 'ks_out/session1', ...
+    'curated_output_MD5_checksum', 'd41d8cd98f00b204e9800998ecf8427e');
+
+out = did2.convert.migrators_j.kilosort_clusters(body);
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'count_observation')));
+verifyTrue(testCase, any(strcmp(names, 'opaque_body')));
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+
+obs = out{find(strcmp(names, 'count_observation'), 1)};
+verifyEqual(testCase, obs.base.id, 'ks_1');                            % id preserved
+verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
+verifyEqual(testCase, obs.subject_interaction.method.name, 'kilosort');% method = algorithm
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_ks');
+
+ob = out{find(strcmp(names, 'opaque_body'), 1)};
+verifyEqual(testCase, depValue(ob, 'statement'), 'ks_1');             % body -> the obs
+verifyEqual(testCase, ob.opaque_body.filename, 'ks_out/session1');    % directory preserved
+verifyTrue(testCase, contains(ob.opaque_body.description, 'd41d8cd9'));% MD5 noted
+end
+
+function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
+% Sibling of kilosort: kiasort_clusters decomposes identically (method 'kiasort',
+% kiasort_directory).
+body = struct();
+body.document_class = struct('class_name', 'kiasort_clusters', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'app'}, 'class_version', {'1.0.0'; '1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_ka'});
+body.base = struct('id', 'ka_1', 'session_id', 'sess_09', ...
+    'name', 'ka', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = struct('name', 'ndi.app.kiasort', 'version', '1.0');
+body.kiasort_clusters = struct('kiasort_directory', 'ka_out/session1', ...
+    'curated_output_MD5_checksum', 'd41d8cd98f00b204e9800998ecf8427e');
+
+out = did2.convert.migrators_j.kiasort_clusters(body);
+verifyEqual(testCase, numel(out), 3);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+obs = out{find(strcmp(names, 'count_observation'), 1)};
+verifyEqual(testCase, obs.base.id, 'ka_1');
+verifyEqual(testCase, obs.subject_interaction.method.name, 'kiasort');
+ob = out{find(strcmp(names, 'opaque_body'), 1)};
+verifyEqual(testCase, ob.opaque_body.filename, 'ka_out/session1');
+end
+
 function testSpikeInterfaceSortingOutputsBecomesCountObservation(testCase)
 % #9 fold: spike_interface_sorting_outputs -> one INLINE count_observation
 % (num_units = the cardinality of the sorted-unit set) on the recording subject

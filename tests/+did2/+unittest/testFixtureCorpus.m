@@ -39,11 +39,13 @@ fixtures = [ ...
     ];
 end
 
-% ----- batch 4: the new-on-main NDI app outputs (ex-ledger gaps). These have no
-% bespoke migrator yet -- they carry PASSTHROUGH (class retained) against the new
-% V_eta schemas (ensemble in_progress; kilosort/kiasort_clusters retire, analysis
-% tier). Each rides on a minted recording subject; element_epoch_id is left empty
-% (no in-batch epoch needed). Confirms the passthrough validates.
+% ----- batch 4: the new-on-main NDI app outputs (ex-ledger gaps). kilosort_clusters
+% and kiasort_clusters now DECOMPOSE (D-C, #9): each Kilosort/Kiasort run ->
+% count_observation (id-preserved handle) + opaque_body (the external sorter output
+% directory) + session anchor. ensemble stays PASSTHROUGH (class retained,
+% in_progress) pending its grain decision. Each rides on a minted recording subject;
+% element_epoch_id is left empty. Confirms both the decompositions and the passthrough
+% validate (0 quarantine / 0 orphan).
 function batch = gapBatch()
 batch = [ fx_ensemble(), fx_kilosort_clusters(), fx_kiasort_clusters() ];
 end
