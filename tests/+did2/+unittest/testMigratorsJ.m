@@ -1327,13 +1327,11 @@ freq = out{find(strcmp(names, 'frequency_observation'), 1)};
 verifyEqual(testCase, freq.frequency.value.source_value, 8.3, 'AbsTol', 1e-9);
 end
 
-function testContrastTuningFoldsToInlineTuningObservation(testCase)
-% #9 tuning pattern-setter: contrast_tuning -> an INLINE tuning observation (the
-% response curve as a length-N `value`, one measurement per reading) + a
-% derived_from relation to the raw stimulus_tuningcurve + a session anchor.
-% 1 -> 3. The stimulus parameter (contrast) rides on subject_statement.conditions
-% (the D10 "axis" qualifier -- one quantity level per reading). This is the first
-% migrator to populate a D10 parameters qualifier.
+function testContrastTuningFoldsToCalculationLeaf(testCase)
+% Calculator composite-leaf model (Lepsky et al.): contrast_tuning -> the leaf
+% contrast_tuning_calculation (id-preserved) + a session anchor. 1 -> 2. The result
+% is kept verbatim as the composite value; base.id + depends_on preserved; the raw
+% stimulus_tuningcurve becomes derived_from_1. Supersedes the grain-A decomposition.
 body = struct();
 body.document_class = struct('class_name', 'contrast_tuning', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -1346,57 +1344,19 @@ body.contrast_tuning = struct( ...
     'tuning_curve', struct('contrast', [0 0.25 0.5 1], 'mean', [2 5 9 12]));
 
 out = did2.convert.migrators_j.contrast_tuning(body);
-verifyClass(testCase, out, 'cell');
-verifyEqual(testCase, numel(out), 3);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));   % spikes/s -> frequency
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
-verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
-
-obs = out{find(strcmp(names, 'frequency_observation'), 1)};
-% the response curve is the length-N inline value (one measurement per reading)
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'inline');
-verifyEqual(testCase, obs.subject_statement.variable.name, 'contrast tuning');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_8');
-resp = obs.frequency.value;
-verifyEqual(testCase, numel(resp), 4);
-verifyEqual(testCase, [resp.source_value], [2 5 9 12], 'AbsTol', 1e-9);
-verifyEqual(testCase, resp(1).source_unit, 'spikes/s');
-% the stimulus parameter (contrast) is the D10 axis qualifier (one level per reading)
-params = obs.subject_statement.conditions;
-verifyEqual(testCase, params.variable.name, 'contrast');
-axisVals = params.quantity.value;
-verifyEqual(testCase, numel(axisVals), 4);
-verifyEqual(testCase, [axisVals.source_value], [0 0.25 0.5 1], 'AbsTol', 1e-9);
-% derived_from: the tuning obs (child) <- the raw stimulus_tuningcurve (parent)
-rel = out{find(strcmp(names, 'directed_relation'), 1)};
-verifyEqual(testCase, depValue(rel, 'child'), obs.base.id);
-verifyEqual(testCase, depValue(rel, 'parent'), 'tc_1');
-verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
-end
-
-function testContrastTuningDimensionlessResponseIsIntensity(testCase)
-% dF/F (dimensionless a.u.) responses land on intensity, NOT score -- score/count
-% carry a different value composite shape, so the measurement-shaped leaves
-% (frequency/voltage/intensity) are the only tuning-response homes (J §7).
-body = struct();
-body.document_class = struct('class_name', 'contrast_tuning', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = struct('name', {'element_id'}, 'value', {'sub_9'});
-body.base = struct('id', 'ct_2', 'session_id', 'sess_09', 'name', 'ct', ...
-    'datestamp', '2024-06-01T12:00:00.000Z');
-body.contrast_tuning = struct( ...
-    'properties', struct('response_units', 'dF/F', 'response_type', 'mean'), ...
-    'tuning_curve', struct('contrast', [0.25 0.5 1], 'mean', [0.1 0.3 0.7]));
-
-out = did2.convert.migrators_j.contrast_tuning(body);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-% no stimulus_tuningcurve_id -> no derived_from relation (1 -> 2)
 verifyEqual(testCase, numel(out), 2);
-verifyTrue(testCase, any(strcmp(names, 'intensity_observation')));
-obs = out{find(strcmp(names, 'intensity_observation'), 1)};
-verifyEqual(testCase, numel(obs.intensity.value), 3);
-verifyEqual(testCase, obs.intensity.value(2).source_value, 0.3, 'AbsTol', 1e-9);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'contrast_tuning_calculation')));
+verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));   % not decomposed
+leaf = out{find(strcmp(names, 'contrast_tuning_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'ct_1');                          % id preserved
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'sub_8');
+verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.contrast');
+verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_1');
+% the structured result kept verbatim as the composite value
+verifyEqual(testCase, leaf.contrast_tuning.tuning_curve.mean, [2 5 9 12]);
+verifyEqual(testCase, leaf.subject_statement.storage_mode, 'inline');
 end
 
 function testOrientationDirectionTuningFoldsToCalculationLeaf(testCase)
@@ -1454,10 +1414,10 @@ for k = 1:numel(migrated)
 end
 end
 
-function testSpeedTuningDerivesSpeedAxis(testCase)
-% #9 tuning (derived axis): speed_tuning -> frequency_observation whose D10 axis
-% qualifier is SPEED = temporal_frequency / spatial_frequency (deg/s), computed
-% from the stored (SF, TF) pair. No stimulus_tuningcurve_id here -> 1 -> 2.
+function testSpeedTuningFoldsToCalculationLeaf(testCase)
+% Calculator composite-leaf model: speed_tuning -> the leaf speed_tuning_calculation
+% (id-preserved) + a session anchor. 1 -> 2. The (SF, TF, mean) result is kept
+% verbatim as the composite value. Supersedes the derived-speed-axis decomposition.
 body = struct();
 body.document_class = struct('class_name', 'speed_tuning', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -1470,14 +1430,15 @@ body.speed_tuning = struct( ...
         'temporal_frequency', [2 4 4], 'mean', [5 8 6]));
 
 out = did2.convert.migrators_j.speed_tuning(body);
-verifyEqual(testCase, numel(out), 2);   % no tuningcurve id -> obs + anchor
+verifyEqual(testCase, numel(out), 2);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-obs = out{find(strcmp(names, 'frequency_observation'), 1)};
-verifyEqual(testCase, obs.subject_statement.conditions.variable.name, 'speed');
-speedVals = obs.subject_statement.conditions.quantity.value;
-% speed = TF ./ SF = [2/0.5, 4/0.5, 4/1] = [4 8 4] deg/s
-verifyEqual(testCase, [speedVals.source_value], [4 8 4], 'AbsTol', 1e-9);
-verifyEqual(testCase, speedVals(1).source_unit, 'deg/s');
+verifyTrue(testCase, any(strcmp(names, 'speed_tuning_calculation')));
+verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
+leaf = out{find(strcmp(names, 'speed_tuning_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'sp_1');
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'sub_s');
+verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.speed');
+verifyEqual(testCase, leaf.speed_tuning.tuning_curve.mean, [5 8 6]);
 end
 
 function testOntologyImageBecomesTermObservation(testCase)
@@ -1791,11 +1752,12 @@ verifyEqual(testCase, anchor.document_class.class_name, 'session_relative_refere
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 end
 
-function testSpatialFrequencyTuningDecomposesScalars(testCase)
-% D-C decomposition: SF-tuning scalars -> frequency observations (preferred SF /
-% 50%% cutoffs, cyc/deg) + score observations (bandwidth, pass indices, ANOVA p,
-% r2), each subject_interaction.method = algorithm and derived_from_1 -> the curve
-% observation. Grain A. Exercises jDecomposeScalars + the frequency dim.
+function testSpatialFrequencyTuningFoldsToCalculationLeaf(testCase)
+% Calculator composite-leaf model: spatial_frequency_tuning -> the leaf
+% spatial_frequency_tuning_calculation (id-preserved) + a session anchor. 1 -> 2.
+% The full result (tuning_curve / significance / fitless / fit_dog) is kept verbatim
+% as the composite value; derived_from the raw stimulus_tuningcurve. Supersedes the
+% grain-A scalar decomposition.
 body = struct();
 body.document_class = struct('class_name', 'spatial_frequency_tuning', ...
     'class_version', '1.0.0', ...
@@ -1813,24 +1775,19 @@ body.spatial_frequency_tuning = struct( ...
     'fit_dog', struct('r2', 0.95, 'pref', 0.13));
 
 out = did2.convert.migrators_j.spatial_frequency_tuning(body);
+verifyEqual(testCase, numel(out), 2);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-% 6 scores: 2 anova + bandwidth + 2 pass indices + fit r2
-verifyEqual(testCase, sum(strcmp(names, 'score_observation')), 6);
-% 5 frequency observations: the response curve + preferred SF + l50 + h50 + fitted pref
-verifyEqual(testCase, sum(strcmp(names, 'frequency_observation')), 5);
-
-curve = out{1};   % base{1} is the response curve
-verifyEqual(testCase, curve.document_class.class_name, 'frequency_observation');
-prefSF = firstByVariable(out, 'preferred spatial frequency');
-verifyEqual(testCase, prefSF.document_class.class_name, 'frequency_observation');
-verifyEqual(testCase, prefSF.frequency.value(1).source_value, 0.12, 'AbsTol', 1e-9);
-verifyEqual(testCase, prefSF.frequency.value(1).source_unit, 'cyc/deg');
-verifyEqual(testCase, prefSF.subject_interaction.method.name, 'empirical');
-verifyEqual(testCase, depValue(prefSF, 'derived_from_1'), curve.base.id);
-verifyEqual(testCase, depValue(prefSF, 'subject_id'), 'neuron_2');
-bw = firstByVariable(out, 'spatial-frequency bandwidth (octaves)');
-verifyEqual(testCase, bw.document_class.class_name, 'score_observation');
-verifyEqual(testCase, bw.score.value.value, 2.2, 'AbsTol', 1e-9);
+verifyTrue(testCase, any(strcmp(names, 'spatial_frequency_tuning_calculation')));
+verifyFalse(testCase, any(strcmp(names, 'score_observation')));
+verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
+leaf = out{find(strcmp(names, 'spatial_frequency_tuning_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'sf_1');
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_2');
+verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_2');
+verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.spatialfrequency');
+% the full result kept verbatim, incl. the fit block
+verifyEqual(testCase, leaf.spatial_frequency_tuning.fitless.bandwidth, 2.2, 'AbsTol', 1e-9);
+verifyEqual(testCase, leaf.spatial_frequency_tuning.fit_dog.r2, 0.95, 'AbsTol', 1e-9);
 end
 
 function testNeuronExtracellularMintsDerivedSubject(testCase)
