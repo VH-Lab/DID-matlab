@@ -1559,33 +1559,12 @@ verifyEqual(testCase, [vals.source_value], [0.5 -0.3 1.2 0.0], 'AbsTol', 1e-9);
 verifyEqual(testCase, vals(1).source_unit, 'mV');
 end
 
-function testDistanceMetadataBecomesLengthObservation(testCase)
-% distance_metadata -> a length_observation (numeric_values as the inline value)
-% about the element-subject + anchor. 1 -> 2. The measurement term names the
-% spine variable; the units ontology term supplies source_unit.
-v1 = struct();
-v1.document_class = struct('class_name', 'distance_metadata', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_3'});
-v1.base = struct('id', 'dm_1', 'session_id', 'sess_09', 'name', 'dm', ...
-    'datestamp', '2024-06-01T12:00:00.000Z');
-v1.distance_metadata = struct( ...
-    'endpoints', struct('label', 'soma-to-tip', ...
-        'measurement', struct('node', 'PATO:0000915', 'name', 'distance'), ...
-        'numeric_values', [42.5 43.1]), ...
-    'units', struct('node', 'uo:0000017', 'name', 'micrometer'));
-
-out = did2.convert.migrators_j.distance_metadata(v1);
-verifyEqual(testCase, numel(out), 2);
-o = out{1};
-verifyEqual(testCase, o.document_class.class_name, 'length_observation');
-verifyEqual(testCase, o.subject_statement.variable.name, 'distance');
-vals = o.length.value;
-verifyEqual(testCase, numel(vals), 2);
-verifyEqual(testCase, [vals.source_value], [42.5 43.1], 'AbsTol', 1e-9);
-verifyEqual(testCase, vals(1).source_unit, 'micrometer');
-verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_3');
-end
+% (testDistanceMetadataBecomesLengthObservation removed: the J migrator no longer
+% emits a length_observation -- the flat v1 doc carries no scalar distance, so it is
+% reshaped into a validated distance_metadata passthrough instead. The value-bearing
+% length_observation is deferred Part B, a second pass over the linked element's
+% timeseries. See testDistanceMetadataReshapesFlatEndpoints and
+% schemas/V_eta_distance_metadata_plan.md.)
 
 function testOpenmindsElementBecomesTermAssertion(testCase)
 % openminds_element mirrors openminds_subject, but the openMINDS entity is about
