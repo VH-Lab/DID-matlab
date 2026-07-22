@@ -1148,6 +1148,55 @@ verifyEqual(testCase, out.acquisition_epoch.clocks(1).t0, 0);
 verifyEqual(testCase, out.acquisition_epoch.clocks(1).t1, 930.35);
 end
 
+function testDistanceMetadataReshapesFlatEndpoints(testCase)
+% The v1 distance_metadata is FLAT (ontologyNode_A/_B, integerIDs_A/_B,
+% ontologyStringValues_A/_B, ontologyNumericValues_A/_B empty by design, units).
+% The J migrator reshapes it into the nested `endpoints` array the V_eta schema
+% requires -- 1 -> 1. It does NOT emit a length_observation (no scalar distance in
+% the metadata doc; the value is the linked element's timeseries -- deferred Part
+% B) and does NOT mint an endpoint relation (the endpoint ids are pre-migration
+% ids that dangle single-doc -- Part A reverted). See
+% schemas/V_eta_distance_metadata_plan.md.
+v1 = struct();
+v1.document_class = struct('class_name', 'distance_metadata', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_9'});
+v1.base = struct('id', 'dm_1', 'session_id', 'sess_09', ...
+    'name', 'dm', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.distance_metadata = struct( ...
+    'ontologyNode_A', 'animal_9',   'integerIDs_A', 1, ...
+    'ontologyNumericValues_A', [],  'ontologyStringValues_A', 'uid_a1,uid_a2', ...
+    'ontologyNode_B', 'patch_9',    'integerIDs_B', [2 3], ...
+    'ontologyNumericValues_B', [],  'ontologyStringValues_B', 'uid_b1', ...
+    'units', 'NCIT:C48367');
+
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.className(), 'distance_metadata');
+
+blk = doc.get('distance_metadata');
+% two endpoint records, labelled A and B, in order
+verifyEqual(testCase, numel(blk.endpoints), 2);
+verifyEqual(testCase, blk.endpoints(1).label, 'A');
+verifyEqual(testCase, blk.endpoints(2).label, 'B');
+% the ontologyNode CURIE -> measurement.node; comma-split string ids -> array
+verifyEqual(testCase, blk.endpoints(1).measurement.node, 'animal_9');
+verifyEqual(testCase, blk.endpoints(2).measurement.node, 'patch_9');
+verifyEqual(testCase, numel(blk.endpoints(1).string_ids), 2);
+verifyEqual(testCase, blk.endpoints(2).integer_ids, [2 3]);
+% units CURIE -> ontology_term node
+verifyEqual(testCase, blk.units.node, 'NCIT:C48367');
+% the flat per-endpoint fields are gone (strict schema: only endpoints + units)
+verifyFalse(testCase, isfield(blk, 'ontologyNode_A'));
+verifyFalse(testCase, isfield(blk, 'ontology_node_a'));
+% NOT a length_observation and no endpoint relation minted (single-doc)
+names = cellfun(@(d) d.className(), out.migrated, 'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(names, 'length_observation')));
+verifyFalse(testCase, any(strcmp(names, 'directed_relation')));
+end
+
 function testPyraviewFoldsToObservationPlusSampledBody(testCase)
 % #9 pattern-setter: pyraview (a multi-resolution signal pyramid) dissolves into a
 % body-backed voltage_observation + a sampled_body (native signal) + a session

@@ -554,7 +554,13 @@ d.position_metadata = struct('ontology_node','EMPTY:0000200', ...
 batch = { sub, d };
 end
 
-% ---- distance_metadata (element_id) -- nested endpoints (unit-test shape) ---
+% ---- distance_metadata (element_id) -- REAL FLAT v1 shape ------------------
+% The writer emits FLAT per-endpoint fields (ontologyNode_A/_B, integerIDs_A/_B,
+% ontologyStringValues_A/_B, ontologyNumericValues_A/_B empty by design, units),
+% NOT a nested `endpoints` block. The migrator reshapes flat -> the nested
+% `endpoints` array the schema requires; this fixture is the real shape so the
+% reshape is exercised under validation (element_id -> the minted subject; the
+% endpoint node ids are field values, not orphan-checked depends_on edges).
 function batch = fx_distance_metadata()
 sub = subjDoc('dm_sub', 'elemDM');
 d = struct();
@@ -563,10 +569,11 @@ d.document_class = struct('class_name','distance_metadata','class_version','1.0.
 d.depends_on = struct('name','element_id','value','dm_sub');
 d.base = struct('id','dm_01','session_id','sess_09','name','dm','datestamp','2024-06-01T12:00:00.000Z');
 d.distance_metadata = struct( ...
-    'endpoints', struct('label','soma-to-tip', ...
-        'measurement', struct('node','PATO:0000915','name','distance'), ...
-        'numeric_values',[42.5 43.1]), ...
-    'units', struct('node','uo:0000017','name','micrometer'));
+    'ontologyNode_A','dm_sub',       'integerIDs_A',1, ...
+    'ontologyNumericValues_A',[],    'ontologyStringValues_A','uid_a1,uid_a2', ...
+    'ontologyNode_B','patch_row_1',  'integerIDs_B',[2 3], ...
+    'ontologyNumericValues_B',[],    'ontologyStringValues_B','uid_b1', ...
+    'units','NCIT:C48367');
 batch = { sub, d };
 end
 
