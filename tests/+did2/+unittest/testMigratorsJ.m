@@ -1331,7 +1331,7 @@ function testContrastTuningFoldsToInlineTuningObservation(testCase)
 % #9 tuning pattern-setter: contrast_tuning -> an INLINE tuning observation (the
 % response curve as a length-N `value`, one measurement per reading) + a
 % derived_from relation to the raw stimulus_tuningcurve + a session anchor.
-% 1 -> 3. The stimulus parameter (contrast) rides on subject_statement.parameters
+% 1 -> 3. The stimulus parameter (contrast) rides on subject_statement.conditions
 % (the D10 "axis" qualifier -- one quantity level per reading). This is the first
 % migrator to populate a D10 parameters qualifier.
 body = struct();
@@ -1363,7 +1363,7 @@ verifyEqual(testCase, numel(resp), 4);
 verifyEqual(testCase, [resp.source_value], [2 5 9 12], 'AbsTol', 1e-9);
 verifyEqual(testCase, resp(1).source_unit, 'spikes/s');
 % the stimulus parameter (contrast) is the D10 axis qualifier (one level per reading)
-params = obs.subject_statement.parameters;
+params = obs.subject_statement.conditions;
 verifyEqual(testCase, params.variable.name, 'contrast');
 axisVals = params.quantity.value;
 verifyEqual(testCase, numel(axisVals), 4);
@@ -1421,8 +1421,8 @@ names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
 obs = out{find(strcmp(names, 'frequency_observation'), 1)};
 verifyEqual(testCase, obs.subject_statement.variable.name, 'orientation direction tuning');
-verifyEqual(testCase, obs.subject_statement.parameters.variable.name, 'direction');
-axisVals = obs.subject_statement.parameters.quantity.value;
+verifyEqual(testCase, obs.subject_statement.conditions.variable.name, 'direction');
+axisVals = obs.subject_statement.conditions.quantity.value;
 verifyEqual(testCase, [axisVals.source_value], [0 90 180 270], 'AbsTol', 1e-9);
 verifyEqual(testCase, axisVals(2).source_unit, 'deg');
 verifyEqual(testCase, [obs.frequency.value.source_value], [10 2 9 3], 'AbsTol', 1e-9);
@@ -1504,8 +1504,8 @@ out = did2.convert.migrators_j.speed_tuning(body);
 verifyEqual(testCase, numel(out), 2);   % no tuningcurve id -> obs + anchor
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 obs = out{find(strcmp(names, 'frequency_observation'), 1)};
-verifyEqual(testCase, obs.subject_statement.parameters.variable.name, 'speed');
-speedVals = obs.subject_statement.parameters.quantity.value;
+verifyEqual(testCase, obs.subject_statement.conditions.variable.name, 'speed');
+speedVals = obs.subject_statement.conditions.quantity.value;
 % speed = TF ./ SF = [2/0.5, 4/0.5, 4/1] = [4 8 4] deg/s
 verifyEqual(testCase, [speedVals.source_value], [4 8 4], 'AbsTol', 1e-9);
 verifyEqual(testCase, speedVals(1).source_unit, 'deg/s');
