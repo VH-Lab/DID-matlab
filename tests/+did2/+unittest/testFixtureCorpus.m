@@ -34,7 +34,27 @@ fixtures = [ ...
     { subjectGroupDoc(), metadataEditorDoc() }, ...
     manipulationBatch(), ...
     observationBatch(), ...
+    zooBatch(), ...
     ];
+end
+
+% ----- batch 3: the observation/analysis/entity/rename zoo. Shapes harvested
+% verbatim from did2.unittest.testMigratorsJ (spot-checked against the source),
+% each wrapped self-contained (a subjDoc minted for every depends_on id). Covers
+% the spike/waveform body-backed folds, the inline quantity observations, the
+% tuning decompositions, the dataset entities, and the in-place renames.
+function batch = zooBatch()
+batch = [ ...
+    fx_spikewaves(), fx_spike_clusters(), fx_jrclust_clusters(), ...
+    fx_binnedspikeratevm(), fx_pyraview(), fx_neuron_extracellular(), ...
+    fx_vmspikefit(), fx_vmspikesummary(), fx_vmneuralresponseresiduals(), ...
+    fx_fitcurve(), fx_simple_calc(), fx_contrast_tuning(), ...
+    fx_orientation_direction_tuning(), fx_speed_tuning(), ...
+    fx_spatial_frequency_tuning(), fx_probe_geometry(), fx_position_metadata(), ...
+    fx_distance_metadata(), fx_electrode_offset_voltage(), fx_site2channelmap(), ...
+    fx_spike_interface_sorting_outputs(), fx_dataset_remote(), ...
+    fx_dataset_session_info(), fx_session_in_a_dataset(), fx_element_epoch(), ...
+    fx_ontology_image(), fx_openminds_element(), fx_openminds_stimulus() ];
 end
 
 % ----- batch 2: term_manipulation+relation, body-backed sampled_body,
@@ -231,4 +251,402 @@ ms.Funding = struct('funder', 'NIH', 'awardTitle', 'BRAIN Initiative', ...
 ms.RelatedPublication = struct('Publication', 'On Worms', 'DOI', '10.1/worm');
 ms.FullDocumentation = 'https://example.org/docs';
 v1.metadata_editor = struct('metadata_structure', ms);
+end
+
+% ===================== batch 3 zoo fixtures (harvested) ==================
+
+% ---- spikewaves (element_id + spike_extraction_parameters_id) --------------
+function batch = fx_spikewaves()
+sub  = subjDoc('sw_sub', 'animalSW');
+sep  = subjDoc('sw_sep', 'sepSW');
+d = struct();
+d.document_class = struct('class_name','spikewaves','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = [ struct('name','element_id','value','sw_sub'), ...
+                 struct('name','spike_extraction_parameters_id','value','sw_sep') ];
+d.base = struct('id','sw_01','session_id','sess_09','name','sw','datestamp','2024-06-01T12:00:00.000Z');
+d.spikewaves = struct('extraction_name','thresh_5sd', ...
+    'num_spikes',120,'samples_per_spike',32,'sample_rate',30000);
+d.files = struct('file_list', {{'spikewaves.vsw','spiketimes.bin'}});
+batch = { sub, sep, d };
+end
+
+% ---- spike_clusters (element_id + sorting_parameters_id) -------------------
+function batch = fx_spike_clusters()
+sub = subjDoc('sc_sub', 'animalSC');
+sp  = subjDoc('sc_sp',  'sortparamsSC');
+d = struct();
+d.document_class = struct('class_name','spike_clusters','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = [ struct('name','element_id','value','sc_sub'), ...
+                 struct('name','sorting_parameters_id','value','sc_sp') ];
+d.base = struct('id','sc_01','session_id','sess_09','name','sc','datestamp','2024-06-01T12:00:00.000Z');
+d.spike_clusters = struct('num_clusters',5,'num_spikes',400);
+d.files = struct('file_list', {{'clusters.bin'}});
+batch = { sub, sp, d };
+end
+
+% ---- jrclust_clusters (superclasses base + app) ----------------------------
+function batch = fx_jrclust_clusters()
+sub = subjDoc('jc_sub', 'animalJC');
+d = struct();
+d.document_class = struct('class_name','jrclust_clusters','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'app'}, 'class_version', {'1.0.0'; '1.0.0'}));
+d.depends_on = struct('name','element_id','value','jc_sub');
+d.base = struct('id','jc_01','session_id','sess_09','name','jc','datestamp','2024-06-01T12:00:00.000Z');
+d.jrclust_clusters = struct('res_mat_md5_checksum','d41d8cd98f00b204e9800998ecf8427e');
+d.files = struct('file_list', {{'clusters.mat'}});
+batch = { sub, d };
+end
+
+% ---- binnedspikeratevm -----------------------------------------------------
+function batch = fx_binnedspikeratevm()
+sub = subjDoc('br_sub', 'animalBR');
+d = struct();
+d.document_class = struct('class_name','binnedspikeratevm','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','element_id','value','br_sub');
+d.base = struct('id','br_01','session_id','sess_09','name','br','datestamp','2024-06-01T12:00:00.000Z');
+d.binnedspikeratevm = struct('bin_size',0.05,'num_bins',600);
+d.files = struct('file_list', {{'rate.bin'}});
+batch = { sub, d };
+end
+
+% ---- pyraview (superclasses filter + base + epochid) -----------------------
+function batch = fx_pyraview()
+sub = subjDoc('pv_sub', 'animalPV');
+d = struct();
+d.document_class = struct('class_name','pyraview','class_version','1.0.0', ...
+    'superclasses', [ struct('class_name','filter','class_version','1.0.0'), ...
+                      struct('class_name','base','class_version','1.0.0'), ...
+                      struct('class_name','epochid','class_version','1.0.0') ]);
+d.depends_on = struct('name','element_id','value','pv_sub');
+d.base = struct('id','pv_01','session_id','sess_09','name','pyr','datestamp','2024-06-01T12:00:00.000Z');
+d.pyraview = struct('label','lfp','native_rate',1000, ...
+    'native_start_time',0,'channels',4,'data_type','int16', ...
+    'decimation_sampling_rates',[1000 500]);
+d.files = struct('file_list', {{'level1.bin','level2.bin'}});
+batch = { sub, d };
+end
+
+% ---- neuron_extracellular --------------------------------------------------
+function batch = fx_neuron_extracellular()
+sub = subjDoc('ne_sub', 'recSubNE');
+d = struct();
+d.document_class = struct('class_name','neuron_extracellular','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','element_id','value','ne_sub');
+d.base = struct('id','ne_01','session_id','sess_09','name','ne','datestamp','2024-06-01T12:00:00.000Z');
+d.neuron_extracellular = struct('cluster_index',7,'quality_number',3,'number_of_channels',4);
+batch = { sub, d };
+end
+
+% ---- vmspikefit ------------------------------------------------------------
+function batch = fx_vmspikefit()
+sub = subjDoc('vf_sub', 'animalVF');
+d = struct();
+d.document_class = struct('class_name','vmspikefit','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','element_id','value','vf_sub');
+d.base = struct('id','vf_01','session_id','sess_09','name','vf','datestamp','2024-06-01T12:00:00.000Z');
+d.vmspikefit = struct('fit_function','exp2','r_squared',0.88);
+batch = { sub, d };
+end
+
+% ---- vmspikesummary --------------------------------------------------------
+function batch = fx_vmspikesummary()
+sub = subjDoc('vs_sub', 'animalVS');
+d = struct();
+d.document_class = struct('class_name','vmspikesummary','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','element_id','value','vs_sub');
+d.base = struct('id','vs_01','session_id','sess_09','name','vs','datestamp','2024-06-01T12:00:00.000Z');
+d.vmspikesummary = struct('mean_vm',-62.5,'mean_firing_rate',8.3, ...
+    'num_spikes',249,'recording_duration',30.0);
+batch = { sub, d };
+end
+
+% ---- vmneuralresponseresiduals (element_id + vmspikefit_id) ----------------
+function batch = fx_vmneuralresponseresiduals()
+sub = subjDoc('rr_sub', 'animalRR');
+vf  = subjDoc('rr_vf',  'vmspikefitRR');
+d = struct();
+d.document_class = struct('class_name','vmneuralresponseresiduals','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = [ struct('name','element_id','value','rr_sub'), ...
+                 struct('name','vmspikefit_id','value','rr_vf') ];
+d.base = struct('id','rr_01','session_id','sess_09','name','rr','datestamp','2024-06-01T12:00:00.000Z');
+d.vmneuralresponseresiduals = struct('mean_residual',1.7);
+batch = { sub, vf, d };
+end
+
+% ---- fitcurve --------------------------------------------------------------
+function batch = fx_fitcurve()
+sub = subjDoc('fc_sub', 'animalFC');
+d = struct();
+d.document_class = struct('class_name','fitcurve','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','element_id','value','fc_sub');
+d.base = struct('id','fc_01','session_id','sess_09','name','fc','datestamp','2024-06-01T12:00:00.000Z');
+d.fitcurve = struct('fit_function','gaussian','goodness_of_fit',0.94);
+batch = { sub, d };
+end
+
+% ---- simple_calc -----------------------------------------------------------
+function batch = fx_simple_calc()
+sub = subjDoc('smc_sub', 'animalSMC');
+d = struct();
+d.document_class = struct('class_name','simple_calc','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','element_id','value','smc_sub');
+d.base = struct('id','smc_01','session_id','sess_09','name','sm','datestamp','2024-06-01T12:00:00.000Z');
+d.simple_calc = struct('result_value',12.5,'result_units','Hz');
+batch = { sub, d };
+end
+
+% ---- contrast_tuning (element_id + stimulus_tuningcurve_id) -----------------
+function batch = fx_contrast_tuning()
+sub = subjDoc('ct_sub', 'animalCT');
+tc  = subjDoc('ct_tc',  'tuningcurveCT');
+d = struct();
+d.document_class = struct('class_name','contrast_tuning','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = [ struct('name','element_id','value','ct_sub'), ...
+                 struct('name','stimulus_tuningcurve_id','value','ct_tc') ];
+d.base = struct('id','ct_01','session_id','sess_09','name','ct','datestamp','2024-06-01T12:00:00.000Z');
+d.contrast_tuning = struct( ...
+    'properties', struct('response_units','spikes/s','response_type','mean'), ...
+    'tuning_curve', struct('contrast',[0 0.25 0.5 1],'mean',[2 5 9 12]));
+batch = { sub, tc, d };
+end
+
+% ---- orientation_direction_tuning (element_id + stimulus_tuningcurve_id) ----
+function batch = fx_orientation_direction_tuning()
+sub = subjDoc('od_sub', 'animalOD');
+tc  = subjDoc('od_tc',  'tuningcurveOD');
+d = struct();
+d.document_class = struct('class_name','orientation_direction_tuning','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = [ struct('name','element_id','value','od_sub'), ...
+                 struct('name','stimulus_tuningcurve_id','value','od_tc') ];
+d.base = struct('id','od_01','session_id','sess_09','name','od','datestamp','2024-06-01T12:00:00.000Z');
+d.orientation_direction_tuning = struct( ...
+    'properties', struct('response_units','spikes/s'), ...
+    'tuning_curve', struct('direction',[0 90 180 270],'mean',[10 2 9 3]));
+batch = { sub, tc, d };
+end
+
+% ---- speed_tuning (element_id only) ----------------------------------------
+function batch = fx_speed_tuning()
+sub = subjDoc('sp_sub', 'animalSP');
+d = struct();
+d.document_class = struct('class_name','speed_tuning','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','element_id','value','sp_sub');
+d.base = struct('id','sp_01','session_id','sess_09','name','sp','datestamp','2024-06-01T12:00:00.000Z');
+d.speed_tuning = struct( ...
+    'properties', struct('response_units','spikes/s'), ...
+    'tuning_curve', struct('spatial_frequency',[0.5 0.5 1], ...
+        'temporal_frequency',[2 4 4],'mean',[5 8 6]));
+batch = { sub, d };
+end
+
+% ---- spatial_frequency_tuning (element_id + stimulus_tuningcurve_id) --------
+function batch = fx_spatial_frequency_tuning()
+sub = subjDoc('sf_sub', 'neuronSF');
+tc  = subjDoc('sf_tc',  'tuningcurveSF');
+d = struct();
+d.document_class = struct('class_name','spatial_frequency_tuning','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = [ struct('name','element_id','value','sf_sub'), ...
+                 struct('name','stimulus_tuningcurve_id','value','sf_tc') ];
+d.base = struct('id','sf_01','session_id','sess_09','name','sf','datestamp','2024-06-01T12:00:00.000Z');
+d.spatial_frequency_tuning = struct( ...
+    'properties', struct('response_units','spikes/s'), ...
+    'tuning_curve', struct('spatial_frequency',[0.05 0.1 0.2 0.5],'mean',[2 8 5 1]), ...
+    'significance', struct('visual_response_anova_p',0.01,'across_stimuli_anova_p',0.03), ...
+    'fitless', struct('pref',0.12,'l50',0.06,'h50',0.28,'bandwidth',2.2, ...
+        'low_pass_index',0.3,'high_pass_index',0.7), ...
+    'fit_dog', struct('r2',0.95,'pref',0.13));
+batch = { sub, tc, d };
+end
+
+% ---- probe_geometry (probe_id) ---------------------------------------------
+function batch = fx_probe_geometry()
+sub = subjDoc('pg_sub', 'probePG');
+d = struct();
+d.document_class = struct('class_name','probe_geometry','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name','probe_id','value','pg_sub');
+d.base = struct('id','pg_01','session_id','sess_09','name','pg','datestamp','2024-06-01T12:00:00.000Z');
+d.probe_geometry = struct('num_channels',2, ...
+    'channel_positions',[0 0; 20 0], ...
+    'position_units','um', ...
+    'probe_type','linear');
+batch = { sub, d };
+end
+
+% ---- position_metadata (element_id) ----------------------------------------
+function batch = fx_position_metadata()
+sub = subjDoc('pm_sub', 'elemPM');
+d = struct();
+d.document_class = struct('class_name','position_metadata','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name','element_id','value','pm_sub');
+d.base = struct('id','pm_01','session_id','sess_09','name','pm','datestamp','2024-06-01T12:00:00.000Z');
+d.position_metadata = struct('ontology_node','EMPTY:0000200', ...
+    'units','NCIT:C48367','dimensions','NCIT:C44477,NCIT:C44478');
+batch = { sub, d };
+end
+
+% ---- distance_metadata (element_id) -- nested endpoints (unit-test shape) ---
+function batch = fx_distance_metadata()
+sub = subjDoc('dm_sub', 'elemDM');
+d = struct();
+d.document_class = struct('class_name','distance_metadata','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name','element_id','value','dm_sub');
+d.base = struct('id','dm_01','session_id','sess_09','name','dm','datestamp','2024-06-01T12:00:00.000Z');
+d.distance_metadata = struct( ...
+    'endpoints', struct('label','soma-to-tip', ...
+        'measurement', struct('node','PATO:0000915','name','distance'), ...
+        'numeric_values',[42.5 43.1]), ...
+    'units', struct('node','uo:0000017','name','micrometer'));
+batch = { sub, d };
+end
+
+% ---- electrode_offset_voltage (probe_id) -----------------------------------
+function batch = fx_electrode_offset_voltage()
+sub = subjDoc('eo_sub', 'probeEO');
+d = struct();
+d.document_class = struct('class_name','electrode_offset_voltage','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name','probe_id','value','eo_sub');
+d.base = struct('id','eo_01','session_id','sess_09','name','eo','datestamp','2024-06-01T12:00:00.000Z');
+d.electrode_offset_voltage = struct('offset_voltages',[0.5 -0.3 1.2 0.0], ...
+    'voltage_units','mV');
+batch = { sub, d };
+end
+
+% ---- site2channelmap (probe_id) --------------------------------------------
+function batch = fx_site2channelmap()
+sub = subjDoc('s2c_sub', 'probeS2C');
+d = struct();
+d.document_class = struct('class_name','site2channelmap','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','probe_id','value','s2c_sub');
+d.base = struct('id','s2c_01','session_id','sess_09','name','s2c','datestamp','2024-06-01T12:00:00.000Z');
+d.site2channelmap = struct('num_sites',32, ...
+    'site_to_channel', struct('site',1,'channel',5));
+batch = { sub, d };
+end
+
+% ---- spike_interface_sorting_outputs (element_id) --------------------------
+function batch = fx_spike_interface_sorting_outputs()
+sub = subjDoc('sis_sub', 'recSubSIS');
+d = struct();
+d.document_class = struct('class_name','spike_interface_sorting_outputs','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+d.depends_on = struct('name','element_id','value','sis_sub');
+d.base = struct('id','sis_01','session_id','sess_09','name','sis','datestamp','2024-06-01T12:00:00.000Z');
+d.spike_interface_sorting_outputs = struct('sorter_name','kilosort', ...
+    'num_units',12,'sample_rate',30000);
+batch = { sub, d };
+end
+
+% ---- dataset_remote (no depends_on) ----------------------------------------
+function batch = fx_dataset_remote()
+d = struct();
+d.document_class = struct('class_name','dataset_remote','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name', {}, 'value', {});
+d.base = struct('id','dr_01','session_id','dr_dsid_1','name','remote','datestamp','2024-06-01T12:00:00.000Z');
+d.dataset_remote = struct('dataset_id','d-12345','organization_id','ndicloud-lab');
+batch = { d };
+end
+
+% ---- dataset_session_info (aggregate; no depends_on) -----------------------
+function batch = fx_dataset_session_info()
+d = struct();
+d.document_class = struct('class_name','dataset_session_info','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name', {}, 'value', {});
+d.base = struct('id','dsi_01','session_id','dsi_dsid_1','name','dsi','datestamp','2024-06-01T12:00:00.000Z');
+e1 = struct('session_id','dsi_member_a','is_linked',0);
+e2 = struct('session_id','dsi_member_b','is_linked',1);
+d.dataset_session_info = struct('dataset_session_info', [e1 e2]);
+batch = { d };
+end
+
+% ---- session_in_a_dataset (no depends_on) ----------------------------------
+function batch = fx_session_in_a_dataset()
+d = struct();
+d.document_class = struct('class_name','session_in_a_dataset','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name', {}, 'value', {});
+d.base = struct('id','sida_01','session_id','sida_dsid_1','name','sid','datestamp','2024-06-01T12:00:00.000Z');
+d.session_in_a_dataset = struct('session_id','sida_member_9', ...
+    'session_reference','exp_demo','is_linked',0, ...
+    'session_creator','ndi.session.dir','session_creator_input1','exp_demo', ...
+    'session_creator_input2','','session_creator_input3','', ...
+    'session_creator_input4','','session_creator_input5','', ...
+    'session_creator_input6','');
+batch = { d };
+end
+
+% ---- element_epoch (element_id; superclasses base + epochid) ---------------
+function batch = fx_element_epoch()
+sub = subjDoc('ee_sub', 'elemEE');
+d = struct();
+d.document_class = struct('class_name','element_epoch','class_version','1.0.0', ...
+    'superclasses', [ struct('class_name','base','class_version','1.0.0'), ...
+                      struct('class_name','epochid','class_version','1.0.0') ]);
+d.depends_on = struct('name','element_id','value','ee_sub');
+d.base = struct('id','ee_01','session_id','sess_09','name','t00001','datestamp','2024-06-01T12:00:00.000Z');
+d.epochid = struct('epochid','t00001');
+d.element_epoch = struct('epoch_clock','dev_local_time','t0_t1',[0; 930.35]);
+batch = { sub, d };
+end
+
+% ---- ontology_image (element_id) -------------------------------------------
+function batch = fx_ontology_image()
+sub = subjDoc('oi_sub', 'elemOI');
+d = struct();
+d.document_class = struct('class_name','ontology_image','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name','element_id','value','oi_sub');
+d.base = struct('id','oi_01','session_id','sess_09','name','oi','datestamp','2024-06-01T12:00:00.000Z');
+d.ontology_image = struct('region', ...
+    struct('node','uberon:0002436','name','primary visual cortex'));
+batch = { sub, d };
+end
+
+% ---- openminds_element (element_id + empty openminds dep) ------------------
+function batch = fx_openminds_element()
+sub = subjDoc('ome_sub', 'elemOME');
+d = struct();
+d.document_class = struct('class_name','openminds_element','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name', {'element_id','openminds'}, 'value', {'ome_sub',''});
+d.base = struct('id','ome_01','session_id','sess_09','name','','datestamp','2024-06-01T12:00:00.000Z');
+d.openminds = struct('openminds_type','https://openminds.om-i.org/types/Species', ...
+    'matlab_type','openminds.controlledterms.Species', ...
+    'fields', struct('name','Caenorhabditis elegans', ...
+        'preferredOntologyIdentifier','NCBITaxon:6239','synonym','C. elegans'));
+batch = { sub, d };
+end
+
+% ---- openminds_stimulus (stimulus_id + empty openminds dep) ----------------
+function batch = fx_openminds_stimulus()
+sub = subjDoc('oms_sub', 'stimOMS');
+d = struct();
+d.document_class = struct('class_name','openminds_stimulus','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+d.depends_on = struct('name', {'stimulus_id','openminds'}, 'value', {'oms_sub',''});
+d.base = struct('id','oms_01','session_id','sess_09','name','','datestamp','2024-06-01T12:00:00.000Z');
+d.openminds = struct('openminds_type','https://openminds.om-i.org/types/Species', ...
+    'matlab_type','openminds.controlledterms.Species', ...
+    'fields', struct('name','Caenorhabditis elegans', ...
+        'preferredOntologyIdentifier','NCBITaxon:6239','synonym','C. elegans'));
+batch = { sub, d };
 end
