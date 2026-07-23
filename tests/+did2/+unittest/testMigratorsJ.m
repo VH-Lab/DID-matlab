@@ -1442,6 +1442,41 @@ verifyEqual(testCase, leaf.orientation_direction_tuning.vector.orientation_prefe
     47.5, 'AbsTol', 1e-9);
 end
 
+function testContrastSensitivityCalcUndefersToLeaf(testCase)
+% The aggregate ndi.calc.vis.contrast_sensitivity output (a flat bag of matrices on
+% its own block, NO result-composite superclass) un-defers 1 -> 1, id-preserved, into
+% contrast_sensitivity_calculation (a newly-authored composite). It HAS element_id ->
+% single-doc fold; the result fields move to the composite block (input_parameters
+% stripped -> method_parameters); app kept; raw responses -> derived_from_1.
+body = struct();
+body.document_class = struct('class_name', 'contrast_sensitivity_calc', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'calculator'}, 'class_version', {'1.0.0'; '1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_cs'), ...
+                    struct('name', 'stimulus_response_scalar_id', 'value', 'resp_cs')];
+body.base = struct('id', 'cs_1', 'session_id', 'sess_09', 'name', 'cs', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = struct('app_name', 'ndi.calc.vis.contrast_sensitivity', 'app_version', '1.0');
+body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
+    'sensitivity_rb', [10 20 15 5], 'response_type', 'mean', ...
+    'input_parameters', struct('threshold', 1));
+
+out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
+verifyEqual(testCase, numel(out), 2);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'contrast_sensitivity_calculation')));
+leaf = out{find(strcmp(names, 'contrast_sensitivity_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'cs_1');                                % id preserved
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_cs');          % element_id -> subject
+verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_cs');
+verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.contrast_sensitivity');
+% input_parameters -> method_parameters, and stripped from the composite block
+verifyEqual(testCase, leaf.subject_interaction.method_parameters.threshold, 1);
+verifyFalse(testCase, isfield(leaf.contrast_sensitivity, 'input_parameters'));
+% the result matrices kept as the composite value; app kept for reproducibility
+verifyEqual(testCase, leaf.contrast_sensitivity.sensitivity_rb, [10 20 15 5]);
+verifyEqual(testCase, leaf.app.app_name, 'ndi.calc.vis.contrast_sensitivity');
+end
+
 function d = firstByVariable(migrated, varName)
 d = [];
 for k = 1:numel(migrated)

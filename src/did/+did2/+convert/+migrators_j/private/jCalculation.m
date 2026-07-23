@@ -1,4 +1,4 @@
-function bodies = jCalculation(preBody, leafClass, composite, variableName, methodName)
+function bodies = jCalculation(preBody, leafClass, composite, variableName, methodName, sourceBlock)
 %JCALCULATION Fold a calculator output document 1 -> 1 (id-preserved) into a V_eta
 %   subject_calculation LEAF, plus a session anchor. Shared by the calculator
 %   composite-leaf family (Lepsky et al., the calculator-motif paper): a calculator
@@ -26,6 +26,11 @@ arguments
     composite (1,:) char
     variableName (1,:) char
     methodName (1,:) char
+    % The source block holding the result fields. Defaults to the composite name (the
+    % result classes carry their own self-named block). A calc whose result fields sit
+    % on its concrete `*_calc` block instead (e.g. contrast_sensitivity_calc) passes
+    % that block name; input_parameters is stripped from it (-> method_parameters).
+    sourceBlock (1,:) char = composite
 end
 TV = 'V_eta';
 
@@ -44,7 +49,8 @@ leaf.document_class = struct('class_name', leafClass, 'class_version', '1.0.0', 
 % the input document (the raw curve the calculator consumed, its provenance).
 deps = jCarrySubject(preBody, {'element_id', 'subject_id'});
 deps(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-srcId = firstDepValue(preBody, {'stimulus_tuningcurve_id', 'stimulus_response_id'});
+srcId = firstDepValue(preBody, {'stimulus_tuningcurve_id', ...
+    'stimulus_response_scalar_id', 'stimulus_response_id'});
 if ~isempty(srcId)
     deps(end+1) = struct('name', 'derived_from_1', 'value', srcId);
 end
@@ -59,11 +65,16 @@ leaf.subject_interaction = struct('method', jOntologyTerm('', methodName), ...
     'sample_time', struct('kind', 'point'));
 leaf.app = calcApp(preBody);
 
-% the composite value block: the calculator's structured result, kept verbatim.
-if isfield(preBody, composite) && isstruct(preBody.(composite))
-    leaf.(composite) = preBody.(composite);
-else
-    leaf.(composite) = struct();
+% the composite value block: the calculator's structured result. Read from
+% sourceBlock (the composite's own block, or the concrete `*_calc` block); strip
+% input_parameters if it materialized there (it goes to method_parameters instead).
+leaf.(composite) = struct();
+if isfield(preBody, sourceBlock) && isstruct(preBody.(sourceBlock))
+    srcBlk = preBody.(sourceBlock);
+    if isfield(srcBlk, 'input_parameters')
+        srcBlk = rmfield(srcBlk, 'input_parameters');
+    end
+    leaf.(composite) = srcBlk;
 end
 
 bodies = {leaf, anchor};
