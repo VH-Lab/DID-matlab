@@ -55,7 +55,7 @@ leaf.base = preBody.base;   % id preserved -> inbound references resolve to the 
 leaf.subject_statement = struct('variable', jOntologyTerm('', variableName), ...
     'storage_mode', 'inline');
 leaf.subject_interaction = struct('method', jOntologyTerm('', methodName), ...
-    'method_parameters', calcInputParameters(preBody, leafClass), ...
+    'method_parameters', calcInputParameters(preBody), ...
     'sample_time', struct('kind', 'point'));
 leaf.app = calcApp(preBody);
 
@@ -87,21 +87,23 @@ if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
 end
 end
 
-function p = calcInputParameters(preBody, leafClass)
-% The calculator's input_parameters (Fig 3E) live in the source's own calc block
-% (e.g. an `oridirtuning_calc` block on the calculator-output doc). Absent on a bare
-% result doc -> an empty struct (method_parameters is optional).
+function p = calcInputParameters(preBody)
+% The calculator's input_parameters (Fig 3E) materialize on the source's concrete
+% `*_calc` block (calculator.input_parameters, placement concrete_class -- the block
+% name is the abbreviated calc class, e.g. `oridirtuning_calc`). Scan every block for
+% the one that carries them; also accept a top-level `input_parameters`. Absent on a
+% bare result doc -> an empty struct (method_parameters is optional).
 p = struct();
-calcBlock = regexprep(leafClass, '_calculation$', '_calc');   % leaf -> source calc class
-for cand = {calcBlock, 'input_parameters'}
-    b = cand{1};
-    if isfield(preBody, b) && isstruct(preBody.(b))
-        if isfield(preBody.(b), 'input_parameters') && isstruct(preBody.(b).input_parameters)
-            p = preBody.(b).input_parameters; return;
-        elseif strcmp(b, 'input_parameters')
-            p = preBody.(b); return;
-        end
+fns = fieldnames(preBody);
+for i = 1:numel(fns)
+    b = preBody.(fns{i});
+    if isstruct(b) && isscalar(b) && isfield(b, 'input_parameters') ...
+            && isstruct(b.input_parameters)
+        p = b.input_parameters; return;
     end
+end
+if isfield(preBody, 'input_parameters') && isstruct(preBody.input_parameters)
+    p = preBody.input_parameters;
 end
 end
 

@@ -1403,6 +1403,45 @@ verifyEqual(testCase, leaf.orientation_direction_tuning.vector.orientation_prefe
     47.5, 'AbsTol', 1e-9);
 end
 
+function testOridirtuningCalcUndefersToLeaf(testCase)
+% The ndi.calc.vis.oridir calculator OUTPUT document (oridirtuning_calc, currently a
+% deferred passthrough) un-defers 1 -> 1, id-preserved, into the SAME leaf as its
+% result sibling. This is where the calculator provenance actually lands:
+% input_parameters -> method_parameters, the app block kept, the raw
+% stimulus_tuningcurve -> derived_from_1, and the result composite verbatim.
+body = struct();
+body.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'orientation_direction_tuning'; 'tuning_fit'}, ...
+                           'class_version', {'1.0.0'; '1.0.0'; '1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_9'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_9')];
+body.base = struct('id', 'oc_1', 'session_id', 'sess_09', 'name', 'oc', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = struct('app_name', 'ndi.calc.vis.oridir', 'app_version', '1.2');
+body.oridirtuning_calc = struct('input_parameters', ...
+    struct('independent_variable', 'direction'));
+body.orientation_direction_tuning = struct( ...
+    'properties', struct('response_units', 'spikes/s'), ...
+    'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
+    'vector', struct('orientation_preference', 47.5));
+
+out = did2.convert.migrators_j.oridirtuning_calc(body);
+verifyEqual(testCase, numel(out), 2);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'orientation_direction_tuning_calculation')));
+leaf = out{find(strcmp(names, 'orientation_direction_tuning_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'oc_1');                                % id preserved
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_9');
+verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_9');
+% input_parameters -> method_parameters; app kept for reproducibility (paper Fig 4)
+verifyEqual(testCase, leaf.subject_interaction.method_parameters.independent_variable, ...
+    'direction');
+verifyEqual(testCase, leaf.app.app_name, 'ndi.calc.vis.oridir');
+% the result composite kept verbatim
+verifyEqual(testCase, leaf.orientation_direction_tuning.vector.orientation_preference, ...
+    47.5, 'AbsTol', 1e-9);
+end
+
 function d = firstByVariable(migrated, varName)
 d = [];
 for k = 1:numel(migrated)
