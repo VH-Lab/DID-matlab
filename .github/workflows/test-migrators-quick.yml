@@ -11,12 +11,10 @@ on:
     branches: ['claude/**']
     paths-ignore:
       - '*.md'
-      - '.github/**'
   pull_request:
     branches: [main, V2]
     paths-ignore:
       - '*.md'
-      - '.github/**'
   workflow_dispatch:
 
 concurrency:
@@ -31,25 +29,27 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check out did-schema (sibling, for schema validation)
+      - name: Check out did-schema (sibling, for V_eta validation)
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: ${{ github.head_ref || 'main' }}
+          ref: ${{ github.head_ref || github.ref_name }}
           path: did-schema
 
-      - name: Assemble V_zeta schema set (stable + draft)
-        # The migrator transform tests run Validate=false, but a few unit tests
-        # touch the schema cache; assemble V_zeta (still present on the branch)
-        # so DID_SCHEMA_PATH resolves, exactly as test-code.yml does.
+      - name: Assemble V_eta schema set (stable + draft)
+        # The suite migrates fixtures to V_eta WITH validation on
+        # (testFixtureCorpus/testFixturesMigrateCleanUnderValidation), so the schema
+        # cache must be the V_eta set, not V_zeta -- otherwise the V_eta-only classes
+        # (the subject_calculation leaves, data_body, ...) are absent and validation
+        # fails. Mirrors test-fixtures.yml / test-code.yml (both on V_eta now).
         run: |
-          mkdir -p "${GITHUB_WORKSPACE}/zeta-schemas"
-          cp did-schema/schemas/V_zeta/stable/*.json "${GITHUB_WORKSPACE}/zeta-schemas/"
-          cp did-schema/schemas/V_zeta/draft/*.json  "${GITHUB_WORKSPACE}/zeta-schemas/"
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
 
       - name: Export DID_SCHEMA_PATH
         run: |
-          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/zeta-schemas" \
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" \
             >> "$GITHUB_ENV"
 
       - name: Set up MATLAB
