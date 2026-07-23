@@ -113,8 +113,13 @@ classdef query
                 query_struct = did.datastructures.emptystruct('field','operation','param1','param2');
             elseif nargin == 1
                 if isstruct(field)
-                    % check arguments
-                    if ~did.datastructures.eqlen(sort(fieldnames(field)),sort({'field','operation','param1','param2'}))
+                    % Validate fieldnames against the expected set.
+                    % fieldnames() returns a 4x1 cell, so build the
+                    % literal as a column too — did.datastructures.eqlen
+                    % checks shape strictly, and a 1x4 vs 4x1 mismatch
+                    % otherwise rejects every well-formed struct input.
+                    if ~did.datastructures.eqlen(sort(fieldnames(field)), ...
+                            sort({'field';'operation';'param1';'param2'}))
                         error('Field names of search structure do not match expected fields.');
                     end
                     query_struct = field;

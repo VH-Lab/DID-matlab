@@ -1,0 +1,32 @@
+{
+    "document_class": {
+        "class_name": "demoMixedConcrete",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base"
+            },
+            {
+                "class_name": "demoMixedPlacement"
+            }
+        ],
+        "maturity_level": "stable"
+    },
+    "depends_on": [],
+    "file": [],
+    "fields": [
+        {
+            "name": "own_field",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "documentation": "Own concrete-class field; shares its block with moves_to_child routed in by demoMixedPlacement.",
+            "constraints": {}
+        }
+    ]
+}

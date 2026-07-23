@@ -1211,6 +1211,19 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             for i = 1 : numel(superFullNames)
                 [~,superNames{i}] = fileparts(superFullNames{i}); % keep compatibility with Matlab 2019a
             end
+            % did2-form documents carry superclass names directly in
+            % `.class_name` (e.g. {class_name:'base'}) and have no
+            % `.definition` path. Fall back to those names so the legacy
+            % validator recognises did2-shaped documents during the
+            % v1->v2 transition (otherwise superNames is empty and every
+            % such doc fails the superclasses check spuriously).
+            if isempty(superNames)
+                try
+                    superNames = {classProps.superclasses.class_name};
+                catch
+                    superNames = {};
+                end
+            end
             if ~iscell(superNames), superNames = {superNames}; end
             superNames = unique(superNames);
             schemaFields = fieldnames(schemaStruct);
@@ -1238,8 +1251,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         assert(areSame,'DID:Database:ValidationSuperClasses', ...
                             'Dissimilar superclasses defined/found for %s ("%s" <=> "%s")', ...
                             doc_name, expectedStr, superNamesStr);
-                        % Recursively validate all superNames against this doc:
-                        for idx = 1 : numel(superNames)
+                        % Recursively validate all superclasses against this
+                        % doc. Bound by superFullNames (the `.definition`
+                        % paths): did2-form docs expose names but no paths, so
+                        % superFullNames is empty and the deeper recursion is
+                        % skipped -- the concrete class is still validated, and
+                        % the superclasses-name check above already passed.
+                        for idx = 1 : numel(superFullNames)
                             % First get the superClass' definition struct
                             defStruct = database_obj.get_document_schema(superFullNames{idx});
                             % Extract validation file from definition
@@ -1289,7 +1307,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             if isempty(idx2)
                                 value = [];
                             else
-                                value = depends(idx2).value;
+                                value = did.document.i_readDependencyTarget(depends(idx2));
                             end
                             % If dependency is marked as MustBeNotEmpty, ensure it's not empty
                             expectedValue = mustHaveValue{idx};
@@ -1345,6 +1363,21 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         expectedSubFields = strjoin(unique({expected.name}),',');
                         docSubFields = strjoin(unique(fieldnames(docValue)),',');
                         areSame = strcmpi(expectedSubFields,docSubFields);
+                        if ~areSame
+                            % Compensate for V_alpha->V_delta property-block
+                            % field renames the V_alpha validator does not
+                            % know about. Normalise both sides via the
+                            % small alias map and re-compare. See #801.
+                            normalizedExpected = ...
+                                did.document.i_normalizePropertyBlockFields( ...
+                                    field, {expected.name});
+                            normalizedDoc = ...
+                                did.document.i_normalizePropertyBlockFields( ...
+                                    field, fieldnames(docValue));
+                            areSame = isequal( ...
+                                sort(normalizedExpected(:)), ...
+                                sort(normalizedDoc(:)));
+                        end
                         assert(areSame,'DID:Database:ValidationFields', ...
                             'Dissimilar sub-fields defined/found for %s field in %s (expected fields "%s" <=> actual fields "%s")', ...
                             field, doc_name, expectedSubFields, docSubFields);
@@ -1352,7 +1385,21 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             definition = expected(idx);
                             subfield = definition.name;
                             field_name = [field '.' subfield];
-                            docSubValue = docValue.(subfield);
+                            % Tolerate V_alpha->V_delta property-block
+                            % renames the schema does not know about:
+                            % if the schema's declared subfield isn't on
+                            % the body, look for the V_delta canonical
+                            % via the rename map. See #801.
+                            if isfield(docValue, subfield)
+                                docSubValue = docValue.(subfield);
+                            else
+                                aliased = did.document.i_aliasV_alphaToV_delta(field, subfield);
+                                if ~isempty(aliased) && isfield(docValue, aliased)
+                                    docSubValue = docValue.(aliased);
+                                else
+                                    docSubValue = docValue.(subfield); % fire the original error
+                                end
+                            end
                             database_obj.validate_field_type_and_value(doc_name, field_name, docSubValue, definition)
                         end
                 end

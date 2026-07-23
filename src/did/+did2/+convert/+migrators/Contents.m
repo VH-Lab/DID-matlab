@@ -1,0 +1,82 @@
+% +migrators  Per-class did_v1 -> V_delta migrator functions.
+%
+%   Each file in this package is named after the post-universal-rename
+%   v1 class name (snake_case) and exports a single function:
+%
+%       v2Body = <class_name>(preUniversalBody)
+%
+%   The dispatcher (did2.convert.v1_to_v2) applies the universal
+%   renames first, then looks up the matching migrator by class name.
+%   If no migrator exists, the dispatcher falls back to `identity`,
+%   which returns the post-universal body unchanged.
+%
+%   Currently registered migrators implement the four 2.0.0-bumped
+%   classes from PLAN.md §7 plus the PRED-driven §9.6 sub-step 6d
+%   additions:
+%
+%     identity            - default passthrough.
+%     probe_location      - collapse (ontology_name, name) -> location.
+%     treatment           - collapse (ontologyName | ontology_name,
+%                           name) -> treatment_name; pass through
+%                           numeric_value and string_value.
+%     ontology_image      - collapse (ontology_name, ontology_region)
+%                           -> region.
+%     ontology_label      - collapse (ontology_name, label_id, label)
+%                           -> term, with the CURIE composed from the
+%                           first two.
+%     epochclocktimes     - SUPERCLASS migrator; rename clocktype ->
+%                           epoch_clock and split t0_t1 -> (t0, t1).
+%                           Applied by the dispatcher to any document
+%                           that lists epochclocktimes among its
+%                           superclasses, before the concrete-class
+%                           migrator runs.
+%     element_epoch       - concrete-class twin of epochclocktimes;
+%                           splits t0_t1 -> (t0, t1). epoch_clock is
+%                           already snake_case in v1, no rename
+%                           needed. Accepts the older `clocktype`
+%                           spelling defensively.
+%     ngrid               - SUPERCLASS migrator; rename data_dim ->
+%                           dim_sizes and derive ndims = numel(data_dim).
+%                           Drops v1-only data_size and coordinates.
+%                           Applied to any document that lists ngrid
+%                           in its superclass chain (e.g., hartley_calc
+%                           via reverse_correlation).
+%     ontology_label      - extended to handle the JH single-`ontologyNode`
+%                           idiom (no label/label_id). Looks up the
+%                           name via ndi.ontology.lookup; falls back to
+%                           empty name when the lookup is unavailable.
+%     position_metadata   - semantic-shape migrator: builds
+%                           measurement (ontology_term), units
+%                           (ontology_term), and dimensions
+%                           (array-of-records with axis_1, axis_2 labels)
+%                           from v1 ontologyNode/units/dimensions.
+%     distance_metadata   - paired A/B endpoint migrator: discovers
+%                           labels by regex-scanning ontology_node_X
+%                           keys and builds an endpoints array-of-records
+%                           with measurement, integer_ids, string_ids,
+%                           numeric_values per endpoint.
+%     stimulus_bath       - rename location.ontologyNode -> .node;
+%                           parse the v1 CSV mixture_table into a
+%                           mixture array-of-records; each amount is a
+%                           V_delta `concentration` composite with
+%                           source_unit / source_value preserved and
+%                           the appropriate canonical sub-field (molar,
+%                           grams_per_liter, mass_fraction,
+%                           volume_fraction) populated when computable.
+%
+%   Calculator-base wrappers (PLAN.md §9.6 sub-step 6d, 20211116-driven):
+%   each calls did2.convert.calcCommon to move v1's
+%   `<class>.input_parameters` into a new inherited `calculator` block.
+%   The calculator-identity string lives in `app.app_name` (carried in
+%   v1 as `app.name`) and is handled by the universal app-block field
+%   rename in did2.convert.universalRenames; the per-class wrapper does
+%   not have to know its own calculator-name string.
+%
+%     tuningcurve_calc, oridirtuning_calc, hartley_calc,
+%     contrast_sensitivity_calc, contrast_tuning_calc,
+%     spatial_frequency_tuning_calc, speed_tuning_calc,
+%     temporal_frequency_tuning_calc, simple_calc
+%
+%   See did-schema's
+%   schemas/V_delta/conversions/from_did_v1/<class_name>.md for the
+%   per-class specifications.

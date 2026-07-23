@@ -1,0 +1,44 @@
+{
+    "document_class": {
+        "class_name": "demoMixedPlacement",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base"
+            }
+        ],
+        "maturity_level": "stable",
+        "abstract": true
+    },
+    "depends_on": [],
+    "file": [],
+    "fields": [
+        {
+            "name": "stays_on_parent",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "documentation": "Default placement (declaring_class). Hosted on the abstract class's own body block.",
+            "constraints": {}
+        },
+        {
+            "name": "moves_to_child",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "placement": "concrete_class",
+            "documentation": "placement=concrete_class. Hosted on the concrete subclass's body block.",
+            "constraints": {}
+        }
+    ]
+}

@@ -36,7 +36,20 @@ function sqlMetaData = doc2sql(doc)
 
     superclass = getField(doc_props, 'document_class.superclasses');
     if isstruct(superclass)
-        superclass = regexprep({superclass.definition},{'.+/','\..+$'},'');
+        % did1-form superclasses carry a `.definition` path
+        % ($DIDDOCUMENT/base.json), from which the bare class name is the
+        % stripped basename. did2-form documents (V_delta / V_zeta) carry the
+        % superclass name directly in `.class_name` (e.g. {class_name:'base'})
+        % and have no `.definition`. Accept both so the legacy sql layer handles
+        % did2-shaped documents during the v1->v2 transition -- mirrors the
+        % fallback already used by did.database superclass validation.
+        if isfield(superclass, 'definition')
+            superclass = regexprep({superclass.definition},{'.+/','\..+$'},'');
+        elseif isfield(superclass, 'class_name')
+            superclass = {superclass.class_name};
+        else
+            superclass = {};
+        end
         superclass = strjoin(unique(superclass), ', ');
     end
     sqlMetaData.columns(end+1) = newColumn('superclass', superclass);
@@ -49,8 +62,17 @@ function sqlMetaData = doc2sql(doc)
 
     dependsOn = getField(doc_props, 'depends_on');
     if isstruct(dependsOn)
-        allData = [{dependsOn.name}; {dependsOn.value}];
-        dependsOn = sprintf('%s,%s;',allData{:});
+        % Build a 2xN cell of (name, target) pairs by index. Direct
+        % cell-of-fields concatenation tripped MATLAB:catenate:dimensionMismatch
+        % when dependsOn was a column struct array vs a row, since
+        % {struct.field} and arrayfun return different orientations.
+        n = numel(dependsOn);
+        allData = cell(2, n);
+        for k = 1:n
+            allData{1, k} = dependsOn(k).name;
+            allData{2, k} = did.document.i_readDependencyTarget(dependsOn(k));
+        end
+        dependsOn = sprintf('%s,%s;', allData{:});
     end
     sqlMetaData.columns(end+1) = newColumn('depends_on', dependsOn);
 
