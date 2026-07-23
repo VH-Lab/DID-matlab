@@ -1477,6 +1477,80 @@ verifyEqual(testCase, leaf.contrast_sensitivity.sensitivity_rb, [10 20 15 5]);
 verifyEqual(testCase, leaf.app.app_name, 'ndi.calc.vis.contrast_sensitivity');
 end
 
+function testTuningcurveCalcUndefersToLeaf(testCase)
+% The ndi.calc.stimulus.tuningcurve calculator OUTPUT (tuningcurve_calc) un-defers
+% 1 -> 1, id-preserved, into the stimulus_tuningcurve_calculation leaf. Contrary to
+% an earlier belief, this doc HAS a populated element_id (tuningcurve_calc IS-A
+% stimulus_tuningcurve, whose element_id the writer sets), so the fold is single-doc:
+% element_id -> subject_id; the tuning-curve result sits on the inherited
+% stimulus_tuningcurve block (kept verbatim); the calc block's input_parameters ->
+% method_parameters; app kept; the raw stimulus_response_scalar -> derived_from_1.
+body = struct();
+body.document_class = struct('class_name', 'tuningcurve_calc', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'stimulus_tuningcurve'}, ...
+        'class_version', {'1.0.0'; '1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_tc'), ...
+                    struct('name', 'stimulus_response_scalar_id', 'value', 'resp_tc')];
+body.base = struct('id', 'tcc_1', 'session_id', 'sess_11', 'name', 'tc', ...
+    'datestamp', '2024-07-01T12:00:00.000Z');
+body.app = struct('app_name', 'ndi.calc.stimulus.tuningcurve', 'app_version', '1.0');
+body.stimulus_tuningcurve = struct( ...
+    'independent_variable_label', 'contrast', ...
+    'independent_variable_value', [0 0.25 0.5 1], ...
+    'response_mean', [1 4 8 11], 'response_units', 'Spikes/s');
+body.tuningcurve_calc = struct('log', 'ok', ...
+    'input_parameters', struct('best_algorithm', 'empirical_maximum'));
+
+out = did2.convert.migrators_j.tuningcurve_calc(body);
+verifyEqual(testCase, numel(out), 2);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'stimulus_tuningcurve_calculation')));
+leaf = out{find(strcmp(names, 'stimulus_tuningcurve_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'tcc_1');                          % id preserved
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_tc');      % element_id -> subject
+verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_tc');
+verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.stimulus.tuningcurve');
+% input_parameters (on the calc block) -> method_parameters
+verifyEqual(testCase, leaf.subject_interaction.method_parameters.best_algorithm, 'empirical_maximum');
+% the tuning-curve result kept verbatim as the composite value; app kept
+verifyEqual(testCase, leaf.stimulus_tuningcurve.response_mean, [1 4 8 11]);
+verifyEqual(testCase, leaf.stimulus_tuningcurve.independent_variable_label, 'contrast');
+verifyEqual(testCase, leaf.app.app_name, 'ndi.calc.stimulus.tuningcurve');
+end
+
+function testStimulusTuningcurveRawFoldsToCalculationLeaf(testCase)
+% A raw ndi.app.stimulus.tuning_response tuning curve (pre-calculator-framework
+% stimulus_tuningcurve) folds to the SAME leaf as tuningcurve_calc, so downstream
+% stimulus_tuningcurve_id refs resolve to either. Single-doc: element_id -> subject_id;
+% result kept verbatim; no calc input_parameters/app (method_parameters/app empty);
+% raw stimulus_response_scalar -> derived_from_1.
+body = struct();
+body.document_class = struct('class_name', 'stimulus_tuningcurve', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_rt'), ...
+                    struct('name', 'stimulus_response_scalar_id', 'value', 'resp_rt')];
+body.base = struct('id', 'stc_1', 'session_id', 'sess_11', 'name', 'rawtc', ...
+    'datestamp', '2024-07-01T12:00:00.000Z');
+body.stimulus_tuningcurve = struct( ...
+    'independent_variable_label', 'direction', ...
+    'independent_variable_value', [0 90 180 270], ...
+    'response_mean', [10 2 9 3], 'response_units', 'Spikes/s');
+
+out = did2.convert.migrators_j.stimulus_tuningcurve(body);
+verifyEqual(testCase, numel(out), 2);
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'stimulus_tuningcurve_calculation')));
+leaf = out{find(strcmp(names, 'stimulus_tuningcurve_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'stc_1');                          % id preserved
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_rt');      % element_id -> subject
+verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_rt');
+verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.app.stimulus.tuning_response');
+verifyEqual(testCase, leaf.stimulus_tuningcurve.response_mean, [10 2 9 3]);
+% no calculator provenance on a raw doc -> empty method_parameters + app
+verifyTrue(testCase, isempty(fieldnames(leaf.subject_interaction.method_parameters)));
+verifyTrue(testCase, isempty(fieldnames(leaf.app)));
+end
+
 function d = firstByVariable(migrated, varName)
 d = [];
 for k = 1:numel(migrated)

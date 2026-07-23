@@ -2,8 +2,9 @@ function bodies = contrast_sensitivity_calc(preBody)
 %CONTRAST_SENSITIVITY_CALC Brainstorm-J migrator: the ndi.calc.vis.contrast_sensitivity
 %   calculator OUTPUT document -> the subject_calculation LEAF
 %   contrast_sensitivity_calculation (id-preserved) + a session anchor. Un-defers the
-%   aggregate contrast-sensitivity calculation. Unlike tuningcurve_calc, this doc HAS
-%   element_id, so the fold is single-doc: element_id -> subject_id; the result fields
+%   aggregate contrast-sensitivity calculation. This doc HAS element_id (like every
+%   vision calculator, tuningcurve_calc included), so the fold is single-doc:
+%   element_id -> subject_id; the result fields
 %   (sensitivity / gain / c50 / p-value matrices) sit on the concrete
 %   contrast_sensitivity_calc block, so it is passed as the sourceBlock (its inherited
 %   input_parameters stripped -> method_parameters); app kept; the raw responses
