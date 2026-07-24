@@ -1272,7 +1272,28 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             expectedNames = {};
                             mustHaveValue = {};
                         end
-                        areSame = all(ismember(lower(unique(expectedNames)), lower(unique(docNames_alt))));
+                        % Only dependencies that the schema marks as
+                        % mustbenotempty are required to be present. Optional
+                        % dependencies (mustbenotempty false/empty) may be
+                        % omitted from the document without being an error.
+                        isRequired = false(1, numel(mustHaveValue));
+                        for mv = 1:numel(mustHaveValue)
+                            thisValue = mustHaveValue{mv};
+                            isRequired(mv) = ~isempty(thisValue) && thisValue;
+                        end
+                        requiredNames = expectedNames(isRequired);
+                        areSame = all(ismember(lower(unique(requiredNames)), lower(unique(docNames_alt))));
+                        % Warn when an optional dependency is defined in the
+                        % schema but missing from the document. This is not an
+                        % error, but we report it so we can gauge how often it
+                        % happens in practice.
+                        optionalNames = expectedNames(~isRequired);
+                        missingOptional = optionalNames(~ismember(lower(optionalNames), lower(docNames_alt)));
+                        if ~isempty(missingOptional)
+                            warning('DID:Database:MissingOptionalDependency', ...
+                                'Optional dependency(ies) {%s} missing from document of class "%s"', ...
+                                strjoin(string(missingOptional), ', '), class_name);
+                        end
                         if ~areSame
                             errorMsgFormat = ['Dissimilar dependencies defined/found for %s.\n\n' ...
                                 'Expected dependencies: {%s}\n' ...
