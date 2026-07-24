@@ -1256,18 +1256,6 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         % Compare the defined vs. actual dependency names
                         if isempty(expected) && isSuperClass, continue, end
                         try depends = docProps.depends_on; docNames = {depends.name}; catch, docNames = {}; end
-                        % --- TEMPORARY DIAGNOSTIC (remove after debugging) ---
-                        diagFile = fullfile(char(java.lang.System.getProperty('user.home')), ...
-                            'Desktop', 'did_depends_on_diag.txt');
-                        diagFid = fopen(diagFile, 'a');
-                        if diagFid > 0
-                            fprintf(diagFid, ['[DIAG depends_on] class="%s" isSuperClass=%d ' ...
-                                'hasDependsOnField=%d foundNames={%s}\n'], ...
-                                class_name, isSuperClass, isfield(docProps,'depends_on'), ...
-                                strjoin(string(docNames), ', '));
-                            fclose(diagFid);
-                        end
-                        % --- END TEMPORARY DIAGNOSTIC ---
                         if isempty(expected) && isempty(docNames), continue, end
                         docNames_alt = docNames;
                         for dn=1:numel(docNames_alt)
