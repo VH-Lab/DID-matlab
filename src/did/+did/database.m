@@ -1290,16 +1290,30 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         optionalNames = expectedNames(~isRequired);
                         missingOptional = optionalNames(~ismember(lower(optionalNames), lower(docNames_alt)));
                         if ~isempty(missingOptional)
-                            % Force this specific warning to display even when a
-                            % caller has globally disabled warnings (e.g. NDI's
+                            % Optionally force this warning to display even when
+                            % a caller has globally disabled warnings (e.g. NDI's
                             % ndi.dataset.dir wraps bulk adds in warning('off')).
-                            % A per-identifier 'on' state overrides the global
-                            % 'off'. Restore the prior state immediately after.
-                            priorWarnState = warning('on', 'DID:Database:MissingOptionalDependency');
+                            % This override is OFF by default so it does not
+                            % surface in normal releases; enable it by setting
+                            % the environment variable DID_FORCE_VALIDATION_WARNINGS
+                            % to a non-zero value. A per-identifier 'on' state
+                            % overrides the global 'off'; the prior warning state
+                            % is restored immediately afterward.
+                            forceWarn = false;
+                            envVal = strtrim(getenv('DID_FORCE_VALIDATION_WARNINGS'));
+                            if ~isempty(envVal)
+                                numVal = str2double(envVal);
+                                forceWarn = isnan(numVal) || numVal ~= 0;
+                            end
+                            if forceWarn
+                                priorWarnState = warning('on', 'DID:Database:MissingOptionalDependency');
+                            end
                             warning('DID:Database:MissingOptionalDependency', ...
                                 'Optional dependency(ies) {%s} missing from document of class "%s"', ...
                                 strjoin(string(missingOptional), ', '), class_name);
-                            warning(priorWarnState);
+                            if forceWarn
+                                warning(priorWarnState);
+                            end
                         end
                         if ~areSame
                             errorMsgFormat = ['Dissimilar dependencies defined/found for %s.\n\n' ...
