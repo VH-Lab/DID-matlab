@@ -1289,16 +1289,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         % happens in practice.
                         optionalNames = expectedNames(~isRequired);
                         missingOptional = optionalNames(~ismember(lower(optionalNames), lower(docNames_alt)));
+                        % Report missing optional dependencies. This is OFF by
+                        % default so it does not surface in normal releases;
+                        % enable it by setting the environment variable
+                        % DID_FORCE_VALIDATION_WARNINGS to a non-zero value. When
+                        % enabled, the warning is forced through even if a caller
+                        % has globally disabled warnings (e.g. NDI's
+                        % ndi.dataset.dir wraps bulk adds in warning('off')): a
+                        % per-identifier 'on' state overrides the global 'off',
+                        % and the prior warning state is restored afterward.
                         if ~isempty(missingOptional)
-                            % Optionally force this warning to display even when
-                            % a caller has globally disabled warnings (e.g. NDI's
-                            % ndi.dataset.dir wraps bulk adds in warning('off')).
-                            % This override is OFF by default so it does not
-                            % surface in normal releases; enable it by setting
-                            % the environment variable DID_FORCE_VALIDATION_WARNINGS
-                            % to a non-zero value. A per-identifier 'on' state
-                            % overrides the global 'off'; the prior warning state
-                            % is restored immediately afterward.
                             forceWarn = false;
                             envVal = strtrim(getenv('DID_FORCE_VALIDATION_WARNINGS'));
                             if ~isempty(envVal)
@@ -1307,11 +1307,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             end
                             if forceWarn
                                 priorWarnState = warning('on', 'DID:Database:MissingOptionalDependency');
-                            end
-                            warning('DID:Database:MissingOptionalDependency', ...
-                                'Optional dependency(ies) {%s} missing from document of class "%s"', ...
-                                strjoin(string(missingOptional), ', '), class_name);
-                            if forceWarn
+                                warning('DID:Database:MissingOptionalDependency', ...
+                                    'Optional dependency(ies) {%s} missing from document of class "%s"', ...
+                                    strjoin(string(missingOptional), ', '), class_name);
                                 warning(priorWarnState);
                             end
                         end
