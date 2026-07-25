@@ -31,8 +31,9 @@ classdef TestOptionalDependencyWarning < matlab.unittest.TestCase
             % 'item1', so that schema validation finds it missing. All three
             % demoC dependencies (item1/item2/item3) are declared with
             % mustbenotempty:0, so a missing one is allowed (no error) but is
-            % reported via the opt-in warning.
-            doc = did.document('demoC');
+            % reported via the opt-in warning. demoC.value must be a valid
+            % integer (the schema enforces the type), so set it explicitly.
+            doc = did.document('demoC', 'demoC.value', 1);
             warnstate = warning('off');
             d_struct = struct(doc);
             warning(warnstate);
