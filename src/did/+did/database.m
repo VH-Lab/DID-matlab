@@ -1272,7 +1272,47 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             expectedNames = {};
                             mustHaveValue = {};
                         end
-                        areSame = all(ismember(lower(unique(expectedNames)), lower(unique(docNames_alt))));
+                        % Only dependencies that the schema marks as
+                        % mustbenotempty are required to be present. Optional
+                        % dependencies (mustbenotempty false/empty) may be
+                        % omitted from the document without being an error.
+                        isRequired = false(1, numel(mustHaveValue));
+                        for mv = 1:numel(mustHaveValue)
+                            thisValue = mustHaveValue{mv};
+                            isRequired(mv) = ~isempty(thisValue) && thisValue;
+                        end
+                        requiredNames = expectedNames(isRequired);
+                        areSame = all(ismember(lower(unique(requiredNames)), lower(unique(docNames_alt))));
+                        % Warn when an optional dependency is defined in the
+                        % schema but missing from the document. This is not an
+                        % error, but we report it so we can gauge how often it
+                        % happens in practice.
+                        optionalNames = expectedNames(~isRequired);
+                        missingOptional = optionalNames(~ismember(lower(optionalNames), lower(docNames_alt)));
+                        % Report missing optional dependencies. This is OFF by
+                        % default so it does not surface in normal releases;
+                        % enable it by setting the environment variable
+                        % DID_FORCE_VALIDATION_WARNINGS to a non-zero value. When
+                        % enabled, the warning is forced through even if a caller
+                        % has globally disabled warnings (e.g. NDI's
+                        % ndi.dataset.dir wraps bulk adds in warning('off')): a
+                        % per-identifier 'on' state overrides the global 'off',
+                        % and the prior warning state is restored afterward.
+                        if ~isempty(missingOptional)
+                            forceWarn = false;
+                            envVal = strtrim(getenv('DID_FORCE_VALIDATION_WARNINGS'));
+                            if ~isempty(envVal)
+                                numVal = str2double(envVal);
+                                forceWarn = isnan(numVal) || numVal ~= 0;
+                            end
+                            if forceWarn
+                                priorWarnState = warning('on', 'DID:Database:MissingOptionalDependency');
+                                warning('DID:Database:MissingOptionalDependency', ...
+                                    'Optional dependency(ies) {%s} missing from document of class "%s"', ...
+                                    strjoin(string(missingOptional), ', '), class_name);
+                                warning(priorWarnState);
+                            end
+                        end
                         if ~areSame
                             errorMsgFormat = ['Dissimilar dependencies defined/found for %s.\n\n' ...
                                 'Expected dependencies: {%s}\n' ...
