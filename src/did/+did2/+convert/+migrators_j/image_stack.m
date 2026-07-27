@@ -97,12 +97,15 @@ obs.subject_statement = struct('variable', struct('node', '', 'name', 'image'), 
     'storage_mode', 'body');
 obs.subject_interaction = struct('method', otTerm(''));
 obs.subject_observation = struct();
+% image model decision 4: descriptors ALWAYS explicit on the composite. dtype from the
+% v1 data_type; axes from dimension_order/size/scale (recovers the N-D calibration the old
+% x/y_resolution lost); value empty (pixels live in the sampled_body, storage_mode:body).
 obs.image = struct( ...
-    'image_type', firstNonEmpty(dataType, 'image'), ...
-    'image_format', getCharField(stk, 'format'), ...
-    'x_resolution', axisResolution(params, 'X'), ...
-    'y_resolution', axisResolution(params, 'Y'), ...
-    'resolution_units', firstNonEmpty(getCharField(params, 'dimension_scale_units'), ''));
+    'dtype', firstNonEmpty(dataType, 'uint16'), ...
+    'axes', imageAxes(dimOrder, dimSize, params), ...
+    'color_model', otTerm(''), ...
+    'channels', {{}}, ...
+    'value', []);
 
 % ---- the sampled_body holding the digital frames ----------------------------
 body = jSampledBody(stackId, sessionId, datestamp, 'migrated_image_frames', ...
@@ -235,5 +238,22 @@ v = default;
 if isfield(bodyStruct, 'base') && isstruct(bodyStruct.base) ...
         && isfield(bodyStruct.base, name) && ~isempty(bodyStruct.base.(name))
     v = bodyStruct.base.(name);
+end
+end
+
+function ax = imageAxes(dimOrder, dimSize, params)
+% Build the per-axis descriptor array {name, length, spacing, unit} from the v1
+% dimension_order/dimension_size/dimension_scale — the N-D calibration (image model
+% decision 4). Defensive: missing pieces yield empty/zero slots (declared, valid).
+ax = struct('name', {}, 'length', {}, 'spacing', {}, 'unit', {});
+unit = firstNonEmpty(getCharField(params, 'dimension_scale_units'), '');
+n = numel(dimOrder);
+for k = 1:n
+    nm = dimOrder(k);
+    len = 0;
+    if k <= numel(dimSize); len = dimSize(k); end
+    sp = axisResolution(params, nm);
+    ax(end+1) = struct('name', nm, 'length', len, ...
+        'spacing', sp, 'unit', unit); %#ok<AGROW>
 end
 end
