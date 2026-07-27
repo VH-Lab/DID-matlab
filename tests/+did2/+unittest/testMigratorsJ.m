@@ -502,6 +502,16 @@ verifyEqual(testCase, obs.get('base.name'), 'migrated_image');
 % the value lives in the body: storage_mode: body on the statement
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');
+% the raster CELL: image now matches the single-`value` convention every other
+% data_type follows -- ONE payload slot holding the pixels plus the descriptors
+% needed to read them (dtype is not recoverable from a bare matrix, R6 dec. 4).
+imageCell = obs.get('image.value');
+verifyEqual(testCase, imageCell.dtype, 'uint16');
+verifyEmpty(testCase, imageCell.pixels);          % storage_mode:body -> pixels in the body
+verifyEqual(testCase, numel(imageCell.axes), 5);  % YXCZT, the full N-D calibration
+verifyEqual(testCase, imageCell.axes(1).name, 'Y');
+verifyEqual(testCase, imageCell.axes(1).length, 512);
+verifyEqual(testCase, imageCell.axes(1).spacing, 0.5);
 % frames in the sampled_body; cadence n = T*Z = 10*1
 sb = out.migrated{2};
 verifyEqual(testCase, sb.get('document_class.class_name'), 'sampled_body');

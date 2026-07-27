@@ -96,17 +96,25 @@ obs.subject_statement = struct('variable', struct('node', '', 'name', 'image'), 
     'storage_mode', 'body');
 obs.subject_interaction = struct('method', otTerm(''));
 obs.subject_observation = struct();
-% image model decision 4: descriptors ALWAYS explicit on the composite. dtype from the
-% v1 data_type; axes from dimension_order/size/scale (recovers the N-D calibration the old
-% x/y_resolution lost); value empty (pixels live in the sampled_body, storage_mode:body).
-% NOTE: wrap the axes struct-array in a 1x1 cell so struct() ASSIGNS it as a field
-% (a non-scalar struct value would otherwise distribute obs.image into an array).
-obs.image = struct( ...
+% The raster CELL: one `value` slot holding the pixels plus the descriptors needed to
+% interpret them (image now matches the single-`value` convention every other data_type
+% follows -- the descriptors ride inside the cell, as `source_unit` does beside
+% `source_value` in a dimensioned cell). R6 decision 4 is unchanged: dtype is NOT
+% recoverable from an inline matrix, so it is always explicit -- just one level in.
+% dtype from the v1 data_type; axes from dimension_order/size/scale (recovers the N-D
+% calibration the old x/y_resolution lost); pixels empty (they live in the sampled_body,
+% storage_mode:body).
+% NOTE: wrap the axes struct-array in a 1x1 cell so struct() ASSIGNS it as a field (a
+% non-scalar struct value would otherwise distribute the cell into an array), and assign
+% the cell onto obs.image in its own statement for the same reason.
+imageCell = struct( ...
+    'pixels', [], ...
     'dtype', firstNonEmpty(dataType, 'uint16'), ...
     'axes', {imageAxes(dimOrder, dimSize, params)}, ...
     'color_model', otTerm(''), ...
-    'channels', {{}}, ...
-    'value', []);
+    'channels', {{}});
+obs.image = struct();
+obs.image.value = imageCell;
 
 % ---- the sampled_body holding the digital frames ----------------------------
 body = jSampledBody(stackId, sessionId, datestamp, 'migrated_image_frames', ...
