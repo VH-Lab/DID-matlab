@@ -18,11 +18,15 @@ arguments
     block struct
 end
 
+% NOTE: build the scalar `value` WITHOUT passing a non-scalar struct array to struct()
+% (that would distribute and make `value` itself an array). model_fit (a struct array) is
+% assigned separately below.
 value = struct( ...
     'independent_values', [], 'response_mean', [], 'response_stddev', [], ...
     'response_stderr', [], 'individual_responses', [], 'control_response', struct(), ...
-    'response_units', '', 'model_fit', emptyFits(), 'significance', struct(), ...
+    'response_units', '', 'model_fit', [], 'significance', struct(), ...
     'circular_statistics', struct(), 'interpolated_values', struct());
+value.model_fit = emptyFits();
 
 if ~isstruct(block) || ~isscalar(block); return; end
 

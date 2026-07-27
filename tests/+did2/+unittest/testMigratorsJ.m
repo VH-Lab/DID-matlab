@@ -1346,16 +1346,16 @@ body.contrast_tuning = struct( ...
 out = did2.convert.migrators_j.contrast_tuning(body);
 verifyEqual(testCase, numel(out), 2);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'contrast_tuning_calculation')));
+verifyTrue(testCase, any(strcmp(names, 'tuning_curve_calculation')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));   % not decomposed
-leaf = out{find(strcmp(names, 'contrast_tuning_calculation'), 1)};
+leaf = out{find(strcmp(names, 'tuning_curve_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'ct_1');                          % id preserved
 verifyEqual(testCase, depValue(leaf, 'subject_id'), 'sub_8');
 verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.contrast');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_1');
 % the structured result kept verbatim as the composite value
-verifyEqual(testCase, leaf.contrast_tuning.tuning_curve.mean, [2 5 9 12]);
+verifyEqual(testCase, leaf.tuning_curve.value.response_mean, [2 5 9 12]);
 verifyEqual(testCase, leaf.subject_statement.storage_mode, 'inline');
 end
 
@@ -1384,13 +1384,13 @@ body.orientation_direction_tuning = struct( ...
 out = did2.convert.migrators_j.orientation_direction_tuning(body);
 verifyEqual(testCase, numel(out), 2);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'orientation_direction_tuning_calculation')));
+verifyTrue(testCase, any(strcmp(names, 'tuning_curve_calculation')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 % NOT decomposed into observations any more (calculators are composite leafs now)
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
 verifyFalse(testCase, any(strcmp(names, 'angle_observation')));
 
-leaf = out{find(strcmp(names, 'orientation_direction_tuning_calculation'), 1)};
+leaf = out{find(strcmp(names, 'tuning_curve_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'odt_1');                               % id preserved
 verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_1');           % neuron carried
 verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.oridir');
@@ -1398,8 +1398,8 @@ verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_1');           % pro
 verifyNotEmpty(testCase, depValue(leaf, 'time_reference_1'));              % session anchor
 verifyEqual(testCase, leaf.subject_statement.storage_mode, 'inline');
 % the structured result kept VERBATIM as the composite value
-verifyEqual(testCase, leaf.orientation_direction_tuning.tuning_curve.direction, [0 90 180 270]);
-verifyEqual(testCase, leaf.orientation_direction_tuning.vector.orientation_preference, ...
+verifyEqual(testCase, leaf.tuning_curve.value.independent_values, [0 90 180 270]);
+verifyEqual(testCase, leaf.tuning_curve.value.circular_statistics.orientation_preference, ...
     47.5, 'AbsTol', 1e-9);
 end
 
@@ -1430,8 +1430,8 @@ body.orientation_direction_tuning = struct( ...
 out = did2.convert.migrators_j.oridirtuning_calc(body);
 verifyEqual(testCase, numel(out), 3);   % leaf + session anchor + software entity
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'orientation_direction_tuning_calculation')));
-leaf = out{find(strcmp(names, 'orientation_direction_tuning_calculation'), 1)};
+verifyTrue(testCase, any(strcmp(names, 'tuning_curve_calculation')));
+leaf = out{find(strcmp(names, 'tuning_curve_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'oc_1');                                % id preserved
 verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_9');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_9');
@@ -1445,7 +1445,7 @@ verifyEqual(testCase, sw.software.version, '1.2');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 verifyEqual(testCase, leaf.subject_interaction.execution_environment.interpreter, 'MATLAB');
 % the result composite kept verbatim
-verifyEqual(testCase, leaf.orientation_direction_tuning.vector.orientation_preference, ...
+verifyEqual(testCase, leaf.tuning_curve.value.circular_statistics.orientation_preference, ...
     47.5, 'AbsTol', 1e-9);
 end
 
@@ -1518,8 +1518,8 @@ body.tuningcurve_calc = struct('log', 'ok', ...
 out = did2.convert.migrators_j.tuningcurve_calc(body);
 verifyEqual(testCase, numel(out), 3);   % leaf + session anchor + software entity
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'stimulus_tuningcurve_calculation')));
-leaf = out{find(strcmp(names, 'stimulus_tuningcurve_calculation'), 1)};
+verifyTrue(testCase, any(strcmp(names, 'tuning_curve_calculation')));
+leaf = out{find(strcmp(names, 'tuning_curve_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'tcc_1');                          % id preserved
 verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_tc');      % element_id -> subject
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_tc');
@@ -1527,8 +1527,10 @@ verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.stimulus.t
 % input_parameters (on the calc block) -> method_parameters
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.best_algorithm, 'empirical_maximum');
 % the tuning-curve result kept verbatim as the composite value
-verifyEqual(testCase, leaf.stimulus_tuningcurve.response_mean, [1 4 8 11]);
-verifyEqual(testCase, leaf.stimulus_tuningcurve.independent_variable_label, 'contrast');
+verifyEqual(testCase, leaf.tuning_curve.value.response_mean, [1 4 8 11]);
+% the independent-variable LABEL rides subject_statement.variable now (T11), not a
+% carried curve field; the tuning_curve value holds the numeric curve only.
+verifyEqual(testCase, leaf.document_class.class_name, 'tuning_curve_calculation');
 % app -> a software ENTITY referenced by software_id; per-run env on the interaction
 sw = out{find(strcmp(names, 'software'), 1)};
 verifyEqual(testCase, sw.software.name, 'ndi.calc.stimulus.tuningcurve');
@@ -1557,13 +1559,13 @@ body.stimulus_tuningcurve = struct( ...
 out = did2.convert.migrators_j.stimulus_tuningcurve(body);
 verifyEqual(testCase, numel(out), 2);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'stimulus_tuningcurve_calculation')));
-leaf = out{find(strcmp(names, 'stimulus_tuningcurve_calculation'), 1)};
+verifyTrue(testCase, any(strcmp(names, 'tuning_curve_calculation')));
+leaf = out{find(strcmp(names, 'tuning_curve_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'stc_1');                          % id preserved
 verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_rt');      % element_id -> subject
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_rt');
 verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.app.stimulus.tuning_response');
-verifyEqual(testCase, leaf.stimulus_tuningcurve.response_mean, [10 2 9 3]);
+verifyEqual(testCase, leaf.tuning_curve.value.response_mean, [10 2 9 3]);
 % no calculator provenance on a raw doc -> empty method_parameters, no software entity,
 % no software_id edge (the app block is absent, so nothing to mint)
 verifyTrue(testCase, isempty(fieldnames(leaf.subject_interaction.method_parameters)));
@@ -1600,13 +1602,13 @@ body.speed_tuning = struct( ...
 out = did2.convert.migrators_j.speed_tuning(body);
 verifyEqual(testCase, numel(out), 2);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'speed_tuning_calculation')));
+verifyTrue(testCase, any(strcmp(names, 'tuning_curve_calculation')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
-leaf = out{find(strcmp(names, 'speed_tuning_calculation'), 1)};
+leaf = out{find(strcmp(names, 'tuning_curve_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'sp_1');
 verifyEqual(testCase, depValue(leaf, 'subject_id'), 'sub_s');
 verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.speed');
-verifyEqual(testCase, leaf.speed_tuning.tuning_curve.mean, [5 8 6]);
+verifyEqual(testCase, leaf.tuning_curve.value.response_mean, [5 8 6]);
 end
 
 function testOntologyImageBecomesTermObservation(testCase)
@@ -1945,17 +1947,20 @@ body.spatial_frequency_tuning = struct( ...
 out = did2.convert.migrators_j.spatial_frequency_tuning(body);
 verifyEqual(testCase, numel(out), 2);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'spatial_frequency_tuning_calculation')));
+verifyTrue(testCase, any(strcmp(names, 'tuning_curve_calculation')));
 verifyFalse(testCase, any(strcmp(names, 'score_observation')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
-leaf = out{find(strcmp(names, 'spatial_frequency_tuning_calculation'), 1)};
+leaf = out{find(strcmp(names, 'tuning_curve_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'sf_1');
 verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_2');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_2');
 verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.spatialfrequency');
 % the full result kept verbatim, incl. the fit block
-verifyEqual(testCase, leaf.spatial_frequency_tuning.fitless.bandwidth, 2.2, 'AbsTol', 1e-9);
-verifyEqual(testCase, leaf.spatial_frequency_tuning.fit_dog.r2, 0.95, 'AbsTol', 1e-9);
+verifyEqual(testCase, leaf.tuning_curve.value.interpolated_values.bandwidth, 2.2, 'AbsTol', 1e-9);
+% fit_dog -> a model_fit ARRAY entry {model='dog', coefficients=<the fit block>}.
+mf = leaf.tuning_curve.value.model_fit;
+dogEntry = mf(arrayfun(@(e) strcmp(e.model.name, 'dog'), mf));
+verifyEqual(testCase, dogEntry.coefficients.r2, 0.95, 'AbsTol', 1e-9);
 end
 
 function testNeuronExtracellularMintsDerivedSubject(testCase)

@@ -43,7 +43,6 @@ arguments
 end
 
 TV = 'V_eta';
-stk    = getBlock(preBody, 'image_stack');
 params = getBlock(preBody, 'image_stack_parameters');
 
 subjectId = dependencyValue(preBody, 'subject_id');
@@ -100,9 +99,11 @@ obs.subject_observation = struct();
 % image model decision 4: descriptors ALWAYS explicit on the composite. dtype from the
 % v1 data_type; axes from dimension_order/size/scale (recovers the N-D calibration the old
 % x/y_resolution lost); value empty (pixels live in the sampled_body, storage_mode:body).
+% NOTE: wrap the axes struct-array in a 1x1 cell so struct() ASSIGNS it as a field
+% (a non-scalar struct value would otherwise distribute obs.image into an array).
 obs.image = struct( ...
     'dtype', firstNonEmpty(dataType, 'uint16'), ...
-    'axes', imageAxes(dimOrder, dimSize, params), ...
+    'axes', {imageAxes(dimOrder, dimSize, params)}, ...
     'color_model', otTerm(''), ...
     'channels', {{}}, ...
     'value', []);
