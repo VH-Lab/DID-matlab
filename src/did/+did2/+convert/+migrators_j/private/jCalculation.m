@@ -1,4 +1,4 @@
-function bodies = jCalculation(preBody, leafClass, composite, variableName, methodName, sourceBlock)
+function bodies = jCalculation(preBody, leafClass, composite, variableName, methodName, sourceBlock, valueOverride)
 %JCALCULATION Fold a calculator output document 1 -> 1 (id-preserved) into a V_eta
 %   subject_calculation LEAF, plus a session anchor. Shared by the calculator
 %   composite-leaf family (Lepsky et al., the calculator-motif paper): a calculator
