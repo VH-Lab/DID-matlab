@@ -10,6 +10,6 @@ function bodies = speed_tuning(preBody)
 arguments
     preBody (1,1) struct
 end
-bodies = jCalculation(preBody, 'speed_tuning_calculation', 'speed_tuning', ...
-    'speed tuning', 'ndi.calc.vis.speed');
+bodies = jCalculation(preBody, 'tuning_curve_calculation', 'tuning_curve', ...
+        'speed tuning', 'ndi.calc.vis.speed', 'speed_tuning');
 end

@@ -33,8 +33,24 @@ arguments
     % on its concrete `*_calc` block instead (e.g. contrast_sensitivity_calc) passes
     % that block name; input_parameters is stripped from it (-> method_parameters).
     sourceBlock (1,:) char = composite
+    % Optional pre-reshaped composite VALUE. When non-empty, the composite block is
+    % written as struct('value', valueOverride) instead of carrying sourceBlock
+    % verbatim. Used by the tuning collapse (R2/R3): the 6 v1 tuning result blocks are
+    % reshaped into the one `tuning_curve` value (model_fit array + typed metric
+    % sub-blocks) by jTuningCurveValue before the fold.
+    valueOverride = struct([])
 end
 TV = 'V_eta';
+
+% Tuning collapse (R2/R3): every tuning-family calc folds to the ONE `tuning_curve`
+% composite; reshape the v1 result block (named by sourceBlock) into the unified value.
+if strcmp(composite, 'tuning_curve') && isempty(valueOverride)
+    srcBlk = struct();
+    if isfield(preBody, sourceBlock) && isstruct(preBody.(sourceBlock))
+        srcBlk = preBody.(sourceBlock);
+    end
+    valueOverride = jTuningCurveValue(srcBlk);
+end
 
 % subject_interaction requires a time_reference; a computed result has no DAQ epoch,
 % so 'during' the session is the honest anchor (mirrors the observation migrators).
@@ -81,7 +97,10 @@ leaf.subject_interaction = struct('method', jOntologyTerm('', methodName), ...
 % sourceBlock (the composite's own block, or the concrete `*_calc` block); strip
 % input_parameters if it materialized there (it goes to method_parameters instead).
 leaf.(composite) = struct();
-if isfield(preBody, sourceBlock) && isstruct(preBody.(sourceBlock))
+if ~isempty(valueOverride)
+    % Reshaped value (e.g. the tuning collapse): the composite carries a `value` block.
+    leaf.(composite) = struct('value', valueOverride);
+elseif isfield(preBody, sourceBlock) && isstruct(preBody.(sourceBlock))
     srcBlk = preBody.(sourceBlock);
     if isfield(srcBlk, 'input_parameters')
         srcBlk = rmfield(srcBlk, 'input_parameters');

@@ -8,6 +8,7 @@ function bodies = contrast_tuning_calc(preBody)
 arguments
     preBody (1,1) struct
 end
-bodies = jCalculation(preBody, 'contrast_tuning_calculation', 'contrast_tuning', ...
-    'contrast tuning', 'ndi.calc.vis.contrast');
+bodies = jCalculation(preBody, 'tuning_curve_calculation', 'tuning_curve', ...
+    ...
+    'contrast tuning', 'ndi.calc.vis.contrast', 'contrast_tuning');
 end
