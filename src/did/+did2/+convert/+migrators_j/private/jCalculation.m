@@ -38,7 +38,7 @@ arguments
     % verbatim. Used by the tuning collapse (R2/R3): the 6 v1 tuning result blocks are
     % reshaped into the one `tuning_curve` value (model_fit array + typed metric
     % sub-blocks) by jTuningCurveValue before the fold.
-    valueOverride = struct([])
+    valueOverride = []
 end
 TV = 'V_eta';
 
