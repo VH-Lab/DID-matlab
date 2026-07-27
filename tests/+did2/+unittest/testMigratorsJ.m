@@ -1417,7 +1417,9 @@ body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_9'), ...
                     struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_9')];
 body.base = struct('id', 'oc_1', 'session_id', 'sess_09', 'name', 'oc', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-body.app = struct('app_name', 'ndi.calc.vis.oridir', 'app_version', '1.2');
+body.app = struct('name', 'ndi.calc.vis.oridir', 'version', '1.2', ...
+    'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
+    'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.oridirtuning_calc = struct('input_parameters', ...
     struct('independent_variable', 'direction'));
 body.orientation_direction_tuning = struct( ...
@@ -1426,17 +1428,22 @@ body.orientation_direction_tuning = struct( ...
     'vector', struct('orientation_preference', 47.5));
 
 out = did2.convert.migrators_j.oridirtuning_calc(body);
-verifyEqual(testCase, numel(out), 2);
+verifyEqual(testCase, numel(out), 3);   % leaf + session anchor + software entity
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'orientation_direction_tuning_calculation')));
 leaf = out{find(strcmp(names, 'orientation_direction_tuning_calculation'), 1)};
 verifyEqual(testCase, leaf.base.id, 'oc_1');                                % id preserved
 verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_9');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_9');
-% input_parameters -> method_parameters; app kept for reproducibility (paper Fig 4)
+% input_parameters -> method_parameters
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.independent_variable, ...
     'direction');
-verifyEqual(testCase, leaf.app.app_name, 'ndi.calc.vis.oridir');
+% app -> a software ENTITY referenced by software_id; per-run env on the interaction
+sw = out{find(strcmp(names, 'software'), 1)};
+verifyEqual(testCase, sw.software.name, 'ndi.calc.vis.oridir');
+verifyEqual(testCase, sw.software.version, '1.2');
+verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
+verifyEqual(testCase, leaf.subject_interaction.execution_environment.interpreter, 'MATLAB');
 % the result composite kept verbatim
 verifyEqual(testCase, leaf.orientation_direction_tuning.vector.orientation_preference, ...
     47.5, 'AbsTol', 1e-9);
@@ -1455,13 +1462,15 @@ body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_cs'), ...
                     struct('name', 'stimulus_response_scalar_id', 'value', 'resp_cs')];
 body.base = struct('id', 'cs_1', 'session_id', 'sess_09', 'name', 'cs', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-body.app = struct('app_name', 'ndi.calc.vis.contrast_sensitivity', 'app_version', '1.0');
+body.app = struct('name', 'ndi.calc.vis.contrast_sensitivity', 'version', '1.0', ...
+    'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
+    'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
     'sensitivity_rb', [10 20 15 5], 'response_type', 'mean', ...
     'input_parameters', struct('threshold', 1));
 
 out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
-verifyEqual(testCase, numel(out), 2);
+verifyEqual(testCase, numel(out), 3);   % leaf + session anchor + software entity
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'contrast_sensitivity_calculation')));
 leaf = out{find(strcmp(names, 'contrast_sensitivity_calculation'), 1)};
@@ -1472,9 +1481,12 @@ verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.contra
 % input_parameters -> method_parameters, and stripped from the composite block
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.threshold, 1);
 verifyFalse(testCase, isfield(leaf.contrast_sensitivity, 'input_parameters'));
-% the result matrices kept as the composite value; app kept for reproducibility
+% the result matrices kept as the composite value
 verifyEqual(testCase, leaf.contrast_sensitivity.sensitivity_rb, [10 20 15 5]);
-verifyEqual(testCase, leaf.app.app_name, 'ndi.calc.vis.contrast_sensitivity');
+% app -> a software ENTITY referenced by software_id
+sw = out{find(strcmp(names, 'software'), 1)};
+verifyEqual(testCase, sw.software.name, 'ndi.calc.vis.contrast_sensitivity');
+verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 end
 
 function testTuningcurveCalcUndefersToLeaf(testCase)
@@ -1493,7 +1505,9 @@ body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_tc'), ...
                     struct('name', 'stimulus_response_scalar_id', 'value', 'resp_tc')];
 body.base = struct('id', 'tcc_1', 'session_id', 'sess_11', 'name', 'tc', ...
     'datestamp', '2024-07-01T12:00:00.000Z');
-body.app = struct('app_name', 'ndi.calc.stimulus.tuningcurve', 'app_version', '1.0');
+body.app = struct('name', 'ndi.calc.stimulus.tuningcurve', 'version', '1.0', ...
+    'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
+    'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.stimulus_tuningcurve = struct( ...
     'independent_variable_label', 'contrast', ...
     'independent_variable_value', [0 0.25 0.5 1], ...
@@ -1502,7 +1516,7 @@ body.tuningcurve_calc = struct('log', 'ok', ...
     'input_parameters', struct('best_algorithm', 'empirical_maximum'));
 
 out = did2.convert.migrators_j.tuningcurve_calc(body);
-verifyEqual(testCase, numel(out), 2);
+verifyEqual(testCase, numel(out), 3);   % leaf + session anchor + software entity
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'stimulus_tuningcurve_calculation')));
 leaf = out{find(strcmp(names, 'stimulus_tuningcurve_calculation'), 1)};
@@ -1512,10 +1526,14 @@ verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_tc');
 verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.stimulus.tuningcurve');
 % input_parameters (on the calc block) -> method_parameters
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.best_algorithm, 'empirical_maximum');
-% the tuning-curve result kept verbatim as the composite value; app kept
+% the tuning-curve result kept verbatim as the composite value
 verifyEqual(testCase, leaf.stimulus_tuningcurve.response_mean, [1 4 8 11]);
 verifyEqual(testCase, leaf.stimulus_tuningcurve.independent_variable_label, 'contrast');
-verifyEqual(testCase, leaf.app.app_name, 'ndi.calc.stimulus.tuningcurve');
+% app -> a software ENTITY referenced by software_id; per-run env on the interaction
+sw = out{find(strcmp(names, 'software'), 1)};
+verifyEqual(testCase, sw.software.name, 'ndi.calc.stimulus.tuningcurve');
+verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
+verifyEqual(testCase, leaf.subject_interaction.execution_environment.os, 'Linux');
 end
 
 function testStimulusTuningcurveRawFoldsToCalculationLeaf(testCase)
@@ -1546,9 +1564,11 @@ verifyEqual(testCase, depValue(leaf, 'subject_id'), 'neuron_rt');      % element
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_rt');
 verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.app.stimulus.tuning_response');
 verifyEqual(testCase, leaf.stimulus_tuningcurve.response_mean, [10 2 9 3]);
-% no calculator provenance on a raw doc -> empty method_parameters + app
+% no calculator provenance on a raw doc -> empty method_parameters, no software entity,
+% no software_id edge (the app block is absent, so nothing to mint)
 verifyTrue(testCase, isempty(fieldnames(leaf.subject_interaction.method_parameters)));
-verifyTrue(testCase, isempty(fieldnames(leaf.app)));
+verifyEqual(testCase, numel(out), 2);   % leaf + anchor only; no software body
+verifyTrue(testCase, isempty(depValue(leaf, 'software_id')));
 end
 
 function d = firstByVariable(migrated, varName)
