@@ -399,6 +399,93 @@ info = cache.queryablePaths();
 verifyEqual(testCase, numel(info.array), 2);
 end
 
+% ---- named composite cells: declared sub_fields drive the query paths ----
+% A named composite type (voltage/duration/count/score/ontology_term/...) now
+% declares its canonical + source-provenance layout inline as sub_fields. The
+% path generator must descend through them, because a dimensioned `value` is
+% mustBeScalar:false with type 'voltage' -- it is neither a plain scalar nor a
+% literal `structure`, so the old two-branch logic emitted NOTHING for it (26 of
+% 35 V_eta data_type composites produced no path at all -- no measured value was
+% indexable). These fixtures live in a throwaway dir so the exact-set assertions
+% over the shared V_delta fixtures above stay valid.
+
+function testQueryablePathsDescendsScalarNamedCell(testCase)
+dirPath = localCellFixtureDir(testCase.TestData.fixtureDir);
+restore = onCleanup(@() localRestoreFixtureCache(testCase.TestData.fixtureDir)); %#ok<NASGU>
+did2.schema.cache.setSchemaPath(dirPath);
+c = did2.schema.cache.shared();
+c.loadAllSchemas();
+info = c.queryablePaths();
+paths = {info.scalar.path};
+% a SCALAR cell contributes one dotted path per leaf sub-field ...
+verifyTrue(testCase, any(strcmp(paths, 'demoCell.reading.volts')));
+verifyTrue(testCase, any(strcmp(paths, 'demoCell.reading.source_unit')));
+% ... and NOT one opaque path for the whole cell.
+verifyFalse(testCase, any(strcmp(paths, 'demoCell.reading')));
+entry = info.scalar(strcmp(paths, 'demoCell.reading.volts'));
+verifyEqual(testCase, numel(entry), 1);
+verifyEqual(testCase, entry.type, 'double');
+verifyEqual(testCase, entry.affinity, 'REAL');
+verifyEqual(testCase, entry.column, 'q_democell_reading_volts');
+unitEntry = info.scalar(strcmp(paths, 'demoCell.reading.source_unit'));
+verifyEqual(testCase, unitEntry.affinity, 'TEXT');
+end
+
+function testQueryablePathsDescendsArrayNamedCell(testCase)
+dirPath = localCellFixtureDir(testCase.TestData.fixtureDir);
+restore = onCleanup(@() localRestoreFixtureCache(testCase.TestData.fixtureDir)); %#ok<NASGU>
+did2.schema.cache.setSchemaPath(dirPath);
+c = did2.schema.cache.shared();
+c.loadAllSchemas();
+info = c.queryablePaths();
+paths = {info.array.path};
+% an ARRAY cell (a length-N series of value cells) contributes sidecar paths
+verifyTrue(testCase, any(strcmp(paths, 'demoCell.series[*].volts')));
+entry = info.array(strcmp(paths, 'demoCell.series[*].volts'));
+verifyEqual(testCase, numel(entry), 1);
+verifyEqual(testCase, entry.declaringClass, 'demoCell');
+verifyEqual(testCase, entry.parentField, 'series');
+verifyEqual(testCase, entry.parentPath, 'demoCell.series');
+verifyEqual(testCase, entry.subField, 'volts');
+verifyEqual(testCase, entry.affinity, 'REAL');
+end
+
+function localRestoreFixtureCache(fixtureDir)
+did2.schema.cache.setSchemaPath(fixtureDir);
+end
+
+function dirPath = localCellFixtureDir(fixtureDir)
+% A throwaway schema dir holding ONE class whose fields are named composite
+% cells with inline sub_fields (the V_eta layout): a scalar cell and an
+% array-of-cells, both typed `voltage`.
+dirPath = tempname;
+mkdir(dirPath);
+copyfile(fullfile(fixtureDir, 'base.json'), fullfile(dirPath, 'base.json'));
+curie = fullfile(fixtureDir, 'CURIE_lookups_meta.json');
+if isfile(curie)
+    copyfile(curie, fullfile(dirPath, 'CURIE_lookups_meta.json'));
+end
+sub = @(nm, ty, blank) sprintf(['{"name":"%s","type":"%s","mustBeScalar":true,' ...
+    '"mustBeNonEmpty":false,"mustNotHaveNaN":false,"queryable":true,' ...
+    '"documentation":"sub-field","blank_value":%s,"default_value":%s,' ...
+    '"constraints":{}}'], nm, ty, blank, blank);
+json = ['{"document_class":{"class_name":"demoCell","class_version":"1.0.0",' ...
+    '"superclasses":[{"class_name":"base","class_version":"1.0.0"}]},' ...
+    '"depends_on":[],"file":[],"fields":[' ...
+    '{"name":"reading","type":"voltage","mustBeScalar":true,"mustBeNonEmpty":false,' ...
+    '"mustNotHaveNaN":false,"queryable":true,"documentation":"a scalar value cell",' ...
+    '"blank_value":{},"default_value":{},"constraints":{},"fields":[' ...
+    sub('volts', 'double', '0') ',' sub('source_unit', 'char', '""') ']},' ...
+    '{"name":"series","type":"voltage","mustBeScalar":false,"mustBeNonEmpty":false,' ...
+    '"mustNotHaveNaN":false,"queryable":true,"documentation":"a series of value cells",' ...
+    '"blank_value":[],"default_value":[],"constraints":{},"fields":[' ...
+    sub('volts', 'double', '0') ']}' ...
+    ']}'];
+fid = fopen(fullfile(dirPath, 'demoCell.json'), 'w');
+fwrite(fid, json);
+fclose(fid);
+end
+
 function testLoadAllSchemasIsIdempotent(testCase)
 cache = testCase.TestData.cache;
 cache.loadAllSchemas();

@@ -411,50 +411,21 @@ classdef cache < handle
                 own = obj.toCellArray(schema.fields);
                 for f = 1:numel(own)
                     fieldDef = own{f};
-                    fieldName = char(fieldDef.name);
-                    fieldType = char(fieldDef.type);
-                    path = sprintf('%s.%s', className, fieldName);
-                    if obj.fieldIsScalar(fieldDef)
-                        if ~obj.fieldIsQueryable(fieldDef) || seenScalar.isKey(path)
+                    path = sprintf('%s.%s', className, char(fieldDef.name));
+                    [sc, ar] = obj.collectFieldPaths(fieldDef, className, path);
+                    for i = 1:numel(sc)
+                        if seenScalar.isKey(sc(i).path)
                             continue;
                         end
-                        seenScalar(path) = true;
-                        scalar(end+1) = struct( ...
-                            'path', path, ...
-                            'declaringClass', className, ...
-                            'fieldName', fieldName, ...
-                            'type', fieldType, ...
-                            'column', did2.schema.cache.columnNameFor(path), ...
-                            'affinity', did2.schema.cache.affinityFor(fieldType)); %#ok<AGROW>
-                    elseif strcmp(fieldType, 'structure') ...
-                            && obj.fieldIsQueryable(fieldDef) ...
-                            && isfield(fieldDef, 'fields') ...
-                            && ~isempty(fieldDef.fields)
-                        % Array-of-structure: emit one entry per queryable
-                        % scalar sub-field inside the element template.
-                        subEntries = obj.toCellArray(fieldDef.fields);
-                        for s = 1:numel(subEntries)
-                            subDef = subEntries{s};
-                            if ~obj.fieldIsQueryable(subDef) ...
-                                    || ~obj.fieldIsScalar(subDef)
-                                continue;
-                            end
-                            subName = char(subDef.name);
-                            subType = char(subDef.type);
-                            fullPath = sprintf('%s[*].%s', path, subName);
-                            if seenArray.isKey(fullPath)
-                                continue;
-                            end
-                            seenArray(fullPath) = true;
-                            arrayPaths(end+1) = struct( ...
-                                'path', fullPath, ...
-                                'declaringClass', className, ...
-                                'parentField', fieldName, ...
-                                'parentPath', path, ...
-                                'subField', subName, ...
-                                'type', subType, ...
-                                'affinity', did2.schema.cache.affinityFor(subType)); %#ok<AGROW>
+                        seenScalar(sc(i).path) = true;
+                        scalar(end+1) = sc(i); %#ok<AGROW>
+                    end
+                    for i = 1:numel(ar)
+                        if seenArray.isKey(ar(i).path)
+                            continue;
                         end
+                        seenArray(ar(i).path) = true;
+                        arrayPaths(end+1) = ar(i); %#ok<AGROW>
                     end
                 end
             end
@@ -756,6 +727,84 @@ classdef cache < handle
         function tf = fieldIsQueryable(~, fieldDef)
             tf = isstruct(fieldDef) && isfield(fieldDef, 'queryable') ...
                 && logical(fieldDef.queryable);
+        end
+
+        function [sc, ar] = collectFieldPaths(obj, fieldDef, declaringClass, path)
+            % collectFieldPaths - the queryable paths contributed by ONE field,
+            %   descending through its DECLARED sub_fields.
+            %
+            %   A field carrying sub_fields is a composite cell: either a literal
+            %   `structure`, or one of the named composite types (voltage,
+            %   duration, count, score, ontology_term, ...) whose canonical +
+            %   source-provenance layout the schema now declares inline. Both are
+            %   treated the same -- what decides the shape is whether sub_fields
+            %   exist, NOT the type string.
+            %
+            %   This is the fix for a real gap: the previous version descended only
+            %   into literal `structure` ARRAY fields, so every named value cell
+            %   produced no usable path. A dimensioned `value` is mustBeScalar:false
+            %   with type 'voltage', which matched neither branch -- 26 of 35 V_eta
+            %   data_type composites emitted nothing at all, i.e. no measured value
+            %   was indexable.
+            %
+            %     scalar cell -> dotted scalar paths (voltage_assertion.value.volts)
+            %     array cell  -> '[*]' sidecar paths (voltage.value[*].volts)
+            %     leaf        -> itself, as before.
+            sc = struct('path', {}, 'declaringClass', {}, 'fieldName', {}, ...
+                'type', {}, 'column', {}, 'affinity', {});
+            ar = struct('path', {}, 'declaringClass', {}, 'parentField', {}, ...
+                'parentPath', {}, 'subField', {}, 'type', {}, 'affinity', {});
+            if ~obj.fieldIsQueryable(fieldDef)
+                return;
+            end
+            fieldName = char(fieldDef.name);
+            fieldType = char(fieldDef.type);
+            subs = {};
+            if isfield(fieldDef, 'fields') && ~isempty(fieldDef.fields)
+                subs = obj.toCellArray(fieldDef.fields);
+            end
+            if obj.fieldIsScalar(fieldDef)
+                if isempty(subs)
+                    sc(end+1) = struct( ...
+                        'path', path, ...
+                        'declaringClass', declaringClass, ...
+                        'fieldName', fieldName, ...
+                        'type', fieldType, ...
+                        'column', did2.schema.cache.columnNameFor(path), ...
+                        'affinity', did2.schema.cache.affinityFor(fieldType));
+                    return;
+                end
+                for s = 1:numel(subs)
+                    subDef = subs{s};
+                    subPath = sprintf('%s.%s', path, char(subDef.name));
+                    [s2, a2] = obj.collectFieldPaths(subDef, declaringClass, subPath);
+                    sc = [sc, s2]; %#ok<AGROW>
+                    ar = [ar, a2]; %#ok<AGROW>
+                end
+                return;
+            end
+            % Array-valued cell: one sidecar entry per queryable scalar LEAF
+            % sub-field. A sub-field that is itself a composite is skipped -- a
+            % sidecar column holds one value per element, not a nested object.
+            for s = 1:numel(subs)
+                subDef = subs{s};
+                if ~obj.fieldIsQueryable(subDef) || ~obj.fieldIsScalar(subDef)
+                    continue;
+                end
+                if isfield(subDef, 'fields') && ~isempty(subDef.fields)
+                    continue;
+                end
+                subName = char(subDef.name);
+                subType = char(subDef.type);
+                ar(end+1) = struct( ...
+                    'path', sprintf('%s[*].%s', path, subName), ...
+                    'declaringClass', declaringClass, ...
+                    'parentField', fieldName, ...
+                    'parentPath', path, ...
+                    'subField', subName, ...
+                    'type', subType, ...
+                    'affinity', did2.schema.cache.affinityFor(subType)); %#ok<AGROW>
+            end
         end
 
         function tf = fieldIsScalar(~, fieldDef)
