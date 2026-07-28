@@ -56,7 +56,7 @@ act.subject_statement  = struct('variable', material, 'storage_mode', 'inline');
 act.subject_interaction = struct('method', ontologyTerm('', methodName), ...
     'sample_time', struct('kind', 'point'));
 act.subject_manipulation = struct('notes', '');
-act.term_manipulation = struct('value', material);   % the imposed material term
+act.term = struct('value', material);   % the imposed material term
 
 % ---- 2. the provenance relation: recipient material derived_from donor ----
 rel = struct();

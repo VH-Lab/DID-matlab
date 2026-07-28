@@ -475,18 +475,18 @@ function body = makeTermObservation(preBody, variable, valueT)
 body = startStatement(preBody, 'term_observation', {'subject_observation'}, variable);
 body.subject_interaction = interactionBlock();
 body.subject_observation = struct();
-body.term_observation = struct('value', valueT);
+body.term = struct('value', valueT);
 end
 
 function body = makeTermAssertion(preBody, variable, valueT)
 body = startStatement(preBody, 'term_assertion', {'subject_assertion'}, variable);
-body.term_assertion = struct('value', valueT);
+body.term = struct('value', valueT);
 end
 
 function body = makeDateAssertion(preBody, variable, row)
 body = startStatement(preBody, 'date_assertion', {'subject_assertion'}, variable);
 raw = getCharField(row, 'value');
-body.date_assertion = struct('value', ...
+body.date = struct('value', ...
     struct('instant', raw, 'precision', 'second', 'source', raw));
 end
 

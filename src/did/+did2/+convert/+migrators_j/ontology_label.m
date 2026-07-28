@@ -47,7 +47,7 @@ labelTerm = jOntologyTerm(node, labelName);
 
 obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
     {}, jOntologyTerm('', 'ontology label'), {'element_id', 'subject_id', 'probe_id'});
-obs.term_observation = struct('value', labelTerm);
+obs.term = struct('value', labelTerm);
 
 anchor = jSessionAnchor(preBody, 'during');
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);

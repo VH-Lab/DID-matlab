@@ -52,7 +52,7 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
     body.base = preBody.base;
 end
 body.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
-body.term_assertion = struct('value', valueTerm);
+body.term = struct('value', valueTerm);
 v2Body = body;
 end
 

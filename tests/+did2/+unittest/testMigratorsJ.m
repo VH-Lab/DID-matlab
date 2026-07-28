@@ -166,8 +166,8 @@ a = out.migrated{1};
 verifyEqual(testCase, a.get('document_class.class_name'), 'term_assertion');
 % the entity type -> the asserted variable; the ontology id + label -> the value
 verifyEqual(testCase, a.get('subject_statement.variable').name, 'species');
-verifyEqual(testCase, a.get('term_assertion.value').node, 'NCBITaxon:6239');
-verifyEqual(testCase, a.get('term_assertion.value').name, 'Caenorhabditis elegans');
+verifyEqual(testCase, a.get('term.value').node, 'NCBITaxon:6239');
+verifyEqual(testCase, a.get('term.value').name, 'Caenorhabditis elegans');
 verifyEqual(testCase, depVal(a, 'subject_id'), 'subj_007');
 % an assertion is timeless: it is a subject_assertion, not an interaction
 supers = a.get('document_class.superclasses');
@@ -186,7 +186,7 @@ v1.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Geneti
 out = runJ(v1);
 a = out.migrated{1};
 verifyEqual(testCase, a.get('subject_statement.variable').name, 'genetic strain type');
-verifyEqual(testCase, a.get('term_assertion.value').node, 'X:1');
+verifyEqual(testCase, a.get('term.value').node, 'X:1');
 end
 
 % ============ element -> subject (+ kind assertions + lineage) =========
@@ -258,7 +258,7 @@ act = out.migrated{1};
 % recipient is the patient; the material term is the value AND the variable
 verifyEqual(testCase, depVal(act, 'subject_id'), 'rec_001');
 verifyEqual(testCase, act.get('subject_statement.variable').name, 'embryonic tissue');
-verifyEqual(testCase, act.get('term_manipulation.value').name, 'embryonic tissue');
+verifyEqual(testCase, act.get('term.value').name, 'embryonic tissue');
 verifyEqual(testCase, act.get('subject_interaction.method').name, 'transplantation');
 
 rel = out.migrated{2};
@@ -316,7 +316,7 @@ function testOntologyTableRowStringColumnIsTermObservation(testCase)
 out = runJ(tableRow());
 term = out.migrated{3};   % TrialType -> term_observation (string value)
 verifyEqual(testCase, term.get('document_class.class_name'), 'term_observation');
-verifyEqual(testCase, term.get('term_observation.value').name, 'Startle 95 dB');
+verifyEqual(testCase, term.get('term.value').name, 'Startle 95 dB');
 end
 
 function testOntologyTableRowAmplitudeIsIntensity(testCase)
@@ -369,7 +369,7 @@ function testTreatmentProcedureIsTermManipulation(testCase)
 out = runJ(treatmentDoc('', 'craniotomy', [], ''));
 m = out.migrated{1};
 verifyEqual(testCase, m.get('document_class.class_name'), 'term_manipulation');
-verifyEqual(testCase, m.get('term_manipulation.value').name, 'craniotomy');
+verifyEqual(testCase, m.get('term.value').name, 'craniotomy');
 end
 
 function testTreatmentTargetLocationEmitsSiteObservation(testCase)
@@ -383,7 +383,7 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'term_observation'));
 verifyEqual(testCase, out.migrated{1}.get('subject_statement.variable').name, 'muscimol');
 site = out.migrated{2};
 verifyEqual(testCase, site.get('document_class.class_name'), 'term_observation');
-verifyEqual(testCase, site.get('term_observation.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
 
 % ===================== treatment_drug / virus_injection ================
@@ -409,7 +409,7 @@ verifyEqual(testCase, d.get('subject_statement.variable').name, 'haloperidol');
 % -> location_ontology_node)
 site = out.migrated{2};
 verifyEqual(testCase, site.get('document_class.class_name'), 'term_observation');
-verifyEqual(testCase, site.get('term_observation.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
 
 function testVirusInjectionBecomesDoseManipulation(testCase)
@@ -432,7 +432,7 @@ verifyEqual(testCase, chem(1).amount.source_value, 1000);
 verifyEqual(testCase, d.get('subject_statement.variable').node, 'addgene:26973');
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
 site = out.migrated{2};
-verifyEqual(testCase, site.get('term_observation.value').node, 'uberon:0002436');
+verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
 
 % ===================== probe_location / ontology_label =================
@@ -449,7 +449,7 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 2);   % obs + anchor
 o = out.migrated{1};
 verifyEqual(testCase, o.get('document_class.class_name'), 'term_observation');
-verifyEqual(testCase, o.get('term_observation.value').node, 'uberon:0002436');
+verifyEqual(testCase, o.get('term.value').node, 'uberon:0002436');
 % the probe is the subject (device-as-subject, D2)
 verifyEqual(testCase, depVal(o, 'subject_id'), 'probe_42');
 end
@@ -468,8 +468,8 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 2);   % obs + anchor
 o = out.migrated{1};
 verifyEqual(testCase, o.get('document_class.class_name'), 'term_observation');
-verifyEqual(testCase, o.get('term_observation.value').node, 'allen_ccf_v3:12345');
-verifyEqual(testCase, o.get('term_observation.value').name, 'primary visual cortex');
+verifyEqual(testCase, o.get('term.value').node, 'allen_ccf_v3:12345');
+verifyEqual(testCase, o.get('term.value').name, 'primary visual cortex');
 verifyEqual(testCase, depVal(o, 'subject_id'), 'elem_9');
 end
 
@@ -717,7 +717,7 @@ verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during
 % the bath location is carried as a term_observation (not dropped)
 locObs = firstOfClassJ(out.migrated, 'term_observation');
 verifyNotEmpty(testCase, locObs);
-verifyEqual(testCase, locObs.get('term_observation.value').name, 'CNS');
+verifyEqual(testCase, locObs.get('term.value').name, 'CNS');
 verifyEqual(testCase, depVal(locObs, 'subject_id'), subjId);
 end
 
@@ -1663,8 +1663,8 @@ verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, o.document_class.class_name, 'term_observation');
 verifyEqual(testCase, o.subject_statement.variable.name, 'imaged region');
-verifyEqual(testCase, o.term_observation.value.node, 'uberon:0002436');
-verifyEqual(testCase, o.term_observation.value.name, 'primary visual cortex');
+verifyEqual(testCase, o.term.value.node, 'uberon:0002436');
+verifyEqual(testCase, o.term.value.name, 'primary visual cortex');
 verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_9');
 end
 
@@ -1722,8 +1722,8 @@ verifyEqual(testCase, numel(out), 1);
 a = out{1};
 verifyEqual(testCase, a.document_class.class_name, 'term_assertion');
 verifyEqual(testCase, a.subject_statement.variable.name, 'species');
-verifyEqual(testCase, a.term_assertion.value.node, 'NCBITaxon:6239');
-verifyEqual(testCase, a.term_assertion.value.name, 'Caenorhabditis elegans');
+verifyEqual(testCase, a.term.value.node, 'NCBITaxon:6239');
+verifyEqual(testCase, a.term.value.name, 'Caenorhabditis elegans');
 verifyEqual(testCase, depValue(a, 'subject_id'), 'elem_9');
 supers = a.document_class.superclasses;
 verifyEqual(testCase, supers(1).class_name, 'subject_assertion');
@@ -1747,8 +1747,8 @@ out = did2.convert.migrators_j.openminds_stimulus(body);
 verifyEqual(testCase, out.document_class.class_name, 'term_assertion');
 verifyEqual(testCase, out.document_class.superclasses(1).class_name, 'subject_assertion');
 verifyEqual(testCase, out.subject_statement.variable.name, 'species');
-verifyEqual(testCase, out.term_assertion.value.node, 'NCBITaxon:6239');
-verifyEqual(testCase, out.term_assertion.value.name, 'Caenorhabditis elegans');
+verifyEqual(testCase, out.term.value.node, 'NCBITaxon:6239');
+verifyEqual(testCase, out.term.value.name, 'Caenorhabditis elegans');
 verifyEqual(testCase, depValue(out, 'subject_id'), 'stim_042');
 end
 
@@ -1949,7 +1949,7 @@ bodies = did2.convert.migrators_j.position_metadata(body);
 verifyEqual(testCase, numel(bodies), 2);              % obs + anchor
 obs = bodies{1};
 verifyEqual(testCase, obs.document_class.class_name, 'term_observation');
-verifyEqual(testCase, obs.term_observation.value.node, 'EMPTY:0000200');
+verifyEqual(testCase, obs.term.value.node, 'EMPTY:0000200');
 verifyEqual(testCase, obs.subject_statement.variable.name, 'position');
 verifyEqual(testCase, depValue(obs, 'subject_id'), 'pos_elem_7');
 anchor = bodies{2};

@@ -67,7 +67,7 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
 end
 assertion.subject_statement = struct('variable', jOntologyTerm('', 'probe type'), ...
     'storage_mode', 'inline');
-assertion.term_assertion = struct('value', jOntologyTerm('', probeType));
+assertion.term = struct('value', jOntologyTerm('', probeType));
 
 bodies = {obs, assertion, anchor};
 end

@@ -60,7 +60,7 @@ variable = jOntologyTerm('', 'position');    % the kind of measurement (spine "w
 
 obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
     {}, variable, {'element_id', 'subject_id'});
-obs.term_observation = struct('value', measurement);
+obs.term = struct('value', measurement);
 
 anchor = jSessionAnchor(preBody, 'during');
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);

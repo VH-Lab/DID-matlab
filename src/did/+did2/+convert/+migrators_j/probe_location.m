@@ -28,7 +28,7 @@ locTerm = jOntologyTerm(jGetChar(block, 'ontology_name'), jGetChar(block, 'name'
 
 obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
     {}, jOntologyTerm('', 'anatomical location'), {'probe_id', 'element_id', 'subject_id'});
-obs.term_observation = struct('value', locTerm);
+obs.term = struct('value', locTerm);
 
 anchor = jSessionAnchor(preBody, 'during');
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);

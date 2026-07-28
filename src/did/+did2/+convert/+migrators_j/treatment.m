@@ -98,7 +98,7 @@ bodies = {manip};
 if ~isempty(siteTerm)
     obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
         {}, jOntologyTerm('', 'anatomical location'), {'subject_id'}, true);
-    obs.term_observation = struct('value', siteTerm);
+    obs.term = struct('value', siteTerm);
     obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
     bodies{end+1} = obs;
 end
@@ -135,7 +135,7 @@ function body = makeTermManipulation(preBody, variable, notesText)
 body = jStartInteraction(preBody, 'term_manipulation', ...
     'subject_manipulation', {}, variable);
 body.subject_manipulation.notes = notesText;
-body.term_manipulation = struct('value', variable);   % the imposed act term
+body.term = struct('value', variable);   % the imposed act term
 end
 
 % ===================== local helpers ===================================

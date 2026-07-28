@@ -20,7 +20,7 @@ end
 
 obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
     {}, jOntologyTerm('', 'imaged region'), {'element_id', 'subject_id'});
-obs.term_observation = struct('value', region);
+obs.term = struct('value', region);
 
 anchor = jSessionAnchor(preBody, 'during');
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);

@@ -92,7 +92,7 @@ a.depends_on = struct('name', 'subject_id', 'value', subjectId);
 a.base = freshBase(preBody, 'migrated_element_kind');
 a.subject_statement = struct('variable', jOntologyTerm('', variableName), ...
     'storage_mode', 'inline');
-a.term_assertion = struct('value', jOntologyTerm('', valueName));
+a.term = struct('value', jOntologyTerm('', valueName));
 end
 
 function rel = lineageRelation(preBody, childId, parentId, relationName)
