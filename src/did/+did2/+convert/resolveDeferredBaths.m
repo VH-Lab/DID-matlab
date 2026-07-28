@@ -300,7 +300,7 @@ obs.subject_statement = struct('variable', struct('node', '', 'name', 'anatomica
 obs.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
     'sample_time', struct('kind', 'point'));
 obs.subject_observation = struct();
-obs.term_observation = struct('value', loc);
+obs.term = struct('value', loc);   % value rides the `term` composite block
 end
 
 function variable = primaryChemical(mixture)
