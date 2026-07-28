@@ -42,14 +42,21 @@ arguments
 end
 TV = 'V_eta';
 
-% Tuning collapse (R2/R3): every tuning-family calc folds to the ONE `tuning_curve`
-% composite; reshape the v1 result block (named by sourceBlock) into the unified value.
-if strcmp(composite, 'tuning_curve') && isempty(valueOverride)
+% Composites whose v1 result block is a FLAT bag get reshaped into a `value` cell before
+% the fold. Both reshapes follow the same model -- a `model_fit` ARRAY plus typed
+% `significance` / `interpolated_values` sub-blocks -- so the two calc families stay
+% consistent with each other (and neither flattens queryable scalars into a bag, T13).
+if isempty(valueOverride)
     srcBlk = struct();
     if isfield(preBody, sourceBlock) && isstruct(preBody.(sourceBlock))
         srcBlk = preBody.(sourceBlock);
     end
-    valueOverride = jTuningCurveValue(srcBlk);
+    switch composite
+        case 'tuning_curve'          % R2/R3: the 6 tuning families collapse to one
+            valueOverride = jTuningCurveValue(srcBlk);
+        case 'contrast_sensitivity'  % RB/RBN/RBNS are Naka-Rushton fit variants
+            valueOverride = jContrastSensitivityValue(srcBlk);
+    end
 end
 
 % subject_interaction requires a time_reference; a computed result has no DAQ epoch,

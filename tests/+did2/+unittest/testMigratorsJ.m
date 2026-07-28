@@ -1476,7 +1476,12 @@ body.app = struct('name', 'ndi.calc.vis.contrast_sensitivity', 'version', '1.0',
     'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
     'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
-    'sensitivity_rb', [10 20 15 5], 'response_type', 'mean', ...
+    'sensitivity_rb', [10 20 15 5], 'empirical_c50_rb', [0.2 0.3 0.4 0.5], ...
+    'parameters_rb', [12 0.25 2], ...
+    'sensitivity_rbns', [9 18 14 4], 'parameters_rbns', [11 0.27 2.1], ...
+    'fitless_interpolated_c50', [0.21 0.31 0.41 0.51], ...
+    'visual_response_p_bonferroni', [0.01 0.02 0.03 0.04], ...
+    'is_modulated_response', 1, 'response_type', 'mean', ...
     'input_parameters', struct('threshold', 1));
 
 out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
@@ -1491,8 +1496,28 @@ verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.contra
 % input_parameters -> method_parameters, and stripped from the composite block
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.threshold, 1);
 verifyFalse(testCase, isfield(leaf.contrast_sensitivity, 'input_parameters'));
-% the result matrices kept as the composite value
-verifyEqual(testCase, leaf.contrast_sensitivity.sensitivity_rb, [10 20 15 5]);
+% the flat v1 bag is RESHAPED onto the `value` cell: RB/RBN/RBNS are Naka-Rushton fit
+% VARIANTS, so each becomes one model_fit entry carrying its own coefficients and the
+% per-spatial-frequency metrics derived from that fit (T11: the variant is no longer a
+% field-name suffix). Absent variants produce no entry -- rbn is missing here.
+csv = leaf.contrast_sensitivity.value;
+verifyEqual(testCase, csv.spatial_frequencies, [0.5 1 2 4]);
+verifyEqual(testCase, numel(csv.model_fit), 2);            % rb and rbns, not rbn
+models = arrayfun(@(e) e.model.name, csv.model_fit, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(models, 'naka_rushton_rb')));
+verifyTrue(testCase, any(strcmp(models, 'naka_rushton_rbns')));
+verifyFalse(testCase, any(strcmp(models, 'naka_rushton_rbn')));
+rb = csv.model_fit(strcmp(models, 'naka_rushton_rb'));
+verifyEqual(testCase, rb.sensitivity, [10 20 15 5]);       % metric rides INSIDE its fit
+verifyEqual(testCase, rb.empirical_c50, [0.2 0.3 0.4 0.5]);
+verifyEqual(testCase, rb.coefficients, [12 0.25 2]);       % was parameters_rb (T13)
+% fit-less and significance scalars stay TYPED sub-blocks, not a {name,value} bag
+verifyEqual(testCase, csv.interpolated_values.c50, [0.21 0.31 0.41 0.51]);
+verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
+verifyTrue(testCase, csv.is_modulated_response);
+verifyEqual(testCase, csv.response_type, 'mean');
+% the old flat suffixed fields are gone from the composite
+verifyFalse(testCase, isfield(leaf.contrast_sensitivity, 'sensitivity_rb'));
 % app -> a software ENTITY referenced by software_id
 sw = out{find(strcmp(names, 'software'), 1)};
 verifyEqual(testCase, sw.software.name, 'ndi.calc.vis.contrast_sensitivity');
