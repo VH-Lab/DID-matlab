@@ -1107,7 +1107,7 @@ end
 
 function testMfdaqIngestedDeEncodesToDaqreaderEpochdataIngested(testCase)
 % Chunk b/c: daqreader_mfdaq_epochdata_ingested de-encodes onto the generic
-% daqreader_epochdata_ingested -- the mfdaq subtype `parameters` block moves onto
+% daqreader_epoch_cache -- the mfdaq subtype `parameters` block moves onto
 % the parent (kept), the mfdaq block is removed, and the stale inline `epochid`
 % block is dropped (dep-only; the epoch link is the epochid dep). Tested on the
 % migrator FUNCTION directly (the quick CI's V_zeta schema still has the class;
@@ -1116,20 +1116,20 @@ body = struct();
 body.document_class = struct('class_name', 'daqreader_mfdaq_epochdata_ingested', ...
     'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
-        struct('class_name', 'daqreader_epochdata_ingested', 'class_version', '1.0.0')]);
+        struct('class_name', 'daqreader_epoch_cache', 'class_version', '1.0.0')]);
 body.depends_on = struct('name', {'daqreader_id'}, 'value', {'dr_1'});
 body.base = struct('id', 'mfdaq_1', 'session_id', 'sess_09', ...
     'name', 'ingested', 'datestamp', '2024-06-01T12:00:00.000Z');
 body.epochid = struct('epochid', 't00001');
-body.daqreader_epochdata_ingested = struct('epochtable', ...
+body.daqreader_epoch_cache = struct('epochtable', ...
     struct('epochclock', {{'dev_local_time'}}, 't0_t1', [0, 10]));
 body.daqreader_mfdaq_epochdata_ingested = struct('parameters', ...
     struct('sample_analog_segment', 1000000, 'sample_digital_segment', 1000000));
 out = did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested(body);
-verifyEqual(testCase, out.document_class.class_name, 'daqreader_epochdata_ingested');
+verifyEqual(testCase, out.document_class.class_name, 'daqreader_epoch_cache');
 % the mfdaq `parameters` de-encoded onto the parent, epochtable preserved
-verifyEqual(testCase, out.daqreader_epochdata_ingested.parameters.sample_analog_segment, 1000000);
-verifyTrue(testCase, isfield(out.daqreader_epochdata_ingested, 'epochtable'));
+verifyEqual(testCase, out.daqreader_epoch_cache.parameters.sample_analog_segment, 1000000);
+verifyTrue(testCase, isfield(out.daqreader_epoch_cache, 'epochtable'));
 % the subtype block is gone; the stale inline epochid block is dropped (dep-only)
 verifyFalse(testCase, isfield(out, 'daqreader_mfdaq_epochdata_ingested'));
 verifyFalse(testCase, isfield(out, 'epochid'));
