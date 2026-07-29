@@ -198,6 +198,22 @@ result.summary = struct( ...
     'quarantine_count', numel(quarantine), ...
     'by_class',         buildByClassTable(classCountNames, classCountValues));
 
+% PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
+% migrates away without a trace: required depends_on edges left empty, and
+% required fields whose value is present but vacuous (an all-blank struct).
+% Neither is visible to the existing gates -- the schema cache calls a struct
+% empty only when it has no fieldnames, and did2.validate.references skips
+% empty edges -- so a migrator reading fields the source does not have emits a
+% valid, hollow document and the corpus still reports 0 quarantine, 0 orphans.
+% This RAISES NOTHING and changes no outcome; it produces the census that ranks
+% the repair work. Enforcement lands only once these counts reach zero.
+try
+    result.silent_loss = did2.validate.silentLoss(migrated, ...
+        'SchemaCache', options.SchemaCache);
+catch auditErr
+    result.silent_loss = struct('audit_failed', auditErr.message);
+end
+
 if options.CheckReferences
     if ~isempty(options.ReferenceDatabase)
         result.references = did2.validate.references(migrated, ...
@@ -506,11 +522,38 @@ fprintf('did2.convert.v1_to_v2 summary:\n');
 fprintf('  total:            %d\n', result.summary.total);
 fprintf('  migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
+printSilentLoss(result);
 if ~isempty(result.quarantine)
     fprintf('  quarantine reasons:\n');
     for k = 1:numel(result.quarantine)
         fprintf('    [%s] %s\n', result.quarantine(k).class_name, ...
             result.quarantine(k).reason);
     end
+end
+end
+
+
+function printSilentLoss(result)
+%PRINTSILENTLOSS Report-only census of data that migrates away unseen.
+if ~isfield(result, 'silent_loss'); return; end
+sl = result.silent_loss;
+if isfield(sl, 'audit_failed')
+    fprintf('  silent-loss audit: FAILED (%s)\n', sl.audit_failed);
+    return;
+end
+if sl.empty_dependency_count == 0 && sl.vacuous_field_count == 0
+    return;
+end
+fprintf(['  silent-loss audit (REPORT ONLY -- not a failure): %d empty required ' ...
+         'edge(s), %d vacuous required field(s)\n'], ...
+    sl.empty_dependency_count, sl.vacuous_field_count);
+for k = 1:min(numel(sl.empty_required_dependency), 15)
+    e = sl.empty_required_dependency(k);
+    fprintf('    %6d  empty edge   %s.%s\n', e.count, e.class_name, e.edge_name);
+end
+for k = 1:min(numel(sl.vacuous_required_field), 15)
+    f = sl.vacuous_required_field(k);
+    fprintf('    %6d  blank value  %s / %s.%s\n', f.count, f.class_name, ...
+        f.block, f.field_name);
 end
 end

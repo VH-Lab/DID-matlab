@@ -23,6 +23,13 @@ report = struct( ...
     'by_class',          result.summary.by_class, ...
     'quarantine_reasons', reasons);
 
+% Phase 1 report-only census (V_eta_ground_truth_plan.md): data that migrates
+% away without tripping any gate. Persisted in the uploaded artifact so the
+% count is reviewable per corpus without re-reading a 2.5-hour log.
+if isfield(result, 'silent_loss')
+    report.silent_loss = result.silent_loss;
+end
+
 fid = fopen(reportPath, 'w');
 if fid < 0
     error('did2:test:reportWriteFailed', ...

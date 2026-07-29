@@ -127,6 +127,7 @@ fprintf('total:            %d\n', result.summary.total);
 fprintf('migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('quarantine_count: %d\n', result.summary.quarantine_count);
 fprintf('report:           %s\n', reportPath);
+printSilentLossCensus(result);
 fprintf('top quarantine reasons:\n');
 for k = 1:min(numel(reasons), 15)
     fprintf('  %5d  [%s] %s\n', reasons(k).count, ...
@@ -151,5 +152,35 @@ end
 if ~isempty(counts)
     [counts, order] = sort(counts, 'descend');
     names = names(order);
+end
+end
+
+
+function printSilentLossCensus(result)
+%PRINTSILENTLOSSCENSUS Phase 1 report-only census (V_eta_ground_truth_plan.md).
+%   Data that migrates away without tripping any gate: required depends_on
+%   edges left empty, and required fields present but all-blank. NOT a
+%   failure -- this is the count that ranks the migrator repair work.
+if ~isfield(result, 'silent_loss'); return; end
+sl = result.silent_loss;
+if isfield(sl, 'audit_failed')
+    fprintf('silent-loss audit: FAILED (%s)\n', sl.audit_failed);
+    return;
+end
+fprintf('silent-loss (REPORT ONLY): %d empty required edge(s), %d vacuous required field(s)\n', ...
+    sl.empty_dependency_count, sl.vacuous_field_count);
+if sl.empty_dependency_count > 0
+    fprintf('  top empty required edges:\n');
+    for k = 1:min(numel(sl.empty_required_dependency), 20)
+        e = sl.empty_required_dependency(k);
+        fprintf('    %6d  %s.%s\n', e.count, e.class_name, e.edge_name);
+    end
+end
+if sl.vacuous_field_count > 0
+    fprintf('  top vacuous required fields:\n');
+    for k = 1:min(numel(sl.vacuous_required_field), 20)
+        f = sl.vacuous_required_field(k);
+        fprintf('    %6d  %s / %s.%s\n', f.count, f.class_name, f.block, f.field_name);
+    end
 end
 end
