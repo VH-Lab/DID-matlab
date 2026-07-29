@@ -74,9 +74,18 @@ end
 
 function testRowWithARealSubjectStillMigrates(testCase)
 % The guard must not disable the migrator wholesale. A row that DOES carry a
-% resolvable subject (as a mapped table or a second-pass-patched document does)
-% still fans out into statements.
+% resolvable subject still fans out into statements.
+%
+% NOTE THE `rows` FIELD, and see testRealWriterShapeHasNoRowsField below. The
+% per-column path is reached only through extractRows(), which reads
+% `block.rows` and nothing else -- so this fixture deliberately uses the shape
+% that ACTUALLY reaches that path, which is NOT the shape the current NDI writer
+% produces. Which corpus documents carry `rows` is an open question recorded in
+% the migrator; this test pins the guard's behaviour on the path that emitted
+% the 76,766 hollow documents, whatever vintage produced them.
 pre = makeRealRow();
+pre.ontology_table_row = struct('rows', struct( ...
+    'ontology_name', 'NCIT:C1', 'name', 'Speed', 'value', '3.5'));
 pre.depends_on = [struct('name', 'document_id', 'value', 'doc-123'), ...
                   struct('name', 'subject_id',  'value', 'subj-9')];
 out = did2.convert.migrators_j.ontology_table_row(pre);
@@ -95,4 +104,32 @@ for i = 1:numel(out)
 end
 verifyTrue(testCase, sawSubject, ...
     'at least one emitted statement should carry the resolved subject');
+end
+
+function testRealWriterShapeHasNoRowsField(testCase)
+% GROUND TRUTH, pinned as a test so it cannot quietly stop being true.
+%
+% ndi.setup.NDIMaker.tableDocMaker writes ontologyTableRow as four
+% COMMA-JOINED STRINGS:
+%
+%     struct('names',names,'variableNames',variableNames, ...
+%            'ontologyNodes',ontologyNodes,'data',data)
+%
+% There is no `rows` field, and nothing in +did2/+convert builds one. But
+% extractRows() reads `block.rows` and NOTHING ELSE, so a document from the
+% current writer never reaches the per-column path at all -- it passes through.
+%
+% That leaves a real open question: the Dab corpus DID reach that path (the
+% census counted 24,685 intensity_observation documents from it), so Dab's
+% ontology_table_row documents carry a `rows` field the current writer does not
+% produce. A second vintage, exactly like the two ontologyImage vintages. Until
+% someone reads a real Dab document we do not know which.
+%
+% This test asserts only what is verified: a current-writer document passes
+% through untouched. If a future change makes it fan out, that is a claim about
+% document shape that needs the same evidence.
+out = did2.convert.migrators_j.ontology_table_row(makeRealRow());
+verifyEqual(testCase, numel(out), 1, ...
+    ['a document in the CURRENT NDI writer shape has no `rows` field, so ' ...
+     'extractRows returns nothing and it must pass through']);
 end
