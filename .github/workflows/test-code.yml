@@ -116,6 +116,64 @@ jobs:
             nFailed = sum([results.Failed]);
             assert(nFailed == 0, sprintf("%d test(s) failed", nFailed));
 
+      - name: Corpus census digest (END OF LOG -- reachable by a log tail)
+        # The corpus tests already print every number below, but they run FIRST
+        # in a ~1700-line, 2.5-hour log, so the census is unreachable by a log
+        # tail and effectively write-only: reading it meant downloading the
+        # artifact. This step re-prints the same figures from the saved JSON at
+        # the very END, where `get_job_logs --tail` lands.
+        #
+        # This is not decoration. The silent-loss census is the evidence that
+        # gates Phase 1: `mustBeNonEmpty` on depends_on and the all-blank
+        # composite check cannot be flipped to enforcing until these counts are
+        # known, because flipping blind would light up an unknown number of
+        # quarantines and block the 0-quarantine gate.
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, glob, os
+          files = sorted(glob.glob('corpus-reports/*-summary.json'))
+          if not files:
+              print('NO CORPUS REPORTS FOUND (corpus-reports/*-summary.json)')
+              raise SystemExit(0)
+          print('=' * 72)
+          print('CORPUS CENSUS DIGEST  (%d corpus report(s))' % len(files))
+          print('=' * 72)
+          for p in files:
+              try:
+                  r = json.load(open(p))
+              except Exception as e:
+                  print('\n%s: UNREADABLE (%s)' % (p, e)); continue
+              name = r.get('corpus', os.path.basename(p))
+              print('\n--- %s ---' % name)
+              print('  total=%s  migrated=%s  quarantine=%s' % (
+                  r.get('total','?'), r.get('migrated_count','?'),
+                  r.get('quarantine_count','?')))
+              sl = r.get('silent_loss') or {}
+              if 'audit_failed' in sl:
+                  print('  silent-loss: AUDIT FAILED (%s)' % sl['audit_failed'])
+              elif sl:
+                  print('  silent-loss: %s empty required edge(s), %s vacuous required field(s)'
+                        % (sl.get('empty_dependency_count','?'),
+                           sl.get('vacuous_field_count','?')))
+                  for e in (sl.get('empty_required_dependency') or [])[:10]:
+                      print('      %8s  %s.%s' % (e.get('count','?'),
+                            e.get('class_name','?'), e.get('edge_name','?')))
+                  for f in (sl.get('vacuous_required_field') or [])[:10]:
+                      print('      %8s  %s / %s.%s' % (f.get('count','?'),
+                            f.get('class_name','?'), f.get('block','?'),
+                            f.get('field_name','?')))
+              if 'unconverted_count' in r:
+                  print('  unconverted: %s document(s) returned unchanged' % r['unconverted_count'])
+                  ubc = r.get('unconverted_by_class') or {}
+                  for k, v in sorted(ubc.items(), key=lambda kv: -kv[1])[:15]:
+                      print('      %8s  %s' % (v, k))
+              for q in (r.get('quarantine_reasons') or [])[:5]:
+                  print('  quarantine: %5s [%s] %s' % (q.get('count','?'),
+                        q.get('class_name','?'), str(q.get('reason',''))[:90]))
+          print('\n' + '=' * 72)
+          PY
+
       - name: Upload corpus discovery reports
         # Discovery-mode corpus tests (e.g., testCorpus20211116) write
         # JSON summaries into corpus-reports/. Upload them as a CI
