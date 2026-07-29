@@ -1700,7 +1700,11 @@ verifyEqual(testCase, numel(out), 1);
 o = out{1};
 verifyEqual(testCase, o.document_class.class_name, 'ontology_image');
 verifyEqual(testCase, o.ontology_image.ontology_nodes, 'uberon:0000955,uberon:0002436');
-% the raster must survive for the second pass
+% the raster block must survive for the second pass. NOTE: this calls the
+% migrator directly, so `coordinates` is still present here -- in the real
+% pipeline the ngrid SUPERCLASS migrator runs first and deletes it. That
+% deletion is a known, separate data loss (see V_eta_ngrid_family_findings.md);
+% this assertion only proves THIS migrator strips nothing.
 verifyTrue(testCase, isfield(o, 'ngrid'));
 verifyEqual(testCase, o.ngrid.coordinates, [1;2;3;4;1;2;3;4]);
 % and no husk observation was minted

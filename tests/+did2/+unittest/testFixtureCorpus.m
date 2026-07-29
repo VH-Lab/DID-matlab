@@ -113,7 +113,8 @@ batch = [ ...
     fx_distance_metadata(), fx_electrode_offset_voltage(), fx_site2channelmap(), ...
     fx_spike_interface_sorting_outputs(), fx_dataset_remote(), ...
     fx_dataset_session_info(), fx_session_in_a_dataset(), fx_element_epoch(), ...
-    fx_ontology_image(), fx_openminds_element(), fx_openminds_stimulus() ];
+    fx_ontology_image(), fx_ontology_image_ndi(), ...
+    fx_openminds_element(), fx_openminds_stimulus() ];
 end
 
 % ----- batch 2: term_manipulation+relation, body-backed sampled_body,
@@ -768,7 +769,17 @@ d.element_epoch = struct('epoch_clock','dev_local_time','t0_t1',[0; 930.35]);
 batch = { sub, d };
 end
 
-% ---- ontology_image (element_id) -------------------------------------------
+% ---- ontology_image, OLDER LAYOUT (ontology_name + element_id) --------------
+% NDI redefined ontologyImage, so two incompatible layouts are both v1. This is
+% the older one (schemas/V_alpha/ontologyImage.json): the region is two
+% coordinated text fields and element_id names the subject. It MIGRATES to a
+% term_observation.
+%
+% This fixture previously used `ontology_image.region`, which is not a v1 field
+% at all -- it is what the V_delta migrator PRODUCES. The migrator was written
+% to match that invented shape and so silently emitted an empty observation on
+% every real document. The guard now rejects `region` by name, and this fixture
+% carries the real field names.
 function batch = fx_ontology_image()
 sub = subjDoc('oi_sub', 'elemOI');
 d = struct();
@@ -776,9 +787,38 @@ d.document_class = struct('class_name','ontology_image','class_version','1.0.0',
     'superclasses', struct('class_name','base','class_version','1.0.0'));
 d.depends_on = struct('name','element_id','value','oi_sub');
 d.base = struct('id','oi_01','session_id','sess_09','name','oi','datestamp','2024-06-01T12:00:00.000Z');
-d.ontology_image = struct('region', ...
-    struct('node','uberon:0002436','name','primary visual cortex'));
+d.ontology_image = struct('ontology_name','uberon:0002436', ...
+    'ontology_region','primary visual cortex');
 batch = { sub, d };
+end
+
+% ---- ontology_image, CURRENT NDI LAYOUT (ontologyNodes + ngrid) -------------
+% Written by +ndi/+setup/+NDIMaker/imageDocMaker: the terms are a comma-joined
+% CURIE list, the raster rides an ngrid block, and the only edge is to an
+% ontologyTableRow -- which is NOT a subject. The subject is reachable only
+% through that table row, i.e. only with the migrated-id graph, so this layout
+% is DEFERRED to the NDI second pass and passes through UNCHANGED.
+%
+% The point of this fixture is that the passthrough must VALIDATE: it exercises
+% the reshaped ontology_image tombstone (ngrid superclass + ontology_nodes) under
+% Validate=true. Without it nothing checks that the deferred document can
+% actually land.
+%
+% The ontology_table_row_id edge is left EMPTY here to keep the fixture
+% self-contained (empty edges are skipped by the orphan check). Whether the
+% passthrough should carry a populated edge is an open question -- see the note
+% in V_eta_ngrid_family_findings.md; ontology_table_row mints fresh ids per
+% column, so a populated edge may not resolve.
+function batch = fx_ontology_image_ndi()
+d = struct();
+d.document_class = struct('class_name','ontology_image','class_version','1.0.0', ...
+    'superclasses', struct('class_name',{'base','ngrid'}, 'class_version',{'1.0.0','1.0.0'}));
+d.depends_on = struct('name','ontology_table_row_id','value','');
+d.base = struct('id','oi_02','session_id','sess_09','name','oi2','datestamp','2024-06-01T12:00:00.000Z');
+d.ontology_image = struct('ontology_nodes','uberon:0000955,uberon:0002436');
+d.ngrid = struct('data_size',8,'data_type','double','data_dim',[4 4], ...
+    'coordinates',[1;2;3;4;1;2;3;4]);
+batch = { d };
 end
 
 % ---- openminds_element (element_id + empty openminds dep) ------------------
