@@ -120,7 +120,9 @@ end
 % ----- batch 2: term_manipulation+relation, body-backed sampled_body,
 % term_assertion. Each rides on its own minted subject(s). Covers:
 % treatment_transfer->term_manipulation (+ derived_from relation),
-% virus_injection->dose_manipulation (+ site), ontology_label->term_observation,
+% virus_injection->dose_manipulation (+ site), ontology_label->deferred
+% passthrough (its document_id edge points at the image_stack below, whose id
+% the image_stack fold preserves, so the link still resolves after migration),
 % image_stack->image_observation + sampled_body, openminds_subject->term_assertion.
 function batch = observationBatch()
 recipient = subjDoc('om_rec_1', 'recipientR');
@@ -151,14 +153,19 @@ vi.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
     'virus_name', 'AAV-ChR2', 'dilution', 1000, ...
     'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1');
 
+% ontology_label, built from the NDI template: ONE property field
+% (ontologyNode -> ontology_node) and ONE dependency, document_id, pointing at
+% the document being labelled -- here the image_stack below. The previous
+% fixture used ontology_name/label_id/label and an element_id edge, none of
+% which exist. Deferred passthrough: reaching the subject means following
+% document_id through the migrated-id graph, which is the second pass's job.
 ol = struct();
 ol.document_class = struct('class_name', 'ontology_label', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-ol.depends_on = struct('name', {'element_id'}, 'value', {'om_elem_o'});
+ol.depends_on = struct('name', {'document_id'}, 'value', {'om_is_01'});
 ol.base = struct('id', 'om_ol_01', 'session_id', 'sess_09', ...
     'name', 'ol', 'datestamp', '2024-06-01T12:00:00.000Z');
-ol.ontology_label = struct('ontology_name', 'Allen CCF v3', 'label_id', 12345, ...
-    'label', 'primary visual cortex');
+ol.ontology_label = struct('ontology_node', 'uberon:3373');
 
 is = struct();
 is.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
@@ -315,35 +322,51 @@ end
 
 % ===================== batch 3 zoo fixtures (harvested) ==================
 
-% ---- spikewaves (element_id + spike_extraction_parameters_id) --------------
+% ---- spikewaves (element_id + extraction_parameters_id) --------------------
+% Built from the NDI template: ONE property field. The previous fixture added
+% num_spikes/samples_per_spike/sample_rate, none of which exist -- both counts
+% live in the spikewaves.vsw binary header. Deferred passthrough.
 function batch = fx_spikewaves()
 sub  = subjDoc('sw_sub', 'animalSW');
 sep  = subjDoc('sw_sep', 'sepSW');
 d = struct();
 d.document_class = struct('class_name','spikewaves','class_version','1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+    'superclasses', struct('class_name', {'base'; 'epochid'; 'app'}, ...
+                           'class_version', {'1.0.0'; '1.0.0'; '1.0.0'}));
 d.depends_on = [ struct('name','element_id','value','sw_sub'), ...
-                 struct('name','spike_extraction_parameters_id','value','sw_sep') ];
+                 struct('name','extraction_parameters_id','value','sw_sep') ];
 d.base = struct('id','sw_01','session_id','sess_09','name','sw','datestamp','2024-06-01T12:00:00.000Z');
-d.spikewaves = struct('extraction_name','thresh_5sd', ...
-    'num_spikes',120,'samples_per_spike',32,'sample_rate',30000);
+d.epochid = struct('epochid','t00001');
+d.app = struct('name','ndi.app.spikeextractor','version','1.0');
+d.spikewaves = struct('extraction_name','thresh_5sd');
 d.files = struct('file_list', {{'spikewaves.vsw','spiketimes.bin'}});
 batch = { sub, sep, d };
 end
 
-% ---- spike_clusters (element_id + sorting_parameters_id) -------------------
+% ---- spike_clusters (4 dependencies) ---------------------------------------
+% Built from the NDI template. The previous fixture used num_clusters/num_spikes
+% -- neither exists; the spike count lives only inside spike_cluster.bin.
+% Deferred passthrough.
 function batch = fx_spike_clusters()
 sub = subjDoc('sc_sub', 'animalSC');
 sp  = subjDoc('sc_sp',  'sortparamsSC');
+ep  = subjDoc('sc_ep',  'extractparamsSC');
+sw  = subjDoc('sc_sw',  'spikewavesSC');
 d = struct();
 d.document_class = struct('class_name','spike_clusters','class_version','1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-d.depends_on = [ struct('name','element_id','value','sc_sub'), ...
-                 struct('name','sorting_parameters_id','value','sc_sp') ];
+    'superclasses', struct('class_name', {'base'; 'app'}, ...
+                           'class_version', {'1.0.0'; '1.0.0'}));
+d.depends_on = [ struct('name','sorting_parameters_id','value','sc_sp'), ...
+                 struct('name','element_id','value','sc_sub'), ...
+                 struct('name','extraction_parameters_id','value','sc_ep'), ...
+                 struct('name','spikewaves_doc_id','value','sc_sw') ];
 d.base = struct('id','sc_01','session_id','sess_09','name','sc','datestamp','2024-06-01T12:00:00.000Z');
-d.spike_clusters = struct('num_clusters',5,'num_spikes',400);
-d.files = struct('file_list', {{'clusters.bin'}});
-batch = { sub, sp, d };
+d.app = struct('name','ndi.app.spikesorter','version','1.0');
+d.spike_clusters = struct('epoch_info', struct('epoch_number',1), ...
+    'clusterinfo', struct('number',{1,2},'quality',{'good','mua'}), ...
+    'waveform_sample_times', [0;1;2]);
+d.files = struct('file_list', {{'spike_cluster.bin'}});
+batch = { sub, sp, ep, sw, d };
 end
 
 % ---- jrclust_clusters (superclasses base + app) ----------------------------
@@ -360,16 +383,30 @@ batch = { sub, d };
 end
 
 % ---- binnedspikeratevm -----------------------------------------------------
+% Built from the NDI template. The previous fixture used bin_size/num_bins;
+% the real bin width is parameters.binsize (nested, no underscore) and there is
+% no bin count at all. Deferred passthrough -- the app has no writer anywhere,
+% so the "string"-typed payload fields have no documented encoding and nothing
+% says whether the values are rates or spikes-per-bin.
 function batch = fx_binnedspikeratevm()
 sub = subjDoc('br_sub', 'animalBR');
+vfp = subjDoc('br_vfp', 'filterparamsBR');
 d = struct();
 d.document_class = struct('class_name','binnedspikeratevm','class_version','1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-d.depends_on = struct('name','element_id','value','br_sub');
+    'superclasses', struct('class_name', {'base'; 'epochid'; 'app'}, ...
+                           'class_version', {'1.0.0'; '1.0.0'; '1.0.0'}));
+d.depends_on = [ struct('name','vmspikefilteringparameters_id','value','br_vfp'), ...
+                 struct('name','element_id','value','br_sub') ];
 d.base = struct('id','br_01','session_id','sess_09','name','br','datestamp','2024-06-01T12:00:00.000Z');
-d.binnedspikeratevm = struct('bin_size',0.05,'num_bins',600);
-d.files = struct('file_list', {{'rate.bin'}});
-batch = { sub, d };
+d.epochid = struct('epochid','t00001');
+d.app = struct('name','ndi.app.vhlab_voltage2firingrate','version','1.0');
+d.binnedspikeratevm = struct( ...
+    'parameters', struct('binsize',0.030,'vm_baseline_correction',0, ...
+        'vm_baseline_correct_time',0,'vm_baseline_correct_func','median', ...
+        'number_of_points',0), ...
+    'voltage_observations','', 'firingrate_observations','', ...
+    'stimids','', 'timepoints','', 'exactbintime','');
+batch = { sub, vfp, d };
 end
 
 % ---- pyraview (superclasses filter + base + epochid) -----------------------
@@ -426,18 +463,26 @@ d.vmspikesummary = struct('mean_vm',-62.5,'mean_firing_rate',8.3, ...
 batch = { sub, d };
 end
 
-% ---- vmneuralresponseresiduals (element_id + vmspikefit_id) ----------------
+% ---- vmneuralresponseresiduals (element_id -- the ONLY dependency) ---------
+% Built from the NDI template. The previous fixture used mean_residual and a
+% vmspikefit_id edge; neither exists. Deferred passthrough -- goodness_of_fit is
+% typed number-or-string with no documented range or polarity, and the app has
+% no writer in any repository.
 function batch = fx_vmneuralresponseresiduals()
 sub = subjDoc('rr_sub', 'animalRR');
-vf  = subjDoc('rr_vf',  'vmspikefitRR');
 d = struct();
 d.document_class = struct('class_name','vmneuralresponseresiduals','class_version','1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-d.depends_on = [ struct('name','element_id','value','rr_sub'), ...
-                 struct('name','vmspikefit_id','value','rr_vf') ];
+d.depends_on = struct('name','element_id','value','rr_sub');
 d.base = struct('id','rr_01','session_id','sess_09','name','rr','datestamp','2024-06-01T12:00:00.000Z');
-d.vmneuralresponseresiduals = struct('mean_residual',1.7);
-batch = { sub, vf, d };
+d.vmneuralresponseresiduals = struct( ...
+    'element_epochid','t00001', ...
+    'parameters', struct('number_traces',1,'samples_per_trace',1000,'units','V'), ...
+    'column_labels', struct('first_column','Time (s)','second_column','Raw signal', ...
+        'third_column','Raw signal with spikes','fourth_column','Fit signal', ...
+        'fifth_column','Residual signal'), ...
+    'goodness_of_fit','', 'total_power','', 'residual_power','');
+batch = { sub, d };
 end
 
 % ---- fitcurve --------------------------------------------------------------
@@ -706,29 +751,39 @@ d.electrode_offset_voltage = struct('offset',0.5,'temperature',11);
 batch = { sub, d };
 end
 
-% ---- site2channelmap (probe_id) --------------------------------------------
+% ---- site2channelmap (probe_id + probe_geometry_id) ------------------------
+% Built from the NDI template: ONE property field, `map`, plus the
+% probe_geometry_id edge the previous fixture omitted -- which is precisely what
+% gives `map` its meaning (element i = the channel wired to site i of that
+% geometry). Deferred passthrough; the join is the second pass's to make.
 function batch = fx_site2channelmap()
 sub = subjDoc('s2c_sub', 'probeS2C');
+pg  = subjDoc('s2c_pg',  'probegeomS2C');
 d = struct();
 d.document_class = struct('class_name','site2channelmap','class_version','1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-d.depends_on = struct('name','probe_id','value','s2c_sub');
+d.depends_on = [ struct('name','probe_id','value','s2c_sub'), ...
+                 struct('name','probe_geometry_id','value','s2c_pg') ];
 d.base = struct('id','s2c_01','session_id','sess_09','name','s2c','datestamp','2024-06-01T12:00:00.000Z');
-d.site2channelmap = struct('num_sites',32, ...
-    'site_to_channel', struct('site',1,'channel',5));
-batch = { sub, d };
+d.site2channelmap = struct('map',[5;6;7;8]);
+batch = { sub, pg, d };
 end
 
-% ---- spike_interface_sorting_outputs (element_id) --------------------------
+% ---- spike_interface_sorting_outputs (NO dependencies) ---------------------
+% Built from the NDI template, which declares `depends_on: []` -- the previous
+% fixture invented an element_id edge and a num_units field. With no edges there
+% is no subject to observe, and the unit count is inside the .zip. Deferred
+% passthrough.
 function batch = fx_spike_interface_sorting_outputs()
 sub = subjDoc('sis_sub', 'recSubSIS');
 d = struct();
 d.document_class = struct('class_name','spike_interface_sorting_outputs','class_version','1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-d.depends_on = struct('name','element_id','value','sis_sub');
+d.depends_on = struct('name', {}, 'value', {});
 d.base = struct('id','sis_01','session_id','sess_09','name','sis','datestamp','2024-06-01T12:00:00.000Z');
 d.spike_interface_sorting_outputs = struct('sorter_name','kilosort', ...
-    'num_units',12,'sample_rate',30000);
+    'sample_rate',30000,'unit','ms');
+d.files = struct('file_list', {{'sorting.sioutputs.zip'}});
 batch = { sub, d };
 end
 

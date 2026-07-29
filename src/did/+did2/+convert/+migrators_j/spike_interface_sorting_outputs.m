@@ -1,64 +1,69 @@
 function bodies = spike_interface_sorting_outputs(preBody)
 %SPIKE_INTERFACE_SORTING_OUTPUTS Brainstorm-J migrator: did_v1
-%   spike_interface_sorting_outputs -> a count_observation (how many units the
-%   sorter found) + the session anchor. 1 -> 2.
+%   spike_interface_sorting_outputs -- DEFERRED to the NDI second pass; the
+%   document is passed through UNCHANGED.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   spike_interface_sorting_outputs is a spike-sorting RESULT tied to a recording
-%   subject via element_id (device-as-subject, D2). #9 analysis-tier fold: the one
-%   piece of subject-relevant quantity here is num_units -- the cardinality of the
-%   sorted-unit set. That folds to a single INLINE count_observation on the
-%   recording subject:
 %
-%       count_observation  the discoverable spine handle: subject_id (carried from
-%                          element_id), a shared session-relative time anchor,
-%                          variable = 'number of sorted units', storage_mode
-%                          'inline'. count.value is the count composite (a plain
-%                          scalar N, unit-free), NOT a body-backed series -- there
-%                          is exactly one number, not one datum per unit.
-%       session_relative_reference   the 'during' anchor.
+%   ---------------------------------------------------------------------
+%   WHY THIS IS NOT A MIGRATION
+%   ---------------------------------------------------------------------
+%   This migrator used to emit an inline count_observation of `num_units` about
+%   the recording subject reached via element_id. BOTH HALVES ARE WRONG. The real
+%   NDI class (ndi_common/database_documents/sorting/SpikeInterfaceSortingOutputs
+%   .json) is:
 %
-%   NOTE (grain deferral): this migrator does NOT mint one derived `subject` per
-%   sorted unit. That grain-B minting -- turning each unit into its own subject --
-%   is neuron_extracellular's job (each neuron_extracellular doc -> a derived
-%   subject) / the NDI second pass's, not this run-summary doc's. Here we only
-%   report the COUNT. Likewise the sorter provenance (sorter_name /
-%   sorter_parameters -> a method + derived_from) is deferred; sorter_name and
-%   sample_rate are dropped by this pass rather than mis-folded onto the subject.
-%   A doc with num_units absent or zero carries unchanged (discovery fallback):
-%   there is no unit to count, so no observation is emitted.
+%       SpikeInterfaceSortingOutputs: { sorter_name, sample_rate, unit }
+%       depends_on:  []                      <- NO EDGES AT ALL
+%       files:       sorting.sioutputs.zip
+%
+%     1. `num_units` does not exist. The unit count is inside the .zip, and a
+%        single-document migrator carries files without reading their bytes (the
+%        pyraview precedent), so no count is derivable in pass 1.
+%
+%     2. `element_id` does not exist either -- the class declares NO dependencies.
+%        There is no subject to attach an observation to, and none can be found
+%        from this document alone.
+%
+%   Because `num_units` never matched, the `numUnits <= 0` guard always fired and
+%   every document was already carried through unconverted. That is the right
+%   OUTCOME reached by accident, and it was indistinguishable from a deliberate
+%   deferral -- which is why nobody noticed the class was modelled wrongly. Making
+%   the deferral explicit is the change here.
+%
+%   Deferred WITH the document: sorter provenance (sorter_name -> a `software` /
+%   method + derived_from) and the sample_rate/unit pair. Those are modelling
+%   decisions that need the subject the second pass can find, not repairs.
+%
+%   V_eta's tombstone declares the real shape so the passthrough validates -- see
+%   build_v_eta.py.
+%
+%   THE GUARD. A body carrying `num_units` or `sorter_parameters` is REJECTED BY
+%   NAME: those are DID-side inventions from the V_alpha snapshot, so their
+%   presence means a fixture or a caller has been built against our schema
+%   instead of the real document.
+%
+%   See V_eta_migrator_vocabulary_audit.md for the evidence.
+
 arguments
     preBody (1,1) struct
 end
-
-blk = struct();
-if isfield(preBody, 'spike_interface_sorting_outputs') ...
-        && isstruct(preBody.spike_interface_sorting_outputs)
-    blk = preBody.spike_interface_sorting_outputs;
+blk = getBlock(preBody, 'spike_interface_sorting_outputs');
+if isfield(blk, 'num_units') || isfield(blk, 'sorter_parameters')
+    error('did2:convert:sortingOutputsInventedShape', ...
+        ['spike_interface_sorting_outputs body carries `num_units`/' ...
+         '`sorter_parameters`, which no did_v1 document has -- the real fields ' ...
+         'are `sorter_name`, `sample_rate` and `unit`, the class declares NO ' ...
+         'dependencies, and the unit count lives only inside ' ...
+         'sorting.sioutputs.zip. This shape can only come from the V_alpha ' ...
+         'snapshot or a fixture built against it.']);
+end
+bodies = {preBody};
 end
 
-numUnits = 0;
-if isfield(blk, 'num_units') && isnumeric(blk.num_units) ...
-        && isscalar(blk.num_units) && isfinite(blk.num_units)
-    numUnits = double(blk.num_units);
-end
+% ===================== small helpers =======================================
 
-if numUnits <= 0
-    bodies = {preBody};   % nothing to count -> carry unchanged (discovery fallback)
-    return;
-end
-
-% ---- the session-relative time anchor ('during') ----------------------------
-anchor = jSessionAnchor(preBody, 'during');
-
-% ---- the inline count_observation (number of sorted units) ------------------
-obs = jStartInteraction(preBody, 'count_observation', 'subject_observation', ...
-    {'count'}, jOntologyTerm('', 'number of sorted units'), ...
-    {'element_id', 'subject_id'});
-obs.subject_statement.storage_mode = 'inline';
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-obs.count = struct('value', struct('value', round(numUnits), ...
-    'unit', jOntologyTerm('', ''), 'approximate', false));
-
-bodies = {obs, anchor};
+function b = getBlock(bodyStruct, name)
+b = struct();
+if isfield(bodyStruct, name) && isstruct(bodyStruct.(name)); b = bodyStruct.(name); end
 end

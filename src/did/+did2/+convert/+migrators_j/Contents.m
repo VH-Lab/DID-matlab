@@ -66,9 +66,35 @@
 %     probe_location     - 1 -> 2. -> term_observation about the probe-subject
 %                          (device-as-subject, D2/D5): variable = a spatial
 %                          relation, value = the atlas term. + anchor.
-%     ontology_label     - 1 -> 2. -> term_observation about the labeled subject
-%                          (D5): label term (either did_v1 idiom) as value. +
-%                          anchor.
+%     ontology_label     - 1 -> 1. DEFERRED passthrough. The label value was
+%                          never the problem; the REFERENT was. The class has
+%                          one property field (ontology_node) and one
+%                          dependency, document_id -> the document being
+%                          labelled. Reaching a subject means following that
+%                          edge through the migrated-id graph, so the second
+%                          pass does it. ~7,007 docs.
+%
+%   DEFERRED PASSTHROUGHS (1 -> 1). These migrators were reading field names no
+%   did_v1 document has, so they emitted fabricated or fragmentary output. Each
+%   now guards the invented shape by name and carries the document through
+%   intact for the NDI second pass, which can read file bytes and see the
+%   migrated-id graph. V_eta's tombstones declare the real did_v1 shape so the
+%   passthrough validates. See V_eta_migrator_vocabulary_audit.md.
+%     simple_calc              - no subject-bearing edge (only document_id).
+%     spike_clusters           - the spike count is inside spike_cluster.bin.
+%     spikewaves               - both counts are in the .vsw binary header.
+%     spike_interface_sorting_outputs
+%                              - declares NO dependencies at all, so there is no
+%                                subject; the unit count is inside the .zip.
+%     site2channelmap          - `map` only has meaning joined to the
+%                                probe_geometry it references.
+%     binnedspikeratevm        - no writer exists in any repository, so the
+%                                payload encoding is undocumented and nothing
+%                                says whether the values are rates or
+%                                spikes-per-bin (33x apart at binsize 0.030).
+%     vmneuralresponseresiduals
+%                              - same missing writer; goodness_of_fit has no
+%                                documented range or polarity.
 %     image_stack        - 1 -> 3. -> a body-backed image_observation
 %                          (storage_mode: body; modality on the spine variable,
 %                          geometry/format inline on the `image` mixin) + a

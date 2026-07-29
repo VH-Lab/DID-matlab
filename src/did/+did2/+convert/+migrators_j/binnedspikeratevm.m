@@ -1,150 +1,86 @@
 function bodies = binnedspikeratevm(preBody)
-%BINNEDSPIKERATEVM Brainstorm-J migrator: did_v1 binnedspikeratevm -> a body-backed
-%   dataseries_observation + a sampled_body (+ the shared session anchor).
+%BINNEDSPIKERATEVM Brainstorm-J migrator: did_v1 binnedspikeratevm -- DEFERRED to
+%   the NDI second pass; the document is passed through UNCHANGED.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   binnedspikeratevm is a binned spike-rate time series (num_bins bins of
-%   bin_size each), tied to a subject via element_id. #9 analysis-tier fold, the
-%   same shape as the pyraview / spikewaves folds:
 %
-%       dataseries_observation  the discoverable spine handle: subject_id, a shared
-%                           time anchor, variable = 'binned spike rate',
-%                           storage_mode 'body'.
-%       sampled_body        the rate series: datum kind 'scalar' (one rate per bin)
-%                           + sample_time (regular: dt = bin_size, n = num_bins) +
-%                           the carried bytes; statement -> the observation.
-%       session_relative_reference   the ordinal 'during' anchor.
+%   ---------------------------------------------------------------------
+%   WHY THIS IS NOT A MIGRATION
+%   ---------------------------------------------------------------------
+%   This migrator used to emit a body-backed frequency_observation whose
+%   sampled_body declared a REGULAR timeline of n = num_bins samples at
+%   dt = bin_size, with unit 'Hz'. NEITHER `num_bins` NOR `bin_size` EXISTS. The
+%   real NDI class
+%   (ndi_common/database_documents/apps/vhlab_voltage2firingrate/
+%   binnedspikeratevm.json) is:
 %
-%   1 -> 3.
+%       binnedspikeratevm: { parameters: { binsize, vm_baseline_correction,
+%                                          vm_baseline_correct_time,
+%                                          vm_baseline_correct_func,
+%                                          number_of_points },
+%                            voltage_observations, firingrate_observations,
+%                            stimids, timepoints, exactbintime }
+%       depends_on:        vmspikefilteringparameters_id, element_id
+%
+%   The bin width is `parameters.binsize` -- nested, and spelled without the
+%   underscore. So both reads failed, and every document produced a sampled_body
+%   declaring a regular series of ZERO SAMPLES at dt = 0 seconds, labelled Hz. A
+%   cleanly-validating description of nothing, invisible to both Phase 1 counters
+%   (the values are numeric 0, not blanks, and output WAS produced).
+%
+%   TWO REASONS THIS CANNOT BE REPAIRED BY RENAMING, both traceable to a missing
+%   writer:
+%
+%     1. NO WRITER EXISTS. NDI ships this app's 5 templates and 5 schemas under
+%        ndi_common/.../apps/vhlab_voltage2firingrate/ but ZERO .m files, and
+%        never had any. NDIcalc-vis, NDIcalc-ephys, NDIcalc-marder,
+%        NDIcalc-birren and vhlab-toolbox were all searched: none has it. So the
+%        encoding of the "string"-typed payload fields (voltage_observations,
+%        firingrate_observations, stimids, timepoints, exactbintime) is
+%        undocumented, and nothing can be unpacked from them.
+%
+%     2. THE UNIT IS A GUESS, AND AN EXPENSIVE ONE. The class is named for a
+%        RATE, but binned spike data is just as commonly stored as spikes PER
+%        BIN. At the template's binsize of 0.030 s those differ by a factor of
+%        33. The old code hardcoded 'Hz'. With no writer, nothing in NDI settles
+%        which it is, and a wrong unit is worse than a deferral because it
+%        validates.
+%
+%   Also worth recording: the template's first dependency is
+%   `vmspikefilteringparameters_id`, while the class's own NDI schema declares
+%   `sorting_parameters_id` in that slot. Template and schema disagree, and there
+%   is no writer to arbitrate, so V_eta's tombstone declares both as optional.
+%
+%   The document is carried through intact for the NDI second pass. V_eta's
+%   tombstone declares the real shape so the passthrough validates -- see
+%   build_v_eta.py.
+%
+%   THE GUARD. A body carrying `num_bins` or `bin_size` is REJECTED BY NAME:
+%   those are DID-side inventions from the V_alpha snapshot, so their presence
+%   means a fixture or a caller has been built against our schema instead of the
+%   real document. Note `bin_size` and the real `parameters.binsize` differ by
+%   exactly one underscore and one nesting level -- the guard is on the flat,
+%   underscored spelling only.
+%
+%   See V_eta_migrator_vocabulary_audit.md for the evidence.
 
 arguments
     preBody (1,1) struct
 end
-
-TV  = 'V_eta';
 blk = getBlock(preBody, 'binnedspikeratevm');
-
-subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
-    dependencyValue(preBody, 'subject_id'));
-sessionId = baseField(preBody, 'session_id', '');
-datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
-obsId     = baseField(preBody, 'id', did.ido.unique_id());
-
-numBins = numScalar(getField(blk, 'num_bins'), 0);
-binSize = durationOf(getField(blk, 'bin_size'));
-
-anchorId = did.ido.unique_id();
-
-% ---- the session-relative time anchor ('during') ----------------------------
-anchor = struct();
-anchor.document_class = classBlock('session_relative_reference', {'time_reference'}, TV);
-anchor.depends_on = struct('name', {}, 'value', {});
-anchor.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'datestamp', datestamp);
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', 'during');
-
-% ---- the discoverable, body-backed dataseries_observation -------------------
-% a binned spike RATE is a frequency (Hz) -> the quantity-typed leaf
-% frequency_observation (not the abstract/collapsed dataseries_observation branch).
-% The rate value lives in the body.
-obs = struct();
-obs.document_class = classBlock('frequency_observation', {'subject_observation', 'frequency'}, TV);
-obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-obs.base = struct('id', obsId, 'session_id', sessionId, ...
-    'name', 'migrated_binnedrate', 'datestamp', datestamp);
-obs.subject_statement = struct( ...
-    'variable', struct('node', '', 'name', 'binned spike rate'), ...
-    'storage_mode', 'body');
-obs.subject_interaction = struct('method', otTerm(''));
-obs.subject_observation = struct();
-obs.frequency = struct();   % value is body-backed
-
-% ---- the sampled_body holding the binned rate series ------------------------
-body = jSampledBody(obsId, sessionId, datestamp, 'migrated_binnedrate_body', ...
-    struct('kind', 'scalar', 'dtype', '', 'unit', 'Hz', 'shape', []), ...
-    struct('regular', true, 't0', durationComposite(0), 'dt', binSize, 'n', numBins));
-if isfield(preBody, 'files'); body.files = preBody.files; end
-if isfield(preBody, 'file');  body.file  = preBody.file;  end
-
-bodies = {obs, body, anchor};
+if isfield(blk, 'num_bins') || isfield(blk, 'bin_size')
+    error('did2:convert:binnedSpikeRateInventedShape', ...
+        ['binnedspikeratevm body carries `num_bins`/`bin_size`, which no ' ...
+         'did_v1 document has -- the bin width is `parameters.binsize` ' ...
+         '(nested, no underscore) and there is no bin count. This shape can ' ...
+         'only come from the V_alpha snapshot or a fixture built against it.']);
+end
+bodies = {preBody};
 end
 
 % ===================== small helpers =======================================
 
-function dc = classBlock(name, supers, tv)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', tv);
-end
-
-function c = durationComposite(seconds)
-c = struct('source_unit', 's', 'source_value', double(seconds), 'approximate', false);
-end
-
-function c = durationOf(x)
-% v1 bin_size may arrive as a raw number of seconds or already a duration struct.
-if isstruct(x) && isfield(x, 'source_value')
-    c = x;
-elseif isnumeric(x) && isscalar(x)
-    c = durationComposite(x);
-else
-    c = durationComposite(0);
-end
-end
-
-function t = otTerm(name)
-t = struct('node', '', 'name', name);
-end
-
 function b = getBlock(bodyStruct, name)
 b = struct();
 if isfield(bodyStruct, name) && isstruct(bodyStruct.(name)); b = bodyStruct.(name); end
-end
-
-function v = getField(block, name)
-v = [];
-if isfield(block, name); v = block.(name); end
-end
-
-function v = numScalar(x, default)
-v = default;
-if ~isempty(x) && isnumeric(x) && isscalar(x); v = double(x); end
-end
-
-function s = firstNonEmpty(varargin)
-s = '';
-for k = 1:numel(varargin)
-    if ~isempty(varargin{k}); s = varargin{k}; return; end
-end
-end
-
-function v = dependencyValue(bodyStruct, name)
-v = '';
-if isfield(bodyStruct, 'depends_on') && isstruct(bodyStruct.depends_on)
-    for k = 1:numel(bodyStruct.depends_on)
-        d = bodyStruct.depends_on(k);
-        if isfield(d, 'name') && strcmp(d.name, name)
-            if isfield(d, 'value') && ~isempty(d.value)
-                v = char(d.value);
-            elseif isfield(d, 'document_id') && ~isempty(d.document_id)
-                v = char(d.document_id);
-            end
-            return;
-        end
-    end
-end
-end
-
-function v = baseField(bodyStruct, name, default)
-v = default;
-if isfield(bodyStruct, 'base') && isstruct(bodyStruct.base) ...
-        && isfield(bodyStruct.base, name) && ~isempty(bodyStruct.base.(name))
-    v = bodyStruct.base.(name);
-end
 end

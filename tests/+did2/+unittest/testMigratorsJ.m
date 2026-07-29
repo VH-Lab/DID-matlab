@@ -14,7 +14,8 @@ function tests = testMigratorsJ
 %     - treatment_drug     -> dose_manipulation (mixture -> dose composite)
 %     - virus_injection    -> dose_manipulation (virus + dilution)
 %     - probe_location     -> term_observation about the probe-subject (D5)
-%     - ontology_label     -> term_observation about the labeled subject (D5)
+%     - ontology_label     -> DEFERRED passthrough (the label value was fine; the
+%                             referent was not -- see the migrator header)
 %     - image_stack        -> body-backed image_observation + sampled_body (§C.4)
 %   D10/D11 are decided (parameters on subject_statement; per-table subject
 %   maps; multi-party events bind via a shared time_reference). Tables are moved
@@ -492,23 +493,45 @@ verifyEqual(testCase, o.get('term.value').node, 'uberon:0002436');
 verifyEqual(testCase, depVal(o, 'subject_id'), 'probe_42');
 end
 
-function testOntologyLabelBecomesTermObservation(testCase)
+function v1 = ontologyLabelBody()
+% Fixture built from the NDI TEMPLATE (ndi_common/database_documents/data/
+% ontologyLabel.json), not from our schema. ONE property field, ONE dependency.
 v1 = struct();
 v1.document_class = struct('class_name', 'ontology_label', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_9'});
+v1.depends_on = struct('name', {'document_id'}, 'value', {'imstack_9'});
 v1.base = struct('id', 'ol_01', 'session_id', 'sess_09', ...
     'name', 'ol', 'datestamp', '2024-06-01T12:00:00.000Z');
-% idiom 1: three coordinated fields -> a composed CURIE
+% ontologyNode, snake_cased by universalRenames
+v1.ontology_label = struct('ontology_node', 'uberon:3373');
+end
+
+function testOntologyLabelDefersToSecondPass(testCase)
+% The label value was never the problem -- the REFERENT was. The real class has
+% one dependency, `document_id`, pointing at the document being labelled (an
+% image stack, typically), and the old migrator asked for element_id/subject_id/
+% probe_id instead. jStartInteraction ASSIGNS depends_on rather than extending
+% it, so every real document came out with an EMPTY subject_id and the
+% document_id edge DISCARDED: the term survived, what it was about did not.
+% Reaching the subject means following document_id through the migrated-id
+% graph, so the document is carried through intact for the second pass.
+out = did2.convert.migrators_j.ontology_label(ontologyLabelBody());
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'ontology_label');
+verifyEqual(testCase, out{1}.ontology_label.ontology_node, 'uberon:3373');
+% the link to the labelled document is kept, and no husk observation is minted
+verifyEqual(testCase, depValue(out{1}, 'document_id'), 'imstack_9');
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testOntologyLabelRejectsInventedShape(testCase)
+% ontology_name/label_id/label came from the false provenance line in the
+% V_delta conversion doc (since corrected). None exists on the real class.
+v1 = ontologyLabelBody();
 v1.ontology_label = struct('ontology_name', 'Allen CCF v3', 'label_id', 12345, ...
     'label', 'primary visual cortex');
-out = runJ(v1);
-verifyEqual(testCase, numel(out.migrated), 2);   % obs + anchor
-o = out.migrated{1};
-verifyEqual(testCase, o.get('document_class.class_name'), 'term_observation');
-verifyEqual(testCase, o.get('term.value').node, 'allen_ccf_v3:12345');
-verifyEqual(testCase, o.get('term.value').name, 'primary visual cortex');
-verifyEqual(testCase, depVal(o, 'subject_id'), 'elem_9');
+verifyError(testCase, @() did2.convert.migrators_j.ontology_label(v1), ...
+    'did2:convert:ontologyLabelInventedShape');
 end
 
 % ===================== image_stack -> body-backed observation ==========
@@ -1287,63 +1310,89 @@ dts = sort(cellfun(@(b) b.sampled_body.sample_time.dt.source_value, sbods));
 verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
 end
 
-function testSpikewavesFoldsToObservationPlusSampledBody(testCase)
-% #9 (direct-subject binary fold, pyraview-twin): spikewaves -> a body-backed
-% voltage_observation + a sampled_body (one datum per spike) + anchor. 1->3.
+function body = spikewavesBody()
+% Fixture built from the NDI TEMPLATE (ndi_common/database_documents/apps/
+% spikeextractor/spikewaves.json). ONE property field; both counts the old
+% fixture carried live in the spikewaves.vsw binary header, not in the document.
 body = struct();
 body.document_class = struct('class_name', 'spikewaves', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+    'superclasses', struct('class_name', {'base', 'epochid', 'app'}, ...
+                           'class_version', {'1.0.0', '1.0.0', '1.0.0'}));
 body.depends_on = [ struct('name', 'element_id', 'value', 'sub_5'), ...
-                    struct('name', 'spike_extraction_parameters_id', 'value', 'sep_1')];
+                    struct('name', 'extraction_parameters_id', 'value', 'sep_1')];
 body.base = struct('id', 'sw_1', 'session_id', 'sess_09', ...
     'name', 'sw', 'datestamp', '2024-06-01T12:00:00.000Z');
-body.spikewaves = struct('extraction_name', 'thresh_5sd', ...
-    'num_spikes', 120, 'samples_per_spike', 32, 'sample_rate', 30000);
+body.spikewaves = struct('extraction_name', 'thresh_5sd');
 body.files = struct('file_list', {{'spikewaves.vsw', 'spiketimes.bin'}});
-
-out = did2.convert.migrators_j.spikewaves(body);
-verifyClass(testCase, out, 'cell');
-verifyEqual(testCase, numel(out), 3);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'voltage_observation')));
-verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
-
-obs  = out{find(strcmp(names, 'voltage_observation'), 1)};
-sbod = out{find(strcmp(names, 'sampled_body'), 1)};
-verifyEqual(testCase, obs.base.id, 'sw_1');
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
-verifyEqual(testCase, obs.subject_statement.variable.name, 'thresh_5sd');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_5');
-verifyEqual(testCase, depValue(sbod, 'statement'), 'sw_1');
-% one datum per spike: n = num_spikes, datum shape = samples_per_spike
-verifyEqual(testCase, sbod.sampled_body.sample_time.n, 120);
-verifyEqual(testCase, sbod.sampled_body.datum.shape, 32);
-verifyEqual(testCase, numel(sbod.files.file_list), 2);
 end
 
-function testBinnedSpikeRateFoldsToObservationPlusSampledBody(testCase)
-% #9 (direct-subject regular timeseries): binnedspikeratevm -> frequency_observation
-% + a sampled_body (one scalar rate per bin; regular, dt = bin_size) + anchor.
+function testSpikewavesDefersToSecondPass(testCase)
+% The old fold declared a sampled_body of n = num_spikes data of shape
+% samples_per_spike. Neither field exists, so both defaulted to 0 and every
+% document described an extraction of ZERO spikes of ZERO samples -- a
+% fabricated measurement that validates cleanly and that neither Phase 1
+% counter can see. The real counts are in the .vsw header, and single-document
+% migrators carry files without reading their bytes.
+out = did2.convert.migrators_j.spikewaves(spikewavesBody());
+verifyClass(testCase, out, 'cell');
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'spikewaves');
+verifyEqual(testCase, out{1}.spikewaves.extraction_name, 'thresh_5sd');
+% the bytes ride along untouched, and no stray anchor is left behind
+verifyEqual(testCase, numel(out{1}.files.file_list), 2);
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testSpikewavesRejectsInventedShape(testCase)
+body = spikewavesBody();
+body.spikewaves = struct('extraction_name', 'thresh_5sd', ...
+    'num_spikes', 120, 'samples_per_spike', 32, 'sample_rate', 30000);
+verifyError(testCase, @() did2.convert.migrators_j.spikewaves(body), ...
+    'did2:convert:spikewavesInventedShape');
+end
+
+function body = binnedSpikeRateBody()
+% Fixture built from the NDI TEMPLATE (ndi_common/database_documents/apps/
+% vhlab_voltage2firingrate/binnedspikeratevm.json). The bin width is
+% parameters.binsize -- nested, and spelled without the underscore -- and there
+% is no bin count anywhere in the class.
 body = struct();
 body.document_class = struct('class_name', 'binnedspikeratevm', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = struct('name', {'element_id'}, 'value', {'sub_3'});
+    'superclasses', struct('class_name', {'base', 'epochid', 'app'}, ...
+                           'class_version', {'1.0.0', '1.0.0', '1.0.0'}));
+body.depends_on = [ struct('name', 'vmspikefilteringparameters_id', 'value', 'vfp_1'), ...
+                    struct('name', 'element_id', 'value', 'sub_3')];
 body.base = struct('id', 'br_1', 'session_id', 'sess_09', ...
     'name', 'br', 'datestamp', '2024-06-01T12:00:00.000Z');
-body.binnedspikeratevm = struct('bin_size', 0.05, 'num_bins', 600);
-body.files = struct('file_list', {{'rate.bin'}});
+body.binnedspikeratevm = struct( ...
+    'parameters', struct('binsize', 0.030, 'vm_baseline_correction', 0, ...
+        'vm_baseline_correct_time', 0, 'vm_baseline_correct_func', 'median', ...
+        'number_of_points', 0), ...
+    'voltage_observations', '', 'firingrate_observations', '', ...
+    'stimids', '', 'timepoints', '', 'exactbintime', '');
+end
 
-out = did2.convert.migrators_j.binnedspikeratevm(body);
-verifyEqual(testCase, numel(out), 3);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));
-sbod = out{find(strcmp(names, 'sampled_body'), 1)};
-verifyEqual(testCase, depValue(sbod, 'statement'), 'br_1');
-verifyEqual(testCase, sbod.sampled_body.datum.kind, 'scalar');
-verifyEqual(testCase, sbod.sampled_body.sample_time.n, 600);
-% bin_size (raw seconds) -> a duration composite dt
-verifyEqual(testCase, sbod.sampled_body.sample_time.dt.source_value, 0.05, 'AbsTol', 1e-12);
+function testBinnedSpikeRateDefersToSecondPass(testCase)
+% Two reasons this cannot be repaired by renaming, both from a missing writer:
+% the payload fields are "string"-typed with an undocumented encoding, and
+% nothing states whether the binned values are rates or spikes-per-bin -- at the
+% template's 0.030 s binsize those differ by 33x. The old code hardcoded Hz on a
+% series of ZERO samples at dt = 0. NDI-matlab, NDIcalc-vis/-ephys/-marder/
+% -birren and vhlab-toolbox were all searched; no writer exists in any of them.
+out = did2.convert.migrators_j.binnedspikeratevm(binnedSpikeRateBody());
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'binnedspikeratevm');
+verifyEqual(testCase, out{1}.binnedspikeratevm.parameters.binsize, 0.030, 'AbsTol', 1e-12);
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testBinnedSpikeRateRejectsInventedShape(testCase)
+% bin_size and the real parameters.binsize differ by one underscore and one
+% nesting level; the guard is on the flat, underscored spelling only.
+body = binnedSpikeRateBody();
+body.binnedspikeratevm = struct('bin_size', 0.05, 'num_bins', 600);
+verifyError(testCase, @() did2.convert.migrators_j.binnedspikeratevm(body), ...
+    'did2:convert:binnedSpikeRateInventedShape');
 end
 
 function testVmspikesummaryDecomposesToInlineScalarObservations(testCase)
@@ -1715,12 +1764,13 @@ v1.ngrid = struct('data_size', 8, 'data_type', 'double', ...
 end
 
 function testUnconvertedCounterSeesAPassthrough(testCase)
-% Phase 1 report-only counter. site2channelmap reads `num_sites`, which the
-% real NDI template does not have (it has only `map`), so the migrator finds
-% nothing and hands its input straight back. That document still lands in
-% migrated_count, because nothing errored -- which is exactly why an
-% accidental passthrough has been indistinguishable from a real migration.
-% The counter is what separates them.
+% Phase 1 report-only counter. site2channelmap now DEFERS explicitly (its `map`
+% only has meaning joined to the probe_geometry it references), so it hands its
+% input straight back. That document still lands in migrated_count, because
+% nothing errored -- which is exactly why a passthrough used to be
+% indistinguishable from a real migration. The counter is what separates them,
+% whether the passthrough is deliberate (as here) or accidental (as it was when
+% the migrator was reading the non-existent `num_sites`).
 v1 = struct();
 v1.document_class = struct('class_name', 'site2channelmap', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -2018,37 +2068,44 @@ ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, ob.opaque_body.filename, 'ka_out/session1');
 end
 
-function testSpikeInterfaceSortingOutputsBecomesCountObservation(testCase)
-% #9 fold: spike_interface_sorting_outputs -> one INLINE count_observation
-% (num_units = the cardinality of the sorted-unit set) on the recording subject
-% (carried from element_id) + a shared session anchor. 1 -> 2. Per-unit subjects
-% are NOT minted here (neuron_extracellular's / the NDI second pass's job).
+function body = sortingOutputsBody()
+% Fixture built from the NDI TEMPLATE (ndi_common/database_documents/sorting/
+% SpikeInterfaceSortingOutputs.json). Note `depends_on: []` -- the class
+% declares NO edges at all, so there is no subject to observe.
 body = struct();
 body.document_class = struct('class_name', 'spike_interface_sorting_outputs', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = struct('name', {'element_id'}, 'value', {'sub_4'});
+body.depends_on = struct('name', {}, 'value', {});
 body.base = struct('id', 'sis_1', 'session_id', 'sess_09', ...
     'name', 'sis', 'datestamp', '2024-06-01T12:00:00.000Z');
 body.spike_interface_sorting_outputs = struct('sorter_name', 'kilosort', ...
-    'num_units', 12, 'sample_rate', 30000);
+    'sample_rate', 30000, 'unit', 'ms');
+body.files = struct('file_list', {{'sorting.sioutputs.zip'}});
+end
 
-out = did2.convert.migrators_j.spike_interface_sorting_outputs(body);
+function testSortingOutputsDefersToSecondPass(testCase)
+% Both halves of the old fold were wrong: `num_units` does not exist (the unit
+% count is inside sorting.sioutputs.zip, and single-document migrators do not
+% read file bytes), and neither does `element_id` -- the class declares NO
+% dependencies, so there is no subject to attach an observation to. Because
+% num_units never matched, these documents were ALREADY carried through
+% unconverted; the change is making the deferral explicit rather than accidental.
+out = did2.convert.migrators_j.spike_interface_sorting_outputs(sortingOutputsBody());
 verifyClass(testCase, out, 'cell');
-verifyEqual(testCase, numel(out), 2);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'count_observation')));
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'spike_interface_sorting_outputs');
+verifyEqual(testCase, out{1}.spike_interface_sorting_outputs.sorter_name, 'kilosort');
+verifyEqual(testCase, out{1}.spike_interface_sorting_outputs.unit, 'ms');
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
 
-obs = out{find(strcmp(names, 'count_observation'), 1)};
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'inline');
-verifyEqual(testCase, obs.subject_statement.variable.name, 'number of sorted units');
-verifyEqual(testCase, obs.count.value.value, 12);
-verifyEqual(testCase, obs.count.value.approximate, false);
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_4');
-anchor = out{find(strcmp(names, 'session_relative_reference'), 1)};
-verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.base.id);
-verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
+function testSortingOutputsRejectsInventedShape(testCase)
+body = sortingOutputsBody();
+body.spike_interface_sorting_outputs = struct('sorter_name', 'kilosort', ...
+    'num_units', 12, 'sample_rate', 30000);
+verifyError(testCase, @() did2.convert.migrators_j.spike_interface_sorting_outputs(body), ...
+    'did2:convert:sortingOutputsInventedShape');
 end
 
 function testProbeGeometryBecomesPerAxisLengthObservations(testCase)
@@ -2116,29 +2173,41 @@ v1.probe_geometry = struct('channel_positions', [0 0; 20 0], ...
 verifyError(testCase, @() did2.convert.migrators_j.probe_geometry(v1), ...
     'did2:convert:probeGeometryInventedShape');
 end
-function testSite2ChannelMapBecomesCountObservation(testCase)
-% site2channelmap -> one INLINE count_observation (num_sites) on the probe-subject
-% + a session anchor. 1 -> 2. The site->channel wiring map itself is deferred
-% (instrument-layer config, not a subject observation).
+function body = site2ChannelMapBody()
+% Fixture built from the NDI TEMPLATE (ndi_common/database_documents/probe/
+% site2channelmap.json). ONE property field, `map`, and a second dependency the
+% old fixture omitted -- probe_geometry_id, which is what makes `map` readable.
 body = struct();
 body.document_class = struct('class_name', 'site2channelmap', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = struct('name', {'probe_id'}, 'value', {'probe_6'});
+body.depends_on = [ struct('name', 'probe_id', 'value', 'probe_6'), ...
+                    struct('name', 'probe_geometry_id', 'value', 'pg_2')];
 body.base = struct('id', 's2c_1', 'session_id', 'sess_09', ...
     'name', 's2c', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.site2channelmap = struct('map', [5; 6; 7; 8]);
+end
+
+function testSite2ChannelMapDefersToSecondPass(testCase)
+% `num_sites` does not exist, so these documents were ALREADY carried through
+% unconverted -- the right outcome reached by accident. `map` is not migratable
+% from this document alone either: its i-th element is the channel wired to SITE
+% i OF THE REFERENCED probe_geometry, so the numbers mean nothing without that
+% document's site ordering. The join is the second pass's to make.
+out = did2.convert.migrators_j.site2channelmap(site2ChannelMapBody());
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'site2channelmap');
+verifyEqual(testCase, out{1}.site2channelmap.map, [5; 6; 7; 8]);
+% the edge that gives `map` its meaning is kept
+verifyEqual(testCase, depValue(out{1}, 'probe_geometry_id'), 'pg_2');
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testSite2ChannelMapRejectsInventedShape(testCase)
+body = site2ChannelMapBody();
 body.site2channelmap = struct('num_sites', 32, ...
     'site_to_channel', struct('site', 1, 'channel', 5));
-
-out = did2.convert.migrators_j.site2channelmap(body);
-verifyEqual(testCase, numel(out), 2);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'count_observation')));
-verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
-obs = out{find(strcmp(names, 'count_observation'), 1)};
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'inline');
-verifyEqual(testCase, obs.subject_statement.variable.name, 'number of recording sites');
-verifyEqual(testCase, obs.count.value.value, 32);
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'probe_6');
+verifyError(testCase, @() did2.convert.migrators_j.site2channelmap(body), ...
+    'did2:convert:site2ChannelMapInventedShape');
 end
 
 function testPositionMetadataBecomesTermObservation(testCase)
@@ -2242,28 +2311,47 @@ verifyEqual(testCase, depValue(qobs, 'subject_id'), neuron.base.id);
 verifyEqual(testCase, qobs.score.value.value, 3, 'AbsTol', 1e-9);
 end
 
-function testSpikeClustersFoldsToCountObservation(testCase)
-% #9 (pattern 1, body-backed): spike_clusters (per-spike cluster labels) ->
-% count_observation + sampled_body (one datum per spike) + anchor. 1->3.
+function body = spikeClustersBody()
+% Fixture built from the NDI TEMPLATE (ndi_common/database_documents/apps/
+% spikesorter/spike_clusters.json). Three property fields, none of which the old
+% fixture had; four dependencies, of which the old fixture had two.
 body = struct();
 body.document_class = struct('class_name', 'spike_clusters', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = [ struct('name', 'element_id', 'value', 'sub_8'), ...
-                    struct('name', 'sorting_parameters_id', 'value', 'sp_1')];
+    'superclasses', struct('class_name', {'base', 'app'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+body.depends_on = [ struct('name', 'sorting_parameters_id', 'value', 'sp_1'), ...
+                    struct('name', 'element_id', 'value', 'sub_8'), ...
+                    struct('name', 'extraction_parameters_id', 'value', 'ep_1'), ...
+                    struct('name', 'spikewaves_doc_id', 'value', 'sw_1')];
 body.base = struct('id', 'sc_1', 'session_id', 'sess_09', ...
     'name', 'sc', 'datestamp', '2024-06-01T12:00:00.000Z');
-body.spike_clusters = struct('num_clusters', 5, 'num_spikes', 400);
-body.files = struct('file_list', {{'clusters.bin'}});
+body.spike_clusters = struct('epoch_info', struct('epoch_number', 1), ...
+    'clusterinfo', struct('number', {1, 2}, 'quality', {'good', 'mua'}), ...
+    'waveform_sample_times', [0; 1; 2]);
+body.files = struct('file_list', {{'spike_cluster.bin'}});
+end
 
-out = did2.convert.migrators_j.spike_clusters(body);
-verifyEqual(testCase, numel(out), 3);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'count_observation')));
-obs = out{find(strcmp(names, 'count_observation'), 1)};
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
-sbod = out{find(strcmp(names, 'sampled_body'), 1)};
-verifyEqual(testCase, depValue(sbod, 'statement'), 'sc_1');
-verifyEqual(testCase, sbod.sampled_body.sample_time.n, 400);
+function testSpikeClustersDefersToSecondPass(testCase)
+% The old fold declared a sampled_body of n = num_spikes. `num_spikes` does not
+% exist, so it defaulted to 0 and every document claimed the sorter assigned NO
+% spikes -- a fabricated measurement invisible to both Phase 1 counters (the
+% value is numeric 0, not a blank, and output WAS produced). The count is
+% recoverable only from spike_cluster.bin, which single-document migrators carry
+% without reading.
+out = did2.convert.migrators_j.spike_clusters(spikeClustersBody());
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'spike_clusters');
+verifyEqual(testCase, numel(out{1}.spike_clusters.clusterinfo), 2);
+verifyEqual(testCase, out{1}.spike_clusters.waveform_sample_times, [0; 1; 2]);
+verifyEqual(testCase, out{1}.files.file_list{1}, 'spike_cluster.bin');
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testSpikeClustersRejectsInventedShape(testCase)
+body = spikeClustersBody();
+body.spike_clusters = struct('num_clusters', 5, 'num_spikes', 400);
+verifyError(testCase, @() did2.convert.migrators_j.spike_clusters(body), ...
+    'did2:convert:spikeClustersInventedShape');
 end
 
 function testFitcurveFoldsToResidualScore(testCase)
@@ -2356,27 +2444,50 @@ verifyError(testCase, @() did2.convert.migrators_j.simple_calc(body), ...
     'did2:convert:simpleCalcInventedShape');
 end
 
-function testVmneuralresponseresidualsFold(testCase)
-% #9 (scalar + provenance): vmneuralresponseresiduals -> voltage_observation
-% (mean_residual) + derived_from relation to the vmspikefit + anchor. 1->3.
+function body = vmResidualsBody()
+% Fixture built from the NDI TEMPLATE (ndi_common/database_documents/apps/
+% vhlab_voltage2firingrate/vmneuralresponseresiduals.json). element_id is the
+% ONLY dependency -- the vmspikefit_id edge the old fixture carried does not
+% exist -- and the fit-quality fields are goodness_of_fit / total_power /
+% residual_power, not mean_residual.
 body = struct();
 body.document_class = struct('class_name', 'vmneuralresponseresiduals', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = [ struct('name', 'element_id', 'value', 'sub_c'), ...
-                    struct('name', 'vmspikefit_id', 'value', 'vf_9')];
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_c'});
 body.base = struct('id', 'rr_1', 'session_id', 'sess_09', 'name', 'rr', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
+body.vmneuralresponseresiduals = struct( ...
+    'element_epochid', 't00001', ...
+    'parameters', struct('number_traces', 1, 'samples_per_trace', 1000, 'units', 'V'), ...
+    'column_labels', struct('first_column', 'Time (s)', ...
+        'second_column', 'Raw signal', 'third_column', 'Raw signal with spikes', ...
+        'fourth_column', 'Fit signal', 'fifth_column', 'Residual signal'), ...
+    'goodness_of_fit', '', 'total_power', '', 'residual_power', '');
+end
+
+function testVmResidualsDefersToSecondPass(testCase)
+% THE FRAGMENT FAILURE MODE, and the reason Phase 1 needed more than one
+% counter. `mean_residual` never matched, so the isnumeric guard never passed
+% and the old migrator fell out of its only branch having emitted nothing but a
+% bare session anchor: payload dropped, stray time-reference left behind. That
+% is not hollow (no blank required field) and not an unconverted document
+% (output WAS produced), so NO counter saw it.
+out = did2.convert.migrators_j.vmneuralresponseresiduals(vmResidualsBody());
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'vmneuralresponseresiduals');
+verifyEqual(testCase, out{1}.vmneuralresponseresiduals.element_epochid, 't00001');
+verifyEqual(testCase, out{1}.vmneuralresponseresiduals.column_labels.fifth_column, ...
+    'Residual signal');
+% no husk observation, and no stray anchor either
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testVmResidualsRejectsInventedShape(testCase)
+body = vmResidualsBody();
 body.vmneuralresponseresiduals = struct('mean_residual', 1.7);
-out = did2.convert.migrators_j.vmneuralresponseresiduals(body);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 3);
-obs = out{find(strcmp(names, 'voltage_observation'), 1)};
-verifyEqual(testCase, obs.voltage.value.source_value, 1.7, 'AbsTol', 1e-9);
-rel = out{find(strcmp(names, 'directed_relation'), 1)};
-verifyEqual(testCase, depValue(rel, 'child'), obs.base.id);
-verifyEqual(testCase, depValue(rel, 'parent'), 'vf_9');
-verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
+verifyError(testCase, @() did2.convert.migrators_j.vmneuralresponseresiduals(body), ...
+    'did2:convert:vmResidualsInventedShape');
 end
 
 function testSyncruleMappingEpochnodeToTimeReference(testCase)
