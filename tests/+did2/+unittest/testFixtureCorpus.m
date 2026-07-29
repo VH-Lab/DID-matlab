@@ -484,8 +484,11 @@ end
 % original shape. Until now the V_eta tombstone declared filter_type and
 % filter_window -- neither of which exists -- so undeclaredField would have
 % rejected every real field it carries. Nothing caught it because the whole
-% vhlab_voltage2firingrate app has no writer, so no corpus has ever held one of
-% these documents. This fixture is the only thing that exercises the tombstone.
+% vhlab_voltage2firingrate app has no writer we can reach, and none of the five
+% corpora under test holds one of these documents. That is NOT the same as no
+% documents existing: the corpora are a SAMPLE OF DATASETS, and a dataset still
+% waiting to migrate may be full of them. So this fixture is the only thing that
+% exercises the tombstone, and the tombstone has to be right on that basis.
 function batch = fx_vmspikefilteringparameters()
 sub = subjDoc('vfp_sub', 'animalVFP');
 d = struct();
