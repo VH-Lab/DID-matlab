@@ -1235,12 +1235,21 @@ verifyFalse(testCase, isfield(out, 'daqreader_ndr'));
 end
 
 function testMfdaqIngestedDeEncodesToDaqreaderEpochdataIngested(testCase)
-% Chunk b/c: daqreader_mfdaq_epochdata_ingested de-encodes onto the generic
+% Chunk c: daqreader_mfdaq_epochdata_ingested de-encodes onto the generic
 % daqreader_epochdata_ingested -- the mfdaq subtype `parameters` block moves onto
-% the parent (kept), the mfdaq block is removed, and the stale inline `epochid`
-% block is dropped (dep-only; the epoch link is the epochid dep). Tested on the
-% migrator FUNCTION directly (the quick CI's V_zeta schema still has the class;
-% under the V_eta corpus run the class is gone and the folded parent validates).
+% the parent (kept) and the mfdaq block is removed. Tested on the migrator
+% FUNCTION directly (the quick CI's V_zeta schema still has the class; under the
+% V_eta corpus run the class is gone and the folded parent validates).
+%
+% THE `epochid` ASSERTION IS INVERTED FROM WHAT IT USED TO BE. This test
+% required `epochid` to be ABSENT, on chunk (b)'s premise that "the epoch link is
+% the epochid dep". There is no epochid dependency in did_v1 -- all three NDI
+% ingest templates declare exactly one, daqreader_id, and epochid is a
+% SUPERCLASS whose block holds the epoch-id STRING, set by both concrete
+% writers. The migrator was deleting it outright, destroying the only record of
+% which epoch the ingested bytes belong to, and this test was pinning that
+% behaviour in place. A test written from the same wrong reading as the code
+% cannot catch the code.
 body = struct();
 body.document_class = struct('class_name', 'daqreader_mfdaq_epochdata_ingested', ...
     'class_version', '1.0.0', ...
@@ -1259,9 +1268,12 @@ verifyEqual(testCase, out.document_class.class_name, 'daqreader_epochdata_ingest
 % the mfdaq `parameters` de-encoded onto the parent, epochtable preserved
 verifyEqual(testCase, out.daqreader_epochdata_ingested.parameters.sample_analog_segment, 1000000);
 verifyTrue(testCase, isfield(out.daqreader_epochdata_ingested, 'epochtable'));
-% the subtype block is gone; the stale inline epochid block is dropped (dep-only)
+% the subtype block is gone
 verifyFalse(testCase, isfield(out, 'daqreader_mfdaq_epochdata_ingested'));
-verifyFalse(testCase, isfield(out, 'epochid'));
+% the epochid block SURVIVES -- it is the epoch identity, not a stale duplicate
+verifyTrue(testCase, isfield(out, 'epochid'), ...
+    'epochid is a did_v1 superclass block, not a dependency -- it must survive');
+verifyEqual(testCase, out.epochid.epochid, 't00001');
 end
 
 function testElementEpochRenamedToAcquisitionEpoch(testCase)
