@@ -21,6 +21,16 @@ name: Corpus (parallel)
 # cancel an in-flight test-code run.
 
 on:
+  # workflow_dispatch cannot reach a workflow that does not yet exist on the
+  # DEFAULT branch -- the API 404s. Until this merges, a push trigger scoped to
+  # this file is the only way to exercise it. Deliberately narrow: it fires when
+  # the workflow itself changes, NOT on every source push, so validating the
+  # pipeline does not spend six MATLAB runners on unrelated commits.
+  push:
+    branches: ["claude/**"]
+    paths:
+      - ".github/workflows/test-corpus.yml"
+      - "tools/census_digest.py"
   workflow_dispatch:
   schedule:
     # 07:00 UTC daily. The full corpus is the slow, thorough gate; PRs are
