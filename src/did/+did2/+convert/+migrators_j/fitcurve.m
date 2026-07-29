@@ -1,21 +1,50 @@
 function bodies = fitcurve(preBody)
-%FITCURVE Brainstorm-J migrator: did_v1 fitcurve -> a goodness-of-fit
+%FITCURVE Brainstorm-J migrator: did_v1 fitcurve -> a fit-residual
 %   score_observation (+ the shared session anchor).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   fitcurve is a generic curve fit (fit_function + fit_parameters + goodness),
-%   tied to a subject via element_id. #9 analysis-tier fold (scalar pattern,
-%   pragmatic): the goodness-of-fit becomes a score_observation of the subject,
-%   with the fit FUNCTION carried as the observation's method:
+%   fitcurve is a generic curve fit, tied to a subject via element_id. #9
+%   analysis-tier fold (scalar pattern, pragmatic): the fit residual becomes a
+%   score_observation of the subject, with the fit EQUATION carried as the
+%   observation's method:
 %
-%       score_observation  variable = 'goodness of fit', value = the goodness
-%                          scalar, method = the fit_function term. inline.
+%       score_observation  variable = 'residual sum of squares', value =
+%                          fit_sse, method = the fit_equation term. inline.
 %       session_relative_reference   the 'during' anchor.
+%
+%   ---------------------------------------------------------------------
+%   FIELD NAMES CORRECTED -- AND THE QUANTITY IS NOT WHAT IT CLAIMED
+%   ---------------------------------------------------------------------
+%   This migrator used to read `fit_function` and `goodness_of_fit`. NEITHER
+%   NAME HAS EVER EXISTED on the NDI template: across NDI's entire history the
+%   fitcurve template has carried fit_equation, fit_sse, fit_name, fit_data,
+%   fit_parameters, fit_parameter_names, fit_constraints and the independent /
+%   dependent variable-name lists -- 0 commits mention fit_function or
+%   goodness_of_fit, against 7 for fit_equation and fit_sse. The names came from
+%   DID-schema's own V_alpha snapshot (see V_eta_ground_truth_plan.md), so both
+%   reads returned nothing on every real document and the fold emitted only a
+%   bare session anchor.
+%
+%   `fit_function` -> `fit_equation` is a plain rename. THE OTHER HALF IS NOT.
+%   The old code wrote its value into a `score` with scale_min 0, scale_max 1,
+%   labelled "goodness of fit" -- i.e. a bounded score where HIGHER IS BETTER.
+%   What the template actually has is `fit_sse`, a SUM OF SQUARED ERRORS:
+%   unbounded, in the dependent variable's units squared, and LOWER IS BETTER.
+%   Mapping one onto the other would have inverted the polarity of every
+%   downstream comparison while looking like a tidy rename. So the value is
+%   reported as what it is -- a residual -- and the false 0..1 scale is dropped
+%   rather than left asserting a range SSE cannot honour.
+%
+%   r^2 is NOT recoverable here as a substitute: it needs the total sum of
+%   squares. fitcurve does ship `fit_data`, so it could in principle be derived
+%   for THIS class -- but vmspikefit has no data field at all, and deriving it
+%   on one side only would leave two classes emitting the same variable name
+%   for different quantities. Deliberately not done.
 %
 %   1 -> 2. DEFERRED (flagged): the fit_parameters structure itself is NOT yet
 %   re-expressed -- per the plan a fit's parameters fold to a `method` / D10
-%   parameters, a per-class decision. This captures the goodness + which function;
-%   the parameter vector is a follow-up.
+%   parameters, a per-class decision. This captures the residual + which
+%   equation; the parameter vector is a follow-up.
 
 arguments
     preBody (1,1) struct
@@ -23,16 +52,16 @@ end
 blk = getBlock(preBody, 'fitcurve');
 subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
     dependencyValue(preBody, 'subject_id'));
-goodness = getField(blk, 'goodness_of_fit');
-fitFn = getCharField(blk, 'fit_function');
-bodies = goodnessFold(preBody, subjectId, goodness, fitFn, 'migrated_fitcurve');
+sse = getField(blk, 'fit_sse');
+fitEq = getCharField(blk, 'fit_equation');
+bodies = residualFold(preBody, subjectId, sse, fitEq, 'migrated_fitcurve');
 end
 
-function bodies = goodnessFold(preBody, subjectId, goodness, fitFn, name)
-% shared body of the fit -> goodness score_observation fold (fitcurve/vmspikefit).
+function bodies = residualFold(preBody, subjectId, sse, fitEq, name)
+% shared body of the fit -> residual score_observation fold.
 anchor = jAnchor(preBody);
 bodies = {anchor};
-if isnumeric(goodness) && isscalar(goodness)
+if isnumeric(sse) && isscalar(sse)
     obs = struct();
     obs.document_class = classBlock('score_observation', {'subject_observation', 'score'});
     obs.depends_on = [ ...
@@ -41,14 +70,17 @@ if isnumeric(goodness) && isscalar(goodness)
     obs.base = struct('id', did.ido.unique_id(), ...
         'session_id', baseField(preBody, 'session_id', ''), ...
         'name', name, 'datestamp', baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'));
-    obs.subject_statement = struct('variable', otTerm('', 'goodness of fit'), ...
+    obs.subject_statement = struct('variable', otTerm('', 'residual sum of squares'), ...
         'storage_mode', 'inline');
-    % the fit FUNCTION is the method that produced the fit.
-    obs.subject_interaction = struct('method', otTerm('', firstNonEmpty(fitFn, '')), ...
+    % the fit EQUATION is the method that produced the fit.
+    obs.subject_interaction = struct('method', otTerm('', firstNonEmpty(fitEq, '')), ...
         'sample_time', struct('kind', 'point'));
     obs.subject_observation = struct();
-    obs.score = struct('value', struct('value', double(goodness), ...
-        'scale', otTerm('', ''), 'scale_min', 0.0, 'scale_max', 1.0, 'approximate', false));
+    % scale_min/scale_max are deliberately OMITTED (both are optional): SSE is
+    % unbounded, so declaring 0..1 would be false. `scale` names a scoring
+    % rubric and SSE has none.
+    obs.score = struct('value', struct('value', double(sse), ...
+        'scale', otTerm('', ''), 'approximate', false));
     bodies = {obs, anchor};
 end
 end

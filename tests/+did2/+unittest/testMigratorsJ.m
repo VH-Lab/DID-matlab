@@ -2192,37 +2192,55 @@ verifyEqual(testCase, depValue(sbod, 'statement'), 'sc_1');
 verifyEqual(testCase, sbod.sampled_body.sample_time.n, 400);
 end
 
-function testFitcurveFoldsToGoodnessScore(testCase)
-% #9 (scalar, pragmatic): fitcurve -> a goodness-of-fit score_observation (method =
-% fit function). 1->2. fit_parameters deferred.
+function testFitcurveFoldsToResidualScore(testCase)
+% #9 (scalar, pragmatic): fitcurve -> a fit-residual score_observation (method =
+% the fit equation). 1->2. fit_parameters deferred.
+%
+% Fixture built from the NDI TEMPLATE, not from our schema. fit_equation and
+% fit_sse are what the template actually carries; the previous fixture used
+% fit_function and goodness_of_fit, which have never existed in NDI's history
+% (0 commits, against 7 for the real names) and so matched nothing real.
+% SSE is unbounded and LOWER IS BETTER, so the value is labelled as a residual
+% rather than a 0..1 "goodness" score -- see the migrator header.
 body = struct();
 body.document_class = struct('class_name', 'fitcurve', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
 body.depends_on = struct('name', {'element_id'}, 'value', {'sub_9'});
 body.base = struct('id', 'fc_1', 'session_id', 'sess_09', 'name', 'fc', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-body.fitcurve = struct('fit_function', 'gaussian', 'goodness_of_fit', 0.94);
+body.fitcurve = struct('fit_equation', 'gaussian', 'fit_sse', 12.5);
 out = did2.convert.migrators_j.fitcurve(body);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'score_observation')));
 obs = out{find(strcmp(names, 'score_observation'), 1)};
 verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_9');
-verifyEqual(testCase, obs.score.value.value, 0.94, 'AbsTol', 1e-9);
+verifyEqual(testCase, obs.score.value.value, 12.5, 'AbsTol', 1e-9);
 verifyEqual(testCase, obs.subject_interaction.method.name, 'gaussian');
+verifyEqual(testCase, obs.subject_statement.variable.name, 'residual sum of squares');
+% the false 0..1 bounds must NOT be asserted on an unbounded residual
+verifyFalse(testCase, isfield(obs.score.value, 'scale_min'));
+verifyFalse(testCase, isfield(obs.score.value, 'scale_max'));
 end
 
-function testVmspikefitFoldsToGoodnessScore(testCase)
+function testVmspikefitFoldsToResidualScore(testCase)
+% Fixture built from the NDI template. r_squared has never existed on
+% vmspikefit; fit_sse has. r^2 is not recoverable here -- the template ships no
+% data field -- so the residual is reported as a residual, not relabelled.
 body = struct();
 body.document_class = struct('class_name', 'vmspikefit', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
 body.depends_on = struct('name', {'element_id'}, 'value', {'sub_a'});
 body.base = struct('id', 'vf_1', 'session_id', 'sess_09', 'name', 'vf', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-body.vmspikefit = struct('fit_function', 'exp2', 'r_squared', 0.88);
+body.vmspikefit = struct('fit_equation', 'exp2', 'fit_sse', 3.25);
 out = did2.convert.migrators_j.vmspikefit(body);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 obs = out{find(strcmp(names, 'score_observation'), 1)};
-verifyEqual(testCase, obs.score.value.value, 0.88, 'AbsTol', 1e-9);
+verifyEqual(testCase, obs.score.value.value, 3.25, 'AbsTol', 1e-9);
+verifyEqual(testCase, obs.subject_interaction.method.name, 'exp2');
+verifyEqual(testCase, obs.subject_statement.variable.name, 'residual sum of squares');
+verifyFalse(testCase, isfield(obs.score.value, 'scale_min'));
+verifyFalse(testCase, isfield(obs.score.value, 'scale_max'));
 end
 
 function testSimpleCalcUnitMappedScalar(testCase)
