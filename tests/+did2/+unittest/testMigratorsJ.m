@@ -536,6 +536,74 @@ end
 
 % ===================== image_stack -> body-backed observation ==========
 
+function testDidV1ImageMigratesSoTheNameCollisionCannotBite(testCase)
+% did_v1 has a class called `image` (a stored image file); V_eta ALSO has one
+% (the standalone raster data_type from R6), and they share not one field. A
+% schema name resolves to one schema, so before this migrator existed a real
+% did_v1 image document passed through by default into the data_type, whose
+% required `value` guaranteed a quarantine.
+%
+% The fix consumes the v1 class rather than renaming the V_eta one: once every
+% did_v1 image document migrates, none can reach that schema under that name.
+% The fold is image_stack's -- this IS its single-image sibling, same
+% imageStack_parameters superclass and file-backed pixels.
+v1 = struct();
+v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = [ struct('name', 'subject_id', 'value', 'subj_007'), ...
+                  struct('name', 'imageCollection_id', 'value', 'coll_1')];
+v1.base = struct('id', 'img_01', 'session_id', 'sess_09', ...
+    'name', 'img', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image = struct('label', 'a histology section', 'format', 'tiff', ...
+    'compression', 'lzw');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YXC', 'dimension_size', [1024 1024 3], ...
+    'dimension_scale', [0.25 0.25 1], 'clocktype', 'no_time', 'timestamp', 0);
+
+out = runJ(v1);
+% 1 -> 3, exactly as image_stack folds
+verifyEqual(testCase, numel(out.migrated), 3);
+obs = out.migrated{1};
+verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+% id PRESERVED, so anything referring to this document still resolves
+verifyEqual(testCase, obs.get('base.id'), 'img_01');
+verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');
+verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
+% dtype comes from the parameters block, never guessed from the pixels
+verifyEqual(testCase, obs.get('image.value').dtype, 'uint8');
+% nothing is left carrying the class name `image`, which is the whole point
+names = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+    'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(names, 'image')));
+end
+
+function testDidV1ImageDoesNotMintADanglingCollectionEdge(testCase)
+% imageCollection has NO V_eta class and NO migrator, so carrying
+% imageCollection_id would reference a document that does not exist after
+% migration -- a GATING orphan, not a cosmetic gap. (Dissolving referenced
+% documents without preserving ids once cost 11,448 orphans.) The grouping is
+% real and wants the second pass, once imageCollection has a home.
+v1 = struct();
+v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = [ struct('name', 'subject_id', 'value', 'subj_007'), ...
+                  struct('name', 'imageCollection_id', 'value', 'coll_1')];
+v1.base = struct('id', 'img_02', 'session_id', 'sess_09', ...
+    'name', 'img', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image = struct('label', '', 'format', 'tiff', 'compression', '');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YXC', 'dimension_size', [8 8 3], ...
+    'dimension_scale', [1 1 1], 'clocktype', 'no_time', 'timestamp', 0);
+
+out = runJ(v1);
+for k = 1:numel(out.migrated)
+    verifyEqual(testCase, depVal(out.migrated{k}, 'imageCollection_id'), '');
+    verifyEqual(testCase, depVal(out.migrated{k}, 'image_collection_id'), '');
+end
+end
+
 function testImageStackBecomesBodyBackedObservation(testCase)
 v1 = struct();
 v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
