@@ -76,7 +76,7 @@ name = char(body.document_class.class_name);
 chain = {name};
 try
     if isempty(cache); cache = did2.schema.cache.shared(); end
-    chain = [chain, reshape(cellstr(cache.classChain(name)), 1, [])]; %#ok<AGROW>
+    chain = [chain, reshape(cellstr(cache.classChain(name)), 1, [])];
 catch
     % No schema available: fall back to the superclasses declared on the body.
     % The audit must never be able to break a migration.
