@@ -692,6 +692,9 @@ batch = { sub, d };
 end
 
 % ---- electrode_offset_voltage (probe_id) -----------------------------------
+% Built from the NDI template + writer: {offset, temperature}, both scalars,
+% one document per CSV row. The previous fixture used offset_voltages /
+% voltage_units, neither of which exists on the real class.
 function batch = fx_electrode_offset_voltage()
 sub = subjDoc('eo_sub', 'probeEO');
 d = struct();
@@ -699,8 +702,7 @@ d.document_class = struct('class_name','electrode_offset_voltage','class_version
     'superclasses', struct('class_name','base','class_version','1.0.0'));
 d.depends_on = struct('name','probe_id','value','eo_sub');
 d.base = struct('id','eo_01','session_id','sess_09','name','eo','datestamp','2024-06-01T12:00:00.000Z');
-d.electrode_offset_voltage = struct('offset_voltages',[0.5 -0.3 1.2 0.0], ...
-    'voltage_units','mV');
+d.electrode_offset_voltage = struct('offset',0.5,'temperature',11);
 batch = { sub, d };
 end
 

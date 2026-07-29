@@ -1806,9 +1806,17 @@ verifyError(testCase, @() did2.convert.migrators_j.ontology_image(v1), ...
 end
 
 function testElectrodeOffsetVoltageBecomesVoltageObservation(testCase)
-% electrode_offset_voltage -> a voltage_observation whose INLINE value is the
-% per-channel offsets (one measurement per channel) about the probe-subject +
-% anchor. 1 -> 2.
+% electrode_offset_voltage -> a voltage_observation of the probe-subject,
+% qualified by the temperature it was measured at, + anchor. 1 -> 2.
+%
+% Fixture built from the NDI TEMPLATE + writer
+% (+ndi/+setup/+conv/+marder/makeVoltageOffsets.m). The previous one used
+% offset_voltages and voltage_units -- neither exists -- so the isempty guard
+% always fired and every real document was carried through unconverted while
+% this test passed.
+%
+% The real class is {offset, temperature}, both SCALARS: the writer makes one
+% document per CSV row, not a per-channel array.
 v1 = struct();
 v1.document_class = struct('class_name', 'electrode_offset_voltage', ...
     'class_version', '1.0.0', ...
@@ -1816,8 +1824,7 @@ v1.document_class = struct('class_name', 'electrode_offset_voltage', ...
 v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_7'});
 v1.base = struct('id', 'eo_1', 'session_id', 'sess_09', 'name', 'eo', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-v1.electrode_offset_voltage = struct('offset_voltages', [0.5 -0.3 1.2 0.0], ...
-    'voltage_units', 'mV');
+v1.electrode_offset_voltage = struct('offset', 0.5, 'temperature', 11);
 
 out = did2.convert.migrators_j.electrode_offset_voltage(v1);
 verifyEqual(testCase, numel(out), 2);
@@ -1825,19 +1832,51 @@ o = out{1};
 verifyEqual(testCase, o.document_class.class_name, 'voltage_observation');
 verifyEqual(testCase, o.subject_statement.storage_mode, 'inline');
 verifyEqual(testCase, depValue(o, 'subject_id'), 'probe_7');
+% a single reading, expressed as a length-1 array
 vals = o.voltage.value;
-verifyEqual(testCase, numel(vals), 4);
-verifyEqual(testCase, [vals.source_value], [0.5 -0.3 1.2 0.0], 'AbsTol', 1e-9);
-verifyEqual(testCase, vals(1).source_unit, 'mV');
+verifyEqual(testCase, numel(vals), 1);
+verifyEqual(testCase, vals(1).source_value, 0.5, 'AbsTol', 1e-9);
+verifyEqual(testCase, vals(1).source_unit, 'V');
+% temperature qualifies the SAME statement rather than becoming its own doc
+verifyEqual(testCase, o.subject_statement.conditions.variable.name, 'temperature');
+verifyEqual(testCase, o.subject_statement.conditions.quantity.value(1).source_value, 11, ...
+    'AbsTol', 1e-9);
+% no unit is asserted for temperature -- the source states no scale
+verifyEqual(testCase, o.subject_statement.conditions.quantity.value(1).source_unit, '');
 end
 
-% (testDistanceMetadataBecomesLengthObservation removed: the J migrator no longer
-% emits a length_observation -- the flat v1 doc carries no scalar distance, so it is
-% reshaped into a validated distance_metadata passthrough instead. The value-bearing
-% length_observation is deferred Part B, a second pass over the linked element's
-% timeseries. See testDistanceMetadataReshapesFlatEndpoints and
-% schemas/V_eta_distance_metadata_plan.md.)
+function testElectrodeOffsetVoltageOmitsUnrecordedTemperature(testCase)
+% The writer stores NaN when no temperature was recorded. NaN means "not
+% measured", so no condition should be minted for it.
+v1 = struct();
+v1.document_class = struct('class_name', 'electrode_offset_voltage', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_7'});
+v1.base = struct('id', 'eo_2', 'session_id', 'sess_09', 'name', 'eo', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.electrode_offset_voltage = struct('offset', -0.3, 'temperature', NaN);
 
+out = did2.convert.migrators_j.electrode_offset_voltage(v1);
+o = out{1};
+verifyEqual(testCase, o.voltage.value(1).source_value, -0.3, 'AbsTol', 1e-9);
+verifyFalse(testCase, isfield(o.subject_statement, 'conditions'));
+end
+
+function testElectrodeOffsetVoltageRejectsInventedShape(testCase)
+% offset_voltages/voltage_units are V_alpha inventions. Reading them again must
+% be loud, not a silent carry-through.
+v1 = struct();
+v1.document_class = struct('class_name', 'electrode_offset_voltage', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_7'});
+v1.base = struct('id', 'eo_3', 'session_id', 'sess_09', 'name', 'eo', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.electrode_offset_voltage = struct('offset_voltages', [0.5 -0.3], 'voltage_units', 'mV');
+verifyError(testCase, @() did2.convert.migrators_j.electrode_offset_voltage(v1), ...
+    'did2:convert:electrodeOffsetInventedShape');
+end
 function testOpenmindsElementBecomesTermAssertion(testCase)
 % openminds_element mirrors openminds_subject, but the openMINDS entity is about
 % an ELEMENT/DEVICE: the subject is carried from element_id (fallback subject_id).
