@@ -153,6 +153,22 @@ jobs:
               if 'audit_failed' in sl:
                   print('  silent-loss: AUDIT FAILED (%s)' % sl['audit_failed'])
               elif sl:
+                  # total_docs/skipped_docs FIRST, and unconditionally. Without
+                  # them a census that inspected nothing prints "0 empty edges,
+                  # 0 vacuous fields" -- byte-identical to a clean result. That
+                  # is the exact bug silentLoss itself shipped with (asStruct
+                  # asked for a property did2.document does not have, so every
+                  # document was dropped and the zeros read as good news for two
+                  # days). A digest that omits the denominator recreates it one
+                  # layer up.
+                  td = sl.get('total_docs', '?')
+                  print('  silent-loss: inspected %s doc(s), skipped %s'
+                        % (td, sl.get('skipped_docs', '?')))
+                  if td == 0:
+                      print('  *** total_docs=0 -- THE CENSUS INSPECTED NOTHING. The counts')
+                      print('  *** below are vacuous; do NOT read them as a clean result.')
+                  elif isinstance(td, int) and sl.get('skipped_docs', 0) == td:
+                      print('  *** every document was skipped -- counts below are vacuous.')
                   print('  silent-loss: %s empty required edge(s), %s vacuous required field(s)'
                         % (sl.get('empty_dependency_count','?'),
                            sl.get('vacuous_field_count','?')))
