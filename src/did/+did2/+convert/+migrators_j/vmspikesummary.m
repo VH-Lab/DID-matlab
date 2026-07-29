@@ -1,132 +1,91 @@
 function bodies = vmspikesummary(preBody)
-%VMSPIKESUMMARY Brainstorm-J migrator: did_v1 vmspikesummary -> a set of inline
-%   scalar data-type observations (+ the shared session anchor).
+%VMSPIKESUMMARY Brainstorm-J migrator: did_v1 vmspikesummary -- DEFERRED to the
+%   NDI second pass; the document is passed through UNCHANGED.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   vmspikesummary is a bundle of per-recording scalar spike statistics tied to a
-%   subject via element_id. #9 analysis-tier fold: the "scalar decomposition"
-%   pattern -- each summary scalar becomes its OWN inline quantity observation
-%   (storage_mode 'inline', value carried inline), classed by its physical quantity:
 %
-%       mean_vm            -> voltage_observation   (membrane potential, mV)
+%   ---------------------------------------------------------------------
+%   WHY THIS IS NOT A MIGRATION
+%   ---------------------------------------------------------------------
+%   This migrator used to decompose the class into one inline scalar observation
+%   per summary statistic, dispatching on four field names:
+%
+%       mean_vm            -> voltage_observation   (mV)
 %       mean_firing_rate   -> frequency_observation (Hz)
-%       num_spikes         -> count_observation      (dimensionless count)
-%       recording_duration -> duration_observation   (s)
+%       num_spikes         -> count_observation
+%       recording_duration -> duration_observation  (s)
 %
-%   1 -> (N + 1): one observation per present scalar, plus the shared 'during'
-%   session anchor. Absent/empty scalars are skipped.
+%   NONE OF THE FOUR EXISTS. The real NDI class
+%   (ndi_common/database_documents/apps/vhlab_voltage2firingrate/
+%   vmspikesummary.json) is:
+%
+%       vmspikesummary: { mean_spikewave, sample_times, number_of_spikes,
+%                         median_spikekink_vm, median_voltageofhalfmaximum,
+%                         median_fullwidthhalfmaximum,
+%                         median_presk_halfwidthmaximum,
+%                         median_postsk_halfwidthmaximum, median_max_dvdt,
+%                         median_kink_index, slope_criterion }
+%       depends_on:     element_id, spike_extraction_id
+%
+%   This is not a summary of firing over a recording at all -- it is a MEAN SPIKE
+%   WAVEFORM plus eight SPIKE-SHAPE medians. The old model described a different
+%   document than the one that exists.
+%
+%   `num_spikes` vs the real `number_of_spikes` is the only near-miss, and even
+%   correcting the name would not have worked: the real field is an ARRAY, and
+%   the migrator required `isscalar` before emitting. Every one of the four reads
+%   missed, so `bodies` came out empty and the function fell to its
+%   carry-unchanged branch -- a PASSTHROUGH, which the unconverted-document
+%   counter does see. That is why this class was merely wrong rather than
+%   destructive, and it is also why it stayed hidden: an accidental passthrough
+%   is indistinguishable from a deliberate deferral until someone reads the
+%   template.
+%
+%   WHY NOT SIMPLY REMODEL IT. The spike-shape medians are real, meaningful
+%   quantities (median_max_dvdt is a slew rate, median_fullwidthhalfmaximum a
+%   duration), but every one is an ARRAY of undocumented extent -- per channel?
+%   per epoch? -- and `slope_criterion` is typed string-or-number. Settling any
+%   of that needs the writer, and THE APP HAS NONE: NDI ships this app's 5
+%   templates and 5 schemas with zero .m files and never had any, and
+%   NDIcalc-vis, NDIcalc-ephys, NDIcalc-marder, NDIcalc-birren and
+%   vhlab-toolbox were all searched without finding one. `mean_spikewave` +
+%   `sample_times` are additionally a waveform that wants a body.
+%
+%   The subject is fine: element_id resolves, because migrators_j.element
+%   promotes every element to a subject WITH ITS ID PRESERVED (device-as-subject,
+%   D2). The `spike_extraction_id` edge was undeclared by the old tombstone and
+%   is now carried.
+%
+%   V_eta's tombstone declares the real shape so the passthrough validates -- see
+%   build_v_eta.py.
+%
+%   THE GUARD. A body carrying `mean_vm`, `mean_firing_rate`, `num_spikes` or
+%   `recording_duration` is REJECTED BY NAME: those are DID-side inventions from
+%   the V_alpha snapshot, so their presence means a fixture or a caller has been
+%   built against our schema instead of the real document.
+%
+%   See V_eta_migrator_vocabulary_audit.md for the evidence.
 
 arguments
     preBody (1,1) struct
 end
-
 blk = getBlock(preBody, 'vmspikesummary');
-subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
-    dependencyValue(preBody, 'subject_id'));
-
-anchorId = did.ido.unique_id();
-anchor = struct();
-anchor.document_class = classBlock('session_relative_reference', {'time_reference'});
-anchor.depends_on = struct('name', {}, 'value', {});
-anchor.base = struct('id', anchorId, ...
-    'session_id', baseField(preBody, 'session_id', ''), ...
-    'name', 'migrated_session_anchor', ...
-    'datestamp', baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'));
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', 'during');
-
-% (field, leaf class, quantity mixin, variable name, unit)
-spec = {
-    'mean_vm',            'voltage_observation',   'voltage',   'mean membrane potential', 'mV'
-    'mean_firing_rate',   'frequency_observation', 'frequency', 'mean firing rate',        'Hz'
-    'num_spikes',         'count_observation',     'count',     'spike count',             ''
-    'recording_duration', 'duration_observation',  'duration',  'recording duration',      's'
-    };
-
-bodies = {};
-for k = 1:size(spec, 1)
-    v = getField(blk, spec{k, 1});
-    if isempty(v) || ~isnumeric(v) || ~isscalar(v)
-        continue;   % absent/non-scalar -> skip
-    end
-    bodies{end+1} = scalarObs(preBody, subjectId, anchorId, ...
-        spec{k, 2}, spec{k, 3}, spec{k, 4}, double(v), spec{k, 5}); %#ok<AGROW>
+if isfield(blk, 'mean_vm') || isfield(blk, 'mean_firing_rate') ...
+        || isfield(blk, 'num_spikes') || isfield(blk, 'recording_duration')
+    error('did2:convert:vmSpikeSummaryInventedShape', ...
+        ['vmspikesummary body carries `mean_vm`/`mean_firing_rate`/' ...
+         '`num_spikes`/`recording_duration`, which no did_v1 document has -- ' ...
+         'the class holds a mean spike waveform (`mean_spikewave`, ' ...
+         '`sample_times`, `number_of_spikes`) plus eight `median_*` ' ...
+         'spike-shape metrics, all arrays. This shape can only come from the ' ...
+         'V_alpha snapshot or a fixture built against it.']);
 end
-if ~isempty(bodies)
-    bodies{end+1} = anchor;
-else
-    bodies = {preBody};   % nothing recognised -> carry unchanged (discovery fallback)
-end
+bodies = {preBody};
 end
 
-% ===================== builders / helpers ==================================
-
-function body = scalarObs(preBody, subjectId, anchorId, leafClass, mixin, varName, num, unit)
-body = struct();
-body.document_class = classBlock(leafClass, {'subject_observation', mixin});
-body.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-body.base = struct('id', did.ido.unique_id(), ...
-    'session_id', baseField(preBody, 'session_id', ''), ...
-    'name', 'migrated_spike_summary', ...
-    'datestamp', baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'));
-body.subject_statement = struct('variable', struct('node', '', 'name', varName), ...
-    'storage_mode', 'inline');
-body.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
-body.subject_observation = struct();
-body.(mixin) = struct('value', struct('source_unit', unit, ...
-    'source_value', double(num), 'approximate', false));
-end
-
-function dc = classBlock(name, supers)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', 'V_eta');
-end
+% ===================== small helpers =======================================
 
 function b = getBlock(bodyStruct, name)
 b = struct();
 if isfield(bodyStruct, name) && isstruct(bodyStruct.(name)); b = bodyStruct.(name); end
-end
-
-function v = getField(block, name)
-v = [];
-if isfield(block, name); v = block.(name); end
-end
-
-function s = firstNonEmpty(varargin)
-s = '';
-for k = 1:numel(varargin)
-    if ~isempty(varargin{k}); s = varargin{k}; return; end
-end
-end
-
-function v = dependencyValue(bodyStruct, name)
-v = '';
-if isfield(bodyStruct, 'depends_on') && isstruct(bodyStruct.depends_on)
-    for k = 1:numel(bodyStruct.depends_on)
-        d = bodyStruct.depends_on(k);
-        if isfield(d, 'name') && strcmp(d.name, name)
-            if isfield(d, 'value') && ~isempty(d.value)
-                v = char(d.value);
-            elseif isfield(d, 'document_id') && ~isempty(d.document_id)
-                v = char(d.document_id);
-            end
-            return;
-        end
-    end
-end
-end
-
-function v = baseField(bodyStruct, name, default)
-v = default;
-if isfield(bodyStruct, 'base') && isstruct(bodyStruct.base) ...
-        && isfield(bodyStruct.base, name) && ~isempty(bodyStruct.base.(name))
-    v = bodyStruct.base.(name);
-end
 end

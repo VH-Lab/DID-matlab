@@ -95,6 +95,15 @@
 %     vmneuralresponseresiduals
 %                              - same missing writer; goodness_of_fit has no
 %                                documented range or polarity.
+%     vmspikesummary           - the real class is a mean spike WAVEFORM plus
+%                                eight spike-shape medians, all arrays, not the
+%                                four firing-summary scalars it was modelled on.
+%                                Same missing writer, so array semantics and
+%                                units are unsettleable.
+%
+%   NOT MIGRATED AT ALL, deliberately: vmspikefilteringparameters has no
+%   migrator, so it reaches validation in its did_v1 shape. Its V_eta tombstone
+%   declares that shape; no transform is wanted or needed.
 %     image_stack        - 1 -> 3. -> a body-backed image_observation
 %                          (storage_mode: body; modality on the spine variable,
 %                          geometry/format inline on the `image` mixin) + a

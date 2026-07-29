@@ -1395,33 +1395,55 @@ verifyError(testCase, @() did2.convert.migrators_j.binnedspikeratevm(body), ...
     'did2:convert:binnedSpikeRateInventedShape');
 end
 
-function testVmspikesummaryDecomposesToInlineScalarObservations(testCase)
-% #9 scalar-decomposition pattern: vmspikesummary -> one INLINE quantity
-% observation per summary scalar (voltage/frequency/count/duration) + a shared
-% anchor. 1 -> (N+1). Values are inline (storage_mode 'inline').
+function body = vmSpikeSummaryBody()
+% Fixture built from the NDI TEMPLATE (ndi_common/database_documents/apps/
+% vhlab_voltage2firingrate/vmspikesummary.json). The class is a mean spike
+% WAVEFORM plus eight spike-shape medians -- not the four firing-summary scalars
+% the old fixture carried, none of which exist. Everything is an ARRAY.
 body = struct();
 body.document_class = struct('class_name', 'vmspikesummary', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = struct('name', {'element_id'}, 'value', {'sub_2'});
+    'superclasses', struct('class_name', {'base', 'epochid'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'sub_2'), ...
+                    struct('name', 'spike_extraction_id', 'value', 'se_1')];
 body.base = struct('id', 'vs_1', 'session_id', 'sess_09', ...
     'name', 'vs', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.epochid = struct('epochid', 't00001');
+body.vmspikesummary = struct( ...
+    'mean_spikewave', [0 -0.5 -62.5 10 0], 'sample_times', [0 1 2 3 4], ...
+    'number_of_spikes', 249, ...
+    'median_spikekink_vm', -45.2, 'median_voltageofhalfmaximum', -20.1, ...
+    'median_fullwidthhalfmaximum', 0.0011, ...
+    'median_presk_halfwidthmaximum', 0.0004, ...
+    'median_postsk_halfwidthmaximum', 0.0007, ...
+    'median_max_dvdt', 180.4, 'median_kink_index', 2.3, ...
+    'slope_criterion', '20');
+end
+
+function testVmSpikeSummaryDefersToSecondPass(testCase)
+% The old fold dispatched on mean_vm / mean_firing_rate / num_spikes /
+% recording_duration, emitting one inline scalar observation per hit. The real
+% class shares NO field name with that. num_spikes vs number_of_spikes is the
+% only near-miss, and even corrected it would have failed: the real field is an
+% ARRAY and the migrator required isscalar. All four reads missed, so the
+% document already fell through to carry-unchanged -- a passthrough the counter
+% can see, which is why this was wrong rather than destructive.
+out = did2.convert.migrators_j.vmspikesummary(vmSpikeSummaryBody());
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'vmspikesummary');
+verifyEqual(testCase, out{1}.vmspikesummary.number_of_spikes, 249);
+verifyEqual(testCase, out{1}.vmspikesummary.median_max_dvdt, 180.4, 'AbsTol', 1e-9);
+% the extraction edge the old tombstone did not declare is carried
+verifyEqual(testCase, depValue(out{1}, 'spike_extraction_id'), 'se_1');
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testVmSpikeSummaryRejectsInventedShape(testCase)
+body = vmSpikeSummaryBody();
 body.vmspikesummary = struct('mean_vm', -62.5, 'mean_firing_rate', 8.3, ...
     'num_spikes', 249, 'recording_duration', 30.0);
-
-out = did2.convert.migrators_j.vmspikesummary(body);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-% 4 scalar observations + 1 anchor
-verifyEqual(testCase, numel(out), 5);
-for want = {'voltage_observation', 'frequency_observation', 'count_observation', ...
-        'duration_observation', 'session_relative_reference'}
-    verifyTrue(testCase, any(strcmp(names, want{1})), want{1});
-end
-volt = out{find(strcmp(names, 'voltage_observation'), 1)};
-verifyEqual(testCase, volt.subject_statement.storage_mode, 'inline');
-verifyEqual(testCase, depValue(volt, 'subject_id'), 'sub_2');
-verifyEqual(testCase, volt.voltage.value.source_value, -62.5, 'AbsTol', 1e-9);
-freq = out{find(strcmp(names, 'frequency_observation'), 1)};
-verifyEqual(testCase, freq.frequency.value.source_value, 8.3, 'AbsTol', 1e-9);
+verifyError(testCase, @() did2.convert.migrators_j.vmspikesummary(body), ...
+    'did2:convert:vmSpikeSummaryInventedShape');
 end
 
 function testContrastTuningFoldsToCalculationLeaf(testCase)
