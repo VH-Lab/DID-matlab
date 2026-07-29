@@ -115,6 +115,7 @@ batch = [ ...
     fx_spike_interface_sorting_outputs(), fx_dataset_remote(), ...
     fx_dataset_session_info(), fx_session_in_a_dataset(), fx_element_epoch(), ...
     fx_ontology_image(), fx_ontology_image_ndi(), fx_image(), ...
+    fx_spike_extraction_parameters_modification(), ...
     fx_openminds_element(), fx_openminds_stimulus() ];
 end
 
@@ -827,6 +828,56 @@ d.spike_interface_sorting_outputs = struct('sorter_name','kilosort', ...
     'sample_rate',30000,'unit','ms');
 d.files = struct('file_list', {{'sorting.sioutputs.zip'}});
 batch = { sub, d };
+end
+
+% ---- spike_extraction_parameters (NO migrator -- passthrough by default) ---
+% Built from the NDI template: a flat bundle of FIFTEEN algorithm settings and,
+% importantly, NO dependencies at all. The tombstone previously declared four
+% fields, required a `threshold` scalar that does not exist, and invented an
+% element_id edge -- so a real document could not validate. The threshold is
+% really three fields (method + parameter + sign): -4 means four standard
+% deviations, not -4 volts, which is why one scalar could never carry it.
+% Nothing exercised this before, which is how it stayed broken.
+function batch = fx_spike_extraction_parameters()
+d = struct();
+d.document_class = struct('class_name','spike_extraction_parameters','class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'app'}, ...
+                           'class_version', {'1.0.0'; '1.0.0'}));
+d.depends_on = struct('name', {}, 'value', {});
+d.base = struct('id','sep_01','session_id','sess_09','name','sep','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.app.spikeextractor','version','1.0');
+d.spike_extraction_parameters = spikeExtractionSettings();
+batch = { d };
+end
+
+% ---- spike_extraction_parameters_modification (NO migrator) ----------------
+% The SAME fifteen settings -- it is a revised parameter set, not a description
+% of a revision, so the old modified_fields/modification_reason pair described a
+% document that does not exist. Both real edges were undeclared and a third was
+% invented.
+function batch = fx_spike_extraction_parameters_modification()
+sub = subjDoc('sepm_sub', 'recSubSEPM');
+base = fx_spike_extraction_parameters();
+d = struct();
+d.document_class = struct('class_name','spike_extraction_parameters_modification', ...
+    'class_version','1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'app'}, ...
+                           'class_version', {'1.0.0'; '1.0.0'}));
+d.depends_on = [ struct('name','extraction_parameters_id','value','sep_01'), ...
+                 struct('name','element_id','value','sepm_sub') ];
+d.base = struct('id','sepm_01','session_id','sess_09','name','sepm','datestamp','2024-06-01T12:00:00.000Z');
+d.app = struct('name','ndi.app.spikeextractor','version','1.0');
+d.spike_extraction_parameters_modification = spikeExtractionSettings();
+batch = [ base, { sub, d } ];
+end
+
+function s = spikeExtractionSettings()
+% The fifteen real settings, values straight from the NDI template.
+s = struct('center_range_time',0.0005, 'overlap',0.5, 'read_time',30, ...
+    'refractory_time',0.001, 'spike_start_time',-0.00045, 'spike_end_time',0.001, ...
+    'do_filter',1, 'filter_type','cheby1high', 'filter_low',0, 'filter_high',300, ...
+    'filter_order',4, 'filter_ripple',0.8, 'threshold_method','standard_deviation', ...
+    'threshold_parameter',-4, 'threshold_sign',-1);
 end
 
 % ---- image (did_v1 `image`, the NAME COLLISION class) -----------------------
