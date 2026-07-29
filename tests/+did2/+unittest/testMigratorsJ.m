@@ -2012,36 +2012,71 @@ verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.base.id);
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 end
 
-function testProbeGeometryBecomesLengthObservation(testCase)
-% probe_geometry -> a length_observation whose INLINE value is the FLATTENED
-% channel_positions matrix (one measurement per coordinate) about the
-% probe-subject + anchor, plus a probe-type term_assertion. 1 -> 3.
+function testProbeGeometryBecomesPerAxisLengthObservations(testCase)
+% probe_geometry -> one length_observation PER POPULATED SPATIAL AXIS about the
+% probe-subject, + anchor, + a probe-model term_assertion.
+%
+% Fixture built from the NDI TEMPLATE. The previous one used num_channels,
+% channel_positions, position_units and probe_type -- NOT ONE of which exists on
+% the real class, so channel_positions never matched, the isempty guard always
+% fired, and every real document was carried through unconverted while this test
+% passed.
+%
+% The real source is three already-named parallel per-site arrays, so each is
+% kept as its own observation rather than concatenated into one anonymous array.
 v1 = struct();
 v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_5'});
 v1.base = struct('id', 'pg_1', 'session_id', 'sess_09', 'name', 'pg', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-v1.probe_geometry = struct('num_channels', 2, ...
-    'channel_positions', [0 0; 20 0], ...
-    'position_units', 'um', ...
-    'probe_type', 'linear');
+v1.probe_geometry = struct( ...
+    'site_locations_leftright', [0 20], ...
+    'site_locations_frontback', [0 0], ...
+    'site_locations_depth', [], ...
+    'ndim', 2, 'unit', 'um', ...
+    'probe_model', 'linear', 'manufacturer', 'acme');
 
 out = did2.convert.migrators_j.probe_geometry(v1);
-obs = [];
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+% two populated axes -> two observations; depth is empty so it is NOT emitted
+verifyEqual(testCase, sum(strcmp(names, 'length_observation')), 2);
+vars = {};
 for k = 1:numel(out)
     if strcmp(out{k}.document_class.class_name, 'length_observation')
-        obs = out{k}; break;
+        vars{end+1} = out{k}.subject_statement.variable.name; %#ok<AGROW>
     end
 end
-verifyNotEmpty(testCase, obs);
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'inline');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'probe_5');
-vals = obs.length.value;
-verifyEqual(testCase, numel(vals), numel(v1.probe_geometry.channel_positions));  % == 4
-verifyEqual(testCase, vals(1).source_unit, 'um');
+verifyTrue(testCase, any(strcmp(vars, 'site location (left-right)')));
+verifyTrue(testCase, any(strcmp(vars, 'site location (front-back)')));
+verifyFalse(testCase, any(strcmp(vars, 'site location (depth)')));
+
+lr = out{find(strcmp(names, 'length_observation'), 1)};
+verifyEqual(testCase, depValue(lr, 'subject_id'), 'probe_5');
+verifyEqual(testCase, numel(lr.length.value), 2);
+verifyEqual(testCase, lr.length.value(2).source_value, 20, 'AbsTol', 1e-9);
+verifyEqual(testCase, lr.length.value(1).source_unit, 'um');
+
+% probe_model, not the invented probe_type
+assertion = out{find(strcmp(names, 'term_assertion'), 1)};
+verifyEqual(testCase, assertion.subject_statement.variable.name, 'probe model');
+verifyEqual(testCase, assertion.term.value.name, 'linear');
 end
 
+function testProbeGeometryRejectsInventedShape(testCase)
+% channel_positions/position_units/probe_type are V_alpha inventions. Reading
+% them again must be loud, not a silent carry-through.
+v1 = struct();
+v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_5'});
+v1.base = struct('id', 'pg_2', 'session_id', 'sess_09', 'name', 'pg', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.probe_geometry = struct('channel_positions', [0 0; 20 0], ...
+    'position_units', 'um', 'probe_type', 'linear');
+verifyError(testCase, @() did2.convert.migrators_j.probe_geometry(v1), ...
+    'did2:convert:probeGeometryInventedShape');
+end
 function testSite2ChannelMapBecomesCountObservation(testCase)
 % site2channelmap -> one INLINE count_observation (num_sites) on the probe-subject
 % + a session anchor. 1 -> 2. The site->channel wiring map itself is deferred

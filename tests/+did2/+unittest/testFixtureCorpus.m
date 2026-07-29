@@ -636,6 +636,9 @@ batch = { sub, tc, d };
 end
 
 % ---- probe_geometry (probe_id) ---------------------------------------------
+% Built from the NDI template: three parallel per-site coordinate arrays plus
+% unit/ndim/probe_model. The previous fixture used channel_positions /
+% position_units / probe_type, none of which exists on the real class.
 function batch = fx_probe_geometry()
 sub = subjDoc('pg_sub', 'probePG');
 d = struct();
@@ -643,10 +646,12 @@ d.document_class = struct('class_name','probe_geometry','class_version','1.0.0',
     'superclasses', struct('class_name','base','class_version','1.0.0'));
 d.depends_on = struct('name','probe_id','value','pg_sub');
 d.base = struct('id','pg_01','session_id','sess_09','name','pg','datestamp','2024-06-01T12:00:00.000Z');
-d.probe_geometry = struct('num_channels',2, ...
-    'channel_positions',[0 0; 20 0], ...
-    'position_units','um', ...
-    'probe_type','linear');
+d.probe_geometry = struct( ...
+    'site_locations_leftright',[0 20], ...
+    'site_locations_frontback',[0 0], ...
+    'site_locations_depth',[], ...
+    'ndim',2,'unit','um', ...
+    'probe_model','linear','manufacturer','acme');
 batch = { sub, d };
 end
 
