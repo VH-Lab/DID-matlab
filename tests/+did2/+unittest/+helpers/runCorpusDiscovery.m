@@ -127,6 +127,7 @@ fprintf('total:            %d\n', result.summary.total);
 fprintf('migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('quarantine_count: %d\n', result.summary.quarantine_count);
 fprintf('report:           %s\n', reportPath);
+printUnconvertedCensus(result);
 printSilentLossCensus(result);
 fprintf('top quarantine reasons:\n');
 for k = 1:min(numel(reasons), 15)
@@ -182,5 +183,30 @@ if sl.vacuous_field_count > 0
         f = sl.vacuous_required_field(k);
         fprintf('    %6d  %s / %s.%s\n', f.count, f.class_name, f.block, f.field_name);
     end
+end
+end
+
+
+function printUnconvertedCensus(result)
+%PRINTUNCONVERTEDCENSUS Phase 1 report-only: documents that came out of the
+%   migration UNCONVERTED -- the migrator handed its input straight back.
+%
+%   Not a failure, and not always wrong: a class deferred to the NDI second
+%   pass is SUPPOSED to appear here. The signal is a class that is meant to
+%   convert showing a high count, which means its migrator is looking for
+%   fields the real documents do not have and silently falling through. Those
+%   documents are counted in migrated_count today, because nothing errored.
+if ~isfield(result.summary, 'unconverted_count'); return; end
+fprintf('unconverted (REPORT ONLY): %d document(s) returned unchanged by their migrator\n', ...
+    result.summary.unconverted_count);
+if result.summary.unconverted_count == 0; return; end
+tbl = result.summary.unconverted_by_class;
+names = fieldnames(tbl);
+counts = zeros(1, numel(names));
+for k = 1:numel(names); counts(k) = tbl.(names{k}); end
+[counts, order] = sort(counts, 'descend');
+fprintf('  by class (deferred-by-design classes are expected here):\n');
+for k = 1:min(numel(names), 25)
+    fprintf('    %6d  %s\n', counts(k), names{order(k)});
 end
 end

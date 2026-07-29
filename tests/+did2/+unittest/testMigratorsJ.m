@@ -1714,6 +1714,39 @@ v1.ngrid = struct('data_size', 8, 'data_type', 'double', ...
     'data_dim', [4 4], 'coordinates', [1;2;3;4;1;2;3;4]);
 end
 
+function testUnconvertedCounterSeesAPassthrough(testCase)
+% Phase 1 report-only counter. site2channelmap reads `num_sites`, which the
+% real NDI template does not have (it has only `map`), so the migrator finds
+% nothing and hands its input straight back. That document still lands in
+% migrated_count, because nothing errored -- which is exactly why an
+% accidental passthrough has been indistinguishable from a real migration.
+% The counter is what separates them.
+v1 = struct();
+v1.document_class = struct('class_name', 'site2channelmap', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_1'});
+v1.base = struct('id', 's2c_1', 'session_id', 'sess_09', 'name', 's2c', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+% the REAL field, per the NDI template -- so the migrator's num_sites read
+% finds nothing and falls through to its carry-unchanged branch
+v1.site2channelmap = struct('map', [1 2; 2 3; 3 4]);
+
+out = runJ(v1);
+verifyEqual(testCase, out.summary.unconverted_count, 1, ...
+    'a migrator returning its input unchanged must be counted');
+verifyTrue(testCase, isfield(out.summary.unconverted_by_class, 'site2channelmap'));
+% and it is still reported as migrated -- that is the camouflage this counter exists to strip
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+end
+
+function testUnconvertedCounterIgnoresARealMigration(testCase)
+% A migrator that actually converts must NOT be counted as unconverted,
+% otherwise the census is noise. ontology_image's older layout converts to a
+% term_observation plus a session anchor.
+out = runJ(ontologyImageVintageA());
+verifyEqual(testCase, out.summary.unconverted_count, 0);
+end
+
 function testOntologyImageVintageABecomesTermObservation(testCase)
 % VINTAGE A is fully resolvable single-doc: term from the two coordinated
 % chars, subject from element_id. 1 -> 2 (observation + session anchor).

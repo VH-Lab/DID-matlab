@@ -117,6 +117,10 @@ quarantine = struct( ...
     'failed_at',     {});
 classCountNames = {};
 classCountValues = [];
+% Phase 1 report-only: documents a migrator handed back UNCHANGED. See
+% countUnconverted below for why this is counted separately from `migrated`.
+unconvNames = {};
+unconvValues = [];
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -153,6 +157,31 @@ for k = 1:numel(bodies)
             % bodies (1 -> N).
             v2Bodies = runConcreteMigrator(v2Body, className, ...
                 options.TargetVersion);
+            % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
+            % hand its input straight back? `bodies = {preBody}` is how a
+            % migrator says "nothing to do here". It is used BOTH deliberately
+            % (a class whose conversion needs the migrated-id graph, so pass 1
+            % leaves it for the NDI second pass) AND accidentally (the migrator
+            % looked for a field the source document does not have, found
+            % nothing, and fell through to its fallback). The two are
+            % indistinguishable downstream: an unconverted document is counted
+            % in `migrated_count` because nothing errored, so an accidental
+            % passthrough looks exactly like a successful migration.
+            %
+            % Counting it per class separates them by expectation rather than by
+            % code: a class that is SUPPOSED to convert but shows a high
+            % unconverted count is a bug, in one line, without reading anything.
+            % probe_geometry, electrode_offset_voltage, site2channelmap and
+            % spike_interface_sorting_outputs all fail exactly this way -- and
+            % did2.validate.silentLoss cannot see them, because the carried
+            % document is a perfectly valid v1-class document.
+            %
+            % Deliberately NOT computed on the idempotency short-circuit above:
+            % that path skips the migrators by design and is not a passthrough.
+            if numel(v2Bodies) == 1 && isequaln(v2Bodies{1}, v2Body)
+                [unconvNames, unconvValues] = bumpClassCounter( ...
+                    unconvNames, unconvValues, className);
+            end
         end
         % Collect every produced body. Each is padded, optionally
         % validated, and counted independently so a 1 -> N split lands
@@ -196,7 +225,9 @@ result.summary = struct( ...
     'total',            numel(bodies), ...
     'migrated_count',   numel(migrated), ...
     'quarantine_count', numel(quarantine), ...
-    'by_class',         buildByClassTable(classCountNames, classCountValues));
+    'by_class',         buildByClassTable(classCountNames, classCountValues), ...
+    'unconverted_count', sum(unconvValues), ...
+    'unconverted_by_class', buildByClassTable(unconvNames, unconvValues));
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
 % migrates away without a trace: required depends_on edges left empty, and
@@ -522,6 +553,7 @@ fprintf('did2.convert.v1_to_v2 summary:\n');
 fprintf('  total:            %d\n', result.summary.total);
 fprintf('  migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
+printUnconverted(result);
 printSilentLoss(result);
 if ~isempty(result.quarantine)
     fprintf('  quarantine reasons:\n');
@@ -555,5 +587,24 @@ for k = 1:min(numel(sl.vacuous_required_field), 15)
     f = sl.vacuous_required_field(k);
     fprintf('    %6d  blank value  %s / %s.%s\n', f.count, f.class_name, ...
         f.block, f.field_name);
+end
+end
+
+
+function printUnconverted(result)
+%PRINTUNCONVERTED Report-only: documents a migrator handed back unchanged.
+%   Not a failure. A high count on a class that is meant to convert is the
+%   signal; a class deferred to the NDI second pass is expected to be here.
+if ~isfield(result.summary, 'unconverted_count'); return; end
+if result.summary.unconverted_count == 0; return; end
+fprintf(['  unconverted (REPORT ONLY -- migrator returned its input ' ...
+         'unchanged): %d\n'], result.summary.unconverted_count);
+tbl = result.summary.unconverted_by_class;
+names = fieldnames(tbl);
+counts = zeros(1, numel(names));
+for k = 1:numel(names); counts(k) = tbl.(names{k}); end
+[counts, order] = sort(counts, 'descend');
+for k = 1:min(numel(names), 20)
+    fprintf('    %6d  %s\n', counts(k), names{order(k)});
 end
 end

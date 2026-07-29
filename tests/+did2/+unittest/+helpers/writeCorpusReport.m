@@ -29,6 +29,10 @@ report = struct( ...
 if isfield(result, 'silent_loss')
     report.silent_loss = result.silent_loss;
 end
+if isfield(result.summary, 'unconverted_count')
+    report.unconverted_count = result.summary.unconverted_count;
+    report.unconverted_by_class = result.summary.unconverted_by_class;
+end
 
 fid = fopen(reportPath, 'w');
 if fid < 0
