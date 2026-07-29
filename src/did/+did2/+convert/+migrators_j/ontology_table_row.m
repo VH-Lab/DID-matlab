@@ -65,6 +65,36 @@ if isPatchGeometryTable(cols)
     return;
 end
 
+% --- GUARD: no resolvable subject => no fabricated statements ---------------
+% The per-column fallback seeds every statement through startStatement, which
+% calls carrySubject(preBody) -- a scan of the SOURCE document's depends_on for
+% a dependency named `subject_id`. The real NDI template declares exactly one
+% dependency and it is not that one:
+%
+%     ndi_common/database_documents/data/ontologyTableRow.json
+%     depends_on: [ { "name": "document_id", "value": "" } ]
+%
+% So the scan never succeeds on a real document and every statement was emitted
+% with subject_id = ''. Corpus run #256 measured the cost on Dab alone: 76,766
+% observations and assertions -- intensity, count, term, duration, frequency,
+% date_assertion, term_assertion -- each recording that SOMETHING was measured
+% without recording WHAT. All of it passed validation, because references.m
+% skips empty edges and mustBeNonEmpty on depends_on is not enforced.
+%
+% This is the same defect ontology_label had, and it gets the same treatment:
+% carry the document through intact for the NDI second pass, which can see the
+% migrated-id graph. `document_id` cannot simply be renamed to `subject_id` --
+% it points at the document the row describes, which need not be a subject, and
+% minting an unresolvable edge is what turned distance_metadata's non-gating
+% quarantine into a GATING orphan failure.
+%
+% A mapped table (isEncounterTable / isPatchGeometryTable, handled above)
+% resolves its subject explicitly and never reaches here.
+if isempty(resolvedSubject(preBody))
+    bodies = {preBody};
+    return;
+end
+
 rows = extractRows(preBody.ontology_table_row);
 if isempty(rows)
     % Unrecognised layout: carry the document unchanged (the class still exists
@@ -583,8 +613,18 @@ end
 valueT = struct('node', '', 'name', termValue);   % free label -> name; node backfilled
 end
 
-function deps = carrySubject(preBody)
-deps = struct('name', {}, 'value', {});
+function subjectVal = resolvedSubject(preBody)
+%RESOLVEDSUBJECT The subject this row is about, or '' when there is none.
+%
+%   Reads the SOURCE document's depends_on for a dependency named `subject_id`.
+%   Real ontologyTableRow documents do not have one -- the NDI template declares
+%   only `document_id` -- so this returns '' for them, and the caller must NOT
+%   emit statements in that case. See the guard in the main function.
+%
+%   Kept as a separate query from carrySubject so that "is there a subject?" is
+%   answerable WITHOUT building a dependency struct. The old code could only
+%   answer it by constructing the edge, which is why the empty case was written
+%   out instead of detected.
 subjectVal = '';
 if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
     for k = 1:numel(preBody.depends_on)
@@ -594,6 +634,24 @@ if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
             elseif isfield(d, 'document_id'); subjectVal = d.document_id; end
         end
     end
+end
+end
+
+function deps = carrySubject(preBody)
+%CARRYSUBJECT The subject_id edge for an emitted statement.
+%
+%   Only ever reached once resolvedSubject() has confirmed a subject exists --
+%   the main function guards on it. It therefore cannot emit an empty edge; if
+%   it ever does, the guard has been removed and 76,766 hollow observations per
+%   corpus are back.
+deps = struct('name', {}, 'value', {});
+subjectVal = resolvedSubject(preBody);
+if isempty(subjectVal)
+    error('did2:convert:noSubject', ...
+        ['ontology_table_row: refusing to emit a statement with an empty ' ...
+         'subject_id. A real ontologyTableRow declares only `document_id`, ' ...
+         'so the caller must guard on resolvedSubject() and pass the ' ...
+         'document through for the second pass instead.']);
 end
 deps(end+1) = struct('name', 'subject_id', 'value', subjectVal);
 end
