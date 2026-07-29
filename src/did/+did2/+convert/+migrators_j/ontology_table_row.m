@@ -57,11 +57,11 @@ end
 % seed below (still knowingly-wrong for qualifiers; retired table by table).
 cols = extractColumns(preBody.ontology_table_row);
 if isEncounterTable(cols)
-    bodies = applyEncounterMap(preBody, cols);
+    bodies = preserveSourceId(preBody, applyEncounterMap(preBody, cols));
     return;
 end
 if isPatchGeometryTable(cols)
-    bodies = applyPatchGeometryMap(preBody, cols);
+    bodies = preserveSourceId(preBody, applyPatchGeometryMap(preBody, cols));
     return;
 end
 
@@ -93,6 +93,56 @@ if usedAnchor
 end
 if isempty(bodies)
     bodies = {preBody};   % every column skipped -> carry unchanged
+end
+bodies = preserveSourceId(preBody, bodies);
+end
+
+function bodies = preserveSourceId(preBody, bodies)
+%PRESERVESOURCEID Keep the source document's id on exactly ONE emitted body.
+%
+%   WHY. This migrator dissolves one document into many. Until now every
+%   emitted body got a fresh id, so after migration NOTHING carried the source
+%   row's id -- and any document pointing at that row was left pointing at an
+%   id that no longer exists. An `ontologyImage` names its row via
+%   `ontologyTableRow_id` and needs to follow it to reach its subject, so that
+%   edge has to land somewhere real. There is no old-id -> new-id map anywhere
+%   in the converter, so id preservation is the ONLY mechanism that can make
+%   such an edge resolve.
+%
+%   This is the lesson the calculator work already paid for: dissolving a
+%   referenced document without preserving its id produced 11448 orphans, and
+%   preserving it is what fixed them (T10). `must_refer` is existence-only, so
+%   a resolvable id is all a referrer needs.
+%
+%   WHICH BODY. Any of them works as a landing point, because every statement
+%   this migrator emits carries `subject_id` -- so a follower lands on one
+%   document and reads the subject straight off it, no search. The FIRST
+%   emitted body takes it and the rest keep their fresh ids, matching the
+%   primary/sibling convention jStartInteraction uses elsewhere in migrators_j.
+%
+%   EXCEPT when a per-table map already preserved it deliberately --
+%   makePatchSubject does, because the encounter relation names that document
+%   as its parent. So this checks first and leaves an existing preservation
+%   alone; stamping again would mint two documents sharing one id.
+%
+%   Safe to apply after the bodies are built: no emitted body references
+%   another body's id. Internal edges point at the shared time_reference and at
+%   the carried subject, never at a sibling statement.
+if isempty(bodies); return; end
+if ~isfield(preBody, 'base') || ~isstruct(preBody.base) ...
+        || ~isfield(preBody.base, 'id') || isempty(preBody.base.id)
+    return;
+end
+srcId = preBody.base.id;
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isstruct(b) && isfield(b, 'base') && isstruct(b.base) ...
+            && isfield(b.base, 'id') && isequal(b.base.id, srcId)
+        return;   % a per-table map (or a passthrough) already carries it
+    end
+end
+if isfield(bodies{1}, 'base') && isstruct(bodies{1}.base)
+    bodies{1}.base.id = srcId;
 end
 end
 

@@ -299,6 +299,44 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference')
 verifyFalse(testCase, isfield(out.summary.by_class, 'local_identifier'));
 end
 
+function testOntologyTableRowPreservesSourceIdOnFirstBody(testCase)
+% The row dissolves 1 -> N. Exactly ONE emitted body must keep the source id,
+% otherwise anything pointing at the row (an ontologyImage names it via
+% ontologyTableRow_id and follows it to reach its subject) is left pointing at
+% an id that no longer exists. There is no old-id -> new-id map in the
+% converter, so preservation is the only thing that can make such an edge
+% resolve. Same lesson as the calculator fold (T10).
+out = runJ(tableRow());
+ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(ids, 'otr_01')), 1, ...
+    'exactly one emitted body must carry the source id');
+verifyEqual(testCase, out.migrated{1}.get('base.id'), 'otr_01', ...
+    'the first emitted body is the one that carries it');
+% and the siblings must NOT collide with it or each other
+verifyEqual(testCase, numel(unique(ids)), numel(ids), 'emitted ids must be unique');
+end
+
+function testEncounterMapPreservesSourceId(testCase)
+% Same requirement on the per-table map path, which previously minted a fresh
+% id for every body it emitted.
+out = runJ(encounterRow());
+ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(ids, 'otr_enc')), 1);
+verifyEqual(testCase, numel(unique(ids)), numel(ids));
+end
+
+function testPatchGeometryMapDoesNotDoubleStampSourceId(testCase)
+% makePatchSubject ALREADY preserves the id deliberately (the encounter
+% relation names that document as its parent). Stamping again would mint two
+% documents sharing one id, so the preservation step must detect it and leave
+% it alone.
+out = runJ(patchGeometryRow());
+ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(ids, 'otr_patch')), 1, ...
+    'the id must be carried exactly once, not stamped twice');
+verifyEqual(testCase, numel(unique(ids)), numel(ids));
+end
+
 function testOntologyTableRowNumericColumn(testCase)
 out = runJ(tableRow());
 mass = out.migrated{1};   % BodyWeight -> mass_observation
