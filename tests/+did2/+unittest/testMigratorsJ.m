@@ -1646,19 +1646,40 @@ verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.speed'
 verifyEqual(testCase, leaf.tuning_curve.value.response_mean, [5 8 6]);
 end
 
-function testOntologyImageBecomesTermObservation(testCase)
-% ontology_image -> term_observation (the imaged region) about the imaged
-% subject + the shared session anchor. 1 -> 2.
+function v1 = ontologyImageVintageA()
+% VINTAGE A (legacy, DID-schema V_alpha/V_beta ancestry): the region is two
+% coordinated chars and `element_id` supplies the subject. Shape taken from
+% schemas/V_alpha/ontologyImage.json, NOT from our own V_eta schema.
 v1 = struct();
 v1.document_class = struct('class_name', 'ontology_image', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_9'});
 v1.base = struct('id', 'oi_1', 'session_id', 'sess_09', 'name', 'oi', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-v1.ontology_image = struct('region', ...
-    struct('node', 'uberon:0002436', 'name', 'primary visual cortex'));
+v1.ontology_image = struct('ontology_name', 'uberon:0002436', ...
+    'ontology_region', 'primary visual cortex');
+end
 
-out = did2.convert.migrators_j.ontology_image(v1);
+function v1 = ontologyImageVintageB()
+% VINTAGE B (current NDI production): `ontology_nodes` is a comma-joined list
+% of CURIEs and the only edge is `ontology_table_row_id` -- NOT a subject.
+% Shape taken from NDI's ndi_common/database_documents/data/ontologyImage.json
+% plus +ndi/+setup/+NDIMaker/imageDocMaker (which writes the PLURAL key).
+v1 = struct();
+v1.document_class = struct('class_name', 'ontology_image', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'ngrid'}, 'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = struct('name', {'ontology_table_row_id'}, 'value', {'otr_3'});
+v1.base = struct('id', 'oi_2', 'session_id', 'sess_09', 'name', 'oi', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.ontology_image = struct('ontology_nodes', 'uberon:0000955,uberon:0002436');
+v1.ngrid = struct('data_size', 8, 'data_type', 'double', ...
+    'data_dim', [4 4], 'coordinates', [1;2;3;4;1;2;3;4]);
+end
+
+function testOntologyImageVintageABecomesTermObservation(testCase)
+% VINTAGE A is fully resolvable single-doc: term from the two coordinated
+% chars, subject from element_id. 1 -> 2 (observation + session anchor).
+out = did2.convert.migrators_j.ontology_image(ontologyImageVintageA());
 verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, o.document_class.class_name, 'term_observation');
@@ -1666,6 +1687,47 @@ verifyEqual(testCase, o.subject_statement.variable.name, 'imaged region');
 verifyEqual(testCase, o.term.value.node, 'uberon:0002436');
 verifyEqual(testCase, o.term.value.name, 'primary visual cortex');
 verifyEqual(testCase, depValue(o, 'subject_id'), 'elem_9');
+end
+
+function testOntologyImageVintageBPassesThroughForSecondPass(testCase)
+% VINTAGE B is DEFERRED: its only edge is a table row, not a subject, so the
+% subject needs the migrated-id graph. The document must pass through INTACT
+% (ngrid block and all) so the NDI second pass can decompose it -- and must
+% NOT become a term_observation with an empty subject_id.
+v1 = ontologyImageVintageB();
+out = did2.convert.migrators_j.ontology_image(v1);
+verifyEqual(testCase, numel(out), 1);
+o = out{1};
+verifyEqual(testCase, o.document_class.class_name, 'ontology_image');
+verifyEqual(testCase, o.ontology_image.ontology_nodes, 'uberon:0000955,uberon:0002436');
+% the raster must survive for the second pass
+verifyTrue(testCase, isfield(o, 'ngrid'));
+verifyEqual(testCase, o.ngrid.coordinates, [1;2;3;4;1;2;3;4]);
+% and no husk observation was minted
+verifyFalse(testCase, isfield(o, 'subject_statement'));
+end
+
+function testOntologyImageRejectsVDeltaRegionShape(testCase)
+% THE GUARD. `region` is the V_delta migrator's OUTPUT, not a did_v1 field.
+% The previous implementation read it, so it matched only a fixture built to
+% our own schema and silently emitted an empty observation about nobody.
+% Reading it again must be loud, not silent.
+v1 = ontologyImageVintageA();
+v1.ontology_image = struct('region', ...
+    struct('node', 'uberon:0002436', 'name', 'primary visual cortex'));
+verifyError(testCase, @() did2.convert.migrators_j.ontology_image(v1), ...
+    'did2:convert:ontologyImageVDeltaShape');
+end
+
+function testOntologyImageRejectsUnknownShape(testCase)
+% A block matching no known vintage must quarantine rather than migrate to a
+% content-free husk (an empty ontology_term still has fieldnames, so it
+% satisfies mustBeNonEmpty, and an empty depends_on edge is skipped by
+% did2.validate.references -- neither gate would have caught it).
+v1 = ontologyImageVintageA();
+v1.ontology_image = struct('something_else', 'x');
+verifyError(testCase, @() did2.convert.migrators_j.ontology_image(v1), ...
+    'did2:convert:ontologyImageUnknownShape');
 end
 
 function testElectrodeOffsetVoltageBecomesVoltageObservation(testCase)
