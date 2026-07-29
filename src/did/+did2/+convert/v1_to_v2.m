@@ -121,6 +121,10 @@ classCountValues = [];
 % countUnconverted below for why this is counted separately from `migrated`.
 unconvNames = {};
 unconvValues = [];
+% Phase 1 report-only: FRAGMENTS -- see countFragments below. The third failure
+% mode, and the only one no counter could see.
+fragNames = {};
+fragValues = [];
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -181,6 +185,10 @@ for k = 1:numel(bodies)
             if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body)
                 [unconvNames, unconvValues] = bumpClassCounter( ...
                     unconvNames, unconvValues, className);
+            elseif isScaffoldingOnly(v2Bodies, options.SchemaCache)
+                % PHASE 1 REPORT-ONLY: the FRAGMENT mode. See countFragments.
+                [fragNames, fragValues] = bumpClassCounter( ...
+                    fragNames, fragValues, className);
             end
         end
         % Collect every produced body. Each is padded, optionally
@@ -227,7 +235,9 @@ result.summary = struct( ...
     'quarantine_count', numel(quarantine), ...
     'by_class',         buildByClassTable(classCountNames, classCountValues), ...
     'unconverted_count', sum(unconvValues), ...
-    'unconverted_by_class', buildByClassTable(unconvNames, unconvValues));
+    'unconverted_by_class', buildByClassTable(unconvNames, unconvValues), ...
+    'fragment_count',     sum(fragValues), ...
+    'fragment_by_class',  buildByClassTable(fragNames, fragValues));
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
 % migrates away without a trace: required depends_on edges left empty, and
@@ -554,6 +564,7 @@ fprintf('  total:            %d\n', result.summary.total);
 fprintf('  migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
 printUnconverted(result);
+printFragments(result);
 printSilentLoss(result);
 if ~isempty(result.quarantine)
     fprintf('  quarantine reasons:\n');
@@ -590,6 +601,87 @@ for k = 1:min(numel(sl.vacuous_required_field), 15)
 end
 end
 
+
+function printFragments(result)
+%PRINTFRAGMENTS Report-only: migrations that produced ONLY scaffolding.
+%   The third failure mode, and the one nothing could see before. See
+%   countFragments (below) for what it means and why it matters.
+if ~isfield(result.summary, 'fragment_count'); return; end
+if result.summary.fragment_count == 0; return; end
+fprintf(['  FRAGMENTS (REPORT ONLY -- migrator emitted only scaffolding, ' ...
+         'payload dropped): %d\n'], result.summary.fragment_count);
+tbl = result.summary.fragment_by_class;
+names = fieldnames(tbl);
+counts = zeros(1, numel(names));
+for k = 1:numel(names); counts(k) = tbl.(names{k}); end
+[counts, order] = sort(counts, 'descend');
+for k = 1:min(numel(names), 20)
+    fprintf('    %6d  %s\n', counts(k), names{order(k)});
+end
+end
+
+function tf = isScaffoldingOnly(v2Bodies, cache)
+%ISSCAFFOLDINGONLY Did this migration produce nothing but scaffolding?
+%
+%   THE FRAGMENT FAILURE MODE. A migrator can fail in three ways, and only two
+%   of them had a counter:
+%
+%     HOLLOW      emits documents with blank values -> did2.validate.silentLoss
+%     PASSTHROUGH hands its input straight back      -> unconverted_by_class
+%     FRAGMENT    drops the payload and emits ONLY its side documents -> NOTHING
+%
+%   A fragment is not hollow (no required field is left blank) and not a
+%   passthrough (output WAS produced), so both existing counters report it as a
+%   clean migration. vmneuralresponseresiduals, simple_calc, fitcurve and
+%   vmspikefit all failed exactly this way -- each emitted a lone
+%   session_relative_reference anchor while the measurement it existed to carry
+%   went nowhere, and every gate stayed green.
+%
+%   THE SIGNATURE is structural, not name-based: every emitted body is a
+%   SCAFFOLDING class -- a time_reference or a relation. Those exist to support
+%   a statement; a migration that produces them and nothing else has produced
+%   support for a statement it never made.
+%
+%   Deliberately NOT id-based. "The source id is preserved somewhere" is a
+%   different (and also useful) rule, but it would flag every legitimate
+%   decomposition that mints fresh ids, and miss a fragment that happens to
+%   carry its id on the anchor.
+tf = false;
+if isempty(v2Bodies); return; end
+for k = 1:numel(v2Bodies)
+    if ~isScaffoldingClass(v2Bodies{k}, cache)
+        return;   % something substantive was emitted -- not a fragment
+    end
+end
+tf = true;
+end
+
+function tf = isScaffoldingClass(body, cache)
+%ISSCAFFOLDINGCLASS Is this body a time reference or a relation?
+%   Resolved through the CLASS CHAIN, so a new time_reference or relation
+%   subclass is covered without touching this list.
+tf = false;
+if ~isstruct(body) || ~isfield(body, 'document_class') ...
+        || ~isstruct(body.document_class) ...
+        || ~isfield(body.document_class, 'class_name')
+    return;
+end
+name = char(body.document_class.class_name);
+chain = {name};
+try
+    if isempty(cache); cache = did2.schema.cache.shared(); end
+    chain = [chain, reshape(cellstr(cache.classChain(name)), 1, [])];
+catch
+    % No schema available: fall back to the declared superclasses on the body,
+    % then to the name itself. Never let the audit break a migration.
+    try
+        sc = body.document_class.superclasses;
+        for i = 1:numel(sc); chain{end+1} = char(sc(i).class_name); end %#ok<AGROW>
+    catch
+    end
+end
+tf = any(ismember({'time_reference', 'relation'}, chain));
+end
 
 function printUnconverted(result)
 %PRINTUNCONVERTED Report-only: documents a migrator handed back unchanged.

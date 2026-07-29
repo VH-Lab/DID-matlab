@@ -163,6 +163,13 @@ jobs:
                       print('      %8s  %s / %s.%s' % (f.get('count','?'),
                             f.get('class_name','?'), f.get('block','?'),
                             f.get('field_name','?')))
+              if 'fragment_count' in r:
+                  fc = r['fragment_count']
+                  print('  FRAGMENTS: %s migration(s) emitted only scaffolding%s'
+                        % (fc, '  <-- payload dropped, invisible to every other counter' if fc else ''))
+                  for k, v in sorted((r.get('fragment_by_class') or {}).items(),
+                                     key=lambda kv: -kv[1])[:15]:
+                      print('      %8s  %s' % (v, k))
               if 'unconverted_count' in r:
                   print('  unconverted: %s document(s) returned unchanged' % r['unconverted_count'])
                   ubc = r.get('unconverted_by_class') or {}

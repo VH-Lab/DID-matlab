@@ -33,6 +33,12 @@ if isfield(result.summary, 'unconverted_count')
     report.unconverted_count = result.summary.unconverted_count;
     report.unconverted_by_class = result.summary.unconverted_by_class;
 end
+% The FRAGMENT census: migrations that emitted only scaffolding and dropped the
+% payload. The third failure mode, and the one nothing could see before.
+if isfield(result.summary, 'fragment_count')
+    report.fragment_count = result.summary.fragment_count;
+    report.fragment_by_class = result.summary.fragment_by_class;
+end
 
 fid = fopen(reportPath, 'w');
 if fid < 0

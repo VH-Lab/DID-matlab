@@ -128,6 +128,7 @@ fprintf('migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('quarantine_count: %d\n', result.summary.quarantine_count);
 fprintf('report:           %s\n', reportPath);
 printUnconvertedCensus(result);
+printFragmentCensus(result);
 printSilentLossCensus(result);
 fprintf('top quarantine reasons:\n');
 for k = 1:min(numel(reasons), 15)
@@ -153,6 +154,27 @@ end
 if ~isempty(counts)
     [counts, order] = sort(counts, 'descend');
     names = names(order);
+end
+end
+
+
+function printFragmentCensus(result)
+%PRINTFRAGMENTCENSUS Phase 1 report-only: migrations that emitted ONLY
+%   scaffolding (a time reference or a relation) and dropped the payload.
+%   Neither silentLoss nor the unconverted counter can see this: nothing is
+%   blank and output WAS produced.
+if ~isfield(result.summary, 'fragment_count'); return; end
+fprintf('fragments (REPORT ONLY): %d migration(s) emitted only scaffolding\n', ...
+    result.summary.fragment_count);
+if result.summary.fragment_count > 0
+    tbl = result.summary.fragment_by_class;
+    names = fieldnames(tbl);
+    counts = zeros(1, numel(names));
+    for k = 1:numel(names); counts(k) = tbl.(names{k}); end
+    [counts, order] = sort(counts, 'descend');
+    for k = 1:min(numel(names), 20)
+        fprintf('    %6d  %s\n', counts(k), names{order(k)});
+    end
 end
 end
 
