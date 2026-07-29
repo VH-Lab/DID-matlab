@@ -1,0 +1,138 @@
+name: Corpus (parallel)
+
+# WHY THIS EXISTS
+#
+# test-code.yml runs every corpus SERIALLY inside one MATLAB process. Run #256
+# took 2h49m, and a bug in its final reporting step cost the two largest corpora
+# their output -- so recovering a REPORTING defect required re-running 2h49m of
+# migration. A feedback loop that long is the primary brake on this project.
+#
+# Each corpus downloads its own fixture from S3 and is an independent test file,
+# so there is no reason to run them one after another. This workflow fans them
+# out: wall-clock becomes the slowest SINGLE corpus (Soph, ~446 MB / ~101k docs)
+# instead of the sum of all six, and a failure in one corpus no longer hides the
+# other five.
+#
+# The census digest is its own job that runs after the fan-out with `if:
+# always()`, so it reports on whatever corpora finished even when one fails.
+#
+# Deliberately a SEPARATE workflow file from test-code.yml: a shared
+# `concurrency` group keyed on the workflow name would make dispatching this one
+# cancel an in-flight test-code run.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 07:00 UTC daily. The full corpus is the slow, thorough gate; PRs are
+    # served by test-migrators-quick.yml (~2 min).
+    - cron: "0 7 * * *"
+
+concurrency:
+  group: corpus-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  corpus:
+    name: "corpus: ${{ matrix.corpus }}"
+    runs-on: ubuntu-latest
+    strategy:
+      # One corpus failing must not cancel the others -- the whole point is to
+      # see every corpus's numbers in one pass.
+      fail-fast: false
+      matrix:
+        corpus: ["20211116", "B", "Dab", "JH", "PRED", "Soph"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out did-schema (sibling, for V_eta validation)
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: ${{ github.head_ref || github.ref_name }}
+          path: did-schema
+
+      - name: Assemble V_eta schema set (stable + draft)
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+
+      - name: Export DID_SCHEMA_PATH
+        run: |
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" >> "$GITHUB_ENV"
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+          products: Statistics_and_Machine_Learning_Toolbox
+
+      - name: Install MatBox
+        uses: ehennestad/matbox-actions/install-matbox@v1
+
+      - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+
+      - name: "Run corpus ${{ matrix.corpus }}"
+        uses: matlab-actions/run-command@v2
+        env:
+          # Soph is opt-in behind this flag. Harmless for the other corpora.
+          DID_RUN_SOPH_TEST: "1"
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            runner = TestRunner.withTextOutput;
+            suite = TestSuite.fromFile( ...
+                fullfile("tests","+did2","+unittest","testCorpus${{ matrix.corpus }}.m"));
+            results = runner.run(suite);
+            disp(table(results));
+            nFailed = sum([results.Failed]);
+            assert(nFailed == 0, sprintf("%d test(s) failed", nFailed));
+
+      - name: "Upload ${{ matrix.corpus }} report"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-report-${{ matrix.corpus }}
+          path: corpus-reports/
+          if-no-files-found: ignore
+
+  census:
+    name: Census digest
+    needs: corpus
+    # Report on whatever finished. A corpus that failed still tells us
+    # something, and one red corpus must not suppress the other five.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download every corpus report
+        uses: actions/download-artifact@v4
+        with:
+          pattern: corpus-report-*
+          merge-multiple: true
+          path: corpus-reports
+        continue-on-error: true
+
+      - name: Corpus census digest
+        run: python3 tools/census_digest.py corpus-reports
+
+      - name: Upload combined reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-discovery-reports
+          path: corpus-reports/
+          if-no-files-found: ignore

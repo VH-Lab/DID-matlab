@@ -76,6 +76,13 @@ jobs:
             addpath(genpath("tools"));
             matbox.installRequirements(didtools.projectdir());
 
+      - name: Census digest tests (python, <1s)
+        # The digest that renders the corpus census shipped broken TWICE, and
+        # both times the only thing that could have caught it was a ~3-hour
+        # corpus run -- because the code lived in a YAML heredoc. It is a module
+        # now, so its tests belong on the fast gate where they cost nothing.
+        run: python3 tools/test_census_digest.py
+
       - name: Run migrator tests (excluding corpora)
         uses: matlab-actions/run-command@v2
         with:
