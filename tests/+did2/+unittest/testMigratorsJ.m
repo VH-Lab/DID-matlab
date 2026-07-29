@@ -2243,20 +2243,43 @@ verifyFalse(testCase, isfield(obs.score.value, 'scale_min'));
 verifyFalse(testCase, isfield(obs.score.value, 'scale_max'));
 end
 
-function testSimpleCalcUnitMappedScalar(testCase)
-% #9 (scalar): simple_calc -> a single inline observation typed by units.
+function body = simpleCalcDoc()
+% Built from the NDI template + writer (+ndi/+calc/+example/simple.m), NOT from
+% our schema: the block is {input_parameters, answer}, the only edge is
+% document_id pointing at the INPUT document, and the parent is app -- not the
+% result_value/result_units/element_id/calculator shape our V_alpha snapshot
+% claimed.
 body = struct();
 body.document_class = struct('class_name', 'simple_calc', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = struct('name', {'element_id'}, 'value', {'sub_b'});
+    'superclasses', struct('class_name', {'base', 'app'}, 'class_version', {'1.0.0', '1.0.0'}));
+body.depends_on = struct('name', {'document_id'}, 'value', {'input_doc_1'});
 body.base = struct('id', 'sm_1', 'session_id', 'sess_09', 'name', 'sm', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = struct('name', 'ndi.calc.example.simple', 'version', '1.0');
+body.simple_calc = struct('input_parameters', struct('answer', 5), 'answer', 5);
+end
+
+function testSimpleCalcDefersToSecondPass(testCase)
+% simple_calc has no subject-bearing edge: the writer sets only document_id,
+% pointing at the document the calculation ran ON. Reaching a subject means
+% following that edge, which needs the migrated-id graph. So the document is
+% carried through intact rather than turned into an observation about nobody.
+out = did2.convert.migrators_j.simple_calc(simpleCalcDoc());
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'simple_calc');
+verifyEqual(testCase, out{1}.simple_calc.answer, 5);
+% no husk observation, and no stray anchor left behind either
+verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testSimpleCalcRejectsInventedShape(testCase)
+% result_value/result_units are DID-side inventions -- the class has no units
+% field at all. Their presence means a fixture or caller was built against our
+% schema instead of the real document, which is the mistake being corrected.
+body = simpleCalcDoc();
 body.simple_calc = struct('result_value', 12.5, 'result_units', 'Hz');
-out = did2.convert.migrators_j.simple_calc(body);
-names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'frequency_observation')));
-obs = out{find(strcmp(names, 'frequency_observation'), 1)};
-verifyEqual(testCase, obs.frequency.value.source_value, 12.5, 'AbsTol', 1e-9);
+verifyError(testCase, @() did2.convert.migrators_j.simple_calc(body), ...
+    'did2:convert:simpleCalcInventedShape');
 end
 
 function testVmneuralresponseresidualsFold(testCase)

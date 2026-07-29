@@ -453,15 +453,25 @@ batch = { sub, d };
 end
 
 % ---- simple_calc -----------------------------------------------------------
+% Built from the NDI template + writer (+ndi/+calc/+example/simple.m): the block
+% is {input_parameters, answer}, the only edge is document_id pointing at the
+% INPUT document, and the parent is app. The previous fixture used
+% result_value/result_units/element_id/calculator -- a shape from our own V_alpha
+% snapshot that no real document has, which is why the migrator read nothing and
+% the test still passed.
+%
+% simple_calc has no subject-bearing edge, so it DEFERS to the NDI second pass
+% and passes through unchanged. This fixture's job is to prove the passthrough
+% VALIDATES against the reshaped tombstone under Validate=true.
 function batch = fx_simple_calc()
-sub = subjDoc('smc_sub', 'animalSMC');
 d = struct();
 d.document_class = struct('class_name','simple_calc','class_version','1.0.0', ...
-    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-d.depends_on = struct('name','element_id','value','smc_sub');
+    'superclasses', struct('class_name', {'base','app'}, 'class_version', {'1.0.0','1.0.0'}));
+d.depends_on = struct('name','document_id','value','');
 d.base = struct('id','smc_01','session_id','sess_09','name','sm','datestamp','2024-06-01T12:00:00.000Z');
-d.simple_calc = struct('result_value',12.5,'result_units','Hz');
-batch = { sub, d };
+d.app = struct('name','ndi.calc.example.simple','version','1.0');
+d.simple_calc = struct('input_parameters', struct('answer', 5), 'answer', 5);
+batch = { d };
 end
 
 % ---- contrast_tuning (element_id + stimulus_tuningcurve_id) -----------------
