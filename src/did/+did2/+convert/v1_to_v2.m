@@ -178,7 +178,7 @@ for k = 1:numel(bodies)
             %
             % Deliberately NOT computed on the idempotency short-circuit above:
             % that path skips the migrators by design and is not a passthrough.
-            if numel(v2Bodies) == 1 && isequaln(v2Bodies{1}, v2Body)
+            if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body)
                 [unconvNames, unconvValues] = bumpClassCounter( ...
                     unconvNames, unconvValues, className);
             end
