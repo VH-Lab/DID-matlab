@@ -1350,8 +1350,19 @@ end
 
 function testPyraviewFoldsToObservationPlusSampledBody(testCase)
 % #9 pattern-setter: pyraview (a multi-resolution signal pyramid) dissolves into a
-% body-backed voltage_observation + a sampled_body (native signal) + a session
-% anchor. 1->3. The decimated levels are dropped (regenerable cache).
+% body-backed voltage_observation + ONE sampled_body PER RESOLUTION LEVEL + a
+% session anchor. 1 -> 2+N.
+%
+% The levels are KEPT, not dropped. All level bodies share the statement (the
+% observation) -- the multi-body-per-statement stream sampled_body was designed
+% for -- and are told apart by sample_time.dt, the per-level rate, with level 1
+% native. Each body owns exactly its level_k.bin. A pyramid is a precomputed
+% performance cache, not a disposable thumbnail, so nothing is discarded.
+% (Decided in review; commit 7ce8e8c superseded the earlier drop-the-levels fold.)
+%
+% This comment previously read "The decimated levels are dropped (regenerable
+% cache)" -- text left over from the superseded design, sitting nineteen lines
+% above assertions that require the opposite. It was read as the decision.
 body = struct();
 body.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'filter',  'class_version', '1.0.0'), ...
