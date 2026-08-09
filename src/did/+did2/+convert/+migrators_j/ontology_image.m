@@ -6,6 +6,31 @@ function v2Body = ontology_image(preBody)
 %   ---------------------------------------------------------------------
 %   WHY THIS MIGRATOR IS VINTAGE-AWARE, AND WHY ONE VINTAGE IS DEFERRED
 %   ---------------------------------------------------------------------
+%   CORRECTION, 2026-08-09 -- READ THIS BEFORE THE TWO-VINTAGE STORY BELOW.
+%   This header says NDI REDEFINED `ontologyImage`, giving two did_v1 shapes.
+%   That is FALSE. NDI never redefined it and VINTAGE A HAS NEVER EXISTED:
+%   `git log --all --diff-filter=A -- '*ontologyImage.json'` returns exactly
+%   one commit, every revision of the file carries `ontologyTableRow_id` +
+%   `ontologyNode`, and searching all of NDI history for `ontologyRegion` /
+%   `ontology_region` matches only DID-side alias-table commits. NDI-matlab
+%   `04dcdf9` had already established this while deleting four fabricated
+%   alias rows: "ontologyImage created 2025-07-03, three commits total,
+%   always {ontologyNode} with an ontologyTableRow_id dependency. Never had
+%   ontology_name or ontology_region."
+%
+%   Vintage A is DID-schema's own V_alpha/V_beta snapshot -- which the very
+%   next comment block states outright ("legacy; DID-schema V_alpha/V_beta
+%   ancestry") while still calling it a did_v1 vintage. Same fabrication the
+%   ground-truth track exists to remove, wearing the word "legacy".
+%
+%   THE CODE IS LEFT EXACTLY AS IT IS, deliberately. This migrator branches
+%   on SHAPE and errors when nothing matches, so a branch for a shape that
+%   cannot occur simply never fires; it costs nothing and it is the safe
+%   direction to be wrong in. Only the claim was wrong, and only the claim is
+%   corrected. Do not plan further work around a second vintage.
+%
+%   The original text follows, with vintage A now understood as fabricated:
+%
 %   NDI REDEFINED `ontologyImage` upstream, so two incompatible shapes are
 %   both "did_v1". Any migrator here has to say which one it is looking at:
 %
