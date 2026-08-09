@@ -1027,17 +1027,30 @@ d.openminds = struct('openminds_type','https://openminds.om-i.org/types/Species'
 batch = { sub, d };
 end
 
-% ---- openminds_stimulus (stimulus_id + empty openminds dep) ----------------
+% ---- openminds_stimulus (PASSTHROUGH; real writer shape) -------------------
+% BUILT FROM THE WRITER, NOT FROM OUR SCHEMA. The previous fixture declared a
+% `stimulus_id` dependency and a Species payload; both were inventions, and
+% because the migrator read the same invented name the test could not catch the
+% code. What stimulusDocMaker.m:407-412 and add_stimulus_approach.m:59-65
+% actually produce is a StimulationApproach term, an epoch, and an edge named
+% `stimulus_element_id` pointing at the stimulator element.
+%
+% The document now PASSES THROUGH for the NDI second pass (its destination is
+% `interaction_purpose`, which needs the migrated graph), so the fixture asserts
+% that the v1 shape still validates against the V_eta tombstone with 0 orphans.
 function batch = fx_openminds_stimulus()
 sub = subjDoc('oms_sub', 'stimOMS');
 d = struct();
 d.document_class = struct('class_name','openminds_stimulus','class_version','1.0.0', ...
-    'superclasses', struct('class_name','base','class_version','1.0.0'));
-d.depends_on = struct('name', {'stimulus_id','openminds'}, 'value', {'oms_sub',''});
+    'superclasses', struct('class_name',{'base';'epochid';'openminds'}, ...
+                           'class_version',{'1.0.0';'1.0.0';'1.0.0'}));
+d.depends_on = struct('name', {'stimulus_element_id'}, 'value', {'oms_sub'});
 d.base = struct('id','oms_01','session_id','sess_09','name','','datestamp','2024-06-01T12:00:00.000Z');
-d.openminds = struct('openminds_type','https://openminds.om-i.org/types/Species', ...
-    'matlab_type','openminds.controlledterms.Species', ...
-    'fields', struct('name','Caenorhabditis elegans', ...
-        'preferredOntologyIdentifier','NCBITaxon:6239','synonym','C. elegans'));
+d.epochid = struct('epochid','t00001');
+d.openminds = struct('openminds_type','https://openminds.om-i.org/types/StimulationApproach', ...
+    'matlab_type','openminds.controlledterms.StimulationApproach', ...
+    'fields', struct('name','Purpose: Assessing spatial frequency tuning', ...
+        'preferredOntologyIdentifier','NDIC:00000012', ...
+        'description','Assessing spatial frequency tuning'));
 batch = { sub, d };
 end

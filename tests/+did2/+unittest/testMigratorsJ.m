@@ -2068,27 +2068,59 @@ supers = a.document_class.superclasses;
 verifyEqual(testCase, supers(1).class_name, 'subject_assertion');
 end
 
-function testOpenmindsStimulusBecomesTermAssertion(testCase)
-% Same decomposition as openminds_subject, but the stimulus is the subject:
-% the subject_id is carried from the stimulus_id dependency.
+function testOpenmindsStimulusPassesThroughForSecondPass(testCase)
+% INVERTED, not updated. This test used to assert the document became a
+% `term_assertion` whose subject_id came from a `stimulus_id` dependency -- and
+% it passed, because the fixture invented the same edge name the migrator read.
+% A test written from the same premise as the code cannot catch the code.
+%
+% The real document (stimulusDocMaker.m:407-412) is a StimulationApproach term +
+% a stimulator + an EPOCH, with the edge named `stimulus_element_id`. It is not a
+% statement about a subject: the assertion tier is timeless, so an assertion
+% cannot carry the epoch, and calling the stimulator a spatial-frequency-tuning
+% is false. Destination is `interaction_purpose` via the NDI second pass, so
+% pass 1 carries the document intact.
+body = struct();
+body.document_class = struct('class_name', 'openminds_stimulus', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'; 'epochid'; 'openminds'}, ...
+                           'class_version', {'1.0.0'; '1.0.0'; '1.0.0'}));
+body.depends_on = struct('name', {'stimulus_element_id'}, 'value', {'stim_042'});
+body.base = struct('id', 'om_s1', 'session_id', 'sess_09', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+body.epochid = struct('epochid', 't00001');
+body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/StimulationApproach', ...
+    'matlab_type', 'openminds.controlledterms.StimulationApproach', ...
+    'fields', struct('name', 'Purpose: Assessing spatial frequency tuning', ...
+        'preferredOntologyIdentifier', 'NDIC:00000012', ...
+        'description', 'Assessing spatial frequency tuning'));
+
+out = did2.convert.migrators_j.openminds_stimulus(body);
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'openminds_stimulus');
+% carried INTACT -- the epoch and the referent both survive for the second pass
+verifyEqual(testCase, out{1}.epochid.epochid, 't00001');
+verifyEqual(testCase, out{1}.depends_on(1).name, 'stimulus_element_id');
+verifyEqual(testCase, out{1}.depends_on(1).value, 'stim_042');
+verifyEqual(testCase, out{1}.openminds.fields.name, ...
+    'Purpose: Assessing spatial frequency tuning');
+end
+
+function testOpenmindsStimulusRejectsInventedStimulusIdEdge(testCase)
+% The guard. `stimulus_id` is a DID-side invention -- NDI's template, schema and
+% writer all name the edge `stimulus_element_id` -- so a body carrying it was
+% built against our snapshot rather than a real document, and must fail loudly
+% instead of migrating to something plausible.
 body = struct();
 body.document_class = struct('class_name', 'openminds_stimulus', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-body.depends_on = struct('name', {'stimulus_id', 'openminds'}, 'value', {'stim_042', ''});
+body.depends_on = struct('name', {'stimulus_id'}, 'value', {'stim_042'});
 body.base = struct('id', 'om_s1', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Species', ...
-    'matlab_type', 'openminds.controlledterms.Species', ...
-    'fields', struct('name', 'Caenorhabditis elegans', ...
-        'preferredOntologyIdentifier', 'NCBITaxon:6239', 'synonym', 'C. elegans'));
+body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/StimulationApproach', ...
+    'matlab_type', 'openminds.controlledterms.StimulationApproach', 'fields', struct());
 
-out = did2.convert.migrators_j.openminds_stimulus(body);
-verifyEqual(testCase, out.document_class.class_name, 'term_assertion');
-verifyEqual(testCase, out.document_class.superclasses(1).class_name, 'subject_assertion');
-verifyEqual(testCase, out.subject_statement.variable.name, 'species');
-verifyEqual(testCase, out.term.value.node, 'NCBITaxon:6239');
-verifyEqual(testCase, out.term.value.name, 'Caenorhabditis elegans');
-verifyEqual(testCase, depValue(out, 'subject_id'), 'stim_042');
+verifyError(testCase, @() did2.convert.migrators_j.openminds_stimulus(body), ...
+    'did2:convert:openmindsStimulusInventedEdge');
 end
 
 function testJrclustClustersFoldsToCountObservation(testCase)
