@@ -83,6 +83,20 @@ jobs:
         # now, so its tests belong on the fast gate where they cost nothing.
         run: python3 tools/test_census_digest.py
 
+      - name: Unminted ontology terms must not increase (#70)
+        # Staging a term as {node: '', name: '...'} is the accepted practice --
+        # a migration can go green and the CURIEs be minted after. The hazard is
+        # that an empty node is indistinguishable from "we looked and no term
+        # exists", so the backlog is invisible and never shrinks.
+        #
+        # This ratchet makes it visible: the count may FALL freely, and any
+        # INCREASE fails. Minting is always allowed; adding a new unminted term
+        # is a deliberate act that has to move the baseline.
+        #
+        # It runs HERE rather than in did-schema CI because the migrators live
+        # in this repo -- this is where an edit that adds one would break it.
+        run: python3 did-schema/tools/check_empty_ontology_nodes.py --did . --enforce
+
       - name: Run migrator tests (excluding corpora)
         uses: matlab-actions/run-command@v2
         with:
