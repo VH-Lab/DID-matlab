@@ -136,6 +136,32 @@ verifyEqual(testCase, nEpochsWith(rep, 1), 1);
 verifyEqual(testCase, nEpochsWith(rep, 2), 1);
 end
 
+function testTheOtherSidesDenominatorIsReported(testCase)
+% Corpus Dab reported 635 approaches and 635 approach epochs with NO
+% presentation document -- every single one. That is either the real answer or a
+% census that never saw a presentation, and the report as first shipped could not
+% tell those apart. This file exists to stop exactly that, and shipped with it.
+docs = { ...
+    withEpoch(body('openminds_stimulus', 'ap_1'), 'epoch_A'), ...
+    withElement(withEpoch(body('stimulus_presentation', 'p1'), 'epoch_B'), 'stim_1'), ...
+    body('stimulus_presentation', 'p2')};          % no epoch id at all
+rep = did2.validate.sourceCensus(docs);
+verifyEqual(testCase, rep.approach_epochs_no_presentation, 1);
+verifyEqual(testCase, rep.presentation_doc_count, 2, ...
+    'the census saw two presentations -- the zero above is about epochs, not sight');
+verifyEqual(testCase, rep.presentation_docs_with_epoch, 1);
+end
+
+function testEmptyDistributionYieldsNoRowsAtAll(testCase)
+% Dab's log printed one row with a BLANK subject count against 0 epochs, from a
+% distribution that should have been empty. A phantom row in a report is a
+% number someone will read.
+docs = {withEpoch(body('openminds_stimulus', 'ap_1'), 'epoch_lonely')};
+rep = did2.validate.sourceCensus(docs);
+verifyEqual(testCase, numel(rep.subjects_per_approach_epoch), 0, ...
+    'no approach epoch has a presentation, so the distribution has NO rows');
+end
+
 function testApproachEpochWithNoPresentationIsCountedNotDropped(testCase)
 docs = {withEpoch(body('openminds_stimulus', 'ap_1'), 'epoch_lonely')};
 rep = did2.validate.sourceCensus(docs);

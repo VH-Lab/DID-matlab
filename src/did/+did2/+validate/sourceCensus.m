@@ -88,6 +88,11 @@ function report = sourceCensus(v1Bodies)
 %
 %     approach_doc_count         `openminds_stimulus` documents
 %     approach_epochs            distinct epoch ids among them
+%     presentation_doc_count     `stimulus_presentation` documents -- THE OTHER
+%                                SIDE'S DENOMINATOR. Without it, "no approach
+%                                epoch has a presentation" cannot be told apart
+%                                from "this census never saw a presentation".
+%     presentation_docs_with_epoch  how many of those carry an epoch id at all
 %     approach_epochs_no_presentation
 %                                approach epochs with no presentation document
 %     subjects_per_approach_epoch
@@ -117,6 +122,8 @@ report = struct( ...
     'distinct_session_ids',        0, ...
     'approach_doc_count',          0, ...
     'approach_epochs',             0, ...
+    'presentation_doc_count',      0, ...
+    'presentation_docs_with_epoch', 0, ...
     'approach_epochs_no_presentation', 0, ...
     'subjects_per_approach_epoch', struct('n_subjects', {}, 'n_epochs', {}));
 
@@ -236,6 +243,15 @@ isPresentation = strcmp(classes, 'stimuluspresentation');
 report.approach_doc_count = sum(isApproach);
 approachEpochs = unique(nonEmpty({rows(isApproach).epoch_id}));
 report.approach_epochs = numel(approachEpochs);
+
+% THE OTHER SIDE'S DENOMINATOR. Corpus Dab reported 635 approaches and 635
+% approach epochs with NO presentation document -- every single one. That may be
+% the real answer, or it may mean this census never saw a presentation, or saw
+% them without epoch ids. WITHOUT THESE TWO COUNTS THE ZERO IS UNREADABLE, which
+% is the exact failure this file was written to stop happening to other people's
+% instruments and which it then shipped with itself.
+report.presentation_doc_count = sum(isPresentation);
+report.presentation_docs_with_epoch = sum(isPresentation & hasEpoch);
 
 counts = [];
 noPresentation = 0;

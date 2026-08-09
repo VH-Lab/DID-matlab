@@ -320,8 +320,18 @@ end
 
 fprintf('  stimulation approaches: %d document(s) over %d epoch(s)\n', ...
     sc.approach_doc_count, sc.approach_epochs);
+% BOTH SIDES' DENOMINATORS. Dab reported 635 approaches, 635 epochs, and 635 of
+% those epochs carrying NO presentation -- a result that cannot be read at all
+% without knowing whether this census saw any presentations to begin with.
+if isfield(sc, 'presentation_doc_count')
+    fprintf('      stimulus_presentation documents seen: %d (%d carry an epoch id)\n', ...
+        sc.presentation_doc_count, sc.presentation_docs_with_epoch);
+end
 if sc.approach_doc_count > 0
     fprintf('      distinct subjects per approach epoch:\n');
+    if isempty(sc.subjects_per_approach_epoch)
+        fprintf('        (none -- no approach epoch had a presentation)\n');
+    end
     for k = 1:numel(sc.subjects_per_approach_epoch)
         d = sc.subjects_per_approach_epoch(k);
         fprintf('        %3d subject(s): %6d epoch(s)\n', d.n_subjects, d.n_epochs);

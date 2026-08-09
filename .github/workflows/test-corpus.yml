@@ -114,8 +114,24 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: corpus-report-${{ matrix.corpus }}
-          path: corpus-reports/
-          if-no-files-found: ignore
+          # BOTH PATHS, and `warn` not `ignore`. The reports are written to
+          # `pwd/corpus-reports/`, and MATLAB's pwd during these runs is the
+          # REPO ROOT for some entry points and `tests/` for others -- the log
+          # says `.../DID-matlab/tests/corpus-reports/Soph-summary.json`. The
+          # upload looked only at the root, found nothing, and said so quietly:
+          #
+          #   No files were found with the provided path: corpus-reports/.
+          #   ...
+          #   Census digest: Found 0 artifact(s) -- NO CORPUS REPORTS FOUND
+          #
+          # Six corpora ran for over an hour, every job went green, and the
+          # digest that four open items depend on aggregated NOTHING. The
+          # numbers survived only in stdout. `ignore` is what made it quiet;
+          # `warn` annotates the run instead.
+          path: |
+            corpus-reports/
+            tests/corpus-reports/
+          if-no-files-found: warn
 
   census:
     name: Census digest
