@@ -41,6 +41,11 @@ function report = silentLoss(docs, opts)
 %     vacuous_required_field      struct array {class_name, block, field_name, count}
 %     empty_dependency_count      total occurrences
 %     vacuous_field_count         total occurrences
+%     family_count_violation      #63: struct array {class_name, edge_name,
+%                                 declared, found, count} -- a NUMBERED edge
+%                                 family whose instance count falls outside the
+%                                 declared min_count/max_count. REPORT ONLY.
+%     family_violation_count      total occurrences
 %     skipped_docs                documents whose schema could not be resolved
 %
 %   Name/value:
@@ -57,6 +62,9 @@ report = struct( ...
     'vacuous_required_field',    struct('class_name', {}, 'block', {}, 'field_name', {}, 'count', {}), ...
     'empty_dependency_count',    0, ...
     'vacuous_field_count',       0, ...
+    'family_count_violation',    struct('class_name', {}, 'edge_name', {}, ...
+                                        'declared', {}, 'found', {}, 'count', {}), ...
+    'family_violation_count',    0, ...
     'skipped_docs',              0);
 
 [bodies, unreadable] = vBodies(docs);
@@ -81,6 +89,7 @@ end
 
 depKeys = {}; depCounts = [];
 fldKeys = {}; fldCounts = [];
+famKeys = {}; famCounts = [];
 
 for k = 1:numel(bodies)
     body = bodies{k};
@@ -97,6 +106,25 @@ for k = 1:numel(bodies)
             if ~edgeIsPopulated(body, name)
                 key = sprintf('%s|%s', className, name);
                 [depKeys, depCounts] = bump(depKeys, depCounts, key);
+            end
+        end
+
+        % --- 1b. NUMBERED families: is the INSTANCE COUNT in range? -------
+        % #63. `mustBeNonEmpty` cannot describe a family -- a missing instance
+        % is not a blank one -- so three families were declared REQUIRED and
+        % verified by nothing. What is checkable is how many instances exist.
+        % REPORT ONLY: the counts have never been measured, and enforcing a
+        % minimum before knowing them is how a gate turns red on real data.
+        families = declaredFamilies(cache, className);
+        for f = 1:numel(families)
+            fam = families(f);
+            found = countFamily(body, fam.name);
+            bad = found < fam.min_count || ...
+                  (~isnan(fam.max_count) && found > fam.max_count);
+            if bad
+                key = sprintf('%s|%s|%s|%d', className, fam.name, ...
+                    describeRange(fam), found);
+                [famKeys, famCounts] = bump(famKeys, famCounts, key);
             end
         end
 
@@ -147,6 +175,78 @@ cn = '';
 if isfield(body, 'document_class') && isstruct(body.document_class) ...
         && isfield(body.document_class, 'class_name')
     cn = char(body.document_class.class_name);
+end
+end
+
+function fams = declaredFamilies(cache, className)
+%DECLAREDFAMILIES #63: numbered edge families in the class chain, with the
+%   instance counts they declare. A family entry is `name_#`; `min_count` /
+%   `max_count` say how many concrete instances a valid document carries.
+%   `mustBeNonEmpty` is NOT consulted -- it cannot describe a family, which is
+%   the whole reason these fields exist.
+fams = struct('name', {}, 'min_count', {}, 'max_count', {});
+try
+    chain = cache.classChain(className);
+catch
+    return;
+end
+for k = 1:numel(chain)
+    try
+        c = cache.getClass(chain{k});
+    catch
+        continue;
+    end
+    if ~isfield(c, 'depends_on'); continue; end
+    % jsondecode returns a CELL when the dependency objects in one class do not all
+    % carry the same keys -- which is normal now that only NUMBERED families declare
+    % min_count/max_count. `[deps{:}]` throws on mismatched fieldnames, and the throw
+    % was swallowed by the caller's try/catch, so the census went quiet exactly where
+    % it should have spoken. Iterate element-wise, as requiredDependencies does.
+    deps = c.depends_on;
+    if isstruct(deps)
+        items = num2cell(deps(:)');
+    elseif iscell(deps)
+        items = deps(:)';
+    else
+        continue;
+    end
+    for d = 1:numel(items)
+        dep = items{d};
+        if ~isstruct(dep) || ~isfield(dep, 'name'); continue; end
+        n = char(dep.name);
+        if ~contains(n, '#'); continue; end
+        lo = 0; hi = NaN;
+        if isfield(dep, 'min_count') && ~isempty(dep.min_count); lo = double(dep.min_count); end
+        if isfield(dep, 'max_count') && ~isempty(dep.max_count); hi = double(dep.max_count); end
+        if any(strcmp({fams.name}, n)); continue; end
+        fams(end+1) = struct('name', n, 'min_count', lo, 'max_count', hi); %#ok<AGROW>
+    end
+end
+end
+
+function n = countFamily(body, famName)
+%COUNTFAMILY How many concrete instances of `prefix_#` the document carries.
+%   Counts the EDGES PRESENT, whatever their value: a family violation is about
+%   how many instances exist, not whether one of them is blank (that is the
+%   separate, and separately reported, empty-edge check).
+n = 0;
+if ~isfield(body, 'depends_on') || ~isstruct(body.depends_on); return; end
+prefix = strrep(famName, '#', '');
+for k = 1:numel(body.depends_on)
+    d = body.depends_on(k);
+    if ~isfield(d, 'name'); continue; end
+    nm = char(d.name);
+    if ~startsWith(nm, prefix); continue; end
+    tail = nm(numel(prefix)+1:end);
+    if ~isempty(tail) && all(isstrprop(tail, 'digit')); n = n + 1; end
+end
+end
+
+function s = describeRange(fam)
+if isnan(fam.max_count)
+    s = sprintf('min %d', fam.min_count);
+else
+    s = sprintf('min %d max %d', fam.min_count, fam.max_count);
 end
 end
 
