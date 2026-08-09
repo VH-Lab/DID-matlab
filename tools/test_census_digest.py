@@ -164,6 +164,40 @@ class TestDigest(DigestCase):
         self.assertIn("REPORT SEARCH", first)
         self.assertIn("1 file(s)", first)
 
+    def test_family_violation_count_is_printed_even_when_zero(self):
+        # Unconditional, like total_docs. A number that only appears when
+        # non-zero cannot be distinguished from a number nobody computed.
+        self.write("F", {
+            "corpus": "F", "total": 1, "migrated_count": 1,
+            "quarantine_count": 0,
+            "silent_loss": {"total_docs": 1, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0,
+                            "family_violation_count": 0},
+        })
+        text, _ = self.run_digest()
+        self.assertIn("0 edge-family cardinality violation(s)", text)
+
+    def test_family_violation_rows_name_declared_and_found(self):
+        self.write("G", {
+            "corpus": "G", "total": 1, "migrated_count": 1,
+            "quarantine_count": 0,
+            "silent_loss": {
+                "total_docs": 9, "skipped_docs": 0,
+                "empty_dependency_count": 0, "vacuous_field_count": 0,
+                "family_violation_count": 4,
+                # single row arrives as a bare object, not a list
+                "family_count_violation": {
+                    "count": 4, "class_name": "subject_interaction",
+                    "edge_name": "time_reference_#",
+                    "declared": "min 1", "found": 0},
+            },
+        })
+        text, _ = self.run_digest()
+        self.assertIn("4 edge-family cardinality violation(s)", text)
+        self.assertIn("subject_interaction.time_reference_#", text)
+        self.assertIn("declared min 1, found 0", text)
+
     def test_several_roots_are_searched_and_one_missing_is_not_fatal(self):
         # test-code.yml digests `corpus-reports` from the repo root while the
         # corpora write to `tests/corpus-reports`; that step has been printing

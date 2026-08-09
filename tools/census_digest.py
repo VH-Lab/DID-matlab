@@ -97,6 +97,19 @@ def render_report(r, out):
                                          f.get("class_name", "?"),
                                          f.get("block", "?"),
                                          f.get("field_name", "?")))
+        # The family-count number, printed UNCONDITIONALLY like the two above.
+        # It was measured and written into the report from the first run, and
+        # then never rendered -- so the one thing standing between it and a
+        # decision was that nobody could see it without downloading an
+        # artifact. That is the same write-only condition this whole file
+        # exists to remove, one field further down.
+        p("  silent-loss: %s edge-family cardinality violation(s)"
+          % sl.get("family_violation_count", "?"))
+        for v in aslist(sl.get("family_count_violation"))[:10]:
+            p("      %8s  %s.%s  declared %s, found %s"
+              % (v.get("count", "?"), v.get("class_name", "?"),
+                 v.get("edge_name", "?"), v.get("declared", "?"),
+                 v.get("found", "?")))
 
     if "fragment_count" in r:
         fc = r["fragment_count"]
