@@ -2676,7 +2676,7 @@ verifyEqual(testCase, na.time_reference.epoch_clock, 'dev_local_time');
 verifyEqual(testCase, na.time_reference.epoch_id, 't00001');
 % node metadata retained
 verifyEqual(testCase, na.epoch_session_id, 'sess_09');
-verifyEqual(testCase, na.objectclass, 'ndi.time.syncrule.filematch');
+verifyEqual(testCase, na.objectclass, 'ndi.daq.system.mfdaq');
 verifyEqual(testCase, out.syncrule_mapping.epochnode_b.time_reference.epoch_clock, 'utc');
 % #58: objectname is READ BY A LIVE NDI QUERY (syncgraph.m:406-407) and t0_t1 went
 % out with it in the same reshape. Both must survive.
