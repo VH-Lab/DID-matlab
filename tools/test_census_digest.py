@@ -16,7 +16,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from census_digest import aslist, digest  # noqa: E402
+from census_digest import aslist, digest, render_report  # noqa: E402
 
 
 class TestAsList(unittest.TestCase):
@@ -129,6 +129,48 @@ class TestDigest(DigestCase):
         text, failed = self.run_digest()
         self.assertEqual(failed, [])
         self.assertIn("required endpoints missing", text)
+
+
+
+class SourceCensusRendering(unittest.TestCase):
+    """The v1 SOURCE census block: three pre-build measurements, denominator first."""
+
+    def _render(self, sc):
+        out = []
+        render_report({"corpus": "X", "source_census": sc}, out)
+        return "\n".join(out)
+
+    def test_reports_its_denominator_first(self):
+        txt = self._render({"total_docs": 1234, "skipped_docs": 2,
+                            "docs_with_epoch_id": 10, "distinct_epoch_ids": 3})
+        self.assertIn("read 1234 v1 doc(s), 2 unreadable", txt)
+
+    def test_zero_documents_is_called_out_not_rendered_as_clean(self):
+        # The silentLoss failure: an all-zero census is indistinguishable from a
+        # clean one unless the denominator is checked and shouted about.
+        txt = self._render({"total_docs": 0, "skipped_docs": 0,
+                            "synthetic_epoch_id_count": 0,
+                            "session_doc_count": 0, "approach_doc_count": 0})
+        self.assertIn("READ NOTHING", txt)
+        self.assertNotIn("grouping hazard", txt)
+
+    def test_grouping_hazard_names_the_fusion_factor(self):
+        txt = self._render({
+            "total_docs": 9, "skipped_docs": 0,
+            "synthetic_epoch_id_count": 1, "cross_session_epoch_id_count": 0,
+            "synthetic_epoch_ids": [{"epoch_id": "whole_session_r",
+                                     "distinct_elements": 7, "doc_count": 12}]})
+        self.assertIn("would fuse    7 element span(s): whole_session_r", txt)
+
+    def test_absent_session_document_is_shouted_not_printed_as_a_zero(self):
+        txt = self._render({"total_docs": 9, "skipped_docs": 0,
+                            "session_doc_count": 0, "distinct_session_ids": 1})
+        self.assertIn("would have no", txt)
+
+    def test_a_failed_census_says_so(self):
+        txt = self._render({"audit_failed": "boom"})
+        self.assertIn("AUDIT FAILED (boom)", txt)
+
 
 
 if __name__ == "__main__":

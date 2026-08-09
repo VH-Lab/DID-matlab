@@ -105,6 +105,52 @@ def render_report(r, out):
                            key=lambda kv: -kv[1])[:15]:
             p("      %8s  %s" % (v, k))
 
+    sc = r.get("source_census") or {}
+    if "audit_failed" in sc:
+        p("  v1 source census: AUDIT FAILED (%s)" % sc["audit_failed"])
+    elif sc:
+        # The three pre-build measurements. DENOMINATOR FIRST, same rule as the
+        # silent-loss block above and for the same reason.
+        std = sc.get("total_docs", "?")
+        p("  v1 source census: read %s v1 doc(s), %s unreadable"
+          % (std, sc.get("skipped_docs", "?")))
+        if std == 0:
+            p("  *** total_docs=0 -- THE SOURCE CENSUS READ NOTHING. Everything")
+            p("  *** below is vacuous; do NOT quote it as a measurement.")
+        else:
+            p("      epoch ids: %s doc(s) carry one, %s distinct"
+              % (sc.get("docs_with_epoch_id", "?"),
+                 sc.get("distinct_epoch_ids", "?")))
+            for e in aslist(sc.get("epoch_id_by_prefix")):
+                p("          %-16s %6s distinct  %8s doc(s)"
+                  % (e.get("prefix", "?"), e.get("distinct_ids", "?"),
+                     e.get("doc_count", "?")))
+            # THE EPOCH GROUPING HAZARD. One `epoch` per distinct id string is
+            # correct only where the string is unique per epoch;
+            # `whole_session_<ref>` is minted per ELEMENT and would fuse.
+            p("      grouping hazard: %s synthetic (whole_session_) id(s), "
+              "%s id(s) spanning >1 session"
+              % (sc.get("synthetic_epoch_id_count", "?"),
+                 sc.get("cross_session_epoch_id_count", "?")))
+            for x in aslist(sc.get("synthetic_epoch_ids"))[:5]:
+                p("          would fuse %4s element span(s): %s"
+                  % (x.get("distinct_elements", "?"), x.get("epoch_id", "?")))
+            p("      session documents: %s   (distinct base.session_id: %s)"
+              % (sc.get("session_doc_count", "?"),
+                 sc.get("distinct_session_ids", "?")))
+            if sc.get("session_doc_count") == 0:
+                p("      *** NONE -- a REQUIRED `relative_to` would have no")
+                p("      *** referent in this corpus.")
+            p("      stimulation approaches: %s doc(s) over %s epoch(s)"
+              % (sc.get("approach_doc_count", "?"),
+                 sc.get("approach_epochs", "?")))
+            for d in aslist(sc.get("subjects_per_approach_epoch")):
+                p("          %4s subject(s): %6s epoch(s)"
+                  % (d.get("n_subjects", "?"), d.get("n_epochs", "?")))
+            if sc.get("approach_doc_count"):
+                p("          %s approach epoch(s) with NO presentation document"
+                  % sc.get("approach_epochs_no_presentation", "?"))
+
     for q in aslist(r.get("quarantine_reasons"))[:5]:
         p("  quarantine: %5s [%s] %s" % (q.get("count", "?"),
                                          q.get("class_name", "?"),
