@@ -2638,20 +2638,29 @@ end
 function testSyncruleMappingEpochnodeToTimeReference(testCase)
 % gov part 3: each epochnode_*'s bare epoch_clock + epoch_id are nested under a
 % time_reference sub-structure (epoch_bounded_reference shape). 1 -> 1; cost,
-% mapping, node metadata, and the deps (syncrule_id + epochid) carry through.
+% mapping, node metadata and the deps carry through.
+%
+% #58, and the FIXTURE IS INVERTED WITH THE CODE. It used to declare a
+% `syncrule_id` + `epochid` dependency pair and epoch nodes with no `objectname`
+% and no `t0_t1` -- our own invented shape, so the test could not see that the
+% reshape was dropping the field a live NDI query reads. NDI's template and schema
+% both declare `syncgraph_id` + `syncrule_id`, and the real node carries seven
+% sub-fields.
 body = struct();
 body.document_class = struct('class_name', 'syncrule_mapping', ...
     'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = [ struct('name', 'syncrule_id', 'value', 'sr_1'), ...
-                    struct('name', 'epochid', 'value', 't00001') ];
+body.depends_on = [ struct('name', 'syncgraph_id', 'value', 'sg_1'), ...
+                    struct('name', 'syncrule_id',  'value', 'sr_1') ];
 body.base = struct('id', 'sm_1', 'session_id', 'sess_09', 'name', 'sm', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 nodeA = struct('epoch_clock', 'dev_local_time', 'epoch_id', 't00001', ...
     'epoch_session_id', 'sess_09', 'epochprobemap', struct('a', 1), ...
-    'objectclass', 'ndi.time.syncrule.filematch');
+    'objectclass', 'ndi.daq.system.mfdaq', 'objectname', 'vhvis_spike2', ...
+    't0_t1', [0 300]);
 nodeB = struct('epoch_clock', 'utc', 'epoch_id', 't00002', ...
-    'epoch_session_id', 'sess_09', 'epochprobemap', struct(), 'objectclass', '');
+    'epoch_session_id', 'sess_09', 'epochprobemap', struct(), 'objectclass', '', ...
+    'objectname', 'vhintan', 't0_t1', [5 305]);
 body.syncrule_mapping = struct('cost', 1.0, 'mapping', [1 0; 0 1], ...
     'epochnode_a', nodeA, 'epochnode_b', nodeB);
 
@@ -2669,10 +2678,16 @@ verifyEqual(testCase, na.time_reference.epoch_id, 't00001');
 verifyEqual(testCase, na.epoch_session_id, 'sess_09');
 verifyEqual(testCase, na.objectclass, 'ndi.time.syncrule.filematch');
 verifyEqual(testCase, out.syncrule_mapping.epochnode_b.time_reference.epoch_clock, 'utc');
-% cost / mapping / deps preserved
+% #58: objectname is READ BY A LIVE NDI QUERY (syncgraph.m:406-407) and t0_t1 went
+% out with it in the same reshape. Both must survive.
+verifyEqual(testCase, na.objectname, 'vhvis_spike2');
+verifyEqual(testCase, na.t0_t1, [0 300]);
+verifyEqual(testCase, out.syncrule_mapping.epochnode_b.objectname, 'vhintan');
+verifyEqual(testCase, out.syncrule_mapping.epochnode_b.t0_t1, [5 305]);
+% cost / mapping / deps preserved -- including the syncgraph_id the query filters on
 verifyEqual(testCase, out.syncrule_mapping.cost, 1.0);
 verifyEqual(testCase, depValue(out, 'syncrule_id'), 'sr_1');
-verifyEqual(testCase, depValue(out, 'epochid'), 't00001');
+verifyEqual(testCase, depValue(out, 'syncgraph_id'), 'sg_1');
 end
 
 function v = depValue(b, name)

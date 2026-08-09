@@ -10,10 +10,35 @@ function v2Body = syncrule_mapping(preBody)
 %   nested under a `time_reference` sub-structure shaped as an epoch_bounded_reference
 %   (kind + epoch_clock + epoch_id), so the sync layer states time in the canonical
 %   model rather than loose strings. epoch_id stays a NAME (an epoch is not a
-%   standalone document -- the same reason syncrule_mapping.epochid is left untyped),
-%   so this is an embedded-shape normalization, not a document dependency.
-%   epoch_session_id / epochprobemap / objectclass carry through as node metadata.
-%   cost, mapping, the depends_on (syncrule_id + epochid) and base are preserved.
+%   standalone document in pass 1), so this is an embedded-shape normalization,
+%   not a document dependency.
+%   epoch_session_id / epochprobemap / objectclass / objectname / t0_t1 carry
+%   through as node metadata. cost, mapping, depends_on and base are preserved.
+%
+%   #58 -- TWO FIELDS WERE BEING DROPPED, AND ONE BROKE A LIVE NDI QUERY.
+%   reshapeEpochNode built each node with exactly four sub-fields, discarding
+%   `objectname` and `t0_t1`. `objectname` is read by exact_string at
+%   +ndi/+time/syncgraph.m:406-407, which finds a session's saved rules with
+%
+%       ndi.query('','isa','syncrule_mapping') &
+%       ndi.query('','depends_on','syncgraph_id', syncgraph.id()) &
+%       ( ndi.query('syncrule_mapping.epochnode_a.objectname','exact_string', dq.name) |
+%         ndi.query('syncrule_mapping.epochnode_b.objectname','exact_string', dq.name) )
+%
+%   so a migrated corpus could not answer it. Both fields are carried now, and
+%   V_eta declares them.
+%
+%   The header used to say the depends_on carried `syncrule_id + epochid`. There is
+%   no `epochid` dependency in did_v1: NDI's template AND schema both declare
+%   `syncgraph_id` + `syncrule_id`, each "mustbenotempty": 1. V_eta had declared the
+%   phantom instead, empty on all 5,316 corpus documents. The body always carried the
+%   real pair through (depends_on is copied verbatim); it was the SCHEMA that named
+%   the wrong edge, so nothing pointed the query at anything.
+%
+%   NOTE the `time_reference` sub-structure keeps its epoch_bounded_reference shape.
+%   That class does not survive the time-reference collapse, and this whole class
+%   dissolves into `clock_alignment` when that cluster is built. This is the interim
+%   repair that stops the loss, not the model.
 
 arguments
     preBody (1,1) struct
@@ -30,7 +55,7 @@ out.document_class = struct('class_name', 'syncrule_mapping', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
     'schema_version', 'V_eta');
 if isfield(preBody, 'depends_on')
-    out.depends_on = preBody.depends_on;    % syncrule_id + epochid carry through
+    out.depends_on = preBody.depends_on;    % syncgraph_id + syncrule_id carry through
 else
     out.depends_on = struct('name', {}, 'value', {});
 end
@@ -53,7 +78,7 @@ end
 function node = reshapeEpochNode(src)
 %RESHAPEEPOCHNODE Nest epoch_clock + epoch_id under a time_reference sub-structure
 %   (epoch_bounded_reference shape); carry the node metadata through. Built with
-%   exactly the four V_eta sub-fields so the reshaped node matches the schema.
+%   exactly the six V_eta sub-fields so the reshaped node matches the schema.
 %   The epochnode sub-fields are NESTED, so universalRenames (which snake_cases only
 %   immediate block fields) leaves their raw v1 casing untouched -- read snake-first
 %   with a camelCase fallback (jGetCharAny), as the other +migrators_j migrators do,
@@ -65,7 +90,22 @@ node = struct( ...
     'time_reference',   tr, ...
     'epoch_session_id', jGetCharAny(src, {'epoch_session_id', 'epochSessionId', 'epochSessionID'}), ...
     'epochprobemap',    getStructAny(src, {'epochprobemap', 'epochProbeMap'}), ...
-    'objectclass',      jGetCharAny(src, {'objectclass', 'objectClass'}));
+    'objectclass',      jGetCharAny(src, {'objectclass', 'objectClass'}), ...
+    'objectname',       jGetCharAny(src, {'objectname', 'objectName'}), ...
+    't0_t1',            getMatrixAny(src, {'t0_t1', 't0t1'}));
+end
+
+function m = getMatrixAny(block, names)
+%GETMATRIXANY First numeric field among candidate names ([] if none). Snake-first
+%   with a camelCase fallback, like jGetCharAny.
+m = [];
+if ~isstruct(block); return; end
+for i = 1:numel(names)
+    if isfield(block, names{i}) && isnumeric(block.(names{i}))
+        m = block.(names{i});
+        return;
+    end
+end
 end
 
 function s = getStructAny(block, names)
