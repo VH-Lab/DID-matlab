@@ -130,6 +130,7 @@ fprintf('report:           %s\n', reportPath);
 printUnconvertedCensus(result);
 printFragmentCensus(result);
 printSilentLossCensus(result);
+printFileListAudit(result);
 fprintf('top quarantine reasons:\n');
 for k = 1:min(numel(reasons), 15)
     fprintf('  %5d  [%s] %s\n', reasons(k).count, ...
@@ -204,6 +205,37 @@ if sl.vacuous_field_count > 0
     for k = 1:min(numel(sl.vacuous_required_field), 20)
         f = sl.vacuous_required_field(k);
         fprintf('    %6d  %s / %s.%s\n', f.count, f.class_name, f.block, f.field_name);
+    end
+end
+end
+
+
+function printFileListAudit(result)
+%PRINTFILELISTAUDIT #64, report-only: files a class DECLARES that the document
+%   does not carry (the direction that loses data), and files carried that the
+%   class does not declare. Neither trips any existing gate.
+if ~isfield(result, 'file_list_audit'); return; end
+fl = result.file_list_audit;
+if isfield(fl, 'audit_failed')
+    fprintf('file-list audit: FAILED (%s)\n', fl.audit_failed);
+    return;
+end
+fprintf(['file-list (REPORT ONLY): %d document(s) inspected, %d carrying files; ' ...
+         '%d declared-but-absent, %d present-but-undeclared\n'], ...
+    fl.total_docs, fl.docs_with_files, ...
+    fl.declared_absent_count, fl.present_undeclared_count);
+if fl.declared_absent_count > 0
+    fprintf('  declared by the class, ABSENT from the document:\n');
+    for k = 1:min(numel(fl.declared_but_absent), 20)
+        e = fl.declared_but_absent(k);
+        fprintf('    %6d  %s / %s\n', e.count, e.class_name, e.file_name);
+    end
+end
+if fl.present_undeclared_count > 0
+    fprintf('  carried by the document, DECLARED NOWHERE:\n');
+    for k = 1:min(numel(fl.present_but_undeclared), 20)
+        e = fl.present_but_undeclared(k);
+        fprintf('    %6d  %s / %s\n', e.count, e.class_name, e.file_name);
     end
 end
 end

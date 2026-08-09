@@ -255,6 +255,17 @@ catch auditErr
     result.silent_loss = struct('audit_failed', auditErr.message);
 end
 
+% #64: the same shape one tier over -- a class declares payload FILES and the
+% document carries none, or carries bytes the class never declares. The schema
+% cache allows `file`/`files` as a top-level key and never looks inside, so
+% neither direction trips anything. REPORT ONLY, raises nothing.
+try
+    result.file_list_audit = did2.validate.fileList(migrated, ...
+        'SchemaCache', options.SchemaCache);
+catch fileErr
+    result.file_list_audit = struct('audit_failed', fileErr.message);
+end
+
 if options.CheckReferences
     if ~isempty(options.ReferenceDatabase)
         result.references = did2.validate.references(migrated, ...
