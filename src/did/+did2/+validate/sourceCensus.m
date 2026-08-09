@@ -261,13 +261,25 @@ for u = 1:numel(approachEpochs)
     counts(end+1) = numel(unique(nonEmpty({rows(sel).element_id}))); %#ok<AGROW>
 end
 report.approach_epochs_no_presentation = noPresentation;
-% GUARD THE EMPTY CASE EXPLICITLY. `for n = unique(counts)` iterates over the
-% COLUMNS of its argument, and an empty result here is not reliably 0-by-0 --
-% corpus Dab produced ONE iteration from a distribution that should have had
-% none, emitting a row with a blank subject count against 0 epochs. A phantom
-% row in a report is a number someone will read, and this one appeared in the
-% same report that says 635 approach epochs have no presentation at all, where
-% a reader is looking hardest.
+% GUARD THE EMPTY CASE EXPLICITLY. MEASURED, not reasoned about -- the shapes
+% were printed by the CI probe rather than assumed:
+%
+%     counts = []          size [0 0]
+%     unique(counts)       size [0 1]   -> `for n = ...` runs ONCE
+%     unique(counts(:)')   size [1 0]   -> runs zero times
+%
+% `for` iterates over the COLUMNS of its argument, and `unique` on a 0-by-0
+% returns a 0-by-1: ONE column, of zero rows. So the loop body executed once
+% with an empty `n`, and corpus Dab printed a distribution row with a blank
+% subject count against 0 epochs -- from a distribution that has no rows at all.
+%
+% A phantom row in a report is a number someone will read, and this one appeared
+% directly under "635 approach epochs with NO presentation document", which is
+% exactly where a reader looks hardest.
+%
+% `for x = unique(v)` is a latent extra-iteration bug anywhere v can be empty.
+% This is the only such site in src/ and tests/ (checked); the transpose alone
+% would fix it, and the isempty guard is kept because it states the intent.
 if ~isempty(counts)
     for n = unique(counts(:)')
         report.subjects_per_approach_epoch(end+1) = struct( ...
