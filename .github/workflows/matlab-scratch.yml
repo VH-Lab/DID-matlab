@@ -20,6 +20,16 @@ name: MATLAB scratch (manual)
 # means the next person rediscovers all of the above.
 
 on:
+  # workflow_dispatch alone is not enough: the dispatch API 404s unless the
+  # workflow also exists on the DEFAULT branch, and this one lives on a feature
+  # branch. A push trigger scoped to the scratch file itself gives the same
+  # on-demand behaviour -- edit the probe, push, read the log -- without touching
+  # anything the real gates depend on.
+  push:
+    branches: ['claude/**']
+    paths:
+      - 'tools/scratch.m'
+      - '.github/workflows/matlab-scratch.yml'
   workflow_dispatch:
 
 concurrency:
