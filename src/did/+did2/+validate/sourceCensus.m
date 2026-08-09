@@ -261,9 +261,18 @@ for u = 1:numel(approachEpochs)
     counts(end+1) = numel(unique(nonEmpty({rows(sel).element_id}))); %#ok<AGROW>
 end
 report.approach_epochs_no_presentation = noPresentation;
-for n = unique(counts)
-    report.subjects_per_approach_epoch(end+1) = struct( ...
-        'n_subjects', n, 'n_epochs', sum(counts == n)); %#ok<AGROW>
+% GUARD THE EMPTY CASE EXPLICITLY. `for n = unique(counts)` iterates over the
+% COLUMNS of its argument, and an empty result here is not reliably 0-by-0 --
+% corpus Dab produced ONE iteration from a distribution that should have had
+% none, emitting a row with a blank subject count against 0 epochs. A phantom
+% row in a report is a number someone will read, and this one appeared in the
+% same report that says 635 approach epochs have no presentation at all, where
+% a reader is looking hardest.
+if ~isempty(counts)
+    for n = unique(counts(:)')
+        report.subjects_per_approach_epoch(end+1) = struct( ...
+            'n_subjects', n, 'n_epochs', sum(counts == n)); %#ok<AGROW>
+    end
 end
 end
 
