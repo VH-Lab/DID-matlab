@@ -73,6 +73,22 @@ if strcmp(options.TargetVersion, 'V_eta')
         'Validate', true, 'TargetVersion', options.TargetVersion);
 end
 
+% Census of the V1 SOURCE bodies -- the only instrument here that reads the
+% INPUT rather than the output. Three separate open items each say a build must
+% not proceed until something is MEASURED on real data, and none of those
+% numbers exists anywhere: whether grouping on `epochid.epochid` would fuse
+% distinct epochs, whether a `session` document is present to be the referent of
+% a required `relative_to`, and whether one stimulation approach covers several
+% interactions. All three are properties of the v1 documents, so they are read
+% here, where the corpus is in hand, rather than inferred later from class
+% totals. Best-effort: the migration summary is the primary deliverable and a
+% census failure must not mask it.
+try
+    result.source_census = did2.validate.sourceCensus(bodies);
+catch censusErr
+    result.source_census = struct('audit_failed', censusErr.message);
+end
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 
@@ -131,6 +147,7 @@ printUnconvertedCensus(result);
 printFragmentCensus(result);
 printSilentLossCensus(result);
 printFileListAudit(result);
+printSourceCensus(result);
 fprintf('top quarantine reasons:\n');
 for k = 1:min(numel(reasons), 15)
     fprintf('  %5d  [%s] %s\n', reasons(k).count, ...
@@ -262,5 +279,54 @@ for k = 1:numel(names); counts(k) = tbl.(names{k}); end
 fprintf('  by class (deferred-by-design classes are expected here):\n');
 for k = 1:min(numel(names), 25)
     fprintf('    %6d  %s\n', counts(k), names{order(k)});
+end
+end
+
+
+function printSourceCensus(result)
+%PRINTSOURCECENSUS The V1 SOURCE census: the three pre-build measurements.
+%   Report-only, and deliberately verbose about its DENOMINATOR first -- a
+%   count without one is not evidence, which is the lesson from a census that
+%   printed zeros while reading nothing for two days.
+if ~isfield(result, 'source_census'); return; end
+sc = result.source_census;
+if isfield(sc, 'audit_failed')
+    fprintf('source census: FAILED (%s)\n', sc.audit_failed);
+    return;
+end
+fprintf(['\n--- v1 SOURCE census (REPORT ONLY): %d document(s) read, ' ...
+         '%d unreadable ---\n'], sc.total_docs, sc.skipped_docs);
+
+fprintf('  epoch ids: %d document(s) carry one, %d distinct\n', ...
+    sc.docs_with_epoch_id, sc.distinct_epoch_ids);
+for k = 1:numel(sc.epoch_id_by_prefix)
+    e = sc.epoch_id_by_prefix(k);
+    fprintf('      %-16s %6d distinct  %8d doc(s)\n', ...
+        e.prefix, e.distinct_ids, e.doc_count);
+end
+fprintf('    grouping hazard: %d synthetic (whole_session_) id(s); %d id(s) span >1 session\n', ...
+    sc.synthetic_epoch_id_count, sc.cross_session_epoch_id_count);
+for k = 1:min(numel(sc.synthetic_epoch_ids), 10)
+    s = sc.synthetic_epoch_ids(k);
+    fprintf('      would fuse %3d element span(s): %s (%d doc(s), %d class(es))\n', ...
+        s.distinct_elements, s.epoch_id, s.doc_count, s.distinct_classes);
+end
+
+fprintf('  session documents: %d   (distinct base.session_id values: %d)\n', ...
+    sc.session_doc_count, sc.distinct_session_ids);
+if sc.session_doc_count == 0
+    fprintf('      NONE -- a required `relative_to` would have no referent here\n');
+end
+
+fprintf('  stimulation approaches: %d document(s) over %d epoch(s)\n', ...
+    sc.approach_doc_count, sc.approach_epochs);
+if sc.approach_doc_count > 0
+    fprintf('      distinct subjects per approach epoch:\n');
+    for k = 1:numel(sc.subjects_per_approach_epoch)
+        d = sc.subjects_per_approach_epoch(k);
+        fprintf('        %3d subject(s): %6d epoch(s)\n', d.n_subjects, d.n_epochs);
+    end
+    fprintf('        %6d approach epoch(s) with NO presentation document\n', ...
+        sc.approach_epochs_no_presentation);
 end
 end
