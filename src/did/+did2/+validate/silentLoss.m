@@ -197,12 +197,22 @@ for k = 1:numel(chain)
         continue;
     end
     if ~isfield(c, 'depends_on'); continue; end
+    % jsondecode returns a CELL when the dependency objects in one class do not
+    % all carry the same keys -- which is now normal, because only NUMBERED
+    % families declare min_count/max_count. Concatenating with [deps{:}] throws
+    % on mismatched fieldnames, so iterate element-wise (as requiredDependencies
+    % already does).
     deps = c.depends_on;
-    if iscell(deps); deps = [deps{:}]; end
-    if ~isstruct(deps); continue; end
-    for d = 1:numel(deps)
-        dep = deps(d);
-        if ~isfield(dep, 'name'); continue; end
+    if isstruct(deps)
+        items = num2cell(deps(:)');
+    elseif iscell(deps)
+        items = deps(:)';
+    else
+        continue;
+    end
+    for d = 1:numel(items)
+        dep = items{d};
+        if ~isstruct(dep) || ~isfield(dep, 'name'); continue; end
         n = char(dep.name);
         if ~contains(n, '#'); continue; end
         lo = 0; hi = NaN;
