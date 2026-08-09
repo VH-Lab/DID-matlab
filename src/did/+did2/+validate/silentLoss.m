@@ -164,8 +164,17 @@ report.empty_required_dependency = explode(depKeys, depCounts, ...
     {'class_name', 'edge_name'});
 report.vacuous_required_field = explode(fldKeys, fldCounts, ...
     {'class_name', 'block', 'field_name'});
+% #63. THE BUG THIS LINE PAIR FIXES: famKeys/famCounts were accumulated in the
+% loop and then never assigned, so the counter measured correctly and threw the
+% answer away -- the report read `family_violation_count: 0` on a document the
+% detector had just flagged. It is the silentLoss failure mode one level up: a
+% zero that means "not reported", not "nothing wrong". Two CI rounds and a
+% revert were spent on the detector before a probe printed the report itself.
+report.family_count_violation = explode(famKeys, famCounts, ...
+    {'class_name', 'edge_name', 'declared', 'found'});
 report.empty_dependency_count = sum(depCounts);
 report.vacuous_field_count = sum(fldCounts);
+report.family_violation_count = sum(famCounts);
 end
 
 % ===================== helpers =========================================
