@@ -1,0 +1,89 @@
+name: MATLAB scratch (manual)
+
+# A MATLAB REPL WITH A TWO-MINUTE LATENCY.
+#
+# WHY THIS EXISTS. The dev containers this repo is worked on from have no MATLAB
+# (and Octave cannot substitute: 58 of the +migrators_j files use `arguments`
+# blocks, which Octave does not support). Without a way to PRINT state, a failing
+# MATLAB test can only be attacked by editing, pushing, and reading a pass/fail
+# result -- which is guessing, and on 2026-08-09 it cost two wasted CI rounds and
+# a reverted change before anyone admitted that.
+#
+# This workflow runs `tools/scratch.m` and nothing else. Put whatever you need to
+# SEE in that file -- disp() the struct, size() the array, print the fieldnames --
+# dispatch this workflow, and read the values out of the log. It never runs on
+# push, so it cannot gate anything, and it exits 0 even when the script throws so
+# the error text is reported rather than swallowed by the runner.
+#
+# Leave `tools/scratch.m` in the repo between uses: an empty scratch file that
+# prints its own "nothing to run" line is self-documenting, and a deleted one
+# means the next person rediscovers all of the above.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: matlab-scratch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scratch:
+    name: Run tools/scratch.m and print
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out did-schema (sibling, for V_eta validation)
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: ${{ github.head_ref || github.ref_name }}
+          path: did-schema
+
+      - name: Assemble V_eta schema set (stable + draft)
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+
+      - name: Export DID_SCHEMA_PATH
+        run: |
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" \
+            >> "$GITHUB_ENV"
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+          products: Statistics_and_Machine_Learning_Toolbox
+
+      - name: Install MatBox
+        uses: ehennestad/matbox-actions/install-matbox@v1
+
+      - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+
+      - name: Run tools/scratch.m
+        uses: matlab-actions/run-command@v2
+        with:
+          # try/catch so a throw PRINTS its identifier, message and stack instead
+          # of being reduced to a red X -- the whole point of this workflow.
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            addpath(genpath("tools"));
+            try
+                scratch;
+            catch ME
+                fprintf(2, '\nSCRATCH THREW: %s\n%s\n', ME.identifier, ME.message);
+                for k = 1:numel(ME.stack)
+                    fprintf(2, '  at %s (line %d)\n', ME.stack(k).name, ME.stack(k).line);
+                end
+            end
