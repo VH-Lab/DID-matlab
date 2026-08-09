@@ -174,7 +174,7 @@ end
 function [keys, counts] = bump(keys, counts, key)
 idx = find(strcmp(key, keys), 1);
 if isempty(idx)
-    keys{end+1} = key; counts(end+1) = 1; %#ok<AGROW>
+    keys{end+1} = key; counts(end+1) = 1;
 else
     counts(idx) = counts(idx) + 1;
 end

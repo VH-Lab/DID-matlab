@@ -102,6 +102,36 @@ verifyWarningFree(testCase, @() did2.validate.silentLoss({[]}));
 verifyWarningFree(testCase, @() did2.validate.silentLoss(struct([])));
 end
 
+function testNumberedFamilyCountIsMeasured(testCase)
+% #63. `mustBeNonEmpty` on a `name_#` family is unenforceable AND meaningless --
+% a MISSING instance of a family is not a blank one -- so three families were
+% declared REQUIRED and verified by nothing. What is checkable is the instance
+% COUNT, which the schema now declares as min_count/max_count.
+%
+% A subject_interaction leaf declares time_reference_# min_count 1. A document
+% carrying none must be reported. REPORT ONLY: this raises nothing, because the
+% counts have never been measured on real data and enforcing a minimum before
+% knowing them is how a gate turns red on a corpus.
+b = bodyStruct('voltage_observation', 'obs_no_time');
+rep = did2.validate.silentLoss({did2.document(b)});
+verifyGreaterThanOrEqual(testCase, rep.family_violation_count, 1, ...
+    'a statement with no time_reference instance must be reported');
+edges = {rep.family_count_violation.edge_name};
+verifyTrue(testCase, any(strcmp('time_reference_#', edges)));
+end
+
+function testSatisfiedFamilyIsSilent(testCase)
+% One instance satisfies min_count 1 -- and the family check must not fire just
+% because an edge is blank. That is the separate empty-edge check; conflating
+% the two is what made `mustBeNonEmpty` look like it meant something here.
+b = bodyStruct('voltage_observation', 'obs_with_time');
+b.depends_on = struct('name', {'time_reference_1'}, 'value', {'tr_1'});
+rep = did2.validate.silentLoss({did2.document(b)});
+edges = {rep.family_count_violation.edge_name};
+verifyFalse(testCase, any(strcmp('time_reference_#', edges)), ...
+    'one instance satisfies min_count 1');
+end
+
 % ===================== helpers =============================================
 
 function d = docObj(className, id)
