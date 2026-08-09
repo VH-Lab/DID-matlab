@@ -52,6 +52,45 @@ end
 blk = getBlock(preBody, 'fitcurve');
 subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
     dependencyValue(preBody, 'subject_id'));
+
+% ---------------------------------------------------------------------
+% THE GUARD: NO SUBJECT => NO OBSERVATION. Pass the document through.
+% ---------------------------------------------------------------------
+% The two edges read above are read on FAITH. NDI's fitcurve template
+% declares exactly ONE dependency -- `fit_example_data_id` -- and `element_id`
+% has never appeared in that file at any point in NDI's history
+% (`git log --all -S"element_id" -- '*fitcurve*'` is empty). There is also no
+% writer anywhere in NDI: the class occurs in six files, of which the only
+% `.m` is `+ndi/+data/evaluate_fitcurve.m`, and that one READS.
+%
+% So on any document matching the template `subjectId` is '', and what this
+% migrator used to emit was a `score_observation` -- a residual sum of squares
+% -- ABOUT NOBODY. It went unnoticed because `+did2/+validate/references.m:90`
+% skips empty edges, so a subject-less observation clears the reference gate
+% and the quarantine gate alike. That is the `ontology_image` husk again, and
+% the reason a husk is worse than a quarantine is that a quarantine is VISIBLE.
+%
+% Passing through is the shape already used for `openminds_stimulus` and
+% `probe_geometry`: the document survives intact, still carrying `fit_sse` and
+% `fit_equation`, for a second pass that has the migrated-id graph. There is
+% nothing on this document to attribute FROM in pass one -- its only declared
+% edge points at example data, not at a subject.
+%
+% Passing through re-exposes `fit_example_data_id` to reference validation.
+% That edge is OPTIONAL and defaults to '' in the template, and empty edges are
+% skipped, so it costs nothing unless real documents populate it AND the
+% referent is outside the batch. Whether any real documents exist at all is
+% being measured now; until that lands this guard is the safe direction to be
+% wrong in, because it cannot lose data silently.
+%
+% DELIBERATELY NOT APPLIED TO `vmspikefit`: its template DOES declare
+% `element_id`, so it has a subject by construction. The same guard there
+% would be defensible but is a separate change to a separate migrator.
+if isempty(subjectId)
+    bodies = {preBody};
+    return;
+end
+
 sse = getField(blk, 'fit_sse');
 fitEq = getCharField(blk, 'fit_equation');
 bodies = residualFold(preBody, subjectId, sse, fitEq, 'migrated_fitcurve');

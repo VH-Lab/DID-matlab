@@ -2529,6 +2529,62 @@ verifyFalse(testCase, isfield(obs.score.value, 'scale_min'));
 verifyFalse(testCase, isfield(obs.score.value, 'scale_max'));
 end
 
+function testFitcurveWithNoSubjectPassesThroughInsteadOfObservingNobody(testCase)
+% THE GUARD. This fixture is the NDI TEMPLATE EXACTLY: one dependency,
+% `fit_example_data_id`, and no subject-bearing edge of any kind. That is what
+% a real fitcurve document looks like -- `element_id` has never been in the
+% template's history and NDI has no writer for the class at all.
+%
+% NOTE WHAT THIS MEANS ABOUT THE TEST ABOVE. testFitcurveFoldsToResidualScore
+% hands the migrator an `element_id`, i.e. it asserts the migrator's own
+% assumption back to it, so it could never have caught this. It stays, because
+% documents MAY carry edges the template does not declare and that path has to
+% keep working -- but it is not evidence that the path is ever taken.
+%
+% Before the guard this emitted a score_observation with an empty subject_id:
+% a residual sum of squares about nobody, invisible to every gate because
+% references.m skips empty edges.
+body = struct();
+body.document_class = struct('class_name', 'fitcurve', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'fit_example_data_id'}, 'value', {''});
+body.base = struct('id', 'fc_2', 'session_id', 'sess_09', 'name', 'fc', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.fitcurve = struct('fit_equation', 'gaussian', 'fit_sse', 12.5);
+
+out = did2.convert.migrators_j.fitcurve(body);
+
+verifyEqual(testCase, numel(out), 1, ...
+    'a subject-less fitcurve must pass through as exactly one document');
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(names, 'score_observation')), ...
+    'must NOT emit an observation with no subject');
+verifyEqual(testCase, names{1}, 'fitcurve');
+% id preserved and the payload intact, so the second pass still has both.
+verifyEqual(testCase, out{1}.base.id, 'fc_2');
+verifyEqual(testCase, out{1}.fitcurve.fit_sse, 12.5, 'AbsTol', 1e-9);
+verifyEqual(testCase, out{1}.fitcurve.fit_equation, 'gaussian');
+end
+
+function testFitcurveWithAnEmptyElementIdIsAlsoGuarded(testCase)
+% The edge being PRESENT but blank is the same defect as the edge being absent
+% -- and it is the shape the invented-empty-edge pattern produces, so it is
+% worth pinning separately rather than assuming the isempty covers it.
+body = struct();
+body.document_class = struct('class_name', 'fitcurve', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {''});
+body.base = struct('id', 'fc_3', 'session_id', 'sess_09', 'name', 'fc', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.fitcurve = struct('fit_equation', 'gaussian', 'fit_sse', 1.5);
+
+out = did2.convert.migrators_j.fitcurve(body);
+
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'fitcurve');
+verifyEqual(testCase, out{1}.base.id, 'fc_3');
+end
+
 function testVmspikefitFoldsToResidualScore(testCase)
 % Fixture built from the NDI template. r_squared has never existed on
 % vmspikefit; fit_sse has. r^2 is not recoverable here -- the template ships no
