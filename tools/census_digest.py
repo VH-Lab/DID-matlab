@@ -22,18 +22,25 @@ module it is importable, and tests/test_census_digest.py exercises both shapes
 in under a second.
 
 Usage:
-    python3 tools/census_digest.py <reports-dir>
+    python3 tools/census_digest.py <reports-dir> [<reports-dir> ...]
 
 Exits non-zero if any report could not be rendered -- but only AFTER every
 readable report has printed. A digest that cannot read its input must say so;
 it must not also destroy the data it could read.
 """
 
-import glob
 import json
 import os
 import sys
 import traceback
+
+# Sentinel placed in the `failed` list when the digest found no reports at all.
+# ZERO REPORTS IS A FAILURE OF THE INSTRUMENT, NOT A CLEAN RUN. It used to
+# return `(lines, [])` -- so run #3's census job printed "NO CORPUS REPORTS
+# FOUND" and went GREEN, and six corpora that had run for over an hour
+# reported nothing at all. A digest with no input has not agreed with the
+# corpora; it has not read them.
+MISSING_REPORTS = "<no *-summary.json found>"
 
 
 def aslist(v):
@@ -157,12 +164,83 @@ def render_report(r, out):
                                          str(q.get("reason", ""))[:90]))
 
 
-def digest(reports_dir):
-    """Return (lines, failed_paths). Never raises on a malformed report."""
+def find_reports(reports_dirs):
+    """Find every *-summary.json under each root in reports_dirs, at ANY depth.
+
+    Return (chosen_paths, all_paths, dirs_walked).
+
+    SEVERAL ROOTS because MATLAB's pwd during a corpus run is not fixed:
+    `test-corpus.yml` downloads artifacts into `corpus-reports/` while
+    `test-code.yml` runs the corpora in-process and they land in
+    `tests/corpus-reports/`. That second workflow's digest step has been
+    printing "NO CORPUS REPORTS FOUND" for the same reason, one directory off.
+    A root that does not exist is reported, not fatal.
+
+    RECURSIVE ON PURPOSE. The reports are written to `<pwd>/corpus-reports/`
+    and MATLAB's pwd during a corpus run is `tests/`, so the report lands at
+    `tests/corpus-reports/<NAME>-summary.json`. `upload-artifact` given two
+    search paths takes their LEAST COMMON ANCESTOR as the artifact root -- the
+    repo root -- so the zip carries `tests/corpus-reports/...`, and
+    `download-artifact --path corpus-reports` unpacks it to
+    `corpus-reports/tests/corpus-reports/...`. Run #3 (31315510527) downloaded
+    5 artifacts, 10 files, and matched ZERO with the old one-level glob:
+
+        Total of 5 artifact(s) downloaded
+        NO CORPUS REPORTS FOUND (corpus-reports/*-summary.json)
+        With the provided path, there will be 10 files uploaded
+
+    Depth is an artifact-plumbing detail and must never again decide whether
+    the census is seen. Duplicates (the same corpus found at two depths, which
+    the two-path upload can produce) collapse to the shallowest path, and the
+    collapse is REPORTED rather than silently applied.
+    """
+    all_paths, dirs_walked = [], 0
+    for reports_dir in reports_dirs:
+        for root, _dirs, names in os.walk(reports_dir):
+            dirs_walked += 1
+            for name in names:
+                if name.endswith("-summary.json"):
+                    all_paths.append(os.path.join(root, name))
+    all_paths.sort()
+
+    by_name, chosen = {}, []
+    for path in all_paths:
+        key = os.path.basename(path)
+        if key in by_name:
+            continue
+        by_name[key] = path
+        chosen.append(path)
+    chosen.sort(key=lambda p: (os.path.basename(p), p))
+    return chosen, all_paths, dirs_walked
+
+
+def digest(reports_dirs):
+    """Return (lines, failed_paths). Never raises on a malformed report.
+
+    reports_dirs is a root or a list of roots.
+    """
+    if isinstance(reports_dirs, str):
+        reports_dirs = [reports_dirs]
     out, failed = [], []
-    files = sorted(glob.glob(os.path.join(reports_dir, "*-summary.json")))
+    files, all_paths, dirs_walked = find_reports(reports_dirs)
+
+    # RULE 5, the digest's own denominator, printed FIRST and unconditionally.
+    # Run #3 printed "NO CORPUS REPORTS FOUND" and exited 0 while five
+    # artifacts sat unread one directory deeper. "Found nothing" and "looked
+    # in the wrong place" have to be distinguishable from the output alone.
+    out.append("REPORT SEARCH: %d file(s) matching *-summary.json under %s "
+               "(%d director(ies) walked, %d duplicate(s) collapsed)"
+               % (len(all_paths), ", ".join(repr(d) for d in reports_dirs),
+                  dirs_walked, len(all_paths) - len(files)))
+    for path in files:
+        out.append("  read: %s" % path)
     if not files:
-        return (["NO CORPUS REPORTS FOUND (%s/*-summary.json)" % reports_dir], [])
+        out.append("NO CORPUS REPORTS FOUND (no *-summary.json at any depth "
+                   "under %s)" % ", ".join(reports_dirs))
+        for d in reports_dirs:
+            if not os.path.isdir(d):
+                out.append("  the directory itself does not exist: %s" % d)
+        return (out, [MISSING_REPORTS])
 
     out.append("=" * 72)
     out.append("CORPUS CENSUS DIGEST  (%d corpus report(s))" % len(files))
@@ -192,8 +270,8 @@ def digest(reports_dir):
 
 
 def main(argv):
-    reports_dir = argv[1] if len(argv) > 1 else "corpus-reports"
-    lines, failed = digest(reports_dir)
+    reports_dirs = argv[1:] or ["corpus-reports"]
+    lines, failed = digest(reports_dirs)
     print("\n".join(lines))
     if failed:
         print("DIGEST FAILED on %d report(s): %s" % (len(failed), ", ".join(failed)))

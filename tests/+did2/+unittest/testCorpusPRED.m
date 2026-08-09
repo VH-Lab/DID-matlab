@@ -89,6 +89,28 @@ result = did2.convert.resolveDeferredBaths(result, 'Validate', true, ...
 result = did2.convert.resolveDatasetEntities(result, 'Validate', true, ...
     'TargetVersion', 'V_eta');
 
+% WRITE THE CENSUS REPORT, before the assertions so a red gate still reports.
+%
+% PRED is a HARD gate (zero quarantine), not a discovery run, so it does not
+% go through runCorpusDiscovery -- and as a side effect it has been invisible
+% to the census that four open items depend on. Run #3 (31315510527) is the
+% evidence: six corpus jobs ran, five artifacts were produced, and PRED's
+% upload step said
+%
+%   ##[warning]No files were found with the provided path: corpus-reports/
+%   tests/corpus-reports/. No artifacts will be uploaded.
+%
+% A corpus we gate on but never measure is a denominator missing from every
+% census number we quote. The assertions below are unchanged; this only stops
+% the corpus being uncounted.
+try
+    result.source_census = did2.validate.sourceCensus(bodies);
+catch censusErr
+    result.source_census = struct('audit_failed', censusErr.message);
+end
+reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
+did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
+
 % Build a readable diagnostic so a failure tells us *which* doc and *why*.
 if result.summary.quarantine_count > 0
     lines = cell(1, numel(result.quarantine));

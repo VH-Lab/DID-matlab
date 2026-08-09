@@ -115,10 +115,74 @@ class TestDigest(DigestCase):
         _, failed = self.run_digest()
         self.assertTrue(failed, "an unreadable report must not exit clean")
 
-    def test_no_reports_is_stated_plainly(self):
+    def test_no_reports_is_a_failure_not_a_quiet_zero(self):
+        # INVERTED, not updated. This test used to assert `failed == []` --
+        # the same premise the code held, so it could not catch the code. Run
+        # #3 (31315510527) then printed "NO CORPUS REPORTS FOUND" and exited
+        # 0 while five downloaded artifacts sat one directory deeper, and the
+        # census job went green having aggregated nothing.
         text, failed = self.run_digest()
         self.assertIn("NO CORPUS REPORTS FOUND", text)
+        self.assertTrue(failed, "an empty digest must not exit clean")
+
+    def test_reports_found_at_any_depth(self):
+        # The REAL layout from run #3, reproduced exactly: MATLAB writes to
+        # `<pwd>/corpus-reports/` with pwd = `tests/`, upload-artifact roots
+        # the zip at the repo root, and download-artifact --path corpus-reports
+        # unpacks it one level deeper still.
+        deep = os.path.join(self.dir, "tests", "corpus-reports")
+        os.makedirs(deep)
+        with open(os.path.join(deep, "Deep-summary.json"), "w") as fh:
+            json.dump({"corpus": "Deep", "total": 7, "migrated_count": 7,
+                       "quarantine_count": 0}, fh)
+        text, failed = self.run_digest()
         self.assertEqual(failed, [])
+        self.assertIn("Deep", text)
+        self.assertIn("total=7", text)
+
+    def test_the_same_corpus_at_two_depths_is_read_once(self):
+        # The two-path upload can carry both copies. Collapse to one, and SAY
+        # that one was collapsed -- a silently deduped denominator is the
+        # thing rule 5 exists to prevent.
+        body = {"corpus": "Dup", "total": 3, "migrated_count": 3,
+                "quarantine_count": 0}
+        self.write("Dup", body)
+        deep = os.path.join(self.dir, "tests", "corpus-reports")
+        os.makedirs(deep)
+        with open(os.path.join(deep, "Dup-summary.json"), "w") as fh:
+            json.dump(body, fh)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("1 corpus report(s)", text)
+        self.assertIn("1 duplicate(s) collapsed", text)
+
+    def test_search_denominator_precedes_everything(self):
+        self.write("A", {"corpus": "A", "total": 1, "migrated_count": 1,
+                         "quarantine_count": 0})
+        text, _ = self.run_digest()
+        first = text.splitlines()[0]
+        self.assertIn("REPORT SEARCH", first)
+        self.assertIn("1 file(s)", first)
+
+    def test_several_roots_are_searched_and_one_missing_is_not_fatal(self):
+        # test-code.yml digests `corpus-reports` from the repo root while the
+        # corpora write to `tests/corpus-reports`; that step has been printing
+        # NO REPORTS FOUND for exactly one directory's worth of offset.
+        other = os.path.join(self.dir, "elsewhere")
+        os.makedirs(other)
+        with open(os.path.join(other, "Far-summary.json"), "w") as fh:
+            json.dump({"corpus": "Far", "total": 2, "migrated_count": 2,
+                       "quarantine_count": 0}, fh)
+        lines, failed = digest([os.path.join(self.dir, "absent"), other])
+        text = "\n".join(lines)
+        self.assertEqual(failed, [])
+        self.assertIn("total=2", text)
+
+    def test_missing_directory_says_so(self):
+        lines, failed = digest(os.path.join(self.dir, "nope"))
+        text = "\n".join(lines)
+        self.assertIn("the directory itself does not exist", text)
+        self.assertTrue(failed)
 
     def test_quarantine_reasons_single_object(self):
         self.write("Q", {

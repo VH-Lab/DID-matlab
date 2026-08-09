@@ -153,7 +153,14 @@ jobs:
         continue-on-error: true
 
       - name: Corpus census digest
-        run: python3 tools/census_digest.py corpus-reports
+        # The digest searches RECURSIVELY and exits non-zero when it finds
+        # nothing. Both properties are load-bearing: `upload-artifact` given
+        # two search paths roots the zip at their least common ancestor (the
+        # repo root), so the download lands the reports at
+        # `corpus-reports/tests/corpus-reports/` -- one level below where the
+        # old one-level glob looked. Run #3 downloaded 5 artifacts, wrote 10
+        # files, printed "NO CORPUS REPORTS FOUND" and went GREEN.
+        run: python3 tools/census_digest.py corpus-reports tests/corpus-reports
 
       - name: Upload combined reports
         if: always()

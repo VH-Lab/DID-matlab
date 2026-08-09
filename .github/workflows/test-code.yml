@@ -128,8 +128,13 @@ jobs:
         # composite check cannot be flipped to enforcing until these counts are
         # known, because flipping blind would light up an unknown number of
         # quarantines and block the 0-quarantine gate.
+        #
+        # BOTH ROOTS. MATLAB's pwd during these corpora is `tests/`, so the
+        # reports land in `tests/corpus-reports/` and this step -- which named
+        # only the repo-root path -- has been printing NO REPORTS FOUND while
+        # exiting 0. The digest now fails loudly when it aggregates nothing.
         if: always()
-        run: python3 tools/census_digest.py corpus-reports
+        run: python3 tools/census_digest.py corpus-reports tests/corpus-reports
 
       - name: Upload corpus discovery reports
         # Discovery-mode corpus tests (e.g., testCorpus20211116) write
@@ -140,5 +145,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: corpus-discovery-reports
-          path: corpus-reports/
-          if-no-files-found: ignore
+          path: |
+            corpus-reports/
+            tests/corpus-reports/
+          if-no-files-found: warn

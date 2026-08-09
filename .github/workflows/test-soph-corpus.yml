@@ -100,5 +100,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: soph-corpus-discovery-report
-          path: corpus-reports/
-          if-no-files-found: ignore
+          # BOTH ROOTS, and `warn` not `ignore`: MATLAB's pwd here is `tests/`,
+          # so a root-only path silently uploaded nothing.
+          path: |
+            corpus-reports/
+            tests/corpus-reports/
+          if-no-files-found: warn
