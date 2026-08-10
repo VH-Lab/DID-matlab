@@ -632,10 +632,16 @@ verifyEqual(testCase, numel(out.migrated), 1, ...
     'a subject-less image_stack must pass through as exactly one document');
 verifyFalse(testCase, isfield(out.summary.by_class, 'image_observation'), ...
     'must NOT emit an observation with no subject');
-verifyEqual(testCase, out.migrated{1}.document_class.class_name, 'image_stack');
-verifyEqual(testCase, out.migrated{1}.base.id, 'is_02');
+% NOTE THE ACCESSOR. v1_to_v2 returns did2.document OBJECTS, read with
+% .get('dotted.path') -- NOT structs. The first draft of these two tests used
+% struct field access, carried over from the fitcurve tests, which call the
+% migrator DIRECTLY and so really do get structs back. Two green CI jobs went
+% red on that alone.
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('document_class.class_name'), 'image_stack');
+verifyEqual(testCase, doc.get('base.id'), 'is_02');
 % the payload survives for the second pass
-verifyEqual(testCase, out.migrated{1}.image_stack_parameters.data_type, 'uint8');
+verifyEqual(testCase, doc.get('image_stack_parameters.data_type'), 'uint8');
 end
 
 function testImageStackWithAnEmptySubjectEdgeIsAlsoGuarded(testCase)
@@ -653,7 +659,7 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
 
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.document_class.class_name, 'image_stack');
+verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'image_stack');
 end
 
 function testImageStackBecomesBodyBackedObservation(testCase)

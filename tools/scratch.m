@@ -1,5 +1,9 @@
 %SCRATCH Ad-hoc MATLAB probe, run by .github/workflows/matlab-scratch.yml.
 %
+%   IDLE. Nothing to run right now -- this file stays in the repo between uses
+%   so the next person finds the workflow instead of rediscovering that these
+%   containers have no MATLAB.
+%
 %   TO USE IT: replace the body below with whatever you need to SEE, then push.
 %   A push touching this file runs it and prints to the workflow log; it gates
 %   nothing and exits 0 even on a throw, so an error reports its identifier,
@@ -10,49 +14,19 @@
 %                the strength of a pass/fail result. Probe 2 showed the
 %                detection logic was RIGHT; probe 3 showed the counts were
 %                computed and then never assigned to the report.
-%     probe 5    printed MATLAB's empty shapes instead of guessing at them.
+%     probe 5    printed MATLAB's empty shapes instead of guessing at them:
+%                unique([]) is 0-by-1, so `for n = unique([])` iterates ONCE.
 %     probe 6    checked the testCorpusPRED census wiring in 2 minutes instead
 %                of assuming it across a 70-minute corpus run.
 %
-%   PROBE 7 (current): the image_stack guard turned two CI jobs red with
-%   "2 test(s) failed" and no visible diagnostic -- the results table is
-%   alphabetical and the failures scrolled past the log tail. Print the actual
-%   failure text rather than guessing at it.
+%   PROBE 7 UNDER-DELIVERED, and that is worth recording. It correctly isolated
+%   WHICH two tests failed, but its diagnostic extraction printed nothing -- the
+%   DiagnosticRecord walk was written blind and never verified. A probe whose
+%   output you cannot check is a probe that can mislead you. The cause was found
+%   by reading `runJ` instead: v1_to_v2 returns did2.document OBJECTS read with
+%   .get('dotted.path'), NOT structs, and the new tests used struct access
+%   carried over from the fitcurve tests (which call a migrator directly and do
+%   get structs back). NEXT TIME: have the probe print a shape first --
+%   class(out.migrated{1}) -- before trying to format a failure.
 
-addpath(genpath('src'));
-addpath(genpath('tests'));
-
-import matlab.unittest.TestSuite;
-import matlab.unittest.TestRunner;
-
-fprintf('--- probe 7: image_stack guard failures ---\n');
-fprintf('DID_SCHEMA_PATH = %s\n', getenv('DID_SCHEMA_PATH'));
-
-suite = TestSuite.fromFile(fullfile('tests', '+did2', '+unittest', 'testMigratorsJ.m'));
-names = string({suite.Name});
-sel = contains(names, 'ImageStack');
-fprintf('image_stack tests in the suite: %d\n', sum(sel));
-for n = names(sel); fprintf('   %s\n', n); end
-
-r = TestRunner.withNoPlugins().run(suite(sel));
-for k = 1:numel(r)
-    fprintf('\n=== %s : %s ===\n', r(k).Name, string(matlab.lang.OnOffSwitchState(r(k).Passed)));
-    if r(k).Passed; continue; end
-    d = r(k).Details;
-    if isfield(d, 'DiagnosticRecord')
-        for j = 1:numel(d.DiagnosticRecord)
-            rec = d.DiagnosticRecord(j);
-            fprintf('  event      : %s\n', rec.Event);
-            if ~isempty(rec.TestDiagnosticResult)
-                fprintf('  test diag  : %s\n', strjoin(cellstr(rec.TestDiagnosticResult), ' | '));
-            end
-            if ~isempty(rec.FrameworkDiagnosticResult)
-                txt = strjoin(cellstr(rec.FrameworkDiagnosticResult), newline);
-                fprintf('  framework  : %s\n', txt);
-            end
-            if isprop(rec, 'Report') || isfield(rec, 'Report')
-                fprintf('  report     :\n%s\n', rec.Report);
-            end
-        end
-    end
-end
+fprintf('scratch.m is idle -- nothing to run.\n');
