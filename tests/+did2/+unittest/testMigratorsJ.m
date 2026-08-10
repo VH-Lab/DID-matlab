@@ -34,11 +34,26 @@ out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 end
 
 function v = depVal(doc, name)
+%DEPVAL Read an edge off a CONVERTED document.
+%
+%   BOTH SPELLINGS ARE ACCEPTED, and that is a repair rather than a
+%   convenience. A did2 edge is `document_id` after universalRenames
+%   (universalRenames.m:372-380) and `value` on a raw migrator body, and BOTH
+%   reach this helper depending on which document is under test -- the
+%   `oneepoch` fold failed twice on exactly this before the tolerant read was
+%   used. `+did2/+validate/references.m:176-179` already resolves it the same
+%   way and in the same order, so this mirrors the validator rather than
+%   inventing a second convention. Reading `.value` alone did not merely miss
+%   the edge, it ERRORED on a struct that carries only the other field.
 v = '';
 deps = doc.get('depends_on');
 for k = 1:numel(deps)
     if isfield(deps(k), 'name') && strcmp(deps(k).name, name)
-        v = deps(k).value;
+        if isfield(deps(k), 'document_id') && ~isempty(deps(k).document_id)
+            v = deps(k).document_id;
+        elseif isfield(deps(k), 'value')
+            v = deps(k).value;
+        end
         return;
     end
 end
@@ -224,13 +239,51 @@ verifyEqual(testCase, depVal(rel, 'parent'), 'probe_1');
 end
 
 function testElementDirectDeviceObservesSpecimen(testCase)
-% A direct device (direct=1, no underlying) observes the specimen -- the
-% instrument-agent role, NOT part_of (a probe is not part of the animal).
+% INVERTED 2026-08-10, not patched. This test USED to assert that a direct
+% device emits a loose `observes` directed_relation onto the specimen. That
+% relation is exactly what the signed raw-recording model retires: the fact
+% "this electrode recorded this animal" now lives INSIDE a typed observation,
+% as `subject_id` = the specimen and `instrument_id` = the electrode (T7),
+% rather than beside it as an untyped edge that carries no modality and no
+% units.
+%
+% So the old assertion was not stale, it was asserting the defect. Updating it
+% to look for the relation somewhere else would have preserved the thing being
+% removed. This is the fourth instance of that pattern in this migration
+% (test_phase1_source_cleanup_and_dep_typing,
+% test_ingested_caches_epochid_dep_only,
+% testMfdaqIngestedDeEncodesToDaqreaderEpochdataIngested were the first three),
+% and the rule from those is the rule here: a test written from the same
+% premise as the code cannot catch the code, so it is inverted, never patched.
+%
+% The retirement is CONDITIONAL, and that is what the second half checks:
+% element.m drops `observes` only when jRecordingObservation actually wrote the
+% replacement `instrument_id` edge. An element whose type resolves to no
+% modality keeps `observes`, because nothing has taken over the job --
+% testMigratorsJRecordingObservation's
+% testUnmappedTypeIsFlaggedQueryablyAndKeepsObserves pins that direction down.
 out = runJ(elementDoc('probeA', 'n-trode', 'ndi.probe.timeseries', 1, 'subj_007', ''));
+
+% The loose relation is GONE for a resolvable direct device.
 rel = firstOfClassJ(out.migrated, 'directed_relation');
-verifyEqual(testCase, rel.get('directed_relation.relation').name, 'observes');
-verifyEqual(testCase, depVal(rel, 'child'), 'el_1');
-verifyEqual(testCase, depVal(rel, 'parent'), 'subj_007');   % the specimen
+verifyEmpty(testCase, rel, ...
+    ['a direct n-trode with a specimen must no longer emit a loose ' ...
+     '`observes` relation -- the attribution moved into the typed observation']);
+
+% ...and the attribution it carried is now inside the observation. n-trode is
+% an extracellular electrode bundle, so the modality is voltage.
+obs = firstOfClassJ(out.migrated, 'voltage_observation');
+verifyNotEmpty(testCase, obs, 'a direct n-trode must emit a voltage_observation');
+verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');    % the SPECIMEN
+verifyEqual(testCase, depVal(obs, 'instrument_id'), 'el_1');     % the electrode (T7)
+
+% The element itself is still promoted to a subject with its id PRESERVED --
+% ~50 documents reference `element_id`, and moving it is the 11,448-orphan
+% shape. The observation mints a fresh id; it does not take el_1's.
+subj = firstOfClassJ(out.migrated, 'subject');
+verifyNotEmpty(testCase, subj, 'the element must still become a subject');
+verifyEqual(testCase, subj.get('base.id'), 'el_1');
+verifyNotEqual(testCase, obs.get('base.id'), 'el_1');
 end
 
 % ============ treatment_transfer -> term_manipulation + relation =======
@@ -2778,7 +2831,16 @@ nodeB = struct('epoch_clock', 'utc', 'epoch_id', 't00002', ...
 body.syncrule_mapping = struct('cost', 1.0, 'mapping', [1 0; 0 1], ...
     'epochnode_a', nodeA, 'epochnode_b', nodeB);
 
-out = did2.convert.migrators_j.syncrule_mapping(body);
+% The migrator now returns a CELL of bodies, not a bare struct: the clock
+% alignment build gave it a second branch (the clock_alignment +
+% relative_reference fold), so its contract is 1 -> N. This branch is still the
+% #58 passthrough and still 1 -> 1 -- the fold is GATED on an `epoch` document
+% that no migrator mints yet, so every did_v1 document lands here. Only the
+% container changed; every assertion below is unchanged, which is the point.
+bodies = did2.convert.migrators_j.syncrule_mapping(body);
+verifyEqual(testCase, numel(bodies), 1, ...
+    'the gated fold must not fire: no epoch_id_# edges on a did_v1 document');
+out = bodies{1};
 verifyEqual(testCase, out.document_class.schema_version, 'V_eta');
 % epoch_clock / epoch_id are no longer bare on the node -- they moved under
 % time_reference (epoch_bounded_reference shape)

@@ -121,16 +121,16 @@ verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1, ...
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 1);
 
 body = firstOfClass(out, 'sampled_body');
-axes = body.get('sampled_body.axes');
-verifyEqual(testCase, numel(axes), 1);
-verifyEqual(testCase, axes(1).name, 'channel');
-verifyEqual(testCase, axes(1).kind, 'index');
+axs = body.get('sampled_body.axes');
+verifyEqual(testCase, numel(axs), 1);
+verifyEqual(testCase, axs(1).name, 'channel');
+verifyEqual(testCase, axs(1).kind, 'index');
 % The EXTENT is deliberately absent: the channel count is not on the element
 % document (PROBE-TYPES.md: for an n-trode it "is calculated from the number of
 % channels specified in the device string", which lives in the epochprobemap).
 % Writing a 0 here would be the spikewaves bug -- a body that cleanly describes
 % an empty recording. This assertion is the tripwire against that.
-verifyFalse(testCase, isfield(axes(1), 'length') && ~isempty(axes(1).length), ...
+verifyFalse(testCase, isfield(axs(1), 'length') && ~isempty(axs(1).length), ...
     'the channel axis invented a length the element document does not carry');
 end
 
@@ -189,15 +189,16 @@ verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
 verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 2);
 % both are OF the specimen and WITH the same instrument, and share one anchor
-v = firstOfClass(out, 'voltage_observation');
-i = firstOfClass(out, 'current_observation');
-verifyEqual(testCase, depValue(v, 'subject_id'), 'specimen_1');
-verifyEqual(testCase, depValue(i, 'subject_id'), 'specimen_1');
-verifyEqual(testCase, depValue(v, 'instrument_id'), 'el_1');
-verifyEqual(testCase, depValue(i, 'instrument_id'), 'el_1');
-verifyEqual(testCase, depValue(v, 'time_reference_1'), depValue(i, 'time_reference_1'));
+volt = firstOfClass(out, 'voltage_observation');
+curr = firstOfClass(out, 'current_observation');
+verifyEqual(testCase, depValue(volt, 'subject_id'), 'specimen_1');
+verifyEqual(testCase, depValue(curr, 'subject_id'), 'specimen_1');
+verifyEqual(testCase, depValue(volt, 'instrument_id'), 'el_1');
+verifyEqual(testCase, depValue(curr, 'instrument_id'), 'el_1');
+verifyEqual(testCase, depValue(volt, 'time_reference_1'), depValue(curr, 'time_reference_1'));
 verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);
-verifyEqual(testCase, i.get('subject_statement.variable').name, 'current');
+verifyEqual(testCase, volt.get('subject_statement.variable').name, 'voltage');
+verifyEqual(testCase, curr.get('subject_statement.variable').name, 'current');
 end
 
 function testCurrentPipetteIsNotLabelledVoltage(testCase)
