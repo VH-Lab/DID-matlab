@@ -152,11 +152,52 @@
 %                          decision (it is a content type, not software).
 %                          Guarded passthrough when the block declares nothing.
 %                          TEAM-SIGN-OFF [file navigation], jess 2026-08-06.
-%                          BLOCKED FOR CORPUS USE: epoch_file_pattern declares the
-%                          two lists "type": "char", which the validator's char
-%                          branch rejects for a cellstr; the sibling
-%                          epochfiles_ingested.files uses "type": "string". See the
-%                          migrator header.
+%                          EMBARGO LIFTED 2026-08-10: the two lists are declared
+%                          "type": "string" in DID-schema now, so a multi-pattern
+%                          navigator validates clean. (It read "BLOCKED FOR CORPUS
+%                          USE" while the fields were "type": "char", which the
+%                          validator's char branch rejects for a cellstr.)
+%     daqreader          - 1 -> 1. DISSOLVES into a `software` entity, base.id
+%                          PRESERVED (daqreader_id is a declared dependency on
+%                          FOUR NDI templates: daqsystem + the three ingest
+%                          classes). Its whole content is one MATLAB class name
+%                          (+ndi/+daq/reader.m:264-267), which becomes the
+%                          entity's name / local_identifier -- so the fold is a
+%                          dissolution, not a rename. Guarded passthrough when
+%                          there is no class name, or when a de-encoded
+%                          `reader_string` is present (`software` has no slot for
+%                          it and the signed decision KEEPS it).
+%                          TEAM-SIGN-OFF [daq configuration], jess 2026-08-08.
+%     daqmetadatareader  - 1 -> 2 (or 1 -> 1). -> `acquisition_metadata_reader`
+%                          (base.id PRESERVED -- acquisition_metadata_file's
+%                          REQUIRED acquisition_metadata_reader_id is filled from
+%                          the source id) + a `software` entity for the
+%                          implementation class name.
+%                          tab_separated_file_parameter -> metadata_file_pattern
+%                          (genuine: read back at +ndi/+daq/metadatareader.m:36).
+%                          Emits NO `daqsystem_id` -- that edge was invented,
+%                          REQUIRED and empty on 59 of 59 documents; NDI declares
+%                          it the other way round. Guarded passthrough when the
+%                          block declares neither field.
+%                          TEAM-SIGN-OFF [daq configuration], jess 2026-08-08.
+%     daqsystem          - 1 -> 1 -> `acquisition_system` (<- entity; base.id AND
+%                          base.name PRESERVED -- the name is the probe->device
+%                          join key, strcmpi'd at +ndi/+daq/system.m:229).
+%                          filenavigator_id -> epoch_file_pattern_id,
+%                          daqreader_id -> reader_id, and the NUMBERED family
+%                          daqmetadatareader_id_# -> acquisition_metadata_reader_#
+%                          (re-indexed from 1, skipping the template's empty bare
+%                          entry). TEAM-SIGN-OFF [daq configuration], jess
+%                          2026-08-08.
+%                          PASSTHROUGH ON EVERY REAL DOCUMENT TODAY, BY DESIGN:
+%                          `acquisition_system` declares no fields, so the
+%                          source's `ndi_daqsystem_class` has no home -- and it is
+%                          the object-reconstruction key, read through a
+%                          CONSTRUCTED field name at
+%                          +ndi/+database/+fun/ndi_document2ndi_object.m:38-42
+%                          (reached from +ndi/session.m:167-169). Naming a second
+%                          `software` edge on acquisition_system is a team call,
+%                          so the fold stays guarded until it is taken.
 %     image_stack        - 1 -> 3. -> a body-backed image_observation
 %                          (storage_mode: body; modality on the spine variable,
 %                          geometry/format inline on the `image` mixin) + a

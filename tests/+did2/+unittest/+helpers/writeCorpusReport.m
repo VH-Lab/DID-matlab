@@ -46,6 +46,15 @@ end
 if isfield(result, 'source_census')
     report.source_census = result.source_census;
 end
+% The EPOCH MINT (#60): how many `epoch` entities were minted, and -- more
+% useful -- every refusal, counted. `pairs_minus_strings` is the number of
+% epochs that keying on the id STRING instead of the (session, id) PAIR would
+% have destroyed by fusion. Denominator-first by construction; persisted here
+% because a builder that reports only what it built is the counter this project
+% keeps getting burned by.
+if isfield(result, 'epoch_mint')
+    report.epoch_mint = result.epoch_mint;
+end
 
 fid = fopen(reportPath, 'w');
 if fid < 0

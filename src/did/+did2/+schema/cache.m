@@ -30,13 +30,54 @@ classdef cache < handle
     %       loadedClasses   - containers.Map of classname -> raw schema.
     %       curieRegistry   - parsed CURIE_lookups_meta.json contents.
     %
+    %   ENFORCEMENT SWITCHES (open items #37 and #38)
+    %   --------------------------------------------
+    %   Two non-emptiness rules the schema DECLARES were, until this
+    %   change, read by nothing:
+    %
+    %     #37  `mustBeNonEmpty` on a `depends_on` entry. validateDocument
+    %          never looked at `depends_on` at all -- the only mentions of
+    %          the key in this file were a comment, buildBlankDocument's
+    %          empty seed, and the allowed-top-level-keys list. The other
+    %          half of the story is did2.validate.references, which skips
+    %          empty edges; that skip is CORRECT for what references does
+    %          (an edge with no id cannot dangle, and references is handed
+    %          no schema so it cannot know which edges are required). The
+    %          missing check belongs here, where the schema is visible.
+    %
+    %     #38  An ALL-BLANK COMPOSITE. isEmptyValue calls a struct empty
+    %          only when it has NO FIELDNAMES, so an ontology_term of
+    %          {node:'', name:''} satisfies mustBeNonEmpty while saying
+    %          nothing. isVacuousValue is the recursive all-leaves-blank
+    %          test that catches it.
+    %
+    %   BOTH DEFAULT TO OFF, and turning either on WILL quarantine real
+    %   documents -- that is the point of them, and the reason they are
+    %   switches rather than plain behaviour. Enforcement is gated on the
+    %   corpus census reaching zero for the rule in question; the census
+    %   is did2.validate.silentLoss, which measures exactly these two
+    %   conditions and raises nothing. See
+    %   did-schema/schemas/V_eta_ground_truth_plan.md Phase 1.
+    %
+    %   Set them per-process with did2.schema.cache.strictMode, or per-CI-
+    %   job with the environment variables DID_ENFORCE_REQUIRED_DEPENDENCIES
+    %   and DID_ENFORCE_NONVACUOUS_FIELDS.
+    %
     %   did2.schema.cache Static Methods:
     %       shared          - return the process-wide singleton cache.
     %       setSchemaPath   - rebuild the singleton at a new schema path.
     %       resetSingleton  - drop the cached singleton (test helper).
+    %       strictMode      - read/set the #37 and #38 enforcement switches.
     %
     %   did2.schema.cache Methods:
     %       getClass            - resolved class definition for a name.
+    %       requiredDependencies - depends_on names declared mustBeNonEmpty
+    %                             anywhere in a class chain (#37).
+    %       unpopulatedRequiredDependencies - which of those a given body
+    %                             leaves absent or blank (#37).
+    %   (isVacuousValue, the #38 predicate, is PRIVATE -- it is reached
+    %    through validateDocument, and did2.validate.silentLoss carries the
+    %    report-only twin of the same rule.)
     %       superclasses        - ancestor chain (parent first, root last).
     %       classChain          - root-first list including the class itself.
     %       ownFields           - the `fields` list a class declares directly.
@@ -147,6 +188,85 @@ classdef cache < handle
                 className (1,:) char
             end
             chain = [fliplr(obj.superclasses(className)), {className}];
+        end
+
+        function names = requiredDependencies(obj, className)
+            % requiredDependencies - names of `depends_on` entries declared
+            %   `mustBeNonEmpty` anywhere in CLASSNAME's chain (#37).
+            %
+            %   NUMBERED FAMILIES (`derived_from_#`, `time_reference_#`)
+            %   ARE EXCLUDED, deliberately. `mustBeNonEmpty` cannot
+            %   describe a family: a MISSING instance is not a blank one,
+            %   and the checkable property is the instance COUNT, which
+            %   the schema states as min_count/max_count and which #63
+            %   measures REPORT-ONLY in did2.validate.silentLoss. Folding
+            %   families in here would turn an unmeasured count into a
+            %   gate.
+            %
+            %   This is the same rule silentLoss/requiredDependencies
+            %   applies, so the census and the gate agree by construction
+            %   on WHICH edges are at stake. testEnforceRequiredDependencies
+            %   locks the two together on one document.
+            arguments
+                obj
+                className (1,:) char
+            end
+            names = {};
+            chain = obj.classChain(className);
+            for k = 1:numel(chain)
+                try
+                    s = obj.getClass(chain{k});
+                catch
+                    continue;
+                end
+                if ~isfield(s, 'depends_on'); continue; end
+                deps = s.depends_on;
+                % jsondecode returns a CELL when the dependency objects in
+                % one class do not all carry the same keys (normal now that
+                % only numbered families declare min_count). Iterate
+                % element-wise; `[deps{:}]` throws on mismatched fieldnames.
+                if isstruct(deps)
+                    items = num2cell(deps(:)');
+                elseif iscell(deps)
+                    items = deps(:)';
+                else
+                    continue;
+                end
+                for d = 1:numel(items)
+                    dep = items{d};
+                    if ~isstruct(dep) || ~isfield(dep, 'name') ...
+                            || ~isfield(dep, 'mustBeNonEmpty')
+                        continue;
+                    end
+                    if ~logical(dep.mustBeNonEmpty); continue; end
+                    n = char(dep.name);
+                    if contains(n, '#'); continue; end
+                    if ~any(strcmp(names, n)); names{end+1} = n; end %#ok<AGROW>
+                end
+            end
+        end
+
+        function missing = unpopulatedRequiredDependencies(obj, body, className)
+            % unpopulatedRequiredDependencies - the subset of
+            %   requiredDependencies(CLASSNAME) that BODY leaves absent or
+            %   blank (#37). BODY is a document body struct.
+            %
+            %   ABSENT AND BLANK ARE THE SAME ANSWER HERE. An edge that was
+            %   never written and an edge written as '' both fail to name a
+            %   referent, and the invented-empty-edge pattern produced both
+            %   spellings depending on which migrator emitted the document.
+            arguments
+                obj
+                body struct
+                className (1,:) char
+            end
+            missing = {};
+            required = obj.requiredDependencies(className);
+            for k = 1:numel(required)
+                if ~did2.schema.cache.edgeIsPopulated(body, required{k})
+                    missing{end+1} = required{k}; %#ok<AGROW>
+                end
+            end
         end
 
         function fields = ownFields(obj, className)
@@ -607,6 +727,30 @@ classdef cache < handle
                          'migrator.'], tn);
                 end
             end
+            % ---- #37: required depends_on edges --------------------------
+            % LAST, on purpose. Every check above predates this one, and a
+            % document that already fails one of them must keep failing for
+            % the SAME reason -- otherwise flipping this switch silently
+            % rewrites the quarantine-reason histogram for documents whose
+            % problem is something else entirely.
+            %
+            % OFF BY DEFAULT: see the class header. The last measured census
+            % (DID-matlab corpus run 31415147934, 02854c7) found 7,233 empty
+            % required edges across six corpora, so switching this on
+            % before those are repaired turns the 0-quarantine gate red.
+            if did2.schema.cache.strictMode('RequiredDependencies')
+                missingDeps = obj.unpopulatedRequiredDependencies(s, className);
+                if ~isempty(missingDeps)
+                    error('did2:validation:emptyRequiredDependency', ...
+                        ['Class "%s" declares depends_on %s as ' ...
+                         'mustBeNonEmpty, and the document leaves ' ...
+                         'them absent or empty. A required edge that ' ...
+                         'names no referent is a document about ' ...
+                         'nobody.'], ...
+                        className, ...
+                        ['{' strjoin(missingDeps, ', ') '}']);
+                end
+            end
         end
     end
 
@@ -643,6 +787,65 @@ classdef cache < handle
             % resetSingleton - drop the cached singleton.
             did2.schema.cache.shared('-reset');
         end
+
+        function out = strictMode(varargin)
+            % strictMode - read or set the #37/#38 enforcement switches.
+            %
+            %   S = strictMode()               all switches, as a struct
+            %   TF = strictMode(NAME)          one switch
+            %   PREV = strictMode(NAME, TF)    set one, return its PREVIOUS
+            %                                  value (so a test can restore)
+            %   S = strictMode('-reset')       re-read the environment
+            %
+            %   SWITCHES
+            %     RequiredDependencies  #37. mustBeNonEmpty on a depends_on
+            %                           entry rejects, raising
+            %                           did2:validation:emptyRequiredDependency.
+            %     NonVacuousFields      #38. A required field whose every
+            %                           leaf is blank rejects, raising
+            %                           did2:validation:vacuousField.
+            %
+            %   BOTH DEFAULT OFF. The default is not a judgement that these
+            %   rules are wrong -- they are the two holes that let every
+            %   invented-empty-edge defect in the V_eta migration validate
+            %   clean. It is a judgement that a gate must not be armed
+            %   ahead of the repairs it grades, because the corpus gate is
+            %   0 quarantine and the last measured census was not zero.
+            %
+            %   Environment overrides, read once per process (or per
+            %   '-reset'), so a CI job can arm a switch without a code
+            %   change:
+            %     DID_ENFORCE_REQUIRED_DEPENDENCIES
+            %     DID_ENFORCE_NONVACUOUS_FIELDS
+            %   '1', 'true', 'yes' or 'on' (any case) arm it; anything
+            %   else, including unset, leaves it off.
+            persistent state
+            if isempty(state) || (nargin == 1 && isequal(varargin{1}, '-reset'))
+                state = struct( ...
+                    'RequiredDependencies', ...
+                        did2.schema.cache.envFlag('DID_ENFORCE_REQUIRED_DEPENDENCIES'), ...
+                    'NonVacuousFields', ...
+                        did2.schema.cache.envFlag('DID_ENFORCE_NONVACUOUS_FIELDS'));
+                if nargin == 1 && isequal(varargin{1}, '-reset')
+                    out = state;
+                    return;
+                end
+            end
+            if nargin == 0
+                out = state;
+                return;
+            end
+            name = char(varargin{1});
+            if ~isfield(state, name)
+                error('did2:schema:unknownStrictMode', ...
+                    ['"%s" is not an enforcement switch. Known switches: ' ...
+                     '%s.'], name, strjoin(fieldnames(state)', ', '));
+            end
+            out = state.(name);
+            if nargin >= 2
+                state.(name) = logical(varargin{2});
+            end
+        end
     end
 
     methods (Static, Access = private)
@@ -658,6 +861,49 @@ classdef cache < handle
             % did-schema checkout typically lives. (The previous two
             % '..'s expected did-schema *inside* DID-matlab.)
             p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
+        end
+
+        function tf = envFlag(varName)
+            % envFlag - true when VARNAME is set to an affirmative value.
+            %   Anything unrecognised -- including unset -- is FALSE. A
+            %   switch that arms itself on a typo is worse than one that
+            %   stays off.
+            raw = lower(strtrim(getenv(varName)));
+            tf = any(strcmp(raw, {'1', 'true', 'yes', 'on'}));
+        end
+
+        function tf = edgeIsPopulated(body, name)
+            % edgeIsPopulated - true when BODY carries a depends_on entry
+            %   called NAME with a non-empty value.
+            %
+            %   Tolerant of all THREE key spellings the pipeline uses at
+            %   different stages, because they genuinely all occur:
+            %   buildBlankDocument seeds `document_id`, the raw v1 wire
+            %   shape uses `value`, and some intermediate bodies carry the
+            %   bare `id`. Checking only one would have this report an
+            %   edge as empty because it was reading the wrong key -- the
+            %   grep-that-could-not-match failure, in struct form.
+            tf = false;
+            if ~isfield(body, 'depends_on'); return; end
+            deps = body.depends_on;
+            if iscell(deps)
+                items = deps(:)';
+            elseif isstruct(deps)
+                items = num2cell(deps(:)');
+            else
+                return;
+            end
+            for k = 1:numel(items)
+                d = items{k};
+                if ~isstruct(d) || ~isfield(d, 'name'); continue; end
+                if ~strcmp(char(d.name), name); continue; end
+                for key = {'value', 'document_id', 'id'}
+                    if isfield(d, key{1}) && ~isempty(d.(key{1}))
+                        tf = true;
+                        return;
+                    end
+                end
+            end
         end
 
         function ts = currentUTCTimestamp()
@@ -925,6 +1171,27 @@ classdef cache < handle
                 error('did2:validation:emptyField', ...
                     'Field "%s" is required to be non-empty.', qualifiedName);
             end
+            % ---- #38: present, but saying nothing ------------------------
+            % A SEPARATE predicate and a SEPARATE error id rather than a
+            % wider isEmptyValue. Two reasons. (1) isEmptyValue answers a
+            % general question -- "is there a value here" -- and an
+            % all-blank ontology_term genuinely IS a value, structurally;
+            % what it is not is INFORMATIVE. (2) A distinct id keeps the
+            % corpus quarantine histogram legible: turning this switch on
+            % must be readable as its own row, not as a jump in the
+            % pre-existing emptyField count.
+            %
+            % OFF BY DEFAULT: see the class header.
+            if mustBeNonEmpty ...
+                    && did2.schema.cache.strictMode('NonVacuousFields') ...
+                    && obj.isVacuousValue(value)
+                error('did2:validation:vacuousField', ...
+                    ['Field "%s" is required to be non-empty and is ' ...
+                     'present, but every leaf of it is blank. A ' ...
+                     'composite whose every cell is its blank_value ' ...
+                     'satisfies the letter of mustBeNonEmpty while ' ...
+                     'recording nothing.'], qualifiedName);
+            end
             if mustBeScalar && ~obj.isScalarValue(value, fieldType)
                 error('did2:validation:notScalar', ...
                     'Field "%s" is required to be scalar.', qualifiedName);
@@ -940,6 +1207,12 @@ classdef cache < handle
         end
 
         function tf = isEmptyValue(~, value)
+            % NOTE (#38): a struct is "empty" here only when it has NO
+            % FIELDNAMES. That is the hole -- {node:'', name:''} has two
+            % fieldnames and so passes. isVacuousValue below is the
+            % companion test; this one is deliberately left as it was, so
+            % that a genuinely empty value keeps raising emptyField and an
+            % all-blank one raises vacuousField.
             if isstring(value)
                 tf = all(strlength(value) == 0);
             elseif ischar(value)
@@ -949,6 +1222,50 @@ classdef cache < handle
             else
                 tf = isempty(value);
             end
+        end
+
+        function tf = isVacuousValue(obj, value)
+            % isVacuousValue - PRESENT, but carrying nothing: a struct
+            %   every leaf of which is blank, recursively (#38).
+            %
+            %   Deliberately mirrors did2.validate.silentLoss/isVacuous, so
+            %   that the count the census reports is the count enforcement
+            %   would quarantine. If these two ever disagree, the census
+            %   stops predicting the gate -- which is the failure mode this
+            %   whole repair track exists to close.
+            %
+            %   The rules, and why each is that way:
+            %     - a non-struct is NEVER vacuous. '' and [] are plain
+            %       empties; isEmptyValue already catches those, and
+            %       double-reporting them would drown the new signal.
+            %     - a struct with NO FIELDNAMES is NOT vacuous, same
+            %       reason: isEmptyValue already calls it empty.
+            %     - a real numeric 0 or a logical false IS a value. A
+            %       recorded zero is a measurement, not a blank.
+            %     - whitespace-only char counts as blank.
+            %     - a struct ARRAY is vacuous only if EVERY element is.
+            tf = false;
+            if ~isstruct(value) || isempty(value); return; end
+            fn = fieldnames(value);
+            if isempty(fn); return; end
+            for k = 1:numel(value)
+                for f = 1:numel(fn)
+                    v = value(k).(fn{f});
+                    if isstruct(v)
+                        if ~obj.isVacuousValue(v) ...
+                                && ~(isempty(v) || isempty(fieldnames(v)))
+                            return;
+                        end
+                    elseif ~isempty(v)
+                        if islogical(v) || isnumeric(v)
+                            return;
+                        end
+                        if ischar(v) && ~isempty(strtrim(v)); return; end
+                        if isstring(v) && any(strlength(strtrim(v)) > 0); return; end
+                    end
+                end
+            end
+            tf = true;
         end
 
         function tf = isScalarValue(~, value, fieldType)

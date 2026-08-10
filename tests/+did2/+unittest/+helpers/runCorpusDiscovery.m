@@ -71,6 +71,16 @@ result = did2.convert.resolveDeferredBaths(result, ...
 if strcmp(options.TargetVersion, 'V_eta')
     result = did2.convert.resolveDatasetEntities(result, ...
         'Validate', true, 'TargetVersion', options.TargetVersion);
+
+    % Mint the `epoch` entities did_v1 never had, one per distinct
+    % (base.session_id, epoch-id string) -- the PAIR, because an
+    % `epochid.epochid` string is reused across sessions (142 of B's 149
+    % distinct ids, sourceCensus run 31415147934), so keying on the string
+    % alone would FUSE epochs from different sessions. A find-or-create over
+    % the whole corpus, which no single-document migrator can do; its report
+    % rides on `result.epoch_mint` and is persisted by writeCorpusReport.
+    [result, ~] = did2.convert.epochMint(result, ...
+        'Validate', true, 'TargetVersion', options.TargetVersion);
 end
 
 % Census of the V1 SOURCE bodies -- the only instrument here that reads the

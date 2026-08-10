@@ -88,6 +88,12 @@ result = did2.convert.resolveDeferredBaths(result, 'Validate', true, ...
     'TargetVersion', 'V_eta');
 result = did2.convert.resolveDatasetEntities(result, 'Validate', true, ...
     'TargetVersion', 'V_eta');
+% #60: mint the `epoch` entities, keyed on the (base.session_id, epoch-id
+% string) PAIR. Kept in step with runCorpusDiscovery deliberately -- this file
+% exists to run the same post-passes on a HARD gate, and a post-pass that runs
+% only on the discovery corpora is a post-pass nothing gates.
+result = did2.convert.epochMint(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
 
 % WRITE THE CENSUS REPORT, before the assertions so a red gate still reports.
 %
