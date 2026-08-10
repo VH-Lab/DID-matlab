@@ -601,11 +601,21 @@ def rollup_post_passes(reports, out):
             p("      *** those corpora's documents are in PASS-1 FORM for this")
             p("      *** pass; the totals below are sums over %d corpora only."
               % len(carried))
-        if missing:
+        if missing and carried:
+            # MIXED presence: the trap. Healthy in every block it appears in,
+            # invisible in the ones it does not.
             p("      *** NOT PRESENT in: %s" % ", ".join(missing))
             p("      *** a pass that ran on some corpora and not others is the")
             p("      *** trap this section exists to catch -- do not read the")
             p("      *** totals below as whole-corpus figures.")
+        elif missing:
+            # Absent EVERYWHERE. A different fact, and the one that means the
+            # pass is not wired into the harness at all (or these reports
+            # predate the wiring). Saying "some corpora and not others" here
+            # would be false.
+            p("      *** NOT PRESENT IN ANY REPORT: %s" % ", ".join(missing))
+            p("      *** either the pass is not wired into the harness, or")
+            p("      *** these reports predate the wiring. It measured nothing.")
         if noop_in:
             p("      no-op (non-V_eta target or empty batch) in: %s"
               % ", ".join(noop_in))

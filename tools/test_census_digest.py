@@ -365,5 +365,176 @@ class TestRollup(DigestCase):
         self.assertIn("--- B ---", text)
 
 
+class TestPostPassRendering(DigestCase):
+    """The batch post-pass block (`epoch_mint`, `session_anchor_fold`).
+
+    WHY THESE EXIST. `epoch_mint` was written into every corpus report from the
+    day the pass landed and this digest never rendered it -- the number reached
+    the artifact and stopped there, which is write-only, which is the condition
+    this whole file exists to remove. `session_anchor_fold` was the sibling case
+    one step earlier: the pass was built and not called at all, and no artifact
+    could say so. Both defects are absence-shaped, so the tests below are mostly
+    about what the digest prints when something is NOT there.
+    """
+
+    def _fold(self, **over):
+        rep = {
+            "documents_inspected": 1000, "documents_unreadable": 0,
+            "session_documents_seen": 2, "anchors_seen": 40,
+            "anchors_relative": 30, "anchors_bounded": 10,
+            "anchors_folded": 40, "refused_total": 0,
+            "refused_no_session_id": 0, "refused_no_session_document": 0,
+            "refused_ambiguous_session": 0, "refused_ambiguous_relation": 0,
+            "refused_unknown_relation": 0, "refused_negative_extent": 0,
+            "fold_quarantined": 0, "ran": True,
+        }
+        rep.update(over)
+        return rep
+
+    def _mint(self, **over):
+        rep = {
+            "documents_inspected": 1000, "documents_unreadable": 0,
+            "session_documents_seen": 2, "epoch_strings_read": 12,
+            "distinct_epoch_id_strings": 7,
+            "distinct_session_epoch_pairs": 9, "pairs_minus_strings": 2,
+            "epochs_found_existing": 0, "epochs_minted": 9,
+            "skipped_synthetic": 0, "skipped_no_session_id": 0,
+            "skipped_no_session_document": 0, "skipped_ambiguous_session": 0,
+            "method_parameters_seen": 3, "method_parameters_edges_filled": 3,
+            "method_parameters_unresolved": 0, "mint_quarantined": 0,
+            "ran": True,
+        }
+        rep.update(over)
+        return rep
+
+    def _corpus(self, name="A", **fields):
+        body = {"corpus": name, "total": 100, "migrated_count": 1000,
+                "quarantine_count": 0,
+                "silent_loss": {"total_docs": 1000, "skipped_docs": 0,
+                                "empty_dependency_count": 0,
+                                "vacuous_field_count": 0}}
+        body.update(fields)
+        self.write(name, body)
+
+    def test_epoch_mint_is_rendered_at_all(self):
+        # The whole defect: it was in the report and not on the screen.
+        self._corpus("A", epoch_mint=self._mint())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("did2.convert.epochMint", text)
+        self.assertIn("epochs minted", text)
+        self.assertIn("epochs the string key would have FUSED", text)
+
+    def test_session_anchor_fold_is_rendered(self):
+        self._corpus("A", session_anchor_fold=self._fold())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("did2.convert.resolveSessionAnchors", text)
+        self.assertIn("FOLDED to relative_reference", text)
+
+    def test_an_absent_pass_says_NOT_WIRED_rather_than_printing_zeros(self):
+        # The exact condition that let resolveSessionAnchors sit unwired for a
+        # day: no output at all. Zeros would be WORSE -- they would read as a
+        # pass that ran and found nothing.
+        self._corpus("A")
+        text, _ = self.run_digest()
+        self.assertIn("batch post-passes: 2 expected, 0 present", text)
+        self.assertIn("NOT IN THIS REPORT", text)
+        self.assertNotIn("FOLDED to relative_reference", text)
+
+    def test_a_guarded_failure_is_a_banner_not_a_silence(self):
+        self._corpus("A", session_anchor_fold={
+            "pass": "did2.convert.resolveSessionAnchors",
+            "pass_failed": "Index exceeds the number of array elements.",
+            "pass_failed_identifier": "MATLAB:badsubscript", "ran": False})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("*** FAILED: Index exceeds", text)
+        self.assertIn("MATLAB:badsubscript", text)
+        self.assertIn("PASS-1 FORM", text)
+
+    def test_a_no_op_pass_is_distinct_from_a_failed_one(self):
+        self._corpus("A", epoch_mint={"ran": False, "documents_inspected": 0})
+        text, _ = self.run_digest()
+        self.assertIn("did not run (non-V_eta target, or an empty batch)", text)
+        self.assertNotIn("*** FAILED", text)
+
+    def test_a_missing_counter_prints_absent_not_zero(self):
+        # A counter the report does not carry has NOT been measured. Printing 0
+        # is the all-zeros-reads-as-clean failure in miniature.
+        rep = self._fold()
+        del rep["refused_negative_extent"]
+        self._corpus("A", session_anchor_fold=rep)
+        text, _ = self.run_digest()
+        self.assertIn("(absent)    end < start", text)
+
+    def test_deletion_gate_needs_both_halves(self):
+        # refused_total == 0 alone is NOT the gate: a surviving
+        # session_*_reference in by_class means documents still exist for a
+        # class somebody might delete. epochfiles_ingested cost 2,484
+        # quarantines exactly this way.
+        self._corpus("A", session_anchor_fold=self._fold(),
+                     by_class={"session_relative_reference": 5})
+        text, _ = self.run_digest()
+        self.assertIn("surviving session_*_reference in by_class=5", text)
+        self.assertNotIn("BOTH HALVES MET", text)
+
+    def test_deletion_gate_reports_when_both_halves_are_met(self):
+        self._corpus("A", session_anchor_fold=self._fold(),
+                     by_class={"relative_reference": 40})
+        text, _ = self.run_digest()
+        self.assertIn("BOTH HALVES MET", text)
+        self.assertIn("are a SAMPLE", text)
+
+    def test_rollup_flags_a_pass_that_ran_on_some_corpora_and_not_others(self):
+        # THE THREE-OF-FOUR TRAP at the data level: healthy in every block it
+        # appears in, invisible in the ones it does not.
+        self._corpus("A", session_anchor_fold=self._fold())
+        self._corpus("B")
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("ran in 1 of 2 report(s)", text)
+        self.assertIn("*** NOT PRESENT in: B", text)
+        self.assertIn("do not read the", text)
+
+    def test_rollup_sums_only_the_corpora_that_carried_the_pass(self):
+        self._corpus("A", session_anchor_fold=self._fold(anchors_folded=40))
+        self._corpus("B", session_anchor_fold=self._fold(anchors_folded=60))
+        text, _ = self.run_digest()
+        self.assertIn("ran in 2 of 2 report(s)", text)
+        self.assertIn("100  FOLDED to relative_reference", text)
+
+    def test_rollup_separates_failed_from_absent(self):
+        self._corpus("A", epoch_mint=self._mint())
+        self._corpus("B", epoch_mint={"pass_failed": "boom", "ran": False})
+        self._corpus("C")
+        text, _ = self.run_digest()
+        self.assertIn("ran in 1 of 3 report(s); 1 absent, 1 FAILED, 0 no-op",
+                      text)
+        self.assertIn("*** FAILED in: B", text)
+        self.assertIn("*** NOT PRESENT in: C", text)
+
+    def test_absent_everywhere_is_not_reported_as_absent_in_some(self):
+        # "ran on some corpora and not others" would be FALSE when the pass is
+        # in no report at all -- and that is the state the harness was actually
+        # in before this change, so it is the state the digest must name
+        # correctly.
+        self._corpus("A")
+        self._corpus("B")
+        text, _ = self.run_digest()
+        self.assertIn("NOT PRESENT IN ANY REPORT: A, B", text)
+        self.assertIn("not wired into the harness", text)
+        self.assertNotIn("some corpora and not others", text)
+
+    def test_a_malformed_post_pass_field_does_not_kill_the_corpus_block(self):
+        # MATLAB can encode an empty struct as [] -> null, or a caller can hand
+        # us a list. Neither may take the report down; run #256's lesson.
+        self._corpus("A", session_anchor_fold=[1, 2, 3])
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("MALFORMED", text)
+        self.assertIn("--- A ---", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
