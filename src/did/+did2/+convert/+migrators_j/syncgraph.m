@@ -71,11 +71,23 @@ function bodies = syncgraph(preBody)
 %   different id spaces. So filling this edge from `preBody.base.session_id`
 %   names a value no document carries, and it dangles EVERY TIME.
 %
-%   MEASURED, corpus run 31438980133 (20211116, `fd36421`):
-%       reference integrity: 1 orphan of 2814 edges
-%           1  clock_alignment_policy.session_id
-%   That corpus holds exactly one syncgraph, so it is 1 of 1 -- 100% of the
-%   class, which is the signature of this whole family of defect.
+%   MEASURED, corpus run 31438980133 (`fd36421`), TWO corpora independently:
+%
+%       20211116   reference integrity: 1 orphan of 2814 edges
+%                      1  clock_alignment_policy.session_id
+%       B          reference integrity: 13 orphan(s) of 19069 edges
+%                     13  clock_alignment_policy.session_id
+%
+%   20211116 holds exactly one syncgraph and B holds thirteen (its unconverted
+%   census lists `13 syncrule`), so both are 100% OF THE CLASS -- 1 of 1 and
+%   13 of 13. That total-saturation signature is the fingerprint of this whole
+%   family of defect: a partially-wrong edge would dangle sometimes, an edge
+%   filled from the wrong ID SPACE dangles every time.
+%
+%   The same B run is the positive control. It reports `quarantine_count: 0`,
+%   `fragments: 0` and `silent-loss: 0 empty required edge(s), 0 vacuous
+%   required field(s)` -- so the corpus was fully readable and the instrument
+%   was working. The orphan is a real finding, not an artifact of a dead census.
 %
 %   `did2.convert.epochMint` refused this exact assumption and said so in its
 %   own header ("the pass therefore INDEXES the session documents rather than
