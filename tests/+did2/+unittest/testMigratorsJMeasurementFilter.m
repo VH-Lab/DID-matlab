@@ -81,7 +81,9 @@ end
 function doc = docOfClass(testCase, out, className)
 names = classNames(out);
 idx = find(strcmp(names, className), 1);
-verifyNotEmpty(testCase, idx, sprintf('no %s in output {%s}', ...
+% ASSERT, not verify: a verify would carry on and index with [], turning a
+% legible "no such class was emitted" into MATLAB:badsubscript.
+assertNotEmpty(testCase, idx, sprintf('no %s in output {%s}', ...
     className, strjoin(names, ', ')));
 doc = out.migrated{idx};
 end
@@ -403,7 +405,7 @@ verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'high_pass');
 bodies = did2.convert.migrators_j.pyraview(pyraviewBody(predFilterBlock()));
 names = cellfun(@(b) b.document_class.class_name, bodies, 'UniformOutput', false);
 idx = find(strcmp(names, 'frequency_filter'), 1);
-verifyNotEmpty(testCase, idx);
+assertNotEmpty(testCase, idx);
 verifyEqual(testCase, bodies{idx}.frequency_filter.band.name, 'high_pass');
 end
 

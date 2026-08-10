@@ -57,7 +57,17 @@ for k = 1:numel(out.migrated)
         n = n + 1;
     end
 end
-verifyEqual(testCase, n, 1, sprintf('expected exactly one %s document', className));
+% assert, not verify: every caller dereferences the result immediately, so
+% continuing past a miss would report a confusing MATLAB error instead of the
+% real one.
+assertEqual(testCase, n, 1, sprintf('expected exactly one %s document', className));
+end
+
+function s = bag(doc)
+%BAG The `other` sub-struct. A local variable rather than a chained
+%   doc.get(...).field -- indexing into a call result is not something to rely
+%   on here, and the intermediate reads better anyway.
+s = doc.get('method_parameters.other');
 end
 
 function v = depValue(doc, name)
@@ -106,14 +116,17 @@ end
 function e = paramEntry(testCase, doc, variableName)
 %PARAMENTRY The one `parameter` row whose bound variable is VARIABLENAME.
 list = doc.get('method_parameters.method_parameters');
-e = [];
 for k = 1:numel(list)
     if strcmp(list(k).variable.name, variableName)
         e = list(k);
         return;
     end
 end
-verifyFail(testCase, sprintf('no parameter entry for variable "%s"', variableName));
+% assert so the miss is reported as the miss, rather than as a field error on
+% the blank stand-in the caller would otherwise dereference.
+assertFail(testCase, sprintf('no parameter entry for variable "%s"', variableName));
+e = struct('variable', struct('node', '', 'name', ''), ...
+    'value', struct('value', NaN, 'source_unit', '', 'source_value', ''));
 end
 
 function names = paramVariables(doc)
@@ -311,8 +324,10 @@ function testExtractionSourceUnitIsEmptyBecauseV1RecordsNone(testCase)
 % Claiming source_unit 's' would put a unit in the record v1 never recorded.
 d = onlyClass(testCase, runJ(extractionBody('sep_5', 'default', 'sess_A')), ...
     'method_parameters');
-verifyEqual(testCase, paramEntry(testCase, d, 'refractory period').value.source_unit, '');
-verifyEqual(testCase, paramEntry(testCase, d, 'waveform window start').value.source_unit, '');
+r = paramEntry(testCase, d, 'refractory period');
+w = paramEntry(testCase, d, 'waveform window start');
+verifyEqual(testCase, r.value.source_unit, '');
+verifyEqual(testCase, w.value.source_unit, '');
 end
 
 function testExtractionThresholdSplitsByMethodStandardDeviation(testCase)
@@ -326,9 +341,9 @@ e = paramEntry(testCase, d, 'standard-deviation threshold');
 verifyEqual(testCase, e.value.value, -4, 'AbsTol', 1e-12);
 verifyEqual(testCase, e.value.source_value, '-4');
 % consumed into the variable, so it must NOT also sit in the bag
-bag = d.get('method_parameters.other');
-verifyFalse(testCase, isfield(bag, 'threshold_method'));
-verifyFalse(testCase, isfield(bag, 'threshold_parameter'));
+b = bag(d);
+verifyFalse(testCase, isfield(b, 'threshold_method'));
+verifyFalse(testCase, isfield(b, 'threshold_parameter'));
 end
 
 function testExtractionThresholdSplitsByMethodAbsolute(testCase)
@@ -355,9 +370,9 @@ v1.spike_extraction_parameters.threshold_method = 'median_absolute_deviation';
 d = onlyClass(testCase, runJ(v1), 'method_parameters');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'waveform window start', 'waveform window duration'}));
-bag = d.get('method_parameters.other');
-verifyEqual(testCase, bag.threshold_method, 'median_absolute_deviation');
-verifyEqual(testCase, bag.threshold_parameter, -4);
+b = bag(d);
+verifyEqual(testCase, b.threshold_method, 'median_absolute_deviation');
+verifyEqual(testCase, b.threshold_parameter, -4);
 end
 
 function testExtractionTailIsKeptWholeNotDropped(testCase)
@@ -366,21 +381,21 @@ function testExtractionTailIsKeptWholeNotDropped(testCase)
 % eleven fields that is not a bound variable has to be findable here.
 d = onlyClass(testCase, runJ(extractionBody('sep_9', 'default', 'sess_A')), ...
     'method_parameters');
-bag = d.get('method_parameters.other');
-verifyEqual(testCase, bag.center_range_time, 0.0005, 'AbsTol', 1e-12);
-verifyEqual(testCase, bag.overlap, 0.5, 'AbsTol', 1e-12);
-verifyEqual(testCase, bag.read_time, 30, 'AbsTol', 1e-12);
-verifyEqual(testCase, bag.threshold_sign, -1);
+b = bag(d);
+verifyEqual(testCase, b.center_range_time, 0.0005, 'AbsTol', 1e-12);
+verifyEqual(testCase, b.overlap, 0.5, 'AbsTol', 1e-12);
+verifyEqual(testCase, b.read_time, 30, 'AbsTol', 1e-12);
+verifyEqual(testCase, b.threshold_sign, -1);
 % filter settings are GROUPED, not flattened: the built method_parameters class
 % carries no filter_id edge (its depends_on is software_id / subject_id /
 % epoch_id / derived_from_id), so the frequency_filter extraction the plan
 % describes cannot be built yet. Grouping keeps them whole and findable for it.
-verifyEqual(testCase, bag.filter.filter_type, 'cheby1high');
-verifyEqual(testCase, bag.filter.filter_low, 0);
-verifyEqual(testCase, bag.filter.filter_high, 300);
-verifyEqual(testCase, bag.filter.filter_order, 4);
-verifyEqual(testCase, bag.filter.filter_ripple, 0.8, 'AbsTol', 1e-12);
-verifyEqual(testCase, bag.filter.do_filter, 1);
+verifyEqual(testCase, b.filter.filter_type, 'cheby1high');
+verifyEqual(testCase, b.filter.filter_low, 0);
+verifyEqual(testCase, b.filter.filter_high, 300);
+verifyEqual(testCase, b.filter.filter_order, 4);
+verifyEqual(testCase, b.filter.filter_ripple, 0.8, 'AbsTol', 1e-12);
+verifyEqual(testCase, b.filter.do_filter, 1);
 end
 
 function testExtractionCarriesAnUnknownFieldRatherThanDroppingIt(testCase)
@@ -391,7 +406,8 @@ function testExtractionCarriesAnUnknownFieldRatherThanDroppingIt(testCase)
 v1 = extractionBody('sep_10', 'default', 'sess_A');
 v1.spike_extraction_parameters.some_future_knob = 17;
 d = onlyClass(testCase, runJ(v1), 'method_parameters');
-verifyEqual(testCase, d.get('method_parameters.other').some_future_knob, 17);
+b = bag(d);
+verifyEqual(testCase, b.some_future_knob, 17);
 end
 
 function testExtractionHasNoScopeEdgesAtAll(testCase)
@@ -433,7 +449,8 @@ function testExtractionParksTheEnvironmentFieldsRatherThanDroppingThem(testCase)
 % rather than dropped -- an open question, not a solved one.
 d = onlyClass(testCase, runJ(extractionBody('sep_13', 'default', 'sess_A')), ...
     'method_parameters');
-env = d.get('method_parameters.other').execution_environment;
+b = bag(d);
+env = b.execution_environment;
 verifyEqual(testCase, env.os, 'MACA64');
 verifyEqual(testCase, env.interpreter, 'MATLAB');
 verifyEqual(testCase, env.interpreter_version, '24.1');
@@ -450,8 +467,8 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = onlyClass(testCase, out, 'method_parameters');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'software_id')));
-verifyEqual(testCase, d.get('method_parameters.other').app.app_name, ...
-    'ndi_app_spikeextractor');
+b = bag(d);
+verifyEqual(testCase, b.app.app_name, 'ndi_app_spikeextractor');
 end
 
 % ===================== spike_extraction_parameters_modification ============
@@ -489,7 +506,8 @@ d = onlyClass(testCase, ...
     runJ(modificationBody('sepm_2', 'default', 'sess_A', 'sep_1', 'elem_9', 't00042')), ...
     'method_parameters');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'epoch_id')));
-verifyEqual(testCase, d.get('method_parameters.other').epochid, 't00042');
+b = bag(d);
+verifyEqual(testCase, b.epochid, 't00042');
 end
 
 function testModificationOmitsLineageWhenTheSourceEdgeIsEmpty(testCase)
@@ -513,13 +531,13 @@ out = runJ(sortingBody('sp_1', 'default', 'sess_A'));
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method_parameters');
 verifyEmpty(testCase, d.get('method_parameters.method_parameters'));
-bag = d.get('method_parameters.other');
-verifyEqual(testCase, bag.graphical_mode, 1);
-verifyEqual(testCase, bag.num_pca_features, 10);
-verifyEqual(testCase, bag.interpolation, 3);
-verifyEqual(testCase, bag.min_clusters, 3);
-verifyEqual(testCase, bag.max_clusters, 10);
-verifyEqual(testCase, bag.num_start, 5);
+b = bag(d);
+verifyEqual(testCase, b.graphical_mode, 1);
+verifyEqual(testCase, b.num_pca_features, 10);
+verifyEqual(testCase, b.interpolation, 3);
+verifyEqual(testCase, b.min_clusters, 3);
+verifyEqual(testCase, b.max_clusters, 10);
+verifyEqual(testCase, b.num_start, 5);
 end
 
 function testSortingPreservesTheIdAndTheNameSpikesorterQueriesBy(testCase)
@@ -589,9 +607,9 @@ function testVmspikeKeepsSamplingRateRatherThanDroppingIt(testCase)
 % rather than decided by a migrator.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_5', 'sess_A', 'elem_1', 't00001', '')), ...
     'method_parameters');
-bag = d.get('method_parameters.other');
-verifyEqual(testCase, bag.sampling_rate, 0);
-verifyEqual(testCase, bag.new_sampling_rate, 0);
+b = bag(d);
+verifyEqual(testCase, b.sampling_rate, 0);
+verifyEqual(testCase, b.new_sampling_rate, 0);
 end
 
 function testVmspikeGroupsItsFilterSettingsIncludingTheRenamedRm60Hz(testCase)
@@ -601,7 +619,8 @@ function testVmspikeGroupsItsFilterSettingsIncludingTheRenamedRm60Hz(testCase)
 % rename is exercised rather than assumed.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_6', 'sess_A', 'elem_1', 't00001', '')), ...
     'method_parameters');
-f = d.get('method_parameters.other').filter;
+b = bag(d);
+f = b.filter;
 verifyEqual(testCase, f.rm60_hz, 1);
 verifyEqual(testCase, f.filter_algorithm, '0');
 verifyTrue(testCase, isfield(f, 'filter_algorithm_parameters'));
@@ -614,7 +633,8 @@ function testVmspikeParksItsEpochStringToo(testCase)
 d = onlyClass(testCase, runJ(vmspikeBody('vm_7', 'sess_A', 'elem_1', 't00099', '')), ...
     'method_parameters');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'epoch_id')));
-verifyEqual(testCase, d.get('method_parameters.other').epochid, 't00099');
+b = bag(d);
+verifyEqual(testCase, b.epochid, 't00099');
 end
 
 % ===================== validation ==========================================

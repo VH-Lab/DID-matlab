@@ -185,10 +185,55 @@ tr = struct('kind', 'epoch_bounded_reference', ...
 node = struct( ...
     'time_reference',   tr, ...
     'epoch_session_id', jGetCharAny(src, {'epoch_session_id', 'epochSessionId', 'epochSessionID'}), ...
-    'epochprobemap',    getStructAny(src, {'epochprobemap', 'epochProbeMap'}), ...
+    'epochprobemap',    carryProbeMap(src), ...
     'objectclass',      jGetCharAny(src, {'objectclass', 'objectClass'}), ...
     'objectname',       jGetCharAny(src, {'objectname', 'objectName'}), ...
     't0_t1',            getMatrixAny(src, {'t0_t1', 't0t1'}));
+end
+
+function v = carryProbeMap(src)
+%CARRYPROBEMAP The epochprobemap, VERBATIM -- and it is a CHAR, not a struct.
+%
+%   THIRD FIELD THAT WAS BEING SILENTLY DROPPED, found the same way the other
+%   two were (#58): by reading the writer instead of the V_eta schema.
+%
+%     git show origin/main:src/ndi/+ndi/+time/syncgraph.m:313-314
+%        sync_mapping_struct.epochnode_a.epochprobemap = ...
+%            sync_mapping_struct.epochnode_a.epochprobemap.serialize();
+%     git show origin/main:src/ndi/+ndi/+epoch/epochprobemap_daqsystem.m:136-143
+%        function s = serialize(...)
+%           % Create a CHARACTER ARRAY representation
+%           s = '';
+%     git show origin/main:src/ndi/ndi_common/database_documents/ingestion/syncrule_mapping.json
+%        "epochprobemap":  "",        <- line 30 and line 39, a STRING
+%
+%   Template and writer AGREE that this is a string, so there is no
+%   writer-beats-template judgement to make. The reader was
+%   `getStructAny(src, {'epochprobemap', ...})`, which requires isstruct, so on
+%   EVERY real corpus document it returned an empty struct and the serialised
+%   probe map -- name / reference / type / devicestring / subjectstring for
+%   every probe on that epoch -- went nowhere. The unit fixture that made it
+%   look correct used a struct, which no writer produces. Same shape as the
+%   distance_metadata wrong-assumed-shape bug.
+%
+%   Carried VERBATIM (char or struct) rather than coerced: the value is opaque
+%   to this migrator and the only safe transformation is none.
+%
+%   NOTE THE SCHEMA IS THE ONE THAT IS WRONG. V_eta's syncrule_mapping tombstone
+%   declares `epochnode_a.epochprobemap` as type `structure`. That does not
+%   quarantine a char today -- schema/cache.m validateField type-checks only the
+%   IMMEDIATE fields of a property block, and this is two levels down -- but the
+%   declaration should say `char`. Schema-side, out of this change's scope;
+%   reported with the build.
+v = '';
+if ~isstruct(src); return; end
+for name = {'epochprobemap', 'epochProbeMap'}
+    f = name{1};
+    if isfield(src, f) && ~isempty(src.(f))
+        v = src.(f);
+        return;
+    end
+end
 end
 
 function m = getMatrixAny(block, names)
