@@ -805,12 +805,32 @@ classdef cache < handle
             %                           leaf is blank rejects, raising
             %                           did2:validation:vacuousField.
             %
-            %   BOTH DEFAULT OFF. The default is not a judgement that these
-            %   rules are wrong -- they are the two holes that let every
-            %   invented-empty-edge defect in the V_eta migration validate
-            %   clean. It is a judgement that a gate must not be armed
-            %   ahead of the repairs it grades, because the corpus gate is
-            %   0 quarantine and the last measured census was not zero.
+            %   THEY NOW DEFAULT DIFFERENTLY, and the difference is the
+            %   MEASUREMENT, not a view about which rule matters more.
+            %
+            %   NonVacuousFields is ARMED (2026-08-10, team's call). Its cost
+            %   is measured and it is zero: corpus run 31415147934 reports
+            %   "0 vacuous required field(s)" on all six corpora across
+            %   562,422 documents. Nothing we have ever migrated trips it, so
+            %   arming it buys a whole class of silent defect for no
+            %   quarantine.
+            %
+            %   RequiredDependencies stays OFF. Its cost is measured and it is
+            %   NOT zero: the same run reports 7,233 empty required edges. Two
+            %   repairs have landed since and both are PREDICTED to zero it;
+            %   one is measured, one is not, and neither has been measured
+            %   together. A gate must not be armed ahead of the repairs it
+            %   grades -- the corpus gate is 0 quarantine.
+            %
+            %   THE CAVEAT ON ARMING, stated because "0 measured" is weaker
+            %   than "0 possible": the corpora are a SAMPLE, and the census's
+            %   field scan does not share a denominator with the validator's
+            %   (the census inspects only blocks that already host the field;
+            %   the validator also reaches required fields whose block is
+            %   missing entirely). A dataset still waiting to migrate could
+            %   trip it. That is the intended outcome -- a loud quarantine
+            %   beats a document that validates while saying nothing -- and
+            %   the env var below turns it off if an operator needs it to.
             %
             %   Environment overrides, read once per process (or per
             %   '-reset'), so a CI job can arm a switch without a code
@@ -824,8 +844,32 @@ classdef cache < handle
                 state = struct( ...
                     'RequiredDependencies', ...
                         did2.schema.cache.envFlag('DID_ENFORCE_REQUIRED_DEPENDENCIES'), ...
+                    ... ARMED BY DEFAULT 2026-08-10, on the team's call. The
+                    ... env var can still turn it OFF, which is why the default
+                    ... is OR'd rather than replaced: an operator who needs a
+                    ... corpus to migrate past a vacuity failure sets
+                    ... DID_ENFORCE_NONVACUOUS_FIELDS=0 and gets the old
+                    ... behaviour, without editing source.
+                    ...
+                    ... THE EVIDENCE FOR ARMING IT: zero cost, MEASURED. Corpus
+                    ... run 31415147934 reports "0 vacuous required field(s)"
+                    ... on all six corpora over 562,422 documents. So nothing
+                    ... in anything we have ever migrated trips this, and
+                    ... arming it costs no quarantine today while making a
+                    ... whole class of silent defect impossible tomorrow.
+                    ...
+                    ... AND THE CAVEAT, which is why this is a decision and not
+                    ... a cleanup: the corpora are a SAMPLE, and the census's
+                    ... field scan and the validator's do NOT share a
+                    ... denominator -- the census inspects only blocks that
+                    ... already host the field, while the validator also
+                    ... reaches required fields whose block is missing
+                    ... entirely. So "0 measured" is weaker than "0 possible".
+                    ... A dataset still waiting to migrate could trip it, and
+                    ... the intended outcome then is a LOUD quarantine rather
+                    ... than a document that validates while saying nothing.
                     'NonVacuousFields', ...
-                        did2.schema.cache.envFlag('DID_ENFORCE_NONVACUOUS_FIELDS'));
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_NONVACUOUS_FIELDS'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;
@@ -873,6 +917,22 @@ classdef cache < handle
             % (GitHub code scanning alert 169; the two are equivalent here
             % because every candidate below is already lower-case ASCII.)
             tf = any(strcmpi(strtrim(getenv(varName)), {'1', 'true', 'yes', 'on'}));
+        end
+
+        function tf = envFlagIsOff(varName)
+            % envFlagIsOff - true ONLY when VARNAME is set to a negative value.
+            %   Unset is FALSE, which is the whole point: this is the reader
+            %   for a switch that is ARMED by default, so silence must mean
+            %   "leave it armed".
+            %
+            %   NOT `~envFlag(...)`. That would disarm on unset, and on any
+            %   typo -- exactly inverting envFlag's own stated rule ("a switch
+            %   that arms itself on a typo is worse than one that stays off").
+            %   For a default-on switch the same reasoning runs the other way:
+            %   a switch that DISARMS itself on a typo is worse than one that
+            %   stays on, because a disarmed gate is silent and a false
+            %   quarantine is loud. So an unrecognised value leaves it armed.
+            tf = any(strcmpi(strtrim(getenv(varName)), {'0', 'false', 'no', 'off'}));
         end
 
         function tf = edgeIsPopulated(body, name)

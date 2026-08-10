@@ -93,8 +93,16 @@ end
 s = did2.schema.cache.strictMode('-reset');
 verifyFalse(testCase, s.RequiredDependencies, ...
     '#37 enforcement must default to OFF');
-verifyFalse(testCase, s.NonVacuousFields, ...
-    '#38 enforcement must default to OFF');
+% #38 INVERTED 2026-08-10: NonVacuousFields is now ARMED by default, on the
+% team's call, and this assertion moved with it rather than being deleted.
+% The two switches deliberately default DIFFERENTLY, and the difference is the
+% measurement: the same corpus run reports 0 vacuous required fields and 7,233
+% empty required edges. Arming the first costs nothing measured; arming the
+% second would gate the corpus on repairs that are predicted, not proven.
+% Asserting them together as "both OFF" would hide that distinction the moment
+% either moves, which is exactly what just happened.
+verifyTrue(testCase, s.NonVacuousFields, ...
+    '#38 enforcement must default to ON');
 end
 
 function testStrictModeReturnsThePreviousValueSoItCanBeRestored(testCase)

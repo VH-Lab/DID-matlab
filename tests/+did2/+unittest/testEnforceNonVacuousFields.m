@@ -73,15 +73,47 @@ end
 
 % ===================== the hole, and its closure ===========================
 
-function testAllBlankCompositeIsAcceptedWhenSwitchIsOff(testCase)
-% ASSERTS THE BUG ON PURPOSE, so that enforcement cannot become live
-% unnoticed on a 500,000-document corpus run. When the team arms the switch
-% by default this test INVERTS -- it does not get patched.
+function testNonVacuousFieldsIsARMEDByDefault(testCase)
+% INVERTED 2026-08-10, on the team's call, exactly as its predecessor
+% instructed.
+%
+% This was `testAllBlankCompositeIsAcceptedWhenSwitchIsOff`, which ASSERTED
+% THE BUG ON PURPOSE so that enforcement could not become live unnoticed on a
+% 500,000-document corpus run, and whose header said: "When the team arms the
+% switch by default this test INVERTS -- it does not get patched."
+%
+% The team armed it. So the thing worth pinning is no longer "the bug is still
+% there" but "the DEFAULT is on" -- because the failure mode has flipped.
+% Before, the risk was enforcement arriving silently; now it is enforcement
+% being silently DISARMED by a stray environment variable or a `-reset` that
+% forgets the default. This test is what makes that loud.
+%
+% The evidence for arming: corpus run 31415147934 reports "0 vacuous required
+% field(s)" across all six corpora, 562,422 documents. Zero measured cost.
+% The standing caveat is that the corpora are a SAMPLE and the census's field
+% scan does not share a denominator with the validator's, so "0 measured" is
+% weaker than "0 possible" -- which is the argument FOR arming, not against:
+% the intended outcome for a dataset that trips it is a loud quarantine, not
+% a document that validates while saying nothing.
+did2.schema.cache.strictMode('-reset');
+verifyTrue(testCase, did2.schema.cache.strictMode('NonVacuousFields'), ...
+    'NonVacuousFields must be ARMED after a reset -- the default is on');
+doc = blankOf(testCase, 'demoTerm');
+verifyError(testCase, ...
+    @() doc.validate('SchemaCache', testCase.TestData.cache), ...
+    'did2:validation:vacuousField', ...
+    'an all-blank required composite must quarantine with no switch set');
+end
+
+function testNonVacuousFieldsCanStillBeTurnedOffDeliberately(testCase)
+% The escape hatch is real and is tested. An operator who needs a corpus to
+% migrate past a vacuity failure turns it off; nothing about arming the
+% default removes that.
 did2.schema.cache.strictMode('NonVacuousFields', false);
 doc = blankOf(testCase, 'demoTerm');
 doc.validate('SchemaCache', testCase.TestData.cache);
 verifyTrue(testCase, true, ...
-    'with the switch off, {node:'''',name:''''} still satisfies mustBeNonEmpty');
+    'with the switch explicitly off, an all-blank composite still passes');
 end
 
 function testAllBlankCompositeIsRejectedWhenSwitchIsOn(testCase)
