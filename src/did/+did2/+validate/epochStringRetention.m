@@ -299,32 +299,35 @@ function rowsOut = perSourceCounts(values, sources)
 %PERSOURCECOUNTS {source, documents, distinct_strings}. Same shape as the block
 %   did2.convert.epochMint reports, so the two sides can be read against each
 %   other row by row.
+%   Plain parallel arrays, not a containers.Map -- identical body to
+%   did2.convert.epochMint/perSourceCounts, and deliberately so: the two reports
+%   are meant to be read row against row, and a second implementation is a second
+%   chance for them to disagree about what a row means.
 rowsOut = struct('source', {}, 'documents', {}, 'distinct_strings', {});
-docsBySource = containers.Map('KeyType', 'char', 'ValueType', 'double');
-valsBySource = containers.Map('KeyType', 'char', 'ValueType', 'any');
-order = {};
+order     = {};
+docCounts = [];
+valLists  = {};
 for k = 1:numel(sources)
     seenHere = {};
     for j = 1:numel(sources{k})
         s = sources{k}{j};
-        if ~isKey(docsBySource, s)
-            docsBySource(s) = 0;
-            valsBySource(s) = {};
-            order{end+1} = s; %#ok<AGROW>
+        idx = find(strcmp(order, s), 1);
+        if isempty(idx)
+            order{end+1}     = s;    %#ok<AGROW>
+            docCounts(end+1) = 0;    %#ok<AGROW>
+            valLists{end+1}  = {};   %#ok<AGROW>
+            idx = numel(order);
         end
         if ~any(strcmp(seenHere, s))
-            docsBySource(s) = docsBySource(s) + 1;
+            docCounts(idx) = docCounts(idx) + 1;
             seenHere{end+1} = s; %#ok<AGROW>
         end
-        vv = valsBySource(s);
-        vv{end+1} = values{k}{j}; %#ok<AGROW>
-        valsBySource(s) = vv;
+        valLists{idx}{end+1} = values{k}{j};
     end
 end
 for k = 1:numel(order)
-    s = order{k};
-    vv = valsBySource(s);
-    rowsOut(end+1) = struct('source', s, 'documents', docsBySource(s), ...
-        'distinct_strings', numel(unique(vv))); %#ok<AGROW>
+    rowsOut(end+1) = struct('source', order{k}, ...
+        'documents', docCounts(k), ...
+        'distinct_strings', numel(unique(valLists{k}))); %#ok<AGROW>
 end
 end

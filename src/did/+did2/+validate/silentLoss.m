@@ -86,10 +86,12 @@ function report = silentLoss(docs, opts)
 %
 %   THE DENOMINATORS ARE THE POINT (operating rule 5). A zero here can mean four
 %   different things and they must be distinguishable from the report alone:
-%     uniqueness_families_declared   (class, family) pairs carrying the rule
-%     docs_with_family               documents carrying >=1 member
-%     docs_multi_member              documents carrying >1 member  <-- BELOW
-%                                    THIS THE RULE CANNOT FIRE AT ALL
+%     families_declared              distinct (class, family) pairs carrying
+%                                    the rule anywhere in the batch
+%     docs_with_family               (document, family) pairs with >=1 member
+%     docs_multi_member              (document, family) pairs with >1 member
+%                                    <-- AT ZERO THE RULE CANNOT FIRE AT ALL,
+%                                    and a zero violation count says only that
 %     members_examined               family members inspected
 %     members_resolved               target found in this batch
 %     members_unresolved             target NOT in the batch -- NOT CHECKED
@@ -165,7 +167,7 @@ idIndex = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:numel(bodies)
     thisId = bodyId(bodies{k});
     if ~isempty(thisId) && ~idIndex.isKey(thisId)
-        idIndex(thisId) = bodies{k}; %#ok<NASGU>
+        idIndex(thisId) = bodies{k};
     end
 end
 uniqueFamilySeen = {};   % (class|family) pairs that actually carry the rule
@@ -383,13 +385,149 @@ for k = 1:numel(chain)
         if ~isstruct(dep) || ~isfield(dep, 'name'); continue; end
         n = char(dep.name);
         if ~contains(n, '#'); continue; end
-        lo = 0; hi = NaN;
+        lo = 0; hi = NaN; uq = '';
         if isfield(dep, 'min_count') && ~isempty(dep.min_count); lo = double(dep.min_count); end
         if isfield(dep, 'max_count') && ~isempty(dep.max_count); hi = double(dep.max_count); end
+        if isfield(dep, 'referent_unique_by') && ~isempty(dep.referent_unique_by)
+            uq = char(dep.referent_unique_by);
+        end
         if any(strcmp({fams.name}, n)); continue; end
-        fams(end+1) = struct('name', n, 'min_count', lo, 'max_count', hi); %#ok<AGROW>
+        fams(end+1) = struct('name', n, 'min_count', lo, 'max_count', hi, ...
+            'unique_by', uq); %#ok<AGROW>
     end
 end
+end
+
+function ids = familyMemberIds(body, famName)
+%FAMILYMEMBERIDS #52: the referent ids of `prefix_#`, in the order the document
+%   carries them. Members with a BLANK id are dropped: an edge naming no
+%   document cannot be compared with anything, and the empty-edge census
+%   already counts it. Tolerant of all three id spellings the pipeline uses at
+%   different stages, exactly as edgeIsPopulated is.
+ids = {};
+if ~isfield(body, 'depends_on'); return; end
+deps = body.depends_on;
+if isstruct(deps)
+    items = num2cell(deps(:)');
+elseif iscell(deps)
+    items = deps(:)';
+else
+    return;
+end
+prefix = strrep(famName, '#', '');
+for k = 1:numel(items)
+    d = items{k};
+    if ~isstruct(d) || ~isfield(d, 'name'); continue; end
+    nm = char(d.name);
+    if ~startsWith(nm, prefix); continue; end
+    tail = nm(numel(prefix)+1:end);
+    if isempty(tail) || ~all(isstrprop(tail, 'digit')); continue; end
+    v = '';
+    for key = {'value', 'document_id', 'id'}
+        if isfield(d, key{1}) && ~isempty(d.(key{1}))
+            v = char(d.(key{1})); break;
+        end
+    end
+    if isempty(v); continue; end
+    ids{end+1} = v; %#ok<AGROW>
+end
+end
+
+function [key, how] = referentKey(referent, dottedPath)
+%REFERENTKEY #52: the comparison key for one family member, read from the
+%   REFERENCED document at DOTTEDPATH ('value.clock').
+%
+%   WHAT WE COMPARE ON TODAY, AND WHY IT IS NOT THE CURIE. `value.clock` is an
+%   `ontology_term` {node, name} and its terms are STAGED WITH EMPTY NODES --
+%   the NDIC clocktype identifiers are #67 and the authority is in no repository
+%   in scope (NDIC.txt was removed from NDI-matlab in 2c19bf24c). So:
+%
+%       node non-empty   -> key on the CURIE      how = 'node'
+%       node empty       -> key on the LABEL      how = 'name'
+%       both blank/absent-> NO KEY, not compared  how = ''
+%
+%   The two are counted separately in uniqueness_denominator so the transition
+%   is visible in the report rather than inferred. WHEN #67 MINTS THE TERMS the
+%   keys move from label to CURIE on their own, and the one thing to watch is a
+%   MIXED family -- one member minted, one not -- which would key the same clock
+%   two ways and read as unique. That is a report to look for, not a silent
+%   improvement; it is why `members_keyed_by_name` is printed even at zero.
+%
+%   Falls back to the whole value when the path does not land on a {node,name}
+%   cell, so the mechanism is not specific to ontology terms.
+key = ''; how = '';
+v = pathValue(referent, dottedPath);
+if isempty(v); return; end
+if isstruct(v) && isscalar(v)
+    if isfield(v, 'node') && ischar(v.node) && ~isempty(strtrim(v.node))
+        key = ['node:' lower(strtrim(v.node))]; how = 'node'; return;
+    end
+    if isfield(v, 'name') && ischar(v.name) && ~isempty(strtrim(v.name))
+        key = ['name:' lower(strtrim(v.name))]; how = 'name'; return;
+    end
+    return;   % an all-blank ontology_term -- nothing to compare
+end
+if ischar(v) && ~isempty(strtrim(v))
+    key = ['name:' lower(strtrim(v))]; how = 'name'; return;
+end
+if isnumeric(v) && isscalar(v) && isfinite(v)
+    key = ['name:' num2str(v)]; how = 'name'; return;
+end
+end
+
+function v = pathValue(body, dottedPath)
+%PATHVALUE Resolve a dotted path against a document body, searching the
+%   PROPERTY BLOCKS for the first segment.
+%
+%   The first segment is a FIELD name ('value'), not a block name, because that
+%   is what a schema declares. Which block hosts it depends on `placement` and
+%   on which class in the chain declared it, so the block is searched for rather
+%   than assumed -- the same approach the vacuous-field loop above takes, and
+%   for the same reason: assuming the declaring class's block is how a field
+%   goes unread.
+v = [];
+if ~isstruct(body) || ~isscalar(body); return; end
+parts = strsplit(char(dottedPath), '.');
+if isempty(parts); return; end
+blocks = fieldnames(body);
+for b = 1:numel(blocks)
+    bn = blocks{b};
+    if any(strcmp(bn, {'document_class', 'depends_on', 'file', 'files'}))
+        continue;
+    end
+    blk = body.(bn);
+    if ~isstruct(blk) || ~isscalar(blk) || ~isfield(blk, parts{1}); continue; end
+    cur = blk.(parts{1});
+    ok = true;
+    for p = 2:numel(parts)
+        if isstruct(cur) && isscalar(cur) && isfield(cur, parts{p})
+            cur = cur.(parts{p});
+        else
+            ok = false; break;
+        end
+    end
+    if ok
+        v = cur;
+        return;
+    end
+end
+end
+
+function id = bodyId(body)
+%BODYID The document's own id, or '' -- the key the batch index is built on.
+id = '';
+if isstruct(body) && isscalar(body) && isfield(body, 'base') ...
+        && isstruct(body.base) && isscalar(body.base) && isfield(body.base, 'id')
+    v = body.base.id;
+    if ischar(v); id = v; elseif isstring(v) && isscalar(v); id = char(v); end
+end
+end
+
+function s = sanitise(s)
+%SANITISE `explode` splits report keys on '|', so a value carrying one would
+%   silently shift every field after it. Replace rather than error: the audit
+%   must never be able to break a migration.
+s = strrep(char(s), '|', '/');
 end
 
 function n = countFamily(body, famName)

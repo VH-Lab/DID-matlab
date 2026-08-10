@@ -110,6 +110,38 @@ def render_report(r, out):
               % (v.get("count", "?"), v.get("class_name", "?"),
                  v.get("edge_name", "?"), v.get("declared", "?"),
                  v.get("found", "?")))
+        # #52. A uniqueness violation is a DIFFERENT fact from a cardinality
+        # one -- the count is legal and the members are indistinguishable --
+        # so it gets its own line and its own denominators. Those denominators
+        # are not decoration: this counter has four ways to read zero (the
+        # rule fired and found nothing / no document carried two members / the
+        # targets were not in the batch / the referents declare no clock), and
+        # only the numbers below tell them apart.
+        ud = sl.get("uniqueness_denominator") or {}
+        p("  silent-loss: %s family-uniqueness violation(s)"
+          % sl.get("family_uniqueness_violation_count", "?"))
+        p("      DENOMINATOR: %s famil(ies) declare a uniqueness rule; "
+          "%s doc-family pair(s) carry a member, %s carry MORE THAN ONE"
+          % (ud.get("families_declared", "?"),
+             ud.get("docs_with_family", "?"),
+             ud.get("docs_multi_member", "?")))
+        p("      DENOMINATOR: %s member(s) examined -- %s resolved, "
+          "%s unresolved (target not in batch), %s with no key on the referent"
+          % (ud.get("members_examined", "?"), ud.get("members_resolved", "?"),
+             ud.get("members_unresolved", "?"), ud.get("members_no_key", "?")))
+        p("      DENOMINATOR: compared on %s CURIE(s) and %s label(s) "
+          "(labels because the NDIC clock terms are unminted -- #67)"
+          % (ud.get("members_keyed_by_node", "?"),
+             ud.get("members_keyed_by_name", "?")))
+        if ud.get("docs_multi_member") == 0:
+            p("      *** no document carries two members of a governed family,")
+            p("      *** so the rule COULD NOT FIRE. Zero above means"
+              " 'untested', not 'clean'.")
+        for v in aslist(sl.get("family_uniqueness_violation"))[:10]:
+            p("      %8s  %s.%s  two members share %s = %s"
+              % (v.get("count", "?"), v.get("class_name", "?"),
+                 v.get("edge_name", "?"), v.get("unique_by", "?"),
+                 v.get("key", "?")))
 
     if "fragment_count" in r:
         fc = r["fragment_count"]
@@ -276,7 +308,12 @@ def rollup(reports, out):
     """
     p = lambda s="": out.append(s)
 
-    edges, fields, families = {}, {}, {}
+    edges, fields, families, uniques = {}, {}, {}, {}
+    # #52 rollup denominators, summed the same way the counts are.
+    uni_den = {"docs_with_family": 0, "docs_multi_member": 0,
+               "members_examined": 0, "members_resolved": 0,
+               "members_unresolved": 0, "members_no_key": 0,
+               "members_keyed_by_node": 0, "members_keyed_by_name": 0}
     inspected = 0
     quarantine = 0
     fragments = 0
@@ -308,6 +345,18 @@ def rollup(reports, out):
         for v in aslist(sl.get("family_count_violation")):
             key = "%s.%s" % (v.get("class_name", "?"), v.get("edge_name", "?"))
             families[key] = families.get(key, 0) + int(v.get("count") or 0)
+        for v in aslist(sl.get("family_uniqueness_violation")):
+            key = "%s.%s  (%s = %s)" % (v.get("class_name", "?"),
+                                        v.get("edge_name", "?"),
+                                        v.get("unique_by", "?"),
+                                        v.get("key", "?"))
+            uniques[key] = uniques.get(key, 0) + int(v.get("count") or 0)
+        ud = sl.get("uniqueness_denominator") or {}
+        for k in uni_den:
+            try:
+                uni_den[k] += int(ud.get(k) or 0)
+            except (TypeError, ValueError):
+                pass
 
     p("")
     p("=" * 72)
@@ -326,10 +375,29 @@ def rollup(reports, out):
 
     for label, table in (("EMPTY REQUIRED EDGES", edges),
                          ("VACUOUS REQUIRED FIELDS", fields),
-                         ("EDGE-FAMILY CARDINALITY VIOLATIONS", families)):
+                         ("EDGE-FAMILY CARDINALITY VIOLATIONS", families),
+                         ("EDGE-FAMILY UNIQUENESS VIOLATIONS", uniques)):
         total = sum(table.values())
         p("")
         p("  %s: %d document(s) across %d row(s)" % (label, total, len(table)))
+        if table is uniques:
+            # The uniqueness row set is the one where an empty table is
+            # AMBIGUOUS, so its denominators print beside it rather than three
+            # screens up in the per-corpus blocks.
+            p("      DENOMINATOR: %d doc-family pair(s) carried a member, "
+              "%d carried MORE THAN ONE"
+              % (uni_den["docs_with_family"], uni_den["docs_multi_member"]))
+            p("      DENOMINATOR: %d member(s) examined -- %d resolved, "
+              "%d unresolved, %d with no key on the referent"
+              % (uni_den["members_examined"], uni_den["members_resolved"],
+                 uni_den["members_unresolved"], uni_den["members_no_key"]))
+            p("      DENOMINATOR: %d compared on a CURIE, %d on a label"
+              % (uni_den["members_keyed_by_node"],
+                 uni_den["members_keyed_by_name"]))
+            if uni_den["docs_multi_member"] == 0:
+                p("      *** NOTHING IN REACH CARRIES TWO MEMBERS OF A")
+                p("      *** GOVERNED FAMILY. The rule could not fire; the")
+                p("      *** zero is 'untested', not 'clean'.")
         for key, n in sorted(table.items(), key=lambda kv: (-kv[1], kv[0])):
             p("      %8d  %s" % (n, key))
         if not table:

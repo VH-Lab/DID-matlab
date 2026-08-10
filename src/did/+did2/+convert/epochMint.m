@@ -568,34 +568,37 @@ function rowsOut = perSourceCounts(epochValues, epochSources)
 %   Sources with no hits do not appear -- the reader's own header is the list of
 %   what exists, and a caller comparing the two learns which sources this batch
 %   simply has no documents for.
+%   Plain parallel arrays, NOT a containers.Map. The source list is bounded by
+%   the reader's own header (six today), so a linear scan costs nothing -- and
+%   `map(key) = {}` on a ValueType 'any' Map is the kind of construct that reads
+%   as an initialisation and can behave as a deletion. Not worth the risk in a
+%   counter whose whole purpose is to be believed.
 rowsOut = struct('source', {}, 'documents', {}, 'distinct_strings', {});
-docsBySource = containers.Map('KeyType', 'char', 'ValueType', 'double');
-valsBySource = containers.Map('KeyType', 'char', 'ValueType', 'any');
-order = {};
+order     = {};
+docCounts = [];
+valLists  = {};
 for k = 1:numel(epochSources)
     seenHere = {};
     for j = 1:numel(epochSources{k})
         s = epochSources{k}{j};
-        if ~isKey(docsBySource, s)
-            docsBySource(s) = 0;
-            valsBySource(s) = {};
-            order{end+1} = s; %#ok<AGROW>
+        idx = find(strcmp(order, s), 1);
+        if isempty(idx)
+            order{end+1}     = s;    %#ok<AGROW>
+            docCounts(end+1) = 0;    %#ok<AGROW>
+            valLists{end+1}  = {};   %#ok<AGROW>
+            idx = numel(order);
         end
         if ~any(strcmp(seenHere, s))
-            docsBySource(s) = docsBySource(s) + 1;
+            docCounts(idx) = docCounts(idx) + 1;
             seenHere{end+1} = s; %#ok<AGROW>
         end
-        vv = valsBySource(s);
-        vv{end+1} = epochValues{k}{j}; %#ok<AGROW>
-        valsBySource(s) = vv;
+        valLists{idx}{end+1} = epochValues{k}{j};
     end
 end
 for k = 1:numel(order)
-    s = order{k};
-    vv = valsBySource(s);
-    rowsOut(end+1) = struct('source', s, ...
-        'documents', docsBySource(s), ...
-        'distinct_strings', numel(unique(vv))); %#ok<AGROW>
+    rowsOut(end+1) = struct('source', order{k}, ...
+        'documents', docCounts(k), ...
+        'distinct_strings', numel(unique(valLists{k}))); %#ok<AGROW>
 end
 end
 
