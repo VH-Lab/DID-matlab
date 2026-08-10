@@ -16,6 +16,17 @@ function tests = testFixtureCorpus
 %   coverage grows -- keep them self-contained (include any subject/element a doc
 %   references, or use a no-dependency variant).
 %
+%   STATUS of the 2026-08-10 batch-post-pass wiring edit: WRITTEN WITHOUT
+%   MATLAB. The new `did2.convert.resolveSessionAnchors` call has NOT been run.
+%   NOTE ITS LIMIT HERE, so nobody reads a green fast gate as proof the fold
+%   works: these fixtures deliberately contain NO `session` document (see the
+%   note on v1Fixtures below), so any anchor they produce takes the pass's
+%   REFUSAL path (`refused_no_session_document`) and is left untouched. What
+%   this gate proves is that the pass runs, validates and changes nothing it
+%   cannot justify -- not that the fold is correct. The fold itself is covered
+%   by did2.unittest.testTimeReferenceCollapse and
+%   did2.unittest.testBatchPassWiring, both of which mint a session document.
+%
 %   Run with:  results = runtests('did2.unittest.testFixtureCorpus');
 
 tests = functiontests(localfunctions);
@@ -271,6 +282,21 @@ result = did2.convert.resolveDatasetEntities(result, ...
 % post-pass set as runCorpusDiscovery and testCorpusPRED; this is the fast gate,
 % so it is where a broken mint should be caught first.
 result = did2.convert.epochMint(result, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
+% #65: fold session_relative_reference + session_bounded_reference into
+% `relative_reference`, base.id PRESERVED, anchored to the session DOCUMENT.
+% Same post-pass set and the SAME ORDER as runCorpusDiscovery, testCorpusPRED
+% and ndi.migrate.local -- a pass wired into three of four call sites is a trap:
+% the corpus goes green while production does something else.
+%
+% CALLED BARE HERE, unlike the two report-writing call sites, and the asymmetry
+% is deliberate rather than an oversight. The guard
+% (did2.unittest.helpers.runBatchPass) exists to stop an exception destroying a
+% corpus report that cost an hour to produce. THIS test writes no report and
+% runs in ~2 minutes, so there is nothing to protect and a raw stack trace is
+% strictly more informative than a captured message. This is the fast gate: a
+% broken post-pass should die here, loudly, before any corpus job starts.
+result = did2.convert.resolveSessionAnchors(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 
 % GATE 1: nothing quarantined

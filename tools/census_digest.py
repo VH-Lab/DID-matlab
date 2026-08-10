@@ -60,6 +60,140 @@ def aslist(v):
     return [v]
 
 
+# The batch post-passes a V_eta corpus run is expected to have executed, in the
+# order the harness runs them. This list IS the denominator for the post-pass
+# block: every entry prints a line whether or not the report carries it, so
+# "the pass ran and changed nothing" and "the pass was never wired into the run
+# that produced this report" are different output rather than the same silence.
+#
+# THAT DISTINCTION IS WHY THIS BLOCK EXISTS. `did2.convert.resolveSessionAnchors`
+# was built and left uncalled, and no corpus artifact said so, because a pass
+# that is not called writes nothing anywhere. `epoch_mint` was the sibling case:
+# it WAS wired and WAS persisted into every report from the day it landed -- and
+# this digest did not render it, so the number reached the artifact and stopped
+# there. A measurement nobody can see without downloading a zip is the
+# write-only condition this whole file exists to remove.
+#
+# (field-in-report, MATLAB function, [(report key, label), ...] to print)
+POST_PASSES = [
+    ("epoch_mint", "did2.convert.epochMint", [
+        ("documents_inspected", "documents inspected"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("session_documents_seen", "session documents"),
+        ("epoch_strings_read", "epoch strings read"),
+        ("distinct_epoch_id_strings", "distinct id strings"),
+        ("distinct_session_epoch_pairs", "distinct (session,id) pairs"),
+        ("pairs_minus_strings", "epochs the string key would have FUSED"),
+        ("epochs_found_existing", "epochs already present"),
+        ("epochs_minted", "epochs minted"),
+        ("skipped_synthetic", "refused: synthetic whole_session_ id"),
+        ("skipped_no_session_id", "refused: no base.session_id"),
+        ("skipped_no_session_document", "refused: no session document"),
+        ("skipped_ambiguous_session", "refused: ambiguous session"),
+        ("method_parameters_seen", "method_parameters seen"),
+        ("method_parameters_edges_filled", "method_parameters epoch_id filled"),
+        ("method_parameters_unresolved", "method_parameters unresolved"),
+        ("mint_quarantined", "QUARANTINED by the mint"),
+    ]),
+    ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
+        ("documents_inspected", "documents inspected"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("session_documents_seen", "session documents"),
+        ("anchors_seen", "anchors seen"),
+        ("anchors_relative", "  session_relative_reference"),
+        ("anchors_bounded", "  session_bounded_reference"),
+        ("anchors_folded", "FOLDED to relative_reference"),
+        ("refused_total", "REFUSED (total)"),
+        ("refused_no_session_id", "  no base.session_id"),
+        ("refused_no_session_document", "  no session document"),
+        ("refused_ambiguous_session", "  ambiguous session"),
+        ("refused_ambiguous_relation", "  ambiguous relation (concurrent_with)"),
+        ("refused_unknown_relation", "  relation not in the v1 enum"),
+        ("refused_negative_extent", "  end < start"),
+        ("fold_quarantined", "QUARANTINED by the fold"),
+    ]),
+]
+
+
+def render_post_passes(r, out):
+    """Render the batch post-pass reports, denominator (the pass list) first.
+
+    Four distinguishable states per pass, and keeping them distinguishable is
+    the entire job:
+
+      absent        the report does not carry the field -- the pass was not
+                    wired into the run that produced it (or the report predates
+                    the wiring). NOT rendered as zeros.
+      pass_failed   the harness guard (did2.unittest.helpers.runBatchPass)
+                    caught a throw. Rendered as a *** banner: the documents are
+                    in pass-1 form and the run's other numbers describe a
+                    migration that did not include this pass.
+      ran == false  the pass returned early -- a non-V_eta target, or an empty
+                    batch. A legitimate no-op, and a different fact from both
+                    of the above.
+      otherwise     the counters.
+    """
+    p = lambda s="": out.append(s)
+
+    present = [name for name, _fn, _rows in POST_PASSES if name in r]
+    p("  batch post-passes: %d expected, %d present in this report"
+      % (len(POST_PASSES), len(present)))
+
+    for name, fn, rows in POST_PASSES:
+        rep = r.get(name)
+        if rep is None:
+            p("      %-22s NOT IN THIS REPORT -- the pass was not wired into"
+              % name)
+            p("      %-22s the run that produced it (%s)" % ("", fn))
+            continue
+        if not isinstance(rep, dict):
+            p("      %-22s MALFORMED (%r)" % (name, type(rep).__name__))
+            continue
+        failed = rep.get("pass_failed")
+        if failed:
+            p("      %-22s *** FAILED: %s" % (name, failed))
+            p("      %-22s *** identifier: %s"
+              % ("", rep.get("pass_failed_identifier", "?")))
+            p("      %-22s *** its documents are in PASS-1 FORM. Every other"
+              % "")
+            p("      %-22s *** number in this report describes a migration"
+              % "")
+            p("      %-22s *** that did NOT include %s." % ("", fn))
+            continue
+        if rep.get("ran") is False:
+            p("      %-22s did not run (non-V_eta target, or an empty batch)"
+              % name)
+            continue
+        p("      %-22s %s" % (name, fn))
+        for key, label in rows:
+            if key in rep:
+                p("          %10s  %s" % (rep[key], label))
+            else:
+                # A counter the report does not carry is NOT printed as 0.
+                p("          %10s  %s" % ("(absent)", label))
+        # THE DELETION GATE, stated in the digest rather than left to be
+        # re-derived. The six retiring reference classes may leave V_eta only
+        # when refused_total is 0 AND no session_*_reference survives in
+        # by_class -- deleting a class whose documents still exist is the
+        # epochfiles_ingested regression, which cost 2,484 quarantines.
+        if name == "session_anchor_fold":
+            survivors = 0
+            by_class = r.get("by_class") or {}
+            for cls in ("session_relative_reference", "session_bounded_reference"):
+                try:
+                    survivors += int(by_class.get(cls) or 0)
+                except (TypeError, ValueError):
+                    pass
+            refused = rep.get("refused_total")
+            p("          deletion gate: refused_total=%s, surviving "
+              "session_*_reference in by_class=%s" % (refused, survivors))
+            if refused == 0 and survivors == 0 and rep.get("anchors_seen"):
+                p("          -> BOTH HALVES MET for this corpus. The corpora "
+                  "are a SAMPLE, so this is")
+                p("             one corpus's evidence, not authorisation to "
+                  "delete the classes.")
+
+
 def render_report(r, out):
     """Render one corpus report. Raises on malformed input; the caller isolates."""
     p = lambda s="": out.append(s)
@@ -220,6 +354,8 @@ def render_report(r, out):
                         p("            %-16s %4s distinct  %6s doc(s)"
                           % (t.get("prefix", "?"), t.get("n_distinct", "?"),
                              t.get("n_docs", "?")))
+
+    render_post_passes(r, out)
 
     for q in aslist(r.get("quarantine_reasons"))[:5]:
         p("  quarantine: %5s [%s] %s" % (q.get("count", "?"),
@@ -402,6 +538,85 @@ def rollup(reports, out):
             p("      %8d  %s" % (n, key))
         if not table:
             p("      (none)")
+
+    rollup_post_passes(reports, out)
+
+
+def rollup_post_passes(reports, out):
+    """Cross-corpus post-pass coverage: did each pass run EVERYWHERE?
+
+    THE FAILURE THIS DETECTS. A batch pass wired into some call sites and not
+    others is worse than one wired nowhere: the corpus goes green while another
+    path does something else, and nothing in a per-corpus block says so, because
+    each block only reports on itself. The equivalent at the data level is a
+    pass present in four reports out of six -- which reads as perfectly healthy
+    four times and is invisible twice.
+
+    So the coverage line is the DENOMINATOR here, printed before any total: how
+    many reports were summed, and how many carried each pass. A pass whose
+    presence count is not the report count gets a *** banner naming the corpora
+    that lack it.
+    """
+    p = lambda s="": out.append(s)
+
+    p("")
+    p("  BATCH POST-PASSES: %d expected in a V_eta run, over %d corpus "
+      "report(s)" % (len(POST_PASSES), len(reports)))
+    if not reports:
+        p("      (no reports)")
+        return
+
+    def corpus_of(rep, i):
+        return str(rep.get("corpus") or "report #%d" % (i + 1))
+
+    for name, fn, rows in POST_PASSES:
+        carried, missing, failed_in, noop_in = [], [], [], []
+        totals = {}
+        for i, r in enumerate(reports):
+            rep = r.get(name)
+            if not isinstance(rep, dict):
+                missing.append(corpus_of(r, i))
+                continue
+            if rep.get("pass_failed"):
+                failed_in.append(corpus_of(r, i))
+                continue
+            if rep.get("ran") is False:
+                noop_in.append(corpus_of(r, i))
+                continue
+            carried.append(corpus_of(r, i))
+            for key, _label in rows:
+                if key in rep:
+                    try:
+                        totals[key] = totals.get(key, 0) + int(rep[key] or 0)
+                    except (TypeError, ValueError):
+                        pass
+
+        p("")
+        p("    %s  (%s)" % (name, fn))
+        p("      DENOMINATOR: ran in %d of %d report(s); %d absent, %d FAILED, "
+          "%d no-op" % (len(carried), len(reports), len(missing),
+                        len(failed_in), len(noop_in)))
+        if failed_in:
+            p("      *** FAILED in: %s" % ", ".join(failed_in))
+            p("      *** those corpora's documents are in PASS-1 FORM for this")
+            p("      *** pass; the totals below are sums over %d corpora only."
+              % len(carried))
+        if missing:
+            p("      *** NOT PRESENT in: %s" % ", ".join(missing))
+            p("      *** a pass that ran on some corpora and not others is the")
+            p("      *** trap this section exists to catch -- do not read the")
+            p("      *** totals below as whole-corpus figures.")
+        if noop_in:
+            p("      no-op (non-V_eta target or empty batch) in: %s"
+              % ", ".join(noop_in))
+        if not carried:
+            p("      (nothing to total)")
+            continue
+        for key, label in rows:
+            if key in totals:
+                p("          %10d  %s" % (totals[key], label))
+            else:
+                p("          %10s  %s" % ("(absent)", label))
 
 
 def digest(reports_dirs):

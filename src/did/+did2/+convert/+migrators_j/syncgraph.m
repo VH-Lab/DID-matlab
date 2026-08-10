@@ -54,16 +54,46 @@ function bodies = syncgraph(preBody)
 %   ---------------------------------------------------------------------
 %   THE GUARD: NO SESSION => NO POLICY. PASS THE DOCUMENT THROUGH.
 %   ---------------------------------------------------------------------
-%   `clock_alignment_policy.session_id` is REQUIRED (mustBeNonEmpty: true) and it
-%   is the ONE edge here that cannot be reconstructed later. The writer sets
-%   `base.session_id` from `obj.session.id()`, so it is normally a real session
-%   document -- which migrates 1:1 with its id preserved (the coverage ledger's
-%   `session -> session, persist` row), so the edge resolves.
+%   `clock_alignment_policy.session_id` is REQUIRED (mustBeNonEmpty: true) and
+%   `must_refer_to_document_class: session` -- so it must name a session
+%   DOCUMENT's `base.id`.
 %
-%   Two cases where it would not, and both pass through instead of emitting a
-%   blank REQUIRED edge -- the failure that put 5,316 syncrule_mapping documents
-%   into the census while validating clean, because
-%   +did2/+validate/references.m:90 SKIPS empty edges:
+%   ---- THIS HEADER WAS WRONG, AND A CORPUS RUN PROVED IT ----------------
+%   It used to say: "The writer sets `base.session_id` from `obj.session.id()`,
+%   so it is normally a real session document -- which migrates 1:1 with its id
+%   preserved ... so the edge resolves." That is FALSE, and it is false for a
+%   reason this repo had already written down in another file:
+%
+%       ndi.document.m:57   mints base.id from a FRESH ndi.ido()
+%       ndi.session.m:215   sets base.session_id from session.id() SEPARATELY
+%
+%   A session document's `base.id` is NOT its `base.session_id`. They are
+%   different id spaces. So filling this edge from `preBody.base.session_id`
+%   names a value no document carries, and it dangles EVERY TIME.
+%
+%   MEASURED, corpus run 31438980133 (20211116, `fd36421`):
+%       reference integrity: 1 orphan of 2814 edges
+%           1  clock_alignment_policy.session_id
+%   That corpus holds exactly one syncgraph, so it is 1 of 1 -- 100% of the
+%   class, which is the signature of this whole family of defect.
+%
+%   `did2.convert.epochMint` refused this exact assumption and said so in its
+%   own header ("the pass therefore INDEXES the session documents rather than
+%   assuming the two strings are equal"). This migrator was written in parallel
+%   and assumed it. Two files, one fact, opposite conclusions -- and only the
+%   one that could not check was wrong.
+%
+%   SO THE FOLD IS NOW GATED, exactly as syncrule_mapping's is gated on the
+%   epoch mint: a single-document migrator CANNOT resolve a session id to a
+%   session document, because that is a corpus-wide lookup. Every real document
+%   passes through until a batch pass fills the edge. `epochMint` already
+%   builds precisely that index, so the fold un-gates by moving there -- it is
+%   not blocked on new machinery, only on wiring it.
+%
+%   The guard ALSO still covers the two cases it always did, both of which
+%   remain right -- emitting a blank REQUIRED edge is the failure that put
+%   5,316 syncrule_mapping documents into the census while validating clean,
+%   because +did2/+validate/references.m:90 SKIPS empty edges:
 %
 %     * no `base.session_id` at all;
 %     * the sentinel '0000000000000000_0000000000000000' that
@@ -97,6 +127,30 @@ if isempty(sessionId) || isEmptySessionSentinel(sessionId)
     return;
 end
 
+% THE SESSION-DOCUMENT GATE. `session_id` must name a session DOCUMENT's
+% `base.id`, and `preBody.base.session_id` is a DIFFERENT id space (see the
+% header: ndi.document.m:57 vs ndi.session.m:215). A single-document migrator
+% cannot map one to the other -- that is a corpus-wide lookup over the migrated
+% body set, which is precisely what did2.convert.epochMint already builds.
+%
+% So every real document passes through here, and that is deliberate rather
+% than defeatist: measured, corpus run 31438980133 turned the previous
+% behaviour into 1 orphan of 1 syncgraph, and the corpus gate is 0 orphans.
+% A passthrough is non-gating and loses nothing -- syncgraph is NOT phase-8
+% deleted so the document has a schema, and base.id is preserved either way, so
+% syncrule_mapping's `syncgraph_id` edge and the live NDI query on it still
+% resolve.
+%
+% jSessionDocId is the seam, and it answers '' by construction in pass 1 --
+% the same shape as jEpochDocId. When the fold moves into the batch phase this
+% is the ONE line that changes, and testSyncgraphFoldsWhenTheSessionResolves
+% already drives that branch.
+sessionDocId = jSessionDocId(preBody);
+if isempty(sessionDocId)
+    bodies = {preBody};
+    return;
+end
+
 implClass = jGetCharAny(block, {'ndi_syncgraph_class', 'ndiSyncgraphClass'});
 [software, swId] = jSyncSoftware(preBody, implClass);
 
@@ -107,7 +161,7 @@ policy.document_class = struct('class_name', 'clock_alignment_policy', ...
     'schema_version', 'V_eta');
 
 deps = struct('name', {}, 'value', {});
-deps(end+1) = struct('name', 'session_id', 'value', sessionId);
+deps(end+1) = struct('name', 'session_id', 'value', sessionDocId);
 if ~isempty(swId)
     deps(end+1) = struct('name', 'software_id', 'value', swId);
 end

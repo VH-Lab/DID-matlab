@@ -278,13 +278,46 @@ end
 
 % ===================== syncgraph -> clock_alignment_policy =================
 
-function testSyncgraphBecomesPolicyWithMembershipEdges(testCase)
-% The class earns its existence on MEMBERSHIP: addrule/removerule both exist, so
-% the rules IN FORCE are not "every syncrule in the session".
+function testSyncgraphPassesThroughUntilTheSessionDocumentResolves(testCase)
+% INVERTED 2026-08-10 BY A CORPUS RUN. This asserted
+% `depVal(policy,'session_id') == 'sess_0001'` -- and that assertion WAS THE
+% DEFECT. `clock_alignment_policy.session_id` is
+% `must_refer_to_document_class: session`, so it must name a session DOCUMENT's
+% `base.id`; `base.session_id` is a different id space entirely
+% (ndi.document.m:57 mints base.id from a fresh ido; ndi.session.m:215 sets
+% base.session_id separately). The edge therefore dangled every time.
+%
+% MEASURED, corpus run 31438980133 (20211116): 1 orphan of 2814 edges, and the
+% corpus holds exactly one syncgraph -- 100% of the class. The orphan gate is
+% the reason this was caught at all: it is the one instrument that resolves
+% edges against the real migrated set, which no unit fixture does.
+%
+% This test could never have caught it, because the fixture and the migrator
+% shared the premise. That is the recorded lesson arriving through the DATA
+% this time rather than through the code.
 out = runJ(syncgraphFixture({'rule_a', 'rule_b', 'rule_c'}));
+verifyEqual(testCase, numel(out.migrated), 1, ...
+    'a did_v1 syncgraph must pass through -- no session document can be resolved in pass 1');
+verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'syncgraph');
+verifyEqual(testCase, out.migrated{1}.get('base.id'), 'graph_0001', ...
+    'base.id must survive, or syncrule_mapping.syncgraph_id and the live NDI query break');
+end
+
+function testSyncgraphFoldsWhenTheSessionResolves(testCase)
+% THE DEAD BRANCH, driven deliberately. jSessionDocId answers '' for every
+% did_v1 document, so this shape cannot occur today -- it occurs the moment a
+% batch pass stamps `session_document_id` onto the body, exactly as
+% jEpochDocId un-gates syncrule_mapping's fold.
+%
+% Keeping it alive is the point: when that wiring lands, the fold is already
+% tested, and every assertion the old test made about MEMBERSHIP still holds.
+v1 = syncgraphFixture({'rule_a', 'rule_b', 'rule_c'});
+v1.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
+out = runJ(v1);
 policy = findClass(testCase, out, 'clock_alignment_policy');
 verifyEqual(testCase, policy.get('base.id'), 'graph_0001');
-verifyEqual(testCase, depVal(policy, 'session_id'), 'sess_0001');
+verifyEqual(testCase, depVal(policy, 'session_id'), 'sessdoc_1', ...
+    'the edge must name the session DOCUMENT, never base.session_id');
 verifyEqual(testCase, depVal(policy, 'clock_alignment_configuration_1'), 'rule_a');
 verifyEqual(testCase, depVal(policy, 'clock_alignment_configuration_2'), 'rule_b');
 verifyEqual(testCase, depVal(policy, 'clock_alignment_configuration_3'), 'rule_c');
@@ -296,11 +329,16 @@ function testRuleLessGraphEmitsNoConfigurationEdgeAtAll(testCase)
 % Repair 3: syncrule_id_# was never invented -- V_eta TIGHTENED NDI's
 % "mustbenotempty": 0 into a requirement. A rule-less graph is LEGAL, so the
 % family is min_count 0 and the migrator emits ZERO edges, not one blank one.
-out = runJ(syncgraphFixture({}));
+%
+% Driven through the resolved branch (see above) because that is the only
+% branch that emits a policy at all.
+v1 = syncgraphFixture({});
+v1.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
+out = runJ(v1);
 policy = findClass(testCase, out, 'clock_alignment_policy');
 deps = depsOf(policy);
 verifyFalse(testCase, any(startsWith({deps.name}, 'clock_alignment_configuration_')));
-verifyEqual(testCase, depVal(policy, 'session_id'), 'sess_0001');
+verifyEqual(testCase, depVal(policy, 'session_id'), 'sessdoc_1');
 end
 
 function testGraphWithTheEmptySessionSentinelPassesThrough(testCase)
@@ -388,7 +426,15 @@ function testTheSyncgraphEdgeStillResolvesAfterTheGraphConverts(testCase)
 % becomes a clock_alignment_policy, but base.id is preserved, and must_refer is
 % DECLARATIVE (existence-only), so the passed-through mapping's syncgraph_id
 % still lands on the migrated document.
-out = did2.convert.v1_to_v2({syncgraphFixture({'rule_ctoe'}), mappingFixture(false)}, ...
+% The graph is driven through the RESOLVED branch: without a
+% `session_document_id` stamp it passes through as `syncgraph` and there is no
+% policy to find. The assertion below is about base.id surviving the FOLD, so
+% the fold is the branch worth exercising -- and base.id is preserved on the
+% passthrough branch too, which testSyncgraphPassesThroughUntilTheSession...
+% pins separately.
+graph = syncgraphFixture({'rule_ctoe'});
+graph.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
+out = did2.convert.v1_to_v2({graph, mappingFixture(false)}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
 policy = findClass(testCase, out, 'clock_alignment_policy');
 mapping = findClass(testCase, out, 'syncrule_mapping');
@@ -531,15 +577,19 @@ function testConfigurationAndPolicyValidateAgainstTheRealVEtaSchema(testCase)
 % assembled V_eta set on DID_SCHEMA_PATH (stable + draft + deprecated) -- the
 % quick gate builds exactly that, and all four target classes are in the DRAFT
 % tier, so a stable-only schema path fails here rather than skipping.
+graph = syncgraphFixture({'rule_ctoe'});
+graph.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
 out = did2.convert.v1_to_v2( ...
     {syncruleFixture('ctoe'), syncruleFixture('filematch'), ...
-     syncgraphFixture({'rule_ctoe'}), mappingFixture(false)}, ...
+     graph, mappingFixture(false)}, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
 % 4 (ctoe fold) + 1 (filematch passthrough) + 2 (policy + software) + 1 (mapping)
+% The graph in this batch carries a `session_document_id` stamp so the policy
+% branch runs; without it the graph passes through and the count is 7.
 verifyEqual(testCase, numel(out.migrated), 8);
 verifyEqual(testCase, countClass(out, 'clock_alignment_configuration'), 1);
 verifyEqual(testCase, countClass(out, 'clock_alignment_policy'), 1);

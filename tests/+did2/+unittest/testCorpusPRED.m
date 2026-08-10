@@ -23,6 +23,10 @@ function tests = testCorpusPRED
 %   cached in tempdir across runs so re-runs in the same session
 %   skip the fetch.
 %
+%   STATUS of the 2026-08-10 batch-post-pass wiring edit: WRITTEN WITHOUT
+%   MATLAB. The guarded epochMint call, the new resolveSessionAnchors call and
+%   the post-pass failure assertions have NOT been executed here.
+%
 %   Run with:
 %       results = runtests('did2.unittest.testCorpusPRED');
 
@@ -92,8 +96,28 @@ result = did2.convert.resolveDatasetEntities(result, 'Validate', true, ...
 % string) PAIR. Kept in step with runCorpusDiscovery deliberately -- this file
 % exists to run the same post-passes on a HARD gate, and a post-pass that runs
 % only on the discovery corpora is a post-pass nothing gates.
-result = did2.convert.epochMint(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+%
+% GUARDED (2026-08-10), same rule as runCorpusDiscovery: the report write is
+% ~20 lines below, and PRED has been invisible to the census once already (run
+% #3's upload found no files). A throw here would make it invisible again, and
+% this time silently, because the failure would look like an ordinary red test.
+% The guard keeps the artifact; the assertion added AFTER the report write
+% keeps the gate red.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.epochMint', 'epoch_mint', ...
+    @(r) did2.convert.epochMint(r, 'Validate', true, 'TargetVersion', 'V_eta'));
+
+% #65: fold session_relative_reference + session_bounded_reference into
+% `relative_reference`, base.id PRESERVED. Runs AFTER epochMint, matching
+% runCorpusDiscovery and ndi.migrate.local exactly. The two passes commute on
+% today's code (neither writes what the other reads, and no post-pass removes a
+% `session` document); the order is fixed so the three call sites cannot
+% diverge, NOT because a dependency forces it. See runCorpusDiscovery.m for the
+% full ordering note.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveSessionAnchors', 'session_anchor_fold', ...
+    @(r) did2.convert.resolveSessionAnchors(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
 
 % WRITE THE CENSUS REPORT, before the assertions so a red gate still reports.
 %
@@ -116,6 +140,19 @@ catch censusErr
 end
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
+
+% THE REPORT IS ON DISK -- now make a guarded post-pass failure FATAL. PRED is
+% the hard gate, so this is where a batch pass that threw must turn the build
+% red. Doing it here rather than letting the pass throw above is the whole
+% point of the guard: the artifact lands AND the gate fires, instead of one at
+% the cost of the other.
+for passField = {'epoch_mint', 'session_anchor_fold'}
+    failMsg = did2.unittest.helpers.batchPassFailure(result, passField{1});
+    verifyEmpty(testCase, failMsg, sprintf( ...
+        ['PRED: batch post-pass `%s` FAILED; its documents are in pass-1 ' ...
+         'form and the corpus report records this under %s.pass_failed: %s'], ...
+        passField{1}, passField{1}, failMsg));
+end
 
 % Build a readable diagnostic so a failure tells us *which* doc and *why*.
 if result.summary.quarantine_count > 0

@@ -6,6 +6,11 @@ function reportPath = writeCorpusReport(corpusName, result, reasons)
 %   converter summary plus a top-quarantine-reasons table. The CI
 %   workflow's upload-artifact step picks up everything under that
 %   directory.
+%
+%   STATUS of the 2026-08-10 edit (`session_anchor_fold`): WRITTEN WITHOUT
+%   MATLAB and NOT EXECUTED. `tools/census_digest.py` renders the new key and
+%   IS tested (tools/test_census_digest.py), so the Python half of the path is
+%   covered; the MATLAB half is not.
 
 reportDir = fullfile(pwd, 'corpus-reports');
 if ~exist(reportDir, 'dir')
@@ -54,6 +59,25 @@ end
 % keeps getting burned by.
 if isfield(result, 'epoch_mint')
     report.epoch_mint = result.epoch_mint;
+end
+% The SESSION ANCHOR FOLD (#65): session_relative_reference (107,308 documents)
+% + session_bounded_reference (20,411) -> `relative_reference`, base.id
+% preserved. Persisted for the same reason as epoch_mint, plus one specific to
+% this pass: `refused_total` IS HALF THE DELETION GATE for the six retiring
+% reference classes (the other half is 0 surviving session_*_reference in
+% by_class, which this file already writes). Deleting a class whose documents
+% still exist is the epochfiles_ingested regression, which cost 2,484
+% quarantines -- so the evidence for that deletion has to be in the artifact,
+% not in a log somebody has to still have open.
+%
+% `pass_failed` rides in the same struct when the guard
+% (did2.unittest.helpers.runBatchPass) caught a throw. It is written here
+% UNCONDITIONALLY with whatever the pass left, so a failed pass is a field in
+% the report rather than an absence -- a report that simply omitted the pass
+% would be indistinguishable from a run where it was never wired, which is the
+% exact condition this whole change exists to end.
+if isfield(result, 'session_anchor_fold')
+    report.session_anchor_fold = result.session_anchor_fold;
 end
 
 fid = fopen(reportPath, 'w');
