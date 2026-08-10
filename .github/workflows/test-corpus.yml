@@ -29,17 +29,36 @@ on:
   push:
     branches: ["claude/**"]
     paths:
+      # ONLY this file. `tools/census_digest.py` was here and was removed
+      # 2026-08-10: the digest is a PYTHON renderer with 62 unit tests that run
+      # in 0.03s, so it never needed a 70-minute six-runner corpus to validate --
+      # and while an agent was iterating on it, each edit fired a fresh corpus
+      # run and `cancel-in-progress` killed the one before it. Four consecutive
+      # runs died that way and Soph and JH were never measured once.
+      #
+      # Editing THIS file remains the on-demand lever, and it has to be: the
+      # workflow does not exist on the default branch yet, so the dispatch API
+      # 404s (verified 2026-08-10 -- `git ls-tree origin/main .github/workflows/`
+      # lists only prepare-release, run-codespell, test-code, test-symmetry).
+      # To run the corpus now: bump the comment below and push.
+      #   corpus-run-token: 1
       - ".github/workflows/test-corpus.yml"
-      - "tools/census_digest.py"
   workflow_dispatch:
   schedule:
     # 07:00 UTC daily. The full corpus is the slow, thorough gate; PRs are
-    # served by test-migrators-quick.yml (~2 min).
+    # served by test-migrators-quick.yml (~2 min). Measured 2026-08-10 on the
+    # last run that completed all six (31415147934): 70m wall clock, 142
+    # runner-minutes, and JH alone is 70m of it.
     - cron: "0 7 * * *"
 
 concurrency:
   group: corpus-${{ github.ref }}
-  cancel-in-progress: true
+  # FALSE, changed 2026-08-10. With `true`, a second trigger killed a run that
+  # was 45 minutes into JH, so the expensive corpora were the ones that never
+  # reported -- the cheap four always finished inside the window between
+  # pushes. Queuing costs runner minutes, which are free on this public repo;
+  # cancelling costs the measurement, which is the entire point of the job.
+  cancel-in-progress: false
 
 jobs:
   corpus:

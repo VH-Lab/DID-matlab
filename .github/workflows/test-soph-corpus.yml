@@ -23,9 +23,20 @@ on:
   push:
     branches: [claude/v-eta-migration-plan-35jj1z]
     paths:
-      - 'src/did/+did2/+convert/**'
-      - 'tests/+did2/+unittest/testCorpusSoph.m'
-      - 'tests/+did2/+unittest/+helpers/**'
+      # NARROWED TO THIS FILE, 2026-08-10. It used to fire on
+      # `src/did/+did2/+convert/**`, `testCorpusSoph.m` and `+helpers/**` --
+      # i.e. on EVERY migrator change, for a corpus measured at 53 minutes.
+      # During a session that touched migrators dozens of times that is hours
+      # of runner time spent re-measuring one corpus.
+      #
+      # It also duplicates work: `test-corpus.yml`'s matrix ALREADY runs Soph,
+      # with the same helpers and the same 0-orphan/0-quarantine gate, and
+      # additionally writes the census report this one does not. So narrowing
+      # here removes a second run of the same corpus, not a source of coverage.
+      # Keep the file: its `did_schema_ref` input is a real capability the
+      # matrix does not offer -- pointing Soph at a different did-schema branch.
+      # To run Soph alone: bump the token below and push.
+      #   soph-run-token: 1
       - '.github/workflows/test-soph-corpus.yml'
   workflow_dispatch:
     inputs:
