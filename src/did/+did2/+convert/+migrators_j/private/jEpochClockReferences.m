@@ -116,11 +116,16 @@ for k = 1:n
         'name', 'migrated_epoch_extent', ...
         'datestamp', datestamp);
     ref.time_reference = struct('is_approximate', approx);
-    ref.relative_reference = struct('value', struct( ...
-        'start', durationCell(t(1), approx), ...
-        'end',   durationCell(t(2), approx), ...
+    % `end` is the schema's field name (relative_reference.value.end) and it is
+    % also a MATLAB keyword, so it is assigned dynamically rather than through
+    % struct('end', ...). `relation` is deliberately OMITTED: it is optional and
+    % carries the qualitative Allen relation used when there is NO metric
+    % offset, and here the offsets are the whole content.
+    val = struct('start', durationCell(t(1), approx), ...
         'clock', clockName, ...
-        'approximate', approx));
+        'approximate', approx);
+    val.('end') = durationCell(t(2), approx);
+    ref.relative_reference = struct('value', val);
     refs{end+1} = ref; %#ok<AGROW>
 end
 end

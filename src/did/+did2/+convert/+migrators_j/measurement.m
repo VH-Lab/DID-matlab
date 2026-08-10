@@ -84,47 +84,21 @@ if isfield(blk, 'numeric_value'); numValue = blk.numeric_value; end
 variable = jOntologyTerm(node, label);
 hay = lower([node ' ' label]);
 
-leaf = '';
-if isnumeric(numValue) && ~isempty(numValue) && isfinite(numValue(1))
-    if containsAny(hay, {'weight', 'mass'})
-        leaf = 'mass';
-    elseif containsAny(hay, {'temperature'})
-        leaf = 'temperature';
-    elseif containsAny(hay, {'length', 'height', 'width', 'diameter'})
-        leaf = 'length';
-    elseif containsAny(hay, {'age', 'duration', 'elapsed'})
-        leaf = 'duration';
-    end
-end
-
-if isempty(leaf) && looksLikeCURIE(strValue)
-    % the value IS an ontology term (the consumer's nested-CURIE branch)
-    anchor = jSessionAnchor(preBody, 'during');
-    obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-        {}, variable, {'subject_id'});
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-    obs.term = struct('value', jOntologyTerm(strValue, ''));
-    bodies = {obs, anchor};
-    return;
-end
-
-if isempty(leaf)
-    % No honest leaf -- date of birth, an untyped number, or free prose. Carry
-    % it through; the unconverted-document counter makes that visible.
-    bodies = {preBody};
-    return;
-end
-
+% The decision itself now lives in `jMeasurementFold` / `jQuantityLeaf`, moved
+% there UNCHANGED (substring matching, same keyword table, same branch order) so
+% the `subjectmeasurement` sibling routes through this fold rather than growing a
+% second copy of it. `wordBoundary` is false here, which is bit-for-bit the
+% behaviour this file had before the extraction: `measurement.ontology_name` is
+% always a resolved CURIE, so its haystack is not free text and narrowing the
+% match is a separate decision from this one.
 anchor = jSessionAnchor(preBody, 'during');
-obs = jStartInteraction(preBody, [leaf '_observation'], 'subject_observation', ...
-    {leaf}, variable, {'subject_id'});
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-obs.subject_statement.storage_mode = 'inline';
-% unit deliberately unstated -- the class has no units field and the term names
-% the quantity, not its scale.
-obs.(leaf) = struct('value', struct('source_unit', '', ...
-    'source_value', double(numValue(1)), 'approximate', false));
-bodies = {obs, anchor};
+bodies = jMeasurementFold(preBody, variable, hay, numValue, strValue, anchor, false);
+if isempty(bodies)
+    % No honest leaf -- date of birth, an untyped number, or free prose. Carry
+    % it through; the unconverted-document counter makes that visible. The
+    % anchor built above is discarded with it, so nothing is stranded.
+    bodies = {preBody};
+end
 end
 
 % ===================== small helpers =======================================
@@ -132,15 +106,4 @@ end
 function b = getBlock(bodyStruct, name)
 b = struct();
 if isfield(bodyStruct, name) && isstruct(bodyStruct.(name)); b = bodyStruct.(name); end
-end
-
-function tf = containsAny(hay, needles)
-tf = false;
-for k = 1:numel(needles)
-    if contains(hay, needles{k}); tf = true; return; end
-end
-end
-
-function tf = looksLikeCURIE(s)
-tf = ~isempty(s) && ~isempty(regexp(char(s), '^[A-Za-z_][A-Za-z0-9_]*:\S+$', 'once'));
 end

@@ -374,8 +374,17 @@ end
 function id = epochIdOf(b)
 %EPOCHIDOF The epoch-id STRING, from whichever spelling this document uses.
 %   `epochid` is a superclass whose block holds the string 11+ live NDI
-%   queries match on; V_eta's rename moves it to `epoch_id`. Both are read,
-%   plus the block-level `epoch_id` field `epochfiles_ingested` declares.
+%   queries match on; V_eta's rename moves it to `epoch_id`. Both blocks are
+%   read.
+%
+%   CORRECTED 2026-08-10. This said it ALSO read "the block-level `epoch_id`
+%   field `epochfiles_ingested` declares". It does not, and never did: the loop
+%   below only visits blocks NAMED `epochid` or `epoch_id`, and
+%   `epochfiles_ingested` carries its id inside its OWN block. Reproducing this
+%   function's rule by hand on corpus B gives 6207 docs / 149 distinct, matching
+%   the CI log exactly, with `epochfiles_ingested` contributing ZERO of them --
+%   so the docstring credited the counter with coverage it has never had.
+%   Behaviour is left alone; only the false claim is removed.
 id = '';
 for blk = {'epochid', 'epoch_id'}
     if ~isfield(b, blk{1}) || ~isstruct(b.(blk{1})); continue; end

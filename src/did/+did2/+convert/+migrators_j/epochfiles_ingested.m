@@ -124,9 +124,17 @@ end
 % `{epoch_id, epochprobemap, files}` on 2,484 of 2,484 -- so this cannot fire on
 % a real document, and if it does fire the fixture is built from our own schema
 % rather than from the writer. Same stance as ontology_label.
-if hasDependency(preBody, 'epochid') || hasDependency(preBody, 'epoch_id')
+%
+% ONLY `epochid` IS REJECTED, DELIBERATELY -- NOT `epoch_id`. They are opposites:
+% `epochid` is the V_alpha invention that was empty on every document that ever
+% carried it, while `epoch_id` is the edge the second pass will legitimately
+% stamp once `epoch` documents exist. The sibling helper
+% +migrators_j/private/jEpochDocId.m already reads `epoch_id` tolerantly for
+% exactly that future, so erroring on it here would make this migrator the one
+% thing that breaks on the day #60 lands.
+if hasDependency(preBody, 'epochid')
     error('did2:convert:epochfilesIngestedInventedEdge', ...
-        ['epochfiles_ingested body carries an `epochid`/`epoch_id` dependency. ' ...
+        ['epochfiles_ingested body carries an `epochid` dependency. ' ...
          'No did_v1 document has one -- NDI declares only `filenavigator_id` ' ...
          '(+ndi/+file/navigator.m:707). This edge is the V_eta invention that ' ...
          'was empty on 6,921 of 6,921 corpus documents, so a body carrying it ' ...

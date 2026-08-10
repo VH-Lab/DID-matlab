@@ -159,51 +159,10 @@ if isfield(preBody, 'input_parameters') && isstruct(preBody.input_parameters)
 end
 end
 
-function [software, swId, execEnv] = jSoftwareFromApp(preBody)
-% The v1 `app` block -> a `software` ENTITY (identity: name + version + citation id) +
-% the per-run `execution_environment` (os / interpreter). Returns [] software and ''
-% swId when the app block carries no software name (no identity -> no entity, and
-% software_id is omitted; execution_environment may still carry env fields if present).
-% Supersedes the old `app` superclass block (Item-1 decision, paper Fig 4 / FAIR §4.2).
-software = []; swId = ''; execEnv = struct();
-app = struct();
-if isfield(preBody, 'app') && isstruct(preBody.app)
-    app = preBody.app;
-end
-% per-run environment (the actual os/interpreter this run used)
-envFields = {'os', 'os_version', 'interpreter', 'interpreter_version'};
-for i = 1:numel(envFields)
-    if isfield(app, envFields{i}) && ~isempty(app.(envFields{i}))
-        execEnv.(envFields{i}) = char(app.(envFields{i}));
-    end
-end
-name = '';
-if isfield(app, 'name') && ~isempty(app.name); name = char(app.name); end
-if isempty(name)
-    return;   % no software identity -> no entity, software_id omitted
-end
-TV = 'V_eta';
-sessionId = ''; datestamp = '';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp');  datestamp  = preBody.base.datestamp;  end
-end
-sid = did.ido.unique_id();
-% citation id / homepage ride on global_identifier (scheme='URL' for the repo/homepage).
-gids = struct('scheme', {}, 'value', {});
-if isfield(app, 'url') && ~isempty(app.url)
-    gids(end+1) = struct('scheme', 'URL', 'value', char(app.url));
-end
-version = '';
-if isfield(app, 'version') && ~isempty(app.version); version = char(app.version); end
-software = struct();
-software.document_class = struct('class_name', 'software', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', TV);
-software.depends_on = struct('name', {}, 'value', {});
-software.base = struct('id', sid, 'session_id', sessionId, ...
-    'name', name, 'datestamp', datestamp);
-software.entity = struct('global_identifier', {gids});
-software.software = struct('name', name, 'version', version);
-swId = sid;
-end
+% NOTE: the `app` -> `software` fold used to live here as a LOCAL function, which
+% shadowed anything of the same name in private/. It read `app.name` / `app.version`
+% only -- names that universalRenames has already rewritten to `app_name` /
+% `app_version` by the time any migrator runs (universalRenames.m:145-164), so on the
+% real v1_to_v2 pipeline it minted NOTHING. It now lives in
+% private/jSoftwareFromApp.m, reads both spellings, and is shared with the
+% filenavigator fold. See that file's header for the full account.

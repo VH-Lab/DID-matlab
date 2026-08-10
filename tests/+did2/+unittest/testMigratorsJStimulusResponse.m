@@ -106,11 +106,12 @@ verifyEqual(testCase, numel(out.migrated), 2);
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 verifyEqual(testCase, leaf.get('document_class.schema_version'), 'V_eta');
 
-% ID PRESERVED. Two live references point at this id --
-% tuning_curve/stimulus_tuningcurve and tuningcurve_calc both carry
-% stimulus_response_scalar_id (see +ndi/+mock/+fun/stimulus_response.m, which
-% sets input_parameters.depends_on{stimulus_response_scalar_id}). Minting a new
-% id here is the mistake that cost 11,448 orphans.
+% ID PRESERVED. Two NDI templates declare an inbound edge to it --
+% ndi_common/database_documents/stimulus/stimulus_tuningcurve.json and
+% .../apps/calculators/tuningcurve_calc.json both list
+% `stimulus_response_scalar_id` in depends_on -- and both of those classes fold
+% to tuning_curve_calculation, which resolves the edge by existence. Minting a
+% new id here is the mistake that cost 11,448 orphans.
 verifyEqual(testCase, leaf.get('base.id'), 'resp_412fa1');
 verifyEqual(testCase, leaf.get('base.session_id'), 'sess_0001');
 end
