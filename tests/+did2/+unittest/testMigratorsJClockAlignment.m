@@ -456,7 +456,11 @@ verifyEqual(testCase, depVal(toRef, 'relative_to'), 'epochdoc_b');
 val = fromRef.get('relative_reference.value');
 verifyEqual(testCase, val.clock.name, 'dev_local_time');
 verifyEqual(testCase, val.start.seconds, 0);
-verifyEqual(testCase, val.('end').seconds, 101);
+% INVERTED for #65 increment 2 (CHANGE 1): `value.end` no longer exists on
+% relative_reference -- the extent is `value.duration` = t1 - t0. The endpoint
+% still runs 0 .. 101 s; `end` stays exactly recoverable as start + duration.
+verifyFalse(testCase, isfield(val, 'end'));
+verifyEqual(testCase, val.duration.seconds, 101);
 verifyEqual(testCase, val.start.source_unit, 's');
 end
 

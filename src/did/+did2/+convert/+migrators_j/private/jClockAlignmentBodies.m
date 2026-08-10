@@ -156,40 +156,69 @@ t = double(t(:)');
 if numel(t) < 2 || ~all(isfinite(t(1:2)))
     return;                                  % NO TIMES => NO REFERENCE
 end
-% 'approx_' is how NDI's own clocktype vocabulary marks the ~5 s tier
-% (+ndi/+time/clocktype.m:20-29); the unprefixed forms are within 0.1 ms.
-approx = numel(clockName) >= 7 && strcmp(clockName(1:7), 'approx_');
+% CHANGE 4 of the signed time-model walkthrough
+% (V_eta_time_reference_model_plan.md:468, TEAM-SIGN-OFF [time_reference],
+% jess@walthamdatascience.com / 2026-08-08). 'approx_' is how NDI's own
+% clocktype vocabulary marks the ~5 s tier (+ndi/+time/clocktype.m:21,23,26 --
+% "within 5 seconds" / "within 5s" / "within 5 s"); the unprefixed forms are
+% within 0.1 ms. The prefix DE-ENCODES to a bare clock plus an explicit
+% `clock_tolerance`; it used to become a bare boolean here, which threw the five
+% seconds away, and it also emitted `approx_*` as an ontology_term name when the
+% bound vocabulary has only the FOUR unprefixed terms.
+[bareClock, toleranceSeconds] = deEncodeApprox(clockName);
 
 objectName = jGetCharAny(node, {'objectname', 'objectName'});
 if isempty(objectName); objectName = 'migrated_sync_endpoint'; end
 
 ref = struct();
 ref.document_class = struct('class_name', 'relative_reference', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
+    'class_version', '2.0.0', ...
+    'superclasses', struct('class_name', 'time_reference', 'class_version', '4.0.0'), ...
     'schema_version', 'V_eta');
 ref.depends_on = struct('name', {'relative_to'}, 'value', {epochDocId});
 ref.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', objectName, 'datestamp', datestamp);
-ref.time_reference = struct('is_approximate', approx);
-% `end` is the schema's field name AND a MATLAB keyword, so it is assigned
-% dynamically. `relation` is OMITTED: it carries the qualitative Allen relation
-% used when there is NO metric offset, and here the offsets are the content.
-val = struct('start', durationCell(t(1), approx), ...
-    'clock', jOntologyTerm('', clockName), ...
-    'approximate', approx);
-val.('end') = durationCell(t(2), approx);
-ref.relative_reference = struct('value', val);
+% The ROOT block carries `clock_tolerance` ONLY when the clock stated one. No
+% tolerance => no block written; ensureClassBlocks pads it. An empty tolerance
+% cell would assert "good to 0 s", which the source never said.
+if ~isempty(toleranceSeconds)
+    ref.time_reference = struct('clock_tolerance', durationCell(toleranceSeconds));
+end
+% `relation` is OMITTED: it carries the qualitative Allen relation used when
+% there is NO metric offset, and here the offsets are the content. CHANGE 1: the
+% EXTENT is t1 - t0, not the raw t1 -- `end` no longer exists, and `end` stays
+% exactly recoverable as start + duration.
+ref.relative_reference = struct('value', struct( ...
+    'clock',    jOntologyTerm('', bareClock), ...
+    'start',    durationCell(t(1)), ...
+    'duration', durationCell(t(2) - t(1))));
 end
 
 % ===================== small readers =======================================
 
-function c = durationCell(seconds, approximate)
+function [bare, toleranceSeconds] = deEncodeApprox(clockName)
+%DEENCODEAPPROX Split NDI's `approx_` prefix into a bare clock + a TOLERANCE.
+%   Same rule, same wording, as private/jEpochClockReferences.m. Returns
+%   TOLERANCESECONDS = [] (not 0) when the clock states no tolerance, so "no
+%   stated tolerance" and "stated as zero" stay distinguishable.
+bare = clockName;
+toleranceSeconds = [];
+if numel(clockName) >= 7 && strcmp(clockName(1:7), 'approx_')
+    bare = clockName(8:end);
+    toleranceSeconds = 5;
+end
+end
+
+function c = durationCell(seconds)
 %DURATIONCELL The T14 one-`value` duration cell: canonical + source provenance.
 %   NDI epoch clock times are already in SECONDS, so `seconds` and `source_value`
 %   coincide and `source_unit` is 's'.
+%
+%   `approximate` is FALSE, and that is a claim about the NUMBER: the t0/t1 the
+%   writer stored are exact as recorded. Whatever slop the clock has is on the
+%   TIMELINE and is carried by `clock_tolerance` (CHANGE 4).
 c = struct('seconds', double(seconds), 'source_unit', 's', ...
-    'source_value', double(seconds), 'approximate', logical(approximate));
+    'source_value', double(seconds), 'approximate', false);
 end
 
 function v = readCost(block)

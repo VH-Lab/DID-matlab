@@ -87,7 +87,7 @@ function testSyncSoftwareGlobalIdentifierStaysEmpty(testCase)
 % array is present-and-empty rather than absent-and-guessed-at. This behaviour
 % moved from jSyncSoftware into jSoftware with the consolidation; pin it so the
 % move cannot quietly invent a scheme.
-out = runJ(syncruleBody('ndi.time.syncrule.filefind'));
+out = runJ(syncruleBody('ndi.time.syncrule.randomPulses'));
 sw = firstOfClass(testCase, out, 'software');
 verifyEmpty(testCase, sw.get('entity.global_identifier'));
 end
@@ -163,6 +163,13 @@ function testSettingsWithNoSessionParksTheWholeAppBlock(testCase)
 % turning a clean fold into a loss. So: no entity, no edge, and the app block is
 % parked WHOLE in `other.app`.
 %
+% NOT a duplicate of testMigratorsJMethodParams.m's
+% testNoSoftwareIsMintedWithoutASessionToHangItOn. That test owns the guard's
+% BEHAVIOUR; this one owns the guard SURVIVING THE CONSOLIDATION -- the logic
+% moved out of a local function in jMethodParameters.m into an option on a
+% shared helper, and the last assertion below is the part neither the old code
+% nor that test ever stated:
+%
 % `other.execution_environment` must NOT also be written here: the same four
 % facts would then sit in `other` twice, under two keys. That is why
 % jSoftwareFromApp clears execEnv for a caller that asked for the leftover.
@@ -216,25 +223,37 @@ out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 end
 
 function v1 = syncruleBody(implClass)
-%SYNCRULEBODY A did_v1 `syncrule`, shaped as NDI's template declares it.
+%SYNCRULEBODY A did_v1 `syncrule`, shaped as NDI's writer stores it.
 %   git show origin/main:src/ndi/ndi_common/database_documents/daq/syncrule.json
 %      "syncrule": { "ndi_syncrule_class": "...", "parameters": [] }
 %      (no depends_on at all)
+%   git show origin/main:src/ndi/+ndi/+time/syncrule.m:183-187
+%      ... 'base.session_id', ndi.session.empty_id(), ...
+%   -- so a syncrule carries the all-zero SENTINEL, not a session id. That is
+%   also why this file's no-session test uses spike_extraction_parameters and
+%   not a syncrule: the sentinel is non-empty, so it does not exercise the
+%   RequireSession guard.
+%
 %   The parameter set is commonTriggersOverlappingEpochs's closed set
 %   (isvalidparameters, commonTriggersOverlappingEpochs.m:36). BOTH device names
 %   and BOTH channels are present because syncrule.m guards on the pair: with
 %   fewer than two `acquisition_channels` it passes the document through and no
 %   software is minted, which would test the guard rather than the fold.
+%   Matches tests/+did2/+unittest/testMigratorsJClockAlignment.m's fixture so
+%   the two files cannot drift into describing different source documents.
 v1 = struct();
 v1.document_class = struct('class_name', 'syncrule', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
-v1.base = struct('id', 'sr_1', 'session_id', 'sess_1', 'name', 'ctoe', ...
-    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.depends_on = struct('name', {}, 'value', {});   % the template declares none
+v1.base = struct('id', 'sr_1', ...
+    'session_id', '0000000000000000_0000000000000000', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.syncrule = struct('ndi_syncrule_class', implClass, ...
     'parameters', struct( ...
-        'daqsystem1_name', 'intan1', 'daqsystem2_name', 'ced1', ...
-        'daqsystem_ch1', 'mk1', 'daqsystem_ch2', 'mk1', ...
-        'epochclocktype', 'dev_local_time'));
+        'daqsystem1_name', 'vhtaste_sync', 'daqsystem2_name', 'vhtaste_bpod', ...
+        'daqsystem_ch1', 'dep1', 'daqsystem_ch2', 'mk1', ...
+        'epochclocktype', 'dev_local_time', ...
+        'minEmbeddedFileOverlap', 1, 'errorOnFailure', true));
 end
 
 function v1 = extractionParamsBody(appName, appVersion)

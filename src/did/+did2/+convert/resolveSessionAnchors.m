@@ -150,14 +150,14 @@ report.documents_inspected = n;
 % --- read every document once ---------------------------------------------
 % A document this cannot read is COUNTED, never dropped.
 bodies = cell(1, n);
-classes = repmat({''}, 1, n);
+anchorClass = repmat({''}, 1, n);
 sessionIds = repmat({''}, 1, n);
 docIds = repmat({''}, 1, n);
 for k = 1:n
     try
         b = docs{k}.toStruct();
         bodies{k} = b;
-        classes{k} = classNameOf(b);
+        anchorClass{k} = classNameOf(b);
         sessionIds{k} = baseField(b, 'session_id');
         docIds{k} = baseField(b, 'id');
     catch
@@ -171,7 +171,7 @@ end
 sessionDocId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 sessionDocCount = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
-    if ~strcmp(classes{k}, 'session'); continue; end
+    if ~strcmp(anchorClass{k}, 'session'); continue; end
     report.session_documents_seen = report.session_documents_seen + 1;
     sid = sessionIds{k};
     if isempty(sid) || isempty(docIds{k}); continue; end
@@ -187,8 +187,8 @@ end
 changedIdx = [];
 rebuilt = {};
 for k = 1:n
-    isRelative = strcmp(classes{k}, 'session_relative_reference');
-    isBounded  = strcmp(classes{k}, 'session_bounded_reference');
+    isRelative = strcmp(anchorClass{k}, 'session_relative_reference');
+    isBounded  = strcmp(anchorClass{k}, 'session_bounded_reference');
     if ~isRelative && ~isBounded; continue; end
     report.anchors_seen = report.anchors_seen + 1;
     if isRelative
@@ -197,7 +197,7 @@ for k = 1:n
         report.anchors_bounded = report.anchors_bounded + 1;
     end
 
-    blk = blockOf(bodies{k}, classes{k});
+    blk = blockOf(bodies{k}, anchorClass{k});
     sid = sessionIds{k};
     if isempty(sid)
         report.refused_no_session_id = report.refused_no_session_id + 1;
@@ -266,7 +266,7 @@ for k = 1:n
     % The old class block and the deprecated root flag both go. Leaving either
     % would trip the strict-fields / undeclared-block checks
     % (+did2/+schema/cache.m:695-723) on the new class.
-    if isfield(b, classes{k}); b = rmfield(b, classes{k}); end
+    if isfield(b, anchorClass{k}); b = rmfield(b, anchorClass{k}); end
     if isfield(b, 'time_reference'); b = rmfield(b, 'time_reference'); end
     b.relative_reference = struct('value', value);
 

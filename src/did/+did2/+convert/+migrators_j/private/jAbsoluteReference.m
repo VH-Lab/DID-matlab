@@ -107,14 +107,14 @@ ref.depends_on = struct('name', {}, 'value', {});
 ref.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', 'migrated_measurement_time', 'datestamp', ds);
 
-start = struct('source_value', instant, 'approximate', false);
+anchorCell = struct('source_value', instant, 'approximate', false);
 utc = canonicalUTC(instant);
 if ~isempty(utc)
-    start.utc = utc;
+    anchorCell.utc = utc;
 end
 % No `duration`: a measurement instant is a POINT, and an absent duration IS the
 % point-in-time case. No `source_end`: the source wrote one instant, not two.
-ref.absolute_reference = struct('value', struct('start', start));
+ref.absolute_reference = struct('value', struct('start', anchorCell));
 end
 
 % ===================== small helpers =======================================

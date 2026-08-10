@@ -305,11 +305,29 @@
 %   lives in private/jSoftwareFromApp.m (+ private/jSoftware.m, which also serves
 %   filenavigator's implementation-class entity) and is applied by jCalculation to
 %   every calculator output, so the app block -- and the program's class name --
-%   stops being copied onto the migrated document. DEDUP BY (name, version) IS
-%   DEFERRED to the NDI second pass: it is a whole-corpus find-or-create with edge
-%   retargeting, the shape of ndi.migrate.internal.pathSPromotion. Pass 1 mints one
-%   entity per consuming document and records the dedup key in
-%   software.local_identifier (name, or name@version).
+%   stops being copied onto the migrated document.
+%
+%   CONSOLIDATED 2026-08-10 (#25). There were THREE builders and only ONE wrote
+%   the dedup key: private/jSyncSoftware.m (syncrule/syncgraph) and a local
+%   softwareEntity() inside private/jMethodParameters.m both built their own
+%   struct and both omitted `software.local_identifier`. Both now delegate --
+%   jSoftwareFromApp is the one READER of an `app` block, jSoftware the one
+%   BUILDER of a `software` body -- so every `software` document in the corpus
+%   carries the handle. Two options were added to the shared helpers to make
+%   that possible without changing any existing caller's output:
+%   'RequireSession' (refuse to mint when base.session_id is empty, which is
+%   mustBeNonEmpty on `base`) and jSoftwareFromApp's 4th output `appLeftover`
+%   (hand the block back whole for a class with nowhere typed to put it). Both
+%   default to the pre-existing behaviour.
+%
+%   DEDUP BY (name, version) IS THE NDI SECOND PASS, and it now exists:
+%   ndi.migrate.internal.softwareDedup -- a whole-corpus merge with edge
+%   retargeting, the shape of ndi.migrate.internal.pathSPromotion. Pass 1 still
+%   mints one entity per consuming document (a single-document migrator cannot
+%   see the batch) and records the key in software.local_identifier (name, or
+%   name@version). The pass keys on (base.session_id, software.name,
+%   software.version) rather than on that handle, so it does not depend on every
+%   minter having written one -- and it REPAIRS the handle on each survivor.
 %
 %   Shared spine/composite helpers live in private/ (jStartInteraction,
 %   jSessionAnchor, jCarrySubject, jDoseValue, jConcentration, jOntologyTerm,

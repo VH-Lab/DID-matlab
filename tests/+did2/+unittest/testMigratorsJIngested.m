@@ -309,13 +309,27 @@ refs = docsOfClass(out, 'relative_reference');
 verifyEqual(testCase, numel(refs), 1);
 ref = refs{1};
 verifyEqual(testCase, depVal(ref, 'relative_to'), 'epoch_doc_1');
-verifyEqual(testCase, ref.get('relative_reference.value.clock'), 'dev_local_time');
+% INVERTED for #65 increment 2. THREE things this block used to assert are now
+% wrong, and two of them were wrong before the change as well:
+%   * `value.clock` was read as a bare CHAR while the schema has typed it
+%     `ontology_term` since increment 1 -- the assertion agreed with the
+%     migrator and with nothing else. It is now {node, name}, node STAGED EMPTY
+%     (no NDIC authority is in any repo in scope).
+%   * `value.end` no longer exists (CHANGE 1): the extent is `value.duration`,
+%     t1 - t0, so an approximate anchor and an exact span stop contaminating
+%     each other. 0..10 becomes start 0 + duration 10.
+%   * `time_reference.is_approximate` is DEPRECATED (CHANGE 2) and this emitter
+%     no longer writes it at all.
+verifyEqual(testCase, ref.get('relative_reference.value.clock.name'), 'dev_local_time');
 verifyEqual(testCase, ref.get('relative_reference.value.start.seconds'), 0);
 val = ref.get('relative_reference.value');
-verifyEqual(testCase, val.('end').seconds, 10);
-verifyEqual(testCase, val.('end').source_unit, 's');
-% dev_local_time is the precise tier (within 0.1 ms), not an approximate one
-verifyFalse(testCase, logical(ref.get('time_reference.is_approximate')));
+verifyFalse(testCase, isfield(val, 'end'));
+verifyEqual(testCase, val.duration.seconds, 10);
+verifyEqual(testCase, val.duration.source_unit, 's');
+% dev_local_time is the precise tier (within 0.1 ms). It states NO tolerance, so
+% no clock_tolerance is written -- absence, not a fabricated zero.
+tr = ref.get('time_reference');
+verifyFalse(testCase, isfield(tr, 'clock_tolerance'));
 verifyEqual(testCase, ref.get('base.session_id'), 'sess_09');
 end
 
@@ -347,10 +361,14 @@ verifyEqual(testCase, numel(refs), 2);
 byClock = containers.Map();
 for k = 1:numel(refs)
     v = refs{k}.get('relative_reference.value');
-    byClock(v.clock) = [v.start.seconds, v.('end').seconds];
+    % INVERTED for #65 increment 2: the clock is an ontology_term cell, and the
+    % pair is (anchor, EXTENT) rather than (start, end). The pairing this test
+    % exists to protect -- t0_t1's column k belongs to epochclock{k} -- is
+    % unchanged and is still what a wrong answer here would reveal.
+    byClock(v.clock.name) = [v.start.seconds, v.duration.seconds];
 end
 verifyEqual(testCase, byClock('dev_local_time'), [0 10]);
-verifyEqual(testCase, byClock('exp_global_time'), [100 110]);
+verifyEqual(testCase, byClock('exp_global_time'), [100 10]);
 end
 
 function testReaderIngestedAcceptsTheDegenerateVectorT0T1(testCase)
@@ -362,7 +380,8 @@ refs = docsOfClass(out, 'relative_reference');
 verifyEqual(testCase, numel(refs), 1);
 val = refs{1}.get('relative_reference.value');
 verifyEqual(testCase, val.start.seconds, 0);
-verifyEqual(testCase, val.('end').seconds, 10);
+% INVERTED for #65 increment 2: the extent is `duration` (t1 - t0), not `end`.
+verifyEqual(testCase, val.duration.seconds, 10);
 end
 
 function testNoTimeClockEmitsNoReference(testCase)
@@ -393,18 +412,26 @@ out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time', 'no_time'}, t0t1), 'epoch_doc_1'));
 refs = docsOfClass(out, 'relative_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, refs{1}.get('relative_reference.value.clock'), 'dev_local_time');
+verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'dev_local_time');
 end
 
-function testApproxClockMarksTheReferenceApproximate(testCase)
-% NDI's clocktype vocabulary carries the precision tier in the NAME
-% (+ndi/+time/clocktype.m:20-29): approx_* is ~5 s, the unprefixed forms 0.1 ms.
-% Deriving it beats defaulting it.
+function testApproxClockDeEncodesToAClockToleranceNotABoolean(testCase)
+% INVERTED for #65 increment 2, and the inversion is the whole point of CHANGE 4.
+% This test used to assert that `approx_utc` set two BOOLEANS. That was the error
+% the team caught: the prefix hides a NUMBER in a docstring
+% (+ndi/+time/clocktype.m:21 "within 5 seconds"), and a boolean has no magnitude,
+% so the five seconds were being thrown away. It de-encodes to DATA instead --
+% the bare clock plus an explicit tolerance on the ROOT -- and the four-term
+% vocabulary has no `approx_utc` member for the clock term to have carried.
 out = runJ(withEpochEdge(readerIngestedV1({'approx_utc'}, [0; 10]), 'epoch_doc_1'));
 refs = docsOfClass(out, 'relative_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyTrue(testCase, logical(refs{1}.get('time_reference.is_approximate')));
-verifyTrue(testCase, logical(refs{1}.get('relative_reference.value.approximate')));
+verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'utc');
+verifyEqual(testCase, refs{1}.get('time_reference.clock_tolerance.seconds'), 5);
+% and the magnitude did NOT collapse back into a flag on either value cell
+val = refs{1}.get('relative_reference.value');
+verifyFalse(testCase, isfield(val, 'approximate'));
+verifyFalse(testCase, logical(val.start.approximate));
 end
 
 function testReferenceOmitsRelationWhenItHasAMetric(testCase)
@@ -442,7 +469,7 @@ verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
 refs = docsOfClass(out, 'relative_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, refs{1}.get('relative_reference.value.clock'), 'dev_local_time');
+verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'dev_local_time');
 % the de-encode still happened
 src = docsOfClass(out, 'daqreader_epochdata_ingested');
 verifyEqual(testCase, ...
@@ -487,7 +514,11 @@ verifyEqual(testCase, numel(out.migrated), 2);
 refs = docsOfClass(out, 'relative_reference');
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, depVal(refs{1}, 'relative_to'), 'epoch_doc_7');
-verifyEqual(testCase, refs{1}.get('relative_reference.value.end.seconds'), 12.5);
+% INVERTED for #65 increment 2: `value.end` is gone, the extent is
+% `value.duration` = t1 - t0. The fixture's epoch runs 0 .. 12.5 s, so the span
+% is the same number here -- which is exactly why the assertion has to name the
+% new field rather than the old value.
+verifyEqual(testCase, refs{1}.get('relative_reference.value.duration.seconds'), 12.5);
 end
 
 function testImageIngestedEmitsNoSubjectlessObservation(testCase)
