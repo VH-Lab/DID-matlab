@@ -130,9 +130,31 @@ function rep = failureReport(passName, message, identifier)
 %   absent rather than zero, so a reader cannot mistake a crash for a clean
 %   pass that found nothing. A zeroed count table would be exactly the
 %   all-zeros-reads-as-clean failure that produced these operating rules.
+% AN EMPTY MESSAGE WOULD MAKE THE FAILURE INVISIBLE. `batchPassFailure` reports
+% a failure by returning a NON-EMPTY message, so an error thrown with an empty
+% message -- `error('some:id', '')`, or a rethrown MException built that way --
+% would sail through every gate downstream while the pass had in fact died. The
+% substitution below is not cosmetic: it is the difference between a red gate
+% and a silent one, and "the failure had no message" is itself the finding.
+% UNVERIFIED AND FLAGGED: no test covers this branch, because producing an
+% empty-message throw needs MATLAB behaviour this container cannot check --
+% `error(id, '')` is documented not to throw at all, and
+% `throw(MException(id, ''))` depends on the constructor accepting an empty
+% message. testBatchPassWiring.m records that gap in place of a test written on
+% a guess.
+if isempty(char(message))
+    message = sprintf( ...
+        '%s threw with an EMPTY message (identifier: %s)', passName, ...
+        emptyAs(identifier, '<none>'));
+end
 rep = struct( ...
     'pass',                  passName, ...
-    'pass_failed',           message, ...
-    'pass_failed_identifier', identifier, ...
+    'pass_failed',           char(message), ...
+    'pass_failed_identifier', char(identifier), ...
     'ran',                   false);
+end
+
+function v = emptyAs(x, dflt)
+v = char(x);
+if isempty(v); v = dflt; end
 end

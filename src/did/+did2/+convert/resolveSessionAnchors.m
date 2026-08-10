@@ -8,14 +8,46 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   the SESSION DOCUMENT, with its `base.id` PRESERVED.
 %
 %   ---------------------------------------------------------------------
-%   STATUS: NEVER EXECUTED. NOT WIRED INTO ANY PIPELINE.
+%   STATUS: NEVER EXECUTED. WIRED 2026-08-10 INTO ALL FOUR CALL SITES.
 %   ---------------------------------------------------------------------
 %   Written 2026-08-10 for #65 in an environment with NO MATLAB, so no line here
-%   has been run. It is also not called from runCorpusDiscovery /
-%   testFixtureCorpus / testCorpusPRED / ndi.migrate: wiring it in is a
-%   deliberate, separate act, because turning it on moves 127,719 documents on a
-%   0-quarantine, 0-orphan gate. Run tests/+did2/+unittest/testTimeReferenceCollapse.m
-%   first, then wire it beside epochMint, then read a corpus report.
+%   has been run. THAT IS STILL TRUE and is the main thing to know about it.
+%
+%   HEADER CORRECTED THE SAME DAY. This block previously read "NOT WIRED INTO
+%   ANY PIPELINE", and the wiring act that followed did not update it -- which
+%   is the stale-header defect exactly (a document's own summary disagreeing
+%   with the record below it). It is now called from runCorpusDiscovery,
+%   testCorpusPRED, testFixtureCorpus and ndi.migrate.local (V_eta second pass,
+%   step 7), immediately after did2.convert.epochMint in all four.
+%
+%   THE AUTHOR'S CAUTION IS PRESERVED, NOT OVERRULED. They declined to wire it
+%   because they could not run it and turning it on red-gates the corpus for
+%   everyone if it is wrong. What changed is not that judgement but the shape of
+%   the wiring, which is why turning it on is now the smaller risk:
+%
+%     * at the two report-writing call sites it runs under
+%       did2.unittest.helpers.runBatchPass, so a throw records
+%       `session_anchor_fold.pass_failed` and leaves every document in pass-1
+%       form INSTEAD of destroying the corpus report the run exists to produce;
+%       the hard gates then assert on that field, so the failure is loud.
+%     * ndi.migrate.local wraps it in its own try/catch like every sibling
+%       sub-pass.
+%     * the pass REFUSES rather than guesses (see below), and a corpus with no
+%       `session` document therefore refuses every anchor and changes nothing --
+%       which is the state the corpus is green in today.
+%
+%   Read tests/+did2/+unittest/testTimeReferenceCollapse.m and
+%   tests/+did2/+unittest/testBatchPassWiring.m before trusting any of that;
+%   neither has been run either.
+%
+%   TO UNWIRE IT AGAIN: remove the four calls AND add a header line whose text
+%   is the token WIRING-EXEMPT followed by a colon and the reason.
+%   tests/+did2/+unittest/testBatchPassWiring.m reads that marker and prints the
+%   reason, so an unwired pass stays a STATED decision with a justification
+%   attached rather than an omission nothing can see. (The token is deliberately
+%   not written here in its triggering form -- a doc comment that armed the
+%   escape hatch it was describing would silently disable the gate, which is
+%   this project's whole recurring failure in miniature.)
 %
 %   ---------------------------------------------------------------------
 %   WHY THIS IS A BATCH PASS AND NOT A MIGRATOR CHANGE
