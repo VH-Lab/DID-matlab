@@ -1,4 +1,4 @@
-function v2Body = daqreader_mfdaq_epochdata_ingested(preBody)
+function bodies = daqreader_mfdaq_epochdata_ingested(preBody)
 %DAQREADER_MFDAQ_EPOCHDATA_INGESTED Chunk-b/c de-encode: the mfdaq ingested cache
 %   dissolves into the generic daqreader_epochdata_ingested.
 %
@@ -10,6 +10,23 @@ function v2Body = daqreader_mfdaq_epochdata_ingested(preBody)
 %   (there is no epochid dependency; see the note at the bottom of this file).
 %   The daqreader_epochdata_ingested superclass chain is rebuilt by
 %   ensureClassBlocks after this.
+%
+%   ---------------------------------------------------------------------
+%   IT NOW DELEGATES THE EPOCH-EXTENT LIFT TO THE PARENT MIGRATOR
+%   ---------------------------------------------------------------------
+%   The concrete-class migrator is looked up ONCE per document, on the class name
+%   the source arrives with (did2.convert.v1_to_v2/runConcreteMigrator). So
+%   renaming the class here does NOT route the result through
+%   +migrators_j/daqreader_epochdata_ingested.m -- and without this delegation
+%   the mfdaq documents, which are the ones carrying the real .nbf.tgz recording
+%   archives, would be the only members of the family whose `epochtable` never
+%   became `relative_reference` documents.
+%
+%   RETURN SHAPE: a bare struct while the parent's guard holds (no `epoch_id`
+%   edge -- every did_v1 document today), a cell of {source, references...}
+%   afterwards. did2.convert.v1_to_v2 accepts either
+%   (normaliseMigratorOutput), and callers that invoke this migrator function
+%   directly keep getting the struct they get today.
 
 arguments
     preBody (1,1) struct
@@ -43,4 +60,8 @@ end
 % and mfdaq.m). Deleting it destroyed the only record of which epoch the
 % ingested bytes belong to, and the document still validated -- the FRAGMENT
 % mode no counter sees. See V_eta_6_7_walkthrough_STATE.md for the correction.
+
+% Hand the de-encoded body to the parent migrator so the epoch clock extents are
+% lifted here exactly as they are for a plain daqreader_epochdata_ingested.
+bodies = did2.convert.migrators_j.daqreader_epochdata_ingested(v2Body);
 end
