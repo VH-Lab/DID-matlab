@@ -29,18 +29,37 @@ function tests = testEnforceRequiredDependencies
 %   So the check now lives in the schema cache, where the schema is in
 %   scope, and it is GATED:
 %       did2.schema.cache.strictMode('RequiredDependencies')
-%   DEFAULT OFF, because the last measured corpus census (DID-matlab run
-%   31415147934, 02854c7) found 7,233 empty required edges across six
-%   corpora and the corpus gate is 0 quarantine. Arming a gate ahead of the
-%   repairs it grades just turns it red.
 %
-%   A NOTE ON testEmptyRequiredEdgeIsAcceptedWhenSwitchIsOff
-%   --------------------------------------------------------
-%   That test asserts the BUG. It is here deliberately and it must be read
-%   as a hazard notice, not as an endorsement: it pins the default so that
-%   nobody discovers by accident, on a 500,000-document corpus run, that
-%   enforcement became live. When the census reaches zero and the team arms
-%   the switch by default, that test INVERTS -- it does not get patched.
+%   ARMED BY DEFAULT since 2026-08-10, on the team's call: "Arm it. We want
+%   to see issues so we can fix them."
+%
+%   HISTORICAL-SIGNOFF-CLAIM. This header said "DEFAULT OFF, because the last
+%   measured corpus census (DID-matlab run 31415147934, 02854c7) found 7,233
+%   empty required edges across six corpora and the corpus gate is 0
+%   quarantine. Arming a gate ahead of the repairs it grades just turns it
+%   red." Every fact in that sentence is still TRUE. The conclusion was
+%   overruled deliberately: turning it red is the POINT, because the
+%   alternative is 7,233 documents that validate while naming nobody.
+%
+%   SO EXPECT RED, and expect it in two known rows --
+%   stimulus_presentation.element_id 2,670 and image_observation.subject_id
+%   4,563. The image_stack guard post-dates that census, so the second row
+%   may already be lower; nobody has re-measured it. Read the reds out of
+%   did2.convert.v1_to_v2/printSummary, which rolls quarantines up PER CLASS
+%   AND REASON with the denominator first precisely so that a THIRD row is
+%   visible on the day it appears.
+%
+%   A NOTE ON THE INVERTED TESTS
+%   ----------------------------
+%   testEmptyRequiredEdgeIsAcceptedWhenSwitchIsOff asserted the BUG on
+%   purpose, to pin the default so nobody discovered by accident, on a
+%   500,000-document corpus run, that enforcement had become live. Its own
+%   header said: "When the census reaches zero and the team arms the switch
+%   by default, that test INVERTS -- it does not get patched." The team armed
+%   it WITHOUT the census reaching zero, so it inverted, and the same is true
+%   of testSwitchIsOffUnlessTheEnvironmentArmsIt. The risk they guarded
+%   against has flipped: it is no longer enforcement arriving unnoticed, it
+%   is enforcement being silently DISARMED to make a red corpus green.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testEnforceRequiredDependencies');
@@ -80,29 +99,48 @@ end
 
 % ===================== the switch itself ===================================
 
-function testSwitchIsOffUnlessTheEnvironmentArmsIt(testCase)
-% The default is a deliberate decision, so it gets a test. Skipped rather
-% than failed when the environment has armed the switch on purpose --
-% asserting "off" against a job that asked for "on" would be the test
-% lying about its own denominator.
-if ~isempty(strtrim(getenv('DID_ENFORCE_REQUIRED_DEPENDENCIES')))
+function testBothSwitchesAreArmedByDefault(testCase)
+% INVERTED 2026-08-10 (second time for this file), on the team's call:
+% "Arm it. We want to see issues so we can fix them."
+%
+% This was testSwitchIsOffUnlessTheEnvironmentArmsIt, and it asserted
+% `verifyFalse(s.RequiredDependencies)`. It is inverted rather than patched or
+% deleted, exactly as its #38 sibling was, because the DEFAULT is the decision
+% and the decision is what deserves a test.
+%
+% The failure mode has flipped with it. Before, the risk was enforcement
+% arriving unnoticed on a 500,000-document corpus run. Now it is enforcement
+% being silently DISARMED -- by a stray environment variable, or by a future
+% edit that "fixes" a red corpus by reaching for the switch instead of the
+% documents. This test is what makes that loud.
+%
+% NOTE the two switches were armed on OPPOSITE evidence and the file says so
+% in both places: #38 costs 0 measured, #37 costs 7,233 measured and is armed
+% anyway. Do not let a later cleanup collapse that into "both on because both
+% are good".
+if ~isempty(strtrim(getenv('DID_ENFORCE_REQUIRED_DEPENDENCIES'))) ...
+        || ~isempty(strtrim(getenv('DID_ENFORCE_NONVACUOUS_FIELDS')))
     assumeFail(testCase, ...
-        ['DID_ENFORCE_REQUIRED_DEPENDENCIES is set in this environment; ' ...
-         'the default-off assertion does not apply.']);
+        ['DID_ENFORCE_* is set in this environment; the default-state ' ...
+         'assertion does not apply.']);
 end
 s = did2.schema.cache.strictMode('-reset');
-verifyFalse(testCase, s.RequiredDependencies, ...
-    '#37 enforcement must default to OFF');
-% #38 INVERTED 2026-08-10: NonVacuousFields is now ARMED by default, on the
-% team's call, and this assertion moved with it rather than being deleted.
-% The two switches deliberately default DIFFERENTLY, and the difference is the
-% measurement: the same corpus run reports 0 vacuous required fields and 7,233
-% empty required edges. Arming the first costs nothing measured; arming the
-% second would gate the corpus on repairs that are predicted, not proven.
-% Asserting them together as "both OFF" would hide that distinction the moment
-% either moves, which is exactly what just happened.
+verifyTrue(testCase, s.RequiredDependencies, ...
+    '#37 enforcement must default to ON');
 verifyTrue(testCase, s.NonVacuousFields, ...
     '#38 enforcement must default to ON');
+end
+
+function testRequiredDependenciesCanStillBeTurnedOffDeliberately(testCase)
+% The escape hatch is real and is tested, same as #38's. envFlagIsOff means
+% ONLY an explicit 0/false/no/off disarms it -- a typo leaves the gate ARMED,
+% which is the correct direction for a default-on switch: a disarmed gate is
+% silent, a false quarantine is loud.
+did2.schema.cache.strictMode('RequiredDependencies', false);
+doc = demoCWith(testCase, {'item1', 'item2'}, {'', ''});
+doc.validate('SchemaCache', testCase.TestData.cache);
+verifyTrue(testCase, true, ...
+    'with the switch explicitly off an empty required edge still validates');
 end
 
 function testStrictModeReturnsThePreviousValueSoItCanBeRestored(testCase)
@@ -122,15 +160,21 @@ end
 
 % ===================== the hole, and its closure ===========================
 
-function testEmptyRequiredEdgeIsAcceptedWhenSwitchIsOff(testCase)
-% ASSERTS THE BUG ON PURPOSE. See the file header: this pins the default so
-% that enforcement cannot go live unnoticed. INVERT this when the team arms
-% the switch; do not patch it.
-did2.schema.cache.strictMode('RequiredDependencies', false);
+function testEmptyRequiredEdgeIsRejectedWithNoSwitchSet(testCase)
+% INVERTED 2026-08-10. This was testEmptyRequiredEdgeIsAcceptedWhenSwitchIsOff,
+% which ASSERTED THE BUG ON PURPOSE to pin the default, and whose comment said:
+% "INVERT this when the team arms the switch; do not patch it." The team armed
+% it, so it is inverted -- the bug is no longer the default and asserting it
+% would now be asserting a state that does not exist.
+%
+% The deliberate-off case did not disappear; it moved to
+% testRequiredDependenciesCanStillBeTurnedOffDeliberately, where it belongs.
+did2.schema.cache.strictMode('-reset');
 doc = demoCWith(testCase, {'item1', 'item2'}, {'', ''});
-doc.validate('SchemaCache', testCase.TestData.cache);
-verifyTrue(testCase, true, ...
-    'with the switch off an empty required edge still validates clean');
+verifyError(testCase, ...
+    @() doc.validate('SchemaCache', testCase.TestData.cache), ...
+    'did2:validation:emptyRequiredDependency', ...
+    'an empty required edge must quarantine with no switch set');
 end
 
 function testEmptyRequiredEdgeIsRejectedWhenSwitchIsOn(testCase)

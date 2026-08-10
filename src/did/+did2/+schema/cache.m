@@ -51,25 +51,30 @@ classdef cache < handle
     %          nothing. isVacuousValue is the recursive all-leaves-blank
     %          test that catches it.
     %
-    %   THEY DEFAULT DIFFERENTLY. This header read "BOTH DEFAULT TO OFF"
-    %   for as long as that was true and for a while after it was not --
-    %   the same header-vs-state staleness the schema repo documents,
-    %   running in its usual direction (the header claimed LESS
-    %   enforcement than the code carries, so it never produced a wrong
-    %   build, only a wrong belief). The authority for the defaults is
+    %   BOTH ARE NOW ARMED BY DEFAULT (2026-08-10, team's call). This
+    %   header read "BOTH DEFAULT TO OFF" for as long as that was true and
+    %   for a while after it was not -- the same header-vs-state staleness
+    %   the schema repo documents. The authority for the defaults is
     %   `strictMode` below, and it is where the reasoning lives:
     %
-    %     #38 NonVacuousFields      ARMED   (2026-08-10, team's call)
-    %     #37 RequiredDependencies  OFF
+    %     #38 NonVacuousFields      ARMED -- 0 measured cost
+    %     #37 RequiredDependencies  ARMED -- 7,233 measured cost, ON PURPOSE
     %
-    %   The difference is the MEASUREMENT, not a view about which rule
-    %   matters more: the same corpus run reports 0 vacuous required
-    %   fields and 7,233 empty required edges. Arming a switch WILL
-    %   quarantine real documents -- that is the point of them, and the
-    %   reason they are switches rather than plain behaviour. Enforcement
-    %   is gated on the corpus census reaching zero for the rule in
-    %   question; the census is did2.validate.silentLoss, which measures
-    %   exactly these two conditions and raises nothing. See
+    %   THEY WERE ARMED ON OPPOSITE EVIDENCE, and that distinction must not
+    %   be flattened back out. #38 costs nothing measured. #37 is armed
+    %   AGAINST its measurement -- the same corpus run reports 7,233 empty
+    %   required edges, so the corpus gates are EXPECTED TO GO RED. The
+    %   team's instruction was "arm it, we want to see issues so we can fix
+    %   them": a loud red gate beats a hollow document that validates while
+    %   naming nobody.
+    %
+    %   The earlier rule here -- "enforcement is gated on the census
+    %   reaching zero" -- is therefore SUPERSEDED for #37 by an explicit
+    %   decision to enforce first and repair against the noise. The census
+    %   (did2.validate.silentLoss) still measures both conditions and still
+    %   raises nothing; its job is now to PREDICT the gate rather than to
+    %   permit it, which is why the two implementations of each rule are
+    %   locked together by test. See
     %   did-schema/schemas/V_eta_ground_truth_plan.md Phase 1.
     %
     %   Set them per-process with did2.schema.cache.strictMode, or per-CI-
@@ -747,10 +752,13 @@ classdef cache < handle
             % rewrites the quarantine-reason histogram for documents whose
             % problem is something else entirely.
             %
-            % OFF BY DEFAULT: see the class header. The last measured census
-            % (DID-matlab corpus run 31415147934, 02854c7) found 7,233 empty
-            % required edges across six corpora, so switching this on
-            % before those are repaired turns the 0-quarantine gate red.
+            % ARMED BY DEFAULT since 2026-08-10 (team's call). This comment
+            % previously said switching it on "before those are repaired turns
+            % the 0-quarantine gate red" -- that is still TRUE and is now the
+            % INTENDED outcome, not a reason to wait. The last measured census
+            % (corpus run 31415147934, 02854c7) found 7,233 empty required
+            % edges across six corpora; expect them as quarantines, read them
+            % PER CLASS out of v1_to_v2/printSummary, and repair against that.
             if did2.schema.cache.strictMode('RequiredDependencies')
                 missingDeps = obj.unpopulatedRequiredDependencies(s, className);
                 if ~isempty(missingDeps)
@@ -818,22 +826,35 @@ classdef cache < handle
             %                           leaf is blank rejects, raising
             %                           did2:validation:vacuousField.
             %
-            %   THEY NOW DEFAULT DIFFERENTLY, and the difference is the
-            %   MEASUREMENT, not a view about which rule matters more.
+            %   BOTH ARE NOW ARMED (2026-08-10, team's call) -- and they were
+            %   armed on OPPOSITE evidence, which must not be flattened out.
             %
-            %   NonVacuousFields is ARMED (2026-08-10, team's call). Its cost
-            %   is measured and it is zero: corpus run 31415147934 reports
-            %   "0 vacuous required field(s)" on all six corpora across
-            %   562,422 documents. Nothing we have ever migrated trips it, so
-            %   arming it buys a whole class of silent defect for no
-            %   quarantine.
+            %   NonVacuousFields: cost measured, and it is ZERO. Corpus run
+            %   31415147934 reports "0 vacuous required field(s)" on all six
+            %   corpora across 562,422 documents. Nothing we have ever
+            %   migrated trips it, so arming it buys a whole class of silent
+            %   defect for no quarantine.
             %
-            %   RequiredDependencies stays OFF. Its cost is measured and it is
-            %   NOT zero: the same run reports 7,233 empty required edges. Two
-            %   repairs have landed since and both are PREDICTED to zero it;
-            %   one is measured, one is not, and neither has been measured
-            %   together. A gate must not be armed ahead of the repairs it
-            %   grades -- the corpus gate is 0 quarantine.
+            %   RequiredDependencies: cost measured, and it is NOT zero. The
+            %   same run reports 7,233 empty required edges --
+            %   stimulus_presentation.element_id 2,670 and
+            %   image_observation.subject_id 4,563. IT IS ARMED ANYWAY, on the
+            %   team's explicit instruction: "Arm it. We want to see issues so
+            %   we can fix them." So EXPECT THE CORPUS GATES TO GO RED. (The
+            %   image_stack guard post-dates that run, so the 4,563 row may
+            %   already be lower -- unmeasured either way.)
+            %
+            %   This REVERSES the older rule stated here, that a gate must not
+            %   be armed ahead of the repairs it grades. That rule was right
+            %   about the consequence, and the team accepted the consequence
+            %   deliberately: a visible red is the point, because the
+            %   alternative is a hollow document that passes silently.
+            %
+            %   Because #37 will sit red for a while, the reds have to stay
+            %   READABLE: did2.convert.v1_to_v2/printSummary rolls quarantines
+            %   up PER CLASS AND REASON, denominator first, so a NEW offender
+            %   is distinguishable from the two known rows on the day it
+            %   appears.
             %
             %   THE CAVEAT ON ARMING, stated because "0 measured" is weaker
             %   than "0 possible": the corpora are a SAMPLE, and the census's
@@ -855,8 +876,31 @@ classdef cache < handle
             persistent state
             if isempty(state) || (nargin == 1 && isequal(varargin{1}, '-reset'))
                 state = struct( ...
+                    ... ARMED BY DEFAULT 2026-08-10, on the team's call:
+                    ... "Arm it. We want to see issues so we can fix them."
+                    ... Same envFlagIsOff shape as NonVacuousFields, so only an
+                    ... explicit 0/false/no/off disarms it and a typo leaves the
+                    ... gate ARMED.
+                    ...
+                    ... THIS ONE IS ARMED AGAINST ITS MEASUREMENT, NOT WITH IT,
+                    ... and that is the whole point of the decision. Corpus run
+                    ... 31415147934 reports 7,233 empty required edges --
+                    ... stimulus_presentation.element_id 2,670 and
+                    ... image_observation.subject_id 4,563 -- so unlike #38 this
+                    ... switch has a KNOWN, NON-ZERO cost and the corpus gates
+                    ... are EXPECTED TO GO RED. The team wants that visibility
+                    ... rather than a silent hollow document. (The image_stack
+                    ... guard post-dates that run, so the 4,563 row may already
+                    ... be lower; nobody has measured it since.)
+                    ...
+                    ... BECAUSE IT WILL SIT RED FOR A WHILE, the failure has to
+                    ... stay READABLE: v1_to_v2/printSummary rolls quarantines up
+                    ... PER CLASS AND REASON with the denominator first, so a NEW
+                    ... offender is distinguishable from the two known rows. A
+                    ... permanently-red gate that says only "7,233" teaches
+                    ... people to ignore it.
                     'RequiredDependencies', ...
-                        did2.schema.cache.envFlag('DID_ENFORCE_REQUIRED_DEPENDENCIES'), ...
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_REQUIRED_DEPENDENCIES'), ...
                     ... ARMED BY DEFAULT 2026-08-10, on the team's call. The
                     ... env var can still turn it OFF, which is why the default
                     ... is OR'd rather than replaced: an operator who needs a

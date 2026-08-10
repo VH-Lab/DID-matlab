@@ -115,8 +115,10 @@ migrated = {};
 quarantine = struct( ...
     'original_body', {}, ...
     'class_name',    {}, ...
+    'identifier',    {}, ...
     'reason',        {}, ...
     'failed_at',     {});
+quarNames = {}; quarValues = [];
 classCountNames = {};
 classCountValues = [];
 % Phase 1 report-only: documents a migrator handed back UNCHANGED. See
@@ -220,12 +222,20 @@ for k = 1:numel(bodies)
                 classCountNames, classCountValues, outName);
         end
     catch err
+        % `identifier` is carried alongside `reason` so the rollup can group
+        % by FAILURE KIND rather than by message text. Messages interpolate
+        % class and edge names, so every one of the 7,233 empty-required-edge
+        % quarantines has a slightly different string -- grouping on those
+        % would produce 7,233 groups of one and hide the shape completely.
         entry = struct( ...
             'original_body', originalJSON, ...
             'class_name',    className, ...
+            'identifier',    err.identifier, ...
             'reason',        err.message, ...
             'failed_at',     currentUTCTimestamp());
         quarantine(end+1) = entry; %#ok<AGROW>
+        [quarNames, quarValues] = bumpClassCounter(quarNames, quarValues, ...
+            sprintf('%s|%s', className, err.identifier));
     end
 end
 
@@ -236,6 +246,7 @@ result.summary = struct( ...
     'total',            numel(bodies), ...
     'migrated_count',   numel(migrated), ...
     'quarantine_count', numel(quarantine), ...
+    'quarantine_by_class', buildByClassTable(quarNames, quarValues), ...
     'by_class',         buildByClassTable(classCountNames, classCountValues), ...
     'unconverted_count', sum(unconvValues), ...
     'unconverted_by_class', buildByClassTable(unconvNames, unconvValues), ...
@@ -245,12 +256,26 @@ result.summary = struct( ...
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
 % migrates away without a trace: required depends_on edges left empty, and
 % required fields whose value is present but vacuous (an all-blank struct).
-% Neither is visible to the existing gates -- the schema cache calls a struct
-% empty only when it has no fieldnames, and did2.validate.references skips
-% empty edges -- so a migrator reading fields the source does not have emits a
-% valid, hollow document and the corpus still reports 0 quarantine, 0 orphans.
-% This RAISES NOTHING and changes no outcome; it produces the census that ranks
-% the repair work. Enforcement lands only once these counts reach zero.
+%
+% THE PARAGRAPH THAT WAS HERE IS NOW HISTORY, and the change of state matters
+% enough to say so rather than overwrite it. It read: "Neither is visible to
+% the existing gates ... This RAISES NOTHING and changes no outcome; it
+% produces the census that ranks the repair work. Enforcement lands only once
+% these counts reach zero."
+%
+% As of 2026-08-10 BOTH conditions ARE visible to the gates -- #38 and then
+% #37 were armed by default in did2.schema.cache.strictMode -- so a document
+% with an empty required edge now QUARANTINES here instead of migrating clean.
+% Enforcement did NOT wait for these counts to reach zero; the team armed #37
+% against a measured 7,233 on purpose, to see the issues rather than ship
+% hollow documents.
+%
+% This audit still RAISES NOTHING and still changes no outcome. Its job has
+% changed, though: it no longer decides WHEN to enforce, it PREDICTS what
+% enforcement costs, over the same batch, by the same rules. When the census
+% and the quarantine rollup disagree about a class, one of the two paired
+% implementations has drifted -- that is the signal, and it is why they are
+% locked together by test.
 try
     result.silent_loss = did2.validate.silentLoss(migrated, ...
         'SchemaCache', options.SchemaCache);
@@ -636,12 +661,79 @@ fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
 printUnconverted(result);
 printFragments(result);
 printSilentLoss(result);
-if ~isempty(result.quarantine)
-    fprintf('  quarantine reasons:\n');
-    for k = 1:numel(result.quarantine)
-        fprintf('    [%s] %s\n', result.quarantine(k).class_name, ...
-            result.quarantine(k).reason);
+printQuarantine(result);
+end
+
+function printQuarantine(result)
+%PRINTQUARANTINE Quarantines PER CLASS AND REASON, denominator first.
+%
+%   WHY THIS IS A ROLLUP AND NOT A LIST. Arming #37 (2026-08-10) is expected
+%   to quarantine ~7,233 documents in two known rows --
+%   stimulus_presentation.element_id 2,670 and image_observation.subject_id
+%   4,563. The previous version printed ONE LINE PER DOCUMENT, so that is
+%   7,233 near-identical lines; the summary line above it prints ONE NUMBER,
+%   7,233. Both are unreadable in the same way, from opposite ends: neither
+%   lets you see a THIRD row appear.
+%
+%   A gate that is going to sit red for a while has exactly one job -- make a
+%   NEW offender distinguishable from the known ones on the day it shows up.
+%   So: group by (class, error identifier), largest first, denominator
+%   printed FIRST and UNCONDITIONALLY per the standing rule, and keep a
+%   bounded sample of full messages for the detail a count cannot carry.
+%
+%   Grouping is on the IDENTIFIER, not the message: messages interpolate
+%   class and edge names, so grouping on text yields N groups of one.
+%
+%   The labels are rebuilt from the RAW entries rather than read off
+%   summary.quarantine_by_class, deliberately. That table runs its keys
+%   through matlab.lang.makeValidName so they can be struct fieldnames, which
+%   rewrites both the '|' separator and the ':' inside every error identifier
+%   into underscores -- 'a|did2:validation:x' renders as
+%   'a_did2_validation_x', where the class/reason boundary is no longer
+%   recoverable. The table stays for programmatic callers, matching the
+%   existing by_class convention; the human-readable rollup is computed here
+%   from strings that were never mangled.
+if isempty(result.quarantine)
+    return;
+end
+labels = {};
+counts = [];
+for k = 1:numel(result.quarantine)
+    ident = result.quarantine(k).identifier;
+    if isempty(ident); ident = '(no identifier)'; end
+    label = sprintf('%s | %s', result.quarantine(k).class_name, ident);
+    idx = find(strcmp(labels, label), 1);
+    if isempty(idx)
+        labels{end+1} = label; %#ok<AGROW>
+        counts(end+1) = 1;     %#ok<AGROW>
+    else
+        counts(idx) = counts(idx) + 1;
     end
+end
+[counts, order] = sort(counts, 'descend');
+names = labels(order);
+
+% DENOMINATOR FIRST: how many documents were quarantined, out of how many
+% inspected, across how many distinct (class, reason) rows. A count without
+% its denominator is not evidence.
+fprintf(['  quarantine: %d of %d document(s), in %d (class, reason) ' ...
+    'row(s):\n'], numel(result.quarantine), result.summary.total, ...
+    numel(names));
+for k = 1:numel(names)
+    fprintf('    %8d  %s\n', counts(k), names{k});
+end
+
+% A bounded sample of real messages. The counts say WHICH rows exist; a
+% message says what one actually looked like. Capped so a red corpus run
+% stays readable -- and the cap ANNOUNCES ITSELF rather than truncating
+% silently, because a silent truncation is how a report starts lying.
+sampleCap = 10;
+shown = min(sampleCap, numel(result.quarantine));
+fprintf('  quarantine sample (%d of %d shown):\n', shown, ...
+    numel(result.quarantine));
+for k = 1:shown
+    fprintf('    [%s] %s\n', result.quarantine(k).class_name, ...
+        result.quarantine(k).reason);
 end
 end
 
