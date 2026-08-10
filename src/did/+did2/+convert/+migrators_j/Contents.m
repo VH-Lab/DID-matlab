@@ -278,6 +278,46 @@
 %                          nothing. NOTE the source field arrives as `filter_type`,
 %                          not `type`: +migrators/filter.m renames it in the
 %                          superclass pass that runs first.
+%     binaryseries_parameters
+%                        - 1 -> 1 GUARDED PASSTHROUGH, placeholder-normalising.
+%                          TEAM-SIGN-OFF [misc singletons], jess 2026-08-09
+%                          retires this class INTO THE data_body MODEL (time_type
+%                          -> the time axis's datum_type, data_type -> the
+%                          statement's, data_dim -> the axis count,
+%                          samples_regular_intervals -> the axis `regular` flag).
+%                          NONE of those slots exists: that is #45, blocked on
+%                          #32, so the fold is NOT built and the document passes
+%                          through. What this migrator does build is the thing
+%                          the passthrough needed to be survivable at all: NDI's
+%                          template supplies the CHAR '' for three fields its own
+%                          schema types `integer`, and NO empty value validates
+%                          (`''` is a typeMismatch, `[]` fails mustBeScalar), so
+%                          the placeholder is DROPPED -- absence is how V_eta
+%                          spells unset, and an absent optional field is the one
+%                          spelling the validator passes. A NON-empty char is NOT
+%                          parsed; it errors, because this class has NO WRITER
+%                          anywhere in NDI (3 files mention it on origin/main,
+%                          not one of them a .m) so nothing can say what encoding
+%                          was meant. GUARD: `num_channels` / `sample_rate` are
+%                          rejected by name -- they are what the pre-Phase-2b
+%                          tombstone required and no NDI file has ever declared
+%                          them.
+%                          NOT A SPECIAL CASE: a sweep of all 91 NDI templates
+%                          against the V_eta classes they map to found 33 fields
+%                          whose template literal cannot validate against the
+%                          declared type, over 20 classes; three of those classes
+%                          have no migrator to overwrite the placeholder and so
+%                          are exposed on the passthrough path -- this one,
+%                          stimulus_parameter (`value`) and imageStack_parameters
+%                          (`timestamp`). The other two belong to other families.
+%
+%   DELIBERATELY WITHOUT A MIGRATOR: `projectvar`. TEAM-SIGN-OFF [misc
+%   singletons] keeps it a DEPRECATED-tier passthrough until real documents exist
+%   to model its untyped `data` field against, so it takes the identity fallback
+%   on purpose. Its tombstone only reaches the validator because all six
+%   workflows copy schemas/V_eta/deprecated/ into DID_SCHEMA_PATH. KNOWN, OPEN:
+%   `data` is an arbitrary caller-supplied payload typed `string`, so a non-empty
+%   NUMERIC one quarantines -- see testMiscSingletons.
 %
 %   POST-PASS (batch-level, did2.convert.resolveDatasetEntities): dedups the
 %   `dataset` entities that the containers each mint on the shared dataset id
