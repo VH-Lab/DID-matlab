@@ -604,6 +604,58 @@ for k = 1:numel(out.migrated)
 end
 end
 
+function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCase)
+% THE 4,563. NDI's own writer leaves subject_id empty on three of its seven
+% imageStack sites (+setup/+conv/+haley/doImport.m:789,811,827 -- the image /
+% mask / closest-patch loop set only document_id), so this fixture carries
+% `document_id` and NO subject, which is what a real JH document of that kind
+% looks like. Before the guard this emitted an image_observation with an empty
+% required subject_id: an observation about nobody, invisible to every gate
+% because references.m skips empty edges.
+%
+% Note the fixture also pins WHY the passthrough is safe: image_stack came back
+% out of _DELETE_PHASE8 so the document has a schema to validate against.
+v1 = struct();
+v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'document_id'}, 'value', {'otr_42'});
+v1.base = struct('id', 'is_02', 'session_id', 'sess_09', ...
+    'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image_stack = struct('format_ontology', 'NCIT:C70631', 'label', 'an image');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YX', 'dimension_size', [512 512], ...
+    'dimension_scale', [0.5 0.5], 'clocktype', 'exp_global_time', 'timestamp', 0);
+
+out = runJ(v1);
+
+verifyEqual(testCase, numel(out.migrated), 1, ...
+    'a subject-less image_stack must pass through as exactly one document');
+verifyFalse(testCase, isfield(out.summary.by_class, 'image_observation'), ...
+    'must NOT emit an observation with no subject');
+verifyEqual(testCase, out.migrated{1}.document_class.class_name, 'image_stack');
+verifyEqual(testCase, out.migrated{1}.base.id, 'is_02');
+% the payload survives for the second pass
+verifyEqual(testCase, out.migrated{1}.image_stack_parameters.data_type, 'uint8');
+end
+
+function testImageStackWithAnEmptySubjectEdgeIsAlsoGuarded(testCase)
+% Edge PRESENT but blank -- the shape the invented-empty-edge pattern produces.
+v1 = struct();
+v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {''});
+v1.base = struct('id', 'is_03', 'session_id', 'sess_09', ...
+    'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image_stack = struct('format_ontology', 'NCIT:C70631', 'label', 'an image');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YX', 'dimension_size', [512 512], ...
+    'dimension_scale', [0.5 0.5], 'clocktype', 'exp_global_time', 'timestamp', 0);
+
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, out.migrated{1}.document_class.class_name, 'image_stack');
+end
+
 function testImageStackBecomesBodyBackedObservation(testCase)
 v1 = struct();
 v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...

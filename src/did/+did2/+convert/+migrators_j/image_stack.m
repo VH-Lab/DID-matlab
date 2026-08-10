@@ -46,6 +46,40 @@ TV = 'V_eta';
 params = getBlock(preBody, 'image_stack_parameters');
 
 subjectId = dependencyValue(preBody, 'subject_id');
+
+% ---------------------------------------------------------------------
+% THE GUARD: NO SUBJECT => NO OBSERVATION. Pass the document through.
+% ---------------------------------------------------------------------
+% NDI's own writer leaves this edge empty. Of the seven
+% `ndi.document('imageStack'...)` sites in +setup/+conv/+haley/doImport.m, four
+% set `subject_id` from a subjectGroup_id (421, 461, 477, 496) and THREE set
+% only `document_id` (789, 811, 827 -- the image / mask / closest-patch loop).
+% So those documents genuinely have no subject, and this migrator used to copy
+% that emptiness into a REQUIRED edge: 4,563 JH documents became
+% `image_observation`s about nobody, invisible to every gate because
+% +did2/+validate/references.m:90 skips empty edges.
+%
+% Passing through is only safe because `image_stack` and
+% `image_stack_parameters` were taken BACK OUT of _DELETE_PHASE8 for exactly
+% this, and restated from the NDI template so the passthrough validates. Do not
+% re-delete them without re-checking this branch -- deleting a tombstone ahead
+% of its migrator is what put 2,484 corpus-B documents in quarantine.
+%
+% THE SUBJECT IS RECOVERABLE, BUT NOT HERE AND NOT GENERALLY. The chain is
+% Haley's import convention, not a migration operation: this document's
+% `document_id` points at an ontologyTableRow holding `plateID`; the plate->
+% subject mapping is never persisted (`wormVariables` is
+% {wormID, subjectName, subject_id} -- no plate link), so the only surviving
+% evidence is the OTHER imageStacks, which carry both `document_id` -> the plate
+% row and a populated `subject_id`. Recovering it means a value join on plateID
+% between two table rows plus an inverse edge traversal. That belongs with the
+% ontology_table_row subject attribution, which needs the same table-content
+% joins -- not hard-coded into a per-document migrator.
+if isempty(subjectId)
+    bodies = {preBody};
+    return;
+end
+
 sessionId = baseField(preBody, 'session_id', '');
 datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
 stackId   = baseField(preBody, 'id', did.ido.unique_id());
