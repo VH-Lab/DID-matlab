@@ -2902,18 +2902,22 @@ verifyEqual(testCase, d.get('oneepoch.epoch_ids'), 't00001,t00002,t00003');
 % the SYNTHETIC epoch id survives too -- sourceCensus tracks exactly this string
 % as a grouping hazard, citing oneepoch.m:42, so it must not be quietly dropped
 verifyEqual(testCase, d.get('epochid.epochid'), 'whole_session_ref1');
-% READ THE EDGE VIA depVal, NOT via toStruct + depValue. The two paths do not
-% agree on the field name, which is what made this test the only one of the four
-% to fail (scratch probe 9, run 31424544834):
-%     doc.get('depends_on')      entries carry `value`        <- depVal
-%     doc.toStruct().depends_on  entries carry `document_id`  <- depValue
-% universalRenames normalises v1's {name, value} to {name, document_id}
-% (universalRenames.m:372-380), and toStruct exposes the normalised form while
-% get() still hands back `value`. Nothing is wrong with the migrator; the helper
-% I reached for was written for RAW migrator output, where the rename has not
-% happened yet, and I carried it into a full-pipeline test. Same shape of mistake
-% as probe 7's, one layer over.
-verifyEqual(testCase, depVal(d, 'element_id'), 'elem_1');
+% READ THE EDGE TOLERANTLY. A depends_on entry is spelled `value` on a body a
+% migrator built and `document_id` once universalRenames has normalised it
+% (universalRenames.m:372-380), and BOTH shapes are live -- this document is a
+% passthrough, so its edge came through the rename and carries `document_id`
+% (observed: scratch probe 9, run 31424544834, printed `fieldnames: name,
+% document_id`).
+%
+% Reading one spelling is what broke this test twice: first via `depValue`, which
+% read only `value`, and then via `depVal`, which reads only `value` too -- I
+% swapped helpers on the INFERENCE that get() and toStruct() disagreed, without
+% ever observing get(). That inference was the error, not the first helper.
+%
+% The tolerant read is the codebase's own convention, not an invention here:
+% +did2/+validate/references.m:176-179 takes `document_id` when present and falls
+% back to `value`, with exactly this precedence. depValue now does the same.
+verifyEqual(testCase, depValue(d.toStruct(), 'element_id'), 'elem_1');
 end
 
 function testOneEpochValidatesAgainstItsNewTombstone(testCase)
@@ -2948,12 +2952,18 @@ function v = depValue(b, name)
 %
 % ACCEPTS BOTH SPELLINGS, deliberately. universalRenames normalises v1's
 % {name, value} to {name, document_id} (universalRenames.m:372-380), so which one
-% a body carries depends on how far down the pipeline it came from: a migrator
-% called directly still has `value`, while toStruct() on a migrated document has
-% `document_id`. Reading only `value` threw MATLAB:nonExistentField on the second
-% kind -- found by scratch probe 9 after it failed one test of four.
+% a body carries depends on where it came from: a migrator that BUILT the edge
+% still has `value`, while an edge that came through the rename -- as any
+% passthrough's does -- has `document_id`. Observed, not inferred: scratch probe
+% 9 (run 31424544834) printed `fieldnames: name, document_id` on a migrated
+% oneepoch body, and reading only `value` threw MATLAB:nonExistentField.
 %
-% For a did2.document, prefer depVal above.
+% This precedence is copied from +did2/+validate/references.m:176-179, which
+% takes document_id when present and falls back to value. That the orphan checker
+% needs the same fallback is the evidence that both shapes are genuinely live.
+%
+% `depVal` above reads ONLY `value`, so it is not a drop-in for this. Which of
+% the two is right depends on the body, and this one is safe for either.
 v = '';
 if ~isfield(b, 'depends_on'); return; end
 for k = 1:numel(b.depends_on)
