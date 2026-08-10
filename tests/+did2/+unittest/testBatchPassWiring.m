@@ -71,8 +71,37 @@ function [passes, exempt] = batchPasses()
 %   stay available is leaving it unwired SILENTLY: the marker turns an omission
 %   into a stated decision with a reason attached, which is the entire
 %   difference between the two cases.
-convertDir = fullfile(did.toolboxdir(), '+did2', '+convert');
+% RESOLVED FROM THIS FILE, NOT FROM did.toolboxdir(). The first version asked
+% did.toolboxdir(), and CI found ZERO passes where a local scan found four:
+%
+%     run 31440976289 (2f7f1a4), job 93625421827
+%       fewer than 4 batch post-passes discovered -- the signature scan is
+%       broken, and a broken scan reports perfect coverage
+%           Actual Value: 0    Minimum Value (Inclusive): 4
+%
+% `did.toolboxdir()` reports where the LOADED `did` package lives, and the
+% corpus/quick jobs run `matbox.installRequirements`, which can put another
+% copy of the toolbox on the path ahead of the checkout. The scan then walks a
+% directory belonging to a different revision -- or to no `+did2/+convert` at
+% all -- while the test believes it inspected this one.
+%
+% `didCallSites` below already resolves from `mfilename('fullpath')` for
+% exactly this reason. Doing the same here keeps both halves of the gate
+% reading ONE checkout: comparing passes found in tree A against call sites
+% read in tree B is not a coverage measurement, it is two unrelated facts.
+here = fileparts(mfilename('fullpath'));   % <root>/tests/+did2/+unittest
+repoRoot = fileparts(fileparts(fileparts(here)));   % -> +did2 -> tests -> <root>
+convertDir = fullfile(repoRoot, 'src', 'did', '+did2', '+convert');
 files = dir(fullfile(convertDir, '*.m'));
+% The denominator the assertion below rests on is the FILE COUNT, and zero
+% files is indistinguishable from zero matches once the loop has run. Say which
+% one happened, and say where we looked, so a wrong path cannot read as a
+% correctly-scanned empty package.
+fprintf('  scan root: %s (%d .m file(s))\n', convertDir, numel(files));
+if isempty(files)
+    fprintf(['  NO .m FILES THERE -- the path is wrong, or the package moved. ' ...
+             'This is "did not look", not "found nothing".\n']);
+end
 passes = {};
 exempt = struct('name', {}, 'reason', {});
 for k = 1:numel(files)
