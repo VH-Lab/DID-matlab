@@ -29,10 +29,15 @@ function e = jParameterEntry(variableName, canonicalValue, sourceUnit, sourceVal
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) method_parameters fold.
 arguments
-    variableName (1,:) char
+    % NO SIZE SPECS ON THE CHAR ARGUMENTS, deliberately: '' is 0-by-0 and a
+    % `(1,:) char` constraint rejects it. Every caller here passes '' for at
+    % least one of source_unit / source_value (v1 records no units in this
+    % family, and a COMPUTED value has no source spelling), so the constraint
+    % that reads as tidy would fail on the ordinary path.
+    variableName char
     canonicalValue (1,1) double
-    sourceUnit (1,:) char = ''
-    sourceValue (1,:) char = ''
+    sourceUnit char = ''
+    sourceValue char = ''
 end
 
 e = struct();

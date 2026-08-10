@@ -71,8 +71,14 @@ dataType = getCharField(blk, 'data_type');
 channels = getField(blk, 'channels');
 t0       = numScalar(getField(blk, 'native_start_time'), 0.0);
 nativeRt = numScalar(getField(blk, 'native_rate'), 0.0);
-dt       = 0.0;
-if nativeRt > 0; dt = 1.0 / nativeRt; end
+% NO top-level `dt`. It was computed here and never read: the per-level loop
+% below derives `dt_k` from `rate_k`, which starts at `nativeRt` and is
+% overridden by `decimation_sampling_rates(k)` when the level has its own rate.
+% So nothing was lost -- but a dead variable named `dt` sitting beside a live
+% `dt_k` is an invitation to "simplify" the loop into using it, which would
+% silently give every decimated level the NATIVE sample interval. Removed rather
+% than left as a trap. (GitHub code scanning 167/168 flagged it; verified by
+% reading the loop, not assumed.)
 
 anchorId = did.ido.unique_id();
 

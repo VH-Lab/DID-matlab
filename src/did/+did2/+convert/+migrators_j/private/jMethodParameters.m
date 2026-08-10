@@ -83,7 +83,9 @@ arguments
     preBody (1,1) struct
     entries struct
     other (1,1) struct
-    opts.DerivedFromSrc (1,:) char = ''
+    % `char` without a size spec: the default '' is 0-by-0 and would fail a
+    % `(1,:) char` constraint.
+    opts.DerivedFromSrc char = ''
 end
 
 TV = 'V_eta';

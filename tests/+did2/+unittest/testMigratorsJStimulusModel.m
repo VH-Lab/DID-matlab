@@ -85,12 +85,16 @@ v1.app = struct('name', 'ndi_app_stimulus_decoder', 'version', '1.2.3', ...
 v1.epochid = struct('epochid', 't00003');
 % :131-133 -- presentation_order is data.stimid(:), a COLUMN vector of 1-based
 % indexes into `stimuli`; three distinct stimuli, two repeats each.
-v1.stimulus_presentation = struct( ...
-    'presentation_order', [1; 2; 3; 1; 2; 3], ...
-    'stimuli', struct('parameters', { ...
-        struct('angle', 0,  'sFrequency', 0.5, 'tFrequency', 4, 'contrast', 1), ...
-        struct('angle', 90, 'sFrequency', 0.5, 'tFrequency', 4, 'contrast', 1), ...
-        struct('isblank', 1)}));
+% Built by explicit assignment rather than one struct() call: struct() with a
+% struct-valued argument is ambiguous, and the `stimuli` dictionary is a struct
+% ARRAY (decoder.m:103-106 fills one entry per data.parameters{k}).
+p1 = struct('angle',  0, 'sFrequency', 0.5, 'tFrequency', 4, 'contrast', 1);
+p2 = struct('angle', 90, 'sFrequency', 0.5, 'tFrequency', 4, 'contrast', 1);
+p3 = struct('isblank', 1);
+blk = struct();
+blk.presentation_order = [1; 2; 3; 1; 2; 3];
+blk.stimuli = struct('parameters', {p1, p2, p3});   % 1x3
+v1.stimulus_presentation = blk;
 % :137-138 -- add_file('presentation_time.bin', ...)
 v1.files = struct('file_list', {{'presentation_time.bin'}});
 end
@@ -130,9 +134,11 @@ v1.app = struct('name', 'ndi_app_stimulus_tuning_response', 'version', '1.2.3', 
     'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'GLNXA64', ...
     'os_version', '5.15.0', 'interpreter', 'MATLAB');
 % :587-589 -- the three-field method struct, verbatim.
-v1.control_stimulus_ids = struct('control_stimulus_ids', csIds, ...
-    'control_stimulus_id_method', struct('method', 'pseudorandom', ...
-        'controlid', 'isblank', 'controlid_value', 1));
+blk = struct();
+blk.control_stimulus_ids = csIds;
+blk.control_stimulus_id_method = struct('method', 'pseudorandom', ...
+    'controlid', 'isblank', 'controlid_value', 1);
+v1.control_stimulus_ids = blk;
 end
 
 % ===================== the presentation: a deferred decompose ==============
@@ -159,6 +165,13 @@ s = d.toStruct();
 verifyEqual(testCase, numel(s.stimulus_presentation.stimuli), 3);
 verifyEqual(testCase, s.stimulus_presentation.stimuli(2).parameters.angle, 90);
 verifyEqual(testCase, s.stimulus_presentation.stimuli(3).parameters.isblank, 1);
+% AND THE PARAMETER KEYS ARE NOT SNAKE-CASED. universalRenames renames only the
+% IMMEDIATE field names of a property block; `parameters` is two levels down and
+% its keys are stimulus-generator vocabulary (sFrequency, K_absmax, randState,
+% ...). Renaming them would silently rewrite every stimulus dictionary in the
+% corpus into something no NDI reader recognises.
+verifyTrue(testCase, isfield(s.stimulus_presentation.stimuli(1).parameters, 'sFrequency'));
+verifyFalse(testCase, isfield(s.stimulus_presentation.stimuli(1).parameters, 's_frequency'));
 
 % the epoch string -- the future relative_reference's `relative_to`
 verifyEqual(testCase, d.get('epochid.epochid'), 't00003');
@@ -336,10 +349,12 @@ verifyEqual(testCase, out.migrated{1}.get( ...
     'control_stimulus_ids.control_stimulus_ids'), [3; 3; 3; 6; 6; 6]);
 end
 
-function testTheEdgeIsReadUnderEitherKeySpelling(testCase)
-% `depends_on` entries are `value` on a raw migrator body and `document_id` once
-% universalRenames has normalised them; a v1 body straight off disk uses `id`.
-% Reading one spelling only is how openminds_stimulus lost 635 referents.
+function testTheEdgeIsReadThroughTheV1IdSpelling(testCase)
+% A v1 body straight off disk spells the edge `id`; universalRenames
+% (renameDependsOnEntries, precedence document_id > value > id) normalises it to
+% `document_id` before any migrator sees it, and a body a migrator builds itself
+% uses `value`. All three must reach the same string -- reading one spelling only
+% is how openminds_stimulus lost 635 referents.
 v1 = controlFixture();
 v1.depends_on = struct('name', {'stimulus_presentation_id'}, 'id', {'pres_b671ff'});
 out = runJ(v1);
