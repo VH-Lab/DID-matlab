@@ -1,4 +1,4 @@
-function [software, swId, execEnv] = jSoftwareFromApp(preBody)
+function [software, swId, execEnv, appLeftover] = jSoftwareFromApp(preBody, opts)
 %JSOFTWAREFROMAPP Fold a did_v1 `app` block into a `software` entity + the
 %   per-run `execution_environment` (the R1 / TEAM-SIGN-OFF [software] model).
 %
@@ -11,6 +11,30 @@ function [software, swId, execEnv] = jSoftwareFromApp(preBody)
 %   identity means no entity and no edge. EXECENV may still be populated from a
 %   nameless app block (the os/interpreter of the run is a fact about the run,
 %   not about the software's identity).
+%
+%   [SOFTWARE, SWID, EXECENV, APPLEFTOVER] = jSoftwareFromApp(..., ...
+%       'RequireSession', TF) are the two ADDITIVE extensions that let
+%   private/jMethodParameters.m stop carrying its own copy of this fold:
+%
+%     APPLEFTOVER    the source `app` block, WHOLE, when nothing could be made
+%                    of it (no name, or RequireSession and no session). A
+%                    caller with somewhere to park it -- method_parameters puts
+%                    it in `other.app` -- keeps the block instead of dropping
+%                    it. struct() whenever a `software` was minted, and
+%                    struct() when there was no `app` block at all.
+%     RequireSession false by default, which is exactly the behaviour every
+%                    existing caller already gets. True additionally refuses to
+%                    mint when base.session_id is empty, because
+%                    `base.session_id` is "mustBeNonEmpty": true and v1_to_v2
+%                    quarantines the SOURCE document when a body it produced
+%                    fails -- so an unguarded mint turns a clean fold into a
+%                    loss. When it refuses, EXECENV is returned EMPTY too and
+%                    the whole block rides in APPLEFTOVER, so the os/
+%                    interpreter facts are parked once rather than twice.
+%
+%   Existing 3-output callers are unaffected: MATLAB does not evaluate an
+%   output a caller did not request, and the default option reproduces the old
+%   control flow exactly.
 %
 %   ---------------------------------------------------------------------
 %   THE FIELD NAMES ARE READ TOLERANTLY, AND THAT IS A REPAIR
@@ -50,6 +74,7 @@ function [software, swId, execEnv] = jSoftwareFromApp(preBody)
 %   Shared helper for the Brainstorm-J (+migrators_j) migrators.
 arguments
     preBody (1,1) struct
+    opts.RequireSession (1,1) logical = false
 end
 
 % `software` and `swId` are NOT pre-initialised: there is no early return in this
@@ -59,10 +84,13 @@ end
 % to be a false positive. `execEnv` IS pre-initialised, because the loop below
 % only adds fields conditionally and it must be a struct either way.
 execEnv = struct();
+appLeftover = struct();
 
 app = struct();
+hasApp = false;
 if isfield(preBody, 'app') && isstruct(preBody.app) && isscalar(preBody.app)
     app = preBody.app;
+    hasApp = true;
 end
 
 % Per-run environment: the actual os/interpreter this run used. NOT renamed by
@@ -86,5 +114,30 @@ if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
     datestamp = jGetChar(preBody.base, 'datestamp');
 end
 
-[software, swId] = jSoftware(name, version, url, sessionId, datestamp);
+[software, swId] = jSoftware(name, version, url, sessionId, datestamp, ...
+    'RequireSession', opts.RequireSession);
+
+% Nothing could be made of the block -> hand it back WHOLE so a caller with a
+% parking slot keeps it. `isempty(software)` is the single test: it is true for
+% both refusal reasons (no name, and RequireSession with no session), so this
+% cannot drift out of step with jSoftware's guards the way a duplicated
+% condition would.
+%
+% EXECENV IS CLEARED ONLY FOR A CALLER THAT ASKED FOR THE LEFTOVER (nargout>=4).
+% That is not a stylistic nargout trick, it is the difference between the two
+% callers, and both behaviours are pre-existing and deliberate:
+%   - jCalculation asks for 3. Its class HAS a typed home for the environment
+%     (subject_interaction.execution_environment), so a nameless app block must
+%     still yield one -- this function's header has always said so ("the os/
+%     interpreter of the run is a fact about the run, not about the software's
+%     identity").
+%   - jMethodParameters asks for 4. Its class has NO typed home, so it parks the
+%     block in `other.app`; returning execEnv as well would write the same four
+%     facts into `other` TWICE, under two different keys.
+if hasApp && isempty(software)
+    appLeftover = app;
+    if nargout >= 4
+        execEnv = struct();
+    end
+end
 end

@@ -99,6 +99,39 @@ function v2Body = ontology_image(preBody)
 %                  the term observations; that is part of the ngrid work, not
 %                  this fix.
 %
+%   #47 UPDATE, 2026-08-10 -- THE RASTER'S HOME, AND WHAT CHANGED UNDERNEATH.
+%   The R6 home is confirmed and it is a SECOND-PASS target, not a pass-1 one:
+%   an `image_observation` (+ a data_body) beside the term observations. It
+%   cannot be minted here for the same reason the term observation cannot --
+%   `subject_statement.subject_id` declares `must_refer_to_document_class:
+%   subject`, and this document's only edge is a table row. Emitting one would
+%   reproduce, exactly, the 4,563-document `image_observation.subject_id` husk
+%   that the image_stack guard was just added to stop.
+%
+%   So the pass-1 obligation is to carry the raster INTACT, and until 2026-08-10
+%   it was not being met. This migrator strips nothing -- but the SUPERCLASS
+%   pass runs first (v1_to_v2.applySuperclassMigrators) and was never bypassed
+%   by the migrators_j split, so +migrators/ngrid.m deleted `coordinates` and
+%   `data_size` on every one of these documents before this function was
+%   called. Fixed by +migrators_j/+super/ngrid.m, which carries the v1 block
+%   verbatim, plus the matching V_eta `ngrid` tombstone. `coordinates` has no
+%   HOME yet (its decided destination, `axes[k].values`, belongs to #45, which
+%   is blocked on #32) -- it is carried, not placed.
+%
+%   NOT FIXED, and it needs a human: the tombstone declares the provenance edge
+%   as `ontology_table_row_id`, while NDI's template and schema both name it
+%   `ontologyTableRow_id` -- and universalRenames does NOT rename depends_on
+%   entry names (it skips the whole key, universalRenames.m:308; only `id` /
+%   `value` -> `document_id` is rewritten). So the name a real document carries
+%   is the camelCase one. It is not a quarantine (nothing validates dependency
+%   names) and it is not an orphan (references.m walks the document's edges,
+%   not the schema's), but the second pass has to FOLLOW this edge to reach the
+%   subject, and the schema is currently describing a key no document has.
+%   Two of NDI's 37 distinct `*_id` names are camelCase and both are in this
+%   family (`ontologyTableRow_id`, `imageCollection_id`), so whether V_eta
+%   tombstones spell NDI's edge names verbatim or snake_case them is a
+%   one-off convention call, not a typo. Left as declared; raised, not decided.
+%
 %   THE GUARD. If the block matches neither vintage, this errors rather than
 %   emitting anything. Quarantine is visible; a husk is not. In particular a
 %   body presenting `region` is REJECTED BY NAME -- that shape can only come

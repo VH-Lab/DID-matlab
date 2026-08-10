@@ -237,7 +237,14 @@ verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.reader.mfdaq.intan');
 verifyEqual(testCase, sw.get('software.local_identifier'), ...
     'ndi.daq.reader.mfdaq.intan');
 % v1's daqreader template has NO version field, so nothing may be invented here.
-verifyEqual(testCase, sw.get('software.version'), '');
+% verifyEmpty + verifyClass, NOT verifyEqual(...,''): verifyEqual compares SIZE
+% and MATLAB has more than one empty char. jSoftware declares `version` as
+% `(1,:) char`, whose size spec coerces a 0x0 '' to 1x0, so this failed with
+% "Actual 1x0 / Expected 0x0" -- a fact about an argument block, not about the
+% migration. jSoftware now normalises the empty; this assertion no longer
+% depends on which empty it is either way.
+verifyClass(testCase, sw.get('software.version'), 'char');
+verifyEmpty(testCase, sw.get('software.version'));
 end
 
 function testDaqreaderPreservesItsBaseId(testCase)

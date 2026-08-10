@@ -300,7 +300,15 @@ end
 % `.Count`, NOT `numel`: numel() on a containers.Map returns 1 (it is a scalar
 % handle object), so a count written that way reads 1 forever regardless of what
 % is in the map. A denominator that cannot move is worse than no denominator.
-report.distinct_session_epoch_pairs = epochIdByKey.Count + refusedKeys.Count;
+% double(), and it is not cosmetic. `containers.Map.Count` returns UINT64, and
+% uint64 arithmetic SATURATES: `pairs - strings` below could never go negative,
+% so a day when the string count exceeded the pair count -- which would mean the
+% reader or the key is broken -- would report a reassuring 0 instead of a
+% negative number. An instrument whose error case is indistinguishable from
+% "nothing to report" is the defect this whole pass exists to avoid. It also
+% made verifyEqual fail on class rather than value, which is how it was found.
+report.distinct_session_epoch_pairs = ...
+    double(epochIdByKey.Count) + double(refusedKeys.Count);
 % THE MEASUREMENT THIS PASS EXISTS FOR, restated as a number the report carries.
 % Keying on the id STRING alone would produce `distinct_epoch_id_strings`
 % groups; keying on the PAIR produces `distinct_session_epoch_pairs`. The

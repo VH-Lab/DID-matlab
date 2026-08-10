@@ -91,7 +91,15 @@ end
 TV = 'V_eta';
 
 % ---------------------------------------------------------------- app/software
-[software, softwareId, execEnv, appLeftover] = softwareEntity(preBody);
+% CONSOLIDATED 2026-08-10 (#25, software dedup): this used to be a LOCAL
+% softwareEntity() below, a third copy of the app -> software fold that did not
+% write `local_identifier` -- so the deferred corpus-wide dedup pass would have
+% had to special-case the entities minted here. private/jSoftwareFromApp.m is
+% now the one reader of an `app` block and private/jSoftware.m the one builder
+% of a `software` body. RequireSession preserves this class's guard exactly
+% (see below); the 4th output preserves the parking.
+[software, softwareId, execEnv, appLeftover] = ...
+    jSoftwareFromApp(preBody, 'RequireSession', true);
 if ~isempty(fieldnames(execEnv))
     other.execution_environment = execEnv;
 end
@@ -197,67 +205,17 @@ for s = 1:numel(names)
 end
 end
 
-function [software, softwareId, execEnv, appLeftover] = softwareEntity(preBody)
-%SOFTWAREENTITY v1 `app` block -> a V_eta `software` entity + the leftovers.
-%
-%   Reads BOTH spellings of every field. did2.convert.universalRenames rewrites
-%   app.name -> app.app_name and app.version -> app.app_version
-%   (universalRenames.m:145-164), so a migrator running after it sees the
-%   prefixed names; a body read with RenameClassNames=false still carries the
-%   bare ones.
-software = []; softwareId = ''; execEnv = struct(); appLeftover = struct();
-if ~isfield(preBody, 'app') || ~isstruct(preBody.app) || ~isscalar(preBody.app)
-    return;
-end
-app = preBody.app;
-
-name    = jGetCharAny(app, {'app_name', 'name'});
-version = jGetCharAny(app, {'app_version', 'version'});
-url     = jGetChar(app, 'url');
-
-% the per-run environment: no typed home on method_parameters (V_eta puts
-% execution_environment on subject_interaction, and this is not a statement).
-envFields = {'os', 'os_version', 'interpreter', 'interpreter_version'};
-for i = 1:numel(envFields)
-    s = jGetChar(app, envFields{i});
-    if ~isempty(s)
-        execEnv.(envFields{i}) = s;
-    end
-end
-
-sessionId = '';
-datestamp = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    sessionId = jGetChar(preBody.base, 'session_id');
-    ds = jGetChar(preBody.base, 'datestamp');
-    if ~isempty(ds); datestamp = ds; end
-end
-
-if isempty(name) || isempty(sessionId)
-    % No software identity, or no session to hang a minted entity on. Minting
-    % one anyway would fail base's required session_id and quarantine the whole
-    % SOURCE body (v1_to_v2 quarantines the input when any produced body fails),
-    % turning a clean fold into a loss. Park the block whole instead.
-    appLeftover = app;
-    execEnv = struct();
-    return;
-end
-
-gids = struct('scheme', {}, 'value', {});
-if ~isempty(url)
-    gids(end+1) = struct('scheme', 'URL', 'value', url);
-end
-
-softwareId = did.ido.unique_id();
-software = struct();
-software.document_class = struct('class_name', 'software', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-software.depends_on = struct('name', {}, 'value', {});
-software.base = struct('id', softwareId, 'session_id', sessionId, ...
-    'name', name, 'datestamp', datestamp);
-software.entity = struct();
-software.entity.global_identifier = gids;
-software.software = struct('name', name, 'version', version);
-end
+% softwareEntity() -- DELETED 2026-08-10, consolidated onto
+% private/jSoftwareFromApp.m + private/jSoftware.m (#25). It was a third copy of
+% the same fold and the only one that did NOT write `software.local_identifier`,
+% which is the handle the deferred corpus-wide dedup pass reads. Its two
+% behaviours that the shared helpers lacked are now options on them, so nothing
+% about this class's output changed except the added local_identifier:
+%   - the no-session guard  -> jSoftware/jSoftwareFromApp 'RequireSession'
+%   - parking the app block -> jSoftwareFromApp's 4th output
+% Its one remaining difference is a widening, not a change: it read the URL as
+% `url` only, and jSoftwareFromApp reads {'url','app_url'}. NDI's app template
+% declares `url` (git show origin/main:.../database_documents/app.json), and
+% universalRenames does not touch a single lowercase word, so the extra spelling
+% cannot fire on a real document -- it is there for parity with the other
+% callers, not because a document needs it.

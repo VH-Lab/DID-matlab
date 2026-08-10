@@ -571,6 +571,13 @@ for k = 1:numel(sc)
         fqn = ['did2.convert.migrators.', name];
     end
     if ~isempty(fqn)
+        % feval IS NECESSARY HERE. GitHub code scanning alert 173 says
+        % "calling functions using 'feval' is usually not necessary; call the
+        % function directly instead" -- a FALSE POSITIVE. `fqn` is COMPUTED
+        % four lines above from the superclass name plus whichever package
+        % `which()` resolves, so there is no name to write literally: dynamic
+        % dispatch by class name is the entire mechanism of the superclass
+        % migrator chain. "Call it directly" is not an available option.
         out = feval(fqn, body);
         if ~isstruct(out) || ~isscalar(out)
             error('did2:convert:badSuperclassMigratorOutput', ...

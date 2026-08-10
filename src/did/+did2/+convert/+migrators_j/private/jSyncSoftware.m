@@ -33,10 +33,45 @@ function [software, swId] = jSyncSoftware(preBody, implementationClass)
 %   deduplicating here is impossible for the same reason it is impossible there:
 %   a single-document migrator cannot see the batch. The software dedup + the
 %   openMINDS crosswalk are already tracked together in `V_eta_tenet_audit.md`
-%   ("STILL deferred: ... software dedup + openMINDS crosswalk").
+%   ("STILL deferred: ... software dedup + openMINDS crosswalk"). The merge now
+%   has a home: ndi.migrate.internal.softwareDedup, an NDI second pass that sees
+%   the whole migrated body set. It merges on (base.session_id, software.name,
+%   software.version) and retargets every inbound edge BY TARGET ID rather than
+%   by edge name -- which is why the entity's shape, not its provenance, is what
+%   the merge reads, and why this helper only had to start writing the handle.
 %
 %   `software.version` is left EMPTY, not guessed: nothing in the source records
 %   which release of NDI computed the alignment.
+%
+%   ---------------------------------------------------------------------
+%   THE BODY IS NOW BUILT BY private/jSoftware.m (#25, 2026-08-10)
+%   ---------------------------------------------------------------------
+%   This function used to build the struct itself and closed with the comment:
+%
+%       "`local_identifier` is deliberately not set (it is optional): the class
+%        name is already the identity, and jCalculation's software entities do
+%        not set it either."
+%
+%   THE SECOND CLAUSE IS NO LONGER TRUE -- and it was the whole justification.
+%   jCalculation folds through private/jSoftwareFromApp.m, which calls
+%   private/jSoftware.m, which HAS set `local_identifier` since the R1 build:
+%
+%       jSoftware.m:  localId = name;
+%                     if ~isempty(version); localId = [name '@' version]; end
+%                     software.software = struct('name', name, ...
+%                         'version', version, 'local_identifier', localId);
+%
+%   So the sync entities were the only ones in the corpus with no dedup handle,
+%   which would have forced the deferred dedup pass to special-case them. The
+%   ONLY change to the emitted document is that `software.local_identifier` is
+%   now present, carrying the bare class name (there is no version to append).
+%   Everything else -- the empty `entity.global_identifier` array, the preserved
+%   base fields, the '' version, the datestamp fallback -- is byte-for-byte what
+%   jSoftware already produces, which is why this delegates rather than repeats.
+%
+%   The empty-global_identifier reasoning is unchanged and now lives in
+%   jSoftware.m: a MATLAB class name is not an identifier in any scheme we can
+%   name, so the array stays EMPTY rather than being given an invented scheme.
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) clock-alignment migrators.
 
@@ -53,23 +88,10 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
     if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
     if isfield(preBody.base, 'datestamp');  datestamp  = preBody.base.datestamp;  end
 end
-if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
 
-swId = did.ido.unique_id();
-software = struct();
-software.document_class = struct('class_name', 'software', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-software.depends_on = struct('name', {}, 'value', {});
-software.base = struct('id', swId, 'session_id', sessionId, ...
-    'name', implementationClass, 'datestamp', datestamp);
-% `entity.global_identifier` is an ARRAY of {scheme, value}. A MATLAB class name
-% is not an identifier in any scheme we can name, so the array stays EMPTY --
-% inventing a scheme would be the same fabrication the ground-truth track exists
-% to stop.
-software.entity = struct('global_identifier', {struct('scheme', {}, 'value', {})});
-% `local_identifier` is deliberately not set (it is optional): the class name is
-% already the identity, and jCalculation's software entities do not set it either.
-software.software = struct('name', implementationClass, 'version', '');
+% RequireSession is NOT passed. This preserves the pre-consolidation behaviour
+% exactly; switching it on here would silently drop the software_id edge on any
+% sync document with an empty base.session_id, which is a change of behaviour
+% and therefore a decision, not a cleanup.
+[software, swId] = jSoftware(implementationClass, '', '', sessionId, datestamp);
 end

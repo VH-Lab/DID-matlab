@@ -127,6 +127,14 @@ for k = 1:n
     end
     % CHANGE 4: the prefix is DE-ENCODED, not folded into a boolean. What is
     % approximate is the TIMELINE, and by exactly five seconds.
+    % BOTH OUTPUTS ARE USED. GitHub code scanning flags this line twice
+    % (alerts 170 and 171, "value assigned to variable might be unused;
+    % consider replacing the variable with ~") and both are FALSE POSITIVES:
+    % `toleranceSeconds` is read at :151 and :153, `bareClock` at :163.
+    % Replacing either with `~` would delete a populated field from every
+    % emitted reference. Verified by reading the uses, not assumed -- the same
+    % check that caught a real dead variable in pyraview.m and correctly spared
+    % a live one in jAcquisitionChannels.m.
     [bareClock, toleranceSeconds] = deEncodeApprox(clockName);
 
     ref = struct();
@@ -144,17 +152,25 @@ for k = 1:n
         'session_id', sessionId, ...
         'name', 'migrated_epoch_extent', ...
         'datestamp', datestamp);
-    ref.time_reference = struct('is_approximate', approx);
-    % `end` is the schema's field name (relative_reference.value.end) and it is
-    % also a MATLAB keyword, so it is assigned dynamically rather than through
-    % struct('end', ...). `relation` is deliberately OMITTED: it is optional and
-    % carries the qualitative Allen relation used when there is NO metric
-    % offset, and here the offsets are the whole content.
-    val = struct('start', durationCell(t(1), approx), ...
-        'clock', clockName, ...
-        'approximate', approx);
-    val.('end') = durationCell(t(2), approx);
-    ref.relative_reference = struct('value', val);
+    % The ROOT block carries `clock_tolerance` ONLY when the source clock stated
+    % one. No tolerance => no block written; ensureClassBlocks pads it
+    % (+did2/+convert/v1_to_v2.m:471-475). An empty tolerance cell would assert
+    % "the timeline is good to 0 s", which the source never said.
+    if ~isempty(toleranceSeconds)
+        ref.time_reference = struct('clock_tolerance', ...
+            durationCell(toleranceSeconds));
+    end
+    % `relation` is deliberately OMITTED: it is optional and carries the
+    % qualitative Allen relation used when there is NO metric offset, and here
+    % the offsets are the whole content.
+    %
+    % CHANGE 1: the EXTENT is t1 - t0, not the raw t1. `end` is exactly
+    % recoverable as start + duration, so nothing is lost, and the anchor's
+    % uncertainty stops contaminating the span's.
+    ref.relative_reference = struct('value', struct( ...
+        'clock',    jOntologyTerm('', bareClock), ...
+        'start',    durationCell(t(1)), ...
+        'duration', durationCell(t(2) - t(1))));
     refs{end+1} = ref; %#ok<AGROW>
 end
 end
@@ -222,6 +238,12 @@ end
 end
 
 function v = subField(s, candidates)
+%SUBFIELD First present field among CANDIDATES ([] if none).
+%   IN USE, at :179 and :205 -- the snake/camelCase fallback every nested
+%   migrator read needs. GitHub code scanning alert 172 says "function might be
+%   unused"; that is a FALSE POSITIVE, checked by grepping the name rather than
+%   trusting the analyzer. Deleting it would break both epochclock and t0_t1
+%   reads on any document written with NDI's camelCase spelling.
 v = [];
 for k = 1:numel(candidates)
     if isfield(s, candidates{k})
@@ -233,20 +255,39 @@ end
 
 % ===================== small helpers =======================================
 
-function tf = startsWithApprox(clockName)
-tf = numel(clockName) >= 7 && strcmp(clockName(1:7), 'approx_');
+function [bare, toleranceSeconds] = deEncodeApprox(clockName)
+%DEENCODEAPPROX Split NDI's `approx_` prefix into a bare clock + a TOLERANCE.
+%   The prefix is mode-in-a-name (T13) hiding a NUMBER in a docstring (T14).
+%   NDI states the magnitude and only in prose -- +ndi/+time/clocktype.m:21,23,26
+%   say "within 5 seconds" / "within 5s" / "within 5 s" for the three approx_
+%   variants. Transcribing the 5 is what keeps the fact; folding the prefix into
+%   a boolean would have lost it, which is the error CHANGE 4 records.
+%
+%   Returns TOLERANCESECONDS = [] (not 0) when the clock states no tolerance, so
+%   "no stated tolerance" and "stated as zero" stay distinguishable.
+bare = clockName;
+toleranceSeconds = [];
+if numel(clockName) >= 7 && strcmp(clockName(1:7), 'approx_')
+    bare = clockName(8:end);
+    toleranceSeconds = 5;
+end
 end
 
-function c = durationCell(seconds, approximate)
+function c = durationCell(seconds)
 %DURATIONCELL The T14 one-`value` duration cell: canonical + source provenance.
 %   NDI epoch clock times are already in SECONDS (`ndi.time.clocktype` documents
 %   every tier in seconds), so `seconds` and `source_value` coincide and
 %   `source_unit` is 's'. Recording both is not redundancy -- it is what lets a
 %   later unit change stay lossless.
+%
+%   `approximate` is FALSE, and that is a claim about the NUMBER, not about the
+%   clock: the t0/t1 the writer stored are exact as recorded. Whatever slop the
+%   clock has is on the TIMELINE, and it is carried by `clock_tolerance` --
+%   which is the whole point of CHANGE 4.
 c = struct('seconds', double(seconds), ...
     'source_unit', 's', ...
     'source_value', double(seconds), ...
-    'approximate', logical(approximate));
+    'approximate', false);
 end
 
 function s = charOf(v)

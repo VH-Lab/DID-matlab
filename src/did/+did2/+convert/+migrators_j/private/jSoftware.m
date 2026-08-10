@@ -125,6 +125,16 @@ end
 software.base = struct('id', swId, 'session_id', char(sessionId), ...
     'name', name, 'datestamp', ds);
 software.entity = struct('global_identifier', {gids});
+% NORMALISE THE EMPTY, and it is not cosmetic. `version` is declared
+% `(1,:) char = ''` in the arguments block, and that size spec COERCES a 0x0
+% `''` to a 1x0 char. Both serialise to `""`, so no document differs -- but
+% MATLAB has more than one empty char and `verifyEqual(x, '')` compares SIZE,
+% so every downstream assertion against `''` failed with
+% "Actual 1x0 / Expected 0x0". That surfaced twice in one day, in two unrelated
+% test files, and each time it read as a migration defect for a minute.
+% Normalising here fixes it once for every caller instead of teaching each test
+% about an argument-block artifact.
+if isempty(version); version = ''; end
 software.software = struct('name', name, 'version', version, ...
     'local_identifier', localId);
 end
