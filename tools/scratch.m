@@ -1,154 +1,158 @@
 %SCRATCH Ad-hoc MATLAB probe, run by .github/workflows/matlab-scratch.yml.
 %
-%   PROBE 8: what does a v1 `oneepoch` document actually become?
+%   PROBE 9: which assertion in testOneEpochKeepsTheSourceEpochIdsAndTheElementEdge
+%   fails, and what is the actual value?
 %
-%   `oneepoch` has NO V_eta schema at all -- it was tagged non-production in
-%   coverage.py, so it never got one. Before writing its source tombstone I need
-%   to know what the pipeline hands to the validator, because the top-level block
-%   check is strict (`did2:validation:undeclaredBlock`) and the chain check is
-%   exact (`superclassesChainMismatch`). Deriving the answer from cache.m +
-%   v1_to_v2.m + the NDI templates is three inferences deep, and this project's
-%   record on inferred shapes is bad.
+%   Three of the four new oneepoch tests pass, INCLUDING the one that runs with
+%   validation on -- so the tombstone and the fold agree and the document
+%   survives. Only this one fails, and it is the one asserting that the three
+%   things worth keeping are kept: `oneepoch.epoch_ids`, the synthetic
+%   `epochid.epochid`, and the `element_id` edge.
 %
-%   Specifically I need to know, from the output rather than from reading:
-%     1. What class name comes out (does a superclass migrator rename it?)
-%     2. What TOP-LEVEL blocks survive -- above all, whether `element_epoch`
-%        is still there, since `oneepoch`'s only declared superclass is
-%        `element_epoch` and V_eta renames that class to `acquisition_epoch`.
-%     3. What `document_class.superclasses` ends up as.
-%     4. Whether the `oneepoch` block (epoch_ids) survives at all.
+%   The fixture differs from the two that pass in exactly one way: it is the
+%   SINGLE-clock case (`epoch_clock = 'dev_local_time'`, `t0_t1 = [0; 930.35]`)
+%   where they are multi-clock. That is a lead, not a diagnosis.
 %
-%   PROBE 7's LESSON, APPLIED: print the SHAPE first. v1_to_v2 returns
-%   did2.document OBJECTS read with .get('dotted.path'), NOT structs. So this
-%   prints class() and the raw struct before trying to interpret anything, and
-%   every step is wrapped so a throw reports rather than blanks.
+%   I am not guessing which assertion it is. Probe 7 under-delivered precisely
+%   because its diagnostic extraction was written blind, and the lesson recorded
+%   there is: print the SHAPE first. So this prints class() and the raw value for
+%   each of the three, then runs the comparisons one at a time so the failing one
+%   names itself.
 %
 %   IT KEEPS PAYING FOR ITSELF.
-%     probe 2/3  #63's family counter was reverted once as "undiagnosable" on
-%                the strength of a pass/fail result. Probe 2 showed the
-%                detection logic was RIGHT; probe 3 showed the counts were
-%                computed and then never assigned to the report.
-%     probe 5    printed MATLAB's empty shapes instead of guessing at them:
-%                unique([]) is 0-by-1, so `for n = unique([])` iterates ONCE.
-%     probe 6    checked the testCorpusPRED census wiring in 2 minutes instead
-%                of assuming it across a 70-minute corpus run.
-%     probe 7    UNDER-DELIVERED. It correctly isolated WHICH two tests failed,
-%                but its diagnostic extraction printed nothing -- the
-%                DiagnosticRecord walk was written blind and never verified. A
-%                probe whose output you cannot check is a probe that can
-%                mislead you.
+%     probe 2/3  #63's family counter was reverted once as "undiagnosable" on a
+%                pass/fail result. Probe 2 showed the detection logic was RIGHT;
+%                probe 3 showed the counts were computed and never assigned.
+%     probe 5    printed MATLAB's empty shapes instead of guessing: unique([]) is
+%                0-by-1, so `for n = unique([])` iterates ONCE.
+%     probe 6    checked the testCorpusPRED census wiring in 2 minutes instead of
+%                assuming it across a 70-minute corpus run.
+%     probe 7    UNDER-DELIVERED -- isolated WHICH tests failed but printed no
+%                diagnostic, because the DiagnosticRecord walk was never verified.
+%     probe 8    settled the oneepoch chain and, unprompted, showed the inherited
+%                block arrives holding `clocks` rather than the did_v1
+%                `epoch_clock`/`t0_t1`. A tombstone written from the template
+%                would have matched no real document.
 
-fprintf('=== PROBE 8: v1 oneepoch through v1_to_v2 (TargetVersion V_eta) ===\n\n');
+fprintf('=== PROBE 9: the failing oneepoch assertion ===\n\n');
 
-% The v1 body, built from NDI origin/main rather than from a DID-side schema:
-%   oneepoch.json          superclasses: [ element_epoch ]   (its ONLY one)
-%   oneepoch_schema.json   superclasses: ["element_epoch","base","epochid"]
-%   element_epoch.json     depends_on element_id; files epoch_binary_data.vhsb;
-%                          block { epoch_clock, t0_t1 }
-%   element.m:387-391      writes element_epoch.epoch_clock, element_epoch.t0_t1,
-%                          epochid.epochid, oneepoch.epoch_ids
-%   oneepoch.m:42          epochid is SYNTHETIC: 'whole_session_<reference>'
-%   oneepoch.m:124         epoch_clock is strjoin(ecs,',') -- a LIST of clocks
-%   oneepoch.m:109-115     t0_t1 is a matrix, not the 2x1 a plain element_epoch has
+% EXACTLY the fixture from testOneEpochKeepsTheSourceEpochIdsAndTheElementEdge.
 v1 = struct();
 v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
                       struct('class_name', 'base',          'class_version', '1.0.0'), ...
                       struct('class_name', 'epochid',       'class_version', '1.0.0')]);
 v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
-v1.base = struct('id', 'oe_1', 'session_id', 'sess_09', ...
+v1.base = struct('id', 'oe_3', 'session_id', 'sess_09', ...
     'name', 'whole_session_ref1', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.epochid = struct('epochid', 'whole_session_ref1');
-v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', ...
-                          't0_t1', [0 1; 2 3]);
+v1.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0; 930.35]);
 v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
 
-fprintf('--- INPUT top-level keys ---\n');
-disp(fieldnames(v1));
+out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+fprintf('migrated: %d   quarantine: %d\n', numel(out.migrated), numel(out.quarantine));
+for i = 1:numel(out.quarantine)
+    fprintf('  QUARANTINE: %s\n', out.quarantine(i).reason);
+end
+if isempty(out.migrated)
+    fprintf('nothing migrated -- stopping.\n');
+    return;
+end
+d = out.migrated{1};
 
-% ---- 1. unvalidated, so we see the SHAPE even if it would not validate ----
-fprintf('\n--- v1_to_v2, Validate=false ---\n');
-try
-    out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
-    fprintf('migrated: %d   quarantine: %d\n', ...
-        numel(out.migrated), numel(out.quarantine));
-    for i = 1:numel(out.quarantine)
-        fprintf('  QUARANTINE class=%s reason=%s\n', ...
-            out.quarantine(i).class_name, out.quarantine(i).reason);
+% ---- SHAPE FIRST, before any comparison ----
+fprintf('\n--- the three values, raw ---\n');
+show('oneepoch.epoch_ids', @() d.get('oneepoch.epoch_ids'));
+show('epochid.epochid',    @() d.get('epochid.epochid'));
+
+s = d.toStruct();
+fprintf('\n--- depends_on as it actually is ---\n');
+fprintf('  class(s.depends_on) = %s, numel = %d\n', ...
+    class(s.depends_on), numel(s.depends_on));
+if isstruct(s.depends_on)
+    fprintf('  fieldnames: %s\n', strjoin(fieldnames(s.depends_on)', ', '));
+    for k = 1:numel(s.depends_on)
+        nm = s.depends_on(k).name;
+        vl = s.depends_on(k).value;
+        fprintf('   [%d] name=<%s> (%s)  value=<%s> (%s)\n', k, ...
+            toChar(nm), class(nm), toChar(vl), class(vl));
     end
-    for i = 1:numel(out.migrated)
-        d = out.migrated{i};
-        fprintf('\n  [%d] class() of the migrated item: %s\n', i, class(d));
-        try
-            s = d.toStruct();
-        catch
-            try
-                s = d.documentProperties;
-            catch err2
-                fprintf('      could not get a struct: %s\n', err2.message);
-                s = struct();
-            end
-        end
-        fprintf('      class_name : %s\n', s.document_class.class_name);
-        fprintf('      TOP-LEVEL keys:\n');
-        fns = fieldnames(s);
-        for k = 1:numel(fns)
-            fprintf('        %s\n', fns{k});
-        end
-        fprintf('      superclasses chain:\n');
-        sc = s.document_class.superclasses;
-        for k = 1:numel(sc)
-            fprintf('        %s\n', sc(k).class_name);
-        end
-        if isfield(s, 'oneepoch')
-            fprintf('      oneepoch block SURVIVED: %s\n', ...
-                strjoin(fieldnames(s.oneepoch)', ', '));
-        else
-            fprintf('      oneepoch block: GONE\n');
-        end
-        if isfield(s, 'element_epoch')
-            fprintf('      element_epoch block SURVIVED: %s\n', ...
-                strjoin(fieldnames(s.element_epoch)', ', '));
-        else
-            fprintf('      element_epoch block: GONE\n');
-        end
-        if isfield(s, 'acquisition_epoch')
-            fprintf('      acquisition_epoch block PRESENT: %s\n', ...
-                strjoin(fieldnames(s.acquisition_epoch)', ', '));
-        end
+end
+
+fprintf('\n--- the whole oneepoch block ---\n');
+if isfield(s, 'oneepoch')
+    fns = fieldnames(s.oneepoch);
+    for k = 1:numel(fns)
+        v = s.oneepoch.(fns{k});
+        fprintf('  %s : %s  %s\n', fns{k}, class(v), sizeStr(v));
+    end
+else
+    fprintf('  NO oneepoch BLOCK\n');
+end
+
+fprintf('\n--- top-level keys ---\n');
+fns = fieldnames(s);
+for k = 1:numel(fns); fprintf('  %s\n', fns{k}); end
+
+% ---- now the three comparisons, one at a time, each naming itself ----
+fprintf('\n--- comparisons ---\n');
+check('epoch_ids', @() isequal(d.get('oneepoch.epoch_ids'), 't00001,t00002,t00003'));
+check('epochid',   @() isequal(d.get('epochid.epochid'),    'whole_session_ref1'));
+check('element_id edge', @() isequal(depValue(s, 'element_id'), 'elem_1'));
+
+fprintf('\n=== PROBE 9 done ===\n');
+
+% -------------------------------------------------------------------------
+
+function show(label, fn)
+try
+    v = fn();
+    fprintf('  %-22s %-12s %-14s <%s>\n', label, class(v), sizeStr(v), toChar(v));
+catch err
+    fprintf('  %-22s THREW %s: %s\n', label, err.identifier, err.message);
+end
+end
+
+function check(label, fn)
+try
+    ok = fn();
+    if ok
+        fprintf('  %-22s PASS\n', label);
+    else
+        fprintf('  %-22s *** FAIL ***\n', label);
     end
 catch err
-    fprintf('THREW: %s\n  %s\n', err.identifier, err.message);
-    for k = 1:numel(err.stack)
-        fprintf('    at %s:%d\n', err.stack(k).name, err.stack(k).line);
-    end
+    fprintf('  %-22s *** THREW *** %s: %s\n', label, err.identifier, err.message);
+end
 end
 
-% ---- 2. WITH validation, which is what the corpus actually does ----
-fprintf('\n--- v1_to_v2, Validate=true (the real corpus path) ---\n');
+function s = sizeStr(v)
+s = sprintf('[%s]', strjoin(arrayfun(@(x) sprintf('%d', x), size(v), ...
+    'UniformOutput', false), 'x'));
+end
+
+function c = toChar(v)
 try
-    out2 = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
-    fprintf('migrated: %d   quarantine: %d\n', ...
-        numel(out2.migrated), numel(out2.quarantine));
-    for i = 1:numel(out2.quarantine)
-        fprintf('  QUARANTINE class=%s\n    reason: %s\n', ...
-            out2.quarantine(i).class_name, out2.quarantine(i).reason);
+    if ischar(v)
+        c = v;
+    elseif isstring(v) && isscalar(v)
+        c = char(v);
+    elseif isnumeric(v)
+        c = mat2str(v);
+    elseif iscell(v)
+        c = sprintf('cell{%d}', numel(v));
+    else
+        c = sprintf('<%s>', class(v));
     end
-catch err
-    fprintf('THREW: %s\n  %s\n', err.identifier, err.message);
+catch
+    c = '<unprintable>';
+end
 end
 
-% ---- 3. does the schema cache know either class? ----
-fprintf('\n--- does the V_eta schema cache know these classes? ---\n');
-for nm = {'oneepoch', 'element_epoch', 'acquisition_epoch', 'epoch'}
-    try
-        c = did2.schema.cache.shared();
-        k = c.getClass(nm{1});
-        fprintf('  %-20s KNOWN   (chain: %s)\n', nm{1}, ...
-            strjoin(c.superclasses(nm{1}), ' <- '));
-    catch err
-        fprintf('  %-20s NOT KNOWN (%s)\n', nm{1}, err.identifier);
-    end
+function v = depValue(b, name)
+v = '';
+if ~isfield(b, 'depends_on'); return; end
+for k = 1:numel(b.depends_on)
+    if strcmp(b.depends_on(k).name, name); v = b.depends_on(k).value; return; end
 end
-
-fprintf('\n=== PROBE 8 done ===\n');
+end
