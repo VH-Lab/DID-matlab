@@ -39,7 +39,7 @@ jobs:
       - name: Assemble V_eta schema set (stable + draft)
         run: |
           mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
-                    # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
+          # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
           # of the go-forward MODEL. Those are two different questions and they
           # were conflated here until 2026-08-10.
           #
@@ -59,7 +59,7 @@ jobs:
           # Safe to copy: no filename collides across tiers (checked, 245 files).
           cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
           cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
-cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
 
       - name: Export DID_SCHEMA_PATH
         run: |
