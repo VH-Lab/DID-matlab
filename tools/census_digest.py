@@ -170,6 +170,24 @@ def render_report(r, out):
             if sc.get("approach_doc_count"):
                 p("          %s approach epoch(s) with NO presentation document"
                   % sc.get("approach_epochs_no_presentation", "?"))
+            # WHY THE TWO SIDES DO NOT MEET. Rendered whenever either exists:
+            # Dab has 635 approaches and 1,242 presentations sharing NO epoch
+            # id, and the pooled prefix histogram cannot say why because it
+            # mixes every class together.
+            if sc.get("approach_doc_count") or sc.get("presentation_doc_count"):
+                if "approach_presentation_shared_epochs" in sc:
+                    p("          epoch ids carried by BOTH classes: %s"
+                      % sc["approach_presentation_shared_epochs"])
+                for label, key in (("approach", "approach_epoch_prefixes"),
+                                   ("presentation", "presentation_epoch_prefixes")):
+                    tally = aslist(sc.get(key))
+                    if not tally:
+                        continue
+                    p("          %s epoch ids by prefix:" % label)
+                    for t in tally:
+                        p("            %-16s %4s distinct  %6s doc(s)"
+                          % (t.get("prefix", "?"), t.get("n_distinct", "?"),
+                             t.get("n_docs", "?")))
 
     for q in aslist(r.get("quarantine_reasons"))[:5]:
         p("  quarantine: %5s [%s] %s" % (q.get("count", "?"),

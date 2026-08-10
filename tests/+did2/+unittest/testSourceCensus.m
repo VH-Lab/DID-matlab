@@ -223,3 +223,61 @@ d = rep.subjects_per_approach_epoch;
 idx = find([d.n_subjects] == nSubjects, 1);
 if ~isempty(idx); n = d(idx).n_epochs; end
 end
+
+function testApproachAndPresentationEpochPrefixesAreReportedSeparately(testCase)
+% THE DAB QUESTION. 635 approaches and 1,242 presentations that share NO epoch
+% id, on two classes with the SAME `epochid` superclass and the SAME
+% `stimulus_element_id` dependency. The pooled prefix histogram cannot say why:
+% it mixes every class together. This is the per-class cross-tab that can.
+bodies = { ...
+    withEpoch(body('openminds_stimulus', 'ap_1'), 'epoch_AAA'), ...
+    withEpoch(body('openminds_stimulus', 'ap_2'), 'epoch_BBB'), ...
+    withElement(withEpoch(body('stimulus_presentation', 'p1'), 't00001'), 'stim_1'), ...
+    withElement(withEpoch(body('stimulus_presentation', 'p2'), 't00002'), 'stim_2')};
+r = did2.validate.sourceCensus(bodies);
+
+% disjoint by construction -- and the ZERO is the finding, not the absence of one
+verifyEqual(testCase, r.approach_presentation_shared_epochs, 0);
+
+ap = prefixRow(r.approach_epoch_prefixes, 'epoch_');
+verifyEqual(testCase, ap.n_distinct, 2);
+verifyEqual(testCase, ap.n_docs, 2);
+verifyEqual(testCase, prefixRow(r.approach_epoch_prefixes, 'other').n_docs, 0);
+
+pr = prefixRow(r.presentation_epoch_prefixes, 'other');
+verifyEqual(testCase, pr.n_distinct, 2);
+verifyEqual(testCase, pr.n_docs, 2);
+verifyEqual(testCase, prefixRow(r.presentation_epoch_prefixes, 'epoch_').n_docs, 0);
+end
+
+function testSharedEpochsAreCountedWhenTheyDoOverlap(testCase)
+% The inverse case, so a hard-coded 0 could not pass the test above.
+bodies = { ...
+    withEpoch(body('openminds_stimulus', 'ap_1'), 'epoch_A'), ...
+    withElement(withEpoch(body('stimulus_presentation', 'p1'), 'epoch_A'), 'stim_1')};
+r = did2.validate.sourceCensus(bodies);
+verifyEqual(testCase, r.approach_presentation_shared_epochs, 1);
+end
+
+function testEveryPrefixBucketPrintsEvenAtZero(testCase)
+% Suppressing empty buckets would hide the answer: WHICH bucket is empty is
+% the whole finding here.
+r = did2.validate.sourceCensus({withEpoch(body('openminds_stimulus', 'a'), 'epoch_A')});
+verifyEqual(testCase, numel(r.approach_epoch_prefixes), 3);
+verifyEqual(testCase, {r.approach_epoch_prefixes.prefix}, ...
+    {'epoch_', 'whole_session_', 'other'});
+end
+
+function testPrefixTallyFieldsSurviveAnEmptyCorpus(testCase)
+% The denominator rule: an early return must still carry the fields, or a
+% report that measured nothing looks structurally different from one that did.
+r = did2.validate.sourceCensus({});
+verifyTrue(testCase, isfield(r, 'approach_epoch_prefixes'));
+verifyTrue(testCase, isfield(r, 'presentation_epoch_prefixes'));
+verifyEqual(testCase, r.approach_presentation_shared_epochs, 0);
+end
+
+function row = prefixRow(tally, name)
+row = tally(strcmp({tally.prefix}, name));
+end
+

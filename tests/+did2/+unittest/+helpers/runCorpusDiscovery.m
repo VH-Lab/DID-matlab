@@ -327,6 +327,19 @@ if isfield(sc, 'presentation_doc_count')
     fprintf('      stimulus_presentation documents seen: %d (%d carry an epoch id)\n', ...
         sc.presentation_doc_count, sc.presentation_docs_with_epoch);
 end
+% WHY THE TWO SIDES DO NOT MEET. Printed whenever either side exists, because
+% the interesting case is precisely the one where both are non-zero and the
+% overlap is not -- Dab. The pooled prefix histogram above cannot answer it: it
+% mixes every class together.
+if sc.approach_doc_count > 0 || sc.presentation_doc_count > 0
+    if isfield(sc, 'approach_presentation_shared_epochs')
+        fprintf('      epoch ids carried by BOTH classes: %d\n', ...
+            sc.approach_presentation_shared_epochs);
+    end
+    printPrefixTally('      approach epoch ids', sc, 'approach_epoch_prefixes');
+    printPrefixTally('      presentation epoch ids', sc, 'presentation_epoch_prefixes');
+end
+
 if sc.approach_doc_count > 0
     fprintf('      distinct subjects per approach epoch:\n');
     if isempty(sc.subjects_per_approach_epoch)
@@ -338,5 +351,22 @@ if sc.approach_doc_count > 0
     end
     fprintf('        %6d approach epoch(s) with NO presentation document\n', ...
         sc.approach_epochs_no_presentation);
+end
+end
+
+function printPrefixTally(label, sc, field)
+%PRINTPREFIXTALLY One class's epoch-id prefix breakdown, buckets always shown.
+%   Every bucket prints even at zero: which bucket is EMPTY is the finding here,
+%   so suppressing zeros would hide the answer.
+if ~isfield(sc, field); return; end
+t = sc.(field);
+fprintf('%s:\n', label);
+if isempty(t)
+    fprintf('        (no epoch ids on this class)\n');
+    return;
+end
+for k = 1:numel(t)
+    fprintf('        %-16s %4d distinct  %6d doc(s)\n', ...
+        t(k).prefix, t(k).n_distinct, t(k).n_docs);
 end
 end

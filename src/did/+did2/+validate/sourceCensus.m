@@ -95,6 +95,16 @@ function report = sourceCensus(v1Bodies)
 %     presentation_docs_with_epoch  how many of those carry an epoch id at all
 %     approach_epochs_no_presentation
 %                                approach epochs with no presentation document
+%     approach_epoch_prefixes    struct array {prefix, n_distinct, n_docs} --
+%     presentation_epoch_prefixes  the SAME three buckets as epoch_id_by_prefix,
+%                                but per class, so the two sides can be read
+%                                against each other. Dab has 635 approaches and
+%                                1,242 presentations that share NO epoch id;
+%                                the pooled histogram cannot say why, because it
+%                                mixes every class together.
+%     approach_presentation_shared_epochs
+%                                epoch ids carried by BOTH classes. Zero here is
+%                                the finding, not the absence of one.
 %     subjects_per_approach_epoch
 %                                struct array {n_subjects, n_epochs} -- the
 %                                distribution that answers question 3
@@ -125,6 +135,9 @@ report = struct( ...
     'presentation_doc_count',      0, ...
     'presentation_docs_with_epoch', 0, ...
     'approach_epochs_no_presentation', 0, ...
+    'approach_epoch_prefixes',     struct('prefix', {}, 'n_distinct', {}, 'n_docs', {}), ...
+    'presentation_epoch_prefixes', struct('prefix', {}, 'n_distinct', {}, 'n_docs', {}), ...
+    'approach_presentation_shared_epochs', 0, ...
     'subjects_per_approach_epoch', struct('n_subjects', {}, 'n_epochs', {}));
 
 items = normalise(v1Bodies);
@@ -252,6 +265,26 @@ report.approach_epochs = numel(approachEpochs);
 % instruments and which it then shipped with itself.
 report.presentation_doc_count = sum(isPresentation);
 report.presentation_docs_with_epoch = sum(isPresentation & hasEpoch);
+
+% WHY THE TWO SIDES DO NOT MEET -- the prefix cross-tab.
+%
+% Dab reports 635 approaches over 635 epochs, 1,242 presentations of which
+% 1,242 carry an epoch id, and ZERO overlap. Both classes carry the SAME
+% `epochid` superclass and the SAME `stimulus_element_id` dependency, so the
+% disjointness is not explained by their shape, and the whole-corpus prefix
+% histogram cannot answer it either: it pools every class together. Dab's two
+% buckets (1,605 distinct `epoch_` ids over 3,845 docs; 149 distinct `other`
+% ids over 6,207 docs) are consistent with the two sides sitting in DIFFERENT
+% buckets, but consistent-with is not measured.
+%
+% So measure it per class. Until this exists, "no approach epoch has a
+% presentation" is a number nobody can interpret -- and an uninterpretable
+% number is what the whole approach measurement is currently blocked on.
+report.approach_epoch_prefixes     = prefixTally({rows(isApproach).epoch_id});
+report.presentation_epoch_prefixes = prefixTally({rows(isPresentation).epoch_id});
+report.approach_presentation_shared_epochs = numel(intersect( ...
+    unique(nonEmpty({rows(isApproach).epoch_id})), ...
+    unique(nonEmpty({rows(isPresentation).epoch_id}))));
 
 counts = [];
 noPresentation = 0;
@@ -420,5 +453,30 @@ u = unique(names);
 for k = 1:numel(u)
     f = matlab.lang.makeValidName(u{k});
     t.(f) = sum(strcmp(names, u{k}));
+end
+end
+
+function t = prefixTally(ids)
+%PREFIXTALLY Distinct-and-total counts per epoch-id PREFIX for one class.
+%   The three buckets match the whole-corpus histogram so the two can be read
+%   against each other: `epoch_` (minted by ndi.file.navigator),
+%   `whole_session_` (synthetic, ndi.element.oneepoch) and everything else.
+ids = ids(:)';
+keep = {};
+for k = 1:numel(ids)
+    v = ids{k};
+    if (ischar(v) || isstring(v)) && ~isempty(char(v)); keep{end+1} = char(v); end %#ok<AGROW>
+end
+t = struct('prefix', {}, 'n_distinct', {}, 'n_docs', {});
+names = {'epoch_', 'whole_session_', 'other'};
+for p = 1:numel(names)
+    if strcmp(names{p}, 'other')
+        sel = ~startsWith(keep, 'epoch_') & ~startsWith(keep, 'whole_session_');
+    else
+        sel = startsWith(keep, names{p});
+    end
+    if isempty(keep); sel = false(1,0); end
+    t(end+1) = struct('prefix', names{p}, ...
+        'n_distinct', numel(unique(keep(sel))), 'n_docs', sum(sel)); %#ok<AGROW>
 end
 end
