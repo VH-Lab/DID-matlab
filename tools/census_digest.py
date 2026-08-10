@@ -115,6 +115,190 @@ POST_PASSES = [
 ]
 
 
+# --- THE METADATA TIER ----------------------------------------------------
+#
+# WHY THESE CLASSES ARE COUNTED, AND WHY THE CO-OCCURRENCE IS THE MEASUREMENT.
+#
+# `metadata_editor` and the openMINDS dataset graph are written on INDEPENDENT
+# paths in NDI, and neither path reads or removes the other's store:
+#
+#   +ndi/+database/+metadata_ds_core/saveEditor2Doc.m:11-23
+#       docName = ['metadata_editor'];  ... ndi.document(docName, ...)
+#       -- written on the editor app's window-CLOSE.
+#   +ndi/+database/+metadata_app/+fun/save_dataset_docs.m:12
+#       ndi.query('openminds.matlab_type','exact_string',
+#                 'openminds.core.products.Dataset')
+#       -- the openMINDS graph, written on the Save BUTTON.
+#
+# On the V_eta side `+migrators_j/metadata_editor.m` is the ONLY migrator that
+# emits the dataset / person / organization / funding / publication tier
+# (`grep -rln "'person'" src/did/+did2/+convert/` matches that one file), and
+# there is no migrator for the bare `openminds` class at all. So a dataset that
+# has the graph and NO metadata_editor document migrates with its authors,
+# funding and publications unmigrated -- and nothing in this digest could say
+# whether that combination occurs, because the counts sat unread in `by_class`.
+#
+# THE COUNTS COME FROM THE v1 SOURCE CENSUS, not from the top-level `by_class`.
+# That is not a detail: the top-level table is the MIGRATED-OUTPUT histogram, in
+# which `metadata_editor` is absent precisely WHEN IT MIGRATED SUCCESSFULLY.
+# Reading absence there as "the corpus has no editor document" would invert the
+# finding.
+METADATA_EDITOR_CLASS = "metadata_editor"
+# The bare `openminds` class IS the dataset-graph store -- it is the class
+# save_dataset_docs.m queries and removes. The siblings below are the
+# subject/stimulus/element bundles: a different tier, counted for context and
+# deliberately NOT folded into the graph total.
+OPENMINDS_GRAPH_CLASS = "openminds"
+OPENMINDS_SIBLING_CLASSES = ("openminds_element", "openminds_stimulus",
+                             "openminds_subject")
+METADATA_TIER_CLASSES = ((METADATA_EDITOR_CLASS, OPENMINDS_GRAPH_CLASS)
+                         + OPENMINDS_SIBLING_CLASSES)
+# What the metadata_editor migrator emits. Printed from the migrated-output
+# `by_class` beside the source counts, so "the source document was there" and
+# "the tier got built" are separate, visible facts.
+METADATA_TIER_EMITTED = ("dataset", "person", "organization", "funding",
+                         "publication", "web_resource")
+
+
+def norm_class(name):
+    """Lowercase, underscores stripped -- the mechanical demo_ndi check.
+
+    V_eta is snake_case, NDI is camelCase, and `did2.validate.sourceCensus`
+    normalises its `by_class` keys THE SAME WAY (`normClass`: lower + strip
+    underscores), so its table is keyed `metadataeditor`, not `metadata_editor`.
+    A lookup that used the pretty spelling would return nothing and print 0 --
+    a zero that is a property of the query, which is the exact failure that
+    dispositioned `demo_ndi` as DELETE off a grep against a repository that has
+    never contained that string.
+
+    The top-level `by_class` is keyed by the real class name instead, so BOTH
+    sides are normalised here rather than picking one spelling.
+    """
+    return str(name).replace("_", "").lower()
+
+
+def normalised_class_index(table):
+    """{normalised class name: {"count": int, "keys": [original keys]}}.
+
+    Keys that collide under normalisation are SUMMED and both spellings kept,
+    so a table carrying two spellings of one class cannot silently drop one.
+    """
+    index = {}
+    if not isinstance(table, dict):
+        return index
+    for key, value in table.items():
+        try:
+            n = int(value)
+        except (TypeError, ValueError):
+            continue
+        entry = index.setdefault(norm_class(key), {"count": 0, "keys": []})
+        entry["count"] += n
+        entry["keys"].append(key)
+    return index
+
+
+def class_count(index, name):
+    entry = index.get(norm_class(name))
+    return entry["count"] if entry else 0
+
+
+def metadata_tier(r):
+    """Read one report's metadata-tier counts out of the v1 source census.
+
+    Returns a dict whose `measured` flag is the point of the whole function: a
+    corpus that contributed NO readable census must not be renderable as a row
+    of zeros. That distinction is the thing this project has shipped the
+    absence of twice (`silentLoss` printing "0 empty edges" while reading
+    nothing; the digest repeating it), so it is a separate field rather than a
+    convention about what a zero means.
+    """
+    sc = r.get("source_census") or {}
+    if not sc:
+        return {"measured": False,
+                "why": "this report carries no v1 source census block"}
+    if "audit_failed" in sc:
+        return {"measured": False,
+                "why": "the v1 source census FAILED (%s)" % sc["audit_failed"]}
+    total = sc.get("total_docs")
+    if not isinstance(total, int) or total <= 0:
+        return {"measured": False,
+                "why": "the v1 source census read %s document(s)" % total}
+
+    index = normalised_class_index(sc.get("by_class"))
+    counts = dict((cls, class_count(index, cls)) for cls in METADATA_TIER_CLASSES)
+    known = set(norm_class(c) for c in METADATA_TIER_CLASSES)
+    extras = {}
+    for key, entry in index.items():
+        if key.startswith("openminds") and key not in known:
+            extras["/".join(entry["keys"])] = entry["count"]
+
+    editor = counts[METADATA_EDITOR_CLASS]
+    graph = counts[OPENMINDS_GRAPH_CLASS]
+    if graph and editor:
+        verdict = "BOTH"
+    elif graph:
+        verdict = "GRAPH WITHOUT EDITOR"
+    elif editor:
+        verdict = "EDITOR WITHOUT GRAPH"
+    else:
+        verdict = "NEITHER"
+    return {"measured": True, "source_total": total,
+            "skipped": sc.get("skipped_docs", "?"),
+            "counts": counts, "extras": extras,
+            "editor": editor, "graph": graph, "verdict": verdict}
+
+
+def render_metadata_tier(r, out):
+    """Render one corpus's metadata-tier co-occurrence."""
+    p = lambda s="": out.append(s)
+
+    p("  METADATA TIER: metadata_editor vs the openMINDS dataset graph")
+    m = metadata_tier(r)
+    if not m["measured"]:
+        p("      NOT MEASURED -- %s." % m["why"])
+        p("      No count is printed for this corpus. A corpus that contributed")
+        p("      no readable census and a corpus that contributed a ZERO are")
+        p("      different facts and must not print identically.")
+        return
+
+    p("      DENOMINATOR: from the v1 SOURCE census -- %s doc(s) read, "
+      "%s unreadable" % (m["source_total"], m["skipped"]))
+    for cls in METADATA_TIER_CLASSES:
+        if cls == METADATA_EDITOR_CLASS:
+            note = "   <- the editor store (saveEditor2Doc)"
+        elif cls == OPENMINDS_GRAPH_CLASS:
+            note = "   <- the dataset graph store (save_dataset_docs)"
+        else:
+            note = "   (subject/stimulus tier, not the dataset graph)"
+        p("      %8d  %-22s%s" % (m["counts"][cls], cls, note))
+    if m["extras"]:
+        for key, n in sorted(m["extras"].items(), key=lambda kv: (-kv[1], kv[0])):
+            p("      %8d  %-22s   <- ANOTHER openminds_* class, not in the "
+              "expected list" % (n, key))
+    else:
+        p("      (no openminds_* class outside the expected list)")
+
+    p("      CO-OCCURRENCE: graph=%d, editor=%d -> %s"
+      % (m["graph"], m["editor"], m["verdict"]))
+    if m["verdict"] == "GRAPH WITHOUT EDITOR":
+        p("      *** this corpus has the openMINDS dataset graph and NO")
+        p("      *** metadata_editor document. `migrators_j/metadata_editor.m`")
+        p("      *** is the only source of the dataset / person / organization /")
+        p("      *** funding / publication / web_resource tier, and the bare")
+        p("      *** `openminds` class has no migrator, so those facts migrate")
+        p("      *** NOWHERE for this dataset.")
+
+    by_class = r.get("by_class")
+    if not isinstance(by_class, dict):
+        p("      migrated dataset tier: NOT MEASURED -- this report carries no "
+          "by_class")
+    else:
+        emitted = normalised_class_index(by_class)
+        p("      migrated dataset tier (from the MIGRATED-OUTPUT by_class): %s"
+          % ", ".join("%s=%d" % (c, class_count(emitted, c))
+                      for c in METADATA_TIER_EMITTED))
+
+
 def render_post_passes(r, out):
     """Render the batch post-pass reports, denominator (the pass list) first.
 
@@ -355,6 +539,7 @@ def render_report(r, out):
                           % (t.get("prefix", "?"), t.get("n_distinct", "?"),
                              t.get("n_docs", "?")))
 
+    render_metadata_tier(r, out)
     render_post_passes(r, out)
 
     for q in aslist(r.get("quarantine_reasons"))[:5]:
@@ -451,10 +636,11 @@ def rollup(reports, out):
                "members_unresolved": 0, "members_no_key": 0,
                "members_keyed_by_node": 0, "members_keyed_by_name": 0}
     inspected = 0
+    addends = []
     quarantine = 0
     fragments = 0
     with_silent_loss = 0
-    for r in reports:
+    for i, r in enumerate(reports):
         sl = r.get("silent_loss") or {}
         try:
             quarantine += int(r.get("quarantine_count") or 0)
@@ -468,7 +654,9 @@ def rollup(reports, out):
             continue
         with_silent_loss += 1
         try:
-            inspected += int(sl.get("total_docs") or 0)
+            n = int(sl.get("total_docs") or 0)
+            inspected += n
+            addends.append((str(r.get("corpus") or "report #%d" % (i + 1)), n))
         except (TypeError, ValueError):
             pass
         for e in aslist(sl.get("empty_required_dependency")):
@@ -501,6 +689,21 @@ def rollup(reports, out):
     p("  DENOMINATOR: %d corpus report(s) summed; %d carried a readable "
       "silent-loss audit; %d document(s) inspected in total"
       % (len(reports), with_silent_loss, inspected))
+    # THE ADDENDS, NAMED. A total whose inputs are three screens up gets
+    # re-derived by hand, and a hand re-derivation picks up the wrong line.
+    # It already has: 562,422 was recorded in DID-schema/CLAUDE.md for corpus
+    # run 31415147934, and 562,422 is EXACTLY the six `inspected` figures with
+    # corpus B's `migrated_count` (13,778) substituted for its `inspected`
+    # (13,804) -- the two numbers sit two lines apart in B's block. The true
+    # sum is 562,448. (That run predates this rollup entirely, so the figure
+    # could only have been hand-summed.) Printing the addends beside the total,
+    # and naming which counter they are, makes that substitution visible
+    # instead of a 26-document discrepancy nobody can source.
+    p("      addends -- silent-loss `inspected`, NOT `migrated` and NOT "
+      "`total`:")
+    p("      %s = %d"
+      % (" + ".join("%s %d" % (name, n) for name, n in addends) or "(none)",
+         inspected))
     if with_silent_loss != len(reports):
         p("  *** %d report(s) contributed NO silent-loss numbers. The totals"
           % (len(reports) - with_silent_loss))
@@ -539,7 +742,96 @@ def rollup(reports, out):
         if not table:
             p("      (none)")
 
+    rollup_metadata_tier(reports, out)
     rollup_post_passes(reports, out)
+
+
+def rollup_metadata_tier(reports, out):
+    """Cross-corpus metadata tier: does ANY corpus have the graph and no editor?
+
+    THE QUESTION THIS ANSWERS. `metadata_editor` and the openMINDS dataset
+    graph are written by two independent NDI code paths (see METADATA_TIER
+    above), and only the first has a migrator that produces the dataset /
+    person / funding / publication tier. Whether the split actually occurs in
+    real data is a per-corpus co-occurrence, so it cannot be read off any
+    single corpus's block -- which is why the buckets below NAME their corpora
+    rather than only counting them.
+
+    The denominator is how many reports carried a readable v1 source census,
+    printed before any count, and the corpora that carried none are named. A
+    corpus missing from the measurement and a corpus contributing a zero are
+    the two readings this whole block exists to keep apart.
+    """
+    p = lambda s="": out.append(s)
+
+    measured, unmeasured = [], []
+    totals = dict((cls, 0) for cls in METADATA_TIER_CLASSES)
+    extras = {}
+    source_docs = 0
+    buckets = {"BOTH": [], "GRAPH WITHOUT EDITOR": [],
+               "EDITOR WITHOUT GRAPH": [], "NEITHER": []}
+    emitted_totals = dict((cls, 0) for cls in METADATA_TIER_EMITTED)
+    with_by_class = 0
+
+    for i, r in enumerate(reports):
+        name = str(r.get("corpus") or "report #%d" % (i + 1))
+        if isinstance(r.get("by_class"), dict):
+            with_by_class += 1
+            index = normalised_class_index(r["by_class"])
+            for cls in METADATA_TIER_EMITTED:
+                emitted_totals[cls] += class_count(index, cls)
+        m = metadata_tier(r)
+        if not m["measured"]:
+            unmeasured.append("%s (%s)" % (name, m["why"]))
+            continue
+        measured.append(name)
+        source_docs += m["source_total"]
+        for cls in METADATA_TIER_CLASSES:
+            totals[cls] += m["counts"][cls]
+        for key, n in m["extras"].items():
+            extras[key] = extras.get(key, 0) + n
+        buckets[m["verdict"]].append(name)
+
+    p("")
+    p("  METADATA TIER (metadata_editor vs the openMINDS dataset graph)")
+    p("      DENOMINATOR: %d corpus report(s); %d carried a readable v1 source "
+      "census, %d did not; %d v1 source doc(s) read in total"
+      % (len(reports), len(measured), len(unmeasured), source_docs))
+    if unmeasured:
+        p("      *** NOT MEASURED in: %s" % ", ".join(unmeasured))
+        p("      *** the totals below are sums over %d corpora, not %d."
+          % (len(measured), len(reports)))
+    if not measured:
+        p("      (nothing to total -- no corpus contributed a source census)")
+        return
+
+    for cls in METADATA_TIER_CLASSES:
+        p("      %8d  %s" % (totals[cls], cls))
+    for key, n in sorted(extras.items(), key=lambda kv: (-kv[1], kv[0])):
+        p("      %8d  %s   <- ANOTHER openminds_* class, not in the expected "
+          "list" % (n, key))
+
+    p("      CO-OCCURRENCE over the %d measured corpus/corpora:" % len(measured))
+    for verdict in ("BOTH", "GRAPH WITHOUT EDITOR", "EDITOR WITHOUT GRAPH",
+                    "NEITHER"):
+        names = buckets[verdict]
+        p("      %8d  %-22s %s"
+          % (len(names), verdict, ", ".join(names) if names else "--"))
+    if buckets["GRAPH WITHOUT EDITOR"]:
+        p("      *** %d corpus/corpora carry the openMINDS dataset graph with NO"
+          % len(buckets["GRAPH WITHOUT EDITOR"]))
+        p("      *** metadata_editor document. Their authors, funding and")
+        p("      *** publications have NO migrator and migrate nowhere.")
+        p("      *** The corpora are a SAMPLE: this is what these %d measured"
+          % len(measured))
+        p("      *** corpora hold, not a bound on how often the split occurs.")
+
+    if with_by_class != len(reports):
+        p("      migrated dataset tier: %d of %d report(s) carried a by_class"
+          % (with_by_class, len(reports)))
+    p("      migrated dataset tier (from the MIGRATED-OUTPUT by_class): %s"
+      % ", ".join("%s=%d" % (cls, emitted_totals[cls])
+                  for cls in METADATA_TIER_EMITTED))
 
 
 def rollup_post_passes(reports, out):

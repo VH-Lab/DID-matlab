@@ -16,7 +16,8 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from census_digest import aslist, digest, render_report, rollup  # noqa: E402
+from census_digest import (aslist, digest, norm_class,  # noqa: E402
+                           normalised_class_index, render_report, rollup)
 
 
 class TestAsList(unittest.TestCase):
@@ -363,6 +364,284 @@ class TestRollup(DigestCase):
         self.assertIn("CROSS-CORPUS ROLLUP FAILED", text)
         self.assertIn("--- A ---", text)
         self.assertIn("--- B ---", text)
+
+
+class TestMetadataTier(DigestCase):
+    """metadata_editor vs the openMINDS dataset graph.
+
+    NDI writes the two on independent paths (saveEditor2Doc.m on window-close;
+    save_dataset_docs.m on the Save button), neither removes the other's store,
+    and only `metadata_editor` has a migrator that produces the dataset /
+    person / organization / funding / publication / web_resource tier. So a
+    corpus with the graph and NO editor document migrates with its authors,
+    funding and publications missing -- and the counts that would say whether
+    that happens were already in the reports, unread.
+
+    The keys these tests use are the ones MATLAB actually writes:
+    `did2.validate.sourceCensus`'s `normClass` lowercases and STRIPS
+    UNDERSCORES, so the source census is keyed `metadataeditor`. A test that
+    fed the pretty spelling would pass against a lookup that can never match a
+    real report -- the demo_ndi failure, in a test.
+    """
+
+    def _corpus(self, name, source_by_class=None, source_total=100,
+                by_class=None, source_census="present"):
+        body = {"corpus": name, "total": 10, "migrated_count": 10,
+                "quarantine_count": 0}
+        if by_class is not None:
+            body["by_class"] = by_class
+        if source_census == "present":
+            body["source_census"] = {"total_docs": source_total,
+                                     "skipped_docs": 0,
+                                     "by_class": source_by_class or {}}
+        elif source_census == "failed":
+            body["source_census"] = {"audit_failed": "boom"}
+        elif source_census == "empty":
+            body["source_census"] = {"total_docs": 0, "skipped_docs": 0,
+                                     "by_class": {}}
+        self.write(name, body)
+
+    def test_counts_are_read_from_the_normalised_source_census_keys(self):
+        # sourceCensus.m: `normClass` = lower + strip underscores. Looking the
+        # class up by its pretty name would return 0 for every real corpus.
+        self._corpus("A", {"metadataeditor": 1, "openminds": 8},
+                     source_total=78688)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("1  metadata_editor", text)
+        self.assertIn("8  openminds ", text)
+        self.assertIn("78688 doc(s) read", text)
+
+    def test_the_normaliser_matches_both_spellings(self):
+        self.assertEqual(norm_class("metadata_editor"), "metadataeditor")
+        idx = normalised_class_index({"metadataeditor": 2,
+                                      "metadata_editor": 3})
+        self.assertEqual(idx["metadataeditor"]["count"], 5,
+                         "two spellings of one class must sum, not shadow")
+
+    def test_graph_without_editor_is_named_per_corpus_and_in_the_rollup(self):
+        # THE OPEN QUESTION this block exists to answer.
+        self._corpus("JH", {"openminds": 8}, source_total=78688)
+        text, _ = self.run_digest()
+        self.assertIn("graph=8, editor=0 -> GRAPH WITHOUT EDITOR", text)
+        self.assertIn("migrate", text)
+        self.assertIn("1  GRAPH WITHOUT EDITOR   JH", text)
+
+    def test_editor_without_graph_and_both_are_distinct_verdicts(self):
+        self._corpus("Editor", {"metadataeditor": 1})
+        self._corpus("Both", {"metadataeditor": 1, "openminds": 4})
+        text, _ = self.run_digest()
+        self.assertIn("graph=0, editor=1 -> EDITOR WITHOUT GRAPH", text)
+        self.assertIn("graph=4, editor=1 -> BOTH", text)
+        self.assertIn("1  BOTH                   Both", text)
+        self.assertIn("1  EDITOR WITHOUT GRAPH   Editor", text)
+
+    def test_a_measured_zero_prints_as_a_zero(self):
+        # The other half of the distinction: a corpus that WAS measured and
+        # holds neither class must print explicit zeros, not silence.
+        self._corpus("Clean", {"subject": 12})
+        text, _ = self.run_digest()
+        self.assertIn("0  metadata_editor", text)
+        self.assertIn("0  openminds ", text)
+        self.assertIn("graph=0, editor=0 -> NEITHER", text)
+
+    def test_a_corpus_with_no_source_census_is_NOT_rendered_as_zeros(self):
+        # THE WHOLE POINT. "It has neither" and "we never counted" must not
+        # print the same -- this project has shipped the absence of that
+        # distinction twice.
+        self._corpus("NoCensus", source_census="absent")
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED", text)
+        self.assertIn("no v1 source census block", text)
+        self.assertNotIn("0  metadata_editor", text)
+        self.assertNotIn("-> NEITHER", text)
+
+    def test_a_failed_source_census_says_so_rather_than_counting(self):
+        self._corpus("Failed", source_census="failed")
+        text, _ = self.run_digest()
+        self.assertIn("the v1 source census FAILED (boom)", text)
+        self.assertNotIn("0  metadata_editor", text)
+
+    def test_a_census_that_read_nothing_is_not_a_zero_either(self):
+        # total_docs=0 is the silentLoss failure verbatim: the instrument read
+        # nothing, so its zeros describe nothing.
+        self._corpus("Nothing", source_census="empty")
+        text, _ = self.run_digest()
+        self.assertIn("the v1 source census read 0 document(s)", text)
+        self.assertNotIn("-> NEITHER", text)
+
+    def test_sibling_openminds_classes_are_counted_but_not_folded_in(self):
+        # openminds_subject is the subject bundle, not the dataset graph.
+        # Folding it into the graph total would manufacture a co-occurrence.
+        self._corpus("S", {"openmindssubject": 40, "metadataeditor": 1})
+        text, _ = self.run_digest()
+        self.assertIn("40  openminds_subject", text)
+        self.assertIn("graph=0, editor=1 -> EDITOR WITHOUT GRAPH", text)
+
+    def test_an_unexpected_openminds_class_is_surfaced_not_dropped(self):
+        self._corpus("X", {"openmindsnewthing": 3})
+        text, _ = self.run_digest()
+        self.assertIn("3  openmindsnewthing", text)
+        self.assertIn("ANOTHER openminds_* class", text)
+
+    def test_no_extras_says_so_explicitly(self):
+        self._corpus("X", {"openminds": 1})
+        text, _ = self.run_digest()
+        self.assertIn("no openminds_* class outside the expected list", text)
+
+    def test_absence_from_the_migrated_by_class_is_not_read_as_absent_source(self):
+        # THE INVERSION THIS BLOCK MUST NOT MAKE. The top-level `by_class` is
+        # the MIGRATED-OUTPUT histogram: `metadata_editor` is missing from it
+        # exactly WHEN THE MIGRATION WORKED. The source count must still show 1.
+        self._corpus("Migrated", {"metadataeditor": 1},
+                     by_class={"dataset": 1, "person": 4, "organization": 2})
+        text, _ = self.run_digest()
+        self.assertIn("1  metadata_editor", text)
+        self.assertIn("dataset=1, person=4, organization=2", text)
+
+    def test_a_report_with_no_by_class_says_the_emitted_tier_is_unmeasured(self):
+        self._corpus("NoBC", {"metadataeditor": 1})
+        text, _ = self.run_digest()
+        self.assertIn("migrated dataset tier: NOT MEASURED", text)
+
+    def test_the_rollup_denominator_excludes_and_names_unmeasured_corpora(self):
+        self._corpus("Has", {"openminds": 8}, source_total=50)
+        self._corpus("Missing", source_census="absent")
+        text, _ = self.run_digest()
+        self.assertIn("2 corpus report(s); 1 carried a readable v1 source "
+                      "census, 1 did not; 50 v1 source doc(s) read in total",
+                      text)
+        self.assertIn("*** NOT MEASURED in: Missing", text)
+        self.assertIn("sums over 1 corpora, not 2", text)
+
+    def test_the_rollup_sums_the_classes_across_corpora(self):
+        self._corpus("A", {"openminds": 8, "metadataeditor": 1})
+        self._corpus("B", {"openminds": 2})
+        text, _ = self.run_digest()
+        self.assertIn("10  openminds", text)
+        self.assertIn("1  metadata_editor", text)
+        self.assertIn("1  BOTH", text)
+        self.assertIn("1  GRAPH WITHOUT EDITOR   B", text)
+
+    def test_the_rollup_prints_every_bucket_even_at_zero(self):
+        self._corpus("A", {"openminds": 8, "metadataeditor": 1})
+        text, _ = self.run_digest()
+        self.assertIn("0  EDITOR WITHOUT GRAPH   --", text)
+        self.assertIn("0  NEITHER                --", text)
+
+    def test_the_rollup_totals_the_emitted_tier_from_by_class(self):
+        self._corpus("A", {"metadataeditor": 1},
+                     by_class={"dataset": 1, "person": 3})
+        self._corpus("B", {"metadataeditor": 1},
+                     by_class={"dataset": 1, "person": 5, "funding": 2})
+        text, _ = self.run_digest()
+        self.assertIn("dataset=2, person=8, organization=0, funding=2", text)
+
+
+class TestInspectedRollupArithmetic(DigestCase):
+    """The cross-corpus `inspected` total, and the 26 it was once off by.
+
+    DID-schema/CLAUDE.md records 562,422 documents inspected for corpus run
+    31415147934. The six per-corpus `silent-loss: inspected` lines in that
+    run's own digest log sum to 562,448. The difference is corpus B, whose
+    block reads
+
+        total=12917  migrated=13778  quarantine=0
+        silent-loss: inspected 13804 doc(s), skipped 0
+
+    and 1484 + 13778 + 29168 + 336136 + 31 + 181825 = 562,422 exactly: the
+    recorded figure took B's `migrated_count` where the other five took
+    `inspected`. That run predates this rollup (it ran at 02854c7; the rollup
+    landed in f9defe3), so the number was hand-summed -- the digest's
+    arithmetic was never involved and is not what is wrong.
+
+    These tests pin the arithmetic to the real figures so the same
+    substitution cannot be made silently again.
+    """
+
+    # (corpus, total, migrated_count, silent-loss total_docs) from the digest
+    # log of run 31415147934, job "Census digest" (93561591223).
+    RUN_31415147934 = [
+        ("20211116", 1220, 1484, 1484),
+        ("B", 12917, 13778, 13804),
+        ("Dab", 27561, 33955, 29168),
+        ("JH", 78688, 336132, 336136),
+        ("PRED", 14, 31, 31),
+        ("Soph", 101427, 181760, 181825),
+    ]
+
+    def _write_the_real_run(self):
+        for name, total, migrated, inspected in self.RUN_31415147934:
+            self.write(name, {
+                "corpus": name, "total": total, "migrated_count": migrated,
+                "quarantine_count": 0, "fragment_count": 0,
+                "silent_loss": {"total_docs": inspected, "skipped_docs": 0,
+                                "empty_dependency_count": 0,
+                                "vacuous_field_count": 0}})
+
+    def test_the_recorded_562422_is_the_migrated_substitution(self):
+        # Pure arithmetic, no digest involved: this is the identity that
+        # identifies the error, and it must keep holding for the note above to
+        # stay true.
+        inspected = sum(r[3] for r in self.RUN_31415147934)
+        swapped = sum(r[2] if r[0] == "B" else r[3]
+                      for r in self.RUN_31415147934)
+        self.assertEqual(inspected, 562448)
+        self.assertEqual(swapped, 562422)
+        self.assertEqual(inspected - swapped, 26)
+
+    def test_the_rollup_reproduces_562448_from_the_real_reports(self):
+        self._write_the_real_run()
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("6 corpus report(s) summed; 6 carried a readable "
+                      "silent-loss audit; 562448 document(s) inspected in "
+                      "total", text)
+        self.assertNotIn("562422", text)
+
+    def test_the_addends_are_printed_and_named(self):
+        # The total is only checkable if its inputs are beside it. They were
+        # not, and a hand re-derivation picked up the adjacent counter.
+        self._write_the_real_run()
+        text, _ = self.run_digest()
+        self.assertIn("addends -- silent-loss `inspected`, NOT `migrated` and "
+                      "NOT `total`:", text)
+        self.assertIn("20211116 1484 + B 13804 + Dab 29168 + JH 336136 + "
+                      "PRED 31 + Soph 181825 = 562448", text)
+
+    def test_the_rollup_sums_inspected_and_never_migrated_count(self):
+        # Written so it cannot pass by coincidence: migrated_count is larger
+        # than total_docs in one corpus and smaller in the other, so summing
+        # the wrong field gives a different number either way.
+        self.write("Big", {
+            "corpus": "Big", "total": 1, "migrated_count": 900,
+            "quarantine_count": 0,
+            "silent_loss": {"total_docs": 100, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0}})
+        self.write("Small", {
+            "corpus": "Small", "total": 1, "migrated_count": 5,
+            "quarantine_count": 0,
+            "silent_loss": {"total_docs": 50, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0}})
+        text, _ = self.run_digest()
+        self.assertIn("150 document(s) inspected in total", text)
+        self.assertNotIn("905 document(s) inspected", text)
+
+    def test_a_corpus_with_no_audit_contributes_no_addend(self):
+        self.write("Good", {
+            "corpus": "Good", "total": 1, "migrated_count": 1,
+            "quarantine_count": 0,
+            "silent_loss": {"total_docs": 7, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0}})
+        self.write("Bad", {"corpus": "Bad", "total": 1, "migrated_count": 1,
+                           "quarantine_count": 0,
+                           "silent_loss": {"audit_failed": "boom"}})
+        text, _ = self.run_digest()
+        self.assertIn("Good 7 = 7", text)
+        self.assertNotIn("Bad 0", text)
 
 
 class TestPostPassRendering(DigestCase):
