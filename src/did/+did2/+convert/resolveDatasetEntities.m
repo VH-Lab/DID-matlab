@@ -21,8 +21,21 @@ function result = resolveDatasetEntities(result, options)
 %        any `migrated_session_membership` relation whose child id is not present
 %        in the batch -- the same honest best-effort stance as resolveDeferredBaths
 %        (an unresolved membership is dropped rather than orphaning the corpus).
-%        The precise, always-resolvable wiring is the ndi.migrate second pass,
-%        which has the full session graph.
+%        A precise, always-resolvable wiring from the live session graph is
+%        UNBUILT. This sentence used to say it "is the ndi.migrate second
+%        pass", present tense, which read as though production already did
+%        this work better -- it did not do it at all: ndi.migrate.local never
+%        called this function until 2026-08-10, and named it only in a comment
+%        about where epochMint lives.
+%
+%   CALL SITES (all four, as of 2026-08-10): runCorpusDiscovery,
+%   testCorpusPRED, testFixtureCorpus and -- newly -- ndi.migrate.local, as
+%   V_eta second-pass step (4b), after strainAssembly and before epochMint.
+%   The production wiring is WRITTEN BUT NOT EXECUTED (no MATLAB in the
+%   container it was written in). Until it was added, the corpus gate and the
+%   real migration path were different pipelines: every green run was green on
+%   a dedup and a prune production skipped. See did2.unittest.testBatchPassWiring,
+%   which prints the pass x call-site matrix precisely so this cannot recur.
 %
 %   Idempotent and safe on inputs with no dataset entities. Options mirror the
 %   sibling passes (Validate / SchemaCache / TargetVersion) for signature

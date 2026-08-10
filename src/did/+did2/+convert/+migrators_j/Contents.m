@@ -368,8 +368,14 @@
 %   (richest wins -> the metadata_editor dataset beats the bare stubs, so every
 %   dataset ends with exactly one), and prunes the best-effort membership edges
 %   whose member session is absent. Run after resolveDeferredBaths (see
-%   runCorpusDiscovery); the precise, always-resolvable wiring is ndi.migrate's
-%   dataset-aware second pass.
+%   runCorpusDiscovery). This clause used to end "the precise,
+%   always-resolvable wiring is ndi.migrate's dataset-aware second pass" --
+%   there is no such pass. ndi.migrate.local did not call this function at all
+%   until 2026-08-10, so production kept the duplicates and the dangling edges
+%   while every corpus run was green without them. It now runs THIS function as
+%   V_eta second-pass step (4b) (wired 2026-08-10, NOT EXECUTED -- no MATLAB).
+%   A precise, always-resolvable membership wiring using the live session graph
+%   remains UNBUILT; the prune is still the honest best-effort in both paths.
 %
 %   PENDING (need discovery-mode iteration against the corpora and/or the still
 %   -open flat-table decisions):

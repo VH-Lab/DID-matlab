@@ -74,7 +74,16 @@ result = did2.convert.resolveDeferredBaths(result, ...
 % the dataset-level containers each mint on the shared dataset id (richest wins,
 % so the metadata_editor dataset beats the bare stubs), and drop best-effort
 % session-membership edges whose linked member session is not in this batch.
-% The DID-only counterpart to ndi.migrate's dataset-aware second pass.
+%
+% THIS LINE USED TO READ "the DID-only counterpart to ndi.migrate's
+% dataset-aware second pass", and there was no such pass: ndi.migrate.local
+% never called this, and named it once, in a comment about where epochMint
+% lives (local.m). So the sentence asserted a production behaviour from the
+% existence of the DID one, and for as long as it stood the corpus gate was
+% green on a dedup + prune the real migration path did not perform. STATUS:
+% ndi.migrate.local now calls this same function as V_eta second-pass step
+% (4b) -- WIRED 2026-08-10, NOT EXECUTED (no MATLAB available). Not a
+% counterpart: the SAME code, which is what keeps the two pipelines one.
 if strcmp(options.TargetVersion, 'V_eta')
     result = did2.convert.resolveDatasetEntities(result, ...
         'Validate', true, 'TargetVersion', options.TargetVersion);
