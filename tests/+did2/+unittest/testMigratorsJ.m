@@ -2804,6 +2804,134 @@ verifyEqual(testCase, depValue(out, 'syncrule_id'), 'sr_1');
 verifyEqual(testCase, depValue(out, 'syncgraph_id'), 'sg_1');
 end
 
+% ===================== oneepoch: a class that had NO schema ===============
+%
+% `oneepoch` reached 2026-08-10 with no V_eta schema, no migrator and no row on
+% any worklist, because coverage.py tagged it non-production -- which suppresses
+% the coverage gap. It is production: ndi.element.oneepoch concatenates an
+% element's N epochs into one, written at src/ndi/element.m:387 and read back at
+% +ndi/+element/oneepoch.m:78-80. A real document quarantined on "No schema file
+% for class oneepoch" (measured, scratch probe 8, run 31423494433).
+%
+% These drive the FULL pipeline via runJ, not the migrator directly. That matters:
+% the whole reason this migrator exists is that a BASE superclass migrator has
+% already rewritten the inherited block before the concrete migrator runs, and
+% calling migrators_j.oneepoch on a raw v1 body would test a shape that never
+% actually occurs.
+
+function testOneEpochFoldsItsInheritedBlockAndKeepsItsClass(testCase)
+% element_epoch is renamed to acquisition_epoch in V_eta, so no class of that
+% name exists for oneepoch to inherit from -- and the validator's top-level check
+% is strict. The inherited block must end up on the concrete one.
+v1 = struct();
+v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'base',          'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid',       'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
+v1.base = struct('id', 'oe_1', 'session_id', 'sess_09', ...
+    'name', 'whole_session_ref1', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.epochid = struct('epochid', 'whole_session_ref1');
+v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', 't0_t1', [0 1; 2 3]);
+v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
+
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine, 'oneepoch must not quarantine');
+verifyEqual(testCase, numel(out.migrated), 1);
+d = out.migrated{1};
+
+% the class is KEPT -- this is a fold, not a dissolution
+verifyEqual(testCase, d.get('document_class.class_name'), 'oneepoch');
+% the inherited block is GONE from the top level. Checked with isfield on the
+% struct rather than by expecting d.get() to throw -- probe 7's lesson: an
+% assertion about behaviour I have not observed is an assertion that can pass for
+% the wrong reason.
+sOut = d.toStruct();
+verifyFalse(testCase, isfield(sOut, 'element_epoch'), ...
+    'the element_epoch block must not survive -- no V_eta class hosts it');
+verifyTrue(testCase, isfield(sOut, 'oneepoch'));
+end
+
+function testOneEpochCarriesTheClocksTheBaseMigratorBuilt(testCase)
+% The multi-clock case is REAL here: oneepoch.m:124 writes strjoin(ecs,','), every
+% clock the element had, where a plain element_epoch carries one. The base
+% element_epoch migrator parses the 2-by-N t0_t1 convention; this migrator must
+% MOVE that result without reshaping it.
+v1 = struct();
+v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'base',          'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid',       'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
+v1.base = struct('id', 'oe_2', 'session_id', 'sess_09', ...
+    'name', 'whole_session_ref1', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.epochid = struct('epochid', 'whole_session_ref1');
+v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', 't0_t1', [0 1; 2 3]);
+v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
+
+d = runJ(v1).migrated{1};
+clocks = d.get('oneepoch.clocks');
+verifyEqual(testCase, numel(clocks), 2, ...
+    'both clocks in the comma-joined list must survive');
+verifyEqual(testCase, clocks(1).name, 'utc');
+verifyEqual(testCase, clocks(1).t0, 0);
+verifyEqual(testCase, clocks(1).t1, 2);
+verifyEqual(testCase, clocks(2).name, 'dev_local_time');
+verifyEqual(testCase, clocks(2).t0, 1);
+verifyEqual(testCase, clocks(2).t1, 3);
+end
+
+function testOneEpochKeepsTheSourceEpochIdsAndTheElementEdge(testCase)
+% epoch_ids is the ONLY field the class declares itself and the whole reason it is
+% distinct from element_epoch -- under fork A1 it becomes the derived_from_# edges.
+% Losing it would leave a concatenation that cannot say what it concatenated.
+v1 = struct();
+v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'base',          'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid',       'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
+v1.base = struct('id', 'oe_3', 'session_id', 'sess_09', ...
+    'name', 'whole_session_ref1', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.epochid = struct('epochid', 'whole_session_ref1');
+v1.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0; 930.35]);
+v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
+
+d = runJ(v1).migrated{1};
+verifyEqual(testCase, d.get('oneepoch.epoch_ids'), 't00001,t00002,t00003');
+% the SYNTHETIC epoch id survives too -- sourceCensus tracks exactly this string
+% as a grouping hazard, citing oneepoch.m:42, so it must not be quietly dropped
+verifyEqual(testCase, d.get('epochid.epochid'), 'whole_session_ref1');
+verifyEqual(testCase, depValue(d.toStruct(), 'element_id'), 'elem_1');
+end
+
+function testOneEpochValidatesAgainstItsNewTombstone(testCase)
+% THE POINT OF THE WHOLE CHANGE, asserted with validation ON rather than inferred
+% from the three tests above. Before the tombstone existed this quarantined with
+% "No schema file for class oneepoch"; the fold and the schema have to agree, and
+% only a validating run proves they do. runJ deliberately passes Validate=false,
+% so this calls v1_to_v2 directly.
+v1 = struct();
+v1.document_class = struct('class_name', 'oneepoch', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'element_epoch', 'class_version', '1.0.0'), ...
+                      struct('class_name', 'base',          'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid',       'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {'elem_1'});
+v1.base = struct('id', 'oe_4', 'session_id', 'sess_09', ...
+    'name', 'whole_session_ref1', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.epochid = struct('epochid', 'whole_session_ref1');
+v1.element_epoch = struct('epoch_clock', 'utc,dev_local_time', 't0_t1', [0 1; 2 3]);
+v1.oneepoch = struct('epoch_ids', 't00001,t00002,t00003');
+
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+if ~isempty(out.quarantine)
+    verifyFail(testCase, sprintf('oneepoch quarantined under validation: %s', ...
+        out.quarantine(1).reason));
+end
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'oneepoch');
+end
+
 function v = depValue(b, name)
 v = '';
 for k = 1:numel(b.depends_on)
