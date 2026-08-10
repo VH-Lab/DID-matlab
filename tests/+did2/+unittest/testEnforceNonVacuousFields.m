@@ -27,16 +27,32 @@ function tests = testEnforceNonVacuousFields
 %       this switch has to be readable as its own row, not as an unexplained
 %       jump in the pre-existing emptyField count.
 %
-%   GATED, DEFAULT OFF: did2.schema.cache.strictMode('NonVacuousFields').
-%   The last measured census (DID-matlab corpus run 31415147934, 02854c7)
-%   reported ZERO vacuous required fields across six corpora, which makes
-%   arming this look free -- and it may well be. It is still off, because
-%   "zero on the six corpora we happen to test" is not "zero", the corpora
-%   are a sample of datasets, and the census's field scan and the
-%   validator's field scan do not have identical denominators (the census
-%   only inspects blocks that already host the field; the validator also
-%   reaches required fields whose block is missing entirely). Arming it is a
-%   one-line change once someone decides that gap is closed.
+%   GATED, AND ARMED BY DEFAULT (2026-08-10, team's call):
+%   did2.schema.cache.strictMode('NonVacuousFields').
+%
+%   HISTORICAL-SIGNOFF-CLAIM. This header said "GATED, DEFAULT OFF ... It is
+%   still off ... Arming it is a one-line change once someone decides that gap
+%   is closed" for as long as that was true and then kept saying it after the
+%   team armed the switch -- while this file's OWN FIRST TEST,
+%   testNonVacuousFieldsIsARMEDByDefault, asserted the opposite forty lines
+%   below. A document's header disagreeing with its own body is the exact
+%   staleness the schema repo gates elsewhere, and it ran in the usual
+%   direction: the header claimed LESS enforcement than shipped, so it never
+%   produced a wrong build, only a wrong belief about where we stand.
+%
+%   The evidence for arming: the last measured census (DID-matlab corpus run
+%   31415147934, 02854c7) reported ZERO vacuous required fields across six
+%   corpora, 562,422 documents. Zero measured cost.
+%
+%   THE STANDING CAVEAT, which is an argument FOR arming rather than against:
+%   "zero on the six corpora we happen to test" is not "zero", the corpora are
+%   a sample of datasets, and the census's field scan and the validator's do
+%   not have identical denominators (the census only inspects blocks that
+%   already host the field; the validator also reaches required fields whose
+%   block is missing entirely). A dataset still waiting to migrate could trip
+%   it -- and the intended outcome then is a LOUD quarantine, not a document
+%   that validates while saying nothing. DID_ENFORCE_NONVACUOUS_FIELDS=0 is
+%   the operator's escape hatch, and it is tested below.
 %
 %   Run with:
 %       results = runtests('did2.unittest.testEnforceNonVacuousFields');

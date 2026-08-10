@@ -596,14 +596,47 @@ end
 function tf = edgeIsPopulated(body, name)
 %EDGEISPOPULATED True when the body carries NAME with a non-empty value.
 %   Tolerant of all three key spellings the pipeline uses at different
-%   stages (`value`, `document_id`, raw v1 `id`).
+%   stages (`value`, `document_id`, raw v1 `id`) AND of both SHAPES a
+%   body's `depends_on` takes.
+%
+%   THE SHAPE HALF WAS MISSING, and it broke the census/gate lock. This
+%   function read `if ~isstruct(deps); return; end`, so a CELL-valued
+%   `depends_on` made it answer "not populated" for EVERY edge without
+%   looking at one of them -- while did2.schema.cache/edgeIsPopulated, the
+%   gate's copy of this same rule, iterates the cell and answers correctly.
+%   The census would then report empty edges the gate would not raise on,
+%   which is the precise failure the two lock tests exist to prevent: the
+%   number the team arms DID_ENFORCE_REQUIRED_DEPENDENCIES on stops
+%   describing what enforcement would cost.
+%
+%   THE CELL SHAPE IS NOT HYPOTHETICAL, and it is not a schema-only shape.
+%   jsondecode returns a CELL whenever the dependency objects in one array
+%   do not all carry the same keys -- which is exactly what a body carrying
+%   a mix of `document_id` and the raw v1 `id` spelling decodes to, i.e.
+%   the same mid-migration mixture the key tolerance above exists for.
+%   Three other readers of a BODY's depends_on in this pipeline already
+%   handle it: silentLoss/familyMemberIds (whose comment claims it is
+%   tolerant "exactly as edgeIsPopulated is" -- it was not),
+%   did2.convert.epochMint and migrators_j.epochfiles_ingested.
+%
+%   The error ran in the SAFE direction -- over-reporting empty edges makes
+%   the repair look bigger, never done -- which is why it survived: nothing
+%   about it looked like progress. It is still a corrupt denominator.
 tf = false;
 if ~isfield(body, 'depends_on'); return; end
 deps = body.depends_on;
-if ~isstruct(deps); return; end
-for k = 1:numel(deps)
-    d = deps(k);
-    if ~isfield(d, 'name') || ~strcmp(char(d.name), name); continue; end
+if isstruct(deps)
+    items = num2cell(deps(:)');
+elseif iscell(deps)
+    items = deps(:)';
+else
+    return;
+end
+for k = 1:numel(items)
+    d = items{k};
+    if ~isstruct(d) || ~isfield(d, 'name') || ~strcmp(char(d.name), name)
+        continue;
+    end
     for key = {'value', 'document_id', 'id'}
         if isfield(d, key{1}) && ~isempty(d.(key{1}))
             tf = true; return;

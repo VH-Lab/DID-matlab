@@ -293,6 +293,81 @@ catch err
 end
 end
 
+% ===================== the lock, second shape: a CELL depends_on ===========
+
+function testCensusAndGateAgreeWhenDependsOnIsACell(testCase)
+% THE DIVERGENCE THE FIRST LOCK TEST COULD NOT SEE, and the reason this one
+% exists as its own case rather than as an extra assertion in that one.
+%
+% testCensusAndGateAgreeOnTheSameDocument builds `depends_on` with
+% `deps(end+1) = struct(...)` -- a STRUCT ARRAY, every time. Both instruments
+% were written against that shape, and both passed. But jsondecode returns a
+% CELL whenever the entries of a JSON array do not all carry the same keys,
+% which is exactly what a mid-migration body carrying a mix of `document_id`
+% and the raw v1 `id` spelling decodes to -- the same mixture the key
+% tolerance elsewhere in both files exists to handle. Three other readers of a
+% body's depends_on already handled the cell shape
+% (silentLoss/familyMemberIds, did2.convert.epochMint,
+% migrators_j.epochfiles_ingested); silentLoss/edgeIsPopulated did not. It
+% read `if ~isstruct(deps); return; end` and answered "not populated" for
+% EVERY edge without inspecting one.
+%
+% So the census over-reported empty edges the gate would happily pass. That is
+% the SAFE direction -- it makes the repair look bigger, never done -- which is
+% precisely why it survived: nothing about it looked like progress. It still
+% corrupts the denominator the arming decision for #37 rests on, which is the
+% one number both instruments exist to produce.
+%
+% This test is written from the SHAPE, not from either implementation, and it
+% drives BOTH instruments over the same body. Before the fix it fails on the
+% census assertion while the gate assertion passes -- which is the defect
+% stated as an inequality.
+cache = testCase.TestData.cache;
+
+% (a) POPULATED, cell-shaped, MIXED KEYS. Nothing is missing here; both
+%     instruments must say so.
+body = demoCBody(testCase);
+body.depends_on = { ...
+    struct('name', 'item1', 'document_id', 'aaaaaaaaaaaaaaaa_0000111122223333'), ...
+    struct('name', 'item2', 'id',          'bbbbbbbbbbbbbbbb_0000111122223333')};
+
+rep = did2.validate.silentLoss({did2.document(body)}, 'SchemaCache', cache);
+verifyEqual(testCase, rep.total_docs, 1, ...
+    'denominator first: the census must have read the document');
+verifyEqual(testCase, rep.empty_dependency_count, 0, ...
+    ['a CELL-shaped depends_on with both required edges populated must ' ...
+     'count ZERO empty edges -- reporting 2 here is the census reading ' ...
+     'the shape, not the data']);
+
+verifyEmpty(testCase, cache.unpopulatedRequiredDependencies(body, 'demoC'), ...
+    'the gate must agree the cell-shaped body is fully populated');
+
+did2.schema.cache.strictMode('RequiredDependencies', true);
+did2.document(body).validate('SchemaCache', cache);
+verifyTrue(testCase, true, ...
+    'and must accept it with enforcement armed');
+
+% (b) The converse, same shape: genuinely blank. Both instruments must still
+%     agree -- a fix that made the census blind to cell-shaped bodies
+%     altogether would pass (a) and fail here.
+blankBody = demoCBody(testCase);
+blankBody.depends_on = { ...
+    struct('name', 'item1', 'document_id', ''), ...
+    struct('name', 'item2', 'id',          '')};
+
+repBlank = did2.validate.silentLoss({did2.document(blankBody)}, ...
+    'SchemaCache', cache);
+verifyEqual(testCase, repBlank.total_docs, 1, ...
+    'denominator first');
+verifyEqual(testCase, repBlank.empty_dependency_count, 2, ...
+    'a cell-shaped body with both required edges blank must count TWO');
+
+verifyError(testCase, ...
+    @() did2.document(blankBody).validate('SchemaCache', cache), ...
+    'did2:validation:emptyRequiredDependency', ...
+    'the gate must reject what the census counted, cell shape included');
+end
+
 % ===================== helpers =============================================
 
 function body = demoCBody(testCase)

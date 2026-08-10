@@ -51,12 +51,25 @@ classdef cache < handle
     %          nothing. isVacuousValue is the recursive all-leaves-blank
     %          test that catches it.
     %
-    %   BOTH DEFAULT TO OFF, and turning either on WILL quarantine real
-    %   documents -- that is the point of them, and the reason they are
-    %   switches rather than plain behaviour. Enforcement is gated on the
-    %   corpus census reaching zero for the rule in question; the census
-    %   is did2.validate.silentLoss, which measures exactly these two
-    %   conditions and raises nothing. See
+    %   THEY DEFAULT DIFFERENTLY. This header read "BOTH DEFAULT TO OFF"
+    %   for as long as that was true and for a while after it was not --
+    %   the same header-vs-state staleness the schema repo documents,
+    %   running in its usual direction (the header claimed LESS
+    %   enforcement than the code carries, so it never produced a wrong
+    %   build, only a wrong belief). The authority for the defaults is
+    %   `strictMode` below, and it is where the reasoning lives:
+    %
+    %     #38 NonVacuousFields      ARMED   (2026-08-10, team's call)
+    %     #37 RequiredDependencies  OFF
+    %
+    %   The difference is the MEASUREMENT, not a view about which rule
+    %   matters more: the same corpus run reports 0 vacuous required
+    %   fields and 7,233 empty required edges. Arming a switch WILL
+    %   quarantine real documents -- that is the point of them, and the
+    %   reason they are switches rather than plain behaviour. Enforcement
+    %   is gated on the corpus census reaching zero for the rule in
+    %   question; the census is did2.validate.silentLoss, which measures
+    %   exactly these two conditions and raises nothing. See
     %   did-schema/schemas/V_eta_ground_truth_plan.md Phase 1.
     %
     %   Set them per-process with did2.schema.cache.strictMode, or per-CI-
@@ -1244,7 +1257,11 @@ classdef cache < handle
             % must be readable as its own row, not as a jump in the
             % pre-existing emptyField count.
             %
-            % OFF BY DEFAULT: see the class header.
+            % ARMED BY DEFAULT since 2026-08-10 (team's call; evidence and
+            % caveat are in strictMode). This comment read "OFF BY DEFAULT:
+            % see the class header" while pointing at a class header that
+            % also said off -- two stale statements agreeing with each other
+            % is not corroboration, it is one error copied.
             if mustBeNonEmpty ...
                     && did2.schema.cache.strictMode('NonVacuousFields') ...
                     && obj.isVacuousValue(value)
