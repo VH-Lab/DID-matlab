@@ -8,10 +8,23 @@ function [software, swId] = jSoftware(name, version, url, sessionId, datestamp, 
 %   the caller omits the edge (rule: never emit an empty required edge).
 %
 %   [...] = jSoftware(..., 'RequireSession', true) ALSO returns [] and '' when
-%   SESSIONID is empty. DEFAULT IS FALSE, which is exactly today's behaviour --
-%   this option was added, not switched on, because four live callers
-%   (daqreader, daqmetadatareader, filenavigator, jCalculation via
-%   jSoftwareFromApp) already index the returned struct and would error on [].
+%   SESSIONID is empty. DEFAULT IS FALSE, which is exactly today's behaviour.
+%   The option was ADDED, not switched on, and the default is not caution for
+%   its own sake -- ONE caller would break outright:
+%
+%       migrators_j/daqreader.m:127,132-134
+%           software = jSoftware(implClass, '', '', sessionId, datestamp);
+%           ...
+%           if ~isempty(srcId)
+%               software.base.id = srcId;      % <- errors on []
+%           end
+%
+%   daqreader indexes the returned struct with no isempty guard (deliberately:
+%   the id overwrite is the point of that fold). The other three -- filenavigator
+%   :147+184, daqmetadatareader:131+165, jCalculation:78+119 via
+%   jSoftwareFromApp -- all test `~isempty(software)` before using it and would
+%   be unaffected. Switching the default is therefore a change to daqreader.m,
+%   which belongs to the daq family, not to this helper.
 %   See "THE EMPTY-SESSION HAZARD" below for why anyone would want it.
 %
 %   ---------------------------------------------------------------------
@@ -36,6 +49,11 @@ function [software, swId] = jSoftware(name, version, url, sessionId, datestamp, 
 %   takes its whole source document down with it. Only jMethodParameters
 %   guarded against that; the other callers do not. RequireSession makes the
 %   guard reusable without changing what any existing caller gets.
+%
+%   THIS IS REPORTED, NOT DECIDED. Whether daqreader / filenavigator /
+%   daqmetadatareader / jCalculation should also guard is a per-family call
+%   (for daqreader it is entangled with the id preservation above), so this
+%   helper offers the guard and says so rather than turning it on for everyone.
 %
 %   TEAM-SIGN-OFF [software], V_eta_tenet_audit.md:10 -- "the `app` mixin is
 %   replaced by a `software` ENTITY (deduplicated by name+version) referenced
