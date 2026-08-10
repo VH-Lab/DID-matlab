@@ -58,8 +58,27 @@ jobs:
         # tiers into one directory for DID_SCHEMA_PATH.
         run: |
           mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+                    # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
+          # of the go-forward MODEL. Those are two different questions and they
+          # were conflated here until 2026-08-10.
+          #
+          # `deprecated/` holds exactly the v1 shapes that DELIBERATELY pass
+          # through unmodelled -- projectvar, stimulus_parameter_table,
+          # image_stack(+_parameters). A passthrough's whole contract is that the
+          # document reaches the validator under its own class, so omitting the
+          # tier means every one of them QUARANTINES. The tier was doing nothing.
+          #
+          # It went unnoticed because three of the four have never appeared in a
+          # tested corpus. The fourth did: corpus run 31421715133 turned 4,563 JH
+          # `image_stack` documents into `No schema file for class "image_stack"`
+          # the moment the guard made them passthroughs instead of subject-less
+          # observations. Trading silent husks for loud quarantines was the point
+          # of the guard; losing them at validation was not.
+          #
+          # Safe to copy: no filename collides across tiers (checked, 245 files).
           cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
           cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
 
       - name: Export DID_SCHEMA_PATH
         run: |
