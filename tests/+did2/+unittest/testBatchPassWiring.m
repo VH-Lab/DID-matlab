@@ -104,6 +104,7 @@ if isempty(files)
 end
 passes = {};
 exempt = struct('name', {}, 'reason', {});
+unmatched = {};
 for k = 1:numel(files)
     txt = fileread(fullfile(files(k).folder, files(k).name));
     lines = strsplit(txt, newline);
@@ -111,9 +112,12 @@ for k = 1:numel(files)
     sig = strtrim(lines{1});
     % `function result = name(result, ...)` or
     % `function [result, report] = name(result, ...)`
-    tok = regexp(sig, '^function\s+(?:\[[^\]]*\]|\w+)\s*=\s*(\w+)\s*\(\s*result\b', ...
-        'tokens', 'once');
-    if isempty(tok); continue; end
+    passName = batchPassName(sig);
+    if isempty(passName)
+        unmatched{end+1} = sprintf('%-32s %s', files(k).name, sig); %#ok<AGROW>
+        continue;
+    end
+    tok = {passName};
     % 'lineanchors' + a required non-space after the colon: the marker must be
     % a comment line of its own with an actual reason on it. A bare mention in
     % running prose does not disarm the gate.
@@ -127,6 +131,47 @@ for k = 1:numel(files)
     passes{end+1} = tok{1}; %#ok<AGROW>
 end
 passes = sort(passes);
+% SELF-DIAGNOSIS. When the scan finds nothing, print every first line it
+% rejected. The previous version printed only the verdict, so "0 passes" gave
+% no way to tell a broken matcher from a package with no passes in it, and it
+% cost a CI round per guess.
+if isempty(passes) && isempty(exempt)
+    fprintf('  0 matched. Rejected first lines (%d):\n', numel(unmatched));
+    for u = 1:numel(unmatched)
+        fprintf('    %s\n', unmatched{u});
+    end
+end
+end
+
+function name = batchPassName(sig)
+%BATCHPASSNAME The function name in SIG, when SIG is a batch post-pass.
+%   A batch post-pass is `function <out> = <name>(result, ...)` -- its first
+%   argument is the `result` struct did2.convert.v1_to_v2 returns.
+%
+%   PLAIN STRING PARSING, DELIBERATELY. This was one regex,
+%
+%       '^function\s+(?:\[[^\]]*\]|\w+)\s*=\s*(\w+)\s*\(\s*result\b'
+%
+%   and it matched FOUR files when simulated and ZERO in CI -- run 31441482517,
+%   with the scan root already verified correct and 9 .m files found, so the
+%   path was right and the pattern was wrong. Which construct differs between
+%   engines is not worth another CI round to discover: `\b`, `(?:...)` and the
+%   escaped `]` inside a bracket expression are all candidates. strfind and
+%   strtrim have no dialect, so the question stops being askable.
+name = '';
+sig = strtrim(sig);
+if ~strncmp(sig, 'function', 8); return; end
+eqPos = strfind(sig, '=');
+opPos = strfind(sig, '(');
+clPos = strfind(sig, ')');
+if isempty(eqPos) || isempty(opPos) || isempty(clPos); return; end
+eqPos = eqPos(1); opPos = opPos(1);
+if opPos < eqPos; return; end       % `function name(...)`, no output argument
+cand = strtrim(sig(eqPos+1:opPos-1));
+if ~isvarname(cand); return; end    % isvarname does the identifier check for us
+args = strsplit(sig(opPos+1:clPos(end)-1), ',');
+if isempty(args) || ~strcmp(strtrim(args{1}), 'result'); return; end
+name = cand;
 end
 
 function sites = didCallSites()
