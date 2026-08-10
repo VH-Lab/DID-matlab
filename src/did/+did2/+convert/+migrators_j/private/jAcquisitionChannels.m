@@ -1,7 +1,7 @@
-function body = jAcquisitionChannels(preBody, deviceName, channelSpec, label)
+function body = jAcquisitionChannels(preBody, deviceName, channelSpec)
 %JACQUISITIONCHANNELS One half of a v1 syncrule's device pair -> `acquisition_channels`.
 %
-%   BODY = jAcquisitionChannels(PREBODY, DEVICENAME, CHANNELSPEC, LABEL) returns
+%   BODY = jAcquisitionChannels(PREBODY, DEVICENAME, CHANNELSPEC) returns
 %   an `acquisition_channels` body, or [] when DEVICENAME is empty (no device =>
 %   nothing to say; the caller must then NOT emit the edge).
 %

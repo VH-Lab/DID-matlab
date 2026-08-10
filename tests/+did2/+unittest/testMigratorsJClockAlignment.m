@@ -119,10 +119,15 @@ end
 
 function node = epochNodeFixture(suffix, objectName)
 %EPOCHNODEFIXTURE One epochnode, with all seven sub-fields the template declares.
+%   `epochprobemap` is a CHAR, not a struct: syncgraph.m:313-314 calls
+%   `.serialize()` before writing, and epochprobemap_daqsystem.m:136-143 says
+%   "Create a CHARACTER ARRAY representation". The template agrees --
+%   `"epochprobemap": ""`. A struct here is what made the old reader look
+%   correct while dropping the field on every real document.
 node = struct( ...
     'epoch_id',         ['t0000' suffix], ...
     'epoch_session_id', 'sess_0001', ...
-    'epochprobemap',    struct('serialized', ['probemap_' suffix]), ...
+    'epochprobemap',    sprintf('name\treference\ttype\ndev%s\t1\tn-trode\n', suffix), ...
     'epoch_clock',      'dev_local_time', ...
     't0_t1',            [0 100 + str2double(suffix)], ...
     'objectname',       objectName, ...
@@ -238,7 +243,8 @@ cfg = findClass(testCase, out, 'clock_alignment_configuration');
 verifyNotEmpty(testCase, depVal(cfg, 'acquisition_channels_1'));
 verifyNotEmpty(testCase, depVal(cfg, 'acquisition_channels_2'));
 ch = channelsNamed(testCase, out, 'mydaq1');
-verifyEmpty(testCase, ch.get('acquisition_channels').channels);
+chBlock = ch.get('acquisition_channels');
+verifyEmpty(testCase, chBlock.channels);
 block = cfg.get('clock_alignment_configuration');
 verifyEqual(testCase, block.sync_file_name, 'syncfile.txt');
 verifyEqual(testCase, block.minimum_matching_file_paths, 1);
@@ -358,6 +364,25 @@ verifyEqual(testCase, depVal(doc, 'syncrule_id'), 'rule_ctoe');
 verifyEmpty(testCase, depVal(doc, 'epochid'));
 end
 
+function testPassthroughNoLongerDropsTheSerialisedProbeMap(testCase)
+% The third field #58 missed. epochprobemap arrives as a CHAR (syncgraph.m:313
+% serialises it; the template's default is ""), and the reader required
+% isstruct, so it returned an empty struct on every real document. Nothing
+% caught it because the unit fixture used a struct, which no writer produces.
+out = runJ(mappingFixture(false));
+doc = out.migrated{1};
+pm = doc.get('syncrule_mapping.epochnode_a.epochprobemap');
+verifyClass(testCase, pm, 'char');
+verifyTrue(testCase, contains(pm, 'dev1'));
+verifyTrue(testCase, contains( ...
+    doc.get('syncrule_mapping.epochnode_b.epochprobemap'), 'dev2'));
+% objectclass was already carried; assert it so the six-field node stays six.
+verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_a.objectclass'), ...
+    'ndi.daq.system.mfdaq');
+verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_a.epoch_session_id'), ...
+    'sess_0001');
+end
+
 function testTheSyncgraphEdgeStillResolvesAfterTheGraphConverts(testCase)
 % The half of the live query that is NOT a field read. The syncgraph document
 % becomes a clock_alignment_policy, but base.id is preserved, and must_refer is
@@ -394,8 +419,9 @@ verifyEqual(testCase, align.get('clock_alignment.cost'), 1);
 % STAGED with an empty node (gate 2): "temporally aligned with" is a MAPPING
 % predicate, not an OWL-Time interval relation, so it cannot reuse
 % relative_reference's binding and needs an NDIC term (#67 / #70).
-verifyEqual(testCase, align.get('clock_alignment.relation').name, 'temporally aligned with');
-verifyEqual(testCase, align.get('clock_alignment.relation').node, '');
+rel = align.get('clock_alignment.relation');
+verifyEqual(testCase, rel.name, 'temporally aligned with');
+verifyEqual(testCase, rel.node, '');
 end
 
 function testAllFourRequiredEdgesAreFilled(testCase)
@@ -556,7 +582,11 @@ end
 function deps = depsOf(doc)
 %DEPSOF The document's depends_on as a struct array (never empty-indexable).
 deps = struct('name', {}, 'value', {});
-raw = doc.get('depends_on');
+try
+    raw = doc.get('depends_on');
+catch
+    return;   % did2.document.get THROWS on a missing path
+end
 if isstruct(raw) && ~isempty(raw)
     for k = 1:numel(raw)
         name = '';

@@ -109,15 +109,15 @@ name2 = jGetCharAny(params, {'daqsystem2_name', 'daqsystem2', 'daqsystem2Name'})
 ch1   = jGetCharAny(params, {'daqsystem_ch1', 'daqsystemCh1'});
 ch2   = jGetCharAny(params, {'daqsystem_ch2', 'daqsystemCh2'});
 
-channelsA = jAcquisitionChannels(preBody, name1, ch1, 'daqsystem1');
-channelsB = jAcquisitionChannels(preBody, name2, ch2, 'daqsystem2');
+channelsA = jAcquisitionChannels(preBody, name1, ch1);
+channelsB = jAcquisitionChannels(preBody, name2, ch2);
 if isempty(channelsA) || isempty(channelsB)
     bodies = {preBody};      % THE GUARD -- see the header
     return;
 end
 
 implClass = jGetCharAny(block, {'ndi_syncrule_class', 'ndiSyncruleClass'});
-[software, swId] = jSyncSoftware(preBody, implClass, 'syncrule');
+[software, swId] = jSyncSoftware(preBody, implClass);
 
 cfg = struct();
 cfg.document_class = struct('class_name', 'clock_alignment_configuration', ...

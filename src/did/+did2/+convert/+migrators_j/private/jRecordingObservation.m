@@ -155,11 +155,18 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 
 arguments
     preBody (1,1) struct
-    elementId (1,:) char
-    specimenId (1,:) char
-    elementType (1,:) char = ''
-    bestKnownLabel (1,:) char = ''
+    elementId = ''
+    specimenId = ''
+    elementType = ''
+    bestKnownLabel = ''
 end
+% Deliberately unsized/untyped above: every one of these can legitimately be the
+% empty char '' (0x0), which does not satisfy a `(1,:) char` declaration -- an
+% element with no `subject_id`, or with an empty `type`, is a real did_v1 shape.
+elementId      = char(elementId);
+specimenId     = char(specimenId);
+elementType    = char(elementType);
+bestKnownLabel = char(bestKnownLabel);
 
 bodies = {};
 retireObserves = false;
@@ -182,9 +189,9 @@ switch disposition
         unresolvedLabel = firstNonEmptyChar(elementType, bestKnownLabel, '(unspecified)');
         return;
     case 'recording'
-        % fall through
+        % the assembler below runs
     otherwise
-        return;
+        return;              % an unknown disposition is never guessed at
 end
 
 sessionId = baseField(preBody, 'session_id', '');

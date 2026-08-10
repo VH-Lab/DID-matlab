@@ -158,9 +158,13 @@ function [entries, disposition] = jRecordingModality(elementType)
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) split migrators.
 
-arguments
-    elementType (1,:) char = ''
-end
+% NOTE: no `arguments` size specifiers on the char inputs. An absent `type` is
+% the empty char '' (0x0), which does not satisfy a `(1,:) char` declaration --
+% and an element with no type is a real, reachable case (+setup/+conv/+gluckman/
+% channelname2probename.m:29-35 returns probetype = '' for counter/status/ACC
+% channels). Validation is done by hand below instead.
+if nargin < 1 || isempty(elementType); elementType = ''; end
+elementType = char(elementType);
 
 entries = emptyEntries();
 disposition = 'unresolved';

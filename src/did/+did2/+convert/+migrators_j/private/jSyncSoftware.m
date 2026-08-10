@@ -1,7 +1,7 @@
-function [software, swId] = jSyncSoftware(preBody, implementationClass, label)
+function [software, swId] = jSyncSoftware(preBody, implementationClass)
 %JSYNCSOFTWARE A did_v1 implementation-class string -> a V_eta `software` ENTITY.
 %
-%   [SOFTWARE, SWID] = jSyncSoftware(PREBODY, IMPLEMENTATIONCLASS, LABEL) returns
+%   [SOFTWARE, SWID] = jSyncSoftware(PREBODY, IMPLEMENTATIONCLASS) returns
 %   a `software` body naming IMPLEMENTATIONCLASS and the id to put on the
 %   caller's `software_id` edge. Returns ([], '') when IMPLEMENTATIONCLASS is
 %   empty -- NO IDENTITY, NO ENTITY, and the caller must then OMIT the edge
@@ -69,6 +69,7 @@ software.base = struct('id', swId, 'session_id', sessionId, ...
 % inventing a scheme would be the same fabrication the ground-truth track exists
 % to stop.
 software.entity = struct('global_identifier', {struct('scheme', {}, 'value', {})});
-software.software = struct('name', implementationClass, 'version', '', ...
-    'local_identifier', char(label));
+% `local_identifier` is deliberately not set (it is optional): the class name is
+% already the identity, and jCalculation's software entities do not set it either.
+software.software = struct('name', implementationClass, 'version', '');
 end

@@ -98,7 +98,7 @@ if isempty(sessionId) || isEmptySessionSentinel(sessionId)
 end
 
 implClass = jGetCharAny(block, {'ndi_syncgraph_class', 'ndiSyncgraphClass'});
-[software, swId] = jSyncSoftware(preBody, implClass, 'syncgraph');
+[software, swId] = jSyncSoftware(preBody, implClass);
 
 policy = struct();
 policy.document_class = struct('class_name', 'clock_alignment_policy', ...
