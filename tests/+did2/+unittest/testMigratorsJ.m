@@ -2902,7 +2902,18 @@ verifyEqual(testCase, d.get('oneepoch.epoch_ids'), 't00001,t00002,t00003');
 % the SYNTHETIC epoch id survives too -- sourceCensus tracks exactly this string
 % as a grouping hazard, citing oneepoch.m:42, so it must not be quietly dropped
 verifyEqual(testCase, d.get('epochid.epochid'), 'whole_session_ref1');
-verifyEqual(testCase, depValue(d.toStruct(), 'element_id'), 'elem_1');
+% READ THE EDGE VIA depVal, NOT via toStruct + depValue. The two paths do not
+% agree on the field name, which is what made this test the only one of the four
+% to fail (scratch probe 9, run 31424544834):
+%     doc.get('depends_on')      entries carry `value`        <- depVal
+%     doc.toStruct().depends_on  entries carry `document_id`  <- depValue
+% universalRenames normalises v1's {name, value} to {name, document_id}
+% (universalRenames.m:372-380), and toStruct exposes the normalised form while
+% get() still hands back `value`. Nothing is wrong with the migrator; the helper
+% I reached for was written for RAW migrator output, where the rename has not
+% happened yet, and I carried it into a full-pipeline test. Same shape of mistake
+% as probe 7's, one layer over.
+verifyEqual(testCase, depVal(d, 'element_id'), 'elem_1');
 end
 
 function testOneEpochValidatesAgainstItsNewTombstone(testCase)
@@ -2933,8 +2944,25 @@ verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'oneepoc
 end
 
 function v = depValue(b, name)
+% Read an edge off a RAW BODY STRUCT (a direct migrator call, or toStruct()).
+%
+% ACCEPTS BOTH SPELLINGS, deliberately. universalRenames normalises v1's
+% {name, value} to {name, document_id} (universalRenames.m:372-380), so which one
+% a body carries depends on how far down the pipeline it came from: a migrator
+% called directly still has `value`, while toStruct() on a migrated document has
+% `document_id`. Reading only `value` threw MATLAB:nonExistentField on the second
+% kind -- found by scratch probe 9 after it failed one test of four.
+%
+% For a did2.document, prefer depVal above.
 v = '';
+if ~isfield(b, 'depends_on'); return; end
 for k = 1:numel(b.depends_on)
-    if strcmp(b.depends_on(k).name, name); v = b.depends_on(k).value; return; end
+    if ~strcmp(b.depends_on(k).name, name); continue; end
+    if isfield(b.depends_on(k), 'document_id') && ~isempty(b.depends_on(k).document_id)
+        v = b.depends_on(k).document_id;
+    elseif isfield(b.depends_on(k), 'value')
+        v = b.depends_on(k).value;
+    end
+    return;
 end
 end
