@@ -25,6 +25,30 @@ function bodies = pyraview(preBody)
 %   own bytes (a pyramid is a precomputed performance cache, not a disposable
 %   thumbnail), so nothing is dropped.
 %
+%   ---------------------------------------------------------------------
+%   + THE `filter` BLOCK, WHICH THIS FOLD USED TO DISCARD ENTIRELY
+%   ---------------------------------------------------------------------
+%   `pyraview` declares `data/filter.json` as a superclass, and it is the ONLY
+%   class in NDI that does (git grep for the definition path on origin/main
+%   returns filter.json itself and pyraview.json, nothing else). Until now this
+%   migrator built every output body from scratch and never read that block, so
+%   the filter specification was dropped on the floor -- silently, because a
+%   dropped superclass block is invisible to every Phase-1 counter.
+%
+%   It is NOT incidental metadata. The real PRED document is a 4th-order
+%   Chebyshev-I high-pass at 300 Hz: 300-Hz-high-passed voltage is a DIFFERENT
+%   QUANTITY from raw voltage, so the filter is part of what the stored numbers
+%   mean (V_eta_frequency_filter_model_plan.md, signed 2026-07-30).
+%
+%   So the fold now also emits ONE `frequency_filter` document and points every
+%   level body at it via `sampled_body.filter_id` (declared optional there,
+%   must_refer_to_document_class frequency_filter). The filter rides on the
+%   BODIES rather than the observation because that is where the schema puts the
+%   edge, and because it describes the samples. When the block names no
+%   representable filter -- an all-pass, or a vocabulary v1 has never used --
+%   `jFrequencyFilter` returns nothing and no `filter_id` is written, so the
+%   output is exactly what it was before.
+%
 %   NOTE: dataseries_observation and the *_body classes are `draft` in V_eta. This
 %   is the pattern-setter for the #9 analysis-tier folds (mint observation + attach
 %   sampled_body). pyraview stays in the schema until this is corpus-proven.
@@ -51,6 +75,16 @@ dt       = 0.0;
 if nativeRt > 0; dt = 1.0 / nativeRt; end
 
 anchorId = did.ido.unique_id();
+
+% ---- the frequency_filter split off the inherited `filter` block ------------
+% [] when the block is absent, describes an all-pass ('none'), or uses a
+% vocabulary this model cannot represent. In that case no document is emitted
+% and no filter_id edge is written -- never a guessed design.
+filterDoc = jFrequencyFilter(preBody);
+filterId = '';
+if ~isempty(filterDoc)
+    filterId = filterDoc.base.id;
+end
 
 % ---- the session-relative time anchor ('during') ----------------------------
 anchor = struct();
@@ -116,9 +150,19 @@ for k = 1:numel(fileList)
             't0', durationComposite(t0_k), 'dt', durationComposite(dt_k), 'n', 0));
     % this body owns exactly its level's file
     b.files = struct('file_list', {fileList(k)});
+    % every level was produced by the SAME filter (filterData is called once per
+    % document, makePyraviewDoc.m:58/:108, and the decimation happens after it),
+    % so all the level bodies share one frequency_filter document. The edge is
+    % appended only when there is a filter to point at -- never an empty edge.
+    if ~isempty(filterId)
+        b.depends_on(end+1) = struct('name', 'filter_id', 'value', filterId);
+    end
     bodies{end+1} = b; %#ok<AGROW>
 end
 bodies{end+1} = anchor;
+if ~isempty(filterDoc)
+    bodies{end+1} = filterDoc;
+end
 end
 
 % ===================== small helpers =======================================

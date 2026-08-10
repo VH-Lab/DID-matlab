@@ -113,8 +113,8 @@ function assumeVEtaSchemas(testCase)
 %   an honest skip.
 did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the V_eta validation tests');
-cache = did2.schema.cache.shared();
 try
+    cache = did2.schema.cache.shared();
     cache.getClass('acquisition_metadata_file');
     cache.getClass('relative_reference');
 catch err

@@ -101,9 +101,62 @@
 %                                Same missing writer, so array semantics and
 %                                units are unsettleable.
 %
-%   NOT MIGRATED AT ALL, deliberately: vmspikefilteringparameters has no
-%   migrator, so it reaches validation in its did_v1 shape. Its V_eta tombstone
-%   declares that shape; no transform is wanted or needed.
+%   THE SPIKE PROCESSING PARAMETERS FAMILY -> ONE method_parameters class.
+%   Four did_v1 settings classes fold to the ONE generic `method_parameters`
+%   document (TEAM-SIGN-OFF 2026-08-09, V_eta_method_parameters_plan.md). Each
+%   is 1 -> 1 with base.id AND base.name PRESERVED -- the id because three
+%   templates point at it (spikewaves.extraction_parameters_id,
+%   spike_clusters.sorting_parameters_id/.extraction_parameters_id,
+%   spike_extraction_parameters_modification.extraction_parameters_id), the name
+%   because two apps look a protocol up by
+%   ndi.query('base.name','exact_string',...) at spikeextractor.m:372 and
+%   spikesorter.m:373. The v1 `app` block becomes a `software` entity + a
+%   software_id edge (R1), so each fold emits 2 bodies. Settings become
+%   `parameter[]` entries whose identity is a bound `variable` (no unit field,
+%   no data_type field); the tail stays whole in `other`.
+%     spike_extraction_parameters
+%                        - the global protocol; no v1 dependencies, so no scope
+%                          edges. 15 fields -> 4 bound entries (refractory
+%                          period, waveform window start + duration, threshold)
+%                          + the bag.
+%     spike_extraction_parameters_modification
+%                        - the same 15 fields (v1 stores a FULL copy, never a
+%                          diff) + element_id -> subject_id and
+%                          extraction_parameters_id -> derived_from_id (LINEAGE
+%                          only -- precedence comes from the scope). Its epoch
+%                          scope is the WRITER's, not the template's
+%                          (spikeextractor.m:310 sets epochid.epochid on a class
+%                          declaring only base + app) and is parked in
+%                          other.epochid until the epoch pass can mint an
+%                          `epoch` document to point at (#60).
+%     sorting_parameters - no bound variables by decision (all six fields are in
+%                          the plan's bag list by name), so the document carries
+%                          an empty parameter list and a full `other`.
+%     vmspikefilteringparameters
+%                        - folds ONLY when `spiketimes` is empty. `spiketimes`
+%                          is OUTPUT data sitting in a config class and has no
+%                          decided home (and no writer exists to document its
+%                          encoding), so a document that carries any is passed
+%                          through UNCHANGED for the second pass rather than
+%                          having a result folded into a settings bag or
+%                          dropped. This REPLACES the former note that the class
+%                          was "not migrated at all, deliberately".
+%     filenavigator      - 1 -> 2 (or 1 -> 1). -> `epoch_file_pattern` (base.id
+%                          PRESERVED -- daqsystem.filenavigator_id and
+%                          epochfiles_ingested.filenavigator_id are both REQUIRED
+%                          edges on NDI origin/main) + a `software` entity for the
+%                          implementation class name. The two eval'd cell2str
+%                          parameter strings are PARSED (never eval'd) into
+%                          data_file_pattern / epoch_map_pattern lists;
+%                          epochprobemap_class -> epoch_map_format, a plain char by
+%                          decision (it is a content type, not software).
+%                          Guarded passthrough when the block declares nothing.
+%                          TEAM-SIGN-OFF [file navigation], jess 2026-08-06.
+%                          BLOCKED FOR CORPUS USE: epoch_file_pattern declares the
+%                          two lists "type": "char", which the validator's char
+%                          branch rejects for a cellstr; the sibling
+%                          epochfiles_ingested.files uses "type": "string". See the
+%                          migrator header.
 %     image_stack        - 1 -> 3. -> a body-backed image_observation
 %                          (storage_mode: body; modality on the spine variable,
 %                          geometry/format inline on the `image` mixin) + a
@@ -157,6 +210,33 @@
 %                          not resolve. The assembly/reconstruction fields
 %                          (is_linked, session_creator, inputs, session_reference)
 %                          are dropped as NDI-internal handles.
+%     subjectmeasurement - 1 -> 2 (fold) / 1 -> 1 (guarded passthrough).
+%                          TEAM-SIGN-OFF [subject measurement], jess 2026-08-06.
+%                          Routes through the EXISTING `measurement` fold (shared
+%                          private/jMeasurementFold + jQuantityLeaf) with NO new
+%                          class: subject_id carries over, `measurement` becomes
+%                          subject_statement.variable, `value` becomes the typed
+%                          value, and `datestamp` becomes the TIME ANCHOR --
+%                          time_reference_1 -> an `absolute_reference` document
+%                          (private/jAbsoluteReference), NOT a field. `measurement`
+%                          has no datestamp field at all, so a plain field mapping
+%                          would have dropped the measurement time. Signed WITH a
+%                          known gap: `value` carries no unit, so the leaf should
+%                          come from the D9 registry -- which ships no dimensional
+%                          rows yet, so jQuantityLeaf is the pass-1 stand-in and
+%                          anything it cannot type PASSES THROUGH.
+%                          THE FIRST EMITTER OF `absolute_reference`.
+%     pyraview           - (extended) the inherited `filter` superclass block now
+%                          splits off ONE `frequency_filter` document
+%                          (private/jFrequencyFilter), referenced by every level
+%                          body's optional `sampled_body.filter_id`. It used to be
+%                          discarded outright. TEAM-SIGN-OFF [frequency_filter],
+%                          jess 2026-07-30. Band edges, typed `gain` fields, NO
+%                          sample_rate (the document is a SPECIFICATION, which is
+%                          what makes it shareable). An all-pass ('none') emits
+%                          nothing. NOTE the source field arrives as `filter_type`,
+%                          not `type`: +migrators/filter.m renames it in the
+%                          superclass pass that runs first.
 %
 %   POST-PASS (batch-level, did2.convert.resolveDatasetEntities): dedups the
 %   `dataset` entities that the containers each mint on the shared dataset id
@@ -177,6 +257,18 @@
 %
 %   Classes with no did_v1 -> V_eta split fall through to the default
 %   +migrators/<class> (1 -> 1) migrator, gaining only the schema_version tag.
+%
+%   SOFTWARE (TEAM-SIGN-OFF [software], jess 2026-08-06): the did_v1 `app` mixin
+%   is replaced by a `software` ENTITY referenced by a `software_id` edge, with the
+%   per-run os/interpreter in `execution_environment` on the interaction. The fold
+%   lives in private/jSoftwareFromApp.m (+ private/jSoftware.m, which also serves
+%   filenavigator's implementation-class entity) and is applied by jCalculation to
+%   every calculator output, so the app block -- and the program's class name --
+%   stops being copied onto the migrated document. DEDUP BY (name, version) IS
+%   DEFERRED to the NDI second pass: it is a whole-corpus find-or-create with edge
+%   retargeting, the shape of ndi.migrate.internal.pathSPromotion. Pass 1 mints one
+%   entity per consuming document and records the dedup key in
+%   software.local_identifier (name, or name@version).
 %
 %   Shared spine/composite helpers live in private/ (jStartInteraction,
 %   jSessionAnchor, jCarrySubject, jDoseValue, jConcentration, jOntologyTerm,

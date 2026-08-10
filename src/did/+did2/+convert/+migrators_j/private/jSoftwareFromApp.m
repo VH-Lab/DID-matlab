@@ -52,8 +52,12 @@ arguments
     preBody (1,1) struct
 end
 
-software = [];
-swId = '';
+% `software` and `swId` are NOT pre-initialised: there is no early return in this
+% function, so `[software, swId] = jSoftware(...)` at the end assigns both on
+% every path, and initialising them here is dead. Flagged by GitHub code scanning
+% (alerts 164/165) and confirmed by reading the control flow rather than assumed
+% to be a false positive. `execEnv` IS pre-initialised, because the loop below
+% only adds fields conditionally and it must be a struct either way.
 execEnv = struct();
 
 app = struct();
