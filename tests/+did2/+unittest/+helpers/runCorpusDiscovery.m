@@ -79,8 +79,55 @@ if strcmp(options.TargetVersion, 'V_eta')
     % alone would FUSE epochs from different sessions. A find-or-create over
     % the whole corpus, which no single-document migrator can do; its report
     % rides on `result.epoch_mint` and is persisted by writeCorpusReport.
-    [result, ~] = did2.convert.epochMint(result, ...
-        'Validate', true, 'TargetVersion', options.TargetVersion);
+    %
+    % GUARDED (2026-08-10). Not because a failure is tolerable, but because of
+    % WHERE it would land: writeCorpusReport is ~30 lines below, so an uncaught
+    % error here costs the corpus its ENTIRE census -- by_class survivors,
+    % silent-loss table, source census, the lot -- for a run that already spent
+    % an hour. did2.unittest.helpers.runBatchPass records the failure on
+    % `result.epoch_mint.pass_failed`, prints it to stderr with the stack, and
+    % leaves every document in its pass-1 form. See that file for the rule.
+    result = did2.unittest.helpers.runBatchPass(result, ...
+        'did2.convert.epochMint', 'epoch_mint', ...
+        @(r) did2.convert.epochMint(r, ...
+            'Validate', true, 'TargetVersion', options.TargetVersion));
+
+    % #65: fold `session_relative_reference` (107,308 documents) and
+    % `session_bounded_reference` (20,411) into `relative_reference`, base.id
+    % PRESERVED, anchored to the SESSION DOCUMENT. A pass-1 migrator cannot do
+    % this: it holds `base.session_id`, and the REQUIRED `relative_to` edge
+    % needs the session document's `base.id`, which NDI mints separately
+    % (+ndi/document.m:57-58 vs +ndi/session.m:215). Mapping one to the other
+    % is a corpus-wide index, so it is a batch pass.
+    %
+    % ORDER. It runs AFTER epochMint, and that order is NOT forced by today's
+    % code -- said plainly rather than dressed up. Both passes index `session`
+    % documents by (base.session_id -> base.id); neither writes what the other
+    % reads (epochMint appends `epoch` documents and fills
+    % method_parameters.epoch_id; this pass rewrites only the two
+    % session_*_reference classes), and no post-pass in this file removes a
+    % `session` document -- resolveDatasetEntities drops only duplicate
+    % `dataset` entities and unresolvable membership relations
+    % (resolveDatasetEntities.m:55,62-63,73-77), resolveDeferredBaths only
+    % appends (resolveDeferredBaths.m:84), epochMint only appends. So the two
+    % commute on this corpus. The order is chosen for three reasons that are
+    % not correctness: it is IDENTICAL to ndi.migrate.local's, so the corpus
+    % gate and production cannot silently diverge; this pass is strictly
+    % 1 -> 1, so running it last makes its `documents_inspected` denominator
+    % equal the report's final migrated_count; and if a later revision ever
+    % anchors a reference to an `epoch` document (the plan's chains terminate
+    % at an acquisition_epoch, a session, or an absolute_reference) the
+    % dependency will point this way, not the other.
+    %
+    % GUARDED for the same reason as epochMint above, and with more cause: this
+    % pass has NEVER been executed and it moves 127,719 documents on a
+    % 0-quarantine, 0-orphan gate. A failure leaves the anchors exactly as
+    % pass 1 emitted them -- which is the state the corpus is green in today --
+    % and is recorded on `result.session_anchor_fold.pass_failed`.
+    result = did2.unittest.helpers.runBatchPass(result, ...
+        'did2.convert.resolveSessionAnchors', 'session_anchor_fold', ...
+        @(r) did2.convert.resolveSessionAnchors(r, ...
+            'Validate', true, 'TargetVersion', options.TargetVersion));
 end
 
 % Census of the V1 SOURCE bodies -- the only instrument here that reads the
@@ -101,6 +148,23 @@ end
 
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
+
+% THE REPORT IS NOW ON DISK, so a guarded post-pass failure can be made FATAL
+% without costing the run its census. This is the second half of the guard and
+% the half that matters: runBatchPass exists to protect the ARTIFACT, not to
+% excuse the failure. Without this line a pass that threw would leave a green
+% discovery run whose documents are silently in pass-1 form -- a pass that
+% quietly does nothing, which is the defect this project keeps paying for.
+% verifyThat is non-fatal in a function-based test, so the summary below still
+% prints and the orphan gate below still runs.
+for passField = {'epoch_mint', 'session_anchor_fold'}
+    failMsg = did2.unittest.helpers.batchPassFailure(result, passField{1});
+    verifyEmpty(testCase, failMsg, sprintf( ...
+        ['%s: batch post-pass `%s` FAILED and its documents are in pass-1 ' ...
+         'form: %s (the corpus report at %s was still written, and records ' ...
+         'this under %s.pass_failed)'], ...
+        corpusName, passField{1}, failMsg, reportPath, passField{1}));
+end
 
 % Per-term routing inventory (best-effort): makes the heuristic
 % treatment / ontology_table_row routing auditable against real corpus
@@ -158,6 +222,7 @@ printFragmentCensus(result);
 printSilentLossCensus(result);
 printFileListAudit(result);
 printSourceCensus(result);
+printBatchPasses(result);
 fprintf('top quarantine reasons:\n');
 for k = 1:min(numel(reasons), 15)
     fprintf('  %5d  [%s] %s\n', reasons(k).count, ...

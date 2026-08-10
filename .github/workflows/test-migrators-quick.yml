@@ -102,6 +102,13 @@ jobs:
         # now, so its tests belong on the fast gate where they cost nothing.
         run: python3 tools/test_census_digest.py
 
+      - name: Census digest -- #52 family-uniqueness rows (python, <1s)
+        # Separate file, separate step: #52's rows are the ones where an empty
+        # table is AMBIGUOUS (the rule may have found nothing, or may have been
+        # unable to fire), so the tests are about the DENOMINATORS printing at
+        # all -- not about a count. A silent zero here is the failure mode.
+        run: python3 tools/test_census_digest_uniqueness.py
+
       - name: Unminted ontology terms must not increase (#70)
         # Staging a term as {node: '', name: '...'} is the accepted practice --
         # a migration can go green and the CURIEs be minted after. The hazard is
