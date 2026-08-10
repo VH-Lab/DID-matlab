@@ -7,7 +7,9 @@ function result = v1_to_v2(v1Bodies, options)
 %
 %     1. did2.convert.universalRenames    (cross-cutting renames)
 %     2. matching superclass migrators under
-%        +did2.+convert.+migrators.<superclass_name>
+%        +did2.+convert.+migrators.<superclass_name>, or, when
+%        TargetVersion is 'V_eta' and one exists,
+%        +did2.+convert.+migrators_j.+super.<superclass_name>
 %     3. concrete-class migrator under
 %        +did2.+convert.+migrators.<class_name>  (identity fallback)
 %     4. ensureClassBlocks: pad empty `struct()` property blocks for
@@ -151,7 +153,8 @@ for k = 1:numel(bodies)
             postUniversalBody = did2.convert.universalRenames(preBody, ...
                 'RenameClassNames', options.RenameClassNames);
             className = char(postUniversalBody.document_class.class_name);
-            v2Body = applySuperclassMigrators(postUniversalBody, className);
+            v2Body = applySuperclassMigrators(postUniversalBody, className, ...
+                options.TargetVersion);
             % runConcreteMigrator returns a CELL of one-or-more bodies.
             % Default (TargetVersion 'V_delta') always returns a single
             % body via the existing per-class migrator, so behaviour is
@@ -500,13 +503,49 @@ end
 body.document_class.superclasses = sc;
 end
 
-function body = applySuperclassMigrators(body, concreteClassName)
+function body = applySuperclassMigrators(body, concreteClassName, targetVersion)
 % Walk document_class.superclasses (as normalised by universalRenames)
 % and run any matching +migrators/<superclass>.m before the
 % concrete-class migrator runs. Skips entries whose name matches the
 % concrete class or is empty, and skips entries that have no
 % registered migrator (silent no-op, same convention as the identity
 % fallback).
+%
+% ---------------------------------------------------------------------
+% TARGET-VERSION OVERRIDE  (added for #46: ngrid.coordinates)
+% ---------------------------------------------------------------------
+% This step was NOT bypassed by the migrators_j split, and that was a
+% silent data loss rather than a design: runConcreteMigrator routes a
+% class to +migrators_j INSTEAD of +migrators, but the SUPERCLASS pass
+% above it kept running the V_delta migrators unconditionally. So under
+% TargetVersion 'V_eta', +migrators/ngrid.m -- whose whole job is the
+% V_delta reshape (data_dim -> dim_sizes, derive ndims, rmfield
+% coordinates, rmfield data_size) -- was deleting `coordinates` on every
+% ontologyImage and every hartley_calc document before the J migrator
+% ever saw the body. testMigratorsJ records the symptom in its own
+% comment ("in the real pipeline the ngrid SUPERCLASS migrator runs
+% first and deletes it").
+%
+% A target-version override fixes it the same way runConcreteMigrator
+% does. THE OVERRIDE LIVES IN A DEDICATED SUBPACKAGE
+% (+migrators_j/+super/), NOT in +migrators_j itself, and that is
+% load-bearing: +migrators_j is full of CONCRETE-class migrators whose
+% names are also superclass names somewhere in the v1 zoo (element,
+% subject, image, measurement, filenavigator, pyraview, ...), and those
+% return a CELL OF BODIES (1 -> N). Picking one up here would hand a
+% cell to a step contracted to return a single struct. A separate
+% namespace makes that collision impossible by construction rather than
+% by an allow-list somebody has to maintain.
+%
+% A superclass override must return exactly one body: it reshapes a
+% property block, it does not split documents.
+if nargin < 3 || isempty(targetVersion)
+    targetVersion = 'V_delta';
+end
+superPackage = '';
+if strcmp(targetVersion, 'V_eta')
+    superPackage = 'did2.convert.migrators_j.super.';
+end
 if ~isfield(body, 'document_class') ...
         || ~isfield(body.document_class, 'superclasses') ...
         || ~isstruct(body.document_class.superclasses) ...
@@ -525,9 +564,22 @@ for k = 1:numel(sc)
         continue;
     end
     seen{end+1} = name; %#ok<AGROW>
-    fqn = ['did2.convert.migrators.', name];
-    if ~isempty(which(fqn))
-        body = feval(fqn, body);
+    fqn = '';
+    if ~isempty(superPackage) && ~isempty(which([superPackage, name]))
+        fqn = [superPackage, name];
+    elseif ~isempty(which(['did2.convert.migrators.', name]))
+        fqn = ['did2.convert.migrators.', name];
+    end
+    if ~isempty(fqn)
+        out = feval(fqn, body);
+        if ~isstruct(out) || ~isscalar(out)
+            error('did2:convert:badSuperclassMigratorOutput', ...
+                ['Superclass migrator %s returned %s; a superclass ' ...
+                 'migrator reshapes ONE body and must return a scalar ' ...
+                 'struct (splitting is the concrete migrator''s job).'], ...
+                fqn, class(out));
+        end
+        body = out;
     end
 end
 end

@@ -868,8 +868,11 @@ classdef cache < handle
             %   Anything unrecognised -- including unset -- is FALSE. A
             %   switch that arms itself on a typo is worse than one that
             %   stays off.
-            raw = lower(strtrim(getenv(varName)));
-            tf = any(strcmp(raw, {'1', 'true', 'yes', 'on'}));
+            % strcmpi, not lower()+strcmp: one call, and it does not build a
+            % throwaway lowercased copy whose only purpose is the comparison.
+            % (GitHub code scanning alert 169; the two are equivalent here
+            % because every candidate below is already lower-case ASCII.)
+            tf = any(strcmpi(strtrim(getenv(varName)), {'1', 'true', 'yes', 'on'}));
         end
 
         function tf = edgeIsPopulated(body, name)

@@ -100,12 +100,17 @@ function [result, report] = epochMint(result, options)
 %   WHAT IT DOES NOT BUILD
 %   ---------------------------------------------------------------------
 %   The 15 `epochid`-carrying classes are NOT rewired to an `epoch_id` edge
-%   here. They cannot be: of the classes emitted by pass 1, exactly THREE
-%   declare an `epoch_id` dependency at all --
+%   here. They cannot be: exactly THREE V_eta classes declare an `epoch_id`
+%   DEPENDENCY at all. Measured over the built schema set -- and a plain grep
+%   for the name will NOT show this, because it also matches
+%   `epochfiles_ingested`'s `epoch_id` FIELD, which is a char string and not an
+%   edge:
 %
-%       $ grep -l '"name": "epoch_id"' schemas/V_eta/*/*.json
-%         acquisition_metadata_file.json  ingestion_manifest.json
-%         method_parameters.json
+%     DENOMINATOR: 245 V_eta schema files inspected
+%       dep    acquisition_metadata_file
+%       dep    ingestion_manifest
+%       dep    method_parameters
+%       field  epochfiles_ingested        <- a char field, NOT an edge
 %
 %   -- and the first two are not emitted by pass 1. Stamping an edge a class
 %   does not declare is the invented-edge pattern with the sign flipped. The

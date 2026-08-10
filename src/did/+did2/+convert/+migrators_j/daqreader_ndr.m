@@ -24,9 +24,17 @@ end
 if isfield(sub, 'ndr_reader_string')
     v2Body.daqreader.reader_string = sub.ndr_reader_string;
 end
-if isfield(sub, 'file_extension')
-    v2Body.daqreader.file_extension = sub.file_extension;
-end
+% NO `file_extension`. It was copied here until 2026-08-10, and it is an
+% INVENTED FIELD: `git grep -l "file_extension" origin/main -- '*.m' '*.json'`
+% returns ZERO files, so no NDI template declares it and no NDI writer sets it.
+% DID-schema deleted the declaration (commit 4815882), which means copying it
+% would emit an UNDECLARED field and quarantine the document.
+%
+% It is latent rather than live only because the source field cannot exist on a
+% real document -- the same reason it survived this long. The DID-schema pytest
+% twin (test_daqreader_ndr_de_encoded) was inverted when the field was deleted;
+% its MATLAB twin at testMigratorsJ.m was not, and is inverted in the same
+% commit as this deletion.
 if isfield(v2Body, 'daqreader_ndr')
     v2Body = rmfield(v2Body, 'daqreader_ndr');
 end

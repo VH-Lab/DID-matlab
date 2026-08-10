@@ -1339,7 +1339,20 @@ body.daqreader_ndr = struct('ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr
 out = did2.convert.migrators_j.daqreader_ndr(body);
 verifyEqual(testCase, out.document_class.class_name, 'daqreader');
 verifyEqual(testCase, out.daqreader.reader_string, 'intan');
-verifyEqual(testCase, out.daqreader.file_extension, '.rhd');
+% INVERTED 2026-08-10. This asserted that `file_extension` is carried across.
+% It is an INVENTED field -- `git grep -l "file_extension" origin/main --
+% '*.m' '*.json'` returns ZERO files, so no NDI template declares it and no
+% NDI writer sets it. DID-schema deleted the declaration (4815882), so
+% carrying it would emit an undeclared field and quarantine the document.
+%
+% The DID-schema pytest twin (test_daqreader_ndr_de_encoded) was inverted when
+% the field was deleted; this MATLAB twin was missed, and the migrator kept
+% copying the field with a test standing guard over the copy. Latent, not live
+% -- the source field cannot appear on a real document -- which is exactly why
+% it survived. The fixture above still SETS it, deliberately: that is what
+% makes this an assertion about the migrator rather than about the fixture.
+verifyFalse(testCase, isfield(out.daqreader, 'file_extension'), ...
+    'file_extension is invented; carrying it emits an undeclared field');
 verifyEqual(testCase, out.daqreader.ndi_daqreader_class, 'ndi.daq.reader.mfdaq.ndr');
 % the subtype block is gone
 verifyFalse(testCase, isfield(out, 'daqreader_ndr'));

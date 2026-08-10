@@ -1,4 +1,4 @@
-function [software, swId] = jSoftware(name, version, url, sessionId, datestamp)
+function [software, swId] = jSoftware(name, version, url, sessionId, datestamp, opts)
 %JSOFTWARE Build a V_eta `software` ENTITY body (the R1 replacement for `app`).
 %
 %   [SOFTWARE, SWID] = jSoftware(NAME, VERSION, URL, SESSIONID, DATESTAMP)
@@ -6,6 +6,36 @@ function [software, swId] = jSoftware(name, version, url, sessionId, datestamp)
 %   a caller to emit alongside its own document and reference by a `software_id`
 %   edge. Returns [] and '' when NAME is empty -- no identity, no entity, and
 %   the caller omits the edge (rule: never emit an empty required edge).
+%
+%   [...] = jSoftware(..., 'RequireSession', true) ALSO returns [] and '' when
+%   SESSIONID is empty. DEFAULT IS FALSE, which is exactly today's behaviour --
+%   this option was added, not switched on, because four live callers
+%   (daqreader, daqmetadatareader, filenavigator, jCalculation via
+%   jSoftwareFromApp) already index the returned struct and would error on [].
+%   See "THE EMPTY-SESSION HAZARD" below for why anyone would want it.
+%
+%   ---------------------------------------------------------------------
+%   THIS IS THE ONE PLACE A `software` BODY IS BUILT
+%   ---------------------------------------------------------------------
+%   It had grown three implementations, two of which omitted the dedup key:
+%     - private/jSyncSoftware.m   (syncrule / syncgraph implementation classes)
+%     - a LOCAL softwareEntity() inside private/jMethodParameters.m
+%   Both now delegate here, so every `software` document in the corpus carries
+%   `local_identifier` and the deferred dedup pass has one shape to read.
+%   jSyncSoftware's comment justifying its omission -- "jCalculation's software
+%   entities do not set it either" -- was true when written and is now false:
+%   jCalculation -> jSoftwareFromApp -> jSoftware, which sets it.
+%
+%   ---------------------------------------------------------------------
+%   THE EMPTY-SESSION HAZARD (reported, not silently patched)
+%   ---------------------------------------------------------------------
+%   `base.session_id` is "mustBeNonEmpty": true (did-schema
+%   schemas/V_eta/stable/base.json), so a `software` built with an empty
+%   SESSIONID is a document that CANNOT validate -- and because v1_to_v2
+%   quarantines the SOURCE when any body it produced fails, one such entity
+%   takes its whole source document down with it. Only jMethodParameters
+%   guarded against that; the other callers do not. RequireSession makes the
+%   guard reusable without changing what any existing caller gets.
 %
 %   TEAM-SIGN-OFF [software], V_eta_tenet_audit.md:10 -- "the `app` mixin is
 %   replaced by a `software` ENTITY (deduplicated by name+version) referenced
@@ -52,12 +82,16 @@ arguments
     url (1,:) char = ''
     sessionId = ''
     datestamp = ''
+    opts.RequireSession (1,1) logical = false
 end
 
 software = [];
 swId = '';
 if isempty(name)
     return;     % no identity -> no entity (and the caller omits software_id)
+end
+if opts.RequireSession && isempty(char(sessionId))
+    return;     % opt-in: no session to hang the entity on (see header)
 end
 
 swId = did.ido.unique_id();

@@ -60,15 +60,42 @@ function refs = jEpochClockReferences(epochTable, epochDocId, sessionId, datesta
 %       the abstract `ndi.daq.reader.mfdaq/t0_t1` docstring says "The abstract
 %       class always returns {[NaN NaN]}".
 %
-%   The reference is emitted with a METRIC (start/end) and no `relation`. Under
-%   the signed time model `relation` carries the qualitative Allen relation used
-%   when there is no metric offset; here the offsets ARE the content, and
+%   The reference is emitted with a METRIC (start/duration) and no `relation`.
+%   Under the signed time model `relation` carries the qualitative Allen relation
+%   used when there is no metric offset; here the offsets ARE the content, and
 %   `relation` is optional (mustBeNonEmpty: false in relative_reference.json).
 %
-%   `is_approximate` is derived from the clock name rather than guessed: NDI's
-%   clocktype vocabulary marks the tier in the name itself ('approx_utc',
-%   'approx_exp_global_time', 'approx_dev_global_time' are ~5 s;
-%   the unprefixed forms are within 0.1 ms -- +ndi/+time/clocktype.m:20-29).
+%   ---------------------------------------------------------------------
+%   #65 INCREMENT 2 -- THREE CHANGES FROM THE SIGNED WALKTHROUGH
+%   ---------------------------------------------------------------------
+%   V_eta_time_reference_model_plan.md:468, TEAM-SIGN-OFF [time_reference],
+%   jess@walthamdatascience.com / 2026-08-08.
+%
+%   CHANGE 1  `value.end` no longer exists; the EXTENT is `value.duration`
+%             (t1 - t0). Anchor and extent are independent facts.
+%   CHANGE 2  `value.approximate` and `time_reference.is_approximate` are gone.
+%             This function used to derive BOTH from the `approx_` prefix, which
+%             was the error the team caught: a boolean has no magnitude, so the
+%             five seconds NDI documents were being thrown away.
+%   CHANGE 4  the prefix de-encodes to DATA instead. `approx_utc` becomes
+%             `clock: utc` + `clock_tolerance {seconds: 5}` on the ROOT block:
+%
+%               +ndi/+time/clocktype.m:21  'approx_utc' | ... (within 5 seconds)
+%                                     :23  'approx_exp_global_time' | (within 5s)
+%                                     :26  'approx_dev_global_time' | (within 5 s)
+%
+%             The 5 is TRANSCRIBED from those docstrings, not invented -- the
+%             same call R6 made for dtype and the Hartley plane labels.
+%
+%   `clock` is now an `ontology_term` (CHANGE 3), built through jOntologyTerm so
+%   the staged-node backlog counter (tools/check_empty_ontology_nodes.py) SEES
+%   it. The node is empty because the NDIC identifier authority is in no
+%   repository in scope: NDIC.txt was removed from NDI-matlab in 2c19bf24c.
+%
+%   STATUS: NOT EXECUTED. This environment has no MATLAB. Nothing below has run,
+%   and this function has never fired on real data anyway -- jEpochDocId answers
+%   '' for every did_v1 document today, so the guard above returns {} and no
+%   reference is emitted. It goes live with the epoch mint (#60).
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) ingested-payload migrators.
 
@@ -98,13 +125,15 @@ for k = 1:n
     if numel(t) < 2 || ~all(isfinite(t(1:2)))
         continue;                       % NO TIMES => NO REFERENCE
     end
-    approx = startsWithApprox(clockName);
+    % CHANGE 4: the prefix is DE-ENCODED, not folded into a boolean. What is
+    % approximate is the TIMELINE, and by exactly five seconds.
+    [bareClock, toleranceSeconds] = deEncodeApprox(clockName);
 
     ref = struct();
     ref.document_class = struct('class_name', 'relative_reference', ...
-        'class_version', '1.0.0', ...
+        'class_version', '2.0.0', ...
         'superclasses', struct('class_name', 'time_reference', ...
-            'class_version', '3.0.0'), ...
+            'class_version', '4.0.0'), ...
         'schema_version', 'V_eta');
     % relative_to is REQUIRED (team call, recorded in the time model plan: "a
     % relative time with no referent is not interpretable"). The caller has

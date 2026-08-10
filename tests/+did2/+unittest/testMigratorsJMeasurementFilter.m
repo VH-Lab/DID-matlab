@@ -172,15 +172,25 @@ function testDatestampBecomesTheInstantNotAField(testCase)
 out = runJ(subjectMeasurementBody());
 ref = docOfClass(testCase, out, 'absolute_reference');
 
+% INVERTED for #65 increment 2 (V_eta_time_reference_model_plan.md:468,
+% TEAM-SIGN-OFF [time_reference] 2026-08-08). The flat `start_utc` /
+% `source_start` / `end_utc` fields this block used to assert NO LONGER EXIST:
+% CHANGE 1 makes the ANCHOR a nested cell and the EXTENT a separate `duration`,
+% so an approximate anchor and an exact span stop contaminating each other. The
+% assertions are re-pointed at the same FACTS in their new homes -- this is not
+% a rename, the old paths are gone.
+%
 % canonical UTC instant + the string exactly as the source wrote it
-verifyEqual(testCase, ref.get('absolute_reference.value.start_utc'), ...
+verifyEqual(testCase, ref.get('absolute_reference.value.start.utc'), ...
     '2017-03-17T19:53:57.066Z');
-verifyEqual(testCase, ref.get('absolute_reference.value.source_start'), ...
+verifyEqual(testCase, ref.get('absolute_reference.value.start.source_value'), ...
     '2017-03-17T19:53:57.066Z');
-% a measurement is a POINT: an absent end_utc IS the point-in-time case
-verifyFalse(testCase, isfield(ref.get('absolute_reference.value'), 'end_utc'));
-% a millisecond stamp is not an approximation
-verifyEqual(testCase, ref.get('time_reference.is_approximate'), false);
+% a measurement is a POINT: an absent `duration` IS the point-in-time case
+verifyFalse(testCase, isfield(ref.get('absolute_reference.value'), 'duration'));
+% a millisecond stamp is not an approximation. CHANGE 2 deleted the value-level
+% flag and deprecated the root `is_approximate`, so the one precision fact that
+% remains real lives on the ANCHOR cell.
+verifyEqual(testCase, ref.get('absolute_reference.value.start.approximate'), false);
 
 % base.datestamp is the RECORD-CREATION stamp and is a DIFFERENT FACT -- the
 % tombstone says so ("SHADOWS base.datestamp"). It must not be confused with the
@@ -216,14 +226,16 @@ function testUnparseableDatestampKeepsTheSourceString(testCase)
 % A stamp this migration cannot normalise to UTC is still a time. The source
 % string is kept verbatim and the canonical slot is LEFT ABSENT rather than
 % filled with a guess -- converting an unlabelled local time is a guess, and
-% start_utc is mustBeNonEmpty:false so an absent one validates.
+% `start.utc` is mustBeNonEmpty:false so an absent one validates.
+% INVERTED for #65 increment 2: the paths are `value.start.source_value` and
+% `value.start.utc`; `value.source_start` / `value.start_utc` no longer exist.
 b = subjectMeasurementBody();
 b.subjectmeasurement.datestamp = '17-Mar-2017 19:53:57';
 out = runJ(b);
 ref = docOfClass(testCase, out, 'absolute_reference');
-verifyEqual(testCase, ref.get('absolute_reference.value.source_start'), ...
+verifyEqual(testCase, ref.get('absolute_reference.value.start.source_value'), ...
     '17-Mar-2017 19:53:57');
-verifyFalse(testCase, isfield(ref.get('absolute_reference.value'), 'start_utc'));
+verifyFalse(testCase, isfield(ref.get('absolute_reference.value.start'), 'utc'));
 end
 
 function testNoSubjectPassesThrough(testCase)

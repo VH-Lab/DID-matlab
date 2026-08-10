@@ -563,6 +563,9 @@ function testMethodParametersGetsItsEpochEdge(testCase)
 % (jMethodParameters.m:112-119 writes it to `other.epochid` because jEpochDocId
 % answers '' in pass 1). The other two classes declaring the edge --
 % `ingestion_manifest`, `acquisition_metadata_file` -- are not emitted yet.
+% (Three DEPENDENCIES over 245 V_eta schema files; `epochfiles_ingested`'s
+% `epoch_id` is a char FIELD, not an edge, and a grep for the name conflates
+% them.)
 [out, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     extractionModificationBody('sepm_1', 'sess_A', 't00069', 'el_1')});

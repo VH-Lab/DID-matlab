@@ -8,23 +8,41 @@ function ref = jAbsoluteReference(preBody, instant)
 %   this returns [], because `subject_interaction` requires at least one
 %   time_reference (min_count 1).
 %
+%   STATUS: NOT EXECUTED. Rewritten 2026-08-10 for #65 increment 2 in an
+%   environment with no MATLAB, so nothing here has been run. The shape it emits
+%   was read field-by-field off the rebuilt schema
+%   (schemas/V_eta/stable/absolute_reference.json, class_version 2.0.0).
+%
 %   THE FIRST REAL EMITTER OF `absolute_reference`. The class was built
 %   2026-08-06 with no writer -- "a wall-clock instant with no referent is
 %   exactly what that class is for" -- and `subjectmeasurement.datestamp` is the
 %   case it was built for.
 %
 %   ---------------------------------------------------------------------
-%   WHAT GOES IN `value`, AND WHY start_utc IS SOMETIMES ABSENT
+%   WHAT GOES IN `value` -- THE SIGNED SHAPE, NOT THE INCREMENT-1 ONE
 %   ---------------------------------------------------------------------
-%   From schemas/V_eta/stable/absolute_reference.json:
+%   V_eta_time_reference_model_plan.md:468, TEAM-SIGN-OFF [time_reference],
+%   jess@walthamdatascience.com / 2026-08-08, reshapes this class. The flat
+%   `start_utc` / `end_utc` / `source_start` fields this function used to write
+%   NO LONGER EXIST:
 %
-%       value.start_utc    timestamp   canonical UTC start instant
-%       value.end_utc      timestamp   ABSENT means a point in time
-%       value.source_start char        the instant exactly as the source wrote it
-%       value.approximate  boolean
+%       value.start              structure   the ANCHOR
+%            .utc                timestamp     canonical instant
+%            .source_value       char          the instant exactly as written
+%            .source_timezone    char
+%            .source_utc_offset  char
+%            .approximate        boolean       is the ANCHOR imprecise
+%       value.duration           duration    the EXTENT; ABSENT = an instant
+%       value.source_end         char        only when the source wrote TWO instants
 %
-%   `source_start` is ALWAYS set -- it is lossless provenance and costs nothing.
-%   `start_utc` is set only when the source string is recognisably ISO-8601 in
+%   CHANGE 1 is why `end_utc` is gone: an anchor and an extent are independent
+%   facts, and two instants make the exactness of their DIFFERENCE unrecoverable
+%   ("started around 09:00, ran exactly 60 minutes"). `duration` is ABSENT here
+%   because a measurement instant is a point -- which the schema says IS the
+%   point-in-time case -- so this function never writes it.
+%
+%   `start.source_value` is ALWAYS set: lossless provenance, costs nothing.
+%   `start.utc` is set only when the source string is recognisably ISO-8601 in
 %   UTC (a trailing `Z`), which is what every in-tree writer produces:
 %
 %       build_intan_flat_exp.m:66  'subjectmeasurement.datestamp',
@@ -35,14 +53,20 @@ function ref = jAbsoluteReference(preBody, instant)
 %   this migrator can do, but converting an unlabelled local time is a guess, and
 %   the two are not distinguishable without knowing which writer produced the
 %   string. Recording the source string and leaving the canonical slot empty is
-%   the honest state; `start_utc` is `mustBeNonEmpty: false`, so it validates.
+%   the honest state; `utc` is `mustBeNonEmpty: false`, so it validates.
 %
-%   `end_utc` is never set: a measurement instant is a point, and the schema says
-%   an absent `end_utc` IS the point-in-time case.
-%
-%   `time_reference.is_approximate` is false: the source gives a millisecond-
-%   resolution stamp. (Contrast `jSessionAnchor`, which sets it true because
-%   "during the session" is all it knows.)
+%   ---------------------------------------------------------------------
+%   NO `time_reference` BLOCK IS WRITTEN
+%   ---------------------------------------------------------------------
+%   CHANGE 2 deletes the value-level `approximate`, and the root's
+%   `is_approximate` is DEPRECATED (it survives only until the six retiring
+%   subclasses go, because emitters still write it). This document has nothing to
+%   say in that block: the source gives a millisecond-resolution stamp, so there
+%   is no `clock_tolerance` either. The block is therefore left OUT and
+%   v1_to_v2's ensureClassBlocks pads it (`body.(cls) = struct()`,
+%   +did2/+convert/v1_to_v2.m:471-475) -- the same door every other inherited
+%   block goes through. `start.approximate` carries the one precision fact that
+%   is real, and it is FALSE.
 %
 %   preBody   the post-universalRenames source body (supplies session + datestamp
 %             for the minted document's own `base` block).
@@ -76,20 +100,21 @@ end
 
 ref = struct();
 ref.document_class = struct('class_name', 'absolute_reference', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
+    'class_version', '2.0.0', ...
+    'superclasses', struct('class_name', 'time_reference', 'class_version', '4.0.0'), ...
     'schema_version', 'V_eta');
 ref.depends_on = struct('name', {}, 'value', {});
 ref.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', 'migrated_measurement_time', 'datestamp', ds);
-ref.time_reference = struct('is_approximate', false);
 
-value = struct('source_start', instant, 'approximate', false);
+start = struct('source_value', instant, 'approximate', false);
 utc = canonicalUTC(instant);
 if ~isempty(utc)
-    value.start_utc = utc;
+    start.utc = utc;
 end
-ref.absolute_reference = struct('value', value);
+% No `duration`: a measurement instant is a POINT, and an absent duration IS the
+% point-in-time case. No `source_end`: the source wrote one instant, not two.
+ref.absolute_reference = struct('value', struct('start', start));
 end
 
 % ===================== small helpers =======================================
