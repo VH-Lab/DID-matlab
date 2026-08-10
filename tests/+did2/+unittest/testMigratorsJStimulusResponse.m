@@ -6,7 +6,10 @@ function tests = testMigratorsJStimulusResponse
 %   [stimulus response], 2026-08-08 -- four classes to TWO):
 %
 %     stimulus_response_scalar
-%         -> harmonic_component_calculation (id PRESERVED) + session anchor
+%         -> harmonic_component_calculation (id PRESERVED) + a time anchor
+%            (a `relative_reference` onto the epoch when the epoch document
+%             exists, jCalculation's session anchor when there is no epoch
+%             string at all, and NO FOLD in between -- see the epoch gate below)
 %     stimulus_response_scalar_parameters_basic
 %         -> guarded passthrough (the inline fold needs the resolver pass)
 %
@@ -24,6 +27,38 @@ function tests = testMigratorsJStimulusResponse
 %   nothing else -- the two epoch strings are ordinary fields on the
 %   `stimulus_response` block, not the `epochid` mixin. Adding one would be
 %   fabricating the source.
+%
+%   ---------------------------------------------------------------------
+%   WHY THE FOLD TESTS STAMP AN `epoch_id` EDGE (added 2026-08-10)
+%   ---------------------------------------------------------------------
+%   The migrator gained a fourth guard after this file was written
+%   (stimulus_response_scalar.m:259-263): an `element_epochid` STRING with no
+%   `epoch` DOCUMENT to anchor to SUPPRESSES the fold, because folding would
+%   delete a string recoverable from nothing. Every test below that asserts what
+%   the fold PRODUCES therefore has to open that gate, or it is asserting the
+%   contents of a document the migrator never emits -- which is how all ten of
+%   them failed in Actions run 31439501430 with
+%   `no "harmonic_component_calculation" among {stimulus_response_scalar}`.
+%
+%   The gate is opened the way the epoch pass opens it in production, not by
+%   weakening the assertions: `withEpochEdge` stamps the same `epoch_id` edge
+%   `did2.convert.epochMint` stamps (epochMint.m:409,
+%   `b = setDep(b, 'epoch_id', epochIdByKey(key))`), spelled the way
+%   `+migrators_j/private/jEpochDocId.m` reads it. NO did_v1 DOCUMENT CARRIES
+%   THAT EDGE -- it is a second-pass product, and stamping it here is the only
+%   fabrication in the file, made loud at every call site rather than hidden in
+%   the fixture.
+%
+%   Opening the gate also RESTORES the meaning of the passthrough guards below.
+%   With the gate shut, `testUnparseableResponseTypePassesThrough` would pass
+%   with guards 2 and 3 deleted -- guard 4 alone would produce the passthrough it
+%   asserts. Stamped, only the guard each test names can produce it.
+%
+%   BOTH BRANCHES STAY COVERED. `testTheUnstampedFixtureIsSuppressedNotFolded`
+%   below pins the shut gate (the live branch on every did_v1 document today),
+%   `testWithNoEpochStringTheAnchorIsStillTheDuringSessionReference` pins the
+%   no-epoch-string branch and the session anchor it emits, and
+%   `testStimulusResponseEpochGuard.m` drives all three in detail.
 %
 %   Most tests run with Validate=false so they assert the TRANSFORM; the last one
 %   runs with Validate=true against the real assembled V_eta schema, because a
@@ -70,6 +105,32 @@ v1.stimulus_response_scalar = struct('response_type', responseType, ...
         'control_response_imaginary', [0.01 0.01 0.01 0.02 0.02 0.02]));
 end
 
+function v1 = withEpochEdge(v1)
+%WITHEPOCHEDGE Stamp the `epoch_id` edge that unlocks the fold (guard 4).
+%
+%   NO did_v1 DOCUMENT CARRIES THIS EDGE. It is what
+%   `did2.convert.epochMint` writes once it has minted one `epoch` document per
+%   distinct (session, epoch string) pair:
+%
+%     epochMint.m:409   b = setDep(b, 'epoch_id', epochIdByKey(key));
+%
+%   and it is what `+migrators_j/private/jEpochDocId.m` reads -- the entry named
+%   `epoch_id`, its value taken from `document_id` | `value` | `id`, whichever is
+%   populated. `value` is the spelling a raw v1 body uses, so that is what is
+%   written here.
+%
+%   The id is a stand-in for a document minted OUTSIDE these one- and
+%   two-document batches; it is deliberately not an `epochdoc`-shaped substring
+%   of either epoch string, so a test that greps the output for a leaked 't000nn'
+%   cannot be fooled by it.
+v1.depends_on(end+1) = struct('name', 'epoch_id', 'value', epochDocId());
+end
+
+function id = epochDocId()
+%EPOCHDOCID The one stamped epoch document id, named once.
+id = 'epochdoc_5f21b0';
+end
+
 function v1 = parametersFixture()
 %PARAMETERSFIXTURE A did_v1 stimulus_response_scalar_parameters_basic (:276-281),
 %   with the in-function defaults the writer sets at :172-177. The id is the one
@@ -96,11 +157,14 @@ end
 % ===================== the fold ============================================
 
 function testResponseScalarFoldsToHarmonicComponentCalculation(testCase)
-out = runJ(responseFixture('F1'));
+out = runJ(withEpochEdge(responseFixture('F1')));
 verifyEmpty(testCase, out.quarantine);
-% 1 -> 2: the leaf plus the shared 'during' session anchor. No software entity:
-% this class has no `app` block (its NDI superclasses are base +
-% stimulus_response), so jCalculation emits none.
+% 1 -> 2: the leaf plus its 'during' time anchor. No software entity: this class
+% has no `app` block (its NDI superclasses are base + stimulus_response), so
+% jCalculation emits none. The anchor is a `relative_reference` onto the epoch
+% rather than jCalculation's session anchor, because the epoch document exists --
+% stimulus_response_scalar.m:306-310 retargets `time_reference_1` and REPLACES
+% bodies{2}, so the count is 2 either way.
 verifyEqual(testCase, numel(out.migrated), 2);
 
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
@@ -119,7 +183,7 @@ end
 function testTheFiveV1EdgesAreAllRehomed(testCase)
 % The point of the repair: V_eta dropped stimulator_id and stimulus_control_id
 % and inverted the parameters edge. All five come back, under J names.
-out  = runJ(responseFixture('F1'));
+out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 b    = leaf.toStruct();
 
@@ -129,10 +193,16 @@ verifyEqual(testCase, depValue(b, 'derived_from_1'),       'pres_b671ff');
 verifyEqual(testCase, depValue(b, 'derived_from_2'),       'ctrl_20e84c');
 verifyEqual(testCase, depValue(b, 'method_parameters_id'), 'param_77c19b');
 
-% the anchor is a real sibling document, not a dangling string
-anchor = findClass(testCase, out, 'session_relative_reference');
+% the anchor is a real sibling document, not a dangling string. With the epoch
+% document in hand it is a `relative_reference` onto that epoch and the relation
+% is still 'during' -- spelled as the OWL-Time CURIE the field's value_set
+% binding requires. The session-anchor spelling of the same assertion lives in
+% testWithNoEpochStringTheAnchorIsStillTheDuringSessionReference.
+anchor = findClass(testCase, out, 'relative_reference');
 verifyEqual(testCase, depValue(b, 'time_reference_1'), anchor.get('base.id'));
-verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+verifyEqual(testCase, char(anchor.get('relative_reference.value.relation.node')), ...
+    'time:intervalDuring');
+verifyFalse(testCase, anyClass(out, 'session_relative_reference'));
 
 % and the v1 spellings are GONE -- a leaf that still carried element_id would be
 % claiming the fold happened while leaving the old edge to be re-read.
@@ -144,7 +214,7 @@ verifyEmpty(testCase, depValue(b, 'stimulus_response_scalar_parameters_id'));
 end
 
 function testHarmonicComponentValueCarriesBothComplexPairs(testCase)
-out  = runJ(responseFixture('F1'));
+out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 
 verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 1);
@@ -171,7 +241,7 @@ verifyEqual(testCase, harmonicOf(testCase, 'F2'), 2);
 end
 
 function testStatementIsAnInlineCalculationWithTheAppAsMethod(testCase)
-out  = runJ(responseFixture('F1'));
+out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 verifyEqual(testCase, leaf.get('subject_statement.storage_mode'), 'inline');
 verifyEqual(testCase, leaf.get('subject_interaction.method.name'), ...
@@ -188,7 +258,7 @@ function testInlineMethodParametersStaysEmptyBesideTheEdge(testCase)
 % `method_parameters` field OR `method_parameters_id`, NEVER BOTH. Pass 1 has the
 % edge, so the inline block must stay empty until the resolver inlines the six
 % fields and drops the edge.
-out  = runJ(responseFixture('F1'));
+out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 verifyEmpty(testCase, fieldnames(leaf.get('subject_interaction.method_parameters')));
 verifyEqual(testCase, depValue(leaf.toStruct(), 'method_parameters_id'), 'param_77c19b');
@@ -207,7 +277,7 @@ function testStimidIsDeferredRatherThanWrittenIntoConditions(testCase)
 % verbatim (:237-239) -- and that document is derived_from_1 on this leaf.
 %
 % When #45 lands, this test should FAIL and be replaced by an axes assertion.
-out  = runJ(responseFixture('F1'));
+out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 s    = leaf.toStruct();
 verifyFalse(testCase, isfield(s.subject_statement, 'axes'));
@@ -225,7 +295,10 @@ function testNoElementIdPassesThroughInsteadOfEmittingASubjectlessLeaf(testCase)
 % edges, so a subject-less leaf would validate clean and be invisible -- the
 % image_stack husk (4,563 documents) and the fitcurve husk both worked exactly
 % that way. Pass the document through instead.
-v1 = responseFixture('F1');
+% STAMPED so that guard 1 is the only thing that can produce the passthrough.
+% Unstamped, guard 4 would produce it too and this test would pass with guard 1
+% deleted -- a test that cannot fail for the reason it names.
+v1 = withEpochEdge(responseFixture('F1'));
 v1.depends_on(strcmp({v1.depends_on.name}, 'element_id')) = [];
 out = runJ(v1);
 
@@ -244,7 +317,8 @@ function testUnparseableResponseTypePassesThrough(testCase)
 % writer can produce only 'mean' | 'F<n>'. If a document ever carries something
 % else the harmonic is unknown -- and `harmonic` is the field that makes this
 % class this class -- so guess nothing and carry the document forward.
-out = runJ(responseFixture('peak'));
+% STAMPED, so guard 2 is the only guard that can fire (see guard 1's test).
+out = runJ(withEpochEdge(responseFixture('peak')));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
@@ -252,7 +326,8 @@ verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
 end
 
 function testEmptyResponsesPassThrough(testCase)
-v1 = responseFixture('F1');
+% STAMPED, so guard 3 is the only guard that can fire (see guard 1's test).
+v1 = withEpochEdge(responseFixture('F1'));
 v1.stimulus_response_scalar.responses.response_real = [];
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
@@ -268,7 +343,7 @@ function testMissingOptionalEdgesAreOmittedNotEmptied(testCase)
 v1 = responseFixture('F1');
 keep = ~ismember({v1.depends_on.name}, {'stimulator_id', 'stimulus_control_id'});
 v1.depends_on = v1.depends_on(keep);
-out  = runJ(v1);
+out  = runJ(withEpochEdge(v1));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 b    = leaf.toStruct();
 
@@ -278,6 +353,51 @@ verifyFalse(testCase, any(strcmp({b.depends_on.name}, 'derived_from_2')));
 % the gap: a document names the instances of the family (revision 3), so
 % renumbering would make two datasets disagree about what derived_from_1 means.
 verifyEqual(testCase, depValue(b, 'derived_from_1'), 'pres_b671ff');
+end
+
+function testTheUnstampedFixtureIsSuppressedNotFolded(testCase)
+% THE OTHER SIDE OF EVERY `withEpochEdge` ABOVE, and the branch every did_v1
+% document in every corpus takes today: the writer sets `element_epochid`
+% unconditionally (tuning_response.m:317-318, a straight line with no branch) and
+% no migrator mints an `epoch` document, so guard 4 fires and the fold does not
+% run. Without this test the stamping above would silently redefine what this
+% file claims to cover -- it would assert the behaviour of a branch no production
+% document reaches while saying nothing about the one they all reach.
+%
+% Deliberately duplicates testStimulusResponseEpochGuard's branch-2 test. That is
+% the point: the assertions in THIS file are only about branch 1 because ONE line
+% opens the gate, and the reader has to be able to see the closed gate here.
+out = runJ(responseFixture('F1'));
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+    'stimulus_response_scalar');
+verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
+% suppressing is only worth anything if the string it protects is still there
+verifyEqual(testCase, out.migrated{1}.get('stimulus_response.element_epochid'), 't00003');
+verifyEqual(testCase, out.summary.unconverted_count, 1);
+end
+
+function testWithNoEpochStringTheAnchorIsStillTheDuringSessionReference(testCase)
+% BRANCH 3, and the home of the session-anchor assertion that
+% testTheFiveV1EdgesAreAllRehomed used to carry. With no epoch string there is
+% nothing for the fold to destroy, so it runs on jCalculation's session anchor --
+% and that anchor states 'during' in the `session_relative_reference` spelling,
+% which is a different field from branch 1's OWL-Time CURIE and so needs its own
+% assertion rather than an edit to the other one.
+v1 = responseFixture('F1');
+v1.stimulus_response.element_epochid = '';
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 2);
+
+leaf   = findClass(testCase, out, 'harmonic_component_calculation');
+anchor = findClass(testCase, out, 'session_relative_reference');
+verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
+    anchor.get('base.id'));
+verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+% id still preserved on the branch that does not have an epoch document
+verifyEqual(testCase, leaf.get('base.id'), 'resp_412fa1');
 end
 
 % ===================== the parameters document =============================
@@ -319,12 +439,18 @@ function testTheMigratedPairHasNoOrphanEdges(testCase)
 % subjects; control_stimulus_ids.m -> control_designation keeps base verbatim) --
 % and the fifth, the parameters document, must resolve INSIDE the batch, which is
 % exactly what re-homing the edge onto method_parameters_id depends on.
-out = did2.convert.v1_to_v2({responseFixture('F1'), parametersFixture()}, ...
+out = did2.convert.v1_to_v2({withEpochEdge(responseFixture('F1')), parametersFixture()}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine);
 
+% The SIXTH external referent is the `epoch` document the anchor points at. It is
+% minted by did2.convert.epochMint by GROUPING on (session, epoch string) over the
+% whole batch -- so like the other four it exists in a full migration and not in a
+% two-document one, and like the other four it is supplied as a KnownId rather
+% than fabricated into the batch. It is listed SEPARATELY here so that a reader
+% can see it is our own second pass's product and not an NDI-side id.
 report = did2.validate.references(out.migrated, 'KnownIds', ...
-    {'elem_9c027e', 'stim_5daa03', 'pres_b671ff', 'ctrl_20e84c'});
+    [{'elem_9c027e', 'stim_5daa03', 'pres_b671ff', 'ctrl_20e84c'}, {epochDocId()}]);
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
 verifyGreaterThanOrEqual(testCase, report.edges_examined, 6);
 if report.orphan_count > 0
@@ -343,7 +469,14 @@ function testFoldValidatesAgainstTheRealVEtaSchema(testCase)
 % draft + deprecated) -- the quick gate builds exactly that, and
 % harmonic_component/_calculation are in the DRAFT tier, so a stable-only schema
 % path will fail here rather than skip. Deliberate: a skip reads as success.
-out = did2.convert.v1_to_v2({responseFixture('F2'), parametersFixture()}, ...
+%
+% This is also the only place the EPOCH ANCHOR meets the schema: branch 1 emits a
+% `relative_reference` (V_eta/stable) whose `relative_to` names a document that is
+% not in this batch. That validates -- +did2/+validate/references.m is not run by
+% Validate, and `must_refer_to_document_class` is existence-only and declarative --
+% and testMigratorsJIngested/testReferenceLiftValidatesUnderVEta already relies on
+% exactly that, with the same fabricated epoch id.
+out = did2.convert.v1_to_v2({withEpochEdge(responseFixture('F2')), parametersFixture()}, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
@@ -378,9 +511,21 @@ out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 end
 
 function h = harmonicOf(testCase, responseType)
-out  = runJ(responseFixture(responseType));
+out  = runJ(withEpochEdge(responseFixture(responseType)));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 h    = leaf.get('harmonic_component.value.harmonic');
+end
+
+function tf = anyClass(out, className)
+%ANYCLASS Whether the batch contains a document of CLASSNAME. Distinct from
+%   findClass, which FAILS when it does not -- this one is for asserting absence.
+tf = false;
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+        tf = true;
+        return;
+    end
+end
 end
 
 function doc = findClass(testCase, out, className)
