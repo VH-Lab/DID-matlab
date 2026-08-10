@@ -44,6 +44,26 @@ function bodies = ontology_label(preBody)
 %   was about -- and asserts nothing false. Until then the document is carried
 %   through intact, so nothing is lost and no false claim is minted.
 %
+%   THE SECOND PASS IS NOW BUILT: ndi.migrate.internal.ontologyLabelSubjects,
+%   registered in ndi.migrate.local's V_eta branch (step 1c). THIS FILE DOES NOT
+%   CHANGE, and that is the design: the passthrough is what makes the label
+%   available to a pass that can see the graph, and it stays correct for every
+%   label the graph cannot attribute.
+%
+%   IT ONLY RESOLVES HALF, AND THE OTHER HALF IS THE SOURCE'S DOING, NOT OURS:
+%
+%     git show origin/main:src/ndi/+ndi/+setup/+conv/+haley/doImport.m
+%       BEHAVIOUR  :430 :464 :480 :499  set_dependency_value('document_id', ...)
+%                  :432 :466 :482 :501  set_dependency_value('subject_id', subjectGroup_id)
+%       E. COLI    :794 :814 :830       set_dependency_value('document_id', ...)
+%                                       -- and NO subject_id line at all
+%
+%   The E. coli images are bacterial patches on plates; that session has no
+%   subject, so those labels resolve to a referent with nothing to inherit. The
+%   second pass COUNTS them (`blocked_target_has_no_subject`, split by referent
+%   class) and leaves them passing through. Whether such a document ever gets a
+%   subject is a TEAM MODELLING CALL, deliberately not made.
+%
 %   V_eta's tombstone declares the real shape so the passthrough validates -- see
 %   build_v_eta.py.
 %

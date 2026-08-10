@@ -46,7 +46,59 @@ function report = silentLoss(docs, opts)
 %                                 family whose instance count falls outside the
 %                                 declared min_count/max_count. REPORT ONLY.
 %     family_violation_count      total occurrences
+%     family_uniqueness_violation #52: struct array {class_name, edge_name,
+%                                 unique_by, key, count} -- two members of one
+%                                 numbered family referring to documents that
+%                                 AGREE on the family's `referent_unique_by`
+%                                 path, i.e. two members nothing distinguishes.
+%                                 REPORT ONLY.
+%     family_uniqueness_violation_count   total occurrences
+%     uniqueness_denominator      #52's own denominators (see below)
 %     skipped_docs                documents whose schema could not be resolved
+%
+%   #52 -- WHAT MAKES TWO MEMBERS OF A FAMILY DIFFERENT
+%   ---------------------------------------------------
+%   #63 declared HOW MANY members a family may carry. It could not say what
+%   makes two of them distinct, so `time_reference_1` and `time_reference_2` on
+%   one document were undefined in meaning: a bare index cannot tell a
+%   start-anchor from a same-instant-other-clock from a recurrence.
+%
+%   The signed time model (`V_eta_time_reference_model_plan.md` CHANGE 5) closed
+%   that by ELIMINATION -- split-anchored intervals have no instance, recurrence
+%   dissolves into N statements, epoch extent and statement time live on
+%   different documents -- leaving ONE live case, SAME EXTENT / N CLOCKS, whose
+%   discriminator already exists INSIDE THE REFERENCED DOCUMENT as `value.clock`.
+%   The schema now says so machine-readably, as `referent_unique_by` on the
+%   family (did-schema tools/build_v_eta.py, `_EDGE_REFERENT_UNIQUE`). This
+%   function reads that key; it does not know the word "time_reference".
+%
+%   WHY IT LIVES HERE AND NOWHERE ELSE. The path is evaluated on the REFERENCED
+%   document, so checking it needs the other documents.
+%     * did2.schema.cache sees ONE document. It cannot resolve a target, and a
+%       version that passed whenever it could not is the all-zero census one
+%       more time.
+%     * did2.validate.references walks edges but is handed IDS, not bodies (its
+%       'Database' mode has only ids), so it can say an edge resolves and not
+%       what it resolves TO.
+%     * silentLoss is handed the whole migrated batch. That is where the data
+%       is, so that is where the check is. It is therefore a BATCH property and
+%       is stated as one -- there is no per-document form of this rule.
+%
+%   THE DENOMINATORS ARE THE POINT (operating rule 5). A zero here can mean four
+%   different things and they must be distinguishable from the report alone:
+%     uniqueness_families_declared   (class, family) pairs carrying the rule
+%     docs_with_family               documents carrying >=1 member
+%     docs_multi_member              documents carrying >1 member  <-- BELOW
+%                                    THIS THE RULE CANNOT FIRE AT ALL
+%     members_examined               family members inspected
+%     members_resolved               target found in this batch
+%     members_unresolved             target NOT in the batch -- NOT CHECKED
+%     members_no_key                 target resolved but the path is absent or
+%                                    blank -- NOT CHECKED
+%     members_keyed_by_node          compared on the ontology CURIE
+%     members_keyed_by_name          compared on the label, because the node is
+%                                    empty (the NDIC clocktype terms are not
+%                                    minted -- #67)
 %
 %   Name/value:
 %     'SchemaCache'  a did2.schema.cache (defaults to the shared singleton)
@@ -65,6 +117,19 @@ report = struct( ...
     'family_count_violation',    struct('class_name', {}, 'edge_name', {}, ...
                                         'declared', {}, 'found', {}, 'count', {}), ...
     'family_violation_count',    0, ...
+    'family_uniqueness_violation', struct('class_name', {}, 'edge_name', {}, ...
+                                        'unique_by', {}, 'key', {}, 'count', {}), ...
+    'family_uniqueness_violation_count', 0, ...
+    'uniqueness_denominator',    struct( ...
+        'families_declared',     0, ...
+        'docs_with_family',      0, ...
+        'docs_multi_member',     0, ...
+        'members_examined',      0, ...
+        'members_resolved',      0, ...
+        'members_unresolved',    0, ...
+        'members_no_key',        0, ...
+        'members_keyed_by_node', 0, ...
+        'members_keyed_by_name', 0), ...
     'skipped_docs',              0);
 
 [bodies, unreadable] = vBodies(docs);
@@ -90,6 +155,20 @@ end
 depKeys = {}; depCounts = [];
 fldKeys = {}; fldCounts = [];
 famKeys = {}; famCounts = [];
+uniKeys = {}; uniCounts = [];
+
+% #52. The id -> body index the uniqueness check resolves through. Built ONCE,
+% up front, over the whole batch -- this is the thing a per-document validator
+% does not have and cannot fake. Documents with no `base.id` simply do not enter
+% it; they can still REFER, they just cannot be referred to.
+idIndex = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:numel(bodies)
+    thisId = bodyId(bodies{k});
+    if ~isempty(thisId) && ~idIndex.isKey(thisId)
+        idIndex(thisId) = bodies{k}; %#ok<NASGU>
+    end
+end
+uniqueFamilySeen = {};   % (class|family) pairs that actually carry the rule
 
 for k = 1:numel(bodies)
     body = bodies{k};
@@ -125,6 +204,70 @@ for k = 1:numel(bodies)
                 key = sprintf('%s|%s|%s|%d', className, fam.name, ...
                     describeRange(fam), found);
                 [famKeys, famCounts] = bump(famKeys, famCounts, key);
+            end
+        end
+
+        % --- 1c. NUMBERED families: are the members DISTINGUISHABLE? ------
+        % #52. Everything above this line is about ONE document. This is not:
+        % the discriminator lives on the REFERENCED document, so the family is
+        % resolved through idIndex and read there. A member whose target is not
+        % in this batch is counted as UNRESOLVED and compared with nothing --
+        % it is NOT silently treated as unique, which would turn an incremental
+        % import into a clean bill of health it did not earn.
+        for f = 1:numel(families)
+            fam = families(f);
+            if isempty(fam.unique_by); continue; end
+            famKey = sprintf('%s|%s', className, fam.name);
+            if ~any(strcmp(uniqueFamilySeen, famKey))
+                uniqueFamilySeen{end+1} = famKey; %#ok<AGROW>
+            end
+            memberIds = familyMemberIds(body, fam.name);
+            if isempty(memberIds); continue; end
+            report.uniqueness_denominator.docs_with_family = ...
+                report.uniqueness_denominator.docs_with_family + 1;
+            if numel(memberIds) > 1
+                report.uniqueness_denominator.docs_multi_member = ...
+                    report.uniqueness_denominator.docs_multi_member + 1;
+            end
+            seenKeys = {};
+            for m = 1:numel(memberIds)
+                report.uniqueness_denominator.members_examined = ...
+                    report.uniqueness_denominator.members_examined + 1;
+                if ~idIndex.isKey(memberIds{m})
+                    report.uniqueness_denominator.members_unresolved = ...
+                        report.uniqueness_denominator.members_unresolved + 1;
+                    continue;
+                end
+                report.uniqueness_denominator.members_resolved = ...
+                    report.uniqueness_denominator.members_resolved + 1;
+                [dkey, how] = referentKey(idIndex(memberIds{m}), fam.unique_by);
+                switch how
+                    case 'node'
+                        report.uniqueness_denominator.members_keyed_by_node = ...
+                            report.uniqueness_denominator.members_keyed_by_node + 1;
+                    case 'name'
+                        report.uniqueness_denominator.members_keyed_by_name = ...
+                            report.uniqueness_denominator.members_keyed_by_name + 1;
+                    otherwise
+                        % The path is absent or blank on the referent. NOT a
+                        % violation and NOT a pass: there is nothing to compare.
+                        % Today this is the COMMON case -- only
+                        % `relative_reference` declares `value.clock`, and every
+                        % live anchor is still a session_*_reference.
+                        report.uniqueness_denominator.members_no_key = ...
+                            report.uniqueness_denominator.members_no_key + 1;
+                        continue;
+                end
+                if any(strcmp(seenKeys, dkey))
+                    % One occurrence per DUPLICATE member, not per pair: the
+                    % second member sharing a clock is the one nothing
+                    % distinguishes from the first.
+                    key = sprintf('%s|%s|%s|%s', className, fam.name, ...
+                        sanitise(fam.unique_by), sanitise(dkey));
+                    [uniKeys, uniCounts] = bump(uniKeys, uniCounts, key);
+                else
+                    seenKeys{end+1} = dkey; %#ok<AGROW>
+                end
             end
         end
 
@@ -172,9 +315,16 @@ report.vacuous_required_field = explode(fldKeys, fldCounts, ...
 % revert were spent on the detector before a probe printed the report itself.
 report.family_count_violation = explode(famKeys, famCounts, ...
     {'class_name', 'edge_name', 'declared', 'found'});
+% #52, assigned in the SAME place and for the same reason the line above exists:
+% a counter that accumulates and never assigns reports a zero that means "not
+% reported". That bug has been shipped once in this file already.
+report.family_uniqueness_violation = explode(uniKeys, uniCounts, ...
+    {'class_name', 'edge_name', 'unique_by', 'key'});
 report.empty_dependency_count = sum(depCounts);
 report.vacuous_field_count = sum(fldCounts);
 report.family_violation_count = sum(famCounts);
+report.family_uniqueness_violation_count = sum(uniCounts);
+report.uniqueness_denominator.families_declared = numel(uniqueFamilySeen);
 end
 
 % ===================== helpers =========================================
@@ -188,12 +338,21 @@ end
 end
 
 function fams = declaredFamilies(cache, className)
-%DECLAREDFAMILIES #63: numbered edge families in the class chain, with the
+%DECLAREDFAMILIES #63/#52: numbered edge families in the class chain, with the
 %   instance counts they declare. A family entry is `name_#`; `min_count` /
 %   `max_count` say how many concrete instances a valid document carries.
 %   `mustBeNonEmpty` is NOT consulted -- it cannot describe a family, which is
 %   the whole reason these fields exist.
-fams = struct('name', {}, 'min_count', {}, 'max_count', {});
+%
+%   #52 adds `unique_by`, read from the schema key `referent_unique_by`: a
+%   dotted path evaluated ON THE REFERENCED document that no two members of the
+%   family may agree on. '' when the family declares none, which is most of
+%   them -- `derived_from_#` members are N different inputs and no uniqueness
+%   rule has been decided for them. NOTHING HERE KNOWS THE WORD
+%   `time_reference`: the rule is data in the schema, exactly as min_count is,
+%   so a fourth family acquires it by being declared and not by being special-
+%   cased here.
+fams = struct('name', {}, 'min_count', {}, 'max_count', {}, 'unique_by', {});
 try
     chain = cache.classChain(className);
 catch
