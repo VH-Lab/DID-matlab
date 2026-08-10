@@ -130,6 +130,26 @@ function [result, report] = epochMint(result, options)
 %   it. Its epoch id IS read as a mint key, so the epochs exist for the fold the
 %   day it can be done losslessly.
 %
+%   ---------------------------------------------------------------------
+%   THE EPOCH-STRING READER MOVED OUT, AND WIDENED (2026-08-10)
+%   ---------------------------------------------------------------------
+%   The local `epochStringOf` is GONE. It read three sources and was blind to a
+%   fourth and a fifth: `stimulus_response_scalar` does not carry the `epochid`
+%   superclass (its template superclasses are base + stimulus_response), so its
+%   two epoch strings -- `stimulus_response.element_epochid` and
+%   `.stimulator_epochid` -- were invisible to this pass AND to
+%   did2.validate.sourceCensus. The reader is now did2.validate.epochStrings,
+%   which names every source it reads AND every source it declines, so an
+%   omission is a number in `strings_by_source` / `strings_declined` rather than
+%   a silence. That matters here specifically: an epoch this pass does not mint
+%   is an epoch nothing can anchor to, and
+%   +migrators_j/stimulus_response_scalar.m now SUPPRESSES its fold rather than
+%   drop the string, so the suppression only lifts once these epochs exist.
+%
+%   The mint loop therefore iterates EVERY string a document carries, not the
+%   first: the stimulator's epoch and the recording element's epoch are two
+%   different epochs joined by syncgraph.time_convert, not two spellings of one.
+%
 %   Options (name-value), mirroring the sibling passes:
 %     Validate       (1,1 logical, default true)  validate minted/changed bodies
 %     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
@@ -153,6 +173,11 @@ report = struct( ...
     'documents_inspected',            0, ...
     'documents_unreadable',           0, ...
     'documents_with_epoch_id',        0, ...
+    'epoch_strings_read',             0, ...
+    'strings_by_source', struct('source', {}, 'documents', {}, ...
+                                'distinct_strings', {}), ...
+    'strings_declined',               0, ...
+    'strings_declined_distinct',      0, ...
     'session_documents_seen',         0, ...
     'distinct_epoch_id_strings',      0, ...
     'distinct_session_epoch_pairs',   0, ...
@@ -190,16 +215,34 @@ report.documents_inspected = n;
 % A document this cannot read is COUNTED, never dropped. An all-zero report
 % that could not read its input must not be indistinguishable from a clean one:
 % that is the silentLoss failure, and it cost two days.
+% `epochValues{k}` / `epochSources{k}` are CELL ROWS held beside `rows` rather
+% than inside it: a struct array field cannot hold a cell without the
+% struct('f', {{c}}) double-brace, and that trap has already produced one
+% silently-empty reader in this package. `rows(k).epoch_string` is kept as the
+% FIRST string only, for the code paths that want a single answer.
 rows = struct('class_name', {}, 'epoch_string', {}, 'session_id', {}, ...
               'doc_id', {}, 'datestamp', {});
 bodies = cell(1, n);
+epochValues  = cell(1, n);
+epochSources = cell(1, n);
+declinedValues = {};
 for k = 1:n
+    epochValues{k}  = {};
+    epochSources{k} = {};
     try
         b = docs{k}.toStruct();
         bodies{k} = b;
+        [hits, declined] = did2.validate.epochStrings(b);
+        epochValues{k}  = {hits.value};
+        epochSources{k} = {hits.source};
+        if ~isempty(declined)
+            declinedValues = [declinedValues, {declined.value}]; %#ok<AGROW>
+        end
+        first = '';
+        if ~isempty(hits); first = hits(1).value; end
         rows(k) = struct( ...
             'class_name',   classNameOf(b), ...
-            'epoch_string', epochStringOf(b), ...
+            'epoch_string', first, ...
             'session_id',   baseField(b, 'session_id'), ...
             'doc_id',       baseField(b, 'id'), ...
             'datestamp',    baseField(b, 'datestamp'));
@@ -210,10 +253,25 @@ for k = 1:n
     end
 end
 
-epochStrings = {rows.epoch_string};
-hasEpoch = ~cellfun(@isempty, epochStrings);
+allStrings = [epochValues{:}];
+report.epoch_strings_read = numel(allStrings);
+hasEpoch = ~cellfun(@isempty, epochValues);
 report.documents_with_epoch_id = sum(hasEpoch);
-report.distinct_epoch_id_strings = numel(unique(epochStrings(hasEpoch)));
+if isempty(allStrings)
+    report.distinct_epoch_id_strings = 0;
+else
+    report.distinct_epoch_id_strings = numel(unique(allStrings));
+end
+% PER-SOURCE, so a source that contributes nothing is visibly a zero rather than
+% an absence. This is the whole point of consolidating onto one reader: the
+% stimulus-response rows below were invisible to every previous counter.
+report.strings_by_source = perSourceCounts(epochValues, epochSources);
+report.strings_declined = numel(declinedValues);
+if isempty(declinedValues)
+    report.strings_declined_distinct = 0;
+else
+    report.strings_declined_distinct = numel(unique(declinedValues));
+end
 
 % --- index the session documents ------------------------------------------
 % base.session_id -> the session document's base.id, plus a count so a session
@@ -260,42 +318,52 @@ for k = 1:n
 end
 
 % --- mint one epoch per distinct (session, epoch string) ------------------
+% ONE DOCUMENT MAY CARRY SEVERAL EPOCH STRINGS, and they may name DIFFERENT
+% epochs: `stimulus_response.stimulator_epochid` is the STIMULATOR's epoch and
+% `element_epochid` is the RECORDING ELEMENT's, mapped onto each other by
+% syncgraph.time_convert (tuning_response.m:245-246). Taking only the first
+% would mint one of the two and silently lose the other, which is the same
+% single-answer assumption that made the census blind to this family in the
+% first place. So the loop is over every hit, not over `rows(k).epoch_string`.
 refusedKeys = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 minted = {};
 for k = 1:n
-    es = rows(k).epoch_string;
-    if isempty(es); continue; end
     sid = rows(k).session_id;
-    key = pairKey(sid, es);
-    if isKey(epochIdByKey, key) || isKey(refusedKeys, key)
-        continue;   % find-or-create: this pair already has its answer
+    for j = 1:numel(epochValues{k})
+        es = epochValues{k}{j};
+        if isempty(es); continue; end
+        key = pairKey(sid, es);
+        if isKey(epochIdByKey, key) || isKey(refusedKeys, key)
+            continue;   % find-or-create: this pair already has its answer
+        end
+        if startsWith(es, 'whole_session_')
+            refusedKeys(key) = true;
+            report.skipped_synthetic = report.skipped_synthetic + 1;
+            continue;
+        end
+        if isempty(sid)
+            refusedKeys(key) = true;
+            report.skipped_no_session_id = report.skipped_no_session_id + 1;
+            continue;
+        end
+        if ~isKey(sessionDocId, sid)
+            refusedKeys(key) = true;
+            report.skipped_no_session_document = ...
+                report.skipped_no_session_document + 1;
+            continue;
+        end
+        if sessionDocCount(sid) > 1
+            refusedKeys(key) = true;
+            report.skipped_ambiguous_session = ...
+                report.skipped_ambiguous_session + 1;
+            continue;
+        end
+        body = mintEpoch(es, sid, sessionDocId(sid), rows(k).datestamp);
+        epochIdByKey(key) = body.base.id;
+        minted{end+1} = body; %#ok<AGROW>
+        indexRows(end+1) = struct('session_id', sid, 'local_identifier', es, ...
+            'epoch_document_id', body.base.id); %#ok<AGROW>
     end
-    if startsWith(es, 'whole_session_')
-        refusedKeys(key) = true;
-        report.skipped_synthetic = report.skipped_synthetic + 1;
-        continue;
-    end
-    if isempty(sid)
-        refusedKeys(key) = true;
-        report.skipped_no_session_id = report.skipped_no_session_id + 1;
-        continue;
-    end
-    if ~isKey(sessionDocId, sid)
-        refusedKeys(key) = true;
-        report.skipped_no_session_document = ...
-            report.skipped_no_session_document + 1;
-        continue;
-    end
-    if sessionDocCount(sid) > 1
-        refusedKeys(key) = true;
-        report.skipped_ambiguous_session = report.skipped_ambiguous_session + 1;
-        continue;
-    end
-    body = mintEpoch(es, sid, sessionDocId(sid), rows(k).datestamp);
-    epochIdByKey(key) = body.base.id;
-    minted{end+1} = body; %#ok<AGROW>
-    indexRows(end+1) = struct('session_id', sid, 'local_identifier', es, ...
-        'epoch_document_id', body.base.id); %#ok<AGROW>
 end
 % `.Count`, NOT `numel`: numel() on a containers.Map returns 1 (it is a scalar
 % handle object), so a count written that way reads 1 forever regardless of what
@@ -325,7 +393,11 @@ for k = 1:n
     if ~isempty(depValueOf(bodies{k}, 'epoch_id'))
         continue;   % already filled (a re-run); find-or-create, not create
     end
-    es = rows(k).epoch_string;
+    % The PARKED string specifically, not "whichever string this body has".
+    % jMethodParameters:120-127 writes it to `other.epochid`, and the removal
+    % below removes exactly that field -- reading a different source here would
+    % fill the edge from one fact and delete another.
+    es = valueForSource(epochValues{k}, epochSources{k}, 'method_parameters');
     if isempty(es); continue; end
     key = pairKey(rows(k).session_id, es);
     if ~isKey(epochIdByKey, key)
@@ -471,40 +543,59 @@ if isfield(b, 'document_class') && isstruct(b.document_class) ...
 end
 end
 
-function id = epochStringOf(b)
-%EPOCHSTRINGOF The did_v1 epoch-id STRING carried by a migrated V_eta body.
-%
-%   THREE places, and the third is why this is not a call to sourceCensus's
-%   reader. That function's own docstring records the limit, corrected
-%   2026-08-10: it reads only blocks NAMED `epochid` / `epoch_id`, so
-%   `epochfiles_ingested` -- which carries its id inside its OWN block --
-%   contributed ZERO of corpus B's 6,207 documents / 149 distinct ids. For a
-%   CENSUS that is a documented coverage limit; for a MINT it would be a silent
-%   omission of 2,484 corpus-B documents' worth of epochs, so this reader is
-%   deliberately wider and says so:
-%
-%     1. body.epochid.epochid            the did_v1 mixin -- 15 NDI templates
-%                                        carry the `epochid` superclass
-%     2. body.epochfiles_ingested.epoch_id
-%                                        the plain char field NDI declares on
-%                                        the ingestion manifest
-%     3. body.method_parameters.other.epochid
-%                                        PARKED by jMethodParameters:112-119
-%                                        precisely for this pass to collect
-id = '';
-for blk = {'epochid', 'epoch_id'}
-    if ~isfield(b, blk{1}) || ~isstruct(b.(blk{1})); continue; end
-    id = charField(b.(blk{1}), {'epochid', 'epoch_id', 'epochId'});
-    if ~isempty(id); return; end
+% EPOCHSTRINGOF -- DELETED 2026-08-10. It was the SECOND of three epoch-string
+% readers in this toolbox, each with a different blind spot, and its own was the
+% stimulus-response family: `stimulus_response_scalar` does NOT carry the
+% `epochid` superclass (template superclasses are base + stimulus_response), so
+% neither of its two epoch strings could ever be seen here. The reader now lives
+% in did2.validate.epochStrings, which NAMES every source it reads and every
+% source it declines, and is pinned source-by-source by
+% tests/+did2/+unittest/testEpochStrings.m.
+
+function v = valueForSource(values, sources, wanted)
+%VALUEFORSOURCE The epoch string a NAMED reader source contributed, '' if none.
+v = '';
+for k = 1:numel(sources)
+    if strcmp(sources{k}, wanted)
+        v = values{k};
+        return;
+    end
 end
-if isfield(b, 'epochfiles_ingested') && isstruct(b.epochfiles_ingested)
-    id = charField(b.epochfiles_ingested, {'epoch_id', 'epochid'});
-    if ~isempty(id); return; end
 end
-if isfield(b, 'method_parameters') && isstruct(b.method_parameters) ...
-        && isfield(b.method_parameters, 'other') ...
-        && isstruct(b.method_parameters.other)
-    id = charField(b.method_parameters.other, {'epochid', 'epoch_id'});
+
+function rowsOut = perSourceCounts(epochValues, epochSources)
+%PERSOURCECOUNTS {source, documents, distinct_strings} for every source SEEN.
+%   Sources with no hits do not appear -- the reader's own header is the list of
+%   what exists, and a caller comparing the two learns which sources this batch
+%   simply has no documents for.
+rowsOut = struct('source', {}, 'documents', {}, 'distinct_strings', {});
+docsBySource = containers.Map('KeyType', 'char', 'ValueType', 'double');
+valsBySource = containers.Map('KeyType', 'char', 'ValueType', 'any');
+order = {};
+for k = 1:numel(epochSources)
+    seenHere = {};
+    for j = 1:numel(epochSources{k})
+        s = epochSources{k}{j};
+        if ~isKey(docsBySource, s)
+            docsBySource(s) = 0;
+            valsBySource(s) = {};
+            order{end+1} = s; %#ok<AGROW>
+        end
+        if ~any(strcmp(seenHere, s))
+            docsBySource(s) = docsBySource(s) + 1;
+            seenHere{end+1} = s; %#ok<AGROW>
+        end
+        vv = valsBySource(s);
+        vv{end+1} = epochValues{k}{j}; %#ok<AGROW>
+        valsBySource(s) = vv;
+    end
+end
+for k = 1:numel(order)
+    s = order{k};
+    vv = valsBySource(s);
+    rowsOut(end+1) = struct('source', s, ...
+        'documents', docsBySource(s), ...
+        'distinct_strings', numel(unique(vv))); %#ok<AGROW>
 end
 end
 

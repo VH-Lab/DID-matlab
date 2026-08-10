@@ -19,9 +19,42 @@ function bodies = jrclust_clusters(preBody)
 %                          is carried into the body summary note.
 %       session_relative_reference   the 'during' anchor.
 %
-%   1 -> 3. NOTE: the individual sorted UNITS are the separate neuron_extracellular
+%   1 -> 3 (1 -> 4 when the source carries an `app` block; see below).
+%   NOTE: the individual sorted UNITS are the separate neuron_extracellular
 %   docs (each -> a derived subject, grain B); this doc is the run's label series,
 %   not the units.
+%
+%   ---------------------------------------------------------------------
+%   THE `app` BLOCK WAS BEING DROPPED ON THE FLOOR (repaired here)
+%   ---------------------------------------------------------------------
+%   STATUS OF THIS REPAIR: NOT RUN. There is no MATLAB in the environment it was
+%   written in. The gate is tests/+did2/+unittest/testMigratorsJAppFold.m, unrun.
+%
+%   `jrclust_clusters` declares the `app` superclass on NDI origin/main --
+%   read from the template, not from memory:
+%
+%     git show origin/main:src/ndi/ndi_common/database_documents/apps/jrclust/jrclust_clusters.json
+%         superclasses: [ base.json, app.json ]
+%
+%   This migrator BUILDS NEW BODIES, so the source block had no successor in
+%   {count_observation, sampled_body, session_relative_reference} and every
+%   app.name / app.version / app.url was discarded. No counter saw it:
+%   silentLoss counts empty edges, vacuous fields and fragments, and a source
+%   block with no successor is none of the three.
+%
+%   R1 (TEAM-SIGN-OFF [software], did-schema/schemas/V_eta_tenet_audit.md) says
+%   what it becomes: a `software` ENTITY referenced by `software_id`, with the
+%   per-run os/interpreter in `execution_environment`. BOTH SLOTS ARE DECLARED
+%   ON THE TARGET -- checked in did-schema/schemas/V_eta/stable/
+%   subject_interaction.json (depends_on `software_id`, must_refer_to_document_class
+%   `software`; field `execution_environment`), which count_observation reaches
+%   via subject_observation -> subject_interaction. Nothing is invented.
+%
+%   RequireSession is TRUE: base.session_id is mustBeNonEmpty and v1_to_v2
+%   quarantines the SOURCE when a body it produced fails. It removes nothing --
+%   the observation, the body and the anchor all take the same session_id, so a
+%   sessionless document already fails on those three; the guard only makes it
+%   impossible for the new body to be the cause.
 
 arguments
     preBody (1,1) struct
@@ -66,6 +99,18 @@ obs.subject_interaction = struct('method', otTerm(''));
 obs.subject_observation = struct();
 obs.count = struct();   % value is body-backed
 
+% ---- the v1 `app` block -> a software entity + software_id + exec env -------
+% jSoftwareFromApp reads BOTH spellings of name/version: universalRenames has
+% already rewritten app.name -> app.app_name and app.version -> app.app_version
+% (universalRenames.m:145-164) by the time any migrator runs.
+[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
+if ~isempty(swId)
+    obs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
+end
+if ~isempty(fieldnames(execEnv))
+    obs.subject_interaction.execution_environment = execEnv;
+end
+
 % ---- the sampled_body: one cluster index per spike --------------------------
 body = jSampledBody(obsId, sessionId, datestamp, 'migrated_jrclust_clusters_body', ...
     struct('kind', 'scalar', 'dtype', '', 'unit', '', 'shape', []), ...
@@ -77,6 +122,9 @@ if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 
 bodies = {obs, body, anchor};
+if ~isempty(software)
+    bodies{end+1} = software;
+end
 end
 
 % ===================== small helpers =======================================

@@ -26,6 +26,47 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %   dirField     the block field holding the output directory path (e.g.
 %                'kilosort_directory').
 %
+%   ---------------------------------------------------------------------
+%   THE `app` BLOCK WAS BEING DROPPED ON THE FLOOR (repaired here)
+%   ---------------------------------------------------------------------
+%   STATUS OF THIS REPAIR: NOT RUN. There is no MATLAB in the environment it
+%   was written in, so nothing below has been executed. The gate is
+%   tests/+did2/+unittest/testMigratorsJAppFold.m, which is also unrun.
+%
+%   kilosort_clusters and kiasort_clusters BOTH declare the `app` superclass on
+%   NDI origin/main -- verified by reading the templates, not by memory:
+%
+%     git show origin/main:.../database_documents/apps/kilosort/kilosort_clusters.json
+%     git show origin/main:.../database_documents/apps/kiasort/kiasort_clusters.json
+%         superclasses: [ base.json, app.json ]
+%
+%   So a real document carries app.name / app.version / app.url plus the four
+%   os/interpreter fields. This helper BUILDS NEW BODIES rather than passing the
+%   source through, so until now every one of those facts was discarded: the
+%   source `app` block simply had no successor in {count_observation,
+%   opaque_body, session_relative_reference}. NOTHING COUNTED IT -- silentLoss
+%   counts empty edges, vacuous fields and fragments, and a source block with no
+%   successor is none of the three.
+%
+%   The R1 fold is what it becomes (TEAM-SIGN-OFF [software],
+%   did-schema/schemas/V_eta_tenet_audit.md): a `software` ENTITY referenced by
+%   `software_id`, with the per-run os/interpreter in `execution_environment`.
+%   Both slots are DECLARED on the target -- checked, not assumed:
+%
+%     did-schema/schemas/V_eta/stable/subject_interaction.json
+%         depends_on: software_id  (must_refer_to_document_class: software)
+%         fields:     execution_environment {os, os_version, interpreter,
+%                                            interpreter_version}
+%     count_observation -> subject_observation -> subject_interaction
+%
+%   RequireSession IS TRUE HERE. `base.session_id` is mustBeNonEmpty and
+%   v1_to_v2 quarantines the SOURCE when a body it produced fails, so an
+%   unguarded mint can turn a clean fold into a loss. It costs nothing: the
+%   count_observation, the opaque_body and the anchor all take their session_id
+%   from the same preBody.base.session_id, so a document with no session was
+%   already going to fail on those three -- the guard only makes it impossible
+%   for the NEW body to be the reason.
+%
 %   Shared helper for the Brainstorm-J (+migrators_j) split migrators.
 
 className = '';
@@ -53,6 +94,22 @@ obsId = obs.base.id;
 % ---- the session-relative 'during' anchor -----------------------------------
 anchor = jSessionAnchor(preBody, 'during');
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
+
+% ---- the v1 `app` block -> a software entity + software_id + exec env -------
+% Read through jSoftwareFromApp, which accepts BOTH spellings of the name and
+% version fields: universalRenames rewrites app.name -> app.app_name and
+% app.version -> app.app_version (universalRenames.m:145-164) before any
+% migrator runs, and reading only one spelling is the bug that made the calc
+% fold emit nothing on every real document for weeks.
+[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
+if ~isempty(swId)
+    obs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
+end
+if ~isempty(fieldnames(execEnv))
+    % Set only when populated: absence is how V_eta spells "unset", and an
+    % empty struct here would add a field to every app-less document.
+    obs.subject_interaction.execution_environment = execEnv;
+end
 
 % ---- the opaque_body: the external sorter output directory -------------------
 sessionId = '';
@@ -82,4 +139,7 @@ if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
 
 bodies = {obs, body, anchor};
+if ~isempty(software)
+    bodies{end+1} = software;
+end
 end

@@ -18,9 +18,50 @@ function bodies = neuron_extracellular(preBody)
 %                          unit (inline).
 %       session_relative_reference   the 'during' anchor for the quality obs.
 %
-%   1 -> 4. DEFERRED: the inline `mean_waveform` matrix (needs a body-serialization
+%   1 -> 4 (1 -> 5 when the source carries an `app` block; see below).
+%   DEFERRED: the inline `mean_waveform` matrix (needs a body-serialization
 %   decision -- a sampled_body carries files, not an inline matrix) and a
 %   term_assertion of the unit's cell-type kind (subject_defining). Both follow-ups.
+%
+%   ---------------------------------------------------------------------
+%   THE `app` BLOCK WAS BEING DROPPED ON THE FLOOR (partially repaired here)
+%   ---------------------------------------------------------------------
+%   STATUS OF THIS REPAIR: NOT RUN. There is no MATLAB in the environment it was
+%   written in. The gate is tests/+did2/+unittest/testMigratorsJAppFold.m, unrun.
+%
+%   `neuron_extracellular` declares the `app` superclass on NDI origin/main --
+%   read from the template:
+%
+%     git show origin/main:src/ndi/ndi_common/database_documents/neuron/neuron_extracellular.json
+%         superclasses: [ base.json, app.json ]
+%
+%   This migrator builds new bodies, so the block had no successor and the
+%   sorting program that produced the unit was discarded on every document.
+%
+%   R1 (TEAM-SIGN-OFF [software], V_eta_tenet_audit.md): the block becomes a
+%   `software` ENTITY + a `software_id` edge + `execution_environment`. OF THE
+%   FOUR BODIES THIS MIGRATOR EMITS, ONLY ONE CAN CARRY THAT EDGE -- checked
+%   against the built schemas, not assumed:
+%
+%       subject                     -> entity -> base            NO software_id
+%       directed_relation           -> relation -> base          NO software_id
+%       session_relative_reference  -> time_reference -> base    NO software_id
+%       score_observation           -> subject_observation
+%                                   -> subject_interaction       YES (+ exec env)
+%
+%   So the fold hangs on the score_observation. THAT OBSERVATION IS CONDITIONAL:
+%   it is emitted only when `quality_number` is a numeric scalar. A
+%   neuron_extracellular WITHOUT a quality number therefore still has nowhere
+%   typed to put its software, and this repair does NOT invent a slot for it --
+%   inventing an edge on a class that does not declare it is the pattern that
+%   produced the invented-empty-edge family. That residual is REPORTED, not
+%   silently closed: it needs either a `software_id` on `relation`/`entity` or a
+%   different home, which is a team modelling call.
+%
+%   RequireSession is TRUE: base.session_id is mustBeNonEmpty and v1_to_v2
+%   quarantines the SOURCE when a body it produced fails. It removes nothing --
+%   all four existing bodies take the same session_id, so a sessionless document
+%   already fails; the guard only stops the new body being the cause.
 
 arguments
     preBody (1,1) struct
@@ -75,6 +116,15 @@ anchor.session_relative_reference = struct('relation', 'during');
 
 bodies = {neuron, rel, anchor};
 
+% ---- the v1 `app` block -> a software entity (+ the edge, on the obs) -------
+% jSoftwareFromApp reads BOTH spellings of name/version (universalRenames has
+% already rewritten app.name -> app.app_name by the time a migrator runs).
+% The entity is emitted ONLY alongside the score_observation that can reference
+% it -- see the header: none of {subject, directed_relation,
+% session_relative_reference} declares `software_id`, and an unreferenced
+% entity would record the software without recording what it produced.
+[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
+
 % ---- the sort quality as a score_observation OF the unit (inline) -----------
 quality = getField(blk, 'quality_number');
 if isnumeric(quality) && isscalar(quality)
@@ -92,7 +142,16 @@ if isnumeric(quality) && isscalar(quality)
     qobs.subject_observation = struct();
     qobs.score = struct('value', struct('value', double(quality), ...
         'scale', otTerm('', ''), 'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false));
+    if ~isempty(swId)
+        qobs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
+    end
+    if ~isempty(fieldnames(execEnv))
+        qobs.subject_interaction.execution_environment = execEnv;
+    end
     bodies{end+1} = qobs;
+    if ~isempty(software)
+        bodies{end+1} = software;
+    end
 end
 end
 

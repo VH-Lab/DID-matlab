@@ -2296,10 +2296,20 @@ body.kilosort_clusters = struct('kilosort_directory', 'ks_out/session1', ...
     'curated_output_MD5_checksum', 'd41d8cd98f00b204e9800998ecf8427e');
 
 out = did2.convert.migrators_j.kilosort_clusters(body);
-verifyEqual(testCase, numel(out), 3);
+% 3 -> 4 (2026-08-10): the fold now also mints a `software` entity from the
+% v1 `app` block, which this fixture carries. It was being DROPPED ON THE
+% FLOOR -- jSorterOutput built its bodies from scratch and never read the
+% block -- and NO COUNTER SAW IT: silentLoss counts empty edges, vacuous
+% fields and fragments, and a dropped SOURCE BLOCK is none of the three.
+% The edge lands on count_observation, which is the only one of the three
+% bodies that declares software_id (via subject_observation ->
+% subject_interaction); the opaque_body and the anchor do not.
+verifyEqual(testCase, numel(out), 4);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'count_observation')));
 verifyTrue(testCase, any(strcmp(names, 'opaque_body')));
+verifyTrue(testCase, any(strcmp(names, 'software')), ...
+    'the app block must become a software entity, not vanish');
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
 
 obs = out{find(strcmp(names, 'count_observation'), 1)};
@@ -2328,8 +2338,12 @@ body.kiasort_clusters = struct('kiasort_directory', 'ka_out/session1', ...
     'curated_output_MD5_checksum', 'd41d8cd98f00b204e9800998ecf8427e');
 
 out = did2.convert.migrators_j.kiasort_clusters(body);
-verifyEqual(testCase, numel(out), 3);
+% 3 -> 4: the app block now becomes a `software` entity instead of being
+% dropped -- see the sibling kilosort test above for why this arity moved.
+verifyEqual(testCase, numel(out), 4);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'software')), ...
+    'the app block must become a software entity, not vanish');
 obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'ka_1');
 verifyEqual(testCase, obs.subject_interaction.method.name, 'kiasort');

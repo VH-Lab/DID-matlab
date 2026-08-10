@@ -42,6 +42,38 @@ function bodies = vmspikefit(preBody)
 %   DEFERRED (flagged): the fit_parameters structure and the vmspikefit_file (the
 %   fit result bytes) are NOT re-expressed -- a fit's parameters fold to a `method`
 %   / D10 parameters (+ possibly an opaque_body for the file), a per-class decision.
+%
+%   ---------------------------------------------------------------------
+%   THE `app` BLOCK WAS BEING DROPPED ON THE FLOOR (partially repaired here)
+%   ---------------------------------------------------------------------
+%   STATUS OF THIS REPAIR: NOT RUN. There is no MATLAB in the environment it was
+%   written in. The gate is tests/+did2/+unittest/testMigratorsJAppFold.m, unrun.
+%
+%   `vmspikefit` declares the `app` superclass on NDI origin/main -- read from
+%   the template:
+%
+%     git show origin/main:src/ndi/ndi_common/database_documents/apps/vhlab_voltage2firingrate/vmspikefit.json
+%         superclasses: [ base.json, epochid.json, app.json ]
+%
+%   This migrator builds new bodies, so the block had no successor and the
+%   fitting program was discarded on every document. It matters more here than
+%   elsewhere: this class's own field-name repair (above) turned on WHICH
+%   program wrote the fit, and the answer was thrown away with the block.
+%
+%   R1 (TEAM-SIGN-OFF [software], V_eta_tenet_audit.md): a `software` ENTITY +
+%   `software_id` + `execution_environment`. `score_observation` reaches both
+%   through subject_observation -> subject_interaction (checked in
+%   did-schema/schemas/V_eta/stable/subject_interaction.json), and the
+%   session_relative_reference anchor reaches neither.
+%
+%   THE OBSERVATION IS CONDITIONAL -- it exists only when `fit_sse` is a numeric
+%   scalar. A vmspikefit with no fit_sse emits only a bare anchor, and there is
+%   nowhere typed to hang its software. No slot is invented for it; the residual
+%   is REPORTED rather than closed by inventing an edge.
+%
+%   RequireSession is TRUE: base.session_id is mustBeNonEmpty and v1_to_v2
+%   quarantines the SOURCE when a body it produced fails. It removes nothing --
+%   the observation and the anchor take the same session_id.
 
 arguments
     preBody (1,1) struct
@@ -54,6 +86,14 @@ fitEq = getCharField(blk, 'fit_equation');
 
 anchor = jAnchor(preBody);
 bodies = {anchor};
+
+% The v1 `app` block -> a software entity + the edge. jSoftwareFromApp reads
+% BOTH spellings of name/version (universalRenames rewrites app.name ->
+% app.app_name before any migrator runs). Emitted only alongside the
+% score_observation that can reference it: the anchor declares no software_id,
+% and an unreferenced entity would name the program without naming its output.
+[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
+
 if isnumeric(sse) && isscalar(sse)
     obs = struct();
     obs.document_class = classBlock('score_observation', {'subject_observation', 'score'});
@@ -73,7 +113,16 @@ if isnumeric(sse) && isscalar(sse)
     % so declaring 0..1 would be false. `scale` names a rubric; SSE has none.
     obs.score = struct('value', struct('value', double(sse), ...
         'scale', otTerm('', ''), 'approximate', false));
+    if ~isempty(swId)
+        obs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
+    end
+    if ~isempty(fieldnames(execEnv))
+        obs.subject_interaction.execution_environment = execEnv;
+    end
     bodies = {obs, anchor};
+    if ~isempty(software)
+        bodies{end+1} = software;
+    end
 end
 end
 

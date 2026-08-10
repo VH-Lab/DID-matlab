@@ -137,37 +137,99 @@ function bodies = stimulus_response_scalar(preBody)
 %   content of this document. The axis lands with #45; until then a reader joins.
 %
 %   ---------------------------------------------------------------------
-%   `element_epochid`: DEFERRED. The session anchor is the honest stand-in.
+%   `element_epochid`: THE FOLD IS NOW GATED ON IT, NOT WILLING TO DROP IT
 %   ---------------------------------------------------------------------
-%   Revision 2 anchors it as a `relative_reference` with `relative_to` -> an
-%   `epoch` document. `relative_reference` exists in V_eta and declares
-%   `relative_to` mustBeNonEmpty -- and NOTHING IN THIS PIPELINE MINTS AN `epoch`
-%   DOCUMENT (no migrator constructs one; the epoch model is #45/#67). All this
-%   migrator has is the epoch NAME string, so a relative_reference here would
-%   carry an empty required edge: a husk, which references.m skips and no gate
-%   catches. Rule: a migrator that cannot do its job does not emit a hollow
-%   document. It emits the same 'during' session anchor every other J calculation
-%   fold emits, and the epoch string is left for the second pass. This is a REAL
-%   deferral of a REAL fact -- unlike stimid, element_epochid comes from
-%   `ts_epoch_timeref.epoch` (:317-318) and is not recoverable from another document.
+%   REVISED 2026-08-10. What this header said before, and what the code did, was:
+%   "a relative_reference here would carry an empty required edge ... it emits the
+%   same 'during' session anchor every other J calculation fold emits, and the
+%   epoch string is left for the second pass." The first half is still true. The
+%   second half was NOT: nothing carried the string into the second pass. The
+%   fold writes a leaf with no `stimulus_response` block, so `element_epochid`
+%   ceased to exist at the moment the document converted -- and a DROPPED SOURCE
+%   FIELD is seen by no counter we have. `did2.validate.silentLoss` counts empty
+%   edges, vacuous required fields and fragments; a field that is simply not
+%   there is none of those. TODAY (passthrough) the string survives; the fold as
+%   written destroyed it silently, which is worse than the defect it replaced.
+%
+%   So the fold is GATED, in exactly the shape +migrators_j/syncrule_mapping.m
+%   already uses for the same wall and the same reason:
+%
+%     BRANCH 1  epoch DOCUMENT id available (jEpochDocId answers non-'')
+%               -> fold, and anchor `time_reference_1` to a `relative_reference`
+%                  whose `relative_to` IS that epoch. Revision 2 of the signed
+%                  plan, built.
+%     BRANCH 2  an epoch STRING but no epoch document
+%               -> DO NOT FOLD. Pass the document through, string intact. The
+%                  suppression is COUNTED, not silent: see THE COUNTER below.
+%     BRANCH 3  no epoch string at all
+%               -> fold with the session anchor. There is nothing to lose, and
+%                  refusing would strand a document for a fact it does not have.
+%
+%   Branch 2 is the live branch on every did_v1 document today, because
+%   jEpochDocId answers '' by construction and the writer sets `element_epochid`
+%   unconditionally (tuning_response.m:317-318). That is a DEFERRAL of a signed
+%   build, not a rejection of it, and it is reversible in one line: the day
+%   did2.convert.epochMint stamps an `epoch_id` edge onto the pre-body, branch 1
+%   takes over with no further change here. The mint already SEES this family's
+%   epoch strings -- did2.validate.epochStrings reads
+%   `stimulus_response.element_epochid`, added 2026-08-10 in the same change --
+%   so the epochs those anchors need are minted; what is missing is only the
+%   stamp onto the pre-body, which is #60's remaining line.
+%
+%   WHY NOT PARK THE STRING ON THE LEAF INSTEAD. The only free-form slot on this
+%   leaf is `subject_interaction.method_parameters`, and this migrator writes
+%   `method_parameters_id`: subject_interaction.json says, in the schema's own
+%   words, "A statement carries the inline `method_parameters` field OR this
+%   edge, NEVER BOTH (team, 2026-08-09)". Parking there would break a team rule
+%   to preserve a string. `epoch_relative_reference` was the other candidate and
+%   it declares `t0` and `start` REQUIRED -- values this document does not have,
+%   and with strictMode('NonVacuousFields') now armed a blank duration cell
+%   QUARANTINES. There is no honest slot, which is why the answer is to not
+%   convert rather than to convert lossily.
+%
+%   `stimulator_epochid` is still DROPPED BY THE PLAN -- but no longer dropped by
+%   this file, because branch 2 keeps the whole source document. When branch 1
+%   goes live it becomes a real drop again; it is recoverable from
+%   `derived_from_1` (the presentation carries its own `epochid.epochid`), which
+%   is the plan's stated reason, and the mint reads it too.
 %
 %   ---------------------------------------------------------------------
 %   THE GUARDS
 %   ---------------------------------------------------------------------
-%   Three, each returning the document UNCHANGED (the fitcurve / openminds_stimulus
-%   / probe_geometry idiom) rather than emitting something hollow:
+%   Four, each returning the document UNCHANGED (the fitcurve / openminds_stimulus
+%   / probe_geometry idiom) rather than emitting something hollow or lossy:
 %     1. no `element_id`     -> no subject. `subject_statement.subject_id` is
 %        mustBeNonEmpty, and an empty edge is skipped by references.m, so the
 %        result would be a calculation about nobody -- the image_stack husk.
 %     2. `response_type` not parseable as 'mean' | 'F<n>' -> the harmonic is
 %        unknown, and `harmonic` is the field that makes this class this class.
 %     3. `responses.response_real` absent or empty -> there is no value to carry.
+%     4. an `element_epochid` string with no `epoch` document to anchor it to
+%        -> converting would DROP the string (branch 2 above).
 %   A passed-through document still validates: V_eta keeps the
-%   `stimulus_response_scalar` tombstone (stable tier), and that tombstone has
-%   been corrected to NDI's own edge direction.
+%   `stimulus_response_scalar` tombstone (stable tier), it declares
+%   `stimulus_response.element_epochid` and `.stimulator_epochid`, and that
+%   tombstone has been corrected to NDI's own edge direction.
 %
-%   1 -> 2 (leaf + session anchor). See
-%   did2.convert.migrators_j.private.jCalculation.
+%   ---------------------------------------------------------------------
+%   THE COUNTER -- because a suppression nobody counts is the same as a drop
+%   ---------------------------------------------------------------------
+%   A migrator is a pure function and has no report channel, so the counting is
+%   done where it can carry a denominator:
+%
+%     did2.validate.epochStringRetention(v1Bodies, migratedBodies)
+%         v1 (session, epoch-string) pairs vs the pairs still reachable after
+%         migration -- as a surviving STRING or as a minted `epoch` document.
+%         `pairs_dropped` is the number this branch exists to keep at zero, and
+%         it is reported per v1 class so a regression names its own migrator.
+%     did2.convert.epochMint's `strings_by_source`
+%         proves the mint SEES this family (a `stimulus_response.element_epochid`
+%         row with a non-zero count), which is what branch 1 will need.
+%
+%   Neither replaces the other: the first says nothing was lost, the second says
+%   the replacement exists.
+%
+%   1 -> 2 (leaf + anchor). See did2.convert.migrators_j.private.jCalculation.
 
 arguments
     preBody (1,1) struct
@@ -181,6 +243,22 @@ harmonic  = harmonicFromResponseType(charAny(blk, {'response_type', 'responseTyp
 realPart  = numAny(resp, {'response_real', 'responseReal'});
 
 if isempty(subjectId) || isempty(harmonic) || isempty(realPart)
+    bodies = {preBody};
+    return;
+end
+
+% ---------------------------------------------------------------------
+% GUARD 4 -- the epoch gate. See `element_epochid` in the header.
+% ---------------------------------------------------------------------
+% The string is read through did2.validate.epochStrings ON PURPOSE, rather than
+% by a local isfield() on the block. That is the same reader
+% did2.convert.epochMint mints from, so this guard and the mint cannot drift:
+% either both see the field, or neither does. A private copy here would let the
+% guard keep firing after the mint stopped minting -- or, worse, stop firing
+% while the mint still had nothing to point at.
+epochString = epochStringOf(preBody, 'stimulus_response.element_epochid');
+epochDocId  = jEpochDocId(preBody);
+if ~isempty(epochString) && isempty(epochDocId)
     bodies = {preBody};
     return;
 end
@@ -219,10 +297,77 @@ leaf.depends_on = setDep(leaf.depends_on, 'derived_from_2', ...
     depValue(preBody, 'stimulus_control_id'));
 leaf.depends_on = setDep(leaf.depends_on, 'method_parameters_id', ...
     depValue(preBody, 'stimulus_response_scalar_parameters_id'));
+
+% BRANCH 1: the epoch document exists, so revision 2 of the signed plan is
+% buildable -- swap jCalculation's session anchor for a relative_reference
+% anchored to the EPOCH. jCalculation returns {leaf, anchor[, software]}, so the
+% anchor is bodies{2} by construction; the leaf's `time_reference_1` is
+% retargeted rather than added, so no second anchor is left dangling.
+if ~isempty(epochDocId)
+    ref = epochAnchor(preBody, epochDocId);
+    leaf.depends_on = setDep(leaf.depends_on, 'time_reference_1', ref.base.id);
+    bodies{2} = ref;
+end
 bodies{1} = leaf;
 end
 
 % ===================== helpers =============================================
+
+function v = epochStringOf(preBody, wantedSource)
+%EPOCHSTRINGOF One NAMED source's epoch string, via the shared reader.
+v = '';
+hits = did2.validate.epochStrings(preBody);
+for k = 1:numel(hits)
+    if strcmp(hits(k).source, wantedSource)
+        v = hits(k).value;
+        return;
+    end
+end
+end
+
+function ref = epochAnchor(preBody, epochDocId)
+%EPOCHANCHOR `element_epochid` -> a relative_reference anchored to the epoch.
+%
+%   Revision 2 of the stimulus-response sign-off, built. NO `start` and NO
+%   `duration`: the source records WHICH epoch the response was measured in and
+%   nothing about where in it, and relative_reference.json says so in its own
+%   words -- "ABSENT together with `duration` means the `relation` alone is
+%   asserted". Inventing a zero offset would assert the response began exactly at
+%   the epoch boundary, which the writer never said.
+%
+%   `clock` is `dev_local_time` by TRANSCRIPTION, not by choice. The epoch this
+%   anchors to IS the recording element's epoch, and the writer names the clock
+%   at the line that produces it:
+%
+%     git show origin/main:src/ndi/+ndi/+app/+stimulus/tuning_response.m
+%       :245-246  [ts_epoch_t0_out, ts_epoch_timeref, msg] = ...
+%                     E.syncgraph.time_convert(stim_timeref, ..., ...
+%                         ndi_timeseries_obj, ndi.time.clocktype('dev_local_time'));
+%       :318      'element_epochid', ts_epoch_timeref.epoch
+%
+%   `dev_local_time` is one of the four terms in relative_reference's `clock`
+%   binding, so this is a bound value, not a staged one. `relation` uses the same
+%   OWL-Time spelling did2.convert.resolveSessionAnchors:360 emits for 'during'.
+sessionId = '';
+datestamp = '';
+if isfield(preBody, 'base') && isstruct(preBody.base)
+    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
+    if isfield(preBody.base, 'datestamp');  datestamp = preBody.base.datestamp;  end
+end
+if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+
+ref = struct();
+ref.document_class = struct('class_name', 'relative_reference', ...
+    'class_version', '2.0.0', ...
+    'superclasses', struct('class_name', 'time_reference', 'class_version', '4.0.0'), ...
+    'schema_version', 'V_eta');
+ref.depends_on = struct('name', {'relative_to'}, 'value', {epochDocId});
+ref.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+    'name', 'migrated_epoch_anchor', 'datestamp', datestamp);
+ref.relative_reference = struct('value', struct( ...
+    'relation', struct('node', 'time:intervalDuring', 'name', 'intervalDuring'), ...
+    'clock',    jOntologyTerm('', 'dev_local_time')));
+end
 
 function h = harmonicFromResponseType(rt)
 %HARMONICFROMRESPONSETYPE 'mean' -> 0, 'F1' -> 1, 'F2' -> 2; [] when unparseable.
