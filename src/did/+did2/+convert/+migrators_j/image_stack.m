@@ -65,16 +65,47 @@ subjectId = dependencyValue(preBody, 'subject_id');
 % re-delete them without re-checking this branch -- deleting a tombstone ahead
 % of its migrator is what put 2,484 corpus-B documents in quarantine.
 %
-% THE SUBJECT IS RECOVERABLE, BUT NOT HERE AND NOT GENERALLY. The chain is
-% Haley's import convention, not a migration operation: this document's
-% `document_id` points at an ontologyTableRow holding `plateID`; the plate->
-% subject mapping is never persisted (`wormVariables` is
-% {wormID, subjectName, subject_id} -- no plate link), so the only surviving
-% evidence is the OTHER imageStacks, which carry both `document_id` -> the plate
-% row and a populated `subject_id`. Recovering it means a value join on plateID
-% between two table rows plus an inverse edge traversal. That belongs with the
-% ontology_table_row subject attribution, which needs the same table-content
-% joins -- not hard-coded into a per-document migrator.
+% THE SUBJECT IS **NOT** RECOVERABLE. This comment said the opposite until
+% 2026-08-10 and sketched the join to do it; following that sketch would have
+% INVENTED subjects rather than recovered them. The correction, with evidence:
+%
+% The subject-carrying imageStacks and the subject-less ones are in DIFFERENT
+% SESSIONS. `doImport.m:46-49` builds two:
+%
+%     SessionRef = {'haley_2025_Celegans'; 'haley_2025_Ecoli'};
+%
+% Sites 421/461/477/496 (which DO set subject_id) are Step 5, under
+% `session = sessions{1}`. Sites 789/811/827 (which do not) are Step 8, which
+% opens with `session = sessions{2}` at line 694. The LAST mention of a subject
+% anywhere in that 881-line file is line 689 -- two lines before Step 8 starts.
+% The E. coli session mints no subject, no subject_group and no subject_id at
+% all, because the imaged object is a bacterial lawn on an agar plate and the
+% source never asserts a subject for it.
+%
+% So "the OTHER imageStacks" are C. elegans behaviour plates in another
+% session. Joining to them does not recover a subject; it attaches worms to
+% bacteria. And the join is not merely empty, it is ACTIVELY UNSAFE, because
+% the two plateID string spaces collide:
+%
+%     doImport.m:166 (celegans)  plateID = num2str(plateNum + expType*1000,'%.4i')
+%     doImport.m:729 (ecoli)     plateID = num2str(plateNum,'%.4i')
+%
+% With expType == 0 both emit '0001', '0002', ... over the same range, and only
+% `base.session_id` tells them apart. A plateID join that forgot to scope by
+% session would silently mis-attribute every one of them.
+%
+% `ndi.migrate.internal.ontologyLabelSubjects.m:59-63` had already recorded
+% this ("the images are of bacterial patches on plates and that session has no
+% subject"); this file contradicted it, and this file was wrong.
+%
+% WHAT WOULD ACTUALLY WORK is a modelling call, not a migration operation:
+% mint a subject for the E. coli PLATE. Its row already carries plateID for
+% identity, a `bacteriaStrain` edge to an openMINDS Strain document
+% (doImport.m:734), and OD600/CFU/volume covariates. Then the chain
+% image -> image row -> plateID -> plate row -> plate-subject is traversable
+% ENTIRELY WITHIN session 2, with no cross-session join. Until the team makes
+% that call, the guarded passthrough below is the whole answer and loses
+% nothing.
 if isempty(subjectId)
     bodies = {preBody};
     return;
