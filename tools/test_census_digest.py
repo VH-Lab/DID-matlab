@@ -16,7 +16,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from census_digest import aslist, digest, render_report  # noqa: E402
+from census_digest import aslist, digest, render_report, rollup  # noqa: E402
 
 
 class TestAsList(unittest.TestCase):
@@ -269,6 +269,100 @@ class SourceCensusRendering(unittest.TestCase):
         txt = self._render({"audit_failed": "boom"})
         self.assertIn("AUDIT FAILED (boom)", txt)
 
+
+
+class TestRollup(DigestCase):
+    """The cross-corpus total -- the number that actually gets quoted.
+
+    Every one of these drives `digest()` end to end rather than calling
+    `rollup()` on a hand-built list, because the defect this guards against is
+    a SUM taken over the wrong set of reports, and a hand-built list would fix
+    the set by construction. Same trap as a test written from the code's own
+    premise.
+    """
+
+    def _two_corpora(self):
+        self.write("A", {
+            "corpus": "A", "total": 100, "migrated_count": 100,
+            "quarantine_count": 0, "fragment_count": 0,
+            "silent_loss": {
+                "total_docs": 100, "skipped_docs": 0,
+                "empty_dependency_count": 11, "vacuous_field_count": 0,
+                "empty_required_dependency": {
+                    "count": 11, "class_name": "stimulus_presentation",
+                    "edge_name": "element_id"}}})
+        self.write("B", {
+            "corpus": "B", "total": 200, "migrated_count": 200,
+            "quarantine_count": 0, "fragment_count": 0,
+            "silent_loss": {
+                "total_docs": 200, "skipped_docs": 0,
+                "empty_dependency_count": 1242, "vacuous_field_count": 0,
+                "empty_required_dependency": [
+                    {"count": 1242, "class_name": "stimulus_presentation",
+                     "edge_name": "element_id"},
+                    {"count": 7, "class_name": "other_class",
+                     "edge_name": "subject_id"}]}})
+
+    def test_the_same_row_in_two_corpora_is_summed_into_one_line(self):
+        # The actual failure this exists to prevent: the row set was quoted as
+        # three classes when it was six, and the per-corpus split is exactly
+        # what made a hand sum hard enough to get wrong.
+        self._two_corpora()
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("1253  stimulus_presentation.element_id", text)
+        self.assertIn("EMPTY REQUIRED EDGES: 1260 document(s) across 2 row(s)", text)
+
+    def test_the_denominator_names_how_many_corpora_went_into_the_sum(self):
+        self._two_corpora()
+        text, _ = self.run_digest()
+        self.assertIn("2 corpus report(s) summed", text)
+        self.assertIn("300 document(s) inspected in total", text)
+
+    def test_a_corpus_with_no_audit_is_excluded_AND_said_so(self):
+        # A total over four corpora and a total over six must not print
+        # identically. This is the "0 empty edges while reading nothing"
+        # failure, one layer up.
+        self._two_corpora()
+        self.write("C", {"corpus": "C", "total": 5, "migrated_count": 5,
+                         "quarantine_count": 0,
+                         "silent_loss": {"audit_failed": "boom"}})
+        text, _ = self.run_digest()
+        self.assertIn("3 corpus report(s) summed; 2 carried a readable", text)
+        self.assertIn("contributed NO silent-loss numbers", text)
+        self.assertIn("sums over 2 corpora, not 3", text)
+
+    def test_zero_everywhere_still_prints_every_section(self):
+        # Suppressing an empty section would make "we measured it and it was
+        # clean" indistinguishable from "we never measured it".
+        self.write("Clean", {
+            "corpus": "Clean", "total": 3, "migrated_count": 3,
+            "quarantine_count": 0, "fragment_count": 0,
+            "silent_loss": {"total_docs": 3, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0}})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("EMPTY REQUIRED EDGES: 0 document(s) across 0 row(s)", text)
+        self.assertIn("VACUOUS REQUIRED FIELDS: 0 document(s)", text)
+        self.assertIn("EDGE-FAMILY CARDINALITY VIOLATIONS: 0 document(s)", text)
+        self.assertIn("(none)", text)
+
+    def test_a_broken_rollup_does_not_destroy_the_per_corpus_output(self):
+        # Run #256's lesson, applied to the new code: an exception in the
+        # aggregate must not take the six individual reports with it.
+        self._two_corpora()
+        import census_digest
+        real = census_digest.rollup
+        census_digest.rollup = lambda reports, out: 1 / 0
+        try:
+            text, failed = self.run_digest()
+        finally:
+            census_digest.rollup = real
+        self.assertIn("<rollup>", failed)
+        self.assertIn("CROSS-CORPUS ROLLUP FAILED", text)
+        self.assertIn("--- A ---", text)
+        self.assertIn("--- B ---", text)
 
 
 if __name__ == "__main__":

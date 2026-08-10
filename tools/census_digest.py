@@ -245,6 +245,97 @@ def find_reports(reports_dirs):
     return chosen, all_paths, dirs_walked
 
 
+def rollup(reports, out):
+    """Sum the headline counters ACROSS corpora, with the denominator first.
+
+    WHY THIS EXISTS
+    ---------------
+    Every number in this digest is per-corpus, and the number that actually gets
+    quoted -- in a plan document, in a commit message, in CLAUDE.md -- is the
+    TOTAL. Until now that total was produced by a human reading six blocks and
+    adding them up, and the record shows what that costs:
+
+      * The empty-required-edge table was written down as "12,296 documents,
+        three classes" and stood for months. It was 26,406 across six, and the
+        three it named were the three SMALLEST. The two largest rows were in the
+        same report the three came from; nobody had read past the daq family.
+      * The next re-derivation, on 2026-08-09, was right -- but only because
+        someone re-summed it by hand a second time, and it had to carry a
+        standing note telling the next reader to do it again.
+
+    A total that must be recomputed by hand from a report is a total that goes
+    stale silently, because nothing compares it to anything. So the digest
+    computes it.
+
+    The DENOMINATOR comes first and unconditionally, per the standing rule: how
+    many corpora went into the sum, and how many of them actually carried the
+    field being summed. A total over four corpora and a total over six are
+    different facts and must not print identically -- which is exactly the
+    failure mode that made "0 empty edges" believable while `silentLoss` was
+    reading nothing.
+    """
+    p = lambda s="": out.append(s)
+
+    edges, fields, families = {}, {}, {}
+    inspected = 0
+    quarantine = 0
+    fragments = 0
+    with_silent_loss = 0
+    for r in reports:
+        sl = r.get("silent_loss") or {}
+        try:
+            quarantine += int(r.get("quarantine_count") or 0)
+        except (TypeError, ValueError):
+            pass
+        try:
+            fragments += int(r.get("fragment_count") or 0)
+        except (TypeError, ValueError):
+            pass
+        if not sl or "audit_failed" in sl:
+            continue
+        with_silent_loss += 1
+        try:
+            inspected += int(sl.get("total_docs") or 0)
+        except (TypeError, ValueError):
+            pass
+        for e in aslist(sl.get("empty_required_dependency")):
+            key = "%s.%s" % (e.get("class_name", "?"), e.get("edge_name", "?"))
+            edges[key] = edges.get(key, 0) + int(e.get("count") or 0)
+        for f in aslist(sl.get("vacuous_required_field")):
+            key = "%s / %s.%s" % (f.get("class_name", "?"), f.get("block", "?"),
+                                  f.get("field_name", "?"))
+            fields[key] = fields.get(key, 0) + int(f.get("count") or 0)
+        for v in aslist(sl.get("family_count_violation")):
+            key = "%s.%s" % (v.get("class_name", "?"), v.get("edge_name", "?"))
+            families[key] = families.get(key, 0) + int(v.get("count") or 0)
+
+    p("")
+    p("=" * 72)
+    p("ACROSS ALL CORPORA")
+    p("=" * 72)
+    p("  DENOMINATOR: %d corpus report(s) summed; %d carried a readable "
+      "silent-loss audit; %d document(s) inspected in total"
+      % (len(reports), with_silent_loss, inspected))
+    if with_silent_loss != len(reports):
+        p("  *** %d report(s) contributed NO silent-loss numbers. The totals"
+          % (len(reports) - with_silent_loss))
+        p("  *** below are sums over %d corpora, not %d -- do not quote them"
+          % (with_silent_loss, len(reports)))
+        p("  *** as a whole-corpus figure.")
+    p("  quarantined: %d       fragments: %d" % (quarantine, fragments))
+
+    for label, table in (("EMPTY REQUIRED EDGES", edges),
+                         ("VACUOUS REQUIRED FIELDS", fields),
+                         ("EDGE-FAMILY CARDINALITY VIOLATIONS", families)):
+        total = sum(table.values())
+        p("")
+        p("  %s: %d document(s) across %d row(s)" % (label, total, len(table)))
+        for key, n in sorted(table.items(), key=lambda kv: (-kv[1], kv[0])):
+            p("      %8d  %s" % (n, key))
+        if not table:
+            p("      (none)")
+
+
 def digest(reports_dirs):
     """Return (lines, failed_paths). Never raises on a malformed report.
 
@@ -277,6 +368,7 @@ def digest(reports_dirs):
     out.append("CORPUS CENSUS DIGEST  (%d corpus report(s))" % len(files))
     out.append("=" * 72)
 
+    parsed = []
     for path in files:
         try:
             with open(path) as fh:
@@ -286,6 +378,7 @@ def digest(reports_dirs):
             out.append("%s: UNREADABLE (%s)" % (path, exc))
             failed.append(path)
             continue
+        parsed.append(r)
         try:
             render_report(r, out)
         except Exception:
@@ -294,6 +387,17 @@ def digest(reports_dirs):
             out.append("  *** DIGEST FAILED for this corpus -- output above is partial:")
             out.append(traceback.format_exc())
             failed.append(path)
+
+    # Isolated the same way, and for the same reason: a defect in the ROLLUP
+    # must not destroy six corpora's per-corpus output. That is precisely how
+    # run #256 lost its two largest reports.
+    try:
+        rollup(parsed, out)
+    except Exception:
+        out.append("")
+        out.append("  *** CROSS-CORPUS ROLLUP FAILED -- per-corpus output above stands:")
+        out.append(traceback.format_exc())
+        failed.append("<rollup>")
 
     out.append("")
     out.append("=" * 72)
