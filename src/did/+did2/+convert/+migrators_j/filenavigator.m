@@ -87,20 +87,28 @@ function bodies = filenavigator(preBody)
 %   cell-of-chars for JSON arrays of strings"). The family's own sibling already
 %   uses it: epochfiles_ingested.files is "type": "string", "mustBeScalar": false.
 %
-%   This migrator emits the cellstr the sign-off asks for. Under the schema AS
-%   DECLARED TODAY that means a multi-pattern navigator QUARANTINES with
-%   did2:validation:typeMismatch. That is the deliberate direction: a quarantine
-%   is visible, and the alternatives all lose data silently -- joining the list
-%   into one char destroys it, a char matrix pads short patterns with spaces
-%   (changing the regex), and emitting a char for one pattern but a cell for
-%   several is the representation drift V_eta_openminds_family_record.md Part 3
-%   rules out.
+%   This migrator emits the cellstr the sign-off asks for. Under the schema as
+%   declared at the time, that meant a multi-pattern navigator QUARANTINED with
+%   did2:validation:typeMismatch -- the deliberate direction, because a
+%   quarantine is visible and every alternative loses data silently: joining the
+%   list into one char destroys it, a char matrix pads short patterns with
+%   spaces (changing the regex), and emitting a char for one pattern but a cell
+%   for several is the representation drift V_eta_openminds_family_record.md
+%   Part 3 rules out.
 %
-%   THE FIX IS ONE WORD, TWICE, IN DID-schema (out of scope here):
-%   epoch_file_pattern.json data_file_pattern / epoch_map_pattern
-%   "type": "char" -> "type": "string". Until that lands, do not include this
-%   migrator in a corpus run. testMigratorsJFileNavSoftware.m pins the current
-%   behaviour so the day the schema changes, the pin fails and gets updated.
+%   ---- RESOLVED 2026-08-10. THE EMBARGO IS LIFTED. -------------------------
+%   DID-schema now declares both fields `string` (data_file_pattern,
+%   epoch_map_pattern -- and `synonym`, which had the identical defect). A
+%   multi-pattern navigator VALIDATES CLEAN, so this migrator is no longer held
+%   out of a corpus run.
+%
+%   The tripwire worked exactly as designed and is worth recording as a pattern.
+%   `testEpochFilePatternListIsBlockedByTheCharDeclaration` asserted the
+%   QUARANTINE, with its own header saying "WHEN IT LANDS THIS TEST FAILS --
+%   that is its purpose", and naming the replacement. The schema landed, the
+%   test failed within one CI run, and the note said what to do about it. That
+%   is the difference between a known limitation and a latent bug: a limitation
+%   somebody wrote a failing-on-purpose test for announces its own repair.
 %
 %   1 -> 2 (epoch_file_pattern + software), or 1 -> 1 when the implementation
 %   class name is absent, or a passthrough when there is nothing to declare.

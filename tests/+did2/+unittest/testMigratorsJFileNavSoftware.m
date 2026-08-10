@@ -87,7 +87,16 @@ verifyEqual(testCase, depValue(efp.toStruct(), 'software_id'), sw.get('base.id')
 verifyEqual(testCase, sw.get('software.name'), 'ndi.file.navigator');
 % v1 records no version for the navigator class (the template has no version
 % field), so the dedup handle is the bare name.
-verifyEqual(testCase, sw.get('software.version'), '');
+%
+% verifyEmpty, NOT verifyEqual(...,''). verifyEqual compares SIZE, and MATLAB
+% has more than one empty char: `''` is 0x0 while a char built by indexing or
+% concatenation is commonly 1x0. This assertion failed on exactly that --
+% "Actual char: 1x0 empty char array / Expected char: 0x0 empty char array" --
+% which is a fact about how the empty was constructed, not about the migration.
+% Pinning the shape tests the constructor; pinning emptiness and the class
+% tests what the assertion is actually for.
+verifyClass(testCase, sw.get('software.version'), 'char');
+verifyEmpty(testCase, sw.get('software.version'));
 verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.file.navigator');
 
 % and the v1 block does not survive anywhere
@@ -293,8 +302,10 @@ function testNavigatorWithoutPatternListsValidates(testCase)
 % fileparameters (navigator.m:740), so a navigator built as
 % `ndi.file.navigator(E)` produces exactly this document.
 %
-% It deliberately carries NO pattern list, because a list cannot validate today
-% -- see testEpochFilePatternListIsBlockedByTheCharDeclaration below.
+% It deliberately carries NO pattern list -- not because a list cannot validate
+% (it can, since data_file_pattern became `string` on 2026-08-10), but because
+% this is the minimal shape ndi.file.navigator(E) actually produces. The list
+% case has its own validating test, testEpochFilePatternListValidatesCleanly.
 v1 = navBody('', 'ndi.epoch.epochprobemap_daqsystem', '');
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 if ~isempty(out.quarantine)
@@ -307,37 +318,45 @@ verifyTrue(testCase, any(strcmp(names, 'epoch_file_pattern')));
 verifyTrue(testCase, any(strcmp(names, 'software')));
 end
 
-function testEpochFilePatternListIsBlockedByTheCharDeclaration(testCase)
-% A TRIPWIRE FOR A SCHEMA DEFECT, NOT AN ENDORSEMENT OF THE BEHAVIOUR.
+function testEpochFilePatternListValidatesCleanly(testCase)
+% RENAMED AND INVERTED 2026-08-10, ON THE INSTRUCTION OF ITS OWN PREDECESSOR.
 %
-% V_eta/stable/epoch_file_pattern.json declares data_file_pattern and
-% epoch_map_pattern as  "type": "char", "mustBeScalar": false  -- it plainly
-% intends a list (its own documentation gives {'#\.rhd\>', '#\.tsv\>'} as the
-% value) -- but the validator's char branch accepts only a char array or a
-% SCALAR string (+did2/+schema/cache.m:965-970). Only the `string` branch accepts
-% a cell-of-chars, and it exists for exactly this case. The family's own sibling
-% already uses it: epochfiles_ingested.files is "type": "string",
-% "mustBeScalar": false.
+% This was `testEpochFilePatternListIsBlockedByTheCharDeclaration`, a TRIPWIRE
+% that asserted the quarantine caused by a schema defect: epoch_file_pattern
+% declared data_file_pattern and epoch_map_pattern as
+% "type": "char", "mustBeScalar": false -- plainly intending a list (its own
+% documentation gives {'#\.rhd\>', '#\.tsv\>'} as the value) -- while the
+% validator's char branch accepts only a char array or a SCALAR string
+% (+did2/+schema/cache.m:965-970). Only the `string` branch takes a
+% cell-of-chars, and it exists for exactly this case.
 %
-% So a real multi-pattern navigator QUARANTINES today. That is the deliberate
-% direction to be wrong in: a quarantine is VISIBLE, and every alternative loses
-% data silently (joining the list into one char destroys it; a char matrix pads
-% short patterns with spaces, changing the regex; emitting a char for one pattern
-% and a cell for several is representation drift).
+% Its header said, in these words: "THE FIX IS ONE WORD, TWICE, IN DID-schema
+% ... WHEN IT LANDS THIS TEST FAILS -- that is its purpose. Replace it with an
+% assertion that the document validates clean, and drop the corpus-run embargo."
 %
-% THE FIX IS ONE WORD, TWICE, IN DID-schema: those two fields' "type": "char" ->
-% "string". WHEN IT LANDS THIS TEST FAILS -- that is its purpose. Replace it with
-% an assertion that the document validates clean, and drop the corpus-run
-% embargo recorded in the migrator header and in Contents.m.
+% The fix landed, the test failed within one CI run (0 quarantines where it
+% demanded 1), and this is that replacement. The embargo is lifted in
+% filenavigator.m's header.
+%
+% Keep this test. The defect it guards is not gone, it is FIXED -- and a
+% multi-pattern navigator is the only shape that exercises the cell-of-chars
+% path, so without an assertion here a future re-tightening to `char` would
+% quarantine every multi-pattern navigator in the corpus silently.
 v1 = navBody('{ ''#\.rhd\>'', ''#\.tsv\>'' }', 'ndi.epoch.epochprobemap_daqsystem', '');
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
-verifyEqual(testCase, numel(out.quarantine), 1, ...
-    ['epoch_file_pattern now accepts a pattern LIST under validation. If the ' ...
-     'schema was fixed (type char -> string), replace this test with a clean ' ...
-     'validating assertion and lift the corpus-run embargo.']);
-verifyTrue(testCase, contains(out.quarantine(1).reason, 'data_file_pattern'), ...
-    sprintf('unexpected quarantine reason: %s', out.quarantine(1).reason));
-verifyEmpty(testCase, out.migrated);
+if ~isempty(out.quarantine)
+    verifyFail(testCase, sprintf( ...
+        ['a multi-pattern navigator must validate now that data_file_pattern ' ...
+         'is `string`: [%s] %s'], ...
+        out.quarantine(1).class_name, out.quarantine(1).reason));
+end
+verifyEqual(testCase, numel(out.migrated), 2);   % pattern + software
+names = classNames(out);
+verifyTrue(testCase, any(strcmp(names, 'epoch_file_pattern')));
+% the LIST survived as a list -- not joined, not padded, not drifted to a char
+efp = out.migrated{find(strcmp(names, 'epoch_file_pattern'), 1)};
+verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), ...
+    {'#\.rhd\>', '#\.tsv\>'});
 end
 
 % ===================== helpers ============================================
