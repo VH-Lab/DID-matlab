@@ -3888,13 +3888,21 @@ class TestPassCensusRendering(DigestCase):
     def test_a_pass_that_attaches_no_report_is_named_unmeasured(self):
         # THE DEFECT. Such a pass produced NO LINE AT ALL: "ran and reported
         # nothing" and "does not exist" were the same output.
+        #
+        # THE FIXTURE USED `resolveDeferredBaths`, WHICH IS NO LONGER
+        # UNMEASURED -- it and `resolveDatasetEntities` gained report structs
+        # and render rows on 2026-08-11, which is the outcome this whole census
+        # existed to force. The property is unchanged and still worth guarding:
+        # a TENTH pass wired in tomorrow with no report must be named, not
+        # silently omitted. So the fixture now uses a pass that genuinely has
+        # no row, rather than the assertion being relaxed to keep passing.
         out = []
         census_digest.render_post_passes(
             {"epoch_mint": {"ran": True, "documents_inspected": 5}}, out,
-            self._chain(["resolveDeferredBaths", "epochMint"],
+            self._chain(["aPassNobodyHasWrittenRowsFor", "epochMint"],
                         {"epochMint": "epoch_mint"}))
         text = "\n".join(out)
-        self.assertIn("resolveDeferredBaths", text)
+        self.assertIn("aPassNobodyHasWrittenRowsFor", text)
         self.assertIn("RAN, MEASURED BY NOTHING", text)
         self.assertIn("1 carry a report here", text)
         self.assertIn("1 UNMEASURED BY CONSTRUCTION", text)

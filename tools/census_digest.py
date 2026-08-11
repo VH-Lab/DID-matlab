@@ -86,6 +86,75 @@ def aslist(v):
 #
 # (field-in-report, MATLAB function, [(report key, label), ...] to print)
 POST_PASSES = [
+    # ---------------------------------------------------------------------
+    # THE TWO PASSES THAT RAN FOR MONTHS AND REPORTED NOTHING.
+    #
+    # Both mutate the corpus and neither attached a report until 2026-08-11, so
+    # `runBatchPass.m:63`'s claim that "every pass in did2.convert assigns its
+    # report to RESULT unconditionally" was false for exactly these two and
+    # nothing checked it. Field names below are read from the report structs,
+    # not from a plan document -- inventing them is the V_alpha failure this
+    # repository exists to stop.
+    # ---------------------------------------------------------------------
+
+    # READ `quarantine_inspected` AND `deferred_baths_seen` TOGETHER. "0 seen of
+    # a large quarantine" is a fact about the input; "0 of 0" is a corpus with
+    # nothing quarantined. They are not the same reading and only one of them
+    # says anything about this pass.
+    #
+    # THE FIVE REFUSAL CAUSES ARE NEVER COLLAPSED INTO `refused_total`. Only
+    # `refused_element_not_in_batch` is the designed outcome -- it is exactly
+    # `did2:convert:noSubjectForElement` and nothing else. The other four each
+    # mean something went wrong, and before this pass reported they were one
+    # bare `catch` whose body was two comment lines, so "resolved every deferred
+    # bath" and "resolved none, every element missing" read identically in every
+    # corpus run to date.
+    ("deferred_bath_resolution", "did2.convert.resolveDeferredBaths", [
+        ("quarantine_inspected", "quarantined document(s) inspected  <- THE DENOMINATOR"),
+        ("deferred_baths_seen", "of those, deferred baths  <- 0 of 0 is not 0 of many"),
+        ("migrated_indexed", "migrated document(s) indexed"),
+        ("elements_indexed", "  elements in the index"),
+        ("lineage_edges_indexed", "  lineage edges in the index"),
+        ("index_documents_unreadable", "  UNREADABLE while indexing"),
+        ("baths_resolved", "baths RESOLVED"),
+        ("bodies_assembled", "  bodies assembled"),
+        ("documents_appended", "  documents appended"),
+        ("assembled_bodies_quarantined", "  assembled then QUARANTINED"),
+        ("quarantine_before", "quarantine before"),
+        ("quarantine_after", "  after"),
+        ("refused_total", "REFUSED (total; the five causes below are never summed into it)"),
+        ("refused_element_not_in_batch", "  element not in batch (the DESIGNED outcome)"),
+        ("refused_body_unreadable", "  body unreadable"),
+        ("refused_no_stimulus_element_id", "  no stimulus_element_id"),
+        ("refused_bath_assembly_failed", "  bath assembly failed"),
+        ("refused_unexpected_error", "  UNEXPECTED error"),
+    ]),
+
+    # `documents_removed_unattributed` IS A GATE AND MUST READ 0. It is the keep
+    # mask's removal count minus the three named reasons, so a non-zero value is
+    # a document deleted with no stated cause.
+    #
+    # READING INSTRUCTION: `documents_unreadable > 0` demotes
+    # `membership_dropped_child_absent` to an UPPER BOUND. The pass decides that
+    # edge on absence from an id index, so a document it could not read is a
+    # child it cannot see -- and absence of evidence becomes a deletion.
+    ("dataset_entity_resolution", "did2.convert.resolveDatasetEntities", [
+        ("documents_inspected", "document(s) inspected  <- THE DENOMINATOR"),
+        ("documents_unreadable", "  UNREADABLE (see the note: this bounds the prune below)"),
+        ("dataset_entities_seen", "`dataset` entities seen"),
+        ("distinct_dataset_ids", "  distinct ids among them"),
+        ("duplicates_dropped_poorer_richness", "DEDUP: poorer duplicate dropped"),
+        ("duplicate_ties_incumbent_kept", "  ties kept by FILE ORDER alone"),
+        ("membership_relations_seen", "PRUNE: membership relations seen"),
+        ("membership_kept_child_present", "  kept, child present"),
+        ("membership_dropped_child_absent", "  DROPPED, child absent  <- upper bound if any doc was unreadable"),
+        ("membership_dropped_no_child_edge", "  DROPPED, no child edge at all"),
+        ("migrated_before", "migrated before"),
+        ("migrated_after", "  after"),
+        ("documents_removed", "documents REMOVED"),
+        ("documents_removed_unattributed", "  UNATTRIBUTED -- a gate; must read 0"),
+    ]),
+
     # TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
     # graph into the entity tier, rather than accept the loss or require a
     # metadata_editor document.
