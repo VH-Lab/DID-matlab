@@ -49,6 +49,40 @@
 %     INUSA absent under -notok    -> the directive is DEAD, the alert is right
 %                                     and the three lines can lose it.
 %   Either answer is a result. Guessing is not.
+%
+%   ---------------------------------------------------------------------
+%   THE ANSWER (run 31536667302, 2026-08-11). BOTH ALERTS WERE RIGHT, AND THE
+%   THIRD DIRECTIVE IS LOAD-BEARING -- so "tidy the block, make all three the
+%   same" would have been wrong in both directions at once.
+%   ---------------------------------------------------------------------
+%
+%       checkcode: 2 message(s) normally, 1 with -notok
+%       NORMAL  line 110  MSNU   ...once suppressed here, but no longer generated
+%       NORMAL  line 111  MSNU   ...once suppressed here, but no longer generated
+%       -NOTOK  line 109  INUSA  Input argument might be unused after the
+%                               function arguments block(s)
+%
+%     line 109  options.Validate       LOAD-BEARING -> kept
+%     line 110  options.SchemaCache    DEAD         -> directive removed
+%     line 111  options.TargetVersion  DEAD         -> directive removed
+%
+%   THE PROBE ALSO CAUGHT ITSELF, and that half matters more than the answer.
+%   Its own %#ok listing printed 108/109/110 while checkcode, sed and every
+%   editor say 109/110/111: `strsplit` collapses consecutive delimiters BY
+%   DEFAULT, so every blank line disappeared and the table came back one short.
+%   The checkcode output was unaffected (checkcode owns its numbering), so the
+%   two halves of one printout disagreed by one -- and the wrong half was the
+%   INTERNALLY CONSISTENT one. Fixed below with 'CollapseDelimiters', false.
+%   Nothing was acted on from the shifted numbers.
+%
+%   FOR THE FILE THIS SESSION DOES NOT OWN, epochStringRetention.m -- read, NOT
+%   edited, handed over as a measurement:
+%     * alert 210's directive (line 327 in checkcode's numbering) is DEAD;
+%     * TEN AGROW messages are being suppressed elsewhere in the file, so the
+%       other directives there are load-bearing and must not be swept;
+%     * and lines 415 and 418 raise AGROW *unsuppressed today* -- two live
+%       analyzer warnings nobody has looked at, which is a finding the alert
+%       that prompted this had nothing to do with.
 
 fprintf('\n=============== PROBE 10: stale-suppression check ===============\n');
 
@@ -81,7 +115,16 @@ for t = 1:numel(targets)
 
     % The lines carrying a suppression, read out of the file rather than
     % remembered, so the report cannot describe a file that has moved on.
-    lines = strsplit(fileread(p), newline);
+    % 'CollapseDelimiters', false IS LOAD-BEARING, and this probe found that
+    % out the hard way: the DEFAULT collapses consecutive newlines, so every
+    % blank line vanished and this listing came back one short of the truth --
+    % it printed the three directives at 108/109/110 while checkcode (and sed,
+    % and any editor) put them at 109/110/111. The checkcode message lists were
+    % unaffected, because checkcode owns its own numbering; the per-line verdict
+    % block below is what was wrong, and it was wrong in the quietest possible
+    % way -- an internally consistent table pointing at the wrong lines. Probe 7
+    % lesson, one layer down: print the shape before you use it.
+    lines = strsplit(fileread(p), newline, 'CollapseDelimiters', false);
     okLines = [];
     for k = 1:numel(lines)
         if contains(lines{k}, '%#ok<')

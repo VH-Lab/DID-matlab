@@ -104,11 +104,30 @@ function [result, report] = resolveDatasetEntities(result, options)
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveDeferredBaths,
 %   did2.convert.migrators_j.metadata_editor.
 
+% THE SUPPRESSIONS BELOW ARE NOT UNIFORM, AND THAT IS MEASURED RATHER THAN
+% TIDIED. Code-scanning alerts 211/212 flagged the `%#ok<INUSA>` on the
+% `SchemaCache` and `TargetVersion` lines as suppressing a message that is no
+% longer generated, and left the identical directive on `Validate` alone.
+% `checkcode` was run over this exact file on a CI runner (matlab-scratch.yml,
+% run 31536667302, probe 10) with and without `-notok`, which reports what a
+% `%#ok` is hiding:
+%
+%     checkcode: 2 message(s) normally, 1 with -notok
+%     NORMAL  line 110  MSNU   ...once suppressed here, but no longer generated
+%     NORMAL  line 111  MSNU   ...once suppressed here, but no longer generated
+%     -NOTOK  line 109  INUSA  Input argument might be unused after the
+%                             function arguments block(s)
+%
+% So the alerts were RIGHT and the third directive is LOAD-BEARING: only
+% `Validate` raises INUSA at all. The two dead ones are removed; the live one
+% stays and says so. Deleting all three to make the block look consistent would
+% have traded two cosmetic alerts for a real analyzer warning on every run --
+% which is what nearly happened to two `%#ok<AGROW>` directives on the same day.
 arguments
     result (1,1) struct
     options.Validate (1,1) logical = true %#ok<INUSA>
-    options.SchemaCache = [] %#ok<INUSA>
-    options.TargetVersion (1,:) char = 'V_eta' %#ok<INUSA>
+    options.SchemaCache = []
+    options.TargetVersion (1,:) char = 'V_eta'
 end
 
 % DENOMINATOR FIRST, and unconditionally. Every field is defined before a
