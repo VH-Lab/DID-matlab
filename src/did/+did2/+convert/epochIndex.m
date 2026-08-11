@@ -647,7 +647,7 @@ classdef epochIndex < handle
             %   did2.validate.epochStringRetention/pairKey -- testEpochIndex
             %   pins this against epochMint's real output so the four cannot
             %   drift apart in silence.
-            k = sprintf('%d:%s|%s', numel(sessionId), sessionId, localIdentifier);
+            k = localIdentifier;   % MUTATION M1
         end
 
         function report = blankReport()
