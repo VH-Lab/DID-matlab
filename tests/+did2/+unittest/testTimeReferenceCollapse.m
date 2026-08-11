@@ -5,6 +5,16 @@ function tests = testTimeReferenceCollapse
 %   nothing in this file has been run. The quick gate (test-migrators-quick.yml)
 %   is the first thing that will have an opinion.
 %
+%   STATUS 2026-08-11, for the two unit tests added at the end of the bounded
+%   section: SAME. `command -v matlab octave octave-cli` returns nothing in the
+%   container they were written in, so they have not been run either, and CI is
+%   their first execution. Nothing below should be read as measured.
+%
+%   ALSO ADDED 2026-08-11: a docstring on `durationCell` recording that it is a
+%   hand copy which ADDED a `seconds` the emitter never writes, which is why the
+%   20,411-document extent loss survived this file. Read it before copying that
+%   fixture; `emitterDurationCell` next to it is the emitter's real shape.
+%
 %   NEW FILE, deliberately. `testMigratorsJ.m` is owned by another session and is
 %   not touched.
 %
@@ -162,8 +172,66 @@ b.session_bounded_reference = struct('relation', 'during', ...
 end
 
 function c = durationCell(seconds)
+%DURATIONCELL A duration cell carrying BOTH the canonical `seconds` and the
+%   source pair.
+%
+%   READ THIS BEFORE COPYING IT. It is a HAND COPY of the emitter that ADDED a
+%   field the emitter never writes. `ontology_table_row.m`'s `durationSeconds`
+%   (its function, near the bottom of the file) writes exactly three keys:
+%
+%       d = struct('source_unit', 's', 'source_value', double(x), ...
+%           'approximate', false);
+%
+%   -- no `seconds`. `cellField` used to require `seconds` and nothing else, so
+%   every real bounded window in the corpus folded with its extent silently
+%   dropped (20,411 documents) while this fixture, carrying the extra field,
+%   stayed green. The defect lived in the gap between the two shapes.
+%   testSessionAnchorEmitterContract.m found it by driving the real migrator.
+%
+%   This fixture is LEFT AS IT IS: it exercises the already-canonical cell,
+%   which is a real shape (jClockAlignmentBodies, jEpochClockReferences and
+%   resolveValidIntervals all write `seconds`), and changing it would weaken the
+%   tests above that depend on it. What must not happen is a SECOND fixture with
+%   the same flaw -- see `emitterDurationCell` below, which is the emitter's
+%   three-key shape exactly.
 c = struct('seconds', double(seconds), 'source_unit', 's', ...
     'source_value', double(seconds), 'approximate', false);
+end
+
+function c = emitterDurationCell(unit, value)
+%EMITTERDURATIONCELL The emitter's duration cell EXACTLY -- three keys, NO
+%   `seconds` -- with the unit string as a parameter.
+%
+%   THE THREE KEYS AND THEIR ORDER ARE THE EMITTER'S, copied from
+%   src/did/+did2/+convert/+migrators_j/ontology_table_row.m `durationSeconds`:
+%
+%       d = struct('source_unit', 's', 'source_value', double(x), ...
+%           'approximate', false);
+%
+%   THE UNIT IS THE ONLY THING THIS PARAMETERISES, and that is the point: the
+%   sole emitter of `session_bounded_reference` in this repository hard-codes
+%   the literal 's', so NO MIGRATOR CAN PRODUCE A NON-SECONDS UNIT TODAY and the
+%   refusal branch in `isSecondsUnit` cannot be reached from any real document.
+%   A HAND-BUILT BODY IS THEREFORE THE ONLY WAY TO DRIVE IT, and that is the
+%   whole justification for departing from this file's standing rule that
+%   fixtures are copied from the live emitter. It is stated here rather than
+%   assumed because a hand-built fixture is exactly what hid the defect above.
+c = struct('source_unit', unit, 'source_value', double(value), ...
+    'approximate', false);
+end
+
+function b = emitterShapedBoundedBody(docId, sessionId, unit, onset, offset)
+%EMITTERSHAPEDBOUNDEDBODY `boundedBody` with its two duration cells replaced by
+%   the emitter's three-key shape in the named unit.
+%
+%   Built by MUTATING `boundedBody` rather than by re-transcribing it, so the
+%   difference between the two fixtures is visible in these two lines and cannot
+%   drift: everything else -- class name, version, superclasses, schema_version,
+%   base, the empty depends_on, `is_approximate`, `relation` -- is whatever
+%   `boundedBody` says, which is the emitter's `makeEncounterWindow`.
+b = boundedBody(docId, sessionId, onset, offset);
+b.session_bounded_reference.start = emitterDurationCell(unit, onset);
+b.session_bounded_reference.end   = emitterDurationCell(unit, offset);
 end
 
 function b = pointerBody(docId, sessionId, anchorId)
@@ -363,6 +431,93 @@ verifyEqual(testCase, rep.anchors_folded, 0);
 verifyEqual(testCase, rep.refused_total, 1);
 verifyEqual(testCase, classNames(out), ...
     {'session', 'session_bounded_reference'});
+end
+
+% ---- the unit the fold will not read --------------------------------------
+%
+% `cellField` derives the canonical `seconds` from a source pair ONLY when
+% `isSecondsUnit` says the pair DECLARES seconds. The other arm of that `if` --
+% the refusal -- had no driven coverage anywhere in this repository before the
+% two tests below: every duration cell any emitter can produce carries either a
+% canonical `seconds` already or `durationSeconds`'s literal 's'. So the branch
+% is reachable only from a hand-built body, and these drive it with one that
+% differs from the emitter's output in the unit string and in nothing else.
+
+function testAWindowInAUnitTheFoldCannotReadKeepsNoExtent(testCase)
+% THE REFUSAL BRANCH. A source pair whose unit `isSecondsUnit` cannot read is
+% NOT read as seconds: the cell stays ABSENT, so the folded document carries no
+% `start` and no `duration` rather than a number rescaled by a guessed factor.
+% Reading `source_value: 1249.72, source_unit: 'ms'` as 1249.72 SECONDS would be
+% a 1000x error that validates cleanly -- the distance_metadata assumed-shape
+% failure with a unit attached.
+%
+% WHAT THIS TEST DOES NOT CLAIM, stated because a green here is easy to
+% over-read: an unreadable unit moves NO refusal counter. `anchors_folded` goes
+% up, `refused_total` stays 0, and the window is absent from the folded
+% document. That is the same instrument shape as the defect this branch was
+% written during -- a loss every counter reports as clean -- and it is pinned
+% here as the CURRENT BEHAVIOUR, not endorsed. It costs nothing today because no
+% emitter can produce such a unit; it would cost a corpus the day one can.
+units = {'ms', 'minutes', 'msec', ''};
+for k = 1:numel(units)
+    unit = units{k};
+    label = unit;
+    if isempty(label); label = '<empty>'; end
+    [out, rep] = foldFrom({ ...
+        sessionBody('sess_doc_1', 'SID_1', 'exp1'), ...
+        emitterShapedBoundedBody('window_1', 'SID_1', unit, 12, 47)});
+
+    % the document still folds -- the refusal is about the CELL, not the anchor
+    verifyEqual(testCase, rep.anchors_bounded, 1, label);
+    verifyEqual(testCase, rep.anchors_folded, 1, label);
+    verifyEqual(testCase, rep.refused_total, 0, label);
+
+    ref = oneOfClass(testCase, out, 'relative_reference');
+    value = ref.get('relative_reference.value');
+    verifyFalse(testCase, isfield(value, 'start'), sprintf( ...
+        ['source_unit ''%s'' was read as seconds: the fold set `start` from a ' ...
+         'unit isSecondsUnit refuses. An unreadable unit must leave the cell ' ...
+         'ABSENT.'], label));
+    verifyFalse(testCase, isfield(value, 'duration'), sprintf( ...
+        ['source_unit ''%s'' produced a `duration`, so both offsets were read ' ...
+         'as seconds and subtracted.'], label));
+end
+end
+
+function testTheSameBodyInASecondsUnitIsRead(testCase)
+% THE CONTROL, and it is load-bearing rather than decorative. Without it the
+% test above would pass just as well if `emitterShapedBoundedBody` were broken in
+% a way that had nothing to do with the unit -- a misspelled block, a class name
+% the fold ignores -- and "the fold refused the unit" and "the fold never saw
+% the document" are not the same finding. Here the SAME builder, differing only
+% in the unit string, must produce the extent.
+%
+% It also drives the four accepted spellings other than the emitter's literal
+% 's'. Those are as unemittable as the refused ones -- `durationSeconds`
+% hard-codes 's' -- so the accept list and the refuse list are covered by the
+% same hand-built body, which is the only thing that can reach either.
+units = {'s', 'sec', 'secs', 'second', 'seconds'};
+for k = 1:numel(units)
+    unit = units{k};
+    [out, rep] = foldFrom({ ...
+        sessionBody('sess_doc_1', 'SID_1', 'exp1'), ...
+        emitterShapedBoundedBody('window_1', 'SID_1', unit, 12, 47)});
+    verifyEqual(testCase, rep.anchors_folded, 1, unit);
+    verifyEqual(testCase, rep.refused_total, 0, unit);
+
+    ref = oneOfClass(testCase, out, 'relative_reference');
+    value = ref.get('relative_reference.value');
+    verifyTrue(testCase, isfield(value, 'start'), sprintf( ...
+        ['source_unit ''%s'' DECLARES seconds and the fold dropped the start ' ...
+         'anyway -- the 20,411-document defect, in a spelling isSecondsUnit ' ...
+         'accepts.'], unit));
+    verifyEqual(testCase, value.start.seconds, 12, unit);
+    verifyEqual(testCase, value.duration.seconds, 35, unit);
+    % the derived canonical value does not disturb the provenance it was derived
+    % FROM: the cell still says exactly what the source said.
+    verifyEqual(testCase, char(value.start.source_unit), unit, unit);
+    verifyEqual(testCase, value.start.source_value, 12, unit);
+end
 end
 
 % ===================== what it refuses to guess ========================
