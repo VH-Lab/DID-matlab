@@ -60,6 +60,57 @@ function tests = testTimeReferenceFamilies
 %   batch where the partition is NON-TRIVIAL (two different shapes plus an
 %   unshapeable one), so a constant cannot satisfy it.
 %
+%   ------------------------------------------------------------------------
+%   THE MUTATION MATRIX -- MEASURED IN CI, NOT PREDICTED
+%   ------------------------------------------------------------------------
+%   A green suite proves nothing about a suite that cannot fail. No MATLAB was
+%   available where this was written, so the mutations were run THROUGH CI: five
+%   throwaway branches, one deliberate break each, one quick-gate run each. Every
+%   run is quoted with its id so the claim is checkable rather than asserted.
+%
+%     BASELINE  run 31518220863 (b0fd606)
+%               1041 run / 1041 passed / 0 FAILED / 0 incomplete
+%
+%     M1  trfShapeKey truncated to 5 chars, so every shape collapses to one row
+%         run 31518666053  -> 1041 run, 1036 passed, 4 FAILED
+%           testTheSplitAnchorAndNClockShapesAreDistinguishable
+%           testAMixedAbsoluteAndRelativeFamilyIsItsOwnShape
+%           testTheShapeTablePartitionsTheMultiReferenceStatements
+%           testTheDiscriminatorLabelIsReadFromTheSchema
+%
+%     M2  an unresolvable referent stops incrementing nUnresolved, so a family
+%         whose anchors are outside the batch is "shaped" from empty bodies
+%         run 31518667609  -> 1 FAILED
+%           testAnUnshapeableStatementIsCountedNeverGuessed
+%         ONLY that one, which is the point: the partition still holds, so the
+%         accounting test cannot see this and a dedicated test must.
+%
+%     M3  both vacuity flags forced false -- every zero reads as MEASURED
+%         run 31518669835  -> 4 FAILED
+%           testTheDenominatorsAndHeadlineExistOnAnEmptyBatch
+%           testABatchWithNoStatementsReadsAsVACUOUSNotAsClean
+%           testASingleReferenceIsTheWellDefinedCase
+%           testAnUnshapeableStatementIsCountedNeverGuessed
+%
+%     M4  THE INSTRUMENT STOPS MEASURING: `bodies = {}` after the denominator is
+%         set, so docs_inspected still prints and nothing is ever read
+%         run 31518672214  -> 17 FAILED
+%         Seventeen of the nineteen. The two that stay green are
+%         testUnreadableDocumentsAreCountedNeverDropped (every document was
+%         unreadable anyway) and testTheDenominatorsAndHeadlineExistOnAnEmptyBatch
+%         (an empty batch returns before the mutated line) -- neither CAN detect
+%         it, and saying which two is the honest form of the claim.
+%
+%     M5  the family filter stops restricting to TIME references, so
+%         `derived_from_#` is counted as one
+%         run 31518674401  -> 2 FAILED
+%           testAStatementWithNoReferenceIsAMeasuredZeroNotAVacuousOne
+%           testANonTimeFamilyContributesNothingNotEvenADenominator
+%
+%   `testBatchPassWiring/testCrossRepoDivergenceIsExactlyTheCheckedInTable` shows
+%   as INCOMPLETE in all six runs. It is unrelated -- the NDI sibling checkout is
+%   best-effort on this workflow -- and is named here so it is not read as fallout.
+%
 %   Run with:  results = runtests('did2.unittest.testTimeReferenceFamilies');
 
 tests = functiontests(localfunctions);

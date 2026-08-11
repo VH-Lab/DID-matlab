@@ -113,9 +113,16 @@ function report = timeReferenceFamilies(docs, opts)
 %   ------------------------------------------------------------------------
 %   WHAT THE TREE CAN CURRENTLY EMIT (a prediction, stated as one)
 %   ------------------------------------------------------------------------
-%   Grepped over src/ at the time of writing: 57 literal `time_reference_1`
-%   sites, ZERO literal `time_reference_2`, and ONE site that numbers a family
-%   programmatically -- `did2.convert.resolveValidIntervals:857-860`, whose
+%   Grepped over src/ at the time of writing, COMMENT LINES EXCLUDED and this
+%   file excluded from its own count (the first draft of this paragraph said
+%   "57 sites" by counting both):
+%
+%       DENOMINATOR: 258 .m files under src/, all scanned
+%       44 code lines, in 35 files, write a literal `time_reference_1`
+%        0 code lines anywhere write `time_reference_2` or higher
+%        1 site numbers a family programmatically
+%
+%   That one site is `did2.convert.resolveValidIntervals:857-860`, whose
 %   split-anchor branch mints two instants when an interval's two ends resolve
 %   to different (epoch, clock, tolerance) anchors. The signed model predicts
 %   that branch NEVER FIRES (every `markvalidinterval` call site passes one
