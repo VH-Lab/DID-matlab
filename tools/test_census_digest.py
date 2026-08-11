@@ -17,8 +17,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from census_digest import (aslist, digest, epoch_association,  # noqa: E402
-                           ndi_required, norm_class, normalised_class_index,
-                           render_report, rollup)
+                           ndi_required, ndi_required_names, norm_class,
+                           normalised_class_index, render_report, rollup)
 
 
 class TestAsList(unittest.TestCase):
@@ -1582,6 +1582,280 @@ class TestNdiRequiredEdges(DigestCase):
         m = ndi_required({"silent_loss": {"total_docs": 5}})
         self.assertFalse(m["measured"])
         self.assertIn("no ndi_required_denominator block", m["why"])
+
+
+class TestNdiRequiredIdentities(DigestCase):
+    """WHICH divergences a corpus exercised -- the names beside the counts.
+
+    THE DEFECT THIS COVERS. silentLoss built two seen-sets (`nrSeenRelaxed`,
+    `nrSeenEdges`) over a whole batch and reported only `.Count`, so a
+    six-corpus run said "N of the schema's divergences were exercised" and
+    nothing anywhere said WHICH. The keys lived in memory for the run and were
+    dropped; no log and no artifact held them, and re-running the corpus did
+    not recover them. The complement -- the divergences no corpus touches --
+    was therefore unnameable, and it is the half that ranks planning work.
+
+    EVERY ASSERTION HERE NAMES A NAME. A test that only checked the field was
+    present, or only that a section header printed, would pass against a
+    renderer that exports an empty list for everything -- the failure mode a
+    neighbouring instrument shipped an hour before this was written, where a
+    partition check replaced by `return True` left 76 tests green because every
+    other test asserted the partition on data where it held.
+    """
+
+    def _nd(self, **over):
+        nd = {
+            "docs_inspected": 1000, "docs_unreadable": 0,
+            "docs_unclassifiable": 0, "docs_classified": 1000,
+            "marker_key": "ndi_mustBeNonEmpty",
+            "classes_carrying_the_marker": 40,
+            "relaxed_classes": 2, "relaxed_edges_declared": 3,
+            "relaxed_class_names": ["ontology_label", "spikewaves"],
+            "relaxed_edge_names": ["ontology_label.document_id",
+                                   "ontology_label.other_id",
+                                   "spikewaves.element_id"],
+            "docs_declaring_a_relaxed_edge": 500,
+            "edges_examined": 560, "edges_populated": 60, "edges_empty": 500,
+        }
+        nd.update(over)
+        return nd
+
+    def _corpus(self, name="A", nd=None, rows=None, count=0):
+        sl = {"total_docs": 1000, "skipped_docs": 0,
+              "empty_dependency_count": 0, "vacuous_field_count": 0,
+              "ndi_required_denominator": nd if nd is not None else self._nd(),
+              "ndi_required_dependency_count": count,
+              "ndi_required_dependency": rows if rows is not None else []}
+        self.write(name, {"corpus": name, "total": 100, "migrated_count": 1000,
+                          "quarantine_count": 0, "silent_loss": sl})
+
+    # --- per corpus: the names themselves, not merely a header --------------
+
+    def test_the_relaxed_class_names_are_printed(self):
+        self._corpus("A")
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("ontology_label", text)
+        self.assertIn("spikewaves", text)
+
+    def test_the_relaxed_edge_pairs_are_printed_class_dot_edge(self):
+        # The dot spelling matters: `ndi_required_dependency` rows render as
+        # `class.edge`, so the pairs SEEN and the pairs found EMPTY are
+        # comparable strings rather than two formats to reconcile.
+        self._corpus("A")
+        text, _ = self.run_digest()
+        self.assertIn("ontology_label.document_id", text)
+        self.assertIn("ontology_label.other_id", text)
+        self.assertIn("spikewaves.element_id", text)
+
+    def test_a_report_predating_the_export_is_UNMEASURED_not_an_empty_list(self):
+        # THE distinction. An absent list and an empty list are different
+        # facts; rendering the first as the second would say "this corpus
+        # exercised nothing" about a corpus nobody asked.
+        nd = self._nd()
+        del nd["relaxed_class_names"]
+        del nd["relaxed_edge_names"]
+        self._corpus("A", nd)
+        text, _ = self.run_digest()
+        self.assertIn("NAMES NOT MEASURED -- this report predates the identity "
+                      "export", text)
+        self.assertIn("An absent list is not an empty one", text)
+        self.assertNotIn("0 (class, edge) pair(s) relaxed seen", text)
+
+    def test_a_measured_empty_list_says_so_in_its_own_words(self):
+        # And is NOT the same output as the absent case above.
+        self._corpus("A", self._nd(relaxed_classes=0, relaxed_edges_declared=0,
+                                   relaxed_class_names=[],
+                                   relaxed_edge_names=[],
+                                   docs_declaring_a_relaxed_edge=0,
+                                   edges_examined=0, edges_populated=0,
+                                   edges_empty=0))
+        text, _ = self.run_digest()
+        self.assertIn("0 (class, edge) pair(s) relaxed seen. This is a "
+                      "MEASURED zero", text)
+        self.assertNotIn("predates the identity export", text)
+
+    def test_a_list_shorter_than_its_own_count_is_called_out(self):
+        # The counts were here first and other tooling reads them. If the two
+        # disagree the report is wrong somewhere, and the SHORTER one must not
+        # be quietly preferred -- a names list that went short would shrink the
+        # union and read as progress.
+        self._corpus("A", self._nd(relaxed_edge_names=[
+            "ontology_label.document_id"]))
+        text, _ = self.run_digest()
+        self.assertIn("THE LIST AND ITS COUNT DISAGREE: "
+                      "`relaxed_edges_declared` says 3, 1 name(s) were "
+                      "exported", text)
+
+    def test_a_malformed_list_is_not_measured(self):
+        self._corpus("A", self._nd(relaxed_edge_names=42))
+        text, _ = self.run_digest()
+        self.assertIn("`relaxed_edge_names` is malformed (int)", text)
+
+    def test_a_bare_string_is_one_name_not_a_pile_of_letters(self):
+        # Defensive. MATLAB writes a cell as a JSON array at every length, but
+        # a single string arriving here must not iterate character by
+        # character and manufacture a 26-entry union of letters.
+        self._corpus("A", self._nd(relaxed_classes=1,
+                                   relaxed_class_names="ontology_label"))
+        text, _ = self.run_digest()
+        self.assertIn("1 class(es) declaring a relaxed edge", text)
+        self.assertNotIn("          o\n", text)
+
+    # --- the rollup: the union is the point ---------------------------------
+
+    def test_the_union_merges_two_corpora_and_names_where_each_was_seen(self):
+        self._corpus("A", self._nd(
+            relaxed_classes=1, relaxed_edges_declared=1,
+            relaxed_class_names=["ontology_label"],
+            relaxed_edge_names=["ontology_label.document_id"]))
+        self._corpus("B", self._nd(
+            relaxed_classes=1, relaxed_edges_declared=1,
+            relaxed_class_names=["probe_geometry"],
+            relaxed_edge_names=["probe_geometry.probe_id"]))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("2 distinct (class, edge) pair(s) relaxed in the union",
+                      text)
+        self.assertIn("ontology_label.document_id", text)
+        self.assertIn("probe_geometry.probe_id", text)
+        # WHERE each was seen, so a pair present in one corpus and a pair
+        # present in all six are distinguishable.
+        self.assertRegex(text, r"ontology_label\.document_id\s+seen in: A")
+        self.assertRegex(text, r"probe_geometry\.probe_id\s+seen in: B")
+
+    def test_every_name_a_corpus_carried_reaches_the_union(self):
+        # A UNION THAT GOES SHORT READS AS PROGRESS: fewer pairs in the union
+        # means a smaller measured set, which means a LARGER unmeasured
+        # complement -- but the way it is quoted ("we have seen k of them") the
+        # error still arrives as a confident number. Asserted against a corpus
+        # carrying THREE pairs, so a union that keeps only the first per corpus
+        # cannot pass.
+        self._corpus("A")   # 2 classes, 3 pairs
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("3 distinct (class, edge) pair(s) relaxed in the union",
+                      text)
+        self.assertIn("2 distinct class(es) declaring a relaxed edge in the "
+                      "union", text)
+        i = text.index("THE UNION OF IDENTITIES SEEN")
+        tail = text[i:]
+        for name in ("ontology_label", "spikewaves",
+                     "ontology_label.document_id", "ontology_label.other_id",
+                     "spikewaves.element_id"):
+            self.assertIn(name, tail, "%s never reached the union" % name)
+
+    def test_a_pair_in_two_corpora_is_one_union_entry_naming_both(self):
+        self._corpus("A", self._nd(
+            relaxed_classes=1, relaxed_edges_declared=1,
+            relaxed_class_names=["ontology_label"],
+            relaxed_edge_names=["ontology_label.document_id"]))
+        self._corpus("B", self._nd(
+            relaxed_classes=1, relaxed_edges_declared=1,
+            relaxed_class_names=["ontology_label"],
+            relaxed_edge_names=["ontology_label.document_id"]))
+        text, _ = self.run_digest()
+        self.assertIn("1 distinct (class, edge) pair(s) relaxed in the union",
+                      text)
+        self.assertRegex(text, r"ontology_label\.document_id\s+seen in: A, B")
+
+    def test_the_summed_count_and_the_union_size_are_told_apart(self):
+        # THE READING ERROR THIS EXISTS TO STOP. The rollup's
+        # `relaxed_edges_declared` line ADDS per-corpus DISTINCT counts, so a
+        # pair present in two corpora contributes 2. The figure that has been
+        # quoted against the schema-side divergence set is that sum; the union
+        # size is the cross-corpus distinct figure and is the one to subtract.
+        self._corpus("A", self._nd(
+            relaxed_classes=1, relaxed_edges_declared=1,
+            relaxed_class_names=["ontology_label"],
+            relaxed_edge_names=["ontology_label.document_id"]))
+        self._corpus("B", self._nd(
+            relaxed_classes=1, relaxed_edges_declared=1,
+            relaxed_class_names=["ontology_label"],
+            relaxed_edge_names=["ontology_label.document_id"]))
+        text, _ = self.run_digest()
+        self.assertIn("`relaxed_edges_declared` sums to 2 across the rollup; "
+                      "the union is", text)
+        self.assertIn("counted", text)
+
+    def test_a_corpus_without_names_is_named_and_the_union_says_over_how_many(self):
+        nd_old = self._nd()
+        del nd_old["relaxed_class_names"]
+        del nd_old["relaxed_edge_names"]
+        self._corpus("A")
+        self._corpus("Old", nd_old)
+        text, _ = self.run_digest()
+        self.assertIn("1 of 2 readable block(s) carried `relaxed_edge_names`",
+                      text)
+        self.assertIn("*** NAMES NOT MEASURED in: Old", text)
+        self.assertIn("union below is over 1 corpus report(s), not 2", text)
+
+    def test_no_report_carrying_names_is_not_an_empty_union(self):
+        nd_old = self._nd()
+        del nd_old["relaxed_class_names"]
+        del nd_old["relaxed_edge_names"]
+        self._corpus("Old", nd_old)
+        text, _ = self.run_digest()
+        self.assertIn("NO REPORT CARRIED `relaxed_edge_names`. There is "
+                      "nothing to union", text)
+        self.assertIn("This is NOT 'no (class, edge) pair(s) relaxed were "
+                      "seen'", text)
+
+    def test_the_rollup_refuses_to_own_the_divergence_set(self):
+        # The set of divergences is computed in DID-schema. Duplicating it here
+        # would create a second copy to drift, and both copies would print
+        # confidently. The rollup reports what was SEEN and says where the
+        # comparison belongs.
+        self._corpus("A")
+        text, _ = self.run_digest()
+        self.assertIn("THIS IS WHAT THE SAMPLE EXERCISED, NOT WHAT EXISTS",
+                      text)
+        self.assertIn("computed in", text)
+        self.assertIn("DID-schema", text)
+        self.assertIn("UNMEASURED on real data -- not clean, unlooked-at",
+                      text)
+
+    # --- stability ----------------------------------------------------------
+
+    def test_the_union_is_rendered_in_a_stable_order(self):
+        # Two reports of the same corpus must diff cleanly. The MATLAB side
+        # sorts; the digest sorts again, so an unsorted report cannot produce
+        # an unstable digest either.
+        self._corpus("A", self._nd(
+            relaxed_classes=3, relaxed_edges_declared=3,
+            relaxed_class_names=["z_class", "a_class", "m_class"],
+            relaxed_edge_names=["z.e", "a.e", "m.e"]))
+        text, _ = self.run_digest()
+        i = text.index("THE UNION OF IDENTITIES SEEN")
+        tail = text[i:]
+        self.assertLess(tail.index("a_class"), tail.index("m_class"))
+        self.assertLess(tail.index("m_class"), tail.index("z_class"))
+        self.assertLess(tail.index("a.e"), tail.index("m.e"))
+        self.assertLess(tail.index("m.e"), tail.index("z.e"))
+
+    # --- the reader, directly ------------------------------------------------
+
+    def test_the_reader_distinguishes_absent_from_empty(self):
+        absent = ndi_required_names({"relaxed_classes": 3},
+                                    "relaxed_class_names", "relaxed_classes")
+        self.assertFalse(absent["measured"])
+        self.assertIn("predates the identity export", absent["why"])
+        empty = ndi_required_names({"relaxed_classes": 0,
+                                    "relaxed_class_names": []},
+                                   "relaxed_class_names", "relaxed_classes")
+        self.assertTrue(empty["measured"])
+        self.assertEqual(empty["names"], [])
+        self.assertIsNone(empty["drift"])
+
+    def test_the_reader_returns_the_actual_names(self):
+        # Not a count, not a bool -- the strings. A reader that returned
+        # `measured: True` with an empty list would pass a presence-only test.
+        m = ndi_required_names({"relaxed_classes": 2,
+                                "relaxed_class_names": ["b", "a"]},
+                               "relaxed_class_names", "relaxed_classes")
+        self.assertTrue(m["measured"])
+        self.assertEqual(m["names"], ["b", "a"])
+        self.assertIsNone(m["drift"])
 
 
 class TestLegacyNdiDocumentBlock(DigestCase):

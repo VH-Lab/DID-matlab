@@ -197,6 +197,21 @@ function report = silentLoss(docs, opts)
 %     relaxed_edges_declared      distinct (class, edge) pairs so declared
 %                                 <-- AT ZERO THE COUNTER COULD NOT FIRE, and a
 %                                     zero violation count says only that
+%     relaxed_class_names         the class names behind `relaxed_classes`,
+%                                 SORTED. A cell, empty when nothing was seen.
+%     relaxed_edge_names          the pairs behind `relaxed_edges_declared`,
+%                                 SORTED, spelled `class.edge` -- the same
+%                                 spelling an `ndi_required_dependency` row
+%                                 renders in, so the two are comparable
+%                                 <-- WITHOUT THESE THE BLOCK COULD SAY HOW
+%                                     MANY DIVERGENCES A CORPUS EXERCISED AND
+%                                     NOT WHICH, so the COMPLEMENT -- the
+%                                     divergences no corpus touches, which are
+%                                     unmeasured rather than clean -- was not
+%                                     nameable from any artifact. The counts
+%                                     above are unchanged and still mean what
+%                                     they meant; these are additional, and
+%                                     numel(names) == the paired count.
 %     docs_declaring_a_relaxed_edge   documents whose class declares >=1
 %     edges_examined              (document, relaxed edge) pairs inspected
 %     edges_populated             the edge carried a non-blank referent
@@ -873,6 +888,22 @@ report.ndi_required_dependency_count = sum(nrCounts);
 report.ndi_required_denominator.classes_carrying_the_marker = double(nrSeenClasses.Count);
 report.ndi_required_denominator.relaxed_classes = double(nrSeenRelaxed.Count);
 report.ndi_required_denominator.relaxed_edges_declared = double(nrSeenEdges.Count);
+% THE IDENTITIES, beside the counts that were already here. Until this line the
+% two maps above were built over the whole batch and then reduced to `.Count`,
+% so a six-corpus run could report "7 of the schema's divergences were seen"
+% and NOTHING ANYWHERE said WHICH SEVEN -- the keys existed in memory for the
+% length of the run and were dropped at the end, recoverable from no log and no
+% artifact. That made the complement, the divergences no corpus exercises,
+% unnameable: the only thing derivable from two integers is that a class with
+% more than one divergent edge must be among them, which is inference, not
+% measurement.
+%
+% THE COUNTS ARE UNCHANGED AND KEEP THEIR MEANING. Prior corpus reports carry
+% them and are compared against; these are ADDITIONAL fields, never a
+% repurposing. `numel(names) == count` is therefore an invariant, and the digest
+% checks it rather than assuming it.
+report.ndi_required_denominator.relaxed_class_names = nrClassNames(nrSeenRelaxed);
+report.ndi_required_denominator.relaxed_edge_names  = nrPairNames(nrSeenEdges);
 end
 
 % ===================== helpers =========================================
@@ -1190,10 +1221,56 @@ r = struct( ...
     'classes_carrying_the_marker',   0, ...
     'relaxed_classes',               0, ...
     'relaxed_edges_declared',        0, ...
+    'relaxed_class_names',           {{}}, ...
+    'relaxed_edge_names',            {{}}, ...
     'docs_declaring_a_relaxed_edge', 0, ...
     'edges_examined',                0, ...
     'edges_populated',               0, ...
     'edges_empty',                   0);
+end
+
+function names = nrClassNames(m)
+%NRCLASSNAMES The class names a seen-set map accumulated, SORTED.
+%   `keys` on a containers.Map is documented to return char keys in sorted
+%   order, and this sorts anyway: two reports from the same corpus must diff
+%   cleanly, and an order that happens to be stable is not the same promise as
+%   an order that is made stable. A spurious diff in a names list would be read
+%   as "the corpus changed".
+%
+%   Always a CELL, including when empty -- `jsonencode` writes a cell as a JSON
+%   array either way, so the digest sees `[]` for "seen nothing" and a MISSING
+%   key for "this report predates the export". Those are different facts and
+%   the encoding keeps them apart.
+names = keys(m);
+if isempty(names)
+    names = {};
+    return;
+end
+names = sort(names(:)');
+end
+
+function names = nrPairNames(m)
+%NRPAIRNAMES The (class, edge) pairs a seen-set map accumulated, SORTED.
+%   Keys are stored `class|edge` and are exported `class.edge`, which is the
+%   spelling `ndi_required_dependency` rows are rendered in -- so the union of
+%   what was SEEN and the rows that were EMPTY are directly comparable strings
+%   rather than two formats a reader has to reconcile.
+%
+%   THE SORT HAPPENS AFTER THE REWRITE, NOT BEFORE, and the order genuinely
+%   differs: '|' is 0x7C and '.' is 0x2E, so a class named `a` with edge `b`
+%   sorts after `a_c` as `a|b` and before it as `a.b`. Sorting the stored form
+%   would export a list that is not sorted in the form it is exported in, which
+%   is the same defect as not sorting at all.
+raw = keys(m);
+if isempty(raw)
+    names = {};
+    return;
+end
+names = cell(1, numel(raw));
+for k = 1:numel(raw)
+    names{k} = strrep(raw{k}, '|', '.');
+end
+names = sort(names);
 end
 
 function k = nrMarkerKey()

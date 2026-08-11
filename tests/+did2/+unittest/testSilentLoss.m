@@ -602,6 +602,170 @@ verifyWarningFree(testCase, @() did2.validate.silentLoss({b}), ...
     'a CELL-shaped depends_on is normal here -- the marker is stamped on some entries of a class and not others');
 end
 
+% ===== THE IDENTITIES, NOT ONLY THE COUNTS ================================
+%
+% STATUS 2026-08-11: WRITTEN WITHOUT MATLAB. There is no MATLAB and no Octave
+% in the authoring container, so CI is the first execution of every line in
+% this section -- the same footing as the section above it, which had one
+% wrong assertion on its first run.
+%
+% WHAT WAS MISSING. `nrSeenRelaxed` and `nrSeenEdges` are accumulated over the
+% whole batch and, until now, were reduced to `.Count` at the end of the run.
+% A six-corpus census could therefore report that N of the schema's
+% NDI-required / V_eta-optional divergences were exercised while NOTHING
+% anywhere recorded WHICH: the keys existed in memory for the length of the
+% run and were dropped, recoverable from no log, no artifact and no re-run.
+% The interesting half is the COMPLEMENT -- the divergences no corpus touches,
+% which are unmeasured rather than clean -- and a complement cannot be taken
+% against an integer.
+%
+% THE FIXTURES ARE CHOSEN SO THAT A COUNT CANNOT STAND IN FOR A NAME.
+% `spikewaves` relaxes TWO edges NDI requires -- `element_id` and
+% `extraction_parameters_id`, both `mustBeNonEmpty: false` beside
+% `ndi_mustBeNonEmpty: true` in V_eta stable -- so one class yields two pairs
+% and the class list and the pair list have DIFFERENT lengths. Every assertion
+% below names a name. A test that merely checked the field was present, or
+% that the section rendered, would pass against an export that returns an
+% empty cell for everything, which is the failure a neighbouring instrument
+% shipped: a partition check replaced by a constant left 76 tests green.
+
+function testTheRelaxedIdentitiesReachTheReportAndAreNamed(testCase)
+% The motivating case, asserted by NAME. `ontology_label.document_id` is the
+% live divergence: NDI requires the edge, V_eta relaxes it, and the class is a
+% guarded passthrough whose `document_id` is the join key the deferred NDI
+% second pass needs.
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = struct('name', {'document_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+d = rep.ndi_required_denominator;
+verifyTrue(testCase, iscell(d.relaxed_class_names), ...
+    'identities travel as a cell, so jsonencode writes a JSON array');
+verifyTrue(testCase, iscell(d.relaxed_edge_names));
+verifyTrue(testCase, any(strcmp(d.relaxed_class_names, 'ontology_label')), ...
+    'the NAME must reach the report, not only the count');
+verifyTrue(testCase, ...
+    any(strcmp(d.relaxed_edge_names, 'ontology_label.document_id')), ...
+    'the (class, edge) pair must reach the report, spelled class.edge');
+end
+
+function testOneClassWithTwoRelaxedEdgesExportsBothPairs(testCase)
+% WHY THE COUNTS ALONE CANNOT ANSWER THE QUESTION, in one document. One class
+% and two pairs: the two lists are independently sized, so neither integer
+% predicts the other and neither predicts the identities.
+b = bodyStruct('spikewaves', 'sw_1');
+b.depends_on = struct('name', {'element_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+d = rep.ndi_required_denominator;
+verifyEqual(testCase, numel(d.relaxed_class_names), 1);
+verifyEqual(testCase, d.relaxed_class_names{1}, 'spikewaves');
+verifyTrue(testCase, ...
+    any(strcmp(d.relaxed_edge_names, 'spikewaves.element_id')));
+verifyTrue(testCase, ...
+    any(strcmp(d.relaxed_edge_names, 'spikewaves.extraction_parameters_id')), ...
+    'the edge the document does not even mention is still DECLARED relaxed');
+verifyGreaterThan(testCase, numel(d.relaxed_edge_names), ...
+    numel(d.relaxed_class_names), ...
+    'a class list length is not a pair list length');
+end
+
+function testAPopulatedRelaxedEdgeIsStillANameThatWasSeen(testCase)
+% THE LISTS ARE DENOMINATOR, NOT FINDING. `ndi_required_dependency` holds the
+% edges found BLANK; these hold the divergences the corpus EXERCISED at all,
+% blank or not. Deriving the identities from the blank-edge accumulator would
+% pass every other test here and would silently understate the union -- the
+% complement would then look larger than it is, in the direction that reads as
+% more work outstanding, which is still a wrong answer.
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = struct('name', {'document_id'}, 'value', {'some_doc_id'});
+rep = did2.validate.silentLoss({did2.document(b)});
+verifyEqual(testCase, rep.ndi_required_dependency_count, 0, ...
+    'nothing is blank here');
+verifyTrue(testCase, any(strcmp( ...
+    rep.ndi_required_denominator.relaxed_edge_names, ...
+    'ontology_label.document_id')), ...
+    'SEEN is not the same as EMPTY -- a populated edge was still exercised');
+end
+
+function testTheIdentitiesAgreeWithTheCountsTheyAccompany(testCase)
+% THE COUNTS ARE UNCHANGED AND KEEP THEIR MEANING. Prior corpus reports carry
+% them and are compared against, so the names are additional rather than a
+% repurposing -- and `numel(names) == count` is the invariant that says so.
+% The digest checks the same equality on the rendering side; a list that went
+% short would otherwise shrink the union and read as progress.
+b1 = bodyStruct('ontology_label', 'lab_1');
+b1.depends_on = struct('name', {'document_id'}, 'value', {''});
+b2 = bodyStruct('spikewaves', 'sw_1');
+b2.depends_on = struct('name', {'element_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
+d = rep.ndi_required_denominator;
+verifyEqual(testCase, numel(d.relaxed_class_names), d.relaxed_classes);
+verifyEqual(testCase, numel(d.relaxed_edge_names), d.relaxed_edges_declared);
+verifyEqual(testCase, d.relaxed_classes, 2, ...
+    'two classes, and the count is still a count of distinct classes');
+end
+
+function testTheIdentitiesAreSortedSoTwoReportsDiffCleanly(testCase)
+% Two reports from the same corpus must diff cleanly, so the order is made
+% stable rather than left to whatever `keys` happens to return.
+%
+% HONEST LIMIT OF THIS TEST, recorded rather than glossed: MATLAB documents
+% `keys` on a containers.Map as returning char keys already sorted, so this
+% would pass against an export that dropped the explicit sort. It asserts the
+% PROPERTY the reader depends on, not the mechanism. The place the sort is
+% genuinely load-bearing is nrPairNames, where the rewrite `class|edge` ->
+% `class.edge` can reorder ('|' is 0x7C, '.' is 0x2E) and the sort therefore
+% happens AFTER the rewrite -- and that reordering needs one class name to be
+% a strict prefix of another, which no pair in the current divergence set is.
+% It is untestable against today's schema and is asserted on the digest side,
+% where the input can be handed over unsorted.
+b1 = bodyStruct('spikewaves', 'sw_1');
+b1.depends_on = struct('name', {'element_id'}, 'value', {''});
+b2 = bodyStruct('ontology_label', 'lab_1');
+b2.depends_on = struct('name', {'document_id'}, 'value', {''});
+% spikewaves FIRST in the batch, so batch order and sorted order differ.
+rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
+d = rep.ndi_required_denominator;
+verifyEqual(testCase, d.relaxed_class_names, sort(d.relaxed_class_names));
+verifyEqual(testCase, d.relaxed_edge_names, sort(d.relaxed_edge_names));
+verifyEqual(testCase, d.relaxed_class_names{1}, 'ontology_label', ...
+    'sorted, not batch order -- spikewaves was handed in first');
+end
+
+function testThePairSpellingMatchesTheEmptyEdgeRowSpelling(testCase)
+% The union and the empty-edge rows are compared by eye and by the digest's
+% rollup, so they must be the SAME string. The map stores `class|edge`; the
+% report exports `class.edge`, which is how a row renders.
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = struct('name', {'document_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+verifyNotEmpty(testCase, rep.ndi_required_dependency);
+row = rep.ndi_required_dependency(1);
+pair = [row.class_name '.' row.edge_name];
+verifyTrue(testCase, ...
+    any(strcmp(rep.ndi_required_denominator.relaxed_edge_names, pair)), ...
+    'a row and the identity it belongs to must be comparable strings');
+end
+
+function testTheIdentityListsArePresentOnEveryPathOut(testCase)
+% Rule 5 again, and the early returns are the paths that matter. A batch that
+% was never opened must print the same SHAPE -- present and empty -- so the
+% digest can tell "seen nothing" from "this report predates the export". Those
+% are different facts and only the encoding keeps them apart.
+empt = did2.validate.silentLoss({});
+d = empt.ndi_required_denominator;
+verifyTrue(testCase, isfield(d, 'relaxed_class_names'), ...
+    'absent and empty must not be the same output downstream');
+verifyTrue(testCase, isfield(d, 'relaxed_edge_names'));
+verifyTrue(testCase, iscell(d.relaxed_class_names));
+verifyTrue(testCase, iscell(d.relaxed_edge_names));
+verifyEmpty(testCase, d.relaxed_class_names);
+verifyEmpty(testCase, d.relaxed_edge_names);
+
+nul = did2.validate.silentLoss({[]});
+verifyTrue(testCase, iscell(nul.ndi_required_denominator.relaxed_edge_names));
+verifyEmpty(testCase, nul.ndi_required_denominator.relaxed_edge_names);
+end
+
 % ===================== helpers =============================================
 
 function d = docObj(className, id)

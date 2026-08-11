@@ -728,6 +728,100 @@ NDI_REQUIRED_DENOMINATOR = [
     ("edges_empty", "  EMPTY  <-- the count"),
 ]
 
+# THE IDENTITY LISTS, and the counter each one pairs with.
+#
+# WHY THEY EXIST. `relaxed_classes` and `relaxed_edges_declared` are counts of
+# distinct things, and for a long time they were ALL that survived: silentLoss
+# built the two seen-sets over a whole corpus and reported `.Count`, so a
+# six-corpus run could say "7 of the schema's divergences were exercised" and
+# nothing anywhere -- no log, no artifact, no re-run -- could say WHICH seven.
+# The complement is the interesting half (a divergence no corpus touches is
+# UNMEASURED, not clean), and a complement cannot be taken against an integer.
+#
+# The counts are unchanged and still mean what they meant; these lists are
+# additional. `len(names) == count` is therefore an invariant of a report that
+# carries both, and the renderer CHECKS it -- a names list that quietly went
+# short would otherwise shrink the union and read as progress.
+NDI_REQUIRED_NAME_FIELDS = [
+    ("relaxed_class_names", "relaxed_classes",
+     "class(es) declaring a relaxed edge"),
+    ("relaxed_edge_names", "relaxed_edges_declared",
+     "(class, edge) pair(s) relaxed"),
+]
+
+
+def ndi_required_names(nd, field, count_field):
+    """Read ONE identity list out of an NDI-required block.
+
+    The distinction this function exists to preserve: a report that PREDATES
+    the identity export carries no list at all, and that is not the same fact
+    as a list that came back empty. An absent list must never be rendered as
+    `[]`, summed into a union as nothing, or counted as a corpus that
+    contributed -- exactly the rule the legacy-vintage and post-pass blocks
+    already apply one level up.
+
+    Returns a dict with `measured`, plus `names`/`drift` when measured and
+    `why` when not.
+    """
+    if not isinstance(nd, dict):
+        return {"measured": False,
+                "why": "the block it would live in is malformed"}
+    if field not in nd:
+        return {"measured": False,
+                "why": "this report predates the identity export -- it carries "
+                       "`%s` and not `%s`" % (count_field, field)}
+    v = nd[field]
+    if isinstance(v, str):
+        # Defensive: a single-element list is the only shape MATLAB emits for a
+        # cell (jsonencode writes a cell as a JSON array whatever its length),
+        # but a bare string would otherwise iterate character by character and
+        # produce a union of letters.
+        v = [v]
+    if not isinstance(v, list):
+        return {"measured": False,
+                "why": "`%s` is malformed (%s)" % (field, type(v).__name__)}
+    names = [x for x in v if isinstance(x, str)]
+    drift = None
+    if len(names) != len(v):
+        drift = ("%d of %d entries in `%s` are not strings"
+                 % (len(v) - len(names), len(v), field))
+    declared = nd.get(count_field)
+    if drift is None and isinstance(declared, int) and declared != len(names):
+        drift = ("`%s` says %d, %d name(s) were exported"
+                 % (count_field, declared, len(names)))
+    return {"measured": True, "names": names, "drift": drift}
+
+
+def render_ndi_required_names(nd, out, indent="      "):
+    """Render one corpus's identity lists. Absent is NOT empty."""
+    p = lambda s="": out.append(s)
+    p("%sIDENTITIES -- WHICH divergences this corpus actually exercised."
+      % indent)
+    for field, count_field, label in NDI_REQUIRED_NAME_FIELDS:
+        m = ndi_required_names(nd, field, count_field)
+        if not m["measured"]:
+            p("%s    NAMES NOT MEASURED -- %s." % (indent, m["why"]))
+            p("%s    No list is printed and this corpus contributes NOTHING"
+              % indent)
+            p("%s    to the union below. An absent list is not an empty one."
+              % indent)
+            continue
+        names = m["names"]
+        if m["drift"]:
+            p("%s    *** THE LIST AND ITS COUNT DISAGREE: %s. One of the two"
+              % (indent, m["drift"]))
+            p("%s    *** is wrong; do not take the shorter as the answer."
+              % indent)
+        if not names:
+            p("%s    0 %s seen. This is a MEASURED zero -- read it with the"
+              % (indent, label))
+            p("%s      note above, which says whether the counter could fire "
+              "at all." % indent)
+            continue
+        p("%s    %d %s:" % (indent, len(names), label))
+        for n in names:
+            p("%s        %s" % (indent, n))
+
 
 def ndi_required(r):
     """Read one report's NDI-required block, or say why it cannot be read.
@@ -810,6 +904,9 @@ def render_ndi_required(r, out):
         p("      *** NO CLASS DECLARES AN EDGE NDI REQUIRES AND V_eta")
         p("      *** RELAXES, so the counter could not fire. The zero means")
         p("      *** 'untested', not 'clean'.")
+    # The identities BEFORE the empty-edge rows: these describe the
+    # denominator (what was looked at), the rows below describe the finding.
+    render_ndi_required_names(nd, out)
     p("      %s empty NDI-required edge(s), V_eta-optional"
       % sl.get("ndi_required_dependency_count", "?"))
     for e in aslist(sl.get("ndi_required_dependency"))[:15]:
@@ -834,6 +931,15 @@ def rollup_ndi_required(reports, out):
     totals = {}
     rows = {}
     unstamped = []
+    # field -> {name: [corpora it was seen in]} and field -> [corpora with no
+    # list at all]. Kept per field rather than merged, because the class union
+    # and the pair union answer different questions and a corpus can only be
+    # missing both together today -- but a future report that carries one and
+    # not the other must not silently borrow the other's denominator.
+    unions = dict((f, {}) for f, _c, _l in NDI_REQUIRED_NAME_FIELDS)
+    union_missing = dict((f, []) for f, _c, _l in NDI_REQUIRED_NAME_FIELDS)
+    union_carried = dict((f, []) for f, _c, _l in NDI_REQUIRED_NAME_FIELDS)
+    union_drift = dict((f, []) for f, _c, _l in NDI_REQUIRED_NAME_FIELDS)
     for i, r in enumerate(reports):
         name = str(r.get("corpus") or "report #%d" % (i + 1))
         m = ndi_required(r)
@@ -842,6 +948,16 @@ def rollup_ndi_required(reports, out):
             continue
         measured.append(name)
         nd = m["block"]
+        for field, count_field, _label in NDI_REQUIRED_NAME_FIELDS:
+            n = ndi_required_names(nd, field, count_field)
+            if not n["measured"]:
+                union_missing[field].append("%s (%s)" % (name, n["why"]))
+                continue
+            union_carried[field].append(name)
+            if n["drift"]:
+                union_drift[field].append("%s: %s" % (name, n["drift"]))
+            for item in n["names"]:
+                unions[field].setdefault(item, []).append(name)
         for key, _label in NDI_REQUIRED_DENOMINATOR + [("docs_inspected", ""),
                                                        ("docs_unreadable", "")]:
             if key in nd:
@@ -885,6 +1001,83 @@ def rollup_ndi_required(reports, out):
         p("      %8d  %s" % (n, key))
     if not rows:
         p("      (none)")
+    rollup_ndi_required_union(unions, union_carried, union_missing,
+                              union_drift, len(measured), totals, out)
+
+
+def rollup_ndi_required_union(unions, carried, missing, drift, n_measured,
+                              totals, out):
+    """THE UNION OF IDENTITIES SEEN ACROSS CORPORA -- the point of the export.
+
+    The counts alone answer "how many of the schema's divergences did the
+    sample exercise". Only the union answers WHICH, and only WHICH makes the
+    COMPLEMENT nameable: a divergence that appears in no corpus is unmeasured
+    on real data, which is neither clean nor dangerous, just unlooked-at.
+
+    THE DIVERGENCE SET ITSELF IS NOT HERE AND MUST NOT BE. It is computed in
+    DID-schema from the stamped schema; a copy in this repo would be a second
+    copy to drift, and the drift would be invisible because both sides would
+    print confidently. This block reports what was SEEN and says plainly that
+    the comparison happens where the set lives.
+
+    A corpus whose report predates the export is NAMED, never counted as
+    having contributed an empty set -- the union would otherwise shrink toward
+    a reassuring "nothing left to worry about" with each older report added.
+    """
+    p = lambda s="": out.append(s)
+    p("      THE UNION OF IDENTITIES SEEN, over the corpora that carried them:")
+    for field, count_field, label in NDI_REQUIRED_NAME_FIELDS:
+        seen = unions.get(field) or {}
+        got = carried.get(field) or []
+        lost = missing.get(field) or []
+        p("          DENOMINATOR: %d of %d readable block(s) carried `%s`; "
+          "%d distinct %s in the union"
+          % (len(got), n_measured, field, len(seen), label))
+        for d in drift.get(field) or []:
+            p("          *** LIST/COUNT DISAGREEMENT in %s -- the union may be "
+              "short." % d)
+        if lost:
+            p("          *** NAMES NOT MEASURED in: %s." % ", ".join(lost))
+            p("          *** Not summed and not treated as an empty set. The")
+            p("          *** union below is over %d corpus report(s), not %d."
+              % (len(got), n_measured))
+        if not got:
+            p("          *** NO REPORT CARRIED `%s`. There is nothing to union."
+              % field)
+            p("          *** This is NOT 'no %s were seen'." % label)
+            continue
+        if not seen:
+            p("          (empty union -- every corpus that carried the list")
+            p("           exported none. A MEASURED zero.)")
+            continue
+        for item in sorted(seen):
+            p("          %-58s seen in: %s"
+              % (item, ", ".join(sorted(set(seen[item])))))
+        # THE SUMMED COUNT IS NOT THE DISTINCT COUNT, and the summed one is
+        # what has been quoted. `_ea_rows` above prints the ROLLUP total for
+        # `relaxed_edges_declared`, which adds six per-corpus DISTINCT counts
+        # together -- so a pair that occurs in three corpora contributes 3.
+        # The union size is the cross-corpus distinct figure, and it is the one
+        # to subtract from the schema-side divergence set. When the two differ
+        # the difference is overlap between corpora, and saying so is cheaper
+        # than letting a reader assume the larger number is the answer.
+        summed = totals.get(count_field)
+        if isinstance(summed, int) and summed != len(seen):
+            p("          *** `%s` sums to %d across the rollup; the union is"
+              % (count_field, summed))
+            p("          *** %d. The rollup total ADDS per-corpus distinct"
+              % len(seen))
+            p("          *** counts, so overlap between corpora is counted")
+            p("          *** more than once. %d is the distinct figure to"
+              % len(seen))
+            p("          *** compare against the schema-side set%s."
+              % (" -- and it is a LOWER BOUND, since not every report "
+                 "carried names" if lost else ""))
+    p("      *** THIS IS WHAT THE SAMPLE EXERCISED, NOT WHAT EXISTS. The set of")
+    p("      *** NDI-required / V_eta-optional divergences is computed in")
+    p("      *** DID-schema from the stamped schema and is deliberately NOT")
+    p("      *** duplicated here. Subtract the union above from that set: the")
+    p("      *** remainder is UNMEASURED on real data -- not clean, unlooked-at.")
 
 
 def epoch_association(r):
