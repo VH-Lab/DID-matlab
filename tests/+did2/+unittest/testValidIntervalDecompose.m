@@ -8,6 +8,10 @@ function tests = testValidIntervalDecompose
 %       results = runtests('did2.unittest.testValidIntervalDecompose');
 %   and treat any red as a defect in the code or in these tests, not as a
 %   surprise.
+%   EXTENDED 2026-08-11 with "the verb (subject_interaction.method)" -- seven
+%   tests -- in the same container under the same condition: `command -v matlab
+%   octave octave-cli` still returns nothing, so those are unexecuted too. CI is
+%   their first run.
 %
 %   NEW FILE, deliberately: testMigratorsJ.m and testStrandedSourceTombstones.m
 %   are owned by other sessions and are not touched. The v1 fixture builders
@@ -45,6 +49,13 @@ function tests = testValidIntervalDecompose
 %               TEAM QUESTION. The tests here assert that BOTH answers stay
 %               buildable and that this pass picks NEITHER -- never that one is
 %               right.
+%
+%   A FOURTH SECTION was added when `subject_interaction.method` stopped being
+%   emitted blank, and it belongs beside the three hazards because it has their
+%   shape: a `validity_observation` is a CURATORIAL JUDGEMENT, not a measurement,
+%   and an empty `method` validates (mustBeNonEmpty:false) while reading as the
+%   default observation verb the schema itself names -- `measurement`. Nothing we
+%   gate on distinguishes the two. See "the verb" below.
 %
 %   ---------------------------------------------------------------------
 %   WHAT THESE TESTS DELIBERATELY DO NOT ASSERT
@@ -115,10 +126,38 @@ v1.base = struct('id', id, 'session_id', 'sess_v1', 'name', '', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 % v1 spells these `name` / `version`; universalRenames maps them to
 % app_name / app_version.
-v1.app = struct('name', 'ndi.app.markgarbage', 'version', '1.0', ...
+%
+% THE VALUE IS `ndi_app_markgarbage`, AND THIS FIXTURE SAID `ndi.app.markgarbage`
+% UNTIL 2026-08-11. The dotted form is what markgarbage.m's own class docstring
+% claims ("The app is named 'ndi.app.markgarbage'"); the WRITER sets
+% `name = 'ndi_app_markgarbage'` in the constructor, and ndi.app/newdocument
+% (app.m:105-114) copies that property into `app.name`. Ground-truth rule: where
+% template or prose and WRITER disagree, the writer wins. A fixture built from
+% the docstring is the same defect as a fixture built from our own schema, one
+% source over.
+v1.app = struct('name', 'ndi_app_markgarbage', 'version', '1.0', ...
     'url', '', 'os', '', 'os_version', '', ...
     'interpreter', '', 'interpreter_version', '');
 v1.valid_interval = entries;
+end
+
+function v1 = validIntervalBodyNoApp(id, elementId, entries)
+%VALIDINTERVALBODYNOAPP The same document with NO `app` block at all.
+%   Not a shape NDI writes -- savevalidinterval always adds `+ newdocument()`,
+%   so every markgarbage document carries the block. It is the shape a document
+%   arrives in when the block was lost upstream, or when something other than
+%   markgarbage produced the class, and it is what makes the fall-back-to-a-
+%   constant branch of `curationMethod` reachable from a test. The point is that
+%   such a statement still STATES its verb; a blank there is the defect the
+%   method work exists to remove.
+%   The superclass list is left ALONE. The tombstone declares base + app and
+%   every app field is optional, so ensureClassBlocks pads the block back with
+%   blank values -- which is the OTHER half of the same branch (`app_name`
+%   present but empty, the template's own default). Both halves must land on
+%   `method_from_class_default`, and asserting through this fixture covers
+%   whichever of the two the padding produces without the test having to know.
+v1 = validIntervalBody(id, elementId, entries);
+v1 = rmfield(v1, 'app');
 end
 
 % ===================== V_eta fixtures ======================================
@@ -579,7 +618,10 @@ falseBody = etaBody('validity_observation', ...
 falseBody.subject_statement = struct( ...
     'variable', struct('node', '', 'name', 'data validity'), ...
     'storage_mode', 'inline');
-falseBody.subject_interaction = struct('method', struct('node', '', 'name', ''));
+% The verb is stated here too, so this hand-built body stays a faithful copy of
+% what the pass emits rather than a blank-method template a later reader copies.
+falseBody.subject_interaction = struct('method', ...
+    struct('node', '', 'name', expectedMethodName()));
 falseBody.validity_observation = struct('sequence', 1);
 out = did2.convert.v1_to_v2({falseBody}, 'Validate', true, ...
     'TargetVersion', 'V_eta');
@@ -607,6 +649,199 @@ verifyEqual(testCase, refRep.orphan_count, 0, ...
     sprintf('%d orphan edge(s) of %d examined after the decompose', ...
         refRep.orphan_count, refRep.edges_examined));
 verifyEqual(testCase, result.valid_interval_decompose.statements_withheld_lost_anchor, 0);
+end
+
+% ===================== the verb (subject_interaction.method) ===============
+%
+% A `validity_observation` records a CURATORIAL JUDGEMENT -- a person ran
+% markgarbage and marked which stretches are good -- not a measurement taken
+% from the subject. V_eta's four directions are assertion / observation /
+% manipulation / calculation and none of them is "a human judged this", so the
+% stance has to be stated somewhere; T2 makes `subject_interaction.method` the
+% declared slot for THE VERB. These tests exist because a blank there fails
+% NOTHING: `method` is mustBeNonEmpty:false, so an empty term validates, and
+% subject_interaction.json's own documentation says the observation verb "is
+% nearly always 'measurement'" -- so a blank READS AS MEASUREMENT, which is the
+% one thing this statement is not. Same shape as HAZARD 1: a silent
+% reclassification that no corpus gate can see.
+
+function methodName = expectedMethodName()
+%EXPECTEDMETHODNAME The pin. Written out HERE, as a literal, on purpose.
+%   The pass keeps its own single spelling in `curationMethodName`. If this test
+%   read that function instead of restating the string, a rename would move both
+%   sides together and the suite would stay green through a silent change of
+%   what every migrated validity statement claims -- a test written from the
+%   same premise as the code, which is the failure mode CLAUDE.md names.
+methodName = 'curation';
+end
+
+function testEveryStatementStatesItsMethodAndNoneIsBlank(testCase)
+% THE GATE THIS SECTION EXISTS FOR. Three intervals, three statements, and not
+% one of them may carry an empty verb.
+entries = [intervalEntry(50, 60, 'dev_local_time', 't00001'), ...
+           intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
+           intervalEntry(30, 40, 'dev_local_time', 't00001')];
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBody('vi_1', 'element_1', entries)});
+result = runPass(result);
+
+stmts = docsOfClass(result, 'validity_observation');
+verifyNumElements(testCase, stmts, 3);
+for k = 1:numel(stmts)
+    verifyNotEmpty(testCase, ...
+        char(stmts{k}.get('subject_interaction.method.name')), ...
+        ['a statement was emitted with a BLANK method. It validates -- the ' ...
+         'field is mustBeNonEmpty:false -- and it then reads as the default ' ...
+         'observation verb, `measurement`, so a curatorial judgement becomes ' ...
+         'indistinguishable from an instrument reading and nothing fails']);
+end
+end
+
+function testTheMethodNameIsPinnedSoASilentRenameFails(testCase)
+% T11: one canonical spelling per concept. The name is a CLAIM about every
+% migrated validity statement -- change it and every document in every corpus
+% says something different -- so it is pinned to a literal here rather than
+% asserted against the pass's own constant.
+%
+% If this test fails, the question is not "update the expected string". It is
+% whether the new name still beats the ones rejected on the tenets: the TOOL
+% names (`markgarbage`, `ndi_app_markgarbage` -- T13 wrapper-free, T11 no
+% device/method subtype in a name), the over-claiming ones (`manual curation`,
+% `expert annotation`, `visual inspection` -- markvalidinterval is a plain API a
+% script can call), and `measurement`, which is exactly what the blank already
+% read as.
+entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBody('vi_1', 'element_1', entries)});
+result = runPass(result);
+stmts = docsOfClass(result, 'validity_observation');
+verifyNumElements(testCase, stmts, 1);
+verifyEqual(testCase, char(stmts{1}.get('subject_interaction.method.name')), ...
+    expectedMethodName(), ...
+    'the verb every migrated validity statement claims has changed');
+end
+
+function testTheMethodNamesTheActAndNotTheTool(testCase)
+% The tool belongs in PROVENANCE -- the `app` block on the retained source, and
+% `software_id` on the statement, which subject_interaction.json says in its own
+% words supersedes the v1 `app`. The verb slot must not become a second, worse
+% copy of it: `ndi_app_markgarbage` in `method` would encode a namespace wrapper
+% and an instrument identity in the one field whose job is the epistemic act.
+entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBody('vi_1', 'element_1', entries)});
+result = runPass(result);
+stmts = docsOfClass(result, 'validity_observation');
+verifyNumElements(testCase, stmts, 1);
+name = char(stmts{1}.get('subject_interaction.method.name'));
+verifyEmpty(testCase, strfind(lower(name), 'garbage'), ...
+    ['`method` names the ACT, not the app. The producing tool rides on the ' ...
+     'retained source''s app block (and on software_id); putting it here ' ...
+     'spends the verb slot on an instrument identity']);
+verifyEmpty(testCase, strfind(lower(name), 'ndi_app'), ...
+    'a namespace wrapper in a term name (T13 wrapper-free)');
+end
+
+function testTheMethodNodeStaysEmptyAndNoCurieIsInvented(testCase)
+% The term joins the SAME empty-ontology-node staging `variable` and `clock`
+% already use here. Inventing a CURIE to make the field look resolved would put
+% our bookkeeping into the data, where a later reader could not tell it from a
+% real identifier -- which is the thing check_empty_ontology_nodes.py refuses to
+% do for the same reason ("it does NOT write a sentinel into the data").
+entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBody('vi_1', 'element_1', entries)});
+result = runPass(result);
+stmts = docsOfClass(result, 'validity_observation');
+verifyNumElements(testCase, stmts, 1);
+verifyEmpty(testCase, char(stmts{1}.get('subject_interaction.method.node')), ...
+    ['the node must stay EMPTY. NDIC.txt left NDI-matlab at 2c19bf24c and no ' ...
+     'identifier authority is in scope, so a CURIE here would be invented']);
+end
+
+function testAStatementWhoseSourceHasNoAppBlockStillStatesItsMethod(testCase)
+% THE FALL-BACK BRANCH. The document names a TOOL and never a verb, so the verb
+% is a constant either way and what changes is where the claim RESTS: with no
+% producer named, it rests on the CLASS (nothing but markgarbage writes
+% `valid_interval`). What must NOT happen is the statement going blank because
+% the block it was read from is missing -- absence of provenance is not absence
+% of an epistemic stance.
+entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBodyNoApp('vi_1', 'element_1', entries)});
+result = runPass(result);
+
+stmts = docsOfClass(result, 'validity_observation');
+verifyNumElements(testCase, stmts, 1);
+verifyEqual(testCase, char(stmts{1}.get('subject_interaction.method.name')), ...
+    expectedMethodName(), ...
+    ['a source with no app block produced a statement with no stated method. ' ...
+     'The verb does not come from the app block -- the app block names a ' ...
+     'tool -- so losing it must not silence the stance']);
+rep = result.valid_interval_decompose;
+verifyEqual(testCase, rep.method_from_class_default, 1, ...
+    'and the fall-back must be COUNTED, not silent');
+verifyEqual(testCase, rep.method_from_app_block, 0);
+end
+
+function testTheMethodEvidenceIsCountedPerStatementAndSums(testCase)
+% Which branch backed the verb is EVIDENCE, and it is counted the same way
+% `anchor_session_from_timeref` / `anchor_session_from_document` count theirs
+% one field over -- so "read from the document" and "asserted from the class"
+% stay distinguishable in the corpus report instead of collapsing into one
+% unconditional constant.
+%
+% The counters are per STATEMENT; `sources_with_app_block` is per SOURCE. Both
+% are asserted here precisely because they are easy to mistake for each other:
+% one source with three intervals gives 1 and 3.
+entries = [intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
+           intervalEntry(30, 40, 'dev_local_time', 't00001'), ...
+           intervalEntry(50, 60, 'dev_local_time', 't00001')];
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBody('vi_1', 'element_1', entries)});
+result = runPass(result);
+
+rep = result.valid_interval_decompose;
+verifyEqual(testCase, rep.sources_with_app_block, 1, 'per SOURCE');
+verifyEqual(testCase, rep.method_from_app_block, 3, 'per STATEMENT');
+verifyEqual(testCase, rep.method_from_class_default, 0);
+verifyEqual(testCase, ...
+    rep.method_from_app_block + rep.method_from_class_default, ...
+    rep.intervals_decomposed, ...
+    ['every decomposed interval produced exactly one statement, so the two ' ...
+     'evidence counters must sum to intervals_decomposed. A drift here means ' ...
+     'statements are being written down a path that states no method']);
+end
+
+function testTheStagedMethodTermIsCountedByTheLocalStandIn(testCase)
+% THE RATCHET CANNOT SEE THIS TERM, and that was RE-CHECKED rather than assumed
+% when `method` was populated: check_empty_ontology_nodes.py's migrator sweep
+% walks only `+migrators_j` and matches only `jOntologyTerm('', ...)`, and its
+% schema sweep reads built schemas -- a raw staged struct in `+did2/+convert` is
+% invisible to both. `staged_ontology_nodes` is this file's local stand-in and
+% it reaches the corpus report (runCorpusDiscovery) and the cross-corpus census
+% (tools/census_digest.py), so the debt is a number in two printed reports.
+%
+% The arithmetic is pinned so that adding a fourth staged term without counting
+% it fails here: ONE decomposed interval with agreeing anchors stages THREE --
+% the reference's `clock`, the statement's `variable`, and now its `method`.
+entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBody('vi_1', 'element_1', entries)});
+result = runPass(result);
+rep = result.valid_interval_decompose;
+verifyEqual(testCase, rep.intervals_decomposed, 1);
+verifyEqual(testCase, rep.staged_ontology_nodes, 3, ...
+    ['clock + variable + method. If a term was added to the emission and not ' ...
+     'to this counter it is staged INVISIBLY: the #70 ratchet does not read ' ...
+     'this directory, so this number is the only place the debt appears']);
 end
 
 function testTheAppBlockIsCountedBecauseItStaysOnTheSource(testCase)
