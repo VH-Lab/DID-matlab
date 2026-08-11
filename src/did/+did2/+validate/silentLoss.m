@@ -1161,6 +1161,10 @@ marker = nrMarkerKey();
 try
     chain = cache.classChain(className);
 catch
+    % DO NOT DELETE THIS LINE TO SILENCE THE ANALYSER -- same reason as the
+    % note on the function's last line. `memo` is a containers.Map, a HANDLE
+    % class, so this records the failure in the CALLER's map. Without it a
+    % class whose chain lookup throws is re-attempted on every document.
     memo(className) = info;
     return;
 end
