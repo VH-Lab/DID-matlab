@@ -1667,6 +1667,82 @@ def _int_or_none(v):
         return None
 
 
+ical = "moved_vintage_bodies_classified"
+
+# The `ndi_document` block's four shapes, read from NDI origin/main history
+# (`git log --all --follow -- ndi_common/database_documents/ndi_document.json`).
+# (report key, label). ORDER IS CHRONOLOGICAL, because the reading is "how far
+# back does this corpus go" and a sorted-by-size list destroys that.
+LEGACY_VINTAGES = [
+    ("moved_vintage_2019_05_unique_reference",
+     "2019-05 experiment_unique_reference/document_unique_reference"
+     "   NO identity survives"),
+    ("moved_vintage_2019_11_experiment_document_id",
+     "2019-11 experiment_id/document_id"
+     "                              NO identity survives"),
+    ("moved_vintage_2019_12_experiment_id_and_id",
+     "2019-12 experiment_id/id"
+     "                                       `id` lands, session_id does NOT"),
+    ("moved_vintage_2020_05_session_id_and_id",
+     "2020-05 session_id/id"
+     "                             SOUND -- both identity fields land"),
+    ("moved_vintage_unknown",
+     "UNKNOWN field set -- NOT rounded to the nearest vintage"),
+    ("moved_vintage_unreadable_block",
+     "UNREADABLE block (not a scalar struct; no field set to read)"),
+]
+
+
+def render_legacy_vintages(L, p):
+    """The vintage breakdown of the wholesale-move arm, denominator first.
+
+    WHY THIS EXISTS SEPARATELY FROM THE ARM COUNT. `moved_wholesale_no_base` on
+    its own cannot say whether anything broke. The `ndi_document` block had FOUR
+    shapes, and the 2020-05-19 one -- which ran until base.json replaced it on
+    2023-04-13, nearly three years, the longest-lived of the four -- already
+    spells `id`/`session_id`, so the wholesale move lands identity CORRECTLY and
+    only `type` + `database_version` arrive undeclared. The two 2019 shapes land
+    with no usable identity at all. One number mixes a sound migration with a
+    broken one.
+
+    THE SIX PARTITION THE ARM by construction (did2.convert.v1_to_v2 raises
+    did2:convert:legacyVintagePartitionBroken otherwise), so this prints the sum
+    against the denominator and SAYS SO when they disagree rather than rendering
+    a breakdown that does not add up. A report predating the counters is named
+    UNMEASURED, never summed as zero.
+
+    READ `unknown` FIRST WHEN IT IS NON-ZERO. It means a real block carried a
+    field set the four-vintage account does not predict -- which is the way this
+    measurement is most likely to be wrong, and it is deliberately not rounded
+    into a neighbouring bucket.
+    """
+    if not any(k in L for k, _ in LEGACY_VINTAGES) and ical not in L:
+        p("      *** VINTAGE BREAKDOWN: UNMEASURED -- this report predates the")
+        p("      *** classifier. NOT the same as 'no legacy blocks'; the arm")
+        p("      *** count above stands, its composition is simply unknown.")
+        return
+    den = _int_or_none(L.get(ical))
+    p("      vintage of the %s moved block(s), classified on the FIELD SET:"
+      % ("?" if den is None else den))
+    total = 0
+    for key, label in LEGACY_VINTAGES:
+        v = _int_or_none(L.get(key))
+        if v is None:
+            p("          %8s  %s" % ("--", label))
+        else:
+            total += v
+            p("          %8d  %s" % (v, label))
+    if den is not None and total != den:
+        p("      *** THE BUCKETS DO NOT PARTITION THE ARM: %d summed, %d "
+          "classified." % (total, den))
+        p("      *** A body reached no bucket. Do not read the breakdown above")
+        p("      *** as a composition -- it is missing documents.")
+    arm = _int_or_none(L.get("moved_wholesale_no_base"))
+    if den is not None and arm is not None and den != arm:
+        p("      *** %d body(ies) took the wholesale-move arm and %d reached "
+          "the classifier." % (arm, den))
+
+
 def render_legacy_ndi_document(r, out):
     """Render the legacy identity-block counter (`ndi_document` -> `base`).
 
@@ -1738,12 +1814,13 @@ def render_legacy_ndi_document(r, out):
     p("                    %s carrying %s field(s) `base` does not declare"
       % (L.get("moved_with_any_undeclared_field", "?"),
          L.get("moved_undeclared_field_instances", "?")))
-    p("                    2019 vintage: %s experiment_unique_reference, "
+    p("                    field names present: %s experiment_unique_reference, "
       "%s document_unique_reference, %s type, %s database_version"
       % (L.get("moved_carrying_experiment_unique_reference", "?"),
          L.get("moved_carrying_document_unique_reference", "?"),
          L.get("moved_carrying_type", "?"),
          L.get("moved_carrying_database_version", "?")))
+    render_legacy_vintages(L, p)
     for key, label in (("moved_by_class", "moved wholesale"),
                        ("discarded_by_class", "discarded")):
         for k, v in sorted((L.get(key) or {}).items(), key=lambda kv: -kv[1])[:15]:
@@ -2179,10 +2256,52 @@ def rollup_legacy_ndi_document(reports, out):
       % totals["discarded_ndi_document_base_present"])
     p("      %8d  field(s) moved into `base` that `base` does not declare"
       % totals["moved_undeclared_field_instances"])
-    p("      %8d  block(s) of the 2019 vintage (experiment_unique_reference), "
-      "%d (document_unique_reference)"
+    p("      %8d  block(s) carrying experiment_unique_reference, "
+      "%d carrying document_unique_reference"
       % (totals["moved_carrying_experiment_unique_reference"],
          totals["moved_carrying_document_unique_reference"]))
+
+    # THE VINTAGE ROLLUP, summed only over the reports that CARRIED it -- which
+    # may be fewer than the reports carrying the parent block, because the
+    # classifier landed later than the arm counter. That gap is printed and the
+    # reports are NAMED; a report predating the classifier is UNMEASURED, never
+    # a zero. Same rule as the parent, one level down.
+    vcarried, vmissing, vtotals = 0, [], dict((k, 0) for k, _ in LEGACY_VINTAGES)
+    vden = 0
+    for i, r in enumerate(reports):
+        L = r.get("legacy_ndi_document") or {}
+        name = str(r.get("corpus") or "report #%d" % (i + 1))
+        if not L:
+            continue
+        if ical not in L and not any(k in L for k, _ in LEGACY_VINTAGES):
+            vmissing.append(name)
+            continue
+        vcarried += 1
+        vden += _int_or_none(L.get(ical)) or 0
+        for k, _label in LEGACY_VINTAGES:
+            vtotals[k] += _int_or_none(L.get(k)) or 0
+    p("      VINTAGE BREAKDOWN: summed over %d of %d report(s) carrying the "
+      "block; %d block(s) classified" % (vcarried, carried, vden))
+    if vmissing:
+        p("      *** NO CLASSIFIER (predates it, UNMEASURED not zero): %s"
+          % ", ".join(vmissing))
+    if vcarried == 0:
+        p("      *** nothing to sum. The arm's COMPOSITION is unknown, which is")
+        p("      *** not the same as the arm being empty.")
+    else:
+        for k, label in LEGACY_VINTAGES:
+            p("          %8d  %s" % (vtotals[k], label))
+        vsum = sum(vtotals.values())
+        if vsum != vden:
+            p("      *** THE BUCKETS DO NOT PARTITION THE ARM ACROSS THE "
+              "SAMPLE: %d summed, %d classified." % (vsum, vden))
+        if vtotals["moved_vintage_unknown"]:
+            p("      *** %d block(s) carried a field set the four-vintage "
+              "account does not predict." % vtotals["moved_vintage_unknown"])
+            p("      *** READ THIS ROW FIRST. It is the way this measurement is")
+            p("      *** most likely to be wrong, and it was NOT rounded into a")
+            p("      *** neighbouring vintage.")
+
     if totals["moved_wholesale_no_base"] == 0:
         p("      *** 0 across the sample. Corpus run 31464483119 inspected")
         p("      *** 633,432 documents across 6 corpora and quarantined 0, so")
