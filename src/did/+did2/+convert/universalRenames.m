@@ -111,13 +111,73 @@ function [postBody, report] = universalRenames(preBody, options)
 %     moved_carrying_experiment_unique_reference
 %     moved_carrying_document_unique_reference
 %     moved_carrying_type
-%     moved_carrying_database_version         THE VINTAGE DISCRIMINATOR. A
-%                                             2020-vintage `ndi_document` block
-%                                             already spells `id`/`session_id`
-%                                             and moves soundly; only a block
-%                                             carrying these names is the 2019
-%                                             shape the defect is about. An arm
-%                                             count alone cannot tell them apart.
+%     moved_carrying_database_version         SINGLE-FIELD discriminators. Kept
+%                                             because each is a fact on its own,
+%                                             but see below: ONE FIELD CANNOT
+%                                             NAME A VINTAGE.
+%
+%   THE VINTAGE CLASSIFIER (`moved_vintage_*`), and why one field is not enough.
+%   The `ndi_document` block did not have one shape and then another. It had
+%   FOUR, and two consecutive pairs of them differ by ONE FIELD NAME EACH --
+%   `experiment_id` vs `session_id`, and `document_id` vs `id`. Re-read from NDI
+%   origin/main rather than described (`git log --all --follow --
+%   ndi_common/database_documents/ndi_document.json`, then `git show <c>:<path>`):
+%
+%     4f1a2b801  2019-05-05  experiment_unique_reference, document_unique_reference,
+%                            name, type, datestamp, database_version
+%     5d0b66d8f  2019-11-04  experiment_id, document_id,
+%                            name, type, datestamp, database_version
+%     f4f9d9450  2019-12-16  experiment_id, id,
+%                            name, type, datestamp, database_version
+%     e8c02831d  2020-05-19  session_id, id,
+%                            name, type, datestamp, database_version
+%     9783809c2  2023-04-13  ndi_document.json DELETED; base.json ADDED, with
+%                            id, session_id, name, datestamp
+%
+%   6529ce7bf (2020-12-01) is NOT a fifth shape: it swaps the order of `id` and
+%   `session_id` in the JSON and changes no field name, so as a FIELD SET it is
+%   the 2020-05-19 vintage. That is exactly why the classifier compares SORTED
+%   FIELD SETS and not field order or any single field.
+%
+%   THE CONSEQUENCE THIS EXISTS TO SIZE. From 2020-05-19 to 2023-04-13 -- nearly
+%   three years, the longest-lived vintage -- the wholesale move lands IDENTITY
+%   CORRECTLY (`id` and `session_id` are already spelled the way `base` spells
+%   them) and only `type` + `database_version` arrive undeclared. Before
+%   2019-12-16 the block has NEITHER identity field under a name `base` knows,
+%   so the move produces a document missing both required fields. Those are
+%   different defects wanting different repairs, and a single
+%   `moved_wholesale_no_base` count mixes a sound migration with a broken one.
+%
+%     moved_vintage_bodies_classified         THE CLASSIFIER'S OWN DENOMINATOR:
+%                                             bodies that reached it at all.
+%     moved_vintage_2019_05_unique_reference  4f1a2b801 shape -- NO usable id,
+%                                             NO usable session_id
+%     moved_vintage_2019_11_experiment_document_id
+%                                             5d0b66d8f shape -- same, under
+%                                             different names
+%     moved_vintage_2019_12_experiment_id_and_id
+%                                             f4f9d9450 shape -- `id` lands,
+%                                             `session_id` does not
+%     moved_vintage_2020_05_session_id_and_id e8c02831d shape (incl. 6529ce7bf)
+%                                             -- BOTH identity fields land
+%     moved_vintage_unknown                   A FIELD SET THIS LIST DOES NOT
+%                                             PREDICT. Never rounded to the
+%                                             nearest vintage. Hand-edited
+%                                             documents, partial writes and
+%                                             mixtures are real, and forcing one
+%                                             into a known bucket is the
+%                                             assumed-shape error that produced
+%                                             the distance_metadata quarantines.
+%     moved_vintage_unreadable_block          the block is not a scalar struct,
+%                                             so it HAS no field set. Counted
+%                                             rather than skipped, so the
+%                                             partition below still closes.
+%
+%   THE SIX BUCKETS PARTITION THE ARM: their sum equals
+%   `moved_vintage_bodies_classified`, which equals `moved_wholesale_no_base`.
+%   did2.unittest.testConvertV1ToV2 asserts that identity, because a body
+%   falling through every bucket is the precise thing this counter exists to
+%   catch.
 %
 %   Field-level renames that change identifiers (not just case) inside
 %   a class's property block are class-specific (see the conversion
@@ -162,7 +222,14 @@ report = struct( ...
     'moved_carrying_experiment_unique_reference', 0, ...
     'moved_carrying_document_unique_reference', 0, ...
     'moved_carrying_type',                      0, ...
-    'moved_carrying_database_version',          0);
+    'moved_carrying_database_version',          0, ...
+    'moved_vintage_bodies_classified',          0, ...
+    'moved_vintage_2019_05_unique_reference',   0, ...
+    'moved_vintage_2019_11_experiment_document_id', 0, ...
+    'moved_vintage_2019_12_experiment_id_and_id',   0, ...
+    'moved_vintage_2020_05_session_id_and_id',      0, ...
+    'moved_vintage_unknown',                    0, ...
+    'moved_vintage_unreadable_block',           0);
 
 postBody = preBody;
 
@@ -254,11 +321,19 @@ function report = countMovedBlock(report, block)
 % did2.unittest.testConvertV1ToV2 pins the list against the V_eta schema.
 declaredInBase = {'id', 'session_id', 'name', 'datestamp'};
 
+% THE CLASSIFIER'S OWN DENOMINATOR, set before a single field is read, and set
+% on EVERY path out of this function including the unreadable one. It is what
+% the six `moved_vintage_*` buckets partition.
+report.moved_vintage_bodies_classified = 1;
+
 if ~isstruct(block) || ~isscalar(block)
-    % Nothing readable to characterise. The arm counter above already fired,
-    % so this body still appears in `moved_wholesale_no_base`; it simply
-    % contributes to none of the breakdowns. Silence here would make an
-    % unreadable block look like a clean one.
+    % Nothing readable to characterise: a block that is not a scalar struct has
+    % no field set, so it cannot be classified -- but it DID reach the
+    % classifier, and the arm counter above already fired. Counted in its own
+    % bucket rather than skipped, because a skipped body breaks the partition
+    % and reads downstream as "nothing unusual here". That is the fold-a-refusal
+    % -into-silence failure this repository has now paid for twice.
+    report.moved_vintage_unreadable_block = 1;
     return;
 end
 
@@ -294,6 +369,75 @@ if any(strcmp('type', names))
 end
 if any(strcmp('database_version', names))
     report.moved_carrying_database_version = 1;
+end
+
+% THE VINTAGE CLASSIFIER. On the FIELD SET, never on a single field: two
+% consecutive vintages differ only by `experiment_id` vs `session_id`, and
+% another pair only by `document_id` vs `id`, so any one-field test collapses
+% two shapes that need different repairs. See the function header for the git
+% output the table is read from.
+[vintageCounters, vintageFieldSets] = legacyVintageTable();
+if isempty(names)
+    % An empty block HAS a field set -- the empty one -- and no vintage has
+    % that. Written out rather than sorted because `sort` on an empty cell is
+    % not worth relying on, and because "the block was empty" is a real shape
+    % that must reach `unknown` rather than an error.
+    sortedNames = {};
+else
+    sortedNames = sort(names(:)');
+end
+matched = false;
+for k = 1:numel(vintageCounters)
+    if isequal(sortedNames, vintageFieldSets{k})
+        report.(vintageCounters{k}) = 1;
+        matched = true;
+        break;
+    end
+end
+if ~matched
+    % EXPLICIT, NEVER ROUNDED TO THE NEAREST VINTAGE. A real corpus will hold
+    % shapes this table does not predict -- hand edits, partial writes, the
+    % 2018 `nsd_document` block (which carried a seventh field,
+    % `hasbinaryfile`, at f45bcc82c) reaching here under a renamed key. Naming
+    % the nearest known vintage for one of those is the assumed-shape error
+    % that produced the distance_metadata quarantines.
+    report.moved_vintage_unknown = 1;
+end
+end
+
+function [counters, fieldSets] = legacyVintageTable()
+%LEGACYVINTAGETABLE The four `ndi_document` block shapes, as NDI wrote them.
+%
+%   Each entry is a counter name and the SORTED field set of the block at that
+%   vintage, transcribed from the NDI template at the commit named in the
+%   counter and in did2.convert.universalRenames's header. The field sets are
+%   pairwise distinct -- did2.unittest.testConvertV1ToV2 asserts that, so the
+%   first-match loop above cannot become order-dependent if a fifth row is ever
+%   added.
+%
+%   NOT INCLUDED, deliberately: 6529ce7bf (2020-12-01) reorders `id` and
+%   `session_id` within the JSON and renames nothing, so it IS the 2020-05-19
+%   field set; and f45bcc82c/7b080dca1 (2018) are the `nsd_document` block, a
+%   different top-level key that cannot reach this arm. Anything shaped like
+%   either but arriving here anyway lands in `moved_vintage_unknown`, which is
+%   the correct answer.
+counters = { ...
+    'moved_vintage_2019_05_unique_reference', ...
+    'moved_vintage_2019_11_experiment_document_id', ...
+    'moved_vintage_2019_12_experiment_id_and_id', ...
+    'moved_vintage_2020_05_session_id_and_id'};
+raw = { ...
+    {'experiment_unique_reference', 'document_unique_reference', ...
+        'name', 'type', 'datestamp', 'database_version'}, ...
+    {'experiment_id', 'document_id', ...
+        'name', 'type', 'datestamp', 'database_version'}, ...
+    {'experiment_id', 'id', ...
+        'name', 'type', 'datestamp', 'database_version'}, ...
+    {'session_id', 'id', ...
+        'name', 'type', 'datestamp', 'database_version'}};
+fieldSets = cell(size(raw));
+for k = 1:numel(raw)
+    fieldSets{k} = sort(raw{k});
 end
 end
 

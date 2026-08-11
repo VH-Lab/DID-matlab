@@ -67,11 +67,21 @@ end
 % every arm at 0 with nothing having been inspected. `bodies_total`,
 % `bodies_skipped_already_target` and `bodies_unreached` account for the gap.
 %
-% READ `moved_wholesale_no_base` WITH THE `moved_carrying_*` COUNTERS BESIDE
-% IT. A 2020-vintage `ndi_document` block already spells `id`/`session_id` and
-% moves soundly; only a block carrying `experiment_unique_reference` /
-% `document_unique_reference` / `type` / `database_version` is the 2019 shape
-% the defect is about, and the arm count alone cannot tell them apart.
+% READ `moved_wholesale_no_base` WITH THE `moved_vintage_*` BUCKETS BESIDE IT.
+% The `ndi_document` block had FOUR shapes over its life, not one, and which
+% one a body carries is what decides whether the wholesale move was sound:
+% the 2020-05-19 vintage (e8c02831d, and the longest-lived of the four -- it ran
+% until base.json replaced it at 9783809c2, 2023-04-13) already spells
+% `id`/`session_id`, so identity lands CORRECTLY and only `type` +
+% `database_version` arrive undeclared; the two 2019 vintages land with no
+% usable identity at all. `moved_vintage_bodies_classified` is the classifier's
+% denominator and the six buckets partition it, `unknown` and
+% `unreadable_block` included -- a shape the table does not predict is NEVER
+% rounded to the nearest vintage.
+%
+% The `moved_carrying_*` counters remain, and remain useful as single facts,
+% but they cannot NAME a vintage: two consecutive pairs of shapes differ by one
+% field name each (`experiment_id` vs `session_id`, `document_id` vs `id`).
 if isfield(result, 'summary') && isfield(result.summary, 'legacy_ndi_document')
     report.legacy_ndi_document = result.summary.legacy_ndi_document;
 end
