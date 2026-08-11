@@ -1048,12 +1048,36 @@ def render_metadata_tier(r, out):
     p("      CO-OCCURRENCE: graph=%d, editor=%d -> %s"
       % (m["graph"], m["editor"], m["verdict"]))
     if m["verdict"] == "GRAPH WITHOUT EDITOR":
-        p("      *** this corpus has the openMINDS dataset graph and NO")
-        p("      *** metadata_editor document. `migrators_j/metadata_editor.m`")
-        p("      *** is the only source of the dataset / person / organization /")
-        p("      *** funding / publication / web_resource tier, and the bare")
-        p("      *** `openminds` class has no migrator, so those facts migrate")
-        p("      *** NOWHERE for this dataset.")
+        # THIS BANNER SAID THE TIER "migrates NOWHERE" AND BOTH OF ITS REASONS
+        # WERE FALSE WHEN IT PRINTED, with the refutation eight lines below it
+        # in its own output. Measured 2026-08-11:
+        #
+        #   $ ls src/did/+did2/+convert/+migrators_j/openminds.m
+        #   src/did/+did2/+convert/+migrators_j/openminds.m      <- ee7f325
+        #   $ grep -rln "'web_resource'" src/did/+did2/+convert/+migrators_j/
+        #   .../dataset_remote.m                                 <- not only
+        #   .../metadata_editor.m                                   metadata_editor
+        #   $ git merge-base --is-ancestor 47e70bd 7ed9cda   # exit 0
+        #
+        # `resolveOpenmindsCitations` was an ancestor of the very run that
+        # printed this, and its own counters sit directly underneath.
+        #
+        # It is this repository's house error INVERTED -- it alarms instead of
+        # reassuring -- and that is not a lesser fault. It sent a reader after a
+        # migrator that already existed and put "live data loss" at the top of a
+        # decision list. A counter states what it counted; it does not get to
+        # conclude what migrates.
+        p("      *** this corpus carries `openminds` document(s) and NO")
+        p("      *** metadata_editor document.")
+        p("      *** WHAT THAT DOES AND DOES NOT MEAN. It does NOT by itself")
+        p("      *** mean a citation graph is present: the bare `openminds`")
+        p("      *** class has more than one writer, and `+haley/doImport.m`")
+        p("      *** emits strain-assembly documents under the same class name.")
+        p("      *** It does NOT mean the tier has no migrator -- read the")
+        p("      *** `openminds_citations` block below for what was actually")
+        p("      *** consumed, and the migrated `by_class` line for what landed.")
+        p("      *** A zero there with 0 roots seen is 'no citation graph in")
+        p("      *** this corpus', NOT 'the facts were dropped'.")
 
     by_class = r.get("by_class")
     if not isinstance(by_class, dict):

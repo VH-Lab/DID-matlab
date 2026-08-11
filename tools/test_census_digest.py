@@ -13,9 +13,15 @@ import os
 import shutil
 import sys
 import tempfile
+import re
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# The tool's own source, for the handful of tests that assert on what it
+# SAYS rather than on what it computes.
+DIGEST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "census_digest.py")
 from census_digest import (TRF_NOT_SHAPEABLE, aslist, digest,  # noqa: E402
                            epoch_association, ndi_required,
                            ndi_required_names, norm_class,
@@ -4438,6 +4444,63 @@ class TestEpochStringRetention(DigestCase):
         text, _failed = self.run_digest()
         tail = text[text.index("EPOCH-STRING RETENTION -- did a did_v1"):]
         self.assertIn("PER-CLASS DERIVATIONS DISAGREE in: A", tail)
+
+
+
+class TestTheGraphWithoutEditorBannerClaimsNothingItCannotSee(unittest.TestCase):
+    """The banner concluded what MIGRATES. A counter may not do that.
+
+    It printed "those facts migrate NOWHERE for this dataset" on the strength
+    of two claims that were both false at the moment it ran -- that the bare
+    `openminds` class had no migrator, and that `metadata_editor.m` was the only
+    source of the dataset tier. `+migrators_j/openminds.m` and
+    `dataset_remote.m` refute them, and `resolveOpenmindsCitations` -- whose own
+    counters print eight lines below this banner -- was an ancestor of the run.
+
+    This is the house error inverted: it alarms rather than reassures, which is
+    not a lesser fault. It cost a build cycle and put "live data loss" at the
+    top of a decision list.
+    """
+
+    def _banner(self):
+        src = open(DIGEST_PATH, encoding="utf-8").read()
+        m = re.search(r'if m\["verdict"\] == "GRAPH WITHOUT EDITOR":(.*?)\n\n',
+                      src, re.DOTALL)
+        self.assertTrue(m, "the GRAPH WITHOUT EDITOR branch is gone or renamed")
+        return "\n".join(
+            ln for ln in m.group(1).splitlines() if "p(" in ln)
+
+    def test_it_does_not_claim_anything_migrates_nowhere(self):
+        banner = self._banner()
+        print("DENOMINATOR: 1 branch inspected, %d printed line(s)"
+              % len(banner.splitlines()))
+        # THE TWO FALSE ASSERTIONS, by their distinctive words -- not every
+        # word that resembles them. A first draft forbade "migrate" and "no
+        # migrator" outright and failed on the corrected banner, whose job is
+        # to DENY those very claims ("It does NOT mean the tier has no
+        # migrator"). A guard that cannot tell an assertion from its negation
+        # fails on the fix and gets relaxed to shut it up.
+        for phrase in ("NOWHERE", "only source"):
+            self.assertNotIn(
+                phrase, banner,
+                "the banner asserts %r again. It counts documents; it cannot "
+                "see which migrators exist, and it was wrong about exactly "
+                "that. Point the reader at the openminds_citations block "
+                "instead of concluding." % phrase)
+        self.assertIn("does NOT", banner,
+                      "the banner no longer says what its absence does NOT "
+                      "mean, which is the only reason it is safe to print.")
+
+    def test_it_tells_the_reader_where_the_real_answer_is(self):
+        banner = self._banner()
+        self.assertIn("openminds_citations", banner,
+                      "the banner reports an absence without pointing at the "
+                      "pass whose counters answer it. A reader then infers.")
+        self.assertIn("more than one writer", banner,
+                      "the banner must say that `openminds` documents are not "
+                      "by themselves a citation graph -- +haley/doImport.m "
+                      "emits strain assemblies under the same class name, "
+                      "which is what JH's 8 documents actually are.")
 
 
 if __name__ == "__main__":
