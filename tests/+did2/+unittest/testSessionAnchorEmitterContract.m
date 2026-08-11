@@ -1019,6 +1019,7 @@ for k = 1:numel(roster)
     make = e.build;
     out = passOne({make('SID_1')});
     w = ofClass(out, 'session_bounded_reference');
+    assertNotEmpty(testCase, w, sprintf('%s minted no window', e.name));
     verifyEqual(testCase, char(w{1}.get('base.session_id')), 'SID_1', sprintf( ...
         '%s (%s) lost base.session_id -- the fold cannot join it', e.name, e.site));
 end
@@ -1034,7 +1035,7 @@ function testTheBoundedWindowFoldsWithNoRefusals(testCase)
 
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.session_documents_seen, 1);
-verifyEqual(testCase, numel(windowIds), 1, ...
+assertEqual(testCase, numel(windowIds), 1, ...
     'the emitter minted no window -- every assertion below would be vacuous');
 verifyEqual(testCase, rep.anchors_seen, 1);
 verifyEqual(testCase, rep.anchors_bounded, 1);
@@ -1077,7 +1078,8 @@ function testEveryEncounterEdgeStillResolvesAfterTheBoundedFold(testCase)
 % fold every one of those edges must still name a document in the batch.
 [out, ~, windowIds] = foldEncounter( ...
     {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, 'SID_1', 1249.72, 1265.39);
-verifyEqual(testCase, numel(windowIds), 1);
+assertEqual(testCase, numel(windowIds), 1, ...
+    'the emitter minted no window -- the edge check below would be vacuous');
 
 ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
 pointers = 0;
@@ -1200,7 +1202,8 @@ function testABoundedWindowWithNoSessionDocumentIsLeftIntactNotHollowed(testCase
 % edges, so a hollowed one would validate clean and no gate would see it.
 [out, rep, windowIds] = foldEncounter({}, 'SID_1', 1249.72, 1265.39);   % no session doc
 
-verifyEqual(testCase, numel(windowIds), 1);
+assertEqual(testCase, numel(windowIds), 1, ...
+    'the emitter minted no window -- every assertion below would be vacuous');
 verifyEqual(testCase, rep.session_documents_seen, 0);
 verifyEqual(testCase, rep.anchors_seen, 1);
 verifyEqual(testCase, rep.anchors_bounded, 1);
