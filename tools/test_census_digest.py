@@ -1151,7 +1151,7 @@ class TestNdiRequiredEdges(DigestCase):
     def _nd(self, **over):
         nd = {
             "docs_inspected": 1000, "docs_unreadable": 0,
-            "docs_classified": 1000,
+            "docs_unclassifiable": 0, "docs_classified": 1000,
             "marker_key": "ndi_mustBeNonEmpty",
             "classes_carrying_the_marker": 40,
             "relaxed_classes": 12, "relaxed_edges_declared": 14,
@@ -1199,7 +1199,8 @@ class TestNdiRequiredEdges(DigestCase):
     def test_every_denominator_row_is_rendered(self):
         self._corpus("A", self._nd())
         text, _ = self.run_digest()
-        for label in ("classes whose chain carries the marker",
+        for label in ("documents with no document_class (NOT looked at)",
+                      "classes whose chain carries the marker",
                       "classes declaring a RELAXED edge",
                       "distinct (class, edge) pairs relaxed",
                       "documents declaring one",
@@ -1344,6 +1345,33 @@ class TestNdiRequiredEdges(DigestCase):
         text, failed = self.run_digest()
         self.assertEqual(failed, [])
         self.assertIn("500  ontology_label.document_id", text)
+
+    def test_the_unclassifiable_state_is_rendered_not_folded_away(self):
+        # A document that PARSED and still was never looked at. Folding it into
+        # either neighbour makes a batch nothing was read from print like a
+        # clean one -- the defect silentLoss exists to detect, and the one this
+        # row was added for after CI run 31463987352.
+        self._corpus("A", self._nd(docs_unclassifiable=400,
+                                   docs_classified=600))
+        text, _ = self.run_digest()
+        self.assertIn("400  documents with no document_class (NOT looked at)",
+                      text)
+        self.assertIn("600  documents classified", text)
+
+    def test_the_three_document_states_sum_to_the_denominator_in_the_rollup(self):
+        # The partition is the property, so the rollup has to preserve it
+        # rather than sum three unrelated numbers.
+        self._corpus("A", self._nd(docs_inspected=1000, docs_unreadable=100,
+                                   docs_unclassifiable=300,
+                                   docs_classified=600))
+        self._corpus("B", self._nd(docs_inspected=500, docs_unreadable=0,
+                                   docs_unclassifiable=100,
+                                   docs_classified=400))
+        text, _ = self.run_digest()
+        self.assertIn("1500 document(s) inspected in total", text)
+        self.assertIn("400  documents with no document_class (NOT looked at)",
+                      text)
+        self.assertIn("1000  documents classified", text)
 
     def test_the_reader_returns_a_reason_not_just_False(self):
         # A caller must be able to PRINT why, not merely know that it could not

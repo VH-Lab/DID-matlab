@@ -2,14 +2,17 @@ function tests = testSilentLoss
 %TESTSILENTLOSS Tests for did2.validate.silentLoss -- the Phase 1 report-only
 %   census of data that migrates away without tripping any gate.
 %
-%   STATUS 2026-08-11: the EIGHT cases in the "EDGES NDI REQUIRES AND V_eta
-%   DOES NOT" section at the bottom of this file, and the silentLoss block
-%   they cover, WERE WRITTEN WITHOUT MATLAB and have NEVER BEEN EXECUTED --
-%   there is no MATLAB or Octave runtime in the environment they were authored
-%   in. Treat those assertions as UNVERIFIED until a `runtests` or a corpus job
-%   says otherwise. The counter is report-only by construction and cannot move
-%   a gate, but "written" is not "run", and this file exists because a counter
-%   that had never been exercised shipped measuring nothing.
+%   STATUS 2026-08-11: the "EDGES NDI REQUIRES AND V_eta DOES NOT" section at
+%   the bottom of this file was written without MATLAB (none in the authoring
+%   environment) and has now been EXECUTED BY CI -- quick migrator tests run
+%   31463987352, head 8f0d255. Seven of its eight cases passed on first run.
+%   The eighth, testTheDenominatorIsPresentOnEveryPathOut, FAILED, and it was
+%   the TEST that was wrong, not the counter: it asserted `docs_unreadable = 2`
+%   for two class-less structs, and 0 was the truthful answer because
+%   `asStruct` returns any struct unchanged. It has been INVERTED rather than
+%   renumbered -- see testTheThreeDocumentStatesPartitionTheDenominator below
+%   for the premise that is correct. The re-run of THIS file after that change
+%   is again unexecuted locally; CI is the only runtime.
 %
 %   THIS FILE EXISTS BECAUSE THE COUNTER HAD NO TESTS AT ALL, and shipped
 %   measuring nothing. Its only exercise was the full corpus run, where it
@@ -392,13 +395,13 @@ end
 
 % ===== EDGES NDI REQUIRES AND V_eta DOES NOT (the blind-spot census) =======
 %
-% STATUS 2026-08-11: THESE TESTS HAVE NEVER BEEN EXECUTED. There is no MATLAB
-% runtime in the environment they were authored in, so nothing in this file
-% was run -- these cases nor the ones above. They are written against the real
-% shared schema cache and the real built V_eta, so the first corpus job (or
-% the first local `runtests`) is their first execution. The counter they cover
-% is report-only by construction and cannot move a gate, but treat these
-% assertions as UNVERIFIED until a run says otherwise.
+% STATUS 2026-08-11: EXECUTED BY CI (quick migrator tests run 31463987352,
+% head 8f0d255) after being written in an environment with no MATLAB. Seven of
+% eight passed first time; the eighth was a wrong assertion in this file and is
+% now inverted. The cases added WITH that inversion
+% (testTheThreeDocumentStatesPartitionTheDenominator,
+% testThePartitionHoldsOnAMixedBatch) are themselves UNRUN -- there is still no
+% MATLAB or Octave in this container, so CI remains the only runtime.
 %
 % WHAT IS BEING COVERED. `requiredDependencies` returns names only for edges
 % declared `mustBeNonEmpty` in the V_eta chain, so an edge V_eta RELAXED is
@@ -481,10 +484,74 @@ verifyEqual(testCase, empt.ndi_required_denominator.marker_key, ...
     'ndi_mustBeNonEmpty', ...
     'the key it followed is DATA -- a rename must be visible, not silent');
 
+% A document vBodies genuinely CANNOT parse. `[]` is not a struct and has none
+% of the three accessor properties, so asStruct returns [] and it is counted as
+% unreadable -- this is what `docs_unreadable` means, and it is the only thing
+% it means.
+nul = did2.validate.silentLoss({[]});
+verifyEqual(testCase, nul.ndi_required_denominator.docs_inspected, 1);
+verifyEqual(testCase, nul.ndi_required_denominator.docs_unreadable, 1, ...
+    'a body that cannot be parsed at all is what unreadable counts');
+end
+
+function testTheThreeDocumentStatesPartitionTheDenominator(testCase)
+% INVERTED after CI run 31463987352 failed this file's only failing case. The
+% original assertion was
+%
+%     bad = silentLoss({struct('nope',1), struct('nope',2)});
+%     verifyEqual(..., bad.ndi_required_denominator.docs_unreadable, 2)
+%
+% and it was WRONG, not the counter. `asStruct` returns ANY struct handed to it
+% unchanged (`if isstruct(d); s = d; return; end`), so both of those parse
+% perfectly and `unreadable` is 0. The assertion had borrowed the field name
+% from epoch_association and assumed it meant "not looked at"; the value
+% `docs_unreadable` actually carries is "vBodies could not parse a body out of
+% it", which is a narrower fact and was 0 here truthfully.
+%
+% THE PREMISE THAT IS CORRECT, and what this test asserts instead: what has to
+% be visible is not any one field but that EVERY INSPECTED DOCUMENT IS
+% ACCOUNTED FOR. A struct with no `document_class` parsed and was still never
+% looked at, and until the fix that state had no name -- it was readable only
+% as `inspected - unreadable - classified`, a denominator the reader has to
+% compute. So the counter gained `docs_unclassifiable` and the three states now
+% partition the total exactly. That is the property worth locking: it cannot be
+% satisfied by a counter that quietly drops a document, which the single-field
+% assertion could.
 bad = did2.validate.silentLoss({struct('nope', 1), struct('nope', 2)});
-verifyEqual(testCase, bad.ndi_required_denominator.docs_inspected, 2);
-verifyEqual(testCase, bad.ndi_required_denominator.docs_unreadable, 2, ...
-    'an unopened batch must be visible as unreadable, not as a clean zero');
+d = bad.ndi_required_denominator;
+verifyEqual(testCase, d.docs_inspected, 2);
+verifyEqual(testCase, d.docs_unreadable, 0, ...
+    'both structs PARSED -- unreadable is the parse-failure count, not this');
+verifyEqual(testCase, d.docs_unclassifiable, 2, ...
+    'they carry no document_class, so nothing could be looked up for them');
+verifyEqual(testCase, d.docs_classified, 0, ...
+    'and nothing was classified, so every count below this is vacuous');
+verifyEqual(testCase, ...
+    d.docs_unreadable + d.docs_unclassifiable + d.docs_classified, ...
+    d.docs_inspected, ...
+    'every inspected document must land in exactly one named state');
+verifyEqual(testCase, d.edges_examined, 0, ...
+    'nothing was examined -- and the partition above is what says so');
+end
+
+function testThePartitionHoldsOnAMixedBatch(testCase)
+% The invariant must hold when all three states occur at once, which is the
+% case a single-state fixture cannot exercise: one unparseable, one class-less,
+% one real document.
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = struct('name', {'document_id'}, 'value', {''});
+rep = did2.validate.silentLoss({[], struct('nope', 1), did2.document(b)});
+d = rep.ndi_required_denominator;
+verifyEqual(testCase, d.docs_inspected, 3);
+verifyEqual(testCase, d.docs_unreadable, 1);
+verifyEqual(testCase, d.docs_unclassifiable, 1);
+verifyEqual(testCase, d.docs_classified, 1);
+verifyEqual(testCase, ...
+    d.docs_unreadable + d.docs_unclassifiable + d.docs_classified, ...
+    d.docs_inspected, ...
+    'the three states must partition the denominator on a mixed batch too');
+verifyEqual(testCase, rep.ndi_required_dependency_count, 1, ...
+    'and the one real document must still be counted');
 end
 
 function testTheDenominatorSeparatesUnstampedFromAgreeing(testCase)

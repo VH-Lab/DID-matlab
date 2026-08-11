@@ -67,11 +67,22 @@ function report = silentLoss(docs, opts)
 %
 %   THE EDGES NDI REQUIRES AND V_eta DOES NOT -- A WHOLE CLASS OF BLIND SPOT
 %   ------------------------------------------------------------------------
-%   STATUS 2026-08-11: WRITTEN WITHOUT MATLAB. No MATLAB runtime exists in the
-%   environment this block was authored in, so NOTHING in this file was
-%   EXECUTED -- not this block, not its tests. It is report-only by
-%   construction (see below) and cannot move a gate, but the counters are
-%   UNRUN and the first corpus job is their first execution.
+%   STATUS 2026-08-11: written without MATLAB (none in the authoring
+%   environment), then EXECUTED BY CI -- quick migrator tests run 31463987352,
+%   head 8f0d255. Nine of the ten new cases passed on first run, including the
+%   ones proving the `ndi_mustBeNonEmpty` marker reaches the schema cache and
+%   that the two buckets stay separate. ONE failed:
+%   testTheDenominatorIsPresentOnEveryPathOut expected `docs_unreadable = 2`
+%   for a batch of two class-less structs and got 0.
+%
+%   THE COUNTER WAS RIGHT AND THE TEST WAS WRONG. `asStruct` returns any struct
+%   handed to it unchanged, so both parsed and `unreadable` was truthfully 0;
+%   the test had borrowed the field name from epoch_association and assumed it
+%   meant "not looked at". The repair was NOT to restate the number: the state
+%   that did occur -- parsed, no `document_class`, never looked at -- had no
+%   name and was visible only as a subtraction, so it is now counted as
+%   `docs_unclassifiable` and the three states partition `docs_inspected`
+%   exactly. The block is still report-only and still cannot move a gate.
 %
 %   `requiredDependencies` (this file, and did2.schema.cache's copy of the same
 %   rule) returns names only for edges declared `mustBeNonEmpty` in the V_eta
@@ -114,11 +125,42 @@ function report = silentLoss(docs, opts)
 %   test below is `ndi_mustBeNonEmpty && ~mustBeNonEmpty`).
 %
 %   `ndi_required_denominator` fields. DENOMINATORS FIRST (rule 5):
-%     docs_inspected / docs_unreadable / docs_classified
+%     docs_inspected / docs_unreadable / docs_unclassifiable / docs_classified
 %                                 restated inside the block, on every path out
 %                                 of this function including the early returns,
 %                                 so a zero here can never be read out of
-%                                 context of total_docs
+%                                 context of total_docs. THE THREE OUTCOMES
+%                                 PARTITION THE DENOMINATOR EXACTLY:
+%
+%                                   unreadable + unclassifiable + classified
+%                                       == inspected
+%
+%                                 and they are three DIFFERENT facts:
+%                                   unreadable      vBodies could not parse a
+%                                                   body out of it at all
+%                                   unclassifiable  it parsed, and carries no
+%                                                   `document_class`, so there
+%                                                   is nothing to look up
+%                                   classified      it has a class name and the
+%                                                   schema chain was consulted
+%
+%                                 `docs_unclassifiable` was ADDED after CI ran
+%                                 this file for the first time (run 31463987352).
+%                                 A test here asserted that a batch of two
+%                                 class-less structs reported `docs_unreadable
+%                                 = 2`; it reports 0, and 0 is CORRECT -- both
+%                                 parsed fine, `asStruct` returns any struct
+%                                 handed to it unchanged. The test had borrowed
+%                                 the field name from epoch_association and
+%                                 assumed it meant "not looked at". It does not.
+%                                 But the state that DID occur had no name and
+%                                 was readable only as a subtraction, so the
+%                                 repair was to name it rather than to restate
+%                                 the assertion. NOTE the sibling
+%                                 `epoch_association` block has the identical
+%                                 unnamed residual and is deliberately NOT
+%                                 changed here -- out of scope, recorded so it
+%                                 is not mistaken for a checked property.
 %     marker_key                  THE KEY THIS BLOCK FOLLOWED, printed as data.
 %                                 If the build stops stamping it, or renames
 %                                 it, every count below goes to zero and the
@@ -449,7 +491,30 @@ for k = 1:numel(bodies)
     % cannot resolve is counted as skipped, not failed.
     try
         className = classNameOf(body);
-        if isempty(className); report.skipped_docs = report.skipped_docs + 1; continue; end
+        if isempty(className)
+            report.skipped_docs = report.skipped_docs + 1;
+            % NAMED, not left to subtraction. A body that PARSED but carries no
+            % `document_class` is neither `docs_unreadable` (vBodies read it
+            % fine) nor `docs_classified` (nothing could be looked up for it).
+            % Until this line it fell between the two and was visible only as
+            % the residual `inspected - unreadable - classified`, which is a
+            % denominator a reader has to compute rather than read. See the
+            % note on `docs_unclassifiable` in nrNewReport.
+            report.ndi_required_denominator.docs_unclassifiable = ...
+                report.ndi_required_denominator.docs_unclassifiable + 1;
+            continue;
+        end
+        % INCREMENTED HERE, at the classification step itself, and NOT further
+        % down beside the block that uses it. Every document passes through
+        % this exact point once, so
+        %     docs_unreadable + docs_unclassifiable + docs_classified
+        %         == docs_inspected
+        % holds EXACTLY. When this lived after section 1, a document that threw
+        % in section 1 was classified, was counted in neither, and the three
+        % states silently stopped adding up to the denominator -- an accounting
+        % hole of the same shape as the one this whole block exists to close.
+        report.ndi_required_denominator.docs_classified = ...
+            report.ndi_required_denominator.docs_classified + 1;
 
         % --- 1. required depends_on edges that are empty -----------------
         required = requiredDependencies(cache, className);
@@ -467,12 +532,6 @@ for k = 1:numel(bodies)
         % `requiredDependencies` by construction, so the census above is silent
         % about it rather than clean. This counts it without touching the
         % `mustBeNonEmpty` that 1 and the armed gate both key on.
-        % Counted HERE rather than borrowed from epoch_association: that
-        % counter is incremented further down the same try block, so a document
-        % that throws in between would make the two disagree by one and neither
-        % would say which. Each block owns its denominator.
-        report.ndi_required_denominator.docs_classified = ...
-            report.ndi_required_denominator.docs_classified + 1;
         nrInfo = relaxedDependencies(cache, className, nrClassMemo);
         % These three are containers.Map, a HANDLE class, so the assignments
         % mutate the maps created above -- the analyser calls the local name
@@ -1107,6 +1166,7 @@ function r = nrNewReport()
 r = struct( ...
     'docs_inspected',                0, ...
     'docs_unreadable',               0, ...
+    'docs_unclassifiable',           0, ...
     'docs_classified',               0, ...
     'marker_key',                    nrMarkerKey(), ...
     'classes_carrying_the_marker',   0, ...

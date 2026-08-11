@@ -379,6 +379,12 @@ EPOCH_ASSOCIATION_CHAIN = [
 # requires is blank", the other is "an edge NDI requires is blank while we
 # permit it". Those rank differently and are repaired differently.
 NDI_REQUIRED_DENOMINATOR = [
+    # THE THREE DOCUMENT STATES, which partition docs_inspected exactly:
+    # unreadable (vBodies could not parse it) + unclassifiable (it parsed and
+    # carries no document_class) + classified. They are rendered together
+    # because the middle one is the state that reads as "clean" when it is
+    # omitted -- a document that parsed and was still never looked at.
+    ("docs_unclassifiable", "documents with no document_class (NOT looked at)"),
     ("docs_classified", "documents classified"),
     ("classes_carrying_the_marker", "classes whose chain carries the marker"),
     ("relaxed_classes", "classes declaring a RELAXED edge"),
