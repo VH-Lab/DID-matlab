@@ -69,11 +69,16 @@ function report = silentLoss(docs, opts)
 %   ------------------------------------------------------------------------
 %   STATUS 2026-08-11: written without MATLAB (none in the authoring
 %   environment), then EXECUTED BY CI -- quick migrator tests run 31463987352,
-%   head 8f0d255. Nine of the ten new cases passed on first run, including the
-%   ones proving the `ndi_mustBeNonEmpty` marker reaches the schema cache and
-%   that the two buckets stay separate. ONE failed:
-%   testTheDenominatorIsPresentOnEveryPathOut expected `docs_unreadable = 2`
-%   for a batch of two class-less structs and got 0.
+%   job 93692972908, head 8f0d255. EIGHT new cases; SEVEN passed, ONE failed.
+%   (A first draft of this note said "nine of the ten", which was a number I
+%   wrote from memory rather than from the run. Counted off the job log's
+%   per-test table: testSilentLoss contributed 30 rows, 29 true / 1 false, and
+%   8 of those rows are the new block's. An inflated progress figure is the
+%   error this repository is most prone to, so it is stated from the table.)
+%   The seven that passed include the ones proving the `ndi_mustBeNonEmpty`
+%   marker reaches the schema cache and that the two buckets stay separate. The
+%   one that failed: testTheDenominatorIsPresentOnEveryPathOut expected
+%   `docs_unreadable = 2` for a batch of two class-less structs and got 0.
 %
 %   THE COUNTER WAS RIGHT AND THE TEST WAS WRONG. `asStruct` returns any struct
 %   handed to it unchanged, so both parsed and `unreadable` was truthfully 0;
@@ -141,8 +146,21 @@ function report = silentLoss(docs, opts)
 %                                   unclassifiable  it parsed, and carries no
 %                                                   `document_class`, so there
 %                                                   is nothing to look up
-%                                   classified      it has a class name and the
-%                                                   schema chain was consulted
+%                                   classified      it has a class name, so
+%                                                   there was something to look
+%                                                   up. NOT a claim that every
+%                                                   later check completed -- a
+%                                                   document that throws further
+%                                                   down is still classified and
+%                                                   is separately visible in
+%                                                   `skipped_docs`. The counter
+%                                                   is incremented AT the
+%                                                   classification step for
+%                                                   exactly that reason: it is
+%                                                   the only point every
+%                                                   document reaches once, so it
+%                                                   is the only one that can
+%                                                   make the partition exact.
 %
 %                                 `docs_unclassifiable` was ADDED after CI ran
 %                                 this file for the first time (run 31463987352).
