@@ -17,6 +17,11 @@ function tests = testLawnPlateSubjects
 %   transliteration scored these same cases 14/14 because it models the counter
 %   as `len(live)`; it cannot see a MATLAB type. A transliteration is not a run.
 %
+%   THE FIVE COLLISION-SPLIT TESTS ADDED 2026-08-11 HAVE NEVER BEEN RUN
+%   ANYWHERE. Their arithmetic identity was checked exhaustively in Python over
+%   210 enumerated inputs, which proves the DECOMPOSITION and proves nothing
+%   whatever about the MATLAB -- see the paragraph above for what that costs.
+%
 %   ---------------------------------------------------------------------
 %   WHAT THESE TESTS ARE FOR
 %   ---------------------------------------------------------------------
@@ -340,6 +345,151 @@ verifyEqual(testCase, lawn.subject.local_identifier, ...
     'the other session''s expID 9999 must not reach this lawn');
 end
 
+% ===================== the collision split =================================
+%
+% WHY THESE EXIST. Corpus run 31522068566 reported 6,414 handle collisions, all
+% in JH, and the digest called the team's uniqueness directive "refuted on real
+% data". The team's reply was "Is it not within-session unique? That's what
+% matters." NOTHING IN THAT RUN COULD ANSWER IT: the counter was
+% `local_identifier_collisions_within_batch` -- BATCH, not session -- and a
+% batch spans both Haley sessions.
+%
+% The tests below pin the three buckets AND the identity
+%
+%     within_session + across_sessions_only + unclassifiable
+%         == collisions_within_batch == handles_formed - handles_distinct
+%
+% on every shape of input the pass can produce, INCLUDING the mixed one. The
+% mixed case is the point: an implementation that classified a whole handle
+% group by its first duplicate would pass the two pure tests and get the mixed
+% one wrong, and JH is not guaranteed to be pure.
+
+function testTheCollisionSplitReportsItsDenominatorsAndPartitionsExactly(testCase)
+%TESTTHECOLLISIONSPLITREPORTSITSDENOMINATORSANDPARTITIONSEXACTLY Rule 5 on the
+%   happy path: the two denominators are present and non-vacuous BEFORE any
+%   bucket is read, so "no collisions" and "no handles formed" cannot print the
+%   same.
+[~, rep] = runPass(testCase, ...
+    {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()});
+verifyEqual(testCase, rep.local_identifier_handles_formed, 2, ...
+    'the denominator: one plate handle and one lawn handle were FORMED');
+verifyEqual(testCase, rep.local_identifier_handles_distinct, 2);
+verifyEqual(testCase, rep.local_identifier_collisions_within_batch, 0);
+verifyEqual(testCase, rep.local_identifier_collisions_within_session, 0);
+verifyEqual(testCase, rep.local_identifier_collisions_across_sessions_only, 0);
+verifyEqual(testCase, ...
+    rep.local_identifier_collisions_unclassifiable_no_session_id, 0);
+verifyCollisionPartition(testCase, rep);
+end
+
+function testACollisionInsideOneSessionIsCountedAsWithinSession(testCase)
+%TESTACOLLISIONINSIDEONESESSIONISCOUNTEDASWITHINSESSION THE BUCKET THAT WOULD
+%   REFUTE THE DIRECTIVE. Two patch rows on one image, both numbered 0003, in
+%   ONE session: the same (experiment, plate, patch) triple twice, with nothing
+%   about sessions to explain it away.
+lawn2 = ecoliLawnRow();
+lawn2.base.id = 'otr_ecoli_lawn_2';
+[~, rep] = runPass(testCase, ...
+    {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow(), lawn2});
+verifyEqual(testCase, rep.lawn_rows_seen, 2, 'denominator: both patch rows seen');
+verifyEqual(testCase, rep.chains_resolved, 2, 'denominator: both chains resolved');
+verifyEqual(testCase, rep.lawn_subjects_minted, 2);
+verifyEqual(testCase, rep.local_identifier_handles_formed, 3);
+verifyEqual(testCase, rep.local_identifier_handles_distinct, 2);
+verifyEqual(testCase, rep.local_identifier_collisions_within_batch, 1);
+verifyEqual(testCase, rep.local_identifier_collisions_within_session, 1, ...
+    'a duplicate inside one session is the case the team asked about');
+verifyEqual(testCase, rep.local_identifier_collisions_across_sessions_only, 0);
+verifyCollisionPartition(testCase, rep);
+end
+
+function testACollisionOnlyBetweenSessionsIsNotCountedAsWithinSession(testCase)
+%TESTACOLLISIONONLYBETWEENSESSIONSISNOTCOUNTEDASWITHINSESSION THE BUCKET THAT
+%   DOES NOT REFUTE IT. The whole E. coli trio duplicated into a second session
+%   with identical expID/plateID/patchID -- arithmetically possible because
+%   doImport.m offsets `plateID` by `expType*1000` in the C. elegans session
+%   (:165-166) and not in the E. coli one (:728-729).
+%
+%   Both handles repeat, and NEITHER repeats inside a session. Every index in
+%   this pass is keyed by `base.session_id`, and so is
+%   `ndi.session.database_search` (NDI-matlab +ndi/session.m:328-329), which is
+%   what the only NDI subject-by-handle resolver goes through.
+[~, rep] = runPass(testCase, { ...
+    ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow(), ...
+    inSession(ecoliPlateRow(), 'sess_ecoli_2', '_b'), ...
+    inSession(ecoliImageRow(), 'sess_ecoli_2', '_b'), ...
+    inSession(ecoliLawnRow(),  'sess_ecoli_2', '_b')});
+verifyEqual(testCase, rep.sessions_with_lawn_plate_tables, 2, 'denominator');
+verifyEqual(testCase, rep.chains_resolved, 2, 'denominator: both chains resolved');
+verifyEqual(testCase, rep.plate_subjects_minted, 2);
+verifyEqual(testCase, rep.lawn_subjects_minted, 2);
+verifyEqual(testCase, rep.local_identifier_handles_formed, 4);
+verifyEqual(testCase, rep.local_identifier_handles_distinct, 2);
+verifyEqual(testCase, rep.local_identifier_collisions_within_batch, 2, ...
+    'the OLD counter is unchanged -- this is what it always reported');
+verifyEqual(testCase, rep.local_identifier_collisions_within_session, 0, ...
+    'neither handle repeats inside a session');
+verifyEqual(testCase, rep.local_identifier_collisions_across_sessions_only, 2);
+verifyCollisionPartition(testCase, rep);
+end
+
+function testAHandleThatCollidesBothWaysSplitsAcrossBothBuckets(testCase)
+%TESTAHANDLETHATCOLLIDESBOTHWAYSSPLITSACROSSBOTHBUCKETS THE MIXED CASE, and the
+%   only one that distinguishes a real decomposition from a per-handle label.
+%
+%   Three patch rows carrying one triple: TWO in `sess_ecoli` and one in
+%   `sess_ecoli_2`. That handle's two excess occurrences are ONE of each kind,
+%   and the plate handle contributes a third excess that is across-only. An
+%   implementation that tagged each duplicated handle with a single verdict
+%   would report 3/0 or 0/3 here and pass both pure tests above.
+lawn2 = ecoliLawnRow();
+lawn2.base.id = 'otr_ecoli_lawn_2';
+[~, rep] = runPass(testCase, { ...
+    ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow(), lawn2, ...
+    inSession(ecoliPlateRow(), 'sess_ecoli_2', '_b'), ...
+    inSession(ecoliImageRow(), 'sess_ecoli_2', '_b'), ...
+    inSession(ecoliLawnRow(),  'sess_ecoli_2', '_b')});
+verifyEqual(testCase, rep.lawn_subjects_minted, 3, 'denominator');
+verifyEqual(testCase, rep.plate_subjects_minted, 2, 'denominator');
+verifyEqual(testCase, rep.local_identifier_handles_formed, 5);
+verifyEqual(testCase, rep.local_identifier_handles_distinct, 2);
+verifyEqual(testCase, rep.local_identifier_collisions_within_batch, 3);
+verifyEqual(testCase, rep.local_identifier_collisions_within_session, 1, ...
+    'the two same-session patches, and only those');
+verifyEqual(testCase, rep.local_identifier_collisions_across_sessions_only, 2, ...
+    'one for the repeated plate handle, one for the repeated patch handle');
+verifyCollisionPartition(testCase, rep);
+end
+
+function testTheUnclassifiableBucketIsAnUntestedZeroNotACleanOne(testCase)
+%TESTTHEUNCLASSIFIABLEBUCKETISANUNTESTEDZERONOTACLEANONE The third bucket exists
+%   so that a collision nobody can classify is never folded into one that
+%   carries meaning. It CANNOT FIRE in this file as written, and that is a fact
+%   about the two mint sites rather than about the data: both refuse a
+%   session-less row before a handle is formed.
+%
+%   So this test asserts the REFUSAL, not just the zero. A zero on its own would
+%   pass equally for a bucket that was never wired up -- the all-zeros-reads-as-
+%   clean failure this pass's canary exists for, one counter over.
+lawn = ecoliLawnRow();
+lawn.base.session_id = '';
+plate = ecoliPlateRow();
+plate.base.session_id = '';
+[~, rep] = runPass(testCase, {plate, ecoliImageRow(), lawn});
+verifyEqual(testCase, rep.lawn_rows_with_measurements, 1, ...
+    'denominator: the row was recognised and measured; only naming was refused');
+verifyEqual(testCase, rep.plate_rows_with_measurements, 1, 'denominator');
+verifyEqual(testCase, rep.lawn_rows_refused_no_session_id, 1, ...
+    'the lawn mint site refuses a session-less row BEFORE forming a handle');
+verifyEqual(testCase, rep.plate_rows_refused_no_session_id, 1, ...
+    'so does the plate mint site');
+verifyEqual(testCase, rep.local_identifier_handles_formed, 0, ...
+    'no handle may be formed from a row with no session id');
+verifyEqual(testCase, ...
+    rep.local_identifier_collisions_unclassifiable_no_session_id, 0);
+verifyCollisionPartition(testCase, rep);
+end
+
 % ===================== the C. elegans relabel ==============================
 
 function testTheCelegansPatchSubjectIsRelabelledToTheTriple(testCase)
@@ -360,6 +510,13 @@ verifyEqual(testCase, rep.celegans_patch_subjects_unparseable_handle, 0);
 patch = subjectByDescription(testCase, out, 'bacterial patch');
 verifyEqual(testCase, patch.subject.local_identifier, ...
     'exp/0001/plate/0017/patch/0017');
+% THE RELABEL IS THE SECOND SITE THAT FORMS A HANDLE, so it must reach the
+% collision split too -- a split that only saw the mint site would under-report
+% on JH, where the C. elegans patch subjects are the larger population.
+verifyEqual(testCase, rep.local_identifier_handles_formed, 1, ...
+    'the relabelled handle is in the collision denominator');
+verifyEqual(testCase, rep.local_identifier_handles_distinct, 1);
+verifyCollisionPartition(testCase, rep);
 % THE ID IS PRESERVED. The encounter table's directed_relation names this
 % document as its parent (20,411 of them), so a relabel that re-ided it would
 % trade a naming problem for a gating orphan failure.
@@ -530,6 +687,34 @@ verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
     'Validate', false, 'TargetVersion', 'V_eta');
 end
 
+function verifyCollisionPartition(testCase, rep)
+%VERIFYCOLLISIONPARTITION The identity, asserted on EVERY collision fixture
+%   rather than trusted from the implementation's comments.
+%
+%   Two equations, and both are needed. The first says the batch total is still
+%   what it always was (formed minus distinct), so the old number a corpus run
+%   already reported has not quietly changed meaning. The second says the three
+%   buckets exhaust it, so nothing can be lost between them or counted twice --
+%   the property that makes reading one bucket safe without reading the others.
+verifyEqual(testCase, rep.local_identifier_collisions_within_batch, ...
+    rep.local_identifier_handles_formed - rep.local_identifier_handles_distinct, ...
+    'collisions_within_batch is no longer formed - distinct');
+verifyEqual(testCase, ...
+    rep.local_identifier_collisions_within_session ...
+    + rep.local_identifier_collisions_across_sessions_only ...
+    + rep.local_identifier_collisions_unclassifiable_no_session_id, ...
+    rep.local_identifier_collisions_within_batch, ...
+    'the three buckets do not sum to the batch total');
+% and no bucket may be negative, which is how an off-by-one in the per-handle
+% arithmetic would show up while the sum above still balanced.
+verifyGreaterThanOrEqual(testCase, ...
+    rep.local_identifier_collisions_within_session, 0);
+verifyGreaterThanOrEqual(testCase, ...
+    rep.local_identifier_collisions_across_sessions_only, 0);
+verifyGreaterThanOrEqual(testCase, ...
+    rep.local_identifier_collisions_unclassifiable_no_session_id, 0);
+end
+
 function r = emptyResult()
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
@@ -627,6 +812,15 @@ end
 
 function otr = setColumn(otr, key, value)
 otr.ontology_table_row.data.(key) = value;
+end
+
+function otr = inSession(otr, sessionId, idSuffix)
+%INSESSION The same row, in another session, with a distinct document id.
+%   Both Haley sessions land in ONE `ndi.dataset.dir` (doImport.m:868-878), so a
+%   second session carrying the same expID/plateID/patchID is the arithmetic the
+%   collision split exists to separate -- not a contrived fixture.
+otr.base.session_id = sessionId;
+otr.base.id = [otr.base.id idSuffix];
 end
 
 function otr = scrambleKeys(otr)

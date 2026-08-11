@@ -364,7 +364,26 @@ POST_PASSES = [
         ("celegans_patch_subjects_unparseable_handle", "  unparseable handle"),
         ("celegans_patch_relabel_quarantined", "  QUARANTINED by the relabel"),
         ("local_identifier_fallback_to_document_id", "HANDLES that fell back to the document id"),
+        # DENOMINATORS BEFORE THE FINDING, and the three buckets after it.
+        # `_within_batch` is `formed - distinct` and the three sum to it by
+        # construction (resolveLawnPlateSubjects.m splitCollisions), so the
+        # reader never subtracts anything to get the answer.
+        #
+        # THE SPLIT EXISTS BECAUSE THE SINGLE NUMBER COULD NOT ANSWER THE
+        # QUESTION IT PROVOKED. Run 31522068566 printed 6,414 collisions and
+        # this file called the uniqueness directive "refuted on real data"; the
+        # team asked "is it not within-session unique?" and the counter --
+        # BATCH, not session, over a batch spanning both Haley sessions -- had
+        # no way to say. Read `_within_session` for the directive; a
+        # cross-session-only duplicate does not bear on it, because every index
+        # in that pass and `ndi.session.database_search` are both scoped by
+        # `base.session_id`.
+        ("local_identifier_handles_formed", "HANDLES formed (handles, not rows)  <- DENOMINATOR"),
+        ("local_identifier_handles_distinct", "  of them DISTINCT  <- DENOMINATOR"),
         ("local_identifier_collisions_within_batch", "HANDLE COLLISIONS within the batch"),
+        ("local_identifier_collisions_within_session", "  of them WITHIN one base.session_id"),
+        ("local_identifier_collisions_across_sessions_only", "  of them ACROSS sessions only"),
+        ("local_identifier_collisions_unclassifiable_no_session_id", "  of them UNCLASSIFIABLE (no session id)"),
         ("subjects_quarantined", "QUARANTINED: subjects"),
         ("statements_quarantined", "QUARANTINED: observations + member_of"),
         ("documents_appended", "documents appended"),
@@ -3471,6 +3490,63 @@ def _render_response_parameters_reading(rep, p):
         p("          *** it has pre-empted a decision that is the team's.")
 
 
+def _collision_split_reading(rep, collisions, pad, p):
+    """The within/across/unclassifiable split of a non-zero collision count.
+
+    WHY IT IS PRINTED SEPARATELY FROM THE NUMBER ABOVE. Corpus run 31522068566
+    reported 6,414 handle collisions and this file declared the team's
+    (experiment, plate, patch) uniqueness directive "refuted on real data". The
+    team's reply was "Is it not within-session unique? That's what matters."
+    The counter said `..._within_batch` -- BATCH, not session -- and a batch
+    spans both Haley sessions, so the claim of refutation was one the
+    instrument could not support. This block prints the cut that answers it, or
+    says the cut is not in the report.
+
+    THE THREE ARE PRINTED WHOLE, NEVER AS TWO PLUS A SUBTRACTION, and their sum
+    is checked against the batch total here rather than assumed: a mismatch
+    means a counter stopped moving, which is a defect in the pass and not a
+    fact about the corpus.
+    """
+    within = _int_or_none(rep.get("local_identifier_collisions_within_session"))
+    across = _int_or_none(
+        rep.get("local_identifier_collisions_across_sessions_only"))
+    unclas = _int_or_none(
+        rep.get("local_identifier_collisions_unclassifiable_no_session_id"))
+    if within is None or across is None or unclas is None:
+        p("%s*** THE WITHIN/ACROSS SPLIT IS NOT IN THIS REPORT, so whether" % pad)
+        p("%s*** the directive is refuted is UNMEASURED here -- not clean," % pad)
+        p("%s*** and not refuted either. A collision between two SESSIONS" % pad)
+        p("%s*** does not bear on it; one inside a session does." % pad)
+        return
+    p("%s*** OF THOSE: %d WITHIN one base.session_id, %d ACROSS sessions"
+      % (pad, within, across))
+    p("%s*** only, %d UNCLASSIFIABLE (an occurrence with no session id)."
+      % (pad, unclas))
+    if within + across + unclas != collisions:
+        p("%s*** AND THEY DO NOT SUM TO %d. That is a counter that stopped"
+          % (pad, collisions))
+        p("%s*** moving, not a corpus fact -- the three are a partition by" % pad)
+        p("%s*** construction. Do not read either number until it is fixed." % pad)
+        return
+    if within:
+        p("%s*** THE %d WITHIN-SESSION ONE(S) ARE WHAT THE DIRECTIVE IS"
+          % (pad, within))
+        p("%s*** ABOUT. Two subjects in one session share a handle, and no" % pad)
+        p("%s*** session scoping can explain them apart." % pad)
+    else:
+        p("%s*** NONE OF THEM IS WITHIN A SESSION. The directive holds where" % pad)
+        p("%s*** it was meant to: every index in the pass is keyed by" % pad)
+        p("%s*** `base.session_id`, and so is NDI's own subject-by-handle" % pad)
+        p("%s*** resolver, which reaches the database through" % pad)
+        p("%s*** ndi.session.database_search. Not a refutation." % pad)
+    if unclas:
+        p("%s*** THE %d UNCLASSIFIABLE ONE(S) ARE NOT A THIRD VERDICT -- they"
+          % (pad, unclas))
+        p("%s*** are collisions nobody can place, and both mint sites are" % pad)
+        p("%s*** supposed to refuse a session-less row before forming a" % pad)
+        p("%s*** handle. A non-zero here means one of them stopped." % pad)
+
+
 def _render_lawn_plate_reading(rep, p):
     """Say out loud how the lawn/plate subject counters should be read."""
     p("          THE TWO-TIER SUBJECTS -- the reading of the rows above")
@@ -3572,6 +3648,7 @@ def _render_lawn_plate_reading(rep, p):
         p("          *** assumed. A non-zero is a fact the TEAM needs; the pass")
         p("          *** builds the identifier exactly as directed and does not")
         p("          *** choose another scheme on its own.")
+        _collision_split_reading(rep, collisions, "          ", p)
     elif collisions == 0:
         p("          %8d  handle collision(s) -- the directive's uniqueness"
           % 0)
@@ -5299,10 +5376,17 @@ def _rollup_lawn_plate_reading(totals, key_missing_in, carried, p):
         p("      *** tier total as a corpus fact.")
     collisions = totals.get("local_identifier_collisions_within_batch")
     if collisions:
-        p("      *** %d HANDLE COLLISION(S) across the run. The team's" % collisions)
-        p("      *** (experiment, plate, patch) uniqueness directive is refuted")
-        p("      *** on real data. This is for the TEAM; the pass does not")
-        p("      *** choose another scheme on its own.")
+        # THIS BLOCK USED TO SAY THE DIRECTIVE WAS "refuted on real data" AND
+        # IT COULD NOT KNOW THAT. The counter is batch-scoped and a batch spans
+        # both Haley sessions, so it conflated the case that refutes the
+        # directive with the case that does not. The verdict now comes from the
+        # split, and when the split is absent the block says UNMEASURED rather
+        # than choosing a verdict.
+        p("      *** %d HANDLE COLLISION(S) across the run, on the team's"
+          % collisions)
+        p("      *** (experiment, plate, patch) identifier. This is for the")
+        p("      *** TEAM; the pass does not choose another scheme on its own.")
+        _collision_split_reading(totals, collisions, "      ", p)
     elif collisions == 0:
         p("      %8d  handle collision(s) -- the uniqueness premise holds over"
           % 0)

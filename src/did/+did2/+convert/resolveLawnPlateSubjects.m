@@ -15,7 +15,10 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   CI: test-migrators-quick.yml run 31496276388 (job 93794725787, head
 %   76f835ad) executed all 15 tests of testLawnPlateSubjects and reported
 %   927/929 with exactly two failures, both of them in this file's canary.
-%   That run is the only execution evidence this header may claim.
+%   That run is the only execution evidence this header may claim, and it
+%   PREDATES the collision split added 2026-08-11: `splitCollisions` and the
+%   four new report fields have NEVER BEEN RUN ANYWHERE at the time of writing.
+%   Treat them as UNPROVEN until a CI run says otherwise.
 %
 %   WHAT IT FOUND, AND WHY THE PYTHON HARNESS COULD NOT.
 %   `sessions_with_lawn_plate_tables` was assigned `liveSessions.Count`, which
@@ -107,10 +110,55 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   the C. elegans session (doImport.m:165-166) and NOT in the E. coli one
 %   (:728-729), and `expType` is 0 for `foragingConcentration` -- so a
 %   cross-session collision is arithmetically possible. The identifier is built
-%   exactly as directed and `local_identifier_collisions_within_batch` reports
-%   how many of the handles this pass FORMS are not distinct. A zero there is
+%   exactly as directed and the collision is REPORTED, never acted on. A zero is
 %   the directive confirmed on real data; a non-zero is a fact the team needs,
 %   and neither is something this file may decide on its own.
+%
+%   ONE COUNTER COULD NOT ANSWER THE QUESTION THAT WAS ASKED OF IT, WHICH IS WHY
+%   THERE ARE NOW THREE. Corpus run 31522068566 reported
+%
+%       *** 6414 HANDLE COLLISION(S) across the run. The team's
+%       *** (experiment, plate, patch) uniqueness directive is refuted
+%       *** on real data.
+%
+%   all of them in JH, and the team's reply was "Is it not within-session
+%   unique? That's what matters." NOTHING IN THAT RUN COULD ANSWER IT. The
+%   counter is `local_identifier_collisions_within_batch` -- BATCH, not session
+%   -- and a batch spans both Haley sessions, which is exactly the arithmetic
+%   the paragraph above describes. "Refuted" was therefore a claim the
+%   instrument could not support: a collision between two DIFFERENT sessions
+%   refutes nothing, because every index in this pass is keyed by
+%   `base.session_id` (see "BOTH HOPS ARE SESSION-SCOPED" below) and so is
+%   NDI's own subject resolver (see the join-key note further down). The batch
+%   total is now SPLIT, and the split is exact by construction rather than by a
+%   reader's subtraction:
+%
+%       local_identifier_handles_formed        <- DENOMINATOR, unconditional
+%       local_identifier_handles_distinct      <- DENOMINATOR
+%       local_identifier_collisions_within_batch    == formed - distinct
+%         = _within_session                    the same handle twice inside ONE
+%                                              base.session_id. THESE ARE THE
+%                                              ONES THAT WOULD REFUTE IT.
+%         + _across_sessions_only              the same handle in N distinct
+%                                              sessions and never twice in one.
+%                                              THESE DO NOT.
+%         + _unclassifiable_no_session_id      a colliding occurrence carrying
+%                                              no session id, so neither of the
+%                                              above can be said of it. COUNTED
+%                                              AND NAMED, never folded into
+%                                              either.
+%
+%   splitCollisions() below carries the per-handle arithmetic and the proof that
+%   the three sum to the total for every shape of input.
+%
+%   THE THIRD BUCKET CANNOT FIRE TODAY, AND IT IS COUNTED ANYWAY. Both sites
+%   that FORM a handle refuse a session-less row before the formation -- the
+%   tier mint at "question 2" and the C. elegans relabel -- so
+%   `_unclassifiable_no_session_id` is structurally 0 in this file as written.
+%   That is an UNTESTED zero, not a clean one, and it is written down as such
+%   for the same reason the digest says so of edge-family uniqueness. The bucket
+%   exists so that relaxing either refusal appears as a number rather than as a
+%   silent reclassification into one of the two buckets that carry meaning.
 %
 %   ---------------------------------------------------------------------
 %   WHY IT IS A BATCH POST-PASS AND NOT A MIGRATOR
@@ -164,11 +212,58 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %
 %   The one exception is `subject.local_identifier` on the C. elegans patch
 %   subjects pass 1 mints, which this pass rewrites in place with the id
-%   PRESERVED. That is safe and the reason is worth stating: `local_identifier`
-%   is a HUMAN HANDLE, not a join key -- `base.id` is the key, `must_refer` is
-%   existence-only, and nothing in the corpus resolves a reference through the
-%   handle. (`epochMint` does key on `(session_id, local_identifier)`, but for
-%   `epoch` entities, which this pass does not touch.)
+%   PRESERVED.
+%
+%   "A HUMAN HANDLE, NOT A JOIN KEY" IS TRUE DID-SIDE AND FALSE NDI-SIDE, AND
+%   THIS PARAGRAPH USED TO SAY ONLY THE FIRST HALF -- in the reassuring
+%   direction, because it made a rewrite sound consequence-free. CHECKED
+%   2026-08-11 by reading every non-comment `local_identifier` line in
+%   DID-matlab `src/` (85) and every `subject.local_identifier` site in
+%   NDI-matlab (929 .m files searched, 24 mention it):
+%
+%     DID-SIDE THE OLD CLAIM HOLDS. Every read that RESOLVES anything resolves
+%     an `epoch` entity, never a subject -- epochMint.m:337, epochIndex.m:521,
+%     resolveValidIntervals.m:461, epochStringRetention.m:265-266, all keyed on
+%     the PAIR (base.session_id, epoch.local_identifier). The only subject-side
+%     reads are migrators_j/subject.m:18, which normalises the field in place,
+%     and this file at the relabel below, which reads back its own handle.
+%     `base.id` is the key and `+did2/+validate/references.m` resolves every
+%     edge through it.
+%
+%     NDI-SIDE IT IS NOT TRUE, AND THE RESOLVER ERRORS RATHER THAN DEGRADES:
+%
+%         ndi.subject.does_subjectstring_match_session_document
+%             (NDI-matlab +ndi/subject.m:130-172) takes a handle and returns a
+%             document id, and at :169-170
+%                 elseif numel(subject_doc)>1
+%                     error(['More than one subject doc matches..should only
+%                            be 1!']);
+%             It is reached from ndi.element.m:59, the element -> subject
+%             attribution path.
+%         Seven more sites query the field directly -- subjectMaker.m:379,
+%             +conv/+gluckman/binepochprobemap.m:24, +conv/+marder/
+%             smrepochprobemap.m:24, abfepochprobemap.m:39,
+%             abfprobetable2probemap.m:63, demo.m:11, +mock/+fun/clear.m:16 --
+%             subjectMaker.m:249-250 does find-or-create by strcmp on it, and
+%             treatmentMaker.m:60 builds a MAP from handle to document id.
+%
+%   THAT IS WHY within/across IS THE RIGHT CUT AND NOT A CONVENIENT ONE.
+%   `ndi.session.database_search` ANDs in
+%   `ndi.query('base.session_id','exact_string',session.id())`
+%   (NDI-matlab +ndi/session.m:328-329), so the erroring resolver above sees ONE
+%   SESSION and a cross-session duplicate is invisible to it;
+%   `ndi.dataset.database_search` (+ndi/dataset.m:670-677) concatenates over
+%   every linked session and does not. A within-session collision therefore
+%   breaks a live NDI resolver; a cross-session-only collision breaks it only
+%   for a caller resolving through the DATASET -- and doImport.m:868-878 puts
+%   both Haley sessions in one `ndi.dataset.dir`. Which of those the team cares
+%   about is THEIR call; this file measures both and decides neither.
+%
+%   ONE CONSEQUENCE THE OLD SENTENCE RULED OUT: because NDI does resolve
+%   subjects by handle, the relabel changes what an NDI-side query for the OLD
+%   pair handle finds. Named here rather than left implied. The relabel is still
+%   safe DID-side, where nothing resolves a subject through the handle, and the
+%   pass rewrites only subjects this same migration minted, in the same batch.
 %
 %   Two consequences of the additive shape, stated rather than discovered:
 %
@@ -368,9 +463,17 @@ report = struct( ...
     'celegans_patch_subjects_refused_ambiguous_exp_id', 0, ...
     'celegans_patch_subjects_unparseable_handle', 0, ...
     'celegans_patch_relabel_quarantined',        0, ...
-    ... % --- identity health
+    ... % --- identity health. DENOMINATORS BEFORE THE FINDING, and the three
+    ... % collision buckets sum to the batch total by construction, never by a
+    ... % reader's subtraction. See "ONE COUNTER COULD NOT ANSWER THE QUESTION"
+    ... % in the header for why one number was not enough.
     'local_identifier_fallback_to_document_id',  0, ...
+    'local_identifier_handles_formed',           0, ...
+    'local_identifier_handles_distinct',         0, ...
     'local_identifier_collisions_within_batch',  0, ...
+    'local_identifier_collisions_within_session', 0, ...
+    'local_identifier_collisions_across_sessions_only', 0, ...
+    'local_identifier_collisions_unclassifiable_no_session_id', 0, ...
     ... % --- what landed
     'subjects_quarantined',                      0, ...
     'statements_quarantined',                    0, ...
@@ -542,7 +645,13 @@ subjectBodies = {};
 subjectMeta   = struct('idx', {}, 'kind', {}, 'docId', {}, 'sessionId', {}, ...
                        'plateKey', {});
 pendingObs    = {};
-formedHandles = {};
+% PARALLEL ARRAYS, one entry per handle this pass FORMS. The session id travels
+% beside the handle because the question the team asked -- "is it not
+% within-session unique?" -- cannot be answered from the handle list alone, and
+% recovering the session by re-reading the batch afterwards would be a second
+% join with its own failure modes.
+formedHandles  = {};
+formedSessions = {};
 
 for k = 1:n
     kind = kinds(k);
@@ -681,7 +790,13 @@ for k = 1:n
         report.local_identifier_fallback_to_document_id = ...
             report.local_identifier_fallback_to_document_id + 1;
     else
-        formedHandles{end+1} = localId; %#ok<AGROW>
+        formedHandles{end+1}  = localId;      %#ok<AGROW>
+        % NON-EMPTY BY CONSTRUCTION HERE: the "question 2" guard above refuses a
+        % row with no `base.session_id` before it can reach a mint. Recorded
+        % rather than asserted, so that relaxing that guard shows up in
+        % `local_identifier_collisions_unclassifiable_no_session_id` instead of
+        % being silently counted as a cross-session collision.
+        formedSessions{end+1} = sessions{k};  %#ok<AGROW>
     end
 
     subjectBodies{end+1} = body; %#ok<AGROW>
@@ -749,11 +864,29 @@ for k = 1:n
     b.subject.local_identifier = newHandle;
     relabelBodies{end+1} = b; %#ok<AGROW>
     relabelIds{end+1} = baseField(b, 'id'); %#ok<AGROW>
-    formedHandles{end+1} = newHandle; %#ok<AGROW>
+    formedHandles{end+1}  = newHandle; %#ok<AGROW>
+    % Also non-empty by construction: the `isempty(sid)` arm above leaves the
+    % pair standing and counts it, so a session-less subject never reaches here.
+    formedSessions{end+1} = sid; %#ok<AGROW>
 end
 
-% THE COMBO THE TEAM ASSERTS IS UNIQUE, MEASURED RATHER THAN ASSUMED.
-report.local_identifier_collisions_within_batch = countCollisions(formedHandles);
+% THE COMBO THE TEAM ASSERTS IS UNIQUE, MEASURED RATHER THAN ASSUMED -- AND
+% MEASURED AT THE GRAIN THE QUESTION WAS ASKED AT. The single batch-wide number
+% this used to report could not distinguish "two patches in one session share a
+% handle" (which refutes the directive) from "the two Haley sessions each hold
+% one patch with the same handle" (which does not, because every index in this
+% pass and every NDI subject resolver reached through a SESSION is already
+% scoped by `base.session_id`). Both denominators and all three buckets, from
+% one walk over the formed handles.
+collisions = splitCollisions(formedHandles, formedSessions);
+report.local_identifier_handles_formed   = collisions.formed;
+report.local_identifier_handles_distinct = collisions.distinct;
+report.local_identifier_collisions_within_batch  = collisions.total;
+report.local_identifier_collisions_within_session = collisions.within_session;
+report.local_identifier_collisions_across_sessions_only = ...
+    collisions.across_sessions_only;
+report.local_identifier_collisions_unclassifiable_no_session_id = ...
+    collisions.unclassifiable;
 
 if ~isempty(relabelBodies)
     [survivedR, quarantinedR] = validateBodies(relabelBodies, options);
@@ -1011,22 +1144,93 @@ if isKey(expAmbiguous, plateKey); return; end
 if isKey(expByPlate, plateKey); expId = expByPlate(plateKey); end
 end
 
-function nCollisions = countCollisions(handles)
-%NCOLLISIONS How many of the handles this pass formed are not distinct.
+function tally = splitCollisions(handles, sessionIds)
+%SPLITCOLLISIONS How many of the handles this pass formed are not distinct, and
+%   -- the question the single number could not answer -- WHETHER THE
+%   DUPLICATES SHARE A SESSION.
+%
 %   Reported, never acted on: the team asserts the combo is unique and this pass
 %   implements the directive either way. A non-zero here is evidence for them,
 %   not authorisation for this file to pick a different scheme.
-nCollisions = 0;
+%
+%   RETURNS, denominators first (Rule 5):
+%       formed               handles formed at all
+%       distinct             how many of them are distinct
+%       total                formed - distinct, the OLD counter, unchanged
+%       within_session       excess sharing one `base.session_id`
+%       across_sessions_only excess arising only BETWEEN sessions
+%       unclassifiable       excess involving an occurrence with no session id
+%
+%   THE THREE ALWAYS SUM TO `total`, and they do so because `unclassifiable` is
+%   computed as the REMAINDER rather than from a formula of its own. Per
+%   distinct handle with n occurrences, of which m carry a non-empty session id
+%   spread over k distinct sessions:
+%
+%       excess = n - 1
+%       within = m - k                 (duplicates inside a single session)
+%       across = max(k - 1, 0)         (one per extra session it appears in)
+%       unclas = excess - within - across
+%
+%   which works out to the number of session-less occurrences when any
+%   occurrence carries a session, and to that number minus one when none does.
+%   Writing it as a remainder is what makes "a bucket quietly absorbed the
+%   others" impossible rather than merely unlikely; testLawnPlateSubjects pins
+%   the identity itself, not only the numbers.
+%
+%   A note on the scope of the denominator, because it is narrower than "every
+%   subject handle in the batch": these are the handles THIS PASS forms -- the
+%   plate/lawn mints and the C. elegans relabels. A pair handle left standing by
+%   `celegans_patch_subjects_refused_no_exp_id` was formed by pass 1 and is not
+%   counted here.
+tally = struct('formed', numel(handles), 'distinct', 0, 'total', 0, ...
+    'within_session', 0, 'across_sessions_only', 0, 'unclassifiable', 0);
 if isempty(handles); return; end
-seen = containers.Map('KeyType', 'char', 'ValueType', 'double');
+
+% One record per distinct handle: how many times it was formed, in which
+% sessions, and how many times with no session id at all.
+byHandle = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:numel(handles)
     h = handles{k};
-    if isKey(seen, h)
-        seen(h) = seen(h) + 1;
-        nCollisions = nCollisions + 1;
+    s = '';
+    if k <= numel(sessionIds) && ~isempty(sessionIds{k}); s = char(sessionIds{k}); end
+    if isKey(byHandle, h)
+        rec = byHandle(h);
     else
-        seen(h) = 1;
+        rec = struct('n', 0, 'sessions', {{}}, 'counts', []);
     end
+    rec.n = rec.n + 1;
+    if ~isempty(s)
+        idx = find(strcmp(rec.sessions, s), 1);
+        if isempty(idx)
+            rec.sessions{end+1} = s;
+            rec.counts(end+1) = 1;
+        else
+            rec.counts(idx) = rec.counts(idx) + 1;
+        end
+    end
+    byHandle(h) = rec;
+end
+
+% `.Count`, NOT numel(): numel() on a containers.Map is 1 (it is a scalar
+% object), and double() because Count is UINT64 while every field of this
+% report is a double -- the defect epochMint.m:368-378 and the canary above
+% both record, arriving here for the third time.
+tally.distinct = double(byHandle.Count);
+tally.total = tally.formed - tally.distinct;
+
+names = keys(byHandle);
+for i = 1:numel(names)
+    rec = byHandle(names{i});
+    nSessions = numel(rec.sessions);        % k: distinct non-empty sessions
+    nWithSession = sum(rec.counts);         % m: occurrences carrying one
+    excess = rec.n - 1;
+    within = nWithSession - nSessions;
+    across = max(nSessions - 1, 0);
+    tally.within_session = tally.within_session + within;
+    tally.across_sessions_only = tally.across_sessions_only + across;
+    % THE REMAINDER, not a formula. This is what makes the three a partition
+    % rather than three counters that happen to agree today.
+    tally.unclassifiable = tally.unclassifiable + (excess - within - across);
 end
 end
 
