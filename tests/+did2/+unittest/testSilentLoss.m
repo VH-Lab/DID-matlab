@@ -132,6 +132,234 @@ verifyFalse(testCase, any(strcmp('time_reference_#', edges)), ...
     'one instance satisfies min_count 1');
 end
 
+% ===================== #72: the epoch association ==========================
+%
+% NOTE ON PROVENANCE OF THESE TESTS. They are written from the SCHEMA and from
+% the team decision, not from the implementation: each one names a state the
+% chain can be in and asserts the report can tell it from the others. That
+% matters here specifically -- "a test written from the same premise as the
+% code cannot catch the code" is why three `epochid` tests had to be INVERTED
+% rather than updated, and why `silentLoss` shipped measuring nothing with no
+% tests at all.
+%
+% STATUS: these tests, and the code they exercise, were WRITTEN WITHOUT MATLAB
+% AND HAVE NOT BEEN EXECUTED -- no MATLAB or Octave existed in the container.
+% The only checks performed were structural. Their first real run is CI, and if
+% one of them fails there it is doing exactly the job it was added for.
+%
+% The states deliberately checked as DIFFERENT from one another:
+%   family present-and-all-blank   vs  family absent      vs  family populated
+%   epoch_id empty                 vs  unresolved         vs  resolved
+%   chain reaches an epoch         vs  terminates elsewhere  vs  undetermined
+
+function testTheBlockCarriesItsOwnDenominator(testCase)
+% Rule 5. The block must state how many documents it looked at, on its own,
+% without the reader having to hold total_docs in their head -- and it must do
+% so even when it found nothing.
+docs = {docObj('subject', 'sub_1'), docObj('subject', 'sub_2')};
+rep = did2.validate.silentLoss(docs);
+verifyTrue(testCase, isfield(rep, 'epoch_association'));
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.docs_inspected, 2, ...
+    'the epoch block must restate its own denominator');
+verifyEqual(testCase, ea.docs_unreadable, 0);
+end
+
+function testTheDenominatorIsSetEvenWhenNothingCouldBeRead(testCase)
+% The original defect, one block over: a denominator set only on the happy
+% path reports zeros for a batch it never opened.
+rep = did2.validate.silentLoss({struct('nope', 1), struct('nope', 2)});
+verifyEqual(testCase, rep.epoch_association.docs_inspected, 2);
+verifyEqual(testCase, rep.epoch_association.docs_unreadable, 2, ...
+    'unreadable input must be visible inside the epoch block too');
+end
+
+function testTheNamesItFollowedAreReportedAsData(testCase)
+% The four names this block cannot derive from the schema are hard-coded, so
+% they are REPORTED, with a flag saying whether the schema still has classes by
+% those names. Without this, renaming `epoch` would take every count to zero
+% and the report would read clean -- the demo_ndi failure exactly.
+rep = did2.validate.silentLoss({docObj('subject', 'sub_1')});
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.anchor_edge, 'relative_to');
+verifyEqual(testCase, ea.reference_root, 'time_reference');
+verifyEqual(testCase, ea.terminal_class, 'epoch');
+verifyGreaterThan(testCase, ea.max_depth, 1);
+verifyEqual(testCase, ea.terminal_class_in_schema, 1, ...
+    'a class named `epoch` must load, or every reaches-an-epoch count is vacuous');
+verifyEqual(testCase, ea.reference_root_in_schema, 1);
+end
+
+function testAFamilyPresentButEntirelyBlankIsReported(testCase)
+% THE HOLE. `time_reference_1 = ''` satisfies min_count 1 and mustBeNonEmpty is
+% false, so the armed RequiredDependencies gate cannot see it, countFamily
+% deliberately does not care what a member holds, and the empty-edge census
+% excludes numbered families by construction. Between them the existing checks
+% step over exactly this document.
+b = bodyStruct('voltage_observation', 'obs_blank_time');
+b.depends_on = struct('name', {'time_reference_1'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.family_docs_present, 1);
+verifyEqual(testCase, ea.family_docs_all_empty, 1, ...
+    'a family whose every member is blank reaches nothing and must be counted');
+verifyEqual(testCase, ea.family_members_empty, 1);
+verifyEqual(testCase, ea.family_members_populated, 0);
+% and the family-count check must STILL be silent, because one member exists.
+edges = {rep.family_count_violation.edge_name};
+verifyFalse(testCase, any(strcmp('time_reference_#', edges)), ...
+    'min_count 1 is satisfied -- that is precisely why this hole was invisible');
+end
+
+function testTheAllEmptyRowReachesTheReport(testCase)
+% The #63 bug, guarded a third time: an accumulator that is never assigned
+% reports a zero meaning "not reported". This asserts the ROW, not the count.
+b = bodyStruct('voltage_observation', 'obs_blank_time');
+b.depends_on = struct('name', {'time_reference_1'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+rows = rep.epoch_association.family_all_empty_by_class;
+verifyNotEmpty(testCase, rows, ...
+    'the by-class table must be ASSIGNED, not accumulated and dropped');
+verifyEqual(testCase, rows(1).edge_name, 'time_reference_#');
+verifyEqual(testCase, rows(1).class_name, 'voltage_observation');
+end
+
+function testAnAbsentFamilyIsNotAnEmptyOne(testCase)
+% Two different facts. A document carrying no member at all is a cardinality
+% violation (already reported by #63); a document carrying a BLANK member is
+% not, and only the new counter separates them.
+b = bodyStruct('voltage_observation', 'obs_no_time');
+rep = did2.validate.silentLoss({did2.document(b)});
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.family_docs_absent, 1);
+verifyEqual(testCase, ea.family_docs_present, 0);
+verifyEqual(testCase, ea.family_docs_all_empty, 0, ...
+    'no member at all is NOT the same as a blank member');
+end
+
+function testAPopulatedFamilyReachingAnEpochIsCountedEndToEnd(testCase)
+% The chain the decision rests on, assembled in full:
+%   subject_interaction --time_reference_1--> relative_reference
+%                       --relative_to-------> epoch
+obs = bodyStruct('voltage_observation', 'obs_1');
+obs.depends_on = struct('name', {'time_reference_1'}, 'value', {'ref_1'});
+ref = bodyStruct('relative_reference', 'ref_1');
+ref.depends_on = struct('name', {'relative_to'}, 'value', {'epoch_1'});
+ep  = bodyStruct('epoch', 'epoch_1');
+rep = did2.validate.silentLoss({did2.document(obs), did2.document(ref), ...
+                                did2.document(ep)});
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.epoch_documents, 1);
+verifyEqual(testCase, ea.chain_docs_examined, 1);
+verifyEqual(testCase, ea.chain_member_reaches_epoch, 1);
+verifyEqual(testCase, ea.chain_docs_reaching_epoch, 1, ...
+    'a fully populated chain must be counted as reaching its epoch');
+verifyEqual(testCase, ea.chain_docs_undetermined, 0);
+end
+
+function testAReferenceWhoseAnchorIsBlankIsItsOwnState(testCase)
+% `relative_to` is REQUIRED, so a blank one is a real defect -- and a different
+% one from "the target is not in this batch". Conflating them would report a
+% broken document as a sampling artefact.
+obs = bodyStruct('voltage_observation', 'obs_1');
+obs.depends_on = struct('name', {'time_reference_1'}, 'value', {'ref_1'});
+ref = bodyStruct('relative_reference', 'ref_1');
+ref.depends_on = struct('name', {'relative_to'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(obs), did2.document(ref)});
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.chain_member_anchor_empty, 1);
+verifyEqual(testCase, ea.chain_member_unresolved, 0);
+verifyEqual(testCase, ea.chain_docs_reaching_epoch, 0);
+end
+
+function testATargetOutsideTheBatchIsUndeterminedNotAFailure(testCase)
+% THE CORPORA ARE A SAMPLE. An anchor naming a document that is not in this
+% batch may resolve perfectly in a full migration -- jSessionAnchor's
+% discovery-mode orphans were exactly that. It must not be counted as reaching
+% nothing.
+obs = bodyStruct('voltage_observation', 'obs_1');
+obs.depends_on = struct('name', {'time_reference_1'}, 'value', {'ref_elsewhere'});
+rep = did2.validate.silentLoss({did2.document(obs)});
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.chain_member_unresolved, 1);
+verifyEqual(testCase, ea.chain_docs_undetermined, 1);
+verifyEqual(testCase, ea.chain_docs_reaching_no_epoch, 0, ...
+    'a target outside the batch is NOT MEASURED, not a negative result');
+end
+
+function testTheEightMemberStatesAreExhaustive(testCase)
+% The invariant that stops a member falling out of the accounting into a
+% silence: the eight per-member counters must sum to chain_members_examined.
+obs = bodyStruct('voltage_observation', 'obs_1');
+obs.depends_on = struct('name', {'time_reference_1', 'time_reference_2'}, ...
+                        'value', {'ref_1', 'ref_missing'});
+ref = bodyStruct('relative_reference', 'ref_1');
+ref.depends_on = struct('name', {'relative_to'}, 'value', {'epoch_1'});
+ep  = bodyStruct('epoch', 'epoch_1');
+rep = did2.validate.silentLoss({did2.document(obs), did2.document(ref), ...
+                                did2.document(ep)});
+ea = rep.epoch_association;
+parts = ea.chain_member_unresolved + ea.chain_member_not_a_reference + ...
+        ea.chain_member_anchor_absent + ea.chain_member_anchor_empty + ...
+        ea.chain_member_reaches_epoch + ea.chain_member_reaches_other + ...
+        ea.chain_member_incomplete + ea.chain_member_depth_exceeded + ...
+        ea.chain_member_unclassified;
+verifyEqual(testCase, parts, ea.chain_members_examined, ...
+    'every examined member must land in exactly one reported state');
+verifyEqual(testCase, ea.chain_members_examined, 2);
+verifyEqual(testCase, ea.chain_docs_reaching_epoch, 1, ...
+    'one member reaching an epoch is enough for the document');
+end
+
+function testEpochIdEmptyResolvedAndUnresolvedAreThreeStates(testCase)
+% #72's second half, and the one the epoch plan asked for BY NAME. An edge
+% naming a missing document and an edge naming nothing are different failures
+% and this project has conflated them before.
+ep  = bodyStruct('epoch', 'epoch_1');
+r1  = bodyStruct('directed_relation', 'rel_ok');
+r1.depends_on = struct('name', {'epoch_id'}, 'value', {'epoch_1'});
+r2  = bodyStruct('directed_relation', 'rel_blank');
+r2.depends_on = struct('name', {'epoch_id'}, 'value', {''});
+r3  = bodyStruct('directed_relation', 'rel_missing');
+r3.depends_on = struct('name', {'epoch_id'}, 'value', {'epoch_elsewhere'});
+rep = did2.validate.silentLoss({did2.document(ep), did2.document(r1), ...
+                                did2.document(r2), did2.document(r3)});
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.epoch_id_edges_present, 3);
+verifyEqual(testCase, ea.epoch_id_resolved, 1);
+verifyEqual(testCase, ea.epoch_id_empty, 1);
+verifyEqual(testCase, ea.epoch_id_unresolved_in_batch, 1);
+verifyEqual(testCase, ea.epoch_id_resolved_not_epoch, 0);
+verifyEqual(testCase, ...
+    ea.epoch_id_resolved + ea.epoch_id_empty + ea.epoch_id_unresolved_in_batch, ...
+    ea.epoch_id_edges_present, ...
+    'the three states must partition the edges found');
+verifyNotEmpty(testCase, ea.epoch_id_by_class, ...
+    'the epoch_id by-class table must be ASSIGNED, not dropped');
+end
+
+function testAnEpochIdPointingAtSomethingElseIsNotAHealthyEdge(testCase)
+% It resolves -- so an existence-only reference check passes it -- and it names
+% the wrong kind of document. Counted as a named subset of `resolved` rather
+% than folded into it.
+sub = bodyStruct('subject', 'sub_1');
+rel = bodyStruct('directed_relation', 'rel_1');
+rel.depends_on = struct('name', {'epoch_id'}, 'value', {'sub_1'});
+rep = did2.validate.silentLoss({did2.document(sub), did2.document(rel)});
+ea = rep.epoch_association;
+verifyEqual(testCase, ea.epoch_id_resolved, 1);
+verifyEqual(testCase, ea.epoch_id_resolved_not_epoch, 1, ...
+    'an edge that resolves to a non-epoch is a distinct, reportable fact');
+end
+
+function testTheEpochBlockRaisesNothing(testCase)
+% MEASUREMENT ONLY. Like every other block in this file it must change no
+% outcome -- and it must survive malformed input rather than break a migration.
+verifyWarningFree(testCase, @() did2.validate.silentLoss({[]}));
+verifyWarningFree(testCase, @() did2.validate.silentLoss( ...
+    {struct('depends_on', {{}}), struct('nope', 1)}));
+end
+
 % ===================== helpers =============================================
 
 function d = docObj(className, id)

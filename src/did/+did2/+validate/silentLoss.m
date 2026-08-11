@@ -54,7 +54,134 @@ function report = silentLoss(docs, opts)
 %                                 REPORT ONLY.
 %     family_uniqueness_violation_count   total occurrences
 %     uniqueness_denominator      #52's own denominators (see below)
+%     epoch_association           MEASUREMENT ONLY: does a statement actually
+%                                 reach an epoch? See the block below.
 %     skipped_docs                documents whose schema could not be resolved
+%
+%   THE EPOCH ASSOCIATION -- MEASUREMENT ONLY, NOTHING IS TIGHTENED
+%   ---------------------------------------------------------------
+%   The team settled (2026-08-10) that a statement reaches its epoch through a
+%   REFERENCE CHAIN and not a direct edge:
+%
+%       subject_interaction --time_reference_#--> relative_reference
+%                           --relative_to-------> epoch
+%
+%   `V_eta_epoch_plan.md` asks for this in as many words: *the first corpus run
+%   must check `epoch_id` by name in `silentLoss` rather than trusting it*.
+%
+%   THE HOLE, read off the built schema (245 schema files, 13 numbered edge
+%   families, 4 `epoch_id` edges):
+%
+%       subject_interaction  time_reference_#  mustBeNonEmpty=false  min_count 1
+%       directed_relation    epoch_id          mustBeNonEmpty=false
+%
+%   `min_count: 1` guarantees the family EXISTS; `relative_reference.relative_to`
+%   is REQUIRED, so a POPULATED reference resolves. But `mustBeNonEmpty` is
+%   false, so `time_reference_1 = ''` SATISFIES the family and reaches nothing --
+%   and the armed RequiredDependencies gate keys on `mustBeNonEmpty`, so it will
+%   not catch it. That is the invented-empty-edge pattern one link along the
+%   chain, and no counter in this file could see it: the family-count check asks
+%   HOW MANY members exist and deliberately ignores whether one is blank
+%   (countFamily's own comment says so), and the empty-edge check excludes
+%   numbered families by construction (addRequired: `if contains(n,'#'); return`).
+%   So between them the two existing checks step over exactly this case.
+%
+%   THIS ADDS COUNTERS AND CHANGES NO OUTCOME. It raises nothing, quarantines
+%   nothing and arms nothing, exactly like every other block in this file.
+%
+%   `epoch_association` fields. DENOMINATORS FIRST, unconditionally (rule 5):
+%     docs_inspected / docs_unreadable / docs_classified
+%                                 restated inside the block so it carries its
+%                                 own denominator and cannot be read out of
+%                                 context of total_docs
+%     anchor_edge / reference_root / terminal_class / max_depth
+%                                 THE NAMES THIS BLOCK FOLLOWED. Printed as
+%                                 data because they are the one part that is
+%                                 not schema-driven: if the schema renames
+%                                 `relative_to` or `epoch`, every count below
+%                                 goes to zero, and a zero that is a property
+%                                 of the query is the demo_ndi failure. The
+%                                 two flags below make that renaming VISIBLE
+%                                 rather than reassuring.
+%     terminal_class_in_schema    1 when a class named `terminal_class` loads.
+%                                 0 means every "reaches an epoch" count is
+%                                 vacuous.
+%     reference_root_in_schema    1 when a class named `reference_root` loads.
+%
+%   (1) DOES THE FAMILY REACH ANYTHING AT ALL
+%     family_docs_declaring       documents whose CLASS declares a
+%                                 time_reference family (the denominator: how
+%                                 many documents could carry one)
+%     family_docs_absent          declares it, carries no member
+%     family_docs_present         carries >= 1 concrete member, any value
+%     family_docs_all_empty       carries >= 1 member and EVERY member is blank
+%                                 <-- THE HOLE. Present, satisfies min_count,
+%                                     reaches nothing.
+%     family_docs_populated       >= 1 member with a non-blank id
+%     family_members_total / _empty / _populated
+%     family_all_empty_by_class   {class_name, edge_name, count}
+%
+%   (2) EPOCH DOCUMENTS AND `epoch_id` EDGES -- THREE DISTINCT STATES
+%     epoch_documents             documents whose class chain contains `epoch`
+%     epoch_id_docs_declaring     documents whose CLASS declares an `epoch_id`
+%                                 edge (so "no edges present" and "no class
+%                                 declares one" are different output)
+%     epoch_id_edges_present      concrete edges found
+%     epoch_id_empty              edge present, value blank
+%     epoch_id_resolved           value names a document IN THIS BATCH
+%     epoch_id_resolved_not_epoch of those, the target is not an `epoch`
+%                                 <-- a resolving edge pointing at the wrong
+%                                     kind of thing is not a healthy edge
+%     epoch_id_unresolved_in_batch  value names a document NOT in this batch
+%     epoch_id_by_class           {class_name, state, count}
+%
+%     WHY THE THIRD STATE IS NOT CALLED "DANGLING". A batch is a SAMPLE. An
+%     edge naming a document that is not in THIS batch may resolve perfectly in
+%     a full migration -- jSessionAnchor's discovery-mode orphans were exactly
+%     that, and calling them broken is the error operating rule 3 names. The
+%     three states are kept distinct as asked; the third is named for what was
+%     actually measured.
+%
+%   (3) THE CHAIN, END TO END -- the number the decision rests on
+%     chain_docs_examined         documents with >= 1 POPULATED member
+%     chain_docs_reaching_epoch   >= 1 member whose chain terminates at an
+%                                 `epoch` document            <-- THE NUMBER
+%     chain_docs_reaching_no_epoch  every member terminated at a definite
+%                                 non-epoch document
+%     chain_docs_undetermined     no member reached an epoch AND at least one
+%                                 left the batch or hit the depth limit --
+%                                 NOT MEASURED, not a failure
+%     chain_members_examined      and, summing to it exactly:
+%       chain_member_unresolved       target not in this batch
+%       chain_member_not_a_reference  target resolved, but its class chain does
+%                                     not contain `reference_root` -- the family
+%                                     points at something that is not a time
+%                                     reference at all
+%       chain_member_anchor_absent    the reference's CLASS declares no
+%                                     `anchor_edge` (absolute_reference,
+%                                     session_relative_reference): terminal by
+%                                     design, reaches no epoch
+%       chain_member_anchor_empty     the class declares it, the document
+%                                     leaves it blank
+%       chain_member_reaches_epoch
+%       chain_member_reaches_other    terminated at a definite non-epoch doc
+%       chain_member_incomplete       every branch left the batch
+%       chain_member_depth_exceeded   chain longer than max_depth
+%     chain_terminus_by_class     {class_name, count} for reaches_other
+%
+%   The eight member states are EXHAUSTIVE and their sum equals
+%   chain_members_examined -- locked by test, so a member cannot fall out of
+%   the accounting into a silence.
+%
+%   STATUS OF THE #72 BLOCK: WRITTEN WITHOUT MATLAB AND NOT EXECUTED. No MATLAB
+%   or Octave was available in the container it was written in, so the only
+%   checks performed on this file were structural (block balance, helper
+%   resolution) -- NOT a run. The tests in
+%   tests/+did2/+unittest/testSilentLoss.m are the first execution of it, and
+%   they are the gate, not a formality: this counter's older siblings shipped
+%   with no tests and measured nothing for two days. The PYTHON half of the
+%   path (tools/census_digest.py, which renders every field below) IS executed
+%   and mutation-checked by tools/test_census_digest.py.
 %
 %   #52 -- WHAT MAKES TWO MEMBERS OF A FAMILY DIFFERENT
 %   ---------------------------------------------------
@@ -132,6 +259,7 @@ report = struct( ...
         'members_no_key',        0, ...
         'members_keyed_by_node', 0, ...
         'members_keyed_by_name', 0), ...
+    'epoch_association',         eaNewReport(), ...
     'skipped_docs',              0);
 
 [bodies, unreadable] = vBodies(docs);
@@ -140,6 +268,13 @@ report = struct( ...
 % the note in +validate/private/vBodies.m.
 report.total_docs = numel(bodies) + unreadable;
 report.skipped_docs = unreadable;
+% The epoch-association block restates the denominator INSIDE itself, and does
+% so on every path out of this function including the early returns below. A
+% block whose denominator is only set on the happy path is a block that reports
+% zeros for a batch it never opened -- which is the original silentLoss defect,
+% verbatim.
+report.epoch_association.docs_inspected = report.total_docs;
+report.epoch_association.docs_unreadable = unreadable;
 if isempty(bodies)
     return;
 end
@@ -150,14 +285,33 @@ if isempty(cache)
         cache = did2.schema.cache.shared();
     catch
         report.skipped_docs = numel(bodies);
+        report.epoch_association.docs_unreadable = report.total_docs;
         return;   % no schema available -- report nothing rather than guess
     end
 end
+
+% #72. The names this block follows, recorded as DATA in the report, plus
+% whether the schema still has classes by those names. Everything else in this
+% block is schema-driven; these four strings are not, so a rename would send
+% every count to zero and the report would read clean. It says so instead.
+% (The four names themselves are stamped by eaNewReport, so they are present
+% even on the early returns above.) These two flags need the cache:
+report.epoch_association.terminal_class_in_schema  = ...
+    double(eaClassLoads(cache, eaTerminalClass()));
+report.epoch_association.reference_root_in_schema  = ...
+    double(eaClassLoads(cache, eaReferenceRoot()));
 
 depKeys = {}; depCounts = [];
 fldKeys = {}; fldCounts = [];
 famKeys = {}; famCounts = [];
 uniKeys = {}; uniCounts = [];
+% #72 row tables. Accumulated here and ASSIGNED at the bottom -- the one bug
+% this file has already shipped (famKeys accumulated, never assigned, so the
+% report read 0 on a document the detector had just flagged) is the reason
+% these three assignments are tested individually rather than assumed.
+eaEmptyKeys = {}; eaEmptyCounts = [];
+eaEdgeKeys  = {}; eaEdgeCounts  = [];
+eaTermKeys  = {}; eaTermCounts  = [];
 
 % #52. The id -> body index the uniqueness check resolves through. Built ONCE,
 % up front, over the whole batch -- this is the thing a per-document validator
@@ -171,6 +325,14 @@ for k = 1:numel(bodies)
     end
 end
 uniqueFamilySeen = {};   % (class|family) pairs that actually carry the rule
+
+% #72 memos. eaClassMemo: className -> what the SCHEMA says about that class
+% (is it an epoch, is it a time reference, does it declare the anchor edge,
+% does it declare epoch_id). eaWalkMemo: a reference document's id -> the
+% outcome of walking the chain from it, because many statements anchor to the
+% same reference and the walk is the expensive part.
+eaClassMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+eaWalkMemo  = containers.Map('KeyType', 'char', 'ValueType', 'any');
 
 for k = 1:numel(bodies)
     body = bodies{k};
@@ -273,6 +435,139 @@ for k = 1:numel(bodies)
             end
         end
 
+        % --- 1d. THE EPOCH ASSOCIATION (#72) ------------------------------
+        % MEASUREMENT ONLY. Nothing below tightens a schema, arms a gate or
+        % changes what quarantines. See the block comment at the top of the
+        % file for what each counter means and why the third `epoch_id` state
+        % is not called "dangling".
+        info = eaClassInfo(cache, className, eaClassMemo);
+        report.epoch_association.docs_classified = ...
+            report.epoch_association.docs_classified + 1;
+        if info.is_terminal
+            report.epoch_association.epoch_documents = ...
+                report.epoch_association.epoch_documents + 1;
+        end
+
+        % (1) the time_reference family: does it reach anything at all?
+        % A family qualifies by what the SCHEMA says it refers to -- a class
+        % whose chain contains `time_reference` -- not by being spelled
+        % "time_reference_#". Three families qualify today (subject_interaction,
+        % directed_relation, epoch) and a fourth would qualify by being
+        % declared, not by being added to a list here.
+        for f = 1:numel(families)
+            fam = families(f);
+            if ~any(strcmp(info.time_families, fam.name)); continue; end
+            report.epoch_association.family_docs_declaring = ...
+                report.epoch_association.family_docs_declaring + 1;
+            memberVals = familyMemberValues(body, fam.name);
+            if isempty(memberVals)
+                report.epoch_association.family_docs_absent = ...
+                    report.epoch_association.family_docs_absent + 1;
+                continue;
+            end
+            report.epoch_association.family_docs_present = ...
+                report.epoch_association.family_docs_present + 1;
+            blank = cellfun(@isempty, memberVals);
+            report.epoch_association.family_members_total = ...
+                report.epoch_association.family_members_total + numel(memberVals);
+            report.epoch_association.family_members_empty = ...
+                report.epoch_association.family_members_empty + sum(blank);
+            report.epoch_association.family_members_populated = ...
+                report.epoch_association.family_members_populated + sum(~blank);
+            if all(blank)
+                % THE HOLE. min_count is satisfied, mustBeNonEmpty is false, the
+                % armed gate keys on mustBeNonEmpty -- so this document reaches
+                % no epoch and nothing else in the pipeline says so.
+                report.epoch_association.family_docs_all_empty = ...
+                    report.epoch_association.family_docs_all_empty + 1;
+                key = sprintf('%s|%s', className, fam.name);
+                [eaEmptyKeys, eaEmptyCounts] = bump(eaEmptyKeys, eaEmptyCounts, key);
+                continue;
+            end
+            report.epoch_association.family_docs_populated = ...
+                report.epoch_association.family_docs_populated + 1;
+
+            % (3) the chain, end to end, from the POPULATED members only.
+            report.epoch_association.chain_docs_examined = ...
+                report.epoch_association.chain_docs_examined + 1;
+            reached = false; undetermined = false;
+            live = memberVals(~blank);
+            for m = 1:numel(live)
+                report.epoch_association.chain_members_examined = ...
+                    report.epoch_association.chain_members_examined + 1;
+                [state, terminus] = eaMemberOutcome(live{m}, idIndex, cache, ...
+                    eaClassMemo, eaWalkMemo);
+                fieldName = ['chain_member_' state];
+                if isfield(report.epoch_association, fieldName)
+                    report.epoch_association.(fieldName) = ...
+                        report.epoch_association.(fieldName) + 1;
+                else
+                    % An outcome the report has no counter for would vanish and
+                    % break the exhaustiveness the test locks. Count it visibly.
+                    report.epoch_association.chain_member_unclassified = ...
+                        report.epoch_association.chain_member_unclassified + 1;
+                end
+                switch state
+                    case 'reaches_epoch'
+                        reached = true;
+                    case 'reaches_other'
+                        if ~isempty(terminus)
+                            [eaTermKeys, eaTermCounts] = bump(eaTermKeys, ...
+                                eaTermCounts, sanitise(terminus));
+                        end
+                    case {'unresolved', 'incomplete', 'depth_exceeded'}
+                        undetermined = true;
+                end
+            end
+            if reached
+                report.epoch_association.chain_docs_reaching_epoch = ...
+                    report.epoch_association.chain_docs_reaching_epoch + 1;
+            elseif undetermined
+                % NOT MEASURED, not a failure: the batch is a sample and the
+                % rest of the chain may be outside it.
+                report.epoch_association.chain_docs_undetermined = ...
+                    report.epoch_association.chain_docs_undetermined + 1;
+            else
+                report.epoch_association.chain_docs_reaching_no_epoch = ...
+                    report.epoch_association.chain_docs_reaching_no_epoch + 1;
+            end
+        end
+
+        % (2) `epoch_id` edges -- checked BY NAME, which is what the epoch plan
+        % asked for. Three DISTINCT states; conflating them is an error this
+        % project has made before.
+        if info.declares_epoch_id
+            report.epoch_association.epoch_id_docs_declaring = ...
+                report.epoch_association.epoch_id_docs_declaring + 1;
+        end
+        epochEdges = edgeValues(body, eaEpochEdge());
+        for e = 1:numel(epochEdges)
+            report.epoch_association.epoch_id_edges_present = ...
+                report.epoch_association.epoch_id_edges_present + 1;
+            v = epochEdges{e};
+            if isempty(v)
+                state = 'empty';
+                report.epoch_association.epoch_id_empty = ...
+                    report.epoch_association.epoch_id_empty + 1;
+            elseif ~idIndex.isKey(v)
+                state = 'unresolved_in_batch';
+                report.epoch_association.epoch_id_unresolved_in_batch = ...
+                    report.epoch_association.epoch_id_unresolved_in_batch + 1;
+            else
+                state = 'resolved';
+                report.epoch_association.epoch_id_resolved = ...
+                    report.epoch_association.epoch_id_resolved + 1;
+                targetInfo = eaClassInfo(cache, classNameOf(idIndex(v)), eaClassMemo);
+                if ~targetInfo.is_terminal
+                    state = 'resolved_not_epoch';
+                    report.epoch_association.epoch_id_resolved_not_epoch = ...
+                        report.epoch_association.epoch_id_resolved_not_epoch + 1;
+                end
+            end
+            [eaEdgeKeys, eaEdgeCounts] = bump(eaEdgeKeys, eaEdgeCounts, ...
+                sprintf('%s|%s', className, state));
+        end
+
         % --- 2. required fields whose value is vacuous -------------------
         tagged = cache.fieldsFor(className);
         for f = 1:numel(tagged)
@@ -327,6 +622,16 @@ report.vacuous_field_count = sum(fldCounts);
 report.family_violation_count = sum(famCounts);
 report.family_uniqueness_violation_count = sum(uniCounts);
 report.uniqueness_denominator.families_declared = numel(uniqueFamilySeen);
+% #72, assigned HERE and for the third time for the same reason: an accumulator
+% that is never assigned reports a zero meaning "not reported". That bug has
+% shipped in this file once already (famKeys), and each of these three lines
+% has its own test asserting a non-zero row arrives in the report.
+report.epoch_association.family_all_empty_by_class = ...
+    explode(eaEmptyKeys, eaEmptyCounts, {'class_name', 'edge_name'});
+report.epoch_association.epoch_id_by_class = ...
+    explode(eaEdgeKeys, eaEdgeCounts, {'class_name', 'state'});
+report.epoch_association.chain_terminus_by_class = ...
+    explode(eaTermKeys, eaTermCounts, {'class_name'});
 end
 
 % ===================== helpers =========================================
@@ -354,7 +659,15 @@ function fams = declaredFamilies(cache, className)
 %   `time_reference`: the rule is data in the schema, exactly as min_count is,
 %   so a fourth family acquires it by being declared and not by being special-
 %   cased here.
-fams = struct('name', {}, 'min_count', {}, 'max_count', {}, 'unique_by', {});
+%
+%   #72 adds `refers_to`, read from `must_refer_to_document_class`. It is how
+%   the epoch-association block picks out the TIME REFERENCE families without
+%   knowing the string "time_reference_#" either: a family qualifies when the
+%   class it refers to has `time_reference` in its chain. `epoch`'s family
+%   refers to `relative_reference`, a subclass, and qualifies for that reason
+%   rather than by being listed anywhere.
+fams = struct('name', {}, 'min_count', {}, 'max_count', {}, 'unique_by', {}, ...
+    'refers_to', {});
 try
     chain = cache.classChain(className);
 catch
@@ -385,15 +698,19 @@ for k = 1:numel(chain)
         if ~isstruct(dep) || ~isfield(dep, 'name'); continue; end
         n = char(dep.name);
         if ~contains(n, '#'); continue; end
-        lo = 0; hi = NaN; uq = '';
+        lo = 0; hi = NaN; uq = ''; rt = '';
         if isfield(dep, 'min_count') && ~isempty(dep.min_count); lo = double(dep.min_count); end
         if isfield(dep, 'max_count') && ~isempty(dep.max_count); hi = double(dep.max_count); end
         if isfield(dep, 'referent_unique_by') && ~isempty(dep.referent_unique_by)
             uq = char(dep.referent_unique_by);
         end
+        if isfield(dep, 'must_refer_to_document_class') && ...
+                ~isempty(dep.must_refer_to_document_class)
+            rt = char(dep.must_refer_to_document_class);
+        end
         if any(strcmp({fams.name}, n)); continue; end
         fams(end+1) = struct('name', n, 'min_count', lo, 'max_count', hi, ...
-            'unique_by', uq); %#ok<AGROW>
+            'unique_by', uq, 'refers_to', rt); %#ok<AGROW>
     end
 end
 end
@@ -404,7 +721,29 @@ function ids = familyMemberIds(body, famName)
 %   document cannot be compared with anything, and the empty-edge census
 %   already counts it. Tolerant of all three id spellings the pipeline uses at
 %   different stages, exactly as edgeIsPopulated is.
-ids = {};
+%
+%   #72 needs the SAME members INCLUDING the blank ones -- a family whose every
+%   member is blank is the hole it measures -- so the parsing lives once, in
+%   familyMemberValues, and this is the non-blank subset of it. Two copies of a
+%   depends_on parser is two chances to re-introduce the shape bug that made
+%   edgeIsPopulated answer "not populated" for every edge of a cell-valued
+%   depends_on without looking at one of them.
+ids = familyMemberValues(body, famName);
+if isempty(ids); return; end
+ids = ids(~cellfun(@isempty, ids));
+end
+
+function vals = familyMemberValues(body, famName)
+%FAMILYMEMBERVALUES Every concrete member of `prefix_#`, in document order,
+%   with '' for a member that is PRESENT AND BLANK.
+%
+%   The distinction is the whole point of #72: `time_reference_1 = ''` is a
+%   member (it satisfies `min_count: 1`) that names no document. countFamily
+%   sees it and deliberately does not care what it holds; familyMemberIds drops
+%   it; the empty-edge census excludes numbered families by construction. So
+%   before this function nothing in the pipeline could tell "one anchor" from
+%   "one blank where an anchor goes".
+vals = {};
 if ~isfield(body, 'depends_on'); return; end
 deps = body.depends_on;
 if isstruct(deps)
@@ -422,14 +761,46 @@ for k = 1:numel(items)
     if ~startsWith(nm, prefix); continue; end
     tail = nm(numel(prefix)+1:end);
     if isempty(tail) || ~all(isstrprop(tail, 'digit')); continue; end
-    v = '';
-    for key = {'value', 'document_id', 'id'}
-        if isfield(d, key{1}) && ~isempty(d.(key{1}))
-            v = char(d.(key{1})); break;
-        end
+    vals{end+1} = depValue(d); %#ok<AGROW>
+end
+end
+
+function vals = edgeValues(body, name)
+%EDGEVALUES Every value carried under exactly NAME, '' for a present-but-blank
+%   edge. The un-numbered sibling of familyMemberValues, and the function that
+%   makes "checked `epoch_id` BY NAME" true rather than asserted: it reports
+%   the edge as present-and-blank instead of skipping it, so an empty edge and
+%   an absent edge are different output.
+vals = {};
+if ~isfield(body, 'depends_on'); return; end
+deps = body.depends_on;
+if isstruct(deps)
+    items = num2cell(deps(:)');
+elseif iscell(deps)
+    items = deps(:)';
+else
+    return;
+end
+for k = 1:numel(items)
+    d = items{k};
+    if ~isstruct(d) || ~isfield(d, 'name') || ~strcmp(char(d.name), name)
+        continue;
     end
-    if isempty(v); continue; end
-    ids{end+1} = v; %#ok<AGROW>
+    vals{end+1} = depValue(d); %#ok<AGROW>
+end
+end
+
+function v = depValue(d)
+%DEPVALUE The referent id of one depends_on entry, or '' when it names nothing.
+%   Tolerant of all three id spellings the pipeline uses at different stages
+%   (`value`, `document_id`, raw v1 `id`) -- the same tolerance
+%   edgeIsPopulated applies, expressed once.
+v = '';
+if ~isstruct(d); return; end
+for key = {'value', 'document_id', 'id'}
+    if isfield(d, key{1}) && ~isempty(d.(key{1}))
+        v = char(d.(key{1})); return;
+    end
 end
 end
 
@@ -675,6 +1046,376 @@ for k = 1:numel(value)
     end
 end
 tf = true;
+end
+
+% ============ #72: the epoch association ================================
+%
+% THE FOUR NAMES THIS BLOCK CANNOT DERIVE FROM THE SCHEMA, and what protects
+% them. Everything else here is schema-driven -- which families exist, what
+% they refer to, which classes declare `epoch_id` -- but the chain itself is a
+% MODEL DECISION, so the edge it hops over and the class it terminates at are
+% written down. A hard-coded name is how a counter becomes a zero that is a
+% property of the query (the demo_ndi failure: a grep for a string the
+% repository has never contained, reported as "this does not exist anywhere").
+%
+% So each name is (a) reported as DATA in the report, and (b) accompanied by a
+% flag saying whether a class of that name still loads from the schema. If
+% `epoch` is renamed, `terminal_class_in_schema` goes to 0 and every
+% reaches-an-epoch count is legible as vacuous instead of clean.
+%
+% Measured from the built schema on 2026-08-10, 245 schema files:
+%   * 13 numbered edge families; 3 of them refer to a `time_reference` class
+%     (subject_interaction, directed_relation -> time_reference; epoch ->
+%     relative_reference, a subclass).
+%   * `relative_to` is declared by relative_reference alone, mustBeNonEmpty
+%     true, must_refer_to_document_class `base`.
+%   * 4 classes declare an `epoch_id` edge: acquisition_metadata_file
+%     (required), ingestion_manifest (required), directed_relation (optional),
+%     method_parameters (optional).
+
+function s = eaAnchorEdge()
+%EAANCHOREDGE The edge a time reference uses to name what it is measured
+%   against. `relative_reference.relative_to`.
+s = 'relative_to';
+end
+
+function s = eaReferenceRoot()
+%EAREFERENCEROOT The root class of the time-reference tier. A family is a TIME
+%   reference family when the class it must refer to has this in its chain.
+s = 'time_reference';
+end
+
+function s = eaTerminalClass()
+%EATERMINALCLASS What the chain is being asked to reach.
+s = 'epoch';
+end
+
+function s = eaEpochEdge()
+%EAEPOCHEDGE The direct epoch edge, checked BY NAME as the epoch plan asks.
+s = 'epoch_id';
+end
+
+function n = eaMaxDepth()
+%EAMAXDEPTH Hops followed before a chain is reported as too long. Chains are
+%   normal and well founded (observation -> stimulus -> epoch), so a chain
+%   deeper than this is a finding, not a limit to raise quietly: it is counted
+%   as `chain_member_depth_exceeded` rather than resolved either way.
+n = 8;
+end
+
+function r = eaNewReport()
+%EANEWREPORT The epoch-association block, every counter present at zero.
+%
+%   EVERY FIELD IS CREATED HERE, including the ones that will usually stay at
+%   zero. A counter that springs into existence only when it fires cannot be
+%   told from a counter that was never wired -- and this project has shipped
+%   that reading twice (`0 empty edges` while reading nothing; the digest
+%   repeating it). The digest prints every field it is given.
+r = struct( ...
+    ... denominators, first and unconditionally (rule 5)
+    'docs_inspected',              0, ...
+    'docs_unreadable',             0, ...
+    'docs_classified',             0, ...
+    ... the names followed, as data, plus whether they still exist
+    'anchor_edge',                 eaAnchorEdge(), ...
+    'reference_root',              eaReferenceRoot(), ...
+    'terminal_class',              eaTerminalClass(), ...
+    'max_depth',                   eaMaxDepth(), ...
+    'terminal_class_in_schema',    0, ...
+    'reference_root_in_schema',    0, ...
+    ... (1) does the family reach anything at all
+    'family_docs_declaring',       0, ...
+    'family_docs_absent',          0, ...
+    'family_docs_present',         0, ...
+    'family_docs_all_empty',       0, ...
+    'family_docs_populated',       0, ...
+    'family_members_total',        0, ...
+    'family_members_empty',        0, ...
+    'family_members_populated',    0, ...
+    'family_all_empty_by_class',   struct('class_name', {}, 'edge_name', {}, ...
+                                          'count', {}), ...
+    ... (2) epoch documents and epoch_id edges -- three DISTINCT states
+    'epoch_documents',             0, ...
+    'epoch_id_docs_declaring',     0, ...
+    'epoch_id_edges_present',      0, ...
+    'epoch_id_empty',              0, ...
+    'epoch_id_resolved',           0, ...
+    'epoch_id_resolved_not_epoch', 0, ...
+    'epoch_id_unresolved_in_batch', 0, ...
+    'epoch_id_by_class',           struct('class_name', {}, 'state', {}, ...
+                                          'count', {}), ...
+    ... (3) the chain, statement through to its epoch
+    'chain_docs_examined',         0, ...
+    'chain_docs_reaching_epoch',   0, ...
+    'chain_docs_reaching_no_epoch', 0, ...
+    'chain_docs_undetermined',     0, ...
+    'chain_members_examined',      0, ...
+    'chain_member_unresolved',     0, ...
+    'chain_member_not_a_reference', 0, ...
+    'chain_member_anchor_absent',  0, ...
+    'chain_member_anchor_empty',   0, ...
+    'chain_member_reaches_epoch',  0, ...
+    'chain_member_reaches_other',  0, ...
+    'chain_member_incomplete',     0, ...
+    'chain_member_depth_exceeded', 0, ...
+    'chain_member_unclassified',   0, ...
+    'chain_terminus_by_class',     struct('class_name', {}, 'count', {}));
+end
+
+function tf = eaClassLoads(cache, className)
+%EACLASSLOADS Does the schema still have a class by this name? The guard on
+%   the four hard-coded names above.
+tf = false;
+try
+    s = cache.getClass(className);
+    tf = isstruct(s) && ~isempty(fieldnames(s));
+catch
+    tf = false;
+end
+end
+
+function info = eaClassInfo(cache, className, memo)
+%EACLASSINFO What the SCHEMA says about one class, memoised per class name.
+%   `is_terminal` -- an epoch (or a subclass of one)
+%   `is_reference` -- a time reference (or a subclass)
+%   `declares_anchor` -- its chain declares `relative_to`
+%   `declares_epoch_id` -- its chain declares `epoch_id`
+%   `time_families` -- the names of its numbered families that refer to a time
+%                      reference class. Decided from the schema's
+%                      `must_refer_to_document_class` and NOT from the family's
+%                      name: `epoch.time_reference_#` refers to
+%                      `relative_reference` and qualifies because that class has
+%                      `time_reference` in its chain. A fourth family would
+%                      qualify by being declared, not by being listed here.
+%
+%   A class whose chain cannot be resolved returns all-false AND is memoised as
+%   all-false, because retrying it per document is slow and gives the same
+%   answer. The documents that produce it are already counted in `skipped_docs`
+%   when the failure is total.
+info = struct('is_terminal', false, 'is_reference', false, ...
+              'declares_anchor', false, 'declares_epoch_id', false);
+info.time_families = {};
+if isempty(className); return; end
+if memo.isKey(className)
+    info = memo(className);
+    return;
+end
+chain = {};
+try
+    chain = cache.classChain(className);
+catch
+    chain = {};
+end
+if ~isempty(chain)
+    info.is_terminal  = any(strcmp(chain, eaTerminalClass()));
+    info.is_reference = any(strcmp(chain, eaReferenceRoot()));
+    info.declares_anchor   = eaChainDeclaresEdge(cache, chain, eaAnchorEdge());
+    info.declares_epoch_id = eaChainDeclaresEdge(cache, chain, eaEpochEdge());
+    fams = declaredFamilies(cache, className);
+    for f = 1:numel(fams)
+        if eaRefersToReference(cache, fams(f).refers_to)
+            info.time_families{end+1} = fams(f).name; %#ok<AGROW>
+        end
+    end
+end
+memo(className) = info;
+end
+
+function tf = eaRefersToReference(cache, refersTo)
+%EAREFERSTOREFERENCE Does a family's declared referent class sit in the
+%   time-reference tier? Resolves the referent's chain DIRECTLY rather than
+%   through eaClassInfo, so no memo entry can ever depend on itself.
+tf = false;
+if isempty(refersTo); return; end
+name = char(refersTo);
+if strcmp(name, eaReferenceRoot()); tf = true; return; end
+try
+    chain = cache.classChain(name);
+catch
+    return;
+end
+tf = any(strcmp(chain, eaReferenceRoot()));
+end
+
+function tf = eaChainDeclaresEdge(cache, chain, edgeName)
+%EACHAINDECLARESEDGE Does any class in CHAIN declare a depends_on named
+%   EDGENAME? Iterates element-wise over both shapes for the reason
+%   declaredFamilies documents: `[deps{:}]` throws on mismatched fieldnames and
+%   the throw is swallowed upstream, which is how a census goes quiet exactly
+%   where it should speak.
+tf = false;
+for k = 1:numel(chain)
+    try
+        c = cache.getClass(chain{k});
+    catch
+        continue;
+    end
+    if ~isstruct(c) || ~isfield(c, 'depends_on'); continue; end
+    deps = c.depends_on;
+    if isstruct(deps)
+        items = num2cell(deps(:)');
+    elseif iscell(deps)
+        items = deps(:)';
+    else
+        continue;
+    end
+    for d = 1:numel(items)
+        dep = items{d};
+        if isstruct(dep) && isfield(dep, 'name') && strcmp(char(dep.name), edgeName)
+            tf = true; return;
+        end
+    end
+end
+end
+
+function [state, terminus] = eaMemberOutcome(memberId, idIndex, cache, ...
+    classMemo, walkMemo)
+%EAMEMBEROUTCOME Where does ONE populated family member end up?
+%
+%   Returns one of EIGHT states, and they are exhaustive by construction --
+%   every path out of this function assigns one, and the caller's counters sum
+%   to `chain_members_examined`. A member that fell out of the accounting would
+%   be a silence, which is the thing this whole file exists to remove.
+%
+%     unresolved        the reference document is not in this batch. NOT a
+%                       failure: a batch is a SAMPLE.
+%     not_a_reference   it resolved, but its class is not a time reference at
+%                       all -- the family points at the wrong kind of thing
+%     anchor_absent     its CLASS declares no anchor edge. Terminal BY DESIGN
+%                       (absolute_reference, session_relative_reference), so it
+%                       reaches no epoch and that is not a defect of the
+%                       document
+%     anchor_empty      its class declares the anchor and the document carries
+%                       no value for it -- blank, or the edge absent entirely.
+%                       `relative_to` is mustBeNonEmpty TRUE, so either way it
+%                       is a required edge with nothing in it
+%     reaches_epoch     the chain terminates at an `epoch`      <-- THE ANSWER
+%     reaches_other     it terminates at a definite non-epoch document
+%     incomplete        every branch left the batch
+%     depth_exceeded    the chain is longer than eaMaxDepth()
+state = 'unresolved'; terminus = '';
+if isempty(memberId) || ~idIndex.isKey(memberId)
+    return;
+end
+refBody = idIndex(memberId);
+refClass = classNameOf(refBody);
+refInfo = eaClassInfo(cache, refClass, classMemo);
+if refInfo.is_terminal
+    % Degenerate but real: the family points straight at an epoch.
+    state = 'reaches_epoch'; terminus = refClass; return;
+end
+if ~refInfo.is_reference
+    state = 'not_a_reference'; terminus = refClass; return;
+end
+if ~refInfo.declares_anchor
+    state = 'anchor_absent'; terminus = refClass; return;
+end
+anchors = edgeValues(refBody, eaAnchorEdge());
+live = anchors(~cellfun(@isempty, anchors));
+if isempty(live)
+    state = 'anchor_empty'; terminus = refClass; return;
+end
+[state, terminus] = eaWalk(live, idIndex, cache, classMemo, walkMemo);
+end
+
+function [state, terminus] = eaWalk(startIds, idIndex, cache, classMemo, walkMemo)
+%EAWALK Follow the chain breadth-first from a set of anchor targets.
+%
+%   WHY IT IS A WALK AND NOT ONE HOP. The signed model says chains are normal
+%   and well founded -- observation -> stimulus -> epoch, every link a real
+%   document -- terminating at an epoch, a session or an absolute reference. A
+%   one-hop check would report every legitimate two-hop statement as reaching
+%   no epoch, which is a wrong number in the reassuring direction for whichever
+%   side you are arguing.
+%
+%   At each node the outgoing edges are the anchor edge AND the node's own
+%   numbered time-reference members, because a statement anchored to a stimulus
+%   reaches the epoch through the stimulus's own reference.
+%
+%   ANY branch reaching an epoch wins. Otherwise the strongest remaining fact
+%   is reported, and "left the batch" is kept apart from "terminated here":
+%   the batch is a sample and only one of those two is a statement about the
+%   data.
+state = 'incomplete'; terminus = '';
+memoKey = strjoin(startIds, '|');
+if walkMemo.isKey(memoKey)
+    m = walkMemo(memoKey);
+    state = m.state; terminus = m.terminus;
+    return;
+end
+% A cell, not a containers.Map: a chain is at most eaMaxDepth() hops and a
+% handful of nodes wide, and this function runs once per populated member --
+% hundreds of thousands of times on a real corpus. A Map per call would be the
+% expensive part of the whole census.
+visited = {};
+frontier = startIds;
+depth = 0;
+sawUnresolved = false;
+sawTerminated = false;
+firstTerminus = '';
+while ~isempty(frontier)
+    if depth >= eaMaxDepth()
+        state = 'depth_exceeded'; terminus = '';
+        walkMemo(memoKey) = struct('state', state, 'terminus', terminus);
+        return;
+    end
+    next = {};
+    for k = 1:numel(frontier)
+        id = frontier{k};
+        if isempty(id) || any(strcmp(visited, id)); continue; end
+        visited{end+1} = id; %#ok<AGROW>
+        if ~idIndex.isKey(id)
+            sawUnresolved = true;
+            continue;
+        end
+        node = idIndex(id);
+        nodeClass = classNameOf(node);
+        nodeInfo = eaClassInfo(cache, nodeClass, classMemo);
+        if nodeInfo.is_terminal
+            state = 'reaches_epoch'; terminus = nodeClass;
+            walkMemo(memoKey) = struct('state', state, 'terminus', terminus);
+            return;
+        end
+        outgoing = eaOutgoingIds(node, nodeInfo);
+        if isempty(outgoing)
+            sawTerminated = true;
+            if isempty(firstTerminus); firstTerminus = nodeClass; end
+        else
+            next = [next, outgoing]; %#ok<AGROW>
+        end
+    end
+    frontier = next;
+    depth = depth + 1;
+end
+if sawTerminated
+    state = 'reaches_other'; terminus = firstTerminus;
+elseif sawUnresolved
+    state = 'incomplete'; terminus = '';
+else
+    % Nothing unresolved and nothing terminated: every id was already visited,
+    % i.e. the chain is a CYCLE. Reported as its own kind of nothing rather
+    % than folded into "terminates elsewhere".
+    state = 'reaches_other'; terminus = '<cycle>';
+end
+walkMemo(memoKey) = struct('state', state, 'terminus', terminus);
+end
+
+function ids = eaOutgoingIds(body, info)
+%EAOUTGOINGIDS The ids a node continues the chain through: its anchor edge, and
+%   the members of any time-reference family its class declares. Blank edges
+%   are dropped here -- an edge naming nothing continues nothing -- and the
+%   emptiness itself is already counted, per document, by the family block.
+ids = {};
+anchors = edgeValues(body, eaAnchorEdge());
+for k = 1:numel(anchors)
+    if ~isempty(anchors{k}); ids{end+1} = anchors{k}; end %#ok<AGROW>
+end
+for f = 1:numel(info.time_families)
+    members = familyMemberIds(body, info.time_families{f});
+    for m = 1:numel(members)
+        ids{end+1} = members{m}; %#ok<AGROW>
+    end
+end
 end
 
 function [keys, counts] = bump(keys, counts, key)

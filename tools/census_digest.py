@@ -299,6 +299,276 @@ def render_metadata_tier(r, out):
                       for c in METADATA_TIER_EMITTED))
 
 
+# --- THE EPOCH ASSOCIATION (#72) ------------------------------------------
+#
+# WHAT IS BEING MEASURED AND WHY IT HAD NO COUNTER.
+#
+# The team settled (2026-08-10) that a statement reaches its epoch through a
+# REFERENCE CHAIN, not a direct edge:
+#
+#     subject_interaction --time_reference_#--> relative_reference
+#                         --relative_to-------> epoch
+#
+# `min_count: 1` guarantees the family EXISTS and `relative_reference.
+# relative_to` is REQUIRED, so a POPULATED reference resolves. But
+# `subject_interaction.time_reference_#` is `mustBeNonEmpty: false`, so
+# `time_reference_1 = ''` SATISFIES the family and reaches nothing -- and the
+# armed RequiredDependencies gate keys on `mustBeNonEmpty`, so it does not fire.
+# Between them the two existing silent-loss checks step over exactly that
+# document: the family check asks HOW MANY members exist and ignores what they
+# hold, and the empty-edge check excludes numbered families by construction.
+#
+# MEASUREMENT ONLY. Nothing here or in silentLoss tightens a schema, arms a
+# gate or changes what quarantines.
+#
+# The rows are printed from THIS list, not from whatever keys the report
+# happens to carry, so a counter the report lacks prints "(absent)" instead of
+# vanishing -- the same rule the post-pass block follows, and for the same
+# reason: a missing counter and a zero counter are different facts.
+EPOCH_ASSOCIATION_FAMILY = [
+    ("family_docs_declaring", "document(s) whose CLASS declares a time-reference family"),
+    ("family_docs_absent", "  carry NO member (cardinality -- reported separately above)"),
+    ("family_docs_present", "  carry >= 1 member"),
+    ("family_docs_all_empty", "    <-- REACH NOTHING: every member blank"),
+    ("family_docs_populated", "    >= 1 populated member"),
+    ("family_members_total", "members: total"),
+    ("family_members_empty", "members: BLANK"),
+    ("family_members_populated", "members: populated"),
+]
+EPOCH_ASSOCIATION_EDGES = [
+    ("epoch_documents", "`epoch` document(s) in this batch"),
+    ("epoch_id_docs_declaring", "document(s) whose CLASS declares an epoch_id edge"),
+    ("epoch_id_edges_present", "epoch_id edge(s) found"),
+    ("epoch_id_resolved", "  RESOLVED -- names a document in this batch"),
+    ("epoch_id_resolved_not_epoch", "    of those, the target is NOT an epoch"),
+    ("epoch_id_empty", "  EMPTY -- names nothing"),
+    ("epoch_id_unresolved_in_batch", "  NOT IN THIS BATCH -- see the note below"),
+]
+EPOCH_ASSOCIATION_CHAIN = [
+    ("chain_docs_examined", "document(s) with a POPULATED member"),
+    ("chain_docs_reaching_epoch", "  REACH AN EPOCH   <-- the number the decision rests on"),
+    ("chain_docs_reaching_no_epoch", "  terminate at a definite non-epoch document"),
+    ("chain_docs_undetermined", "  UNDETERMINED -- left the batch, or too deep"),
+    ("chain_members_examined", "member(s) examined, of which:"),
+    ("chain_member_reaches_epoch", "  reach an epoch"),
+    ("chain_member_reaches_other", "  terminate elsewhere"),
+    ("chain_member_unresolved", "  target not in this batch"),
+    ("chain_member_incomplete", "  every branch left the batch"),
+    ("chain_member_not_a_reference", "  target is not a time reference at all"),
+    ("chain_member_anchor_absent", "  reference declares no anchor edge (terminal by design)"),
+    ("chain_member_anchor_empty", "  reference's REQUIRED anchor is blank"),
+    ("chain_member_depth_exceeded", "  chain longer than max_depth"),
+    ("chain_member_unclassified", "  UNCLASSIFIED -- a state with no counter"),
+]
+
+
+def epoch_association(r):
+    """Read one report's epoch-association block, or say why it cannot be read.
+
+    Four NOT-MEASURED conditions, kept apart from each other and from a zero:
+
+      absent        the report has no `epoch_association` -- it predates the
+                    counter. NOT rendered as zeros.
+      malformed     the key is there and is not an object.
+      inspected 0   silentLoss looked at nothing. Every count below it is
+                    vacuous -- this is the original defect, and the rule is
+                    unchanged: check total_docs before believing any figure.
+      all unreadable  it was handed documents and could parse none.
+    """
+    sl = r.get("silent_loss") or {}
+    if not isinstance(sl, dict):
+        # `"audit_failed" in sl` on a string is a SUBSTRING test, which would
+        # answer a question nobody asked. Malformed input gets its own reading.
+        return {"measured": False,
+                "why": "the silent_loss field is malformed (%s)"
+                       % type(sl).__name__}
+    if "audit_failed" in sl:
+        return {"measured": False,
+                "why": "the silent-loss audit FAILED (%s)" % sl["audit_failed"]}
+    ea = sl.get("epoch_association")
+    if ea is None:
+        return {"measured": False,
+                "why": "this report carries no epoch_association block -- the "
+                       "counter was not wired into the run that produced it"}
+    if not isinstance(ea, dict):
+        return {"measured": False,
+                "why": "the epoch_association block is malformed (%s)"
+                       % type(ea).__name__}
+    inspected = ea.get("docs_inspected")
+    if not isinstance(inspected, int) or inspected <= 0:
+        return {"measured": False, "block": ea,
+                "why": "it inspected %s document(s)" % inspected}
+    unreadable = ea.get("docs_unreadable")
+    if isinstance(unreadable, int) and unreadable >= inspected:
+        return {"measured": False, "block": ea,
+                "why": "all %s document(s) handed to it were unreadable"
+                       % inspected}
+    return {"measured": True, "block": ea, "inspected": inspected}
+
+
+def _ea_rows(ea, rows, out, indent="          "):
+    for key, label in rows:
+        if key in ea:
+            out.append("%s%10s  %s" % (indent, ea[key], label))
+        else:
+            # A counter the report does not carry is NOT printed as 0.
+            out.append("%s%10s  %s" % (indent, "(absent)", label))
+
+
+def render_epoch_association(r, out):
+    """Render one corpus's epoch-association block. Denominator first."""
+    p = lambda s="": out.append(s)
+
+    p("  EPOCH ASSOCIATION (#72): does a statement actually reach an epoch?")
+    p("      MEASUREMENT ONLY -- nothing here is enforced and nothing "
+      "quarantines on it.")
+    m = epoch_association(r)
+    if not m["measured"]:
+        p("      NOT MEASURED -- %s." % m["why"])
+        p("      No count is printed for this corpus. A corpus that could not")
+        p("      be measured and a corpus that measured a ZERO are different")
+        p("      facts and must not print identically.")
+        return
+    ea = m["block"]
+
+    p("      DENOMINATOR: %s document(s) inspected, %s unreadable, %s classified"
+      % (ea.get("docs_inspected", "?"), ea.get("docs_unreadable", "?"),
+         ea.get("docs_classified", "?")))
+    # THE NAMES IT FOLLOWED. Everything else in the block is schema-driven;
+    # these are not, so a rename would send every count to zero and the report
+    # would read clean -- the demo_ndi failure, where a grep against a string
+    # the repository has never contained was reported as "this does not exist".
+    p("      FOLLOWED: <family> -> `%s` -> `%s`, max depth %s"
+      % (ea.get("anchor_edge", "?"), ea.get("terminal_class", "?"),
+         ea.get("max_depth", "?")))
+    for key, label in (("terminal_class_in_schema", "terminal_class"),
+                       ("reference_root_in_schema", "reference_root")):
+        val = ea.get(key)
+        if val == 1:
+            continue
+        p("      *** `%s` (%s) DOES NOT LOAD FROM THE SCHEMA (%s=%s)."
+          % (ea.get(label, "?"), label, key, val))
+        p("      *** Every count below that mentions it is a property of the")
+        p("      *** query, not of the data. Do NOT read them as zeros.")
+
+    p("      (1) THE TIME-REFERENCE FAMILY -- does it reach anything at all?")
+    _ea_rows(ea, EPOCH_ASSOCIATION_FAMILY, out)
+    if ea.get("family_docs_declaring") == 0:
+        p("          *** NO DOCUMENT'S CLASS DECLARES A TIME-REFERENCE FAMILY.")
+        p("          *** The family counters could not fire; their zeros mean")
+        p("          *** 'untested', not 'clean'.")
+    for e in aslist(ea.get("family_all_empty_by_class"))[:10]:
+        p("          %8s  %s.%s  family present, every member blank"
+          % (e.get("count", "?"), e.get("class_name", "?"),
+             e.get("edge_name", "?")))
+
+    p("      (2) `epoch` DOCUMENTS AND `epoch_id` EDGES (checked BY NAME)")
+    _ea_rows(ea, EPOCH_ASSOCIATION_EDGES, out)
+    p("          NOTE: 'not in this batch' is NOT 'dangling'. A batch is a")
+    p("          SAMPLE -- an edge naming a document outside it may resolve in")
+    p("          a full migration (jSessionAnchor's discovery-mode orphans were")
+    p("          exactly that). The three states are kept distinct; the third is")
+    p("          named for what was measured.")
+    for e in aslist(ea.get("epoch_id_by_class"))[:10]:
+        p("          %8s  %s.epoch_id  %s"
+          % (e.get("count", "?"), e.get("class_name", "?"),
+             e.get("state", "?")))
+
+    p("      (3) THE CHAIN, END TO END")
+    _ea_rows(ea, EPOCH_ASSOCIATION_CHAIN, out)
+    if ea.get("chain_docs_examined") == 0:
+        p("          *** NO DOCUMENT CARRIES A POPULATED MEMBER, so the chain")
+        p("          *** was never walked. Zero reaching an epoch means")
+        p("          *** 'untested', not 'nothing reaches one'.")
+    for e in aslist(ea.get("chain_terminus_by_class"))[:10]:
+        p("          %8s  chain terminated at: %s"
+          % (e.get("count", "?"), e.get("class_name", "?")))
+
+
+def rollup_epoch_association(reports, out):
+    """Cross-corpus epoch association, denominator first and unmeasured named.
+
+    The rollup is the number that gets quoted -- in a plan document, in a commit
+    message, in CLAUDE.md -- so it is computed here rather than hand-summed from
+    the per-corpus blocks. That is not a hypothetical: 562,422 was recorded as
+    an inspected total and was the six corpora with one of them contributing its
+    `migrated_count` instead. Corpora that contributed nothing readable are
+    NAMED and excluded, never summed in as zeros.
+    """
+    p = lambda s="": out.append(s)
+
+    measured, unmeasured = [], []
+    totals = {}
+    empty_rows, edge_rows, term_rows = {}, {}, {}
+    schema_warn = []
+    for i, r in enumerate(reports):
+        name = str(r.get("corpus") or "report #%d" % (i + 1))
+        m = epoch_association(r)
+        if not m["measured"]:
+            unmeasured.append("%s (%s)" % (name, m["why"]))
+            continue
+        measured.append(name)
+        ea = m["block"]
+        for key, _label in (EPOCH_ASSOCIATION_FAMILY + EPOCH_ASSOCIATION_EDGES
+                            + EPOCH_ASSOCIATION_CHAIN
+                            + [("docs_inspected", ""), ("docs_unreadable", ""),
+                               ("docs_classified", "")]):
+            if key in ea:
+                try:
+                    totals[key] = totals.get(key, 0) + int(ea[key] or 0)
+                except (TypeError, ValueError):
+                    pass
+        if ea.get("terminal_class_in_schema") != 1 or \
+                ea.get("reference_root_in_schema") != 1:
+            schema_warn.append(name)
+        for e in aslist(ea.get("family_all_empty_by_class")):
+            key = "%s.%s" % (e.get("class_name", "?"), e.get("edge_name", "?"))
+            empty_rows[key] = empty_rows.get(key, 0) + int(e.get("count") or 0)
+        for e in aslist(ea.get("epoch_id_by_class")):
+            key = "%s.epoch_id  %s" % (e.get("class_name", "?"),
+                                       e.get("state", "?"))
+            edge_rows[key] = edge_rows.get(key, 0) + int(e.get("count") or 0)
+        for e in aslist(ea.get("chain_terminus_by_class")):
+            key = str(e.get("class_name", "?"))
+            term_rows[key] = term_rows.get(key, 0) + int(e.get("count") or 0)
+
+    p("")
+    p("  EPOCH ASSOCIATION (#72) -- MEASUREMENT ONLY, nothing is enforced")
+    p("      DENOMINATOR: %d corpus report(s); %d carried a readable "
+      "epoch-association block, %d did not; %d document(s) inspected in total"
+      % (len(reports), len(measured), len(unmeasured),
+         totals.get("docs_inspected", 0)))
+    if unmeasured:
+        p("      *** NOT MEASURED in: %s" % ", ".join(unmeasured))
+        p("      *** the totals below are sums over %d corpora, not %d -- do"
+          % (len(measured), len(reports)))
+        p("      *** not quote them as a whole-corpus figure.")
+    if not measured:
+        p("      (nothing to total -- no corpus contributed a readable block)")
+        return
+    if schema_warn:
+        p("      *** the followed class names DID NOT LOAD from the schema in:")
+        p("      *** %s. Their counts are a property of the query."
+          % ", ".join(schema_warn))
+
+    p("      (1) THE TIME-REFERENCE FAMILY")
+    _ea_rows(totals, EPOCH_ASSOCIATION_FAMILY, out, indent="        ")
+    p("      (2) `epoch` DOCUMENTS AND `epoch_id` EDGES")
+    _ea_rows(totals, EPOCH_ASSOCIATION_EDGES, out, indent="        ")
+    p("      (3) THE CHAIN, END TO END")
+    _ea_rows(totals, EPOCH_ASSOCIATION_CHAIN, out, indent="        ")
+
+    for label, table in (("FAMILIES PRESENT AND ENTIRELY BLANK", empty_rows),
+                         ("epoch_id EDGES BY CLASS AND STATE", edge_rows),
+                         ("CHAIN TERMINI (non-epoch)", term_rows)):
+        p("      %s: %d occurrence(s) across %d row(s)"
+          % (label, sum(table.values()), len(table)))
+        for key, n in sorted(table.items(), key=lambda kv: (-kv[1], kv[0])):
+            p("        %8d  %s" % (n, key))
+        if not table:
+            p("        (none)")
+
+
 def render_post_passes(r, out):
     """Render the batch post-pass reports, denominator (the pass list) first.
 
@@ -539,6 +809,7 @@ def render_report(r, out):
                           % (t.get("prefix", "?"), t.get("n_distinct", "?"),
                              t.get("n_docs", "?")))
 
+    render_epoch_association(r, out)
     render_metadata_tier(r, out)
     render_post_passes(r, out)
 
@@ -742,6 +1013,7 @@ def rollup(reports, out):
         if not table:
             p("      (none)")
 
+    rollup_epoch_association(reports, out)
     rollup_metadata_tier(reports, out)
     rollup_post_passes(reports, out)
 

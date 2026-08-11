@@ -16,8 +16,9 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from census_digest import (aslist, digest, norm_class,  # noqa: E402
-                           normalised_class_index, render_report, rollup)
+from census_digest import (aslist, digest, epoch_association,  # noqa: E402
+                           norm_class, normalised_class_index, render_report,
+                           rollup)
 
 
 class TestAsList(unittest.TestCase):
@@ -813,6 +814,323 @@ class TestPostPassRendering(DigestCase):
         self.assertEqual(failed, [])
         self.assertIn("MALFORMED", text)
         self.assertIn("--- A ---", text)
+class TestEpochAssociation(DigestCase):
+    """The epoch-association block (#72) -- measurement only.
+
+    WHAT IT MEASURES AND WHY NOTHING SAW IT. A statement reaches its epoch
+    through a REFERENCE CHAIN, not a direct edge:
+
+        subject_interaction --time_reference_#--> relative_reference
+                            --relative_to-------> epoch
+
+    `min_count: 1` guarantees the family exists and `relative_to` is REQUIRED,
+    so a POPULATED reference resolves. But `time_reference_#` is
+    `mustBeNonEmpty: false`, so `time_reference_1 = ''` satisfies the family and
+    reaches nothing -- and the armed RequiredDependencies gate keys on
+    `mustBeNonEmpty`. The two existing silent-loss checks step over it from
+    opposite sides: the family check ignores what a member holds, the empty-edge
+    check excludes numbered families outright.
+
+    These tests are about the DISTINCTIONS, because every one of them is a place
+    this project has previously collapsed two facts into one number: measured
+    zero vs never measured, empty edge vs edge outside the batch, a count vs its
+    denominator.
+    """
+
+    def _ea(self, **over):
+        ea = {
+            "docs_inspected": 1000, "docs_unreadable": 0, "docs_classified": 1000,
+            "anchor_edge": "relative_to", "reference_root": "time_reference",
+            "terminal_class": "epoch", "max_depth": 8,
+            "terminal_class_in_schema": 1, "reference_root_in_schema": 1,
+            "family_docs_declaring": 300, "family_docs_absent": 40,
+            "family_docs_present": 260, "family_docs_all_empty": 60,
+            "family_docs_populated": 200, "family_members_total": 270,
+            "family_members_empty": 60, "family_members_populated": 210,
+            "family_all_empty_by_class": [
+                {"class_name": "voltage_observation",
+                 "edge_name": "time_reference_#", "count": 60}],
+            "epoch_documents": 11, "epoch_id_docs_declaring": 90,
+            "epoch_id_edges_present": 90, "epoch_id_empty": 30,
+            "epoch_id_resolved": 50, "epoch_id_resolved_not_epoch": 2,
+            "epoch_id_unresolved_in_batch": 10,
+            "epoch_id_by_class": [
+                {"class_name": "directed_relation", "state": "empty",
+                 "count": 30}],
+            "chain_docs_examined": 200, "chain_docs_reaching_epoch": 120,
+            "chain_docs_reaching_no_epoch": 50, "chain_docs_undetermined": 30,
+            "chain_members_examined": 210, "chain_member_unresolved": 30,
+            "chain_member_not_a_reference": 0,
+            "chain_member_anchor_absent": 45, "chain_member_anchor_empty": 5,
+            "chain_member_reaches_epoch": 125,
+            "chain_member_reaches_other": 5, "chain_member_incomplete": 0,
+            "chain_member_depth_exceeded": 0,
+            "chain_member_unclassified": 0,
+            "chain_terminus_by_class": [
+                {"class_name": "session", "count": 5}],
+        }
+        ea.update(over)
+        return ea
+
+    def _corpus(self, name="A", ea=None, **over):
+        sl = {"total_docs": 1000, "skipped_docs": 0,
+              "empty_dependency_count": 0, "vacuous_field_count": 0}
+        if ea is not None:
+            sl["epoch_association"] = ea
+        sl.update(over.pop("silent_loss", {}))
+        body = {"corpus": name, "total": 100, "migrated_count": 1000,
+                "quarantine_count": 0, "silent_loss": sl}
+        body.update(over)
+        self.write(name, body)
+
+    # --- denominator first, unconditionally --------------------------------
+
+    def test_the_denominator_is_printed_before_any_count(self):
+        # Rule 5. The block states what it inspected before it states what it
+        # found, so a count can never be read without one.
+        self._corpus("A", self._ea())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        den = text.index("DENOMINATOR: 1000 document(s) inspected")
+        cnt = text.index("REACH AN EPOCH")
+        self.assertLess(den, cnt, "the denominator must precede the counts")
+
+    def test_the_names_it_followed_are_printed(self):
+        # The four names the block cannot derive from the schema. Printed so a
+        # reader can see WHICH chain produced the numbers.
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("FOLLOWED: <family> -> `relative_to` -> `epoch`", text)
+
+    def test_a_followed_class_that_does_not_load_is_shouted(self):
+        # THE demo_ndi FAILURE, pre-empted: rename `epoch` and every
+        # reaches-an-epoch count goes to zero for reasons that have nothing to
+        # do with the data. The report must say so rather than read clean.
+        self._corpus("A", self._ea(terminal_class_in_schema=0,
+                                   chain_docs_reaching_epoch=0))
+        text, _ = self.run_digest()
+        self.assertIn("DOES NOT LOAD FROM THE SCHEMA", text)
+        self.assertIn("property of the", text)
+
+    def test_a_schema_that_loads_prints_no_banner(self):
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertNotIn("DOES NOT LOAD FROM THE SCHEMA", text)
+
+    # --- NOT MEASURED is never a row of zeros ------------------------------
+
+    def test_a_report_without_the_block_is_not_rendered_as_zeros(self):
+        # It predates the counter. Rendering zeros would assert a measurement
+        # that was never taken -- the exact reading `silentLoss` shipped.
+        self._corpus("A", None)
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED", text)
+        self.assertIn("was not wired into the run", text)
+        self.assertNotIn("REACH AN EPOCH", text)
+
+    def test_a_block_that_inspected_nothing_is_not_a_zero(self):
+        self._corpus("A", self._ea(docs_inspected=0))
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED -- it inspected 0 document(s)", text)
+
+    def test_a_block_whose_every_document_was_unreadable_is_not_a_zero(self):
+        self._corpus("A", self._ea(docs_inspected=5, docs_unreadable=5))
+        text, _ = self.run_digest()
+        self.assertIn("all 5 document(s) handed to it were unreadable", text)
+
+    def test_a_failed_silent_loss_audit_says_so(self):
+        self._corpus("A", None, silent_loss={"audit_failed": "boom"})
+        text, _ = self.run_digest()
+        self.assertIn("the silent-loss audit FAILED (boom)", text)
+
+    def test_a_malformed_silent_loss_field_is_never_read_as_measured(self):
+        # `"audit_failed" in sl` on a STRING is a substring test: it answers a
+        # question nobody asked, and then the code proceeds as though the field
+        # were readable. The reader is asserted directly because the rest of
+        # the digest already treats this shape as a hard per-corpus failure
+        # (loud, non-zero exit) and never reaches this block.
+        for bad in ("boom", ["a"], 7):
+            m = epoch_association({"corpus": "A", "silent_loss": bad})
+            self.assertFalse(m["measured"], repr(bad))
+            self.assertIn("malformed", m["why"])
+        # ... and a real audit failure keeps its own, different wording.
+        m = epoch_association({"silent_loss": {"audit_failed": "boom"}})
+        self.assertFalse(m["measured"])
+        self.assertIn("the silent-loss audit FAILED (boom)", m["why"])
+
+    def test_a_malformed_block_says_so_rather_than_counting(self):
+        self._corpus("A", "not-a-dict")
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [], "a malformed block must not kill the corpus")
+        self.assertIn("malformed", text)
+
+    def _block(self, text):
+        """Just the per-corpus epoch-association block.
+
+        Scoped on purpose: "NOT MEASURED" appears in the metadata-tier block of
+        the same output, and a whole-text assertion would pass or fail for
+        reasons that have nothing to do with this measurement.
+        """
+        start = text.index("EPOCH ASSOCIATION (#72): does a statement")
+        end = text.index("METADATA TIER:", start)
+        return text[start:end]
+
+    def test_a_measured_zero_prints_as_a_zero(self):
+        # The other side of the same coin: measured-and-clean must be legible
+        # as a result, not hidden behind the NOT MEASURED wording.
+        self._corpus("A", self._ea(family_docs_all_empty=0,
+                                   family_all_empty_by_class=[]))
+        text, _ = self.run_digest()
+        block = self._block(text)
+        self.assertIn("0      <-- REACH NOTHING", block)
+        self.assertNotIn("NOT MEASURED", block)
+
+    # --- (1) the family: present-and-blank is the hole ---------------------
+
+    def test_the_all_empty_family_row_is_rendered(self):
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("REACH NOTHING: every member blank", text)
+        self.assertIn("voltage_observation.time_reference_#", text)
+
+    def test_a_single_row_object_does_not_crash(self):
+        # MATLAB's jsonencode writes a ONE-element struct array as a bare
+        # object. That shape killed run #256 after 2h49m; every list-shaped read
+        # here goes through aslist for that reason.
+        self._corpus("A", self._ea(
+            family_all_empty_by_class={"class_name": "x",
+                                       "edge_name": "time_reference_#",
+                                       "count": 7},
+            epoch_id_by_class={"class_name": "y", "state": "empty",
+                               "count": 3},
+            chain_terminus_by_class={"class_name": "session", "count": 1}))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [], "a one-row object must render, not fail")
+        self.assertIn("x.time_reference_#", text)
+        self.assertIn("y.epoch_id  empty", text)
+
+    def test_no_class_declaring_a_family_is_called_untested(self):
+        # Zero documents COULD carry one, so zero carrying one is not evidence.
+        self._corpus("A", self._ea(family_docs_declaring=0))
+        text, _ = self.run_digest()
+        self.assertIn("NO DOCUMENT'S CLASS DECLARES A TIME-REFERENCE FAMILY",
+                      text)
+        self.assertIn("'untested', not 'clean'", text)
+
+    # --- (2) three DISTINCT epoch_id states --------------------------------
+
+    def test_the_three_epoch_id_states_are_printed_separately(self):
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("RESOLVED -- names a document in this batch", text)
+        self.assertIn("EMPTY -- names nothing", text)
+        self.assertIn("NOT IN THIS BATCH", text)
+
+    def test_unresolved_is_not_called_dangling(self):
+        # A batch is a SAMPLE. jSessionAnchor's discovery-mode orphans were an
+        # edge naming a document outside the batch, and calling them broken is
+        # the error operating rule 3 names.
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("'not in this batch' is NOT 'dangling'", text)
+
+    def test_an_epoch_id_resolving_to_a_non_epoch_is_surfaced(self):
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("of those, the target is NOT an epoch", text)
+
+    def test_epoch_document_count_is_printed(self):
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("`epoch` document(s) in this batch", text)
+
+    # --- (3) the chain --------------------------------------------------
+
+    def test_the_chain_number_the_decision_rests_on_is_labelled(self):
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("the number the decision rests on", text)
+
+    def test_undetermined_is_a_third_state_not_a_failure(self):
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("UNDETERMINED -- left the batch, or too deep", text)
+
+    def test_no_populated_member_means_the_chain_was_never_walked(self):
+        self._corpus("A", self._ea(chain_docs_examined=0,
+                                   chain_docs_reaching_epoch=0))
+        text, _ = self.run_digest()
+        self.assertIn("the chain", text)
+        self.assertIn("was never walked", text)
+        self.assertIn("'untested', not 'nothing reaches one'", text)
+
+    def test_a_missing_counter_prints_absent_not_zero(self):
+        # A counter the report does not carry and a counter that is zero are
+        # different facts. The rows come from the digest's own list, not from
+        # the report's keys, so one cannot vanish.
+        ea = self._ea()
+        del ea["chain_member_depth_exceeded"]
+        self._corpus("A", ea)
+        text, _ = self.run_digest()
+        self.assertIn("(absent)  ", text)
+        self.assertIn("chain longer than max_depth", text)
+
+    # --- the rollup ------------------------------------------------------
+
+    def test_the_rollup_sums_across_corpora(self):
+        self._corpus("A", self._ea())
+        self._corpus("B", self._ea(chain_docs_reaching_epoch=80,
+                                   docs_inspected=500))
+        text, _ = self.run_digest()
+        self.assertIn("EPOCH ASSOCIATION (#72) -- MEASUREMENT ONLY", text)
+        self.assertIn("2 carried a readable epoch-association block", text)
+        self.assertIn("1500 document(s) inspected in total", text)
+        self.assertIn("200  ", text)   # 120 + 80 reaching an epoch
+
+    def test_the_rollup_denominator_excludes_and_names_unmeasured_corpora(self):
+        # A total over one corpus and a total over two are different facts.
+        self._corpus("A", self._ea())
+        self._corpus("B", None)
+        text, _ = self.run_digest()
+        self.assertIn("1 carried a readable epoch-association block, 1 did not",
+                      text)
+        self.assertIn("NOT MEASURED in: B", text)
+        self.assertIn("not quote them as a whole-corpus figure", text)
+
+    def test_the_rollup_says_so_when_nothing_was_measured(self):
+        self._corpus("A", None)
+        text, _ = self.run_digest()
+        self.assertIn("no corpus contributed a readable block", text)
+
+    def test_the_rollup_flags_a_corpus_whose_class_names_did_not_load(self):
+        self._corpus("A", self._ea())
+        self._corpus("B", self._ea(reference_root_in_schema=0))
+        text, _ = self.run_digest()
+        self.assertIn("the followed class names DID NOT LOAD", text)
+        self.assertIn("B", text)
+
+    def test_the_rollup_merges_rows_of_the_same_class(self):
+        self._corpus("A", self._ea())
+        self._corpus("B", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("120  voltage_observation.time_reference_#", text)
+
+    def test_the_rollup_prints_every_section_even_at_zero(self):
+        self._corpus("A", self._ea(family_all_empty_by_class=[],
+                                   epoch_id_by_class=[],
+                                   chain_terminus_by_class=[]))
+        text, _ = self.run_digest()
+        self.assertIn("FAMILIES PRESENT AND ENTIRELY BLANK: 0 occurrence(s)",
+                      text)
+        self.assertIn("epoch_id EDGES BY CLASS AND STATE: 0 occurrence(s)", text)
+        self.assertIn("CHAIN TERMINI (non-epoch): 0 occurrence(s)", text)
+
+    def test_the_block_never_claims_to_enforce_anything(self):
+        # MEASUREMENT ONLY was the instruction, and the output has to say so:
+        # this block is read by people deciding whether to arm a gate.
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("MEASUREMENT ONLY -- nothing here is enforced", text)
 
 
 if __name__ == "__main__":
