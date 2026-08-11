@@ -391,6 +391,16 @@ bodies = v1Fixtures();
 result = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'V_eta');
 result = did2.convert.resolveDeferredBaths(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+% TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
+% graph into the entity tier. BEFORE resolveDatasetEntities, and that order is
+% load-bearing -- the `dataset` entity minted here is keyed on the same dataset
+% id as the `dataset_remote` / `session_in_a_dataset` stubs, and the dedup below
+% keeps the RICHEST per id. Run after, and the stub would already have won.
+% Called BARE here on purpose: this file writes no report, so a raw stack trace
+% is strictly more useful than a captured message (runBatchPass.m states the
+% rule).
+result = did2.convert.resolveOpenmindsCitations(result, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
 result = did2.convert.resolveDatasetEntities(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 % #60: mint the `epoch` entities (one per (session, epoch-id) PAIR). Same
@@ -436,6 +446,14 @@ result = did2.convert.resolveLawnPlateSubjects(result, ...
 % there is nothing for the guard to protect and a raw stack trace is strictly
 % more informative than a captured message.
 result = did2.convert.foldGenericFiles(result, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
+% TEAM DECISION 2026-08-11: `valid_interval` becomes a boolean-valued
+% `subject_statement` -- one `validity_observation` per interval, plus the
+% `relative_reference` it is anchored to. Same post-pass set and the SAME ORDER
+% as runCorpusDiscovery and testCorpusPRED, and after the epoch mint above,
+% which is a REAL dependence: it anchors to the `epoch` documents that pass
+% appends. CALLED BARE, like the passes above and for the identical reason.
+result = did2.convert.resolveValidIntervals(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 
 % GATE 1: nothing quarantined

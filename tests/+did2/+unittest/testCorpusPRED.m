@@ -90,6 +90,24 @@ end
 result = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'V_eta');
 result = did2.convert.resolveDeferredBaths(result, 'Validate', true, ...
     'TargetVersion', 'V_eta');
+% TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
+% graph into the entity tier -- the same six classes metadata_editor emits,
+% from the independent openMINDS store. ADDITIVE: neither store dominates and
+% 0 of 6 corpora carry both, so this does not replace or weaken that path.
+%
+% ORDER: BEFORE resolveDatasetEntities, which keeps the RICHEST `dataset`
+% entity per id. The entity minted here is keyed on the same dataset id as the
+% bare stubs and carries the real names, so it wins that ranking -- but only if
+% it exists when the ranking runs.
+%
+% GUARDED, same rule as epochMint below: this file writes a corpus report ~20
+% lines further on, and PRED has been invisible to the census once already. A
+% throw here would make it invisible again. The guard keeps the artifact; the
+% assertion after the report write keeps the gate red.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveOpenmindsCitations', 'openminds_citations', ...
+    @(r) did2.convert.resolveOpenmindsCitations(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
 result = did2.convert.resolveDatasetEntities(result, 'Validate', true, ...
     'TargetVersion', 'V_eta');
 % #60: mint the `epoch` entities, keyed on the (base.session_id, epoch-id
@@ -171,6 +189,26 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     @(r) did2.convert.foldGenericFiles(r, 'Validate', true, ...
         'TargetVersion', 'V_eta'));
 
+% TEAM DECISION 2026-08-11: `valid_interval` becomes a boolean-valued
+% `subject_statement`. Wired here for the same reason as the four above, in the
+% SAME ORDER -- a post-pass wired into some call sites and not others makes one
+% path green while another does something else.
+%
+% ORDER: after epochMint, and that dependence is REAL rather than conventional
+% -- it anchors to the `epoch` documents epochMint appends, and run before them
+% it would refuse every interval and change nothing.
+%
+% WHAT IT WILL REPORT ON PRED, with the one measured fact and no guess beyond
+% it: run 31327383671 found ZERO `valid_interval` documents in any of the six
+% corpora, PRED included, so the expected line is `sources_seen 0` -- a
+% statement about the SAMPLE, not about the decompose. It cannot move PRED's
+% zero-quarantine gate on such a corpus: with nothing to decompose it returns
+% before minting anything, and it never removes a document in any case.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveValidIntervals', 'valid_interval_decompose', ...
+    @(r) did2.convert.resolveValidIntervals(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
 % WRITE THE CENSUS REPORT, before the assertions so a red gate still reports.
 %
 % PRED is a HARD gate (zero quarantine), not a discovery run, so it does not
@@ -198,11 +236,15 @@ did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
 % red. Doing it here rather than letting the pass throw above is the whole
 % point of the guard: the artifact lands AND the gate fires, instead of one at
 % the cost of the other.
-% NOTE, not a change: `response_parameters_fold` and `lawn_plate_subjects` are
-% wired above but are NOT in this list, so a throw in either is recorded in the
-% report and does not turn PRED red. That is someone else's call to make; it is
-% written down here rather than silently fixed, because a hard gate that covers
-% three of five passes reads exactly like one that covers five.
+% NOTE, not a change: `response_parameters_fold`, `lawn_plate_subjects` and
+% `openminds_citations` are wired above but are NOT in this list, so a throw in
+% any of them is recorded in the report and does not turn PRED red. That is
+% someone else's call to make; it is written down here rather than silently
+% fixed, because a hard gate that covers three of six passes reads exactly like
+% one that covers six. `openminds_citations` is here for the same reason as the
+% other two -- it has never been executed, and red-gating everyone on an
+% unexecuted pass's first run is the judgement resolveSessionAnchors's author
+% made and was right about.
 for passField = {'epoch_mint', 'session_anchor_fold', 'generic_file_fold'}
     failMsg = did2.unittest.helpers.batchPassFailure(result, passField{1});
     verifyEmpty(testCase, failMsg, sprintf( ...

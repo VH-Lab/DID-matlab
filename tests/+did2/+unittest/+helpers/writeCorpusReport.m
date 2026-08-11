@@ -144,6 +144,38 @@ if isfield(result, 'generic_file_fold')
     report.generic_file_fold = result.generic_file_fold;
 end
 
+% `openminds_citations` (TEAM DECISION 2026-08-11, "Do B"). PERSISTED FOR THE
+% SAME REASON AS ITS SIBLINGS, with three reading instructions attached:
+%
+% (1) THE DENOMINATOR IS `openminds_documents_seen` BESIDE
+%     `openminds_components_seen`. Every counter at 0 with those two at 0 means
+%     "this corpus holds no openMINDS graph" -- true of 5 of the 6 corpora at
+%     the last measurement (run 31441923369: 8 `openminds` documents in total,
+%     all of them in JH). That is a fact about the SAMPLE and NOT evidence the
+%     assembler works or does not.
+% (2) `components_withheld` IS THE ORPHAN GUARD SPEAKING, and it is a FINDING
+%     rather than a passthrough statistic. Consumption is all-or-none per
+%     connected component, so a withheld component means some planned document
+%     would have been left referenced by a survivor. `withheld_reasons` names
+%     which component and why. `components_planned` = consumed + withheld +
+%     reverted_on_validation; the three are never summed into one number,
+%     because "refused for safety" and "blew up in validation" are different
+%     answers.
+% (3) THE `..._consumed_without_a_home` COUNTERS ARE A MEASURED LOSS, not
+%     bookkeeping. Contribution role documents, SemanticDataType and technique
+%     sit inside the planned set (leaving them would dangle an edge) and the
+%     entity tier has nowhere to put their content, so they are consumed and
+%     counted. `affiliations_beyond_first_dropped` is the size of an OPEN team
+%     question that metadata_editor's header already records.
+%
+% `epochMint`'s near miss is what this block exists to prevent, and this pass
+% reproduced it exactly: it was wired at all four call sites and persisted
+% nowhere, so its numbers would have reached the log and not the artifact.
+% Caught by tools/test_batch_pass_wiring.py, which is the instrument working.
+if isfield(result, 'openminds_citations')
+    report.openminds_citations = result.openminds_citations;
+end
+
 fid = fopen(reportPath, 'w');
 if fid < 0
     error('did2:test:reportWriteFailed', ...
