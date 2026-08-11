@@ -231,7 +231,11 @@ function b = emitterShapedBoundedBody(docId, sessionId, unit, onset, offset)
 %   `boundedBody` says, which is the emitter's `makeEncounterWindow`.
 b = boundedBody(docId, sessionId, onset, offset);
 b.session_bounded_reference.start = emitterDurationCell(unit, onset);
-b.session_bounded_reference.end   = emitterDurationCell(unit, offset);
+% `end` is a MATLAB keyword, so the field it names is reachable only through a
+% DYNAMIC field name. Written this way rather than as a literal `.end` because
+% no other line in this repository uses one, and the fold itself reads the field
+% by string for the same reason (`cellField(blk, 'end')`).
+b.session_bounded_reference.('end') = emitterDurationCell(unit, offset);
 end
 
 function b = pointerBody(docId, sessionId, anchorId)
