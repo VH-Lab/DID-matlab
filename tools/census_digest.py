@@ -147,6 +147,68 @@ POST_PASSES = [
         ("labels_deleted", "ontology_label documents deleted"),
         ("labels_modified", "ontology_label documents modified"),
     ]),
+    # TEAM DECISION 2026-08-11: valid_interval becomes a boolean-valued
+    # subject_statement -- one validity_observation per interval, plus the
+    # relative_reference it is anchored to.
+    #
+    # READ `sources_seen` BEFORE ANYTHING ELSE ON THIS BLOCK, and read it twice,
+    # because zero means two different things here and only one of them is a
+    # statement about the pass:
+    #
+    #   (a) as a SAMPLE fact -- all six corpora held ZERO `valid_interval`
+    #       documents at run 31327383671, so an all-zero block says nothing
+    #       whatever about whether the decompose works. markgarbage is an
+    #       opt-in curation app; most datasets never ran it.
+    #   (b) as HAZARD 1 LOOKING CORRECT -- because markgarbage is opt-in, NO
+    #       document means the whole epoch is GOOD DATA (markgarbage.m:172-176
+    #       returns the whole requested span on an empty record). A corpus with
+    #       no sources MUST come out with `statements_emitted` 0. If that line
+    #       is ever non-zero beside `sources_seen` 0, every epoch in every
+    #       markgarbage-free dataset has just been reclassified, and NO OTHER
+    #       INSTRUMENT HERE COULD SEE IT: quarantine and orphans are 0 either
+    #       way.
+    #
+    # `sources_fully_decomposed` is a DELETION GATE, not a statistic: the
+    # `valid_interval` tombstone may be retired only when it equals
+    # `sources_seen` and `refused_total` is 0. `split_anchor_intervals` is a
+    # PREDICTION UNDER TEST (CHANGE 5 measured that every markvalidinterval call
+    # site passes one reference for both ends, so it should stay 0), and
+    # `inheritance_candidates` is an OPEN TEAM QUESTION WITH A SIZE -- the
+    # subjects NDI's `underlying_element` fallback serves, which nothing else in
+    # this repo computes.
+    ("valid_interval_decompose", "did2.convert.resolveValidIntervals", [
+        ("documents_inspected", "documents inspected"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("sources_seen", "valid_interval documents"),
+        ("epoch_documents_seen", "epoch documents to anchor to"),
+        ("intervals_seen", "intervals seen"),
+        ("intervals_decomposed", "DECOMPOSED"),
+        ("statements_emitted", "validity_observation emitted"),
+        ("references_emitted", "relative_reference emitted"),
+        ("split_anchor_intervals", "split-anchor intervals (expect 0)"),
+        ("sources_fully_decomposed", "DELETION GATE: sources fully decomposed"),
+        ("sources_partly_decomposed", "  sources only partly decomposed"),
+        ("refused_total", "REFUSED (total)"),
+        ("refused_no_element_id", "  no element_id"),
+        ("refused_no_intervals", "  no readable interval"),
+        ("refused_no_anchor_block", "  entry carries no timeref block"),
+        ("refused_no_epoch_string", "  anchor names no epoch"),
+        ("refused_no_epoch_document", "  no epoch document for (session,id)"),
+        ("refused_ambiguous_epoch", "  two epoch documents claim the pair"),
+        ("refused_no_clock", "  no clock / no_time"),
+        ("refused_non_finite_times", "  t0 or t1 non-finite"),
+        ("refused_negative_extent", "  t1 < t0"),
+        # OPEN, not solved. Printed beside the successes so the inheritance
+        # decision has a measured size rather than an intuition.
+        ("inheritance_candidates", "OPEN: derived_from an element with statements"),
+        # Loss that stays on the retained source, counted rather than shrugged at.
+        ("sources_with_app_block", "app provenance left on the source"),
+        ("staged_ontology_nodes", "ontology terms staged with an empty node"),
+        ("references_quarantined", "QUARANTINED: references"),
+        ("statements_quarantined", "QUARANTINED: statements"),
+        ("statements_withheld_lost_anchor", "WITHHELD (anchor quarantined)"),
+        ("documents_appended", "documents appended"),
+    ]),
 ]
 
 

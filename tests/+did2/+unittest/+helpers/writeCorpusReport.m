@@ -176,6 +176,45 @@ if isfield(result, 'openminds_citations')
     report.openminds_citations = result.openminds_citations;
 end
 
+% `valid_interval_decompose` (TEAM DECISION 2026-08-11: `valid_interval` becomes
+% a boolean-valued `subject_statement`). PERSISTED FOR THE SAME REASON AS ITS
+% SIBLINGS -- and for this pass the reason is not generic. THE WHOLE CLASS
+% EXISTS SO THAT "THIS STRETCH IS BAD DATA" IS SAYABLE: did_v1 encoded validity
+% in the CLASS NAME, so invalidity was expressible only as absence, and
+% markgarbage's own author wrote the gap down (markgarbage.m:40). A pass that
+% measures that repair and whose counters nobody can read reproduces the same
+% defect one level up. Four reading instructions:
+%
+% (1) THE DENOMINATOR IS `sources_seen` BESIDE `epoch_documents_seen`. Every
+%     counter at 0 with `sources_seen` at 0 means "this corpus holds no
+%     markgarbage documents" -- true of all six at run 31327383671. That is a
+%     fact about the SAMPLE and NOT evidence the decompose works or does not.
+%     `sources_seen` non-zero with `intervals_decomposed` at 0 is the line worth
+%     looking at; the eight `refused_*` counters then say which reason.
+% (2) THAT ZERO IS ALSO HAZARD 1 LOOKING CORRECT. `ndi.app.markgarbage` is
+%     OPT-IN, so no document means the whole epoch is good data
+%     (markgarbage.m:172-176). A corpus with no sources MUST come out with
+%     `statements_emitted: 0` rather than with every epoch reclassified as
+%     unknown -- and no other instrument here can tell those two apart, because
+%     both are 0 quarantine and 0 orphans.
+% (3) `sources_fully_decomposed` IS A DELETION GATE, not a statistic. The
+%     `valid_interval` tombstone may be retired only when every source is fully
+%     decomposed AND `refused_total` is 0. The pass ADDS and never removes, so
+%     until then both representations coexist on purpose -- verify before
+%     delete, the rule `epochfiles_ingested` cost 2,484 quarantines for breaking.
+% (4) `split_anchor_intervals` IS A PREDICTION UNDER TEST and
+%     `inheritance_candidates` IS AN OPEN TEAM QUESTION WITH A SIZE. The first
+%     should stay 0 (CHANGE 5 measured that every markvalidinterval call site
+%     passes one reference for both ends); the second counts the subjects NDI's
+%     `underlying_element` fallback serves, which is the number the inheritance
+%     decision needs and which nothing else in this repo computes.
+%
+% Written UNCONDITIONALLY with whatever the pass left, `pass_failed` included,
+% so a failed pass is a field rather than an absence.
+if isfield(result, 'valid_interval_decompose')
+    report.valid_interval_decompose = result.valid_interval_decompose;
+end
+
 fid = fopen(reportPath, 'w');
 if fid < 0
     error('did2:test:reportWriteFailed', ...
