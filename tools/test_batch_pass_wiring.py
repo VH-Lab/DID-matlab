@@ -237,8 +237,34 @@ def test_every_pass_report_is_persisted_into_the_corpus_report():
             print("  %-30s PERSISTED as `%s`" % (name, key))
         else:
             print("  %-30s -- NOT PERSISTED -- (`%s`)" % (name, key))
-            missing.append("%s's report key `%s` is not copied by writeCorpusReport"
-                           % (name, key))
+            # HAND OVER THE BLOCK, DO NOT JUST NAME THE SIN.
+            #
+            # This check fired twice in one hour on 2026-08-11, for two
+            # different passes written by two different people, and both times
+            # the cost was a full CI round trip spent discovering that
+            # writeCorpusReport.m exists and what its entries look like. The
+            # check was right both times; the MESSAGE was the expensive part.
+            #
+            # The enumeration in writeCorpusReport.m is deliberately NOT a
+            # generic copy-everything loop: each entry carries a written reason
+            # for why that report belongs in the record, and several of those
+            # comments are the only place a reader is told how to interpret a
+            # zero. Replacing them with a loop would trade seven pieces of
+            # documentation for two round trips. So the enumeration stays, and
+            # instead the failure prints exactly what to add -- leaving the
+            # author only the part a machine cannot write, which is the reason.
+            missing.append(
+                "%s's report key `%s` is not copied by writeCorpusReport.\n"
+                "      ADD TO %s, beside its siblings:\n\n"
+                "          %% `%s` (<who decided it, when>). PERSISTED BECAUSE\n"
+                "          %% <why these counters belong in the record -- and, if a\n"
+                "          %% zero here is ambiguous, WHICH denominator tells the\n"
+                "          %% two readings apart. That sentence is the whole point\n"
+                "          %% of this block; the two lines below are mechanical.>\n"
+                "          if isfield(result, '%s')\n"
+                "              report.%s = result.%s;\n"
+                "          end\n"
+                % (name, key, REPORT_WRITER, key, key, key, key))
     assert not missing, "\n  ".join(["unpersisted batch post-pass report(s):"] + missing)
 
 
