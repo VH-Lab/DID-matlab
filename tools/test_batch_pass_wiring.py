@@ -138,28 +138,29 @@ NO_REPORT_YET = {
 #       (session_id, local_identifier, epoch_document_id) index -- so there is
 #       no number for a row to print. Rendering them needs a table renderer,
 #       which is a different change with a different owner.
-#   epoch_mint.documents_with_epoch_id / .strings_declined /
-#   .strings_declined_distinct
-#       REAL COUNTERS, REALLY NOT RENDERED. epochMint's own header says a
-#       declined string should be "a number in strings_by_source /
-#       strings_declined rather than" a silence -- and that number does not
-#       reach the digest today.
-#   valid_interval_decompose.anchor_session_from_timeref / _from_document /
-#   method_from_app_block / method_from_class_default
-#       REAL COUNTERS, REALLY NOT RENDERED. They record WHERE a value came
-#       from, which is the provenance half of that pass's report.
+#   openminds_citations.withheld_reasons
+#       NOT A COUNTER either, and for the same reason: it is a CELL ARRAY of
+#       one reason string per withheld component, so there is no number for a
+#       row to print and the cross-corpus rollup could not sum it. It is not
+#       invisible -- census_digest's openminds_citations reading block prints
+#       every reason verbatim under the *** WITHHELD banner -- but it is not a
+#       ROW, and this list is the register of what the row sweep does not
+#       cover. `components_withheld` is the number.
 #
-# Closing either group is a digest change, not a pass change, and is out of
-# scope for the change that added this gate. Recording it is not.
+# WHAT CAME OFF THIS LIST, 2026-08-11, and it came off by being rendered rather
+# than by being reclassified:
+#   epoch_mint.documents_with_epoch_id / .strings_declined /
+#   .strings_declined_distinct           -> rows in POST_PASSES
+#   valid_interval_decompose.anchor_session_from_timeref / _from_document /
+#   .method_from_app_block / .method_from_class_default   -> rows in POST_PASSES
+# Seven real counters that reached the artifact and stopped there. The debt
+# list shrank; it did not get a longer set of excuses.
 NOT_RENDERED_YET = {
     "epoch_mint": {
         "strings_by_source", "epoch_index",
-        "documents_with_epoch_id", "strings_declined",
-        "strings_declined_distinct",
     },
-    "valid_interval_decompose": {
-        "anchor_session_from_timeref", "anchor_session_from_document",
-        "method_from_app_block", "method_from_class_default",
+    "openminds_citations": {
+        "withheld_reasons",
     },
 }
 

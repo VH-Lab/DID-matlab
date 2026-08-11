@@ -76,11 +76,80 @@ def aslist(v):
 #
 # (field-in-report, MATLAB function, [(report key, label), ...] to print)
 POST_PASSES = [
+    # TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
+    # graph into the entity tier, rather than accept the loss or require a
+    # metadata_editor document.
+    #
+    # READ `openminds_documents_seen` FIRST. It is the denominator and it is
+    # ROUTINELY 0: the pass's own header records corpus run 31441923369 as 1
+    # graph-without-editor, 1 editor-without-graph and 4 NEITHER, so four of six
+    # corpora can produce an entirely zero block that says nothing whatever
+    # about whether the assembly works. The METADATA TIER section above counts
+    # the same class from the v1 SOURCE census and is the place to look when
+    # this is 0.
+    #
+    # TWO SUMS HOLD BY CONSTRUCTION and are the cheapest defect check here:
+    #     components_seen  == planned + without_dataset_version
+    #     components_planned == consumed + withheld + reverted_on_validation
+    # Every component takes exactly one of those exits (resolveOpenmindsCitations
+    # .m:380-455), so a violation is a counter that stopped being incremented,
+    # not a corpus fact.
+    ("openminds_citations", "did2.convert.resolveOpenmindsCitations", [
+        ("documents_inspected", "documents inspected"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("openminds_documents_seen", "`openminds` documents  <- THE DENOMINATOR"),
+        ("openminds_components_seen", "connected components of them"),
+        ("dataset_versions_seen", "DatasetVersion roots seen"),
+        ("dataset_versions_superseded_by_newer", "  superseded by a newer root"),
+        ("components_without_dataset_version", "components with NO root (untouched)"),
+        ("components_planned", "components PLANNED"),
+        ("components_consumed", "  CONSUMED"),
+        ("components_withheld", "  WITHHELD (orphan guard)"),
+        ("components_reverted_on_validation", "  REVERTED (a body failed validation)"),
+        # A DOCUMENT count, not a component count. One component is typically
+        # many documents (a person alone is five), so this must not be read
+        # beside the component rows as though they shared a unit.
+        ("documents_consumed", "source DOCUMENTS consumed (not components)"),
+        ("datasets_emitted", "dataset entities emitted"),
+        ("persons_emitted", "person entities emitted"),
+        ("persons_id_preserved", "  with the source id preserved"),
+        ("organizations_emitted", "organization entities emitted (deduped by name)"),
+        ("organizations_id_preserved", "  with the source id preserved"),
+        ("funding_emitted", "funding entities emitted"),
+        ("funding_slots_empty_skipped", "  empty funding slots skipped"),
+        ("publications_emitted", "publication entities emitted"),
+        ("publications_without_doi_skipped", "  skipped: no DOI in the graph"),
+        ("web_resources_emitted", "web_resource entities emitted"),
+        ("web_resources_from_iri", "  fullDocumentation from a WebResource IRI"),
+        ("web_resources_from_doi", "  fullDocumentation from a DOI identifier"),
+        # TERMS inside one dataset entity, not documents. Labelled because the
+        # rows around it are document counts and nothing else says so.
+        ("experimental_approach_terms_emitted", "experimental_approach TERMS (not documents)"),
+        ("relations_emitted", "directed_relation documents emitted"),
+        # THE LOSSES, WITH NUMBERS ON THEM. Consumed because leaving them would
+        # dangle an `openminds_#` edge; not emitted because the entity tier has
+        # nowhere to put them. Counted rather than shrugged at, per the brief.
+        ("affiliations_beyond_first_dropped", "LOSSY: affiliations after the first"),
+        ("contribution_documents_consumed_without_a_home", "LOSSY: Contribution role documents"),
+        ("data_type_documents_consumed_without_a_home", "LOSSY: SemanticDataType documents"),
+        ("technique_documents_consumed_without_a_home", "LOSSY: technique documents"),
+        ("bodies_quarantined", "QUARANTINED bodies"),
+        ("documents_appended", "documents appended"),
+    ]),
     ("epoch_mint", "did2.convert.epochMint", [
         ("documents_inspected", "documents inspected"),
         ("documents_unreadable", "UNREADABLE"),
         ("session_documents_seen", "session documents"),
+        # THE THREE THAT REACHED THE ARTIFACT AND NOT THE SCREEN until
+        # 2026-08-11. `strings_declined` is the one epochMint's own header asks
+        # for by name: did2.validate.epochStrings names every source it reads
+        # AND every source it declines, so a reader whose source is not wired
+        # in "is a number in strings_by_source / strings_declined rather than"
+        # a silence -- and that number was not being printed.
+        ("documents_with_epoch_id", "documents carrying an epoch string"),
         ("epoch_strings_read", "epoch strings read"),
+        ("strings_declined", "  strings DECLINED by the reader"),
+        ("strings_declined_distinct", "  distinct declined strings"),
         ("distinct_epoch_id_strings", "distinct id strings"),
         ("distinct_session_epoch_pairs", "distinct (session,id) pairs"),
         ("pairs_minus_strings", "epochs the string key would have FUSED"),
@@ -131,6 +200,141 @@ POST_PASSES = [
         ("refused_malformed_extent", "  extent is not a duration cell"),
         ("refused_extent_without_start", "  an `end` with no readable `start`"),
         ("fold_quarantined", "QUARANTINED by the fold"),
+    ]),
+    # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
+    # five run knobs move inline onto the harmonic_component_calculation leaf
+    # and `method_parameters_id` is dropped, because the schema says a statement
+    # carries the inline field OR the edge, never both.
+    #
+    # READ `leaves_seen` AND `suppressed_responses_seen` AS A PAIR, ALWAYS.
+    # `leaves_seen: 0` alone is ambiguous and the pass was built so that it does
+    # not have to be:
+    #     0 leaves, 0 suppressed   this corpus has no stimulus responses.
+    #     0 leaves, N suppressed   BLOCKED UPSTREAM. +migrators_j/
+    #                              stimulus_response_scalar.m's epoch gate
+    #                              suppresses the fold whenever the v1 body has
+    #                              an `element_epochid` string and jEpochDocId
+    #                              answers '' -- which is every did_v1 document
+    #                              by construction -- so pass 1 emits no leaf at
+    #                              all until #60 stamps the epoch_id edge. This
+    #                              is the EXPECTED reading today.
+    #     N leaves, 0 inlined      a real defect in resolveResponseParameters,
+    #                              unless refused_total accounts for all of them.
+    #
+    # IT DELETES NOTHING, AND THAT IS THE GATE RATHER THAN AN OMISSION. The
+    # three `parameters_documents_*` rows ARE the verify-before-delete
+    # measurement the plan requires before 11,440 documents may go; they are
+    # EVIDENCE, never authorisation, and the corpora are a SAMPLE.
+    ("response_parameters_fold", "did2.convert.resolveResponseParameters", [
+        ("documents_inspected", "documents inspected"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("leaves_seen", "harmonic_component_calculation leaves  <- DENOMINATOR"),
+        ("leaves_with_edge", "  carrying method_parameters_id"),
+        ("leaves_without_edge", "  no such edge (complete as they stand)"),
+        ("suppressed_responses_seen", "v1 responses STILL SUPPRESSED by the epoch gate"),
+        ("parameters_documents_seen", "parameters documents  <- DELETION DENOMINATOR"),
+        ("inlined", "INLINED"),
+        # A FIELD-VALUE count, not a document count: one leaf contributes up to
+        # five. It must not be read down the same column as `inlined`.
+        ("fields_copied", "  field VALUES copied (cells, not documents)"),
+        ("harmonic_checked", "freq_response cross-checked against value.harmonic"),
+        ("harmonic_uncheckable", "  not checkable (one side unreadable)"),
+        ("refused_total", "REFUSED (total)"),
+        ("refused_not_in_batch", "  referent not in this batch"),
+        ("refused_ambiguous", "  two documents claim that id"),
+        ("refused_wrong_class", "  referent is the wrong class"),
+        ("refused_no_fields", "  none of the five knobs present"),
+        ("refused_inline_present", "  the leaf already carries inline parameters"),
+        ("refused_harmonic_mismatch", "  freq_response ~= value.harmonic"),
+        ("fold_quarantined", "QUARANTINED by the fold"),
+        ("parameters_documents_referenced_after", "DELETION GATE: still referenced after"),
+        ("parameters_documents_unreferenced_after", "  UNREFERENCED after (evidence only)"),
+        # 0 by construction -- this pass never deletes. Printed anyway, because
+        # the gate it measures is a gate to delete 11,440 documents and a
+        # non-zero here would mean the pass pre-empted the team's decision.
+        ("parameters_documents_deleted", "parameters documents DELETED (0 by construction)"),
+    ]),
+    # TEAM DECISION 2026-08-11 (two of them): "each lawn can be a subject and a
+    # plate of lawns is another subject where each lawn is a member of it", and
+    # "each experiment #, plate #, and patch # combo should be unique and should
+    # dictate the local identifier for all patches. None should be labeled just
+    # patch #".
+    #
+    # READ `ontology_table_rows_seen` FIRST, THEN THE THREE `*_rows_seen`.
+    # The six tables this pass recognises are written by ONE converter --
+    # NDI origin/main +setup/+conv/+haley/doImport.m -- so a corpus not built by
+    # it recognises nothing and every row below is vacuous. That is a fact about
+    # the SAMPLE, not about the pass.
+    #
+    # UNITS DIFFER DOWN THIS BLOCK AND ARE NAMED ON EACH ROW. Rows, sessions,
+    # COLUMNS, subjects, observations, edges and handles all appear; none of the
+    # groups is summable with another and the column invites exactly that.
+    #
+    # THE PARTITIONS THAT HOLD BY CONSTRUCTION (resolveLawnPlateSubjects.m:
+    # 561-592, one exit per row):
+    #     plate_rows_seen == with_measurements + values_but_none_emittable
+    #                                          + no_values_at_all
+    #     lawn_rows_seen  == the same three lawn rows
+    # A violation is a counter that stopped moving, not a corpus fact.
+    ("lawn_plate_subjects", "did2.convert.resolveLawnPlateSubjects", [
+        ("documents_inspected", "documents inspected"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("ontology_table_rows_seen", "ontology_table_row documents  <- DENOMINATOR"),
+        ("plate_rows_seen", "  PLATE rows recognised"),
+        ("image_rows_seen", "  IMAGE rows recognised (a join table, no subject)"),
+        ("lawn_rows_seen", "  LAWN rows recognised"),
+        ("exp_id_source_rows_seen", "  rows feeding the plate->expID index"),
+        ("sessions_with_lawn_plate_tables", "SESSIONS holding any of those"),
+        ("unclassified_rows_in_those_sessions", "SPELLING CANARY: unclassified ROWS in them"),
+        # COLUMNS, summed over rows -- one row contributes as many as it matches.
+        ("columns_resolved_by_key", "COLUMNS matched by key (not rows)"),
+        ("columns_resolved_by_term_name", "COLUMNS matched by term name (not rows)"),
+        ("plate_rows_with_measurements", "PLATE tier: rows with typed measurements"),
+        ("plate_rows_with_values_but_none_emittable", "  rows with values, none emittable"),
+        ("plate_rows_with_no_values_at_all", "  rows with no values at all"),
+        ("plate_rows_refused_no_session_id", "  refused: no base.session_id"),
+        ("plate_rows_refused_no_plate_key", "  refused: no plate identifier column"),
+        ("plate_rows_refused_no_exp_id", "  refused: no expID"),
+        ("plate_subjects_minted", "  SUBJECTS minted"),
+        ("plate_observations_emitted", "  OBSERVATIONS emitted"),
+        ("lawn_rows_with_measurements", "LAWN tier: rows with typed measurements"),
+        ("lawn_rows_with_values_but_none_emittable", "  rows with values, none emittable"),
+        ("lawn_rows_with_no_values_at_all", "  rows with no values at all"),
+        ("lawn_rows_refused_no_session_id", "  refused: no base.session_id"),
+        ("lawn_rows_refused_no_identity_keys", "  refused: no image/patch identifier"),
+        ("lawn_subjects_minted", "  SUBJECTS minted"),
+        ("lawn_observations_emitted", "  OBSERVATIONS emitted"),
+        ("chains_attempted", "CHAIN patch->image->plate->expID: attempted"),
+        ("chains_resolved", "  RESOLVED"),
+        ("refused_no_image_row", "  refused: no image row"),
+        ("refused_image_row_ambiguous", "  refused: two image rows claim the key"),
+        ("refused_image_row_has_no_plate_key", "  refused: image row has no plateID"),
+        ("refused_no_plate_row", "  refused: no plate row"),
+        ("refused_plate_row_ambiguous", "  refused: two plate rows claim the key"),
+        ("refused_lawn_no_exp_id", "  refused: no expID for that plate"),
+        ("member_of_relations_emitted", "  member_of EDGES emitted (edges, not rows)"),
+        ("withheld_plate_tier_not_minted", "  edge withheld: plate tier not minted"),
+        ("withheld_lawn_tier_not_minted", "  edge withheld: lawn tier not minted"),
+        # EXCLUDES the C. elegans relabel refusals below -- totalRefusals()
+        # (resolveLawnPlateSubjects.m:1305-1317) sums eleven counters and none
+        # of them is a `celegans_*` one. Said on the row because a reader
+        # totalling the block by eye would put them together.
+        ("refused_total", "REFUSED (total; EXCLUDES the C. elegans relabel)"),
+        ("celegans_patch_subjects_seen", "C. ELEGANS relabel: patch subjects seen"),
+        ("celegans_patch_subjects_relabelled", "  relabelled to the triple"),
+        ("celegans_patch_subjects_already_triple", "  already a triple"),
+        ("celegans_patch_subjects_refused_no_exp_id", "  left as a pair: no expID"),
+        ("celegans_patch_subjects_refused_ambiguous_exp_id", "  left as a pair: ambiguous expID"),
+        ("celegans_patch_subjects_unparseable_handle", "  unparseable handle"),
+        ("celegans_patch_relabel_quarantined", "  QUARANTINED by the relabel"),
+        ("local_identifier_fallback_to_document_id", "HANDLES that fell back to the document id"),
+        ("local_identifier_collisions_within_batch", "HANDLE COLLISIONS within the batch"),
+        ("subjects_quarantined", "QUARANTINED: subjects"),
+        ("statements_quarantined", "QUARANTINED: observations + member_of"),
+        ("documents_appended", "documents appended"),
+        # NOT consumed, deliberately: the typed measures are stored twice until
+        # a separate verify-before-delete step says otherwise.
+        ("source_rows_left_in_place", "source ROWS left in place (not consumed)"),
     ]),
     # TEAM DECISION 2026-08-11: generic_file -> opaque_body + a statement whose
     # `variable` comes from the sibling ontologyLabel.
@@ -206,6 +410,18 @@ POST_PASSES = [
         ("statements_emitted", "validity_observation emitted"),
         ("references_emitted", "relative_reference emitted"),
         ("split_anchor_intervals", "split-anchor intervals (expect 0)"),
+        # THE PROVENANCE HALF OF THIS REPORT, unrendered until 2026-08-11.
+        # Neither pair is a refusal and neither is a loss: each records WHERE a
+        # value came from, so "they agreed" and "we fell back" stay
+        # distinguishable. The timeref's session id is the AUTHORITATIVE one --
+        # it names the session the referent lives in -- and the document's
+        # base.session_id is the fallback (resolveValidIntervals.m:725-734).
+        ("anchor_session_from_timeref", "anchor session from the timeref (authoritative)"),
+        ("anchor_session_from_document", "  fell back to base.session_id"),
+        # The verb is a CONSTANT in both branches; what the branch records is
+        # the EVIDENCE for calling it curation (resolveValidIntervals.m:893-928).
+        ("method_from_app_block", "method: the source names a producer app"),
+        ("method_from_class_default", "  no app block -> the class default"),
         ("sources_fully_decomposed", "DELETION GATE: sources fully decomposed"),
         ("sources_partly_decomposed", "  sources only partly decomposed"),
         ("refused_total", "REFUSED (total)"),
@@ -939,6 +1155,12 @@ def render_post_passes(r, out):
         # when refused_total is 0 AND no session_*_reference survives in
         # by_class -- deleting a class whose documents still exist is the
         # epochfiles_ingested regression, which cost 2,484 quarantines.
+        if name == "openminds_citations":
+            _render_openminds_citations_reading(rep, p)
+        if name == "response_parameters_fold":
+            _render_response_parameters_reading(rep, p)
+        if name == "lawn_plate_subjects":
+            _render_lawn_plate_reading(rep, p)
         if name == "session_anchor_fold":
             _render_bounded_extent_reading(rep, p)
             survivors = 0
@@ -956,6 +1178,436 @@ def render_post_passes(r, out):
                   "are a SAMPLE, so this is")
                 p("             one corpus's evidence, not authorisation to "
                   "delete the classes.")
+
+
+def _reading_denominator(rep, key, label, p, when_absent, when_zero):
+    """Print a reading block's denominator FIRST, in the three states it has.
+
+    THE THREE STATES, and the first two both leave every counter in the block
+    reading `0`, which is why each has to be NAMED rather than left to the
+    reader. This is the same shape `_render_bounded_extent_reading` established
+    and the wording is deliberately reused rather than reinvented:
+
+      the counter is ABSENT   the report predates it. UNMEASURED, not zero.
+      the counter is 0        the block is VACUOUS: nothing reached the thing
+                              being counted. 'The rule could not fire', not
+                              'nothing was wrong'.
+      the counter is > 0      the numbers mean what they say.
+
+    Returns the int, or None when it is absent or unreadable.
+    """
+    if key not in rep:
+        p("          *** `%s` IS NOT IN THIS REPORT." % key)
+        for line in when_absent:
+            p("          *** %s" % line)
+        p("          *** The quantity is UNMEASURED here. It is not zero.")
+        return None
+    value = _int_or_none(rep.get(key))
+    if value is None:
+        p("          *** `%s` is not a number, so the rows above cannot be"
+          % key)
+        p("          *** read. Treat this block as UNMEASURED.")
+        return None
+    p("          DENOMINATOR: %d %s" % (value, label))
+    if value == 0:
+        for line in when_zero:
+            p("          *** %s" % line)
+    return value
+
+
+def _render_openminds_citations_reading(rep, p):
+    """Say out loud how the openMINDS citation counters should be read.
+
+    Every sentence here is derived from resolveOpenmindsCitations.m and its
+    tests. Where the source did not settle a question, the block says so
+    rather than filling the slot.
+    """
+    p("          THE CITATION ASSEMBLY -- the reading of the rows above")
+    seen = _reading_denominator(
+        rep, "openminds_documents_seen",
+        "`openminds` document(s) in the migrated batch", p,
+        when_absent=[
+            "The pass landed 2026-08-11, so a report from before then carries",
+            "no counter of any kind for it.",
+        ],
+        when_zero=[
+            "This corpus holds no openMINDS graph store, so there was nothing",
+            "to assemble and EVERY counter above is VACUOUS. That is a fact",
+            "about the SAMPLE: the pass's own header records corpus run",
+            "31441923369 as 1 graph-without-editor, 1 editor-without-graph and",
+            "4 NEITHER. It is not evidence the assembly works or does not.",
+            "The METADATA TIER section above counts the same class from the v1",
+            "SOURCE census and is the place to look when this is 0.",
+        ])
+    if not seen:
+        return
+
+    # TWO SUMS THAT HOLD BY CONSTRUCTION. Checked rather than asserted in a
+    # comment, because a counter that stops moving is exactly how a pass goes
+    # quiet while still printing numbers.
+    comps = _int_or_none(rep.get("openminds_components_seen"))
+    planned = _int_or_none(rep.get("components_planned"))
+    noroot = _int_or_none(rep.get("components_without_dataset_version"))
+    consumed = _int_or_none(rep.get("components_consumed"))
+    withheld = _int_or_none(rep.get("components_withheld"))
+    reverted = _int_or_none(rep.get("components_reverted_on_validation"))
+    if None not in (comps, planned, noroot) and comps != planned + noroot:
+        p("          *** components_seen (%d) != planned (%d) + no-root (%d)."
+          % (comps, planned, noroot))
+        p("          *** Every component takes exactly one of those exits, so")
+        p("          *** this is a counter that stopped being incremented.")
+    if None not in (planned, consumed, withheld, reverted) \
+            and planned != consumed + withheld + reverted:
+        p("          *** planned (%d) != consumed (%d) + withheld (%d) +"
+          % (planned, consumed, withheld))
+        p("          *** reverted (%d). Same reading: a defect in the pass's"
+          % reverted)
+        p("          *** bookkeeping, not a fact about this corpus.")
+
+    if withheld:
+        p("          *** %d component(s) WITHHELD by the orphan guard. Nothing"
+          % withheld)
+        p("          *** was consumed and nothing emitted for them: the corpus")
+        p("          *** is exactly as pass 1 left it, which is the state it is")
+        p("          *** green in. This is a FINDING, not a passthrough")
+        p("          *** statistic -- a SURVIVING document references something")
+        p("          *** the plan wanted to consume, and consuming it would")
+        p("          *** have dangled that document's `openminds_#` edge.")
+        reasons = aslist(rep.get("withheld_reasons"))
+        if reasons:
+            for reason in reasons:
+                p("          ***   %s" % reason)
+        else:
+            p("          ***   (no reason strings in this report -- the pass")
+            p("          ***    records one per withheld component, so their")
+            p("          ***    absence here is itself worth chasing.)")
+    if reverted:
+        p("          *** %d component(s) REVERTED ON VALIDATION. A body this"
+          % reverted)
+        p("          *** pass BUILT failed to validate, so the whole component")
+        p("          *** was rolled back -- nothing appended, nothing consumed.")
+        p("          *** That is a defect in the build, not in the corpus, and")
+        p("          *** `bodies_quarantined` counts the failing bodies.")
+
+    datasets = _int_or_none(rep.get("datasets_emitted"))
+    if None not in (datasets, consumed) and datasets != consumed:
+        p("          *** datasets_emitted (%d) != components_consumed (%d)."
+          % (datasets, consumed))
+        p("          *** buildComponent emits exactly one `dataset` per")
+        p("          *** consumed component, so these must agree.")
+
+    persons = _int_or_none(rep.get("persons_emitted"))
+    p_pres = _int_or_none(rep.get("persons_id_preserved"))
+    if None not in (persons, p_pres) and persons != p_pres:
+        p("          *** persons_emitted (%d) != persons_id_preserved (%d),"
+          % (persons, p_pres))
+        p("          *** which cannot happen as the pass is written: a Person")
+        p("          *** with no readable base.id is skipped BEFORE either")
+        p("          *** counter moves. Read this as the pass having changed,")
+        p("          *** and this block's account of it as stale.")
+    orgs = _int_or_none(rep.get("organizations_emitted"))
+    o_pres = _int_or_none(rep.get("organizations_id_preserved"))
+    if None not in (orgs, o_pres) and orgs > o_pres:
+        p("          %8d  organization(s) got a FRESH id rather than the"
+          % (orgs - o_pres))
+        p("                    source document's -- that is what an openMINDS")
+        p("                    Organization with no readable base.id produces.")
+        p("                    Not a loss; the entity is still emitted and")
+        p("                    every relation points at the id it was given.")
+
+    wr = _int_or_none(rep.get("web_resources_emitted"))
+    iri = _int_or_none(rep.get("web_resources_from_iri"))
+    doi = _int_or_none(rep.get("web_resources_from_doi"))
+    if None not in (wr, iri, doi) and iri + doi > wr:
+        p("          *** %d fullDocumentation reference(s) were CLASSIFIED"
+          % (iri + doi - wr))
+        p("          *** (IRI or DOI) and then not emitted, which happens only")
+        p("          *** when the source document has no readable base.id. No")
+        p("          *** counter of its own names that case; the difference")
+        p("          *** between these rows is the only place it shows.")
+
+    consumed_docs = _int_or_none(rep.get("documents_consumed"))
+    appended = _int_or_none(rep.get("documents_appended"))
+    if None not in (consumed_docs, appended):
+        p("          %8d  source document(s) consumed -> %d appended. A LARGE"
+          % (consumed_docs, appended))
+        p("                    DROP HERE IS EXPECTED AND IS NOT LOSS: one")
+        p("                    `person` is assembled from five openMINDS")
+        p("                    documents (Person + Affiliation + Organization")
+        p("                    + ORCID + ContactInformation).")
+
+    lossy = ("affiliations_beyond_first_dropped",
+             "contribution_documents_consumed_without_a_home",
+             "data_type_documents_consumed_without_a_home",
+             "technique_documents_consumed_without_a_home")
+    if all(k in rep for k in lossy):
+        total = sum(_int_or_none(rep.get(k)) or 0 for k in lossy)
+        p("          %8d  thing(s) consumed with NOWHERE TO PUT THEM (the four"
+          % total)
+        p("                    LOSSY rows summed). Author ORDER survives as")
+        p("                    `sequence`; the ROLE does not, because `person`")
+        p("                    has no role field. This is real loss with a")
+        p("                    number on it, and `affiliations_beyond_first_")
+        p("                    dropped` is the size of an OPEN team question,")
+        p("                    not a defect.")
+
+
+def _render_response_parameters_reading(rep, p):
+    """Say out loud how the #61 resolver's counters should be read.
+
+    THE PAIR IS THE POINT. `leaves_seen: 0` alone is three different findings
+    and the pass was built so that the report separates them; a block that
+    printed the rows and left the pairing to the reader would put them back
+    together.
+    """
+    p("          THE STIMULUS-RESPONSE FOLD -- the reading of the rows above")
+    leaves = _reading_denominator(
+        rep, "leaves_seen",
+        "harmonic_component_calculation leaf/leaves in the batch", p,
+        when_absent=[
+            "The pass landed 2026-08-11, so a report from before then carries",
+            "no counter of any kind for it.",
+        ],
+        when_zero=[
+            "No leaf reached the fold, so every INLINE and REFUSAL counter",
+            "above is VACUOUS. Read `suppressed_responses_seen` next -- it is",
+            "measured independently of the leaves and is NOT vacuous.",
+        ])
+    if leaves is None:
+        return
+
+    with_edge = _int_or_none(rep.get("leaves_with_edge"))
+    without = _int_or_none(rep.get("leaves_without_edge"))
+    if None not in (with_edge, without) and with_edge + without != leaves:
+        p("          *** leaves_with_edge (%d) + leaves_without_edge (%d) !="
+          % (with_edge, without))
+        p("          *** leaves_seen (%d). Every leaf takes one of those two"
+          % leaves)
+        p("          *** exits, so this is a counter that stopped moving.")
+
+    suppressed = _int_or_none(rep.get("suppressed_responses_seen"))
+    if leaves == 0:
+        if suppressed is None:
+            p("          *** `suppressed_responses_seen` is absent, so the ONE")
+            p("          *** reading that distinguishes 'this corpus has no")
+            p("          *** responses' from 'pass 1 suppressed every fold' is")
+            p("          *** UNMEASURED. A bare 0 here means neither.")
+        elif suppressed > 0:
+            p("          *** BLOCKED UPSTREAM, AND THIS IS THE EXPECTED READING")
+            p("          *** TODAY. %d v1 `stimulus_response_scalar` document(s)"
+              % suppressed)
+            p("          *** passed through UNFOLDED because +migrators_j/")
+            p("          *** stimulus_response_scalar.m's epoch gate suppresses")
+            p("          *** the fold whenever the v1 body has an")
+            p("          *** `element_epochid` string and jEpochDocId answers ''")
+            p("          *** -- which is every did_v1 document by construction.")
+            p("          *** #60 stamping the epoch_id edge is what opens it.")
+            p("          *** This is NOT 'nothing to do'.")
+        else:
+            p("          *** 0 leaves beside 0 suppressed response(s): this")
+            p("          *** corpus holds no stimulus responses at all. A")
+            p("          *** different fact from the blocked-upstream reading,")
+            p("          *** and the two rows exist to keep them apart.")
+    else:
+        inlined = _int_or_none(rep.get("inlined"))
+        refused = _int_or_none(rep.get("refused_total"))
+        quar = _int_or_none(rep.get("fold_quarantined"))
+        if inlined == 0 and refused == 0:
+            p("          *** %d leaf/leaves seen and NOTHING inlined or refused."
+              % leaves)
+            p("          *** That is a real defect in resolveResponseParameters,")
+            p("          *** not a corpus fact: a leaf either folds or is")
+            p("          *** refused with a reason.")
+        if None not in (with_edge, inlined, refused, quar):
+            residual = with_edge - inlined - refused - quar
+            if residual:
+                p("          *** %d leaf/leaves with an edge neither inlined,"
+                  % residual)
+                p("          *** refused nor quarantined. The pass matches its")
+                p("          *** rebuilt bodies back by base.id, so a residual")
+                p("          *** here means an id did not come back -- unaccounted")
+                p("          *** for, and it should be 0.")
+
+    mismatch = _int_or_none(rep.get("refused_harmonic_mismatch"))
+    if mismatch:
+        p("          *** %d refusal(s) for freq_response ~= value.harmonic. THIS"
+          % mismatch)
+        p("          *** IS THE ALARMING ROW OF THE BLOCK. The migrator derives")
+        p("          *** the leaf's harmonic from the same field this pass then")
+        p("          *** checks, so a disagreement means that writer-derived")
+        p("          *** identity has broken somewhere. The fold refuses rather")
+        p("          *** than picking a winner, so nothing is lost -- but the")
+        p("          *** cause is worth finding before it is read as noise.")
+
+    # THE DELETION GATE. Rendered whether or not anything folded, because it is
+    # measured over the whole batch and is the number a deletion decision would
+    # be quoted from.
+    seen = _int_or_none(rep.get("parameters_documents_seen"))
+    ref_after = _int_or_none(rep.get("parameters_documents_referenced_after"))
+    unref = _int_or_none(rep.get("parameters_documents_unreferenced_after"))
+    deleted = _int_or_none(rep.get("parameters_documents_deleted"))
+    if seen is None:
+        p("          *** the deletion-gate denominator is absent, so the")
+        p("          *** referenced/unreferenced rows cannot be read.")
+        return
+    p("          DELETION GATE: %d parameters document(s) in this batch" % seen)
+    if seen == 0:
+        p("          *** 0 seen -- the referenced/unreferenced rows above are")
+        p("          *** VACUOUS. Nothing here bears on whether the class may")
+        p("          *** be retired.")
+    elif None not in (ref_after, unref) and ref_after + unref != seen:
+        p("          *** referenced (%d) + unreferenced (%d) != seen (%d). The"
+          % (ref_after, unref, seen))
+        p("          *** walk classifies every parameters document exactly")
+        p("          *** once, so this is a counter that stopped moving.")
+    elif unref is not None:
+        p("          %8d  unreferenced after the fold. This is EVIDENCE for the"
+          % unref)
+        p("                    verify-before-delete gate and NEVER authorisation:")
+        p("                    the corpora are a SAMPLE, and it is computed by")
+        p("                    walking every edge of every document rather than")
+        p("                    by assuming this pass removed the only referent.")
+    if deleted:
+        p("          *** parameters_documents_deleted is %d and MUST be 0. This"
+          % deleted)
+        p("          *** pass deletes nothing by construction; a non-zero means")
+        p("          *** it has pre-empted a decision that is the team's.")
+
+
+def _render_lawn_plate_reading(rep, p):
+    """Say out loud how the lawn/plate subject counters should be read."""
+    p("          THE TWO-TIER SUBJECTS -- the reading of the rows above")
+    rows = _reading_denominator(
+        rep, "ontology_table_rows_seen",
+        "ontology_table_row document(s) in the batch", p,
+        when_absent=[
+            "The pass landed 2026-08-11, so a report from before then carries",
+            "no counter of any kind for it.",
+        ],
+        when_zero=[
+            "This corpus holds no ontology_table_row at all, so every counter",
+            "above is VACUOUS -- including the spelling canary, which cannot",
+            "fire without a recognised table to anchor it.",
+        ])
+    if not rows:
+        return
+
+    plate = _int_or_none(rep.get("plate_rows_seen")) or 0
+    image = _int_or_none(rep.get("image_rows_seen")) or 0
+    lawn = _int_or_none(rep.get("lawn_rows_seen")) or 0
+    unclassified = _int_or_none(rep.get("unclassified_rows_in_those_sessions"))
+    recognised = plate + image + lawn
+    p("          %8d  of them recognised as a plate/image/lawn table"
+      % recognised)
+    if recognised == 0:
+        p("          *** NOTHING RECOGNISED, AND THIS READING IS AMBIGUOUS BY")
+        p("          *** CONSTRUCTION -- SAY SO RATHER THAN CALLING IT CLEAN.")
+        p("          *** The six tables are written by ONE converter (NDI")
+        p("          *** origin/main +setup/+conv/+haley/doImport.m), so a")
+        p("          *** corpus not built by it recognises none, and that is")
+        p("          *** the benign reading. BUT the spelling canary counts")
+        p("          *** unclassified rows only in SESSIONS WHERE SOMETHING WAS")
+        p("          *** RECOGNISED, so a column-token rule that is wrong")
+        p("          *** EVERYWHERE forces it to 0 too and produces this exact")
+        p("          *** output. The canary detects a PARTIALLY wrong rule; it")
+        p("          *** cannot detect a wholly wrong one. Nothing in this")
+        p("          *** report separates those two -- do not read this block")
+        p("          *** as evidence the token rule works.")
+        return
+    if unclassified is None:
+        p("          *** the spelling canary counter is absent, so whether the")
+        p("          *** column-token rule matched everything it should have is")
+        p("          *** UNMEASURED in this report.")
+    elif unclassified > recognised:
+        p("          *** SPELLING CANARY: %d unclassified row(s) beside %d"
+          % (unclassified, recognised))
+        p("          *** recognised, in the same sessions. That is what a WRONG")
+        p("          *** column-token rule looks like -- the pass matches")
+        p("          *** columns by a normalised term token because")
+        p("          *** ndi.ontology.lookup could not be evaluated where it was")
+        p("          *** written. Chase the tokens before reading any tier row")
+        p("          *** below as a corpus fact.")
+    else:
+        p("          %8d  unclassified row(s) in the same sessions (the"
+          % unclassified)
+        p("                    spelling canary; small beside %d recognised)"
+          % recognised)
+
+    # THE PER-TIER PARTITIONS. Each row takes exactly one of three exits.
+    for tier, seen_key, parts in (
+            ("plate", "plate_rows_seen",
+             ("plate_rows_with_measurements",
+              "plate_rows_with_values_but_none_emittable",
+              "plate_rows_with_no_values_at_all")),
+            ("lawn", "lawn_rows_seen",
+             ("lawn_rows_with_measurements",
+              "lawn_rows_with_values_but_none_emittable",
+              "lawn_rows_with_no_values_at_all"))):
+        seen = _int_or_none(rep.get(seen_key))
+        if seen is None or any(k not in rep for k in parts):
+            continue
+        total = sum(_int_or_none(rep.get(k)) or 0 for k in parts)
+        if total != seen:
+            p("          *** the three %s-row states sum to %d, not %s_rows_seen"
+              % (tier, total, tier))
+            p("          *** (%d). Every recognised row takes exactly one of"
+              % seen)
+            p("          *** them, so this is a counter that stopped moving.")
+
+    withheld_plate = _int_or_none(rep.get("withheld_plate_tier_not_minted")) or 0
+    withheld_lawn = _int_or_none(rep.get("withheld_lawn_tier_not_minted")) or 0
+    if withheld_plate or withheld_lawn:
+        p("          %8d  member_of edge(s) WITHHELD (%d plate tier, %d lawn"
+          % (withheld_plate + withheld_lawn, withheld_plate, withheld_lawn))
+        p("                    tier). THIS IS NOT A LOSS AND NOT A REFUSAL. The")
+        p("                    team's refinement makes a tier CONDITIONAL ON THE")
+        p("                    DATA -- \"it's only necessary to make all")
+        p("                    subjects if we take measurements of both\" -- so")
+        p("                    a tier with nothing measured about it warrants no")
+        p("                    subject, and an edge needs BOTH ends.")
+
+    collisions = _int_or_none(rep.get("local_identifier_collisions_within_batch"))
+    if collisions:
+        p("          *** %d HANDLE COLLISION(S). The team's directive asserts"
+          % collisions)
+        p("          *** the (experiment, plate, patch) combo is unique, and")
+        p("          *** this is that premise measured on real data rather than")
+        p("          *** assumed. A non-zero is a fact the TEAM needs; the pass")
+        p("          *** builds the identifier exactly as directed and does not")
+        p("          *** choose another scheme on its own.")
+    elif collisions == 0:
+        p("          %8d  handle collision(s) -- the directive's uniqueness"
+          % 0)
+        p("                    premise holds on THIS batch. The corpora are a")
+        p("                    SAMPLE.")
+
+    quar = [(k, _int_or_none(rep.get(k)) or 0) for k in
+            ("subjects_quarantined", "statements_quarantined",
+             "celegans_patch_relabel_quarantined") if k in rep]
+    if any(v for _k, v in quar):
+        p("          *** %s. A QUARANTINED SUBJECT TAKES ITS"
+          % ", ".join("%s=%d" % (k, v) for k, v in quar))
+        p("          *** OBSERVATIONS AND ITS member_of WITH IT: the pass emits")
+        p("          *** nothing that points at a body which did not survive")
+        p("          *** validation, so an observation count that looks short is")
+        p("          *** explained here rather than upstream.")
+
+    left = _int_or_none(rep.get("source_rows_left_in_place"))
+    if left is not None:
+        p("          %8d  source row(s) LEFT IN PLACE. This equals the three"
+          % left)
+        p("                    recognised-row counts by construction; it is the")
+        p("                    verify-before-delete denominator, not a second")
+        p("                    measurement. The typed measures are stored TWICE")
+        p("                    -- once as an observation, once in the source")
+        p("                    row's `data` block -- until a separate step")
+        p("                    consumes the rows.")
+
+    p("          NOTE `refused_total` EXCLUDES the C. elegans relabel rows: it")
+    p("          sums the eleven E. coli refusals only. The relabel is a")
+    p("          DIFFERENT POPULATION (patch subjects pass 1 already minted)")
+    p("          and its 'left as a pair' outcomes are not failures -- that")
+    p("          table never had an expID column to read.")
 
 
 def _render_bounded_extent_reading(rep, p):
@@ -1738,8 +2390,193 @@ def rollup_post_passes(reports, out):
             for key, absent_in in partial:
                 p("      ***   %-32s no such counter in: %s"
                   % (key, ", ".join(absent_in)))
+        if name == "openminds_citations":
+            _rollup_openminds_citations_reading(totals, key_missing_in,
+                                                carried, rows, reports, p)
+        if name == "response_parameters_fold":
+            _rollup_response_parameters_reading(totals, key_missing_in,
+                                                carried, p)
+        if name == "lawn_plate_subjects":
+            _rollup_lawn_plate_reading(totals, key_missing_in, carried, p)
         if name == "session_anchor_fold":
             _rollup_bounded_extent_reading(totals, key_missing_in, carried, p)
+
+
+def _rollup_denominator(totals, key_missing_in, carried, key, label, p,
+                        when_absent, when_zero):
+    """Cross-corpus denominator, in the SAME three states as the per-corpus one.
+
+    THE MIDDLE STATE IS THE ONE THIS PROJECT KEEPS PAYING FOR. A rollup that
+    reads 0 because no report carried the counter, and a rollup that reads 0
+    because the counter really was 0 everywhere, print identically unless the
+    first is named. A report contributing no counter has measured NOTHING; it
+    has not measured zero, and it is NAMED here rather than summed in.
+
+    Returns the total, or None when nothing carried it.
+    """
+    if key not in totals:
+        absent_in = key_missing_in.get(key) or []
+        p("      *** `%s` IS NOT CARRIED BY ANY OF THE %d REPORT(S) THAT RAN"
+          % (key, len(carried)))
+        p("      *** THE PASS%s."
+          % (" (absent in: %s)" % ", ".join(absent_in) if absent_in else ""))
+        for line in when_absent:
+            p("      *** %s" % line)
+        p("      *** That is UNMEASURED, and it is not the same as zero.")
+        return None
+    total = totals[key]
+    absent_in = key_missing_in.get(key) or []
+    p("      DENOMINATOR: %d %s across %d report(s)%s"
+      % (total, label, len(carried) - len(absent_in),
+         "; NOT CARRIED BY: %s" % ", ".join(absent_in) if absent_in else ""))
+    if total == 0:
+        for line in when_zero:
+            p("      *** %s" % line)
+    return total
+
+
+def _rollup_openminds_citations_reading(totals, key_missing_in, carried, rows,
+                                        reports, p):
+    """The cross-corpus reading of the citation assembly."""
+    p("      THE CITATION ASSEMBLY -- the reading of the totals above")
+    seen = _rollup_denominator(
+        totals, key_missing_in, carried, "openminds_documents_seen",
+        "`openminds` document(s)", p,
+        when_absent=["These counters landed 2026-08-11."],
+        when_zero=[
+            "No corpus in this run holds an openMINDS graph store, so every",
+            "total above is VACUOUS -- 'the assembly could not fire', not",
+            "'the assembly found nothing wrong'. The METADATA TIER rollup",
+            "above is where the graph-vs-editor split is actually measured.",
+        ])
+    if not seen:
+        return
+    consumed = totals.get("components_consumed", 0)
+    withheld = totals.get("components_withheld", 0)
+    reverted = totals.get("components_reverted_on_validation", 0)
+    p("      %8d  component(s) consumed, %d WITHHELD, %d REVERTED"
+      % (consumed, withheld, reverted))
+    if withheld or reverted:
+        # NAMED PER CORPUS. A component withheld in one corpus and consumed in
+        # five reads as healthy five times, which is the same trap the coverage
+        # line above exists for, one level down.
+        for field, label in (("components_withheld", "WITHHELD"),
+                             ("components_reverted_on_validation", "REVERTED")):
+            names = []
+            for i, r in enumerate(reports):
+                block = r.get("openminds_citations")
+                if not isinstance(block, dict):
+                    continue
+                try:
+                    if int(block.get(field) or 0) > 0:
+                        names.append(str(r.get("corpus") or "report #%d" % (i + 1)))
+                except (TypeError, ValueError):
+                    pass
+            if names:
+                p("      *** %s in: %s" % (label, ", ".join(names)))
+        p("      *** A withheld component leaves the corpus exactly as pass 1")
+        p("      *** left it; a reverted one means a body this pass BUILT")
+        p("      *** failed validation. The first is the orphan guard working,")
+        p("      *** the second is a defect in the build.")
+    if consumed == 0 and seen:
+        p("      *** %d `openminds` document(s) seen and NOT ONE component" % seen)
+        p("      *** consumed. Every one was either rootless, withheld or")
+        p("      *** reverted -- the emitted totals below are all 0 for that")
+        p("      *** reason and not because the graph was empty.")
+
+
+def _rollup_response_parameters_reading(totals, key_missing_in, carried, p):
+    """The cross-corpus reading of the #61 resolver."""
+    p("      THE STIMULUS-RESPONSE FOLD -- the reading of the totals above")
+    leaves = _rollup_denominator(
+        totals, key_missing_in, carried, "leaves_seen",
+        "harmonic_component_calculation leaf/leaves", p,
+        when_absent=["These counters landed 2026-08-11."],
+        when_zero=[
+            "No leaf reached the fold in any corpus, so every INLINE and",
+            "REFUSAL total above is VACUOUS. Read `suppressed_responses_seen`",
+            "next: it is measured independently and is NOT vacuous.",
+        ])
+    if leaves is None:
+        return
+    suppressed = totals.get("suppressed_responses_seen")
+    if leaves == 0:
+        if suppressed is None:
+            p("      *** and `suppressed_responses_seen` is carried by no report,")
+            p("      *** so the reading that would distinguish 'no responses'")
+            p("      *** from 'pass 1 suppressed every fold' is UNMEASURED.")
+        elif suppressed:
+            p("      *** %d v1 response(s) STILL SUPPRESSED across the run. The"
+              % suppressed)
+            p("      *** fold is BLOCKED UPSTREAM by pass 1's epoch gate, which")
+            p("      *** is the expected state until #60 lands. The zeros above")
+            p("      *** describe that gate, not this pass.")
+        else:
+            p("      *** 0 leaves beside 0 suppressed responses: no corpus in")
+            p("      *** this run holds stimulus responses at all.")
+    seen = totals.get("parameters_documents_seen")
+    unref = totals.get("parameters_documents_unreferenced_after")
+    if seen is None:
+        p("      *** the deletion-gate denominator is carried by no report, so")
+        p("      *** nothing here bears on retiring the parameters class.")
+        return
+    p("      DELETION GATE: %d parameters document(s) over %d report(s)"
+      % (seen, len(carried)))
+    if seen == 0:
+        p("      *** 0 seen -- the gate rows are VACUOUS in this run.")
+    elif unref is not None:
+        p("      %8d  unreferenced after the fold. EVIDENCE, NEVER" % unref)
+        p("                AUTHORISATION: the corpora are a SAMPLE, and a class")
+        p("                absent from the ones we test may be well represented")
+        p("                in a dataset still waiting to migrate.")
+
+
+def _rollup_lawn_plate_reading(totals, key_missing_in, carried, p):
+    """The cross-corpus reading of the two-tier subject mint."""
+    p("      THE TWO-TIER SUBJECTS -- the reading of the totals above")
+    rows = _rollup_denominator(
+        totals, key_missing_in, carried, "ontology_table_rows_seen",
+        "ontology_table_row document(s)", p,
+        when_absent=["These counters landed 2026-08-11."],
+        when_zero=[
+            "No corpus in this run holds an ontology_table_row, so every total",
+            "above is VACUOUS -- including the spelling canary, which has no",
+            "recognised table to anchor it.",
+        ])
+    if not rows:
+        return
+    recognised = (totals.get("plate_rows_seen", 0)
+                  + totals.get("image_rows_seen", 0)
+                  + totals.get("lawn_rows_seen", 0))
+    p("      %8d  of them recognised as a plate/image/lawn table" % recognised)
+    if recognised == 0:
+        p("      *** NOTHING RECOGNISED ANYWHERE. Two different facts produce")
+        p("      *** this and the run cannot separate them: no corpus was built")
+        p("      *** by NDI's +setup/+conv/+haley/doImport.m (benign), or the")
+        p("      *** column-token rule is wrong everywhere (not benign, and it")
+        p("      *** forces the spelling canary to 0 as well). Do not read this")
+        p("      *** as the token rule confirmed.")
+        return
+    unclassified = totals.get("unclassified_rows_in_those_sessions")
+    if unclassified is None:
+        p("      *** the spelling canary is carried by no report; whether the")
+        p("      *** token rule matched everything is UNMEASURED.")
+    elif unclassified > recognised:
+        p("      *** SPELLING CANARY: %d unclassified row(s) beside %d"
+          % (unclassified, recognised))
+        p("      *** recognised, in the same sessions -- what a wrong")
+        p("      *** column-token rule looks like. Chase it before reading any")
+        p("      *** tier total as a corpus fact.")
+    collisions = totals.get("local_identifier_collisions_within_batch")
+    if collisions:
+        p("      *** %d HANDLE COLLISION(S) across the run. The team's" % collisions)
+        p("      *** (experiment, plate, patch) uniqueness directive is refuted")
+        p("      *** on real data. This is for the TEAM; the pass does not")
+        p("      *** choose another scheme on its own.")
+    elif collisions == 0:
+        p("      %8d  handle collision(s) -- the uniqueness premise holds over"
+          % 0)
+        p("                these corpora, which are a SAMPLE.")
 
 
 def _rollup_bounded_extent_reading(totals, key_missing_in, carried, p):

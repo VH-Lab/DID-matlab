@@ -1732,5 +1732,542 @@ class TestLegacyNdiDocumentBlock(DigestCase):
         self.assertIn("? missing required `id`", text)
 
 
+class ThreePassCase(DigestCase):
+    """Shared corpus writer for the three passes wired into the digest
+    2026-08-11.
+
+    ALL THREE WERE BUILT THE SAME DAY AND RENDERED NOWHERE. Their counters
+    reached the corpus artifact -- writeCorpusReport copies the whole struct --
+    and stopped there, so a full corpus run over six corpora would have printed
+    nothing about the lawn/plate subject tiers, the openMINDS citation graph or
+    the response-parameters fold. That is the epochMint defect, three times, on
+    106 counters.
+    """
+
+    def _corpus(self, name="A", **fields):
+        body = {"corpus": name, "total": 100, "migrated_count": 1000,
+                "quarantine_count": 0,
+                "silent_loss": {"total_docs": 1000, "skipped_docs": 0,
+                                "empty_dependency_count": 0,
+                                "vacuous_field_count": 0}}
+        body.update(fields)
+        self.write(name, body)
+
+    def halves(self):
+        """(per-corpus text, cross-corpus text).
+
+        WHY THE SPLIT IS NOT FUSSINESS. It was added after mutation testing:
+        neutering the PER-CORPUS vacuity banner turned one test red instead of
+        three, and neutering the ROLLUP one turned NOTHING red, because both
+        blocks say nearly the same sentence and every assertion was run against
+        the whole document. A test that cannot tell which of two instruments
+        printed a line cannot notice one of them going silent -- which is this
+        file's own subject matter, arriving in this file.
+        """
+        text, failed = self.run_digest()
+        marker = "ACROSS ALL CORPORA"
+        self.assertIn(marker, text)
+        i = text.index(marker)
+        return text[:i], text[i:], failed
+
+
+class TestTheThreePassesAreWiredAtAll(ThreePassCase):
+    """Named explicitly, so deleting an entry fails a test that says why.
+
+    The generic sweep in tools/test_batch_pass_wiring.py checks that every
+    counter a RENDERED pass declares has a row -- which passes just as well if
+    the whole entry is deleted, because a scan over what exists cannot notice
+    something that stopped existing. Same reason
+    test_the_response_parameters_fold_is_wired exists over there.
+    """
+
+    def test_each_of_the_three_has_a_POST_PASSES_entry(self):
+        import census_digest
+        keys = dict((name, fn) for name, fn, _rows in census_digest.POST_PASSES)
+        for key, fn in (("lawn_plate_subjects",
+                         "did2.convert.resolveLawnPlateSubjects"),
+                        ("openminds_citations",
+                         "did2.convert.resolveOpenmindsCitations"),
+                        ("response_parameters_fold",
+                         "did2.convert.resolveResponseParameters")):
+            self.assertIn(key, keys, "%s lost its POST_PASSES entry -- every "
+                                     "counter it declares goes invisible" % key)
+            self.assertEqual(keys[key], fn)
+
+    def test_the_counters_that_came_off_the_debt_list_are_rendered(self):
+        # SHRINK ONLY, checked from the digest's side too. Seven counters were
+        # on NOT_RENDERED_YET as REAL COUNTERS, REALLY NOT RENDERED; they are
+        # rows now, and a silent removal would put them back in the artifact
+        # with nothing printing them.
+        import census_digest
+        rows = dict((name, set(k for k, _l in r))
+                    for name, _fn, r in census_digest.POST_PASSES)
+        for key in ("documents_with_epoch_id", "strings_declined",
+                    "strings_declined_distinct"):
+            self.assertIn(key, rows["epoch_mint"])
+        for key in ("anchor_session_from_timeref", "anchor_session_from_document",
+                    "method_from_app_block", "method_from_class_default"):
+            self.assertIn(key, rows["valid_interval_decompose"])
+
+
+class TestLawnPlateRendering(ThreePassCase):
+    """The two-tier E. coli subject mint (TEAM DECISION 2026-08-11)."""
+
+    def _lp(self, **over):
+        rep = {
+            "ran": True, "documents_inspected": 1000, "documents_unreadable": 0,
+            "ontology_table_rows_seen": 500,
+            "plate_rows_seen": 10, "image_rows_seen": 20, "lawn_rows_seen": 30,
+            "exp_id_source_rows_seen": 10,
+            "sessions_with_lawn_plate_tables": 1,
+            "unclassified_rows_in_those_sessions": 5,
+            "columns_resolved_by_key": 120, "columns_resolved_by_term_name": 3,
+            "plate_rows_with_measurements": 8,
+            "plate_rows_with_values_but_none_emittable": 1,
+            "plate_rows_with_no_values_at_all": 1,
+            "plate_rows_refused_no_session_id": 0,
+            "plate_rows_refused_no_plate_key": 0,
+            "plate_rows_refused_no_exp_id": 0,
+            "plate_subjects_minted": 8, "plate_observations_emitted": 30,
+            "lawn_rows_with_measurements": 28,
+            "lawn_rows_with_values_but_none_emittable": 1,
+            "lawn_rows_with_no_values_at_all": 1,
+            "lawn_rows_refused_no_session_id": 0,
+            "lawn_rows_refused_no_identity_keys": 0,
+            "lawn_subjects_minted": 28, "lawn_observations_emitted": 200,
+            "chains_attempted": 28, "chains_resolved": 28,
+            "refused_no_image_row": 0, "refused_image_row_ambiguous": 0,
+            "refused_image_row_has_no_plate_key": 0, "refused_no_plate_row": 0,
+            "refused_plate_row_ambiguous": 0, "refused_lawn_no_exp_id": 0,
+            "member_of_relations_emitted": 28,
+            "withheld_plate_tier_not_minted": 0,
+            "withheld_lawn_tier_not_minted": 2, "refused_total": 0,
+            "celegans_patch_subjects_seen": 40,
+            "celegans_patch_subjects_relabelled": 38,
+            "celegans_patch_subjects_already_triple": 0,
+            "celegans_patch_subjects_refused_no_exp_id": 2,
+            "celegans_patch_subjects_refused_ambiguous_exp_id": 0,
+            "celegans_patch_subjects_unparseable_handle": 0,
+            "celegans_patch_relabel_quarantined": 0,
+            "local_identifier_fallback_to_document_id": 0,
+            "local_identifier_collisions_within_batch": 0,
+            "subjects_quarantined": 0, "statements_quarantined": 0,
+            "documents_appended": 294, "source_rows_left_in_place": 60,
+        }
+        rep.update(over)
+        return rep
+
+    def test_it_is_rendered_at_all(self):
+        self._corpus("A", lawn_plate_subjects=self._lp())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("did2.convert.resolveLawnPlateSubjects", text)
+        self.assertIn("SUBJECTS minted", text)
+        self.assertIn("member_of EDGES emitted", text)
+
+    def test_the_denominator_prints_first_and_unconditionally(self):
+        self._corpus("A", lawn_plate_subjects=self._lp())
+        text, _ = self.run_digest()
+        self.assertIn("DENOMINATOR: 500 ontology_table_row document(s)", text)
+
+    def test_a_zero_denominator_says_vacuous(self):
+        self._corpus("A", lawn_plate_subjects={
+            "ran": True, "documents_inspected": 900,
+            "ontology_table_rows_seen": 0})
+        percorpus, _rollup, _f = self.halves()
+        self.assertIn("DENOMINATOR: 0 ontology_table_row", percorpus)
+        self.assertIn("above is VACUOUS -- including the spelling canary",
+                      percorpus)
+
+    def test_an_absent_denominator_is_unmeasured_not_zero(self):
+        rep = self._lp()
+        del rep["ontology_table_rows_seen"]
+        self._corpus("A", lawn_plate_subjects=rep)
+        text, _ = self.run_digest()
+        self.assertIn("`ontology_table_rows_seen` IS NOT IN THIS REPORT", text)
+        self.assertIn("UNMEASURED here. It is not zero", text)
+
+    def test_nothing_recognised_says_the_canary_could_not_fire(self):
+        # THE HONEST READING, and the reason this block was worth writing by
+        # hand: `unclassified_rows_in_those_sessions` is only counted in
+        # sessions where a table WAS recognised, so a wholly wrong column-token
+        # rule forces it to 0 and produces the same output as a corpus with no
+        # E. coli tables. The digest must not read that as clean.
+        self._corpus("A", lawn_plate_subjects=self._lp(
+            plate_rows_seen=0, image_rows_seen=0, lawn_rows_seen=0,
+            unclassified_rows_in_those_sessions=0))
+        text, _ = self.run_digest()
+        self.assertIn("NOTHING RECOGNISED, AND THIS READING IS AMBIGUOUS", text)
+        self.assertIn("cannot detect a wholly wrong one", text)
+
+    def test_the_canary_fires_when_unclassified_swamps_recognised(self):
+        self._corpus("A", lawn_plate_subjects=self._lp(
+            unclassified_rows_in_those_sessions=400))
+        text, _ = self.run_digest()
+        self.assertIn("SPELLING CANARY: 400 unclassified row(s) beside 60",
+                      text)
+        self.assertIn("That is what a WRONG", text)
+        self.assertIn("column-token rule looks like", text)
+
+    def test_a_broken_tier_partition_is_named_as_a_counter_defect(self):
+        # plate_rows_seen must equal the three states. A violation is a counter
+        # that stopped moving, not a corpus fact, and saying which matters.
+        self._corpus("A", lawn_plate_subjects=self._lp(
+            plate_rows_with_no_values_at_all=0))
+        text, _ = self.run_digest()
+        self.assertIn("the three plate-row states sum to 9, not "
+                      "plate_rows_seen", text)
+
+    def test_a_handle_collision_is_a_message_to_the_team(self):
+        self._corpus("A", lawn_plate_subjects=self._lp(
+            local_identifier_collisions_within_batch=7))
+        text, _ = self.run_digest()
+        self.assertIn("7 HANDLE COLLISION(S)", text)
+        self.assertIn("The team's directive asserts", text)
+        self.assertIn("does not", text)
+        self.assertIn("choose another scheme on its own", text)
+
+    def test_withheld_edges_are_named_as_not_a_loss(self):
+        self._corpus("A", lawn_plate_subjects=self._lp())
+        text, _ = self.run_digest()
+        self.assertIn("THIS IS NOT A LOSS AND NOT A REFUSAL", text)
+
+    def test_refused_total_says_what_it_excludes(self):
+        self._corpus("A", lawn_plate_subjects=self._lp())
+        text, _ = self.run_digest()
+        self.assertIn("EXCLUDES the C. elegans relabel", text)
+
+    def test_units_are_on_the_rows_that_are_not_documents(self):
+        # COLUMNS, SESSIONS, ROWS and EDGES all appear in one column. Labelling
+        # them is the only thing that stops a reader adding them up.
+        self._corpus("A", lawn_plate_subjects=self._lp())
+        text, _ = self.run_digest()
+        self.assertIn("COLUMNS matched by key (not rows)", text)
+        self.assertIn("SESSIONS holding any of those", text)
+        self.assertIn("member_of EDGES emitted (edges, not rows)", text)
+
+    def test_a_missing_counter_prints_absent_not_zero(self):
+        rep = self._lp()
+        del rep["lawn_subjects_minted"]
+        self._corpus("A", lawn_plate_subjects=rep)
+        text, _ = self.run_digest()
+        self.assertIn("(absent)    SUBJECTS minted", text)
+
+    def test_the_rollup_names_a_report_that_lacks_a_counter(self):
+        # NEVER SUMMED AS 0. This is the defect that made the digest print
+        # NO CORPUS REPORTS FOUND and exit 0, one level down.
+        rep = self._lp()
+        del rep["lawn_subjects_minted"]
+        self._corpus("A", lawn_plate_subjects=self._lp())
+        self._corpus("B", lawn_plate_subjects=rep)
+        text, _ = self.run_digest()
+        self.assertIn("lawn_subjects_minted", text)
+        self.assertIn("no such counter in: B", text)
+        self.assertIn("contributes", text)
+
+    def test_the_rollup_denominator_and_vacuity(self):
+        self._corpus("A", lawn_plate_subjects={
+            "ran": True, "documents_inspected": 1, "ontology_table_rows_seen": 0})
+        self._corpus("B", lawn_plate_subjects={
+            "ran": True, "documents_inspected": 1, "ontology_table_rows_seen": 0})
+        _percorpus, rollup_text, _f = self.halves()
+        self.assertIn("DENOMINATOR: 0 ontology_table_row document(s) across 2 "
+                      "report(s)", rollup_text)
+        self.assertIn("above is VACUOUS -- including the spelling canary",
+                      rollup_text)
+
+
+class TestOpenmindsCitationsRendering(ThreePassCase):
+    """The openMINDS citation assembly (TEAM DECISION 2026-08-11, "Do B")."""
+
+    def _om(self, **over):
+        rep = {
+            "ran": True, "documents_inspected": 1000, "documents_unreadable": 0,
+            "openminds_documents_seen": 50, "openminds_components_seen": 3,
+            "dataset_versions_seen": 1,
+            "dataset_versions_superseded_by_newer": 0,
+            "components_without_dataset_version": 1,
+            "components_planned": 2, "components_consumed": 1,
+            "components_withheld": 1, "components_reverted_on_validation": 0,
+            "withheld_reasons": ["component 2 would leave ab12 referenced by "
+                                 "3 surviving document(s)"],
+            "documents_consumed": 25, "datasets_emitted": 1,
+            "persons_emitted": 4, "persons_id_preserved": 4,
+            "organizations_emitted": 2, "organizations_id_preserved": 2,
+            "funding_emitted": 1, "funding_slots_empty_skipped": 0,
+            "publications_emitted": 1, "publications_without_doi_skipped": 0,
+            "web_resources_emitted": 1, "web_resources_from_iri": 1,
+            "web_resources_from_doi": 0,
+            "experimental_approach_terms_emitted": 2, "relations_emitted": 9,
+            "affiliations_beyond_first_dropped": 1,
+            "contribution_documents_consumed_without_a_home": 4,
+            "data_type_documents_consumed_without_a_home": 1,
+            "technique_documents_consumed_without_a_home": 2,
+            "bodies_quarantined": 0, "documents_appended": 19,
+        }
+        rep.update(over)
+        return rep
+
+    def test_it_is_rendered_at_all(self):
+        self._corpus("A", openminds_citations=self._om())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("did2.convert.resolveOpenmindsCitations", text)
+        self.assertIn("person entities emitted", text)
+
+    def test_the_denominator_prints_first(self):
+        self._corpus("A", openminds_citations=self._om())
+        text, _ = self.run_digest()
+        self.assertIn("DENOMINATOR: 50 `openminds` document(s)", text)
+
+    def test_a_zero_denominator_is_vacuous_and_points_at_the_metadata_tier(self):
+        self._corpus("A", openminds_citations={
+            "ran": True, "documents_inspected": 900,
+            "openminds_documents_seen": 0})
+        percorpus, _rollup, _f = self.halves()
+        self.assertIn("EVERY counter above is VACUOUS", percorpus)
+        self.assertIn("METADATA TIER section above counts the same class",
+                      percorpus)
+
+    def test_the_rollup_says_vacuous_in_its_own_words(self):
+        # The rollup and the per-corpus block both go quiet independently, so
+        # each needs an assertion the other cannot satisfy.
+        self._corpus("A", openminds_citations={
+            "ran": True, "documents_inspected": 900,
+            "openminds_documents_seen": 0})
+        self._corpus("B", openminds_citations={
+            "ran": True, "documents_inspected": 900,
+            "openminds_documents_seen": 0})
+        _percorpus, rollup_text, _f = self.halves()
+        self.assertIn("DENOMINATOR: 0 `openminds` document(s) across 2 "
+                      "report(s)", rollup_text)
+        self.assertIn("total above is VACUOUS", rollup_text)
+        self.assertIn("METADATA TIER rollup", rollup_text)
+
+    def test_an_absent_denominator_is_unmeasured_not_zero(self):
+        rep = self._om()
+        del rep["openminds_documents_seen"]
+        self._corpus("A", openminds_citations=rep)
+        text, _ = self.run_digest()
+        self.assertIn("`openminds_documents_seen` IS NOT IN THIS REPORT", text)
+        self.assertIn("It is not zero", text)
+
+    def test_the_withheld_reasons_are_printed_verbatim(self):
+        # They are a CELL ARRAY, so they get no numeric row -- and the reason a
+        # component was withheld is the finding, not the count.
+        self._corpus("A", openminds_citations=self._om())
+        text, _ = self.run_digest()
+        self.assertIn("WITHHELD by the orphan guard", text)
+        self.assertIn("component 2 would leave ab12", text)
+
+    def test_a_single_withheld_reason_arriving_as_a_bare_string_renders(self):
+        # RUN #256's LESSON, applied to a field that is a CELL rather than a
+        # struct array. MATLAB's jsonencode writes a 1-element cell as a
+        # 1-element array today, but every list-shaped read in this file goes
+        # through aslist rather than the one shape that happened to break --
+        # so the bare-string shape is exercised rather than assumed away.
+        self._corpus("A", openminds_citations=self._om(
+            withheld_reasons="component 2 would leave ab12 dangling"))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("component 2 would leave ab12 dangling", text)
+
+    def test_withheld_with_no_reason_string_says_so(self):
+        self._corpus("A", openminds_citations=self._om(withheld_reasons=[]))
+        text, _ = self.run_digest()
+        self.assertIn("no reason strings in this report", text)
+
+    def test_a_broken_component_sum_is_named_as_a_counter_defect(self):
+        self._corpus("A", openminds_citations=self._om(components_withheld=0))
+        text, _ = self.run_digest()
+        self.assertIn("planned (2) != consumed (1) + withheld (0)", text)
+
+    def test_a_broken_seen_sum_is_named(self):
+        self._corpus("A", openminds_citations=self._om(
+            openminds_components_seen=9))
+        text, _ = self.run_digest()
+        self.assertIn("components_seen (9) != planned (2) + no-root (1)", text)
+
+    def test_a_reverted_component_is_called_a_build_defect(self):
+        self._corpus("A", openminds_citations=self._om(
+            components_planned=3, components_reverted_on_validation=1,
+            bodies_quarantined=2))
+        text, _ = self.run_digest()
+        self.assertIn("REVERTED ON VALIDATION", text)
+        self.assertIn("defect in the build, not in the corpus", text)
+
+    def test_consumed_greater_than_appended_is_explained_not_alarmed(self):
+        self._corpus("A", openminds_citations=self._om())
+        text, _ = self.run_digest()
+        self.assertIn("LARGE", text)
+        self.assertIn("IS EXPECTED AND IS NOT LOSS", text)
+
+    def test_a_classified_web_resource_that_was_not_emitted_is_named(self):
+        self._corpus("A", openminds_citations=self._om(
+            web_resources_from_doi=1))
+        text, _ = self.run_digest()
+        self.assertIn("fullDocumentation reference(s) were CLASSIFIED", text)
+
+    def test_the_four_lossy_rows_are_summed_and_labelled_as_loss(self):
+        self._corpus("A", openminds_citations=self._om())
+        text, _ = self.run_digest()
+        self.assertIn("LOSSY: Contribution role documents", text)
+        self.assertIn("consumed with NOWHERE TO PUT THEM", text)
+
+    def test_the_rollup_names_where_a_component_was_withheld(self):
+        self._corpus("A", openminds_citations=self._om())
+        self._corpus("B", openminds_citations=self._om(
+            components_planned=1, components_withheld=0, components_consumed=1,
+            withheld_reasons=[]))
+        text, _ = self.run_digest()
+        self.assertIn("*** WITHHELD in: A", text)
+        self.assertNotIn("*** WITHHELD in: A, B", text)
+
+    def test_the_rollup_names_a_report_that_lacks_a_counter(self):
+        rep = self._om()
+        del rep["persons_emitted"]
+        self._corpus("A", openminds_citations=self._om())
+        self._corpus("B", openminds_citations=rep)
+        text, _ = self.run_digest()
+        self.assertIn("persons_emitted", text)
+        self.assertIn("no such counter in: B", text)
+
+
+class TestResponseParametersRendering(ThreePassCase):
+    """#61's resolver half (TEAM-SIGN-OFF [stimulus response] 2026-08-08)."""
+
+    def _rp(self, **over):
+        rep = {
+            "ran": True, "documents_inspected": 1000, "documents_unreadable": 0,
+            "leaves_seen": 0, "leaves_with_edge": 0, "leaves_without_edge": 0,
+            "suppressed_responses_seen": 11167,
+            "parameters_documents_seen": 11440, "inlined": 0,
+            "fields_copied": 0, "harmonic_checked": 0,
+            "harmonic_uncheckable": 0, "refused_not_in_batch": 0,
+            "refused_ambiguous": 0, "refused_wrong_class": 0,
+            "refused_no_fields": 0, "refused_inline_present": 0,
+            "refused_harmonic_mismatch": 0, "refused_total": 0,
+            "fold_quarantined": 0,
+            "parameters_documents_referenced_after": 11440,
+            "parameters_documents_unreferenced_after": 0,
+            "parameters_documents_deleted": 0,
+        }
+        rep.update(over)
+        return rep
+
+    def test_it_is_rendered_at_all(self):
+        self._corpus("A", response_parameters_fold=self._rp())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("did2.convert.resolveResponseParameters", text)
+        self.assertIn("INLINED", text)
+
+    def test_zero_leaves_beside_suppressed_responses_says_blocked_upstream(self):
+        # THE PAIR. `leaves_seen: 0` alone is three findings; the pass reports
+        # the second number precisely so the digest can tell them apart.
+        self._corpus("A", response_parameters_fold=self._rp())
+        text, _ = self.run_digest()
+        self.assertIn("BLOCKED UPSTREAM", text)
+        self.assertIn("11167 v1 `stimulus_response_scalar` document(s)", text)
+        self.assertIn("NOT 'nothing to do'", text)
+
+    def test_zero_leaves_and_zero_suppressed_is_a_different_reading(self):
+        self._corpus("A", response_parameters_fold=self._rp(
+            suppressed_responses_seen=0))
+        text, _ = self.run_digest()
+        self.assertIn("no stimulus responses at all", text)
+        self.assertNotIn("BLOCKED UPSTREAM", text)
+
+    def test_an_absent_suppression_counter_is_named_as_unmeasured(self):
+        rep = self._rp()
+        del rep["suppressed_responses_seen"]
+        self._corpus("A", response_parameters_fold=rep)
+        text, _ = self.run_digest()
+        self.assertIn("`suppressed_responses_seen` is absent", text)
+        self.assertIn("A bare 0 here means neither", text)
+
+    def test_leaves_with_nothing_inlined_or_refused_is_called_a_defect(self):
+        self._corpus("A", response_parameters_fold=self._rp(
+            leaves_seen=5, leaves_with_edge=5))
+        text, _ = self.run_digest()
+        self.assertIn("NOTHING inlined or refused", text)
+        self.assertIn("real defect in resolveResponseParameters", text)
+
+    def test_a_harmonic_mismatch_is_the_alarming_row(self):
+        self._corpus("A", response_parameters_fold=self._rp(
+            leaves_seen=5, leaves_with_edge=5, inlined=4,
+            refused_harmonic_mismatch=1, refused_total=1))
+        text, _ = self.run_digest()
+        self.assertIn("IS THE ALARMING ROW OF THE BLOCK", text)
+        self.assertIn("refusal(s) for freq_response ~= value.harmonic", text)
+        self.assertIn("refuses rather", text)
+
+    def test_the_deletion_gate_prints_its_own_denominator(self):
+        self._corpus("A", response_parameters_fold=self._rp())
+        text, _ = self.run_digest()
+        self.assertIn("DELETION GATE: 11440 parameters document(s) in this "
+                      "batch", text)
+        self.assertIn("EVIDENCE", text)
+
+    def test_a_zero_deletion_denominator_says_vacuous(self):
+        self._corpus("A", response_parameters_fold=self._rp(
+            parameters_documents_seen=0,
+            parameters_documents_referenced_after=0))
+        percorpus, _rollup, _f = self.halves()
+        self.assertIn("DELETION GATE: 0 parameters document(s) in this batch",
+                      percorpus)
+        self.assertIn("the referenced/unreferenced rows above are", percorpus)
+        self.assertIn("VACUOUS", percorpus)
+
+    def test_a_non_zero_deleted_count_is_an_alarm(self):
+        # This pass deletes nothing by construction; a non-zero means it has
+        # pre-empted a decision that belongs to the team.
+        self._corpus("A", response_parameters_fold=self._rp(
+            parameters_documents_deleted=3))
+        text, _ = self.run_digest()
+        self.assertIn("parameters_documents_deleted is 3 and MUST be 0", text)
+
+    def test_a_broken_gate_partition_is_named(self):
+        self._corpus("A", response_parameters_fold=self._rp(
+            parameters_documents_referenced_after=1))
+        text, _ = self.run_digest()
+        self.assertIn("referenced (1) + unreferenced (0) != seen (11440)", text)
+
+    def test_fields_copied_is_labelled_as_cells_not_documents(self):
+        self._corpus("A", response_parameters_fold=self._rp())
+        text, _ = self.run_digest()
+        self.assertIn("field VALUES copied (cells, not documents)", text)
+
+    def test_the_rollup_names_a_report_that_lacks_a_counter(self):
+        rep = self._rp()
+        del rep["parameters_documents_unreferenced_after"]
+        self._corpus("A", response_parameters_fold=self._rp())
+        self._corpus("B", response_parameters_fold=rep)
+        text, _ = self.run_digest()
+        self.assertIn("parameters_documents_unreferenced_after", text)
+        self.assertIn("no such counter in: B", text)
+
+    def test_the_rollup_says_vacuous_in_its_own_words(self):
+        self._corpus("A", response_parameters_fold=self._rp(
+            suppressed_responses_seen=0, parameters_documents_seen=0,
+            parameters_documents_referenced_after=0))
+        self._corpus("B", response_parameters_fold=self._rp(
+            suppressed_responses_seen=0, parameters_documents_seen=0,
+            parameters_documents_referenced_after=0))
+        _percorpus, rollup_text, _f = self.halves()
+        self.assertIn("DENOMINATOR: 0 harmonic_component_calculation "
+                      "leaf/leaves across 2 report(s)", rollup_text)
+        self.assertIn("REFUSAL total above is VACUOUS", rollup_text)
+        self.assertIn("0 leaves beside 0 suppressed responses", rollup_text)
+
+    def test_the_rollup_says_blocked_upstream_across_corpora(self):
+        self._corpus("A", response_parameters_fold=self._rp())
+        self._corpus("B", response_parameters_fold=self._rp(
+            suppressed_responses_seen=349))
+        text, _ = self.run_digest()
+        self.assertIn("11516 v1 response(s) STILL SUPPRESSED across the run",
+                      text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
