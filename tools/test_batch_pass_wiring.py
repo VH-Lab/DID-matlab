@@ -53,8 +53,13 @@ CONVERT_DIR = os.path.join(REPO, "src", "did", "+did2", "+convert")
 UNITTEST_DIR = os.path.join(REPO, "tests", "+did2", "+unittest")
 
 # The three DID-side harness entry points, the same three testBatchPassWiring.m
-# reads. ndi.migrate.local is the fourth and lives in another repository; it is
-# report-only there and is not asserted here either.
+# reads. ndi.migrate.local is the fourth and lives in another repository. It is
+# NOT checked here, and that is a deliberate split rather than an omission:
+# since 2026-08-11 testBatchPassWiring.m ASSERTS the cross-repo divergence
+# against a checked-in table, and it does so from ONE place so there is ONE
+# table. A second copy of that table here would be a second thing to keep in
+# agreement, and this file exists to be the gate that runs without MATLAB --
+# not the gate that runs without NDI-matlab.
 CALL_SITES = {
     "runCorpusDiscovery": os.path.join(UNITTEST_DIR, "+helpers", "runCorpusDiscovery.m"),
     "testCorpusPRED": os.path.join(UNITTEST_DIR, "testCorpusPRED.m"),

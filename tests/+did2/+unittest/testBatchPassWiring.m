@@ -1,9 +1,11 @@
 function tests = testBatchPassWiring
 %TESTBATCHPASSWIRING Every batch post-pass is called from every call site.
 %
-%   STATUS: WRITTEN 2026-08-10, NEVER EXECUTED. This container has no MATLAB, so
-%   nothing in this file has been run. test-migrators-quick.yml is the first
-%   thing that will have an opinion.
+%   STATUS: WRITTEN 2026-08-10, EXTENDED 2026-08-11, NEVER EXECUTED. This
+%   container has no MATLAB and no Octave -- `command -v matlab octave
+%   octave-cli` prints nothing and exits 1 -- so not one line of this file has
+%   been run, here or anywhere. test-migrators-quick.yml is the first thing
+%   that will have an opinion. Nothing below may be read as "verified".
 %
 %   NEW FILE, deliberately: testMigratorsJ.m is owned by another session and is
 %   not touched.
@@ -37,10 +39,64 @@ function tests = testBatchPassWiring
 %   THE FOURTH CALL SITE IS IN ANOTHER REPOSITORY
 %   ---------------------------------------------------------------------
 %   `ndi.migrate.local` is the production second pass and lives in NDI-matlab.
-%   It is REPORTED here, never asserted: NDI-matlab is not guaranteed to be
-%   checked out beside DID-matlab, and a test that fails on a missing sibling
-%   repo is a test people disable. When it is present the matrix prints, with
-%   its denominator, so a divergence is visible in the log of the fast gate.
+%   A test that FAILS because a sibling repository is missing is a test people
+%   disable, and that reasoning still holds -- so a missing NDI-matlab is a
+%   SKIP, never a failure and never a silent pass. The skip prints its
+%   denominator and names the exact path it could not read, because "not
+%   looked at" and "wired correctly" must not print the same.
+%
+%   WHAT CHANGED 2026-08-11: the cross-repo half used to be REPORT-ONLY, and
+%   report-only was not enough. Re-derived here rather than quoted:
+%
+%       $ grep -o "ndi\.migrate\.internal\.[A-Za-z_]*\s*(" \
+%             ../NDI-matlab/src/ndi/+ndi/+migrate/local.m \
+%         | tr -d ' (' | sort -u | wc -l
+%       10
+%
+%   Ten NDI-only passes printed beside three overlapping ones is a matrix with
+%   ten divergent rows, and a matrix with ten divergent rows is how nobody
+%   notices row eleven. `did2.convert.resolveDatasetEntities` WAS row eleven:
+%   built, unit-tested, run by all three DID call sites, called by production
+%   from nothing for a day, and found by accident. So the divergence is now
+%   ENUMERATED IN THIS FILE, one row per pass, each with a written reason, and
+%   gated BOTH WAYS:
+%
+%     * a divergence with NO row FAILS -- that is row eleven, caught;
+%     * a ROW THAT NO LONGER DIVERGES ALSO FAILS. An exemption that outlives
+%       its reason is not a smaller version of the defect, it is the defect
+%       with a blessing on it: it converts a real gap into an approved one and
+%       stops anybody looking. It is the same shape as the six plan documents
+%       whose headers claimed "NO TEAM-SIGN-OFF LINE" hundreds of lines above
+%       the sign-off they carried.
+%
+%   ---------------------------------------------------------------------
+%   WHY THE TABLE IS NOT THE `WIRING-EXEMPT` MARKER
+%   ---------------------------------------------------------------------
+%   The DID-side escape hatch is a marker line in the PASS'S OWN SOURCE. That
+%   idiom was considered for the cross-repo table and rejected on three
+%   counts, none of them stylistic:
+%
+%   1. TEN OF THE ELEVEN ROWS ARE FILES THIS REPOSITORY DOES NOT OWN. They are
+%      `ndi.migrate.internal.*` functions in NDI-matlab. A DID-side gate that
+%      required a marker inside another repository's sources would be
+%      unsatisfiable from here, and would break the moment NDI-matlab is
+%      absent -- which is the case this file must SKIP through, not fail on.
+%      They are also not batch post-passes by signature (`bodyResolver` takes
+%      `bodies`, `stimulusBathToBath` takes `v1Body`), so `batchPasses` never
+%      sees them and there is no scan to hang a marker off.
+%   2. THE TWO MARKERS ANSWER DIFFERENT QUESTIONS AND MUST NOT SUBSTITUTE FOR
+%      EACH OTHER. `WIRING-EXEMPT` says "this pass is deliberately wired
+%      NOWHERE". A divergence row says "this pass IS wired, on exactly ONE
+%      side, deliberately". Reusing one marker for both would mean that
+%      exempting a pass from the DID gate silently also granted it a
+%      cross-repo pass -- one marker disarming two gates, which is this
+%      project's recurring failure in miniature.
+%   3. THE STALE-ROW CHECK NEEDS A LIST IT CAN ITERATE. A marker distributed
+%      across source files can only be examined when its file is scanned, so a
+%      marker on a function that has been DELETED leaves nothing to read and
+%      nothing to notice. A checked-in table can be walked row by row and each
+%      row required to still name a live divergence. The whole second half of
+%      this gate is impossible with a distributed marker.
 %
 %   Run with:  results = runtests('did2.unittest.testBatchPassWiring');
 
@@ -183,6 +239,186 @@ sites = { ...
     'testFixtureCorpus',  fullfile(here, 'testFixtureCorpus.m')};
 end
 
+function p = ndiLocalPath()
+%NDILOCALPATH The production call site, by ONE explicit mechanism.
+%   <this repo root>/NDI-matlab/src/ndi/+ndi/+migrate/local.m -- and nothing
+%   else is tried. There is no search list, no fallback and no environment
+%   override, deliberately.
+%
+%   ONE MECHANISM BECAUSE THE LAST LOOKUP RESOLVED TO THE WRONG COPY. This
+%   test asked `did.toolboxdir()` until 2026-08-11, and `did.toolboxdir()`
+%   reports where the LOADED `did` package lives -- which the quick and corpus
+%   jobs can put somewhere else entirely, because `matbox.installRequirements`
+%   may place another copy of the toolbox on the path ahead of the checkout.
+%   The same mistake already cost this file a CI round on its own side
+%   (run 31440976289: ZERO passes found where a local scan found four). A
+%   lookup with two candidates can silently pick the wrong one and still print
+%   a confident matrix; a lookup with one candidate can only succeed or say
+%   which path it tried.
+%
+%   REPO-ROOT-RELATIVE, WHICH IS THE PATTERN did-schema ALREADY USES. Five
+%   workflows check `Waltham-Data-Science/did-schema` out with
+%   `path: did-schema`, i.e. INSIDE the workspace, and the steps then read
+%   `did-schema/tools/...` relative to the repo root.
+%   `actions/checkout` cannot write above GITHUB_WORKSPACE, so a
+%   TRUE sibling (`../NDI-matlab`) is not available to CI at all and picking
+%   it would have guaranteed the gate never fires -- a test that always skips
+%   is the silent pass this file exists to prevent, wearing a skip's clothes.
+%   test-migrators-quick.yml now checks NDI-matlab out at `path: NDI-matlab`
+%   on the same pattern.
+%
+%   The cost is stated rather than hidden: a developer whose NDI-matlab sits
+%   BESIDE DID-matlab gets a SKIP, not a run. That is the correct failure
+%   direction (skip, loudly, naming the path) and it is what the message says
+%   to fix.
+%
+%   Resolved from `mfilename('fullpath')` for the same reason `didCallSites`
+%   and `batchPasses` are: comparing passes found in tree A against call sites
+%   read in tree B is not a coverage measurement, it is two unrelated facts.
+here = fileparts(mfilename('fullpath'));            % <root>/tests/+did2/+unittest
+repoRoot = fileparts(fileparts(fileparts(here)));   % -> +did2 -> tests -> <root>
+p = fullfile(repoRoot, 'NDI-matlab', 'src', 'ndi', '+ndi', '+migrate', ...
+    'local.m');
+end
+
+function names = namesCalledWithPrefix(txt, prefix)
+%NAMESCALLEDWITHPREFIX Distinct identifiers CALLED as <PREFIX><name>( in TXT.
+%   A CALL, not a mention: the identifier must be followed (after optional
+%   whitespace) by an opening parenthesis. That distinction is the whole
+%   reason this function exists rather than a bare `strfind`.
+%   `ndi.migrate.local` NAMES `did2.convert.resolveDeferredBaths` in FIVE
+%   comments (:306 :310 :359 :362 :630) and CALLS it nowhere, so a scan that
+%   accepted prose would report that pass as wired in production and the
+%   central row of the divergence table would evaporate.
+%
+%   It also rejects a longer qualified name: after `did2.convert.` the text
+%   `readers.sqliteV1(` yields the identifier `readers` followed by `.`, and
+%   `resolveDeferredBaths.makeBathVeta"` yields `resolveDeferredBaths`
+%   followed by `.`. Neither is a call to the thing it starts with, and both
+%   occur in local.m.
+%
+%   PLAIN STRING PARSING, for the reason batchPassName gives: a regex here was
+%   simulated green and ran ZERO in CI, and `strfind` has no dialect.
+names = {};
+ok = ['abcdefghijklmnopqrstuvwxyz' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' ...
+      '0123456789' '_'];
+starts = strfind(txt, prefix);
+for k = 1:numel(starts)
+    i = starts(k) + numel(prefix);
+    j = i;
+    while j <= numel(txt) && any(txt(j) == ok)
+        j = j + 1;
+    end
+    if j == i; continue; end        % nothing after the dot
+    cand = txt(i:j-1);
+    % skip spaces/tabs, then demand an opening parenthesis
+    while j <= numel(txt) && (txt(j) == ' ' || txt(j) == sprintf('\t'))
+        j = j + 1;
+    end
+    if j > numel(txt) || txt(j) ~= '('; continue; end
+    names{end+1} = cand; %#ok<AGROW>
+end
+if isempty(names)
+    names = {};
+else
+    names = unique(names);
+end
+end
+
+function tbl = crossRepoDivergenceTable()
+%CROSSREPODIVERGENCETABLE The passes that run on ONE side only, with reasons.
+%   Columns: pass name | the side it runs on ('DID' or 'NDI') | why that is
+%   correct. Each row is a claim that this divergence is INTENDED. The gate
+%   below fails on a divergence with no row AND on a row with no divergence,
+%   so this table cannot quietly grow into a list of things nobody looks at.
+%
+%   'DID' = called by did2.unittest.helpers.runCorpusDiscovery and not by
+%   ndi.migrate.local. 'NDI' = the other way round. Membership is MEASURED
+%   from the two sources every run, never read from here.
+rows = { ...
+% ---------------------------------------------------------------------------
+% DID-side only
+% ---------------------------------------------------------------------------
+'resolveDeferredBaths', 'DID', ...
+    ['NDI runs a PRECISE replacement that says so in its own words. ' ...
+     'ndi.migrate.internal.stimulusBathToBath:157 -- "This is the ' ...
+     'LIVE-session counterpart of the coarse ' ...
+     'did2.convert.resolveDeferredBaths.makeBathVeta". The DID pass anchors ' ...
+     'the resolved bath session-relatively because a corpus has no live ' ...
+     'session; the NDI assembler keeps the epoch-precise anchor. Running ' ...
+     'the coarse pass in production would re-resolve what the precise one ' ...
+     'already did. POSITIVE evidence, not an absence.']; ...
+% ---------------------------------------------------------------------------
+% NDI-side only. ALL TEN share one structural reason -- they are
+% `ndi.migrate.internal.*` functions, so the DID corpus harness cannot call
+% them without DID-matlab depending on NDI-matlab, which is the dependency
+% direction this whole migration is built to avoid. That reason is NOT
+% written ten times: what each row states is the SPECIFIC thing the DID gate
+% therefore does not measure, because "we cannot call it" is an explanation of
+% the mechanism and not of the cost.
+% ---------------------------------------------------------------------------
+'bodyResolver', 'NDI', ...
+    ['Not a transform at all: an INDEX over the raw v1 bodies ' ...
+     '(session/element lookups) that the per-body deferral assemblers ' ...
+     'consume. Nothing is migrated by it, so there is no DID-side output ' ...
+     'that could differ. Listed rather than filtered out because a filter ' ...
+     'for "things that are not really passes" is a judgement that would ' ...
+     'have to be re-made, silently, for every future entry.']; ...
+'stimulusBathToBath', 'NDI', ...
+    ['The live-session bath assembler, per document, invoked from step (1). ' ...
+     'It is the counterpart named in the resolveDeferredBaths row above -- ' ...
+     'the same divergence seen from the other side, which is why both ends ' ...
+     'appear here rather than one.']; ...
+'stimulusPresentationToManipulation', 'NDI', ...
+    ['Needs the RECORDING GRAPH -- the animal subject and the trial series ' ...
+     'are only reachable with the whole session in hand. The DID corpus ' ...
+     'harness holds documents, not a session, so it cannot assemble the ' ...
+     'body-backed visual_grating_manipulation and its sampled_body.']; ...
+'ontologyRowSubjects', 'NDI', ...
+    ['Resolves an ontologyTableRow subject against the migrated-id graph and ' ...
+     'then RE-FOLDS the row through did2.convert.v1_to_v2 so pass 1 fans it ' ...
+     'out. The DID gate measures the passthrough count instead. COST: the ' ...
+     '~20,583 rows this converts in production stay passthroughs in every ' ...
+     'corpus report, so the corpus never exercises the fan-out.']; ...
+'ontologyLabelSubjects', 'NDI', ...
+    ['Follows an ontology_label one hop (imageStack -> image_observation -> ' ...
+     'subject_id) through the migrated-id graph. COST: ~7,007 JH labels ' ...
+     'become term_observations in production and stay passthroughs in the ' ...
+     'corpus report.']; ...
+'pathSPromotion', 'NDI', ...
+    ['Promotes attributed anatomical loci to Path-S part-subjects using the ' ...
+     'corpus-wide subject graph. COST: the DID corpus report counts loci ' ...
+     'that production has already promoted, so the two pipelines disagree ' ...
+     'about how many subjects a dataset has.']; ...
+'ensembleMembership', 'NDI', ...
+    ['Turns each `ensemble` MAP document into member_of edges. It must READ ' ...
+     'THE BYTES of neuron_names.txt to map column index -> neuron subject, ' ...
+     'and a single-doc migrator carries files without reading them ' ...
+     '(confirmed via pyraview). The corpus harness has the file, not the ' ...
+     'session that resolves the ids.']; ...
+'strainAssembly', 'NDI', ...
+    ['Assembles unattached openMINDS Strain documents into `strain` ' ...
+     'entities, consuming their Species / GeneticStrainType FRAGMENTS. ' ...
+     'COST: those fragments -- exactly what did2.validate.isFragment ' ...
+     'exists to find -- are still present when the corpus census counts ' ...
+     'them, and absent in production.']; ...
+'epochAnchorFold', 'NDI', ...
+    ['Folds `epoch_bounded_reference` into `relative_reference`. The DID ' ...
+     'gate has NOTHING TO FOLD, and that is a fact about the input rather ' ...
+     'than a limitation: stimulusBathToBath is the only site in either ' ...
+     'repository that mints that class, and it is NDI-side. ' ...
+     'local.m states it verbatim -- "Lives NDI-side because the class it ' ...
+     'folds is minted NDI-side; the DID gate has nothing to fold."']; ...
+'softwareDedup', 'NDI', ...
+    ['Merges duplicate `software` entities on (session_id, name, version) ' ...
+     'and retargets inbound edges BY TARGET ID (one of the seven is called ' ...
+     '`reader_id`, not `software_id`). COST: every corpus report counts one ' ...
+     '`software` entity per consuming document -- production does not, so ' ...
+     'the entity totals the two pipelines produce are not comparable.']; ...
+};
+tbl = struct('name', rows(:, 1), 'side', rows(:, 2), 'reason', rows(:, 3));
+end
+
 function tf = callsPass(filePath, passName)
 %CALLSPASS Does FILEPATH contain a CALL to did2.convert.<PASSNAME>?
 %   Matches the qualified name followed by an opening parenthesis, so a mention
@@ -238,26 +474,21 @@ verifyEmpty(testCase, missing, sprintf( ...
 end
 
 function testProductionCallSiteIsReportedNotAsserted(testCase)
-% ndi.migrate.local, REPORT ONLY. Two of the four passes are ABSENT there
-% today, and the two absences are NOT the same fact:
+% ndi.migrate.local, REPORT ONLY -- the DID-side passes, one line each.
 %
-%   resolveDeferredBaths    NDI runs its own PRECISE replacement --
-%                           ndi.migrate.internal.stimulusBathToBath names
-%                           did2.convert.resolveDeferredBaths.makeBathVeta as
-%                           the coarse version it supersedes (that file's own
-%                           header, line 90). Deliberate.
-%   resolveDatasetEntities  We did not find an NDI-side equivalent. THAT IS AN
-%                           ABSENCE, NOT A FINDING -- it is reported here for a
-%                           human to check, not concluded. If it is genuinely
-%                           missing, the dataset dedup that every DID corpus
-%                           run performs never happens in production.
+% THIS TEST IS NO LONGER THE ONLY THING WATCHING THE FOURTH CALL SITE, and its
+% header used to name two absences as the whole story. Both have since been
+% closed: resolveDatasetEntities was wired 2026-08-10 (it was the one this
+% file's report caught), and resolveResponseParameters + resolveLawnPlateSubjects
+% were wired 2026-08-11. The ASSERTING gate is
+% testCrossRepoDivergenceIsExactlyTheCheckedInTable below; this test is kept,
+% unweakened and still report-only, because a printed per-pass line is what a
+% human reads out of a log tail and the gate prints a set-difference.
 %
-% Asserting here would fail the fast gate on a sibling-repo layout, so this
-% test only ever prints -- but it prints EVERY run, with the denominator, so a
-% divergence cannot go unseen the way the unwired fold did.
-repoRoot = fileparts(fileparts(did.toolboxdir()));   % <root>/src/did -> <root>
-localPath = fullfile(fileparts(repoRoot), 'NDI-matlab', 'src', 'ndi', ...
-    '+ndi', '+migrate', 'local.m');
+% The only change to its body is the LOOKUP: it asked `did.toolboxdir()`,
+% which reports where the LOADED `did` package lives and can resolve to a
+% MatBox-installed copy of another revision. See ndiLocalPath.
+localPath = ndiLocalPath();
 passes = batchPasses();
 fprintf('\n--- production call site (ndi.migrate.local), REPORT ONLY ---\n');
 if ~isfile(localPath)
@@ -278,6 +509,153 @@ for p = 1:numel(passes)
     end
 end
 verifyTrue(testCase, true);
+end
+
+function testCrossRepoDivergenceIsExactlyTheCheckedInTable(testCase)
+% THE CROSS-REPO GATE. Read this file's "THE FOURTH CALL SITE IS IN ANOTHER
+% REPOSITORY" header for why it exists and why the table is not the
+% WIRING-EXEMPT marker.
+%
+% DENOMINATORS FIRST AND UNCONDITIONALLY, before anything can go wrong:
+% how many passes were discovered here, how many rows are checked in, and
+% which file is about to be read. A gate whose scan is broken must not be able
+% to print a clean set-difference over two empty sets.
+[passes, exempt] = batchPasses();
+allPasses = [passes(:)', {exempt.name}];
+tbl = crossRepoDivergenceTable();
+localPath = ndiLocalPath();
+here = fileparts(mfilename('fullpath'));
+discoveryPath = fullfile(here, '+helpers', 'runCorpusDiscovery.m');
+
+fprintf('\n--- cross-repo divergence gate ---\n');
+fprintf(['  DENOMINATOR: %d pass(es) discovered in +did2/+convert ' ...
+         '(%d gated, %d exempt); %d checked-in divergence row(s); ' ...
+         '2 sources read.\n'], ...
+    numel(allPasses), numel(passes), numel(exempt), numel(tbl));
+fprintf('  DID side : %s\n', discoveryPath);
+fprintf('  NDI side : %s\n', localPath);
+
+% ---------------- the loud skip ----------------------------------------
+% NDI-matlab absent is NOT a failure (a test that red-gates on a missing
+% sibling gets disabled, and then nothing watches production at all) and it is
+% NOT a pass either. It is a skip that names the path, so "we did not look" is
+% never readable as "they agree".
+if ~isfile(localPath)
+    fprintf(2, ['  SKIPPED -- NDI-matlab is not at that path. %d pass(es) ' ...
+                'and %d divergence row(s) went UNCHECKED against ' ...
+                'production.\n'], numel(allPasses), numel(tbl));
+    fprintf(2, ['  This is "did not look", NOT "wired correctly". CI checks ' ...
+                'NDI-matlab out at <repo>/NDI-matlab in ' ...
+                'test-migrators-quick.yml; if this skipped there, that step ' ...
+                'is missing or its ref did not resolve.\n']);
+    assumeTrue(testCase, false, sprintf( ...
+        ['ndi.migrate.local not readable at %s -- cross-repo divergence ' ...
+         'UNCHECKED (skip, not agreement)'], localPath));
+    return;
+end
+
+% ---------------- measure both sides, dynamically ----------------------
+% Nothing here is read out of the table. The table is only ever compared
+% against what these two scans find, so a pass that lands tonight moves the
+% measurement and the table has to catch up -- never the reverse.
+ndiText = fileread(localPath);
+
+didSide = {};
+for p = 1:numel(allPasses)
+    if callsPass(discoveryPath, allPasses{p})
+        didSide{end+1} = allPasses{p}; %#ok<AGROW>
+    end
+end
+% A `did2.convert.` name in local.m counts only if it is one of the passes
+% discovered by signature: local.m also calls did2.convert.v1_to_v2, which is
+% the migrator entry point rather than a batch post-pass.
+ndiDidPasses = intersect(namesCalledWithPrefix(ndiText, 'did2.convert.'), ...
+    allPasses);
+ndiInternal = namesCalledWithPrefix(ndiText, 'ndi.migrate.internal.');
+ndiSide = union(ndiDidPasses(:)', ndiInternal(:)');
+
+overlap = intersect(didSide, ndiSide);
+didOnly = setdiff(didSide, ndiSide);
+ndiOnly = setdiff(ndiSide, didSide);
+
+fprintf(['  MEASURED: DID side runs %d, NDI side runs %d ' ...
+         '(%d did2.convert + %d ndi.migrate.internal), OVERLAP %d, ' ...
+         'DIVERGENT %d (%d DID-only + %d NDI-only).\n'], ...
+    numel(didSide), numel(ndiSide), numel(ndiDidPasses), ...
+    numel(ndiInternal), numel(overlap), ...
+    numel(didOnly) + numel(ndiOnly), numel(didOnly), numel(ndiOnly));
+
+everyName = union(didSide, ndiSide);
+for k = 1:numel(everyName)
+    fprintf('  %-38s %-12s %-12s\n', everyName{k}, ...
+        onOff(any(strcmp(everyName{k}, didSide))), ...
+        onOff(any(strcmp(everyName{k}, ndiSide))));
+end
+fprintf('  (columns: runCorpusDiscovery, ndi.migrate.local)\n');
+
+% A broken read of local.m makes every DID pass look DID-only AND every table
+% row look stale, so it cannot pass -- but it would fail with a wall of
+% irrelevant names. Say the real thing first.
+verifyGreaterThanOrEqual(testCase, numel(ndiSide), 4, sprintf( ...
+    ['fewer than 4 passes found in %s -- the NDI-side scan is broken, and ' ...
+     'a broken scan turns every row of the divergence table into a false ' ...
+     'claim in both directions at once'], localPath));
+
+% ---------------- gate 1: a divergence with no row ---------------------
+observedName = [didOnly(:)', ndiOnly(:)'];
+observedSide = [repmat({'DID'}, 1, numel(didOnly)), ...
+                repmat({'NDI'}, 1, numel(ndiOnly))];
+tblName = {tbl.name};
+tblSide = {tbl.side};
+
+unexplained = {};
+for k = 1:numel(observedName)
+    hit = strcmp(observedName{k}, tblName) & strcmp(observedSide{k}, tblSide);
+    if ~any(hit)
+        unexplained{end+1} = sprintf('%s runs on the %s side ONLY', ...
+            observedName{k}, observedSide{k}); %#ok<AGROW>
+    end
+end
+verifyEmpty(testCase, unexplained, sprintf( ...
+    ['a pass runs on ONE side only and has no row in ' ...
+     'crossRepoDivergenceTable. Either wire it into the other side, or add ' ...
+     'a row saying WHY it belongs on one -- an unexplained divergence is ' ...
+     'how did2.convert.resolveDatasetEntities sat unwired in production ' ...
+     'for a day while every gate was green.\n  %s'], ...
+    strjoin(unexplained, sprintf('\n  '))));
+
+% ---------------- gate 2: a row that no longer diverges ----------------
+% This half is not symmetry for its own sake. A row whose reason has expired
+% still reads as a decision somebody made, so it stops the next person
+% looking -- it converts a real gap into a blessed one. Same defect as the
+% plan-document headers that claimed no sign-off while carrying one.
+stale = {};
+for r = 1:numel(tbl)
+    hit = strcmp(tbl(r).name, observedName) & strcmp(tbl(r).side, observedSide);
+    if any(hit); continue; end
+    if any(strcmp(tbl(r).name, overlap))
+        why = 'it now runs on BOTH sides';
+    elseif any(strcmp(tbl(r).name, everyName))
+        why = 'it now runs on the OTHER side';
+    else
+        why = 'it runs on NEITHER side (deleted, renamed, or unwired)';
+    end
+    stale{end+1} = sprintf('%s (listed %s-only): %s', ...
+        tbl(r).name, tbl(r).side, why); %#ok<AGROW>
+end
+verifyEmpty(testCase, stale, sprintf( ...
+    ['a row of crossRepoDivergenceTable no longer describes a divergence. ' ...
+     'DELETE IT. An exemption that outlives its reason is not a smaller ' ...
+     'version of the defect -- it is the defect with a blessing on it.\n  %s'], ...
+    strjoin(stale, sprintf('\n  '))));
+end
+
+function s = onOff(tf)
+if tf
+    s = 'RUNS';
+else
+    s = '--';
+end
 end
 
 % ===================== the guard =======================================
