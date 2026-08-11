@@ -845,6 +845,43 @@ verifyTrue(testCase, posn('6529ce7bf', '"id"') < posn('6529ce7bf', '"session_id"
      'does not; if it now spells session_id first, the fixture is wrong']);
 end
 
+function testTheFieldSetComparisonIsOrientationNormalised(testCase)
+% A SILENT TOTAL FAILURE, GIVEN ITS OWN TEST BECAUSE THE PARTITION CANNOT SEE
+% IT. countMovedBlock compares a block's sorted field set against
+% legacyVintageTable's entries with `isequal`. `isequal` on cell arrays compares
+% SIZE as well as contents, and `fieldnames` returns a COLUMN while a field list
+% is naturally written as a ROW literal. If either side stops normalising with
+% `(:)`, every vintage misses, EVERY body lands in `moved_vintage_unknown` --
+% and the six buckets still sum to the arm, so
+% testTheVintageBucketsPartitionTheArmAcrossABatch stays GREEN while the
+% classifier has stopped classifying.
+%
+% (This is what GitHub code scanning alert 195 pointed at: the earlier
+% `sort(names(:)')` was flagged as an unnecessary transpose. It was not
+% unnecessary. Both sides are columns now, so there is no transpose to delete,
+% but the normalisation is still the thing holding this together.)
+%
+% Two assertions, and the first pins the MATLAB behaviour the second depends on
+% so a failure says WHICH assumption broke.
+row = {'b', 'a'};
+col = {'b'; 'a'};
+verifyFalse(testCase, isequal(row, col), ...
+    ['isequal is expected to be SIZE-sensitive on cell arrays; if a row and ' ...
+     'a column now compare equal, the orientation hazard below is moot and ' ...
+     'this test should be re-derived rather than deleted']);
+
+block = loadVintageBlock(testCase, 'e8c02831d');
+verifyEqual(testCase, size(fieldnames(block), 2), 1, ...
+    'fieldnames is expected to return a COLUMN cell');
+[~, report] = did2.convert.universalRenames(makeVintageBody(block));
+verifyEqual(testCase, report.moved_vintage_2020_05_session_id_and_id, 1, ...
+    ['a real vintage did not reach its bucket -- the most likely cause is ' ...
+     'that one side of the field-set comparison stopped normalising ' ...
+     'orientation with (:)']);
+verifyEqual(testCase, report.moved_vintage_unknown, 0, ...
+    'a KNOWN vintage was classified as unknown');
+end
+
 function testEachVintageLandsInItsOwnBucket(testCase)
 cases = { ...
     '4f1a2b801', 'moved_vintage_2019_05_unique_reference'; ...

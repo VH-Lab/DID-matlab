@@ -376,15 +376,31 @@ end
 % another pair only by `document_id` vs `id`, so any one-field test collapses
 % two shapes that need different repairs. See the function header for the git
 % output the table is read from.
+% ORIENTATION IS LOAD-BEARING, AND IT FAILS SILENTLY IF DROPPED. `isequal` on
+% cell arrays is SIZE-sensitive -- a 6x1 and a 1x6 holding identical strings are
+% not equal -- and `fieldnames` returns a COLUMN. So both sides are normalised
+% to a column with `(:)` before `sort`: this side here, and `legacyVintageTable`
+% for the table. Compare a column against the table's row literals and EVERY
+% vintage misses, every body lands in `moved_vintage_unknown`, and the arm still
+% partitions perfectly -- a classifier that has stopped classifying, wearing a
+% green partition test. `testTheFieldSetComparisonIsOrientationNormalised` and
+% `testEachVintageLandsInItsOwnBucket` are what go red instead.
+%
+% GitHub code scanning alert 195 flagged the earlier spelling of this line,
+% `sort(names(:)')`, as "transposing the input to `sort` is often unnecessary".
+% The transpose was NOT unnecessary -- it was half of this normalisation -- and
+% deleting it was the failure above. It is gone now because BOTH sides moved to
+% columns, which is the same normalisation without a transpose, not because the
+% alert was right about the code being redundant.
 [vintageCounters, vintageFieldSets] = legacyVintageTable();
 if isempty(names)
     % An empty block HAS a field set -- the empty one -- and no vintage has
     % that. Written out rather than sorted because `sort` on an empty cell is
     % not worth relying on, and because "the block was empty" is a real shape
     % that must reach `unknown` rather than an error.
-    sortedNames = {};
+    sortedNames = cell(0, 1);
 else
-    sortedNames = sort(names(:)');
+    sortedNames = sort(names(:));
 end
 matched = false;
 for k = 1:numel(vintageCounters)
@@ -435,9 +451,14 @@ raw = { ...
         'name', 'type', 'datestamp', 'database_version'}, ...
     {'session_id', 'id', ...
         'name', 'type', 'datestamp', 'database_version'}};
+% COLUMNS, to match `fieldnames`. The rows above are written as row literals
+% because that is how a field list reads; `(:)` turns each into the column the
+% caller's `sort(names(:))` produces. `isequal` on cells compares SIZE as well
+% as contents, so a row here and a column there is a total classification
+% failure that no partition test can see -- see the caller's comment.
 fieldSets = cell(size(raw));
 for k = 1:numel(raw)
-    fieldSets{k} = sort(raw{k});
+    fieldSets{k} = sort(raw{k}(:));
 end
 end
 
