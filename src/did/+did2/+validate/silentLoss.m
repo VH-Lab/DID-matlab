@@ -1241,12 +1241,33 @@ function names = nrClassNames(m)
 %   array either way, so the digest sees `[]` for "seen nothing" and a MISSING
 %   key for "this report predates the export". Those are different facts and
 %   the encoding keeps them apart.
+%
+%   ORIENTATION IS PINNED TO A 1xN ROW, AND NOT BY TRANSPOSING THE INPUT TO
+%   `sort`. Code scanning alert 196 flagged `sort(names(:)')` here and was
+%   RIGHT on the facts: `keys` on a containers.Map returns a 1xN row already,
+%   so `names(:)'` round-tripped a row back into a row and did no work on any
+%   input this function can receive. What the round-trip was really doing was
+%   asserting a SHAPE, and that is worth keeping -- so `reshape` states it
+%   outright rather than leaving a reader to infer it from a transpose.
+%
+%   WHY A ROW, RATHER THAN "either is fine". `nrPairNames` builds a 1xN row by
+%   construction, so a column here would make the report's two identity lists
+%   different shapes for no reason at all. And whether `jsonencode` flattens a
+%   COLUMN cell to the same JSON array is NOT VERIFIED -- there is no MATLAB in
+%   the authoring container, and the only consumer is
+%   writeCorpusReport's `jsonencode` followed by a Python `isinstance(v, list)`
+%   in tools/census_digest.py. So the shape is pinned rather than assumed
+%   harmless. If a column ever did encode differently, the digest would not go
+%   quiet about it: its reader counts non-string entries and reports
+%   "N of M entries in `<field>` are not strings" as a list/count disagreement.
+%   testTheIdentitiesAreExportedAsSortedRowCells holds the orientation with
+%   `verifyEqual` against a row literal, which is size-strict.
 names = keys(m);
 if isempty(names)
     names = {};
     return;
 end
-names = sort(names(:)');
+names = reshape(sort(names(:)), 1, []);
 end
 
 function names = nrPairNames(m)
@@ -1261,6 +1282,13 @@ function names = nrPairNames(m)
 %   sorts after `a_c` as `a|b` and before it as `a.b`. Sorting the stored form
 %   would export a list that is not sorted in the form it is exported in, which
 %   is the same defect as not sorting at all.
+%
+%   NO TRANSPOSE IS NEEDED HERE and none is present: the row is built by
+%   construction (`cell(1, numel(raw))` filled by linear index), so this
+%   function has no orientation dependence on what `keys` returns, and
+%   `sort` on a 1xN row sorts along dimension 2 and returns a 1xN row. Same
+%   pinned shape as nrClassNames, arrived at without the operator alert 196
+%   flagged there.
 raw = keys(m);
 if isempty(raw)
     names = {};

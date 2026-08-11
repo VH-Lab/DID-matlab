@@ -1692,6 +1692,17 @@ class TestNdiRequiredIdentities(DigestCase):
         text, _ = self.run_digest()
         self.assertIn("`relaxed_edge_names` is malformed (int)", text)
 
+    def test_entries_that_are_not_strings_are_counted_and_named(self):
+        # The MATLAB side pins the export to a 1xN ROW cell. Nobody here has a
+        # MATLAB to confirm that `jsonencode` flattens a COLUMN cell to the
+        # same flat JSON array, so the digest does not assume it: a nested
+        # array (the shape a column would produce if it did NOT flatten) is
+        # reported rather than silently filtered down to an empty union.
+        self._corpus("A", self._nd(relaxed_edge_names=[["a"], ["b"], ["c"]]))
+        text, _ = self.run_digest()
+        self.assertIn("3 of 3 entries in `relaxed_edge_names` are not strings",
+                      text)
+
     def test_a_bare_string_is_one_name_not_a_pile_of_letters(self):
         # Defensive. MATLAB writes a cell as a JSON array at every length, but
         # a single string arriving here must not iterate character by

@@ -731,6 +731,41 @@ verifyEqual(testCase, d.relaxed_class_names{1}, 'ontology_label', ...
     'sorted, not batch order -- spikewaves was handed in first');
 end
 
+function testTheIdentitiesAreExportedAsSortedRowCells(testCase)
+% ORIENTATION AND ORDER AND CONTENT, ASSERTED EXACTLY. Added after code
+% scanning alert 196 flagged the `sort` that produces these lists: the alert
+% was right that the transpose was doing nothing on a `keys` row, and the
+% shape it was silently guaranteeing had NO test behind it.
+%
+% `verifyEqual` on a cell array is SIZE-STRICT, so a 1xN row literal fails
+% against a 2x1 column, against a different order, and against a different
+% name. Every other assertion in this section uses `any(strcmp(...))` or a
+% linear index -- both of which pass against a row, a column and a reordering
+% alike -- which is exactly why this case exists on its own rather than being
+% folded into one of them.
+%
+% DELIBERATELY EXACT, so it doubles as a schema tripwire. If DID-schema relaxes
+% a third edge on either class, this goes red; the right response is to read
+% the new divergence and update the literal, NOT to loosen the assertion into
+% something that would have missed the orientation too.
+b1 = bodyStruct('spikewaves', 'sw_1');
+b1.depends_on = struct('name', {'element_id'}, 'value', {''});
+b2 = bodyStruct('ontology_label', 'lab_1');
+b2.depends_on = struct('name', {'document_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
+d = rep.ndi_required_denominator;
+verifyEqual(testCase, d.relaxed_class_names, ...
+    {'ontology_label', 'spikewaves'}, ...
+    'a 1xN ROW of the exact names, sorted -- not a column, not batch order');
+verifyEqual(testCase, d.relaxed_edge_names, ...
+    {'ontology_label.document_id', 'spikewaves.element_id', ...
+     'spikewaves.extraction_parameters_id'}, ...
+    'the pair list is a 1xN ROW too -- the two lists must not differ in shape');
+verifyEqual(testCase, size(d.relaxed_class_names), [1 2], ...
+    'stated separately so a failure says SHAPE rather than only CONTENT');
+verifyEqual(testCase, size(d.relaxed_edge_names), [1 3]);
+end
+
 function testThePairSpellingMatchesTheEmptyEdgeRowSpelling(testCase)
 % The union and the empty-edge rows are compared by eye and by the digest's
 % rollup, so they must be the SAME string. The map stores `class|edge`; the
