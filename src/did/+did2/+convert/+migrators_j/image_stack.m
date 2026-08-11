@@ -43,8 +43,26 @@ function bodies = image_stack(preBody)
 %   so neither testMigratorsJ nor any corpus was run locally. Every claim below
 %   is read out of NDI `origin/main`, this repo's sources, the did-schema
 %   working tree, or `git log`, and the commands are named inline so each one is
-%   re-runnable. CI is the gate, and the carry was proven there by mutation --
-%   see the run ids in the commit message.
+%   re-runnable. CI is the gate, and the carry was PROVEN there by mutation,
+%   one mutation per run, on throwaway branches:
+%
+%       CONTROL     31463389188  259d4ca  SUCCESS   (this code, unmutated)
+%       MUTATION A  31463723277  305bf07  FAILURE   carry deleted ->
+%           2 FAILED of 885 RUN
+%           testImageStackFoldCarriesDocumentIdIntoTheOntologyTableRowSlot
+%           testImageStackDocumentIdReferentSurvivesTheBatch
+%       MUTATION B  31463724722  b03a411  FAILURE   carry made UNCONDITIONAL
+%           (a blank edge when the source has none) ->
+%           2 FAILED of 885 RUN
+%           testImageStackBabuShapeOmitsTheSlotRatherThanEmittingItBlank
+%           testImageStackBlankDocumentIdIsOmittedNotCarriedThrough
+%
+%   Both directions are covered, which is the point of two mutations rather
+%   than one: A proves the tests see the carry, B proves they see the
+%   CONDITION. The throwaway branches are claude/v-eta-imgstack-carry-mut-a
+%   and -mut-b in BOTH repos (did-schema needs a same-named branch because
+%   test-migrators-quick.yml checks the schema set out by ref name); they are
+%   not deletable with these credentials and want cleaning up by hand.
 %
 %   ---------------------------------------------------------------------
 %   THE `document_id` EDGE WAS DROPPED ON THE FOLD ARM. IT IS NOT ANY MORE.

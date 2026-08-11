@@ -63,7 +63,19 @@ function tests = testMigratorsJ
 %   `ontology_table_row_id` slot, 6cf31f2) and from this repo's own sources and
 %   `git log`; the migrator header names each command. Their MUTATION
 %   SENSITIVITY was proven on CI, not by transcription --
-%   `test-migrators-quick.yml` on a throwaway branch, one mutation per run.
+%   `test-migrators-quick.yml` on a throwaway branch, one mutation per run:
+%
+%       CONTROL     31463389188  259d4ca  SUCCESS
+%       MUTATION A  31463723277  305bf07  carry DELETED    -> 2 FAILED of 885
+%                   ...FoldCarriesDocumentIdIntoTheOntologyTableRowSlot
+%                   ...DocumentIdReferentSurvivesTheBatch
+%       MUTATION B  31463724722  b03a411  carry UNCONDITIONAL (blank edge)
+%                                                          -> 2 FAILED of 885
+%                   ...BabuShapeOmitsTheSlotRatherThanEmittingItBlank
+%                   ...BlankDocumentIdIsOmittedNotCarriedThrough
+%
+%   TWO mutations, opposite directions, because ONE would not distinguish a
+%   test that sees the carry from a test that sees the CONDITION on it.
 %   CI is the gate.
 %
 %   Run with:  results = runtests('did2.unittest.testMigratorsJ');
