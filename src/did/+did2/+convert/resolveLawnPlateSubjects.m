@@ -217,16 +217,28 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   "A HUMAN HANDLE, NOT A JOIN KEY" IS TRUE DID-SIDE AND FALSE NDI-SIDE, AND
 %   THIS PARAGRAPH USED TO SAY ONLY THE FIRST HALF -- in the reassuring
 %   direction, because it made a rewrite sound consequence-free. CHECKED
-%   2026-08-11 by reading every non-comment `local_identifier` line in
-%   DID-matlab `src/` (85) and every `subject.local_identifier` site in
-%   NDI-matlab (929 .m files searched, 24 mention it):
+%   2026-08-11.
 %
-%     DID-SIDE THE OLD CLAIM HOLDS. Every read that RESOLVES anything resolves
-%     an `epoch` entity, never a subject -- epochMint.m:337, epochIndex.m:521,
-%     resolveValidIntervals.m:461, epochStringRetention.m:265-266, all keyed on
-%     the PAIR (base.session_id, epoch.local_identifier). The only subject-side
-%     reads are migrators_j/subject.m:18, which normalises the field in place,
-%     and this file at the relabel below, which reads back its own handle.
+%     DENOMINATOR (a first draft of this paragraph got it wrong in exactly the
+%     way this project keeps paying for -- it quoted a TOTAL as if it were the
+%     non-comment count, and the total moves whenever this file is edited, so
+%     the command is given instead of a bare number):
+%
+%         $ grep -rn local_identifier --include=*.m src | wc -l
+%         100          across 20 files      <- DID-matlab
+%         $ grep -rn local_identifier --include=*.m . | wc -l
+%         125          in 929 .m files      <- NDI-matlab, 24 of which
+%                                              mention `subject.local_identifier`
+%
+%     DID-SIDE THE OLD CLAIM HOLDS. SEVEN sites READ the field out of a
+%     document; the other occurrences write it, name it in a report key, or
+%     discuss it in a comment. FIVE of the seven read `<doc>.epoch` and key on
+%     the PAIR (base.session_id, epoch.local_identifier) -- epochMint.m:337,
+%     epochIndex.m:520-521 and :593, resolveValidIntervals.m:461,
+%     epochStringRetention.m:265-266. The remaining TWO are the only
+%     subject-side reads in the repository and NEITHER resolves anything:
+%     migrators_j/subject.m:17-18 reads the field and writes it straight back
+%     normalised, and this file's relabel reads back its own handle.
 %     `base.id` is the key and `+did2/+validate/references.m` resolves every
 %     edge through it.
 %
