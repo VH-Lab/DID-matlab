@@ -66,6 +66,65 @@ function tests = testEpochIndex
 %         reddens against ANY implementation that has stopped resolving --
 %         it asserts specific ids came back, not merely that nothing threw
 %
+%   ---------------------------------------------------------------------
+%   THE MUTATION MATRIX -- MEASURED IN CI, AND ITS OWN GAPS NAMED
+%   ---------------------------------------------------------------------
+%   A green suite proves nothing about a suite that cannot fail, and no MATLAB
+%   exists in the authoring container, so each mutation was applied to
+%   `epochIndex.m` and run through the quick gate. BASELINE, run 31527912537
+%   (`4f3f664`):
+%
+%       tests run  1095   passed 1094   FAILED 1
+%         testBatchPassWiring/testCrossRepoDivergenceIsExactlyTheCheckedInTable
+%
+%   THAT ONE FAILURE IS PRE-EXISTING AND IS NOT THIS FILE'S. NDI-matlab
+%   `a4d786a27` (2026-08-11 19:18:57 +0000) added a call to
+%   `ndi.migrate.internal.imagedEntitySubjects` in `+ndi/+migrate/local.m`, and
+%   that pass has no row in `crossRepoDivergenceTable()`. It persisted across
+%   `7cabb9b`, `4f3f664`, `dac46a3` and `b637d8e`, so every figure below is a
+%   DELTA against 1 pre-existing failure, never against a clean baseline.
+%
+%       M1  key on the STRING ALONE          run 31528302237   RED, 2 tests
+%             testTheSameStringInTwoSessionsDoesNotFuse
+%             testTheIndexAgreesWithEpochMintOnItsOwnOutput
+%       M2  resolve HALF A KEY (string-only  run 31528773790   RED, 1 test
+%           fallback when the session id           testHalfAKeyResolvesToNothingNotToAGuess
+%           is missing)
+%
+%   M1 reddening the ANTI-DRIFT test as well as the fusion test is the result
+%   worth having: it is the test that pins this class's key to
+%   `did2.convert.epochMint`'s, and it is the one that would catch the key
+%   changing under either of them.
+%
+%   THREE MUTATIONS WERE PREPARED AND NOT RUN, and the reason is not that they
+%   were expected to pass:
+%
+%       M3  drop the `refused_no_epoch_document` counter      NOT RUN
+%       M4  `resolve` returns '' unconditionally              NOT RUN
+%       M5  `classDeclaresEpochEdge` matches any dependency   NOT RUN
+%
+%   The only channel that can execute MATLAB here is a push, and pushing a
+%   knowingly-broken file to the shared branch is a hazard already recorded as a
+%   finding (DID-schema `V_eta_OPEN_WORK.md` rows 86(f) and 88(b), commit
+%   `c2dea42`: a container restart during the window leaves the mutation as the
+%   file's last word, and a commit was once stacked on a mutation before its
+%   revert landed). M1 and M2 were run that way before the rule was pointed out;
+%   M3-M5 were stopped. **`testResolveStillActuallyResolves` and
+%   `testAPairWithNoEpochDocumentIsCountedNotSilent` and the three schema-guard
+%   tests are therefore UNPROVEN, not proven.** Anyone with a MATLAB can run the
+%   three swaps -- each is a single exact-string substitution and each is
+%   spelled out in the commit that recorded this matrix.
+%
+%   ALERT 209 IS THE SAME HAZARD ARRIVING BY A ROUTE NOBODY LISTED. CodeQL
+%   raised "input argument might be unused" on `epochIndex.m:641` --
+%   `pairKey`'s `sessionId`. It is unused ONLY under M1 (`k = localIdentifier`);
+%   at every unmutated revision it is read by
+%   `sprintf('%d:%s|%s', numel(sessionId), sessionId, localIdentifier)`. The
+%   quick gate uploads a SARIF artifact on every run, so a mutation pushed to a
+%   shared branch does not merely risk being left behind -- it is INGESTED by
+%   the org's scanner and comes back as an alert against the real file, after
+%   the revert has landed.
+%
 %   Run with:  results = runtests('did2.unittest.testEpochIndex');
 %
 %   See also: did2.convert.epochIndex, did2.convert.epochMint,

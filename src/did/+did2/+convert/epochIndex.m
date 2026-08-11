@@ -202,14 +202,6 @@ classdef epochIndex < handle
             % document has no session" and "the document has no epoch string"
             % are different defects with different owners.
             if isempty(sid)
-                allK = keys(obj.idByKey);   % MUTATION M2
-                for kk = 1:numel(allK)
-                    if endsWith(allK{kk}, ['|' lid])
-                        epochDocumentId = obj.idByKey(allK{kk});
-                        obj.report.resolve_hits = obj.report.resolve_hits + 1;
-                        return;
-                    end
-                end
                 why = 'refused_no_session_id';
                 obj.bumpRefusal(why);
                 return;
