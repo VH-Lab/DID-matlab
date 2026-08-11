@@ -151,6 +151,53 @@ end
 if isfield(result, 'epoch_string_retention')
     report.epoch_string_retention = result.epoch_string_retention;
 end
+% `deferred_bath_resolution` -- the FIRST pass in the chain, and the last one
+% to acquire a report (2026-08-11). PERSISTED BECAUSE IT SWALLOWED ITS OWN
+% FAILURES: the per-bath handler was a bare `catch` whose body was two comment
+% lines, so an unreadable body, a missing `stimulus_element_id`, a genuinely
+% absent element and an outright bug all produced the identical outcome --
+% document stays quarantined, nothing counted. "Resolved every deferred bath"
+% and "resolved none, every element missing from the batch" have therefore been
+% the same reading of every corpus run to date, run 31522068566 (green)
+% included. The pass is not a no-op: it moves documents from
+% `quarantine` into `migrated`.
+%
+% WHICH ZERO YOU ARE LOOKING AT: `quarantine_inspected` is the denominator and
+% `deferred_baths_seen` is the one that decides the reading. 0 seen out of a
+% large quarantine means this corpus deferred no bath (a fact about the input);
+% 0 seen out of 0 means there was no quarantine at all. `refused_*` splits the
+% five causes and MUST NOT be summed into one -- only
+% `refused_element_not_in_batch` is the designed best-effort outcome; a
+% non-zero `refused_unexpected_error` is a defect, and
+% `unexpected_error_reasons` names one entry per distinct identifier.
+if isfield(result, 'deferred_bath_resolution')
+    report.deferred_bath_resolution = result.deferred_bath_resolution;
+end
+% `dataset_entity_resolution` -- PERSISTED BECAUSE THIS PASS DELETES DOCUMENTS
+% AND, UNTIL 2026-08-11, COUNTED NEITHER DELETION. Both `keep(k) = false` sites
+% feed `result.migrated = docs(keep)`, and the only number that survived them
+% (`migrated_count`) is taken AFTER the removal -- so how many documents it
+% dropped in any past run is UNRECOVERABLE from the artifacts. That is why this
+% block exists rather than a log line.
+%
+% THE TWO DELETION REASONS ARE DIFFERENT FACTS AND MUST NEVER BE SUMMED.
+% `duplicates_dropped_poorer_richness` is a dedup -- the content survives on
+% the richer twin under the SAME base.id, nothing dangles.
+% `membership_dropped_child_absent` is a `session -part_of-> dataset` statement
+% discarded outright. A combined total would let the second hide inside the
+% first. `membership_dropped_no_child_edge` is a THIRD fact that used to hide
+% inside the second (an edge naming no child is a migrator defect, not a linked
+% session).
+%
+% READ `documents_removed_unattributed` AS A GATE, NOT A STATISTIC: it is the
+% keep-mask count minus the three named reasons, so anything but 0 means a
+% document was removed by a path that does not say why. And read
+% `documents_unreadable` BEFORE `membership_dropped_child_absent` -- the prune
+% decides on absence from an id index, so an unreadable document makes that
+% count an upper bound rather than a measurement.
+if isfield(result, 'dataset_entity_resolution')
+    report.dataset_entity_resolution = result.dataset_entity_resolution;
+end
 % The EPOCH MINT (#60): how many `epoch` entities were minted, and -- more
 % useful -- every refusal, counted. `pairs_minus_strings` is the number of
 % epochs that keying on the id STRING instead of the (session, id) PAIR would

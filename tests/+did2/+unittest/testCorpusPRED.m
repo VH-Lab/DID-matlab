@@ -88,8 +88,18 @@ end
 % (migrators_j) so the corpus migrates cleanly under the schema it is checked
 % against.
 result = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'V_eta');
-result = did2.convert.resolveDeferredBaths(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+% GUARDED 2026-08-11, in step with runCorpusDiscovery. This pass runs FIRST and
+% moves documents from `quarantine` into `migrated`; its per-bath failures were
+% swallowed by a bare `catch` with a two-line comment for a body until it
+% acquired the `deferred_bath_resolution` report, so "resolved every deferred
+% bath" and "resolved none" were the same reading of every corpus run. It runs
+% before writeCorpusReport, and PRED has been invisible to the census once
+% already. In the FATAL list below: the guard saves the artifact, the assertion
+% keeps the gate red.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveDeferredBaths', 'deferred_bath_resolution', ...
+    @(r) did2.convert.resolveDeferredBaths(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
 % TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
 % graph into the entity tier -- the same six classes metadata_editor emits,
 % from the independent openMINDS store. ADDITIVE: neither store dominates and
@@ -108,8 +118,16 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     'did2.convert.resolveOpenmindsCitations', 'openminds_citations', ...
     @(r) did2.convert.resolveOpenmindsCitations(r, 'Validate', true, ...
         'TargetVersion', 'V_eta'));
-result = did2.convert.resolveDatasetEntities(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+% GUARDED 2026-08-11: THIS PASS DELETES DOCUMENTS -- the poorer of duplicate
+% `dataset` entities, and every `migrated_session_membership` edge whose child
+% is absent from the batch -- and counted neither until it acquired the
+% `dataset_entity_resolution` report. The two reasons are kept apart there,
+% because a dedup loses nothing and a discarded membership edge loses a
+% statement. In the FATAL list below.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveDatasetEntities', 'dataset_entity_resolution', ...
+    @(r) did2.convert.resolveDatasetEntities(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
 % #60: mint the `epoch` entities, keyed on the (base.session_id, epoch-id
 % string) PAIR. Kept in step with runCorpusDiscovery deliberately -- this file
 % exists to run the same post-passes on a HARD gate, and a post-pass that runs
@@ -263,7 +281,13 @@ did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
 % other two -- it has never been executed, and red-gating everyone on an
 % unexecuted pass's first run is the judgement resolveSessionAnchors's author
 % made and was right about.
-for passField = {'epoch_mint', 'session_anchor_fold', 'generic_file_fold'}
+% `deferred_bath_resolution` and `dataset_entity_resolution` ARE in the list,
+% for the opposite reason to the three above: both ran BARE here for months,
+% where a throw was already fatal. Guarding them 2026-08-11 protects the
+% artifact; omitting them from this list would have silently downgraded two
+% hard failures to log lines.
+for passField = {'deferred_bath_resolution', 'dataset_entity_resolution', ...
+                 'epoch_mint', 'session_anchor_fold', 'generic_file_fold'}
     failMsg = did2.unittest.helpers.batchPassFailure(result, passField{1});
     verifyEmpty(testCase, failMsg, sprintf( ...
         ['PRED: batch post-pass `%s` FAILED; its documents are in pass-1 ' ...

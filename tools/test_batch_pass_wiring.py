@@ -106,9 +106,9 @@ EXEMPT = re.compile(r"^%\s*WIRING-EXEMPT:\s*(\S[^\n\r]*)$", re.M)
 # ---------------------------------------------------------------------------
 # THE KNOWN GAP, NAMED. NOT AN EXEMPTION -- A DEBT WITH A DIRECTION.
 # ---------------------------------------------------------------------------
-# These two passes predate Operating Rule 5 and attach NO report at all, so
-# there is nothing for the PERSISTED and PRINTED legs to check. They are listed
-# here rather than silently skipped, and the list is gated BOTH WAYS:
+# A pass listed here attaches NO report at all, so there is nothing for the
+# PERSISTED and PRINTED legs to check. Listing it is not skipping it, and the
+# list is gated BOTH WAYS:
 #
 #   * a pass NOT on this list must declare a report key      (it cannot grow
 #                                                             without a decision)
@@ -118,21 +118,18 @@ EXEMPT = re.compile(r"^%\s*WIRING-EXEMPT:\s*(\S[^\n\r]*)$", re.M)
 # A hand-kept allow-list that only ever gets longer is the thing that would have
 # gone stale the day resolveSessionAnchors was added. This one can only shrink.
 #
-# What their absence costs, said plainly rather than filed away:
-# `resolveDeferredBaths` resolves deferred stimulus_baths and `resolveDatasetEntities`
-# dedups `dataset` entities and PRUNES membership relations -- both change the
-# corpus, and neither reports how many documents it inspected, resolved or
-# dropped. "Ran and found nothing" and "ran and silently failed to resolve
-# anything" are the same reading of every corpus run today. Fixing that is a
-# separate change with its own owner; recording it is not.
-NO_REPORT_YET = {
-    "resolveDatasetEntities": "predates Operating Rule 5; dedups `dataset` "
-                              "entities and prunes membership relations without "
-                              "reporting its denominator",
-    "resolveDeferredBaths": "predates Operating Rule 5; resolves deferred "
-                            "stimulus_baths without reporting how many it "
-                            "inspected or refused",
-}
+# IT IS NOW EMPTY, AND WHAT CAME OFF IT CAME OFF BY BEING FIXED (2026-08-11):
+#
+#   resolveDeferredBaths     -> `deferred_bath_resolution`
+#   resolveDatasetEntities   -> `dataset_entity_resolution`
+#
+# Both MUTATE the corpus -- the first moves documents from `quarantine` into
+# `migrated`, the second DELETES them -- and neither reported how many it
+# inspected, resolved or dropped. "Ran and found nothing" and "ran and silently
+# failed to resolve anything" were the same reading of every corpus run,
+# 31522068566 (green) included. The debt list shrank to nothing; it did not
+# get a longer set of excuses.
+NO_REPORT_YET = {}
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +170,16 @@ NOT_RENDERED_YET = {
     },
     "openminds_citations": {
         "withheld_reasons",
+    },
+    # deferred_bath_resolution.unexpected_error_reasons
+    #     NOT A COUNTER, same shape and same reason as withheld_reasons above:
+    #     a CELL ARRAY holding one string per DISTINCT error identifier the
+    #     per-bath handler met, so there is no number for a row to print and no
+    #     cross-corpus rollup could sum it. `refused_unexpected_error` is the
+    #     number. Listed ahead of the digest entry landing so the row sweep
+    #     does not fail the first person who writes one.
+    "deferred_bath_resolution": {
+        "unexpected_error_reasons",
     },
 }
 
@@ -930,6 +937,178 @@ def test_the_epoch_string_retention_instrument_is_wired_end_to_end():
     print("  RENDERED   %d of %d field(s) named in census_digest.py "
           "(NOT GATED -- the digest is owned elsewhere; %d field(s) are an "
           "OPEN DEBT)" % (len(rendered), len(fields), len(fields) - len(rendered)))
+
+
+# ---------------------------------------------------------------------------
+# THE PRINTED HEADLINE. "7 EXPECTED" WHILE THE FILE COMPOSED 9.
+# ---------------------------------------------------------------------------
+# `printBatchPasses`'s `expected` cell array is a hand-kept MATLAB list, and
+# deriving it inside MATLAB would mean the harness reading its own source at
+# run time. The three tests below make the disagreement UNCOMMITTABLE instead,
+# which is a weaker guarantee than derivation and a much stronger one than a
+# comment: the count is derived from the table (`size(expected, 1)`), the table
+# is pinned to the composed chain in BOTH directions, so the printed number
+# cannot differ from what the file runs without this gate going red.
+#
+# Everything here is a text scan of the harness. It runs in milliseconds on the
+# fast gate and needs no MATLAB -- which is the point, because the file it
+# checks is only EXECUTED by the ~2-hour corpus job.
+
+_RUN_BATCH_PASS = re.compile(
+    r"runBatchPass\s*\(\s*result\s*,\s*(?:\.\.\.\s*)?"
+    r"'did2\.convert\.(\w+)'\s*,\s*'(\w+)'", re.S)
+
+_EXPECTED_ROW = re.compile(r"'(\w+)'\s*,\s*'did2\.convert\.(\w+)'")
+
+_FATAL_LIST = re.compile(r"for\s+passField\s*=\s*\{(.*?)\}", re.S)
+
+
+def _strip_matlab_comments(text):
+    """Drop whole-line %-comments. DELIBERATELY CRUDE, and the direction of the
+    error is the point: it only ever removes lines, so it can hide a call or a
+    row -- never invent one. A hidden call makes a set SMALLER, which fails the
+    equality tests below loudly instead of passing them quietly.
+    """
+    return "\n".join(line for line in text.splitlines()
+                     if not line.strip().startswith("%"))
+
+
+def _expected_table(text):
+    """The (report field, function name) rows of printBatchPasses's table."""
+    i = text.find("expected = {")
+    if i < 0:
+        return None
+    j = text.find("};", i)
+    if j < 0:
+        return None
+    block = _strip_matlab_comments(text[i:j])
+    return set(_EXPECTED_ROW.findall(block))
+
+
+def _guarded_calls(text):
+    """(report field, function name) for every runBatchPass call in TEXT."""
+    body = _strip_matlab_comments(text)
+    return set((field, fn) for fn, field in _RUN_BATCH_PASS.findall(body))
+
+
+def test_the_printed_table_is_exactly_the_composed_chain():
+    """BOTH DIRECTIONS. A row with no call is a phantom; a call with no row is
+    invisible in the log of every corpus run.
+
+    The existing PRINTED test only checks the second direction, and only for
+    passes discovered in the package -- so a row naming a pass this file does
+    not compose would have sailed through it.
+    """
+    text = _read(DISCOVERY)
+    table = _expected_table(text)
+    assert table is not None, (
+        "no `expected = {` table found in %s -- this is 'did not look', not "
+        "'the table agrees'" % DISCOVERY)
+    calls = _guarded_calls(text)
+    print("\n--- printed table vs composed chain: %d row(s), %d guarded "
+          "call(s) in %s ---" % (len(table), len(calls), DISCOVERY))
+    for field, fn in sorted(table | calls):
+        print("  %-28s %-40s %-10s %s"
+              % (field, "did2.convert." + fn,
+                 "ROW" if (field, fn) in table else "-- no row --",
+                 "CALLED" if (field, fn) in calls else "-- not composed --"))
+    assert table == calls, (
+        "runCorpusDiscovery's printed `expected` table and the passes it "
+        "actually composes through runBatchPass DISAGREE.\n"
+        "  rows with no call: %s\n"
+        "  calls with no row: %s\n"
+        "  The headline is `%%d expected` off this table, so a disagreement "
+        "prints a number that describes neither." % (
+            sorted(table - calls) or "none", sorted(calls - table) or "none"))
+
+
+def test_the_printed_pass_count_is_derived_from_the_table():
+    """The headline must be size(expected, 1). A literal is how it said 7."""
+    text = _read(DISCOVERY)
+    hits = [line for line in text.splitlines()
+            if "batch post-passes (%d expected)" in line]
+    print("\n--- printed headline: %d matching fprintf line(s) ---" % len(hits))
+    for line in hits:
+        print("  %s" % line.strip())
+    assert len(hits) == 1, (
+        "expected exactly one `batch post-passes (%d expected)` headline in "
+        "%s, found %d" % (DISCOVERY, len(hits)))
+    # The argument may sit on the same line or wrap; take the fprintf call.
+    i = text.find("batch post-passes (%d expected)")
+    window = text[i:i + 400]
+    assert "size(expected, 1)" in window, (
+        "the batch-post-pass headline in %s does not read its count from "
+        "`size(expected, 1)`. A literal there is exactly how the log printed "
+        "'7 expected' while the file composed 9." % DISCOVERY)
+
+
+def test_the_two_mutating_passes_are_guarded_and_fatal_at_both_producers():
+    """resolveDeferredBaths and resolveDatasetEntities, named explicitly.
+
+    A scan over what EXISTS cannot notice something that stopped existing, and
+    these two are the reason this change exists: one moves documents from
+    `quarantine` into `migrated` and swallowed every per-bath failure; the
+    other DELETES documents. Both must (a) run through the guard at both
+    report-writing sites, so a throw cannot destroy the corpus artifact, and
+    (b) be in that site's FATAL list, so guarding them does not quietly
+    downgrade a hard failure -- which is a regression in the costume of a
+    safety improvement.
+    """
+    wanted = {
+        "deferred_bath_resolution": "resolveDeferredBaths",
+        "dataset_entity_resolution": "resolveDatasetEntities",
+    }
+    producers = ["runCorpusDiscovery", "testCorpusPRED"]
+    print("\n--- the two mutating passes: %d pass(es) x %d report-writing "
+          "producer(s) ---" % (len(wanted), len(producers)))
+    problems = []
+    for site in producers:
+        text = _read(CALL_SITES[site])
+        calls = _guarded_calls(text)
+        fatal = set()
+        for block in _FATAL_LIST.findall(_strip_matlab_comments(text)):
+            fatal |= set(re.findall(r"'(\w+)'", block))
+        for field, fn in sorted(wanted.items()):
+            guarded = (field, fn) in calls
+            is_fatal = field in fatal
+            print("  %-28s %-20s guard:%-6s fatal:%-6s"
+                  % (field, site, "yes" if guarded else "NO",
+                     "yes" if is_fatal else "NO"))
+            if not guarded:
+                problems.append(
+                    "%s is not routed through runBatchPass in %s -- a throw "
+                    "there lands between the post-passes and "
+                    "writeCorpusReport, and costs the corpus its entire "
+                    "census" % (fn, site))
+            if not is_fatal:
+                problems.append(
+                    "`%s` is missing from the FATAL pass list in %s. Both "
+                    "passes were BARE calls for months, where a throw was "
+                    "already fatal; guarding them without this is a silent "
+                    "downgrade" % (field, site))
+    assert not problems, "\n  ".join(["mutating-pass wiring:"] + problems)
+
+
+def test_no_pass_is_left_without_a_report():
+    """The claim in runBatchPass.m, asserted where it can actually be checked.
+
+    That file says "Every pass in did2.convert assigns its report to RESULT
+    unconditionally". It was FALSE for two of nine passes and nothing checked
+    it -- a guarantee written as a description. NO_REPORT_YET is now empty, and
+    this test is what keeps the sentence true rather than aspirational.
+    """
+    passes, _exempt, n_files = discover()
+    without = [name for name, key in passes if not key]
+    print("\n--- runBatchPass.m's claim: %d pass(es) in %d file(s), %d with no "
+          "report, %d on the allow-list ---"
+          % (len(passes), n_files, len(without), len(NO_REPORT_YET)))
+    assert not NO_REPORT_YET, (
+        "NO_REPORT_YET is non-empty (%s). That is allowed -- the list is the "
+        "honest way to carry a gap -- but runBatchPass.m's claim that EVERY "
+        "pass attaches a report must then be amended to name the exemptions "
+        "and say why, in the same commit." % ", ".join(sorted(NO_REPORT_YET)))
+    assert not without, (
+        "pass(es) with no `result.<key> = report;`: %s" % ", ".join(without))
 
 
 if __name__ == "__main__":

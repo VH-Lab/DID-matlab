@@ -1,9 +1,9 @@
-function result = resolveDeferredBaths(result, options)
+function [result, report] = resolveDeferredBaths(result, options)
 %RESOLVEDEFERREDBATHS Coarse, DID-only resolution of deferred stimulus_baths.
 %
-%   RESULT = did2.convert.resolveDeferredBaths(RESULT) takes the struct
-%   returned by did2.convert.v1_to_v2 and resolves the stimulus_bath documents
-%   it deferred with did2:convert:needsSessionContext, using ONLY the migrated
+%   [RESULT, REPORT] = did2.convert.resolveDeferredBaths(RESULT) takes the
+%   struct returned by did2.convert.v1_to_v2 and resolves the stimulus_bath
+%   documents it deferred with did2:convert:needsSessionContext, using ONLY the migrated
 %   batch already in hand -- no live NDI session. For each deferred
 %   stimulus_bath it:
 %
@@ -35,6 +35,54 @@ function result = resolveDeferredBaths(result, options)
 %     TargetVersion (1,:) char, default 'V_zeta') - the migration target the
 %                   assembled bodies are tagged with (Brainstorm I).
 %
+%   ---------------------------------------------------------------------
+%   THE REPORT, AND THE BARE `catch` IT REPLACES
+%   ---------------------------------------------------------------------
+%   UNTIL 2026-08-11 THE PER-BATH HANDLER WAS TWO COMMENT LINES. Every failure
+%   -- an unreadable body, a missing `stimulus_element_id`, an element that is
+%   genuinely not in the batch, an assembly bug, a typo in a field name -- left
+%   the document quarantined with its original deferral reason and produced no
+%   number anywhere. So "resolved every deferred bath" and "resolved none,
+%   because every element was missing" were THE SAME READING of every corpus
+%   run to date, run 31522068566 (green) included. The pass
+%   is not a no-op: it moves documents from `quarantine` into `migrated`, so
+%   the size of what it did and did not do was unmeasured in both directions.
+%
+%   REFUSALS ARE COUNTED BY CAUSE, AND AN UNEXPECTED ERROR IS ITS OWN CAUSE.
+%   The single try/catch is now four staged ones, so
+%   `refused_element_not_in_batch` means exactly what it says (identifier
+%   `did2:convert:noSubjectForElement`, the honest best-effort case this pass
+%   was designed around) and anything else lands in
+%   `refused_unexpected_error`, with one entry per DISTINCT identifier in
+%   `unexpected_error_reasons`. Folding a real bug into the expected case is
+%   what the old handler did, and it is the reassuring direction.
+%
+%   READ `deferred_baths_seen` BESIDE `quarantine_inspected`. Every counter at
+%   0 with `deferred_baths_seen` at 0 means this batch deferred no bath -- a
+%   fact about the input, not about the resolver. `deferred_baths_seen`
+%   non-zero with `baths_resolved` at 0 is the line worth looking at, and the
+%   five `refused_*` counters then say which cause.
+%
+%   `migrated_indexed` IS THE OTHER DENOMINATOR. Resolution walks an index
+%   built from `result.migrated`; `elements_indexed` and
+%   `lineage_edges_indexed` are how much of it the two subject models found.
+%   Zero of both with a non-zero `migrated_indexed` means the index is empty
+%   for a reason other than an empty batch, which no other counter here can
+%   distinguish.
+%
+%   STATUS of the 2026-08-11 report edit: WRITTEN IN A CONTAINER WITH NO MATLAB
+%   AND NO OCTAVE (`command -v matlab octave octave-cli` exits 1). NOTHING IN
+%   IT HAS BEEN EXECUTED. test-migrators-quick.yml (which runs
+%   testFixtureCorpus, a bare caller of this pass) is the first thing that will
+%   have an opinion.
+%
+%   CALL SITES: runCorpusDiscovery, testCorpusPRED, testFixtureCorpus and
+%   ndi.migrate.local. The two REPORT-WRITING sites now route this pass through
+%   did2.unittest.helpers.runBatchPass -- it runs before writeCorpusReport, so
+%   an uncaught throw here costs a corpus its entire census -- and both add it
+%   to their FATAL pass list, so a throw still turns the gate red.
+%   testFixtureCorpus keeps calling it BARE on purpose.
+%
 %   See also: did2.convert.v1_to_v2, did2.convert.migrators_i.stimulus_bath,
 %   ndi.migrate.internal.stimulusBathToBath.
 
@@ -45,33 +93,133 @@ arguments
     options.TargetVersion (1,:) char = 'V_zeta'
 end
 
-if ~isfield(result, 'quarantine') || isempty(result.quarantine)
+% DENOMINATOR FIRST, and unconditionally -- every field defined before a single
+% quarantine entry is read, so "did not run", "ran over an empty quarantine"
+% and "ran and refused everything" are three different readings rather than
+% one. Operating Rule 5.
+report = struct( ...
+    'quarantine_inspected',           0, ...
+    'migrated_indexed',               0, ...
+    'elements_indexed',               0, ...
+    'lineage_edges_indexed',          0, ...
+    'index_documents_unreadable',     0, ...
+    'deferred_baths_seen',            0, ...
+    'baths_resolved',                 0, ...
+    'bodies_assembled',               0, ...
+    'refused_body_unreadable',        0, ...
+    'refused_no_stimulus_element_id', 0, ...
+    'refused_element_not_in_batch',   0, ...
+    'refused_bath_assembly_failed',   0, ...
+    'refused_unexpected_error',       0, ...
+    'refused_total',                  0, ...
+    'documents_appended',             0, ...
+    'assembled_bodies_quarantined',   0, ...
+    'quarantine_before',              0, ...
+    'quarantine_after',               0, ...
+    'unexpected_error_reasons',       {{}}, ...
+    'ran',                            false);
+result.deferred_bath_resolution = report;
+
+if ~isfield(result, 'quarantine')
+    % NOT the same as an empty quarantine, and not the same as not running.
+    report.ran = true;
+    result.deferred_bath_resolution = report;
+    return;
+end
+report.ran = true;
+report.quarantine_inspected = numel(result.quarantine);
+report.quarantine_before = numel(result.quarantine);
+report.quarantine_after = numel(result.quarantine);
+if isfield(result, 'migrated')
+    report.migrated_indexed = numel(result.migrated);
+end
+if isempty(result.quarantine)
+    % 0 OF 0 INSPECTED, said as such. A `0 refused` with no denominator beside
+    % it is the reading that got this project into writing these rules.
+    result.deferred_bath_resolution = report;
     return;
 end
 
-byElement = indexElements(result.migrated);
+[byElement, indexStats] = indexElements(result.migrated);
+report.elements_indexed = indexStats.elements;
+report.lineage_edges_indexed = indexStats.lineage_edges;
+report.index_documents_unreadable = indexStats.unreadable;
 
 q = result.quarantine;
 keep = true(1, numel(q));
 assembled = {};
+seenErrorIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:numel(q)
     if ~isDeferredBath(q(k))
         continue;
     end
+    report.deferred_baths_seen = report.deferred_baths_seen + 1;
+
+    % STAGE 1: the source body. An unreadable body is a different fact from an
+    % element that is not in the batch, and the old handler said neither.
     try
         v1Body = jsondecode(q(k).original_body);
-        stimulatorId = dependencyValue(v1Body, 'stimulus_element_id');
-        subjectId = subjectOfElement(byElement, stimulatorId);   % errors if none
-        bathBodies = makeBath(v1Body, subjectId, options.TargetVersion);
-        assembled = [assembled, bathBodies]; %#ok<AGROW>
-        keep(k) = false;   % resolved -> drop the original deferral
     catch
-        % element not in batch (or unresolvable): leave it quarantined with
-        % its original needsSessionContext reason.
+        report.refused_body_unreadable = report.refused_body_unreadable + 1;
+        continue;
     end
+
+    % STAGE 2: the edge this pass follows. Absent means the source document
+    % never named a stimulator -- nothing to resolve, and NOT a missing element.
+    stimulatorId = dependencyValue(v1Body, 'stimulus_element_id');
+    if isempty(stimulatorId)
+        report.refused_no_stimulus_element_id = ...
+            report.refused_no_stimulus_element_id + 1;
+        continue;
+    end
+
+    % STAGE 3: the resolution itself. `did2:convert:noSubjectForElement` is the
+    % EXPECTED refusal -- the element is not in this batch, which is the honest
+    % best-effort case documented above. Every other identifier is a defect and
+    % is counted, named and printed as one rather than absorbed here.
+    try
+        subjectId = subjectOfElement(byElement, stimulatorId);
+    catch resolveErr
+        if strcmp(resolveErr.identifier, 'did2:convert:noSubjectForElement')
+            report.refused_element_not_in_batch = ...
+                report.refused_element_not_in_batch + 1;
+        else
+            report.refused_unexpected_error = ...
+                report.refused_unexpected_error + 1;
+            [report, seenErrorIds] = noteUnexpected(report, seenErrorIds, ...
+                'subjectOfElement', resolveErr);
+        end
+        continue;
+    end
+
+    % STAGE 4: assembly. A throw here is always a defect in this file.
+    try
+        bathBodies = makeBath(v1Body, subjectId, options.TargetVersion);
+    catch assembleErr
+        report.refused_bath_assembly_failed = ...
+            report.refused_bath_assembly_failed + 1;
+        [report, seenErrorIds] = noteUnexpected(report, seenErrorIds, ...
+            'makeBath', assembleErr);
+        continue;
+    end
+
+    assembled = [assembled, bathBodies]; %#ok<AGROW>
+    report.bodies_assembled = report.bodies_assembled + numel(bathBodies);
+    report.baths_resolved = report.baths_resolved + 1;
+    keep(k) = false;   % resolved -> drop the original deferral
 end
 
+% Summed from the five NAMED causes, never from a difference. `refused_total`
+% is a convenience for the deletion-gate readings the sibling passes print; the
+% causes are the finding and are never collapsed into it in the printout.
+report.refused_total = report.refused_body_unreadable ...
+    + report.refused_no_stimulus_element_id ...
+    + report.refused_element_not_in_batch ...
+    + report.refused_bath_assembly_failed ...
+    + report.refused_unexpected_error;
+
 if isempty(assembled)
+    result.deferred_bath_resolution = report;
     return;
 end
 
@@ -83,20 +231,50 @@ sub = did2.convert.v1_to_v2(assembled, ...
 
 result.migrated = [result.migrated, sub.migrated];
 result.quarantine = [q(keep), sub.quarantine];
+report.documents_appended = numel(sub.migrated);
+report.assembled_bodies_quarantined = numel(sub.quarantine);
+report.quarantine_after = numel(result.quarantine);
 result.summary = recountSummary(result);
+result.deferred_bath_resolution = report;
+end
+
+% ===================== unexpected-error bookkeeping =========================
+
+function [report, seen] = noteUnexpected(report, seen, stage, err)
+%NOTEUNEXPECTED Record ONE entry per distinct error identifier.
+%   Bounded by construction (distinct identifiers, not occurrences), so a
+%   corpus where every bath fails the same way cannot fill the artifact with
+%   half a million identical strings -- and a SECOND, different failure is
+%   still visible beside the first. The count lives in the counter; this cell
+%   says what the failures were.
+id = char(err.identifier);
+if isempty(id); id = '<no identifier>'; end
+key = sprintf('%s:%s', stage, id);
+if isKey(seen, key)
+    return;
+end
+seen(key) = true;
+report.unexpected_error_reasons{end+1} = sprintf( ...
+    '%s threw %s: %s', stage, id, char(err.message));
 end
 
 % ===================== element -> subject index ============================
 
-function idx = indexElements(migrated)
+function [idx, stats] = indexElements(migrated)
 %INDEXELEMENTS Index the batch for stimulator -> specimen resolution under BOTH
 %   subject models: the `elements` map (base.id -> element doc, the V_zeta model
 %   where the stimulator is still an `element`) and the `relParent` map (a
 %   directed_relation's child -> parent, the V_eta model where the element has
 %   become a `subject` whose lineage relation points at its specimen).
+%
+%   STATS reports what the index actually holds -- `elements`,
+%   `lineage_edges`, and the documents it could not read at all. Without it
+%   "no element matched" and "the index is empty" print the same, and only one
+%   of those is about the corpus.
 idx = struct();
 idx.elements = containers.Map('KeyType', 'char', 'ValueType', 'any');
 idx.relParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
+stats = struct('elements', 0, 'lineage_edges', 0, 'unreadable', 0);
 for k = 1:numel(migrated)
     doc = migrated{k};
     try
@@ -113,9 +291,15 @@ for k = 1:numel(migrated)
             end
         end
     catch
-        % skip docs whose class/id/deps cannot be read
+        % A document whose class/id/deps cannot be read is COUNTED, not
+        % silently skipped: it is a hole in the index the resolution below
+        % walks, so an unresolved bath in a run with a non-zero count here is
+        % not evidence the element was absent.
+        stats.unreadable = stats.unreadable + 1;
     end
 end
+stats.elements = double(idx.elements.Count);
+stats.lineage_edges = double(idx.relParent.Count);
 end
 
 function subjectId = subjectOfElement(idx, elementId)

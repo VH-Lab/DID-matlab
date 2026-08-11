@@ -58,6 +58,26 @@ function result = runBatchPass(result, passName, reportField, fn)
 %   denominator always exists; one that did not would be an instrument with no
 %   denominator, which is the thing Operating Rule 5 forbids.
 %
+%   THAT SENTENCE WAS FALSE FOR TWO OF NINE PASSES UNTIL 2026-08-11, AND
+%   NOTHING CHECKED IT. `did2.convert.resolveDeferredBaths` and
+%   `did2.convert.resolveDatasetEntities` attached no report at all -- no
+%   denominator, no counters, no failure -- while both MUTATE the corpus (the
+%   first moves documents quarantine -> migrated, the second DELETES them). The
+%   claim was written as a description of the package and read as a guarantee
+%   about it; it was neither, because it was asserted here and enforced
+%   nowhere. Both passes now carry reports
+%   (`deferred_bath_resolution`, `dataset_entity_resolution`) and the
+%   `if ~isfield(result, reportField)` arm below is no longer unreachable-by-
+%   description for any pass in the package.
+%
+%   IT IS NOW ENFORCED RATHER THAN ASSERTED. `tools/test_batch_pass_wiring.py`
+%   (fast gate, no MATLAB needed) reads every `function <out> = <name>(result,
+%   ...)` in +did2/+convert and fails when one carries no
+%   `result.<key> = report;` assignment. Its NO_REPORT_YET allow-list -- which
+%   named exactly these two -- is gated BOTH ways, so it can only shrink; it is
+%   now empty. NO EXEMPT PASSES: if a future pass needs one, it belongs on that
+%   list with a reason, not in this comment.
+%
 %   ---------------------------------------------------------------------
 %   WHAT "LEFT IN PASS-1 FORM" MEANS, EXACTLY
 %   ---------------------------------------------------------------------
