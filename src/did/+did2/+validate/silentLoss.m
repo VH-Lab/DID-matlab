@@ -63,7 +63,121 @@ function report = silentLoss(docs, opts)
 %                                 AND NEVER SUMMED WITH empty_required_dependency.
 %     ndi_required_dependency_count       total occurrences
 %     ndi_required_denominator    that block's own denominators
+%     edge_arity                  THE UNGATED EDGE-ARITY CENSUS (see below):
+%                                 how many documents carry ONE member of an
+%                                 edge family, how many carry TWO, how many
+%                                 carry THREE OR MORE -- per (class, family),
+%                                 for EVERY class. REPORT ONLY.
+%     edge_arity_plural_count     (document, family) pairs carrying MORE THAN
+%                                 ONE member. The headline number.
 %     skipped_docs                documents whose schema could not be resolved
+%
+%   THE EDGE-ARITY CENSUS -- "HOW MANY DOCUMENTS CARRY A PLURAL EDGE"
+%   -----------------------------------------------------------------
+%   NOTHING IN THIS REPOSITORY OR IN NDI COULD ANSWER THAT QUESTION, and the
+%   answer was being written down as UNMEASURED. Three counters could have and
+%   each is out of reach:
+%
+%     ndi.migrate.internal.imagedEntitySubjects.blocked_plural_document_id
+%         NDI-side. The DID corpus harness never invokes that pass, so its zero
+%         means "not run", not "none".
+%     ndi.migrate.internal.ontologyRowSubjects
+%         has no plural counter at all. `resolved_via_document_id_edge` counts
+%         RESOLUTIONS, not ARITY -- a row with three edges that resolves once
+%         increments it once.
+%     uniqueness_denominator.docs_multi_member (this file, #52)
+%         IS an arity counter, and it is GATED: a family enters it only when the
+%         schema declares `referent_unique_by` on it. DID-schema's
+%         `_EDGE_REFERENT_UNIQUE` has THREE entries, all `time_reference_#`, so
+%         every other family in the schema -- including `document_id` -- is
+%         invisible to it. Not zero. NOT LOOKED AT.
+%
+%   SO THIS BLOCK IS GATED ON NOTHING. It reads the DOCUMENT's own `depends_on`
+%   and asks how many entries fall in each family. No schema lookup, no marker,
+%   no declaration required: a family exists here because a document carries it,
+%   which is the only way to see an edge the schema never described. Scoping it
+%   to `ontology_table_row` -- the class the question was asked about -- would
+%   have rebuilt the same blind spot one name narrower.
+%
+%   WHAT COUNTS AS ONE FAMILY. An entry named `<stem>_<digits>` belongs to
+%   family `<stem>`; an entry named `<stem>` with no index belongs to the SAME
+%   family. That folding is not a convenience, it is REQUIRED for the
+%   denominator to mean anything, and it is what the one real consumer of this
+%   idiom already does (NDI `imagedEntitySubjects/dependencyValuesMatching`
+%   matches `^<name>(_\d+)?$`). NDI's writer picks the spelling BY ARITY:
+%
+%       ndi/+setup/+NDIMaker/tableDocMaker.m:289
+%           if isscalar(values); doc.set_dependency_value('document_id', v)
+%       :291
+%           else;               doc.add_dependency_value_n('document_id', v)
+%
+%   and `add_dependency_value_n` writes `<name>_1`, `<name>_2`, ...
+%   (did/document.m:349). So the singular case is spelled `document_id` and the
+%   plural case is spelled `document_id_1..n`. A census keyed on the INDEXED
+%   spelling alone would report the plural rows with no singular rows beside
+%   them -- a numerator with no denominator, which is the failure operating
+%   rule 5 exists to stop.
+%
+%   The family is reported under its STEM (`document_id`), not the schema's
+%   `document_id_#` spelling, precisely because the stem covers both spellings
+%   and the schema spelling does not.
+%
+%   `edge_arity` fields. DENOMINATORS FIRST AND UNCONDITIONALLY (rule 5), and
+%   stamped on every path out of this function including the early returns:
+%     docs_inspected / docs_unreadable / docs_unclassifiable / docs_classified
+%                                 the same three-way partition the NDI-required
+%                                 block uses, and it holds here for the same
+%                                 reason -- the classification counter is
+%                                 incremented at the classification step, which
+%                                 is the one point every document reaches once.
+%     docs_errored                documents that THREW inside this block. It
+%                                 OVERLAPS the three states above and is NOT
+%                                 one of them: a document that classified and
+%                                 then threw stays in `docs_classified`, so the
+%                                 partition is exact and this is the separate
+%                                 fact "and N of them did not finish". Summing
+%                                 it into the partition would over-count.
+%     docs_with_depends_on        documents carrying at least one edge at all
+%                                 <-- AT ZERO THE CENSUS COULD NOT FIRE. It
+%                                     means no document in the batch has a
+%                                     `depends_on` block, not that none is
+%                                     plural.
+%     docs_with_indexed_edge      documents carrying at least one `_<digits>`
+%                                 entry. A DIFFERENT fact from the line above
+%                                 and from the line below: a document can carry
+%                                 an indexed edge and still be singular
+%                                 (`time_reference_1` alone).
+%     docs_with_plural_family     documents carrying >1 member of SOME family
+%     edges_examined              `depends_on` entries inspected
+%     edges_unnamed               entries with no usable `name`. Dropped from
+%                                 the tally and COUNTED, because a silent drop
+%                                 is how a denominator stops meaning anything.
+%     indexed_edges_examined      of those, entries whose name ended `_<digits>`
+%     pairs_examined              (document, family) pairs -- the denominator
+%                                 the arity distribution is taken over
+%     pairs_plural                pairs with >1 member  <-- THE COUNT, restated
+%                                 here so the row table, the headline
+%                                 `edge_arity_plural_count` and the denominator
+%                                 cannot drift apart without a test noticing
+%     families_seen               distinct (class, family) pairs anywhere
+%     plural_families_seen        distinct (class, family) pairs EVER plural
+%     max_arity_seen              the largest arity anywhere in the batch
+%     arity_distribution          {class_name, edge_name, arity, count} where
+%                                 `arity` is '1', '2' or '3+' and `count` is
+%                                 DOCUMENTS. The '1' rows are the denominator
+%                                 for the '2' and '3+' rows on the same family;
+%                                 they are emitted unconditionally for that
+%                                 reason and are not noise.
+%     plural_by_family            {class_name, edge_name, max_arity, count} --
+%                                 one row per family EVER seen plural, `count`
+%                                 being the documents that carried >1. Empty
+%                                 when nothing is plural, which is a RESULT only
+%                                 if `pairs_examined` is non-zero.
+%
+%   REPORT ONLY, like everything else in this file. It raises nothing,
+%   quarantines nothing and arms nothing. An arity is not a violation: some
+%   families are meant to be plural (`derived_from`, `syncrule_id`). The census
+%   says which are and how often, and the disposition is a team call.
 %
 %   THE EDGES NDI REQUIRES AND V_eta DOES NOT -- A WHOLE CLASS OF BLIND SPOT
 %   ------------------------------------------------------------------------
@@ -424,6 +538,8 @@ report = struct( ...
                                         'count', {}), ...
     'ndi_required_dependency_count', 0, ...
     'ndi_required_denominator',  nrNewReport(), ...
+    'edge_arity',                arNewReport(), ...
+    'edge_arity_plural_count',   0, ...
     'skipped_docs',              0);
 
 [bodies, unreadable] = vBodies(docs);
@@ -443,6 +559,22 @@ report.epoch_association.docs_unreadable = unreadable;
 % the happy path is a block that reports zeros for a batch it never opened.
 report.ndi_required_denominator.docs_inspected = report.total_docs;
 report.ndi_required_denominator.docs_unreadable = unreadable;
+% And the edge-arity block, for the third time and for the third identical
+% reason. This one is the block whose whole purpose is to answer a question
+% currently recorded as UNMEASURED, so a zero it prints without a denominator
+% beside it would close that question with the wrong answer.
+report.edge_arity.docs_inspected = report.total_docs;
+report.edge_arity.docs_unreadable = unreadable;
+% RUN BEFORE THE SCHEMA CACHE IS EVEN ASKED FOR, and deliberately so. Every
+% other block below dies on the `no schema available` return a few lines down
+% and reports zeros for a batch it did open. This census reads the DOCUMENT and
+% nothing else -- no class chain, no marker, no declaration -- so there is no
+% reason for it to share that fate, and making it structurally independent is
+% the strongest available statement that it is ungated. It also means its
+% three document states partition its denominator on EVERY path, not just the
+% happy one.
+report.edge_arity = arityCensus(bodies, report.edge_arity);
+report.edge_arity_plural_count = report.edge_arity.pairs_plural;
 if isempty(bodies)
     return;
 end
@@ -1308,6 +1440,301 @@ function k = nrMarkerKey()
 %   disagree about what was followed.
 k = 'ndi_mustBeNonEmpty';
 end
+
+% ===================== the edge-arity census (ungated) =====================
+
+function r = arNewReport()
+%ARNEWREPORT The edge-arity block, with every field present from the start.
+%   Same contract as nrNewReport: a batch that was never opened prints the same
+%   SHAPE with zeros beside its own `docs_inspected`, rather than a missing key
+%   the digest renders as "(absent)" in one run and 0 in the next.
+r = struct( ...
+    'docs_inspected',            0, ...
+    'docs_unreadable',           0, ...
+    'docs_unclassifiable',       0, ...
+    'docs_classified',           0, ...
+    'docs_errored',              0, ...
+    'docs_with_depends_on',      0, ...
+    'docs_with_indexed_edge',    0, ...
+    'docs_with_plural_family',   0, ...
+    'edges_examined',            0, ...
+    'edges_unnamed',             0, ...
+    'indexed_edges_examined',    0, ...
+    'pairs_examined',            0, ...
+    'pairs_plural',              0, ...
+    'families_seen',             0, ...
+    'plural_families_seen',      0, ...
+    'max_arity_seen',            0, ...
+    'arity_distribution',        struct('class_name', {}, 'edge_name', {}, ...
+                                        'arity', {}, 'count', {}), ...
+    'plural_by_family',          struct('class_name', {}, 'edge_name', {}, ...
+                                        'max_arity', {}, 'count', {}));
+end
+
+function r = arityCensus(bodies, r)
+%ARITYCENSUS How many members of each edge family each document carries.
+%
+%   THE ONE THING THIS FUNCTION MUST NOT DO IS CONSULT A SCHEMA. Every existing
+%   arity-shaped counter in this pipeline is gated on a declaration --
+%   `referent_unique_by` for #52, `min_count`/`max_count` for #63,
+%   `mustBeNonEmpty` for the empty-edge census -- and a gated counter reports 0
+%   for every family nobody declared anything about. `document_id` is such a
+%   family, which is why "how many documents carry a plural document_id" had no
+%   answer. So the input here is the BODY, and a family exists because a
+%   document carries one.
+%
+%   Nothing is raised, nothing is skipped silently, and a document that throws
+%   is counted where it throws -- see the catch below.
+if isempty(bodies); return; end
+
+% class|family -> documents at that arity bucket, and the two sparse
+% side-tables. containers.Map rather than the `bump` cell scan used elsewhere in
+% this file: `bump` is O(#keys) per call and fires only on violations, whereas
+% this fires on EVERY document, and a report-only counter must not make a
+% 633,432-document corpus job measurably slower.
+arDocs      = containers.Map('KeyType', 'char', 'ValueType', 'double');
+arPlural    = containers.Map('KeyType', 'char', 'ValueType', 'double');
+arMax       = containers.Map('KeyType', 'char', 'ValueType', 'double');
+arFamilies  = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+
+for k = 1:numel(bodies)
+    % Set the moment `docs_classified` is incremented, and read only by the
+    % catch. WITHOUT IT THE PARTITION IS NOT A PARTITION: a document that
+    % classified and then threw would land in `docs_classified` AND in the
+    % catch's counter, and the three states would sum to MORE than the
+    % denominator -- an over-count reading as more coverage than there is,
+    % which is this project's characteristic error.
+    classified = false;
+    try
+        body = bodies{k};
+        className = classNameOf(body);
+        if isempty(className)
+            % PARSED, and there is nothing to attribute its edges to. Named
+            % rather than left as a residual, so
+            %   unreadable + unclassifiable + classified == inspected
+            % holds exactly, which is the only way a zero further down can be
+            % read in context.
+            r.docs_unclassifiable = r.docs_unclassifiable + 1;
+            continue;
+        end
+        r.docs_classified = r.docs_classified + 1;
+        classified = true;
+
+        [names, nUnnamed] = dependencyNames(body);
+        r.edges_examined = r.edges_examined + numel(names) + nUnnamed;
+        r.edges_unnamed  = r.edges_unnamed + nUnnamed;
+        if isempty(names); continue; end
+        r.docs_with_depends_on = r.docs_with_depends_on + 1;
+
+        % Tally this document's families. A per-document cell scan, not a Map:
+        % a document carries a handful of edges, and constructing a Map per
+        % document over 633k documents costs more than the scan it replaces.
+        famNames = {}; famCounts = [];
+        sawIndexed = false;
+        for e = 1:numel(names)
+            [fam, indexed] = arityFamily(names{e});
+            if indexed
+                sawIndexed = true;
+                r.indexed_edges_examined = r.indexed_edges_examined + 1;
+            end
+            idx = find(strcmp(famNames, fam), 1);
+            if isempty(idx)
+                famNames{end+1} = fam; %#ok<AGROW>
+                famCounts(end+1) = 1;  %#ok<AGROW>
+            else
+                famCounts(idx) = famCounts(idx) + 1;
+            end
+        end
+        if sawIndexed
+            r.docs_with_indexed_edge = r.docs_with_indexed_edge + 1;
+        end
+
+        docPlural = false;
+        for e = 1:numel(famNames)
+            n = famCounts(e);
+            r.pairs_examined = r.pairs_examined + 1;
+            key = sprintf('%s|%s', sanitise(className), sanitise(famNames{e}));
+            % A SET, not a counter: `families_seen` is how many distinct
+            % (class, family) pairs exist, and it is the denominator that says
+            % whether `plural_families_seen` being small is a finding or a
+            % property of a batch that carries almost no edges.
+            arFamilies(key) = true;
+            if n > r.max_arity_seen; r.max_arity_seen = n; end
+            bucket = arityBucket(n);
+            bkey = [key '|' bucket];
+            if arDocs.isKey(bkey)
+                arDocs(bkey) = arDocs(bkey) + 1;
+            else
+                arDocs(bkey) = 1;
+            end
+            if n > 1
+                docPlural = true;
+                r.pairs_plural = r.pairs_plural + 1;
+                if arPlural.isKey(key)
+                    arPlural(key) = arPlural(key) + 1;
+                else
+                    arPlural(key) = 1;
+                end
+                % Only recorded for families that are EVER plural: max_arity is
+                % 1 by construction for the rest, and touching the map on the
+                % common path is the cost that matters at corpus scale.
+                if ~arMax.isKey(key) || n > arMax(key)
+                    arMax(key) = n;
+                end
+            end
+        end
+        if docPlural
+            r.docs_with_plural_family = r.docs_with_plural_family + 1;
+        end
+    catch
+        % `docs_errored` OVERLAPS the three partition states on purpose and is
+        % NOT one of them: a document that classified and then threw stays in
+        % `docs_classified`, exactly as the NDI-required block documents
+        % ("classified is NOT a claim that every later check completed"). A
+        % document that threw BEFORE it could be classified has reached no
+        % partition state at all, so it takes the unclassifiable slot -- which
+        % is what keeps
+        %     unreadable + unclassifiable + classified == inspected
+        % exact rather than approximately true.
+        r.docs_errored = r.docs_errored + 1;
+        if ~classified
+            r.docs_unclassifiable = r.docs_unclassifiable + 1;
+        end
+    end
+end
+
+r.families_seen = double(arFamilies.Count);
+r.plural_families_seen = double(arPlural.Count);
+% ASSIGNED HERE, and this file has shipped an accumulator that was never
+% assigned once already (#63's famKeys): the report read 0 on a document the
+% detector had just flagged. Each assignment below has its own test.
+[dk, dc] = mapEntries(arDocs);
+r.arity_distribution = explode(dk, dc, {'class_name', 'edge_name', 'arity'});
+r.plural_by_family = arPluralRows(arPlural, arMax);
+end
+
+function b = arityBucket(n)
+%ARITYBUCKET The three buckets, named in ONE place so the counter and the
+%   digest cannot disagree about what '3+' means.
+if n <= 1
+    b = '1';
+elseif n == 2
+    b = '2';
+else
+    b = '3+';
+end
+end
+
+function [names, nUnnamed] = dependencyNames(body)
+%DEPENDENCYNAMES Every `depends_on` entry name, in document order.
+%
+%   NUNNAMED counts the entries that carried no usable `name`. They are dropped
+%   from the tally -- there is no family to attribute them to -- and a drop that
+%   is not counted is how a denominator quietly stops describing the batch.
+%
+%   Tolerant of the struct-array AND cell forms of `depends_on`, like
+%   familyMemberValues and edgeValues: jsondecode returns a CELL whenever the
+%   entries do not all carry the same keys, and a struct-only reader answers
+%   "no edges" for every one of those documents without looking at one.
+names = {}; nUnnamed = 0;
+if ~isstruct(body) || ~isfield(body, 'depends_on'); return; end
+deps = body.depends_on;
+if isstruct(deps)
+    items = num2cell(deps(:)');
+elseif iscell(deps)
+    items = deps(:)';
+else
+    return;
+end
+names = cell(1, numel(items));
+keep = false(1, numel(items));
+for k = 1:numel(items)
+    d = items{k};
+    if ~isstruct(d) || ~isscalar(d) || ~isfield(d, 'name')
+        nUnnamed = nUnnamed + 1; continue;
+    end
+    nm = d.name;
+    if isstring(nm) && isscalar(nm); nm = char(nm); end
+    if ~ischar(nm) || isempty(nm)
+        nUnnamed = nUnnamed + 1; continue;
+    end
+    names{k} = nm; keep(k) = true;
+end
+names = names(keep);
+end
+
+function [fam, indexed] = arityFamily(name)
+%ARITYFAMILY The family an edge name belongs to, and whether it carried an index.
+%
+%   `document_id_2` -> ('document_id', true)
+%   `document_id`   -> ('document_id', false)
+%   `subject_id`    -> ('subject_id',  false)   -- `id` is not a digit run
+%
+%   THE BARE AND INDEXED SPELLINGS FOLD INTO ONE FAMILY, and that is the single
+%   most important line in this census. NDI's writer chooses the spelling by
+%   arity (tableDocMaker.m:289 vs :291 -- `set_dependency_value` for one
+%   referent, `add_dependency_value_n` for several, and the latter writes
+%   `<name>_1`, `<name>_2`). So the singular documents are spelled `document_id`
+%   and only the plural ones are spelled `document_id_<n>`. Keying on the
+%   indexed spelling alone would report every plural row with a ZERO singular
+%   row beside it -- a numerator whose denominator had been defined away. The
+%   one real consumer of the idiom folds them the same way, by regex
+%   `^<name>(_\d+)?$` (NDI imagedEntitySubjects/dependencyValuesMatching).
+%
+%   THE COST OF THE FOLD, stated rather than hidden: an edge whose name simply
+%   ends in `_<digits>` and is not a family member is folded with a family that
+%   may not exist. Nothing in the built schema is spelled that way today, and
+%   the alternative -- reading the schema to find out -- is the gating this
+%   whole block exists to avoid.
+fam = char(name); indexed = false;
+u = find(fam == '_', 1, 'last');
+if isempty(u) || u == numel(fam); return; end
+tail = fam(u+1:end);
+if ~all(isstrprop(tail, 'digit')); return; end
+fam = fam(1:u-1);
+indexed = true;
+end
+
+function [ks, vs] = mapEntries(m)
+%MAPENTRIES A containers.Map as the (keys, counts) pair `explode` consumes.
+%   `values` returns a cell; unwrapping it element-wise rather than with
+%   cell2mat keeps the pairing with `keys` explicit and survives an empty map.
+ks = keys(m);
+vs = zeros(1, numel(ks));
+if isempty(ks); ks = {}; return; end
+raw = values(m);
+for k = 1:numel(raw); vs(k) = raw{k}; end
+end
+
+function rows = arPluralRows(pluralMap, maxMap)
+%ARPLURALROWS One row per family EVER seen plural: how many documents carried
+%   more than one member, and the largest arity any of them reached.
+%
+%   Built by hand rather than through `explode` because `max_arity` is a MAXIMUM
+%   and `explode` renders accumulated SUMS -- feeding a max through a counter
+%   that adds is how a summary starts reporting a number nothing measured.
+%   Sorted by document count descending, then by name, so two reports from the
+%   same corpus diff cleanly.
+rows = struct('class_name', {}, 'edge_name', {}, 'max_arity', {}, 'count', {});
+ks = keys(pluralMap);
+if isempty(ks); return; end
+counts = zeros(1, numel(ks));
+raw = values(pluralMap);
+for k = 1:numel(raw); counts(k) = raw{k}; end
+[~, order] = sort(counts, 'descend');
+ks = ks(order); counts = counts(order);
+for k = 1:numel(ks)
+    parts = strsplit(ks{k}, '|');
+    entry = struct();
+    entry.class_name = parts{1};
+    if numel(parts) > 1; entry.edge_name = parts{2}; else; entry.edge_name = ''; end
+    if maxMap.isKey(ks{k}); entry.max_arity = maxMap(ks{k}); else; entry.max_arity = 0; end
+    entry.count = counts(k);
+    rows(end+1) = entry; %#ok<AGROW>
+end
+end
+
+% ===================== end of the edge-arity census ========================
 
 function info = relaxedDependencies(cache, className, memo)
 %RELAXEDDEPENDENCIES Edges NDI declares REQUIRED that V_eta declares OPTIONAL.

@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 DIGEST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "census_digest.py")
 from census_digest import (TRF_NOT_SHAPEABLE, aslist, digest,  # noqa: E402
+                           edge_arity, edge_arity_pivot,
                            epoch_association, ndi_required,
                            ndi_required_names, norm_class,
                            normalised_class_index, render_report, rollup,
@@ -4703,6 +4704,344 @@ class TestPassCensusGateIsArmed(PassCensusGateCase):
             os.path.join(self.reports, "absent"))
         self.assertIn(census_digest.MISSING_REPORTS, failed)
         self.assertIn(census_digest.UNMEASURED_PASSES, failed)
+
+
+class TestEdgeArity(DigestCase):
+    """The UNGATED edge-arity census -- rendering side.
+
+    WHY THIS BLOCK EXISTS AT ALL. "How many existing documents carry a plural
+    `document_id` edge" had no answer anywhere and was being written down as
+    UNMEASURED. Three counters could have answered it:
+
+      NDI `imagedEntitySubjects.blocked_plural_document_id`  -- NDI-side, and
+          the DID corpus harness never invokes that pass.
+      NDI `ontologyRowSubjects`                              -- no arity
+          counter; `resolved_via_document_id_edge` counts RESOLUTIONS.
+      `silentLoss.uniqueness_denominator.docs_multi_member`  -- GATED on
+          `referent_unique_by`, which DID-schema declares on three families,
+          all of them `time_reference_#`.
+
+    So every test here is about a DISTINCTION, the same as the NDI-required
+    ones: measured zero vs never measured, a zero because nothing was plural vs
+    a zero because nothing was looked at, and -- the one that decides whether
+    the block is worth having -- the singular denominator printing on the same
+    line as the plural count.
+
+    THE FIXTURE NUMBERS COME FROM WHAT NDI'S WRITER PRODUCES, not from the
+    counter's shape. `tableDocMaker.m:289` writes a BARE `document_id` when a
+    row names one referent and `:291` writes `document_id_1..n` when it names
+    several, so a real corpus is overwhelmingly arity 1 with a small plural
+    tail -- which is exactly the shape that makes a plural-only census look
+    like a big finding and a fold-everything census look like a small one.
+    """
+
+    def _ea(self, **over):
+        # 76,766 ontology_table_row documents is the figure recorded for
+        # `ontology_table_row`'s empty `subject_id` census; the arity split
+        # below is illustrative, the SHAPE is not.
+        ea = {
+            "docs_inspected": 80000, "docs_unreadable": 0,
+            "docs_unclassifiable": 0, "docs_classified": 80000,
+            "docs_errored": 0,
+            "docs_with_depends_on": 76766,
+            "docs_with_indexed_edge": 24,
+            "docs_with_plural_family": 24,
+            "edges_examined": 76802, "edges_unnamed": 0,
+            "indexed_edges_examined": 60,
+            "pairs_examined": 76766, "pairs_plural": 24,
+            "families_seen": 3, "plural_families_seen": 1,
+            "max_arity_seen": 4,
+            "arity_distribution": [
+                {"class_name": "ontology_table_row", "edge_name": "document_id",
+                 "arity": "1", "count": 76742},
+                {"class_name": "ontology_table_row", "edge_name": "document_id",
+                 "arity": "2", "count": 20},
+                {"class_name": "ontology_table_row", "edge_name": "document_id",
+                 "arity": "3+", "count": 4},
+            ],
+            "plural_by_family": [
+                {"class_name": "ontology_table_row", "edge_name": "document_id",
+                 "max_arity": 4, "count": 24},
+            ],
+        }
+        ea.update(over)
+        return ea
+
+    def _corpus(self, name="A", ea=None, headline=24, **over):
+        sl = {"total_docs": 80000, "skipped_docs": 0,
+              "empty_dependency_count": 0, "vacuous_field_count": 0}
+        if ea is not None:
+            sl["edge_arity"] = ea
+            sl["edge_arity_plural_count"] = headline
+        body = {"corpus": name, "total": 8000, "migrated_count": 80000,
+                "quarantine_count": 0, "silent_loss": sl}
+        body.update(over)
+        self.write(name, body)
+
+    # --- denominator first, unconditionally --------------------------------
+
+    def test_the_denominator_precedes_the_count(self):
+        # Rule 5, and this counter is the one whose zero would close an open
+        # question, so it is the one that must never print without its
+        # denominator above it.
+        self._corpus("A", self._ea())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        den = text.index("DENOMINATOR: 80000 document(s) inspected, 0 unreadable")
+        cnt = text.index("PLURAL (>1 member)  <-- the count")
+        self.assertLess(den, cnt)
+
+    def test_every_denominator_row_is_rendered(self):
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        for label in ("documents with no document_class (NOT looked at)",
+                      "documents carrying at least one edge",
+                      "carrying an INDEXED `_<n>` edge",
+                      "carrying a PLURAL family",
+                      "depends_on entries examined",
+                      "with no usable name (dropped, and COUNTED)",
+                      "(document, family) pairs examined",
+                      "PLURAL (>1 member)  <-- the count",
+                      "distinct (class, family) pairs seen",
+                      "largest arity seen anywhere"):
+            self.assertIn(label, text)
+
+    def test_the_error_counter_is_rendered_and_marked_as_overlapping(self):
+        # It is NOT a partition state. A reader who added it to the three would
+        # get a figure larger than the denominator, which reads as more
+        # coverage than there is -- this project's characteristic error.
+        self._corpus("A", self._ea(docs_errored=3))
+        text, _ = self.run_digest()
+        self.assertIn("3    (overlaps: threw part-way, NOT a partition state)",
+                      text)
+
+    def test_a_counter_the_report_lacks_is_not_printed_as_zero(self):
+        ea = self._ea()
+        del ea["edges_unnamed"]
+        self._corpus("A", ea)
+        text, _ = self.run_digest()
+        self.assertIn("(absent)    with no usable name", text)
+
+    # --- the not-measured conditions, each distinct from a zero -------------
+
+    def test_a_report_without_the_block_is_NOT_MEASURED(self):
+        # A report predating the counter must not contribute a reassuring zero
+        # to the very question the counter was built to answer.
+        self._corpus("A", None)
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED -- this report carries no edge_arity block",
+                      text)
+        self.assertNotIn("MEASURED ZERO", text)
+
+    def test_an_inspected_zero_is_NOT_MEASURED(self):
+        self._corpus("A", self._ea(docs_inspected=0))
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED -- it inspected 0 document(s)", text)
+
+    def test_an_all_unreadable_batch_is_NOT_MEASURED(self):
+        self._corpus("A", self._ea(docs_unreadable=80000))
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED -- all 80000 document(s) handed to it were "
+                      "unreadable", text)
+
+    def test_a_malformed_block_is_NOT_MEASURED(self):
+        self._corpus("A", ea=None)
+        # rewrite with a non-object edge_arity
+        self.write("A", {"corpus": "A", "total": 1, "migrated_count": 1,
+                         "quarantine_count": 0,
+                         "silent_loss": {"total_docs": 1, "skipped_docs": 0,
+                                         "edge_arity": 7}})
+        text, _ = self.run_digest()
+        self.assertIn("the edge_arity block is malformed (int)", text)
+
+    # --- the thing the block is FOR ----------------------------------------
+
+    def test_the_singular_denominator_prints_beside_the_plural_count(self):
+        # THE POINT OF THE PIVOT. "24 documents carry more than one
+        # `document_id`" is a different fact depending on whether the family
+        # occurs 30 times or 76,766 times, and the two numbers arriving three
+        # screens apart is how the second stops being read.
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        line = [l for l in text.split("\n")
+                if "ontology_table_row.document_id" in l and "1: " in l]
+        self.assertTrue(line, "the arity distribution did not render a row")
+        self.assertIn("1: 76742", line[0])
+        self.assertIn("2: 20", line[0])
+        self.assertIn("3+: 4", line[0])
+
+    def test_the_plural_family_row_carries_its_largest_arity(self):
+        # A plural family with max arity 2 and one with max arity 40 are
+        # different problems, and the row count alone cannot tell them apart.
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("ontology_table_row.document_id   (largest arity seen: 4)",
+                      text)
+
+    def test_a_single_row_object_does_not_crash(self):
+        # jsonencode writes a 1-element MATLAB struct array as a bare OBJECT,
+        # not a list. That exact shape killed run #256 after 2h49m in a
+        # different block; every reader here goes through aslist for it.
+        ea = self._ea(
+            arity_distribution={"class_name": "ontology_table_row",
+                                "edge_name": "document_id",
+                                "arity": "2", "count": 20},
+            plural_by_family={"class_name": "ontology_table_row",
+                              "edge_name": "document_id",
+                              "max_arity": 2, "count": 20})
+        self._corpus("A", ea)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [], "a single-row object must render")
+        self.assertIn("2: 20", text)
+
+    # --- WHICH zero is it --------------------------------------------------
+
+    def test_a_plural_zero_over_real_pairs_is_a_MEASURED_zero(self):
+        # The only zero in this block that is a RESULT, and it has to say so:
+        # every other annotated zero in this digest means the opposite, and a
+        # reader who has learnt to distrust them would distrust this one too.
+        ea = self._ea(pairs_plural=0, docs_with_plural_family=0,
+                      plural_families_seen=0, max_arity_seen=1,
+                      docs_with_indexed_edge=0, indexed_edges_examined=0,
+                      arity_distribution=[
+                          {"class_name": "ontology_table_row",
+                           "edge_name": "document_id",
+                           "arity": "1", "count": 76766}],
+                      plural_by_family=[])
+        self._corpus("A", ea, headline=0)
+        text, _ = self.run_digest()
+        self.assertIn("MEASURED ZERO: 76766 (document, family) pair(s) were "
+                      "examined", text)
+        self.assertIn("This is a RESULT", text)
+        self.assertIn("sample of datasets, not the universe", text)
+
+    def test_a_zero_with_nothing_in_reach_is_untested_not_clean(self):
+        ea = self._ea(docs_with_depends_on=0, docs_with_indexed_edge=0,
+                      docs_with_plural_family=0, edges_examined=0,
+                      indexed_edges_examined=0, pairs_examined=0,
+                      pairs_plural=0, families_seen=0,
+                      plural_families_seen=0, max_arity_seen=0,
+                      arity_distribution=[], plural_by_family=[])
+        self._corpus("A", ea, headline=0)
+        text, _ = self.run_digest()
+        self.assertIn("NO DOCUMENT IN REACH CARRIES AN EDGE AT ALL", text)
+        self.assertIn("'untested', not 'clean'", text)
+        self.assertNotIn("MEASURED ZERO", text)
+
+    def test_the_absent_indexed_spelling_is_reported_as_corroboration(self):
+        # NDI's writer uses `_<n>` ONLY for the plural case, so "no indexed edge
+        # anywhere" is an INDEPENDENT way of seeing "no plural edge anywhere".
+        # Printing it is what makes the plural zero checkable rather than taken.
+        ea = self._ea(docs_with_indexed_edge=0, indexed_edges_examined=0,
+                      pairs_plural=0, docs_with_plural_family=0,
+                      plural_families_seen=0, plural_by_family=[])
+        self._corpus("A", ea, headline=0)
+        text, _ = self.run_digest()
+        self.assertIn("NOT ONE `_<n>` EDGE APPEARED", text)
+        self.assertIn("tableDocMaker.m:289", text)
+
+    def test_an_unknown_bucket_is_named_not_dropped(self):
+        # A bucket the digest has no column for takes documents with it, and a
+        # silently short table reads as a smaller finding. The counter names
+        # its buckets in one place (silentLoss/arityBucket) precisely so this
+        # cannot happen; if it does, the reader is told before the table.
+        ea = self._ea(arity_distribution=[
+            {"class_name": "ontology_table_row", "edge_name": "document_id",
+             "arity": "1", "count": 76742},
+            {"class_name": "ontology_table_row", "edge_name": "document_id",
+             "arity": "many", "count": 24}])
+        self._corpus("A", ea)
+        text, _ = self.run_digest()
+        self.assertIn("BUCKET 'many' IS NOT ONE THIS DIGEST RENDERS", text)
+        self.assertIn("24 document(s) in", text)
+
+    def test_a_drift_between_the_headline_and_the_denominator_is_reported(self):
+        # They are incremented on the same branch of the same loop. This file
+        # has already shipped an accumulator that was counted and never
+        # assigned, reporting 0 on a document the detector had just flagged.
+        self._corpus("A", self._ea(), headline=99)
+        text, _ = self.run_digest()
+        self.assertIn("`edge_arity_plural_count` is 99 and `pairs_plural` is 24",
+                      text)
+        self.assertIn("cannot", text)
+
+    def test_it_says_a_plural_edge_is_not_by_itself_a_violation(self):
+        # `derived_from` and `syncrule_id` are MEANT to be plural. A block that
+        # printed a count with no such note would be read as a defect count,
+        # and the first response would be to "fix" families that are correct.
+        self._corpus("A", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("DO NOT read this as a violation count", text)
+
+    # --- the rollup ---------------------------------------------------------
+
+    def test_the_rollup_names_the_corpora_it_could_not_measure(self):
+        self._corpus("A", self._ea())
+        self._corpus("B", None)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("NOT MEASURED in: B", text)
+        self.assertIn("sums over 1 corpora, not 2", text)
+
+    def test_the_rollup_sums_the_counters_and_names_its_denominator(self):
+        self._corpus("A", self._ea())
+        self._corpus("B", self._ea())
+        text, _ = self.run_digest()
+        self.assertIn("DENOMINATOR: 2 corpus report(s); 2 carried a readable "
+                      "block, 0 did not; 160000 document(s) inspected in total",
+                      text)
+        # 24 + 24 pairs, and the distribution rows add too.
+        self.assertIn("48    PLURAL (>1 member)  <-- the count", text)
+        self.assertIn("1: 153484", text)
+
+    def test_the_rollup_takes_a_MAXIMUM_of_max_arity_never_a_sum(self):
+        # Adding maxima reports an arity no document has. This is the one field
+        # in the block that must not be summed, and the label says so.
+        self._corpus("A", self._ea(max_arity_seen=4))
+        self._corpus("B", self._ea(max_arity_seen=7))
+        text, _ = self.run_digest()
+        self.assertIn("7  largest arity in ANY corpus (a MAXIMUM, never summed)",
+                      text)
+        self.assertNotIn("11  largest arity", text)
+
+    def test_the_rollup_with_no_readable_block_says_UNMEASURED(self):
+        self._corpus("A", None)
+        self._corpus("B", None)
+        text, _ = self.run_digest()
+        self.assertIn("NOTHING TO TOTAL", text)
+        self.assertIn("It is NOT '0 plural edges'", text)
+
+    def test_the_rollup_merges_plural_rows_and_maxes_their_arity(self):
+        self._corpus("A", self._ea())
+        self._corpus("B", self._ea(
+            max_arity_seen=9,
+            plural_by_family=[{"class_name": "ontology_table_row",
+                               "edge_name": "document_id",
+                               "max_arity": 9, "count": 5}]))
+        text, _ = self.run_digest()
+        self.assertIn("29  ontology_table_row.document_id", text)
+        self.assertIn("(largest arity: 9)", text)
+
+    # --- the reader, tested directly ---------------------------------------
+
+    def test_the_reader_reports_why_rather_than_returning_a_zero(self):
+        self.assertFalse(edge_arity({})["measured"])
+        self.assertIn("no edge_arity block", edge_arity({})["why"])
+        self.assertFalse(
+            edge_arity({"silent_loss": {"audit_failed": "boom"}})["measured"])
+
+    def test_the_pivot_folds_the_buckets_and_names_the_strays(self):
+        table, unknown = edge_arity_pivot([
+            {"class_name": "c", "edge_name": "e", "arity": "1", "count": 10},
+            {"class_name": "c", "edge_name": "e", "arity": "3+", "count": 2},
+            {"class_name": "c", "edge_name": "e", "arity": "9", "count": 1}])
+        self.assertEqual(table["c.e"]["1"], 10)
+        self.assertEqual(table["c.e"]["3+"], 2)
+        self.assertEqual(table["c.e"]["2"], 0)
+        # The stray is NOT folded into a column and NOT dropped: it is named,
+        # and its documents stay visible in `total`.
+        self.assertEqual(unknown, {"9": 1})
+        self.assertEqual(table["c.e"]["total"], 13)
 
 
 if __name__ == "__main__":

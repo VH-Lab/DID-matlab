@@ -1791,6 +1791,335 @@ def rollup_ndi_required_union(unions, carried, missing, drift, n_measured,
     p("      *** remainder is UNMEASURED on real data -- not clean, unlooked-at.")
 
 
+# --- THE EDGE-ARITY CENSUS: HOW MANY DOCUMENTS CARRY A PLURAL EDGE? ---------
+#
+# The question this renders had NO ANSWER anywhere and was being written down as
+# UNMEASURED. Three counters could have answered it and each is out of reach:
+# NDI's `blocked_plural_document_id` is in a pass the DID corpus harness never
+# invokes; `ontologyRowSubjects` has no arity counter at all
+# (`resolved_via_document_id_edge` counts resolutions, not members); and this
+# file's own `docs_multi_member` is GATED on `referent_unique_by`, which
+# DID-schema declares on exactly three families, all of them `time_reference_#`.
+#
+# `did2.validate.silentLoss`'s `edge_arity` block is gated on nothing: it reads
+# the document's own `depends_on`. So the zero it prints is a fact about
+# DOCUMENTS, and this renderer's job is to keep it that way -- which means
+# saying, out loud, which of the several zeros it is.
+EDGE_ARITY_DENOMINATOR = [
+    # THE THREE DOCUMENT STATES, which partition docs_inspected exactly, for
+    # the same reason they are printed together in the NDI-required block: the
+    # middle one is the state that reads as clean when it is left out.
+    ("docs_unclassifiable", "documents with no document_class (NOT looked at)"),
+    ("docs_classified", "documents classified"),
+    # OVERLAPS the three states above and is deliberately NOT summed with them.
+    # A document that classified and then threw stays in `docs_classified`, so
+    # the partition is exact; this is the separate fact that N of them did not
+    # finish. Printed anyway, because a census that quietly gave up on part of
+    # its batch and said nothing is the defect this whole file exists to remove.
+    ("docs_errored", "  (overlaps: threw part-way, NOT a partition state)"),
+    ("docs_with_depends_on", "documents carrying at least one edge"),
+    ("docs_with_indexed_edge", "  of those, carrying an INDEXED `_<n>` edge"),
+    ("docs_with_plural_family", "  of those, carrying a PLURAL family"),
+    ("edges_examined", "depends_on entries examined"),
+    ("edges_unnamed", "  with no usable name (dropped, and COUNTED)"),
+    ("indexed_edges_examined", "  spelled `_<n>`"),
+    ("pairs_examined", "(document, family) pairs examined"),
+    ("pairs_plural", "  PLURAL (>1 member)  <-- the count"),
+    ("families_seen", "distinct (class, family) pairs seen"),
+    ("plural_families_seen", "  ever plural"),
+    ("max_arity_seen", "largest arity seen anywhere"),
+]
+
+# The bucket labels, in the order they print. They match
+# silentLoss/arityBucket, which names them in one place on the MATLAB side for
+# the same reason: two spellings of '3+' would silently split one family's row.
+EDGE_ARITY_BUCKETS = ("1", "2", "3+")
+
+
+def edge_arity(r):
+    """Read one report's edge-arity block, or say why it cannot be read.
+
+    The same five conditions the NDI-required reader distinguishes, and they
+    matter more here rather than less: this block exists to close a question
+    currently recorded as UNMEASURED, so a report that could not be read must
+    not contribute a reassuring zero to it.
+
+      absent          the report predates the counter. NOT rendered as zeros.
+      malformed       the key is there and is not an object.
+      inspected 0     silentLoss looked at nothing; every count is vacuous.
+      all unreadable  it was handed documents and could parse none.
+    """
+    sl = r.get("silent_loss") or {}
+    if not isinstance(sl, dict):
+        return {"measured": False,
+                "why": "the silent_loss field is malformed (%s)"
+                       % type(sl).__name__}
+    if "audit_failed" in sl:
+        return {"measured": False,
+                "why": "the silent-loss audit FAILED (%s)" % sl["audit_failed"]}
+    ea = sl.get("edge_arity")
+    if ea is None:
+        return {"measured": False,
+                "why": "this report carries no edge_arity block -- the counter "
+                       "was not wired into the run that produced it"}
+    if not isinstance(ea, dict):
+        return {"measured": False,
+                "why": "the edge_arity block is malformed (%s)" % type(ea).__name__}
+    inspected = ea.get("docs_inspected")
+    if not isinstance(inspected, int) or inspected <= 0:
+        return {"measured": False, "block": ea,
+                "why": "it inspected %s document(s)" % inspected}
+    unreadable = ea.get("docs_unreadable")
+    if isinstance(unreadable, int) and unreadable >= inspected:
+        return {"measured": False, "block": ea,
+                "why": "all %s document(s) handed to it were unreadable"
+                       % inspected}
+    return {"measured": True, "block": ea, "inspected": inspected}
+
+
+def edge_arity_pivot(rows):
+    """Pivot {class, edge, arity, count} rows into one line per family.
+
+    THE '1' ROWS ARE THE DENOMINATOR AND MUST PRINT BESIDE THE OTHERS. A
+    family's plural count means nothing without the singular count on the same
+    line: "12 documents carry two `document_id` edges" is a different fact
+    depending on whether the family occurs 20 times or 76,766 times, and the
+    two numbers arriving three screens apart is how the second one stops being
+    read at all.
+
+    Returns {"class.edge": {"1": n, "2": n, "3+": n, "total": n}}, plus a list
+    of buckets seen that this renderer has no column for -- an unknown bucket is
+    NAMED rather than dropped, because a dropped one takes documents with it.
+    """
+    table, unknown = {}, {}
+    for row in aslist(rows):
+        key = "%s.%s" % (row.get("class_name", "?"), row.get("edge_name", "?"))
+        try:
+            n = int(row.get("count") or 0)
+        except (TypeError, ValueError):
+            n = 0
+        bucket = str(row.get("arity", "?"))
+        cell = table.setdefault(key, dict((b, 0) for b in EDGE_ARITY_BUCKETS))
+        cell["total"] = cell.get("total", 0) + n
+        if bucket in cell:
+            cell[bucket] += n
+        else:
+            unknown[bucket] = unknown.get(bucket, 0) + n
+    return table, unknown
+
+
+def _edge_arity_tables(ea, out, indent="      "):
+    """The two row tables, shared by the per-corpus renderer and the rollup."""
+    p = lambda s="": out.append(s)
+    table, unknown = edge_arity_pivot(ea.get("arity_distribution")
+                                      if isinstance(ea, dict) else None)
+    for bucket, n in sorted(unknown.items()):
+        p("%s*** BUCKET %r IS NOT ONE THIS DIGEST RENDERS -- %d document(s) in"
+          % (indent, bucket, n))
+        p("%s*** it are in no column below. The counter and the digest disagree"
+          % indent)
+        p("%s*** about the bucket names; fix that before reading the table."
+          % indent)
+    p("%sARITY DISTRIBUTION -- DOCUMENTS, per (class, family). The `1` column"
+      % indent)
+    p("%sIS the denominator for the two beside it:" % indent)
+    if not table:
+        p("%s    (no family in reach -- see the denominator above)" % indent)
+    for key, cell in sorted(table.items(),
+                            key=lambda kv: (-(kv[1]["2"] + kv[1]["3+"]),
+                                            -kv[1]["total"], kv[0])):
+        p("%s    %-46s  1: %-9d 2: %-7d 3+: %d"
+          % (indent, key[:46], cell["1"], cell["2"], cell["3+"]))
+    rows = aslist(ea.get("plural_by_family") if isinstance(ea, dict) else None)
+    p("%sPLURAL FAMILIES -- documents carrying MORE THAN ONE member:" % indent)
+    if not rows:
+        p("%s    (none)" % indent)
+    for row in rows[:25]:
+        p("%s    %8s  %s.%s   (largest arity seen: %s)"
+          % (indent, row.get("count", "?"), row.get("class_name", "?"),
+             row.get("edge_name", "?"), row.get("max_arity", "?")))
+    return table
+
+
+def _edge_arity_verdict(ea, out, indent="      "):
+    """Say WHICH zero this is. A bare 0 here has four different meanings."""
+    p = lambda s="": out.append(s)
+    pairs = ea.get("pairs_examined")
+    plural = ea.get("pairs_plural")
+    if ea.get("docs_with_depends_on") == 0:
+        p("%s*** NO DOCUMENT IN REACH CARRIES AN EDGE AT ALL. The census could"
+          % indent)
+        p("%s*** not fire; the zero is 'untested', not 'clean'." % indent)
+    elif pairs == 0:
+        p("%s*** NO (document, family) PAIR WAS EXAMINED even though documents"
+          % indent)
+        p("%s*** carry edges. That is a defect in the counter, not a result."
+          % indent)
+    elif plural == 0:
+        # A MEASURED zero, and the only one in this block that is. Said in as
+        # many words, because every other zero the digest annotates is the
+        # opposite and a reader who has learnt to distrust them would distrust
+        # this one too.
+        p("%s*** MEASURED ZERO: %s (document, family) pair(s) were examined and"
+          % (indent, pairs))
+        p("%s*** every one carried exactly ONE member. This is a RESULT, not an"
+          % indent)
+        p("%s*** 'untested'. It is still a statement about the corpora in hand"
+          % indent)
+        p("%s*** ONLY -- the corpora are a sample of datasets, not the universe."
+          % indent)
+    if ea.get("docs_with_indexed_edge") == 0 and ea.get("docs_with_depends_on"):
+        p("%s*** NOT ONE `_<n>` EDGE APPEARED. NDI's writer uses the indexed"
+          % indent)
+        p("%s*** spelling ONLY for the plural case (tableDocMaker.m:289 vs"
+          % indent)
+        p("%s*** :291), so this is consistent with the plural count above --"
+          % indent)
+        p("%s*** and it is the independent way of seeing it." % indent)
+
+
+def render_edge_arity(r, out):
+    """Render one corpus's edge-arity block. Denominator first."""
+    p = lambda s="": out.append(s)
+    sl = r.get("silent_loss") if isinstance(r.get("silent_loss"), dict) else {}
+
+    p("  EDGE ARITY -- HOW MANY DOCUMENTS CARRY A PLURAL EDGE (report-only,")
+    p("  and UNGATED: it reads the document's own depends_on, never a schema")
+    p("  declaration, because every other arity counter in this pipeline is")
+    p("  gated and therefore silent about the families nobody declared)")
+    m = edge_arity(r)
+    if not m["measured"]:
+        p("      NOT MEASURED -- %s." % m["why"])
+        p("      No count is printed for this corpus. A corpus that could not")
+        p("      be measured and a corpus that measured a ZERO are different")
+        p("      facts and must not print identically.")
+        return
+    ea = m["block"]
+    p("      DENOMINATOR: %s document(s) inspected, %s unreadable"
+      % (ea.get("docs_inspected", "?"), ea.get("docs_unreadable", "?")))
+    _ea_rows(ea, EDGE_ARITY_DENOMINATOR, out, indent="        ")
+    # THE DRIFT CHECK, printed rather than assumed. The headline count and the
+    # denominator's own `pairs_plural` are incremented on the same branch of the
+    # same loop, so they cannot legitimately differ -- and this file has already
+    # shipped an accumulator that was counted and never assigned, reporting 0 on
+    # a document the detector had just flagged.
+    headline = sl.get("edge_arity_plural_count")
+    if isinstance(headline, int) and headline != ea.get("pairs_plural"):
+        p("      *** `edge_arity_plural_count` is %s and `pairs_plural` is %s."
+          % (headline, ea.get("pairs_plural")))
+        p("      *** They are incremented on the same branch and cannot")
+        p("      *** legitimately differ. Do not quote either until this is")
+        p("      *** explained.")
+    _edge_arity_verdict(ea, out)
+    _edge_arity_tables(ea, out)
+
+
+def rollup_edge_arity(reports, out):
+    """Cross-corpus edge-arity rollup. Denominator first, unmeasured NAMED.
+
+    Summed the way every other rollup here is summed, and for the reason the
+    module docstring gives: the number that gets quoted is the total, and a
+    total recomputed by hand from six blocks goes stale silently. `max_arity`
+    is the one field NOT summed -- it is a maximum, and adding maxima would
+    report an arity no document has.
+    """
+    p = lambda s="": out.append(s)
+
+    measured, unmeasured = [], []
+    totals = {}
+    dist = {}
+    plural_rows = {}
+    plural_max = {}
+    unknown_buckets = {}
+    max_arity = 0
+    for i, r in enumerate(reports):
+        name = str(r.get("corpus") or "report #%d" % (i + 1))
+        m = edge_arity(r)
+        if not m["measured"]:
+            unmeasured.append("%s (%s)" % (name, m["why"]))
+            continue
+        measured.append(name)
+        ea = m["block"]
+        for key, _label in EDGE_ARITY_DENOMINATOR + [("docs_inspected", ""),
+                                                     ("docs_unreadable", "")]:
+            if key == "max_arity_seen":
+                continue
+            if key in ea:
+                try:
+                    totals[key] = totals.get(key, 0) + int(ea[key] or 0)
+                except (TypeError, ValueError):
+                    pass
+        try:
+            max_arity = max(max_arity, int(ea.get("max_arity_seen") or 0))
+        except (TypeError, ValueError):
+            pass
+        table, unknown = edge_arity_pivot(ea.get("arity_distribution"))
+        for bucket, n in unknown.items():
+            unknown_buckets[bucket] = unknown_buckets.get(bucket, 0) + n
+        for key, cell in table.items():
+            acc = dist.setdefault(key, dict((b, 0) for b in EDGE_ARITY_BUCKETS))
+            acc["total"] = acc.get("total", 0) + cell.get("total", 0)
+            for b in EDGE_ARITY_BUCKETS:
+                acc[b] += cell.get(b, 0)
+        for row in aslist(ea.get("plural_by_family")):
+            key = "%s.%s" % (row.get("class_name", "?"),
+                             row.get("edge_name", "?"))
+            try:
+                plural_rows[key] = plural_rows.get(key, 0) + int(row.get("count") or 0)
+            except (TypeError, ValueError):
+                pass
+            try:
+                plural_max[key] = max(plural_max.get(key, 0),
+                                      int(row.get("max_arity") or 0))
+            except (TypeError, ValueError):
+                pass
+
+    p("")
+    p("  EDGE ARITY -- HOW MANY DOCUMENTS CARRY A PLURAL EDGE. REPORT ONLY,")
+    p("  and UNGATED by construction: it reads each document's own depends_on.")
+    p("  DO NOT read this as a violation count -- some families are MEANT to be")
+    p("  plural. It is the answer to a question three other counters could not")
+    p("  reach (NDI's pass never runs here, ontologyRowSubjects has no arity")
+    p("  counter, and `docs_multi_member` is gated on `referent_unique_by`,")
+    p("  which DID-schema declares on three families, all `time_reference_#`).")
+    p("      DENOMINATOR: %d corpus report(s); %d carried a readable block, "
+      "%d did not; %d document(s) inspected in total"
+      % (len(reports), len(measured), len(unmeasured),
+         totals.get("docs_inspected", 0)))
+    if unmeasured:
+        p("      *** NOT MEASURED in: %s" % ", ".join(unmeasured))
+        p("      *** the totals below are sums over %d corpora, not %d -- do"
+          % (len(measured), len(reports)))
+        p("      *** not quote them as a whole-corpus figure.")
+    if not measured:
+        p("      *** NOTHING TO TOTAL -- no corpus contributed a readable")
+        p("      *** block. This is UNMEASURED. It is NOT '0 plural edges'.")
+        return
+    _ea_rows(totals, [(k, l) for k, l in EDGE_ARITY_DENOMINATOR
+                      if k != "max_arity_seen"], out, indent="        ")
+    p("        %10d  largest arity in ANY corpus (a MAXIMUM, never summed)"
+      % max_arity)
+    for bucket, n in sorted(unknown_buckets.items()):
+        p("      *** BUCKET %r has no column here -- %d document(s) are in none"
+          % (bucket, n))
+    _edge_arity_verdict(totals, out)
+    p("      ARITY DISTRIBUTION -- DOCUMENTS, per (class, family), summed. The")
+    p("      `1` column IS the denominator for the two beside it:")
+    if not dist:
+        p("          (no family in reach across any corpus)")
+    for key, cell in sorted(dist.items(),
+                            key=lambda kv: (-(kv[1]["2"] + kv[1]["3+"]),
+                                            -kv[1]["total"], kv[0])):
+        p("          %-46s  1: %-9d 2: %-7d 3+: %d"
+          % (key[:46], cell["1"], cell["2"], cell["3+"]))
+    p("      PLURAL FAMILIES -- documents carrying MORE THAN ONE member:")
+    if not plural_rows:
+        p("          (none)")
+    for key, n in sorted(plural_rows.items(), key=lambda kv: (-kv[1], kv[0])):
+        p("          %8d  %-46s (largest arity: %d)"
+          % (n, key[:46], plural_max.get(key, 0)))
+
+
 # --- #52: HOW MANY TIME REFERENCES DOES ONE STATEMENT CARRY, AND WHAT SHAPE? -
 #
 # `did2.validate.timeReferenceFamilies` is the evidence for open item #52, where
@@ -4882,6 +5211,13 @@ def render_report(r, out):
                              t.get("n_docs", "?")))
 
     render_ndi_required(r, out)
+    # DIRECTLY AFTER the NDI-required block and BEFORE the time-reference one,
+    # because this is the general case of what those two measure specifically.
+    # `docs_multi_member` three screens down is the SAME QUESTION asked of three
+    # declared families; this one is asked of every family a document carries,
+    # and reading the narrow answer without the wide one beside it is how the
+    # wide question came to be recorded as unmeasured.
+    render_edge_arity(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the
@@ -5113,6 +5449,12 @@ def rollup(reports, out):
     rollup_time_reference_families(reports, out)
     rollup_legacy_ndi_document(reports, out)
     rollup_ndi_required(reports, out)
+    # Immediately after it, for the reason the per-corpus renderer sits there:
+    # the EDGE-FAMILY UNIQUENESS table above annotates its own zero as
+    # 'untested, not clean' because it is gated on `referent_unique_by`. This
+    # block is the ungated form of the same question, and separating them is
+    # how the narrow zero got quoted as if it were the wide one.
+    rollup_edge_arity(reports, out)
     rollup_epoch_association(reports, out)
     # RETURNS FINDINGS, unlike every other rollup here. A cross-corpus
     # disagreement between figures that count the same `epoch` documents over
