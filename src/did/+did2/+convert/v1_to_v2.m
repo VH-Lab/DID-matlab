@@ -707,7 +707,7 @@ function [names, counts] = bumpClassCounter(names, counts, name)
 idx = find(strcmp(names, name), 1);
 if isempty(idx)
     names{end+1} = name; %#ok<AGROW>
-    counts(end+1) = 1; %#ok<AGROW>
+    counts(end+1) = 1;
 else
     counts(idx) = counts(idx) + 1;
 end
