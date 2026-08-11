@@ -4,6 +4,12 @@ function bodies = ontology_label(preBody)
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
+%   STATUS: this file's BEHAVIOUR is unchanged by the 2026-08-11 re-derivation
+%   below -- only the header and the tests changed. Nothing in this repository
+%   was EXECUTED for that pass: there is no MATLAB and no Octave in the
+%   environment it was written in (`which matlab octave octave-cli` printed
+%   nothing). CI is the gate.
+%
 %   ---------------------------------------------------------------------
 %   WHY THIS IS NOT A MIGRATION: THE LABEL WAS FINE, THE REFERENT WAS LOST
 %   ---------------------------------------------------------------------
@@ -66,6 +72,91 @@ function bodies = ontology_label(preBody)
 %
 %   V_eta's tombstone declares the real shape so the passthrough validates -- see
 %   build_v_eta.py.
+%
+%   ---------------------------------------------------------------------
+%   RE-DERIVED 2026-08-11: THE `document_id` EDGE IS CARRIED, AND THE WRITER
+%   CENSUS IS BIGGER THAN THIS HEADER SAID
+%   ---------------------------------------------------------------------
+%   The recorded loss ("discards the `document_id` edge ... and emits an empty
+%   `subject_id`") was REAL and is now FIXED -- by THIS FILE becoming a
+%   passthrough, not by a guard on an edge. Both halves died in the same commit:
+%
+%     git log --oneline --follow -- .../+migrators_j/ontology_label.m
+%       3d67017 WIP: ontology_label DID-side half + silentLoss counter
+%       5d22f22 migrators_j: defer the seven fabricating migrators as guarded
+%               passthroughs                                      <- THE FIX
+%       a81b275 Emit term/date values on the composite block
+%       14f5c6f Add flat-table-free J migrators: ... ontology_label
+%
+%     git show a81b275:.../ontology_label.m   (the pre-fix body)
+%       :48  obs = jStartInteraction(preBody, 'term_observation', ...
+%       :49      {'element_id', 'subject_id', 'probe_id'});
+%     .../+migrators_j/private/jStartInteraction.m:38
+%       body.depends_on = jCarrySubject(preBody, subjectSrc);   % ASSIGN, not extend
+%     .../+migrators_j/private/jCarrySubject.m (last line)
+%       deps = struct('name', 'subject_id', 'value', subjectVal);
+%
+%   None of {element_id, subject_id, probe_id} exists on this class, so
+%   subjectVal came out '' and the assignment REPLACED the one real edge. Today
+%   the function returns `{preBody}` and nothing touches `depends_on` at all.
+%
+%   THE EDGE ALSO SURVIVES THE PIPELINE, not just this function. universalRenames
+%   is the only step that rewrites `depends_on`, and it rewrites the VALUE key
+%   while preserving the NAME:
+%
+%     universalRenames.m:307-308
+%       % (document_class, depends_on, file, files) are skipped.
+%       skip = {'document_class', 'depends_on', 'file', 'files'};
+%     universalRenames.m:369+  renameDependsOnEntries  -- id/value -> document_id,
+%       `name` untouched. So a v1 {name:'document_id', value:X} arrives here as
+%       {name:'document_id', document_id:X} and leaves unchanged.
+%
+%   THE WRITER CENSUS. Bare class name, every extension, no assumed call shape
+%   (`git grep -c -i ontologylabel origin/main -- '*'` in NDI-matlab):
+%
+%     DENOMINATOR: 6 files match on origin/main; 3 are .m; 10 construction sites.
+%
+%       +setup/+conv/+haley/doImport.m   7 sites  445 470 486 505 | 799 816 832
+%       +setup/+conv/+babu/import.m      3 sites  487 534 583
+%       +setup/+NDIMaker/stimulusDocMaker.m  0 sites -- FALSE POSITIVE. `:382`
+%           `[ontologyNode,ontologyLabel,...] = ndi.ontology.lookup(...)` is a
+%           LOCAL VARIABLE. No ndi.document('ontologyLabel') anywhere in it.
+%
+%     10 of 10 sites call set_dependency_value('document_id', ...). ZERO set any
+%     other dependency. The template's one edge is the one the writers write.
+%
+%     REFERENT CLASS, per site:
+%       imageStack    8   haley all 7; babu :487
+%       generic_file  2   babu :534 (plasmid), :583 (LC-MS)
+%
+%   `+setup/+conv/+babu/import.m` WAS NOT NAMED IN THIS HEADER BEFORE, and its
+%   two `generic_file` referents are a case the second pass's imageStack chain
+%   does not cover: `generic_file` has NO V_eta home and NO migrator (it is one
+%   of the 4 UNVERIFIED coverage rows), so a Babu dataset's plasmid and LC-MS
+%   labels will point at a document that pass 1 leaves as a did_v1 class. That is
+%   a REPORTED gap, not a change made here -- both are passthroughs today, so
+%   nothing is lost and nothing false is minted either way.
+%
+%   NO COUNTER WATCHES THIS EDGE. `did2.validate.silentLoss` counts EMPTY
+%   REQUIRED edges only -- `requiredDependencies` (silentLoss.m:930-961) returns
+%   a name only `if ~logical(dep.mustBeNonEmpty); return; end`. The V_eta
+%   tombstone declares `"mustBeNonEmpty": false` on `document_id` (NDI's own
+%   schema_documents/data/ontologyLabel_schema.json declares
+%   `"mustbenotempty": 1`), so an empty or absent `document_id` on a migrated
+%   `ontology_label` would NOT appear in the empty-required-edge census. A corpus
+%   run reporting 0 empty required edges is therefore NOT evidence about this
+%   edge; the tests below are. Raising the tombstone to required is a SCHEMA
+%   change and is not made here -- a new required edge is exactly what produced
+%   the six 100%-empty-edge classes.
+%
+%   INDEPENDENT OF THE E. COLI QUESTION. The blocked half recorded at
+%   ndi.migrate.internal.ontologyLabelSubjects.m:59-73 is about whether the
+%   REFERENT has a subject to inherit; this is about whether the edge TO the
+%   referent exists at all. The E. coli labels at doImport.m 799/816/832 set
+%   `document_id` exactly like the behaviour ones -- the difference is entirely
+%   on the imageStack, which sets `subject_id` at 432/466/482/501 and not at all
+%   in Step 8. Carrying `document_id` is what makes that pass POSSIBLE to run;
+%   it does not decide it, and the team call is untouched.
 %
 %   THE GUARD. A body carrying `ontology_name`, `label_id` or `label` is REJECTED
 %   BY NAME: those are DID-side inventions, so their presence means a fixture or a

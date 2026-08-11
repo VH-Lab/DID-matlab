@@ -24,6 +24,16 @@ function tests = testMigratorsJ
 %   Runs with Validate=false so they assert the TRANSFORM (routing + field
 %   placement) without a V_eta schema cache at the runner working directory.
 %
+%   STATUS of the 2026-08-11 ontology_label pair
+%   (testOntologyLabelKeepsExactlyTheOneRealEdge,
+%   testOntologyLabelDocumentIdSurvivesTheWholePipeline): WRITTEN WITHOUT
+%   MATLAB -- there is neither MATLAB nor Octave in the environment they were
+%   authored in, and NEITHER TEST HAS BEEN EXECUTED. Their mutation sensitivity
+%   was checked by transcribing the three real code paths they depend on
+%   (universalRenames.renameDependsOnEntries, the migrator body, the edge
+%   reader) and breaking each in turn; that is a transcription, not a run. CI is
+%   the gate.
+%
 %   Run with:  results = runtests('did2.unittest.testMigratorsJ');
 
 tests = functiontests(localfunctions);
@@ -575,6 +585,74 @@ verifyEqual(testCase, out{1}.ontology_label.ontology_node, 'uberon:3373');
 % the link to the labelled document is kept, and no husk observation is minted
 verifyEqual(testCase, depValue(out{1}, 'document_id'), 'imstack_9');
 verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
+end
+
+function testOntologyLabelKeepsExactlyTheOneRealEdge(testCase)
+% THE OTHER HALF OF THE OLD BUG, asserted directly rather than by proxy.
+%
+% `testOntologyLabelDefersToSecondPass` above checks that `document_id` is
+% PRESENT. That alone does not catch the regression that actually happened: the
+% pre-fix body ASSIGNED `body.depends_on = jCarrySubject(...)`
+% (+migrators_j/private/jStartInteraction.m:38), which both discarded
+% `document_id` AND minted a `subject_id` entry whose value was '' -- because
+% none of the {element_id, subject_id, probe_id} it looked for exists on this
+% class (+migrators_j/private/jCarrySubject.m, last line:
+% `deps = struct('name','subject_id','value',subjectVal)`).
+%
+% So the property is not "document_id is there", it is "the edge set is EXACTLY
+% the one edge the source had". An invented empty edge is invisible to
+% did2.validate.references (:90 skips empty edges) and, on this class, invisible
+% to did2.validate.silentLoss too -- the V_eta tombstone declares
+% `mustBeNonEmpty: false` on document_id, and silentLoss.m:930-961 only counts
+% edges declared mustBeNonEmpty. Nothing but this assertion is watching.
+out = did2.convert.migrators_j.ontology_label(ontologyLabelBody());
+verifyEqual(testCase, numel(out{1}.depends_on), 1, ...
+    'ontology_label must carry exactly the one edge the source had');
+verifyEqual(testCase, out{1}.depends_on(1).name, 'document_id');
+verifyEqual(testCase, depValue(out{1}, 'subject_id'), '', ...
+    'no subject_id edge may be minted: the referent is not a subject');
+end
+
+function testOntologyLabelDocumentIdSurvivesTheWholePipeline(testCase)
+% THE GAP THIS TEST EXISTS TO CLOSE. Every ontology_label assertion above calls
+% the migrator DIRECTLY, so none of them touches the one function in the
+% pipeline that rewrites `depends_on`: universalRenames' renameDependsOnEntries
+% (universalRenames.m:369+), which converts v1's {name, value} to
+% {name, document_id}. If that step ever dropped the entry, renamed it, or lost
+% the `name`, every direct-call test would still pass and the loss would be
+% silent -- +did2/+schema/cache.m accepts depends_on wholesale and never checks
+% that a SOURCE edge survived, which is why a dropped edge is invisible in a way
+% an invented one is not.
+%
+% This runs the real V_eta route (did2.convert.v1_to_v2 -> universalRenames ->
+% +migrators_j.ontology_label) and reads the edge off the converted document.
+%
+% MUTATION MATRIX (transcription harness, NOT MATLAB -- 3 transcribed code
+% paths, 3 tests, 14 assertions, 6 mutations = 1 control + 5 breaks). Each row
+% is a mutation; each column a test. The point is the two columns of PASS:
+%
+%   mutation                     defers  keepsOneEdge  survivesPipeline
+%   none (control)                PASS      PASS            PASS
+%   restore jStartInteraction     FAIL      FAIL            FAIL   <- historical
+%   rename the edge subject_id    FAIL      FAIL            FAIL
+%   renameDependsOn drops entry   PASS      PASS            FAIL   <- only here
+%   renameDependsOn loses `name`  PASS      PASS            FAIL   <- only here
+%   extend with empty subject_id  PASS      FAIL            FAIL   <- near-miss
+%
+% The two universalRenames mutations are caught by NOTHING except this test,
+% which is the whole reason it exists.
+out = runJ(ontologyLabelBody());
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1);
+doc = out.migrated{1};
+verifyEqual(testCase, doc.get('document_class.class_name'), 'ontology_label');
+% the load-bearing assertion: the referent id, after the rename step
+verifyEqual(testCase, depVal(doc, 'document_id'), 'imstack_9', ...
+    'the document_id edge must survive universalRenames + the migrator');
+verifyEqual(testCase, numel(doc.get('depends_on')), 1);
+% and the passthrough is counted as one -- a DELIBERATE one, per class, so an
+% accidental fall-through to a fallback would show up here as well
+verifyEqual(testCase, out.summary.unconverted_by_class.ontology_label, 1);
 end
 
 function testOntologyLabelRejectsInventedShape(testCase)

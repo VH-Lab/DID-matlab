@@ -27,6 +27,12 @@ function tests = testFixtureCorpus
 %   by did2.unittest.testTimeReferenceCollapse and
 %   did2.unittest.testBatchPassWiring, both of which mint a session document.
 %
+%   STATUS of the 2026-08-11 GATE 3 edit (the ontology_label document_id
+%   assertion + the `edgeOf` helper): WRITTEN WITHOUT MATLAB -- there is neither
+%   MATLAB nor Octave in the environment it was authored in, and it has NOT been
+%   executed. It asserts a property the two gates above are structurally unable
+%   to see; see the comment at the assertion. CI is the gate.
+%
 %   Run with:  results = runtests('did2.unittest.testFixtureCorpus');
 
 tests = functiontests(localfunctions);
@@ -346,6 +352,43 @@ refRep = did2.validate.references(result.migrated);
 verifyEqual(testCase, refRep.orphan_count, 0, ...
     sprintf('%d orphan depends_on edge(s) of %d examined', ...
         refRep.orphan_count, refRep.edges_examined));
+
+% GATE 3, targeted: a SOURCE edge that survived. NEITHER gate above can see a
+% DROPPED edge -- quarantine only fires on what a schema forbids, and the orphan
+% checker only examines edges that are still there, so deleting one takes
+% orphan_count DOWN. `ontology_label.document_id` is the label's only referent
+% (10 of 10 NDI writer sites set it and nothing else: +setup/+conv/+haley/
+% doImport.m 445/470/486/505/799/816/832, +setup/+conv/+babu/import.m
+% 487/534/583), and it is invisible to did2.validate.silentLoss as well, because
+% the V_eta tombstone declares it `mustBeNonEmpty: false` and silentLoss counts
+% only required edges. This assertion is the only thing watching it under
+% validation.
+verifyEqual(testCase, edgeOf(result.migrated, 'om_ol_01', 'document_id'), ...
+    'om_is_01', ...
+    'ontology_label lost its document_id edge -- the label now says nothing');
+end
+
+function v = edgeOf(migrated, docId, edgeName)
+% Read one edge off the migrated document with base.id == DOCID; '' if either
+% the document or the edge is absent. Accepts BOTH edge spellings for the same
+% reason depValue in testMigratorsJ does: universalRenames normalises v1's
+% {name, value} to {name, document_id}, and +did2/+validate/references.m:176-179
+% resolves them in this order.
+v = '';
+for k = 1:numel(migrated)
+    if ~strcmp(char(migrated{k}.get('base.id')), docId); continue; end
+    deps = migrated{k}.get('depends_on');
+    for d = 1:numel(deps)
+        if ~strcmp(deps(d).name, edgeName); continue; end
+        if isfield(deps(d), 'document_id') && ~isempty(deps(d).document_id)
+            v = deps(d).document_id;
+        elseif isfield(deps(d), 'value')
+            v = deps(d).value;
+        end
+        return;
+    end
+    return;
+end
 end
 
 % ===================== fixtures (self-contained) =========================
