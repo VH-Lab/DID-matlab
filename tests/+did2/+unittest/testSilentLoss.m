@@ -168,10 +168,31 @@ end
 function testTheDenominatorIsSetEvenWhenNothingCouldBeRead(testCase)
 % The original defect, one block over: a denominator set only on the happy
 % path reports zeros for a batch it never opened.
-rep = did2.validate.silentLoss({struct('nope', 1), struct('nope', 2)});
+%
+% THE FIXTURE WAS WRONG AND THIS TEST FAILED ON ITS FIRST EXECUTION -- fixed
+% 2026-08-11. It passed `{struct('nope',1), struct('nope',2)}` and demanded
+% docs_unreadable == 2. Those structs are READABLE: vBodies/asStruct returns a
+% struct input unchanged (`if isstruct(d); s = d; return; end`), so unreadable
+% was correctly 0 and the test was asserting the wrong state.
+%
+% Readable-but-unclassifiable and unreadable are DIFFERENT facts, and keeping
+% them apart is the entire job of this block -- conflating them is how a census
+% reports zeros for a batch it never opened. A body with no `document_class` is
+% inspected, read, and not classified; only input asStruct cannot parse at all
+% is unreadable. Numerics take the accessor path, every property access throws,
+% and asStruct returns [].
+rep = did2.validate.silentLoss({42, 43});
 verifyEqual(testCase, rep.epoch_association.docs_inspected, 2);
 verifyEqual(testCase, rep.epoch_association.docs_unreadable, 2, ...
     'unreadable input must be visible inside the epoch block too');
+
+% The other state, asserted here so the distinction cannot quietly collapse
+% into one number later: readable, inspected, NOT classified.
+rep2 = did2.validate.silentLoss({struct('nope', 1), struct('nope', 2)});
+verifyEqual(testCase, rep2.epoch_association.docs_inspected, 2);
+verifyEqual(testCase, rep2.epoch_association.docs_unreadable, 0, ...
+    'a struct with no document_class is readable, not unreadable');
+verifyEqual(testCase, rep2.epoch_association.docs_classified, 0);
 end
 
 function testTheNamesItFollowedAreReportedAsData(testCase)

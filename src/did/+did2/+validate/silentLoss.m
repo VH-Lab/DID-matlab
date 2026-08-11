@@ -1214,10 +1214,17 @@ if ~isempty(chain)
     fams = declaredFamilies(cache, className);
     for f = 1:numel(fams)
         if eaRefersToReference(cache, fams(f).refers_to)
-            info.time_families{end+1} = fams(f).name; %#ok<AGROW>
+            info.time_families{end+1} = fams(f).name;
         end
     end
 end
+% DO NOT DELETE THIS LINE TO SILENCE THE ANALYSER. `memo` is a containers.Map,
+% which is a HANDLE class: this mutates the map the CALLER created (line 334)
+% and passed in, so the memoisation is real. The analyser reports "value
+% assigned might be unused" because the local name is not read again, which it
+% is not -- the effect is on the shared object. Deleting it would leave every
+% class re-resolved per document on a 562,448-document census, which this
+% function's own header calls the expensive part.
 memo(className) = info;
 end
 
