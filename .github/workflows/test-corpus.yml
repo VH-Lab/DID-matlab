@@ -41,7 +41,7 @@ on:
       # 404s (verified 2026-08-10 -- `git ls-tree origin/main .github/workflows/`
       # lists only prepare-release, run-codespell, test-code, test-symmetry).
       # To run the corpus now: bump the comment below and push.
-      #   corpus-run-token: 1
+      #   corpus-run-token: 2
       - ".github/workflows/test-corpus.yml"
   workflow_dispatch:
   schedule:
