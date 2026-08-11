@@ -39,6 +39,14 @@ function bodies = ontology_table_row(preBody)
 %   for qualifiers; retired one table at a time). Dispatch is seeded from the Dab
 %   (FPS / EPM) and JH (C. elegans) corpora; the per-table maps grow in discovery
 %   mode.
+%
+%   STATUS 2026-08-11 -- `isPatchGeometryTable` tightened (it was also matching
+%   the C. elegans CULTIVATION-PLATE table) and the patch map's 6-measure
+%   enumeration made non-lossy. NOTHING IN THIS REPO WAS EXECUTED for that
+%   change: the session that made it has no MATLAB, so neither testMigratorsJ
+%   nor any corpus was run. The dispatch claim it rests on was settled from the
+%   NDI writer and dictionary, not from a run; `test-migrators-quick.yml` and
+%   then a JH corpus run are what turn it into a result.
 
 arguments
     preBody (1,1) struct
@@ -293,18 +301,75 @@ end
 %   dangle). The patch's geometry (OD600, volume, radius, circularity, centre)
 %   becomes observations on that patch, all sharing one session-relative anchor.
 %   The BacterialPatch/PlateIdentifier columns are bare local labels (e.g.
-%   "0017"), not document ids, so they name the patch (local_identifier) rather
-%   than becoming relations -- relating to a non-existent plate document would
-%   only trade one orphan for another.
+%   "0017"), not document ids, so they do NOT become relations -- relating to a
+%   non-existent plate document would only trade one orphan for another.
+%   `BacterialPatchIdentifier` is the patch's own identity and becomes its
+%   `local_identifier`. `BacterialPlateIdentifier` names a DIFFERENT entity, so
+%   it is data ABOUT the patch, not the patch's identity: it now falls through
+%   to the per-column path as a `term_observation` instead of being dropped.
+%   Relating the patch to a plate DOCUMENT stays deferred to the NDI second
+%   pass, which can see the migrated-id graph.
+%
+%   CAUTION on local_identifier: `patchID` is `1:numPatch` WITHIN a plate
+%   (doImport.m:275), so "0001" recurs on every plate, and `jEnsureLocalId` does
+%   no dataset-level qualification while both Haley sessions land in one
+%   `ndi.dataset.dir`. The id is a LABEL, not a key -- do not build anything
+%   that joins on it. (This is pre-existing and unchanged here; it is recorded
+%   because the cultivation-plate misfire made it much worse: that table sets
+%   `patchID` to the CONSTANT '0001' for every row, doImport.m:192.)
 
 function tf = isPatchGeometryTable(cols)
-% OD600-at-seeding is unique to the geometry table; it separates it from the
-% fluorescence table (MicroscopyImageIdentifier + BacterialPatchIdentifier +
-% radius, no OD600) and, with the DocumentIdentifier exclusion, from the
-% encounter table.
+%ISPATCHGEOMETRYTABLE Signature of the JH C. elegans bacterial-patch geometry
+%   table (doImport.m:291-293), which is a DIFFERENT table from the C. elegans
+%   CULTIVATION-PLATE table (doImport.m:179-201) even though the two share this
+%   map's first three clauses.
+%
+%   STATUS 2026-08-11: this comment used to claim "OD600-at-seeding is unique to
+%   the geometry table". THAT WAS FALSE, and the cultivation plate was being
+%   minted as a bacterial patch because of it. `+haley/tableDoc_dictionary.json`
+%   maps THREE source columns to the one OD600-at-seeding term --
+%
+%       "patchOD600":  "EMPTY:bacterial OD600 (target) at seeding"
+%       "growthOD600": "EMPTY:bacterial OD600 (target) at seeding"
+%       "OD600":       "EMPTY:bacterial OD600 (target) at seeding"
+%
+%   -- and `data` keys are shortName(term), so the three collapse to ONE key.
+%   The cultivation table carries `growthOD600` (doImport.m:100) alongside
+%   `patchID` (:192, constant '0001') and no `patch_id`, so it satisfied all
+%   three clauses exactly as the geometry table does. The columns were then
+%   read against a 6-measure enumeration it does not have: of its 22 columns,
+%   2 were carried, 1 became the (constant) local_identifier and 19 -- CFU,
+%   OD600Real, four timestamps, growth duration, assayPhase, plateID, exclude,
+%   the strain edge, arenaDiameter, lawnSpacing, temp, growthAge, expID and two
+%   labels -- were dropped on the floor.
+%
+%   THE DISCRIMINATOR IS PATCH GEOMETRY. A cultivation plate has none: no
+%   radius, no circularity, no centre. The geometry table has all four
+%   (doImport.m:254-257 / :291-293). Requiring ANY ONE of them is deliberate --
+%   the shortName strings cannot be verified in this session (`ndi.ontology.
+%   lookup` lives in ndi-ontology-matlab, which is not checked out), so the
+%   clause is written so that no single mis-spelling can un-dispatch the
+%   geometry table that is green today: all four would have to be wrong at once.
+%   The two clauses that ARE corpus-proven (the map fired on 6,306 JH documents,
+%   commit 72ece64) are left exactly as they were.
 tf = ~isempty(colByKey(cols, 'BacterialOD600TargetAtSeeding')) ...
     && ~isempty(colByKey(cols, 'BacterialPatchIdentifier')) ...
-    && isempty(colByKey(cols, 'BacterialPatchDocumentIdentifier'));
+    && isempty(colByKey(cols, 'BacterialPatchDocumentIdentifier')) ...
+    && hasAnyKey(cols, patchGeometryEvidenceKeys());
+end
+
+function keys = patchGeometryEvidenceKeys()
+%PATCHGEOMETRYEVIDENCEKEYS Columns that only a real bacterial PATCH can have.
+%   A plate-level row (cultivation or behaviour) never carries one.
+keys = {'BacterialPatchRadius', 'BacterialPatchCircularity', ...
+        'BacterialPatchCenter_XCoordinate', 'BacterialPatchCenter_YCoordinate'};
+end
+
+function tf = hasAnyKey(cols, keys)
+tf = false;
+for k = 1:numel(keys)
+    if ~isempty(colByKey(cols, keys{k})); tf = true; return; end
+end
 end
 
 function bodies = applyPatchGeometryMap(preBody, cols)
@@ -328,19 +393,75 @@ measures = {
 
 bodies = {subjectDoc};
 usedAnchor = false;
+% `BacterialPatchIdentifier` is THIS document's identity (it became the
+% subject's local_identifier above), so it is not also a measurement. Every
+% other column must end up somewhere.
+consumed = {'BacterialPatchIdentifier'};
 for i = 1:size(measures, 1)
     c = colByKey(cols, measures{i, 1});
     if isempty(c); continue; end
     [ok, num] = numericValue(c{1});
-    if ~ok; continue; end
+    if ~ok; continue; end   % unparseable -> NOT consumed; carried below
+    consumed{end+1} = measures{i, 1}; %#ok<AGROW>
     variable = struct('node', '', 'name', c{1}.name);
     bodies{end+1} = makeEncObs(preBody, measures{i, 2}, measures{i, 3}, ...
         variable, num, patchId, anchor.base.id); %#ok<AGROW>
     usedAnchor = true;
 end
+
+% --- carry everything the enumeration does not name -------------------------
+% A fixed list of 6 measures is the wrong shape for a table whose width is set
+% by NDI, not by us: the geometry table already has a 7th column
+% (BacterialPlateIdentifier) that this map dropped in silence, and the next
+% column NDI adds would be dropped the same way -- invisibly, because a dropped
+% column leaves no empty edge, no fragment and no vacuous field for any counter
+% to see. So anything not enumerated and not this row's own identity falls
+% through to the ordinary per-column path, which classifies it by the property
+% term and the value's shape. The patch is passed in explicitly because this
+% map MINTS its subject rather than carrying one (a real ontologyTableRow has
+% no `subject_id` dependency -- see the guard in the main function).
+for i = 1:numel(cols)
+    c = cols{i};
+    if any(strcmp(c.key, consumed)); continue; end
+    if ~isCarriableValue(c.value); continue; end
+    row = struct('ontology_name', c.node, 'name', c.name);
+    row.value = c.value;   % assigned, not passed to struct(): a cell value
+                           % would otherwise fan the row out into a struct ARRAY
+    [b, isObservation] = migrateRow(preBody, row, patchId);
+    if isempty(b); continue; end    % an identity column migrateRow recognises
+    if isObservation
+        b.depends_on(end+1) = struct('name', 'time_reference_1', ...
+            'value', anchor.base.id);
+        usedAnchor = true;
+    end
+    bodies{end+1} = b; %#ok<AGROW>
+end
 if usedAnchor
     bodies{end+1} = anchor;
 end
+end
+
+function tf = isCarriableValue(v)
+%ISCARRIABLEVALUE Can the per-column path represent this value WITHOUT inventing
+%   an empty document?
+%
+%   `migrateRow` reads a value through `rowNumericValue` (scalar numeric only)
+%   and `getCharField` (char / scalar string / scalar numeric). Anything else --
+%   a logical, a vector, a cell -- reaches `valueTerm`, which returns '' for it,
+%   and the result is a term_observation asserting nothing. A hollow document is
+%   NOT an improvement on a dropped column: it passes every gate while carrying
+%   no fact, which is the exact failure `isFragment` and `silentLoss` exist to
+%   find. So an unrepresentable value is left for a typed home (a logical wants
+%   a boolean leaf; a vector wants a `sampled_body`) rather than fabricated.
+%
+%   No column of the JH patch geometry table is in this bucket -- its 8 columns
+%   are chars and scalar doubles -- so today this predicate only bounds what a
+%   FUTURE column may become.
+tf = false;
+if isempty(v); return; end
+if ischar(v); tf = true; return; end
+if isstring(v) && isscalar(v); tf = true; return; end
+if isnumeric(v) && isscalar(v) && ~isnan(v); tf = true; return; end
 end
 
 function body = makePatchSubject(preBody, localId)
@@ -447,7 +568,15 @@ end
 
 % ===================== per-row migration ===============================
 
-function [body, isObservation] = migrateRow(preBody, row)
+function [body, isObservation] = migrateRow(preBody, row, subjectId)
+%MIGRATEROW One column -> one statement.
+%   SUBJECTID (optional) names the subject explicitly. Omit it on the
+%   per-column fallback path, where the subject is CARRIED from the source
+%   document's `subject_id` dependency (and the caller has already guarded on
+%   there being one). Pass it from a per-table map, which MINTS its subject --
+%   `carrySubject` would raise there, because a real ontologyTableRow declares
+%   only `document_id`.
+if nargin < 3; subjectId = ''; end
 node  = getCharField(row, 'ontology_name');
 label = getCharField(row, 'name');
 variable = struct('node', node, 'name', label);
@@ -464,13 +593,13 @@ end
 
 % timeless facts -> assertions (no act, optional time)
 if containsAny(hay, {'species', 'sex', 'strain', 'genotype', 'taxon'})
-    body = makeTermAssertion(preBody, variable, valueTerm(row));
+    body = makeTermAssertion(preBody, variable, valueTerm(row), subjectId);
     return;
 elseif containsAny(hay, {'date of birth', 'birth date', 'dob'})
-    body = makeDateAssertion(preBody, variable, row);
+    body = makeDateAssertion(preBody, variable, row, subjectId);
     return;
 elseif ~isNumeric && looksLikeTimestamp(getCharField(row, 'value'))
-    body = makeDateAssertion(preBody, variable, row);
+    body = makeDateAssertion(preBody, variable, row, subjectId);
     return;
 end
 
@@ -478,9 +607,10 @@ end
 isObservation = true;
 if isNumeric
     [leafClass, shapeClass, valueStruct] = dispatchNumeric(hay, row, numVal);
-    body = makeNumericObservation(preBody, leafClass, shapeClass, variable, valueStruct);
+    body = makeNumericObservation(preBody, leafClass, shapeClass, variable, ...
+        valueStruct, subjectId);
 else
-    body = makeTermObservation(preBody, variable, valueTerm(row));
+    body = makeTermObservation(preBody, variable, valueTerm(row), subjectId);
 end
 end
 
@@ -544,27 +674,31 @@ end
 
 % ===================== destination builders ============================
 
-function body = makeNumericObservation(preBody, leafClass, shapeClass, variable, valueStruct)
-body = startStatement(preBody, leafClass, {'subject_observation', shapeClass}, variable);
+function body = makeNumericObservation(preBody, leafClass, shapeClass, variable, valueStruct, subjectId)
+body = startStatement(preBody, leafClass, {'subject_observation', shapeClass}, ...
+    variable, subjectId);
 body.subject_interaction = interactionBlock();
 body.subject_observation = struct();
 body.(shapeClass) = struct('value', valueStruct);
 end
 
-function body = makeTermObservation(preBody, variable, valueT)
-body = startStatement(preBody, 'term_observation', {'subject_observation'}, variable);
+function body = makeTermObservation(preBody, variable, valueT, subjectId)
+body = startStatement(preBody, 'term_observation', {'subject_observation'}, ...
+    variable, subjectId);
 body.subject_interaction = interactionBlock();
 body.subject_observation = struct();
 body.term = struct('value', valueT);
 end
 
-function body = makeTermAssertion(preBody, variable, valueT)
-body = startStatement(preBody, 'term_assertion', {'subject_assertion'}, variable);
+function body = makeTermAssertion(preBody, variable, valueT, subjectId)
+body = startStatement(preBody, 'term_assertion', {'subject_assertion'}, ...
+    variable, subjectId);
 body.term = struct('value', valueT);
 end
 
-function body = makeDateAssertion(preBody, variable, row)
-body = startStatement(preBody, 'date_assertion', {'subject_assertion'}, variable);
+function body = makeDateAssertion(preBody, variable, row, subjectId)
+body = startStatement(preBody, 'date_assertion', {'subject_assertion'}, ...
+    variable, subjectId);
 raw = getCharField(row, 'value');
 body.date = struct('value', ...
     struct('instant', raw, 'precision', 'second', 'source', raw));
@@ -572,11 +706,17 @@ end
 
 % ===================== shared helpers ==================================
 
-function body = startStatement(preBody, className, supersChain, variable)
+function body = startStatement(preBody, className, supersChain, variable, subjectId)
 %STARTSTATEMENT Seed a V_eta statement body: document_class header, a fresh
-%   base id, the carried subject_id, and the subject_statement block (variable
+%   base id, the subject_id edge, and the subject_statement block (variable
 %   + storage_mode). The caller adds the subject_interaction block (for
 %   interactions) and the leaf value block.
+%
+%   SUBJECTID (optional, may be '') names the subject explicitly -- used by a
+%   per-table map, which mints its own subject. Empty or absent falls back to
+%   carrySubject, which reads the SOURCE document's `subject_id` dependency and
+%   raises when there is none.
+if nargin < 5; subjectId = ''; end
 supers = struct('class_name', {}, 'class_version', {});
 for k = 1:numel(supersChain)
     supers(end+1) = struct('class_name', supersChain{k}, 'class_version', '1.0.0'); %#ok<AGROW>
@@ -584,7 +724,11 @@ end
 body = struct();
 body.document_class = struct('class_name', className, 'class_version', '1.0.0', ...
     'superclasses', supers, 'schema_version', 'V_eta');
-body.depends_on = carrySubject(preBody);
+if isempty(subjectId)
+    body.depends_on = carrySubject(preBody);
+else
+    body.depends_on = struct('name', 'subject_id', 'value', char(subjectId));
+end
 if isfield(preBody, 'base') && isstruct(preBody.base)
     base = preBody.base;
     base.id = did.ido.unique_id();   % each column becomes its own document

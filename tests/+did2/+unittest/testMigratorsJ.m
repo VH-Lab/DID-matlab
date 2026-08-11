@@ -34,6 +34,19 @@ function tests = testMigratorsJ
 %   reader) and breaking each in turn; that is a transcription, not a run. CI is
 %   the gate.
 %
+%   STATUS of the 2026-08-11 ontology_table_row patch/cultivation set
+%   (testCultivationPlateIsNotMigratedAsABacterialPatch,
+%   testPatchGeometryCarriesUnenumeratedColumns,
+%   testPatchGeometryStillDispatchesOnGeometryEvidence, and the amended document
+%   count in testPatchGeometryTableMap): SAME CAVEAT -- WRITTEN WITHOUT MATLAB,
+%   NOT EXECUTED. The property they pin (that the C. elegans CULTIVATION-PLATE
+%   table and the bacterial-patch GEOMETRY table produce identical answers for
+%   all three of the old dispatch clauses) was settled outside MATLAB, from NDI
+%   origin/main `+haley/doImport.m` + `+haley/tableDoc_dictionary.json`, with a
+%   transliteration of extractColumns/colByKey/isPatchGeometryTable driven by
+%   the real column sets of all nine ontologyTableRow-producing tables. CI is
+%   the gate.
+%
 %   Run with:  results = runtests('did2.unittest.testMigratorsJ');
 
 tests = functiontests(localfunctions);
@@ -942,8 +955,10 @@ end
 
 function testPatchGeometryTableMap(testCase)
 out = runJ(patchGeometryRow());
-% 1 subject + 6 geometry observations + 1 shared session anchor
-verifyEqual(testCase, numel(out.migrated), 8);
+% 1 subject + 6 geometry observations + the BacterialPlateIdentifier column
+% (no longer dropped -- see testPatchGeometryCarriesUnenumeratedColumns)
+% + 1 shared session anchor
+verifyEqual(testCase, numel(out.migrated), 9);
 bc = out.summary.by_class;
 % the patch is declared as a bare subject
 verifyTrue(testCase, isfield(bc, 'subject'));
@@ -954,7 +969,7 @@ verifyEqual(testCase, bc.volume_observation, 1);
 verifyEqual(testCase, bc.length_observation, 3);   % radius + centre X + centre Y
 verifyEqual(testCase, bc.score_observation, 1);
 verifyTrue(testCase, isfield(bc, 'session_relative_reference'));
-% identity columns are not measurements
+% the patch's OWN identifier is its identity, not a measurement
 verifyFalse(testCase, isfield(bc, 'count_observation'));
 % the minted subject PRESERVES the source document id (the encounter table's
 % directed_relation parent points at it) and names the patch
@@ -966,6 +981,166 @@ anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
 od = firstOfClassJ(out.migrated, 'concentration_observation');
 verifyEqual(testCase, depVal(od, 'subject_id'), 'otr_patch');
 verifyEqual(testCase, depVal(od, 'time_reference_1'), anchor.get('base.id'));
+end
+
+function testPatchGeometryCarriesUnenumeratedColumns(testCase)
+%TESTPATCHGEOMETRYCARRIESUNENUMERATEDCOLUMNS A column the 6-measure enumeration
+%   does not name must still be carried, not dropped.
+%
+%   WHY THIS IS A REAL PROPERTY AND NOT A HYPOTHETICAL. The geometry table
+%   already ships a 7th column the enumeration never named --
+%   `BacterialPlateIdentifier` (doImport.m:291, `plateID`) -- and it was being
+%   dropped on every JH document this map touched. (The map's own commit,
+%   72ece64, reports 6,306; that figure is NOT quoted as the geometry-row count,
+%   because it was taken while the cultivation-plate table was ALSO dispatching
+%   here and nothing has re-measured the split since.) A dropped column
+%   is the one loss NO instrument sees: it leaves no empty edge for silentLoss,
+%   no scaffolding for isFragment and no vacuous field, so the corpus reads
+%   green while the data is gone. The table's width is set by NDI, not by us,
+%   so a fixed enumeration is the wrong shape.
+otr = patchGeometryRow();
+% a column that exists in no enumeration -- stands in for the next one NDI adds
+otr.ontology_table_row.variable_names = [ ...
+    otr.ontology_table_row.variable_names ',BacterialPatchThickness'];
+otr.ontology_table_row.names = [ ...
+    otr.ontology_table_row.names ',BacterialPatchThickness'];
+otr.ontology_table_row.ontology_nodes = [ ...
+    otr.ontology_table_row.ontology_nodes ',EMPTY:0'];
+otr.ontology_table_row.data.BacterialPatchThickness = 12.5;
+
+out = runJ(otr);
+bc = out.summary.by_class;
+% dimensionless numeric with no recognised dimension -> intensity (J §7, D8);
+% the point of the assertion is that it EXISTS, not which leaf it picked
+verifyTrue(testCase, isfield(bc, 'intensity_observation'), ...
+    'an unenumerated column was dropped by the patch geometry map');
+verifyEqual(testCase, bc.intensity_observation, 1);
+% and it is about the patch, on the same anchor as the enumerated measures
+anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
+extra = firstOfClassJ(out.migrated, 'intensity_observation');
+verifyEqual(testCase, depVal(extra, 'subject_id'), 'otr_patch');
+verifyEqual(testCase, depVal(extra, 'time_reference_1'), anchor.get('base.id'));
+% the already-shipped 7th column is carried too, as a term (its value is a label)
+plate = firstOfClassJ(out.migrated, 'term_observation');
+assertNotEmpty(testCase, plate, ...
+    'BacterialPlateIdentifier was dropped');
+verifyEqual(testCase, plate.get('term.value').name, '0061');
+verifyEqual(testCase, depVal(plate, 'subject_id'), 'otr_patch');
+end
+
+% ==== ontology_table_row: the C. elegans CULTIVATION PLATE is not a patch ===
+
+function otr = cultivationPlateRow()
+%CULTIVATIONPLATEROW The JH C. elegans cultivation-plate table
+%   (+setup/+conv/+haley/doImport.m:179-201), which is NOT the bacterial-patch
+%   geometry table and must not be migrated as one.
+%
+%   THE THREE SIGNATURE KEYS ARE THE POINT, and they are corpus-proven (the
+%   patch map fires on them today). The cultivation table earns all three:
+%
+%     BacterialOD600TargetAtSeeding  <- doImport.m:100 `growthOD600`. The
+%         dictionary maps THREE columns -- patchOD600, growthOD600, OD600 --
+%         to the ONE term "EMPTY:bacterial OD600 (target) at seeding", and a
+%         `data` key is shortName(term), so all three are the same key.
+%     BacterialPatchIdentifier       <- doImport.m:192 `patchID`, set to the
+%         CONSTANT '0001' for every cultivation-plate row.
+%     BacterialPatchDocumentIdentifier -- absent, as on the geometry table.
+%
+%   What it does NOT have is patch GEOMETRY: no radius, no circularity, no
+%   centre. That is the discriminator.
+%
+%   The plate-level column keys below are DERIVED from the dictionary's term
+%   labels, NOT verified -- `ndi.ontology.lookup` (ndi-ontology-matlab) is not
+%   in this repo, so shortName cannot be evaluated here. Nothing this test
+%   asserts depends on their spelling: they are filler that makes the row the
+%   right WIDTH, and the dispatch turns only on the four keys named above.
+keys = {'ExperimentSessionIdentifier', 'CElegansAssayPhase', ...
+    'BacterialPlateIdentifier', 'BacterialPatchIdentifier', ...
+    'BacterialOD600TargetAtSeeding', 'BacterialPatchVolume', ...
+    'BacterialOD600Measurement', 'BacterialColonyFormingUnitsCFUMeasurement', ...
+    'AmbientTemperature', 'CElegansBehavioralAssay_PlateOrArenaDiameter'};
+data = struct();
+data.ExperimentSessionIdentifier = '0001';
+data.CElegansAssayPhase = 'cultivation';
+data.BacterialPlateIdentifier = '0901';
+data.BacterialPatchIdentifier = '0001';        % constant, doImport.m:192
+data.BacterialOD600TargetAtSeeding = 1.0;      % `growthOD600`
+data.BacterialPatchVolume = 200;               % `lawnVolume`, doImport.m:193
+data.BacterialOD600Measurement = 0.98;         % `OD600Real` -- currently dropped
+data.BacterialColonyFormingUnitsCFUMeasurement = 1.96e9;   % `CFU` -- dropped
+data.AmbientTemperature = 20;                  % `temp` -- dropped
+data.CElegansBehavioralAssay_PlateOrArenaDiameter = 90;    % dropped
+nodes = strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ',');
+otr = struct();
+otr.document_class = struct('class_name', 'ontology_table_row', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+otr.depends_on = struct('name', {}, 'value', {});
+otr.base = struct('id', 'otr_cultivation', 'session_id', 'sess_1', ...
+    'name', 'row', 'datestamp', '2024-06-01T12:00:00.000Z');
+otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
+    'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
+end
+
+function testCultivationPlateIsNotMigratedAsABacterialPatch(testCase)
+%TESTCULTIVATIONPLATEISNOTMIGRATEDASABACTERIALPATCH Regression for a live loss.
+%
+%   `isPatchGeometryTable` used to be three clauses, and the cultivation-plate
+%   table satisfied all three (see cultivationPlateRow). Every cultivation
+%   plate was therefore minted as a bacterial-patch SUBJECT -- with
+%   local_identifier '0001', the same string on every such row in the corpus --
+%   and read against a 6-measure enumeration it does not have: of the REAL
+%   table's 22 columns, 2 were carried, 1 was spent as the identity, and 19 were
+%   dropped in silence. (The fixture below is a 10-column stand-in; only the
+%   four dispatch-relevant keys have to be exact.)
+%
+%   With no `subject_id` dependency on the source document (the NDI
+%   ontologyTableRow template declares only `document_id`), the correct
+%   behaviour is the guarded passthrough: carry the document intact for the NDI
+%   second pass, which can see the migrated-id graph.
+out = runJ(cultivationPlateRow());
+verifyEqual(testCase, numel(out.migrated), 1, ...
+    'the cultivation plate was fanned out instead of passed through');
+d = out.migrated{1};
+verifyEqual(testCase, d.get('document_class.class_name'), 'ontology_table_row');
+verifyEqual(testCase, d.get('base.id'), 'otr_cultivation');
+bc = out.summary.by_class;
+% NOT a patch: no minted subject, and none of the geometry-map outputs
+verifyFalse(testCase, isfield(bc, 'subject'), ...
+    'a cultivation plate was minted as a bacterial-patch subject');
+verifyFalse(testCase, isfield(bc, 'concentration_observation'));
+verifyFalse(testCase, isfield(bc, 'volume_observation'));
+verifyFalse(testCase, isfield(bc, 'session_relative_reference'));
+% and nothing was quarantined to achieve that
+verifyEmpty(testCase, out.quarantine);
+end
+
+function testPatchGeometryStillDispatchesOnGeometryEvidence(testCase)
+%TESTPATCHGEOMETRYSTILLDISPATCHESONGEOMETRYEVIDENCE The tightening's fail-safe.
+%
+%   The added clause is ANY-of-four (radius / circularity / centre X / centre Y)
+%   rather than all-of, on purpose: the shortName strings cannot be evaluated in
+%   the repo (ndi.ontology.lookup is not here), so no SINGLE mis-spelling may be
+%   allowed to un-dispatch the geometry table -- that would strand the 20,411
+%   encounter relations whose parent is the patch document this map preserves.
+%   Each column is removed in turn and the map must still fire.
+geom = {'BacterialPatchRadius', 'BacterialPatchCircularity', ...
+    'BacterialPatchCenter_XCoordinate', 'BacterialPatchCenter_YCoordinate'};
+for k = 1:numel(geom)
+    otr = patchGeometryRow();
+    otr.ontology_table_row.data = rmfield(otr.ontology_table_row.data, geom{k});
+    kept = setdiff(strsplit(otr.ontology_table_row.variable_names, ','), ...
+        geom(k), 'stable');
+    otr.ontology_table_row.variable_names = strjoin(kept, ',');
+    otr.ontology_table_row.names = strjoin(kept, ',');
+    otr.ontology_table_row.ontology_nodes = strjoin( ...
+        repmat({'EMPTY:0'}, 1, numel(kept)), ',');
+    out = runJ(otr);
+    verifyTrue(testCase, isfield(out.summary.by_class, 'subject'), ...
+        sprintf(['the patch geometry map stopped firing when %s was absent; ' ...
+                 'one missing geometry column must not un-dispatch it'], geom{k}));
+    sub = firstOfClassJ(out.migrated, 'subject');
+    verifyEqual(testCase, sub.get('base.id'), 'otr_patch');
+end
 end
 
 % ============ deferred stimulus_bath -> dose_manipulation (V_eta) =======
