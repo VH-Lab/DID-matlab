@@ -87,6 +87,33 @@ function out = runJ(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 end
 
+function tf = schemaSaysAbstract(classSchema)
+%SCHEMASAYSABSTRACT True when a schema struct's header carries `abstract: true`.
+%
+%   A LOCAL COPY, ON PURPOSE. did2.schema.cache has this exact predicate --
+%   `classIsAbstract` -- and it is PRIVATE (+did2/+schema/cache.m:1434,
+%   `methods (Access = private)`), so a test calling it errors with
+%   MATLAB:class:MethodRestricted rather than failing a verification. The header
+%   is public data on the struct `getClass` hands back, so read that.
+%
+%   ABSENCE IS CONCRETE, and that is the whole subtlety: build_v_eta.py emits
+%   the key only on abstract classes, so a concrete one has no `abstract` field
+%   at all -- `image_stack` does not carry it. Both the logical and numeric
+%   spellings are accepted for the same reason the private method accepts both:
+%   jsondecode's output shape for a JSON `true` is not something a test should
+%   assume.
+tf = false;
+if ~isstruct(classSchema) || ~isfield(classSchema, 'document_class')
+    return;
+end
+dc = classSchema.document_class;
+if ~isstruct(dc) || ~isfield(dc, 'abstract')
+    return;
+end
+v = dc.abstract;
+tf = (islogical(v) && any(v)) || (isnumeric(v) && any(v == 1));
+end
+
 function v = depVal(doc, name)
 %DEPVAL Read an edge off a CONVERTED document.
 %
@@ -923,11 +950,18 @@ verifyTrue(testCase, isstruct(imgSchema) && isfield(imgSchema, 'document_class')
 verifyTrue(testCase, isstruct(stackSchema) && isfield(stackSchema, 'document_class'), ...
     'the V_eta `image_stack` tombstone has no document_class header');
 
-verifyTrue(testCase, cache.classIsAbstract(imgSchema), ...
+% NOT `cache.classIsAbstract(...)`. That method is real and does exactly this,
+% and it is in the `methods (Access = private)` block at
+% +did2/+schema/cache.m:1434 -- calling it from here raises
+% MATLAB:class:MethodRestricted (CI run 31517651627). The header field is
+% public data on a struct getClass already returns, so read that; `schemaSaysAbstract`
+% below mirrors the private method's own tolerance for logical-or-numeric rather
+% than assuming jsondecode's shape.
+verifyTrue(testCase, schemaSaysAbstract(imgSchema), ...
     ['V_eta `image` is no longer abstract. A did_v1 `image` could now pass ' ...
      'through under its own name -- re-examine the refusal in ' ...
      '+migrators_j/image.m.']);
-verifyFalse(testCase, cache.classIsAbstract(stackSchema), ...
+verifyFalse(testCase, schemaSaysAbstract(stackSchema), ...
     ['V_eta `image_stack` must stay CONCRETE: it is the tombstone the ' ...
      'subject-less image_stack passthrough validates against. (This half also ' ...
      'proves classIsAbstract can return false, so the assertion above is not ' ...
