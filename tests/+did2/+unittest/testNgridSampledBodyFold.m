@@ -214,11 +214,20 @@ function testABlankSubjectEdgeIsTreatedAsNoSubject(testCase)
 % A present-but-empty edge is not a subject. `did2.validate.references` SKIPS
 % empty edges, so a body minted from one validates clean and orphans nothing --
 % which is precisely how 7,233 invented-empty-edge documents stayed invisible.
+%
+% NOTE WHAT IS ASSERTED, AND WHAT IS NOT. This shape still emits the
+% term_observation + anchor it always did -- with an empty subject_id, which is
+% the pre-existing vintage-A behaviour and is NOT what this change touches. What
+% must not happen is the RASTER fold: no image_observation, no sampled_body.
+% Asserting `numel(out) == 1` here would have been asserting a passthrough that
+% this arm has never done, and would have passed for the wrong reason.
 v1 = foldableOntologyImage();
 v1.depends_on(1).value = '';
 out = did2.convert.migrators_j.ontology_image(v1);
-verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'ontology_image');
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyEqual(testCase, numel(out), 2, strjoin(names, ', '));
+verifyFalse(testCase, ismember('image_observation', names));
+verifyFalse(testCase, ismember('sampled_body', names));
 end
 
 function testATableRowEdgeIsNotAcceptedAsASubject(testCase)
@@ -228,11 +237,20 @@ function testATableRowEdgeIsNotAcceptedAsASubject(testCase)
 %         | grep -n set_dependency_value
 %     231:  doc = doc.set_dependency_value('document_id',value);
 % one call, and it is not `subject_id`.
-v1 = productionOntologyImage();
+%
+% THE FIXTURE MUST REACH THE FOLD PATH OR THIS TESTS NOTHING. A production
+% (vintage B) body returns at the passthrough BEFORE `subjectOf` is ever
+% consulted, so swapping its edge would pass no matter what the subject reader
+% did. So this is the foldable shape with its `element_id` REPLACED by a table
+% row: everything else about it is fold-ready, and only the edge kind decides.
+v1 = foldableOntologyImage();
 v1.depends_on = struct('name', {'ontology_table_row_id'}, 'value', {'otr_3'});
 out = did2.convert.migrators_j.ontology_image(v1);
-verifyEqual(testCase, numel(out), 1, ...
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+verifyFalse(testCase, ismember('image_observation', names), ...
     'a table row must not be accepted as the subject of an observation');
+verifyFalse(testCase, ismember('sampled_body', names), ...
+    'and no body may be minted for a statement that was not minted');
 end
 
 function testNoRealNDIShapeCanReachTheFoldArm(testCase)
