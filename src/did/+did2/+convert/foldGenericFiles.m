@@ -291,7 +291,20 @@ for k = 1:n
         genericIdx(docIds{k}) = k;
     end
 end
-report.generic_files_seen = genericIdx.Count;
+% double(), NOT genericIdx.Count. `containers.Map.Count` is a **uint64**, and
+% this line shipped without the cast: fixture run 31496802183, job 93796494861,
+%
+%     verifyEqual failed.
+%     --> Classes do not match.
+%         Actual Class:   uint64
+%         Expected Class: double
+%
+% Every other counter in this report is a double, so an unconverted Count made
+% ONE field of the struct a different numeric type from its neighbours -- which
+% jsonencode would have hidden in the artifact and any strict comparison
+% downstream would have tripped on later, further from the cause. Fixed at the
+% source rather than by loosening the assertion.
+report.generic_files_seen = double(genericIdx.Count);
 
 % A label is matched to its target ONLY when the target is a generic_file in
 % this batch. Every other label -- the ~7,007 that are not about a file, and
