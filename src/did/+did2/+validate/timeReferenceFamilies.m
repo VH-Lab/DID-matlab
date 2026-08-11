@@ -497,8 +497,10 @@ if all(blank)
 elseif any(blank)
     verdict = 'partly_absent';
 else
+    % `unique` on a cellstr, so this counts DISTINCT KEYS -- the cardinality
+    % of the container is the quantity meant, not the contents of a 1x1 cell.
     u = unique(keys);
-    if numel(u) == 1
+    if isscalar(u)
         verdict = 'same';
     elseif numel(u) == n
         verdict = 'distinct';
@@ -717,6 +719,8 @@ for k = 1:numel(chain)
             'refers_to', refersTo); %#ok<AGROW>
     end
 end
+% NOT A DEAD STORE -- `containers.Map` is a handle class and this mutates the
+% caller's map. See the note in trfChain.
 famMemo(className) = struct('fams', {fams}, 'resolved', resolved);
 end
 
@@ -731,6 +735,16 @@ end
 
 function chain = trfChain(cache, className, memo)
 %TRFCHAIN Root-first class chain, memoised, '' -> {}.
+%
+%   THE `memo(className) = chain` BELOW IS NOT A DEAD STORE, and GitHub code
+%   scanning says it is. `containers.Map` is a HANDLE class, so `map(key) =
+%   value` MUTATES THE CALLER'S MAP rather than rebinding a local; the analyzer
+%   cannot see through the handle and reports the last write in a function as
+%   unused. Deleting it would leave the results correct and the memo empty --
+%   silently quadratic, with no test able to notice. The same false positive
+%   fires on the two `famMemo(className) = ...` sites in trfTimeFamilies, and
+%   has now fired six times across this repository; it is written down here so
+%   the next reader does not have to re-derive it.
 chain = {};
 if isempty(className); return; end
 if isKey(memo, className); chain = memo(className); return; end
@@ -893,7 +907,10 @@ if ischar(v)
     s = v;
 elseif isstring(v) && isscalar(v)
     s = char(v);
-elseif iscellstr(v) && isscalar(v) %#ok<ISCLSTR>
+elseif iscell(v) && isscalar(v) && ischar(v{1})
+    % Spelled out rather than `iscellstr(v) && isscalar(v)`: that form needed an
+    % `%#ok<ISCLSTR>` suppression which the analyzer now reports as stale, and
+    % this says the same thing (a 1x1 cell holding a char) without one.
     s = v{1};
 end
 end
