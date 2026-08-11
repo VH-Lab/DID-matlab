@@ -31,12 +31,102 @@ function bodies = image_stack(preBody)
 %   daqreader / ingested-frames quartet; in J the element_epoch + ingested pair
 %   collapses into the one `sampled_body`, and the NDI-side imaging element /
 %   daqreader infrastructure is left to the NDI second pass (D2: pass-1 migrators
-%   populate no individuated element referent). The legacy `document_id`
-%   dependency (a corpus reference-integrity orphan) is dropped.
+%   populate no individuated element referent).
 %
 %   NOTE: image_observation and the *_body classes are `draft` in V_eta -- the
 %   broader imageseries/dataseries/timeseries_observation branch this supersedes
 %   is retired with the NDI-side ingest work, not here.
+%
+%   STATUS 2026-08-11 -- the `document_id` correction below is a COMMENT and a
+%   TEST change; no emitted document changed. NOTHING IN THIS REPO WAS EXECUTED
+%   for it: the session that made it has neither MATLAB nor Octave, so neither
+%   testMigratorsJ nor any corpus was run here. Every claim it makes is read out
+%   of NDI `origin/main`, this repo's sources, or `git log`, and the commands are
+%   named inline so each one is re-runnable. CI is the gate.
+%
+%   ---------------------------------------------------------------------
+%   THE `document_id` EDGE IS STILL DROPPED ON THE FOLD ARM -- BUT NOT FOR
+%   THE REASON THIS HEADER GAVE. CORRECTED 2026-08-11.
+%   ---------------------------------------------------------------------
+%   It said, verbatim: "The legacy `document_id` dependency (a corpus
+%   reference-integrity orphan) is dropped." THE REFERENT RESOLVES TODAY. Three
+%   facts, each read from a writer rather than inferred from a search that came
+%   back empty:
+%
+%   1. THE REFERENT IS AN `ontologyTableRow` DOCUMENT, not a loose id.
+%      +setup/+conv/+haley/doImport.m:233-237 builds the behaviour-plate rows
+%      with `tableDocMaker.table2ontologyTableRowDocs`, which constructs
+%      `ndi.document('ontologyTableRow', ...)` (tableDocMaker.m:221), and takes
+%      their `.id` into `plate_id`; the four subject-carrying imageStack sites
+%      (:430, :464, :480, :499) set `document_id` to exactly that id. For the
+%      behaviour arm that row IS the plate, carrying its OD600 / CFU / lawn
+%      volume / arena covariates (behaviorPlateVariables, doImport.m:101-106).
+%
+%   2. AN `ontologyTableRow` NEVER CARRIES A `subject_id`. `tableDocMaker` has
+%      exactly one `set_dependency_value` call in the whole file and it is
+%      `document_id` (tableDocMaker.m:231) -- and not one of doImport.m's NINE
+%      `table2ontologyTableRowDocs` calls (200, 234, 295, 351, 533, 688, 741,
+%      757, 855) even passes `dependencyVariable`, the option that would reach
+%      it. So the guard in +migrators_j/ontology_table_row.m --
+%      `isempty(resolvedSubject(preBody))` -- fires and the row PASSES THROUGH
+%      (`bodies = {preBody}`) with `base.id` untouched.
+%
+%   3. EVERY OTHER PATH OF THAT MIGRATOR PRESERVES THE ID TOO. All five of its
+%      return points end in `preserveSourceId` or in `{preBody}`, so whichever
+%      table a row belongs to -- encounter map, patch-geometry map, per-column
+%      fan-out, or either passthrough -- the source id survives on exactly one
+%      emitted body. `testOntologyTableRowPreservesSourceIdOnFirstBody` and
+%      `testEncounterMapPreservesSourceId` already gate that.
+%
+%   TIMELINE, which is the whole story:
+%
+%       $ git log -1 --format='%ad %h %s' --date=short 1207c10
+%       2026-07-10 1207c10 Add J image_stack migrator: body-backed ...
+%       $ git log -1 --format='%ad %h %s' --date=short ef58c15
+%       2026-07-29 ef58c15 ontology_table_row: preserve the source id on ...
+%
+%   The justification was written on 2026-07-10 and the mechanism that
+%   invalidates it landed on 2026-07-29. It was true when written and has been
+%   stale for the nineteen days since. It is NOT re-derivable from a corpus run:
+%   the edge is dropped, so it can neither orphan nor be counted, and a green
+%   orphan gate says nothing about it either way.
+%
+%   SO WHY IS THE EDGE STILL DROPPED? BECAUSE THERE IS NOWHERE TO PUT IT.
+%   `image_observation` and its seven ancestors -- subject_observation,
+%   subject_interaction, subject_statement, base, image, data_type, data --
+%   declare SIX `depends_on` slots between them: subject_id, time_reference_#,
+%   instrument_id, software_id, method_parameters_id, derived_from_#. Not one
+%   of them means "the metadata row that gives this image its data context".
+%   `derived_from_#` is the near miss and it is wrong twice over: it is typed
+%   to `subject_statement` (the row migrates to an `ontology_table_row`), and
+%   it asserts COMPUTATION, which this is not.
+%
+%   Emitting the edge anyway would not be caught -- +did2/+schema/cache.m
+%   validates undeclared BLOCKS and empty REQUIRED edges, and has no
+%   undeclared-dependency check -- so an invented slot would ship silently and
+%   unvalidated. That is a schema change and a modelling call, so it is
+%   REPORTED, not made here. The name already exists on the identical
+%   relationship: `ontology_image` declares `ontology_table_row_id`
+%   (must_refer_to_document_class `ontology_table_row`, mustBeNonEmpty false).
+%
+%   UNTIL THAT SLOT LANDS THE LOSS IS REAL AND ASYMMETRIC: the guard arm passes
+%   the whole document through and keeps the edge; the fold arm rebuilds
+%   `depends_on` from scratch and drops it, so a migrated C. elegans behaviour
+%   image can no longer reach its plate's covariates.
+%
+%   A CARRY MUST BE CONDITIONAL, whenever it is built. There are EIGHT
+%   `ndi.document('imageStack'...)` sites on NDI origin/main, not seven --
+%   `git grep -n "ndi\.document('imageStack'" origin/main -- '*.m'` returns
+%   doImport.m:421,461,477,496,789,811,827 AND +setup/+conv/+babu/import.m:474.
+%   The babu site sets `subject_id` and NO `document_id` (import.m:478-479), so
+%   it reaches the fold arm with no edge to carry. Three populations, not two:
+%   haley behaviour (both edges), haley E. coli (document_id only -> guard arm),
+%   babu (subject_id only).
+%
+%   testImageStackFoldDropsDocumentIdForWantOfASlot pins the drop.
+%   testImageStackDocumentIdReferentSurvivesTheBatch pins fact 2 above -- that
+%   carrying the edge would NOT orphan -- which is what makes the old reason
+%   stale. When the slot lands, those two are the tests to change.
 
 arguments
     preBody (1,1) struct
@@ -139,6 +229,13 @@ anchor.session_relative_reference = struct('relation', 'during');
 % ---- the discoverable, body-backed image_observation ------------------------
 obs = struct();
 obs.document_class = classBlock('image_observation', {'subject_observation', 'image'}, TV);
+% THE EDGE SET IS REBUILT FROM SCRATCH HERE, which is where the source
+% `document_id` is lost -- see the header. It is dropped for want of a slot on
+% image_observation, NOT because it dangles: its referent is an
+% `ontologyTableRow` whose id survives migration. Add it here (name
+% `ontology_table_row_id`, mirroring `ontology_image`) only once the schema
+% declares it, and only `if ~isempty(dependencyValue(preBody, 'document_id'))`
+% -- +conv/+babu/import.m:474 folds through here with no such edge at all.
 obs.depends_on = [ ...
     struct('name', 'subject_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];

@@ -47,6 +47,19 @@ function tests = testMigratorsJ
 %   the real column sets of all nine ontologyTableRow-producing tables. CI is
 %   the gate.
 %
+%   STATUS of the 2026-08-11 image_stack `document_id` pair
+%   (testImageStackFoldDropsDocumentIdForWantOfASlot,
+%   testImageStackDocumentIdReferentSurvivesTheBatch, plus the
+%   behaviourImageStack / behaviourPlateRow fixtures): SAME CAVEAT -- WRITTEN
+%   WITHOUT MATLAB. There is neither MATLAB nor Octave in the environment they
+%   were authored in and NOTHING IN THIS REPO WAS EXECUTED there. What they
+%   assert was settled from NDI origin/main (+haley/doImport.m,
+%   +NDIMaker/tableDocMaker.m, the ontologyTableRow template) and from this
+%   repo's own sources and `git log`; the migrator header names each command.
+%   Their MUTATION SENSITIVITY was proven on CI, not by transcription --
+%   `test-migrators-quick.yml` on a throwaway branch, one mutation per run.
+%   CI is the gate.
+%
 %   Run with:  results = runtests('did2.unittest.testMigratorsJ');
 
 tests = functiontests(localfunctions);
@@ -849,6 +862,236 @@ verifyEqual(testCase, sb.get('document_class.class_name'), 'sampled_body');
 verifyEqual(testCase, sb.get('sampled_body.sample_time').n, 10);
 % the body belongs to the image_observation statement
 verifyEqual(testCase, depVal(sb, 'statement'), obs.get('base.id'));
+end
+
+% ---- image_stack: the dropped `document_id` edge on the FOLD arm -------
+%
+% The guard arm (subject-less, E. coli) passes the document through INTACT and
+% therefore keeps `document_id`. The fold arm REBUILDS `depends_on` from
+% scratch (image_stack.m: `obs.depends_on = [...]`) and loses it. The two
+% fixtures below are the haley BEHAVIOUR shape -- doImport.m:421-441, which
+% sets BOTH edges -- because every fold-arm fixture that existed before them
+% carried `subject_id` only, so the drop was structurally invisible to the
+% suite. That is the same hole the `files`-block defect used
+% (testTemplateLiteralTypeTraps' image_stack fixtures declare no files, and a
+% tombstone declaring a file no document has went green for it), arriving one
+% key over on `depends_on`.
+
+function v1 = behaviourImageStack()
+%BEHAVIOURIMAGESTACK The JH C. elegans behaviour-plate imageStack, as NDI's own
+%   writer builds it: +setup/+conv/+haley/doImport.m:421-441.
+%
+%       :429-430   set_dependency_value('document_id', dataTable.plate_id{p})
+%       :431-432   set_dependency_value('subject_id',  subjectGroup_id)
+%       :441       add_file('imageStack', videoFileName)
+%
+%   `plate_id` is the id of an `ontologyTableRow` document (doImport.m:233-237
+%   -> tableDocMaker.table2ontologyTableRowDocs -> tableDocMaker.m:221), so the
+%   edge names a real document, not a bare label.
+%
+%   THE `files` BLOCK IS DELIBERATE and is NDI's own spelling, `imageStack` --
+%   the file key is one of the four structural keys universalRenames skips
+%   (universalRenames.m:308), so it is NOT snake_cased on the way through.
+v1 = struct();
+v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = struct('name', {'document_id', 'subject_id'}, ...
+                       'value', {'otr_plate_1', 'subjgrp_7'});
+v1.base = struct('id', 'is_beh_01', 'session_id', 'sess_celegans', ...
+    'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image_stack = struct('format_ontology', 'NCIT:C190180', ...
+    'label', 'A video recording capturing the behavior of C. elegans');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YXT', 'dimension_size', [1024 1024 30], ...
+    'dimension_scale', [1.5 1.5 0.2], ...
+    'dimension_scale_units', 'micrometer,micrometer,second', ...
+    'clocktype', 'exp_global_time', 'timestamp', 739000);
+v1.files = struct('file_list', {{'imageStack'}});
+end
+
+function otr = behaviourPlateRow()
+%BEHAVIOURPLATEROW The `ontologyTableRow` the fixture above points at: the JH
+%   behaviour-plate table (doImport.m:230-237; columns doImport.m:101-106).
+%
+%   IT MUST REACH THE GUARDED PASSTHROUGH, and it does so for the reason the
+%   real corpus documents do, not by construction: `tableDocMaker` sets exactly
+%   one dependency in the whole file and it is `document_id`
+%   (tableDocMaker.m:231), so there is no `subject_id` for
+%   `resolvedSubject` to find. It is not an encounter table (no
+%   EncounterIdentifier) and not a patch-geometry table (behaviorPlateVariables
+%   has no `patchID` column, so no BacterialPatchIdentifier, and no radius /
+%   circularity / centre), so neither per-table map claims it.
+%
+%   The `data` KEYS are shortName(term) and cannot be evaluated here --
+%   `ndi.ontology.lookup` lives in ndi-ontology-matlab, which is not checked
+%   out. They are derived from +haley/tableDoc_dictionary.json's term labels
+%   (e.g. "temp" -> "EMPTY:ambient temperature") the same way
+%   cultivationPlateRow's are, and NOTHING below turns on their spelling: the
+%   test asserts id survival and dispatch, both of which are decided by the
+%   ABSENCE of the map signatures.
+keys = {'ExperimentSessionIdentifier', 'CElegansAssayPhase', ...
+    'BacterialPlateIdentifier', 'BacterialOD600Label', ...
+    'BacterialOD600Measurement', 'BacterialColonyFormingUnitsCFUMeasurement', ...
+    'AmbientTemperature', 'AmbientHumidity', ...
+    'CElegansBehavioralAssay_PlateOrArenaDiameter', 'BacterialPatchSpacingTarget'};
+data = struct();
+data.ExperimentSessionIdentifier = '0001';
+data.CElegansAssayPhase = 'behavior';
+data.BacterialPlateIdentifier = '0017';
+data.BacterialOD600Label = '1.00';
+data.BacterialOD600Measurement = 0.98;
+data.BacterialColonyFormingUnitsCFUMeasurement = 1.96e9;
+data.AmbientTemperature = 20;
+data.AmbientHumidity = 45;
+data.CElegansBehavioralAssay_PlateOrArenaDiameter = 90;
+data.BacterialPatchSpacingTarget = 0;
+nodes = strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ',');
+otr = struct();
+otr.document_class = struct('class_name', 'ontology_table_row', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+% THE EDGE IS PRESENT AND EMPTY, which is what the WRITER produces, not a
+% convenience. The NDI template ships `depends_on: [{"name":"document_id",
+% "value":""}]`, and NOT ONE of the nine `table2ontologyTableRowDocs` calls in
+% doImport.m passes `dependencyVariable` (200, 234, 295, 351, 533, 688, 741,
+% 757, 855) -- the only thing that would fill it in
+% (tableDocMaker.m:227-235). So every JH row carries the declared edge unset.
+otr.depends_on = struct('name', {'document_id'}, 'value', {''});
+otr.base = struct('id', 'otr_plate_1', 'session_id', 'sess_celegans', ...
+    'name', 'row', 'datestamp', '2024-06-01T12:00:00.000Z');
+otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
+    'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
+end
+
+function testImageStackFoldDropsDocumentIdForWantOfASlot(testCase)
+%TESTIMAGESTACKFOLDDROPSDOCUMENTIDFORWANTOFASLOT Characterisation, not approval.
+%
+%   The fold arm loses the source `document_id`. This pins that it happens and
+%   pins the exact edge set that replaces it, so the day someone adds the slot
+%   the change is announced by a red test instead of a silent diff.
+%
+%   THE ASSERTION IS THE EDGE SET, NOT THE ABSENCE. `verifyEqual(depVal(...,
+%   'document_id'), '')` alone is vacuous-passable: depVal returns '' when it
+%   finds nothing AND when it is itself broken. So the same document is asked
+%   for the two edges that ARE there, and the count is pinned -- an invented
+%   extra edge (the failure mode that produced the 76,766 hollow
+%   ontology_table_row statements) fails here too.
+out = runJ(behaviourImageStack());
+
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 3, ...
+    'the fold arm is 1 -> image_observation + sampled_body + anchor');
+obs = out.migrated{1};
+verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+
+% NON-VACUITY FIRST: the reader works on this document and these edges exist.
+verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_7');
+verifyNotEmpty(testCase, depVal(obs, 'time_reference_1'));
+% ...and the source edge is gone, on every emitted body, not just the first.
+for k = 1:numel(out.migrated)
+    verifyEqual(testCase, depVal(out.migrated{k}, 'document_id'), '', ...
+        'no emitted body carries the source document_id today');
+    verifyEqual(testCase, depVal(out.migrated{k}, 'ontology_table_row_id'), '', ...
+        'and none has been given the slot name either');
+end
+% exactly the two edges, no third invented one
+verifyEqual(testCase, numel(obs.get('depends_on')), 2);
+% the fold itself is unaffected by the extra source edge
+verifyEqual(testCase, obs.get('base.id'), 'is_beh_01');
+verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
+% and the file rides to the body -- asserted because every other fold-arm
+% fixture declares no files at all, the same blind spot that let image_stack's
+% tombstone declare `imagestack_file` while NDI writes `imageStack`
+verifyEqual(testCase, out.migrated{2}.get('document_class.class_name'), 'sampled_body');
+sbStruct = out.migrated{2}.toStruct();
+verifyTrue(testCase, isfield(sbStruct, 'files'), ...
+    'the carried bytes must land on the sampled_body');
+verifyEqual(testCase, sbStruct.files.file_list{1}, 'imageStack', ...
+    'and under NDI''s own spelling -- universalRenames.m:308 skips file keys');
+obsStruct = obs.toStruct();
+verifyFalse(testCase, isfield(obsStruct, 'files'), ...
+    'the observation is the handle; the bytes belong to the body');
+end
+
+function testImageStackDocumentIdReferentSurvivesTheBatch(testCase)
+%TESTIMAGESTACKDOCUMENTIDREFERENTSURVIVESTHEBATCH The stated reason for the drop
+%   -- "a corpus reference-integrity orphan" -- is STALE, and this is the test
+%   that says so.
+%
+%   The referent is an `ontologyTableRow`. Since ef58c15 (2026-07-29, nineteen
+%   days after the migrator header was written) every path of
+%   +migrators_j/ontology_table_row.m keeps the source `base.id` on exactly one
+%   emitted body, and a real row -- which never declares `subject_id`, because
+%   tableDocMaker.m:231 sets only `document_id` -- takes the guarded
+%   passthrough and keeps it trivially. So the id is still in the batch after
+%   migration, and an edge naming it CANNOT dangle.
+%
+%   THE COUNTERFACTUAL IS TESTED DIRECTLY, because the edge is dropped and so
+%   can never appear in an orphan report on its own: a probe document carrying
+%   the edge is appended to the migrated set and run through
+%   +did2/+validate/references. That is the same function the corpus gate uses.
+%
+%   THE CONTROL ARM IS NOT OPTIONAL. references.m:90 SKIPS empty edges, so a
+%   probe whose edge failed to serialise would report 0 orphans and look like
+%   proof. The second half points the probe at an id nobody minted and requires
+%   exactly 1 orphan; without it, a zero here means nothing.
+%
+%   THE BATCH IS SELF-CONTAINED ON PURPOSE -- the image, its plate row AND the
+%   subject group its `subject_id` names. A batch missing the group would
+%   orphan for a reason that has nothing to do with this question, and reading
+%   `orphan_count` past that would be guesswork. (The corpora are a sample and
+%   a discovery-mode batch may legitimately not contain a referent;
+%   jSessionAnchor's note about that is correct. This test asserts the
+%   FULL-batch case, which is what a full migration is.)
+group = struct();
+group.document_class = struct('class_name', 'subject_group', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+group.depends_on = struct('name', {}, 'value', {});
+group.base = struct('id', 'subjgrp_7', 'session_id', 'sess_celegans', ...
+    'name', 'plate_worms', 'datestamp', '2024-06-01T12:00:00.000Z');
+group.subject_group = struct('group_name', 'plate_worms', 'description', '');
+
+out = runJ({behaviourImageStack(), behaviourPlateRow(), group});
+
+verifyEmpty(testCase, out.quarantine);
+% DENOMINATOR: 3 sources -> 5 documents (image fold 1->3, row passthrough 1->1,
+% group 1->1). Stated so a change in the fan-out is visible here rather than
+% quietly shifting what the counts below are counting.
+verifyEqual(testCase, numel(out.migrated), 5);
+
+% the row passed through -- guarded, unmapped, id intact
+ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(ids, 'otr_plate_1')), 1, ...
+    'the referent id must survive migration on exactly one document');
+classes = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+    'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(classes, 'ontology_table_row')), ...
+    'a real ontologyTableRow has no subject_id, so it passes through');
+
+% the batch as migrated is already clean -- so any orphan below is the probe's
+baseline = did2.validate.references(out.migrated);
+verifyEqual(testCase, baseline.orphan_count, 0, ...
+    'the batch must be self-contained before the probe means anything');
+
+% THE COUNTERFACTUAL: would the dropped edge have resolved?
+probe = struct('base', struct('id', 'probe_doc'), ...
+    'document_class', struct('class_name', 'probe'), ...
+    'depends_on', struct('name', 'document_id', 'document_id', 'otr_plate_1'));
+rep = did2.validate.references([out.migrated(:); {probe}]);
+verifyGreaterThan(testCase, rep.edges_examined, baseline.edges_examined, ...
+    'DENOMINATOR: the probe edge must actually be examined, not skipped');
+verifyEqual(testCase, rep.orphan_count, 0, ...
+    'carrying image_stack.document_id would NOT orphan -- the old reason is stale');
+
+% CONTROL: the same instrument, an id nobody minted -> exactly one orphan.
+missing = probe;
+missing.depends_on = struct('name', 'document_id', 'document_id', 'otr_never_minted');
+repMissing = did2.validate.references([out.migrated(:); {missing}]);
+verifyEqual(testCase, repMissing.orphan_count, 1, ...
+    'the control proves the check discriminates rather than passing everything');
+verifyEqual(testCase, repMissing.orphans(1).edge_document_id, 'otr_never_minted');
 end
 
 % ============ ontology_table_row per-table map: C. elegans encounter ====
