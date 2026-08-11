@@ -103,6 +103,30 @@ if isfield(result, 'response_parameters_fold')
     report.response_parameters_fold = result.response_parameters_fold;
 end
 
+% did2.convert.resolveLawnPlateSubjects -- the E. coli lawn/plate subject tiers,
+% their `member_of` join and the (experiment, plate, patch) identifier (team,
+% 2026-08-11). Persisted for the reasons the passes above are, plus three that
+% are specific to it:
+% (1) FOUR STATES THAT MUST NOT BE SUMMED. "no E. coli tables in this corpus",
+%     "row present, no values at all", "row present, values this tier cannot
+%     type" and "row present, measurements, subject minted" are separate
+%     findings, and the team asked specifically to see the second and third if
+%     they are ever non-zero -- it would mean the expectation that both tiers
+%     are populated does not hold for some population.
+% (2) `unclassified_rows_in_those_sessions` is the SPELLING CANARY. The pass
+%     matches columns by a normalised term token because `ndi.ontology.lookup`
+%     cannot be evaluated where the pass was written. Zeros beside a zero
+%     unclassified count is "nothing here"; zeros beside a large one is "the
+%     token rule is wrong". Only the artifact keeps the pair together.
+% (3) `local_identifier_collisions_within_batch` is the measured form of the
+%     directive's own premise, that the (experiment, plate, patch) combo is
+%     unique. Evidence for the team, not authorisation for the pass.
+% Written UNCONDITIONALLY with whatever the pass left, `pass_failed` included,
+% so a failed pass is a field rather than an absence.
+if isfield(result, 'lawn_plate_subjects')
+    report.lawn_plate_subjects = result.lawn_plate_subjects;
+end
+
 fid = fopen(reportPath, 'w');
 if fid < 0
     error('did2:test:reportWriteFailed', ...

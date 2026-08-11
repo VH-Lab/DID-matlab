@@ -1376,12 +1376,75 @@ verifyFalse(testCase, isfield(bc, 'count_observation'));
 % directed_relation parent points at it) and names the patch
 sub = firstOfClassJ(out.migrated, 'subject');
 verifyEqual(testCase, sub.get('base.id'), 'otr_patch');
-verifyEqual(testCase, sub.get('subject.local_identifier'), '0017');
+% THIS ASSERTION WAS INVERTED 2026-08-11, not updated. It read '0017' -- the
+% bare `patchID` -- which is precisely what the team directive of that day
+% forbids ("None should be labeled just patch #"). A test written from the same
+% premise as the code cannot catch the code, and this one had been pinning the
+% collision rather than the fix: `patchID` is 1:numPatch WITHIN a plate
+% (doImport.m:275), so '0001' recurs on every plate in one session.
+verifyEqual(testCase, sub.get('subject.local_identifier'), ...
+    'plate/0061/patch/0017', ...
+    ['the patch handle must carry its plate; the experiment number is not a ' ...
+     'column of this table and is added by did2.convert.resolveLawnPlateSubjects']);
 % every geometry observation is about that patch and shares the anchor
 anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
 od = firstOfClassJ(out.migrated, 'concentration_observation');
 verifyEqual(testCase, depVal(od, 'subject_id'), 'otr_patch');
 verifyEqual(testCase, depVal(od, 'time_reference_1'), anchor.get('base.id'));
+end
+
+function testAPatchSubjectIsNeverLabelledJustThePatchNumber(testCase)
+%TESTAPATCHSUBJECTISNEVERLABELLEDJUSTTHEPATCHNUMBER The team directive of
+%   2026-08-11, verbatim: *"each experiment #, plate #, and patch # combo should
+%   be unique and should dictate the local identifier for all patches. None
+%   should be labeled just patch #"*.
+%
+%   SEPARATE FROM THE MAP TEST ABOVE ON PURPOSE. That one pins the exact handle
+%   this table produces today; this one pins the PROHIBITION, so it stays red
+%   for any future handle that regresses to a bare number -- including through
+%   the `jEnsureLocalId` fallback, which returns its candidate unchanged and
+%   would happily emit '0001' if the plate component were dropped again.
+%
+%   The second half drives the exact regression path: with the plate column
+%   gone, the OLD code returned the bare `patchID`. The handle must fall back to
+%   the document id instead -- unique by construction -- and never to the number.
+out = runJ(patchGeometryRow());
+sub = firstOfClassJ(out.migrated, 'subject');
+handle = sub.get('subject.local_identifier');
+verifyNotEmpty(testCase, handle, 'local_identifier is REQUIRED on a subject');
+verifyEmpty(testCase, regexp(handle, '^\d+$', 'once'), ...
+    sprintf('the patch is labelled with the bare number %s', handle));
+verifyEqual(testCase, handle, 'plate/0061/patch/0017');
+
+noPlate = dropColumnJ(patchGeometryRow(), 'BacterialPlateIdentifier');
+out2 = runJ(noPlate);
+sub2 = firstOfClassJ(out2.migrated, 'subject');
+handle2 = sub2.get('subject.local_identifier');
+% DENOMINATOR FIRST: the map must still have dispatched, or this asserts nothing
+% about the handle at all -- a row that fell through to the passthrough would
+% mint no subject and firstOfClassJ would have failed instead.
+verifyEqual(testCase, sub2.get('base.id'), 'otr_patch');
+verifyEmpty(testCase, regexp(handle2, '^\d+$', 'once'), ...
+    sprintf(['with no plate column the handle fell back to the bare patch ' ...
+             'number %s -- the directive forbids exactly this'], handle2));
+verifyEqual(testCase, handle2, 'otr_patch', ...
+    'the fallback is the document id, which is unique by construction');
+end
+
+function otr = dropColumnJ(otr, key)
+%DROPCOLUMNJ Remove one column from an ontology_table_row fixture, keys, names,
+%   nodes and data together -- a fixture with a data key its variable_names does
+%   not list is not a shape NDI can produce.
+keys  = strsplit(otr.ontology_table_row.variable_names, ',');
+names = strsplit(otr.ontology_table_row.names, ',');
+nodes = strsplit(otr.ontology_table_row.ontology_nodes, ',');
+keep = ~strcmp(keys, key);
+otr.ontology_table_row.variable_names = strjoin(keys(keep), ',');
+otr.ontology_table_row.names = strjoin(names(keep), ',');
+otr.ontology_table_row.ontology_nodes = strjoin(nodes(keep), ',');
+if isfield(otr.ontology_table_row.data, key)
+    otr.ontology_table_row.data = rmfield(otr.ontology_table_row.data, key);
+end
 end
 
 function testPatchGeometryCarriesUnenumeratedColumns(testCase)

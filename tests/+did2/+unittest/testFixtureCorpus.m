@@ -349,6 +349,14 @@ result = did2.convert.resolveSessionAnchors(result, ...
 % trace is strictly more informative than a captured message.
 result = did2.convert.resolveResponseParameters(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+% TEAM DECISION 2026-08-11: the E. coli lawn/plate subject tiers, their
+% `member_of` join, and the (experiment, plate, patch) identifier. Same
+% post-pass set and the SAME ORDER as runCorpusDiscovery and testCorpusPRED.
+% CALLED BARE, like the two passes above and for the identical reason: this test
+% writes no report, so there is nothing for the guard to protect and a raw stack
+% trace is strictly more informative than a captured message.
+result = did2.convert.resolveLawnPlateSubjects(result, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
 
 % GATE 1: nothing quarantined
 verifyEmpty(testCase, result.quarantine, ...

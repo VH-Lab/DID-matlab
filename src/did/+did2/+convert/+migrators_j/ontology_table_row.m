@@ -47,6 +47,11 @@ function bodies = ontology_table_row(preBody)
 %   nor any corpus was run. The dispatch claim it rests on was settled from the
 %   NDI writer and dictionary, not from a run; `test-migrators-quick.yml` and
 %   then a JH corpus run are what turn it into a result.
+%
+%   STATUS 2026-08-11 (second change, same day, ALSO NEVER EXECUTED) -- the
+%   bacterial-patch subject's `local_identifier` is no longer the bare
+%   `patchID`. See `jPatchLocalId` and the CAUTION note on the patch map below.
+%   Team directive, not a design choice made here.
 
 arguments
     preBody (1,1) struct
@@ -310,13 +315,19 @@ end
 %   Relating the patch to a plate DOCUMENT stays deferred to the NDI second
 %   pass, which can see the migrated-id graph.
 %
-%   CAUTION on local_identifier: `patchID` is `1:numPatch` WITHIN a plate
-%   (doImport.m:275), so "0001" recurs on every plate, and `jEnsureLocalId` does
-%   no dataset-level qualification while both Haley sessions land in one
-%   `ndi.dataset.dir`. The id is a LABEL, not a key -- do not build anything
-%   that joins on it. (This is pre-existing and unchanged here; it is recorded
-%   because the cultivation-plate misfire made it much worse: that table sets
-%   `patchID` to the CONSTANT '0001' for every row, doImport.m:192.)
+%   local_identifier IS NOW QUALIFIED (2026-08-11). It used to be the bare
+%   `patchID`, which is `1:numPatch` WITHIN a plate (doImport.m:275), so "0001"
+%   recurred on every plate while `jEnsureLocalId` did no dataset-level
+%   qualification and both Haley sessions land in one `ndi.dataset.dir`. Note
+%   the collision was INTRA-session (between plates in one session), so session
+%   scoping would not have fixed it. Team directive 2026-08-11 -- "each
+%   experiment #, plate #, and patch # combo should be unique and should dictate
+%   the local identifier for all patches. None should be labeled just patch #".
+%   This file emits the PAIR `plate/<plateID>/patch/<patchID>` (see
+%   jPatchLocalId: `expID` is not a column of this table and may not be
+%   invented) and `did2.convert.resolveLawnPlateSubjects` upgrades it to the
+%   triple. The id remains a LABEL, not a key -- `base.id` is the key, and
+%   nothing joins on the handle.
 
 function tf = isPatchGeometryTable(cols)
 %ISPATCHGEOMETRYTABLE Signature of the JH C. elegans bacterial-patch geometry
@@ -374,7 +385,23 @@ end
 
 function bodies = applyPatchGeometryMap(preBody, cols)
 % the patch as a declared subject, id preserved so the encounter parent resolves
-subjectDoc = makePatchSubject(preBody, colVal(cols, 'BacterialPatchIdentifier'));
+%
+% BOTH identifier columns are read, not just the patch's own. Team directive
+% 2026-08-11: "each experiment #, plate #, and patch # combo should be unique
+% and should dictate the local identifier for all patches. None should be
+% labeled just patch #". This table has NO `expID` column (doImport.m:290-292),
+% so the most a single-document migrator can form is the PAIR; the batch pass
+% did2.convert.resolveLawnPlateSubjects upgrades it to the triple where the
+% plate -> expID hop resolves, and COUNTS the ones that stay a pair.
+%
+% `BacterialPlateIdentifier` is NOT added to `consumed` below: it names a
+% DIFFERENT entity, so it remains data ABOUT the patch and still falls through
+% to the per-column path as a term_observation. Using a value in the handle does
+% not record it -- dropping the column would be the invisible loss this map was
+% repaired for one change ago.
+subjectDoc = makePatchSubject(preBody, ...
+    colVal(cols, 'BacterialPlateIdentifier'), ...
+    colVal(cols, 'BacterialPatchIdentifier'));
 patchId = subjectDoc.base.id;
 
 % one session-relative anchor shared by the geometry observations (the patch
@@ -464,7 +491,7 @@ if isstring(v) && isscalar(v); tf = true; return; end
 if isnumeric(v) && isscalar(v) && ~isnan(v); tf = true; return; end
 end
 
-function body = makePatchSubject(preBody, localId)
+function body = makePatchSubject(preBody, plateId, patchId)
 %MAKEPATCHSUBJECT Bare V_eta subject PRESERVING the source document id. Mirrors
 %   subject_group -> subject (class subject v3.0.0, bare identity). The id must
 %   be preserved because the encounter table's directed_relation names this
@@ -477,8 +504,35 @@ body.depends_on = struct('name', {}, 'value', {});
 if isfield(preBody, 'base') && isstruct(preBody.base)
     body.base = preBody.base;   % PRESERVE id -> encounter parent resolves
 end
-localId = jEnsureLocalId(localId, preBody);   % subject.local_identifier is REQUIRED
+localId = jPatchLocalId(plateId, patchId, preBody);  % REQUIRED, and qualified
 body.subject = struct('local_identifier', localId, 'description', 'bacterial patch');
+end
+
+function li = jPatchLocalId(plateId, patchId, preBody)
+%JPATCHLOCALID The patch handle, qualified. NEVER a bare patch number.
+%
+%   Team directive 2026-08-11, verbatim: *"each experiment #, plate #, and patch
+%   # combo should be unique and should dictate the local identifier for all
+%   patches. None should be labeled just patch #"*.
+%
+%   THIS FILE CANNOT FORM THE TRIPLE and does not pretend to. `patchID` is
+%   `1:numPatch` within a plate (doImport.m:275), so '0001' recurs on every
+%   plate; `plateID` is on this row (doImport.m:290-292) so the PAIR is
+%   available; `expID` is NOT on this table at all, and inventing one is exactly
+%   what the directive's "derive every component from the source rows" forbids.
+%   So the pair is emitted, and `did2.convert.resolveLawnPlateSubjects` -- which
+%   can see the plate rows -- upgrades it to `exp/<expID>/plate/<plateID>/patch/
+%   <patchID>` and counts the ones it could not.
+%
+%   The format is READ BACK by that pass's `parsePairHandle`, so the two are
+%   coupled and testMigratorsJ pins the shape. If either component is missing
+%   the handle falls back to the document id (unique by construction) rather
+%   than to the bare patch number the directive names.
+li = '';
+if ~isempty(plateId) && ~isempty(patchId)
+    li = sprintf('plate/%s/patch/%s', char(plateId), char(patchId));
+end
+li = jEnsureLocalId(li, preBody);   % subject.local_identifier is REQUIRED
 end
 
 % ---- encounter helpers ------------------------------------------------
