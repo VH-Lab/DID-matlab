@@ -52,6 +52,22 @@ MISSING_REPORTS = "<no *-summary.json found>"
 # do, epochs were minted and then lost, and that is worth a red job.
 EPOCH_POPULATIONS_DISAGREE = "<epoch document populations disagree>"
 
+# --- THE BATCH POST-PASS CENSUS, ARMED (2026-08-11) -----------------------
+#
+# Four sentinels rather than one, because the four conditions have four
+# different severities, four different triages and four different fixes, and a
+# single sentinel would make them read as one number. See pass_census_gate for
+# the per-condition justification and for the precondition measured before each
+# was armed.
+#
+# EVERY ONE OF THESE WAS MEASURED AT 0 BEFORE IT WAS ARMED. Arming a gate onto
+# a non-zero count turns CI red for a condition nobody has triaged, which is the
+# opposite of catching an error fast: it trains a reader to ignore the job.
+UNMEASURED_PASSES = "<batch post-pass(es) run and are measured by nothing>"
+UNRENDERED_PASSES = "<batch post-pass report(s) carried and rendered nowhere>"
+STALE_PASS_TABLE = "<render table names a pass no call site composes>"
+PASS_SET_NOT_DERIVED = "<batch post-pass expected set NOT DERIVED>"
+
 
 def aslist(v):
     """Normalise MATLAB's array-or-object encoding to a list.
@@ -634,8 +650,20 @@ _PASS_CALL = re.compile(r"did2\.convert\.([A-Za-z_]\w*)\s*\(")
 # runBatchPass(result, 'did2.convert.<fn>', '<reportField>', @(r) ...) -- the
 # helper that also WRITES the report field, so this pairing is the only place
 # the function name and its report key are stated together. A pass called BARE
-# has no pairing here, and that absence is not an oversight in the scan: it is
-# the fact that the pass attaches no report at all.
+# has no pairing here, and that absence is not an oversight in the scan.
+#
+# WHAT THAT ABSENCE DOES AND DOES NOT PROVE -- stated precisely 2026-08-11,
+# because `pass_census_gate` now turns it into a red job and a gate's stated
+# reason has to survive being read. This line used to end "it is the fact that
+# the pass attaches no report at all". That overstates it: every pass in the
+# package assigns `result.<key> = report;` in its own body
+# (tools/test_batch_pass_wiring.py::test_no_pass_is_left_without_a_report --
+# "9 pass(es) in 15 file(s), 0 with no report"), so a bare call would leave the
+# report on `result`. What the absence DOES prove is that no report-writing call
+# site names a field for the pass, so this digest has none to read, and that the
+# call is unguarded at a site where runBatchPass.m records an unguarded throw as
+# destroying the *-summary.json outright. Both are defects; neither is the
+# stronger claim.
 _BATCH_PASS_FIELD = re.compile(
     r"runBatchPass\s*\(\s*result\s*,\s*(?:\.\.\.\s*)?"
     r"'did2\.convert\.(\w+)'\s*,\s*'(\w+)'", re.S)
@@ -949,6 +977,162 @@ def render_pass_census(out, chain=None, indent="  "):
         p("  not counted (did2.convert.* called but not a batch post-pass by "
           "signature): %s" % ", ".join(chain["called_not_a_pass"]))
     return exp
+
+
+def pass_census_gate(chain=None, out=None):
+    """The pass census as an EXIT CODE, not a banner. Returns the sentinels.
+
+    Until 2026-08-11 this census DETECTED the condition, PRINTED it in three
+    places with three *** banners, and exited 0. A batch post-pass that runs
+    over a whole corpus and attaches no report struct was therefore a warning
+    nobody had to act on -- and a warning nobody has to act on is how
+    `resolveDeferredBaths` and `resolveDatasetEntities` mutated every corpus for
+    months while measuring nothing.
+
+    ONE GATE, EVALUATED ONCE, THOUGH THE CONDITION IS PRINTED IN THREE PLACES.
+    `render_pass_census` (the leading denominator), `render_post_passes` (once
+    per corpus) and `rollup_post_passes` (cross-corpus) all read the SAME
+    `post_pass_expectations`. They are three RENDERINGS of one derived fact, not
+    three measurements. Failing at each site would count one defect three times
+    for a six-corpus run and once for a one-corpus run, making the number of
+    findings a property of how many reports were downloaded.
+
+    ----------------------------------------------------------------------
+    THE FOUR CONDITIONS, AND WHY EACH IS ARMED SEPARATELY
+    ----------------------------------------------------------------------
+    They are NOT swept into one sentinel because they are not one defect.
+
+    `unmeasured`  -- the chain composes the pass and no call site pairs it with
+        a report field. SEVERITY: the highest here. Nothing about the pass can
+        reach any artifact, so no later instrument can recover it.
+        MEASURED BEFORE ARMING: 0 of 9.
+        PRECISION, because the gate's wording has to be defensible: what is
+        actually observed is that no `runBatchPass(result, 'did2.convert.<fn>',
+        '<field>', ...)` pairing exists at a report-writing call site. Every
+        pass in the package today ALSO assigns `result.<key> = report;` itself
+        (tools/test_batch_pass_wiring.py::test_no_pass_is_left_without_a_report:
+        "9 pass(es) in 15 file(s), 0 with no report"), so a BARE call would
+        leave the report on `result` and the older wording "attaches no report
+        struct at all" would overstate it. It is a defect at a report-writing
+        call site either way, and for the reason runBatchPass.m states: an
+        unguarded throw there means NO `<corpus>-summary.json` is written at
+        all. The gate says what it saw and lets the reader draw the rest.
+
+    `unrendered`  -- the pass attaches a report and this file has no rows for
+        it. LOWER SEVERITY, and deliberately a different sentinel: the numbers
+        ARE in the artifact, so the loss is recoverable by reading the zip. It
+        is armed anyway because the digest is the only place that holds both
+        halves of the fact, and because the objection recorded against gating it
+        (tools/test_batch_pass_wiring.py: rows written badly to make a red test
+        green) is SPENT -- the three passes that motivated it now have entries.
+        MEASURED BEFORE ARMING: 0 of 9.
+        NOTE, not acted on here: the equivalent check in
+        test_batch_pass_wiring.py runs on the ~2-minute gate while this one runs
+        at the end of the ~1-2h corpus job. Same condition, much slower
+        feedback. Moving it is a change to that file and is not made here.
+
+    `stale`       -- this file's render table names a pass NO report-writing
+        call site composes. It is the reassuring direction: counters printed for
+        a pass that does not run read as coverage.
+        MEASURED BEFORE ARMING: 0.
+
+    `not derived` -- the sources could not be read. THIS ONE IS DIFFERENT IN
+        KIND and is the reason the other three are skipped rather than passed
+        below: on that path `post_pass_expectations` marks every render-table
+        row `renderable`, so the three counts are 0 BY CONSTRUCTION. A table
+        cannot name a pass it omits. Reporting those zeros as clean would be
+        `silentLoss` exactly -- an instrument that read nothing printing the
+        same output as one that read everything and agreed.
+        So the three content gates report NOT EVALUATED, and the failure is
+        raised against the DERIVATION itself. That is not a conclusion drawn
+        from floor data; it is the statement that the gate could not be
+        evaluated, which is the same class of failure as MISSING_REPORTS.
+        MEASURED BEFORE ARMING: derived == True.
+    """
+    chain = chain or harness_pass_chain()
+    exp = post_pass_expectations(chain)
+    p = (lambda s="": out.append(s)) if out is not None else (lambda s="": None)
+
+    p("")
+    p("BATCH POST-PASS GATE (armed 2026-08-11; this census used to print and "
+      "exit 0)")
+
+    # RULE 5. The denominator, first and unconditionally -- and on the
+    # not-derived path the denominator is the whole finding, so it is stated
+    # before the verdict rather than beside it.
+    if not chain["derived"]:
+        p("  DENOMINATOR: expected set **NOT DERIVED**. %d row(s), all of them "
+          "from this" % len(exp))
+        p("  file's own render table, used as a FLOOR.")
+        for site in chain["sites"]:
+            p("    call site %-20s %s" % (
+                site.get("label", "?"),
+                site["path"] if site["exists"] else "NOT FOUND: %s"
+                % site["path"]))
+        pkg = chain["package"]
+        p("    convert package      %s"
+          % (pkg["path"] if pkg["exists"] else "NOT FOUND: %s" % pkg["path"]))
+        p("  *** unmeasured / unrendered / stale: **NOT EVALUATED**, not 0.")
+        p("  *** On this path every row is `renderable` BY CONSTRUCTION, so a")
+        p("  *** zero would be a property of the table and not a fact about the")
+        p("  *** harness. Printing it as clean is the silentLoss shape.")
+        p("  *** FAILING on the derivation itself: a gate that cannot be")
+        p("  *** evaluated has not agreed with anything, exactly as a digest")
+        p("  *** with no reports has not agreed with the corpora.")
+        return [PASS_SET_NOT_DERIVED]
+
+    unmeasured = [e for e in exp if e["state"] == "unmeasured"]
+    unrendered = [e for e in exp if e["state"] == "unrendered"]
+    stale = [e for e in exp if e["state"] == "not_in_chain"]
+    renderable = [e for e in exp if e["state"] == "renderable"]
+
+    p("  DENOMINATOR: %d expectation row(s) classified from a DERIVED expected "
+      "set" % len(exp))
+    p("               of %d pass(es) composed by %d report-writing call site(s)"
+      % (len(chain["chain"]), len(chain["sites"])))
+    p("    %3d renderable   %3d UNMEASURED   %3d UNRENDERED   %3d STALE TABLE "
+      "ENTR(IES)" % (len(renderable), len(unmeasured), len(unrendered),
+                     len(stale)))
+
+    findings = []
+    if unmeasured:
+        findings.append(UNMEASURED_PASSES)
+        p("  *** GATE FAILED -- %d pass(es) run and are measured by nothing:"
+          % len(unmeasured))
+        for e in unmeasured:
+            p("  ***   did2.convert.%s" % e["fn"])
+        p("  *** No report-writing call site pairs these with a report field")
+        p("  *** via did2.unittest.helpers.runBatchPass, so this digest has no")
+        p("  *** field to read and an unguarded throw in one of them would")
+        p("  *** destroy the *-summary.json the run exists to produce.")
+        p("  *** FIX: wrap the call in runBatchPass(result, "
+          "'did2.convert.<fn>', '<field>', ...)")
+        p("  *** and add the field to POST_PASSES in tools/census_digest.py.")
+    if unrendered:
+        findings.append(UNRENDERED_PASSES)
+        p("  *** GATE FAILED -- %d pass(es) attach a report this digest has no "
+          "rows for:" % len(unrendered))
+        for e in unrendered:
+            p("  ***   did2.convert.%s -> result.%s" % (e["fn"], e["field"]))
+        p("  *** The numbers ARE in the artifact and nothing prints them, which")
+        p("  *** is the epochMint defect: a measurement nobody can see without")
+        p("  *** downloading a zip.")
+        p("  *** FIX: add a POST_PASSES entry with a row per counter.")
+    if stale:
+        findings.append(STALE_PASS_TABLE)
+        p("  *** GATE FAILED -- %d render-table entr(ies) name a pass NO "
+          "report-writing" % len(stale))
+        p("  *** call site composes. Stale in the REASSURING direction: this")
+        p("  *** file would print counters for a pass that does not run.")
+        for e in stale:
+            p("  ***   %s (did2.convert.%s)" % (e["field"], e["fn"]))
+        p("  *** FIX: remove the entry, or wire the pass into the call sites.")
+    if not findings:
+        p("  GATE PASSED: every composed pass is paired with a report field and "
+          "rendered here,")
+        p("  and this file's render table names no pass the call sites do not "
+          "compose.")
+    return findings
 
 
 # --- THE METADATA TIER ----------------------------------------------------
@@ -5568,8 +5752,15 @@ def digest(reports_dirs):
     # read. It prints BEFORE the reports are parsed and before any per-pass
     # detail, and it prints even when there are no reports at all -- a pass that
     # measures nothing is a fact about the pipeline, not about this input.
+    #
+    # AND IT IS A GATE, not a banner. `pass_census_gate` is evaluated ONCE, here
+    # -- not at each of the three sites that RENDER the same derived fact -- so
+    # one defect counts once however many corpora were read. See that function
+    # for the four conditions, their separate severities, and the count measured
+    # at 0 for each before it was armed.
     try:
         render_pass_census(out)
+        failed.extend(pass_census_gate(out=out))
     except Exception:
         out.append("  *** BATCH POST-PASS CENSUS FAILED -- the expected set is")
         out.append("  *** UNKNOWN for this run, not empty:")
@@ -5582,7 +5773,12 @@ def digest(reports_dirs):
         for d in reports_dirs:
             if not os.path.isdir(d):
                 out.append("  the directory itself does not exist: %s" % d)
-        return (out, [MISSING_REPORTS])
+        # `failed +` RATHER THAN A BARE LIST. This return used to DISCARD
+        # everything already in `failed`, so a pass-census finding was silently
+        # dropped in exactly the runs that have no reports -- a gate disarmed by
+        # the one input condition that guarantees nobody is looking at the rest
+        # of the output. Both facts are true at once and both are reported.
+        return (out, failed + [MISSING_REPORTS])
 
     out.append("=" * 72)
     out.append("CORPUS CENSUS DIGEST  (%d corpus report(s))" % len(files))

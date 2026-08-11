@@ -8,6 +8,8 @@ defects they cover previously took a ~3-hour corpus run to surface.
 Run: python3 tools/test_census_digest.py
 """
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -4509,6 +4511,198 @@ class TestTheGraphWithoutEditorBannerClaimsNothingItCannotSee(unittest.TestCase)
                       "by themselves a citation graph -- +haley/doImport.m "
                       "emits strain assemblies under the same class name, "
                       "which is what JH's 8 documents actually are.")
+
+
+# ==========================================================================
+# THE PASS CENSUS AS A GATE (armed 2026-08-11)
+# ==========================================================================
+#
+# Until this commit the census DETECTED every condition below, printed it with
+# a *** banner in three separate places, and exited 0. So the tests that
+# existed asserted the WORDING of a warning, and a warning nobody has to act on
+# is the state `resolveDeferredBaths` and `resolveDatasetEntities` sat in for
+# months while mutating every corpus.
+#
+# THESE DRIVE THE DERIVATION, THEY DO NOT MOCK IT. Each writes MATLAB into a
+# throwaway tree, derives the chain from that text with the real
+# `harness_pass_chain`, and installs the result in the chain cache so that
+# `main()` -- the real entry point, with the real exit code -- reads it. A test
+# that handed `digest()` a dict would assert that the gate fails on whatever it
+# is given, which is the one thing never in doubt.
+#
+# THE SYNTHETIC TREE IS BUILT FROM `POST_PASSES` ITSELF, on purpose. A tree of
+# invented names would make every render-table entry `not_in_chain`, so the
+# stale sentinel would fire in every case here and no case could isolate the
+# condition it is named for. Building the baseline FROM the table means the
+# baseline is clean by construction and each test perturbs exactly one thing.
+#
+# RUN AGAINST THE PRE-CHANGE DIGEST, each of these fails: `main()` returned 0
+# for all four conditions. A test written from the same premise as the code
+# cannot catch the code.
+
+
+class PassCensusGateCase(PassCensusTree):
+    """A synthetic +convert package and call sites, plus a real exit code."""
+
+    def setUp(self):
+        PassCensusTree.setUp(self)
+        self.reports = tempfile.mkdtemp()
+        self._saved = census_digest._CHAIN_CACHE.pop(
+            census_digest.REPO_ROOT, None)
+
+    def tearDown(self):
+        # The cache is module state shared with every other test in this file.
+        census_digest._CHAIN_CACHE.pop(census_digest.REPO_ROOT, None)
+        if self._saved is not None:
+            census_digest._CHAIN_CACHE[census_digest.REPO_ROOT] = self._saved
+        shutil.rmtree(self.reports, ignore_errors=True)
+        PassCensusTree.tearDown(self)
+
+    def write_report(self, name="Fix"):
+        """One minimal, VALID corpus report.
+
+        Present so that a non-zero exit in these tests can only have come from
+        the pass gate: with no reports at all the digest already fails on
+        MISSING_REPORTS, and an exit code that would be 1 anyway proves nothing
+        about the gate.
+        """
+        with open(os.path.join(self.reports, name + "-summary.json"), "w") as fh:
+            json.dump({"corpus": name, "total": 1, "migrated_count": 1,
+                       "quarantine_count": 0}, fh)
+
+    def real_passes(self):
+        """(function, report field) for every pass this digest renders."""
+        return [(fn.split(".")[-1], field)
+                for field, fn, _rows in census_digest.POST_PASSES]
+
+    def build(self, guarded=(), bare=(), omit=()):
+        """Write the package + both call sites, then derive and install."""
+        lines = []
+        for fn, field in guarded:
+            if fn in omit:
+                continue
+            self.pass_file(fn)
+            lines.append(
+                "result = did2.unittest.helpers.runBatchPass(result, ...\n"
+                "    'did2.convert.%s', '%s', ...\n"
+                "    @(r) did2.convert.%s(r));\n" % (fn, field, fn))
+        for fn in bare:
+            self.pass_file(fn)
+            lines.append("result = did2.convert.%s(result);\n" % fn)
+        self.call_site("".join(lines))
+        chain = self.chain()
+        census_digest._CHAIN_CACHE[census_digest.REPO_ROOT] = chain
+        return chain
+
+    def run_main(self):
+        """The real entry point. Returns (exit code, stdout)."""
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = census_digest.main(["census_digest.py", self.reports])
+        return code, buf.getvalue()
+
+
+class TestPassCensusGateIsArmed(PassCensusGateCase):
+    def test_the_clean_chain_still_exits_0(self):
+        # THE PRECONDITION, ASSERTED RATHER THAN ASSUMED. Arming a gate onto a
+        # condition that is already non-zero turns CI red for something nobody
+        # has triaged; this is the shape that was measured at 0 before the gate
+        # was armed, and it must keep exiting 0.
+        self.write_report()
+        self.build(guarded=self.real_passes())
+        code, text = self.run_main()
+        self.assertEqual(code, 0, "a fully wired chain must not go red:\n" + text)
+        self.assertIn("GATE PASSED", text)
+        self.assertIn("0 UNMEASURED", text)
+
+    def test_a_pass_measured_by_nothing_turns_the_job_red(self):
+        # THE GATE. Before this commit the same tree printed "RAN, MEASURED BY
+        # NOTHING" in three places and returned 0.
+        self.write_report()
+        self.build(guarded=self.real_passes(),
+                   bare=["aTenthPassNobodyPairedWithAReport"])
+        code, text = self.run_main()
+        self.assertEqual(code, 1,
+                         "a pass that runs and is measured by nothing must be "
+                         "a non-zero exit, not a banner:\n" + text)
+        self.assertIn(census_digest.UNMEASURED_PASSES, text)
+        self.assertIn("aTenthPassNobodyPairedWithAReport", text)
+        self.assertIn("GATE FAILED", text)
+        # SEPARATE SENTINELS, NOT ONE BUCKET: this defect must not report as
+        # the other two, whose triage and whose fix are different.
+        self.assertNotIn(census_digest.UNRENDERED_PASSES, text)
+        self.assertNotIn(census_digest.STALE_PASS_TABLE, text)
+
+    def test_an_unrendered_report_is_a_different_sentinel(self):
+        # A pass that DOES attach a report which this file has no rows for.
+        # Lower severity -- the numbers are in the artifact -- so it is armed
+        # separately and must never print as `unmeasured`.
+        self.write_report()
+        self.build(guarded=self.real_passes()
+                   + [("aTenthPassWithNoRenderRows", "tenth_fold")])
+        code, text = self.run_main()
+        self.assertEqual(code, 1, text)
+        self.assertIn(census_digest.UNRENDERED_PASSES, text)
+        self.assertIn("aTenthPassWithNoRenderRows -> result.tenth_fold", text)
+        self.assertNotIn(census_digest.UNMEASURED_PASSES, text)
+
+    def test_a_table_entry_no_call_site_composes_is_a_different_sentinel(self):
+        # The reassuring direction: counters printed for a pass that does not
+        # run read as coverage of it.
+        self.write_report()
+        dropped = self.real_passes()[0][0]
+        self.build(guarded=self.real_passes(), omit=[dropped])
+        code, text = self.run_main()
+        self.assertEqual(code, 1, text)
+        self.assertIn(census_digest.STALE_PASS_TABLE, text)
+        self.assertIn(dropped, text)
+        self.assertNotIn(census_digest.UNMEASURED_PASSES, text)
+
+    def test_the_floor_path_reports_not_evaluated_rather_than_clean(self):
+        # THE FALLBACK. When the sources cannot be read, every render-table row
+        # is `renderable` BY CONSTRUCTION, so the three content gates would read
+        # 0 -- a property of the table, not a fact about the harness. Firing
+        # them there would assert a conclusion the data cannot support; calling
+        # them clean would be silentLoss. Neither: NOT EVALUATED, and the
+        # derivation itself is the failure.
+        self.write_report()
+        census_digest._CHAIN_CACHE[census_digest.REPO_ROOT] = (
+            census_digest.harness_pass_chain(
+                os.path.join(self.root, "nowhere"), _cache=False))
+        code, text = self.run_main()
+        self.assertEqual(code, 1,
+                         "a gate that could not be evaluated has not agreed "
+                         "with anything:\n" + text)
+        self.assertIn(census_digest.PASS_SET_NOT_DERIVED, text)
+        self.assertIn("NOT EVALUATED", text)
+        self.assertNotIn(census_digest.UNMEASURED_PASSES, text)
+        self.assertNotIn(census_digest.UNRENDERED_PASSES, text)
+        self.assertNotIn(census_digest.STALE_PASS_TABLE, text)
+
+    def test_one_defect_counts_once_however_many_corpora_were_read(self):
+        # ONE GATE, EVALUATED ONCE. The same condition is RENDERED at three
+        # sites (the leading census, each corpus block, the rollup); failing at
+        # each would make the number of findings a property of how many reports
+        # were downloaded.
+        for name in ("A", "B", "C"):
+            self.write_report(name)
+        self.build(guarded=self.real_passes(), bare=["aTenthPass"])
+        lines, failed = census_digest.digest(self.reports)
+        self.assertEqual(
+            failed.count(census_digest.UNMEASURED_PASSES), 1,
+            "one unmeasured pass over three corpora must be ONE finding, not "
+            "one per report:\n" + "\n".join(lines))
+
+    def test_a_gate_finding_survives_a_run_that_found_no_reports(self):
+        # The no-reports return used to DISCARD everything already in `failed`,
+        # so the gate was disarmed by precisely the input condition that
+        # guarantees nobody reads the rest of the output. Both facts are true
+        # at once and both must be reported.
+        self.build(guarded=self.real_passes(), bare=["aTenthPass"])
+        _lines, failed = census_digest.digest(
+            os.path.join(self.reports, "absent"))
+        self.assertIn(census_digest.MISSING_REPORTS, failed)
+        self.assertIn(census_digest.UNMEASURED_PASSES, failed)
 
 
 if __name__ == "__main__":
