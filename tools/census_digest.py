@@ -170,6 +170,32 @@ POST_PASSES = [
         ("method_parameters_seen", "method_parameters seen"),
         ("method_parameters_edges_filled", "method_parameters epoch_id filled"),
         ("method_parameters_unresolved", "method_parameters unresolved"),
+        # THE INGESTED-METADATA FOLD, added 2026-08-11 with the arming of
+        # `daqmetadatareader_epochdata_ingested` -> `acquisition_metadata_file`
+        # (TEAM-SIGN-OFF [daq ingested payloads] 2026-08-08). 2,659 documents
+        # are in scope: B 1,242 / Dab 1,242 / Soph 175.
+        #
+        # `metadata_fold_vacuous` LEADS THE GROUP because it is the thing that
+        # makes the zeros readable. A corpus holding no
+        # `daqmetadatareader_epochdata_ingested` document produces exactly the
+        # same all-zero block as one where the fold ran and refused every
+        # document, and those are opposite readings. It prints FIRST and it
+        # prints unconditionally, so "nothing to do" can never be mistaken for
+        # "everything done".
+        ("metadata_fold_vacuous", "ingested-metadata fold VACUOUS (no sources)"),
+        ("metadata_ingested_seen", "daqmetadatareader_epochdata_ingested seen"),
+        ("metadata_ingested_already_folded", "  already acquisition_metadata_file"),
+        ("metadata_ingested_edges_stamped", "  epoch_id stamped"),
+        ("metadata_ingested_folds_emitted", "FOLDED to acquisition_metadata_file"),
+        # NOT a quarantine count and not a refusal: the fold was attempted, the
+        # body did not come back out of the re-validation, and the ORIGINAL
+        # passthrough is what stayed in the batch. Nothing was lost and nothing
+        # was gained, which is a third reading and needs its own row.
+        ("metadata_ingested_folds_withheld", "  WITHHELD (fold did not validate)"),
+        ("metadata_refused_total", "REFUSED (total)"),
+        ("metadata_refused_no_epoch_string", "  no epoch string on the document"),
+        ("metadata_refused_no_epoch_document", "  no epoch document for the pair"),
+        ("metadata_refused_migrator_declined", "  migrator declined (no reader edge / no bytes)"),
         ("mint_quarantined", "QUARANTINED by the mint"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
