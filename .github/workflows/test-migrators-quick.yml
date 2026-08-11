@@ -109,6 +109,22 @@ jobs:
         # all -- not about a count. A silent zero here is the failure mode.
         run: python3 tools/test_census_digest_uniqueness.py
 
+      - name: Batch post-passes must be called, persisted and printed (python, <1s)
+        # tests/+did2/+unittest/testBatchPassWiring.m gates the CALLED leg from
+        # inside the harness, and is the better place for it -- but it needs
+        # MATLAB, so it cannot run while the work is being done, and it checks
+        # CALLED only.
+        #
+        # This step adds the two legs that come after. `did2.convert.epochMint`
+        # was wired into every call site, persisted into every corpus report,
+        # and rendered nowhere -- so its numbers existed and nobody could see
+        # them. A pass that is called but invisible is the same defect as a pass
+        # that is never called, arriving one layer later.
+        #
+        # It also names #61's resolver explicitly, because a scan over what
+        # EXISTS cannot notice something that stopped existing.
+        run: python3 tools/test_batch_pass_wiring.py
+
       - name: Unminted ontology terms must not increase (#70)
         # Staging a term as {node: '', name: '...'} is the accepted practice --
         # a migration can go green and the CURIEs be minted after. The hazard is

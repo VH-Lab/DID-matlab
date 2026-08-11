@@ -79,6 +79,29 @@ end
 if isfield(result, 'session_anchor_fold')
     report.session_anchor_fold = result.session_anchor_fold;
 end
+% THE RESPONSE-PARAMETERS FOLD (#61): the resolver half of the signed
+% stimulus-response model -- the five run knobs inlined onto the
+% `harmonic_component_calculation` leaf, the `method_parameters_id` edge
+% dropped. Persisted for two reasons beyond symmetry with the two above.
+%
+% (1) `parameters_documents_unreferenced_after` IS THE VERIFY-BEFORE-DELETE
+%     GATE the plan requires before the
+%     `stimulus_response_scalar_parameters_basic` documents may be deleted
+%     (11,440 of them over five corpora at the plan's last count, run #257 /
+%     0458dae -- a sample, and the number this pass reports is the one to use). The
+%     ensemble fold got the same gate. Evidence for a deletion has to survive in
+%     the artifact, not in a log somebody has to still have open -- and it is
+%     evidence, not authorisation: the corpora are a sample.
+% (2) `leaves_seen` beside `suppressed_responses_seen` is the ONLY place a
+%     reader can tell "this corpus has no responses" from "pass 1's epoch gate
+%     suppressed every fold and #60 is what opens it". A report that carried one
+%     without the other would be the all-zeros-reads-as-clean failure again.
+%
+% Written UNCONDITIONALLY with whatever the pass left, `pass_failed` included,
+% so a failed pass is a field rather than an absence.
+if isfield(result, 'response_parameters_fold')
+    report.response_parameters_fold = result.response_parameters_fold;
+end
 
 fid = fopen(reportPath, 'w');
 if fid < 0

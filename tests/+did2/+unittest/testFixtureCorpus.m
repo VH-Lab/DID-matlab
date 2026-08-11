@@ -341,6 +341,14 @@ result = did2.convert.epochMint(result, ...
 % broken post-pass should die here, loudly, before any corpus job starts.
 result = did2.convert.resolveSessionAnchors(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+% #61: inline the stimulus-response run knobs onto the
+% `harmonic_component_calculation` leaf and drop `method_parameters_id`. Same
+% post-pass set and the SAME ORDER as runCorpusDiscovery and testCorpusPRED.
+% CALLED BARE, like the pass above and for the identical reason: this test
+% writes no report, so there is nothing for the guard to protect and a raw stack
+% trace is strictly more informative than a captured message.
+result = did2.convert.resolveResponseParameters(result, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
 
 % GATE 1: nothing quarantined
 verifyEmpty(testCase, result.quarantine, ...

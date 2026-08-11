@@ -119,6 +119,26 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     @(r) did2.convert.resolveSessionAnchors(r, 'Validate', true, ...
         'TargetVersion', 'V_eta'));
 
+% #61, the RESOLVER half of the signed stimulus-response fold: the five run
+% knobs move from `stimulus_response_scalar_parameters_basic` INLINE onto the
+% `harmonic_component_calculation` leaf and the `method_parameters_id` edge goes
+% (the schema's rule is the inline field OR the edge, never both). Kept in step
+% with runCorpusDiscovery and testFixtureCorpus, in the SAME ORDER, for the same
+% reason as the two passes above: a post-pass wired into some call sites and not
+% others makes the corpus green while another path does something else.
+%
+% WHAT THIS PASS WILL REPORT ON PRED IS NOT PREDICTED HERE. PRED's document
+% count is small (31 in the last cross-corpus rollup, run 31415147934), and it
+% would be easy to write "so every counter will be 0" -- but whether PRED holds
+% any stimulus-response document has not been measured, and a guess in a comment
+% becomes a fact the next reader quotes. The pass prints its own denominator;
+% read that. Wired here regardless: a hard gate that skips a pass is a pass one
+% hard gate does not cover.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveResponseParameters', 'response_parameters_fold', ...
+    @(r) did2.convert.resolveResponseParameters(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
 % WRITE THE CENSUS REPORT, before the assertions so a red gate still reports.
 %
 % PRED is a HARD gate (zero quarantine), not a discovery run, so it does not
