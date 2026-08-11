@@ -62,6 +62,14 @@ classdef epochIndex < handle
 %     * a pair with no epoch document -> '' and `refused_no_epoch_document`
 %     * a pair claimed by TWO epochs  -> '' and `refused_ambiguous_epoch`
 %
+%   and, on the BODY-reading path, two more that are deliberately NOT one
+%   counter -- "this document has no epoch string" and "this document has an
+%   epoch string, just not from the source you named" are different defects
+%   with different owners, and the second is the wrong-epoch hazard rather than
+%   an absence:
+%     * no epoch string anywhere      -> '' and `refused_no_epoch_string`
+%     * none from the NAMED source    -> '' and `refused_source_not_present`
+%
 %   None of the four falls back to a string-only lookup. Resolving half a key by
 %   matching on the other half is how 2,344 epochs from different sessions --
 %   different animals -- become one.
@@ -240,8 +248,15 @@ classdef epochIndex < handle
                 body
                 sourceName (1,:) char = ''
             end
+            % `why` is deliberately NOT pre-initialised: EVERY path out of this
+            % function assigns it (the three refusals below, and the delegation
+            % to `resolve` at the end, which assigns on both its own paths). A
+            % future path that forgets must fail LOUDLY -- MATLAB's "output
+            % argument 'why' not assigned" -- rather than silently return ''
+            % and read as a success. Note that `resolve` is the OPPOSITE case:
+            % its `why = ''` IS load-bearing, because its success path assigns
+            % only `epochDocumentId`. Do not apply one rule to both.
             epochDocumentId = '';
-            why = '';
             epochString = '';
             b = did2.convert.epochIndex.bodyOf(body);
             if isempty(b)
@@ -251,6 +266,7 @@ classdef epochIndex < handle
             end
             hits = did2.validate.epochStrings(b);
             if isempty(hits)
+                % THE DOCUMENT CARRIES NO EPOCH STRING AT ALL.
                 why = 'refused_no_epoch_string';
                 obj.bumpRefusal(why);
                 return;
@@ -265,7 +281,19 @@ classdef epochIndex < handle
                     end
                 end
                 if isempty(epochString)
-                    why = 'refused_no_epoch_string';
+                    % A DIFFERENT FACT, AND IT GETS A DIFFERENT COUNTER. The
+                    % document DOES carry an epoch string -- just not from the
+                    % source the caller named. Folding this into
+                    % `refused_no_epoch_string` would report "nothing to
+                    % resolve" when the truth is "it has an epoch and we asked
+                    % for a source it does not carry", which is precisely the
+                    % wrong-epoch hazard this method's `sourceName` exists to
+                    % prevent, made invisible in the report instead of counted.
+                    % Live case: `stimulus_response` carries `element_epochid`
+                    % AND `stimulator_epochid` and they name DIFFERENT epochs,
+                    % so a document with only one of the two is a real and
+                    % recurring shape, not a contrivance.
+                    why = 'refused_source_not_present';
                     obj.bumpRefusal(why);
                     return;
                 end
@@ -346,7 +374,8 @@ classdef epochIndex < handle
             %   WRITE it returns the body as a STRUCT, which is the shape every
             %   batch pass hands to did2.convert.v1_to_v2 for the re-fold.
             %
-            %   FOUR REFUSALS, ALL COUNTED:
+            %   FIVE REFUSALS, ALL COUNTED (the last two arrive from
+            %   `resolveBody` and are kept apart there for the reason it gives):
             %     the class does not declare `epoch_id`  -> the invented-edge
             %       pattern with the sign flipped; the schema is the authority
             %     the edge is already populated          -> find-or-create, not
@@ -650,6 +679,7 @@ classdef epochIndex < handle
                 'refused_no_epoch_document',               0, ...
                 'refused_ambiguous_epoch',                 0, ...
                 'refused_no_epoch_string',                 0, ...
+                'refused_source_not_present',              0, ...
                 'refused_unreadable_body',                 0, ...
                 'refused_total',                           0, ...
                 'stamp_calls',                             0, ...

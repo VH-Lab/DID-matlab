@@ -239,6 +239,34 @@ verifyEqual(testCase, ...
     idx.resolveBody(body, 'stimulus_response.stimulator_epochid'), 'epoch_stim');
 end
 
+function testAskingForASourceTheBodyLacksIsNOTTheSameAsNoEpochString(testCase)
+% TWO DIFFERENT FACTS, TWO DIFFERENT COUNTERS. "this document has no epoch
+% string" and "this document HAS one, just not from the source you named" have
+% different owners: the first is a document with nothing to resolve, the second
+% is the wrong-epoch hazard `sourceName` exists to prevent. Folding them into
+% one counter makes the second read as the first, which is an absence standing
+% in for a mismatch -- the failure mode this project's rules name first.
+%
+% The shape is real: `stimulus_response` carries `element_epochid` AND
+% `stimulator_epochid` (tuning_response.m:317-318) and a document may populate
+% only one.
+idx = did2.convert.epochIndex({sessionDoc('sess_A'), ...
+    epochDoc('epoch_elem', 'sess_A', 't00009')});
+onlyElement = responseBody('sess_A', 't00009', '');
+
+[idA, whyA] = idx.resolveBody(onlyElement, 'stimulus_response.stimulator_epochid');
+verifyEmpty(testCase, idA);
+verifyEqual(testCase, whyA, 'refused_source_not_present');
+verifyEqual(testCase, idx.report.refused_source_not_present, 1);
+verifyEqual(testCase, idx.report.refused_no_epoch_string, 0, ...
+    'the document DOES carry an epoch string -- do not count it as having none');
+
+% and the source it DOES carry still resolves.
+verifyEqual(testCase, ...
+    idx.resolveBody(onlyElement, 'stimulus_response.element_epochid'), ...
+    'epoch_elem');
+end
+
 function testABodyWithNoEpochStringIsRefusedByName(testCase)
 idx = did2.convert.epochIndex({sessionDoc('sess_A'), ...
     epochDoc('epoch_A', 'sess_A', 't00070')});
