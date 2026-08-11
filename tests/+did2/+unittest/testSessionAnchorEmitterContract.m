@@ -151,17 +151,42 @@ function tests = testSessionAnchorEmitterContract
 %                'approximate', false);
 %
 %     2. The fold reads ONLY `seconds`, and treats a cell without one as ABSENT.
-%          resolveSessionAnchors.m:466-475 (cellField)
+%          resolveSessionAnchors.m, function `cellField`
 %            if ~isfield(x, 'seconds') || ~isnumeric(x.seconds) || ...
 %                    ~isscalar(x.seconds) || ~isfinite(x.seconds)
 %                return;     % c stays []
 %
 %     3. Nothing between them backfills it. `ensureClassBlocks`
-%        (v1_to_v2.m:453-520) manufactures empty top-level BLOCKS only, never
-%        nested fields, and no code path in +did2 writes `blank_value` or
-%        `default_value` into a body (the only three references to either key in
-%        src/ are +did2/+schema/cache.m:1588/1617/1674, all READS, in the
-%        vacuous-composite check).
+%        (v1_to_v2.m, `function body = ensureClassBlocks`) manufactures empty
+%        top-level BLOCKS only, never nested fields --
+%
+%            for k = 1:numel(placementInfo.blocksContributed)
+%                cls = placementInfo.blocksContributed{k};
+%                if ~isfield(body, cls)
+%                    body.(cls) = struct();
+%
+%        -- and NOTHING IN src/ WRITES A SCHEMA DEFAULT INTO A DOCUMENT BODY.
+%
+%            DENOMINATOR: 13 occurrences of `blank_value` or `default_value`
+%                         across every .m file under src/
+%              2  field READS      +did2/+schema/cache.m:1588, :1617 -- both
+%                                    inside the vacuous-composite check
+%              1  message STRING   cache.m:1674
+%              8  comments         cache.m:1311/:1579/:1781,
+%                                    stimulus_parameter.m:30,
+%                                    daqmetadatareader.m:157,
+%                                    jClockAlignmentBodies.m:29,
+%                                    filenavigator.m:174,
+%                                    super/image_stack_parameters.m:37
+%              2  unrelated        +did/database.m:1609/:1630 -- a local
+%                                    parameter of get_preference
+%              0  WRITES
+%
+%        (This paragraph first said "the only three references ... are
+%        cache.m:1588/1617/1674, all READS". That came from a grep whose
+%        comment filter dropped ten of the thirteen lines, and it counted a
+%        message string as a read. The conclusion survives; the count did not,
+%        so the count is now stated with what it counted.)
 %
 %   So `value.start` is never set and `value.duration` is never computed: the
 %   folded `relative_reference` carries `relation` and nothing else, and the
@@ -170,7 +195,7 @@ function tests = testSessionAnchorEmitterContract
 %   refusal counter moves, and it does not quarantine.
 %
 %   DENOMINATOR: every `session_bounded_reference` in the corpus comes from this
-%   one emitter, and resolveSessionAnchors.m:19-22 records the measured
+%   one emitter, and resolveSessionAnchors.m's STATUS block records the measured
 %   cross-corpus rollup (run 31441923369, `caf710b`, 6 corpora, 627,526 docs):
 %
 %       106,639  anchors seen  =  86,228 session_relative_reference
@@ -182,6 +207,14 @@ function tests = testSessionAnchorEmitterContract
 %   and the run reported it as a clean fold. (ontology_table_row.m:194 gives the
 %   same 20,411 as the JH encounter table's row count, from the other side.)
 %
+%   CITATIONS INTO resolveSessionAnchors.m ARE BY BLOCK / FUNCTION NAME, NOT BY
+%   LINE. Every line number this file first carried for that file was wrong
+%   within the hour: a comment-only commit on this same branch (f60e728, "Cite
+%   the mint block by name; the number I wrote went stale in one commit") moved
+%   the whole header down forty lines. The code was untouched -- `git diff` over
+%   that range has no non-comment line -- so the finding stood and only the
+%   pointers rotted. Same fix, same reason.
+%
 %   WHICH SIDE IS WRONG IS NOT DECIDED HERE. What is not in doubt is that the two
 %   sides disagree and that every OTHER duration cell in the converter writes
 %   `seconds` -- jClockAlignmentBodies.m:242, jEpochClockReferences.m:287,
@@ -189,12 +222,12 @@ function tests = testSessionAnchorEmitterContract
 %   `seconds` is documented in the schema as *"Canonical duration value -- the
 %   normalised, cross-document comparable number"*, and the fold writes its own
 %   output through it (`value.duration = struct('seconds', span, ...)`,
-%   resolveSessionAnchors.m:304). The two tests below assert the CONTRACT the
-%   fold's own header states --
+%   resolveSessionAnchors.m, the fold loop's `value.duration =`). The two tests
+%   below assert the CONTRACT the fold's own header states --
 %
 %       session_bounded_reference  { relation, start, end }
 %          -> relative_reference   { relation, start, duration = end-start }
-%                                            resolveSessionAnchors.m:144-145
+%                     resolveSessionAnchors.m, "THE MAPPING" header section
 %
 %   -- so they FAIL until one side is changed. They are deliberately not written
 %   to the current behaviour: a test that pinned the drop would make this file
@@ -674,7 +707,7 @@ end
 end
 
 function testEveryEmittedAnchorCarriesTheSessionIdTheFoldJoinsOn(testCase)
-% `base.session_id` is the ONLY handle the fold has: resolveSessionAnchors.m:255
+% `base.session_id` is the ONLY handle the fold has: resolveSessionAnchors.m's fold loop
 % reads it, and an empty one is `refused_no_session_id`. Every emitter defaults
 % it to '' when the source body has none, so this is a real path, not a
 % hypothetical one.
@@ -692,7 +725,8 @@ end
 
 function testEveryEmittedRelationIsOneTheFoldCanMap(testCase)
 % The drift the fold cannot defend itself against. `owlTimeTerm`
-% (resolveSessionAnchors.m:389) maps five of v1's six relations; the sixth,
+% (resolveSessionAnchors.m, function `owlTimeTerm`) maps five of v1's six
+% relations; the sixth,
 % `concurrent_with`, is REFUSED because it is genuinely ambiguous between
 % OWL-Time's intervalEquals and intervalOverlaps. An emitter that started
 % writing it -- or anything outside the enum -- would silently strand its
@@ -868,7 +902,7 @@ end
 %   test fails and names it.
 %
 %   WHAT THE FOLD DOES WITH EACH MEMBER OF THAT SET: 'during' maps to
-%   `time:intervalDuring` with verdict 'ok' (resolveSessionAnchors.m:414), so it
+%   `time:intervalDuring` with verdict 'ok' (owlTimeTerm's `case 'during'`), so it
 %   folds. NOTHING THIS SITE CAN PRODUCE TODAY IS REFUSED. The paste that
 %   prompted this work expected a refusal here; there is none, and the honest
 %   report is the empty one. The two values that WOULD be refused --
@@ -904,7 +938,7 @@ rels = relationValueSet(testCase, 'ontology_table_row.m:867');
 verifyEqual(testCase, numel(rels), 1, ...
     ['the variable-relation site produced a value set of a size other than 1. ' ...
      'MORE than one is not automatically wrong -- check each new value against ' ...
-     'resolveSessionAnchors.m:389 owlTimeTerm before widening this test. ZERO ' ...
+     'resolveSessionAnchors.m''s owlTimeTerm before widening this test. ZERO ' ...
      'means the roster no longer reaches this site at all, which is a hole, ' ...
      'not a pass.']);
 % assert, not verify: an empty set makes every line below meaningless, and a
@@ -923,7 +957,7 @@ function testEveryRelationEveryDrivenEmitterProducesIsMappedNotRefused(testCase)
 % bounded, so the answer has a denominator: 11 emitters, and the set of distinct
 % relations they produce between them.
 mappable = {'before', 'after', 'at_start_of', 'at_end_of', 'during'};
-refused  = {'concurrent_with'};   % ambiguous; resolveSessionAnchors.m:415-417
+refused  = {'concurrent_with'};   % ambiguous; owlTimeTerm's `case 'concurrent_with'`
 
 seen = {};
 roster = emitterRoster();
@@ -1010,7 +1044,7 @@ end
 end
 
 function testTheBoundedWindowCarriesTheSessionIdTheFoldJoinsOn(testCase)
-% `base.session_id` is the ONLY handle the fold has (resolveSessionAnchors.m:255),
+% `base.session_id` is the ONLY handle the fold has (resolveSessionAnchors.m's fold loop),
 % and `freshBase` (ontology_table_row.m:547-557) defaults it to '' when the
 % source body has none -- so an empty one is a real path, not a hypothetical.
 roster = boundedEmitterRoster();
@@ -1029,7 +1063,8 @@ function testTheBoundedWindowFoldsWithNoRefusals(testCase)
 % THE BOUNDED COUNTERPART OF THE MAIN TEST. A refusal here is not a caught error:
 % it is a `session_bounded_reference` that SURVIVES the migration and holds the
 % deletion gate shut ("refused_total == 0 AND zero surviving
-% session_*_reference in by_class", resolveSessionAnchors.m:132-135).
+% session_*_reference in by_class", resolveSessionAnchors.m, "WHAT IT REFUSES
+% TO DO" header section).
 [out, rep, windowIds] = foldEncounter( ...
     {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, 'SID_1', 1249.72, 1265.39);
 
@@ -1102,17 +1137,19 @@ function testTheBoundedWindowExtentSurvivesTheFold(testCase)
 % EXPECTED RED ON THE FIRST CI RUN. This is the DEFECT block in the header, and
 % it is the finding this extension exists to surface.
 %
-% The fold's own header states the mapping (resolveSessionAnchors.m:144-145):
+% The fold's own header states the mapping (resolveSessionAnchors.m, "THE
+% MAPPING" section):
 %
 %     session_bounded_reference  { relation, start, end }
 %        -> relative_reference   { relation, start, duration = end-start }
 %
 % What actually happens is that `start` and `duration` are both absent, because
 % the emitter's duration cell carries no `seconds` (ontology_table_row.m:559-561)
-% and `cellField` treats a cell without one as ABSENT (resolveSessionAnchors.m:
-% 466-475). Nothing counts it: `anchors_folded` goes up, no refusal counter
+% and `cellField` treats a cell without one as ABSENT (resolveSessionAnchors.m,
+% function `cellField`). Nothing counts it: `anchors_folded` goes up, no refusal counter
 % moves, nothing quarantines. 20,411 documents in the last cross-corpus rollup
-% (resolveSessionAnchors.m:19-22) were folded this way and reported clean.
+% (resolveSessionAnchors.m's STATUS block) were folded this way and reported
+% clean.
 %
 % THIS TEST IS DELIBERATELY WRITTEN TO THE CONTRACT AND NOT TO THE BEHAVIOUR.
 % Pinning the current output would make this file the thing certifying the loss,
@@ -1160,8 +1197,9 @@ function testAReversedBoundedWindowIsRefusedNotSilentlyFolded(testCase)
 % carried" but "a nonsense extent is REFUSED rather than folded".
 %
 % `refused_negative_extent` is one of the six refusal reasons the deletion gate
-% counts (resolveSessionAnchors.m:125), and it is UNREACHABLE from the only
-% emitter that can produce a negative extent -- the guard at :294 is behind
+% counts (resolveSessionAnchors.m, "WHAT IT REFUSES TO DO"), and it is
+% UNREACHABLE from the only
+% emitter that can produce a negative extent -- the `if span < 0` guard is behind
 % `~isempty(startCell) && ~isempty(endCell)`, and both are empty for every real
 % bounded document. So the counter reads 0 not because no such document exists
 % but because the branch is never entered. A refusal counter that cannot fire is
