@@ -98,11 +98,13 @@ function bodies = image(preBody)
 %   tombstone under a DIFFERENT class name, or accept the refusal. Until then a
 %   loud refusal loses exactly as much as the silent one and says why.
 %
-%   NOTHING IN THE SIX CORPORA EXERCISES THIS. No corpus report has ever carried
-%   an `image` row, and the last full run was green on all six
-%   (test-code.yml 31464483119) -- which, since a subject-less one would
-%   quarantine, is positive evidence that none of the six holds one. THE CORPORA
-%   ARE A SAMPLE OF DATASETS, NOT THE UNIVERSE, and no in-tree NDI writer
+%   WHAT THE GREEN CORPUS GATE DOES AND DOES NOT SAY. The last full run was
+%   green on all six corpora with quarantine 0 (test-code.yml 31464483119). A
+%   SUBJECT-LESS did_v1 `image` would have quarantined there, so that green is
+%   positive evidence none of the six holds one. It says NOTHING about a
+%   subject-bearing one, which folds cleanly and leaves no trace in a quarantine
+%   count -- do not read the gate as "no v1 image documents exist". And THE
+%   CORPORA ARE A SAMPLE OF DATASETS, NOT THE UNIVERSE. No in-tree NDI writer
 %   constructs this class at all:
 %
 %     $ git grep -n -E "['\"]image['\"]" origin/main -- '*.m' | wc -l
