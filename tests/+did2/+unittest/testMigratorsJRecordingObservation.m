@@ -220,8 +220,13 @@ obs = firstOfClass(out, 'image_observation');
 verifyNotEmpty(testCase, obs);
 verifyEqual(testCase, obs.get('subject_statement.variable').name, 'image');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
-% draft/image.json is the only data_type declaring `value` mustBeNonEmpty, so the
-% raster cell has to be present even though the pixels are not.
+% `image` declares `value` mustBeNonEmpty, so the raster cell has to be present
+% even though the pixels are not. This said "draft/image.json is the ONLY
+% data_type" -- wrong twice (the file is stable/, and 8 data_type descendants
+% declare it: contrast_sensitivity, date, harmonic_component, image, polynomial,
+% term, timed_sequence, tuning_curve, over 243 schemas). Corrected 2026-08-11.
+% The claim was made here AND in the migrator it tests, so this test pinned the
+% error instead of catching it -- see jRecordingObservation/attachQuantityBlock.
 verifyNotEmpty(testCase, fieldnames(obs.get('image.value')));
 verifyFalse(testCase, hasRelation(out, 'observes'));
 end

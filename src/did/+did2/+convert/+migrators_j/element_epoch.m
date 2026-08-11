@@ -71,7 +71,20 @@ function v2Body = element_epoch(preBody)
 %   nothing else -- and `acquisition_epoch` declares `files: []` while the real
 %   documents carry the payload (corpus B: every element_epoch body has
 %   `files.file_list = {'epoch_binary_data.vhsb'}` with an ndicloud location).
-%   Both ride with #45/#30; neither is fixed here.
+%
+%   THE FILE HALF IS NOW FIXED -- corrected 2026-08-11. `acquisition_epoch`
+%   declares `epoch_binary_data.vhsb`, landed in `3a542b8` ("#60 epoch family:
+%   the two pieces that were not blocked"):
+%
+%       $ python3 -c "...load('schemas/V_eta/stable/acquisition_epoch.json')"
+%         file: [{'name': 'epoch_binary_data.vhsb', ...}]
+%
+%   Only the `axes` / `channels` / `storage` half still rides with #45/#30.
+%   The heading "ALSO STILL TRUE" is what let this survive: it asserts currency
+%   for the whole block, so a repair to one clause leaves the other clause
+%   vouching for it. Same shape as resolveSessionAnchors' header claiming it was
+%   unwired after it was wired -- the harmless direction, which is exactly why
+%   nobody catches it.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 

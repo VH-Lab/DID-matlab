@@ -42,7 +42,7 @@ function tests = testEnforceNonVacuousFields
 %
 %   The evidence for arming: the last measured census (DID-matlab corpus run
 %   31415147934, 02854c7) reported ZERO vacuous required fields across six
-%   corpora, 562,422 documents. Zero measured cost.
+%   corpora, 562,448 documents. Zero measured cost.
 %
 %   THE STANDING CAVEAT, which is an argument FOR arming rather than against:
 %   "zero on the six corpora we happen to test" is not "zero", the corpora are
@@ -105,7 +105,7 @@ function testNonVacuousFieldsIsARMEDByDefault(testCase)
 % forgets the default. This test is what makes that loud.
 %
 % The evidence for arming: corpus run 31415147934 reports "0 vacuous required
-% field(s)" across all six corpora, 562,422 documents. Zero measured cost.
+% field(s)" across all six corpora, 562,448 documents. Zero measured cost.
 % The standing caveat is that the corpora are a SAMPLE and the census's field
 % scan does not share a denominator with the validator's, so "0 measured" is
 % weaker than "0 possible" -- which is the argument FOR arming, not against:

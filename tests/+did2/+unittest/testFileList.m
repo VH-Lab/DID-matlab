@@ -85,7 +85,10 @@ function [className, fileName] = aClassDeclaringAFile(cache)
 %ACLASSDECLARINGAFILE First V_eta class whose own schema declares a file.
 className = ''; fileName = '';
 % The cache exposes no class listing, so probe a few V_eta classes that DO
-% declare a payload file (17 of 228 do). Resolved through the cache rather than
+% declare a payload file (21 of 243 do -- this read "17 of 228" until
+% 2026-08-11; both numbers drifted, partly because image_stack was restored
+% to the built set on 2026-08-10, so re-derive rather than copying it).
+% Resolved through the cache rather than
 % hardcoded here, so the test follows the schema instead of asserting a shape
 % that may change.
 names = {'sampled_body', 'opaque_body', 'data_body', ...

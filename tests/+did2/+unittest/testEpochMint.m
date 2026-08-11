@@ -561,11 +561,29 @@ function testMethodParametersGetsItsEpochEdge(testCase)
 % `method_parameters` is the ONLY class that (a) declares an `epoch_id` edge,
 % (b) is emitted by pass 1, and (c) has the epoch string parked for this moment
 % (jMethodParameters.m:112-119 writes it to `other.epochid` because jEpochDocId
-% answers '' in pass 1). The other two classes declaring the edge --
-% `ingestion_manifest`, `acquisition_metadata_file` -- are not emitted yet.
-% (Three DEPENDENCIES over 245 V_eta schema files; `epochfiles_ingested`'s
-% `epoch_id` is a char FIELD, not an edge, and a grep for the name conflates
-% them.)
+% answers '' in pass 1). `ingestion_manifest` and `acquisition_metadata_file`
+% declare the edge and are not emitted yet.
+% (`epochfiles_ingested`'s `epoch_id` is a char FIELD, not an edge, and a grep
+% for the name conflates them.)
+%
+% CORRECTED 2026-08-11. This said "the ONLY class that declares an epoch_id edge
+% AND is emitted by pass 1", and enumerated "three DEPENDENCIES over 245 V_eta
+% schema files". Both counts were wrong and the conjunction was false:
+%
+%     DENOMINATOR: 243 V_eta class schemas parsed (not 245)
+%     declaring an `epoch_id` DEPENDENCY: 4 -- acquisition_metadata_file,
+%       directed_relation, ingestion_manifest, method_parameters
+%
+% `directed_relation` was missing from the list AND is emitted by pass 1 at nine
+% sites (subject_group, neuron_extracellular, treatment_transfer, jTuningFold,
+% jEntityRelation, metadata_editor, element, ontology_table_row, ...). It gained
+% its epoch_id in the epoch build; the comment predates that and closed an
+% enumeration that had since grown.
+%
+% NOT a new invented-empty-edge instance: directed_relation.epoch_id is
+% mustBeNonEmpty:false and documented as empty for timeless relations. The defect
+% is the closed enumeration, which is what a reader would trust when deciding
+% whether a new emitter needs epoch handling.
 [out, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     extractionModificationBody('sepm_1', 'sess_A', 't00069', 'el_1')});

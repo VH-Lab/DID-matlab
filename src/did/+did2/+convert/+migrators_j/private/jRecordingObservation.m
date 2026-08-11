@@ -249,12 +249,33 @@ end
 
 function obs = attachQuantityBlock(obs, mixin)
 %ATTACHQUANTITYBLOCK The data_type block, empty because the value is body-backed.
-%   `image` is the exception: schemas/V_eta/draft/image.json declares
-%   `value` with "mustBeNonEmpty": true (the only data_type that does), so the
+%   `image` declares `value` with "mustBeNonEmpty": true, so the
 %   raster CELL must be present even when the pixels are not. Only DECLARED
 %   subfields are written; `dtype` stays blank because R6 is right that dtype is
 %   not recoverable from bytes we have not read, and a guess here would be the
 %   thing R6 wrote the rule against.
+%
+%   THIS COMMENT SAID "(the only data_type that does)" AND CITED
+%   schemas/V_eta/draft/image.json. Both were wrong; corrected 2026-08-11.
+%   The path is stable/, not draft/, and the uniqueness claim is wrong by 8x:
+%
+%       DENOMINATOR: 243 V_eta class schemas parsed
+%       declaring field `value` mustBeNonEmpty: 10
+%         contrast_sensitivity  date  harmonic_component  image  polynomial
+%         term  timed_sequence  tuning_curve        (8 data_type descendants)
+%         absolute_reference  relative_reference   (time_reference, not data_type)
+%
+%   It matters because this comment states the RULE this function implements,
+%   and the branch below fires for `image` and nothing else. The blast radius is
+%   bounded today only because jRecordingModality reaches just
+%   voltage/current/image/acceleration/temperature -- but a maintainer adding a
+%   modality that maps to `date`, `term`, `tuning_curve` or `contrast_sensitivity`
+%   would read "image is the only one", skip the cell, and emit a document that
+%   fails mustBeNonEmpty. If you add such a modality, extend the branch.
+%
+%   Asserted twice, here and in testMigratorsJRecordingObservation.m:223 -- a
+%   test written from the same premise as the code, so it pinned the error
+%   rather than catching it.
 if strcmp(mixin, 'image')
     obs.image = struct();
     obs.image.value = struct('pixels', [], 'dtype', '', ...

@@ -831,7 +831,7 @@ classdef cache < handle
             %
             %   NonVacuousFields: cost measured, and it is ZERO. Corpus run
             %   31415147934 reports "0 vacuous required field(s)" on all six
-            %   corpora across 562,422 documents. Nothing we have ever
+            %   corpora across 562,448 documents. Nothing we have ever
             %   migrated trips it, so arming it buys a whole class of silent
             %   defect for no quarantine.
             %
@@ -910,7 +910,7 @@ classdef cache < handle
                     ...
                     ... THE EVIDENCE FOR ARMING IT: zero cost, MEASURED. Corpus
                     ... run 31415147934 reports "0 vacuous required field(s)"
-                    ... on all six corpora over 562,422 documents. So nothing
+                    ... on all six corpora over 562,448 documents. So nothing
                     ... in anything we have ever migrated trips this, and
                     ... arming it costs no quarantine today while making a
                     ... whole class of silent defect impossible tomorrow.

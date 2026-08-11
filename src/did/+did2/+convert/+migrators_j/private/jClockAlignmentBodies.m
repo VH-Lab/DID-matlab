@@ -58,9 +58,31 @@ function bodies = jClockAlignmentBodies(preBody, block, epochDocIdA, epochDocIdB
 %       value.start   <- t0_t1(1)     value.end <- t0_t1(2)
 %       base.name     <- objectname
 %
-%   `objectname` on `base.name` is not decoration. It is string-matched at eight
-%   live NDI sites (syncgraph.m:280, :283, :406-407; ctoe.m:157-158;
-%   filefind.m:133-134) and the plan's own repair list says it is otherwise
+%   `objectname` on `base.name` is not decoration. It is string-matched across
+%   THREE syncrules and the syncgraph -- re-enumerated 2026-08-11 by grepping
+%   `epochnode_[ab].objectname` for MATCH sites (not mentions) on NDI
+%   `origin/main`:
+%
+%     +time/syncgraph.m                          :280 :283
+%     +time/+syncrule/commonTriggersOverlappingEpochs.m  :110-113, :158-159
+%     +time/+syncrule/filefind.m                 :133-136
+%     +time/+syncrule/randomPulses.m             :104-107, :152-153
+%
+%   THE OLD CITATION READ "eight live NDI sites (syncgraph.m:280, :283, :406-407;
+%   ctoe.m:157-158; filefind.m:133-134)" AND OMITTED randomPulses ENTIRELY.
+%   `randomPulses.m:152-153` carries the byte-identical
+%   `ndi.query('syncrule_mapping.epochnode_a.objectname','exact_string',...)`
+%   pair that commonTriggersOverlappingEpochs does. That is the part that could
+%   cost work: a #58-style repair validated against the two cited syncrules
+%   would pass while silently breaking the third.
+%
+%   `ctoe.m` DOES NOT EXIST -- `git ls-tree origin/main | grep -ci ctoe.m` is 0.
+%   It is a local abbreviation for commonTriggersOverlappingEpochs (used at
+%   syncrule.m:44), so this was shorthand rather than fabrication; but no grep
+%   for the cited filename can confirm the claim, which is the whole problem
+%   with citing a name that is not the file's name. Its real lines are 158-159.
+%
+%   The plan's own repair list says it is otherwise
 %   "recoverable ONLY VIA epoch.instrument_id". Until the epoch pass carries
 %   instrument_id, keeping it on the reference is what stops #58's repair being
 %   undone by this build.
