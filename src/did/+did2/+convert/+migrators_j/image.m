@@ -37,9 +37,32 @@ function bodies = image(preBody)
 %   THE SENTENCE ABOVE IS KEPT BECAUSE IT IS THE PREMISE THIS GUARD BREAKS.
 %   ---------------------------------------------------------------------
 %   STATUS 2026-08-11: written in a container with neither MATLAB nor Octave, so
-%   not one line below has been executed here. CI is the first run. Every claim
-%   is read off NDI `origin/main`, this repo's sources or the did-schema working
-%   tree, and the command that produced it is named inline.
+%   not one line below was executed there. CI is the first run, and the refusal
+%   was PROVEN there by mutation, one mutation per run, on throwaway branches.
+%   Every other claim is read off NDI `origin/main`, this repo's sources or the
+%   did-schema working tree, with the command named inline.
+%
+%       CONTROL     31518220849  b0fd606  SUCCESS   120 run / 120 passed / 0 FAILED
+%       MUTATION A  31518325139  c25c9d9  FAILURE   refusal disabled ->
+%           120 run / 118 passed / 2 FAILED
+%           testDidV1ImageWithNoSubjectIsRefusedLoudlyBecauseItsNameIsTaken
+%           testDidV1ImageWithABlankSubjectEdgeIsRefusedToo
+%       MUTATION B  31518348782  a2325ff  FAILURE   refusal UNCONDITIONAL ->
+%           120 run / 117 passed / 3 FAILED
+%           testFixtureCorpus/testFixturesMigrateCleanUnderValidation
+%           testDidV1ImageMigratesSoTheNameCollisionCannotBite
+%           testDidV1ImageDoesNotMintADanglingCollectionEdge
+%
+%   TWO MUTATIONS, NOT ONE, AND IN OPPOSITE DIRECTIONS. A proves the tests see
+%   the REFUSAL; B proves they see its CONDITION -- a guard that fires on
+%   everything would have passed A's tests perfectly. Two results are worth
+%   naming. B reddened `testDidV1ImageDoesNotMintADanglingCollectionEdge` ONLY
+%   because its sweep over `out.migrated` now asserts its denominator first; over
+%   an empty batch the old loop was vacuously true, so B would have looked
+%   half-harmless. And B reddened the FIXTURE CORPUS itself -- `fx_image`
+%   (testFixtureCorpus.m:1215) is subject-BEARING, so an over-broad refusal
+%   quarantines a document that migrates today. That is the third independent
+%   detector, and it is the one that would catch this on real data.
 %
 %   image_stack HAS AN ARM THAT DOES NOT MIGRATE. `migrators_j/image_stack.m`
 %   :248-251 is the subject-less guard -- `if isempty(subjectId); bodies =
