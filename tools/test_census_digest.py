@@ -720,17 +720,18 @@ class TestPostPassRendering(DigestCase):
         # pass that ran and found nothing.
         self._corpus("A")
         text, _ = self.run_digest()
-        # The EXPECTED count is read from POST_PASSES, not written here as a
-        # literal. It was `2` and went stale the moment a third pass was added
-        # (generic_file_fold, 2026-08-11) -- a test asserting the denominator's
-        # VALUE rather than its SOURCE fails on every legitimate addition, which
-        # trains people to edit the number instead of reading the line. What
-        # this test is actually for is that an absent pass PRINTS, and that is
-        # asserted below.
+        # THE EXPECTED COUNT IS READ FROM THE DERIVED CHAIN, NOT FROM
+        # POST_PASSES. This assertion used to read `len(POST_PASSES)`, with a
+        # comment explaining that reading it from the table rather than writing
+        # a literal kept it from going stale -- and the table was itself the
+        # stale copy. It said 7 while the harness composed 9, so the test
+        # certified a denominator that omitted two passes. Reading the source
+        # of a number is only protection when it is the RIGHT source.
         import census_digest
-        n = len(census_digest.POST_PASSES)
+        n = len(census_digest.post_pass_expectations())
         self.assertGreaterEqual(n, 3)
-        self.assertIn("batch post-passes: %d expected, 0 present" % n, text)
+        self.assertIn("batch post-passes: %d expected" % n, text)
+        self.assertIn("0 carry a report here", text)
         self.assertIn("NOT IN THIS REPORT", text)
         self.assertNotIn("FOLDED to relative_reference", text)
         # EVERY expected pass prints its own line, not just the first: a block
@@ -3711,6 +3712,363 @@ class TestTimeReferenceFamilies(DigestCase):
         self.assertIn("PREDATES", time_reference_families({})["why"])
         self.assertTrue(time_reference_families(
             {"time_reference_families": self._block()})["measured"])
+
+
+# =====================================================================
+# THE BATCH-POST-PASS CENSUS
+# =====================================================================
+#
+# WHAT THESE ARE FOR. The digest printed "BATCH POST-PASSES: 2 expected in a
+# V_eta run" while `runCorpusDiscovery` composed NINE, and every pass the
+# digest's own table omitted produced no line at all -- no counter, no
+# denominator, not even a note that it had not been read. The two passes it
+# omitted were not new and not obscure: `resolveDeferredBaths` is the FIRST
+# pass in the chain and `resolveDatasetEntities` DELETES documents.
+#
+# The number was wrong because it came from the wrong place. POST_PASSES is a
+# render table; the chain is decided by the call sites. So these tests assert
+# the SOURCE of the expected set, not its value:
+#
+#   * the set is derived from the report-writing call sites and the convert
+#     package's signatures, so a pass added to the harness is expected here on
+#     the same commit;
+#   * a pass that RAN and attached no report is COUNTED AND NAMED, in wording
+#     that cannot be confused with a pass that did not run;
+#   * the census (expected / seen / unmeasured) precedes any per-pass detail;
+#   * an underivable chain says NOT DERIVED and calls the table a floor, rather
+#     than falling back and printing a confident number.
+#
+# Each was run against the pre-change digest, or against a mutated copy of the
+# new one, and each failed there. A test written from the same premise as the
+# code cannot catch the code.
+
+import census_digest  # noqa: E402
+
+
+class PassCensusTree(unittest.TestCase):
+    """Build a throwaway repo tree so the derivation can be driven, not mocked.
+
+    A test that monkeypatched `harness_pass_chain` would assert that the
+    renderer prints whatever it is handed, which is the one thing never in
+    doubt. The question is whether the DERIVATION reads MATLAB correctly, so
+    these write MATLAB.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.pkg = os.path.join(self.root, census_digest.CONVERT_PKG)
+        os.makedirs(self.pkg)
+        for label, rel in census_digest.REPORT_WRITING_CALL_SITES:
+            os.makedirs(os.path.dirname(os.path.join(self.root, rel)),
+                        exist_ok=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def pass_file(self, name, outputs="[result, report]", first="result"):
+        with open(os.path.join(self.pkg, name + ".m"), "w") as fh:
+            fh.write("function %s = %s(%s, options)\n%%%s\nend\n"
+                     % (outputs, name, first, name.upper()))
+
+    def call_site(self, body):
+        for _label, rel in census_digest.REPORT_WRITING_CALL_SITES:
+            with open(os.path.join(self.root, rel), "w") as fh:
+                fh.write(body)
+
+    def chain(self):
+        return census_digest.harness_pass_chain(self.root, _cache=False)
+
+
+class TestPassSetIsDerived(PassCensusTree):
+    def test_a_bare_call_and_a_guarded_call_are_both_in_the_chain(self):
+        self.pass_file("alpha")
+        self.pass_file("beta")
+        self.call_site(
+            "result = did2.convert.alpha(result, 'Validate', true);\n"
+            "result = did2.unittest.helpers.runBatchPass(result, ...\n"
+            "    'did2.convert.beta', 'beta_fold', ...\n"
+            "    @(r) did2.convert.beta(r, 'Validate', true));\n")
+        ch = self.chain()
+        self.assertTrue(ch["derived"])
+        self.assertEqual(ch["chain"], ["alpha", "beta"])
+        # Only the guarded one attaches a report field, and that asymmetry is
+        # the fact the whole census turns on.
+        self.assertEqual(ch["fields"], {"beta": "beta_fold"})
+
+    def test_a_function_whose_first_argument_is_not_result_is_not_a_pass(self):
+        # v1_to_v2(v1Bodies, ...) is the real member of this class: called by
+        # every call site, not a batch post-pass. Excluded by SIGNATURE, so no
+        # hand-written exclusion list can go stale.
+        self.pass_file("perDocument", outputs="result", first="v1Bodies")
+        self.pass_file("alpha")
+        self.call_site("result = did2.convert.perDocument(bodies);\n"
+                       "result = did2.convert.alpha(result);\n")
+        ch = self.chain()
+        self.assertEqual(ch["chain"], ["alpha"])
+        self.assertEqual(ch["called_not_a_pass"], ["perDocument"])
+
+    def test_a_pass_named_only_in_a_comment_is_not_in_the_chain(self):
+        # ndi.migrate.local NAMES did2.convert.resolveDeferredBaths in five
+        # comments and calls it nowhere; a scan that accepted prose would
+        # report a chain assembled from documentation.
+        self.pass_file("alpha")
+        self.pass_file("ghost")
+        self.call_site("% see also did2.convert.ghost(result) for the precise\n"
+                       "%{\n"
+                       "result = did2.convert.ghost(result);\n"
+                       "%}\n"
+                       "result = did2.convert.alpha(result);  % did2.convert.ghost(\n")
+        ch = self.chain()
+        self.assertEqual(ch["chain"], ["alpha"])
+        self.assertEqual(ch["unwired"], ["ghost"])
+
+    def test_a_quoted_pass_name_is_not_a_call(self):
+        # The harness carries every pass name as a quoted string, twice over
+        # (runBatchPass's argument and its own stdout table). A scan that
+        # counted those would report a chain built from a table.
+        self.pass_file("alpha")
+        self.pass_file("tabled")
+        self.call_site("expected = { 'tabled_fold', 'did2.convert.tabled' };\n"
+                       "result = did2.convert.alpha(result);\n")
+        self.assertEqual(self.chain()["chain"], ["alpha"])
+
+    def test_a_pass_the_call_sites_never_compose_is_reported_unwired(self):
+        # resolveSessionAnchors sat built, tested and uncalled for a day.
+        self.pass_file("alpha")
+        self.pass_file("neverCalled")
+        self.call_site("result = did2.convert.alpha(result);\n")
+        self.assertEqual(self.chain()["unwired"], ["neverCalled"])
+
+    def test_call_sites_that_disagree_are_a_finding(self):
+        self.pass_file("alpha")
+        self.pass_file("beta")
+        sites = census_digest.REPORT_WRITING_CALL_SITES
+        with open(os.path.join(self.root, sites[0][1]), "w") as fh:
+            fh.write("result = did2.convert.alpha(result);\n"
+                     "result = did2.convert.beta(result);\n")
+        with open(os.path.join(self.root, sites[1][1]), "w") as fh:
+            fh.write("result = did2.convert.alpha(result);\n")
+        ch = self.chain()
+        self.assertEqual([fn for fn, _who in ch["site_disagreement"]], ["beta"])
+
+    def test_an_unreadable_source_is_not_derived_and_says_so(self):
+        # Nothing may fall back quietly to the render table: "could not ask"
+        # and "asked, everything agreed" must not print the same.
+        ch = census_digest.harness_pass_chain(
+            os.path.join(self.root, "nowhere"), _cache=False)
+        self.assertFalse(ch["derived"])
+        out = []
+        census_digest.render_pass_census(out, ch)
+        text = "\n".join(out)
+        self.assertIn("NOT DERIVED", text)
+        self.assertIn("FLOOR", text)
+        self.assertIn("NOT FOUND", text)
+
+
+class TestPassCensusRendering(DigestCase):
+    """What the digest PRINTS about passes it cannot measure."""
+
+    def _chain(self, chain, fields, derived=True, unmeasured=()):
+        sites = [{"label": lbl, "path": "/x/" + lbl, "exists": True,
+                  "lines": 10, "chain": chain}
+                 for lbl, _rel in census_digest.REPORT_WRITING_CALL_SITES]
+        return {"derived": derived, "chain": chain, "fields": fields,
+                "sites": sites,
+                "package": {"path": "/x", "files": len(chain), "exists": True,
+                            "passes": sorted(chain)},
+                "site_disagreement": [], "called_not_a_pass": [],
+                "unwired": list(unmeasured)}
+
+    def test_a_pass_that_attaches_no_report_is_named_unmeasured(self):
+        # THE DEFECT. Such a pass produced NO LINE AT ALL: "ran and reported
+        # nothing" and "does not exist" were the same output.
+        out = []
+        census_digest.render_post_passes(
+            {"epoch_mint": {"ran": True, "documents_inspected": 5}}, out,
+            self._chain(["resolveDeferredBaths", "epochMint"],
+                        {"epochMint": "epoch_mint"}))
+        text = "\n".join(out)
+        self.assertIn("resolveDeferredBaths", text)
+        self.assertIn("RAN, MEASURED BY NOTHING", text)
+        self.assertIn("1 carry a report here", text)
+        self.assertIn("1 UNMEASURED BY CONSTRUCTION", text)
+
+    def test_unmeasured_does_not_read_like_not_wired(self):
+        # The two are opposite readings: one pass ran and left no trace, the
+        # other never ran. They must not share wording.
+        out = []
+        census_digest.render_post_passes(
+            {}, out, self._chain(["resolveDeferredBaths", "epochMint"],
+                                 {"epochMint": "epoch_mint"}))
+        text = "\n".join(out)
+        unmeasured = [ln for ln in out if "resolveDeferredBaths" in ln]
+        self.assertTrue(unmeasured)
+        for line in unmeasured:
+            self.assertNotIn("NOT IN THIS REPORT", line)
+        self.assertIn("NOT IN THIS REPORT", text)   # epoch_mint's line
+
+    def test_the_unmeasured_count_leads_the_block(self):
+        out = []
+        census_digest.render_post_passes(
+            {}, out, self._chain(["resolveDeferredBaths", "epochMint"],
+                                 {"epochMint": "epoch_mint"}))
+        head = out[0]
+        self.assertIn("expected", head)
+        self.assertIn("UNMEASURED BY CONSTRUCTION", head)
+        # ... and before any per-pass line.
+        first_detail = min(i for i, ln in enumerate(out)
+                           if "resolveDeferredBaths" in ln
+                           or "epoch_mint" in ln)
+        self.assertLess(0, first_detail)
+
+    def test_a_render_table_entry_no_call_site_composes_is_flagged(self):
+        # Stale in the reassuring direction: rendering counters for a pass
+        # nothing runs reads as coverage.
+        out = []
+        census_digest.render_post_passes(
+            {}, out, self._chain(["epochMint"], {"epochMint": "epoch_mint"}))
+        text = "\n".join(out)
+        self.assertIn("COMPOSED BY NO", text)
+        self.assertIn("session_anchor_fold", text)
+
+    def test_a_carried_report_with_no_render_rows_is_named(self):
+        out = []
+        census_digest.render_post_passes(
+            {"newthing": {"ran": True, "widgets": 3}}, out,
+            self._chain(["brandNew"], {"brandNew": "newthing"}))
+        text = "\n".join(out)
+        self.assertIn("NO ROWS", text)
+        self.assertIn("brandNew", text)
+
+
+class TestPassCensusInTheDenominator(DigestCase):
+    def test_the_census_precedes_every_report_and_every_pass_detail(self):
+        self.write("A", {"corpus": "A", "migrated_count": 1,
+                         "quarantine_count": 0})
+        lines, _failed = digest(self.dir)
+        head = [i for i, ln in enumerate(lines)
+                if "BATCH POST-PASS CENSUS" in ln]
+        self.assertTrue(head, "the census must be part of the leading denominator")
+        first_corpus = min(i for i, ln in enumerate(lines) if "--- A ---" in ln)
+        self.assertLess(head[0], first_corpus)
+        census = "\n".join(lines[head[0]:first_corpus])
+        self.assertIn("EXPECTED", census)
+        self.assertIn("UNMEASURED", census)
+        self.assertIn("DENOMINATOR", census)
+
+    def test_the_census_prints_when_there_are_no_reports_at_all(self):
+        # A pass that measures nothing is a fact about the PIPELINE. It must
+        # not become invisible because the input was empty -- that is run #3's
+        # "NO CORPUS REPORTS FOUND", exit 0, one level up.
+        lines, failed = digest(os.path.join(self.dir, "empty"))
+        text = "\n".join(lines)
+        self.assertIn("BATCH POST-PASS CENSUS", text)
+        self.assertIn("NO CORPUS REPORTS FOUND", text)
+        self.assertNotEqual(failed, [])
+
+
+class TestThisRepositoryAgrees(unittest.TestCase):
+    """Run the derivation against THIS checkout. Not a fixture -- the tree.
+
+    A synthetic tree proves the parser; only the real one proves the parser
+    reads the real harness. These are the assertions that would have caught
+    the 2-vs-9 gap on the day it opened.
+    """
+
+    def setUp(self):
+        self.root = census_digest.REPO_ROOT
+        self.chain = census_digest.harness_pass_chain(self.root, _cache=False)
+        if not self.chain["derived"]:
+            self.skipTest("harness sources not present in this checkout")
+
+    def test_every_pass_the_harness_composes_is_expected_by_the_digest(self):
+        expected = {e["fn"] for e in
+                    census_digest.post_pass_expectations(self.chain)}
+        missing = sorted(set(self.chain["chain"]) - expected)
+        self.assertEqual(missing, [], "passes the harness runs and the digest "
+                                      "does not expect: %s" % missing)
+
+    def test_the_expected_set_is_at_least_the_render_table(self):
+        self.assertGreaterEqual(
+            len(census_digest.post_pass_expectations(self.chain)),
+            len(census_digest.POST_PASSES))
+
+    def test_the_two_report_writing_call_sites_compose_the_same_chain(self):
+        # They write into the SAME digest. A chain that differs between them
+        # makes two reports incomparable, and nothing else compares them.
+        #
+        # THE DENOMINATOR FIRST, AND IT IS NOT DECORATION: with one site read,
+        # "no disagreement" is true by construction. A shrunken site list would
+        # otherwise turn this test green by removing its subject.
+        read = [s for s in self.chain["sites"] if s["exists"]]
+        self.assertGreaterEqual(len(read), 2,
+                                "fewer than two report-writing call sites were "
+                                "read: %s" % [s["path"] for s in
+                                              self.chain["sites"]])
+        for site in read:
+            self.assertTrue(site["chain"], "%s composed nothing" % site["path"])
+        self.assertEqual(self.chain["site_disagreement"], [])
+
+    def test_no_batch_post_pass_in_the_package_is_composed_by_neither_site(self):
+        self.assertEqual(self.chain["unwired"], [])
+
+    def test_the_harness_stdout_table_names_exactly_the_reporting_passes(self):
+        """`printBatchPasses`'s `expected` cell array is a SECOND hand list.
+
+        It lives in MATLAB and cannot be exercised without MATLAB, so it is
+        gated from here instead: it may name exactly the passes that go through
+        `runBatchPass` (the only ones that attach a report field it could
+        print), no more and no fewer. A pass added to the chain with a report
+        field and forgotten in that table would print nothing in the corpus
+        log, which is the same invisibility one layer down.
+        """
+        path = os.path.join(self.root,
+                            census_digest.REPORT_WRITING_CALL_SITES[0][1])
+        body = census_digest.strip_matlab_comments(open(path).read())
+        import re
+        tabled = set(re.findall(
+            r"'(\w+)',\s*\.{0,3}\s*'did2\.convert\.\w+'", body))
+        self.assertTrue(tabled, "no printBatchPasses table found -- if it was "
+                                "removed, delete this test with it")
+        self.assertEqual(tabled, set(self.chain["fields"].values()))
+
+    def test_the_two_independent_derivations_agree(self):
+        """`tools/test_batch_pass_wiring.py` derives the same set, differently.
+
+        It reads the report key from the PASS's own `result.<key> = report;`
+        line; the digest reads it from the `runBatchPass` argument in the
+        harness. Two routes to one fact, and nothing compared them -- which is
+        how the render table came to say 7 while the wiring gate said 9 and
+        both looked healthy from where they stood.
+
+        A DISAGREEMENT HERE IS NOT COSMETIC: it means a pass attaches a report
+        the harness does not name, or the harness names a key the pass does not
+        attach. Either way one of the two is describing a pipeline that is not
+        running.
+        """
+        try:
+            import test_batch_pass_wiring as wiring
+        except ImportError:                                   # pragma: no cover
+            self.skipTest("tools/test_batch_pass_wiring.py not importable")
+        passes, exempt, _n = wiring.discover()
+        theirs = {name for name, _key in passes} | {n for n, _r in exempt}
+        self.assertEqual(theirs, set(self.chain["chain"]))
+        keys = {name: key for name, key in passes if key}
+        self.assertEqual(keys, self.chain["fields"])
+        # And the passes THEY record as report-less are exactly the ones this
+        # digest prints as unmeasured.
+        self.assertEqual(
+            set(wiring.NO_REPORT_YET),
+            set(self.chain["chain"]) - set(self.chain["fields"]))
+
+    def test_the_passes_with_no_report_field_are_the_ones_reported_unmeasured(self):
+        unmeasured = {e["fn"] for e in
+                      census_digest.post_pass_expectations(self.chain)
+                      if e["state"] == "unmeasured"}
+        self.assertEqual(
+            unmeasured,
+            set(self.chain["chain"]) - set(self.chain["fields"]))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

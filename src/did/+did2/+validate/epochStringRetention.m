@@ -5,6 +5,28 @@ function report = epochStringRetention(v1Bodies, migratedBodies)
 %   Nothing below has been run; the quick gate (test-migrators-quick.yml) is the
 %   first thing that will have an opinion about it.
 %
+%   STATUS 2026-08-11 -- WIRED, STILL UNEXECUTED, AND THE TWO ARE DIFFERENT
+%   THINGS. Until this date the function was called from TESTS ONLY: 8
+%   executable call sites, 7 in testEpochStrings.m and 1 in
+%   testStimulusResponseEpochGuard.m, 0 in src/ and 0 in tools/ (the 4 src/
+%   mentions were all comments). A validator nobody runs on real data is a
+%   validator whose value nobody knows, so it is now called from BOTH corpus
+%   report producers -- tests/+did2/+unittest/+helpers/runCorpusDiscovery.m and
+%   tests/+did2/+unittest/testCorpusPRED.m -- AFTER every batch post-pass, and
+%   persisted by writeCorpusReport as `epoch_string_retention`. That siting is
+%   load-bearing and is argued at the call site: called in pass 1, beside
+%   did2.validate.silentLoss (v1_to_v2.m:382), `retained_as_epoch_document`
+%   would be 0 by construction because epochMint has not run yet -- the same
+%   tautology recorded in 203c1f7 / V_eta_OPEN_WORK.md #86a.
+%
+%   IT IS REPORT-ONLY AND STAYS REPORT-ONLY. Nothing has measured the drop yet;
+%   arming a gate on a number that does not exist is the mistake
+%   did2.schema.cache.strictMode('BindingConformance') is deliberately not
+%   making. The wiring is gated statically by
+%   tools/test_batch_pass_wiring.py (CALLED / SITED / PERSISTED / PRINTED),
+%   which runs without MATLAB and is green. The function body itself is still
+%   unexecuted.
+%
 %   REPORT = did2.validate.epochStringRetention(V1BODIES, MIGRATEDBODIES)
 %   compares the (session, epoch-string) pairs present in the did_v1 SOURCE
 %   against the pairs still reachable after migration -- either because a
@@ -84,6 +106,25 @@ function report = epochStringRetention(v1Bodies, migratedBodies)
 %     v1_pairs                     distinct (session, string) -- THE DENOMINATOR
 %                                  every retention number below is out of
 %     v1_by_source                 {source, documents, distinct_strings}
+%     v1_classes_inspected         distinct did_v1 class names among the
+%                                  READABLE v1 documents -- the CLASS
+%                                  denominator, and it counts classes that
+%                                  carry no epoch string at all
+%     v1_classes_with_string       how many of those carried one
+%     v1_by_class                  {class_name, documents_with_string,
+%                                  distinct_pairs, pairs_dropped} -- one row per
+%                                  class that carried a string, so a class can
+%                                  report "0 dropped of 0 carried" instead of a
+%                                  bare 0. THOSE READ IDENTICALLY AND ONLY ONE
+%                                  IS GOOD NEWS: `vmspikefit` and `pyraview`
+%                                  drop the string by construction (both build
+%                                  new bodies and never copy the block), so a
+%                                  0 beside 0 carried means the corpus holds
+%                                  none of them, NOT that the drop is fixed.
+%                                  `pairs_dropped` here counts a dropped pair
+%                                  against EVERY class that carried it, the
+%                                  same rule as `dropped_by_v1_class`, so the
+%                                  column does not sum to `pairs_dropped`.
 %     v1_declined                  hits at a source this reader will not read
 %     v1_declined_distinct
 %     retained_as_string           pairs still spelled out somewhere
@@ -119,6 +160,10 @@ report = struct( ...
     'v1_pairs',                      0, ...
     'v1_by_source', struct('source', {}, 'documents', {}, ...
                            'distinct_strings', {}), ...
+    'v1_classes_inspected',          0, ...
+    'v1_classes_with_string',        0, ...
+    'v1_by_class', struct('class_name', {}, 'documents_with_string', {}, ...
+                          'distinct_pairs', {}, 'pairs_dropped', {}), ...
     'v1_declined',                   0, ...
     'v1_declined_distinct',          0, ...
     'retained_as_string',            0, ...
@@ -145,8 +190,29 @@ srcOrder   = {};
 declined   = {};
 srcValues  = cell(1, numel(srcBodies));
 srcSources = cell(1, numel(srcBodies));
+% THE CLASS DENOMINATOR. `classOrder` is every class seen on the readable v1
+% side, string or no string, so "this corpus holds no vmspikefit" and "vmspikefit
+% is here and dropped nothing" are different readings rather than the same 0.
+% `classRows` is keyed on the class name itself, NOT on
+% matlab.lang.makeValidName -- the mangling is fine for a struct FIELD
+% (dropped_by_v1_class) and wrong for a table a human reads.
+classOrder = {};
+classRows  = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:numel(srcBodies)
     b = srcBodies{k};
+    cn = classNameOf(b);
+    if isempty(cn); cn = '(no document_class)'; end
+    if ~isKey(classRows, cn)
+        % `pairs` is a MAP, not a cell scanned with strcmp. JH is 332,916
+        % documents and a linear membership scan per hit is quadratic in the
+        % pair count -- an instrument that makes the corpus run measurably
+        % longer is an instrument someone eventually removes. containers.Map is
+        % a handle, so mutating it below and writing the struct back is one
+        % object either way.
+        classRows(cn) = struct('documents_with_string', 0, ...
+            'pairs', containers.Map('KeyType', 'char', 'ValueType', 'logical'));
+        classOrder{end+1} = cn; %#ok<AGROW>
+    end
     [hits, dec] = did2.validate.epochStrings(b);
     srcValues{k}  = {hits.value};
     srcSources{k} = {hits.source};
@@ -157,9 +223,11 @@ for k = 1:numel(srcBodies)
     report.v1_documents_with_string = report.v1_documents_with_string + 1;
     report.v1_strings_read = report.v1_strings_read + numel(hits);
     sid = baseField(b, 'session_id');
-    cn  = classNameOf(b);
+    crow = classRows(cn);
+    crow.documents_with_string = crow.documents_with_string + 1;
     for j = 1:numel(hits)
         key = pairKey(sid, hits(j).value);
+        crow.pairs(key) = true;
         if isKey(srcPairs, key)
             row = srcPairs(key);
             if ~any(strcmp(row.classes, cn)); row.classes{end+1} = cn; end
@@ -170,8 +238,10 @@ for k = 1:numel(srcBodies)
             srcOrder{end+1} = key; %#ok<AGROW>
         end
     end
+    classRows(cn) = crow;
 end
-report.v1_pairs    = numel(srcOrder);
+report.v1_pairs             = numel(srcOrder);
+report.v1_classes_inspected = numel(classOrder);
 report.v1_by_source = perSourceCounts(srcValues, srcSources);
 report.v1_declined = numel(declined);
 if ~isempty(declined)
@@ -204,6 +274,7 @@ end
 
 % ---- the subtraction ------------------------------------------------------
 droppedByClass = struct();
+droppedPairs   = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:numel(srcOrder)
     key = srcOrder{k};
     hasString = isKey(stillString, key);
@@ -217,6 +288,7 @@ for k = 1:numel(srcOrder)
         continue;
     end
     report.pairs_dropped = report.pairs_dropped + 1;
+    droppedPairs(key) = true;
     row = srcPairs(key);
     for c = 1:numel(row.classes)
         fn = matlab.lang.makeValidName(row.classes{c});
@@ -234,6 +306,27 @@ for k = 1:numel(srcOrder)
     end
 end
 report.dropped_by_v1_class = droppedByClass;
+
+% ---- the per-class table, built LAST because it needs the subtraction ------
+% Only classes that carried a string get a row: a class with no epoch string has
+% nothing to retain and would pad the table with structural zeros. The count of
+% classes that carried NOTHING is recoverable as
+% v1_classes_inspected - v1_classes_with_string, which is why both are reported.
+for k = 1:numel(classOrder)
+    crow = classRows(classOrder{k});
+    if crow.documents_with_string == 0; continue; end
+    classPairKeys = keys(crow.pairs);
+    nDropped = 0;
+    for j = 1:numel(classPairKeys)
+        if isKey(droppedPairs, classPairKeys{j}); nDropped = nDropped + 1; end
+    end
+    report.v1_by_class(end+1) = struct( ...
+        'class_name',            classOrder{k}, ...
+        'documents_with_string', crow.documents_with_string, ...
+        'distinct_pairs',        numel(classPairKeys), ...
+        'pairs_dropped',         nDropped); %#ok<AGROW>
+end
+report.v1_classes_with_string = numel(report.v1_by_class);
 end
 
 % ===================== helpers =========================================

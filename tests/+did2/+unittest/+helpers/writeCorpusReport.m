@@ -113,6 +113,44 @@ end
 if isfield(result, 'source_census')
     report.source_census = result.source_census;
 end
+% EPOCH-STRING RETENTION: did a did_v1 epoch-id string survive the migration,
+% either still spelled out on a migrated document or as a minted `epoch` entity?
+% Persisted because until this run the instrument had never executed on real
+% data at all -- called from tests only, 0 call sites in src/ and 0 in tools/ --
+% so this is the FIRST measurement of a loss the plan documents have been
+% reasoning about without a number.
+%
+% READING INSTRUCTIONS, and they are not generic:
+%
+% (1) THE DENOMINATOR IS `v1_pairs`, and `v1_classes_inspected` beside
+%     `v1_classes_with_string` is the class-level one. `pairs_dropped: 0` with
+%     `v1_pairs: 0` means NO v1 DOCUMENT IN THIS CORPUS CARRIED AN EPOCH STRING
+%     -- vacuous, not clean. Those two readings print identically without the
+%     denominator, which is the whole reason this block exists as a block.
+% (2) `v1_by_class` IS WHERE "0 of 0" LIVES. `vmspikefit` and `pyraview` drop
+%     the string by construction (both migrators build new bodies and never copy
+%     the `epochid` block), so their ABSENCE from this table is "no such
+%     document in this corpus", NOT "the drop is fixed". The discovery log
+%     prints a line for both either way; the artifact keeps the table so the
+%     same distinction survives past the log.
+% (3) `retained_as_epoch_document` IS ONLY MEANINGFUL BECAUSE OF WHERE THE
+%     INSTRUMENT IS CALLED. It runs AFTER every batch post-pass, so `epochMint`
+%     has already minted. Sited beside `silentLoss` (v1_to_v2.m:382, pass 1) it
+%     would be structurally 0 -- the same tautology recorded in 203c1f7 and
+%     V_eta_OPEN_WORK.md #86a. A pass-1 number and this number answer different
+%     questions and must never be quoted as one.
+% (4) `v1_declined` IS EXCLUDED FROM THE DENOMINATOR ON PURPOSE
+%     (`syncrule_mapping`'s endpoint strings). It is carried so the gap is a
+%     number rather than a silence.
+%
+% NOT YET RENDERED BY tools/census_digest.py -- the same state
+% `time_reference_families` above is in, and named here for the same reason.
+% The digest is owned elsewhere and is deliberately not edited from here; until
+% it reads this key the block is in the artifact JSON and not in the
+% end-of-log census. That is a DEBT with a direction, not a design.
+if isfield(result, 'epoch_string_retention')
+    report.epoch_string_retention = result.epoch_string_retention;
+end
 % The EPOCH MINT (#60): how many `epoch` entities were minted, and -- more
 % useful -- every refusal, counted. `pairs_minus_strings` is the number of
 % epochs that keying on the id STRING instead of the (session, id) PAIR would

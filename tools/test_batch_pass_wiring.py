@@ -750,6 +750,188 @@ def test_the_time_reference_family_instrument_is_wired_end_to_end():
         "alone cannot tell them apart."
     )
 
+# ---------------------------------------------------------------------------
+# `did2.validate.epochStringRetention` -- the SECOND validate instrument gated
+# by name, and gated for the same reason as timeReferenceFamilies above: the
+# sweep cannot see it (it lives in +did2/+validate and takes
+# (v1Bodies, migratedBodies), not `result`), and it arrived in a state the
+# RENDERED leg exists to stop -- worse than write-only, it was CALL-SITE-FREE.
+# Measured at 32166b8, before the wiring below:
+#
+#     8 executable call sites, all in tests
+#       7  tests/+did2/+unittest/testEpochStrings.m
+#       1  tests/+did2/+unittest/testStimulusResponseEpochGuard.m
+#       0  src/          (4 mentions, every one of them a comment)
+#       0  tools/        (0 mentions of any kind)
+#
+# A validator that has never run on real data is a validator whose value nobody
+# knows.
+#
+# THREE LEGS ARE ASSERTED, THE FOURTH IS REPORTED. CALLED / PERSISTED / PRINTED
+# are gated. RENDERED is NOT, and that is deliberate rather than an oversight:
+# tools/census_digest.py is owned by another change in flight and adding rows to
+# it from here would collide. The render status of every field is PRINTED, so
+# the debt is a number in this test's output rather than a silence -- and when
+# the digest block lands, this test does not need editing to notice.
+ESR_SOURCE = os.path.join(REPO, "src", "did", "+did2", "+validate",
+                          "epochStringRetention.m")
+ESR_REPORT_KEY = "epoch_string_retention"
+# BOTH corpus-report producers. runCorpusDiscovery drives five of the six
+# corpora; testCorpusPRED is the sixth and is the corpus that was invisible to
+# the census once already (run #3, 31315510527 -- six jobs, five artifacts).
+# testFixtureCorpus is NOT on this list and that is not an omission: it writes
+# no corpus report, so there is nothing for the PERSISTED leg to reach.
+ESR_CALL_SITES = {
+    "runCorpusDiscovery": CALL_SITES["runCorpusDiscovery"],
+    "testCorpusPRED": CALL_SITES["testCorpusPRED"],
+}
+# Report fields that are not plain counters, with HOW each is rendered by the
+# discovery printout. A field on neither this list nor the counter set fails, so
+# a new field cannot appear silently.
+ESR_STRUCTURAL = {
+    "ran": "printed as its own DID NOT RUN line -- 'did not run' and 'ran and "
+           "found nothing' must not print the same",
+    "v1_by_source": "a table, printed row per row",
+    "v1_by_class": "THE 0-of-0 TABLE, printed row per row",
+    "dropped_by_v1_class": "a struct keyed by mangled class name, so it has no "
+                           "printable row; v1_by_class is the human-readable "
+                           "form of the same fact and the printout LOCKS the "
+                           "two derivations together instead of printing both",
+    "dropped_detail": "a capped example list, printed as `e.g.` lines",
+}
+
+
+def test_the_epoch_string_retention_instrument_is_wired_end_to_end():
+    """CALLED from both corpus report producers, PERSISTED, PRINTED.
+
+    DENOMINATOR FIRST: how many fields the report declares, how many are
+    printed as counters, how many structurally, how many unaccounted for. A
+    scan that failed to parse the initializer would otherwise report perfect
+    coverage, which is this repository's most-repeated failure.
+    """
+    assert os.path.isfile(ESR_SOURCE), (
+        "%s does not exist -- this is 'did not look', not 'found nothing'"
+        % ESR_SOURCE
+    )
+    text = _read(ESR_SOURCE)
+    fields = struct_field_names(text, assign="report = struct(")
+    assert fields, (
+        "no `report = struct(` initializer found in %s -- the scan is broken "
+        "and every assertion below would be vacuously true" % ESR_SOURCE
+    )
+    print("\n--- epoch-string retention wiring: %d report field(s) ---"
+          % len(fields))
+
+    # CALLED -- from every producer of a corpus report.
+    for label, path in sorted(ESR_CALL_SITES.items()):
+        src = _read(path)
+        assert "did2.validate.epochStringRetention(" in src, (
+            "epochStringRetention is not called from %s. An instrument nobody "
+            "runs measures nothing -- which is the state it shipped in." % path
+        )
+        assert "result.%s" % ESR_REPORT_KEY in src, (
+            "%s does not attach the report as `result.%s`; the persist and "
+            "print legs both key on that name" % (label, ESR_REPORT_KEY)
+        )
+        print("  CALLED     %s -> result.%s" % (label, ESR_REPORT_KEY))
+
+    # CALLED, AND SITED. The placement is the measurement: after every batch
+    # post-pass, so `retained_as_epoch_document` is a real number rather than
+    # the structural 0 a pass-1 siting would produce (the silentLoss tautology,
+    # v1_to_v2.m:382). Checked by ORDER in the file, because a comment saying
+    # so is not the same as the call being there.
+    disc = _read(ESR_CALL_SITES["runCorpusDiscovery"])
+    mint_at = disc.find("did2.convert.epochMint")
+    call_at = disc.find("did2.validate.epochStringRetention(")
+    write_at = disc.find("did2.unittest.helpers.writeCorpusReport(")
+    assert -1 < mint_at < call_at < write_at, (
+        "epochStringRetention must be called AFTER did2.convert.epochMint and "
+        "BEFORE writeCorpusReport. Called before the mint, "
+        "`retained_as_epoch_document` is 0 by construction and the instrument "
+        "reproduces the silentLoss tautology it was written to avoid; called "
+        "after the write, the block never reaches the artifact. "
+        "(epochMint at %d, retention at %d, writeCorpusReport at %d)"
+        % (mint_at, call_at, write_at)
+    )
+    print("  SITED      after epochMint, before writeCorpusReport")
+
+    # PERSISTED.
+    writer = _read(REPORT_WRITER)
+    assert "report.%s" % ESR_REPORT_KEY in writer, (
+        "writeCorpusReport does not copy `%s` into the corpus report, so the "
+        "block never reaches the artifact" % ESR_REPORT_KEY
+    )
+    print("  PERSISTED  writeCorpusReport.m -> report.%s" % ESR_REPORT_KEY)
+
+    # PRINTED -- every declared field, as a counter or structurally.
+    printed, structural, missing = [], [], []
+    for f in fields:
+        named = ("r.%s" % f) in disc or ("'%s'" % f) in disc
+        if f in ESR_STRUCTURAL:
+            if named:
+                structural.append(f)
+            else:
+                missing.append("%s (listed as structural, and "
+                               "runCorpusDiscovery.m does not name it)" % f)
+        elif named:
+            printed.append(f)
+        else:
+            missing.append(f)
+    print("  PRINTED    %d counter(s), %d structural, %d unaccounted"
+          % (len(printed), len(structural), len(missing)))
+    assert not missing, (
+        "field(s) declared by did2.validate.epochStringRetention and printed "
+        "NOWHERE in runCorpusDiscovery.m: %s.\n"
+        "  A counter that reaches the corpus artifact and not the log is "
+        "write-only -- the epochMint defect. Print it, or add it to "
+        "ESR_STRUCTURAL in this file WITH the reason it is not a counter."
+        % ", ".join(missing)
+    )
+
+    # SHRINK-ONLY, same contract as TRF_STRUCTURAL: a structural entry for a
+    # field the instrument no longer declares is a stale claim about our own
+    # instruments.
+    stale = [f for f in ESR_STRUCTURAL if f not in fields]
+    assert not stale, (
+        "%s is/are no longer declared by the instrument and must be removed "
+        "from ESR_STRUCTURAL." % ", ".join(stale)
+    )
+
+    # THE DENOMINATOR FIELDS SPECIFICALLY. A sweep over field NAMES would pass
+    # just as well if the printout emitted the drop count and no denominator,
+    # which is the exact defect Operating Rule 5 exists for.
+    for required in ("v1_documents_inspected", "v1_pairs",
+                     "v1_classes_inspected", "v1_classes_with_string",
+                     "v1_documents_with_string", "v1_by_class"):
+        assert required in fields, (
+            "%s is no longer declared by the instrument; it is a DENOMINATOR "
+            "and every retention figure is unreadable without it" % required
+        )
+    assert "THE DENOMINATOR" in disc, (
+        "runCorpusDiscovery.m no longer labels the retention denominator in "
+        "its output. `pairs_dropped: 0` and `0 of 0 pairs inspected` read "
+        "identically and only one of them is good news."
+    )
+    for want in ("vmspikefit", "pyraview"):
+        assert want in disc, (
+            "runCorpusDiscovery.m no longer names `%s` in the retention "
+            "printout. Both migrators drop the epoch string BY CONSTRUCTION "
+            "(they build new bodies and never copy the block), so a corpus "
+            "that holds none of them must print '0 of 0 INSPECTED' rather "
+            "than a bare 0 -- the generic_file_fold reading error." % want
+        )
+
+    # RENDERED -- REPORTED, NOT ASSERTED. census_digest.py is owned by another
+    # change in flight; this prints the debt so it is a number rather than a
+    # silence, and needs no edit here once the digest block lands.
+    digest_src = _read(os.path.join(HERE, "census_digest.py"))
+    rendered = [f for f in fields
+                if ("'%s'" % f) in digest_src or ('"%s"' % f) in digest_src]
+    print("  RENDERED   %d of %d field(s) named in census_digest.py "
+          "(NOT GATED -- the digest is owned elsewhere; %d field(s) are an "
+          "OPEN DEBT)" % (len(rendered), len(fields), len(fields) - len(rendered)))
+
+
 if __name__ == "__main__":
     import sys
 

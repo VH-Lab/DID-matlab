@@ -228,6 +228,24 @@ try
 catch censusErr
     result.source_census = struct('audit_failed', censusErr.message);
 end
+% Epoch-string retention, for the reason the paragraph above gives: a corpus we
+% gate on but never measure is a denominator missing from every figure we quote,
+% and PRED is the corpus that had to be told twice. Sited AFTER every batch
+% post-pass above, exactly as in runCorpusDiscovery -- `retained_as_epoch_document`
+% only means anything once `epochMint` has run, and a pass-1 reading would be
+% structurally 0 (the silentLoss tautology, v1_to_v2.m:382 / 203c1f7).
+%
+% REPORT-ONLY. PRED is a HARD 0-quarantine gate and this instrument is
+% deliberately not part of it: nothing has measured the drop yet, so there is no
+% number to gate on. PRED is also 31-37 documents, so expect
+% `v1_pairs` to be small or 0 -- and 0 there is "this corpus carried no epoch
+% string", NOT "nothing was dropped".
+try
+    result.epoch_string_retention = did2.validate.epochStringRetention( ...
+        bodies, result.migrated);
+catch retentionErr
+    result.epoch_string_retention = struct('audit_failed', retentionErr.message);
+end
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
 

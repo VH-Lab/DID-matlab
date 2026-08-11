@@ -296,3 +296,70 @@ r = did2.validate.epochStringRetention({'{ not json'}, {});
 tc.verifyEqual(r.v1_documents_inspected, 1);
 tc.verifyEqual(r.v1_documents_unreadable, 1);
 end
+
+% ===================== the per-class denominator =======================
+% Added when the counter was wired into the corpus discovery run. `0 dropped`
+% and `0 of 0 inspected` read identically and only one of them is good news --
+% `generic_file_fold` and `valid_interval_decompose` each processed ZERO source
+% documents in the last corpus run and that was nearly read as a pass. These
+% pin the fields that keep the two apart.
+
+function testTheClassDenominatorCountsClassesThatCarryNoString(tc)
+% `v1_classes_inspected` counts EVERY class on the readable v1 side, string or
+% no string. Without it, "this corpus holds no vmspikefit" and "vmspikefit is
+% here and dropped nothing" are the same silence.
+withString = baseOnly('element_epoch', 'doc1', 'sess1');
+withString.epochid = struct('epochid', 't00003');
+without = baseOnly('subject', 'doc2', 'sess1');
+r = did2.validate.epochStringRetention({withString, without}, {withString});
+tc.verifyEqual(r.v1_classes_inspected, 2);
+tc.verifyEqual(r.v1_classes_with_string, 1);
+tc.verifyEqual(numel(r.v1_by_class), 1);
+tc.verifyEqual(r.v1_by_class(1).class_name, 'element_epoch');
+tc.verifyEqual(r.v1_by_class(1).documents_with_string, 1);
+tc.verifyEqual(r.v1_by_class(1).distinct_pairs, 1);
+tc.verifyEqual(r.v1_by_class(1).pairs_dropped, 0);
+end
+
+function testAClassThatDropsItsStringGetsARowWithBothNumbers(tc)
+% The vmspikefit / pyraview shape: the migrator builds new bodies and the source
+% does not appear in the output. The row must carry the DENOMINATOR beside the
+% drop, so `1 of 1` is distinguishable from `0 of 0`.
+v1 = baseOnly('vmspikefit', 'doc1', 'sess1');
+v1.epochid = struct('epochid', 't00007');
+folded = baseOnly('score_observation', 'doc9', 'sess1');
+r = did2.validate.epochStringRetention({v1}, {folded});
+tc.verifyEqual(numel(r.v1_by_class), 1);
+tc.verifyEqual(r.v1_by_class(1).class_name, 'vmspikefit');
+tc.verifyEqual(r.v1_by_class(1).distinct_pairs, 1);
+tc.verifyEqual(r.v1_by_class(1).pairs_dropped, 1);
+% and the two per-class derivations must agree -- the discovery printout locks
+% them together, so a drift here is a real finding rather than a formatting
+% difference.
+tc.verifyEqual(numel(fieldnames(r.dropped_by_v1_class)), 1);
+end
+
+function testAnEmptyBatchReportsZeroClassesRatherThanNoField(tc)
+% Rule 5: every field defined before a document is read. A missing field and a
+% measured zero must not be the same reading.
+r = did2.validate.epochStringRetention({}, {});
+tc.verifyEqual(r.v1_classes_inspected, 0);
+tc.verifyEqual(r.v1_classes_with_string, 0);
+tc.verifyEmpty(r.v1_by_class);
+end
+
+function testOnePairCarriedByTwoClassesIsCountedAgainstBoth(tc)
+% The column does not sum to `pairs_dropped`, and that is stated in the report
+% rather than left for a reader to add up and mistrust. Pinned so the two rules
+% cannot drift apart.
+a = baseOnly('vmspikefit', 'docA', 'sess1');
+a.epochid = struct('epochid', 't00070');
+b = baseOnly('pyraview', 'docB', 'sess1');
+b.epochid = struct('epochid', 't00070');
+r = did2.validate.epochStringRetention({a, b}, {});
+tc.verifyEqual(r.v1_pairs, 1);
+tc.verifyEqual(r.pairs_dropped, 1);
+tc.verifyEqual(numel(r.v1_by_class), 2);
+tc.verifyEqual(r.v1_by_class(1).pairs_dropped, 1);
+tc.verifyEqual(r.v1_by_class(2).pairs_dropped, 1);
+end

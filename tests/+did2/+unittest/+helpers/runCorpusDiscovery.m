@@ -20,6 +20,17 @@ function corpusDir = runCorpusDiscovery(testCase, corpusName, corpusURL, innerDi
 %   migrated_count / quarantine_count split; the report is the
 %   deliverable.
 %
+%   STATUS of the 2026-08-11 epoch-string retention edit: THE SAME, and said
+%   again rather than assumed. WRITTEN WITHOUT MATLAB and NOT EXECUTED --
+%   `command -v matlab octave octave-cli` exits 1 in the container it was
+%   written in. What IS proven is the static wiring
+%   (tools/test_batch_pass_wiring.py::test_the_epoch_string_retention_instrument_is_wired_end_to_end,
+%   run green here) and the counter's own unit tests in testEpochStrings.m,
+%   which the quick gate runs. What is UNPROVEN is this file's
+%   `printEpochStringRetention` body: NO gate available here executes
+%   runCorpusDiscovery, so its first run is a real corpus run. That is why the
+%   call to it is guarded below.
+%
 %   STATUS of the 2026-08-10 batch-post-pass wiring edit: WRITTEN WITHOUT
 %   MATLAB. The container this was edited in has no MATLAB, so the new
 %   `runBatchPass` guard, the `resolveSessionAnchors` call and `printBatchPasses`
@@ -319,6 +330,74 @@ catch censusErr
     result.source_census = struct('audit_failed', censusErr.message);
 end
 
+% THE EPOCH-STRING RETENTION MEASUREMENT. did2.validate.epochStringRetention was
+% written 2026-08-10 and, until this line, was called from TESTS ONLY -- 8
+% executable call sites, 7 in testEpochStrings.m and 1 in
+% testStimulusResponseEpochGuard.m, 0 in src/ and 0 in tools/. A validator that
+% has never run on real data is a validator whose value nobody knows. This is
+% the first time it sees a corpus.
+%
+% REPORT-ONLY, AND DELIBERATELY SO. It raises nothing, gates nothing, and is not
+% in the fatal post-pass list below. Nothing has measured how big the drop is,
+% so arming anything on it would be the mistake
+% did2.schema.cache.strictMode('BindingConformance') is deliberately not making:
+% you do not gate on a number before you have the number.
+%
+% ---------------------------------------------------------------------------
+% WHERE IT RUNS, AND WHY HERE RATHER THAN BESIDE silentLoss
+% ---------------------------------------------------------------------------
+% did2.validate.silentLoss is called EXACTLY ONCE, at v1_to_v2.m:382, INSIDE
+% PASS 1 -- before any batch post-pass in this file exists to have run. That is
+% why its `0 epoch document(s) in this batch` has been a tautology (DID-matlab
+% 203c1f7, V_eta_OPEN_WORK.md #86a): epochMint appends the `epoch` documents
+% AFTER silentLoss has already counted, so silentLoss cannot see one by
+% construction and its zero says nothing about the corpus.
+%
+% This call is placed AFTER every batch post-pass, and that choice is what the
+% number means:
+%
+%   * A PASS-1 NUMBER would answer "which migrators drop the string", and it
+%     would count every pair epochMint turned into an `epoch` document as a
+%     DROP -- because at that point no `epoch` document has been minted. The
+%     instrument's own `retained_as_epoch_document` would be structurally 0,
+%     which is the silentLoss tautology reproduced in a second instrument.
+%   * A POST-PASS NUMBER, this one, answers "did the epoch string survive the
+%     migration AS SHIPPED" -- retained because a document still spells it out,
+%     OR retained because it became an `epoch` entity. That is the question the
+%     drop matters for.
+%
+% THE TWO ARE NOT THE SAME NUMBER AND MUST NOT BE QUOTED AS ONE. What this
+% placement CANNOT do is attribute a surviving drop to pass 1 versus a post-pass:
+% `dropped_by_v1_class` names the v1 class that carried the string, not the
+% stage that lost it. Separating those needs a SECOND call sited at pass-1
+% output, which is deliberately not added here -- one number, sited once, with
+% its meaning written down, rather than two numbers nobody can tell apart.
+%
+% WHAT IT CANNOT SEE, so the zeros are readable:
+%   * a pair is RETAINED if ANY migrated document carries it. A class that drops
+%     its own string shows up only when it was the SOLE carrier of that pair in
+%     the whole corpus.
+%   * a QUARANTINED source is not in result.migrated, so its pairs count as
+%     dropped unless another document carries them. That is the honest reading
+%     (a quarantined document migrated nothing) but it is a different cause from
+%     a migrator that ate the field.
+%   * `syncrule_mapping`'s endpoint strings are DECLINED by
+%     did2.validate.epochStrings and are excluded from the denominator; they are
+%     reported on their own line rather than folded in.
+%   * a pre-`base` legacy document whose session id has not landed on `base` yet
+%     keys as (empty session, string) on the v1 side and (real session, string)
+%     on the migrated side -- a FALSE drop. `legacy_ndi_document` reports 0 such
+%     documents in all six corpora, so this is a named risk, not a live one.
+%
+% Best-effort like the census above it: the migration summary is the primary
+% deliverable and an instrument failure must not mask it.
+try
+    result.epoch_string_retention = did2.validate.epochStringRetention( ...
+        bodies, result.migrated);
+catch retentionErr
+    result.epoch_string_retention = struct('audit_failed', retentionErr.message);
+end
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 
@@ -410,6 +489,21 @@ fprintf('report:           %s\n', reportPath);
 printUnconvertedCensus(result);
 printFragmentCensus(result);
 printSilentLossCensus(result);
+% GUARDED, and for the same reason did2.unittest.helpers.runBatchPass guards a
+% post-pass: this printout is NEW CODE THAT NO GATE AVAILABLE TO ITS AUTHOR
+% COULD EXECUTE (no MATLAB in the container; test-migrators-quick.yml does not
+% run runCorpusDiscovery), and a throw here would turn a corpus job RED after it
+% had already spent an hour and written a correct report. The guard protects the
+% RUN, not the defect: the failure is PRINTED with its message, so a broken
+% printout is a visible line in the log rather than an absence. The other
+% print helpers around it are unguarded because they have run.
+try
+    printEpochStringRetention(result);
+catch retentionPrintErr
+    fprintf(['epoch-string retention: THE PRINTOUT FAILED (%s). The block IS ' ...
+             'in the corpus report on disk under `epoch_string_retention`; ' ...
+             'only this rendering broke.\n'], retentionPrintErr.message);
+end
 printFileListAudit(result);
 printSourceCensus(result);
 printBatchPasses(result);
@@ -488,6 +582,134 @@ if sl.vacuous_field_count > 0
         f = sl.vacuous_required_field(k);
         fprintf('    %6d  %s / %s.%s\n', f.count, f.class_name, f.block, f.field_name);
     end
+end
+end
+
+
+function printEpochStringRetention(result)
+%PRINTEPOCHSTRINGRETENTION Did a did_v1 epoch-id string survive the migration?
+%
+%   REPORT ONLY. The first real-data reading of did2.validate.epochStringRetention,
+%   which until this run was called from tests only.
+%
+%   DENOMINATORS FIRST AND UNCONDITIONALLY, in the order Rule 5 asks for: how
+%   many documents went in, how many CLASSES were inspected, how many documents
+%   carried an epoch string on the way in, and how many distinct (session,
+%   string) pairs that came to -- BEFORE the retained/dropped split, and before
+%   any per-class figure.
+%
+%   AND EVERY PER-CLASS LINE CARRIES ITS OWN DENOMINATOR. `0 dropped` and
+%   `0 of 0 inspected` read identically and only one of them is good news:
+%   `generic_file_fold` and `valid_interval_decompose` each processed ZERO
+%   source documents in the last run and that was nearly read as a pass. The two
+%   classes whose migrators drop the string by construction -- `vmspikefit` and
+%   `pyraview`, both of which build new bodies and never copy the block -- are
+%   named explicitly and print a line whether or not the corpus holds one, so
+%   "absent from this corpus" is never rendered as "measured and clean".
+if ~isfield(result, 'epoch_string_retention'); return; end
+r = result.epoch_string_retention;
+if isfield(r, 'audit_failed')
+    fprintf('epoch-string retention: FAILED (%s)\n', r.audit_failed);
+    return;
+end
+if ~isfield(r, 'ran') || ~r.ran
+    fprintf(['epoch-string retention: DID NOT RUN (the instrument returned ' ...
+             'before reading anything -- not the same as a clean zero)\n']);
+    return;
+end
+fprintf(['\n--- epoch-string retention (REPORT ONLY): %d v1 document(s) ' ...
+         'inspected (%d unreadable), %d migrated document(s) inspected ' ...
+         '(%d unreadable) ---\n'], ...
+    r.v1_documents_inspected, r.v1_documents_unreadable, ...
+    r.migrated_documents_inspected, r.migrated_documents_unreadable);
+fprintf(['  v1 side: %d class(es) inspected, %d of them carried an epoch ' ...
+         'string; %d document(s) carried one, %d string(s) read, %d ' ...
+         'distinct (session,string) pair(s)  <- THE DENOMINATOR\n'], ...
+    r.v1_classes_inspected, r.v1_classes_with_string, ...
+    r.v1_documents_with_string, r.v1_strings_read, r.v1_pairs);
+for k = 1:numel(r.v1_by_source)
+    s = r.v1_by_source(k);
+    fprintf('      %-38s %6d doc(s)  %6d distinct string(s)\n', ...
+        s.source, s.documents, s.distinct_strings);
+end
+% NOT in the denominator above, and said so rather than left out: a source this
+% reader declines cannot inflate the retention rate, and must not be forgotten.
+fprintf(['      declined (syncrule_mapping endpoints, out of scope by ' ...
+         'design): %d hit(s), %d distinct -- EXCLUDED from the denominator\n'], ...
+    r.v1_declined, r.v1_declined_distinct);
+if r.v1_pairs == 0
+    % Rule 5 in the log rather than left to the reader. Every number below is
+    % 0 out of 0, and 0 of 0 is "did not look", not "nothing was dropped".
+    fprintf(['  0 of 0 pair(s) inspected -- NO v1 DOCUMENT IN THIS CORPUS ' ...
+             'CARRIED AN EPOCH STRING. Every figure below is VACUOUS, not ' ...
+             'clean.\n']);
+end
+fprintf(['  retained: %d of %d pair(s)  (%d still spelled out on a migrated ' ...
+         'document, %d as a minted `epoch` document; %d `epoch` document(s) ' ...
+         'seen in the batch)\n'], ...
+    r.retained_total, r.v1_pairs, r.retained_as_string, ...
+    r.retained_as_epoch_document, r.epoch_documents_seen);
+fprintf('  DROPPED:  %d of %d pair(s)\n', r.pairs_dropped, r.v1_pairs);
+% The per-class table. Its `dropped` column counts a dropped pair against EVERY
+% class that carried it, so it does not sum to `pairs_dropped` above -- stated
+% here rather than left for someone to add up and mistrust.
+fprintf(['  by v1 class (dropped / pairs carried; a pair carried by two ' ...
+         'classes is counted against both):\n']);
+if isempty(r.v1_by_class)
+    fprintf('      (no class carried an epoch string -- see the 0-of-0 line above)\n');
+end
+for k = 1:numel(r.v1_by_class)
+    c = r.v1_by_class(k);
+    fprintf('      %-42s %6d dropped of %6d pair(s) carried, %6d doc(s)\n', ...
+        c.class_name, c.pairs_dropped, c.distinct_pairs, c.documents_with_string);
+end
+% CROSS-CHECK, not decoration. `dropped_by_v1_class` (a struct keyed by mangled
+% class name) and the `pairs_dropped` column above are two derivations of one
+% fact, computed in two loops. They are locked together here for the same reason
+% v1_to_v2 locks the silent-loss census against the quarantine rollup: when two
+% paired implementations disagree about a class, that disagreement IS the
+% signal, and nothing else in the pipeline would ever surface it.
+nNamed = numel(fieldnames(r.dropped_by_v1_class));
+nWithDrops = 0;
+for k = 1:numel(r.v1_by_class)
+    if r.v1_by_class(k).pairs_dropped > 0; nWithDrops = nWithDrops + 1; end
+end
+if nNamed ~= nWithDrops
+    fprintf(['      *** the two per-class derivations DISAGREE: ' ...
+             'dropped_by_v1_class names %d class(es), the table above shows ' ...
+             '%d with a non-zero drop. One of them has drifted.\n'], ...
+        nNamed, nWithDrops);
+else
+    fprintf('      (%d class(es) with a non-zero drop; both derivations agree)\n', ...
+        nNamed);
+end
+% THE TWO CLASSES THE 19-CLASS SURVEY SAYS DROP THE STRING BY CONSTRUCTION.
+% Printed whether or not this corpus holds one, because absence and cleanliness
+% are the reading this whole function exists to keep apart. Verified against the
+% migrators at 32166b8: +migrators_j/vmspikefit.m and +migrators_j/pyraview.m
+% both build NEW bodies (a score_observation / a voltage_observation plus
+% bodies, an anchor, a software or filter document) and never return preBody, so
+% the `epochid` block has no successor in their output.
+for want = {'vmspikefit', 'pyraview'}
+    row = [];
+    for k = 1:numel(r.v1_by_class)
+        if strcmp(r.v1_by_class(k).class_name, want{1})
+            row = r.v1_by_class(k); break;
+        end
+    end
+    if isempty(row)
+        fprintf(['      %-42s 0 of 0 INSPECTED -- this corpus holds no such ' ...
+                 'document carrying an epoch string. NOT a measured zero.\n'], ...
+            want{1});
+    else
+        fprintf(['      %-42s MEASURED: %d dropped of %d pair(s) carried\n'], ...
+            want{1}, row.pairs_dropped, row.distinct_pairs);
+    end
+end
+for k = 1:min(numel(r.dropped_detail), 10)
+    d = r.dropped_detail(k);
+    fprintf('        e.g. session %s / epoch "%s" (carried by: %s)\n', ...
+        d.session_id, d.epoch_string, strjoin(d.v1_classes, ', '));
 end
 end
 

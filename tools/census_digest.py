@@ -31,6 +31,7 @@ it must not also destroy the data it could read.
 
 import json
 import os
+import re
 import sys
 import textwrap
 import traceback
@@ -481,6 +482,385 @@ POST_PASSES = [
         ("documents_appended", "documents appended"),
     ]),
 ]
+
+
+# ===========================================================================
+# WHERE THE EXPECTED PASS SET COMES FROM -- AND WHY IT IS NO LONGER THIS FILE
+# ===========================================================================
+#
+# POST_PASSES above is a RENDER TABLE: it says how to print the counters a pass
+# attaches, and nothing else. It used to double as the EXPECTED SET -- the
+# denominator the post-pass block counts against -- and that made it a second
+# hand-maintained copy of the harness's chain. It drifted, in the direction
+# this project's errors always drift:
+#
+#     $ python3 -c "import sys; sys.path.insert(0,'tools'); \
+#           import census_digest as c; print(len(c.POST_PASSES))"
+#     7
+#     $ grep -c "did2\.convert\.[A-Za-z_]*(" \
+#           tests/+did2/+unittest/+helpers/runCorpusDiscovery.m
+#     ... 9 batch post-passes + v1_to_v2
+#
+# The digest reported "2 expected in a V_eta run" while the harness composed
+# NINE, and every pass the table omitted contributed no counter, no
+# denominator, and not even a line saying it had not been read. That is
+# `testCorpusPRED` again: a thing we run and never measure.
+#
+# So the expected set is DERIVED, from the two places that actually decide it:
+#
+#   1. THE CALL SITES THAT WRITE THE REPORTS THIS DIGEST READS. Those files ARE
+#      the chain -- the digest renders artifacts they produced, so their calls
+#      are the ground truth for "what ran". Both are scanned, not one, because
+#      testCorpusPRED writes a report too and a chain that differs between them
+#      is a finding rather than a detail.
+#   2. THE CONVERT PACKAGE'S SIGNATURES. A batch post-pass is a function whose
+#      FIRST ARGUMENT is the `result` struct v1_to_v2 returns -- the same
+#      discriminator did2.unittest.testBatchPassWiring/batchPasses uses, and
+#      for its stated reason: a hand-kept list is the thing that goes stale the
+#      day a pass is added. It is what separates the nine post-passes from
+#      `v1_to_v2` (first arg `v1Bodies`) without a hand-written exclusion list.
+#
+# NOTHING HERE FALLS BACK QUIETLY. If the sources cannot be read the census
+# says the expected set was NOT DERIVED, names the path it tried, and marks the
+# render table as a FLOOR -- a set that cannot, by construction, show a pass it
+# omits. "Could not ask" and "asked and everything agreed" must not print the
+# same; that is the whole subject of this block.
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The package the passes live in. Scanned by SIGNATURE, never by name list.
+CONVERT_PKG = os.path.join("src", "did", "+did2", "+convert")
+
+# The call sites that WRITE a *-summary.json. testFixtureCorpus composes the
+# same chain but writes no report, so it is deliberately not here: this list is
+# "the sites that produced the artifacts being digested", not "every caller".
+REPORT_WRITING_CALL_SITES = (
+    ("runCorpusDiscovery",
+     os.path.join("tests", "+did2", "+unittest", "+helpers",
+                  "runCorpusDiscovery.m")),
+    ("testCorpusPRED",
+     os.path.join("tests", "+did2", "+unittest", "testCorpusPRED.m")),
+)
+
+_PASS_CALL = re.compile(r"did2\.convert\.([A-Za-z_]\w*)\s*\(")
+# runBatchPass(result, 'did2.convert.<fn>', '<reportField>', @(r) ...) -- the
+# helper that also WRITES the report field, so this pairing is the only place
+# the function name and its report key are stated together. A pass called BARE
+# has no pairing here, and that absence is not an oversight in the scan: it is
+# the fact that the pass attaches no report at all.
+_BATCH_PASS_FIELD = re.compile(
+    r"runBatchPass\s*\(\s*result\s*,\s*(?:\.\.\.\s*)?"
+    r"'did2\.convert\.(\w+)'\s*,\s*'(\w+)'", re.S)
+
+
+def strip_matlab_comments(text):
+    """Drop %-comments and %{ %} blocks.
+
+    DELIBERATELY CRUDE, AND THE DIRECTION OF ERROR IS THE POINT -- the same
+    reasoning DID-schema's check_pipeline_parity.py states for its copy. It
+    does not understand a `%` inside a string literal, so it can OVER-strip.
+    Over-stripping can only hide a call, which makes the expected set SMALLER;
+    a smaller expected set can only under-claim coverage, and under-claiming is
+    visible (a pass renders and is not in the census). It can never invent a
+    pass, and it can never produce the dangerous direction -- a census that
+    says everything expected was seen when something was not.
+    """
+    out, in_block = [], False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("%{"):
+            in_block = True
+            continue
+        if s.startswith("%}"):
+            in_block = False
+            continue
+        if in_block or s.startswith("%"):
+            continue
+        out.append(re.sub(r"%.*$", "", line))
+    return "\n".join(out)
+
+
+def _read_text(path):
+    try:
+        with open(path, errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def batch_pass_signatures(root):
+    """Every batch post-pass in +did2/+convert, found by SIGNATURE.
+
+    Returns (names_set, info). A batch post-pass is
+    `function <out> = <name>(result, ...)`. Plain string parsing rather than
+    one regex, for the reason testBatchPassWiring/batchPassName records: its
+    regex matched four files locally and zero in CI, and strfind has no
+    dialect.
+
+    info carries the denominator -- the directory scanned and how many .m files
+    were read -- because zero files and zero matches are different facts and
+    the loop cannot tell them apart after it has run.
+    """
+    pkg = os.path.join(root, CONVERT_PKG)
+    info = {"path": pkg, "files": 0, "exists": os.path.isdir(pkg)}
+    if not info["exists"]:
+        return set(), info
+    names = set()
+    for name in sorted(os.listdir(pkg)):
+        if not name.endswith(".m"):
+            continue
+        text = _read_text(os.path.join(pkg, name))
+        if text is None:
+            continue
+        info["files"] += 1
+        fn = _batch_pass_name(text.splitlines()[0] if text else "")
+        if fn:
+            names.add(fn)
+    return names, info
+
+
+def _batch_pass_name(sig):
+    """The function name in SIG, when SIG is a batch post-pass signature."""
+    sig = sig.strip()
+    if not sig.startswith("function"):
+        return ""
+    eq, op = sig.find("="), sig.find("(")
+    cl = sig.rfind(")")
+    if eq < 0 or op < 0 or cl < 0 or op < eq:
+        return ""
+    cand = sig[eq + 1:op].strip()
+    if not cand.isidentifier():
+        return ""
+    args = sig[op + 1:cl].split(",")
+    if not args or args[0].strip() != "result":
+        return ""
+    return cand
+
+
+def call_site_chain(path):
+    """The did2.convert.* chain one call site composes, in call order.
+
+    Returns (ordered_names, {fn: report_field}, info). A CALL, not a mention:
+    the identifier must be followed by `(`. That matters here -- the harness
+    also carries the pass names as QUOTED STRINGS (in its own printBatchPasses
+    table and in every runBatchPass argument), and a scan that accepted those
+    would report a chain assembled from a table rather than from code.
+    """
+    info = {"path": path, "exists": os.path.isfile(path), "lines": 0}
+    text = _read_text(path)
+    if text is None:
+        return [], {}, info
+    info["lines"] = len(text.splitlines())
+    body = strip_matlab_comments(text)
+    order = []
+    for m in _PASS_CALL.finditer(body):
+        if m.group(1) not in order:
+            order.append(m.group(1))
+    fields = {fn: field for fn, field in _BATCH_PASS_FIELD.findall(body)}
+    return order, fields, info
+
+
+_CHAIN_CACHE = {}
+
+
+def harness_pass_chain(root=None, _cache=True):
+    """The expected batch-post-pass set, DERIVED. Never a hand-kept list.
+
+    Returns a dict:
+        derived            bool -- False means the sources could not be read
+        chain              [fn, ...] in call order, batch post-passes only
+        fields             {fn: report field} for the passes that attach one
+        sites              [{label, path, exists, lines, chain}, ...]
+        package            the signature-scan info + the names it found
+        site_disagreement  [(fn, [labels that call it])] when the two report-
+                           writing call sites do not compose the same chain
+        called_not_a_pass  did2.convert.* called but not a batch post-pass by
+                           signature (v1_to_v2 is the expected member)
+        unwired            batch post-passes the call sites do not compose
+    """
+    root = root or REPO_ROOT
+    if _cache and root in _CHAIN_CACHE:
+        return _CHAIN_CACHE[root]
+
+    pkg_passes, pkg_info = batch_pass_signatures(root)
+    sites, union, fields = [], [], {}
+    called_by = {}
+    for label, rel in REPORT_WRITING_CALL_SITES:
+        order, site_fields, info = call_site_chain(os.path.join(root, rel))
+        info["label"] = label
+        info["chain"] = order
+        sites.append(info)
+        for fn in order:
+            called_by.setdefault(fn, []).append(label)
+            if fn not in union:
+                union.append(fn)
+        fields.update(site_fields)
+
+    readable = [s for s in sites if s["exists"]]
+    derived = bool(readable) and pkg_info["exists"] and bool(pkg_passes)
+
+    chain = [fn for fn in union if fn in pkg_passes]
+    called_not_a_pass = [fn for fn in union if fn not in pkg_passes]
+    labels = [s["label"] for s in readable]
+    site_disagreement = [
+        (fn, sorted(called_by.get(fn, [])))
+        for fn in chain
+        if len(labels) > 1 and sorted(called_by.get(fn, [])) != sorted(labels)
+    ]
+    out = {
+        "derived": derived,
+        "chain": chain,
+        "fields": {fn: fields[fn] for fn in chain if fn in fields},
+        "sites": sites,
+        "package": dict(pkg_info, passes=sorted(pkg_passes)),
+        "site_disagreement": site_disagreement,
+        "called_not_a_pass": called_not_a_pass,
+        "unwired": sorted(pkg_passes - set(chain)),
+    }
+    if _cache:
+        _CHAIN_CACHE[root] = out
+    return out
+
+
+def post_pass_expectations(chain=None):
+    """Zip the DERIVED chain against the render table. One row per pass.
+
+    Each row is a dict:
+        fn          the did2.convert function name
+        field       the report key it attaches, or None if it attaches none
+        rows        the render table's counter rows, or None
+        state       'renderable'   -- attaches a report and this file can print it
+                    'unrendered'   -- attaches a report, no render rows here
+                    'unmeasured'   -- attaches NO report struct at all
+        in_table    whether POST_PASSES carries an entry for it
+
+    THE `unmeasured` ROW IS THE WHOLE POINT. A pass that runs and attaches no
+    report contributes nothing to any artifact, so the ONLY way it can appear
+    in this digest is for the expected set to name it and for the renderer to
+    print it as unmeasured. Omitting it makes "ran and reported nothing" and
+    "did not run" the same output, which is the `silentLoss` defect exactly.
+
+    When the chain could NOT be derived, the render table is used as a FLOOR
+    and every row is marked so -- see render_pass_census.
+    """
+    chain = chain or harness_pass_chain()
+    by_fn = {}
+    for name, fn, rows in POST_PASSES:
+        by_fn[fn.split(".")[-1]] = (name, rows)
+
+    expectations, seen = [], set()
+    order = chain["chain"] if chain["derived"] else []
+    for fn in order:
+        seen.add(fn)
+        field = chain["fields"].get(fn)
+        entry = by_fn.get(fn)
+        if entry is None:
+            state = "unmeasured" if field is None else "unrendered"
+            expectations.append({"fn": fn, "field": field, "rows": None,
+                                 "state": state, "in_table": False})
+            continue
+        name, rows = entry
+        # The render table's key and the harness's runBatchPass key are two
+        # statements of the same fact. If they disagree the table's key is the
+        # one the report actually carries, so it wins -- but the disagreement
+        # is recorded rather than smoothed over.
+        expectations.append({"fn": fn, "field": name, "rows": rows,
+                             "state": "renderable", "in_table": True,
+                             "field_mismatch": (field is not None
+                                                and field != name)})
+    # Anything the render table names that the derived chain does NOT contain.
+    # STALE IN THE REASSURING DIRECTION: it renders counters for a pass no
+    # report-writing call site composes, which reads as coverage.
+    for name, fn, rows in POST_PASSES:
+        short = fn.split(".")[-1]
+        if short in seen:
+            continue
+        expectations.append({"fn": short, "field": name, "rows": rows,
+                             "state": "renderable" if not chain["derived"]
+                             else "not_in_chain", "in_table": True,
+                             "derived": chain["derived"]})
+    return expectations
+
+
+def render_pass_census(out, chain=None, indent="  "):
+    """The pass census, printed as part of the digest's leading denominator.
+
+    RULE 5: how many passes were expected, where that number came from, how
+    many of them can be measured at all, and how many cannot -- before any
+    per-pass detail anywhere in the report.
+    """
+    chain = chain or harness_pass_chain()
+    p = lambda s="": out.append(indent + s if s else "")
+    exp = post_pass_expectations(chain)
+
+    if not chain["derived"]:
+        p("BATCH POST-PASS CENSUS: EXPECTED SET **NOT DERIVED**")
+        for site in chain["sites"]:
+            p("  call site %-20s %s" % (
+                site.get("label", "?"),
+                site["path"] if site["exists"] else
+                "NOT FOUND: %s" % site["path"]))
+        pkg = chain["package"]
+        p("  convert package  %s (%d .m file(s), %d batch post-pass "
+          "signature(s))" % (pkg["path"] if pkg["exists"]
+                             else "NOT FOUND: %s" % pkg["path"],
+                             pkg["files"], len(pkg["passes"])))
+        p("  FALLING BACK to this file's render table: %d pass(es). That set "
+          "is a FLOOR." % len(POST_PASSES))
+        p("  It cannot show a pass it omits, which is the exact condition the")
+        p("  derivation exists to remove. Treat every 'all present' below as")
+        p("  'all present OF THE ONES THIS TABLE KNOWS ABOUT'.")
+        return exp
+
+    renderable = [e for e in exp if e["state"] == "renderable"]
+    unrendered = [e for e in exp if e["state"] == "unrendered"]
+    unmeasured = [e for e in exp if e["state"] == "unmeasured"]
+    stale = [e for e in exp if e["state"] == "not_in_chain"]
+
+    p("BATCH POST-PASS CENSUS (the expected set, derived -- not a list in this "
+      "file)")
+    for site in chain["sites"]:
+        p("  DENOMINATOR: %-20s %d line(s), %d pass(es) composed  [%s]"
+          % (site.get("label", "?"), site["lines"], len(site["chain"]),
+             site["path"] if site["exists"] else "NOT FOUND"))
+    pkg = chain["package"]
+    p("  DENOMINATOR: %d .m file(s) in %s, %d batch post-pass signature(s)"
+      % (pkg["files"], CONVERT_PKG, len(pkg["passes"])))
+    p("  EXPECTED %d pass(es): %d with counters this digest renders, "
+      "%d UNMEASURED" % (len(chain["chain"]), len(renderable) + len(unrendered),
+                         len(unmeasured)))
+    if unmeasured:
+        p("  *** %d PASS(ES) RUN AND ARE MEASURED BY NOTHING:" % len(unmeasured))
+        for e in unmeasured:
+            p("  ***   did2.convert.%s" % e["fn"])
+        p("  *** They attach no report struct to `result`, so no counter, no")
+        p("  *** denominator and no failure of theirs can reach a corpus")
+        p("  *** artifact. Every figure in this digest describes a migration")
+        p("  *** that INCLUDED them and measured none of their work.")
+    if unrendered:
+        p("  *** %d PASS(ES) ATTACH A REPORT THIS DIGEST HAS NO ROWS FOR:"
+          % len(unrendered))
+        for e in unrendered:
+            p("  ***   did2.convert.%s -> result.%s" % (e["fn"], e["field"]))
+    if stale:
+        p("  *** %d RENDER-TABLE ENTR(IES) NAME A PASS NO REPORT-WRITING CALL"
+          % len(stale))
+        p("  *** SITE COMPOSES -- stale in the reassuring direction:")
+        for e in stale:
+            p("  ***   %s (did2.convert.%s)" % (e["field"], e["fn"]))
+    if chain["site_disagreement"]:
+        p("  *** THE TWO REPORT-WRITING CALL SITES DO NOT COMPOSE THE SAME")
+        p("  *** CHAIN. A report from one is not comparable with the other:")
+        for fn, who in chain["site_disagreement"]:
+            p("  ***   %-28s composed only by: %s" % (fn, ", ".join(who)))
+    if chain["unwired"]:
+        p("  %d batch post-pass(es) exist in the package and are composed by "
+          "NEITHER" % len(chain["unwired"]))
+        p("  report-writing call site: %s" % ", ".join(chain["unwired"]))
+    if chain["called_not_a_pass"]:
+        p("  not counted (did2.convert.* called but not a batch post-pass by "
+          "signature): %s" % ", ".join(chain["called_not_a_pass"]))
+    return exp
 
 
 # --- THE METADATA TIER ----------------------------------------------------
@@ -2656,12 +3036,16 @@ def rollup_epoch_populations(reports, out):
     return findings
 
 
-def render_post_passes(r, out):
+def render_post_passes(r, out, chain=None):
     """Render the batch post-pass reports, denominator (the pass list) first.
 
-    Four distinguishable states per pass, and keeping them distinguishable is
-    the entire job:
+    SIX distinguishable states per pass now, and keeping them distinguishable
+    is the entire job:
 
+      unmeasured    the pass RAN -- the harness composes it -- and attaches no
+                    report struct at all, so nothing about it can reach this
+                    artifact. Counted and NAMED. It used to be omitted, which
+                    made it print identically to a pass that does not exist.
       absent        the report does not carry the field -- the pass was not
                     wired into the run that produced it (or the report predates
                     the wiring). NOT rendered as zeros.
@@ -2672,15 +3056,61 @@ def render_post_passes(r, out):
       ran == false  the pass returned early -- a non-V_eta target, or an empty
                     batch. A legitimate no-op, and a different fact from both
                     of the above.
+      not_in_chain  the render table names it and no report-writing call site
+                    composes it. Stale in the reassuring direction.
       otherwise     the counters.
+
+    The expected set comes from `harness_pass_chain`, not from POST_PASSES --
+    see the block above that function for why the two must not be the same
+    list.
     """
     p = lambda s="": out.append(s)
 
-    present = [name for name, _fn, _rows in POST_PASSES if name in r]
-    p("  batch post-passes: %d expected, %d present in this report"
-      % (len(POST_PASSES), len(present)))
+    chain = chain or harness_pass_chain()
+    exp = post_pass_expectations(chain)
+    present = [e for e in exp
+               if e["field"] and isinstance(r.get(e["field"]), dict)]
+    unmeasured = [e for e in exp if e["state"] == "unmeasured"]
+    p("  batch post-passes: %d expected%s, %d carry a report here, "
+      "%d UNMEASURED BY CONSTRUCTION"
+      % (len(exp), "" if chain["derived"] else " (NOT DERIVED -- render-table "
+         "floor)", len(present), len(unmeasured)))
+    if unmeasured:
+        p("      *** the %d unmeasured: %s"
+          % (len(unmeasured),
+             ", ".join("did2.convert.%s" % e["fn"] for e in unmeasured)))
 
-    for name, fn, rows in POST_PASSES:
+    for e in exp:
+        name, fn, rows = e["field"], "did2.convert.%s" % e["fn"], e["rows"]
+        if e["state"] == "unmeasured":
+            p("      %-22s RAN, MEASURED BY NOTHING -- %s attaches no report"
+              % (e["fn"], fn))
+            p("      %-22s struct to `result`, so this artifact carries no"
+              % "")
+            p("      %-22s counter, no denominator and no failure of its work."
+              % "")
+            continue
+        if e["state"] == "unrendered":
+            rep = r.get(name)
+            p("      %-22s result.%s IS CARRIED and this digest has NO ROWS"
+              % (e["fn"], name))
+            p("      %-22s for it (%d key(s) unread in the artifact)"
+              % ("", len(rep) if isinstance(rep, dict) else 0))
+            continue
+        if e["state"] == "not_in_chain":
+            p("      %-22s *** IN THIS DIGEST'S RENDER TABLE AND COMPOSED BY NO"
+              % name)
+            p("      %-22s *** report-writing call site (%s). Rendering it"
+              % ("", fn))
+            p("      %-22s *** below would read as coverage of a pass that"
+              % "")
+            p("      %-22s *** does not run." % "")
+            continue
+        if e.get("field_mismatch"):
+            p("      %-22s *** the harness attaches this pass's report to"
+              % name)
+            p("      %-22s *** result.%s; this table reads result.%s."
+              % ("", chain["fields"].get(e["fn"]), name))
         rep = r.get(name)
         if rep is None:
             p("      %-22s NOT IN THIS REPORT -- the pass was not wired into"
@@ -4001,12 +4431,30 @@ def rollup_post_passes(reports, out):
     many reports were summed, and how many carried each pass. A pass whose
     presence count is not the report count gets a *** banner naming the corpora
     that lack it.
+
+    THE EXPECTED SET IS DERIVED, not read off POST_PASSES. This function's
+    headline used to say "%d expected in a V_eta run" with POST_PASSES as the
+    %d, and it printed 2 while the harness composed 9. A pass missing from the
+    table produced no line at all here, so "ran and reported nothing" and "does
+    not exist" were the same output -- which is the defect the whole block
+    exists to prevent, arriving in the block itself.
     """
     p = lambda s="": out.append(s)
 
+    chain = harness_pass_chain()
+    exp = post_pass_expectations(chain)
+    unmeasured = [e for e in exp if e["state"] == "unmeasured"]
     p("")
-    p("  BATCH POST-PASSES: %d expected in a V_eta run, over %d corpus "
-      "report(s)" % (len(POST_PASSES), len(reports)))
+    p("  BATCH POST-PASSES: %d expected in a V_eta run%s, over %d corpus "
+      "report(s)" % (len(exp), "" if chain["derived"] else
+                     " (NOT DERIVED -- render-table floor)", len(reports)))
+    p("      DENOMINATOR: %d measurable (they attach a report), %d UNMEASURED "
+      "BY CONSTRUCTION" % (len(exp) - len(unmeasured), len(unmeasured)))
+    for e in unmeasured:
+        p("      *** did2.convert.%s RAN IN EVERY ONE OF THESE %d REPORT(S) AND"
+          % (e["fn"], len(reports)))
+        p("      *** ATTACHED NO REPORT STRUCT. Nothing below sums its work,")
+        p("      *** and no total in this digest is evidence about it.")
     if not reports:
         p("      (no reports)")
         return
@@ -4014,7 +4462,21 @@ def rollup_post_passes(reports, out):
     def corpus_of(rep, i):
         return str(rep.get("corpus") or "report #%d" % (i + 1))
 
-    for name, fn, rows in POST_PASSES:
+    for e in exp:
+        if e["state"] in ("unmeasured", "unrendered", "not_in_chain"):
+            if e["state"] == "unrendered":
+                p("")
+                p("    %s  (did2.convert.%s)" % (e["field"], e["fn"]))
+                p("      NO ROWS IN THIS DIGEST'S RENDER TABLE -- the report")
+                p("      carries this pass and nothing here reads it.")
+            elif e["state"] == "not_in_chain":
+                p("")
+                p("    %s  (did2.convert.%s)" % (e["field"], e["fn"]))
+                p("      *** NOT COMPOSED BY ANY REPORT-WRITING CALL SITE.")
+                p("      *** Totals for it would be coverage of a pass that")
+                p("      *** does not run; none are printed.")
+            continue
+        name, fn, rows = e["field"], "did2.convert.%s" % e["fn"], e["rows"]
         carried, missing, failed_in, noop_in = [], [], [], []
         totals = {}
         # PER-COUNTER presence, not just per-pass. A pass can be present in
@@ -4370,6 +4832,21 @@ def digest(reports_dirs):
                   dirs_walked, len(all_paths) - len(files)))
     for path in files:
         out.append("  read: %s" % path)
+
+    # RULE 5, second half of the leading denominator: how many batch post-passes
+    # a V_eta run is expected to have executed, where that number was derived
+    # from, and how many of them CANNOT be measured however many reports are
+    # read. It prints BEFORE the reports are parsed and before any per-pass
+    # detail, and it prints even when there are no reports at all -- a pass that
+    # measures nothing is a fact about the pipeline, not about this input.
+    try:
+        render_pass_census(out)
+    except Exception:
+        out.append("  *** BATCH POST-PASS CENSUS FAILED -- the expected set is")
+        out.append("  *** UNKNOWN for this run, not empty:")
+        out.append(traceback.format_exc())
+        failed.append("<pass-census>")
+
     if not files:
         out.append("NO CORPUS REPORTS FOUND (no *-summary.json at any depth "
                    "under %s)" % ", ".join(reports_dirs))
