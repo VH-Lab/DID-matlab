@@ -11,6 +11,13 @@ function reportPath = writeCorpusReport(corpusName, result, reasons)
 %   MATLAB and NOT EXECUTED. `tools/census_digest.py` renders the new key and
 %   IS tested (tools/test_census_digest.py), so the Python half of the path is
 %   covered; the MATLAB half is not.
+%
+%   STATUS of the 2026-08-11 edit (`legacy_ndi_document`): THE SAME, and said
+%   again rather than assumed. Written with NO MATLAB and NO OCTAVE available,
+%   NOT EXECUTED; CI is its first run. tools/census_digest.py renders the new
+%   key and IS tested (TestLegacyNdiDocumentBlock in
+%   tools/test_census_digest.py, run green), so the Python half is covered and
+%   the MATLAB half is not.
 
 reportDir = fullfile(pwd, 'corpus-reports');
 if ~exist(reportDir, 'dir')
@@ -44,6 +51,31 @@ if isfield(result.summary, 'fragment_count')
     report.fragment_count = result.summary.fragment_count;
     report.fragment_by_class = result.summary.fragment_by_class;
 end
+% THE LEGACY IDENTITY BLOCK (`ndi_document` -> `base`). Persisted for the same
+% reason as the two censuses above, plus one that is specific to it: this
+% counter is expected to read ZERO on every corpus we hold, and the zero is the
+% deliverable. Corpus run 31464483119 inspected 633,432 documents across 6
+% corpora and quarantined 0, so no pre-`base` document is in the sample -- and
+% per the standing rule that is a fact about the SAMPLE and not evidence none
+% exist. Until a run reports a non-zero `moved_wholesale_no_base`, the size of
+% the defect is UNMEASURED rather than zero, and only a persisted zero makes
+% that distinction survive past the log.
+%
+% READ `bodies_reaching_universal_renames` BEFORE ANY OTHER NUMBER HERE. It is
+% the denominator, and it is NOT `total`: the idempotency short-circuit skips
+% the pass entirely, so a re-run over already-migrated bodies would report
+% every arm at 0 with nothing having been inspected. `bodies_total`,
+% `bodies_skipped_already_target` and `bodies_unreached` account for the gap.
+%
+% READ `moved_wholesale_no_base` WITH THE `moved_carrying_*` COUNTERS BESIDE
+% IT. A 2020-vintage `ndi_document` block already spells `id`/`session_id` and
+% moves soundly; only a block carrying `experiment_unique_reference` /
+% `document_unique_reference` / `type` / `database_version` is the 2019 shape
+% the defect is about, and the arm count alone cannot tell them apart.
+if isfield(result, 'summary') && isfield(result.summary, 'legacy_ndi_document')
+    report.legacy_ndi_document = result.summary.legacy_ndi_document;
+end
+
 % The V1 SOURCE census: three pre-build measurements that exist nowhere else
 % (epoch-id shape and its grouping hazard, session-document presence,
 % stimulation-approach coverage). Persisted rather than left in the log, because

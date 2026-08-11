@@ -1397,5 +1397,153 @@ class TestNdiRequiredEdges(DigestCase):
         self.assertIn("no ndi_required_denominator block", m["why"])
 
 
+class TestLegacyNdiDocumentBlock(DigestCase):
+    """The legacy identity block (`ndi_document` -> `base`).
+
+    THE COUNTER THIS COVERS IS EXPECTED TO READ ZERO on every corpus we hold,
+    which is exactly why it is tested here rather than only on a corpus run:
+    the whole value of the instrument is that a zero it PRINTS is
+    distinguishable from a zero nothing measured. No MATLAB is available in
+    this environment, so the MATLAB half (universalRenames' report,
+    v1_to_v2's accumulator, writeCorpusReport's persist) is UNEXECUTED and CI
+    is its first run; the Python half is covered by these tests.
+    """
+
+    def _legacy(self, **over):
+        L = {"bodies_total": 1000,
+             "bodies_reaching_universal_renames": 1000,
+             "bodies_skipped_already_target": 0,
+             "bodies_unreached": 0,
+             "ndi_document_block_seen": 0,
+             "moved_wholesale_no_base": 0,
+             "discarded_ndi_document_base_present": 0,
+             "moved_missing_id": 0,
+             "moved_missing_session_id": 0,
+             "moved_with_any_undeclared_field": 0,
+             "moved_undeclared_field_instances": 0,
+             "moved_carrying_experiment_unique_reference": 0,
+             "moved_carrying_document_unique_reference": 0,
+             "moved_carrying_type": 0,
+             "moved_carrying_database_version": 0,
+             "moved_by_class": {},
+             "discarded_by_class": {}}
+        L.update(over)
+        return L
+
+    def _corpus(self, name, legacy):
+        body = {"corpus": name, "total": 1000, "migrated_count": 1000,
+                "quarantine_count": 0}
+        if legacy is not None:
+            body["legacy_ndi_document"] = legacy
+        self.write(name, body)
+
+    def test_an_all_zero_block_is_still_printed(self):
+        # The point of the whole exercise: "nothing in this sample" must be a
+        # line, not an absence. 633,432 documents across 6 corpora quarantined
+        # 0 at run 31464483119, so all-zero is the EXPECTED reading.
+        self._corpus("A", self._legacy())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("MOVED WHOLESALE into `base` (no `base` present)", text)
+        self.assertIn("0  carried an `ndi_document` block", text)
+
+    def test_the_denominator_precedes_the_arms(self):
+        # Rule 5, and here the denominator is NOT `total`.
+        self._corpus("A", self._legacy())
+        text, _ = self.run_digest()
+        den = text.index("bod(ies) reached universalRenames")
+        arm = text.index("MOVED WHOLESALE")
+        self.assertLess(den, arm)
+
+    def test_the_denominator_is_the_pass_not_the_batch(self):
+        # A re-run over already-migrated bodies takes the idempotency
+        # short-circuit, so the rename pass sees nothing. That MUST NOT read as
+        # "no legacy blocks in this corpus".
+        self._corpus("A", self._legacy(bodies_reaching_universal_renames=0,
+                                       bodies_skipped_already_target=1000))
+        text, _ = self.run_digest()
+        self.assertIn("0 bodies reached the rename pass", text)
+        self.assertIn("it is NOT 'no legacy blocks found'", text)
+
+    def test_the_two_arms_are_separate_numbers(self):
+        # Discarding a stale block beside a good `base` and moving a block that
+        # IS the only identity are different facts. Never summed.
+        self._corpus("A", self._legacy(ndi_document_block_seen=5,
+                                       moved_wholesale_no_base=2,
+                                       discarded_ndi_document_base_present=3))
+        text, _ = self.run_digest()
+        self.assertIn("2  MOVED WHOLESALE into `base` (no `base` present)", text)
+        self.assertIn("3  discarded (`base` present and wins)", text)
+
+    def test_a_moved_block_prints_the_vintage_discriminator(self):
+        # An arm count alone cannot say whether anything is broken: a
+        # 2020-vintage block already spells id/session_id and moves soundly.
+        self._corpus("A", self._legacy(
+            ndi_document_block_seen=2, moved_wholesale_no_base=2,
+            moved_missing_id=2, moved_missing_session_id=2,
+            moved_with_any_undeclared_field=2,
+            moved_undeclared_field_instances=8,
+            moved_carrying_experiment_unique_reference=2,
+            moved_carrying_document_unique_reference=2,
+            moved_carrying_type=2, moved_carrying_database_version=2,
+            moved_by_class={"projectvar": 2}))
+        text, _ = self.run_digest()
+        self.assertIn("2 missing required `id`, 2 missing `session_id`", text)
+        self.assertIn("2 carrying 8 field(s) `base` does not declare", text)
+        self.assertIn("2019 vintage: 2 experiment_unique_reference", text)
+        self.assertIn("2  projectvar (moved wholesale)", text)
+
+    def test_a_report_without_the_block_prints_nothing(self):
+        # An older report predates the counter. Rendering it as zeros would
+        # claim a measurement that was never taken.
+        self._corpus("A", None)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertNotIn("legacy ndi_document block", text)
+
+    def test_the_rollup_sums_across_corpora_with_its_denominator(self):
+        self._corpus("A", self._legacy(ndi_document_block_seen=1,
+                                       moved_wholesale_no_base=1,
+                                       moved_missing_id=1))
+        self._corpus("B", self._legacy(ndi_document_block_seen=2,
+                                       moved_wholesale_no_base=2,
+                                       moved_missing_id=2))
+        text, _ = self.run_digest()
+        self.assertIn("LEGACY IDENTITY BLOCK (`ndi_document` -> `base`)", text)
+        self.assertIn("DENOMINATOR: 2 of 2 report(s) carried the counter", text)
+        self.assertIn("3  MOVED WHOLESALE into `base` (the defect); 3 of them",
+                      text)
+
+    def test_the_rollup_names_a_report_that_carries_no_counter(self):
+        # A report predating the counter must not be summed as a zero. That
+        # substitution is how "12,296 documents, three classes" survived for
+        # months while the real figure was 26,406.
+        self._corpus("A", self._legacy())
+        self._corpus("B", None)
+        text, _ = self.run_digest()
+        self.assertIn("DENOMINATOR: 1 of 2 report(s) carried the counter", text)
+        self.assertIn("NOT SUMMED (no counter in the report): B", text)
+
+    def test_a_zero_rollup_says_unmeasured_not_clean(self):
+        self._corpus("A", self._legacy())
+        text, _ = self.run_digest()
+        self.assertIn("UNMEASURED, not zero", text)
+
+    def test_no_report_carrying_the_counter_is_not_zero_pre_base_documents(self):
+        self._corpus("A", None)
+        text, _ = self.run_digest()
+        self.assertIn("nothing to sum. This is NOT '0 pre-base documents'",
+                      text)
+
+    def test_a_missing_counter_prints_a_question_mark_not_a_zero(self):
+        L = self._legacy()
+        del L["moved_missing_id"]
+        L["moved_wholesale_no_base"] = 1
+        L["ndi_document_block_seen"] = 1
+        self._corpus("A", L)
+        text, _ = self.run_digest()
+        self.assertIn("? missing required `id`", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

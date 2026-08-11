@@ -95,6 +95,11 @@ function result = v1_to_v2(v1Bodies, options)
 %                      escape hatch). Any non-'V_delta' target stamps
 %                      document_class.schema_version with the target name.
 %
+%   STATUS of the 2026-08-11 edit (`summary.legacy_ndi_document`, the
+%   accumulator and its printer): WRITTEN WITHOUT MATLAB OR OCTAVE AND NOT
+%   EXECUTED. Neither is available in the environment it was written in, so
+%   CI is the first run of this code.
+%
 %   See also: did2.convert.universalRenames, did2.convert.migrators,
 %   docs/v2/PLAN.md §9.6.
 
@@ -129,6 +134,42 @@ unconvValues = [];
 % mode, and the only one no counter could see.
 fragNames = {};
 fragValues = [];
+% THE LEGACY IDENTITY BLOCK (`ndi_document` -> `base`). DENOMINATOR FIRST AND
+% UNCONDITIONALLY (Operating Rule 5): this struct is complete before the loop
+% starts and is attached to the summary whether or not any body carries the
+% block, so an all-zero block means "no body in this batch had one" and never
+% means "nothing looked".
+%
+% `bodies_reaching_universal_renames` is incremented AT THE CALL SITE, not
+% summed from the per-body reports, because a body that throws inside
+% universalRenames produces no report and would otherwise vanish from its own
+% denominator. `bodies_skipped_already_target` is the idempotency
+% short-circuit, which never calls the pass at all; the two plus
+% `bodies_unreached` account for `total` exactly.
+%
+% WHAT THE NUMBERS MEAN is in did2.convert.universalRenames's header, and the
+% one-line version is: `moved_wholesale_no_base` is the arm that renames the
+% container and does nothing to the contents, on the one path that exists
+% because the contents differ; the `moved_carrying_*` counters say whether the
+% block was the 2019 shape (broken) or the 2020 shape (sound).
+legacy = struct( ...
+    'bodies_total',                        numel(bodies), ...
+    'bodies_reaching_universal_renames',   0, ...
+    'bodies_skipped_already_target',       0, ...
+    'bodies_unreached',                    0, ...
+    'ndi_document_block_seen',             0, ...
+    'moved_wholesale_no_base',             0, ...
+    'discarded_ndi_document_base_present', 0, ...
+    'moved_missing_id',                    0, ...
+    'moved_missing_session_id',            0, ...
+    'moved_with_any_undeclared_field',     0, ...
+    'moved_undeclared_field_instances',    0, ...
+    'moved_carrying_experiment_unique_reference', 0, ...
+    'moved_carrying_document_unique_reference',   0, ...
+    'moved_carrying_type',                 0, ...
+    'moved_carrying_database_version',     0);
+legacyMovedNames = {};   legacyMovedValues = [];
+legacyDiscNames  = {};   legacyDiscValues  = [];
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -151,10 +192,26 @@ for k = 1:numel(bodies)
                 className = char(v2Body.document_class.class_name);
             end
             v2Bodies = {v2Body};
+            legacy.bodies_skipped_already_target = ...
+                legacy.bodies_skipped_already_target + 1;
         else
-            postUniversalBody = did2.convert.universalRenames(preBody, ...
-                'RenameClassNames', options.RenameClassNames);
+            % Incremented BEFORE the call: a body that throws inside the pass
+            % still reached it, and a denominator that quietly excluded the
+            % failures would be the "all-zero reads as clean" defect again.
+            legacy.bodies_reaching_universal_renames = ...
+                legacy.bodies_reaching_universal_renames + 1;
+            [postUniversalBody, legacyReport] = did2.convert.universalRenames( ...
+                preBody, 'RenameClassNames', options.RenameClassNames);
             className = char(postUniversalBody.document_class.class_name);
+            legacy = accumulateLegacyReport(legacy, legacyReport);
+            if legacyReport.moved_wholesale_no_base
+                [legacyMovedNames, legacyMovedValues] = bumpClassCounter( ...
+                    legacyMovedNames, legacyMovedValues, className);
+            end
+            if legacyReport.discarded_ndi_document_base_present
+                [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
+                    legacyDiscNames, legacyDiscValues, className);
+            end
             v2Body = applySuperclassMigrators(postUniversalBody, className, ...
                 options.TargetVersion);
             % runConcreteMigrator returns a CELL of one-or-more bodies.
@@ -239,6 +296,16 @@ for k = 1:numel(bodies)
     end
 end
 
+% `bodies_unreached` closes the denominator: every body either reached
+% universalRenames, took the idempotency short-circuit, or failed before
+% either (a non-struct input, undecodable JSON). Written as a subtraction so
+% the three sum to `total` by construction rather than by hope.
+legacy.bodies_unreached = legacy.bodies_total ...
+    - legacy.bodies_reaching_universal_renames ...
+    - legacy.bodies_skipped_already_target;
+legacy.moved_by_class = buildByClassTable(legacyMovedNames, legacyMovedValues);
+legacy.discarded_by_class = buildByClassTable(legacyDiscNames, legacyDiscValues);
+
 result = struct();
 result.migrated = migrated;
 result.quarantine = quarantine;
@@ -251,7 +318,8 @@ result.summary = struct( ...
     'unconverted_count', sum(unconvValues), ...
     'unconverted_by_class', buildByClassTable(unconvNames, unconvValues), ...
     'fragment_count',     sum(fragValues), ...
-    'fragment_by_class',  buildByClassTable(fragNames, fragValues));
+    'fragment_by_class',  buildByClassTable(fragNames, fragValues), ...
+    'legacy_ndi_document', legacy);
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
 % migrates away without a trace: required depends_on edges left empty, and
@@ -645,6 +713,33 @@ else
 end
 end
 
+function acc = accumulateLegacyReport(acc, rep)
+%ACCUMULATELEGACYREPORT Sum one universalRenames per-body legacy report.
+%
+%   Every counter universalRenames reports is summed by NAME into the batch
+%   accumulator. A field the pass reports and this accumulator does not
+%   declare is an ERROR rather than a silent drop -- a counter that reached
+%   the pass and stopped here would be exactly the write-only condition the
+%   census work exists to remove. `bodies_inspected` is deliberately NOT
+%   summed: the batch denominator is kept at the call site (see the header on
+%   `legacy` above), because a body that throws inside the pass returns no
+%   report at all.
+names = fieldnames(rep);
+for k = 1:numel(names)
+    fn = names{k};
+    if strcmp(fn, 'bodies_inspected')
+        continue;
+    end
+    if ~isfield(acc, fn)
+        error('did2:convert:legacyCounterUnaccumulated', ...
+            ['did2.convert.universalRenames reports `%s` and ' ...
+             'did2.convert.v1_to_v2 does not accumulate it; the count ' ...
+             'would reach no report.'], fn);
+    end
+    acc.(fn) = acc.(fn) + rep.(fn);
+end
+end
+
 function tbl = buildByClassTable(names, counts)
 tbl = struct();
 for k = 1:numel(names)
@@ -660,8 +755,44 @@ fprintf('  migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
 printUnconverted(result);
 printFragments(result);
+printLegacyNdiDocument(result);
 printSilentLoss(result);
 printQuarantine(result);
+end
+
+function printLegacyNdiDocument(result)
+%PRINTLEGACYNDIDOCUMENT The legacy identity block, denominator first.
+%
+%   PRINTED UNCONDITIONALLY, including when every counter is zero. Zero here
+%   means "no body in this batch carried an `ndi_document` block", which is
+%   the expected reading for every corpus we hold -- corpus run 31464483119
+%   inspected 633,432 documents across 6 corpora and quarantined 0, so no
+%   pre-`base` document is in any of them. That is a fact about the SAMPLE and
+%   NOT evidence none exist: a 2019-era NDI database is precisely what this
+%   migration is for. An absent line and a zero line would be the same output,
+%   which is the failure this project keeps paying for.
+if ~isfield(result.summary, 'legacy_ndi_document'); return; end
+L = result.summary.legacy_ndi_document;
+fprintf(['  legacy ndi_document: %d body(ies) reached universalRenames ' ...
+    '(of %d; %d already at target, %d never reached it)\n'], ...
+    L.bodies_reaching_universal_renames, L.bodies_total, ...
+    L.bodies_skipped_already_target, L.bodies_unreached);
+fprintf('      %8d  carried an `ndi_document` block\n', ...
+    L.ndi_document_block_seen);
+fprintf('      %8d  MOVED WHOLESALE into `base` (no `base` present)\n', ...
+    L.moved_wholesale_no_base);
+fprintf('      %8d  discarded (`base` present and wins)\n', ...
+    L.discarded_ndi_document_base_present);
+if L.moved_wholesale_no_base == 0; return; end
+fprintf('      of the moved: %d missing required `id`, %d missing `session_id`\n', ...
+    L.moved_missing_id, L.moved_missing_session_id);
+fprintf('                    %d carrying %d field(s) `base` does not declare\n', ...
+    L.moved_with_any_undeclared_field, L.moved_undeclared_field_instances);
+fprintf(['                    2019 vintage: %d experiment_unique_reference, ' ...
+    '%d document_unique_reference, %d type, %d database_version\n'], ...
+    L.moved_carrying_experiment_unique_reference, ...
+    L.moved_carrying_document_unique_reference, ...
+    L.moved_carrying_type, L.moved_carrying_database_version);
 end
 
 function printQuarantine(result)

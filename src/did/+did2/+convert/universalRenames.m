@@ -1,4 +1,4 @@
-function postBody = universalRenames(preBody, options)
+function [postBody, report] = universalRenames(preBody, options)
 %UNIVERSALRENAMES Apply did_v1 -> V_delta universal renames.
 %
 %   POSTBODY = did2.convert.universalRenames(PREBODY) returns a copy of
@@ -59,13 +59,81 @@ function postBody = universalRenames(preBody, options)
 %       document_class (it identifies the schema set, not a payload
 %       field on any class) — never under `base`.
 %
+%   [POSTBODY, REPORT] = did2.convert.universalRenames(...) additionally
+%   returns a per-body counter struct for the LEGACY IDENTITY BLOCK
+%   reconciliation above. REPORT IS BUILT BEFORE A SINGLE FIELD IS READ and
+%   is returned for every body, so a body with no `ndi_document` block
+%   reports `bodies_inspected: 1` beside zeros rather than nothing at all
+%   (Operating Rule 5: an instrument reports its denominator, first and
+%   unconditionally). did2.convert.v1_to_v2 sums these into
+%   `summary.legacy_ndi_document`, which reaches the per-corpus artifact via
+%   did2.unittest.helpers.writeCorpusReport and the log via
+%   tools/census_digest.py.
+%
+%   WHY THIS IS COUNTED AT ALL. The `ndi_document`-without-`base` arm exists
+%   because the pre-`base` identity block DIFFERS from `base` -- and the arm
+%   MOVES THE BLOCK WHOLESALE, renaming the container and doing nothing to
+%   the contents. Read from NDI `origin/main` history rather than described:
+%
+%     ndi_document.json, block `ndi_document`, as added 4f1a2b801 (2019-05-05)
+%       experiment_unique_reference, document_unique_reference,
+%       name, type, datestamp, database_version                       SIX
+%     base.json, block `base`, added 9783809c2 (2023-04-13) and unchanged
+%     on origin/main; V_eta `base` declares the same four
+%       id, session_id, name, datestamp                               FOUR
+%
+%   So a genuine 2019-vintage body arrives in `base` with FOUR undeclared
+%   fields and BOTH required identity fields missing. `undeclaredField` is a
+%   hard error (did2.schema.cache), so the document QUARANTINES -- and if it
+%   did not, it would carry no identity at all. NOTHING COUNTED THAT, so a
+%   real one quarantined with no line saying why. THE BEHAVIOUR IS UNCHANGED
+%   HERE: this is the instrument, not the repair. The repair changes migrated
+%   identity and is a team decision (V_eta_OPEN_WORK.md, "a pre-`base` v1
+%   document cannot migrate").
+%
+%   The counters, and what each distinguishes:
+%
+%     bodies_inspected                        always 1 -- the denominator
+%     ndi_document_block_seen                 a legacy block is present
+%     moved_wholesale_no_base                 THE DEFECTIVE ARM: no `base`,
+%                                             block renamed, contents untouched
+%     discarded_ndi_document_base_present     the OTHER arm: `base` wins and
+%                                             the legacy block is DISCARDED --
+%                                             a different fact, never summed
+%                                             with the one above
+%     moved_missing_id / moved_missing_session_id
+%                                             of the moved bodies, how many
+%                                             land in `base` with a REQUIRED
+%                                             field absent
+%     moved_with_any_undeclared_field         moved bodies carrying at least
+%                                             one field `base` does not declare
+%     moved_undeclared_field_instances        those fields, counted
+%     moved_carrying_experiment_unique_reference
+%     moved_carrying_document_unique_reference
+%     moved_carrying_type
+%     moved_carrying_database_version         THE VINTAGE DISCRIMINATOR. A
+%                                             2020-vintage `ndi_document` block
+%                                             already spells `id`/`session_id`
+%                                             and moves soundly; only a block
+%                                             carrying these names is the 2019
+%                                             shape the defect is about. An arm
+%                                             count alone cannot tell them apart.
+%
 %   Field-level renames that change identifiers (not just case) inside
 %   a class's property block are class-specific (see the conversion
 %   markdowns under did-schema's schemas/V_delta/conversions/from_did_v1/)
 %   and are handled by per-class migrators, not here.
 %
+%   STATUS of the 2026-08-11 edit (the legacy-identity-block counters and
+%   `countMovedBlock`): WRITTEN WITHOUT MATLAB OR OCTAVE AND NOT EXECUTED.
+%   Neither is available in the environment it was written in, so CI is the
+%   first run of this code. The Python half of the path
+%   (tools/census_digest.py) IS covered and was run.
+%
 %   Throws did2:convert:missingDocumentClass when PREBODY has no
-%   document_class.class_name.
+%   document_class.class_name. A body that throws produces NO report, so the
+%   denominator v1_to_v2 keeps is incremented at the CALL SITE (bodies that
+%   reached this function) rather than summed from the reports.
 
 arguments
     preBody (1,1) struct
@@ -78,6 +146,23 @@ if ~isfield(preBody, 'document_class') ...
     error('did2:convert:missingDocumentClass', ...
         'v1 body is missing document_class.class_name.');
 end
+
+% DENOMINATOR FIRST AND UNCONDITIONALLY (Operating Rule 5). Every counter
+% below exists before any field of PREBODY is inspected, so "this body has no
+% legacy identity block" prints zeros beside a 1, and never prints nothing.
+report = struct( ...
+    'bodies_inspected',                         1, ...
+    'ndi_document_block_seen',                  0, ...
+    'moved_wholesale_no_base',                  0, ...
+    'discarded_ndi_document_base_present',      0, ...
+    'moved_missing_id',                         0, ...
+    'moved_missing_session_id',                 0, ...
+    'moved_with_any_undeclared_field',          0, ...
+    'moved_undeclared_field_instances',         0, ...
+    'moved_carrying_experiment_unique_reference', 0, ...
+    'moved_carrying_document_unique_reference', 0, ...
+    'moved_carrying_type',                      0, ...
+    'moved_carrying_database_version',          0);
 
 postBody = preBody;
 
@@ -111,9 +196,20 @@ if options.RenameClassNames
 end
 
 if isfield(postBody, 'ndi_document')
+    report.ndi_document_block_seen = 1;
     if isfield(postBody, 'base')
+        % `base` wins; the legacy block is DISCARDED. Counted separately from
+        % the arm below and NEVER summed with it -- discarding a stale block
+        % beside a good `base` and moving a block that IS the only identity
+        % are different facts, and one of them is the defect.
+        report.discarded_ndi_document_base_present = 1;
         postBody = rmfield(postBody, 'ndi_document');
     else
+        % THE DEFECTIVE ARM, MEASURED AND DELIBERATELY UNCHANGED. See the
+        % header: the move is wholesale, so a 2019-vintage block lands in
+        % `base` with four undeclared fields and no `id`/`session_id`.
+        report.moved_wholesale_no_base = 1;
+        report = countMovedBlock(report, postBody.ndi_document);
         postBody.base = postBody.ndi_document;
         postBody = rmfield(postBody, 'ndi_document');
     end
@@ -139,6 +235,65 @@ if isfield(postBody, 'base') && isstruct(postBody.base) ...
 end
 if ~isfield(postBody.document_class, 'schema_version')
     postBody.document_class.schema_version = 'V_delta';
+end
+end
+
+function report = countMovedBlock(report, block)
+% Characterise the legacy identity block this pass is about to move WHOLESALE
+% into `base`. Measurement only: nothing here changes the block, and nothing
+% here validates it -- the validator does that later, and quarantines it.
+%
+% THE FOUR NAMES BELOW ARE `base`'s DECLARED FIELDS, and they are written out
+% rather than read from a schema on purpose: this function runs deep inside a
+% per-body rename pass with no schema cache in hand, and a counter that needed
+% one would be skipped exactly where it is wanted. Read from NDI origin/main,
+% src/ndi/ndi_common/database_documents/base.json, block `base`:
+%     id, session_id, name, datestamp
+% If `base` ever gains a field, this list is stale in the SAFE direction --
+% it over-counts undeclared fields rather than under-counting them -- and
+% did2.unittest.testConvertV1ToV2 pins the list against the V_eta schema.
+declaredInBase = {'id', 'session_id', 'name', 'datestamp'};
+
+if ~isstruct(block) || ~isscalar(block)
+    % Nothing readable to characterise. The arm counter above already fired,
+    % so this body still appears in `moved_wholesale_no_base`; it simply
+    % contributes to none of the breakdowns. Silence here would make an
+    % unreadable block look like a clean one.
+    return;
+end
+
+names = fieldnames(block);
+
+if ~any(strcmp('id', names))
+    report.moved_missing_id = 1;
+end
+if ~any(strcmp('session_id', names))
+    report.moved_missing_session_id = 1;
+end
+
+undeclared = 0;
+for k = 1:numel(names)
+    if ~any(strcmp(names{k}, declaredInBase))
+        undeclared = undeclared + 1;
+    end
+end
+report.moved_undeclared_field_instances = undeclared;
+report.moved_with_any_undeclared_field = double(undeclared > 0);
+
+% The vintage discriminator. These four names are what the 2019 block carries
+% and the 2020 one does not; without them a non-zero arm count cannot say
+% whether anything is actually broken.
+if any(strcmp('experiment_unique_reference', names))
+    report.moved_carrying_experiment_unique_reference = 1;
+end
+if any(strcmp('document_unique_reference', names))
+    report.moved_carrying_document_unique_reference = 1;
+end
+if any(strcmp('type', names))
+    report.moved_carrying_type = 1;
+end
+if any(strcmp('database_version', names))
+    report.moved_carrying_database_version = 1;
 end
 end
 

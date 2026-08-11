@@ -937,6 +937,89 @@ def render_post_passes(r, out):
                   "delete the classes.")
 
 
+def render_legacy_ndi_document(r, out):
+    """Render the legacy identity-block counter (`ndi_document` -> `base`).
+
+    THE ZERO IS THE DELIVERABLE HERE, so this block prints whenever the key is
+    present, all-zero included. did_v1 documents written before 2023 carried
+    document identity under `ndi_document`, not `base`, and the six fields of
+    the 2019 block are not the four of `base`:
+
+        ndi_document.json, added 4f1a2b801 (2019-05-05)
+          experiment_unique_reference, document_unique_reference,
+          name, type, datestamp, database_version              SIX
+        base.json, added 9783809c2 (2023-04-13), NDI origin/main today
+          id, session_id, name, datestamp                      FOUR
+
+    did2.convert.universalRenames handles that difference by MOVING THE BLOCK
+    WHOLESALE -- it renames the container and does nothing to the contents, on
+    the one code path that exists precisely because the contents differ. A
+    genuine 2019 body therefore lands in `base` with four undeclared fields and
+    both required identity fields missing, and quarantines.
+
+    THREE READING INSTRUCTIONS, and the first two are the ones that matter:
+
+    (1) THE DENOMINATOR IS `bodies_reaching_universal_renames`, NOT `total`.
+        The dispatcher's idempotency short-circuit skips the rename pass for a
+        body already at the target version, so a re-run over migrated bodies
+        reports every arm at 0 having inspected nothing. `bodies_total`,
+        `bodies_skipped_already_target` and `bodies_unreached` close the gap
+        and sum to `bodies_total` by construction.
+    (2) ALL-ZERO IS THE EXPECTED READING AND IT MEANS "NOT IN THIS SAMPLE".
+        Corpus run 31464483119 inspected 633,432 documents across 6 corpora
+        and quarantined 0, so no pre-`base` document is in any corpus we hold.
+        That is a fact about the sample and NOT evidence none exist -- a
+        2019-era NDI database is exactly what this migration is for. The size
+        of the defect is UNMEASURED, not zero.
+    (3) `moved_wholesale_no_base` MEANS NOTHING WITHOUT THE `moved_carrying_*`
+        LINE UNDER IT. A 2020-vintage `ndi_document` block already spells
+        `id`/`session_id` and moves soundly; only a block carrying
+        `experiment_unique_reference` / `document_unique_reference` / `type` /
+        `database_version` is the 2019 shape the defect is about.
+
+    The two arms are NEVER SUMMED. `discarded_ndi_document_base_present` is a
+    stale block dropped beside a good `base`; `moved_wholesale_no_base` is a
+    block that IS the document's only identity. Different facts.
+    """
+    p = lambda s="": out.append(s)
+    L = r.get("legacy_ndi_document")
+    if not L:
+        return
+    p("  legacy ndi_document block: %s bod(ies) reached universalRenames "
+      "(of %s; %s already at target, %s never reached it)"
+      % (L.get("bodies_reaching_universal_renames", "?"),
+         L.get("bodies_total", "?"),
+         L.get("bodies_skipped_already_target", "?"),
+         L.get("bodies_unreached", "?")))
+    if L.get("bodies_reaching_universal_renames") == 0:
+        p("  *** 0 bodies reached the rename pass -- every count below is")
+        p("  *** vacuous. This is what a re-run over already-migrated bodies")
+        p("  *** looks like; it is NOT 'no legacy blocks found'.")
+    p("      %8s  carried an `ndi_document` block"
+      % L.get("ndi_document_block_seen", "?"))
+    p("      %8s  MOVED WHOLESALE into `base` (no `base` present)  <-- the defect"
+      % L.get("moved_wholesale_no_base", "?"))
+    p("      %8s  discarded (`base` present and wins)"
+      % L.get("discarded_ndi_document_base_present", "?"))
+    if not L.get("moved_wholesale_no_base"):
+        return
+    p("      of the moved: %s missing required `id`, %s missing `session_id`"
+      % (L.get("moved_missing_id", "?"), L.get("moved_missing_session_id", "?")))
+    p("                    %s carrying %s field(s) `base` does not declare"
+      % (L.get("moved_with_any_undeclared_field", "?"),
+         L.get("moved_undeclared_field_instances", "?")))
+    p("                    2019 vintage: %s experiment_unique_reference, "
+      "%s document_unique_reference, %s type, %s database_version"
+      % (L.get("moved_carrying_experiment_unique_reference", "?"),
+         L.get("moved_carrying_document_unique_reference", "?"),
+         L.get("moved_carrying_type", "?"),
+         L.get("moved_carrying_database_version", "?")))
+    for key, label in (("moved_by_class", "moved wholesale"),
+                       ("discarded_by_class", "discarded")):
+        for k, v in sorted((L.get(key) or {}).items(), key=lambda kv: -kv[1])[:15]:
+            p("      %8s  %s (%s)" % (v, k, label))
+
+
 def render_report(r, out):
     """Render one corpus report. Raises on malformed input; the caller isolates."""
     p = lambda s="": out.append(s)
@@ -1033,6 +1116,8 @@ def render_report(r, out):
         for k, v in sorted((r.get("unconverted_by_class") or {}).items(),
                            key=lambda kv: -kv[1])[:15]:
             p("      %8s  %s" % (v, k))
+
+    render_legacy_ndi_document(r, out)
 
     sc = r.get("source_census") or {}
     if "audit_failed" in sc:
@@ -1303,10 +1388,77 @@ def rollup(reports, out):
         if not table:
             p("      (none)")
 
+    rollup_legacy_ndi_document(reports, out)
     rollup_ndi_required(reports, out)
     rollup_epoch_association(reports, out)
     rollup_metadata_tier(reports, out)
     rollup_post_passes(reports, out)
+
+
+def rollup_legacy_ndi_document(reports, out):
+    """Cross-corpus total for the legacy identity block, denominator first.
+
+    THE TOTAL IS THE NUMBER THAT GETS QUOTED, and for this counter the number
+    that will be quoted is "how many pre-`base` documents are there". It is
+    expected to be 0 over every corpus we hold, and a 0 summed over four
+    corpora is not the same fact as a 0 summed over six -- so the count of
+    reports that CARRIED the block prints beside the count that were summed.
+    A report predating the counter contributes nothing and is NAMED, never
+    silently treated as a zero.
+    """
+    p = lambda s="": out.append(s)
+    keys = ("bodies_reaching_universal_renames", "ndi_document_block_seen",
+            "moved_wholesale_no_base", "discarded_ndi_document_base_present",
+            "moved_missing_id", "moved_missing_session_id",
+            "moved_undeclared_field_instances",
+            "moved_carrying_experiment_unique_reference",
+            "moved_carrying_document_unique_reference")
+    totals = dict((k, 0) for k in keys)
+    carried, missing = 0, []
+    for i, r in enumerate(reports):
+        L = r.get("legacy_ndi_document")
+        name = str(r.get("corpus") or "report #%d" % (i + 1))
+        if not L:
+            missing.append(name)
+            continue
+        carried += 1
+        for k in keys:
+            try:
+                totals[k] += int(L.get(k) or 0)
+            except (TypeError, ValueError):
+                pass
+    p("")
+    p("  LEGACY IDENTITY BLOCK (`ndi_document` -> `base`)")
+    p("      DENOMINATOR: %d of %d report(s) carried the counter; "
+      "%d bod(ies) reached did2.convert.universalRenames"
+      % (carried, len(reports), totals["bodies_reaching_universal_renames"]))
+    if missing:
+        p("      *** NOT SUMMED (no counter in the report): %s"
+          % ", ".join(missing))
+    if carried == 0:
+        p("      *** nothing to sum. This is NOT '0 pre-base documents'.")
+        return
+    p("      %8d  carried an `ndi_document` block"
+      % totals["ndi_document_block_seen"])
+    p("      %8d  MOVED WHOLESALE into `base` (the defect); %d of them lost "
+      "`id`, %d lost `session_id`"
+      % (totals["moved_wholesale_no_base"], totals["moved_missing_id"],
+         totals["moved_missing_session_id"]))
+    p("      %8d  discarded (`base` present and wins) -- a DIFFERENT fact, "
+      "never summed with the line above"
+      % totals["discarded_ndi_document_base_present"])
+    p("      %8d  field(s) moved into `base` that `base` does not declare"
+      % totals["moved_undeclared_field_instances"])
+    p("      %8d  block(s) of the 2019 vintage (experiment_unique_reference), "
+      "%d (document_unique_reference)"
+      % (totals["moved_carrying_experiment_unique_reference"],
+         totals["moved_carrying_document_unique_reference"]))
+    if totals["moved_wholesale_no_base"] == 0:
+        p("      *** 0 across the sample. Corpus run 31464483119 inspected")
+        p("      *** 633,432 documents across 6 corpora and quarantined 0, so")
+        p("      *** no pre-`base` document is in any corpus we hold. That is")
+        p("      *** a fact about the SAMPLE and NOT evidence none exist: the")
+        p("      *** size of this defect is UNMEASURED, not zero.")
 
 
 def rollup_metadata_tier(reports, out):

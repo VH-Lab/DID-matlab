@@ -10,6 +10,11 @@ function tests = testConvertV1ToV2
 %
 %   Run with:
 %       results = runtests('did2.unittest.testConvertV1ToV2');
+%
+%   STATUS of the 2026-08-11 additions (the "legacy identity block" section at
+%   the end of this file): WRITTEN WITHOUT MATLAB OR OCTAVE AND NOT EXECUTED.
+%   Neither is available in the environment they were written in, so CI is
+%   their first run.
 
 tests = functiontests(localfunctions);
 end
@@ -509,3 +514,192 @@ verifyFalse(testCase, isfield(dependsOn, 'value'));
 verifyFalse(testCase, isfield(dependsOn, 'version'));
 end
 
+
+% ===================== the legacy identity block ===========================
+%
+% THE COUNTER, NOT THE REPAIR. did2.convert.universalRenames handles a
+% pre-`base` v1 document by MOVING THE `ndi_document` BLOCK WHOLESALE into
+% `base` -- renaming the container and doing nothing to the contents, on the
+% one code path that exists precisely because the contents differ. The tests
+% below PIN THAT BEHAVIOUR RATHER THAN FIX IT: the fix changes migrated
+% identity and is a team decision (V_eta_OPEN_WORK.md, "a pre-`base` v1
+% document cannot migrate"). What is new is that the arm is now COUNTED.
+%
+% The shapes, read from NDI origin/main history rather than described:
+%   ndi_document.json, block `ndi_document`, added 4f1a2b801 (2019-05-05):
+%     experiment_unique_reference, document_unique_reference,
+%     name, type, datestamp, database_version                        SIX
+%   base.json, block `base`, added 9783809c2 (2023-04-13), unchanged since:
+%     id, session_id, name, datestamp                                FOUR
+
+function v1 = make2019Body()
+% The 2019 block, verbatim from ndi_document.json as added 4f1a2b801, with
+% real values in place of the template's blanks.
+v1 = struct();
+v1.document_class = struct('class_name', 'projectvar');
+v1.projectvar = struct('description', 'a legacy variable', 'data', 5);
+v1.ndi_document = struct( ...
+    'experiment_unique_reference', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'document_unique_reference',   'aabb1122ccdd3344_1122334455667788', ...
+    'name',                        'legacy-doc', ...
+    'type',                        'ndi_element', ...
+    'datestamp',                   '2019-06-01T12:00:00.000Z', ...
+    'database_version',            1);
+end
+
+function testLegacyReportIsReturnedWithItsDenominatorForEveryBody(testCase)
+% DENOMINATOR FIRST AND UNCONDITIONALLY (Operating Rule 5). A body with no
+% legacy block reports 1 inspected beside zeros -- never nothing at all.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct();
+[~, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.bodies_inspected, 1);
+verifyEqual(testCase, report.ndi_document_block_seen, 0);
+verifyEqual(testCase, report.moved_wholesale_no_base, 0);
+verifyEqual(testCase, report.discarded_ndi_document_base_present, 0);
+end
+
+function testLegacyReportCountsTheWholesaleMoveArm(testCase)
+v1 = make2019Body();
+[out, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.ndi_document_block_seen, 1);
+verifyEqual(testCase, report.moved_wholesale_no_base, 1);
+verifyEqual(testCase, report.discarded_ndi_document_base_present, 0);
+% The block moved. Behaviour UNCHANGED and pinned here on purpose.
+verifyFalse(testCase, isfield(out, 'ndi_document'));
+verifyTrue(testCase, isfield(out, 'base'));
+end
+
+function testLegacyReportCountsTheDiscardArmSeparately(testCase)
+% The two arms are different facts and are never summed: this one drops a
+% stale block beside a good `base`, and loses no identity.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct();
+v1.ndi_document = struct('name', 'jrclust.prm');
+[out, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.ndi_document_block_seen, 1);
+verifyEqual(testCase, report.discarded_ndi_document_base_present, 1);
+verifyEqual(testCase, report.moved_wholesale_no_base, 0);
+verifyEqual(testCase, out.base.id, 'aabb1122ccdd3344_1122334455667788');
+end
+
+function testLegacyReportMeasuresBothRequiredIdentityFieldsMissing(testCase)
+% THE DEFECT, MEASURED. The 2019 block has neither `id` nor `session_id`, so
+% the document it produces carries NO IDENTITY -- and would quarantine on
+% `undeclaredField` before anyone noticed that.
+v1 = make2019Body();
+[out, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.moved_missing_id, 1);
+verifyEqual(testCase, report.moved_missing_session_id, 1);
+verifyFalse(testCase, isfield(out.base, 'id'));
+verifyFalse(testCase, isfield(out.base, 'session_id'));
+end
+
+function testLegacyReportCountsTheFourUndeclaredFields(testCase)
+% experiment_unique_reference, document_unique_reference, type,
+% database_version -- four fields `base` does not declare, on one body.
+v1 = make2019Body();
+[~, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.moved_with_any_undeclared_field, 1);
+verifyEqual(testCase, report.moved_undeclared_field_instances, 4);
+end
+
+function testLegacyReportDiscriminatesThe2019VintageFromThe2020One(testCase)
+% An arm count alone cannot say whether anything is broken. NDI renamed the
+% fields in stages -- experiment_unique_reference -> experiment_id
+% (5d0b66d8f, 2019-11-04) -> session_id (e8c02831d, 2020-05-19), and
+% document_unique_reference -> id (9dc6bfe15, 2019-12-20) -- so a
+% 2020-vintage `ndi_document` block already spells `id`/`session_id` and the
+% wholesale move is SOUND for it. Only the 2019 names mark the broken shape.
+v1 = make2019Body();
+[~, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.moved_carrying_experiment_unique_reference, 1);
+verifyEqual(testCase, report.moved_carrying_document_unique_reference, 1);
+verifyEqual(testCase, report.moved_carrying_type, 1);
+verifyEqual(testCase, report.moved_carrying_database_version, 1);
+
+v2020 = struct();
+v2020.document_class = struct('class_name', 'treatment');
+v2020.treatment = struct();
+v2020.ndi_document = struct( ...
+    'id',               'aabb1122ccdd3344_1122334455667788', ...
+    'session_id',       'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name',             'legacy-doc', ...
+    'type',             '', ...
+    'datestamp',        '2021-06-01T12:00:00.000Z', ...
+    'database_version', 1);
+[~, r2020] = did2.convert.universalRenames(v2020);
+verifyEqual(testCase, r2020.moved_wholesale_no_base, 1);
+verifyEqual(testCase, r2020.moved_missing_id, 0);
+verifyEqual(testCase, r2020.moved_missing_session_id, 0);
+verifyEqual(testCase, r2020.moved_carrying_experiment_unique_reference, 0);
+verifyEqual(testCase, r2020.moved_carrying_document_unique_reference, 0);
+% Still two fields with no home in `base`, and the counter says so.
+verifyEqual(testCase, r2020.moved_undeclared_field_instances, 2);
+end
+
+function testLegacyDeclaredBaseFieldListMatchesTheSchema(testCase)
+% countMovedBlock names `base`'s four declared fields inline because it runs
+% with no schema cache in hand. This test is what keeps that list honest:
+% it reads the SCHEMA and asserts the same four, so a field added to `base`
+% fails here rather than silently inflating `moved_undeclared_field_instances`
+% on every future run.
+thisDir = fileparts(mfilename('fullpath'));
+schemaFile = fullfile(fileparts(thisDir), 'fixtures', 'V_delta', 'base.json');
+verifyTrue(testCase, isfile(schemaFile), ...
+    sprintf('base schema fixture not found at %s', schemaFile));
+schema = jsondecode(fileread(schemaFile));
+declared = sort({schema.fields.name});
+verifyEqual(testCase, declared, ...
+    sort({'datestamp', 'id', 'name', 'session_id'}));
+end
+
+function testLegacyCountersReachTheBatchSummaryWithItsDenominator(testCase)
+% The counter is useless if it stops at the per-body report. v1_to_v2 sums it
+% into summary.legacy_ndi_document, which writeCorpusReport persists and
+% tools/census_digest.py renders.
+v1 = make2019Body();
+clean = makeV1Skeleton('treatment');
+clean.treatment = struct();
+result = did2.convert.v1_to_v2({v1, clean}, 'Validate', false);
+L = result.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_total, 2);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 2);
+verifyEqual(testCase, L.bodies_skipped_already_target, 0);
+verifyEqual(testCase, L.bodies_unreached, 0);
+verifyEqual(testCase, L.ndi_document_block_seen, 1);
+verifyEqual(testCase, L.moved_wholesale_no_base, 1);
+verifyEqual(testCase, L.discarded_ndi_document_base_present, 0);
+verifyEqual(testCase, L.moved_undeclared_field_instances, 4);
+verifyEqual(testCase, L.moved_by_class.projectvar, 1);
+end
+
+function testLegacySummaryIsPresentAndZeroWhenNoBodyCarriesTheBlock(testCase)
+% ALL-ZERO IS THE EXPECTED READING on every corpus we hold, and it has to be
+% a PRINTED zero. Corpus run 31464483119 inspected 633,432 documents across 6
+% corpora and quarantined 0, so no pre-`base` document is in the sample --
+% a fact about the SAMPLE, not evidence none exist.
+clean = makeV1Skeleton('treatment');
+clean.treatment = struct();
+result = did2.convert.v1_to_v2(clean, 'Validate', false);
+L = result.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_total, 1);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 1);
+verifyEqual(testCase, L.ndi_document_block_seen, 0);
+verifyEqual(testCase, L.moved_wholesale_no_base, 0);
+end
+
+function testLegacyDenominatorSeparatesTheIdempotencyShortCircuit(testCase)
+% A body already at the target skips universalRenames entirely, so it must
+% NOT be counted as inspected. Without this, a re-run over migrated bodies
+% would report every arm at 0 having looked at nothing.
+already = makeV1Skeleton('treatment');
+already.treatment = struct();
+already.document_class.schema_version = 'V_delta';
+result = did2.convert.v1_to_v2(already, 'Validate', false);
+L = result.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_total, 1);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 0);
+verifyEqual(testCase, L.bodies_skipped_already_target, 1);
+verifyEqual(testCase, L.bodies_unreached, 0);
+end
