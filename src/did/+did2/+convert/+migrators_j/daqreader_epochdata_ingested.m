@@ -11,7 +11,19 @@ function bodies = daqreader_epochdata_ingested(preBody)
 %
 %       epochtable.epochclock{i} + t0_t1(:,i)
 %          -> relative_reference   relative_to -> the epoch document
-%                                  value { start, end, clock, approximate }
+%                                  value { clock, start, duration }
+%
+%   THIS LINE READ `value { start, end, clock, approximate }` UNTIL 2026-08-11
+%   and named three fields the emitter does not write. Corrected against the
+%   emitter rather than against memory: jEpochClockReferences.m builds
+%   `relative_reference.value` as {clock, start, duration} (its CHANGE 1 --
+%   `end` became `duration`) and puts the approximation on the ROOT block as
+%   `time_reference.clock_tolerance` (its CHANGE 2 and 4 -- `approximate` on the
+%   value cell is a claim about the NUMBER and is always false there; a boolean
+%   `is_approximate` was deleted outright because it threw away the five seconds
+%   NDI states). A header that names a field the code does not emit is the
+%   stale-header defect this project has now found seven times; it is corrected
+%   here rather than left for the next reader to trust.
 %
 %   ---------------------------------------------------------------------
 %   WHY THE SOURCE IS PRESERVED RATHER THAN RETIRED

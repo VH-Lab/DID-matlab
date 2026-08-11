@@ -206,8 +206,18 @@ end
 % ===================== daqmetadatareader_epochdata_ingested ================
 
 function testMetadataIngestedPassesThroughWithoutAnEpochDocument(testCase)
-% THE STATE OF THE WORLD TODAY: 2,659 documents (B 1,242 / Dab 1,242 / Soph 175)
-% pass through intact rather than becoming carriers with an empty required edge.
+% PASS ONE, IN ISOLATION. This is the migrator's own behaviour with no epoch
+% document in reach: 2,659 documents (B 1,242 / Dab 1,242 / Soph 175) pass
+% through intact rather than becoming carriers with an empty required edge.
+%
+% WHAT CHANGED 2026-08-11, so this comment is not read as the pipeline's whole
+% story: `did2.convert.epochMint` now ARMS the fold in the batch pass, after it
+% has minted the epochs. It stamps the `epoch_id` edge onto exactly these
+% passed-through bodies and re-runs this migrator, which is the handoff
+% jEpochDocId's header describes. So a full pipeline run folds what pass 1
+% leaves alone -- and this assertion stays exactly as it is, because pass 1
+% must keep refusing on its own. See testEpochMint's ingested-metadata section
+% for the batch half.
 out = runJ(metadataIngestedV1());
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};

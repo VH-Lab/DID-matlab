@@ -1,9 +1,12 @@
 function [result, report] = epochMint(result, options)
 %EPOCHMINT Mint one `epoch` entity per distinct (session, epoch-id string).
 %
-%   STATUS: WRITTEN 2026-08-10, NEVER EXECUTED. This container has no MATLAB.
-%   Nothing below has been run; the quick gate (test-migrators-quick.yml) is the
-%   first thing that will have an opinion about it.
+%   STATUS: WRITTEN 2026-08-10, EXTENDED 2026-08-11 (the ingested-metadata
+%   fold), NEVER EXECUTED HERE. This container has no MATLAB -- `command -v
+%   matlab octave octave-cli` prints nothing and exits 1 -- so not one line
+%   below has been run in this environment. The quick gate
+%   (test-migrators-quick.yml) is the first thing that will have an opinion
+%   about it, and the CI run ids are the only durable evidence.
 %
 %   [RESULT, REPORT] = did2.convert.epochMint(RESULT) takes the struct returned
 %   by did2.convert.v1_to_v2 (after resolveDeferredBaths / resolveDatasetEntities)
@@ -117,6 +120,21 @@ function [result, report] = epochMint(result, options)
 %   rewire needs its own schema increment (declaring `epoch_id` on those
 %   classes) and is a separate line in #60.
 %
+%   AMENDED 2026-08-11 -- ONE OF THOSE THREE IS NOW FILLED HERE, and the
+%   sentence above is why it took a fold rather than a stamp. Read it as
+%   written: `acquisition_metadata_file` DECLARES the edge and is simply not
+%   EMITTED by pass 1, and it is not emitted for exactly one reason -- its
+%   migrator is guarded on an epoch document that did not exist when pass 1
+%   ran. This function is the moment one does. So the loop "arm the
+%   ingested-metadata fold" below stamps the edge onto the passed-through
+%   `daqmetadatareader_epochdata_ingested` body and re-runs
+%   +migrators_j/daqmetadatareader_epochdata_ingested, which is the handoff
+%   +migrators_j/private/jEpochDocId.m documents in its own header. Nothing
+%   about the paragraph above is relaxed: no edge is stamped on a class that
+%   does not declare it, and `ingestion_manifest` -- the other of the three --
+%   is still NOT folded, for the `epochprobemap` reason recorded two paragraphs
+%   down and unchanged.
+%
 %   `method_parameters` IS filled, because it is the one class that declares the
 %   edge, is emitted by pass 1, and has the epoch string parked for exactly this
 %   moment: `+migrators_j/private/jMethodParameters.m:112-119` writes the string
@@ -191,6 +209,16 @@ report = struct( ...
     'method_parameters_seen',         0, ...
     'method_parameters_edges_filled', 0, ...
     'method_parameters_unresolved',   0, ...
+    'metadata_ingested_seen',              0, ...
+    'metadata_ingested_already_folded',    0, ...
+    'metadata_ingested_edges_stamped',     0, ...
+    'metadata_ingested_folds_emitted',     0, ...
+    'metadata_ingested_folds_withheld',    0, ...
+    'metadata_refused_no_epoch_string',    0, ...
+    'metadata_refused_no_epoch_document',  0, ...
+    'metadata_refused_migrator_declined',  0, ...
+    'metadata_refused_total',              0, ...
+    'metadata_fold_vacuous',               true, ...
     'mint_quarantined',               0, ...
     'ran',                            false, ...
     'epoch_index', struct('session_id', {}, 'local_identifier', {}, ...
@@ -387,6 +415,12 @@ report.pairs_minus_strings = ...
 
 % --- fill the ONE declared, fillable epoch edge ---------------------------
 changedIdx = [];
+% The subset of `changedIdx` that is an ingested-metadata FOLD. Kept beside it
+% rather than recovered afterwards by class name: after the rebuild the body in
+% `docs{k}` may be either the folded document or the original passthrough
+% (whichever survived), so asking "what class is it now" cannot tell an emitted
+% fold from a withheld one -- which is precisely the number to report.
+metadataFoldIdx = [];
 for k = 1:n
     if ~strcmp(rows(k).class_name, 'method_parameters'); continue; end
     report.method_parameters_seen = report.method_parameters_seen + 1;
@@ -421,6 +455,116 @@ for k = 1:n
     report.method_parameters_edges_filled = ...
         report.method_parameters_edges_filled + 1;
 end
+
+% --- arm the ingested-metadata fold ---------------------------------------
+% `daqmetadatareader_epochdata_ingested` -> `acquisition_metadata_file`, the
+% TEAM-SIGNED fold (V_eta_ingested_payload_findings.md, TEAM-SIGN-OFF [daq
+% ingested payloads], jess@walthamdatascience.com / 2026-08-08: "ONE new class,
+% `acquisition_metadata_file`").
+%
+% THIS IS NOT A SECOND FOLD IMPLEMENTATION. The fold lives in
+% +migrators_j/daqmetadatareader_epochdata_ingested.m and is called here
+% unchanged. All this loop does is STAMP THE `epoch_id` EDGE the migrator is
+% guarded on -- which is the handoff its own guard names in as many words:
+%
+%   +migrators_j/private/jEpochDocId.m
+%     "The day the epoch pass stamps an `epoch_id` edge, these migrators
+%      convert with no further change; the tests drive both branches."
+%
+% So the arming is one assignment, the fold stays under the tests that already
+% pin it (testMigratorsJIngested's metadata block), and there is exactly one
+% place that knows what an `acquisition_metadata_file` looks like.
+%
+% WHY HERE AND NOT IN A NEW BATCH PASS. Three reasons, in order of weight:
+%
+%   1. This pass already owns the exact half that was missing. Its own header
+%      says the rewire is blocked because "exactly THREE V_eta classes declare
+%      an `epoch_id` DEPENDENCY at all ... and the first two are not emitted by
+%      pass 1". `acquisition_metadata_file` is one of those three. It is not
+%      emitted by pass 1 for ONE reason -- no epoch document existed when the
+%      migrator ran -- and this is the function, and the moment, at which one
+%      does. `method_parameters` above is the same operation on the one class
+%      that needed no fold to reach its edge.
+%   2. A new pass could not be wired on both sides from here. The gate in
+%      tests/+did2/+unittest/testBatchPassWiring.m requires every batch
+%      post-pass to be called from all three DID harnesses AND from
+%      ndi.migrate.local, which is in NDI-matlab -- a repository this session
+%      has READ access to and no more. The escape hatch (a crossRepoDivergence
+%      row) exists for divergences that are INTENDED; "the author could not
+%      write the other repository" is not one, and taking it would convert a
+%      real gap into an approved one, which that file names as the worse
+%      failure. epochMint is already called from all four sites.
+%   3. Ordering is already correct and already load-bearing. The stamp must
+%      follow the mint, and the mint is above.
+%
+% NOTHING CAN BE LOST HERE, and that is a property of the rebuild path below
+% rather than a claim about this loop. A folded body is pushed through
+% did2.convert.v1_to_v2 with the rest; the replacement loop overwrites
+% `docs{k}` ONLY when the folded body's id came back out of it, so a body that
+% quarantines leaves the ORIGINAL passthrough document in the batch -- valid
+% under its own restored source tombstone -- while still landing in
+% `result.quarantine`, which is a 0-quarantine gate failure and the correct
+% volume for a builder that emitted an invalid document.
+%
+% VACUITY IS REPORTED, NOT INFERRED FROM ZEROS. `metadata_fold_vacuous` is TRUE
+% when this batch held no source documents at all, so a run with nothing to do
+% cannot read as a run that did everything. Every `metadata_*` zero below it is
+% then a zero over a zero denominator.
+for k = 1:n
+    if strcmp(rows(k).class_name, 'acquisition_metadata_file')
+        % A re-run. find-or-create, not create: ndi.migrate.local re-reads
+        % every document on a second pass over the same dataset.
+        report.metadata_ingested_already_folded = ...
+            report.metadata_ingested_already_folded + 1;
+        continue;
+    end
+    if ~strcmp(rows(k).class_name, 'daqmetadatareader_epochdata_ingested')
+        continue;
+    end
+    report.metadata_ingested_seen = report.metadata_ingested_seen + 1;
+    % The `epochid` MIXIN string specifically. Reading "whichever string this
+    % body has" is the error epochMint already avoids one loop up: a document
+    % may carry several, and they may name different epochs.
+    es = valueForSource(epochValues{k}, epochSources{k}, 'epochid');
+    if isempty(es)
+        report.metadata_refused_no_epoch_string = ...
+            report.metadata_refused_no_epoch_string + 1;
+        continue;
+    end
+    key = pairKey(rows(k).session_id, es);
+    if ~isKey(epochIdByKey, key)
+        % Refused above (synthetic id / no session id / no session document /
+        % ambiguous session), or the mint quarantined. Either way there is no
+        % epoch to point at, and `acquisition_metadata_file.epoch_id` is
+        % REQUIRED -- emitting it empty is the invented-empty-edge pattern,
+        % which +did2/+validate/references.m:90 would let through clean.
+        report.metadata_refused_no_epoch_document = ...
+            report.metadata_refused_no_epoch_document + 1;
+        continue;
+    end
+    b = setDep(bodies{k}, 'epoch_id', epochIdByKey(key));
+    report.metadata_ingested_edges_stamped = ...
+        report.metadata_ingested_edges_stamped + 1;
+    folded = did2.convert.migrators_j.daqmetadatareader_epochdata_ingested(b);
+    if iscell(folded) && isscalar(folded); folded = folded{1}; end
+    if ~isstruct(folded) || ~isscalar(folded) ...
+            || ~strcmp(classNameOf(folded), 'acquisition_metadata_file')
+        % The migrator's OTHER guards -- no reader edge, no bytes -- fired and
+        % it returned the source. It is the authority on whether the fold is
+        % safe; this loop only supplies the epoch. The stamped edge is dropped
+        % with the body, so the passthrough is byte-identical to no-op.
+        report.metadata_refused_migrator_declined = ...
+            report.metadata_refused_migrator_declined + 1;
+        continue;
+    end
+    bodies{k} = folded;
+    changedIdx(end+1) = k;      %#ok<AGROW>
+    metadataFoldIdx(end+1) = k; %#ok<AGROW>
+end
+report.metadata_refused_total = report.metadata_refused_no_epoch_string ...
+    + report.metadata_refused_no_epoch_document ...
+    + report.metadata_refused_migrator_declined;
+report.metadata_fold_vacuous = (report.metadata_ingested_seen == 0);
 
 report.epochs_minted = numel(minted);
 report.epoch_index = indexRows;
@@ -467,6 +611,22 @@ for j = 1:numel(changedIdx)
     id = rows(changedIdx(j)).doc_id;
     if ~isempty(id) && isKey(producedById, id)
         docs{changedIdx(j)} = out.migrated{producedById(id)};
+    end
+end
+% THE FOLD'S OWN DENOMINATOR, split by what actually landed. A fold that
+% quarantined leaves `docs{k}` holding the ORIGINAL passthrough document, so
+% nothing is lost -- but nothing was gained either, and the two must not print
+% the same. `withheld` is the count of documents that stayed did_v1 despite
+% having an epoch to point at, and it is exactly the number a 0-quarantine gate
+% failure should be read against.
+for j = 1:numel(metadataFoldIdx)
+    id = rows(metadataFoldIdx(j)).doc_id;
+    if ~isempty(id) && isKey(producedById, id)
+        report.metadata_ingested_folds_emitted = ...
+            report.metadata_ingested_folds_emitted + 1;
+    else
+        report.metadata_ingested_folds_withheld = ...
+            report.metadata_ingested_folds_withheld + 1;
     end
 end
 mintedIds = cellfun(@(b) b.base.id, minted, 'UniformOutput', false);

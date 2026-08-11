@@ -1,9 +1,12 @@
 function tests = testEpochMint
 %TESTEPOCHMINT The `epoch` mint (#60): one entity per (session, epoch-id) PAIR.
 %
-%   STATUS: WRITTEN 2026-08-10, NEVER EXECUTED. This container has no MATLAB, so
-%   nothing in this file has been run. The quick gate
-%   (test-migrators-quick.yml) is the first thing that will have an opinion.
+%   STATUS: WRITTEN 2026-08-10, EXTENDED 2026-08-11 (the ingested-metadata fold
+%   section at the bottom), NEVER EXECUTED HERE. This container has no MATLAB
+%   and no Octave -- `command -v matlab octave octave-cli` prints nothing and
+%   exits 1 -- so nothing in this file has been run here. The quick gate
+%   (test-migrators-quick.yml) is the first thing that will have an opinion,
+%   and the CI run ids in the commit message are the only durable evidence.
 %
 %   NEW FILE, deliberately. `testMigratorsJEpoch.m` pins PASS-ONE behaviour --
 %   that no epoch is minted, that no `epoch_id` edge is ever emitted empty --
@@ -684,4 +687,330 @@ verifyEqual(testCase, char(ae{1}.get('epochid.epochid')), 't00069', ...
 verifyFalse(testCase, hasDep(ae{1}.toStruct(), 'epoch_id'), ...
     ['acquisition_epoch declares no epoch_id edge, so the mint must not ' ...
      'stamp one -- an undeclared edge is the invented-edge pattern reversed']);
+end
+
+% ===================== the ingested-metadata fold ======================
+%
+%   WHAT THESE PIN. `daqmetadatareader_epochdata_ingested` ->
+%   `acquisition_metadata_file` is TEAM-SIGNED (V_eta_ingested_payload_findings
+%   .md, TEAM-SIGN-OFF [daq ingested payloads], 2026-08-08). The fold itself
+%   lives in +migrators_j/daqmetadatareader_epochdata_ingested.m and is pinned
+%   by testMigratorsJIngested; what is pinned HERE is the ARMING -- that this
+%   pass stamps the `epoch_id` edge the migrator is guarded on, that it stamps
+%   the RIGHT one, and that it refuses rather than stamping a wrong or empty
+%   one.
+%
+%   THE ARMING IS NOT A NEW DESIGN. jEpochDocId's own header states the
+%   handoff: "The day the epoch pass stamps an `epoch_id` edge, these migrators
+%   convert with no further change; the tests drive both branches." These are
+%   the tests for the day that happened.
+%
+%   NEVER EXECUTED HERE (no MATLAB in this container -- `command -v matlab
+%   octave octave-cli` prints nothing and exits 1). CI is the first run.
+
+function v1 = metadataIngestedBody(docId, sessionId, epochId, readerId, files)
+%METADATAINGESTEDBODY A did_v1 `daqmetadatareader_epochdata_ingested`.
+%
+%   TEMPLATE (git show origin/main:src/ndi/ndi_common/database_documents/\
+%   ingestion/daqmetadatareader_epochdata_ingested.json):
+%       superclasses  base, epochid
+%       depends_on    [ { "name": "daqmetadatareader_id", "value": "" } ]
+%       files         { "file_list": [ "data.bin" ] }
+%       daqmetadatareader_epochdata_ingested { }        <- NO FIELDS AT ALL
+%
+%   WRITER (+ndi/+daq/metadatareader.m, ingest_epochfiles):
+%       134  epochid_struct.epochid = epoch_id;
+%       136  d = ndi.document('daqmetadatareader_epochdata_ingested', ...
+%                             'epochid', epochid_struct);
+%       137  d = d.set_dependency_value('daqmetadatareader_id', obj.id());
+%       144  d = d.add_file('data.bin',[metadatafile '.nbf.tgz']);
+%
+%   So the writer sets exactly three things, and the fixture sets exactly those
+%   three. FILES is a parameter only so the no-bytes branch can be driven; every
+%   real document has one, and `data.bin`'s bytes are a `.nbf.tgz` archive under
+%   a generic name -- NOT typed here, deliberately (the plan: "Do not type
+%   `data.bin`").
+v1 = struct();
+v1.document_class = struct( ...
+    'definition',         '$NDIDOCUMENTPATH/ingestion/daqmetadatareader_epochdata_ingested.json', ...
+    'validation',         '$NDISCHEMAPATH/ingestion/daqmetadatareader_epochdata_ingested_schema.json', ...
+    'class_name',         'daqmetadatareader_epochdata_ingested', ...
+    'property_list_name', 'daqmetadatareader_epochdata_ingested', ...
+    'class_version',      1, ...
+    'superclasses',       [ struct('definition', '$NDIDOCUMENTPATH/base.json'), ...
+                            struct('definition', '$NDIDOCUMENTPATH/epochid.json')]);
+v1.depends_on = struct('name', 'daqmetadatareader_id', 'value', readerId);
+v1.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', '', 'datestamp', '2024-03-23T13:47:40.237Z');
+v1.epochid = struct('epochid', epochId);
+v1.daqmetadatareader_epochdata_ingested = struct();
+v1.files = struct('file_list', {files});
+end
+
+function testTheMintArmsTheIngestedMetadataFold(testCase)
+% THE HEADLINE. Before this build these documents passed through whole -- 2,659
+% of them (B 1,242 / Dab 1,242 / Soph 175, the volumes in the findings
+% document) -- because the fold's REQUIRED `epoch_id` had nothing to point at.
+% The epoch now exists, so the fold runs.
+[out, rep] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+
+verifyEqual(testCase, rep.metadata_ingested_seen, 1, ...
+    'the source document must be SEEN before any other count means anything');
+verifyFalse(testCase, rep.metadata_fold_vacuous, ...
+    'a batch that held a source document is not a vacuous run');
+verifyEqual(testCase, rep.metadata_ingested_edges_stamped, 1);
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 1);
+verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 0);
+verifyEqual(testCase, rep.metadata_refused_total, 0);
+
+folded = ofClass(out, 'acquisition_metadata_file');
+verifyNumElements(testCase, folded, 1, ...
+    'the signed target is one acquisition_metadata_file per source document');
+verifyEmpty(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), ...
+    'the fold is 1 -> 1: the source class must not also survive');
+end
+
+function testTheFoldedFilePointsAtTheEpochThatWasMinted(testCase)
+% The edge must resolve to the `epoch` this pass minted for THIS document's
+% (session, string) pair -- not to any epoch, and not to a fresh id. Asserted by
+% reading the minted epoch's own base.id back out of the batch, so the test
+% cannot pass by agreeing with a constant.
+[out, ~] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+epochs = ofClass(out, 'epoch');
+verifyNumElements(testCase, epochs, 1);
+epochDocId = char(epochs{1}.get('base.id'));
+verifyEqual(testCase, char(epochs{1}.get('epoch.local_identifier')), 't00001');
+
+folded = ofClass(out, 'acquisition_metadata_file');
+s = folded{1}.toStruct();
+verifyEqual(testCase, depValue(s, 'epoch_id'), epochDocId, ...
+    'epoch_id must be the minted epoch document, read back from the batch');
+verifyEqual(testCase, depValue(s, 'acquisition_metadata_reader_id'), 'mdr_1', ...
+    'the reader edge is carried verbatim -- daqmetadatareader preserves base.id');
+end
+
+function testTheFoldPreservesTheIdAndCarriesTheBytes(testCase)
+% base.id PRESERVED (T10) and `data.bin` carried. The bytes are the ENTIRE
+% content of this class -- it declares no fields -- so a fold that dropped them
+% would emit a document that is valid, smaller than its input, and empty of the
+% only thing it exists to hold. That is the fragment mode no counter sees.
+[out, ~] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+folded = ofClass(out, 'acquisition_metadata_file');
+verifyEqual(testCase, char(folded{1}.get('base.id')), 'amf_1', ...
+    'base.id is preserved, so the migrated document stays traceable to its source');
+s = folded{1}.toStruct();
+verifyTrue(testCase, isfield(s, 'files') && isfield(s.files, 'file_list'), ...
+    'the folded document must still declare a file list');
+verifyTrue(testCase, any(strcmp(s.files.file_list, 'data.bin')), ...
+    'data.bin is the whole content of an acquisition_metadata_file');
+end
+
+function testTheEpochStringLeavesInTheSameStepTheEdgeArrives(testCase)
+% `acquisition_metadata_file` does NOT inherit `epochid`, so the string has
+% nowhere to live on it and the epoch attribution survives only as the edge.
+% Storing both would be one fact in two places with nothing saying which is
+% authoritative (open item #69); storing NEITHER is the fragment this pass
+% refuses. So: edge present, block gone, in one step.
+[out, ~] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+s = ofClass(out, 'acquisition_metadata_file');
+s = s{1}.toStruct();
+verifyTrue(testCase, hasDep(s, 'epoch_id'));
+verifyFalse(testCase, isfield(s, 'epochid'), ...
+    'the v1 epochid block must not survive alongside the edge that replaces it');
+end
+
+function testTwoSessionsReusingOneEpochStringFoldToDifferentEpochs(testCase)
+% THE TEST THAT FAILS IF ANYONE KEYS THE LOOKUP ON THE STRING ALONE. An
+% `epochid.epochid` string is REUSED ACROSS SESSIONS -- 142 of corpus B's 149
+% distinct ids (did2.validate.sourceCensus, corpus run 31415147934) -- because
+% vhlab ids restart at t00001 in every session directory. Keying the fold's
+% lookup on `t00001` would point BOTH of these metadata files at whichever
+% epoch happened to be minted first, silently attributing one session's
+% spreadsheet to another session's recording. Both documents validate either
+% way; only this assertion can see it.
+[out, rep] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    sessionBody('sd_B', 'sess_B', 'ts_2009'), ...
+    metadataIngestedBody('amf_A', 'sess_A', 't00001', 'mdr_A', {'data.bin'}), ...
+    metadataIngestedBody('amf_B', 'sess_B', 't00001', 'mdr_B', {'data.bin'})});
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 2);
+verifyEqual(testCase, rep.epochs_minted, 2, ...
+    'one string, two sessions, two epochs -- the pair is the key');
+
+folded = ofClass(out, 'acquisition_metadata_file');
+verifyNumElements(testCase, folded, 2);
+edges = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:numel(folded)
+    s = folded{k}.toStruct();
+    edges(char(s.base.id)) = depValue(s, 'epoch_id');
+end
+verifyNotEqual(testCase, edges('amf_A'), edges('amf_B'), ...
+    ['both files were pointed at ONE epoch: the lookup fused two sessions ' ...
+     'that share an epoch-id string']);
+
+% ... and each at the epoch belonging to ITS OWN session. Inequality alone
+% would still pass if the two were simply swapped.
+epochOwner = containers.Map('KeyType', 'char', 'ValueType', 'char');
+epochs = ofClass(out, 'epoch');
+for k = 1:numel(epochs)
+    e = epochs{k}.toStruct();
+    epochOwner(char(e.base.id)) = depValue(e, 'session_id');
+end
+verifyEqual(testCase, epochOwner(edges('amf_A')), 'sd_A');
+verifyEqual(testCase, epochOwner(edges('amf_B')), 'sd_B');
+end
+
+function testAnUnresolvableEpochLeavesTheDocumentAsItWas(testCase)
+% NO SESSION DOCUMENT => NO EPOCH => NO FOLD. The refusal is the point: the
+% alternative is an `acquisition_metadata_file` whose REQUIRED `epoch_id` is
+% empty, which VALIDATES CLEAN because +did2/+validate/references.m:90 skips
+% empty edges -- the mechanism behind the whole invented-empty-edge census. It
+% would also destroy the only record of which epoch the bytes belong to, since
+% the target class cannot carry the string.
+[out, rep] = mintFrom({ ...
+    metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+verifyEqual(testCase, rep.metadata_ingested_seen, 1);
+verifyEqual(testCase, rep.metadata_refused_no_epoch_document, 1);
+verifyEqual(testCase, rep.metadata_refused_total, 1);
+verifyEqual(testCase, rep.metadata_ingested_edges_stamped, 0);
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0);
+
+verifyEmpty(testCase, ofClass(out, 'acquisition_metadata_file'), ...
+    'no epoch means no carrier -- refuse, do not emit an observation about nobody');
+kept = ofClass(out, 'daqmetadatareader_epochdata_ingested');
+verifyNumElements(testCase, kept, 1, ...
+    'the source document survives untouched under its restored tombstone');
+s = kept{1}.toStruct();
+verifyFalse(testCase, hasDep(s, 'epoch_id'), ...
+    'a refused fold must leave no stamped edge behind on the passthrough');
+verifyEqual(testCase, char(s.epochid.epochid), 't00001', ...
+    'the epoch attribution stays as the string it arrived as');
+end
+
+function testNoFoldedFileEverCarriesAnEmptyEpochEdge(testCase)
+% The invariant, asserted over the WHOLE batch rather than over the one
+% document a test happened to build: whatever the mix of resolvable and
+% unresolvable sources, every `acquisition_metadata_file` in the result has a
+% populated epoch_id. This is the assertion that survives a future refactor of
+% the loop above.
+[out, ~] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    metadataIngestedBody('amf_ok',   'sess_A', 't00001', 'mdr_1', {'data.bin'}), ...
+    metadataIngestedBody('amf_nosess', 'sess_Z', 't00002', 'mdr_2', {'data.bin'})});
+folded = ofClass(out, 'acquisition_metadata_file');
+verifyNumElements(testCase, folded, 1, ...
+    'exactly the resolvable one folds; the other stays did_v1');
+for k = 1:numel(folded)
+    s = folded{k}.toStruct();
+    verifyNotEmpty(testCase, depValue(s, 'epoch_id'), ...
+        'an acquisition_metadata_file with an empty epoch_id is a hollow carrier');
+    verifyNotEmpty(testCase, depValue(s, 'acquisition_metadata_reader_id'), ...
+        'both edges are REQUIRED on the signed class');
+end
+end
+
+function testTheMigratorsOwnGuardsStillDecide(testCase)
+% This pass supplies the epoch and NOTHING ELSE. The migrator's other two
+% guards -- no reader edge, no bytes -- remain the authority on whether a fold
+% is safe, and a decline is COUNTED rather than absorbed. A document with no
+% bytes has nothing this class can hold: `data.bin` is REQUIRED on both the NDI
+% schema document and the V_eta class, and unlike `depends_on` nothing skips an
+% empty `file`.
+[out, rep] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {})});
+verifyEqual(testCase, rep.metadata_ingested_seen, 1);
+verifyEqual(testCase, rep.metadata_ingested_edges_stamped, 1, ...
+    'the epoch WAS resolvable -- the refusal came from the migrator, not from here');
+verifyEqual(testCase, rep.metadata_refused_migrator_declined, 1);
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0);
+verifyEmpty(testCase, ofClass(out, 'acquisition_metadata_file'));
+kept = ofClass(out, 'daqmetadatareader_epochdata_ingested');
+verifyNumElements(testCase, kept, 1);
+verifyFalse(testCase, hasDep(kept{1}.toStruct(), 'epoch_id'), ...
+    'the stamped edge is discarded with the declined body, so a decline is a no-op');
+end
+
+function testTheFoldIsVacuousNotCleanWhenNoSourceIsPresent(testCase)
+% A ZERO OVER A ZERO DENOMINATOR MUST SAY SO. Every corpus that holds no
+% `daqmetadatareader_epochdata_ingested` document produces the same all-zero
+% block as a corpus where the fold ran and failed on every document. Without
+% `metadata_fold_vacuous` those two readings are identical -- which is the
+% silentLoss defect exactly, and the reason operating rule 5 exists.
+[~, rep] = mintFrom({ ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
+verifyTrue(testCase, rep.metadata_fold_vacuous, ...
+    'no source documents: the zeros below are untested, not clean');
+verifyEqual(testCase, rep.metadata_ingested_seen, 0);
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0);
+verifyEqual(testCase, rep.metadata_refused_total, 0);
+verifyEqual(testCase, rep.epochs_minted, 1, ...
+    'the rest of the pass is unaffected by having nothing to fold');
+end
+
+function testRunningTwiceFoldsOnceAndSaysSo(testCase)
+% IDEMPOTENCE, and it is not hypothetical: ndi.migrate.local documents itself as
+% idempotent -- a re-run on a dataset that already has a <target>.sqlite reads
+% every document back and runs the second pass again. The second run must see
+% the folded documents as ALREADY DONE rather than as strangers, and must not
+% mint a second epoch for a pair that already has one.
+v1 = { ...
+    sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+    metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})};
+[out, rep1] = mintFrom(v1);
+verifyEqual(testCase, rep1.metadata_ingested_folds_emitted, 1);
+verifyEqual(testCase, rep1.epochs_minted, 1);
+
+[out2, rep2] = did2.convert.epochMint(out, ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, rep2.metadata_ingested_already_folded, 1, ...
+    'the second run must RECOGNISE the folded document, not ignore it');
+verifyEqual(testCase, rep2.metadata_ingested_seen, 0);
+verifyEqual(testCase, rep2.epochs_minted, 0, ...
+    'find-or-create: the epoch already in the batch is found, not re-minted');
+verifyEqual(testCase, rep2.epochs_found_existing, 1);
+verifyNumElements(testCase, ofClass(out2, 'acquisition_metadata_file'), 1);
+verifyNumElements(testCase, ofClass(out2, 'epoch'), 1);
+end
+
+function testTheFoldedFileValidatesAgainstItsSchema(testCase)
+% Validation ON. This is the test that fails if the built
+% `acquisition_metadata_file` schema and the folded body ever disagree -- a new
+% required field, a renamed edge, a changed file declaration. It is also the
+% only test here that would catch the fold emitting a body the validator
+% rejects, in which case the ORIGINAL passthrough is what stays in the batch
+% (the replacement is keyed on the id coming back out of v1_to_v2) and
+% `metadata_ingested_folds_withheld` is the number that says so.
+%
+% Requires the assembled V_eta schema set on DID_SCHEMA_PATH, which is why the
+% rest of this file runs with Validate false.
+did2.unittest.helpers.installSchemaPath(testCase, ...
+    'skipping the acquisition_metadata_file validation test');
+try
+    did2.schema.cache.shared().getClass('acquisition_metadata_file');
+catch err
+    assumeFail(testCase, ...
+        ['DID_SCHEMA_PATH does not resolve acquisition_metadata_file (' ...
+         err.message ').']);
+end
+out = did2.convert.v1_to_v2({ ...
+        sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+        metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})}, ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+[out, rep] = did2.convert.epochMint(out, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
+verifyEqual(testCase, rep.mint_quarantined, 0, ...
+    'a folded document that cannot validate is a build defect, not a data problem');
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 1);
+verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 0);
+verifyNumElements(testCase, ofClass(out, 'acquisition_metadata_file'), 1);
 end
