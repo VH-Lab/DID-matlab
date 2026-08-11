@@ -132,8 +132,23 @@ jobs:
             suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
             results = runner.run(suite);
             disp(table(results));
-            nFailed = sum([results.Failed]);
-            assert(nFailed == 0, sprintf("%d test(s) failed", nFailed));
+            % The verdict block prints LAST so a red run is readable from a log
+            % tail: the failing test's NAME, not just a count. Guarded, because a
+            % helper that fails to resolve must not turn every gate red -- the
+            % fallback recomputes the same two numbers and says loudly that it did.
+            verdict = struct('n_run', numel(results), ...
+                'n_failed', sum([results.Failed]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(results, "full test suite");
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_run > 0, ...
+                "the suite selected NO tests -- that is a broken filter, not a pass");
+            assert(verdict.n_failed == 0, ...
+                sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
+                    verdict.n_failed));
 
       - name: Corpus census digest (END OF LOG -- reachable by a log tail)
         # The corpus tests already print every number below, but they run FIRST

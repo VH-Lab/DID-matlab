@@ -69,8 +69,18 @@ jobs:
             readSuite = TestSuite.fromPackage("did.symmetry.readArtifacts", "IncludingSubpackages", true);
             readResults = runner.run(readSuite);
             disp(table(readResults));
-            nSkipped = sum([readResults.Incomplete]);
-            nPassed = sum([readResults.Passed]);
-            nFailed = sum([readResults.Failed]);
-            fprintf("Results: %d passed, %d failed, %d skipped\n", nPassed, nFailed, nSkipped);
-            assert(nFailed == 0, "readArtifacts tests failed");
+            % Same verdict block as the other gates, so a red run names the test.
+            % NOTE the assert here deliberately does NOT gate on n_run: this suite
+            % legitimately skips (nSkipped is reported and tolerated), and whether
+            % it can select zero tests has not been measured. Gating on it would be
+            % a guess dressed as a check.
+            verdict = struct('n_run', numel(readResults), ...
+                'n_failed', sum([readResults.Failed]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(readResults, "readArtifacts");
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_failed == 0, ...
+                "readArtifacts tests failed -- names are in the VERDICT block above");
