@@ -522,7 +522,6 @@ for k = 1:n
         continue;
     end
     report.metadata_ingested_seen = report.metadata_ingested_seen + 1;
-    continue;   % MUTATION M4 -- counts, then reads nothing
     % The `epochid` MIXIN string specifically. Reading "whichever string this
     % body has" is the error epochMint already avoids one loop up: a document
     % may carry several, and they may name different epochs.
