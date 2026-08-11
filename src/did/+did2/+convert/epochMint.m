@@ -102,25 +102,46 @@ function [result, report] = epochMint(result, options)
 %   ---------------------------------------------------------------------
 %   WHAT IT DOES NOT BUILD
 %   ---------------------------------------------------------------------
-%   The 15 `epochid`-carrying classes are NOT rewired to an `epoch_id` edge
-%   here. They cannot be: exactly THREE V_eta classes declare an `epoch_id`
+%   The `epochid`-carrying classes are NOT rewired to an `epoch_id` edge here.
+%   They cannot be: only a handful of V_eta classes declare an `epoch_id`
 %   DEPENDENCY at all. Measured over the built schema set -- and a plain grep
 %   for the name will NOT show this, because it also matches
 %   `epochfiles_ingested`'s `epoch_id` FIELD, which is a char string and not an
 %   edge:
 %
-%     DENOMINATOR: 245 V_eta schema files inspected
-%       dep    acquisition_metadata_file
-%       dep    ingestion_manifest
-%       dep    method_parameters
-%       field  epochfiles_ingested        <- a char field, NOT an edge
+%   THE COUNT ON THIS BLOCK SAID **THREE**, AND THE DENOMINATOR SAID 245. BOTH
+%   WERE STALE, AND STALE IN THE UNDER-REPORTING DIRECTION -- the list omitted
+%   `directed_relation`, which is precisely the ONE class the 2026-08-10
+%   amendment to the #60 sign-off names as the place a direct edge BELONGS
+%   ("a direct `epoch_id` edge is added ONLY where the epoch is the document's
+%   own content (`directed_relation`)"). A rewire planned off this block would
+%   have read its own affirmative case as absent. Re-measured 2026-08-11 against
+%   the built tree, deps distinguished from fields by JSON path, not by grep:
 %
-%   -- and the first two are not emitted by pass 1. Stamping an edge a class
+%     DENOMINATOR: 247 built schema files read
+%       dep    acquisition_metadata_file   depends_on.1.name
+%       dep    directed_relation           depends_on.3.name   <- WAS MISSING
+%       dep    ingestion_manifest          depends_on.1.name
+%       dep    method_parameters           depends_on.2.name
+%       field  epochfiles_ingested         fields.0.name       <- char, NOT an edge
+%       field  syncrule_mapping            fields.{2,3}...     <- char, NOT an edge
+%
+%   `syncrule_mapping` is the second field-not-edge case and it is NESTED (inside
+%   the two `epochnode` blocks), so a top-level-only sweep misses it as well.
+%
+%   `did2.convert.epochIndex`'s own header derives the same FOUR independently
+%   and states the carrier side as NINETEEN did_v1 classes (15 declaring
+%   `epochid` directly, plus daqreader_image_/mfdaq_epochdata_ingested, oneepoch
+%   and pyraview transitively). The "15" in the first line of this block is the
+%   DIRECT-declaration count only; it is not the number of epoch-scoped v1
+%   classes.
+%
+%   -- and two of the four are not emitted by pass 1. Stamping an edge a class
 %   does not declare is the invented-edge pattern with the sign flipped. The
 %   rewire needs its own schema increment (declaring `epoch_id` on those
 %   classes) and is a separate line in #60.
 %
-%   AMENDED 2026-08-11 -- ONE OF THOSE THREE IS NOW FILLED HERE, and the
+%   AMENDED 2026-08-11 -- ONE OF THOSE FOUR IS NOW FILLED HERE, and the
 %   sentence above is why it took a fold rather than a stamp. Read it as
 %   written: `acquisition_metadata_file` DECLARES the edge and is simply not
 %   EMITTED by pass 1, and it is not emitted for exactly one reason -- its
@@ -147,6 +168,75 @@ function [result, report] = epochMint(result, options)
 %   (non-empty on 2,484 of 2,484 corpus-B documents). Folding today would drop
 %   it. Its epoch id IS read as a mint key, so the epochs exist for the fold the
 %   day it can be done losslessly.
+%
+%   ---------------------------------------------------------------------
+%   EVERY REMAINING ARMING LOOP IS 1 -> N. THE ONE ABOVE IS 1 -> 1.
+%   DO NOT COPY IT. RECORDED 2026-08-11, BEFORE anyone writes the next one.
+%   ---------------------------------------------------------------------
+%   THREE migrators are waiting on this pass to stamp `epoch_id` onto their
+%   pre-body, and each says so in its own header. All three were checked, and
+%   all three return MORE THAN ONE BODY on the armed branch:
+%
+%     stimulus_response_scalar.m        GUARD 4; armed branch returns
+%                                       {leaf, anchor} -- `epochAnchor` mints a
+%                                       NEW relative_reference and retargets
+%                                       `time_reference_1` onto it.
+%     daqreader_epochdata_ingested.m    armed branch returns
+%                                       [{preBody}, refs] -- jEpochClockReferences
+%                                       mints ONE relative_reference PER
+%                                       epochtable entry.
+%     daqreader_image_epochdata_ingested.m   same shape, same helper.
+%
+%   The metadata fold above is 1 -> 1 and this pass is built on that:
+%
+%     :641   if iscell(folded) && isscalar(folded); folded = folded{1}; end
+%     :689   "v1_to_v2 preserves input order and this batch is 1 -> 1 throughout"
+%
+%   `daqmetadatareader_epochdata_ingested` returns `{out}` or `{preBody}` -- one
+%   body, always -- which is the ONLY reason the loop above could be written as a
+%   stamp. Arming any of the three needs the rebuild path extended to 1 -> N: the
+%   `changedIdx` replacement loop, the emitted/withheld split and
+%   `recountSummary` all assume one body back per body in. Reusing the scalar
+%   assertion at :641 would silently DROP the minted references and leave the
+%   leaf pointing `time_reference_1` at a document that is not in the batch --
+%   an ORPHAN, and the digest prints no orphan counter (open item #95), so
+%   nothing in the corpus report would say so.
+%
+%   AND FOR THE TWO daqreader ARMS THERE IS A SECOND, SEPARATE BLOCKER, which is
+%   a SCHEMA question and not this function's to answer. `jEpochDocId` reads the
+%   edge off the BODY, and unlike the metadata fold -- whose stamped body is
+%   immediately converted to `acquisition_metadata_file`, a class that DOES
+%   declare `epoch_id`, so the stamp never persists -- these two arms RETURN THE
+%   PRE-BODY in `bodies`. A stamped `epoch_id` would therefore PERSIST on a
+%   `daqreader_epochdata_ingested` document, and neither class declares the
+%   dependency:
+%
+%     DENOMINATOR: 247 JSON files under schemas/V_eta, 241 with a document_class
+%       epoch_id DEPENDENCY declared by 4: acquisition_metadata_file (required),
+%         ingestion_manifest (required), directed_relation (optional),
+%         method_parameters (optional)
+%       daqreader_epochdata_ingested        depends_on: [daqreader_id]
+%       daqreader_image_epochdata_ingested  depends_on: [daqreader_id]
+%
+%   So their armed branches are DEAD on real data today, reachable only by
+%   fixtures that hand-add the edge (testMigratorsJIngested.m's `withEpochEdge`,
+%   whose comment already calls it "the `epoch_id` edge #60's epoch pass will
+%   add"). Declaring it is a V_eta increment and, per the 2026-08-10 amendment to
+%   the #60 sign-off, an extension of what that signature names -- TEAM's call,
+%   not this pass's. If it is taken it must be OPTIONAL: this pass cannot always
+%   resolve an epoch (synthetic ids are skipped, and a pair may have no session
+%   document or an ambiguous one), and `RequiredDependencies` is ARMED, so a
+%   required edge that cannot be filled QUARANTINES rather than sitting empty.
+%
+%   NOTE THE ORDER: declaring the edge ALONE would not arm them, because the
+%   1 -> N rebuild above still cannot carry their output.
+%
+%   Stated as scope rather than as a warning: what remains of #60's item 2 is a
+%   change to the rebuild machinery plus (for two of the three) a team decision
+%   on a schema increment -- not "an arming loop". None of it was attempted in
+%   the container that wrote this note, which has no MATLAB and no Octave
+%   (`command -v matlab octave octave-cli` prints nothing and exits 1), and the
+%   1 -> N path has no test today because nothing has ever produced one.
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH-STRING READER MOVED OUT, AND WIDENED (2026-08-10)
@@ -478,9 +568,11 @@ end
 % WHY HERE AND NOT IN A NEW BATCH PASS. Three reasons, in order of weight:
 %
 %   1. This pass already owns the exact half that was missing. Its own header
-%      says the rewire is blocked because "exactly THREE V_eta classes declare
-%      an `epoch_id` DEPENDENCY at all ... and the first two are not emitted by
-%      pass 1". `acquisition_metadata_file` is one of those three. It is not
+%      says the rewire is blocked because only a handful of V_eta classes
+%      declare an `epoch_id` DEPENDENCY at all -- FOUR, re-measured 2026-08-11;
+%      this sentence quoted the header's stale "THREE" and is corrected with it
+%      -- and two of the four are not emitted by pass 1.
+%      `acquisition_metadata_file` is one of those four. It is not
 %      emitted by pass 1 for ONE reason -- no epoch document existed when the
 %      migrator ran -- and this is the function, and the moment, at which one
 %      does. `method_parameters` above is the same operation on the one class
