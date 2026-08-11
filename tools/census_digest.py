@@ -362,6 +362,192 @@ EPOCH_ASSOCIATION_CHAIN = [
 ]
 
 
+# --- THE EDGES NDI REQUIRES AND V_eta DOES NOT ----------------------------
+#
+# A SEPARATE BUCKET, NEVER SUMMED WITH THE REAL REQUIRED-EDGE CENSUS.
+#
+# `silentLoss/requiredDependencies` returns names only for edges declared
+# `mustBeNonEmpty` in the V_eta chain, so an edge V_eta RELAXED is not counted
+# as zero -- it is not looked at. "0 empty required edges across 627,526
+# documents" is therefore SILENT about that whole set. This block renders the
+# set. It is REPORT ONLY: the fact travels as a separate schema key
+# (`ndi_mustBeNonEmpty`, stamped by DID-schema's tools/ndi_required_stamp.py)
+# that nothing validates or gates on.
+#
+# The two facts are kept apart in every line of output because merging them
+# would make the ARMED gate's number unreadable: one is "an edge our schema
+# requires is blank", the other is "an edge NDI requires is blank while we
+# permit it". Those rank differently and are repaired differently.
+NDI_REQUIRED_DENOMINATOR = [
+    ("docs_classified", "documents classified"),
+    ("classes_carrying_the_marker", "classes whose chain carries the marker"),
+    ("relaxed_classes", "classes declaring a RELAXED edge"),
+    ("relaxed_edges_declared", "distinct (class, edge) pairs relaxed"),
+    ("docs_declaring_a_relaxed_edge", "documents declaring one"),
+    ("edges_examined", "edge occurrences examined"),
+    ("edges_populated", "  populated"),
+    ("edges_empty", "  EMPTY  <-- the count"),
+]
+
+
+def ndi_required(r):
+    """Read one report's NDI-required block, or say why it cannot be read.
+
+    Four NOT-MEASURED conditions, each distinct from a zero and from each
+    other -- the same discipline the epoch-association reader applies, for the
+    same reason:
+
+      absent          the report predates the counter. NOT rendered as zeros.
+      malformed       the key is there and is not an object.
+      inspected 0     silentLoss looked at nothing; every count is vacuous.
+      all unreadable  it was handed documents and could parse none.
+
+    A FIFTH condition is NOT a not-measured -- it is measured and vacuous, and
+    it is handled by the renderer rather than here:
+    `classes_carrying_the_marker == 0` means the SCHEMA WAS NEVER STAMPED, so
+    the zero is a property of the build and not of the data. That is the
+    demo_ndi failure shape (a query against a string the schema has never
+    contained), and it prints as a warning rather than as a clean result.
+    """
+    sl = r.get("silent_loss") or {}
+    if not isinstance(sl, dict):
+        return {"measured": False,
+                "why": "the silent_loss field is malformed (%s)"
+                       % type(sl).__name__}
+    if "audit_failed" in sl:
+        return {"measured": False,
+                "why": "the silent-loss audit FAILED (%s)" % sl["audit_failed"]}
+    nd = sl.get("ndi_required_denominator")
+    if nd is None:
+        return {"measured": False,
+                "why": "this report carries no ndi_required_denominator block "
+                       "-- the counter was not wired into the run that "
+                       "produced it"}
+    if not isinstance(nd, dict):
+        return {"measured": False,
+                "why": "the ndi_required_denominator block is malformed (%s)"
+                       % type(nd).__name__}
+    inspected = nd.get("docs_inspected")
+    if not isinstance(inspected, int) or inspected <= 0:
+        return {"measured": False, "block": nd,
+                "why": "it inspected %s document(s)" % inspected}
+    unreadable = nd.get("docs_unreadable")
+    if isinstance(unreadable, int) and unreadable >= inspected:
+        return {"measured": False, "block": nd,
+                "why": "all %s document(s) handed to it were unreadable"
+                       % inspected}
+    return {"measured": True, "block": nd, "inspected": inspected}
+
+
+def render_ndi_required(r, out):
+    """Render one corpus's NDI-required block. Denominator first."""
+    p = lambda s="": out.append(s)
+    sl = r.get("silent_loss") if isinstance(r.get("silent_loss"), dict) else {}
+
+    p("  EDGES NDI REQUIRES AND V_eta DOES NOT (report-only, a SEPARATE")
+    p("  bucket -- never add this to the empty-required-edge count above)")
+    m = ndi_required(r)
+    if not m["measured"]:
+        p("      NOT MEASURED -- %s." % m["why"])
+        p("      No count is printed for this corpus. A corpus that could not")
+        p("      be measured and a corpus that measured a ZERO are different")
+        p("      facts and must not print identically.")
+        return
+    nd = m["block"]
+    p("      DENOMINATOR: %s document(s) inspected, %s unreadable"
+      % (nd.get("docs_inspected", "?"), nd.get("docs_unreadable", "?")))
+    # THE KEY IT FOLLOWED, printed as data. Everything else here is
+    # schema-driven; this string is not, so if the build stops stamping it the
+    # counts all go to zero and the block would otherwise read clean.
+    p("      FOLLOWED: schema key `%s` (stamped at build time from NDI's own "
+      "schema documents)" % nd.get("marker_key", "?"))
+    _ea_rows(nd, NDI_REQUIRED_DENOMINATOR, out)
+    if nd.get("classes_carrying_the_marker") == 0:
+        p("      *** NO CLASS IN THIS BATCH CARRIES THE MARKER AT ALL. The")
+        p("      *** schema was not stamped, or the key was renamed. Every")
+        p("      *** count above is a property of the query, NOT a finding")
+        p("      *** that V_eta and NDI agree.")
+    elif nd.get("relaxed_edges_declared") == 0:
+        p("      *** NO CLASS DECLARES AN EDGE NDI REQUIRES AND V_eta")
+        p("      *** RELAXES, so the counter could not fire. The zero means")
+        p("      *** 'untested', not 'clean'.")
+    p("      %s empty NDI-required edge(s), V_eta-optional"
+      % sl.get("ndi_required_dependency_count", "?"))
+    for e in aslist(sl.get("ndi_required_dependency"))[:15]:
+        p("      %8s  %s.%s" % (e.get("count", "?"), e.get("class_name", "?"),
+                                e.get("edge_name", "?")))
+
+
+def rollup_ndi_required(reports, out):
+    """Cross-corpus NDI-required rollup. Denominator first, unmeasured NAMED.
+
+    Kept as its own block and its own totals for the reason stated above: this
+    number and the empty-required-edge number are different facts, and a reader
+    who adds them gets a figure that describes nothing. The rollup exists at
+    all because the number that gets quoted is the total, and a total
+    recomputed by hand from six blocks goes stale silently -- 562,422 stood in
+    CLAUDE.md for a while and was the six corpora with one `migrated_count`
+    substituted for an `inspected`.
+    """
+    p = lambda s="": out.append(s)
+
+    measured, unmeasured = [], []
+    totals = {}
+    rows = {}
+    unstamped = []
+    for i, r in enumerate(reports):
+        name = str(r.get("corpus") or "report #%d" % (i + 1))
+        m = ndi_required(r)
+        if not m["measured"]:
+            unmeasured.append("%s (%s)" % (name, m["why"]))
+            continue
+        measured.append(name)
+        nd = m["block"]
+        for key, _label in NDI_REQUIRED_DENOMINATOR + [("docs_inspected", ""),
+                                                       ("docs_unreadable", "")]:
+            if key in nd:
+                try:
+                    totals[key] = totals.get(key, 0) + int(nd[key] or 0)
+                except (TypeError, ValueError):
+                    pass
+        if nd.get("classes_carrying_the_marker") == 0:
+            unstamped.append(name)
+        sl = r.get("silent_loss") or {}
+        for e in aslist(sl.get("ndi_required_dependency")):
+            key = "%s.%s" % (e.get("class_name", "?"), e.get("edge_name", "?"))
+            rows[key] = rows.get(key, 0) + int(e.get("count") or 0)
+
+    p("")
+    p("  EDGES NDI REQUIRES AND V_eta DOES NOT -- REPORT ONLY, a SEPARATE")
+    p("  bucket. DO NOT ADD THIS TO 'EMPTY REQUIRED EDGES' ABOVE: that one is")
+    p("  'an edge OUR schema requires is blank' and is what the armed gate")
+    p("  keys on; this one is 'an edge NDI requires is blank while we permit")
+    p("  it', which no gate sees and which ranks planning work.")
+    p("      DENOMINATOR: %d corpus report(s); %d carried a readable block, "
+      "%d did not; %d document(s) inspected in total"
+      % (len(reports), len(measured), len(unmeasured),
+         totals.get("docs_inspected", 0)))
+    if unmeasured:
+        p("      *** NOT MEASURED in: %s" % ", ".join(unmeasured))
+        p("      *** the totals below are sums over %d corpora, not %d -- do"
+          % (len(measured), len(reports)))
+        p("      *** not quote them as a whole-corpus figure.")
+    if not measured:
+        p("      (nothing to total -- no corpus contributed a readable block)")
+        return
+    if unstamped:
+        p("      *** THE MARKER IS ABSENT FROM THE SCHEMA IN: %s."
+          % ", ".join(unstamped))
+        p("      *** Their zeros are a property of the build, not a finding.")
+    _ea_rows(totals, NDI_REQUIRED_DENOMINATOR, out, indent="        ")
+    total = sum(rows.values())
+    p("      %d empty NDI-required edge(s) across %d row(s)" % (total, len(rows)))
+    for key, n in sorted(rows.items(), key=lambda kv: (-kv[1], kv[0])):
+        p("      %8d  %s" % (n, key))
+    if not rows:
+        p("      (none)")
+
+
 def epoch_association(r):
     """Read one report's epoch-association block, or say why it cannot be read.
 
@@ -809,6 +995,7 @@ def render_report(r, out):
                           % (t.get("prefix", "?"), t.get("n_distinct", "?"),
                              t.get("n_docs", "?")))
 
+    render_ndi_required(r, out)
     render_epoch_association(r, out)
     render_metadata_tier(r, out)
     render_post_passes(r, out)
@@ -1013,6 +1200,7 @@ def rollup(reports, out):
         if not table:
             p("      (none)")
 
+    rollup_ndi_required(reports, out)
     rollup_epoch_association(reports, out)
     rollup_metadata_tier(reports, out)
     rollup_post_passes(reports, out)

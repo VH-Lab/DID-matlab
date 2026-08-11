@@ -2,6 +2,15 @@ function tests = testSilentLoss
 %TESTSILENTLOSS Tests for did2.validate.silentLoss -- the Phase 1 report-only
 %   census of data that migrates away without tripping any gate.
 %
+%   STATUS 2026-08-11: the EIGHT cases in the "EDGES NDI REQUIRES AND V_eta
+%   DOES NOT" section at the bottom of this file, and the silentLoss block
+%   they cover, WERE WRITTEN WITHOUT MATLAB and have NEVER BEEN EXECUTED --
+%   there is no MATLAB or Octave runtime in the environment they were authored
+%   in. Treat those assertions as UNVERIFIED until a `runtests` or a corpus job
+%   says otherwise. The counter is report-only by construction and cannot move
+%   a gate, but "written" is not "run", and this file exists because a counter
+%   that had never been exercised shipped measuring nothing.
+%
 %   THIS FILE EXISTS BECAUSE THE COUNTER HAD NO TESTS AT ALL, and shipped
 %   measuring nothing. Its only exercise was the full corpus run, where it
 %   reported
@@ -379,6 +388,151 @@ function testTheEpochBlockRaisesNothing(testCase)
 verifyWarningFree(testCase, @() did2.validate.silentLoss({[]}));
 verifyWarningFree(testCase, @() did2.validate.silentLoss( ...
     {struct('depends_on', {{}}), struct('nope', 1)}));
+end
+
+% ===== EDGES NDI REQUIRES AND V_eta DOES NOT (the blind-spot census) =======
+%
+% STATUS 2026-08-11: THESE TESTS HAVE NEVER BEEN EXECUTED. There is no MATLAB
+% runtime in the environment they were authored in, so nothing in this file
+% was run -- these cases nor the ones above. They are written against the real
+% shared schema cache and the real built V_eta, so the first corpus job (or
+% the first local `runtests`) is their first execution. The counter they cover
+% is report-only by construction and cannot move a gate, but treat these
+% assertions as UNVERIFIED until a run says otherwise.
+%
+% WHAT IS BEING COVERED. `requiredDependencies` returns names only for edges
+% declared `mustBeNonEmpty` in the V_eta chain, so an edge V_eta RELAXED is
+% not counted as zero by the empty-edge census -- it is never looked at. The
+% new block counts those edges from the separate `ndi_mustBeNonEmpty` key that
+% DID-schema stamps at build time from NDI's own schema documents.
+%
+% `ontology_label.document_id` is the live case and is used as the fixture on
+% purpose: NDI's schema document says `mustbenotempty: 1`, V_eta says
+% `mustBeNonEmpty: false`, and the class is a guarded passthrough (~7,007
+% documents) whose `document_id` is the join key the deferred NDI second pass
+% needs.
+
+function testARelaxedEdgeLeftBlankIsCounted(testCase)
+% The motivating case. NDI requires it, V_eta does not, the document leaves it
+% empty -- and until this block existed nothing anywhere counted it.
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = struct('name', {'document_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+verifyEqual(testCase, rep.ndi_required_dependency_count, 1, ...
+    'a blank NDI-required edge V_eta relaxed must be counted');
+verifyNotEmpty(testCase, rep.ndi_required_dependency, ...
+    'the row table must be ASSIGNED, not accumulated and dropped');
+verifyEqual(testCase, rep.ndi_required_dependency(1).class_name, ...
+    'ontology_label');
+verifyEqual(testCase, rep.ndi_required_dependency(1).edge_name, ...
+    'document_id');
+end
+
+function testARelaxedEdgeThatIsPopulatedIsNotCounted(testCase)
+% The counter measures BLANKS, not declarations. A populated edge is a healthy
+% edge and belongs in the denominator, not in the count.
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = struct('name', {'document_id'}, 'value', {'some_doc_id'});
+rep = did2.validate.silentLoss({did2.document(b)});
+verifyEqual(testCase, rep.ndi_required_dependency_count, 0);
+verifyEqual(testCase, rep.ndi_required_denominator.edges_populated, 1);
+verifyEqual(testCase, rep.ndi_required_denominator.edges_empty, 0);
+end
+
+function testTheTwoBucketsAreNeverTheSameEdge(testCase)
+% THE LOAD-BEARING SEPARATION. `empty_required_dependency` is "an edge OUR
+% schema requires is blank" -- the number the team armed a gate on.
+% `ndi_required_dependency` is "an edge NDI requires is blank while we permit
+% it". An edge must fall in exactly one, or the armed gate's figure stops
+% describing anything. Here the SAME class carries one of each spelling.
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = struct('name', {'document_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+for k = 1:numel(rep.empty_required_dependency)
+    verifyNotEqual(testCase, ...
+        [rep.empty_required_dependency(k).class_name '.' ...
+         rep.empty_required_dependency(k).edge_name], ...
+        'ontology_label.document_id', ...
+        'a relaxed edge must not also appear in the armed gate''s bucket');
+end
+verifyEqual(testCase, rep.ndi_required_dependency_count, 1);
+end
+
+function testAnEdgeBothSchemasRequireStaysInTheOtherBucket(testCase)
+% The conjunction's second half. `acquisition_epoch.element_id` carries the
+% marker TRUE and `mustBeNonEmpty` TRUE -- NDI and V_eta agree -- so a blank
+% one is the ARMED gate's business and must not be double-counted here.
+b = bodyStruct('acquisition_epoch', 'ep_1');
+b.depends_on = struct('name', {'element_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+verifyEqual(testCase, rep.ndi_required_dependency_count, 0, ...
+    'an edge both schemas require belongs to the other bucket only');
+verifyNotEmpty(testCase, rep.empty_required_dependency, ...
+    'and it must still be counted THERE');
+end
+
+function testTheDenominatorIsPresentOnEveryPathOut(testCase)
+% Rule 5, and the early returns are the paths that matter: a block whose
+% denominator is set only on the happy path reports zeros for a batch it never
+% opened. That IS the original silentLoss defect.
+empt = did2.validate.silentLoss({});
+verifyEqual(testCase, empt.ndi_required_denominator.docs_inspected, 0);
+verifyEqual(testCase, empt.ndi_required_denominator.marker_key, ...
+    'ndi_mustBeNonEmpty', ...
+    'the key it followed is DATA -- a rename must be visible, not silent');
+
+bad = did2.validate.silentLoss({struct('nope', 1), struct('nope', 2)});
+verifyEqual(testCase, bad.ndi_required_denominator.docs_inspected, 2);
+verifyEqual(testCase, bad.ndi_required_denominator.docs_unreadable, 2, ...
+    'an unopened batch must be visible as unreadable, not as a clean zero');
+end
+
+function testTheDenominatorSeparatesUnstampedFromAgreeing(testCase)
+% Two very different zeros. `classes_carrying_the_marker == 0` means the schema
+% was never stamped -- every count is then a property of the build, not of the
+% data. A class that DOES carry the marker proves the stamp reached the cache.
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = struct('name', {'document_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b)});
+d = rep.ndi_required_denominator;
+verifyGreaterThan(testCase, d.classes_carrying_the_marker, 0, ...
+    'the marker must reach the schema cache, or the census is vacuous');
+verifyGreaterThan(testCase, d.relaxed_edges_declared, 0, ...
+    'at zero the counter could not fire and its zero means untested');
+verifyEqual(testCase, d.docs_declaring_a_relaxed_edge, 1);
+end
+
+function testTheCountAndTheDenominatorCannotDrift(testCase)
+% The headline number, the row table and `edges_empty` are incremented on the
+% same branch, so they must agree. This file has already shipped a counter that
+% measured correctly and threw the answer away (famKeys), and the symptom was
+% exactly a headline that disagreed with its own rows.
+b1 = bodyStruct('ontology_label', 'lab_1');
+b1.depends_on = struct('name', {'document_id'}, 'value', {''});
+b2 = bodyStruct('ontology_label', 'lab_2');
+b2.depends_on = struct('name', {'document_id'}, 'value', {''});
+rep = did2.validate.silentLoss({did2.document(b1), did2.document(b2)});
+rows = 0;
+for k = 1:numel(rep.ndi_required_dependency)
+    rows = rows + rep.ndi_required_dependency(k).count;
+end
+verifyEqual(testCase, rows, rep.ndi_required_dependency_count);
+verifyEqual(testCase, rows, rep.ndi_required_denominator.edges_empty);
+verifyEqual(testCase, rep.ndi_required_denominator.edges_examined, ...
+    rep.ndi_required_denominator.edges_empty + ...
+    rep.ndi_required_denominator.edges_populated, ...
+    'every examined edge must land in exactly one state');
+end
+
+function testTheNdiRequiredBlockRaisesNothing(testCase)
+% REPORT ONLY. It must change no outcome and must survive malformed input
+% rather than break a migration -- same contract as every other block here.
+verifyWarningFree(testCase, @() did2.validate.silentLoss({[]}));
+b = bodyStruct('ontology_label', 'lab_1');
+b.depends_on = {struct('name', 'document_id', 'document_id', ''), ...
+                struct('name', 'other_id', 'value', '', 'extra', 1)};
+verifyWarningFree(testCase, @() did2.validate.silentLoss({b}), ...
+    'a CELL-shaped depends_on is normal here -- the marker is stamped on some entries of a class and not others');
 end
 
 % ===================== helpers =============================================

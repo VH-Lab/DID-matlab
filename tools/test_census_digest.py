@@ -17,8 +17,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from census_digest import (aslist, digest, epoch_association,  # noqa: E402
-                           norm_class, normalised_class_index, render_report,
-                           rollup)
+                           ndi_required, norm_class, normalised_class_index,
+                           render_report, rollup)
 
 
 class TestAsList(unittest.TestCase):
@@ -1131,6 +1131,226 @@ class TestEpochAssociation(DigestCase):
         self._corpus("A", self._ea())
         text, _ = self.run_digest()
         self.assertIn("MEASUREMENT ONLY -- nothing here is enforced", text)
+
+
+class TestNdiRequiredEdges(DigestCase):
+    """The "NDI requires it, V_eta does not" census -- rendering side.
+
+    THE BLIND SPOT. `silentLoss/requiredDependencies` returns names only for
+    edges declared `mustBeNonEmpty` in the V_eta chain, so an edge V_eta
+    RELAXED is not counted as zero -- it is never looked at. The corpus's
+    "0 empty required edges across 627,526 documents" is therefore SILENT
+    about that whole set rather than reassuring about it.
+
+    Every test below is about a DISTINCTION, because each is a place two facts
+    could collapse into one number: measured zero vs never measured, a zero
+    that means agreement vs a zero that means the schema was never stamped,
+    and -- the one that matters most -- this bucket vs the armed gate's bucket.
+    """
+
+    def _nd(self, **over):
+        nd = {
+            "docs_inspected": 1000, "docs_unreadable": 0,
+            "docs_classified": 1000,
+            "marker_key": "ndi_mustBeNonEmpty",
+            "classes_carrying_the_marker": 40,
+            "relaxed_classes": 12, "relaxed_edges_declared": 14,
+            "docs_declaring_a_relaxed_edge": 500,
+            "edges_examined": 560, "edges_populated": 60, "edges_empty": 500,
+        }
+        nd.update(over)
+        return nd
+
+    def _corpus(self, name="A", nd=None, rows=None, count=500, **over):
+        sl = {"total_docs": 1000, "skipped_docs": 0,
+              "empty_dependency_count": 0, "vacuous_field_count": 0}
+        if nd is not None:
+            sl["ndi_required_denominator"] = nd
+            sl["ndi_required_dependency_count"] = count
+            sl["ndi_required_dependency"] = rows if rows is not None else [
+                {"class_name": "ontology_label", "edge_name": "document_id",
+                 "count": 400},
+                {"class_name": "spikewaves", "edge_name": "element_id",
+                 "count": 100}]
+        body = {"corpus": name, "total": 100, "migrated_count": 1000,
+                "quarantine_count": 0, "silent_loss": sl}
+        body.update(over)
+        self.write(name, body)
+
+    # --- denominator first, unconditionally --------------------------------
+
+    def test_the_denominator_precedes_the_count(self):
+        # Rule 5. This project shipped a counter that read nothing for two days.
+        self._corpus("A", self._nd())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        den = text.index("DENOMINATOR: 1000 document(s) inspected, 0 unreadable")
+        cnt = text.index("500 empty NDI-required edge(s)")
+        self.assertLess(den, cnt)
+
+    def test_the_marker_key_it_followed_is_printed(self):
+        # The one string in the block that is not schema-driven. If the build
+        # stops stamping it, every count goes to zero -- printing the key is
+        # what stops that reading as agreement with NDI.
+        self._corpus("A", self._nd())
+        text, _ = self.run_digest()
+        self.assertIn("FOLLOWED: schema key `ndi_mustBeNonEmpty`", text)
+
+    def test_every_denominator_row_is_rendered(self):
+        self._corpus("A", self._nd())
+        text, _ = self.run_digest()
+        for label in ("classes whose chain carries the marker",
+                      "classes declaring a RELAXED edge",
+                      "distinct (class, edge) pairs relaxed",
+                      "documents declaring one",
+                      "edge occurrences examined",
+                      "EMPTY  <-- the count"):
+            self.assertIn(label, text)
+
+    def test_a_counter_the_report_lacks_is_not_printed_as_zero(self):
+        nd = self._nd()
+        del nd["relaxed_classes"]
+        self._corpus("A", nd)
+        text, _ = self.run_digest()
+        self.assertIn("(absent)  classes declaring a RELAXED edge", text)
+
+    # --- the four not-measured conditions, each distinct from a zero -------
+
+    def test_a_report_without_the_block_is_NOT_MEASURED(self):
+        self._corpus("A", nd=None)
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED -- this report carries no "
+                      "ndi_required_denominator block", text)
+        self.assertNotIn("empty NDI-required edge(s), V_eta-optional", text)
+
+    def test_zero_inspected_is_NOT_MEASURED_not_a_clean_zero(self):
+        self._corpus("A", self._nd(docs_inspected=0))
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED -- it inspected 0 document(s)", text)
+
+    def test_all_unreadable_is_NOT_MEASURED(self):
+        self._corpus("A", self._nd(docs_unreadable=1000))
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED -- all 1000 document(s) handed to it were "
+                      "unreadable", text)
+
+    def test_a_failed_audit_is_NOT_MEASURED(self):
+        self.write("A", {"corpus": "A", "total": 1, "migrated_count": 1,
+                         "quarantine_count": 0,
+                         "silent_loss": {"audit_failed": "boom"}})
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED -- the silent-loss audit FAILED", text)
+
+    def test_a_malformed_block_is_NOT_MEASURED(self):
+        self._corpus("A", nd="nope")
+        text, _ = self.run_digest()
+        self.assertIn("the ndi_required_denominator block is malformed", text)
+
+    # --- the two vacuous zeros, told apart from each other and from clean ---
+
+    def test_an_unstamped_schema_is_not_a_finding_of_agreement(self):
+        # classes_carrying_the_marker == 0 means DID-schema never stamped the
+        # key, or it was renamed. That is the demo_ndi failure shape: a query
+        # against a string the schema has never contained, read as "this does
+        # not exist anywhere".
+        self._corpus("A", self._nd(classes_carrying_the_marker=0,
+                                   relaxed_classes=0,
+                                   relaxed_edges_declared=0,
+                                   docs_declaring_a_relaxed_edge=0,
+                                   edges_examined=0, edges_populated=0,
+                                   edges_empty=0),
+                     rows=[], count=0)
+        text, _ = self.run_digest()
+        self.assertIn("NO CLASS IN THIS BATCH CARRIES THE MARKER AT ALL", text)
+        self.assertIn("property of the query", text)
+
+    def test_a_stamped_schema_with_nothing_relaxed_says_untested(self):
+        # The marker is present, but no class relaxes an edge NDI requires --
+        # so the counter could not fire, and the zero means untested.
+        self._corpus("A", self._nd(relaxed_classes=0,
+                                   relaxed_edges_declared=0,
+                                   docs_declaring_a_relaxed_edge=0,
+                                   edges_examined=0, edges_populated=0,
+                                   edges_empty=0),
+                     rows=[], count=0)
+        text, _ = self.run_digest()
+        self.assertIn("NO CLASS DECLARES AN EDGE NDI REQUIRES AND V_eta", text)
+        self.assertNotIn("NO CLASS IN THIS BATCH CARRIES THE MARKER", text)
+
+    # --- THE BUCKETS ARE NEVER MERGED --------------------------------------
+
+    def test_the_two_buckets_print_as_separate_numbers(self):
+        # THE LOAD-BEARING PROPERTY. One is "an edge OUR schema requires is
+        # blank" -- what the armed gate keys on. The other is "an edge NDI
+        # requires is blank while we permit it". Adding them makes the armed
+        # gate's figure describe nothing.
+        self._corpus("A", self._nd())
+        text, _ = self.run_digest()
+        self.assertIn("silent-loss: 0 empty required edge(s)", text)
+        self.assertIn("500 empty NDI-required edge(s), V_eta-optional", text)
+        self.assertIn("never add this to the empty-required-edge count", text)
+
+    def test_the_rollup_keeps_the_buckets_apart(self):
+        self._corpus("A", self._nd())
+        text, _ = self.run_digest()
+        self.assertIn("DO NOT ADD THIS TO 'EMPTY REQUIRED EDGES' ABOVE", text)
+        self.assertIn("EMPTY REQUIRED EDGES: 0 document(s) across 0 row(s)",
+                      text)
+        self.assertIn("500 empty NDI-required edge(s) across 2 row(s)", text)
+
+    def test_the_block_says_it_is_report_only(self):
+        # Read by people deciding whether to arm a gate. It must not read as
+        # one.
+        self._corpus("A", self._nd())
+        text, _ = self.run_digest()
+        self.assertIn("report-only", text)
+
+    # --- rollup arithmetic --------------------------------------------------
+
+    def test_the_same_row_in_two_corpora_is_summed_into_one_line(self):
+        self._corpus("A", self._nd())
+        self._corpus("B", self._nd())
+        text, _ = self.run_digest()
+        self.assertIn("800  ontology_label.document_id", text)
+        self.assertIn("200  spikewaves.element_id", text)
+
+    def test_an_unmeasured_corpus_is_named_and_excluded_never_summed_as_zero(self):
+        self._corpus("A", self._nd())
+        self._corpus("B", nd=None)
+        text, _ = self.run_digest()
+        self.assertIn("2 corpus report(s); 1 carried a readable block, 1 did "
+                      "not", text)
+        self.assertIn("*** NOT MEASURED in: B", text)
+        self.assertIn("sums over 1 corpora, not 2", text)
+
+    def test_the_rollup_names_corpora_whose_schema_was_never_stamped(self):
+        self._corpus("A", self._nd())
+        self._corpus("B", self._nd(classes_carrying_the_marker=0))
+        text, _ = self.run_digest()
+        self.assertIn("THE MARKER IS ABSENT FROM THE SCHEMA IN: B", text)
+
+    def test_the_rollup_prints_the_section_even_with_no_rows(self):
+        self._corpus("A", self._nd(edges_empty=0), rows=[], count=0)
+        text, _ = self.run_digest()
+        self.assertIn("0 empty NDI-required edge(s) across 0 row(s)", text)
+        self.assertIn("(none)", text)
+
+    def test_a_matlab_one_row_object_does_not_crash_the_block(self):
+        # jsonencode writes a 1-element struct array as a bare object. That
+        # shape killed run #256 after 2h49m in a different block.
+        self._corpus("A", self._nd(),
+                     rows={"class_name": "ontology_label",
+                           "edge_name": "document_id", "count": 500})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("500  ontology_label.document_id", text)
+
+    def test_the_reader_returns_a_reason_not_just_False(self):
+        # A caller must be able to PRINT why, not merely know that it could not
+        # read the block.
+        m = ndi_required({"silent_loss": {"total_docs": 5}})
+        self.assertFalse(m["measured"])
+        self.assertIn("no ndi_required_denominator block", m["why"])
 
 
 if __name__ == "__main__":

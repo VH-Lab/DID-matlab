@@ -56,7 +56,92 @@ function report = silentLoss(docs, opts)
 %     uniqueness_denominator      #52's own denominators (see below)
 %     epoch_association           MEASUREMENT ONLY: does a statement actually
 %                                 reach an epoch? See the block below.
+%     ndi_required_dependency     THE BLIND SPOT BELOW: struct array
+%                                 {class_name, edge_name, count} -- an edge NDI
+%                                 declares REQUIRED, V_eta declares OPTIONAL,
+%                                 and the document leaves BLANK. REPORT ONLY,
+%                                 AND NEVER SUMMED WITH empty_required_dependency.
+%     ndi_required_dependency_count       total occurrences
+%     ndi_required_denominator    that block's own denominators
 %     skipped_docs                documents whose schema could not be resolved
+%
+%   THE EDGES NDI REQUIRES AND V_eta DOES NOT -- A WHOLE CLASS OF BLIND SPOT
+%   ------------------------------------------------------------------------
+%   STATUS 2026-08-11: WRITTEN WITHOUT MATLAB. No MATLAB runtime exists in the
+%   environment this block was authored in, so NOTHING in this file was
+%   EXECUTED -- not this block, not its tests. It is report-only by
+%   construction (see below) and cannot move a gate, but the counters are
+%   UNRUN and the first corpus job is their first execution.
+%
+%   `requiredDependencies` (this file, and did2.schema.cache's copy of the same
+%   rule) returns names only for edges declared `mustBeNonEmpty` in the V_eta
+%   class chain. So wherever V_eta RELAXED an edge NDI requires, that edge is
+%   OUT OF SCOPE for the empty-edge census entirely. It is not counted as zero.
+%   IT IS NOT LOOKED AT. "0 empty required edges across 627,526 documents" is
+%   therefore SILENT about that whole set rather than reassuring about it, and
+%   the set is not one class -- 26 edges across 26 classes at the time of
+%   writing.
+%
+%   The motivating case, which is NOT about enforcement:
+%
+%     NDI    ndi_common/schema_documents/data/ontologyLabel_schema.json
+%            {"name": "document_id", "mustbenotempty": 1}
+%     V_eta  schemas/V_eta/stable/ontology_label.json
+%            {"name": "document_id", "mustBeNonEmpty": false}  -> base
+%
+%   `ontology_label` is `disposition: retire` -- a GUARDED PASSTHROUGH deferred
+%   to the NDI second pass, ~7,007 documents. `document_id` is the JOIN KEY
+%   that pass needs: label -> document_id -> image_stack -> subject. If the
+%   edge is blank on some fraction, the dissolution cannot resolve those
+%   documents, and we would find out only after building it. SO THIS CENSUS IS
+%   AN INPUT TO PLANNING, NOT A GATE.
+%
+%   WHY IT CANNOT MOVE THE CORPUS RESULT. The fact arrives as a SEPARATE schema
+%   key, `ndi_mustBeNonEmpty`, stamped at build time by DID-schema's
+%   tools/ndi_required_stamp.py from NDI's own schema documents. Nothing reads
+%   it except the block below. The armed DID_ENFORCE_REQUIRED_DEPENDENCIES gate
+%   calls did2.schema.cache/requiredDependencies, which tests
+%   `dep.mustBeNonEmpty` and nothing else; did2.validate.references skips empty
+%   edges regardless. This block raises nothing, quarantines nothing and arms
+%   nothing -- exactly like every other block in this file.
+%
+%   THE TWO BUCKETS ARE DIFFERENT FACTS AND ARE NEVER ADDED TOGETHER.
+%   `empty_required_dependency` is "an edge OUR schema requires is blank" --
+%   the number the team armed a gate on. This one is "an edge NDI requires is
+%   blank while WE permit it". Merging them would make the armed gate's figure
+%   unreadable, so they are separate fields, separate counts, separate lines in
+%   the digest, and an edge falls in exactly one of them by construction (the
+%   test below is `ndi_mustBeNonEmpty && ~mustBeNonEmpty`).
+%
+%   `ndi_required_denominator` fields. DENOMINATORS FIRST (rule 5):
+%     docs_inspected / docs_unreadable / docs_classified
+%                                 restated inside the block, on every path out
+%                                 of this function including the early returns,
+%                                 so a zero here can never be read out of
+%                                 context of total_docs
+%     marker_key                  THE KEY THIS BLOCK FOLLOWED, printed as data.
+%                                 If the build stops stamping it, or renames
+%                                 it, every count below goes to zero and the
+%                                 report would otherwise read clean. That is
+%                                 the demo_ndi failure -- a query against a
+%                                 string the schema has never contained,
+%                                 reported as "this does not exist".
+%     classes_carrying_the_marker distinct classes IN THIS BATCH whose chain
+%                                 declares the marker at all, either value.
+%                                 <-- AT ZERO THE BLOCK IS VACUOUS. It means
+%                                     the schema was not stamped, not that NDI
+%                                     and V_eta agree.
+%     relaxed_classes             distinct classes whose chain declares at
+%                                 least one RELAXED edge (marker true, ours
+%                                 false)
+%     relaxed_edges_declared      distinct (class, edge) pairs so declared
+%                                 <-- AT ZERO THE COUNTER COULD NOT FIRE, and a
+%                                     zero violation count says only that
+%     docs_declaring_a_relaxed_edge   documents whose class declares >=1
+%     edges_examined              (document, relaxed edge) pairs inspected
+%     edges_populated             the edge carried a non-blank referent
+%     edges_empty                 blank -- THE COUNT, restated so the row table
+%                                 and the denominator cannot disagree silently
 %
 %   THE EPOCH ASSOCIATION -- MEASUREMENT ONLY, NOTHING IS TIGHTENED
 %   ---------------------------------------------------------------
@@ -260,6 +345,10 @@ report = struct( ...
         'members_keyed_by_node', 0, ...
         'members_keyed_by_name', 0), ...
     'epoch_association',         eaNewReport(), ...
+    'ndi_required_dependency',   struct('class_name', {}, 'edge_name', {}, ...
+                                        'count', {}), ...
+    'ndi_required_dependency_count', 0, ...
+    'ndi_required_denominator',  nrNewReport(), ...
     'skipped_docs',              0);
 
 [bodies, unreadable] = vBodies(docs);
@@ -275,6 +364,10 @@ report.skipped_docs = unreadable;
 % verbatim.
 report.epoch_association.docs_inspected = report.total_docs;
 report.epoch_association.docs_unreadable = unreadable;
+% Same rule, same reason, for the NDI-required block: a denominator set only on
+% the happy path is a block that reports zeros for a batch it never opened.
+report.ndi_required_denominator.docs_inspected = report.total_docs;
+report.ndi_required_denominator.docs_unreadable = unreadable;
 if isempty(bodies)
     return;
 end
@@ -312,6 +405,22 @@ uniKeys = {}; uniCounts = [];
 eaEmptyKeys = {}; eaEmptyCounts = [];
 eaEdgeKeys  = {}; eaEdgeCounts  = [];
 eaTermKeys  = {}; eaTermCounts  = [];
+% The NDI-required-but-V_eta-optional rows. Accumulated here, ASSIGNED at the
+% bottom -- the fourth accumulator in this file, and the reason it is called
+% out is that the first one (famKeys) shipped accumulated-and-never-assigned,
+% so the report read 0 on a document the detector had just flagged.
+nrKeys = {}; nrCounts = [];
+% className -> the relaxed-edge names its chain declares, plus whether the
+% chain carries the marker at all. Memoised: the chain walk is per-class and
+% this runs over 336k-document corpora.
+nrClassMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+% The distinct-thing denominators, as MAPS rather than growing cell arrays.
+% `any(strcmp(list, key))` over a few hundred class names, once per document,
+% is ~10^8 string compares on a 562,448-document census -- a report-only
+% counter must not make the corpus job measurably slower.
+nrSeenClasses = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+nrSeenRelaxed = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+nrSeenEdges   = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 
 % #52. The id -> body index the uniqueness check resolves through. Built ONCE,
 % up front, over the whole batch -- this is the thing a per-document validator
@@ -349,6 +458,47 @@ for k = 1:numel(bodies)
             if ~edgeIsPopulated(body, name)
                 key = sprintf('%s|%s', className, name);
                 [depKeys, depCounts] = bump(depKeys, depCounts, key);
+            end
+        end
+
+        % --- 1a2. EDGES NDI REQUIRES AND V_eta DOES NOT -------------------
+        % REPORT ONLY, and a SEPARATE BUCKET from 1 above. See the block
+        % comment at the top of the file: an edge V_eta relaxed is invisible to
+        % `requiredDependencies` by construction, so the census above is silent
+        % about it rather than clean. This counts it without touching the
+        % `mustBeNonEmpty` that 1 and the armed gate both key on.
+        % Counted HERE rather than borrowed from epoch_association: that
+        % counter is incremented further down the same try block, so a document
+        % that throws in between would make the two disagree by one and neither
+        % would say which. Each block owns its denominator.
+        report.ndi_required_denominator.docs_classified = ...
+            report.ndi_required_denominator.docs_classified + 1;
+        nrInfo = relaxedDependencies(cache, className, nrClassMemo);
+        % These three are containers.Map, a HANDLE class, so the assignments
+        % mutate the maps created above -- the analyser calls the local name
+        % unused because the effect is on the shared object. Same note as the
+        % memo sites below; do not delete them to silence it.
+        if nrInfo.marker_present
+            nrSeenClasses(className) = true;
+        end
+        if ~isempty(nrInfo.names)
+            nrSeenRelaxed(className) = true;
+            report.ndi_required_denominator.docs_declaring_a_relaxed_edge = ...
+                report.ndi_required_denominator.docs_declaring_a_relaxed_edge + 1;
+        end
+        for d = 1:numel(nrInfo.names)
+            name = nrInfo.names{d};
+            pairKey = sprintf('%s|%s', className, name);
+            nrSeenEdges(pairKey) = true;
+            report.ndi_required_denominator.edges_examined = ...
+                report.ndi_required_denominator.edges_examined + 1;
+            if edgeIsPopulated(body, name)
+                report.ndi_required_denominator.edges_populated = ...
+                    report.ndi_required_denominator.edges_populated + 1;
+            else
+                report.ndi_required_denominator.edges_empty = ...
+                    report.ndi_required_denominator.edges_empty + 1;
+                [nrKeys, nrCounts] = bump(nrKeys, nrCounts, pairKey);
             end
         end
 
@@ -632,6 +782,20 @@ report.epoch_association.epoch_id_by_class = ...
     explode(eaEdgeKeys, eaEdgeCounts, {'class_name', 'state'});
 report.epoch_association.chain_terminus_by_class = ...
     explode(eaTermKeys, eaTermCounts, {'class_name'});
+% The NDI-required block, assigned HERE and for the fourth time for the same
+% reason: an accumulator that is never assigned reports a zero meaning "not
+% reported". Note the count is taken from the SAME accumulator as the rows, and
+% `edges_empty` in the denominator is incremented on the same branch -- so the
+% headline number, the row table and the denominator cannot drift apart without
+% a test noticing.
+report.ndi_required_dependency = explode(nrKeys, nrCounts, ...
+    {'class_name', 'edge_name'});
+report.ndi_required_dependency_count = sum(nrCounts);
+% `.Count` is uint64; every other counter in this report is a double, and a
+% mixed-type struct encodes inconsistently. Cast at the boundary.
+report.ndi_required_denominator.classes_carrying_the_marker = double(nrSeenClasses.Count);
+report.ndi_required_denominator.relaxed_classes = double(nrSeenRelaxed.Count);
+report.ndi_required_denominator.relaxed_edges_declared = double(nrSeenEdges.Count);
 end
 
 % ===================== helpers =========================================
@@ -925,6 +1089,121 @@ if isnan(fam.max_count)
 else
     s = sprintf('min %d max %d', fam.min_count, fam.max_count);
 end
+end
+
+function r = nrNewReport()
+%NRNEWREPORT The NDI-required block's denominators, with every field present
+%   from the start. The block is stamped even on the early returns, so a batch
+%   that was never opened prints the same SHAPE with zeros and its own
+%   `docs_inspected` beside them -- rather than a missing field the digest
+%   would render as "(absent)" in one run and 0 in the next.
+%
+%   `marker_key` is DATA, not a comment. Everything else here is schema-driven;
+%   that one string is not, so if DID-schema stops stamping it or renames it,
+%   every count goes to zero and the report would read clean. Printing the
+%   string it followed is what makes a query-shaped zero visible -- the
+%   demo_ndi failure was a grep against a string the repository has never
+%   contained, reported as "this does not exist anywhere".
+r = struct( ...
+    'docs_inspected',                0, ...
+    'docs_unreadable',               0, ...
+    'docs_classified',               0, ...
+    'marker_key',                    nrMarkerKey(), ...
+    'classes_carrying_the_marker',   0, ...
+    'relaxed_classes',               0, ...
+    'relaxed_edges_declared',        0, ...
+    'docs_declaring_a_relaxed_edge', 0, ...
+    'edges_examined',                0, ...
+    'edges_populated',               0, ...
+    'edges_empty',                   0);
+end
+
+function k = nrMarkerKey()
+%NRMARKERKEY The schema key carrying NDI's own required-ness verdict.
+%   Written by DID-schema tools/ndi_required_stamp.py at build time from NDI's
+%   schema documents. Named in ONE place so the report and the reader cannot
+%   disagree about what was followed.
+k = 'ndi_mustBeNonEmpty';
+end
+
+function info = relaxedDependencies(cache, className, memo)
+%RELAXEDDEPENDENCIES Edges NDI declares REQUIRED that V_eta declares OPTIONAL.
+%
+%   INFO.names           the edge names, over the whole class chain
+%   INFO.marker_present  true when ANY dependency in the chain carries the
+%                        marker at all, either value. This is the difference
+%                        between "V_eta relaxed nothing NDI requires" and "the
+%                        schema was never stamped", and without it those two
+%                        print as the same zero.
+%
+%   THE TEST IS A CONJUNCTION AND BOTH HALVES MATTER:
+%       ndi_mustBeNonEmpty == true   AND   mustBeNonEmpty is absent or false
+%   Dropping the second half would put every agreeing edge in this bucket as
+%   well as in the real required-edge bucket, and the two are DIFFERENT FACTS
+%   that must never be summed -- see the block comment at the top of the file.
+%
+%   ABSENCE OF THE MARKER IS NOT `false`. It means NDI stated nothing: the
+%   class has no did_v1 source, or its NDI schema document is in the JSON
+%   Schema form (which carries no `mustbenotempty` anywhere), or V_eta renamed
+%   the edge. Treating absence as a verdict would manufacture agreement out of
+%   silence, so an unmarked edge is simply not in this census -- and the
+%   denominators say how many were unmarked.
+%
+%   NUMBERED FAMILIES ARE EXCLUDED, the same rule requiredDependencies applies
+%   and for the same reason: a MISSING instance of a family is not a blank one.
+%   Keeping the two rules identical is what lets the two buckets be compared.
+if memo.isKey(className)
+    info = memo(className);
+    return;
+end
+info = struct('names', {{}}, 'marker_present', false);
+marker = nrMarkerKey();
+try
+    chain = cache.classChain(className);
+catch
+    memo(className) = info;
+    return;
+end
+for k = 1:numel(chain)
+    try
+        s = cache.getClass(chain{k});
+    catch
+        continue;
+    end
+    if ~isfield(s, 'depends_on'); continue; end
+    deps = s.depends_on;
+    % jsondecode returns a CELL when the dependency objects in one class do not
+    % all carry the same keys -- which this marker makes MORE common, not less,
+    % because it is stamped on some entries of a class and not others. Iterate
+    % element-wise; `[deps{:}]` throws on mismatched fieldnames, and that throw
+    % would be swallowed by the caller's try/catch, silencing the census
+    % exactly where it should speak.
+    if isstruct(deps)
+        items = num2cell(deps(:)');
+    elseif iscell(deps)
+        items = deps(:)';
+    else
+        continue;
+    end
+    for d = 1:numel(items)
+        dep = items{d};
+        if ~isstruct(dep) || ~isfield(dep, 'name'); continue; end
+        if ~isfield(dep, marker); continue; end
+        info.marker_present = true;
+        if ~logical(dep.(marker)); continue; end          % NDI says optional
+        if isfield(dep, 'mustBeNonEmpty') && logical(dep.mustBeNonEmpty)
+            continue;                                     % we agree: other bucket
+        end
+        n = char(dep.name);
+        if contains(n, '#'); continue; end
+        if ~any(strcmp(info.names, n)); info.names{end+1} = n; end
+    end
+end
+% DO NOT DELETE THIS LINE TO SILENCE THE ANALYSER -- see the identical note on
+% eaClassInfo's memo below. `memo` is a containers.Map, a HANDLE class, so this
+% mutates the map the caller created and passed in. The analyser calls the
+% local name unused because the effect is on the shared object.
+memo(className) = info;
 end
 
 function names = requiredDependencies(cache, className)
