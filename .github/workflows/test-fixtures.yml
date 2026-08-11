@@ -116,5 +116,27 @@ jobs:
             results = runtests(["did2.unittest.testFixtureCorpus", ...
                                 "did2.unittest.testMigratorsJ"]);
             disp(table(results));
-            assert(sum([results.Failed]) == 0, ...
-                sprintf("%d fast-gate test(s) failed", sum([results.Failed])));
+            % THE VERDICT BLOCK PRINTS LAST so a red run is readable from a log
+            % tail: the failing test's NAME, not just a count. This workflow was
+            % the ONE of four asserting on `results.Failed` that never got it --
+            % and on 2026-08-11 it failed with exactly "1 fast-gate test(s)
+            % failed" and nothing else, so finding which test meant scrolling a
+            % 1,363-line log for the row whose flags read `false true false`.
+            % A count is not a diagnosis.
+            %
+            % Guarded, because a helper that fails to resolve must not turn every
+            % gate red: the fallback recomputes the same two numbers and says
+            % loudly that it did.
+            verdict = struct('n_run', numel(results), ...
+                'n_failed', sum([results.Failed]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(results, "fast gate");
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_run > 0, ...
+                "the suite selected NO tests -- that is a broken filter, not a pass");
+            assert(verdict.n_failed == 0, ...
+                sprintf("%d fast-gate test(s) failed -- names are in the VERDICT block above", ...
+                    verdict.n_failed));
