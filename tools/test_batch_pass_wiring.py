@@ -460,11 +460,26 @@ def test_every_counter_a_rendered_pass_declares_reaches_the_digest():
     nothing.
 
     SCOPE, STATED SO THE ZERO IS READABLE: only passes that census_digest.py
-    renders AT ALL are checked. Three passes (lawn_plate_subjects,
-    openminds_citations, response_parameters_fold) have no POST_PASSES entry,
-    so every counter they declare is unrendered -- a whole-pass gap, which is a
-    bigger and different decision than a missing row, and one this test names
-    rather than silently folds into a count.
+    renders AT ALL are checked.
+
+    THIS PARAGRAPH USED TO NAME THREE PASSES -- lawn_plate_subjects,
+    openminds_citations, response_parameters_fold -- as having no POST_PASSES
+    entry, so that every counter they declared was unrendered. THAT IS STALE:
+    all three now have one, and this test's own output says so, printing
+    "9 pass(es), 9 rendered by census_digest". Verified against the committed
+    digest rather than a working copy:
+
+        $ git show a45e1ad:tools/census_digest.py | python3 -c "...POST_PASSES..."
+        lawn_plate_subjects     -> PRESENT
+        openminds_citations     -> PRESENT
+        response_parameters_fold-> PRESENT
+
+    The whole-pass gap this scope note was written to keep visible is now
+    CLOSED and, more to the point, GATED: census_digest.pass_census_gate exits
+    non-zero on a pass measured by nothing, so the condition can no longer sit
+    in a docstring waiting to be read. The scope sentence above still stands on
+    its own -- a pass the digest does not render is out of reach of this leg --
+    it simply has no instances today. A zero here is now a measured zero.
     """
     passes, _exempt, _n_files = discover()
     rendered = _digest_rows()

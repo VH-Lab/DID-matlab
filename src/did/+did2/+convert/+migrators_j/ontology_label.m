@@ -131,11 +131,23 @@ function bodies = ontology_label(preBody)
 %
 %   `+setup/+conv/+babu/import.m` WAS NOT NAMED IN THIS HEADER BEFORE, and its
 %   two `generic_file` referents are a case the second pass's imageStack chain
-%   does not cover: `generic_file` has NO V_eta home and NO migrator (it is one
-%   of the 4 UNVERIFIED coverage rows), so a Babu dataset's plasmid and LC-MS
-%   labels will point at a document that pass 1 leaves as a did_v1 class. That is
-%   a REPORTED gap, not a change made here -- both are passthroughs today, so
-%   nothing is lost and nothing false is minted either way.
+%   does not cover.
+%
+%   THE NEXT SENTENCE USED TO READ: "`generic_file` has NO V_eta home and NO
+%   migrator (it is one of the 4 UNVERIFIED coverage rows)". BOTH HALVES ARE NOW
+%   STALE, and the second half was misleading even when it was written.
+%   `generic_file` HAS a V_eta home: it folds to a `term_observation` +
+%   `opaque_body`, signed 2026-08-11, and the fold ran in 6 of 6 corpora in
+%   corpus run 31522068566. It has no MIGRATOR because it was never going to
+%   have one -- it is handled by a BATCH POST-PASS,
+%   did2.convert.foldGenericFiles, one of the nine the harness composes. Looking
+%   for +migrators_j/generic_file.m finds nothing and always will, so absence
+%   there is the design and not a gap. The "4 UNVERIFIED coverage rows" bucket
+%   no longer exists either: coverage.py now reports `gap` False on all 102 rows.
+%
+%   What remains true and is the reason this paragraph stays: a Babu dataset's
+%   plasmid and LC-MS labels point at their referent through `document_id`, and
+%   that edge is this migrator's business rather than the fold's.
 %
 %   NO COUNTER WATCHES THIS EDGE. `did2.validate.silentLoss` counts EMPTY
 %   REQUIRED edges only -- `requiredDependencies` (silentLoss.m:930-961) returns
