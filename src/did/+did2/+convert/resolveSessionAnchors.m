@@ -28,9 +28,47 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   corpus's evidence, not authorisation to delete the retiring classes.
 %
 %   The two classes it folds are exactly these, and no others --
-%   `epoch_*`/`event_*`/`utc_reference` are NOT touched here, which matters
-%   because `ndi.migrate.internal.stimulusBathToBath.m:70-81` mints a populated
-%   `epoch_bounded_reference` on the NDI path that nothing folds.
+%   `epoch_*`/`event_*`/`utc_reference` are NOT touched here. That mattered
+%   because `ndi.migrate.internal.stimulusBathToBath` mints a populated
+%   `epoch_bounded_reference` on the NDI path -- at its `if mintReference`
+%   block, stimulusBathToBath.m:133-148, NOT the :70-81 this line used to cite,
+%   which is the OUTPUT DOCSTRING describing that body rather than the code
+%   that builds it.
+%
+%   THE SECOND HALF OF THAT SENTENCE -- "that nothing folds" -- IS NO LONGER
+%   TRUE, and is corrected here on positive evidence, not on a failed search.
+%   `ndi.migrate.internal.epochAnchorFold` was added on this same branch
+%   (NDI-matlab e3795c2f7, 2026-08-11) and is CALLED, not merely present:
+%
+%       $ git -C NDI-matlab log --diff-filter=A --format='%H %ad' --date=short \
+%             -- src/ndi/+ndi/+migrate/+internal/epochAnchorFold.m
+%       e3795c2f746e9abdeb63acb94bab73134b1cf3fc 2026-08-11
+%
+%       $ grep -n "resolveEpochAnchorFold" NDI-matlab/src/ndi/+ndi/+migrate/local.m
+%       686:                resolveEpochAnchorFold(convertResult, epochMintReport, options);
+%       1405:function [convertResult, report] = resolveEpochAnchorFold(convertResult, ...
+%
+%   It runs as step (5b) of ndi.migrate.local's V_eta second pass, immediately
+%   after did2.convert.epochMint (step 5) and immediately before THIS pass
+%   (step 7), and it folds to `relative_reference` with base.id PRESERVED, the
+%   same guarantee this file makes.
+%
+%   WHAT IS STILL TRUE, AND IS THE REASON THIS PARAGRAPH IS NOT SIMPLY DELETED:
+%   the fold is NDI-side, so it does not run in the DID corpus gate at all --
+%   that gate runs the coarse did2.convert.resolveDeferredBaths, which NDI
+%   deliberately substitutes stimulusBathToBath for, and which emits
+%   `session_relative_reference` (resolveDeferredBaths.m:188,237) rather than an
+%   epoch-bounded one. So no corpus number in this header speaks to the
+%   epoch-bounded class, and none should be read as doing so.
+%
+%   THE FOLD IS NOT UNCONDITIONAL. epochMint refuses to mint an `epoch` for a
+%   session id with no `session` DOCUMENT in the batch (epochMint.m:349-353,
+%   `skipped_no_session_document`), and epochAnchorFold then refuses that anchor
+%   (`refused_no_epoch_document`) and LEAVES IT AS AN `epoch_bounded_reference`,
+%   which ndi.migrate.local writes to the destination database like any other
+%   migrated document. Both branches are pinned end-to-end, from the real
+%   emitter through the real pipeline, by
+%   NDI-matlab tests/+ndi/+unittest/+migrate/TestMigrateLocalEta.m.
 %   ---------------------------------------------------------------------
 %   Written 2026-08-10 for #65 in an environment with NO MATLAB, so no line here
 %   has been run. THAT IS STILL TRUE and is the main thing to know about it.
