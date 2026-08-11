@@ -113,6 +113,25 @@ arguments
     preBody (1,1) struct
 end
 
+% ---------------------------------------------------------------------
+% THE EMITTERS MOVED OUT, 2026-08-11. `entityDoc` / `relationDoc` / `orgFor` /
+% `buildGids` / `emptyGids` / `freshBase` were local functions here and are now
+% did2.convert.entities.*, because a SECOND reader of the same six entity
+% classes exists: did2.convert.resolveOpenmindsCitations, which reads the
+% openMINDS dataset graph instead of this blob (TEAM DECISION 2026-08-11,
+% "Do B"). Only the readers differ; the emitted shape must not. Copying them
+% would have produced two spellings of one document shape inside one dataset.
+%
+% NOTHING ABOUT THIS MIGRATOR'S OUTPUT CHANGED -- the bodies moved verbatim.
+% The one addition is orgFor's optional 4th argument (an id to preserve), which
+% this path does not pass.
+% ---------------------------------------------------------------------
+import did2.convert.entities.entityDoc
+import did2.convert.entities.relationDoc
+import did2.convert.entities.orgFor
+import did2.convert.entities.buildGids
+import did2.convert.entities.emptyGids
+
 block = struct();
 if isfield(preBody, 'metadata_editor') && isstruct(preBody.metadata_editor)
     block = preBody.metadata_editor;
@@ -225,94 +244,12 @@ end
 v2Body = bodies;
 end
 
-% ===================== builders ========================================
-
-function d = entityDoc(preBody, className, docId, blockStruct, gids, fresh)
-%ENTITYDOC An `<className>` entity: entity.global_identifier + the class block.
-d = struct();
-d.document_class = struct('class_name', className, 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-d.depends_on = struct('name', {}, 'value', {});
-d.base = freshBase(preBody, ['migrated_', className]);
-if ~fresh && isfield(preBody, 'base') && isstruct(preBody.base)
-    d.base = preBody.base;           % dataset: preserve the whole source base
-end
-d.base.id = docId;                   % the id the relations reference is authoritative
-% cell-wrap: gids may be an empty or multi-element struct array; without the
-% cell, struct() would fan `d.entity` out into a struct array (MATLAB gotcha).
-d.entity = struct('global_identifier', {gids});
-d.(className) = blockStruct;
-end
-
-function rel = relationDoc(preBody, childId, parentId, relationName, sequence)
-%RELATIONDOC child --relationName--> parent, both entities. `sequence` may be [].
-rel = struct();
-rel.document_class = struct('class_name', 'directed_relation', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'relation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',  'value', childId), ...
-    struct('name', 'parent', 'value', parentId)];
-rel.base = freshBase(preBody, ['migrated_dataset_', relationName]);
-drBlock = struct('relation', jOntologyTerm('', relationName));
-if ~isempty(sequence); drBlock.sequence = sequence; end
-rel.directed_relation = drBlock;
-end
-
-function [orgId, orgBody] = orgFor(preBody, name, orgIds)
-%ORGFOR Dedup organizations by name; return existing id (orgBody = []) or mint.
-key = lower(strtrim(name));
-if isKey(orgIds, key)
-    orgId = orgIds(key); orgBody = [];
-    return;
-end
-orgId = did.ido.unique_id();
-orgIds(key) = orgId;   % containers.Map is a handle: the update persists to the caller
-orgBody = entityDoc(preBody, 'organization', orgId, ...
-    struct('full_name', name), emptyGids(), true);
-end
-
-% ===================== global_identifier ================================
-
-function g = buildGids(varargin)
-%BUILDGIDS Assemble a global_identifier struct array from {scheme,value} pairs,
-%   skipping any pair whose value is empty. Returns a 0x0 struct if none.
-g = emptyGids();
-for k = 1:numel(varargin)
-    pair = varargin{k};
-    val = char(pair{2});
-    if isempty(val); continue; end
-    g(end+1) = struct('scheme', char(pair{1}), 'value', val); %#ok<AGROW>
-end
-end
-
-function g = emptyGids()
-g = struct('scheme', {}, 'value', {});
-end
-
 % ===================== small helpers ===================================
-
-function id = baseId(preBody)
-id = '';
-if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
-    id = preBody.base.id;
-end
-if isempty(id); id = did.ido.unique_id(); end
-end
-
-function base = freshBase(preBody, name)
-sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        ds = preBody.base.datestamp;
-    end
-end
-base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', name, 'datestamp', ds);
-end
+%
+% The BUILDERS that used to live here (entityDoc / relationDoc / orgFor /
+% buildGids / emptyGids / freshBase) are did2.convert.entities.* as of
+% 2026-08-11 -- see the note at the top of the function body. Only the READERS
+% below are specific to the NDIMetaDataEditorApp blob.
 
 function s = getChar(block, name)
 %GETCHAR Read a char/string/scalar-numeric field as char ('' if absent).
