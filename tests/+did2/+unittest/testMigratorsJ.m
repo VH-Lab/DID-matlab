@@ -791,10 +791,147 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
     'dimension_scale', [1 1 1], 'clocktype', 'no_time', 'timestamp', 0);
 
 out = runJ(v1);
+% DENOMINATOR FIRST. The loop below is vacuously true over an empty batch, so
+% a migrator that emitted NOTHING would have passed this test unchanged -- the
+% "all-zero reads as clean" defect in a two-line sweep. Assert the fold ran.
+verifyEqual(testCase, numel(out.migrated), 3, ...
+    'the 1 -> 3 fold must have run, or the sweep below checked nothing');
 for k = 1:numel(out.migrated)
     verifyEqual(testCase, depVal(out.migrated{k}, 'imageCollection_id'), '');
     verifyEqual(testCase, depVal(out.migrated{k}, 'image_collection_id'), '');
 end
+end
+
+% ---- the subject-less did_v1 `image`: refused, because it cannot pass through --
+
+function testDidV1ImageWithNoSubjectIsRefusedLoudlyBecauseItsNameIsTaken(testCase)
+% THE ASYMMETRY WITH image_stack, WHICH IS THE WHOLE POINT OF THIS TEST.
+%
+% migrators_j/image.m delegates UNCONDITIONALLY into image_stack, whose
+% subject-less guard (image_stack.m:248-251) hands the body back unchanged. For
+% `image_stack` that is safe: it has a tombstone in V_eta `deprecated/`. For
+% `image` it is not -- the name belongs to R6's raster data_type, which is
+% ABSTRACT, and no `deprecated/image.json` exists. So the passthrough would die
+% at +did2/+schema/cache.m:672 reporting `abstractInstantiation` (a message
+% naming the schema, not the cause) when validation is on, and survive SILENTLY
+% under a wrong-meaning class name when it is off -- which is what `runJ` does,
+% so nothing in this suite would have seen it.
+%
+% The document is one NDI is entitled to write: image_schema.json declares
+% `subject_id` "mustbenotempty": 0 and the template defaults it to "". This
+% fixture is that shape -- an imageCollection edge and no subject at all.
+v1 = struct();
+v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = struct('name', {'imageCollection_id'}, 'value', {'coll_1'});
+v1.base = struct('id', 'img_03', 'session_id', 'sess_09', ...
+    'name', 'img', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image = struct('label', 'a lawn plate', 'format', 'tiff', 'compression', '');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YX', 'dimension_size', [512 512], ...
+    'dimension_scale', [0.5 0.5], 'clocktype', 'no_time', 'timestamp', 0);
+
+out = runJ(v1);
+
+% denominator first: one body went in, and it was accounted for exactly once
+verifyEqual(testCase, out.summary.total, 1);
+verifyEqual(testCase, out.summary.migrated_count + out.summary.quarantine_count, 1);
+% nothing may be emitted -- not an observation about nobody, and not a
+% passthrough wearing a name that means something else in V_eta
+verifyEmpty(testCase, out.migrated, ...
+    'a subject-less did_v1 image must emit nothing at all');
+verifyEqual(testCase, numel(out.quarantine), 1);
+% THE IDENTIFIER IS THE POINT. `abstractInstantiation` here would mean the
+% refusal was removed and the validator caught it by accident, in a bucket
+% shared with real abstract-instantiation mistakes.
+verifyEqual(testCase, out.quarantine(1).identifier, ...
+    'did2:convert:imageNoSubjectHasNoTombstone');
+verifyEqual(testCase, out.quarantine(1).class_name, 'image');
+% and the message must be diagnosable: it names the document
+verifyNotEmpty(testCase, regexp(out.quarantine(1).reason, 'img_03', 'once'), ...
+    'the refusal must name the document it refused');
+end
+
+function testDidV1ImageWithABlankSubjectEdgeIsRefusedToo(testCase)
+% The edge PRESENT but blank -- the template's own default ("subject_id": "")
+% and the shape the invented-empty-edge pattern produces. image_stack's
+% `dependencyValue` returns '' for both "absent" and "present but empty", so
+% both must land on the same refusal; this pins that they do rather than
+% assuming it.
+v1 = struct();
+v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = [ struct('name', 'subject_id', 'value', ''), ...
+                  struct('name', 'imageCollection_id', 'value', '')];
+v1.base = struct('id', 'img_04', 'session_id', 'sess_09', ...
+    'name', 'img', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image = struct('label', '', 'format', 'tiff', 'compression', 'lzw');
+v1.image_stack_parameters = struct('data_type', 'uint16', ...
+    'dimension_order', 'YX', 'dimension_size', [64 64], ...
+    'dimension_scale', [1 1], 'clocktype', 'no_time', 'timestamp', 0);
+
+out = runJ(v1);
+
+verifyEqual(testCase, out.summary.total, 1);
+verifyEmpty(testCase, out.migrated);
+verifyEqual(testCase, numel(out.quarantine), 1);
+verifyEqual(testCase, out.quarantine(1).identifier, ...
+    'did2:convert:imageNoSubjectHasNoTombstone');
+end
+
+function testTheVEtaImageNameIsAbstractSoAPassthroughIsNotAnOption(testCase)
+% THE INSTRUMENT, NOT THE BEHAVIOUR. The two tests above assert what the
+% migrator does; this one asserts the FACT that makes doing it necessary, so
+% that the day the fact changes, the guard is re-examined instead of quietly
+% outliving its reason.
+%
+% Two halves, and the second is what keeps the first from being vacuous:
+%   (a) V_eta `image` is ABSTRACT -- so a passthrough under that name cannot
+%       validate, whatever fields it carries.
+%   (b) V_eta `image_stack` is CONCRETE -- the tombstone that makes ITS
+%       passthrough legal. Without (b), `classIsAbstract` returning true for
+%       everything (a broken reader, a cache that resolved nothing) would pass
+%       (a) and prove nothing.
+%
+% If someone mints a v1-shaped tombstone for `image` under a different name, or
+% R6 stops spending the name on the raster data_type, this test goes red and the
+% refusal in migrators_j/image.m can become a passthrough.
+% NO ENV MUTATION HERE. The quick gate exports DID_SCHEMA_PATH to the assembled
+% V_eta set (stable + draft + deprecated) before MATLAB starts, so the singleton
+% already resolves both classes. Reading it is enough; installing a path would
+% change process state for every other test in this file, all of which run with
+% 'Validate', false and touch no cache at all.
+cache = did2.schema.cache.shared();
+
+% DENOMINATOR: both classes must RESOLVE, or "not abstract" and "not there"
+% would read the same. getClass RAISES for a missing file, so this is a
+% try/catch and a SKIP -- a run against a V_delta-only schema path must say it
+% did not look, never that it looked and found nothing wrong.
+try
+    imgSchema   = cache.getClass('image');
+    stackSchema = cache.getClass('image_stack');
+catch err
+    assumeFail(testCase, ...
+        ['DID_SCHEMA_PATH does not resolve the V_eta image classes (' ...
+         err.message ') -- this test measured nothing.']);
+    return;
+end
+verifyTrue(testCase, isstruct(imgSchema) && isfield(imgSchema, 'document_class'), ...
+    'the V_eta `image` schema has no document_class header');
+verifyTrue(testCase, isstruct(stackSchema) && isfield(stackSchema, 'document_class'), ...
+    'the V_eta `image_stack` tombstone has no document_class header');
+
+verifyTrue(testCase, cache.classIsAbstract(imgSchema), ...
+    ['V_eta `image` is no longer abstract. A did_v1 `image` could now pass ' ...
+     'through under its own name -- re-examine the refusal in ' ...
+     '+migrators_j/image.m.']);
+verifyFalse(testCase, cache.classIsAbstract(stackSchema), ...
+    ['V_eta `image_stack` must stay CONCRETE: it is the tombstone the ' ...
+     'subject-less image_stack passthrough validates against. (This half also ' ...
+     'proves classIsAbstract can return false, so the assertion above is not ' ...
+     'vacuous.)']);
 end
 
 function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCase)
