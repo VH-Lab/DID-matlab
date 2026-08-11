@@ -3,11 +3,19 @@ function tests = testLawnPlateSubjects
 %   lawn/plate subject tiers, their `member_of` join, and the
 %   (experiment, plate, patch) identifier.
 %
-%   STATUS: WRITTEN 2026-08-11, NEVER EXECUTED. This container has no MATLAB and
-%   no Octave, so not one line of this file has been run. Its assertions were
-%   checked by transliterating the code under test into Python and driving it
-%   with these same literal fixtures; that is a transliteration, not a run.
-%   test-migrators-quick.yml is the first thing with an opinion.
+%   STATUS: WRITTEN 2026-08-11 in a container with no MATLAB and no Octave, and
+%   this edit was made from one too -- not one line of this file has been run
+%   here. CI HAS run it: test-migrators-quick.yml run 31496276388 (job
+%   93794725787, head 76f835ad), 927/929, with these two tests RED --
+%   testNoEcoliTablesIsDistinctFromTablesPresentAndJoinsFailing and
+%   testAnUnrecognisedRowInALiveSessionIsCountedAsTheCanary. Both were CORRECT
+%   and neither was touched: all three failing verifications read
+%   `sessions_with_lawn_plate_tables`, which the pass was assigning straight
+%   from `containers.Map.Count` (uint64) into a field declared double, so
+%   verifyEqual failed on CLASS, not on value. The defect was in
+%   resolveLawnPlateSubjects.m and that is where it was fixed. The Python
+%   transliteration scored these same cases 14/14 because it models the counter
+%   as `len(live)`; it cannot see a MATLAB type. A transliteration is not a run.
 %
 %   ---------------------------------------------------------------------
 %   WHAT THESE TESTS ARE FOR

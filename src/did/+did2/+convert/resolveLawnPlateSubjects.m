@@ -9,15 +9,26 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   RESULT.lawn_plate_subjects, so a caller that ignores the second output still
 %   carries the measurement.
 %
-%   STATUS: WRITTEN 2026-08-11 IN A CONTAINER WITH NO MATLAB. NOT ONE LINE OF
-%   THIS FILE HAS BEEN EXECUTED -- there is no MATLAB and no Octave here, so
-%   neither testMigratorsJ, nor testLawnPlateSubjects, nor any corpus was run.
-%   Mutation sensitivity was proven by transliterating the classifier, the
-%   measurement test, the two-hop join and the identifier composer into Python
-%   and driving them with the literal fixtures (the commit message records every
-%   run). test-migrators-quick.yml is the first thing in this repository with an
-%   opinion. Said in the header rather than only in a commit message because a
-%   header is what the next reader sees.
+%   STATUS: WRITTEN 2026-08-11 IN A CONTAINER WITH NO MATLAB, and still edited
+%   from one -- `command -v matlab octave octave-cli` finds nothing here, so no
+%   line of this file has ever been run in this session. It HAS now been run by
+%   CI: test-migrators-quick.yml run 31496276388 (job 93794725787, head
+%   76f835ad) executed all 15 tests of testLawnPlateSubjects and reported
+%   927/929 with exactly two failures, both of them in this file's canary.
+%   That run is the only execution evidence this header may claim.
+%
+%   WHAT IT FOUND, AND WHY THE PYTHON HARNESS COULD NOT.
+%   `sessions_with_lawn_plate_tables` was assigned `liveSessions.Count`, which
+%   is UINT64 while the field is declared double in the denominator block below
+%   and every other field of the report is a double. It is now cast (see the
+%   note at the assignment). tools/dev/lawn_plate_mutation_harness.py reported
+%   BASELINE 14/14 across this exact case because it transliterates the counter
+%   as `len(live)` -- a Python int -- so the transliteration cannot see a
+%   MATLAB type at all. A transliteration is not a run, and this is what that
+%   sentence costs: the harness is blind to type, arity and MATLAB semantics by
+%   construction, and any defect living there reaches CI untouched. Said in the
+%   header rather than only in a commit message because a header is what the
+%   next reader sees.
 %
 %   ---------------------------------------------------------------------
 %   THE DECISIONS THIS FILE IMPLEMENTS -- IT IS NOT MAKING ANY
@@ -437,7 +448,16 @@ liveSessions = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:n
     if kinds(k) > 0 && ~isempty(sessions{k}); liveSessions(sessions{k}) = true; end
 end
-report.sessions_with_lawn_plate_tables = liveSessions.Count;
+% double(), and it is not cosmetic -- `containers.Map.Count` returns UINT64.
+% Every other field of this report is a double, so without the cast the struct
+% is mixed-type and encodes inconsistently (the reason silentLoss.m:871-875
+% casts at the boundary), and uint64 arithmetic SATURATES, so any later
+% subtraction against this denominator could never go negative -- an instrument
+% whose broken case is indistinguishable from "nothing to report", which is the
+% one thing this canary exists to prevent. epochMint.m:368-378 records the same
+% defect and adds the detail that found it here too: it "made verifyEqual fail
+% on class rather than value".
+report.sessions_with_lawn_plate_tables = double(liveSessions.Count);
 for k = 1:n
     if ~strcmp(classes{k}, ROW); continue; end
     if kinds(k) > 0; continue; end
