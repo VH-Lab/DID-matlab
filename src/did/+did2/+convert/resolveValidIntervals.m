@@ -13,6 +13,10 @@ function [result, report] = resolveValidIntervals(result, options)
 %   (`command -v matlab octave octave-cli` returns nothing). NOTHING IN THIS
 %   FILE HAS BEEN RUN. test-migrators-quick.yml is the first thing that will
 %   have an opinion about it. Read it as a specification, not as a passing pass.
+%   AMENDED 2026-08-11 to populate `subject_interaction.method` (see "THE VERB"
+%   below), in the same container, under the same condition: `command -v matlab
+%   octave octave-cli` still returns nothing, so that amendment has not been run
+%   either. CI is its first execution.
 %
 %   ---------------------------------------------------------------------
 %   THE DECISION THIS IMPLEMENTS
@@ -254,16 +258,103 @@ function [result, report] = resolveValidIntervals(result, options)
 %   is the hollow document silentLoss and isFragment exist to catch.
 %
 %   ---------------------------------------------------------------------
+%   THE VERB -- WHY `method` IS STATED, AND WITH WHAT
+%   ---------------------------------------------------------------------
+%   A `validity_observation` records a CURATORIAL JUDGEMENT: a person ran
+%   `ndi.app.markgarbage` and marked which stretches of a recording are good
+%   data. It is NOT a measurement taken from the subject. V_eta's four statement
+%   directions are assertion / observation / manipulation / calculation and none
+%   of them is "a human judged this", which the team raised as an objection to
+%   this family. The resolution does not add a fifth direction: T2's declared
+%   slot for THE VERB -- how was this known -- is `subject_interaction.method`,
+%   and that is where the epistemic stance is stated.
+%
+%   THIS FIELD USED TO BE EMITTED EMPTY (`{node: '', name: ''}`), which made a
+%   curation judgement INDISTINGUISHABLE FROM AN INSTRUMENT READING. Nothing
+%   would ever have caught it: `method` is `mustBeNonEmpty: false`, so a blank
+%   term validates, and subject_interaction.json's own documentation says the
+%   observation verb "is nearly always 'measurement'" -- so a blank reads as the
+%   default, and the default is the one thing this statement is not.
+%
+%   THE NAME IS `curation`, ONE WORD, and the alternatives were rejected on the
+%   tenets rather than on taste:
+%
+%     markgarbage / ndi_app_markgarbage   names the TOOL, not the act, and
+%                                         `ndi_app_` is a namespace wrapper
+%                                         (T13 wrapper-free; T11 forbids a
+%                                         device/method subtype in a name). The
+%                                         tool is PROVENANCE -- it belongs on
+%                                         the `app` block / `software_id`, which
+%                                         subject_interaction.json says in its
+%                                         own words supersedes the v1 `app`.
+%     manual curation / expert annotation /
+%     visual inspection                   each adds a claim the source never
+%                                         makes -- that a human, an expert, or
+%                                         an eye did it. `markvalidinterval` is
+%                                         a plain API a script can call. T13:
+%                                         the stance word must be TRUE, not
+%                                         convenient.
+%     data curation                       `data` is altitude noise beside
+%                                         `variable = 'data validity'` on the
+%                                         same statement (T13, name the content
+%                                         not the container).
+%     garbage marking / interval marking  the tool's UI gesture, and its
+%                                         polarity is inverted from what the
+%                                         statement asserts (the migrated value
+%                                         is TRUE = valid).
+%     measurement                         false here, and it is exactly what a
+%                                         blank `method` already reads as.
+%
+%   Being ONE WORD, `curation` is identical in snake_case and as a
+%   human-readable label, so it satisfies T13's case rule without having to
+%   settle which of the two applies to a term `name`. That question is real: of
+%   the 18 `jOntologyTerm('', <literal>)` sites in +did2/+convert, 6 are empty
+%   and 12 carry a name -- 11 of the 12 are space-separated labels
+%   ('anatomical location', 'spike cluster assignment') and the twelfth is
+%   'dev_local_time', an NDI-authored identifier carried verbatim, which is
+%   T13's own stated exemption. This term needs neither ruling.
+%
+%   WHERE THE TERM COMES FROM, PER DOCUMENT, AND BOTH CASES ARE COUNTED. The v1
+%   `app` block was read as the WRITER produces it, not as the template shows
+%   it: `markgarbage.m`'s constructor sets `name = 'ndi_app_markgarbage'` (NOT
+%   the `ndi.app.markgarbage` its own docstring claims), `savevalidinterval`
+%   adds `+ ndi_app_markgarbage_obj.newdocument()`, and `ndi.app/newdocument`
+%   (app.m:105-114) writes `app.name` from that property alongside version, url,
+%   os, os_version, interpreter and interpreter_version. So THE DOCUMENT NAMES A
+%   TOOL AND NEVER A VERB -- there is no term in it to copy. The verb is
+%   therefore a CONSTANT in both branches, and what the branch records is the
+%   EVIDENCE for it, the same way `anchor_session_from_timeref` /
+%   `anchor_session_from_document` already do one field over:
+%
+%     method_from_app_block      the source names a producer, so the claim
+%                                "this was curation" rests on the document.
+%     method_from_class_default  no app block, or an `app_name` that is present
+%                                but empty (the template's default is ""), so
+%                                nothing in the document names a producer. The
+%                                verb is asserted from the CLASS instead:
+%                                nothing but markgarbage writes `valid_interval`
+%                                (the writer grep at the top of this file). A
+%                                statement in this branch still STATES its
+%                                method -- a blank would be the defect above.
+%
+%   ---------------------------------------------------------------------
 %   THE STAGED ONTOLOGY NODES
 %   ---------------------------------------------------------------------
-%   `variable` and `clock` are emitted as `{node: '', name: ...}`. That is the
-%   standing practice (jEpochClockReferences stages `clock` the same way; the
-%   NDIC identifier authority is in no repository in scope since NDIC.txt left
-%   NDI-matlab at 2c19bf24c) -- but `tools/check_empty_ontology_nodes.py` walks
-%   ONLY `+migrators_j`, so a term staged HERE is invisible to the one
-%   instrument built to make staged terms visible. `staged_ontology_nodes` in
-%   the report is the local stand-in, so the debt is a number in the corpus
-%   report rather than a silence. Widening that tool is a separate change.
+%   `variable`, `clock` and `method` are emitted as `{node: '', name: ...}`.
+%   That is the standing practice (jEpochClockReferences stages `clock` the same
+%   way; the NDIC identifier authority is in no repository in scope since
+%   NDIC.txt left NDI-matlab at 2c19bf24c) -- but `tools/check_empty_ontology_nodes.py`
+%   walks ONLY `+migrators_j` and matches ONLY `jOntologyTerm('', ...)`
+%   (its `sweep()`, and `sweep_schemas()` reads built schemas), so a term staged
+%   HERE is invisible to the one instrument built to make staged terms visible.
+%   RE-CHECKED WHEN `method` WAS POPULATED: still true. `staged_ontology_nodes`
+%   in the report is the local stand-in -- it counts THREE per decomposed
+%   interval (clock, variable, method; four when the split-anchor branch emits
+%   two references), reaches the corpus report via runCorpusDiscovery and the
+%   cross-corpus census via tools/census_digest.py, so the debt is a number in
+%   two printed reports rather than a silence. Widening that tool is a separate
+%   change. NO CURIE IS INVENTED for `method`: the node stays empty and joins
+%   the same ratchet as everything else here.
 %
 %   Options (name-value), mirroring the sibling passes:
 %     Validate       (1,1 logical, default true)  validate emitted bodies
@@ -300,6 +391,8 @@ report = struct( ...
     'sources_partly_decomposed',      0, ...
     'anchor_session_from_timeref',    0, ...
     'anchor_session_from_document',   0, ...
+    'method_from_app_block',          0, ...
+    'method_from_class_default',      0, ...
     'staged_ontology_nodes',          0, ...
     'inheritance_candidates',         0, ...
     'refused_no_element_id',          0, ...
@@ -395,6 +488,10 @@ for k = 1:n
         % has already run by this point.
         report.sources_with_app_block = report.sources_with_app_block + 1;
     end
+    % THE VERB, resolved ONCE PER SOURCE because the app block is per source.
+    % Computed before the refusals below so that the two evidence counters
+    % describe the statements that were actually written and nothing else.
+    [methodTerm, methodEvidence] = curationMethod(src);
 
     elementId = depValue(src, 'element_id');
     entries = intervalEntries(blk);
@@ -460,10 +557,16 @@ for k = 1:n
             refBodies{end+1} = refs{r}; %#ok<AGROW>
             report.staged_ontology_nodes = report.staged_ontology_nodes + 1;  % clock
         end
-        stmtBodies{end+1} = ...
-            makeValidityObservation(src, elementId, i, true, refIds); %#ok<AGROW>
+        stmtBodies{end+1} = makeValidityObservation( ...
+            src, elementId, i, true, refIds, methodTerm); %#ok<AGROW>
         stmtRefIds{end+1} = refIds; %#ok<AGROW>
         report.staged_ontology_nodes = report.staged_ontology_nodes + 1;      % variable
+        report.staged_ontology_nodes = report.staged_ontology_nodes + 1;      % method
+        % WHICH BRANCH BACKED THE VERB, per statement. Counted separately from
+        % `sources_with_app_block` (which is per SOURCE) so the two cannot be
+        % mistaken for each other, and so the sum is checkable against
+        % `intervals_decomposed`.
+        report.(methodEvidence) = report.(methodEvidence) + 1;
         doneHere = doneHere + 1;
     end
 
@@ -712,7 +815,7 @@ end
 ref.relative_reference = struct('value', value);
 end
 
-function body = makeValidityObservation(src, elementId, sequence, isValid, refIds)
+function body = makeValidityObservation(src, elementId, sequence, isValid, refIds, methodTerm)
 %MAKEVALIDITYOBSERVATION One boolean statement about one element-subject.
 %
 %   `subject_id` IS THE ELEMENT, UNQUALIFIED. `element_id` on the v1 document
@@ -733,6 +836,11 @@ function body = makeValidityObservation(src, elementId, sequence, isValid, refId
 %   `kind: point` would assert a cadence the source never described.
 %   NO `derived_from_#`: see HAZARD 3 in the header -- leaving it empty is what
 %   keeps both answers to the inheritance question buildable.
+%
+%   METHODTERM IS STATED, NEVER BLANK. It is the epistemic stance -- this value
+%   came from a curatorial judgement, not from an instrument -- and it arrives
+%   already resolved from `curationMethod`, which is where the naming argument
+%   and the two evidence branches live. See "THE VERB" in the header.
 %
 %   REFIDS are the `relative_reference` documents this statement is anchored to
 %   -- ONE in the agreeing case, TWO in the split case (Decision C). They are
@@ -756,10 +864,69 @@ body.base = freshBase(src, 'migrated_valid_interval');
 body.subject_statement = struct( ...
     'variable', struct('node', '', 'name', 'data validity'), ...
     'storage_mode', 'inline');
-body.subject_interaction = struct('method', struct('node', '', 'name', ''));
+body.subject_interaction = struct('method', methodTerm);
 body.subject_observation = struct();
 body.validity = struct('value', struct('value', logical(isValid)));
 body.validity_observation = struct('sequence', double(sequence));
+end
+
+function name = curationMethodName()
+%CURATIONMETHODNAME The ONE spelling of the verb, in exactly one place.
+%   T11: one canonical spelling per concept. Every emitter and every test reads
+%   the name from here, so a rename is a one-line change that the pinning test
+%   in testValidIntervalDecompose.m then fails loudly on rather than a silent
+%   drift into two spellings.
+%
+%   `curation`, and NOT `markgarbage` / `manual curation` / `measurement`. The
+%   full rejection list with its reasons is in "THE VERB" in the file header;
+%   it is there and not here because it is an argument, not a value.
+name = 'curation';
+end
+
+function [term, evidence] = curationMethod(src)
+%CURATIONMETHOD The verb for a validity statement, and WHERE IT CAME FROM.
+%
+%   TERM is the staged ontology term `{node: '', name: 'curation'}` -- the same
+%   empty-node staging `variable` and `clock` use here, so the debt joins the
+%   one ratchet rather than pretending to be resolved. NO CURIE IS INVENTED.
+%
+%   EVIDENCE is the name of the report counter to bump, and the two branches are
+%   about WHERE THE CLAIM RESTS, not about what it says:
+%
+%     method_from_app_block      the source names a producer. The v1 `app` block
+%                                as the WRITER makes it -- markgarbage.m sets
+%                                `name = 'ndi_app_markgarbage'` and
+%                                ndi.app/newdocument (app.m:105-114) copies it
+%                                to `app.name`, which did2.convert.
+%                                universalRenames:152 then renames to `app_name`
+%                                -- so both spellings are read, per the standing
+%                                nested-read rule.
+%     method_from_class_default  no app block, or an `app_name` that is present
+%                                but EMPTY (the template ships ""). Nothing in
+%                                the document names a producer, so the verb is
+%                                asserted from the CLASS: nothing but
+%                                markgarbage writes `valid_interval` (the writer
+%                                grep at the top of this file). It is a fall
+%                                back to a CONSTANT and it is counted as one.
+%
+%   THE VALUE IS THE SAME IN BOTH BRANCHES, and that is deliberate rather than a
+%   missing feature: the document names a TOOL and never a verb, so there is no
+%   term in it to copy. A tool name in `method` would be the T13/T11 error the
+%   header lists first. What the branch buys is that a `valid_interval` written
+%   by something OTHER than markgarbage lands in the app-block branch with a
+%   different `app_name` on its retained source, so the distinction stays
+%   recoverable instead of being flattened into one unconditional constant.
+%
+%   Read through `subStruct` rather than off `src.app` directly: it is the
+%   helper that already takes element (1) of a non-scalar block, and a v1 `app`
+%   block that arrived as a 1xN struct array would otherwise make `charField`
+%   index a comma-separated list.
+term = struct('node', '', 'name', curationMethodName());
+if isempty(charField(subStruct(src, {'app'}), {'app_name', 'name'}))
+    evidence = 'method_from_class_default';
+else
+    evidence = 'method_from_app_block';
+end
 end
 
 function base = freshBase(src, name)
