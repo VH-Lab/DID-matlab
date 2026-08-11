@@ -8,7 +8,29 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   the SESSION DOCUMENT, with its `base.id` PRESERVED.
 %
 %   ---------------------------------------------------------------------
-%   STATUS: NEVER EXECUTED. WIRED 2026-08-10 INTO ALL FOUR CALL SITES.
+%   STATUS: EXECUTED ON A FULL CORPUS, 2026-08-11. Wired 2026-08-10 into all
+%   four call sites; this header said "NEVER EXECUTED" until the run below,
+%   which is the stale-header defect this repo keeps finding, in the direction
+%   that understates. Measured, corpus run 31441923369 (`caf710b`), the
+%   cross-corpus rollup over 6 corpora and 627,526 documents:
+%
+%       session_anchor_fold   ran in 6 of 6 report(s); 0 absent, 0 FAILED
+%           640,651  documents inspected        0  UNREADABLE
+%           106,639  anchors seen  =  86,228 session_relative_reference
+%                                   + 20,411 session_bounded_reference
+%           106,639  FOLDED to relative_reference
+%                 0  REFUSED (total), across all six refusal reasons
+%                 0  QUARANTINED by the fold
+%
+%   So the fold is exercised, not merely wired, and it refused nothing. Note
+%   what that does NOT establish: the corpora are a SAMPLE, and `deletion gate:
+%   refused_total=0, surviving session_*_reference in by_class=0` is one
+%   corpus's evidence, not authorisation to delete the retiring classes.
+%
+%   The two classes it folds are exactly these, and no others --
+%   `epoch_*`/`event_*`/`utc_reference` are NOT touched here, which matters
+%   because `ndi.migrate.internal.stimulusBathToBath.m:70-81` mints a populated
+%   `epoch_bounded_reference` on the NDI path that nothing folds.
 %   ---------------------------------------------------------------------
 %   Written 2026-08-10 for #65 in an environment with NO MATLAB, so no line here
 %   has been run. THAT IS STILL TRUE and is the main thing to know about it.
