@@ -288,6 +288,53 @@ function [imgObs, imgBody] = rasterBodies(preBody, subjectId, depicted, anchorId
 %   recoverable from an inline matrix) -- dtype from the v1 `ngrid.data_type`.
 imgObs = jStartInteraction(preBody, 'image_observation', 'subject_observation', ...
     {'image'}, depicted, {'element_id', 'subject_id'}, true);
+
+% ---------------------------------------------------------------------
+% THE GUARDED VALUE IS AUTHORITATIVE. TWO READERS WOULD BE TWO DECISIONS.
+% ---------------------------------------------------------------------
+% jStartInteraction fills `subject_id` by calling jCarrySubject, which RE-READS
+% the source edge -- so without this line the subject the caller GUARDED on and
+% the subject that reaches the document are produced by two different functions.
+% They already disagree, and the disagreement is not hypothetical:
+%
+%   jCarrySubject.m:20-22      accepts  d.value , d.document_id
+%   subjectOf/dependencyValue  accepts  d.value , d.document_id , d.id
+%
+% A document whose edge value lives only under `.id` therefore PASSES the guard
+% ("there is a subject, fold it") and then receives an EMPTY `subject_id` from
+% jCarrySubject -- an image_observation about nobody, which validates clean
+% because +did2/+validate/references.m:90 skips empty edges. That is the
+% 4,563-document husk, rebuilt from a spelling mismatch.
+%
+% Overwriting with the guarded value collapses it to ONE reading. Deliberately
+% NOT fixed by narrowing `dependencyValue` to match jCarrySubject: image_stack.m
+% reads all three spellings, so narrowing would make this migrator refuse
+% documents its sibling folds -- inventing a failure instead of removing one.
+% The slot is located BY NAME, not by index. jStartInteraction happens to put
+% `subject_id` first today; an index would silently overwrite whatever moved
+% into position 1 if that ever changed.
+slot = find(strcmp({imgObs.depends_on.name}, 'subject_id'), 1);
+if isempty(slot)
+    imgObs.depends_on(end+1) = struct('name', 'subject_id', 'value', char(subjectId));
+    slot = numel(imgObs.depends_on);
+else
+    imgObs.depends_on(slot).value = char(subjectId);
+end
+
+% BELT AND BRACES, and cheap. The caller has already guarded, so reaching here
+% with an empty subject is a wiring bug rather than a data condition -- and a
+% wiring bug that produces a husk is invisible to every gate. Fail loudly at the
+% point where the cause is known.
+if isempty(imgObs.depends_on(slot).value)
+    error('did2:convert:ontologyImageRasterWithoutASubject', ...
+        ['ontology_image "%s" reached the raster fold with an empty ' ...
+         '`subject_id`. The caller guards on subjectOf() before folding, so ' ...
+         'this is a wiring defect, not a document: an image_observation with ' ...
+         'an empty required edge validates clean (references.m skips empty ' ...
+         'edges) and would be counted as a successful migration.'], ...
+        sourceId(preBody));
+end
+
 imgObs.subject_statement.storage_mode = 'body';
 % storage_mode 'body' means the BODY owns the cadence, so the statement carries
 % no sample_time (D1: one home for a body-backed value). jStartInteraction seeds
@@ -385,6 +432,17 @@ end
 end
 
 % ===================== local helpers ===================================
+
+function id = sourceId(preBody)
+%SOURCEID The document's own id, for a diagnosable message. '<no base.id>' is
+%   spelled out rather than left blank so an unidentifiable document reads as
+%   unidentifiable instead of as an empty string someone forgot to fill.
+id = '<no base.id>';
+if isfield(preBody, 'base') && isstruct(preBody.base) ...
+        && isfield(preBody.base, 'id') && ~isempty(preBody.base.id)
+    id = char(preBody.base.id);
+end
+end
 
 function tf = hasText(block, name)
 %HASTEXT True when the block carries NAME as a non-empty char/string.

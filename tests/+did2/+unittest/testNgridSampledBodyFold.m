@@ -183,6 +183,52 @@ verifyEqual(testCase, v.node, 'uberon:0002436');
 verifyEqual(testCase, v.name, 'primary visual cortex');
 end
 
+function testTheImageObservationIsNeverEmittedWithAnEmptySubjectEdge(testCase)
+% THE HUSK TEST, and it is built on a REAL divergence rather than a hypothetical
+% one. Two functions used to answer "who is this an observation of":
+%
+%   jCarrySubject.m:20-22             accepts  d.value , d.document_id
+%   ontology_image.m/dependencyValue  accepts  d.value , d.document_id , d.id
+%
+% So an edge whose value lives ONLY under `.id` passed the fold guard and then
+% got an empty `subject_id` from jCarrySubject -- an image_observation about
+% nobody. Nothing would have caught it: `subject_id` is mustBeNonEmpty, but
+% +did2/+validate/references.m:90 SKIPS empty edges, so the document validates
+% clean and is counted as a successful migration. That is exactly how 4,563 JH
+% image_observations went unnoticed until a census found them months later.
+%
+% This fixture is the shape that separated the two readers. If the fold ever
+% goes back to letting jStartInteraction re-read the edge, this reddens.
+v1 = foldableOntologyImage();
+v1.depends_on = struct('name', {'element_id'}, 'id', {'elem_9'});
+out = did2.convert.migrators_j.ontology_image(v1);
+imgObs = pick(out, 'image_observation');
+verifyEqual(testCase, depValueOf(imgObs, 'subject_id'), 'elem_9', ...
+    ['the fold guarded on a subject it then failed to write -- an ' ...
+     'image_observation with an empty required edge validates clean']);
+end
+
+function testEveryEmittedStatementCarriesANonEmptySubject(testCase)
+% The sweep, with its DENOMINATOR asserted first. Without that, an empty
+% `out` (or a fold that stopped emitting statements at all) would make this
+% vacuously true -- which is how a loop over `out.migrated` once looked
+% half-harmless under a mutation that emptied the batch.
+out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
+statements = {};
+for k = 1:numel(out)
+    if isfield(out{k}, 'subject_statement')
+        statements{end+1} = out{k}; %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, numel(statements), 2, ...
+    'expected the term_observation and the image_observation to be statements');
+for k = 1:numel(statements)
+    verifyNotEmpty(testCase, depValueOf(statements{k}, 'subject_id'), ...
+        sprintf('%s carries an empty subject_id', ...
+                statements{k}.document_class.class_name));
+end
+end
+
 function testTheImageObservationIsAboutTheElementSubject(testCase)
 % `element_id` is a SUBJECT edge, not a dangling non-subject one:
 % +migrators_j/element.m promotes elements to subjects with ids PRESERVED. This
