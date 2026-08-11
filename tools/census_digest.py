@@ -112,6 +112,41 @@ POST_PASSES = [
         ("refused_negative_extent", "  end < start"),
         ("fold_quarantined", "QUARANTINED by the fold"),
     ]),
+    # TEAM DECISION 2026-08-11: generic_file -> opaque_body + a statement whose
+    # `variable` comes from the sibling ontologyLabel.
+    #
+    # READ `generic_files_seen` BEFORE ANYTHING ELSE ON THIS BLOCK. All six
+    # corpora held ZERO `generic_file` documents at run 31327383671, so an
+    # all-zero block is the EXPECTED output and says nothing whatever about
+    # whether the fold works -- the class is written by the Babu converter, for
+    # datasets that are not in this gate. The corpora are a SAMPLE. A non-zero
+    # `generic_files_seen` is the first line that carries information; the
+    # refusal breakdown under it then says why anything did not fold.
+    ("generic_file_fold", "did2.convert.foldGenericFiles", [
+        ("documents_inspected", "documents inspected"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("generic_files_seen", "generic_file documents"),
+        ("ontology_labels_seen", "ontology_label documents"),
+        ("labels_pointing_at_a_file", "  of those, labelling a generic_file"),
+        ("files_folded", "FOLDED to term_observation + opaque_body"),
+        ("refused_total", "REFUSED (total)"),
+        ("refused_no_label", "  no sibling ontologyLabel"),
+        ("refused_ambiguous_label", "  two labels on one file"),
+        ("refused_label_node_empty", "  label carries no ontologyNode"),
+        ("refused_no_document_id", "  no document_id edge"),
+        ("refused_referent_not_in_batch", "  referent not in this batch"),
+        ("fold_quarantined", "QUARANTINED by the fold"),
+        # NOT a refusal and NOT an error: a fold that SUCCEEDED and dropped two
+        # fields on the way, because date_created/date_updated have no home in
+        # the signed data_body model. Printed beside the successes so the loss
+        # is a number in the artifact rather than a sentence in a header.
+        ("date_fields_dropped", "date_created/date_updated DROPPED (lossy)"),
+        # 0 by construction -- this pass writes to no ontology_label. Printed
+        # because `ontology_label` is a ~7,007-document passthrough class and a
+        # silent change to it would be ten times the size of the fold.
+        ("labels_deleted", "ontology_label documents deleted"),
+        ("labels_modified", "ontology_label documents modified"),
+    ]),
 ]
 
 

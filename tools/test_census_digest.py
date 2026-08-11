@@ -718,9 +718,25 @@ class TestPostPassRendering(DigestCase):
         # pass that ran and found nothing.
         self._corpus("A")
         text, _ = self.run_digest()
-        self.assertIn("batch post-passes: 2 expected, 0 present", text)
+        # The EXPECTED count is read from POST_PASSES, not written here as a
+        # literal. It was `2` and went stale the moment a third pass was added
+        # (generic_file_fold, 2026-08-11) -- a test asserting the denominator's
+        # VALUE rather than its SOURCE fails on every legitimate addition, which
+        # trains people to edit the number instead of reading the line. What
+        # this test is actually for is that an absent pass PRINTS, and that is
+        # asserted below.
+        import census_digest
+        n = len(census_digest.POST_PASSES)
+        self.assertGreaterEqual(n, 3)
+        self.assertIn("batch post-passes: %d expected, 0 present" % n, text)
         self.assertIn("NOT IN THIS REPORT", text)
         self.assertNotIn("FOLDED to relative_reference", text)
+        # EVERY expected pass prints its own line, not just the first: a block
+        # that named one pass and silently omitted the rest would be the exact
+        # invisibility this whole section exists to remove.
+        for field, fn, _cols in census_digest.POST_PASSES:
+            self.assertIn(field, text)
+            self.assertIn(fn, text)
 
     def test_a_guarded_failure_is_a_banner_not_a_silence(self):
         self._corpus("A", session_anchor_fold={

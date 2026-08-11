@@ -210,6 +210,30 @@ if strcmp(options.TargetVersion, 'V_eta')
         'did2.convert.resolveLawnPlateSubjects', 'lawn_plate_subjects', ...
         @(r) did2.convert.resolveLawnPlateSubjects(r, ...
             'Validate', true, 'TargetVersion', options.TargetVersion));
+
+    % TEAM DECISION 2026-08-11: `generic_file` folds to an `opaque_body` + a
+    % statement whose `variable` comes from the SIBLING ontologyLabel. Batch,
+    % not per-document, for the reason the pass's header gives: the `variable`
+    % is in another document, so nothing single-doc can reach it.
+    %
+    % ORDER: last, and it commutes with all five above. It reads only
+    % `generic_file` and `ontology_label` documents and writes only a
+    % `term_observation` (on the source's own id) plus a new `opaque_body`;
+    % none of the five reads or writes either class.
+    %
+    % READ ITS ZEROS WITH `generic_files_seen` BESIDE THEM. All six corpora
+    % held ZERO `generic_file` documents at run 31327383671, so all-zero is the
+    % EXPECTED reading here and says nothing about whether the fold works --
+    % this class is written by the Babu converter for datasets that are not in
+    % the gate. A non-zero `generic_files_seen` with `files_folded` at 0 is the
+    % interesting line; `refused_*` then says which reason.
+    %
+    % GUARDED like its four siblings: writeCorpusReport is ~30 lines below and
+    % an uncaught throw here costs the run its whole census.
+    result = did2.unittest.helpers.runBatchPass(result, ...
+        'did2.convert.foldGenericFiles', 'generic_file_fold', ...
+        @(r) did2.convert.foldGenericFiles(r, ...
+            'Validate', true, 'TargetVersion', options.TargetVersion));
 end
 
 % Census of the V1 SOURCE bodies -- the only instrument here that reads the
@@ -464,7 +488,8 @@ expected = { ...
     'epoch_mint',               'did2.convert.epochMint'; ...
     'session_anchor_fold',      'did2.convert.resolveSessionAnchors'; ...
     'response_parameters_fold', 'did2.convert.resolveResponseParameters'; ...
-    'lawn_plate_subjects',      'did2.convert.resolveLawnPlateSubjects'};
+    'lawn_plate_subjects',      'did2.convert.resolveLawnPlateSubjects'; ...
+    'generic_file_fold',        'did2.convert.foldGenericFiles'};
 fprintf('\n--- batch post-passes (%d expected) ---\n', size(expected, 1));
 for k = 1:size(expected, 1)
     field = expected{k, 1};

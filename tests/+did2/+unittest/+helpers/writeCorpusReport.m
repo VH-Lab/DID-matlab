@@ -127,6 +127,23 @@ if isfield(result, 'lawn_plate_subjects')
     report.lawn_plate_subjects = result.lawn_plate_subjects;
 end
 
+% `generic_file_fold` (TEAM DECISION 2026-08-11). PERSISTED FOR THE SAME
+% REASON AS ITS SIBLINGS, and with one reading instruction attached: all six
+% corpora held ZERO `generic_file` documents at run 31327383671, so the
+% EXPECTED artifact line is `generic_files_seen: 0` with every other counter 0
+% beside it. That is a fact about the SAMPLE (the class is written by the Babu
+% converter, for datasets that are not in the gate) and NOT evidence the fold
+% works or does not. The line worth looking at is a non-zero
+% `generic_files_seen` with `files_folded` below it; `refused_no_label`,
+% `refused_ambiguous_label`, `refused_no_document_id` and
+% `refused_referent_not_in_batch` then say which reason, and
+% `date_fields_dropped` counts a loss the model has not yet closed.
+% `epochMint`'s near miss is the thing this line prevents: a pass wired
+% everywhere, persisted nowhere, whose number existed and could not be seen.
+if isfield(result, 'generic_file_fold')
+    report.generic_file_fold = result.generic_file_fold;
+end
+
 fid = fopen(reportPath, 'w');
 if fid < 0
     error('did2:test:reportWriteFailed', ...

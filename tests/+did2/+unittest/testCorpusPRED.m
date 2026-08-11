@@ -158,6 +158,19 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     @(r) did2.convert.resolveLawnPlateSubjects(r, 'Validate', true, ...
         'TargetVersion', 'V_eta'));
 
+% TEAM DECISION 2026-08-11: the `generic_file` -> opaque_body + statement fold.
+% WHAT IT WILL REPORT ON PRED IS NOT PREDICTED HERE beyond one measured fact:
+% run 31327383671 found ZERO `generic_file` documents in any of the six
+% corpora, PRED included, so the expected line is `generic_files_seen 0` and
+% that is a statement about the SAMPLE, not about the fold. It is wired here
+% regardless -- a hard gate that skips a pass is a pass no hard gate covers --
+% and on a corpus with no such documents it cannot move PRED's zero-quarantine
+% gate, because with nothing to fold it returns before minting anything.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.foldGenericFiles', 'generic_file_fold', ...
+    @(r) did2.convert.foldGenericFiles(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
 % WRITE THE CENSUS REPORT, before the assertions so a red gate still reports.
 %
 % PRED is a HARD gate (zero quarantine), not a discovery run, so it does not
@@ -185,7 +198,12 @@ did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
 % red. Doing it here rather than letting the pass throw above is the whole
 % point of the guard: the artifact lands AND the gate fires, instead of one at
 % the cost of the other.
-for passField = {'epoch_mint', 'session_anchor_fold'}
+% NOTE, not a change: `response_parameters_fold` and `lawn_plate_subjects` are
+% wired above but are NOT in this list, so a throw in either is recorded in the
+% report and does not turn PRED red. That is someone else's call to make; it is
+% written down here rather than silently fixed, because a hard gate that covers
+% three of five passes reads exactly like one that covers five.
+for passField = {'epoch_mint', 'session_anchor_fold', 'generic_file_fold'}
     failMsg = did2.unittest.helpers.batchPassFailure(result, passField{1});
     verifyEmpty(testCase, failMsg, sprintf( ...
         ['PRED: batch post-pass `%s` FAILED; its documents are in pass-1 ' ...

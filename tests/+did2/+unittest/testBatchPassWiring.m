@@ -796,3 +796,50 @@ verifyTrue(testCase, repB.ran);
 verifyEqual(testCase, repB.anchors_seen, 0);
 verifyEqual(testCase, repB.refused_total, 0);
 end
+
+% ===================== foldGenericFiles ================================
+%
+% Added 2026-08-11 with the generic_file fold. WRITTEN WITHOUT MATLAB OR
+% OCTAVE, NEVER EXECUTED. The two shapes below are the pair the sibling passes
+% are held to, and they exist for the same reason: a pass that returns its
+% input unchanged must say WHICH of the two reasons it did so, or "wrong
+% target" and "nothing to do" print identically and neither can be read.
+%
+% The BEHAVIOUR of the fold is covered by did2.unittest.testFixtureCorpus
+% GATE 4, which mints a generic_file, its sibling ontologyLabel and an
+% unlabelled second file, and asserts the fold, the refusal, the preserved id
+% and the untouched label. It is not repeated here.
+
+function testFoldGenericFilesIsANoOpOnANonVEtaTarget(testCase)
+% `opaque_body` and the statement tier exist only in V_eta. Wiring this pass
+% into the shared harnesses means it now runs on every target they support, so
+% a V_delta/V_zeta run must come back untouched -- with a denominator saying it
+% did not run, not a zeroed one saying it found nothing.
+r = struct('migrated', {{}}, 'quarantine', [], ...
+    'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
+[out, rep] = did2.convert.foldGenericFiles(r, 'Validate', false, ...
+    'TargetVersion', 'V_zeta');
+verifyEqual(testCase, out.migrated, {});
+verifyFalse(testCase, rep.ran);
+verifyEqual(testCase, rep.documents_inspected, 0);
+verifyEqual(testCase, rep.generic_files_seen, 0);
+end
+
+function testFoldGenericFilesAttachesADenominatorOnAnEmptyBatch(testCase)
+% "Ran and found nothing" must be readable as such, and must NOT print the
+% same as the off-target case above. Every counter is 0 here too -- `ran` is
+% the only thing that separates them, which is why it is asserted in both.
+r = struct('migrated', {{}}, 'quarantine', [], ...
+    'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
+[~, rep] = did2.convert.foldGenericFiles(r, 'Validate', false, ...
+    'TargetVersion', 'V_eta');
+verifyTrue(testCase, rep.ran);
+verifyEqual(testCase, rep.generic_files_seen, 0);
+verifyEqual(testCase, rep.files_folded, 0);
+verifyEqual(testCase, rep.refused_total, 0);
+% The label counters are 0 BY CONSTRUCTION, not by luck: this pass never
+% writes to an ontology_label. They are asserted here so that if it ever
+% starts to, the fast gate says so before ~7,007 documents find out.
+verifyEqual(testCase, rep.labels_deleted, 0);
+verifyEqual(testCase, rep.labels_modified, 0);
+end

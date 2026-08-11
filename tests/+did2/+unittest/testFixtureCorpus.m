@@ -33,6 +33,17 @@ function tests = testFixtureCorpus
 %   executed. It asserts a property the two gates above are structurally unable
 %   to see; see the comment at the assertion. CI is the gate.
 %
+%   STATUS of the 2026-08-11 generic_file edit (`genericFileBatch`, the
+%   `did2.convert.foldGenericFiles` call and GATE 4): WRITTEN WITHOUT MATLAB
+%   OR OCTAVE -- `command -v matlab octave octave-cli` returns nothing in the
+%   environment it was authored in, so it has NOT been executed. UNLIKE the
+%   session-anchor note above, this fixture DOES exercise the fold's happy
+%   path: it mints the sibling ontologyLabel the pass needs, so GATE 4 is a
+%   real test of the fold and not only of the refusal arm. What it still does
+%   NOT prove is anything about real Babu data -- all six corpora hold ZERO
+%   `generic_file` documents (run 31327383671), so this fixture is currently
+%   the ONLY thing anywhere that runs this code.
+%
 %   Run with:  results = runtests('did2.unittest.testFixtureCorpus');
 
 tests = functiontests(localfunctions);
@@ -53,7 +64,68 @@ fixtures = [ ...
     observationBatch(), ...
     zooBatch(), ...
     gapBatch(), ...
+    genericFileBatch(), ...
     ];
+end
+
+% ----- batch 6: the generic_file fold (TEAM DECISION 2026-08-11) -----------
+% Written 2026-08-11, NEVER EXECUTED (no MATLAB in this container).
+%
+% TWO documents on purpose, because the pass has two outcomes and a fixture
+% that only exercises the happy one cannot tell "folded" from "did nothing":
+%
+%   om_gf_01  HAS a sibling ontologyLabel -> FOLDS to term_observation
+%             (base.id om_gf_01, PRESERVED) + a fresh opaque_body.
+%   om_gf_02  has NO label -> REFUSED, and must still validate as a
+%             `generic_file` tombstone. This arm is the one that matters for
+%             the 0-quarantine gate: it is why the class is not phase-8
+%             deleted, and deleting it would turn every refusal into the
+%             epochfiles_ingested regression.
+%
+% Field spellings and values are the WRITER'S, +setup/+conv/+babu/import.m
+% :526-537 (plasmid) as universalRenames leaves them: formatOntology ->
+% format_ontology, dateCreated -> date_created, dateUpdated -> date_updated;
+% checksum and filename are already snake/flat. The datenums are real-shaped
+% doubles, so `date_fields_dropped` counts them.
+function batch = genericFileBatch()
+sub = subjDoc('om_gf_subj', 'plasmidHostStrain');
+
+gf1 = struct();
+gf1.document_class = struct('class_name', 'generic_file', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+gf1.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_subj'});
+gf1.base = struct('id', 'om_gf_01', 'session_id', 'sess_09', ...
+    'name', 'plasmid', 'datestamp', '2024-06-01T12:00:00.000Z');
+gf1.generic_file = struct('filename', 'plasmids/pXY-12.gb', ...
+    'format_ontology', 'EMPTY:0000253', ...
+    'checksum', 'd41d8cd98f00b204e9800998ecf8427e', ...
+    'date_created', 739000.5, 'date_updated', 739001.5);
+gf1.files = struct('file_list', {{'generic_file.ext'}});
+
+% The sibling label. This is the whole point of the batch pass: `variable`
+% lives HERE, not on the file, so no single-document migrator could reach it.
+ol2 = struct();
+ol2.document_class = struct('class_name', 'ontology_label', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+ol2.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_01'});
+ol2.base = struct('id', 'om_gf_lbl', 'session_id', 'sess_09', ...
+    'name', 'ol', 'datestamp', '2024-06-01T12:00:00.000Z');
+ol2.ontology_label = struct('ontology_node', 'EDAM:data_1286');
+
+gf2 = struct();
+gf2.document_class = struct('class_name', 'generic_file', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+gf2.depends_on = struct('name', {'document_id'}, 'document_id', {'om_gf_subj'});
+gf2.base = struct('id', 'om_gf_02', 'session_id', 'sess_09', ...
+    'name', 'unlabelled', 'datestamp', '2024-06-01T12:00:00.000Z');
+gf2.generic_file = struct('filename', 'misc/notes.txt', ...
+    'format_ontology', '', 'checksum', '', ...
+    'date_created', 739002.5, 'date_updated', 739002.5);
+
+batch = { sub, gf1, ol2, gf2 };
 end
 
 % ----- batch 4: the new-on-main NDI app outputs (ex-ledger gaps). kilosort_clusters
@@ -357,6 +429,14 @@ result = did2.convert.resolveResponseParameters(result, ...
 % trace is strictly more informative than a captured message.
 result = did2.convert.resolveLawnPlateSubjects(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+% TEAM DECISION 2026-08-11: `generic_file` -> an `opaque_body` + a statement
+% whose `variable` comes from the sibling ontologyLabel. Same post-pass set and
+% the SAME ORDER as runCorpusDiscovery and testCorpusPRED. CALLED BARE, like
+% the passes above and for the identical reason: this test writes no report, so
+% there is nothing for the guard to protect and a raw stack trace is strictly
+% more informative than a captured message.
+result = did2.convert.foldGenericFiles(result, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
 
 % GATE 1: nothing quarantined
 verifyEmpty(testCase, result.quarantine, ...
@@ -382,6 +462,104 @@ verifyEqual(testCase, refRep.orphan_count, 0, ...
 verifyEqual(testCase, edgeOf(result.migrated, 'om_ol_01', 'document_id'), ...
     'om_is_01', ...
     'ontology_label lost its document_id edge -- the label now says nothing');
+
+% GATE 4: the generic_file fold (TEAM DECISION 2026-08-11). DENOMINATOR FIRST
+% and unconditionally, so a pass that read nothing cannot read as a clean one.
+rep = result.generic_file_fold;
+fprintf(['\n--- generic_file fold: %d inspected, %d generic_file(s), ' ...
+         '%d label(s) of which %d point at a file ---\n'], ...
+    rep.documents_inspected, rep.generic_files_seen, ...
+    rep.ontology_labels_seen, rep.labels_pointing_at_a_file);
+fprintf(['  folded %d   refused %d (no label %d / ambiguous %d / node empty ' ...
+         '%d / no document_id %d / referent absent %d)   quarantined %d   ' ...
+         'dates dropped %d\n'], ...
+    rep.files_folded, rep.refused_total, rep.refused_no_label, ...
+    rep.refused_ambiguous_label, rep.refused_label_node_empty, ...
+    rep.refused_no_document_id, rep.refused_referent_not_in_batch, ...
+    rep.fold_quarantined, rep.date_fields_dropped);
+verifyTrue(testCase, rep.ran, 'the generic_file fold did not run');
+verifyEqual(testCase, rep.generic_files_seen, 2);
+verifyEqual(testCase, rep.files_folded, 1);
+verifyEqual(testCase, rep.refused_no_label, 1);
+verifyEqual(testCase, rep.refused_total, 1);
+verifyEqual(testCase, rep.fold_quarantined, 0);
+% The loss is ASSERTED, not merely mentioned: both source documents carry
+% date_created/date_updated and the fold has nowhere to put them, so this
+% counter is 1 for the one document that folded. If a home is ever built, this
+% line is what says so.
+verifyEqual(testCase, rep.date_fields_dropped, 1);
+
+% THE ID IS PRESERVED and the class changed under it.
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_01'), 'term_observation', ...
+    ['the folded generic_file did not keep its id -- a changed id is the ' ...
+     'dissolution that produced 11,448 orphans in Soph']);
+verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_01', 'subject_id'), ...
+    'om_gf_subj', 'the statement lost the subject the file belonged to');
+
+% THE REFUSED ONE IS UNTOUCHED AND STILL VALIDATES. This is the assertion that
+% justifies keeping the `generic_file` tombstone in the built set.
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_02'), 'generic_file', ...
+    'a refused generic_file was folded anyway');
+
+% THE LABEL IS NOT CONSUMED. Same class, same edge, same target -- and the
+% target still resolves precisely because the statement kept the source id.
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_lbl'), 'ontology_label', ...
+    'the sibling label was consumed; it must pass through untouched');
+verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_lbl', 'document_id'), ...
+    'om_gf_01', 'the label''s only join stopped resolving after the fold');
+verifyEqual(testCase, rep.labels_deleted, 0);
+verifyEqual(testCase, rep.labels_modified, 0);
+
+% THE BYTES AND THE HASH LANDED. Exactly one opaque_body, pointing back at the
+% statement, carrying the MD5 in the field added for this fold.
+bodyIdx = [];
+for k = 1:numel(result.migrated)
+    if strcmp(result.migrated{k}.className(), 'opaque_body') ...
+            && strcmp(char(edgeOfDoc(result.migrated{k}, 'statement')), 'om_gf_01')
+        bodyIdx(end+1) = k; %#ok<AGROW>
+    end
+end
+verifyNumElements(testCase, bodyIdx, 1, ...
+    'expected exactly one opaque_body hanging off the folded statement');
+if isscalar(bodyIdx)
+    ob = result.migrated{bodyIdx};
+    verifyEqual(testCase, char(ob.get('opaque_body.content_hash')), ...
+        'd41d8cd98f00b204e9800998ecf8427e', ...
+        'the MD5 was dropped -- the field opaque_body gained exists for it');
+    verifyEqual(testCase, char(ob.get('opaque_body.format')), 'EMPTY:0000253');
+    verifyEqual(testCase, char(ob.get('opaque_body.filename')), ...
+        'plasmids/pXY-12.gb');
+end
+end
+
+function cn = classOf(migrated, docId)
+%CLASSOF The class of the migrated document with base.id == DOCID; '' if absent.
+cn = '';
+for k = 1:numel(migrated)
+    if strcmp(char(migrated{k}.get('base.id')), docId)
+        cn = char(migrated{k}.className());
+        return;
+    end
+end
+end
+
+function v = edgeOfDoc(doc, edgeName)
+%EDGEOFDOC One edge off an already-located document; '' if absent.
+v = '';
+try
+    deps = doc.get('depends_on');
+catch
+    return;
+end
+for d = 1:numel(deps)
+    if ~strcmp(deps(d).name, edgeName); continue; end
+    if isfield(deps(d), 'document_id') && ~isempty(deps(d).document_id)
+        v = deps(d).document_id;
+    elseif isfield(deps(d), 'value')
+        v = deps(d).value;
+    end
+    return;
+end
 end
 
 function v = edgeOf(migrated, docId, edgeName)
