@@ -3824,6 +3824,541 @@ def render_legacy_ndi_document(r, out):
             p("      %8s  %s (%s)" % (v, k, label))
 
 
+# --- THE OTHER HALF OF THE GATE: ORPHAN depends_on EDGES ------------------
+#
+# THE CORPUS GATE IS STATED EVERYWHERE IN THIS PROJECT AS "0 quarantine + 0
+# orphans" -- DID-schema/CLAUDE.md puts it in exactly those words. This digest
+# has rendered the quarantine half since it was written and has NEVER rendered
+# the orphan half, in any run. The last full census (run 31522068566, job
+# 93917442013) prints `quarantined: 0  fragments: 0` and the string "orphan"
+# appears in its output only inside prose and inside openMINDS's
+# `components_withheld (orphan guard)` counter, which counts something else
+# entirely. So every "0 quarantine + 0 orphans" ever quoted from a digest has
+# quoted one measurement and one silence.
+#
+# THE NUMBER EXISTS AND IS NOT IN THE ARTIFACT THIS DIGEST READS.
+# `did2.validate.references` returns `orphan_count`, `edges_examined`,
+# `total_docs` and an `orphans` row per dangling edge;
+# `runCorpusDiscovery` calls it and hard-asserts `orphan_count == 0`. But it
+# calls it AFTER `writeCorpusReport` has already written the *-summary.json,
+# and `writeCorpusReport` persists no orphan field at all -- so the figure
+# reaches the runner's log and dies there. `testCorpusPRED` never calls
+# `did2.validate.references` at any point, so the corpus we hard-gate on is not
+# orphan-checked even in its log.
+#
+# THIS BLOCK THEREFORE PRINTS "ABSENT", LOUDLY, RATHER THAN NOT PRINTING. An
+# instrument that omits a counter it cannot find is indistinguishable from one
+# reporting a zero, which is the failure this whole file exists to remove.
+#
+# AN ORPHAN IS NOT AN EMPTY EDGE, and the two must never stand in for each
+# other. `+did2/+validate/references.m:90` SKIPS an edge whose document_id is
+# empty (`if isempty(documentId), continue;`) -- that is why `mustBeNonEmpty`
+# on a `depends_on` is decorative, and why the empty-required-edge census above
+# says nothing whatever about dangling references. One is "the edge is blank",
+# the other is "the edge names a document that is not there".
+#
+# THE BLOCK IS FOUND BY SHAPE, NOT BY NAME. Nothing has been persisted yet, so
+# no key name is settled; guessing one and reporting ABSENT when the guess
+# missed would be `demo_ndi` again -- a query against a string the input has
+# never contained, reported as a fact about the input. Any top-level object
+# carrying `orphan_count` is rendered, whatever it is called, and the key's
+# name is printed so the reader knows what was read.
+ORPHAN_MARKER_FIELD = "orphan_count"
+
+# The shape `did2.validate.references` actually returns. Rendered in this
+# order: both denominators before the finding, per Rule 5.
+ORPHAN_BLOCK_ROWS = [
+    ("total_docs", "document(s) inspected  <- DENOMINATOR"),
+    ("edges_examined", "NON-EMPTY depends_on edge(s) examined  <- DENOMINATOR"),
+    ("orphan_count", "ORPHAN(S): edge names a document not in the batch"),
+]
+
+
+def _orphan_keys_by_name(r):
+    """Top-level keys whose NAME mentions an orphan, for the absent message.
+
+    Reported so "no such counter" and "a counter is here in a shape this
+    digest does not render" are different output. Name-matching is used ONLY
+    to describe an absence, never to decide that one exists.
+    """
+    if not isinstance(r, dict):
+        return []
+    return sorted(k for k in r if isinstance(k, str) and "orphan" in k.lower())
+
+
+def orphan_block(r):
+    """Find one report's reference-integrity block BY SHAPE. Absent is not 0."""
+    if not isinstance(r, dict):
+        return {"measured": False, "key": None,
+                "why": "the report itself is malformed (%s)" % type(r).__name__}
+    found = [(k, v) for k, v in sorted(r.items())
+             if isinstance(v, dict) and ORPHAN_MARKER_FIELD in v]
+    if len(found) > 1:
+        return {"measured": False, "key": None,
+                "why": "%d top-level key(s) carry `%s` (%s) and the digest "
+                       "will not choose between them"
+                       % (len(found), ORPHAN_MARKER_FIELD,
+                          ", ".join(k for k, _v in found))}
+    if found:
+        key, block = found[0]
+    elif ORPHAN_MARKER_FIELD in r:
+        key, block = "<top level>", r
+    else:
+        return {"measured": False, "key": None, "absent": True,
+                "named": _orphan_keys_by_name(r),
+                "why": "no top-level object in this report carries `%s`"
+                       % ORPHAN_MARKER_FIELD}
+    n = block.get(ORPHAN_MARKER_FIELD)
+    if not isinstance(n, int) or isinstance(n, bool):
+        return {"measured": False, "key": key,
+                "why": "`%s.%s` is not a number (%s)"
+                       % (key, ORPHAN_MARKER_FIELD, type(n).__name__)}
+    return {"measured": True, "key": key, "block": block, "orphans": n}
+
+
+def _orphan_rows(block):
+    """Aggregate the `orphans` array to (class.edge -> count), desc."""
+    rows = {}
+    for o in aslist(block.get("orphans")):
+        if not isinstance(o, dict):
+            continue
+        rows["%s.%s" % (o.get("doc_class", "?"), o.get("edge_name", "?"))] = (
+            rows.get("%s.%s" % (o.get("doc_class", "?"),
+                                o.get("edge_name", "?")), 0) + 1)
+    return rows
+
+
+def _orphan_absent_note(p, indent, plural):
+    """Say what is missing, why it is not a zero, and what would change it."""
+    p("%s*** THIS IS NOT A ZERO, AND IT IS NOT A CLEAN RESULT. It is the" % indent)
+    p("%s*** HALF OF THE GATE THAT WAS NEVER RENDERED. The gate this" % indent)
+    p("%s*** project quotes is '0 quarantine + 0 orphans'; the quarantine" % indent)
+    p("%s*** half is printed above, the orphan half has never appeared in" % indent)
+    p("%s*** any digest output." % indent)
+    p("%sWHERE THE NUMBER IS TODAY: `did2.validate.references` computes" % indent)
+    p("%s`orphan_count` / `edges_examined` and `runCorpusDiscovery` asserts it" % indent)
+    p("%s-- but it runs AFTER `writeCorpusReport` has written this file, and" % indent)
+    p("%s`writeCorpusReport` persists no orphan field, so the figure reaches" % indent)
+    p("%sthe runner's log and stops. `testCorpusPRED` never calls it at all." % indent)
+    p("%sTO CLOSE IT: persist the reference report into the *-summary.json" % indent)
+    p("%s(any key -- this digest finds it by shape) and call the validator in" % indent)
+    p("%sthe PRED path too. This digest renders it the moment it is there;" % indent)
+    p("%sthat wiring is a MATLAB change and is deliberately not made here." % indent)
+    p("%sNOT THE SAME FACT AS AN EMPTY EDGE: `references.m:90` SKIPS an edge" % indent)
+    p("%swhose document_id is empty, so the empty-required-edge census above" % indent)
+    p("%scannot substitute for %s." % (indent, plural))
+
+
+def render_reference_integrity(r, out):
+    """Render one corpus's orphan count -- or say ABSENT, in as many words."""
+    p = lambda s="": out.append(s)
+    m = orphan_block(r)
+    if not m["measured"]:
+        p("  ORPHAN depends_on EDGES: *** NOT MEASURED IN THIS REPORT ***")
+        p("      %s." % m["why"])
+        named = m.get("named")
+        if named:
+            p("      A key whose NAME mentions an orphan IS present (%s) and"
+              % ", ".join(named))
+            p("      is not in a shape this digest renders. That is a wiring "
+              "mismatch,")
+            p("      not an absent measurement -- look at it.")
+        _orphan_absent_note(p, "      ", "one")
+        return
+    block = m["block"]
+    p("  ORPHAN depends_on EDGES (the second half of the corpus gate), read")
+    p("  from `%s`:" % m["key"])
+    _ea_rows(block, ORPHAN_BLOCK_ROWS, out, indent="      ")
+    examined = block.get("edges_examined")
+    if isinstance(examined, int) and examined == 0:
+        p("      *** 0 EDGES EXAMINED -- the sweep looked at nothing, so the")
+        p("      *** orphan count above is VACUOUS rather than clean.")
+    p("      NOT the empty-required-edge census above: `references.m:90` skips")
+    p("      an edge whose document_id is empty, so the two counters can never")
+    p("      substitute for one another.")
+    rows = _orphan_rows(block)
+    if rows:
+        for key, n in sorted(rows.items(), key=lambda kv: (-kv[1], kv[0]))[:15]:
+            p("      %8d  %s" % (n, key))
+    elif m["orphans"]:
+        p("      (%d orphan(s) counted and no `orphans` row array to name them)"
+          % m["orphans"])
+
+
+def rollup_reference_integrity(reports, out):
+    """Cross-corpus orphan total -- or the absence of one, said once, loudly."""
+    p = lambda s="": out.append(s)
+    measured, unmeasured = [], []
+    totals = {"total_docs": 0, "edges_examined": 0, ORPHAN_MARKER_FIELD: 0}
+    rows = {}
+    for i, r in enumerate(reports):
+        name = str((r or {}).get("corpus") or "report #%d" % (i + 1))
+        m = orphan_block(r)
+        if not m["measured"]:
+            unmeasured.append("%s (%s)" % (name, m["why"]))
+            continue
+        measured.append(name)
+        for key in totals:
+            try:
+                totals[key] += int(m["block"].get(key) or 0)
+            except (TypeError, ValueError):
+                pass
+        for key, n in _orphan_rows(m["block"]).items():
+            rows[key] = rows.get(key, 0) + n
+
+    p("")
+    p("  ORPHAN depends_on EDGES -- THE SECOND HALF OF THE '0 quarantine + 0")
+    p("  orphans' GATE. An orphan is an edge naming a document that is not in")
+    p("  the batch; an EMPTY edge is skipped by the validator and counted")
+    p("  elsewhere. Never quote one for the other.")
+    p("      DENOMINATOR: %d corpus report(s); %d carried an orphan count, "
+      "%d did not" % (len(reports), len(measured), len(unmeasured)))
+    if unmeasured:
+        p("      NOT MEASURED in: %s" % ", ".join(unmeasured))
+    if not measured:
+        p("      *** NO REPORT IN THIS RUN CARRIES AN ORPHAN COUNT AT ALL.")
+        _orphan_absent_note(p, "      ", "them")
+        return
+    if unmeasured:
+        p("      *** the totals below are sums over %d corpora, not %d -- do"
+          % (len(measured), len(reports)))
+        p("      *** not quote them as a whole-corpus figure.")
+    _ea_rows(totals, ORPHAN_BLOCK_ROWS, out, indent="        ")
+    p("      %d orphan(s) across %d row(s)" % (sum(rows.values()), len(rows)))
+    for key, n in sorted(rows.items(), key=lambda kv: (-kv[1], kv[0])):
+        p("      %8d  %s" % (n, key))
+    if not rows:
+        p("      (none)")
+
+
+# --- EPOCH-STRING RETENTION: DID A did_v1 EPOCH ID SURVIVE MIGRATION? ------
+#
+# `did2.validate.epochStringRetention` compares the (session, epoch-string)
+# pairs on the did_v1 SIDE against the pairs still reachable after migration --
+# either still spelled out on a migrated document, or turned into an `epoch`
+# document by `did2.convert.epochMint`. It is the only instrument here that
+# SUBTRACTS one side from the other, which is the only shape of measurement
+# that can see a migrator which reads a field and simply does not write it.
+# Every other counter inspects one side and looks for something MALFORMED.
+#
+# It was wired into both corpus-report producers at e9ef734, sited after every
+# batch post-pass (so `retained_as_epoch_document` is read after epochMint has
+# minted -- beside silentLoss in pass 1 it would be 0 by construction), and
+# persisted by `writeCorpusReport` as `epoch_string_retention`. Which is where
+# it stopped: the number lands in the artifact JSON and in the per-corpus log
+# and NOT in this rollup, the same write-only condition `epoch_mint` and
+# `session_anchor_fold` were in before their blocks landed here.
+#
+# THREE READING RULES, and they are not generic:
+#
+#   (1) THE DENOMINATOR IS `v1_pairs`, and `v1_classes_inspected` beside
+#       `v1_classes_with_string` is the CLASS-level one. `pairs_dropped: 0`
+#       with `v1_pairs: 0` is VACUOUS, not clean -- no v1 document in the
+#       corpus carried an epoch string at all. Those two readings print
+#       identically without the denominator, so the two counts print together
+#       on one line here rather than in a column a reader can lose.
+#   (2) `v1_by_class` IS WHERE "0 OF 0" LIVES. `vmspikefit` and `pyraview`
+#       drop the string BY CONSTRUCTION (both migrators build new bodies and
+#       never copy the `epochid` block), so their ABSENCE from the table means
+#       "this corpus holds no such document", NOT "the drop is fixed". Both
+#       get a printed row either way, per corpus and in the rollup.
+#   (3) `v1_declined` is EXCLUDED from the denominator on purpose
+#       (`syncrule_mapping`'s endpoint strings), and the output says so, so a
+#       source this reader will not read can neither inflate the retention
+#       rate nor be quietly forgotten.
+#
+# NOT ROWS. `ran` is a LINE, because false there means the instrument returned
+# before reading anything and that is not a count. `dropped_by_v1_class` is a
+# struct keyed by MANGLED class name carrying the same fact as
+# `v1_by_class.pairs_dropped`; it is used as a CROSS-CHECK between two
+# derivations of one number and never rendered as a second table.
+ESR_DENOMINATOR_ROWS = [
+    ("v1_documents_inspected", "v1 document(s) handed in  <- DENOMINATOR"),
+    ("v1_documents_unreadable", "  UNREADABLE (counted, never dropped)"),
+    ("migrated_documents_inspected", "migrated document(s) handed in"),
+    ("migrated_documents_unreadable", "  UNREADABLE"),
+]
+
+ESR_RETENTION_ROWS = [
+    ("retained_as_string", "RETAINED: still spelled out on a migrated document"),
+    ("retained_as_epoch_document", "RETAINED: became a minted `epoch` document"),
+    ("retained_total", "RETAINED: the union (a pair may be both)"),
+    ("pairs_dropped", "DROPPED  <-- the number this instrument exists for"),
+    ("epoch_documents_seen", "`epoch` document(s) in the migrated batch"),
+]
+
+# The two classes the 19-class survey says drop the string by construction.
+# A row is printed for each whether or not the corpus holds one, because
+# "absent from this sample" and "measured and clean" are the reading this
+# whole block exists to keep apart.
+ESR_KNOWN_DROPPERS = ("vmspikefit", "pyraview")
+
+
+def epoch_string_retention(r):
+    """Read one report's epoch-string retention block, or say why not.
+
+    Four NOT-MEASURED conditions, each distinct from a zero and from each
+    other -- absent / malformed / the audit threw / it returned before reading
+    anything. `ran: false` is the one that matters most: a struct of zeros
+    from an instrument that never read a document is not a clean corpus.
+    """
+    if not isinstance(r, dict):
+        return {"measured": False,
+                "why": "the report itself is malformed (%s)" % type(r).__name__}
+    esr = r.get("epoch_string_retention")
+    if esr is None:
+        return {"measured": False,
+                "why": "this report carries no `epoch_string_retention` block "
+                       "-- the instrument was not wired into the run that "
+                       "produced it"}
+    if not isinstance(esr, dict):
+        return {"measured": False,
+                "why": "the `epoch_string_retention` block is malformed (%s)"
+                       % type(esr).__name__}
+    if "audit_failed" in esr:
+        return {"measured": False,
+                "why": "the retention audit FAILED (%s)" % esr["audit_failed"]}
+    if not esr.get("ran"):
+        return {"measured": False, "block": esr,
+                "why": "it DID NOT RUN -- the instrument returned before "
+                       "reading anything, which is not a clean zero"}
+    return {"measured": True, "block": esr}
+
+
+def _esr_int(block, key):
+    try:
+        return int(block.get(key) or 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def _esr_class_rows(block):
+    """`v1_by_class` as a list of dicts, tolerating MATLAB's 1-row object."""
+    return [c for c in aslist(block.get("v1_by_class")) if isinstance(c, dict)]
+
+
+def _esr_dropper_line(p, indent, name, row, corpora=None):
+    """One known-dropper row, printed present or absent. Absence is named."""
+    where = "" if corpora is None else "  [%s]" % ", ".join(corpora)
+    if row is None:
+        p("%s%-30s 0 of 0 INSPECTED -- no such document carrying an epoch "
+          "string%s" % (indent, name, "" if corpora is None else " anywhere"))
+        p("%s%-30s in this sample. NOT a measured zero." % (indent, ""))
+        return
+    p("%s%-30s MEASURED: %s dropped of %s pair(s) carried%s"
+      % (indent, name, row.get("pairs_dropped", "?"),
+         row.get("distinct_pairs", "?"), where))
+
+
+def render_epoch_string_retention(r, out):
+    """Render one corpus's epoch-string retention. Denominators first."""
+    p = lambda s="": out.append(s)
+    p("  EPOCH-STRING RETENTION (report-only): did a did_v1 epoch id survive?")
+    m = epoch_string_retention(r)
+    if not m["measured"]:
+        p("      NOT MEASURED -- %s." % m["why"])
+        p("      No count is printed. A corpus that could not be measured and")
+        p("      a corpus that measured a ZERO are different facts and must")
+        p("      not print identically.")
+        return
+    b = m["block"]
+    p("      ran: %s" % b.get("ran"))
+    _ea_rows(b, ESR_DENOMINATOR_ROWS, out, indent="      ")
+    # THE TWO CLASS COUNTS ON ONE LINE, deliberately. `v1_classes_with_string`
+    # alone cannot distinguish "no class carried a string" from "no class was
+    # inspected", and separating them into two rows is how that gets lost.
+    p("      v1 classes: %s inspected, %s of them carried an epoch string"
+      % (b.get("v1_classes_inspected", "(absent)"),
+         b.get("v1_classes_with_string", "(absent)")))
+    p("      v1 strings: %s document(s) carried one, %s string(s) read, "
+      "%s distinct (session,string) pair(s)  <- THE DENOMINATOR"
+      % (b.get("v1_documents_with_string", "(absent)"),
+         b.get("v1_strings_read", "(absent)"),
+         b.get("v1_pairs", "(absent)")))
+    for s in aslist(b.get("v1_by_source")):
+        if isinstance(s, dict):
+            p("          %-38s %6s doc(s)  %6s distinct string(s)"
+              % (s.get("source", "?"), s.get("documents", "?"),
+                 s.get("distinct_strings", "?")))
+    p("      declined (syncrule_mapping endpoints, out of scope by design): "
+      "%s hit(s), %s distinct -- EXCLUDED FROM THE DENOMINATOR"
+      % (b.get("v1_declined", "(absent)"),
+         b.get("v1_declined_distinct", "(absent)")))
+    if _esr_int(b, "v1_classes_inspected") == 0:
+        p("      *** 0 CLASSES INSPECTED -- the class denominator is empty, so")
+        p("      *** every per-class figure below is vacuous.")
+    if _esr_int(b, "v1_pairs") == 0:
+        p("      *** 0 OF 0 PAIRS -- NO v1 DOCUMENT IN THIS CORPUS CARRIED AN")
+        p("      *** EPOCH STRING. Every retention figure below is VACUOUS,")
+        p("      *** not clean: `pairs_dropped: 0` beside `v1_pairs: 0` means")
+        p("      *** the instrument had nothing to lose.")
+    _ea_rows(b, ESR_RETENTION_ROWS, out, indent="      ")
+    rows = _esr_class_rows(b)
+    p("      BY v1 CLASS (dropped / pairs carried). A pair carried by two")
+    p("      classes is counted against BOTH, so this column does NOT sum to")
+    p("      `pairs_dropped` above:")
+    if not rows:
+        p("          (no class carried an epoch string -- see the 0-of-0 line)")
+    for c in sorted(rows, key=lambda c: (-(_esr_int(c, "pairs_dropped") or 0),
+                                         str(c.get("class_name", "")))):
+        p("          %-42s %6s dropped of %6s pair(s) carried, %6s doc(s)"
+          % (c.get("class_name", "?"), c.get("pairs_dropped", "?"),
+             c.get("distinct_pairs", "?"),
+             c.get("documents_with_string", "?")))
+    # THE CROSS-CHECK. `dropped_by_v1_class` and the column above are two
+    # derivations of one fact, computed in two loops in the MATLAB. When they
+    # disagree, that disagreement IS the signal and nothing else would show it.
+    named = b.get("dropped_by_v1_class")
+    if isinstance(named, dict):
+        n_named = len(named)
+        n_dropping = sum(1 for c in rows if (_esr_int(c, "pairs_dropped") or 0) > 0)
+        if n_named != n_dropping:
+            p("          *** THE TWO PER-CLASS DERIVATIONS DISAGREE:")
+            p("          *** `dropped_by_v1_class` names %d class(es), the"
+              % n_named)
+            p("          *** table above shows %d with a non-zero drop. One of"
+              % n_dropping)
+            p("          *** them has drifted; do not take either as the answer.")
+        else:
+            p("          (%d class(es) with a non-zero drop; both derivations "
+              "agree)" % n_named)
+    by_name = dict((str(c.get("class_name")), c) for c in rows)
+    p("      THE TWO KNOWN DROPPERS, printed present or absent:")
+    for name in ESR_KNOWN_DROPPERS:
+        _esr_dropper_line(p, "          ", name, by_name.get(name))
+    for d in aslist(b.get("dropped_detail"))[:10]:
+        if isinstance(d, dict):
+            classes = d.get("v1_classes")
+            if isinstance(classes, list):
+                classes = ", ".join(str(x) for x in classes)
+            p("          e.g. session %s / epoch \"%s\" (carried by: %s)"
+              % (d.get("session_id", "?"), d.get("epoch_string", "?"),
+                 classes if classes else "?"))
+
+
+def rollup_epoch_string_retention(reports, out):
+    """Cross-corpus retention rollup: SUM the pairs, UNITE the class table.
+
+    THE UNION IS NOT A SUM, and this digest already carries a live example of
+    what happens when the two are confused: `relaxed_classes` sums to 7 across
+    the six corpora while the cross-corpus union is 3, because a rollup that
+    adds per-corpus DISTINCT counts counts every overlap twice. The block
+    above prints a `***` warning about exactly that. So `v1_by_class` is
+    UNITED on `class_name` here, its distinct-pair columns are reported PER
+    CORPUS beside the corpora that produced them, and nothing distinct is
+    added up.
+
+    `v1_pairs` and `pairs_dropped` ARE summed, and the reason is a property of
+    the key rather than a convenience: a pair is (session_id, string), the
+    session id is a document id, and no two corpora share one -- so the pair
+    sets are disjoint by construction and the sum is the distinct count. That
+    is an assumption about the corpora and it is written down here so it can
+    be checked rather than inherited.
+    """
+    p = lambda s="": out.append(s)
+    measured, unmeasured = [], []
+    totals = dict((k, 0) for k, _l in
+                  ESR_DENOMINATOR_ROWS + ESR_RETENTION_ROWS)
+    totals["v1_pairs"] = 0
+    totals["v1_documents_with_string"] = 0
+    totals["v1_strings_read"] = 0
+    totals["v1_declined"] = 0
+    # class_name -> {"corpora": [...], "documents_with_string": int,
+    #                "per_corpus": [(corpus, dropped, carried)]}
+    union = {}
+    disagreed = []
+    for i, r in enumerate(reports):
+        name = str((r or {}).get("corpus") or "report #%d" % (i + 1))
+        m = epoch_string_retention(r)
+        if not m["measured"]:
+            unmeasured.append("%s (%s)" % (name, m["why"]))
+            continue
+        measured.append(name)
+        b = m["block"]
+        for key in totals:
+            v = _esr_int(b, key)
+            if v is not None:
+                totals[key] += v
+        rows = _esr_class_rows(b)
+        named = b.get("dropped_by_v1_class")
+        if isinstance(named, dict):
+            n_dropping = sum(1 for c in rows
+                             if (_esr_int(c, "pairs_dropped") or 0) > 0)
+            if len(named) != n_dropping:
+                disagreed.append("%s (names %d, table shows %d)"
+                                 % (name, len(named), n_dropping))
+        for c in rows:
+            cn = str(c.get("class_name", "?"))
+            u = union.setdefault(cn, {"corpora": [], "documents_with_string": 0,
+                                      "per_corpus": []})
+            u["corpora"].append(name)
+            docs = _esr_int(c, "documents_with_string")
+            if docs is not None:
+                u["documents_with_string"] += docs
+            u["per_corpus"].append((name, c.get("pairs_dropped", "?"),
+                                    c.get("distinct_pairs", "?")))
+
+    p("")
+    p("  EPOCH-STRING RETENTION -- did a did_v1 epoch id survive migration?")
+    p("  The only instrument here that SUBTRACTS one side from the other. A")
+    p("  migrator that reads a field and does not write it is malformed by no")
+    p("  counter and smaller than its input; nothing else can see that.")
+    p("      DENOMINATOR: %d corpus report(s); %d carried a readable retention "
+      "block, %d did not" % (len(reports), len(measured), len(unmeasured)))
+    if unmeasured:
+        p("      NOT MEASURED in: %s" % ", ".join(unmeasured))
+    if not measured:
+        p("      *** NO REPORT IN THIS RUN CARRIED A RETENTION BLOCK. There is")
+        p("      *** nothing to total. This is NOT '0 pairs were dropped' -- it")
+        p("      *** is 'the subtraction was never performed on these corpora'.")
+        return
+    if unmeasured:
+        p("      *** the totals below are sums over %d corpora, not %d -- do"
+          % (len(measured), len(reports)))
+        p("      *** not quote them as a whole-corpus figure.")
+    _ea_rows(totals, ESR_DENOMINATOR_ROWS, out, indent="        ")
+    p("      v1 strings: %d document(s) carried one, %d string(s) read, "
+      "%d (session,string) pair(s)  <- THE DENOMINATOR"
+      % (totals["v1_documents_with_string"], totals["v1_strings_read"],
+         totals["v1_pairs"]))
+    p("      declined and EXCLUDED from that denominator: %d hit(s)"
+      % totals["v1_declined"])
+    if totals["v1_pairs"] == 0:
+        p("      *** 0 PAIRS ACROSS EVERY MEASURED CORPUS. `pairs_dropped: %d`"
+          % totals["pairs_dropped"])
+        p("      *** beside `v1_pairs: 0` is VACUOUS, not clean -- no v1")
+        p("      *** document in this sample carried an epoch string at all.")
+    _ea_rows(totals, ESR_RETENTION_ROWS, out, indent="        ")
+    if disagreed:
+        p("      *** PER-CLASS DERIVATIONS DISAGREE in: %s. `dropped_by_v1_class`"
+          % ", ".join(disagreed))
+        p("      *** and the `pairs_dropped` column are two derivations of one")
+        p("      *** fact; a disagreement is the signal, not a rounding detail.")
+    p("      BY v1 CLASS -- A UNION ON `class_name`, NOT A SUM. Distinct-pair")
+    p("      counts are per corpus and are NOT added: adding per-corpus")
+    p("      distinct counts is what makes `relaxed_classes` read 7 where the")
+    p("      union is 3, two blocks above.")
+    p("          DENOMINATOR: %d distinct class(es) carried an epoch string in "
+      "the union, over %d readable report(s)" % (len(union), len(measured)))
+    if not union:
+        p("          (no class carried an epoch string in any measured corpus)")
+    for cn in sorted(union):
+        u = union[cn]
+        p("          %-42s seen in: %s" % (cn, ", ".join(sorted(set(u["corpora"])))))
+        p("          %-42s %d doc(s) with a string (summed); dropped/carried: %s"
+          % ("", u["documents_with_string"],
+             ", ".join("%s %s/%s" % t for t in u["per_corpus"])))
+    p("      THE TWO KNOWN DROPPERS, printed present or absent:")
+    for name in ESR_KNOWN_DROPPERS:
+        u = union.get(name)
+        if u is None:
+            _esr_dropper_line(p, "          ", name, None, corpora=[])
+            continue
+        p("          %-30s MEASURED in %s -- dropped/carried: %s"
+          % (name, ", ".join(sorted(set(u["corpora"]))),
+             ", ".join("%s %s/%s" % t for t in u["per_corpus"])))
+
+
 def render_report(r, out):
     """Render one corpus report. Raises on malformed input; the caller isolates."""
     p = lambda s="": out.append(s)
@@ -3833,6 +4368,11 @@ def render_report(r, out):
     p("  total=%s  migrated=%s  quarantine=%s"
       % (r.get("total", "?"), r.get("migrated_count", "?"),
          r.get("quarantine_count", "?")))
+    # IMMEDIATELY BESIDE THE QUARANTINE COUNT, because the gate is quoted as
+    # one thing -- "0 quarantine + 0 orphans" -- and for every run to date this
+    # digest has printed the first half and nothing at all about the second.
+    # Absent prints as ABSENT here rather than not printing.
+    render_reference_integrity(r, out)
 
     sl = r.get("silent_loss") or {}
     if "audit_failed" in sl:
@@ -4000,6 +4540,11 @@ def render_report(r, out):
     # block's `epoch` counts are the ones that were being read beside the mint's
     # without anything saying they came from different batches.
     render_epoch_populations(r, out)
+    # Immediately after the epoch populations, because that is what makes it
+    # readable: `retained_as_epoch_document` and `epoch_documents_seen` count
+    # the same minted documents those figures do, and the retention block is
+    # sited after every batch post-pass precisely so they are commensurable.
+    render_epoch_string_retention(r, out)
     render_metadata_tier(r, out)
     render_post_passes(r, out)
 
@@ -4172,6 +4717,10 @@ def rollup(reports, out):
           % (with_silent_loss, len(reports)))
         p("  *** as a whole-corpus figure.")
     p("  quarantined: %d       fragments: %d" % (quarantine, fragments))
+    # THE OTHER HALF OF THE GATE, on the line after the half we have always
+    # printed. It renders ABSENT when nothing carries it, which is the state
+    # every run to date has been in.
+    rollup_reference_integrity(reports, out)
 
     for label, table in (("EMPTY REQUIRED EDGES", edges),
                          ("VACUOUS REQUIRED FIELDS", fields),
@@ -4216,6 +4765,9 @@ def rollup(reports, out):
     # the same batch is the one thing in this digest that is a claim about the
     # migration rather than about the reports, so it exits non-zero.
     findings = rollup_epoch_populations(reports, out)
+    # Directly after the epoch populations, for the reason the per-corpus
+    # renderer sits there: these are the same minted `epoch` documents.
+    rollup_epoch_string_retention(reports, out)
     rollup_metadata_tier(reports, out)
     rollup_post_passes(reports, out)
     return findings

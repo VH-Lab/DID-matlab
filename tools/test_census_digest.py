@@ -4070,5 +4070,375 @@ class TestThisRepositoryAgrees(unittest.TestCase):
             set(self.chain["chain"]) - set(self.chain["fields"]))
 
 
+class TestReferenceIntegrity(DigestCase):
+    """THE ORPHAN HALF OF THE GATE -- absent must print as ABSENT.
+
+    The corpus gate is quoted everywhere as "0 quarantine + 0 orphans". Corpus
+    run 31522068566 (job 93917442013) prints `quarantined: 0  fragments: 0`
+    and no orphan figure anywhere in 2,790 lines: the only occurrences of the
+    word are prose and openMINDS's `components_withheld (orphan guard)`, which
+    counts something else. So the FIRST thing tested here is that a report
+    with no orphan count says so loudly, because that is the state every
+    corpus report is in today and silence is what let it last.
+    """
+
+    BARE = {"corpus": "Bare", "total": 10, "migrated_count": 12,
+            "quarantine_count": 0,
+            "silent_loss": {"total_docs": 12, "skipped_docs": 0}}
+
+    def with_block(self, name, block):
+        r = dict(self.BARE, corpus=name)
+        r["reference_integrity"] = block
+        return r
+
+    def test_a_report_with_no_orphan_count_prints_ABSENT_not_silence(self):
+        self.write("Bare", self.BARE)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("ORPHAN depends_on EDGES: *** NOT MEASURED IN THIS "
+                      "REPORT ***", text)
+        self.assertIn("THIS IS NOT A ZERO", text)
+
+    def test_the_absent_message_says_what_would_have_to_change(self):
+        # "Report what would have to change to measure it" -- the wiring is a
+        # MATLAB change and is named, not made.
+        self.write("Bare", self.BARE)
+        text, _failed = self.run_digest()
+        self.assertIn("did2.validate.references", text)
+        self.assertIn("writeCorpusReport", text)
+        self.assertIn("`testCorpusPRED` never calls it at all", text)
+
+    def test_orphans_and_empty_edges_are_never_conflated(self):
+        # references.m:90 skips empty edges, which is why mustBeNonEmpty on a
+        # depends_on is decorative. The two counters answer different
+        # questions and the output has to say so in both branches.
+        self.write("Bare", self.BARE)
+        absent, _ = self.run_digest()
+        self.assertIn("references.m:90", absent)
+        shutil.rmtree(self.dir, ignore_errors=True)
+        os.mkdir(self.dir)
+        self.write("Full", self.with_block("Full", {
+            "total_docs": 12, "edges_examined": 40, "orphan_count": 0,
+            "orphans": []}))
+        present, _ = self.run_digest()
+        self.assertIn("references.m:90", present)
+
+    def test_both_denominators_print_BEFORE_the_orphan_count(self):
+        # Rule 5, positionally: total_docs and edges_examined are the two
+        # denominators and an orphan count without them is not evidence.
+        self.write("Full", self.with_block("Full", {
+            "total_docs": 12, "edges_examined": 40, "orphan_count": 2,
+            "orphans": [{"doc_id": "a", "doc_class": "x",
+                         "edge_name": "subject_id", "edge_document_id": "z"},
+                        {"doc_id": "b", "doc_class": "x",
+                         "edge_name": "subject_id", "edge_document_id": "y"}]}))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        docs = text.index("document(s) inspected  <- DENOMINATOR")
+        edges = text.index("NON-EMPTY depends_on edge(s) examined")
+        orphans = text.index("ORPHAN(S): edge names a document not in the batch")
+        self.assertLess(docs, edges)
+        self.assertLess(edges, orphans)
+        self.assertIn("2  x.subject_id", text)
+
+    def test_the_block_is_found_BY_SHAPE_whatever_the_key_is_called(self):
+        # Nothing is persisted yet, so no key name is settled. Guessing one
+        # and reporting ABSENT when the guess missed is the demo_ndi failure:
+        # a query against a string the input never contained, reported as a
+        # fact about the input.
+        r = dict(self.BARE, corpus="Odd")
+        r["whatever_they_called_it"] = {"total_docs": 3, "edges_examined": 9,
+                                        "orphan_count": 0, "orphans": []}
+        self.write("Odd", r)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("read", text)
+        self.assertIn("`whatever_they_called_it`", text)
+        self.assertNotIn("NOT MEASURED IN THIS REPORT", text)
+
+    def test_zero_edges_examined_is_vacuous_not_clean(self):
+        self.write("Empty", self.with_block("Empty", {
+            "total_docs": 0, "edges_examined": 0, "orphan_count": 0,
+            "orphans": []}))
+        text, _failed = self.run_digest()
+        self.assertIn("0 EDGES EXAMINED", text)
+        self.assertIn("VACUOUS rather than clean", text)
+
+    def test_a_key_NAMED_orphan_in_an_unrendered_shape_is_named(self):
+        # "No such counter" and "a counter is here in a shape I do not render"
+        # are different findings. The second one is a wiring mismatch and must
+        # not print as an absence.
+        r = dict(self.BARE, corpus="Mismatch")
+        r["orphan_summary"] = 3
+        self.write("Mismatch", r)
+        text, _failed = self.run_digest()
+        self.assertIn("NOT MEASURED IN THIS REPORT", text)
+        self.assertIn("orphan_summary", text)
+        self.assertIn("wiring mismatch", text)
+
+    def test_two_blocks_carrying_orphan_count_refuse_to_choose(self):
+        r = dict(self.BARE, corpus="Two")
+        r["reference_integrity"] = {"orphan_count": 0, "edges_examined": 1}
+        r["reference_report"] = {"orphan_count": 9, "edges_examined": 2}
+        self.write("Two", r)
+        text, _failed = self.run_digest()
+        self.assertIn("will not choose between them", text)
+        self.assertNotIn("9  ORPHAN(S)", text)
+
+    def test_a_non_numeric_orphan_count_is_not_rendered_as_a_number(self):
+        self.write("Junk", self.with_block("Junk", {
+            "total_docs": 1, "edges_examined": 1, "orphan_count": "lots"}))
+        text, _failed = self.run_digest()
+        self.assertIn("is not a number", text)
+
+    def test_the_rollup_says_ABSENT_when_NO_report_carries_one(self):
+        # The state every corpus run to date has been in, said once, loudly.
+        self.write("A", dict(self.BARE, corpus="A"))
+        self.write("B", dict(self.BARE, corpus="B"))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("NO REPORT IN THIS RUN CARRIES AN ORPHAN COUNT AT ALL",
+                      text)
+        self.assertIn("THE SECOND HALF OF THE '0 quarantine + 0", text)
+
+    def test_the_rollup_names_the_corpora_that_carried_nothing(self):
+        # An absent count is never summed as a zero -- the same rule the
+        # NDI-required and legacy-vintage rollups already apply.
+        self.write("Has", self.with_block("Has", {
+            "total_docs": 5, "edges_examined": 7, "orphan_count": 1,
+            "orphans": [{"doc_id": "a", "doc_class": "c",
+                         "edge_name": "e", "edge_document_id": "z"}]}))
+        self.write("Lacks", dict(self.BARE, corpus="Lacks"))
+        text, _failed = self.run_digest()
+        self.assertIn("DENOMINATOR: 2 corpus report(s); 1 carried an orphan "
+                      "count, 1 did not", text)
+        self.assertIn("NOT MEASURED in: Lacks", text)
+        self.assertIn("sums over 1 corpora, not 2", text)
+        self.assertIn("1 orphan(s) across 1 row(s)", text)
+
+
+class TestEpochStringRetention(DigestCase):
+    """`epoch_string_retention` -- persisted at e9ef734, rendered nowhere.
+
+    The block lands in the artifact JSON and in the per-corpus log and not in
+    this digest, the write-only condition `epoch_mint` and
+    `session_anchor_fold` were both in before their blocks landed here.
+    """
+
+    FULL = {
+        "ran": True,
+        "v1_documents_inspected": 10, "v1_documents_unreadable": 0,
+        "migrated_documents_inspected": 12, "migrated_documents_unreadable": 0,
+        "v1_documents_with_string": 4, "v1_strings_read": 5, "v1_pairs": 3,
+        "v1_by_source": [{"source": "epochid.epochid", "documents": 4,
+                          "distinct_strings": 3}],
+        "v1_classes_inspected": 7, "v1_classes_with_string": 2,
+        "v1_by_class": [
+            {"class_name": "vmspikefit", "documents_with_string": 2,
+             "distinct_pairs": 2, "pairs_dropped": 2},
+            {"class_name": "epochfiles", "documents_with_string": 2,
+             "distinct_pairs": 1, "pairs_dropped": 0}],
+        "v1_declined": 3, "v1_declined_distinct": 1,
+        "retained_as_string": 1, "retained_as_epoch_document": 0,
+        "retained_total": 1, "pairs_dropped": 2,
+        "dropped_by_v1_class": {"vmspikefit": 2},
+        "dropped_detail": [{"session_id": "s1", "epoch_string": "t00023",
+                            "v1_classes": ["vmspikefit"]}],
+        "epoch_documents_seen": 0,
+    }
+
+    def report(self, name, esr=None, **extra):
+        r = {"corpus": name, "total": 10, "migrated_count": 12,
+             "quarantine_count": 0,
+             "silent_loss": {"total_docs": 12, "skipped_docs": 0}}
+        if esr is not None:
+            r["epoch_string_retention"] = esr
+        r.update(extra)
+        return r
+
+    def test_the_block_is_rendered_at_all(self):
+        self.write("B", self.report("B", self.FULL))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("EPOCH-STRING RETENTION", text)
+        self.assertIn("2  DROPPED  <-- the number this instrument exists for",
+                      text)
+
+    def test_an_absent_block_is_NAMED_not_rendered_as_zeros(self):
+        self.write("B", self.report("B"))
+        text, _failed = self.run_digest()
+        self.assertIn("the instrument was not wired into the run that produced "
+                      "it", text)
+        self.assertIn("must\n      not print identically", text)
+
+    def test_ran_false_is_not_a_clean_zero(self):
+        self.write("B", self.report("B", dict(self.FULL, ran=False)))
+        text, _failed = self.run_digest()
+        self.assertIn("DID NOT RUN", text)
+        self.assertIn("which is not a clean zero", text)
+
+    def test_audit_failed_is_named(self):
+        self.write("B", self.report("B", {"audit_failed": "index out of range"}))
+        text, _failed = self.run_digest()
+        self.assertIn("the retention audit FAILED (index out of range)", text)
+
+    def test_the_two_class_counts_print_ON_ONE_LINE(self):
+        # `pairs_dropped: 0` beside `v1_pairs: 0` is vacuous, and the
+        # class-level version of that reading needs BOTH counts adjacent:
+        # "no class carried a string" and "no class was inspected" are
+        # different facts that read identically apart.
+        self.write("B", self.report("B", self.FULL))
+        text, _failed = self.run_digest()
+        line = [l for l in text.splitlines() if "v1 classes:" in l]
+        self.assertEqual(len(line), 1, text)
+        self.assertIn("7 inspected", line[0])
+        self.assertIn("2 of them carried an epoch string", line[0])
+
+    def test_v1_pairs_is_labelled_THE_DENOMINATOR(self):
+        self.write("B", self.report("B", self.FULL))
+        text, _failed = self.run_digest()
+        line = [l for l in text.splitlines() if "v1 strings:" in l]
+        self.assertTrue(line, text)
+        self.assertIn("3 distinct (session,string) pair(s)  <- THE DENOMINATOR",
+                      line[0])
+
+    def test_zero_pairs_prints_VACUOUS_not_clean(self):
+        # `pairs_dropped: 0` with `v1_pairs: 0` is the reading this whole
+        # block exists to keep apart from a clean corpus.
+        empty = dict(self.FULL, v1_pairs=0, pairs_dropped=0, retained_total=0,
+                     retained_as_string=0, v1_by_class=[],
+                     dropped_by_v1_class={}, dropped_detail=[])
+        self.write("B", self.report("B", empty))
+        text, _failed = self.run_digest()
+        self.assertIn("0 OF 0 PAIRS", text)
+        self.assertIn("VACUOUS", text)
+
+    def test_zero_classes_inspected_is_flagged_separately(self):
+        none = dict(self.FULL, v1_classes_inspected=0, v1_classes_with_string=0)
+        self.write("B", self.report("B", none))
+        text, _failed = self.run_digest()
+        self.assertIn("0 CLASSES INSPECTED", text)
+
+    def test_declined_is_marked_EXCLUDED_from_the_denominator(self):
+        self.write("B", self.report("B", self.FULL))
+        text, _failed = self.run_digest()
+        self.assertIn("EXCLUDED FROM THE DENOMINATOR", text)
+        self.assertIn("3 hit(s), 1 distinct", text)
+
+    def test_both_known_droppers_print_a_row_when_the_corpus_holds_neither(self):
+        # vmspikefit and pyraview drop the string by construction. Their
+        # ABSENCE from v1_by_class means "no such document here", NOT "the
+        # drop is fixed", so both get a line either way.
+        none = dict(self.FULL, v1_by_class=[], dropped_by_v1_class={},
+                    dropped_detail=[])
+        self.write("B", self.report("B", none))
+        text, _failed = self.run_digest()
+        for name in ("vmspikefit", "pyraview"):
+            self.assertIn(name, text)
+        self.assertIn("0 of 0 INSPECTED", text)
+        self.assertIn("NOT a measured zero", text)
+
+    def test_a_known_dropper_that_IS_present_prints_MEASURED(self):
+        self.write("B", self.report("B", self.FULL))
+        text, _failed = self.run_digest()
+        self.assertIn("vmspikefit                     MEASURED: 2 dropped of "
+                      "2 pair(s) carried", text)
+        self.assertIn("pyraview                       0 of 0 INSPECTED", text)
+
+    def test_dropped_by_v1_class_is_a_CROSSCHECK_not_a_second_table(self):
+        # Two derivations of one fact, computed in two loops in the MATLAB.
+        # A disagreement between them IS the signal; nothing else surfaces it.
+        drifted = dict(self.FULL, dropped_by_v1_class={"vmspikefit": 2,
+                                                       "pyraview": 1})
+        self.write("B", self.report("B", drifted))
+        text, _failed = self.run_digest()
+        self.assertIn("THE TWO PER-CLASS DERIVATIONS DISAGREE", text)
+        self.assertIn("names 2 class(es)", text)
+        self.assertIn("table above shows 1", text)
+
+    def test_agreeing_derivations_say_so_rather_than_stay_silent(self):
+        self.write("B", self.report("B", self.FULL))
+        text, _failed = self.run_digest()
+        self.assertIn("both derivations agree", text)
+
+    def test_a_single_row_v1_by_class_object_does_not_crash(self):
+        # jsonencode writes a 1-element struct array as a bare object. The
+        # defect that killed run #256, one block further down.
+        one = dict(self.FULL,
+                   v1_by_class={"class_name": "pyraview",
+                                "documents_with_string": 1,
+                                "distinct_pairs": 1, "pairs_dropped": 1},
+                   dropped_by_v1_class={"pyraview": 1},
+                   dropped_detail={"session_id": "s", "epoch_string": "e",
+                                   "v1_classes": ["pyraview"]})
+        self.write("B", self.report("B", one))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [], "a 1-row object must render, not fail")
+        self.assertIn("pyraview", text)
+        self.assertIn("1 dropped of      1 pair(s) carried", text)
+
+    def test_the_rollup_sums_v1_pairs_and_pairs_dropped(self):
+        self.write("A", self.report("A", self.FULL))
+        self.write("B", self.report("B", dict(self.FULL, v1_pairs=5,
+                                              pairs_dropped=1)))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        tail = text[text.index("EPOCH-STRING RETENTION -- did a did_v1"):]
+        self.assertIn("8 (session,string) pair(s)  <- THE DENOMINATOR", tail)
+        self.assertIn("3  DROPPED", tail)
+
+    def test_the_rollup_UNITES_v1_by_class_and_never_sums_distinct_counts(self):
+        # THE MISTAKE THIS GUARDS IS LIVE IN THIS DIGEST: `relaxed_classes`
+        # sums to 7 across the rollup while the true union is 3, and the
+        # NDI-required block prints a *** warning about it. A class in two
+        # corpora is ONE row here, and its distinct-pair counts stay per
+        # corpus rather than being added into a 4 that means nothing.
+        self.write("A", self.report("A", self.FULL))
+        self.write("B", self.report("B", self.FULL))
+        text, _failed = self.run_digest()
+        tail = text[text.index("EPOCH-STRING RETENTION -- did a did_v1"):]
+        self.assertIn("2 distinct class(es) carried an epoch string in the "
+                      "union, over 2 readable report(s)", tail)
+        self.assertIn("seen in: A, B", tail)
+        self.assertIn("dropped/carried: A 2/2, B 2/2", tail)
+        self.assertNotIn("4 pair(s)", tail)
+
+    def test_the_rollup_names_unmeasured_corpora_and_does_not_zero_them(self):
+        self.write("Has", self.report("Has", self.FULL))
+        self.write("Lacks", self.report("Lacks"))
+        text, _failed = self.run_digest()
+        tail = text[text.index("EPOCH-STRING RETENTION -- did a did_v1"):]
+        self.assertIn("2 corpus report(s); 1 carried a readable retention "
+                      "block, 1 did not", tail)
+        self.assertIn("NOT MEASURED in: Lacks", tail)
+        self.assertIn("sums over 1 corpora, not 2", tail)
+
+    def test_the_rollup_says_ABSENT_when_nothing_carries_the_block(self):
+        self.write("A", self.report("A"))
+        self.write("B", self.report("B"))
+        text, _failed = self.run_digest()
+        self.assertIn("NO REPORT IN THIS RUN CARRIED A RETENTION BLOCK", text)
+        self.assertIn("the subtraction was never performed", text)
+
+    def test_the_rollup_prints_both_known_droppers_when_no_corpus_holds_one(self):
+        none = dict(self.FULL, v1_by_class=[], dropped_by_v1_class={},
+                    dropped_detail=[])
+        self.write("A", self.report("A", none))
+        self.write("B", self.report("B", none))
+        text, _failed = self.run_digest()
+        tail = text[text.index("EPOCH-STRING RETENTION -- did a did_v1"):]
+        self.assertIn("vmspikefit", tail)
+        self.assertIn("pyraview", tail)
+        self.assertIn("0 of 0 INSPECTED", tail)
+
+    def test_the_rollup_reports_a_per_class_derivation_disagreement(self):
+        drifted = dict(self.FULL,
+                       dropped_by_v1_class={"vmspikefit": 2, "pyraview": 1})
+        self.write("A", self.report("A", drifted))
+        text, _failed = self.run_digest()
+        tail = text[text.index("EPOCH-STRING RETENTION -- did a did_v1"):]
+        self.assertIn("PER-CLASS DERIVATIONS DISAGREE in: A", tail)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
