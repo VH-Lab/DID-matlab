@@ -27,6 +27,18 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   refused_total=0, surviving session_*_reference in by_class=0` is one
 %   corpus's evidence, not authorisation to delete the retiring classes.
 %
+%   AND IT DID NOT ESTABLISH THAT THE FOLD WAS CORRECT, which is a second and
+%   larger caveat, added 2026-08-11 after the fact. All 20,411
+%   `session_bounded_reference` documents in that rollup were folded WITH THEIR
+%   onset/offset WINDOW DISCARDED -- see the REPAIR note on `cellField` below.
+%   Every counter above is accurate and every one of them was blind to it: the
+%   documents folded, so `anchors_folded` rose; no refusal fired, so
+%   `refused_total` stayed 0; the result validated, so `fold_quarantined` stayed
+%   0. A clean row of counters is evidence that the pass RAN, not that it did
+%   the right thing. The repair landed after this run, so THESE NUMBERS PREDATE
+%   IT -- a re-run is what re-measures them, and `refused_negative_extent` is
+%   reachable for the first time.
+%
 %   The two classes it folds are exactly these, and no others --
 %   `epoch_*`/`event_*`/`utc_reference` are NOT touched here. That mattered
 %   because `ndi.migrate.internal.stimulusBathToBath` mints a populated
@@ -498,20 +510,88 @@ end
 end
 
 function c = cellField(blk, name)
-%CELLFIELD One duration cell off the old block, or [] when it says nothing.
-%   A cell with no readable `seconds` is treated as ABSENT rather than as zero:
-%   NO TIMES => NO REFERENCE applies inside a document as well as to whether one
+%CELLFIELD One duration cell off the old block, or [] when it SAYS NOTHING.
+%   A cell that states no time is treated as ABSENT rather than as zero: NO
+%   TIMES => NO REFERENCE applies inside a document as well as to whether one
 %   exists, and a fabricated 0 s offset is exactly the hollow value the census
 %   was built to find.
+%
+%   ---------------------------------------------------------------------
+%   REPAIR 2026-08-11: "SAYS NOTHING" USED TO MEAN "HAS NO `seconds`", AND
+%   THAT DISCARDED EVERY REAL WINDOW IN THE CORPUS.
+%   ---------------------------------------------------------------------
+%   This function read `seconds` and nothing else. The ONLY emitter of
+%   `session_bounded_reference` in the repository does not write it:
+%
+%       $ sed -n '559,561p' \
+%             src/did/+did2/+convert/+migrators_j/ontology_table_row.m
+%       function d = durationSeconds(x)
+%       d = struct('source_unit', 's', 'source_value', double(x), ...
+%           'approximate', false);
+%
+%   So a POPULATED window -- `{source_unit: 's', source_value: 1249.72}` --
+%   returned [], `value.start` was never set, `value.duration` was never
+%   computed, and the `span < 0` guard below could not fire because it sits
+%   behind `~isempty(startCell) && ~isempty(endCell)`. The document was counted
+%   `anchors_folded`, no refusal counter moved, and nothing quarantined: the
+%   encounter window vanished with every instrument reporting a clean fold.
+%
+%   MEASURED SIZE: the cross-corpus rollup in this file's STATUS block counted
+%   20,411 `session_bounded_reference` anchors, all FOLDED, 0 REFUSED. Every one
+%   of them came from that emitter, so every one lost its onset/offset. What
+%   that run established is that the fold RAN and did not refuse; it never
+%   established that the extents survived, and nothing was watching them.
+%
+%   FOUND BY tests/+did2/+unittest/testSessionAnchorEmitterContract.m, which
+%   drives the real migrator. testTimeReferenceCollapse could not find it: its
+%   bounded fixture is a hand copy of the emitter that ADDED a `seconds` the
+%   emitter never wrote, so the fold passed against a shape production never
+%   produces.
+%
+%   THE FIX IS A NORMALISATION, NOT A GUESS. `seconds` is the schema's
+%   *"canonical duration value -- the normalised, cross-document comparable
+%   number"*; `source_unit`/`source_value` are the lossless source provenance.
+%   When the canonical value is absent but the source pair DECLARES seconds,
+%   the canonical value is derived from it and the provenance is left untouched.
+%   A unit this cannot read is NOT assumed to be seconds -- the cell stays
+%   ABSENT, because assuming a unit is the distance_metadata assumed-shape error
+%   and would silently rescale real data. Today every duration cell that reaches
+%   here is either already canonical (jClockAlignmentBodies, jEpochClockReferences,
+%   resolveValidIntervals all write `seconds`) or is `durationSeconds`'s literal
+%   's', so the unreadable-unit path has no known population -- it exists so that
+%   a future unit cannot be silently misread.
 c = [];
 if ~isstruct(blk) || ~isfield(blk, name); return; end
 x = blk.(name);
 if ~isstruct(x) || ~isscalar(x); return; end
-if ~isfield(x, 'seconds') || ~isnumeric(x.seconds) || ~isscalar(x.seconds) ...
-        || ~isfinite(x.seconds)
+if isfield(x, 'seconds') && isnumeric(x.seconds) && isscalar(x.seconds) ...
+        && isfinite(x.seconds)
+    c = x;
     return;
 end
+% No canonical value. Derive one ONLY from a source pair that names seconds.
+if ~isfield(x, 'source_value') || ~isnumeric(x.source_value) ...
+        || ~isscalar(x.source_value) || ~isfinite(x.source_value)
+    return;
+end
+if ~isSecondsUnit(fieldOr(x, 'source_unit', ''))
+    return;
+end
+x.seconds = double(x.source_value);
 c = x;
+end
+
+function tf = isSecondsUnit(u)
+%ISSECONDSUNIT Does this source unit DECLARE seconds?
+%   Deliberately an explicit list and not a parser. `durationSeconds` writes the
+%   literal 's' and that is the only spelling any emitter in this repository
+%   produces today; the other four are accepted because they are the spellings a
+%   human-entered table would plausibly use, and each is unambiguous. An empty
+%   unit is NOT seconds -- it is the schema's blank_value, i.e. "no unit stated",
+%   and reading a bare number as seconds is exactly the guess this refuses.
+tf = false;
+if ~(ischar(u) || (isstring(u) && isscalar(u))); return; end
+tf = any(strcmpi(strtrim(char(u)), {'s', 'sec', 'secs', 'second', 'seconds'}));
 end
 
 function s = secondsOf(c)
