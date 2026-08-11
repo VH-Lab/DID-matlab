@@ -6,9 +6,21 @@ function tests = testTimeReferenceCollapse
 %   is the first thing that will have an opinion.
 %
 %   STATUS 2026-08-11, for the two unit tests added at the end of the bounded
-%   section: SAME. `command -v matlab octave octave-cli` returns nothing in the
-%   container they were written in, so they have not been run either, and CI is
-%   their first execution. Nothing below should be read as measured.
+%   section: WRITTEN WITHOUT RUNNING for the same reason -- `command -v matlab
+%   octave octave-cli` returns nothing in the container they were written in --
+%   so CI was their first execution.
+%
+%   CONFIRMED, AND THE DENOMINATOR IS WHAT MAKES IT MEAN ANYTHING. A green
+%   suite would say nothing about whether these two were COLLECTED; the count
+%   moving by exactly two is what says they were. test-migrators-quick.yml:
+%
+%       run 31508009546 (602ee14, before)   run 31509254197 (c003832, after)
+%         tests run        983                tests run        985
+%         passed           983                passed           985
+%         FAILED             0                FAILED             0
+%         incomplete         0                incomplete         0
+%
+%   +2 for +2 test functions, 0 failed on both sides.
 %
 %   ALSO ADDED 2026-08-11: a docstring on `durationCell` recording that it is a
 %   hand copy which ADDED a `seconds` the emitter never writes, which is why the
