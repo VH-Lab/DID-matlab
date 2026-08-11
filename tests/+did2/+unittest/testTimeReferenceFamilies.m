@@ -111,6 +111,16 @@ function tests = testTimeReferenceFamilies
 %   as INCOMPLETE in all six runs. It is unrelated -- the NDI sibling checkout is
 %   best-effort on this workflow -- and is named here so it is not read as fallout.
 %
+%   THE FIVE PROBE BRANCHES ARE STILL ON THE REMOTE, and the commit that added
+%   this matrix said they were deleted. They are not: `git push --delete` returns
+%   HTTP 403 from this environment, which permits creating and updating a ref and
+%   not removing one. `claude/trf-mut1..5` exist in BOTH DID-matlab and DID-schema
+%   (the sibling refs exist only because this workflow checks out did-schema at
+%   the SAME branch name and fails outright when it is absent). They carry
+%   deliberately broken code, are marked "do not merge" in their commit messages,
+%   and someone with delete rights should remove all ten. The run ids above are
+%   the durable record; nothing depends on the branches surviving.
+%
 %   Run with:  results = runtests('did2.unittest.testTimeReferenceFamilies');
 
 tests = functiontests(localfunctions);
