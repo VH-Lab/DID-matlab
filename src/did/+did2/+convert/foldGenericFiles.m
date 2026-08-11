@@ -18,11 +18,27 @@ function [result, report] = foldGenericFiles(result, options)
 %   the reason it was refused.
 %
 %   ---------------------------------------------------------------------
-%   STATUS: WRITTEN 2026-08-11, NEVER EXECUTED. There is no MATLAB and no
-%   Octave in the container this was written in
-%   (`command -v matlab octave octave-cli` -> nothing, exit 1), so no line
-%   below has been run. test-migrators-quick.yml is the first thing that will
-%   have an opinion; testFoldGenericFiles.m is unrun too.
+%   STATUS: WRITTEN 2026-08-11 in a container with NO MATLAB AND NO OCTAVE
+%   (`command -v matlab octave octave-cli` -> nothing, exit 1), so nothing here
+%   was ever run by its author. CI IS THE ONLY THING THAT HAS EXECUTED IT.
+%   First execution, fixture run 31496802183 / job 93796494861, printed by the
+%   fold itself:
+%
+%       --- generic_file fold: 181 inspected, 2 generic_file(s),
+%           2 label(s) of which 1 point at a file ---
+%         folded 1   refused 1 (no label 1 / ambiguous 0 / node empty 0 /
+%         no document_id 0 / referent absent 0)   quarantined 0
+%         dates dropped 1
+%
+%   That run went RED, on this file, for one reason -- `containers.Map.Count`
+%   is a uint64 and this report's counters are doubles (fixed below, at the
+%   source). Every other assertion in testFixtureCorpus GATE 4 passed on that
+%   same run, along with GATE 1 (0 quarantine) and GATE 2 (0 orphans).
+%
+%   WHAT IS STILL UNEXECUTED ANYWHERE: the four refusal arms other than
+%   `no label`, and the quarantine-degradation path. They are reachable only
+%   from shapes the fixture does not contain, and no corpus contains a
+%   `generic_file` at all.
 %   ---------------------------------------------------------------------
 %
 %   THE DECISION THIS BUILDS. Team, 2026-08-11, verbatim (recorded in
