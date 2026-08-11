@@ -1,9 +1,23 @@
 function tests = testSessionAnchorEmitterContract
 %TESTSESSIONANCHOREMITTERCONTRACT The pass-1 emitters against the pass-2 fold.
 %
-%   STATUS: WRITTEN 2026-08-11, NEVER EXECUTED. This container has no MATLAB and
-%   no Octave (`command -v matlab octave octave-cli` exits 1 with no output), so
-%   no line in this file has been run. CI is the first execution.
+%   STATUS: WRITTEN 2026-08-11, NEVER EXECUTED. EXTENDED 2026-08-11 (bounded
+%   arm), ALSO NEVER EXECUTED. This container has no MATLAB and no Octave --
+%
+%       $ command -v matlab octave octave-cli
+%       $ echo $?
+%       1
+%
+%   -- so no line in this file has been run, by either session. CI is the first
+%   execution.
+%
+%   TWO TESTS IN THE BOUNDED SECTION ARE EXPECTED TO FAIL ON THAT FIRST RUN, and
+%   they are the point of the extension rather than an accident of it:
+%   `testTheBoundedWindowExtentSurvivesTheFold` and
+%   `testAReversedBoundedWindowIsRefusedNotSilentlyFolded`. Both fail for ONE
+%   cause, recorded under DEFECT below: the real emitter writes a duration cell
+%   with no `seconds`, and the fold reads only `seconds`. The fix belongs in a
+%   SEPARATE commit from this coverage so the two stay separable.
 %
 %   NEW FILE, deliberately. `testMigratorsJ.m`, `testFixtureCorpus.m` and
 %   `testCorpusPRED.m` are owned by other sessions and are not touched.
@@ -81,35 +95,123 @@ function tests = testSessionAnchorEmitterContract
 %   DENOMINATOR -- STATED FIRST AND UNCONDITIONALLY (Operating Rule 5)
 %   ---------------------------------------------------------------------
 %   TEN sites in +did2/+convert/+migrators_j assign a retired time-reference
-%   class to `document_class`:
+%   class to `document_class`. RE-DERIVED 2026-08-11 rather than carried over --
 %
-%       session_relative_reference   9   private/jSessionAnchor.m:60  (shared,
-%                                          13 call sites), treatment_transfer.m:109,
-%                                          fitcurve.m:147, jrclust_clusters.m:88,
-%                                          image_stack.m:279, pyraview.m:105,
-%                                          vmspikefit.m:141,
-%                                          neuron_extracellular.m:118,
-%                                          ontology_table_row.m:867
-%       session_bounded_reference    1   ontology_table_row.m:275
+%       $ grep -rn "session_relative_reference\|session_bounded_reference" \
+%             --include=*.m src/did/+did2/+convert/+migrators_j/ \
+%         | grep "document_class ="
+%       .../vmspikefit.m:141           classBlock('session_relative_reference', ...
+%       .../fitcurve.m:147             classBlock('session_relative_reference', ...
+%       .../neuron_extracellular.m:118 classBlock('session_relative_reference', ...
+%       .../treatment_transfer.m:109   struct('class_name', 'session_relative_...
+%       .../private/jSessionAnchor.m:60 struct('class_name', 'session_relative_...
+%       .../pyraview.m:105             classBlock('session_relative_reference', ...
+%       .../ontology_table_row.m:275   struct('class_name', 'session_bounded_...
+%       .../ontology_table_row.m:867   struct('class_name', 'session_relative_...
+%       .../image_stack.m:279          classBlock('session_relative_reference', ...
+%       .../jrclust_clusters.m:88      classBlock('session_relative_reference', ...
 %
-%   SIX of the ten are exercised below, covering BOTH code paths (the shared
-%   helper and the hand-rolled duplicates). The four that are not, and why:
+%       session_relative_reference   9
+%       session_bounded_reference    1   ontology_table_row.m:275 ONLY
 %
-%       ontology_table_row.m:867   NOT DRIVEN -- the file is owned by another
-%       ontology_table_row.m:275     session and was not opened. These are the
-%                                    ONLY two sites of `session_bounded_reference`
-%                                    in the repository, so the BOUNDED arm of the
-%                                    fold has no emitter-driven coverage at all.
-%                                    A named gap, not a silent one.
-%       image_stack.m:279          NOT DRIVEN -- image_stack is mid-rebuild by
-%                                    another session (the subject-less
-%                                    passthrough guard at image_stack.m:78, and
-%                                    the phase-8 restoration of both tombstones).
-%                                    Driving it here would assert a shape that is
-%                                    being changed underneath.
-%       pyraview.m:105              NOT DRIVEN -- its fold runs through the data
-%                                    body tier (`opaque_body` / `sampled_body`),
-%                                    which another session is rebuilding.
+%   A CORRECTION TO THIS FILE'S OWN PREVIOUS DENOMINATOR PARAGRAPH, which said
+%   ontology_table_row.m:867 was the second `session_bounded_reference` site and
+%   that "these are the ONLY two sites of session_bounded_reference in the
+%   repository". POSITIVE EVIDENCE THAT IT IS NOT -- :867 is the RELATIVE class,
+%   inside the local `makeSessionAnchor`:
+%
+%       $ sed -n '866,876p' .../+migrators_j/ontology_table_row.m
+%       anchor.document_class = struct('class_name', 'session_relative_reference', ...
+%       ...
+%       anchor.session_relative_reference = struct('relation', relation);
+%
+%   `session_bounded_reference` is minted at ONE site in the entire repository:
+%   ontology_table_row.m:275, inside `makeEncounterWindow`. The grep above is the
+%   whole of +migrators_j; the sweep over `src/` finds the string nowhere else
+%   except resolveSessionAnchors.m, which CONSUMES it.
+%
+%   ALL TEN SITES ARE NOW DRIVEN -- 9 by the relative roster, 1 by the bounded
+%   roster -- across BOTH code paths (the shared helper and the hand-rolled
+%   duplicates). image_stack.m:279 and pyraview.m:105 were previously listed as
+%   NOT DRIVEN because those migrators were being rebuilt elsewhere; they are
+%   driven now, and DELIBERATELY ONLY FOR THEIR ANCHOR. Nothing here asserts the
+%   shape of an image_observation, a sampled_body or an opaque_body, so a rebuild
+%   of either fold is free to change everything except the anchor contract.
+%
+%   ---------------------------------------------------------------------
+%   DEFECT FOUND WHILE BUILDING THE BOUNDED ARM -- NOT FIXED HERE
+%   ---------------------------------------------------------------------
+%   THE ENCOUNTER WINDOW'S START AND END ARE SILENTLY DISCARDED BY THE FOLD.
+%   Three facts, each read from the code rather than inferred:
+%
+%     1. The emitter's duration cell has NO `seconds` field.
+%          ontology_table_row.m:559-561
+%            function d = durationSeconds(x)
+%            d = struct('source_unit', 's', 'source_value', double(x), ...
+%                'approximate', false);
+%
+%     2. The fold reads ONLY `seconds`, and treats a cell without one as ABSENT.
+%          resolveSessionAnchors.m:466-475 (cellField)
+%            if ~isfield(x, 'seconds') || ~isnumeric(x.seconds) || ...
+%                    ~isscalar(x.seconds) || ~isfinite(x.seconds)
+%                return;     % c stays []
+%
+%     3. Nothing between them backfills it. `ensureClassBlocks`
+%        (v1_to_v2.m:453-520) manufactures empty top-level BLOCKS only, never
+%        nested fields, and no code path in +did2 writes `blank_value` or
+%        `default_value` into a body (the only three references to either key in
+%        src/ are +did2/+schema/cache.m:1588/1617/1674, all READS, in the
+%        vacuous-composite check).
+%
+%   So `value.start` is never set and `value.duration` is never computed: the
+%   folded `relative_reference` carries `relation` and nothing else, and the
+%   `refused_negative_extent` branch is unreachable because the extent is never
+%   read. NO COUNTER SEES THIS. The document is counted `anchors_folded`, no
+%   refusal counter moves, and it does not quarantine.
+%
+%   DENOMINATOR: every `session_bounded_reference` in the corpus comes from this
+%   one emitter, and resolveSessionAnchors.m:19-22 records the measured
+%   cross-corpus rollup (run 31441923369, `caf710b`, 6 corpora, 627,526 docs):
+%
+%       106,639  anchors seen  =  86,228 session_relative_reference
+%                               + 20,411 session_bounded_reference
+%       106,639  FOLDED to relative_reference
+%             0  REFUSED (total), across all six refusal reasons
+%
+%   -- so 20,411 documents were folded with their onset/offset window dropped,
+%   and the run reported it as a clean fold. (ontology_table_row.m:194 gives the
+%   same 20,411 as the JH encounter table's row count, from the other side.)
+%
+%   WHICH SIDE IS WRONG IS NOT DECIDED HERE. What is not in doubt is that the two
+%   sides disagree and that every OTHER duration cell in the converter writes
+%   `seconds` -- jClockAlignmentBodies.m:242, jEpochClockReferences.m:287,
+%   resolveValidIntervals.m:957 -- while ontology_table_row.m:559 alone does not.
+%   `seconds` is documented in the schema as *"Canonical duration value -- the
+%   normalised, cross-document comparable number"*, and the fold writes its own
+%   output through it (`value.duration = struct('seconds', span, ...)`,
+%   resolveSessionAnchors.m:304). The two tests below assert the CONTRACT the
+%   fold's own header states --
+%
+%       session_bounded_reference  { relation, start, end }
+%          -> relative_reference   { relation, start, duration = end-start }
+%                                            resolveSessionAnchors.m:144-145
+%
+%   -- so they FAIL until one side is changed. They are deliberately not written
+%   to the current behaviour: a test that pinned the drop would make this file
+%   the thing certifying the loss.
+%
+%   HOW testTimeReferenceCollapse MISSED IT, which is this file's whole thesis in
+%   one case. Its bounded fixture is a HAND COPY of makeEncounterWindow, and the
+%   copy added a field the emitter never wrote:
+%
+%       testTimeReferenceCollapse.m:164-167
+%         function c = durationCell(seconds)
+%         c = struct('seconds', double(seconds), 'source_unit', 's', ...
+%             'source_value', double(seconds), 'approximate', false);
+%
+%   The fold passes against that fixture and drops the data in production. A copy
+%   cannot drift when the emitter does -- and here it did not even have to drift,
+%   because it was never identical to begin with.
 %
 %   Run with:  results = runtests('did2.unittest.testSessionAnchorEmitterContract');
 
@@ -119,9 +221,15 @@ end
 % ===================== the emitter roster ==============================
 
 function roster = emitterRoster()
-%EMITTERROSTER The pass-1 emitters this file drives, and the mint site each one
-%   exercises. `path` is the code path: 'shared' = private/jSessionAnchor.m,
-%   'local' = a hand-rolled duplicate inside the migrator itself.
+%EMITTERROSTER The pass-1 emitters of `session_relative_reference` this file
+%   drives, and the mint site each one exercises. `path` is the code path:
+%   'shared' = private/jSessionAnchor.m, 'local' = a hand-rolled duplicate inside
+%   the migrator itself.
+%
+%   NINE entries for the nine relative mint sites in the header's denominator.
+%   ontology_table_row.m:867 appears TWICE, once per caller of its local
+%   `makeSessionAnchor`, because the two callers are the whole realizable value
+%   set of that site's VARIABLE `relation` -- see relationValueSet() below.
 roster = { ...
     struct('name', 'probe_location',       'site', 'private/jSessionAnchor.m:60', ...
            'path', 'shared', 'build', @probeLocationBody), ...
@@ -134,7 +242,30 @@ roster = { ...
     struct('name', 'vmspikefit',           'site', 'vmspikefit.m:141', ...
            'path', 'local',  'build', @vmspikefitBody), ...
     struct('name', 'neuron_extracellular', 'site', 'neuron_extracellular.m:118', ...
-           'path', 'local',  'build', @neuronExtracellularBody)};
+           'path', 'local',  'build', @neuronExtracellularBody), ...
+    struct('name', 'image_stack',          'site', 'image_stack.m:279', ...
+           'path', 'local',  'build', @imageStackBody), ...
+    struct('name', 'pyraview',             'site', 'pyraview.m:105', ...
+           'path', 'local',  'build', @pyraviewBody), ...
+    struct('name', 'otr_percolumn',        'site', 'ontology_table_row.m:867 (caller :119)', ...
+           'path', 'local',  'build', @tableRowWithSubjectBody), ...
+    struct('name', 'otr_patchgeometry',    'site', 'ontology_table_row.m:867 (caller :409)', ...
+           'path', 'local',  'build', @patchGeometryRowBody)};
+end
+
+function roster = boundedEmitterRoster()
+%BOUNDEDEMITTERROSTER The pass-1 emitters of `session_bounded_reference`.
+%
+%   ONE ENTRY, AND THAT IS THE WHOLE POPULATION, not a sample of it. The header's
+%   grep over +migrators_j finds exactly one `document_class` assignment of this
+%   class (ontology_table_row.m:275, inside makeEncounterWindow), and the sweep
+%   over `src/` finds the string nowhere else but resolveSessionAnchors.m, which
+%   consumes it. So driving this one emitter drives the bounded arm entirely --
+%   and the 20,411 bounded anchors the corpus rollup counted all came through
+%   here.
+roster = { ...
+    struct('name', 'ontology_table_row_encounter', 'site', 'ontology_table_row.m:275', ...
+           'path', 'local', 'build', @encounterRowBody)};
 end
 
 % ===================== harness =========================================
@@ -300,6 +431,186 @@ v1.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
     'number_of_channels', 4);
 end
 
+function v1 = imageStackBody(sessionId)
+% Exercises image_stack.m:279 (local classBlock anchor).
+% Shape from tests/+did2/+unittest/testMigratorsJ.m:959-991 (babuImageStack) --
+% the +setup/+conv/+babu/import.m:474 population, which sets `subject_id` and no
+% `document_id`, so it reaches the fold arm rather than the passthrough guard.
+%
+% ONLY THE ANCHOR IS ASSERTED ANYWHERE IN THIS FILE. image_stack's observation /
+% body shape is another session's to change; the anchor contract is not.
+v1 = struct();
+v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subjgrp_babu_3'});
+v1.base = struct('id', 'is_babu_01', 'session_id', sessionId, ...
+    'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image_stack = struct('format_ontology', 'NCIT:C190180', ...
+    'label', 'A video recording of a behaving animal');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YXT', 'dimension_size', [480 640 900], ...
+    'dimension_scale', [1 1 30], ...
+    'dimension_scale_units', 'pixel,pixel,second', ...
+    'clocktype', 'exp_global_time', 'timestamp', 739000);
+v1.files = struct('file_list', {{'imageStack'}});
+end
+
+function v1 = pyraviewBody(sessionId)
+% Exercises pyraview.m:105 (local classBlock anchor).
+% Shape from tests/+did2/+unittest/testMigratorsJ.m:2442-2454.
+%
+% Same restraint as image_stack: the sampled_body-per-level fold is another
+% session's, and nothing here asserts it.
+v1 = struct();
+v1.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'filter',  'class_version', '1.0.0'), ...
+                      struct('class_name', 'base',    'class_version', '1.0.0'), ...
+                      struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {'sub_7'});
+v1.base = struct('id', 'pv_1', 'session_id', sessionId, ...
+    'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.pyraview = struct('label', 'lfp', 'native_rate', 1000, ...
+    'native_start_time', 0, 'channels', 4, 'data_type', 'int16', ...
+    'decimation_sampling_rates', [1000 500]);
+v1.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
+end
+
+% ---- the two callers of ontology_table_row's VARIABLE-relation anchor -------
+%
+%   ontology_table_row.m:875 is the ONE emitter in +migrators_j that writes a
+%   `relation` it was HANDED instead of a literal:
+%
+%       $ sed -n '857,876p' .../+migrators_j/ontology_table_row.m
+%       function anchor = makeSessionAnchor(preBody, relation)
+%       ...
+%       anchor.session_relative_reference = struct('relation', relation);
+%
+%   A parameter is a value set, not a value, so the two fixtures below reach its
+%   two callers -- the per-column fallback (:119) and the patch-geometry map
+%   (:409) -- and the tests read the relation off what the migrator ACTUALLY
+%   emitted rather than off the call site.
+
+function v1 = tableRowWithSubjectBody(sessionId)
+%TABLEROWWITHSUBJECTBODY Reaches ontology_table_row.m:119, the per-column path.
+%
+%   THE SUBJECT EDGE IS THE WHOLE POINT OF THIS FIXTURE AND IT IS NOT WHAT A REAL
+%   ontologyTableRow LOOKS LIKE. `resolvedSubject` (ontology_table_row.m:814)
+%   scans the source document for a `subject_id` dependency, and the real NDI
+%   template declares only `document_id` (tableDocMaker.m:231), so a production
+%   row takes the guarded passthrough at :106 and mints NO anchor. That guard is
+%   deliberate and is not under test here. This fixture supplies the subject so
+%   the :119 caller is reachable at all -- without it, one of the two callers of
+%   the variable-relation site would be undrivable and the value set below would
+%   be a claim about half the code.
+%
+%   The single column is a body weight so `migrateRow` classifies it as a timed
+%   numeric observation (dispatchNumeric's mass arm, :675-677) and `usedAnchor`
+%   becomes true -- an assertion-only column would emit no anchor at all.
+v1 = struct();
+v1.document_class = struct('class_name', 'ontology_table_row', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'worm_x'});
+v1.base = struct('id', 'otr_percol', 'session_id', sessionId, ...
+    'name', 'row', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.ontology_table_row = struct( ...
+    'variable_names', 'BodyWeight', ...
+    'names',          'body weight', ...
+    'ontology_nodes', 'EMPTY:0', ...
+    'data',           struct('BodyWeight', 3.25));
+end
+
+function v1 = patchGeometryRowBody(sessionId)
+%PATCHGEOMETRYROWBODY Reaches ontology_table_row.m:409, the patch-geometry map.
+%   Column set from tests/+did2/+unittest/testMigratorsJ.m:1334-1350, which is
+%   the JH bacterial-patch geometry table (doImport.m:291-293). It satisfies
+%   isPatchGeometryTable's four clauses: OD600-at-seeding present, patch
+%   identifier present, patch DOCUMENT identifier absent, and geometry evidence
+%   (radius / circularity / centre) present.
+keys = {'BacterialPlateIdentifier', 'BacterialPatchIdentifier', ...
+    'BacterialOD600TargetAtSeeding', 'BacterialPatchVolume', ...
+    'BacterialPatchCenter_XCoordinate', 'BacterialPatchCenter_YCoordinate', ...
+    'BacterialPatchRadius', 'BacterialPatchCircularity'};
+data = struct();
+data.BacterialPlateIdentifier = '0061';
+data.BacterialPatchIdentifier = '0017';
+data.BacterialOD600TargetAtSeeding = 0.05;
+data.BacterialPatchVolume = 0.5;
+data.BacterialPatchCenter_XCoordinate = 806.3578700078308;
+data.BacterialPatchCenter_YCoordinate = 684.8410336726703;
+data.BacterialPatchRadius = 28.512513907289925;
+data.BacterialPatchCircularity = 0.9847680561323107;
+v1 = struct();
+v1.document_class = struct('class_name', 'ontology_table_row', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', 'otr_patch', 'session_id', sessionId, ...
+    'name', 'row', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.ontology_table_row = struct( ...
+    'variable_names', strjoin(keys, ','), ...
+    'names',          strjoin(keys, ','), ...
+    'ontology_nodes', strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ','), ...
+    'data',           data);
+end
+
+% ---- the bounded emitter ---------------------------------------------------
+
+function v1 = encounterRowBody(sessionId)
+%ENCOUNTERROWBODY The ONLY emitter of `session_bounded_reference` in the
+%   repository, driven for real: the JH C. elegans encounter table
+%   (ontology_table_row.m:202-244, isEncounterTable / applyEncounterMap).
+%
+%   Onset 1249.72 s and offset 1265.39 s are the values testMigratorsJ.m:1270-1271
+%   already uses, which came off the Haley import. The window is 15.67 s wide, so
+%   `end - start` is a number a test can name.
+v1 = encounterRowBodyWindow(sessionId, 1249.72, 1265.39);
+end
+
+function v1 = encounterRowBodyWindow(sessionId, onset, offset)
+%ENCOUNTERROWBODYWINDOW encounterRowBody with the window under the caller's
+%   control, so a REVERSED window (offset < onset) can be produced by the REAL
+%   migrator rather than by hand. Nothing in applyEncounterMap orders the two --
+%   `colNum` reads each column independently (ontology_table_row.m:603-610) and
+%   `makeEncounterWindow` writes them straight through (:281-282) -- so a
+%   reversed row is emitter-reachable, not a fabricated shape.
+P = 'CElegansBehavioralAssay_';
+keys = {'SubjectDocumentIdentifier', [P 'EncounterIdentifier'], ...
+    'BacterialPatchDocumentIdentifier', [P 'EncounterOnsetTime'], ...
+    [P 'EncounterOffsetTime'], [P 'DecelerationUponEncounter'], ...
+    [P 'MinimumVelocityDuringEncounter'], [P 'PeakVelocityBeforeEncounterOnset'], ...
+    [P 'MinimumVelocityAfterEncounterOffset'], [P 'PosteriorProbabilityOfExploitation'], ...
+    [P 'PosteriorProbabilityOfSensing'], [P 'RelativeDensityOfEncounteredBacteria'], ...
+    [P 'RelativeDensityOfCultivationBacteria']};
+data = struct();
+data.SubjectDocumentIdentifier = 'worm_1';
+data.([P 'EncounterIdentifier']) = 5;
+data.BacterialPatchDocumentIdentifier = 'patch_1';
+data.([P 'EncounterOnsetTime'])  = onset;
+data.([P 'EncounterOffsetTime']) = offset;
+data.([P 'DecelerationUponEncounter']) = 3.15;
+data.([P 'MinimumVelocityDuringEncounter']) = 130.4;
+data.([P 'PeakVelocityBeforeEncounterOnset']) = 196.3;
+data.([P 'MinimumVelocityAfterEncounterOffset']) = 130.4;
+data.([P 'PosteriorProbabilityOfExploitation']) = 1.99e-5;
+data.([P 'PosteriorProbabilityOfSensing']) = 7.5e-4;
+data.([P 'RelativeDensityOfEncounteredBacteria']) = 0.557;
+data.([P 'RelativeDensityOfCultivationBacteria']) = 2.238;
+v1 = struct();
+v1.document_class = struct('class_name', 'ontology_table_row', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {}, 'value', {});
+v1.base = struct('id', 'otr_enc', 'session_id', sessionId, ...
+    'name', 'row', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.ontology_table_row = struct( ...
+    'variable_names', strjoin(keys, ','), ...
+    'names',          strjoin(keys, ','), ...
+    'ontology_nodes', strjoin(repmat({'EMPTY:0'}, 1, numel(keys)), ','), ...
+    'data',           data);
+end
+
 % ===================== the roster is an instrument =====================
 
 function testTheRosterStatesItsDenominatorBeforeAnythingIsDriven(testCase)
@@ -309,7 +620,7 @@ function testTheRosterStatesItsDenominatorBeforeAnythingIsDriven(testCase)
 % checked before any migrator runs, and the fixed roster of 6 is the number the
 % header's denominator paragraph claims.
 roster = emitterRoster();
-verifyEqual(testCase, numel(roster), 6, ...
+verifyEqual(testCase, numel(roster), 10, ...
     'the roster changed size -- update the DENOMINATOR block in the header');
 shared = 0;
 for k = 1:numel(roster)
@@ -317,10 +628,28 @@ for k = 1:numel(roster)
     verifyNotEmpty(testCase, roster{k}.site);
     if strcmp(roster{k}.path, 'shared'); shared = shared + 1; end
 end
-% BOTH code paths must stay covered. The shared helper is one site serving 13
-% callers; the five hand-rolled duplicates are five independent chances to drift.
+% BOTH code paths must stay covered. The shared helper is one site serving 14
+% callers; the hand-rolled duplicates are independent chances to drift.
 verifyEqual(testCase, shared, 1);
-verifyEqual(testCase, numel(roster) - shared, 5);
+verifyEqual(testCase, numel(roster) - shared, 9);
+
+% THE BOUNDED ROSTER IS SEPARATE AND ITS SIZE IS A CLAIM, NOT A CONVENIENCE. It
+% is 1 because the repository mints `session_bounded_reference` at exactly one
+% site (header grep). If a second mint site ever appears and is not added here,
+% the bounded arm goes back to being partly undriven -- silently, since every
+% assertion below would still pass on the one emitter it knows about.
+bounded = boundedEmitterRoster();
+verifyEqual(testCase, numel(bounded), 1, ...
+    ['the bounded roster changed size -- re-run the header grep over ' ...
+     '+migrators_j and correct the DENOMINATOR block']);
+verifyTrue(testCase, isa(bounded{1}.build, 'function_handle'));
+verifyEqual(testCase, bounded{1}.site, 'ontology_table_row.m:275');
+
+% and the two rosters together are the header's ten sites
+verifyEqual(testCase, numel(roster) + numel(bounded), 11, ...
+    ['9 relative sites + 1 bounded site = 10 mint sites; the relative roster ' ...
+     'carries ontology_table_row.m:867 twice (one entry per caller of its ' ...
+     'variable-relation helper), so the roster count is 10 + 1']);
 end
 
 % ===================== the seam ========================================
@@ -390,9 +719,14 @@ function testEveryEmittedAnchorFoldsWithNoRefusals(testCase)
 % error, it is a `session_relative_reference` that SURVIVES the migration and
 % holds the deletion gate shut forever.
 roster = emitterRoster();
+bounded = boundedEmitterRoster();
 batch = {sessionBody('sess_doc_1', 'SID_1', 'exp1')};
 for k = 1:numel(roster)
     make = roster{k}.build;
+    batch{end+1} = make('SID_1'); %#ok<AGROW>
+end
+for k = 1:numel(bounded)
+    make = bounded{k}.build;
     batch{end+1} = make('SID_1'); %#ok<AGROW>
 end
 
@@ -400,12 +734,14 @@ end
 
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.session_documents_seen, 1);
-verifyEqual(testCase, rep.anchors_seen, numel(roster), ...
+verifyEqual(testCase, rep.anchors_seen, numel(roster) + numel(bounded), ...
     'one anchor per driven emitter was expected');
 verifyEqual(testCase, rep.anchors_relative, numel(roster));
-verifyEqual(testCase, rep.anchors_bounded, 0, ...
-    'no driven emitter mints session_bounded_reference -- see the header gap');
-verifyEqual(testCase, rep.anchors_folded, numel(roster));
+% THE HEADER GAP IS CLOSED. This used to read `anchors_bounded == 0` with the
+% comment "no driven emitter mints session_bounded_reference". It does now.
+verifyEqual(testCase, rep.anchors_bounded, numel(bounded), ...
+    'the bounded arm is driven by ontology_table_row.m:275');
+verifyEqual(testCase, rep.anchors_folded, numel(roster) + numel(bounded));
 verifyEqual(testCase, rep.fold_quarantined, 0);
 
 % Each refusal counter separately, so a failure names its cause instead of
@@ -418,10 +754,13 @@ verifyEqual(testCase, rep.refused_unknown_relation, 0);
 verifyEqual(testCase, rep.refused_negative_extent, 0);
 verifyEqual(testCase, rep.refused_total, 0);
 
-% and the retired class is gone from the batch entirely
+% and BOTH retired classes are gone from the batch entirely
 verifyFalse(testCase, any(strcmp(classNames(out), 'session_relative_reference')), ...
     'a retired class survived pass 2 -- the deletion gate cannot open');
-verifyEqual(testCase, numel(ofClass(out, 'relative_reference')), numel(roster));
+verifyFalse(testCase, any(strcmp(classNames(out), 'session_bounded_reference')), ...
+    'a retired class survived pass 2 -- the deletion gate cannot open');
+verifyEqual(testCase, numel(ofClass(out, 'relative_reference')), ...
+    numel(roster) + numel(bounded));
 end
 
 function testTheIdOfEveryEmittedAnchorSurvivesTheFold(testCase)
@@ -503,5 +842,421 @@ anchors = ofClass(out, 'session_relative_reference');
 verifyEqual(testCase, numel(anchors), 1, ...
     'the refused anchor must survive untouched, not be dropped');
 verifyEmpty(testCase, depValue(anchors{1}.toStruct(), 'relative_to'));
+verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+end
+
+% ===================== the VARIABLE relation ===========================
+%
+%   Every other emitter hardcodes 'during'. `ontology_table_row.m:875` writes
+%   whatever its caller handed `makeSessionAnchor`, which makes it the one place
+%   a value the fold REFUSES could enter without anybody noticing -- the fold
+%   would count `refused_unknown_relation`, leave the document in the retired
+%   class, and go green.
+%
+%   THE REALIZABLE VALUE SET IS {'during'}, AND THAT IS READ, NOT ASSUMED. The
+%   helper is a LOCAL function, so its callers cannot be anywhere but this file:
+%
+%       $ grep -n "makeSessionAnchor" \
+%             src/did/+did2/+convert/+migrators_j/ontology_table_row.m
+%       119:anchor = makeSessionAnchor(preBody, 'during');
+%       409:anchor = makeSessionAnchor(preBody, 'during');
+%       857:function anchor = makeSessionAnchor(preBody, relation)
+%
+%   Two callers, both a literal. The tests below do not read those call sites --
+%   they DRIVE both callers and read the relation off what the migrator emitted,
+%   so the day a third caller appears with a different literal, the value-set
+%   test fails and names it.
+%
+%   WHAT THE FOLD DOES WITH EACH MEMBER OF THAT SET: 'during' maps to
+%   `time:intervalDuring` with verdict 'ok' (resolveSessionAnchors.m:414), so it
+%   folds. NOTHING THIS SITE CAN PRODUCE TODAY IS REFUSED. The paste that
+%   prompted this work expected a refusal here; there is none, and the honest
+%   report is the empty one. The two values that WOULD be refused --
+%   'concurrent_with' (ambiguous) and anything outside v1's six-member enum
+%   (unknown) -- are unreachable from either caller.
+
+function rels = relationValueSet(testCase, sitePrefix)
+%RELATIONVALUESET The distinct `relation` values the driven emitters of one site
+%   actually produce, collected from their OUTPUT.
+rels = {};
+roster = emitterRoster();
+for k = 1:numel(roster)
+    e = roster{k};
+    if ~contains(e.site, sitePrefix); continue; end
+    make = e.build;
+    out = passOne({make('SID_1')});
+    anchors = ofClass(out, 'session_relative_reference');
+    verifyEqual(testCase, numel(anchors), 1, sprintf( ...
+        '%s (%s) minted %d anchors, so its relation cannot be read', ...
+        e.name, e.site, numel(anchors)));
+    rels{end+1} = char(anchors{1}.get('session_relative_reference.relation')); %#ok<AGROW>
+end
+rels = unique(rels);
+end
+
+function testTheVariableRelationSiteCanOnlyProduceDuring(testCase)
+% DENOMINATOR FIRST: two callers reach ontology_table_row.m:867, and both are
+% driven here (the per-column fallback at :119 and the patch-geometry map at
+% :409). If either stopped minting an anchor, relationValueSet raises rather than
+% returning a shorter list, so a shrunken denominator cannot pass as a narrow
+% value set.
+rels = relationValueSet(testCase, 'ontology_table_row.m:867');
+verifyEqual(testCase, numel(rels), 1, ...
+    ['the variable-relation site produced a value set of a size other than 1. ' ...
+     'MORE than one is not automatically wrong -- check each new value against ' ...
+     'resolveSessionAnchors.m:389 owlTimeTerm before widening this test. ZERO ' ...
+     'means the roster no longer reaches this site at all, which is a hole, ' ...
+     'not a pass.']);
+% assert, not verify: an empty set makes every line below meaningless, and a
+% vacuous green is the one outcome this file exists to prevent.
+assertNotEmpty(testCase, rels);
+verifyEqual(testCase, rels{1}, 'during', ...
+    ['ontology_table_row.m:875 emitted a relation other than "during". If it ' ...
+     'is one of before/after/at_start_of/at_end_of the fold maps it and this ' ...
+     'test should widen; if it is concurrent_with or anything outside v1''s ' ...
+     'six-member enum the fold REFUSES it and those documents stay in the ' ...
+     'retired class -- that is a defect to report, not a test to relax.']);
+end
+
+function testEveryRelationEveryDrivenEmitterProducesIsMappedNotRefused(testCase)
+% The same question asked across ALL driven emitters at once, relative and
+% bounded, so the answer has a denominator: 11 emitters, and the set of distinct
+% relations they produce between them.
+mappable = {'before', 'after', 'at_start_of', 'at_end_of', 'during'};
+refused  = {'concurrent_with'};   % ambiguous; resolveSessionAnchors.m:415-417
+
+seen = {};
+roster = emitterRoster();
+for k = 1:numel(roster)
+    make = roster{k}.build;
+    out = passOne({make('SID_1')});
+    a = ofClass(out, 'session_relative_reference');
+    assertNotEmpty(testCase, a, sprintf('%s minted no anchor', roster{k}.name));
+    seen{end+1} = char(a{1}.get('session_relative_reference.relation')); %#ok<AGROW>
+end
+bounded = boundedEmitterRoster();
+for k = 1:numel(bounded)
+    make = bounded{k}.build;
+    out = passOne({make('SID_1')});
+    a = ofClass(out, 'session_bounded_reference');
+    assertNotEmpty(testCase, a, sprintf('%s minted no window', bounded{k}.name));
+    seen{end+1} = char(a{1}.get('session_bounded_reference.relation')); %#ok<AGROW>
+end
+
+verifyEqual(testCase, numel(seen), numel(roster) + numel(bounded), ...
+    'one relation per driven emitter was expected');
+distinct = unique(seen);
+for k = 1:numel(distinct)
+    verifyFalse(testCase, any(strcmp(refused, distinct{k})), sprintf( ...
+        'an emitter writes relation "%s", which the fold REFUSES as ambiguous', ...
+        distinct{k}));
+    verifyTrue(testCase, any(strcmp(mappable, distinct{k})), sprintf( ...
+        'an emitter writes relation "%s", which is outside v1''s enum -- the fold counts refused_unknown_relation', ...
+        distinct{k}));
+end
+% and today the whole set is one value, which is what the signed plan's
+% "`relation` is 'during' at all 14 emitter call sites" records
+verifyEqual(testCase, distinct, {'during'});
+end
+
+% ===================== the bounded arm =================================
+%
+%   Everything above this line drives `session_relative_reference`. Everything
+%   below drives `session_bounded_reference`, from its ONE emitter, in the same
+%   shape: ids collected from the emitter's own output, every refusal counter
+%   checked separately, and each refusal path driven from the real migrator
+%   rather than from a hand-built body.
+
+function [out, rep, windowIds] = foldEncounter(sessionDocs, sessionId, onset, offset)
+%FOLDENCOUNTER Drive the real encounter map, then the real fold.
+%   Returns the ids of the bounded windows the EMITTER minted -- they are freshly
+%   minted uids (freshBase -> did.ido.unique_id(), ontology_table_row.m:555), so
+%   nothing outside pass 1 can know them, which is the whole reason they are
+%   collected from the output instead of being written into a fixture.
+batch = sessionDocs;
+batch{end+1} = encounterRowBodyWindow(sessionId, onset, offset);
+before = passOne(batch);
+windowIds = {};
+for k = 1:numel(before.migrated)
+    if strcmp(char(before.migrated{k}.get('document_class.class_name')), ...
+            'session_bounded_reference')
+        windowIds{end+1} = char(before.migrated{k}.get('base.id')); %#ok<AGROW>
+    end
+end
+[out, rep] = did2.convert.resolveSessionAnchors(before, ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+end
+
+function testTheBoundedEmitterActuallyMintsAWindow(testCase)
+% The precondition for the whole section, and it is not decoration: if the
+% encounter map stopped dispatching -- a tightened isEncounterTable, a renamed
+% column -- every bounded assertion below would pass vacuously on 0 documents.
+% That is the silentLoss failure exactly, and Operating Rule 5 is the answer.
+roster = boundedEmitterRoster();
+for k = 1:numel(roster)
+    e = roster{k};
+    make = e.build;
+    out = passOne({make('SID_1')});
+    windows = ofClass(out, 'session_bounded_reference');
+    verifyEqual(testCase, numel(windows), 1, sprintf( ...
+        ['%s (%s) minted %d bounded windows, expected exactly 1. If the ' ...
+         'encounter map legitimately stopped anchoring, correct the header ' ...
+         'denominator -- do not weaken this count.'], ...
+        e.name, e.site, numel(windows)));
+    % and the encounter's OTHER bodies point at it, which is what makes the
+    % window load-bearing rather than decorative: 8 measures + 1 relation.
+    verifyEqual(testCase, numel(ofClass(out, 'directed_relation')), 1);
+end
+end
+
+function testTheBoundedWindowCarriesTheSessionIdTheFoldJoinsOn(testCase)
+% `base.session_id` is the ONLY handle the fold has (resolveSessionAnchors.m:255),
+% and `freshBase` (ontology_table_row.m:547-557) defaults it to '' when the
+% source body has none -- so an empty one is a real path, not a hypothetical.
+roster = boundedEmitterRoster();
+for k = 1:numel(roster)
+    e = roster{k};
+    make = e.build;
+    out = passOne({make('SID_1')});
+    w = ofClass(out, 'session_bounded_reference');
+    verifyEqual(testCase, char(w{1}.get('base.session_id')), 'SID_1', sprintf( ...
+        '%s (%s) lost base.session_id -- the fold cannot join it', e.name, e.site));
+end
+end
+
+function testTheBoundedWindowFoldsWithNoRefusals(testCase)
+% THE BOUNDED COUNTERPART OF THE MAIN TEST. A refusal here is not a caught error:
+% it is a `session_bounded_reference` that SURVIVES the migration and holds the
+% deletion gate shut ("refused_total == 0 AND zero surviving
+% session_*_reference in by_class", resolveSessionAnchors.m:132-135).
+[out, rep, windowIds] = foldEncounter( ...
+    {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, 'SID_1', 1249.72, 1265.39);
+
+verifyTrue(testCase, rep.ran);
+verifyEqual(testCase, rep.session_documents_seen, 1);
+verifyEqual(testCase, numel(windowIds), 1, ...
+    'the emitter minted no window -- every assertion below would be vacuous');
+verifyEqual(testCase, rep.anchors_seen, 1);
+verifyEqual(testCase, rep.anchors_bounded, 1);
+verifyEqual(testCase, rep.anchors_relative, 0, ...
+    'the encounter map mints a bounded window only -- no relative anchor');
+verifyEqual(testCase, rep.anchors_folded, 1);
+verifyEqual(testCase, rep.fold_quarantined, 0);
+
+% Every refusal counter separately, so a failure names its own cause.
+verifyEqual(testCase, rep.refused_no_session_id, 0);
+verifyEqual(testCase, rep.refused_no_session_document, 0);
+verifyEqual(testCase, rep.refused_ambiguous_session, 0);
+verifyEqual(testCase, rep.refused_ambiguous_relation, 0);
+verifyEqual(testCase, rep.refused_unknown_relation, 0);
+verifyEqual(testCase, rep.refused_negative_extent, 0);
+verifyEqual(testCase, rep.refused_total, 0);
+
+% THE ID IS PRESERVED -- collected from the emitter's own output, then required
+% to still name a document. Eight observations and one directed_relation point
+% at this id through `time_reference_1`; a minted replacement dangles all nine.
+afterIds = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(afterIds, windowIds{1})), sprintf( ...
+    'window id %s vanished in the fold -- every time_reference_# edge to it dangles', ...
+    windowIds{1}));
+
+% and the retired class is gone, replaced 1:1
+verifyFalse(testCase, any(strcmp(classNames(out), 'session_bounded_reference')), ...
+    'the retired bounded class survived pass 2 -- the deletion gate cannot open');
+refs = ofClass(out, 'relative_reference');
+assertEqual(testCase, numel(refs), 1);
+verifyEqual(testCase, char(refs{1}.get('base.id')), windowIds{1});
+verifyEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), 'sess_doc_1');
+verifyNotEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), 'SID_1');
+end
+
+function testEveryEncounterEdgeStillResolvesAfterTheBoundedFold(testCase)
+% The orphan question for the bounded arm, asked end to end. applyEncounterMap
+% wires `time_reference_1` onto EIGHT observations and ONE directed_relation
+% (ontology_table_row.m:237-243), all naming the window's own base.id. After the
+% fold every one of those edges must still name a document in the batch.
+[out, ~, windowIds] = foldEncounter( ...
+    {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, 'SID_1', 1249.72, 1265.39);
+verifyEqual(testCase, numel(windowIds), 1);
+
+ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+pointers = 0;
+for k = 1:numel(out.migrated)
+    target = depValue(out.migrated{k}.toStruct(), 'time_reference_1');
+    if isempty(target); continue; end
+    pointers = pointers + 1;
+    verifyTrue(testCase, any(strcmp(ids, target)), sprintf( ...
+        'time_reference_1 on %s no longer resolves -- the fold orphaned it', ...
+        char(out.migrated{k}.get('document_class.class_name'))));
+    verifyEqual(testCase, target, windowIds{1});
+end
+% DENOMINATOR, so "every edge resolved" cannot mean "there were no edges".
+verifyEqual(testCase, pointers, 9, ...
+    ['expected 8 encounter measurements + 1 directed_relation pointing at the ' ...
+     'window (ontology_table_row.m:220-243)']);
+end
+
+function testTheBoundedWindowExtentSurvivesTheFold(testCase)
+% EXPECTED RED ON THE FIRST CI RUN. This is the DEFECT block in the header, and
+% it is the finding this extension exists to surface.
+%
+% The fold's own header states the mapping (resolveSessionAnchors.m:144-145):
+%
+%     session_bounded_reference  { relation, start, end }
+%        -> relative_reference   { relation, start, duration = end-start }
+%
+% What actually happens is that `start` and `duration` are both absent, because
+% the emitter's duration cell carries no `seconds` (ontology_table_row.m:559-561)
+% and `cellField` treats a cell without one as ABSENT (resolveSessionAnchors.m:
+% 466-475). Nothing counts it: `anchors_folded` goes up, no refusal counter
+% moves, nothing quarantines. 20,411 documents in the last cross-corpus rollup
+% (resolveSessionAnchors.m:19-22) were folded this way and reported clean.
+%
+% THIS TEST IS DELIBERATELY WRITTEN TO THE CONTRACT AND NOT TO THE BEHAVIOUR.
+% Pinning the current output would make this file the thing certifying the loss,
+% which is the failure mode the whole repository keeps paying for. The fix --
+% whether the emitter starts writing `seconds` or the fold starts reading
+% `source_value` -- is a SEPARATE commit, so the coverage and the repair stay
+% separable and either can be reverted alone.
+onset = 1249.72; offset = 1265.39;
+[out, rep] = foldEncounter( ...
+    {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, 'SID_1', onset, offset);
+verifyEqual(testCase, rep.anchors_folded, 1);
+
+refs = ofClass(out, 'relative_reference');
+assertEqual(testCase, numel(refs), 1);
+value = refs{1}.get('relative_reference.value');
+
+% The checks are nested so that a missing field FAILS with its own message
+% instead of ERRORING on the read below it -- an error hides the assertion's
+% text, and the text is the whole finding.
+hasStart = isfield(value, 'start');
+verifyTrue(testCase, hasStart, ...
+    ['the encounter window START was dropped by the fold. The emitter wrote ' ...
+     'it (ontology_table_row.m:282) and the fold could not read it: ' ...
+     'durationSeconds omits `seconds`, cellField requires it.']);
+if hasStart && isfield(value.start, 'seconds')
+    verifyEqual(testCase, value.start.seconds, onset, 'AbsTol', 1e-9);
+elseif hasStart
+    verifyFail(testCase, 'relative_reference.value.start carries no `seconds`');
+end
+
+hasDuration = isfield(value, 'duration');
+verifyTrue(testCase, hasDuration, ...
+    ['the encounter window EXTENT was dropped by the fold -- same cause as ' ...
+     'the start above. A 15.67 s encounter became a reference with no width.']);
+if hasDuration && isfield(value.duration, 'seconds')
+    verifyEqual(testCase, value.duration.seconds, offset - onset, 'AbsTol', 1e-9);
+elseif hasDuration
+    verifyFail(testCase, 'relative_reference.value.duration carries no `seconds`');
+end
+end
+
+function testAReversedBoundedWindowIsRefusedNotSilentlyFolded(testCase)
+% EXPECTED RED ON THE FIRST CI RUN, SAME ROOT CAUSE AS THE TEST ABOVE, and worth
+% asserting separately because it is a different guarantee: not "the extent is
+% carried" but "a nonsense extent is REFUSED rather than folded".
+%
+% `refused_negative_extent` is one of the six refusal reasons the deletion gate
+% counts (resolveSessionAnchors.m:125), and it is UNREACHABLE from the only
+% emitter that can produce a negative extent -- the guard at :294 is behind
+% `~isempty(startCell) && ~isempty(endCell)`, and both are empty for every real
+% bounded document. So the counter reads 0 not because no such document exists
+% but because the branch is never entered. A refusal counter that cannot fire is
+% indistinguishable from a clean corpus, which is precisely the shape of every
+% instrument failure recorded in this project.
+%
+% The reversed window is produced by the REAL migrator: nothing in
+% applyEncounterMap orders onset against offset.
+[out, rep] = foldEncounter( ...
+    {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, 'SID_1', 1265.39, 1249.72);
+
+verifyEqual(testCase, rep.anchors_bounded, 1);
+verifyEqual(testCase, rep.refused_negative_extent, 1, ...
+    ['a window ending before it starts was FOLDED, not refused: the fold never ' ...
+     'read the extent, so the negative-extent guard could not fire. See the ' ...
+     'DEFECT block in this file''s header.']);
+verifyEqual(testCase, rep.anchors_folded, 0);
+verifyEqual(testCase, rep.refused_total, 1);
+
+% and the refused document is left EXACTLY as it is -- never dropped, never
+% given an empty required edge
+windows = ofClass(out, 'session_bounded_reference');
+verifyEqual(testCase, numel(windows), 1, ...
+    'the refused window must survive untouched, not be dropped');
+if ~isempty(windows)
+    verifyEmpty(testCase, depValue(windows{1}.toStruct(), 'relative_to'));
+end
+verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+end
+
+% ---- the bounded refusal paths, each driven from the real emitter ----------
+
+function testABoundedWindowWithNoSessionDocumentIsLeftIntactNotHollowed(testCase)
+% Discovery mode hands the fold a subset batch that need not contain the session
+% document -- jSessionAnchor's own note about discovery-mode orphans, which this
+% project has recorded as CORRECT. The window must be left exactly as it is and
+% counted, never given an empty required edge: `references.m:90` skips empty
+% edges, so a hollowed one would validate clean and no gate would see it.
+[out, rep, windowIds] = foldEncounter({}, 'SID_1', 1249.72, 1265.39);   % no session doc
+
+verifyEqual(testCase, numel(windowIds), 1);
+verifyEqual(testCase, rep.session_documents_seen, 0);
+verifyEqual(testCase, rep.anchors_seen, 1);
+verifyEqual(testCase, rep.anchors_bounded, 1);
+verifyEqual(testCase, rep.anchors_folded, 0);
+verifyEqual(testCase, rep.refused_no_session_document, 1);
+verifyEqual(testCase, rep.refused_no_session_id, 0);
+verifyEqual(testCase, rep.refused_total, 1);
+
+windows = ofClass(out, 'session_bounded_reference');
+assertEqual(testCase, numel(windows), 1, ...
+    'the refused window must survive untouched, not be dropped');
+verifyEqual(testCase, char(windows{1}.get('base.id')), windowIds{1});
+verifyEmpty(testCase, depValue(windows{1}.toStruct(), 'relative_to'));
+verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+end
+
+function testABoundedWindowWithNoSessionIdIsRefusedNotGuessed(testCase)
+% `refused_no_session_id`, driven from the real emitter rather than asserted from
+% a hand-built body with the field deleted. `freshBase` (ontology_table_row.m:
+% 547-557) defaults `session_id` to '' when the SOURCE body carries none, so a
+% source document with an empty session_id produces a window the fold cannot
+% join. It must refuse, not guess -- there is exactly one session document in
+% this batch and picking it because it is the only one is inventing a fact.
+[out, rep] = foldEncounter( ...
+    {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, '', 1249.72, 1265.39);
+
+verifyEqual(testCase, rep.session_documents_seen, 1);
+verifyEqual(testCase, rep.anchors_seen, 1);
+verifyEqual(testCase, rep.anchors_bounded, 1);
+verifyEqual(testCase, rep.anchors_folded, 0);
+verifyEqual(testCase, rep.refused_no_session_id, 1);
+verifyEqual(testCase, rep.refused_no_session_document, 0);
+verifyEqual(testCase, rep.refused_total, 1);
+
+verifyEqual(testCase, numel(ofClass(out, 'session_bounded_reference')), 1);
+verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+end
+
+function testTwoSessionDocumentsClaimingOneSessionIdRefuseTheBoundedWindow(testCase)
+% `refused_ambiguous_session`, driven from the real emitter. Two `session`
+% documents claiming one `base.session_id` is a corpus the fold cannot resolve
+% honestly: `relative_to` would name one of two candidates and nothing on the
+% anchor says which. The DOCUMENT IDS DIFFER and the SESSION IDS MATCH, which is
+% the only arrangement that reaches this counter.
+[out, rep] = foldEncounter({ ...
+    sessionBody('sess_doc_1', 'SID_1', 'exp1'), ...
+    sessionBody('sess_doc_2', 'SID_1', 'exp1-again')}, 'SID_1', 1249.72, 1265.39);
+
+verifyEqual(testCase, rep.session_documents_seen, 2);
+verifyEqual(testCase, rep.anchors_bounded, 1);
+verifyEqual(testCase, rep.anchors_folded, 0);
+verifyEqual(testCase, rep.refused_ambiguous_session, 1);
+verifyEqual(testCase, rep.refused_no_session_id, 0);
+verifyEqual(testCase, rep.refused_no_session_document, 0);
+verifyEqual(testCase, rep.refused_total, 1);
+
+verifyEqual(testCase, numel(ofClass(out, 'session_bounded_reference')), 1);
 verifyEmpty(testCase, ofClass(out, 'relative_reference'));
 end
