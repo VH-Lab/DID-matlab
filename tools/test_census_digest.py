@@ -16,9 +16,11 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from census_digest import (aslist, digest, epoch_association,  # noqa: E402
-                           ndi_required, ndi_required_names, norm_class,
-                           normalised_class_index, render_report, rollup)
+from census_digest import (TRF_NOT_SHAPEABLE, aslist, digest,  # noqa: E402
+                           epoch_association, ndi_required,
+                           ndi_required_names, norm_class,
+                           normalised_class_index, render_report, rollup,
+                           time_reference_families, trf_shape_regime)
 
 
 class TestAsList(unittest.TestCase):
@@ -3136,6 +3138,579 @@ class TestPostPassEpochPopulation(DigestCase):
         self.assertEqual(block.count("POPULATION: `epochs minted`"), 1)
         self.assertEqual(block.count("POPULATION: `epoch documents"), 1)
 
+
+class TestTimeReferenceFamilies(DigestCase):
+    """#52: the time-reference-family block (`did2.validate.timeReferenceFamilies`).
+
+    THE DEFECT THESE COVER IS THE ONE THE INSTRUMENT ITSELF HAD ON ARRIVAL: it
+    ran, it persisted, and it printed nowhere, so the evidence for a team
+    decision reached a zip file and stopped. No MATLAB is available in this
+    container, so the MATLAB half is UNEXECUTED here and CI is its first run;
+    everything below is the Python half.
+
+    EVERY ASSERTION IS SCOPED TO ONE HALF OF THE BLOCK. The reference verdict
+    and the shape verdict are near-identical two-line banners, and an assertion
+    made against the whole digest passes when only one of them exists -- two
+    near-identical banners covering each other is a mutation that came back
+    green earlier today, one file over. `_reference_half` and `_shape_half`
+    slice them apart so each is checked in its own half.
+    """
+
+    SPLIT = "kind=2rel | clock=same | relative_to=distinct | extent=2instant"
+    NCLOCK = "kind=2rel | clock=distinct | relative_to=same | extent=2span"
+    OTHER = "kind=1other+1rel | clock=same | relative_to=same | extent=2instant"
+
+    # ---- fixtures --------------------------------------------------------
+
+    def _block(self, **over):
+        """A MEASURED block: 4 of 40 referencing slots carry two members, 3 of
+        those shapeable and 1 not. The counters satisfy every invariant the
+        instrument's control flow guarantees, so a test that breaks one has to
+        break it deliberately."""
+        b = {
+            "docs_inspected": 1000, "docs_unreadable": 0,
+            "docs_unclassifiable": 0, "docs_classified": 1000,
+            "docs_class_unresolved": 0, "docs_with_an_id": 1000,
+            "docs_declaring_family": 40, "docs_declaring_two_families": 0,
+            "schema_cache_available": True,
+            "slots_examined": 40, "slots_with_no_member": 0,
+            "slots_with_blank_members_only": 0,
+            "members_examined": 44, "members_blank": 0,
+            "statements_with_reference": 40, "statements_multi_reference": 4,
+            "count_distribution": [{"members": 1, "statements": 36},
+                                   {"members": 2, "statements": 4}],
+            "shape": [
+                {"shape_key": self.SPLIT, "statements": 3, "members": 2,
+                 "example_document_id": "abc123",
+                 "example_class_name": "subject_interaction",
+                 "family": "time_reference_#"},
+                {"shape_key": TRF_NOT_SHAPEABLE, "statements": 1, "members": 2,
+                 "example_document_id": "def456",
+                 "example_class_name": "directed_relation",
+                 "family": "time_reference_#"}],
+            "shape_denominator": {"multi_slots_examined": 4,
+                                  "multi_slots_shaped": 3,
+                                  "multi_slots_unresolved": 1,
+                                  "multi_members_examined": 8,
+                                  "multi_members_resolved": 7,
+                                  "multi_members_unresolved": 1},
+            "emitter": [
+                {"shape_key": self.SPLIT,
+                 "statement_class": "subject_interaction",
+                 "statement_name": "migrated_valid_interval",
+                 "anchor_names": "migrated_valid_interval_anchor",
+                 "statements": 3},
+                {"shape_key": TRF_NOT_SHAPEABLE,
+                 "statement_class": "directed_relation",
+                 "statement_name": "", "anchor_names": "<unresolved>",
+                 "statements": 1}],
+            "emitter_denominator": {"multi_slots_with_statement_name": 3,
+                                    "multi_slots_without_statement_name": 1},
+            "reference_census_vacuous": False,
+            "reference_census_vacuous_reason":
+                "MEASURED: 40 document(s) declare a time-reference family; "
+                "40 slot(s) examined; 40 carry at least one populated member.",
+            "shape_census_vacuous": False,
+            "shape_census_vacuous_reason":
+                "MEASURED: 4 multi-reference statement(s), 3 shaped, 1 not "
+                "shapeable (referent outside the batch), 2 distinct shape(s).",
+            "headline":
+                "DENOMINATOR: 1000 document(s) inspected (0 unreadable, 0 "
+                "unclassifiable, 0 class-unresolved); 40 declare a "
+                "time-reference family; 40 slot(s); 40 statement(s) carry a "
+                "reference; 4 carry more than one.",
+        }
+        b.update(over)
+        return b
+
+    def _corpus(self, name, block, **rest):
+        body = {"corpus": name, "total": 1000, "migrated_count": 1000,
+                "quarantine_count": 0}
+        if block is not None:
+            body["time_reference_families"] = block
+        body.update(rest)
+        self.write(name, body)
+
+    # ---- slicing helpers -------------------------------------------------
+
+    def _per_corpus(self, text, corpus="A"):
+        """The #52 block for ONE corpus, cut out of the whole digest.
+
+        Bounded ABOVE by the corpus header and BELOW by the next block's
+        header, so a line that leaked in from the cross-corpus rollup cannot
+        satisfy a per-corpus assertion.
+        """
+        start = text.index("--- %s ---" % corpus)
+        body = text[start:]
+        head = body.index("#52 EVIDENCE")
+        tail = body.index("EPOCH ASSOCIATION (#72)", head)
+        return body[head:tail]
+
+    def _rollup(self, text):
+        """The cross-corpus #52 block only."""
+        start = text.index("ACROSS ALL CORPORA")
+        body = text[start:]
+        head = body.index("#52 -- TIME REFERENCES PER STATEMENT")
+        return body[head:]
+
+    def _reference_half(self, block):
+        """From `REFERENCE CENSUS:` to `SHAPE CENSUS:` -- and NOT past it."""
+        return block[block.index("REFERENCE CENSUS:"):
+                     block.index("SHAPE CENSUS:")]
+
+    def _shape_half(self, block):
+        """From `SHAPE CENSUS:` to the derived-regime line."""
+        return block[block.index("SHAPE CENSUS:"):
+                     block.index("SHAPE-CENSUS REGIME")]
+
+    # ---- the block exists at all ----------------------------------------
+
+    def test_the_per_corpus_block_is_rendered(self):
+        # The whole point: this instrument ran and printed NOWHERE. A block in
+        # the artifact and not on the screen is the epochMint defect.
+        self._corpus("A", self._block())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("#52 EVIDENCE -- TIME-REFERENCE FAMILIES PER STATEMENT",
+                      text[:text.index("ACROSS ALL CORPORA")])
+
+    def test_the_cross_corpus_block_is_rendered(self):
+        # Asserted SEPARATELY from the per-corpus one: they are two call sites
+        # and removing either must redden a test of its own.
+        self._corpus("A", self._block())
+        text, _ = self.run_digest()
+        self.assertIn("#52 -- TIME REFERENCES PER STATEMENT",
+                      text[text.index("ACROSS ALL CORPORA"):])
+
+    def test_it_is_never_added_to_the_uniqueness_table(self):
+        # The two are the #52 pair and they answer different questions. Both
+        # blocks say so in their own words, so a reader who arrives at either
+        # one first is told.
+        self._corpus("A", self._block())
+        text, _ = self.run_digest()
+        self.assertIn("a SEPARATE bucket from the family-UNIQUENESS violations",
+                      self._per_corpus(text))
+        self.assertIn("do NOT add this to the", self._rollup(text))
+
+    # ---- reading order ---------------------------------------------------
+
+    def test_the_headline_and_both_verdicts_precede_every_count(self):
+        # The instrument's author handed this over as the reading order and it
+        # is not stylistic: every count here has a meaning that depends on
+        # which vacuity regime produced it.
+        self._corpus("A", self._block())
+        block = self._per_corpus(self.run_digest()[0])
+        head = block.index("DENOMINATOR: 1000 document(s) inspected")
+        ref = block.index("REFERENCE CENSUS:")
+        shape = block.index("SHAPE CENSUS:")
+        rows = block.index("DENOMINATOR ROWS")
+        self.assertLess(head, ref)
+        self.assertLess(ref, shape)
+        self.assertLess(shape, rows)
+
+    # ---- the two verdicts, each checked in its OWN half ------------------
+
+    def test_the_reference_verdict_renders_in_its_own_half(self):
+        self._corpus("A", self._block())
+        half = self._reference_half(self._per_corpus(self.run_digest()[0]))
+        self.assertIn("REFERENCE CENSUS: MEASURED", half)
+        self.assertIn("40 document(s) declare a time-reference family", half)
+
+    def test_the_shape_verdict_renders_in_its_own_half(self):
+        self._corpus("A", self._block())
+        half = self._shape_half(self._per_corpus(self.run_digest()[0]))
+        self.assertIn("SHAPE CENSUS: MEASURED", half)
+        self.assertIn("4 multi-reference statement(s), 3 shaped", half)
+
+    def test_a_missing_reference_verdict_is_not_covered_by_the_shape_one(self):
+        # The mutation this exists for: delete one banner and the other keeps a
+        # whole-digest assertion green. Each half is asserted to carry ITS OWN
+        # flag name, so neither can stand in for the other.
+        self._corpus("A", self._block())
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("REFERENCE CENSUS:", self._reference_half(block))
+        self.assertNotIn("SHAPE CENSUS:", self._reference_half(block))
+        self.assertIn("SHAPE CENSUS:", self._shape_half(block))
+        self.assertNotIn("REFERENCE CENSUS:", self._shape_half(block))
+
+    def test_a_verdict_with_no_reason_string_says_so(self):
+        # `_reason` is written on every path out of the instrument, so an
+        # absent one is a finding about the report and not a formatting detail.
+        b = self._block()
+        del b["shape_census_vacuous_reason"]
+        self._corpus("A", b)
+        half = self._shape_half(self._per_corpus(self.run_digest()[0]))
+        self.assertIn("carries NO `shape_census_vacuous_reason`", half)
+
+    def test_a_flag_that_contradicts_its_own_reason_is_flagged(self):
+        # The flag says MEASURED and the sentence opens VACUOUS. Trust neither.
+        b = self._block(shape_census_vacuous_reason="VACUOUS: something else.")
+        self._corpus("A", b)
+        half = self._shape_half(self._per_corpus(self.run_digest()[0]))
+        self.assertIn("THE FLAG AND ITS REASON DISAGREE", half)
+
+    # ---- the THREE ways the shape census reads empty ---------------------
+
+    def test_no_document_could_have_carried_a_reference(self):
+        # reference_census_vacuous. Every count below it is empty by
+        # construction and says nothing about time references.
+        b = self._block(
+            docs_declaring_family=0, slots_examined=0, members_examined=0,
+            statements_with_reference=0, statements_multi_reference=0,
+            count_distribution=[], shape=[], emitter=[],
+            shape_denominator={"multi_slots_examined": 0,
+                               "multi_slots_shaped": 0,
+                               "multi_slots_unresolved": 0,
+                               "multi_members_examined": 0,
+                               "multi_members_resolved": 0,
+                               "multi_members_unresolved": 0},
+            emitter_denominator={"multi_slots_with_statement_name": 0,
+                                 "multi_slots_without_statement_name": 0},
+            reference_census_vacuous=True,
+            reference_census_vacuous_reason=(
+                "VACUOUS: 1000 document(s) classified, NONE belonging to a "
+                "class whose chain declares a time-reference family. No "
+                "document in this batch could have carried a time reference, "
+                "so every count below is empty by construction and says "
+                "nothing about time references."),
+            shape_census_vacuous=True,
+            shape_census_vacuous_reason=(
+                "VACUOUS: the reference census itself was vacuous -- see its "
+                "reason."))
+        self._corpus("A", b)
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("REFERENCE CENSUS: VACUOUS", self._reference_half(block))
+        self.assertIn("could have carried a time reference",
+                      self._reference_half(block))
+        self.assertIn("NOT REACHED -- the reference census was itself vacuous",
+                      block)
+
+    def test_no_statement_carries_a_second_reference_is_a_result(self):
+        # shape_census_vacuous, reading ONE: the undefined regime is empty in
+        # this batch. That agrees with the signed model's prediction.
+        b = self._block(
+            statements_multi_reference=0,
+            count_distribution=[{"members": 1, "statements": 40}],
+            shape=[], emitter=[],
+            shape_denominator={"multi_slots_examined": 0,
+                               "multi_slots_shaped": 0,
+                               "multi_slots_unresolved": 0,
+                               "multi_members_examined": 0,
+                               "multi_members_resolved": 0,
+                               "multi_members_unresolved": 0},
+            emitter_denominator={"multi_slots_with_statement_name": 0,
+                                 "multi_slots_without_statement_name": 0},
+            shape_census_vacuous=True,
+            shape_census_vacuous_reason=(
+                "VACUOUS: 40 statement(s) carry a time reference and EVERY ONE "
+                "carries exactly one. No statement is in the undefined regime, "
+                "so the shape table could not fire; its emptiness is 'the case "
+                "does not occur here', not 'the shapes are fine'."))
+        self._corpus("A", b)
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("SHAPE CENSUS: VACUOUS", self._shape_half(block))
+        self.assertIn("UNOCCUPIED -- statements carry a reference, none "
+                      "carries two (a RESULT)", block)
+        # ...and it must NOT print the occupied-and-unmeasured alarm.
+        self.assertNotIn("THE UNDEFINED REGIME IS OCCUPIED", block)
+
+    def test_multi_reference_statements_with_none_shapeable_is_not_clean(self):
+        # shape_census_vacuous, reading TWO -- the SAME flag, the OPPOSITE
+        # finding. The regime is occupied and nobody measured it. This is the
+        # one zero in the block that must never read as clean.
+        b = self._block(
+            statements_multi_reference=9,
+            count_distribution=[{"members": 1, "statements": 31},
+                                {"members": 2, "statements": 9}],
+            statements_with_reference=40,
+            shape=[{"shape_key": TRF_NOT_SHAPEABLE, "statements": 9,
+                    "members": 2, "example_document_id": "q",
+                    "example_class_name": "epoch",
+                    "family": "time_reference_#"}],
+            shape_denominator={"multi_slots_examined": 9,
+                               "multi_slots_shaped": 0,
+                               "multi_slots_unresolved": 9,
+                               "multi_members_examined": 18,
+                               "multi_members_resolved": 9,
+                               "multi_members_unresolved": 9},
+            emitter=[{"shape_key": TRF_NOT_SHAPEABLE,
+                      "statement_class": "epoch",
+                      "statement_name": "migrated_epoch_extent",
+                      "anchor_names": "<unresolved>", "statements": 9}],
+            emitter_denominator={"multi_slots_with_statement_name": 9,
+                                 "multi_slots_without_statement_name": 0},
+            shape_census_vacuous=True,
+            shape_census_vacuous_reason=(
+                "VACUOUS: 9 multi-reference statement(s) found, and EVERY ONE "
+                "had at least one referent outside this batch, so no shape "
+                "could be computed. The regime is occupied and UNMEASURED -- "
+                "this is the one zero that must never read as clean."))
+        self._corpus("A", b)
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("SHAPE CENSUS: VACUOUS", self._shape_half(block))
+        self.assertIn("OCCUPIED AND UNMEASURED", block)
+        self.assertIn("THE UNDEFINED REGIME IS OCCUPIED AND WAS NOT MEASURED",
+                      block)
+        # ...and it must NOT print the "a RESULT" reassurance, which is the
+        # other reading of the same flag.
+        self.assertNotIn("none carries two (a RESULT)", block)
+
+    def test_the_regime_is_derived_from_the_counters_not_the_flag(self):
+        # A block whose flag has been set wrong still classifies correctly:
+        # trf_shape_regime reads the numbers. Four inputs, four answers.
+        self.assertEqual(trf_shape_regime(
+            {"reference_census_vacuous": True}), "not_reached")
+        self.assertEqual(trf_shape_regime(
+            {"reference_census_vacuous": False, "docs_declaring_family": 0}),
+            "not_reached")
+        self.assertEqual(trf_shape_regime(
+            {"reference_census_vacuous": False, "docs_declaring_family": 5,
+             "statements_multi_reference": 0}), "unoccupied")
+        self.assertEqual(trf_shape_regime(
+            {"reference_census_vacuous": False, "docs_declaring_family": 5,
+             "statements_multi_reference": 9,
+             "shape_denominator": {"multi_slots_shaped": 0}}),
+            "occupied_unmeasured")
+        self.assertEqual(trf_shape_regime(
+            {"reference_census_vacuous": False, "docs_declaring_family": 5,
+             "statements_multi_reference": 9,
+             "shape_denominator": {"multi_slots_shaped": 3}}), "measured")
+
+    # ---- absent is not zero ----------------------------------------------
+
+    def test_a_report_predating_the_instrument_is_named_not_summed(self):
+        # THE RULE THIS BLOCK EXISTS UNDER. A report with no block contributes
+        # NOTHING and is named; it is never a corpus that measured a zero.
+        self._corpus("A", self._block())
+        self._corpus("Old", None)
+        text, _ = self.run_digest()
+        old = self._per_corpus(text, "Old")
+        self.assertIn("NOT MEASURED", old)
+        self.assertIn("PREDATES the instrument", old)
+        # No counts for it, and the rollup denominator says 1 of 2.
+        self.assertNotIn("DENOMINATOR ROWS", old)
+        roll = self._rollup(text)
+        self.assertIn("2 corpus report(s); 1 carried a readable block, "
+                      "1 did not", roll)
+        self.assertIn("NOT MEASURED in: Old", roll)
+        self.assertIn("sums over 1 corpora, not 2", roll)
+        # ...and its 1000 documents are NOT in the inspected total.
+        self.assertIn("1000 document(s) inspected in total", roll)
+
+    def test_an_absent_counter_prints_absent_and_not_zero(self):
+        b = self._block()
+        del b["docs_with_an_id"]
+        self._corpus("A", b)
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("(absent)  DISTINCT document ids indexed", block)
+
+    def test_a_failed_audit_is_not_a_zero(self):
+        self._corpus("A", {"audit_failed": "Undefined function 'classChain'"})
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("audit FAILED (Undefined function 'classChain')", block)
+        self.assertNotIn("DENOMINATOR ROWS", block)
+
+    def test_no_schema_cache_reads_as_did_not_look(self):
+        # The instrument's own words. Every count is 0 on this path and none of
+        # them is a finding.
+        b = self._block(schema_cache_available=False)
+        self._corpus("A", b)
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("no schema cache was available", block)
+        self.assertNotIn("DENOMINATOR ROWS", block)
+
+    # ---- the union, and the summing trap ---------------------------------
+
+    def test_the_rollup_unites_shape_rows_by_key_instead_of_summing_them(self):
+        # THE TRAP, verbatim from one file over: the relaxed-edge rollup ADDED
+        # per-corpus distinct counts, so a pair in three corpora counted 3 and
+        # a published "7 of 26 seen" was an upper bound. A shape is the same
+        # kind of identity. Here the SPLIT shape is in BOTH corpora and the
+        # NCLOCK shape in one, so the distinct figure is 2 and the summed row
+        # count is 3.
+        self._corpus("A", self._block())
+        b2 = self._block(
+            shape=[{"shape_key": self.SPLIT, "statements": 5, "members": 2,
+                    "example_document_id": "zzz",
+                    "example_class_name": "subject_interaction",
+                    "family": "time_reference_#"},
+                   {"shape_key": self.NCLOCK, "statements": 2, "members": 2,
+                    "example_document_id": "yyy",
+                    "example_class_name": "epoch",
+                    "family": "time_reference_#"}],
+            statements_multi_reference=7,
+            count_distribution=[{"members": 1, "statements": 33},
+                                {"members": 2, "statements": 7}],
+            shape_denominator={"multi_slots_examined": 7,
+                               "multi_slots_shaped": 7,
+                               "multi_slots_unresolved": 0,
+                               "multi_members_examined": 14,
+                               "multi_members_resolved": 14,
+                               "multi_members_unresolved": 0},
+            emitter=[{"shape_key": self.SPLIT,
+                      "statement_class": "subject_interaction",
+                      "statement_name": "migrated_valid_interval",
+                      "anchor_names": "migrated_valid_interval_anchor",
+                      "statements": 5},
+                     {"shape_key": self.NCLOCK, "statement_class": "epoch",
+                      "statement_name": "migrated_epoch_extent",
+                      "anchor_names": "migrated_epoch_extent_anchor",
+                      "statements": 2}],
+            emitter_denominator={"multi_slots_with_statement_name": 7,
+                                 "multi_slots_without_statement_name": 0})
+        self._corpus("B", b2)
+        roll = self._rollup(self.run_digest()[0])
+        self.assertIn("SHAPES, UNITED BY `shape_key` ACROSS CORPORA -- NOT "
+                      "SUMMED.", roll)
+        self.assertIn("2 distinct shape(s) in the union", roll)
+        # The summed figure is printed BESIDE it, named as the wrong one.
+        self.assertIn("the per-corpus shape-row counts ADD to 3", roll)
+        # The shared shape appears ONCE, with both corpora named on it.
+        self.assertEqual(roll.count(self.SPLIT), 2)  # shape row + emitter row
+        self.assertIn("seen in: A, B", roll)
+        # Its slot counts DO add -- occurrences are not identities.
+        self.assertIn("8 slot(s)  members=2  " + self.SPLIT, roll)
+
+    def test_the_pseudo_row_is_not_counted_as_a_shape(self):
+        # `<NOT SHAPEABLE ...>` is a row so the table PARTITIONS the multi
+        # slots, and it is not a shape. The instrument's own MEASURED sentence
+        # counts it, which is why the digest says so out loud.
+        self._corpus("A", self._block())
+        text, _ = self.run_digest()
+        block = self._per_corpus(text)
+        self.assertIn("SHAPES: 2 table row(s) -- 1 shape(s) and 1 "
+                      "NOT-SHAPEABLE", block)
+        self.assertIn("that sentence is one high", block)
+        roll = self._rollup(text)
+        self.assertIn("1 distinct shape(s) in the union", roll)
+        self.assertIn("Plus 1 NOT-SHAPEABLE pseudo-row (1 slot(s))", roll)
+
+    def test_the_pseudo_row_total_is_checked_against_its_counter(self):
+        # If the MATLAB literal ever drifts, the row silently becomes an
+        # ordinary shape. The invariant catches it.
+        b = self._block()
+        b["shape"][1]["shape_key"] = "<NOT SHAPEABLE -- something else>"
+        self._corpus("A", b)
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("INTERNAL CONSISTENCY: 8 invariant(s) checked, "
+                      "1 disagreement(s)", block)
+        self.assertIn("the NOT-SHAPEABLE pseudo-row matches its counter",
+                      block)
+
+    # ---- the alarms ------------------------------------------------------
+
+    def test_a_distribution_row_at_two_is_marked_undefined(self):
+        self._corpus("A", self._block())
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("4 slot(s) carry 2 populated member(s)   <-- UNDEFINED "
+                      "REGIME", block)
+        self.assertNotIn("carry 1 populated member(s)   <-- UNDEFINED", block)
+
+    def test_a_member_that_is_not_a_time_reference_is_flagged(self):
+        # `must_refer` is existence-only, so such a document validates clean.
+        # The instrument calls it "a finding, not something to round off".
+        b = self._block()
+        b["shape"][0]["shape_key"] = self.OTHER
+        b["emitter"][0]["shape_key"] = self.OTHER
+        self._corpus("A", b)
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("A MEMBER OF THIS FAMILY IS NOT A TIME REFERENCE", block)
+
+    def test_two_families_on_one_class_changes_what_a_slot_means(self):
+        b = self._block(docs_declaring_two_families=2)
+        self._corpus("A", b)
+        text, _ = self.run_digest()
+        self.assertIn("A CLASS IN THIS BATCH DECLARES TWO TIME-REFERENCE",
+                      self._per_corpus(text))
+        self.assertIn("TWO FAMILIES ON ONE CLASS in: A", self._rollup(text))
+
+    def test_an_unresolvable_class_is_not_looked_at(self):
+        b = self._block(docs_class_unresolved=7)
+        self._corpus("A", b)
+        text, _ = self.run_digest()
+        self.assertIn("name a class the schema cache could not",
+                      self._per_corpus(text))
+        self.assertIn("CLASSES THE CACHE COULD NOT RESOLVE in: A (7)",
+                      self._rollup(text))
+
+    def test_a_broken_partition_is_reported_as_an_instrument_defect(self):
+        b = self._block()
+        b["shape_denominator"]["multi_slots_shaped"] = 2
+        self._corpus("A", b)
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("INTERNAL CONSISTENCY: 8 invariant(s) checked, "
+                      "1 disagreement(s)", block)
+        self.assertIn("the shape pass partitions its slots", block)
+        self.assertIn("NOT a property of the corpus", block)
+
+    # ---- the reading instructions ---------------------------------------
+
+    def test_the_reading_instructions_name_what_to_be_alarmed_by(self):
+        # They are read off timeReferenceFamilies.m, and the point of asserting
+        # them is that a block whose prose is deleted stops telling a reader
+        # which zero is which.
+        self._corpus("A", self._block())
+        roll = self._rollup(self.run_digest()[0])
+        self.assertIn("WHAT TO BE ALARMED BY IN THIS BLOCK", roll)
+        self.assertIn("ANY DISTRIBUTION ROW AT 2 OR MORE", roll)
+        self.assertIn("MULTI-REFERENCE STATEMENTS WITH NONE SHAPEABLE", roll)
+        self.assertIn("WHAT THIS BLOCK CANNOT TELL YOU", roll)
+        self.assertIn("WHETHER AN INDEX MEANS A ROLE", roll)
+        self.assertIn("THE CORPORA ARE A SAMPLE OF DATASETS", roll)
+
+    def test_the_digest_proposes_no_role_name(self):
+        # #52 is the team's call. A digest that suggested `start_anchor` would
+        # be answering the question its own output exists to inform.
+        self._corpus("A", self._block())
+        text, _ = self.run_digest()
+        for invented in ("start_anchor", "end_anchor", "role_name",
+                         "should be named", "we recommend"):
+            self.assertNotIn(invented, self._rollup(text))
+
+    # ---- MATLAB shapes ---------------------------------------------------
+
+    def test_a_single_row_table_arrives_as_a_bare_object(self):
+        # jsonencode writes a 1-element struct array as an object. The shape
+        # that killed run #256 after 2h49m, applied to this block's four
+        # list-shaped fields.
+        b = self._block(
+            count_distribution={"members": 2, "statements": 4},
+            shape={"shape_key": self.SPLIT, "statements": 4, "members": 2,
+                   "example_document_id": "abc123",
+                   "example_class_name": "subject_interaction",
+                   "family": "time_reference_#"},
+            emitter={"shape_key": self.SPLIT,
+                     "statement_class": "subject_interaction",
+                     "statement_name": "migrated_valid_interval",
+                     "anchor_names": "migrated_valid_interval_anchor",
+                     "statements": 4},
+            statements_with_reference=4,
+            shape_denominator={"multi_slots_examined": 4,
+                               "multi_slots_shaped": 4,
+                               "multi_slots_unresolved": 0,
+                               "multi_members_examined": 8,
+                               "multi_members_resolved": 8,
+                               "multi_members_unresolved": 0},
+            emitter_denominator={"multi_slots_with_statement_name": 4,
+                                 "multi_slots_without_statement_name": 0})
+        self._corpus("A", b)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("4 slot(s)  2 member(s)  " + self.SPLIT,
+                      self._per_corpus(text))
+
+    def test_the_reader_survives_a_malformed_block(self):
+        self._corpus("A", ["not", "an", "object"])
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("malformed (list)", self._per_corpus(text))
+
+    def test_the_reader_is_a_function_a_caller_can_use(self):
+        # Same contract as ndi_required/epoch_association: measured + why.
+        self.assertFalse(time_reference_families({})["measured"])
+        self.assertIn("PREDATES", time_reference_families({})["why"])
+        self.assertTrue(time_reference_families(
+            {"time_reference_families": self._block()})["measured"])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

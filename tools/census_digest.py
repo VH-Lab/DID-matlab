@@ -32,6 +32,7 @@ it must not also destroy the data it could read.
 import json
 import os
 import sys
+import textwrap
 import traceback
 
 # Sentinel placed in the `failed` list when the digest found no reports at all.
@@ -1112,6 +1113,823 @@ def rollup_ndi_required_union(unions, carried, missing, drift, n_measured,
     p("      *** DID-schema from the stamped schema and is deliberately NOT")
     p("      *** duplicated here. Subtract the union above from that set: the")
     p("      *** remainder is UNMEASURED on real data -- not clean, unlooked-at.")
+
+
+# --- #52: HOW MANY TIME REFERENCES DOES ONE STATEMENT CARRY, AND WHAT SHAPE? -
+#
+# `did2.validate.timeReferenceFamilies` is the evidence for open item #52, where
+# the record states plainly that MULTIPLE REFERENCES ON ONE STATEMENT ARE
+# UNDEFINED IN MEANING until the `time_reference_#` edges are role-named. It
+# runs in v1_to_v2 and writeCorpusReport persists it, and until this block
+# landed it printed NOWHERE -- the write-only condition this whole file exists
+# to remove, arriving for the seventh time.
+#
+# A SEPARATE BUCKET FROM silentLoss's `family_uniqueness_violation`, and the two
+# must never be added or read as one number. That counter asks whether two
+# members of one family BREAK the signed uniqueness rule. This one asks the
+# prior, descriptive question the rule does not answer: how often does a family
+# have more than one member, and what do those members look like relative to
+# each other. A batch can satisfy uniqueness perfectly and be full of shapes
+# nobody has decided the meaning of -- the instrument's own header says distinct
+# clocks and distinct anchors are both "unique" and are not the same thing.
+#
+# READING ORDER IS PART OF THE CONTRACT: `headline`, then BOTH vacuity flags,
+# and only then a count. It is enforced by the renderer's line order and by
+# test_the_headline_and_both_verdicts_precede_every_count.
+
+# The literal `trfUnresolvedKey()` returns. It is a ROW IN THE SHAPE TABLE and
+# NOT A SHAPE: it is there so the table partitions `multi_slots_examined`,
+# because a statement that could not be shaped must stay countable in the same
+# place the shaped ones are or it drops out of the accounting into a silence.
+# The renderer checks its statement total against `multi_slots_unresolved`, so
+# if this string ever drifts from the MATLAB side the disagreement prints
+# instead of the row quietly becoming an ordinary shape.
+TRF_NOT_SHAPEABLE = "<NOT SHAPEABLE -- referent outside the batch>"
+
+# The reference-census denominator, in the order the instrument's own header
+# lists it. `docs_inspected` is printed by the headline above these rows and is
+# deliberately not repeated here.
+TRF_DENOMINATOR = [
+    # The document states, which partition docs_inspected exactly. The two
+    # "NOT looked at" arms are rendered as such: a document that parsed and was
+    # never classified reads as clean when it is left out.
+    ("docs_unreadable", "documents vBodies could not parse (NOT looked at)"),
+    ("docs_unclassifiable", "documents with no document_class (NOT looked at)"),
+    ("docs_classified", "documents classified"),
+    ("docs_class_unresolved",
+     "  classified, chain NOT in the schema cache (NOT looked at)"),
+    ("docs_with_an_id", "DISTINCT document ids indexed -- the referent lookup"),
+    ("docs_declaring_family",
+     "documents whose chain declares a time-reference family"),
+    ("docs_declaring_two_families",
+     "  declaring TWO  <-- above 0 a slot is no longer a document"),
+    ("slots_examined", "(document, family) SLOT(s) examined -- the unit below"),
+    ("slots_with_no_member", "  declaring no numbered member at all"),
+    ("slots_with_blank_members_only",
+     "  every member present and BLANK (names no document)"),
+    ("members_examined", "member(s) examined"),
+    ("members_blank", "  blank -- the empty-required-edge census owns these"),
+    ("statements_with_reference", "slot(s) carrying at least one POPULATED member"),
+    ("statements_multi_reference",
+     "  carrying TWO OR MORE  <-- the regime #52 exists to decide"),
+]
+
+# The shape-census denominator. Kept as its own list because it has its own
+# vacuity verdict and its own way of reading zero.
+TRF_SHAPE_DENOMINATOR = [
+    ("multi_slots_examined", "multi-reference slot(s) reaching the shape pass"),
+    ("multi_slots_shaped", "  shaped (every referent inside the batch)"),
+    ("multi_slots_unresolved",
+     "  NOT SHAPEABLE (a referent outside the batch)"),
+    ("multi_members_examined", "member(s) in those slots"),
+    ("multi_members_resolved", "  resolved to a document in the batch"),
+    ("multi_members_unresolved", "  NOT in the batch"),
+]
+
+
+def _trf_wrap(text, indent, width=78):
+    """Wrap one of the instrument's `_reason` sentences for a log.
+
+    They run to ~250 characters because they are written to be read on their
+    own, and an unwrapped one is a line nobody finishes.
+    """
+    lines = textwrap.wrap(str(text), width=max(20, width - len(indent)))
+    return [indent + line for line in lines] or [indent + str(text)]
+
+
+def time_reference_families(r):
+    """Read one report's time-reference-family block, or say why it cannot be.
+
+    FIVE NOT-MEASURED conditions, each distinct from a zero and from each other.
+    The first is the one this block was written for:
+
+      absent          the report PREDATES the instrument. It is NAMED and
+                      contributes nothing -- never rendered or summed as zeros.
+      malformed       the key is there and is not an object.
+      audit_failed    v1_to_v2's try/catch caught it; the report carries the
+                      message and no counters at all.
+      inspected 0     it was handed nothing.
+      no schema cache no class chain could be resolved, so NO FAMILY COULD BE
+                      DISCOVERED. This is "did not look", not "found nothing",
+                      and the instrument says so in its own reason string.
+
+    A SIXTH condition is NOT a not-measured and is handled by the renderer:
+    `docs_declaring_family == 0` means nothing in the batch could have carried a
+    time reference. That is measured and vacuous -- the block ran, looked, and
+    the question does not arise here.
+    """
+    trf = r.get("time_reference_families")
+    if trf is None:
+        return {"measured": False,
+                "why": "this report carries no time_reference_families block "
+                       "-- it PREDATES the instrument, which landed 2026-08-11"}
+    if not isinstance(trf, dict):
+        return {"measured": False,
+                "why": "the time_reference_families block is malformed (%s)"
+                       % type(trf).__name__}
+    if "audit_failed" in trf:
+        return {"measured": False,
+                "why": "the time-reference-family audit FAILED (%s)"
+                       % trf["audit_failed"]}
+    inspected = trf.get("docs_inspected")
+    if not isinstance(inspected, int) or inspected <= 0:
+        return {"measured": False, "block": trf,
+                "why": "it inspected %s document(s)" % inspected}
+    if trf.get("schema_cache_available") is False:
+        return {"measured": False, "block": trf,
+                "why": "no schema cache was available, so no class chain could "
+                       "be resolved and no family could be discovered"}
+    unreadable = trf.get("docs_unreadable")
+    if isinstance(unreadable, int) and unreadable >= inspected:
+        return {"measured": False, "block": trf,
+                "why": "all %s document(s) handed to it were unreadable"
+                       % inspected}
+    return {"measured": True, "block": trf, "inspected": inspected}
+
+
+def trf_shape_regime(block):
+    """Which of the FOUR shape-census readings a block is in, FROM THE COUNTERS.
+
+    Derived from the numbers rather than by matching the `_reason` string, so a
+    flag that disagrees with its own counters is visible instead of authoritative
+    -- the renderer prints the disagreement. The four:
+
+      not_reached          the reference census was itself vacuous. The shape
+                           table could not even be attempted.
+      unoccupied           statements carry a reference and EVERY ONE carries
+                           exactly one. A RESULT: the undefined regime is empty
+                           in this batch.
+      occupied_unmeasured  multi-reference statements EXIST and not one could be
+                           shaped, because every one had a referent outside the
+                           batch. THE ONE ZERO THAT MUST NEVER READ AS CLEAN --
+                           the regime is occupied and we did not measure it.
+      measured             at least one multi-reference statement was shaped.
+
+    `unoccupied` and `occupied_unmeasured` BOTH set `shape_census_vacuous`, and
+    they are opposite findings. Separating them is the reason this function
+    exists rather than the renderer reading one boolean.
+    """
+    if not isinstance(block, dict):
+        return "not_reached"
+    if block.get("reference_census_vacuous") is True:
+        return "not_reached"
+    if _int_or_none(block.get("docs_declaring_family")) == 0:
+        return "not_reached"
+    multi = _int_or_none(block.get("statements_multi_reference"))
+    if multi == 0:
+        return "unoccupied"
+    sd = block.get("shape_denominator") or {}
+    shaped = _int_or_none(sd.get("multi_slots_shaped")) if isinstance(sd, dict) else None
+    if multi is None or shaped is None:
+        return "not_reached"
+    if shaped == 0:
+        return "occupied_unmeasured"
+    return "measured"
+
+
+def _trf_invariants(block):
+    """The equalities the instrument's own control flow guarantees.
+
+    Every one of these is a partition or a one-increment-per-iteration identity
+    read off timeReferenceFamilies.m, not a hope about the data:
+
+      pass 2 runs once per pending record, and a pending record is appended
+      exactly when `statements_multi_reference` is bumped; inside it,
+      `multi_slots_examined`, one `shape` row and one `emitter` row each go up
+      by one, and the slot lands in exactly one of shaped/unresolved.
+
+    So a disagreement here is a defect in the instrument or in the JSON round
+    trip, never a property of the corpus. Returns a list of
+    (label, left_name, left, right_name, right).
+    """
+    if not isinstance(block, dict):
+        return []
+    sd = block.get("shape_denominator") or {}
+    ed = block.get("emitter_denominator") or {}
+    if not isinstance(sd, dict):
+        sd = {}
+    if not isinstance(ed, dict):
+        ed = {}
+    g = lambda d, k: _int_or_none(d.get(k))
+    shape_rows = aslist(block.get("shape"))
+    emit_rows = aslist(block.get("emitter"))
+    dist_rows = aslist(block.get("count_distribution"))
+    total = lambda rows: sum(_int_or_none(x.get("statements")) or 0
+                             for x in rows if isinstance(x, dict))
+    pseudo = sum(_int_or_none(x.get("statements")) or 0 for x in shape_rows
+                 if isinstance(x, dict)
+                 and x.get("shape_key") == TRF_NOT_SHAPEABLE)
+    checks = [
+        ("every multi-reference slot reaches the shape pass",
+         "statements_multi_reference", g(block, "statements_multi_reference"),
+         "shape_denominator.multi_slots_examined", g(sd, "multi_slots_examined")),
+        ("the shape pass partitions its slots",
+         "multi_slots_examined", g(sd, "multi_slots_examined"),
+         "shaped + NOT SHAPEABLE",
+         _int_sum(g(sd, "multi_slots_shaped"), g(sd, "multi_slots_unresolved"))),
+        ("the shape pass partitions its members",
+         "multi_members_examined", g(sd, "multi_members_examined"),
+         "resolved + unresolved",
+         _int_sum(g(sd, "multi_members_resolved"),
+                  g(sd, "multi_members_unresolved"))),
+        ("the shape table partitions the multi-reference slots",
+         "multi_slots_examined", g(sd, "multi_slots_examined"),
+         "sum of shape row statements", total(shape_rows)),
+        ("the emitter table partitions the same slots",
+         "multi_slots_examined", g(sd, "multi_slots_examined"),
+         "sum of emitter row statements", total(emit_rows)),
+        ("every multi-reference slot is attributed or visibly unattributed",
+         "multi_slots_examined", g(sd, "multi_slots_examined"),
+         "with + without a statement name",
+         _int_sum(g(ed, "multi_slots_with_statement_name"),
+                  g(ed, "multi_slots_without_statement_name"))),
+        ("the count distribution covers every referencing slot",
+         "statements_with_reference", g(block, "statements_with_reference"),
+         "sum of distribution row statements", total(dist_rows)),
+        ("the NOT-SHAPEABLE pseudo-row matches its counter",
+         "multi_slots_unresolved", g(sd, "multi_slots_unresolved"),
+         "statements on the `%s` row" % TRF_NOT_SHAPEABLE, pseudo),
+    ]
+    return [c for c in checks if c[2] is not None and c[4] is not None]
+
+
+def _int_sum(*vals):
+    """Sum that stays None if any addend is missing -- an absent counter must
+    not turn into a 0 that makes a partition check pass."""
+    if any(v is None for v in vals):
+        return None
+    return sum(vals)
+
+
+def _trf_kind_part(shape_key):
+    """The `kind=` segment of a shape key, or '' when there is none.
+
+    The pseudo-row has no segments at all, which is why this returns '' rather
+    than raising: `other` must not be searched for in a string that is not a
+    shape.
+    """
+    if not isinstance(shape_key, str) or "|" not in shape_key:
+        return ""
+    first = shape_key.split("|", 1)[0].strip()
+    return first if first.startswith("kind=") else ""
+
+
+def _trf_shape_description(shape_key):
+    """The instrument's OWN words for a shape, when it has words for it.
+
+    trfShapeKey's header names exactly two compositions and says they are not
+    the same modelling situation. Those two get its sentence, quoted; every
+    other key gets nothing rather than a description invented here. NOTHING IN
+    THIS FUNCTION IS A ROLE NAME -- naming `time_reference_1` is the team's
+    call and is the whole subject of #52.
+    """
+    if not isinstance(shape_key, str) or "|" not in shape_key:
+        return ""
+    same_anchor = "relative_to=same" in shape_key
+    diff_anchor = "relative_to=distinct" in shape_key
+    # The discriminator label follows the SCHEMA's `referent_unique_by` path
+    # (`value.clock` on all three families today), so the segment is matched by
+    # its verdict rather than by assuming the word `clock`.
+    parts = [s.strip() for s in shape_key.split("|")]
+    disc = ""
+    for s in parts[1:]:
+        if s.startswith("relative_to=") or s.startswith("extent="):
+            continue
+        disc = s
+        break
+    if diff_anchor and disc.endswith("=same"):
+        return ("the instrument's header calls this the SPLIT-ANCHOR shape: "
+                "members agreeing on %s and anchored to DIFFERENT documents"
+                % disc.split("=", 1)[0])
+    if same_anchor and disc.endswith("=distinct"):
+        return ("the instrument's header calls this the SAME-EXTENT-N-%sS "
+                "shape: members on DIFFERENT %s anchored to the SAME document"
+                % (disc.split("=", 1)[0].upper(), disc.split("=", 1)[0]))
+    return ""
+
+
+def render_time_reference_families(r, out):
+    """Render one corpus's #52 block. Headline, then BOTH verdicts, then counts.
+
+    THAT ORDER IS THE INSTRUCTION THE INSTRUMENT'S AUTHOR HANDED OVER, and it is
+    not stylistic. Every count in this block has a reading that depends on which
+    vacuity regime produced it, and the most dangerous of them -- multi-reference
+    statements found and none of them shapeable -- prints as a table of zeros if
+    a reader reaches the numbers first.
+    """
+    p = lambda s="": out.append(s)
+
+    p("  #52 EVIDENCE -- TIME-REFERENCE FAMILIES PER STATEMENT (report-only,")
+    p("  a SEPARATE bucket from the family-UNIQUENESS violations above: that")
+    p("  one asks whether two members break the signed rule, this one asks how")
+    p("  often a statement has two at all and what they look like. Never one")
+    p("  number.)")
+    m = time_reference_families(r)
+    block = m.get("block")
+
+    # 1. THE HEADLINE, first and unconditionally -- the instrument composes it
+    #    on every path out of itself INCLUDING its early returns, so a block
+    #    that measured nothing still carries one.
+    if isinstance(block, dict) and block.get("headline"):
+        for line in _trf_wrap(block["headline"], "      "):
+            p(line)
+    elif isinstance(block, dict):
+        p("      *** THE BLOCK CARRIES NO `headline`. The instrument writes one")
+        p("      *** on every path out of itself, so its absence means this")
+        p("      *** report was not produced by it as shipped. The rows below")
+        p("      *** are read straight off the counters instead.")
+    if not m["measured"]:
+        p("      NOT MEASURED -- %s." % m["why"])
+        p("      No count is printed for this corpus. A corpus that could not")
+        p("      be measured and a corpus that measured a ZERO are different")
+        p("      facts and must not print identically.")
+        # The reasons still print when the block exists: "no schema cache" is a
+        # not-measured whose reason string is the explanation.
+        _render_trf_verdicts(block, out)
+        return
+
+    # 2. BOTH VACUITY VERDICTS, BEFORE ANY COUNT.
+    _render_trf_verdicts(block, out)
+
+    regime = trf_shape_regime(block)
+    if regime == "occupied_unmeasured":
+        p("      *** THE UNDEFINED REGIME IS OCCUPIED AND WAS NOT MEASURED.")
+        p("      *** %s statement(s) carry two or more references and NOT ONE"
+          % block.get("statements_multi_reference", "?"))
+        p("      *** could be shaped -- every one had a referent outside this")
+        p("      *** batch. An empty shape table here is not 'the shapes are")
+        p("      *** fine'; it is 'we did not see them'. This is the one zero")
+        p("      *** in this block that must never read as clean.")
+    elif regime == "unoccupied":
+        p("      *** 0 multi-reference statements, over %s that carry one. That"
+          % block.get("statements_with_reference", "?"))
+        p("      *** is a RESULT and it agrees with the signed model, which")
+        p("      *** predicts a single distribution row at 1. It is a fact")
+        p("      *** about THIS SAMPLE and not about the class of documents.")
+
+    # 3. The denominators.
+    p("      DENOMINATOR ROWS (`(absent)` is a counter the report does not")
+    p("      carry -- never printed as 0):")
+    _ea_rows(block, TRF_DENOMINATOR, out, indent="          ")
+    if _int_or_none(block.get("docs_declaring_two_families")):
+        p("      *** A CLASS IN THIS BATCH DECLARES TWO TIME-REFERENCE")
+        p("      *** FAMILIES. The `statements_*` counters above are")
+        p("      *** (document, family) PAIRS, not documents, and nothing else")
+        p("      *** in this block changes to say so.")
+    if _int_or_none(block.get("docs_class_unresolved")):
+        p("      *** %s document(s) name a class the schema cache could not"
+          % block.get("docs_class_unresolved"))
+        p("      *** resolve. Those were NOT LOOKED AT -- they are not classes")
+        p("      *** that declare no family.")
+
+    # 4. The count distribution -- the deliverable for #52.
+    dist = [x for x in aslist(block.get("count_distribution"))
+            if isinstance(x, dict)]
+    p("      COUNT DISTRIBUTION -- populated members per slot. THE ROW AT 1 IS")
+    p("      THE WELL-DEFINED CASE; every row at 2+ is a statement whose")
+    p("      meaning the record calls UNDEFINED until #52 names the edges.")
+    if not dist:
+        p("          (no row -- no slot carries a populated member)")
+    for row in sorted(dist, key=lambda x: _int_or_none(x.get("members")) or 0):
+        n = _int_or_none(row.get("members"))
+        p("          %10s slot(s) carry %s populated member(s)%s"
+          % (row.get("statements", "?"), row.get("members", "?"),
+             "   <-- UNDEFINED REGIME" if (n or 0) >= 2 else ""))
+
+    # 5. The shapes.
+    _render_trf_shapes(block, out)
+
+    # 6. The invariants -- with their own denominator, per Rule 5 applied to
+    #    this renderer's own checking.
+    checks = _trf_invariants(block)
+    bad = [c for c in checks if c[2] != c[4]]
+    p("      INTERNAL CONSISTENCY: %d invariant(s) checked, %d disagreement(s)"
+      % (len(checks), len(bad)))
+    for label, ln, lv, rn, rv in bad:
+        p("      *** %s: `%s` = %s but %s = %s. One of the two is wrong;"
+          % (label, ln, lv, rn, rv))
+        p("      *** this is a defect in the instrument or in the JSON round")
+        p("      *** trip, NOT a property of the corpus.")
+
+
+def _render_trf_verdicts(block, out):
+    """The two vacuity verdicts and their reasons, verbatim.
+
+    TWO FLAGS, TWO DIFFERENT QUESTIONS, and they are printed together and
+    labelled because a reader who takes one for the other gets the wrong answer
+    in the reassuring direction:
+
+      reference_census_vacuous  NO DOCUMENT COULD HAVE CARRIED A REFERENCE --
+                                nothing in the batch belongs to a class whose
+                                chain declares a time-reference family (or we
+                                could not look at all). Every count is empty by
+                                construction and says nothing about time
+                                references.
+      shape_census_vacuous      NO STATEMENT CARRIES A SECOND REFERENCE -- and
+                                it fires AGAIN, for a completely different
+                                reason, when multi-reference statements were
+                                found and every one had a referent outside the
+                                batch. `trf_shape_regime` tells those two apart
+                                from the counters; the flag alone cannot.
+
+    Each `_reason` begins `VACUOUS:` or `MEASURED:` and is the instrument's own
+    sentence. It is printed rather than paraphrased -- a paraphrase is a second
+    copy to drift, and this file's own history is a list of those.
+    """
+    p = lambda s="": out.append(s)
+    if not isinstance(block, dict):
+        return
+    for flag, reason, label in (
+            ("reference_census_vacuous", "reference_census_vacuous_reason",
+             "REFERENCE CENSUS"),
+            ("shape_census_vacuous", "shape_census_vacuous_reason",
+             "SHAPE CENSUS")):
+        if flag not in block:
+            p("      %s: NO VERDICT -- this report carries no `%s`. Absent is"
+              % (label, flag))
+            p("          not `false`; do not read the counts as measured.")
+            continue
+        verdict = "VACUOUS" if block.get(flag) else "MEASURED"
+        p("      %s: %s" % (label, verdict))
+        text = block.get(reason)
+        if not text:
+            p("          *** and it carries NO `%s`. The instrument writes one"
+              % reason)
+            p("          *** on every path; its absence is itself a finding.")
+            continue
+        for line in _trf_wrap(text, "          "):
+            p(line)
+        # The flag and its own sentence must agree on which way round they are.
+        starts = str(text).strip().upper().startswith(verdict)
+        if not starts:
+            p("          *** THE FLAG AND ITS REASON DISAGREE: `%s` is %s and"
+              % (flag, block.get(flag)))
+            p("          *** the reason opens with the other word. Trust")
+            p("          *** neither until the instrument is re-read.")
+    # The flag says vacuous-or-not; only the counters say WHICH vacuum.
+    regime = trf_shape_regime(block)
+    p("      SHAPE-CENSUS REGIME, derived from the counters and not from the")
+    p("      flag: %s" % {
+        "not_reached": "NOT REACHED -- the reference census was itself vacuous",
+        "unoccupied": "UNOCCUPIED -- statements carry a reference, none carries "
+                      "two (a RESULT)",
+        "occupied_unmeasured": "OCCUPIED AND UNMEASURED -- multi-reference "
+                               "statements exist and NONE was shapeable",
+        "measured": "MEASURED -- at least one multi-reference statement was "
+                    "shaped",
+    }[regime])
+
+
+def _render_trf_shapes(block, out):
+    """The shape table for one corpus, denominator first."""
+    p = lambda s="": out.append(s)
+    sd = block.get("shape_denominator")
+    if not isinstance(sd, dict):
+        sd = {}
+    p("      SHAPE DENOMINATOR:")
+    _ea_rows(sd, TRF_SHAPE_DENOMINATOR, out, indent="          ")
+    rows = [x for x in aslist(block.get("shape")) if isinstance(x, dict)]
+    real = [x for x in rows if x.get("shape_key") != TRF_NOT_SHAPEABLE]
+    pseudo = [x for x in rows if x.get("shape_key") == TRF_NOT_SHAPEABLE]
+    p("      SHAPES: %d table row(s) -- %d shape(s) and %d NOT-SHAPEABLE"
+      % (len(rows), len(real), len(pseudo)))
+    p("      pseudo-row(s). THE PSEUDO-ROW IS NOT A SHAPE. The instrument's own")
+    p("      `MEASURED:` sentence above counts it among its 'distinct")
+    p("      shape(s)', because that number is numel(shape) over the whole")
+    p("      table -- so where a pseudo-row exists that sentence is one high.")
+    p("      A SHAPE KEY DESCRIBES THE DATA AND IS NOT A ROLE NAME.")
+    if not rows:
+        p("          (no row -- see the shape-census verdict above for which")
+        p("           of the three empty readings this is)")
+        return
+    for row in sorted(rows, key=lambda x: -(_int_or_none(x.get("statements")) or 0)):
+        p("          %8s slot(s)  %s member(s)  %s"
+          % (row.get("statements", "?"), row.get("members", "?"),
+             row.get("shape_key", "?")))
+        p("                    e.g. %s  [%s]  family %s"
+          % (row.get("example_document_id") or "(no id)",
+             row.get("example_class_name") or "(no class)",
+             row.get("family") or "(unnamed)"))
+        desc = _trf_shape_description(row.get("shape_key"))
+        if desc:
+            for line in _trf_wrap(desc, "                    "):
+                p(line)
+        if "other" in _trf_kind_part(row.get("shape_key")):
+            p("          *** A MEMBER OF THIS FAMILY IS NOT A TIME REFERENCE.")
+            p("          *** `must_refer_to_document_class` is existence-only,")
+            p("          *** so it validates clean. The instrument calls this")
+            p("          *** 'a finding, not something to round off'.")
+    emit = [x for x in aslist(block.get("emitter")) if isinstance(x, dict)]
+    ed = block.get("emitter_denominator")
+    if not isinstance(ed, dict):
+        ed = {}
+    p("      EMITTERS (a HINT off `base.name`, which is a convention and not an")
+    p("      interface): %d row(s); %s slot(s) carry a statement name, %s do not"
+      % (len(emit), ed.get("multi_slots_with_statement_name", "(absent)"),
+         ed.get("multi_slots_without_statement_name", "(absent)")))
+    for row in sorted(emit, key=lambda x: -(_int_or_none(x.get("statements")) or 0)):
+        p("          %8s  %s / name=%s / anchors=%s"
+          % (row.get("statements", "?"),
+             row.get("statement_class") or "(no class)",
+             row.get("statement_name") or "(unnamed)",
+             row.get("anchor_names") or "(none)"))
+
+
+def rollup_time_reference_families(reports, out):
+    """Cross-corpus #52 rollup. Shapes UNITED BY `shape_key`, never summed.
+
+    THE UNION IS THE WHOLE POINT AND THE SUM IS A TRAP THIS REPOSITORY HAS
+    ALREADY FALLEN INTO. One file over, the relaxed-edge rollup added six
+    per-corpus DISTINCT counts together, so a (class, edge) pair present in
+    three corpora contributed 3 -- and the published "7 of 26 divergences seen"
+    was an upper bound whose true value could have been as low as 2. A shape is
+    the same kind of thing: `kind=2rel | clock=distinct | relative_to=same |
+    extent=2instant` is ONE shape however many corpora hold it, and the number
+    that will get quoted is "how many distinct shapes does the team have to
+    name". So the distinct figure here is len(union), and the summed row count
+    is printed BESIDE it, named as the upper bound it is.
+
+    Statement counts inside a row ARE summed -- those are slot counts and they
+    add. The rule is about identities, not about occurrences.
+
+    A report predating the instrument is NAMED and contributes NOTHING. It is
+    never counted as a corpus that measured a zero: a union that absorbs absent
+    reports shrinks toward a reassuring "nothing left to name" with every older
+    report added.
+    """
+    p = lambda s="": out.append(s)
+
+    measured, unmeasured = [], []
+    totals = {}
+    dist = {}
+    shapes = {}
+    emitters = {}
+    regimes = {"not_reached": [], "unoccupied": [], "occupied_unmeasured": [],
+               "measured": []}
+    per_corpus_shape_rows = 0
+    two_families, unresolved_classes = [], []
+    inconsistent = []
+
+    for i, r in enumerate(reports):
+        name = str(r.get("corpus") or "report #%d" % (i + 1))
+        m = time_reference_families(r)
+        if not m["measured"]:
+            unmeasured.append("%s (%s)" % (name, m["why"]))
+            continue
+        measured.append(name)
+        b = m["block"]
+        regimes[trf_shape_regime(b)].append(name)
+        sd = b.get("shape_denominator") if isinstance(b.get("shape_denominator"), dict) else {}
+        for key, _label in TRF_DENOMINATOR + [("docs_inspected", "")]:
+            if key in b:
+                v = _int_or_none(b[key])
+                if v is not None:
+                    totals[key] = totals.get(key, 0) + v
+        for key, _label in TRF_SHAPE_DENOMINATOR:
+            if key in sd:
+                v = _int_or_none(sd[key])
+                if v is not None:
+                    totals[key] = totals.get(key, 0) + v
+        if _int_or_none(b.get("docs_declaring_two_families")):
+            two_families.append(name)
+        if _int_or_none(b.get("docs_class_unresolved")):
+            unresolved_classes.append("%s (%s)"
+                                      % (name, b.get("docs_class_unresolved")))
+        if [c for c in _trf_invariants(b) if c[2] != c[4]]:
+            inconsistent.append(name)
+        for row in aslist(b.get("count_distribution")):
+            if not isinstance(row, dict):
+                continue
+            k = _int_or_none(row.get("members"))
+            if k is None:
+                continue
+            dist[k] = dist.get(k, 0) + (_int_or_none(row.get("statements")) or 0)
+        rows = [x for x in aslist(b.get("shape")) if isinstance(x, dict)]
+        # Counted WITHOUT the pseudo-row, so this figure and the union size
+        # below are the same kind of thing. Comparing a with-pseudo sum against
+        # a without-pseudo union would make them differ by one for a reason
+        # that has nothing to do with the overlap the comparison is about.
+        per_corpus_shape_rows += len([x for x in rows
+                                      if x.get("shape_key") != TRF_NOT_SHAPEABLE])
+        for row in rows:
+            key = row.get("shape_key", "?")
+            # UNITED BY `shape_key`. The MATLAB table keys its rows on
+            # (shape_key, member count), so one key can arrive as two rows from
+            # a single corpus; they collapse here and the member counts are
+            # kept as a SET so nothing is lost by uniting.
+            ent = shapes.setdefault(key, {"statements": 0, "corpora": set(),
+                                          "members": set(), "families": set(),
+                                          "example": None})
+            ent["statements"] += _int_or_none(row.get("statements")) or 0
+            ent["corpora"].add(name)
+            mem = _int_or_none(row.get("members"))
+            if mem is not None:
+                ent["members"].add(mem)
+            if row.get("family"):
+                ent["families"].add(str(row["family"]))
+            if ent["example"] is None and row.get("example_document_id"):
+                ent["example"] = (row["example_document_id"],
+                                  row.get("example_class_name") or "(no class)",
+                                  name)
+        for row in aslist(b.get("emitter")):
+            if not isinstance(row, dict):
+                continue
+            k = (row.get("shape_key", "?"),
+                 row.get("statement_class") or "(no class)",
+                 row.get("statement_name") or "(unnamed)",
+                 row.get("anchor_names") or "(none)")
+            ent = emitters.setdefault(k, {"statements": 0, "corpora": set()})
+            ent["statements"] += _int_or_none(row.get("statements")) or 0
+            ent["corpora"].add(name)
+
+    p("")
+    p("  #52 -- TIME REFERENCES PER STATEMENT, AND THE SHAPES WHEN THERE ARE")
+    p("  TWO. REPORT ONLY, a SEPARATE bucket: do NOT add this to the")
+    p("  EDGE-FAMILY UNIQUENESS table above. That one is 'two members break the")
+    p("  signed uniqueness rule'; this one is 'a statement has two members at")
+    p("  all', which no rule forbids and which the record calls UNDEFINED IN")
+    p("  MEANING until the edges are role-named.")
+    p("      DENOMINATOR: %d corpus report(s); %d carried a readable block, "
+      "%d did not; %d document(s) inspected in total"
+      % (len(reports), len(measured), len(unmeasured),
+         totals.get("docs_inspected", 0)))
+    if unmeasured:
+        p("      *** NOT MEASURED in: %s" % ", ".join(unmeasured))
+        p("      *** the totals below are sums over %d corpora, not %d -- do"
+          % (len(measured), len(reports)))
+        p("      *** not quote them as a whole-corpus figure. A report that")
+        p("      *** predates the instrument contributes NOTHING; it is not a")
+        p("      *** corpus that measured a zero.")
+    if not measured:
+        p("      (nothing to total -- no corpus contributed a readable block)")
+        return
+    p("      SHAPE-CENSUS REGIME PER CORPUS, derived from the counters:")
+    for key, label in (
+            ("measured", "MEASURED -- multi-reference statements were shaped"),
+            ("occupied_unmeasured",
+             "OCCUPIED AND UNMEASURED -- multi-reference statements exist and "
+             "NONE was shapeable  <-- never read this as clean"),
+            ("unoccupied",
+             "UNOCCUPIED -- statements carry a reference, none carries two "
+             "(a RESULT)"),
+            ("not_reached",
+             "NOT REACHED -- no document could have carried a reference at "
+             "all (vacuous)")):
+        p("          %-22s %s" % (", ".join(regimes[key]) or "(none)", label))
+    if regimes["occupied_unmeasured"]:
+        p("      *** %s IS IN THE OCCUPIED-AND-UNMEASURED REGIME. The empty"
+          % ", ".join(regimes["occupied_unmeasured"]))
+        p("      *** shape table there means the referents were outside the")
+        p("      *** batch, NOT that the shapes are fine.")
+    if two_families:
+        p("      *** TWO FAMILIES ON ONE CLASS in: %s. The slot counters are"
+          % ", ".join(two_families))
+        p("      *** (document, family) pairs there, not documents.")
+    if unresolved_classes:
+        p("      *** CLASSES THE CACHE COULD NOT RESOLVE in: %s. Those"
+          % ", ".join(unresolved_classes))
+        p("      *** documents were NOT LOOKED AT.")
+    if inconsistent:
+        p("      *** INTERNAL CONSISTENCY FAILED in: %s. See the per-corpus"
+          % ", ".join(inconsistent))
+        p("      *** block for which equality broke.")
+    p("      DENOMINATOR ROWS, SUMMED over the %d readable block(s). These are"
+      % len(measured))
+    p("      OCCURRENCE counts and they add; the identities below do NOT.")
+    _ea_rows(totals, TRF_DENOMINATOR, out, indent="        ")
+    _ea_rows(totals, TRF_SHAPE_DENOMINATOR, out, indent="        ")
+
+    p("")
+    p("      COUNT DISTRIBUTION, summed across corpora (slot counts ADD; it is")
+    p("      IDENTITIES that must not be summed):")
+    if not dist:
+        p("          (no row)")
+    for k in sorted(dist):
+        p("          %10d slot(s) carry %d populated member(s)%s"
+          % (dist[k], k, "   <-- UNDEFINED REGIME" if k >= 2 else ""))
+    over_one = sum(v for k, v in dist.items() if k >= 2)
+    p("          %d slot(s) in total are in the regime #52 exists to decide."
+      % over_one)
+
+    real = dict((k, v) for k, v in shapes.items() if k != TRF_NOT_SHAPEABLE)
+    pseudo = shapes.get(TRF_NOT_SHAPEABLE)
+    p("")
+    p("      SHAPES, UNITED BY `shape_key` ACROSS CORPORA -- NOT SUMMED.")
+    p("          DENOMINATOR: %d distinct shape(s) in the union, over %d "
+      "corpus report(s) that carried a readable block."
+      % (len(real), len(measured)))
+    if pseudo:
+        p("          Plus 1 NOT-SHAPEABLE pseudo-row (%d slot(s)), which is NOT"
+          % pseudo["statements"])
+        p("          a shape -- it exists so the table partitions the")
+        p("          multi-reference slots instead of losing them to silence.")
+    if per_corpus_shape_rows != len(real):
+        p("          *** the per-corpus shape-row counts ADD to %d; the union"
+          % per_corpus_shape_rows)
+        p("          *** is %d. %d is the distinct figure. Adding per-corpus"
+          % (len(real), len(real)))
+        p("          *** counts is the error that made a published '7 of 26")
+        p("          *** seen' an upper bound one file over -- a shape present")
+        p("          *** in three corpora would count 3.")
+    if not real and not pseudo:
+        p("          (empty union -- read the regime table above for which of")
+        p("           the empty readings this is; it is not one fact)")
+    for key, ent in sorted(real.items(),
+                           key=lambda kv: (-kv[1]["statements"], kv[0])):
+        p("          %8d slot(s)  members=%s  %s"
+          % (ent["statements"],
+             ",".join(str(x) for x in sorted(ent["members"])) or "?", key))
+        p("                    seen in: %s   famil(ies): %s"
+          % (", ".join(sorted(ent["corpora"])),
+             ", ".join(sorted(ent["families"])) or "(unnamed)"))
+        if ent["example"]:
+            p("                    e.g. %s [%s] in %s"
+              % (ent["example"][0], ent["example"][1], ent["example"][2]))
+        desc = _trf_shape_description(key)
+        if desc:
+            for line in _trf_wrap(desc, "                    "):
+                p(line)
+        if "other" in _trf_kind_part(key):
+            p("          *** A MEMBER HERE IS NOT A TIME REFERENCE AT ALL.")
+            p("          *** `must_refer` is existence-only so it validates")
+            p("          *** clean; the instrument calls it a finding.")
+
+    p("")
+    p("      EMITTERS, united the same way -- %d distinct (shape, class, name,"
+      % len(emitters))
+    p("      anchors) row(s). `base.name` is a CONVENTION, not an interface.")
+    for k, ent in sorted(emitters.items(),
+                         key=lambda kv: (-kv[1]["statements"], kv[0])):
+        p("          %8d  %s / name=%s / anchors=%s"
+          % (ent["statements"], k[1], k[2], k[3]))
+        p("                    shape: %s" % k[0])
+        p("                    seen in: %s" % ", ".join(sorted(ent["corpora"])))
+    if not emitters:
+        p("          (none)")
+
+    _trf_reading_instructions(out)
+
+
+def _trf_reading_instructions(out):
+    """WHAT TO BE ALARMED BY -- every item read off timeReferenceFamilies.m.
+
+    Nothing here is invented and nothing here names a role. #52 is the question
+    of whether `time_reference_1` should become a role name; a digest that
+    proposed one would be answering the team's question in its own output.
+    """
+    p = lambda s="": out.append(s)
+    p("")
+    p("      WHAT TO BE ALARMED BY IN THIS BLOCK (each item is read off")
+    p("      src/did/+did2/+validate/timeReferenceFamilies.m, not invented):")
+    p("        * ANY DISTRIBUTION ROW AT 2 OR MORE. The instrument's header")
+    p("          states the signed model's PREDICTION as a prediction: every")
+    p("          statement carries exactly one reference, the distribution has")
+    p("          a single row at 1, and the shape table is vacuous. It counted")
+    p("          44 code lines writing a literal `time_reference_1` and ZERO")
+    p("          writing `time_reference_2` or higher, across 258 .m files, and")
+    p("          found ONE site numbering a family programmatically --")
+    p("          did2.convert.resolveValidIntervals's split-anchor branch,")
+    p("          which the model predicts never fires. A row at 2+ is that")
+    p("          prediction failing, and it is exactly the evidence #52 wants.")
+    p("        * MULTI-REFERENCE STATEMENTS WITH NONE SHAPEABLE. The shape")
+    p("          census reports VACUOUS for two opposite reasons. 'No statement")
+    p("          carries a second one' is a result; 'every one had a referent")
+    p("          outside the batch' is an occupied regime nobody measured.")
+    p("          The regime table above tells them apart from the counters.")
+    p("        * `other` IN A SHAPE KEY'S `kind=` PART. A member is pointing at")
+    p("          something that is not a time reference. must_refer is")
+    p("          existence-only, so the document validates clean.")
+    p("        * `docs_declaring_two_families` ABOVE ZERO. No class declares")
+    p("          two today, which is the only reason the `statements_*`")
+    p("          counters can be read as documents. Above zero they are")
+    p("          (document, family) pairs and nothing renames them.")
+    p("        * `docs_class_unresolved` OR `docs_unclassifiable` ABOVE ZERO.")
+    p("          Both are 'not looked at', not 'declares nothing'.")
+    p("        * A NON-ZERO `slots_with_blank_members_only` OR `members_blank`.")
+    p("          A member that is present and blank satisfies min_count and")
+    p("          names no document. It belongs to the empty-required-edge")
+    p("          census, and it is NOT a reference -- do not read it as one.")
+    p("      WHAT THIS BLOCK CANNOT TELL YOU, stated rather than guessed:")
+    p("        * WHETHER AN INDEX MEANS A ROLE. That is #52 itself and it is a")
+    p("          V_eta disposition. The instrument proposes no role names and")
+    p("          neither does this digest; a shape key describes what the")
+    p("          referenced documents DIFFER ON, never what a member means.")
+    p("        * WHETHER AN `example_document_id` IS STABLE. It is the FIRST")
+    p("          statement seen in batch order, and the instrument takes")
+    p("          whatever order its caller hands it -- nothing in its source")
+    p("          fixes that order across runs. Treat it as a handle to open")
+    p("          one instance, not as an identity.")
+    p("        * HOW MANY ANCHORS AN `anchors=` STRING STANDS FOR. It is")
+    p("          strjoin(unique(names)), so it DEDUPS and SORTS: two anchors")
+    p("          sharing a name render as one entry and the order is gone.")
+    p("          The member count on the shape row is the number.")
+    p("        * WHETHER TWO DOCUMENTS SHARE AN ID. `docs_with_an_id` counts")
+    p("          DISTINCT ids and the index keeps the FIRST holder, so a")
+    p("          referent whose id is duplicated resolves to whichever came")
+    p("          first. Nothing in the report measures how often that happens.")
+    p("      *** AND THE STANDING RULE: THE CORPORA ARE A SAMPLE OF DATASETS,")
+    p("      *** NOT THE UNIVERSE. A shape absent from every corpus here is")
+    p("      *** UNMEASURED, not impossible.")
 
 
 def epoch_association(r):
@@ -2740,6 +3558,13 @@ def render_report(r, out):
                              t.get("n_docs", "?")))
 
     render_ndi_required(r, out)
+    # DIRECTLY AFTER the silent-loss block, and specifically after its
+    # family-uniqueness lines: the two are the #52 pair and a reader compares
+    # them. "The uniqueness rule fired and found nothing" and "the regime the
+    # rule governs is occupied and nobody has named its edges" are different
+    # facts about the same families, and separating them across three screens
+    # is how the first one got quoted as if it were both.
+    render_time_reference_families(r, out)
     render_epoch_association(r, out)
     # Immediately after, and never separated from it: the epoch-association
     # block's `epoch` counts are the ones that were being read beside the mint's
@@ -2948,6 +3773,11 @@ def rollup(reports, out):
         if not table:
             p("      (none)")
 
+    # Immediately after the four tables above, and never merged into them: the
+    # last of those is EDGE-FAMILY UNIQUENESS VIOLATIONS, whose zero the digest
+    # already annotates as 'untested, not clean'. This block is what says
+    # whether the regime that rule governs is occupied at all.
+    rollup_time_reference_families(reports, out)
     rollup_legacy_ndi_document(reports, out)
     rollup_ndi_required(reports, out)
     rollup_epoch_association(reports, out)

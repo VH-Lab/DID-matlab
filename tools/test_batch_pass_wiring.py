@@ -24,6 +24,18 @@ So this file gates all four legs, statically, by reading the sources as text:
     PRINTED    its report key in runCorpusDiscovery's `expected` table
     RENDERED   each COUNTER inside the report has a row in census_digest.py
 
+SCOPE, AND THE ONE THING OUTSIDE IT. The sweep covers BATCH POST-PASSES: the
+discovery scan reads +did2/+convert for a function whose first argument is
+`result`. ONE instrument is gated by name from outside that set --
+`did2.validate.timeReferenceFamilies`, at the bottom of this file -- because it
+arrived in exactly the state the RENDERED leg exists to prevent (called,
+persisted, printed nowhere) and because it is the evidence for a team decision.
+It is gated on three legs; PRINTED does not apply and the test says why rather
+than skipping it. The sweep was NOT widened to all of +did2/+validate: that
+would pull in five instruments at once and go red on a debt nobody has decided
+to pay, and a gate whose first act is to acquire a long allow-list is not a
+gate.
+
 THE FOURTH LEG WAS ADDED 2026-08-11 AND THE FIRST THREE DID NOT COVER IT.
 They gate the PASS. A pass can satisfy all three while a counter inside it is
 invisible: `resolveSessionAnchors` is called, persisted and printed, and ten
@@ -565,6 +577,178 @@ def test_the_response_parameters_fold_is_wired():
         "print table and tools/census_digest.py all key on the old name" % key
     )
 
+
+
+# ---------------------------------------------------------------------------
+# THE FOURTH LEG, APPLIED TO A +validate INSTRUMENT RATHER THAN A POST-PASS
+# ---------------------------------------------------------------------------
+# `did2.validate.timeReferenceFamilies` is NOT a batch post-pass and the sweep
+# above cannot see it: `discover()` scans +did2/+convert for a function whose
+# FIRST ARGUMENT IS `result`, and this one lives in +did2/+validate and takes
+# `docs`. So it is checked by name, here, in the same spirit as the
+# session-anchor extent rows -- and the reason is that it arrived with exactly
+# the defect the RENDERED leg exists to stop: called from v1_to_v2, persisted
+# by writeCorpusReport, and printed NOWHERE, so 26 fields of evidence for a
+# team decision reached the corpus artifact and stopped there.
+#
+# WHY ONE NAMED TEST AND NOT A SWEEP OVER +did2/+validate. A sweep would pull
+# in silentLoss, sourceCensus, fileList, epochStrings and references at once,
+# several of which render some counters and not others, and it would go red on
+# a debt nobody has decided to pay. That is a bigger change with a different
+# owner. Widening the scan without deciding what to do about what it finds is
+# how a gate ends up with a long allow-list; this is one instrument, gated
+# whole.
+#
+# THE `PRINTED` LEG DOES NOT APPLY AND IS NAMED RATHER THAN SKIPPED.
+# runCorpusDiscovery's `expected` table is the BATCH POST-PASS table -- it
+# prints one line per pass so an unwired pass is visible. A validate instrument
+# has no entry there and never had one, and adding it is a MATLAB change this
+# checkout cannot execute. So this instrument is gated on three legs (CALLED,
+# PERSISTED, RENDERED) and the fourth is recorded as not applicable.
+TRF_SOURCE = os.path.join(REPO, "src", "did", "+did2", "+validate",
+                          "timeReferenceFamilies.m")
+TRF_CALL_SITE = os.path.join(CONVERT_DIR, "v1_to_v2.m")
+TRF_REPORT_KEY = "time_reference_families"
+
+# The fields the instrument declares that are NOT plain counters, and HOW the
+# digest renders each. A field on this list is asserted to appear in
+# census_digest.py by name; a field on neither this list nor a row list fails,
+# so a new field cannot appear silently and this list cannot outlive its
+# entries.
+TRF_STRUCTURAL = {
+    "docs_inspected": "printed by `headline`, which the renderer emits "
+                      "verbatim and first",
+    "schema_cache_available": "a NOT-MEASURED condition in "
+                              "time_reference_families() -- 'did not look'",
+    "count_distribution": "its own table, per corpus and summed in the rollup",
+    "shape": "the shape table, UNITED BY shape_key in the rollup",
+    "shape_denominator": "its own row list (TRF_SHAPE_DENOMINATOR)",
+    "emitter": "the emitter table, united on (shape, class, name, anchors)",
+    "emitter_denominator": "printed on the EMITTERS line and checked as a "
+                           "partition of multi_slots_examined",
+    "reference_census_vacuous": "verdict one of two, rendered BEFORE any count",
+    "reference_census_vacuous_reason": "rendered verbatim under that verdict",
+    "shape_census_vacuous": "verdict two of two -- the SAME flag for two "
+                            "opposite findings, split by trf_shape_regime",
+    "shape_census_vacuous_reason": "rendered verbatim under that verdict",
+    "headline": "emitted first and unconditionally",
+}
+
+
+def _trf_nested_fields(text, name):
+    """Field names of a `'<name>', struct(...)` initializer nested in a report."""
+    match = re.search(r"'%s',\s*struct\(" % re.escape(name), text)
+    if not match:
+        return None
+    return struct_field_names(text, assign=match.group(0))
+
+
+def test_the_time_reference_family_instrument_is_wired_end_to_end():
+    """CALLED, PERSISTED, RENDERED -- for the #52 evidence instrument.
+
+    DENOMINATOR FIRST: how many fields its report declares, how many are rows,
+    how many are structural, how many are unaccounted for. A scan that failed
+    to parse the initializer would otherwise report perfect coverage, which is
+    this repository's most-repeated failure.
+    """
+    import importlib.util
+
+    assert os.path.isfile(TRF_SOURCE), (
+        "%s does not exist -- this is 'did not look', not 'found nothing'"
+        % TRF_SOURCE
+    )
+    text = _read(TRF_SOURCE)
+    fields = struct_field_names(text, assign="r = struct(")
+    assert fields, (
+        "no `r = struct(` initializer found in %s -- the scan is broken and "
+        "every assertion below would be vacuously true" % TRF_SOURCE
+    )
+    nested = _trf_nested_fields(text, "shape_denominator")
+    assert nested, "no nested `shape_denominator` initializer found"
+
+    spec = importlib.util.spec_from_file_location(
+        "_census_digest_trf", os.path.join(HERE, "census_digest.py"))
+    digest_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(digest_mod)
+    digest_src = _read(os.path.join(HERE, "census_digest.py"))
+    rows = set(k for k, _l in digest_mod.TRF_DENOMINATOR)
+    shape_rows = set(k for k, _l in digest_mod.TRF_SHAPE_DENOMINATOR)
+
+    print("\n--- #52 instrument wiring: %d report field(s), %d nested "
+          "shape_denominator field(s) ---" % (len(fields), len(nested)))
+
+    # CALLED.
+    call = _read(TRF_CALL_SITE)
+    assert "did2.validate.timeReferenceFamilies(" in call, (
+        "timeReferenceFamilies is not called from %s. An instrument nobody "
+        "runs measures nothing." % TRF_CALL_SITE
+    )
+    assert "result.%s" % TRF_REPORT_KEY in call, (
+        "v1_to_v2 does not attach the report as `result.%s`; the persist and "
+        "render legs both key on that name" % TRF_REPORT_KEY
+    )
+    print("  CALLED     v1_to_v2.m -> result.%s" % TRF_REPORT_KEY)
+
+    # PERSISTED.
+    writer = _read(REPORT_WRITER)
+    assert "report.%s" % TRF_REPORT_KEY in writer, (
+        "writeCorpusReport does not copy `%s` into the corpus report, so the "
+        "block never reaches the artifact" % TRF_REPORT_KEY
+    )
+    print("  PERSISTED  writeCorpusReport.m -> report.%s" % TRF_REPORT_KEY)
+
+    # RENDERED -- every declared field, as a row or structurally.
+    as_rows, structural, missing = [], [], []
+    for f in fields:
+        if f in rows:
+            as_rows.append(f)
+        elif f in TRF_STRUCTURAL:
+            if "'%s'" % f in digest_src or '"%s"' % f in digest_src:
+                structural.append(f)
+            else:
+                missing.append("%s (listed as structural, and census_digest.py "
+                               "does not name it)" % f)
+        else:
+            missing.append(f)
+    for f in nested:
+        if f not in shape_rows:
+            missing.append("shape_denominator.%s" % f)
+    print("  RENDERED   %d as row(s), %d structural, %d nested shape row(s), "
+          "%d unaccounted" % (len(as_rows), len(structural), len(nested),
+                              len(missing)))
+
+    assert not missing, (
+        "field(s) declared by did2.validate.timeReferenceFamilies and rendered "
+        "NOWHERE in tools/census_digest.py: %s.\n"
+        "  A counter that reaches the corpus artifact and not the digest is "
+        "write-only -- exactly the epochMint defect, and exactly the state "
+        "this instrument shipped in. ADD A ROW to TRF_DENOMINATOR or "
+        "TRF_SHAPE_DENOMINATOR, or add the field to TRF_STRUCTURAL in this "
+        "file WITH the reason it is not a row." % ", ".join(missing)
+    )
+
+    # SHRINK-ONLY, the same contract as NO_REPORT_YET and NOT_RENDERED_YET: a
+    # structural entry for a field the instrument no longer declares is a stale
+    # claim about our own instruments.
+    stale = [f for f in TRF_STRUCTURAL if f not in fields]
+    assert not stale, (
+        "%s is/are no longer declared by the instrument and must be removed "
+        "from TRF_STRUCTURAL." % ", ".join(stale)
+    )
+
+    # And the two vacuity verdicts specifically, because they are the reading
+    # the whole block turns on and a sweep over field NAMES would pass just as
+    # well if the renderer printed one of them twice.
+    for flag in ("reference_census_vacuous", "shape_census_vacuous"):
+        assert flag in fields, "%s is no longer declared" % flag
+    assert "trf_shape_regime" in digest_src, (
+        "census_digest.py no longer derives the shape-census regime from the "
+        "counters. `shape_census_vacuous` is set for TWO OPPOSITE findings -- "
+        "'no statement carries a second reference' (a result) and 'every "
+        "multi-reference statement had a referent outside the batch' (an "
+        "occupied regime nobody measured). Without the derivation the flag "
+        "alone cannot tell them apart."
+    )
 
 if __name__ == "__main__":
     import sys
