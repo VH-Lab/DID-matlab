@@ -164,7 +164,7 @@ batch = [ ...
     fx_dataset_session_info(), fx_session_in_a_dataset(), fx_element_epoch(), ...
     fx_ontology_image(), fx_ontology_image_ndi(), fx_image(), ...
     fx_spike_extraction_parameters_modification(), ...
-    fx_openminds_element(), fx_openminds_stimulus() ];
+    fx_openminds_element(), fx_openminds_stimulus(), fx_openminds() ];
 end
 
 % ----- batch 2: term_manipulation+relation, body-backed sampled_body,
@@ -1078,6 +1078,78 @@ d.ontology_image = struct('ontology_nodes','uberon:0000955,uberon:0002436');
 d.ngrid = struct('data_size',8,'data_type','double','data_dim',[4 4], ...
     'coordinates',[1;2;3;4;1;2;3;4]);
 batch = { d };
+end
+
+% ---- openminds (the BARE bundle class -- NO migrator, identity passthrough) --
+% BUILT FROM THE WRITER, NOT FROM OUR SCHEMA. There is no
+% +migrators_j/openminds.m (81 migrators; only openminds_element, _stimulus,
+% _subject), so v1_to_v2 falls through lookupMigrator to
+% did2.convert.migrators.identity and the document is carried unchanged into
+% V_eta under its own class. Nothing in this repo exercised that path -- the
+% claim "it passes through clean" was a code read, and this fixture is what
+% makes it a gate.
+%
+% SHAPE, from ndi.database.fun.openMINDSobj2ndi_document (NDI origin/main):
+%   - docName is 'openminds' whenever the caller passes NO dependency_type.
+%     ndi.setup.conv.haley.doImport.m:87 does exactly that for the OP50
+%     bacterial strain, which is where JH's bare `openminds` documents come
+%     from; +metadata_ds_core/convertFormDataToDocuments.m:197 does it for the
+%     WHOLE dataset metadata graph (Dataset/DatasetVersion/Person/...).
+%   - the child link is a NUMBERED EDGE FAMILY. ndi.document/
+%     add_dependency_value_n names members `<name>_<n>` starting at 1, and the
+%     template's own `openminds` entry (openminds_schema.json, mustbenotempty 0)
+%     is left in place beside it -- so a parent carries BOTH `openminds` (empty)
+%     and `openminds_1..n`. A childless object carries only the empty one
+%     (the `if ~added_dependency` branch).
+%   - V_eta's openminds.json declares `depends_on: []`, i.e. NEITHER edge is
+%     declared. tools/check_tombstones.py grades that LOSSY, not BLOCKING, and
+%     this fixture is why: an UNDECLARED edge is not validated (cache.m's
+%     allowedTop lets `depends_on` through wholesale and nothing checks entry
+%     names), while did2.validate.references DOES follow it, so the family must
+%     still resolve. Both halves are asserted by the two corpus gates.
+%
+% Self-contained: `openminds_1` points at the Species document minted below.
+function batch = fx_openminds()
+% the Species child (childless -> only the template's empty `openminds` entry)
+sp = struct();
+sp.document_class = struct('class_name','openminds','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+sp.depends_on = struct('name', {'openminds'}, 'value', {''});
+sp.base = struct('id','om_bare_species','session_id','sess_09','name','', ...
+    'datestamp','2024-06-01T12:00:00.000Z');
+sp.openminds = struct( ...
+    'openminds_type','https://openminds.om-i.org/types/Species', ...
+    'matlab_type','openminds.controlledterms.Species', ...
+    'openminds_id','', ...
+    'fields', struct('name','Escherichia coli', ...
+        'preferredOntologyIdentifier','NCBITaxon:562', ...
+        'definition','Escherichia coli is a species of bacteria.', ...
+        'synonym','E. coli'));
+
+% the OP50 Strain parent -- haley/doImport.m:78-88 verbatim in shape
+st = struct();
+st.document_class = struct('class_name','openminds','class_version','1.0.0', ...
+    'superclasses', struct('class_name','base','class_version','1.0.0'));
+st.depends_on = struct('name', {'openminds','openminds_1'}, ...
+    'value', {'','om_bare_species'});
+st.base = struct('id','om_bare_strain','session_id','sess_09','name','', ...
+    'datestamp','2024-06-01T12:00:00.000Z');
+% `fields.species` is a CELL of 'ndi://<id>' strings in the real document
+% (openMINDSobj2struct builds fields_here{k} = ['ndi://' childId]). Assigned
+% after the struct() call on purpose: a cell passed INTO struct() fans the
+% struct into an array.
+omFields = struct('name','Escherichia coli OP50', ...
+    'ontologyIdentifier','NCBITaxon:637912', ...
+    'description','OP50 is a strain of E. coli.', ...
+    'geneticStrainType','wild type');
+omFields.species = {'ndi://om_bare_species'};
+st.openminds = struct( ...
+    'openminds_type','https://openminds.om-i.org/types/Strain', ...
+    'matlab_type','openminds.core.research.Strain', ...
+    'openminds_id','', ...
+    'fields', omFields);
+
+batch = { sp, st };
 end
 
 % ---- openminds_element (element_id + empty openminds dep) ------------------
