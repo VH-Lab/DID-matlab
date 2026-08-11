@@ -53,8 +53,13 @@ end
 % ----- batch 4: the new-on-main NDI app outputs (ex-ledger gaps). kilosort_clusters
 % and kiasort_clusters now DECOMPOSE (D-C, #9): each Kilosort/Kiasort run ->
 % count_observation (id-preserved handle) + opaque_body (the external sorter output
-% directory) + session anchor. ensemble stays PASSTHROUGH (class retained,
-% in_progress) pending its grain decision. Each rides on a minted recording subject;
+% directory) + session anchor. ensemble stays PASSTHROUGH -- NOT "pending its grain
+% decision", which was signed off on 2026-08-06 (TEAM-SIGN-OFF [ensemble],
+% DID-schema V_eta_ensemble_plan.md), but because the signed model puts `member_of` and
+% the derived cache in the NDI SECOND PASS, and deferred task 5 says the map document
+% "stays a green passthrough -- do NOT phase-8-delete early" until the
+% verify-before-delete gate (0 stranded per-neuron trains) has run on a real corpus.
+% Each rides on a minted recording subject;
 % element_epoch_id is left empty. Confirms both the decompositions and the passthrough
 % validate (0 quarantine / 0 orphan).
 function batch = gapBatch()
@@ -89,21 +94,53 @@ d.kiasort_clusters = struct('kiasort_directory','ka_out', ...
 batch = { sub, d };
 end
 
+% #29 ensemble. THE ROSTER AND THE FILE ARE PART OF THE FIXTURE, and they were not
+% before -- the old fixture carried element_id + element_epoch_id and no files block,
+% which is the TEMPLATE's shape, not a real document's. NDI's writer
+% (+ndi/+element/ensemble.m:272-277 on origin/main) writes:
+%
+%     mapdoc = mapdoc.set_dependency_value('element_id', obj.id());
+%     mapdoc = mapdoc.set_dependency_value('element_epoch_id', epochdoc.id());
+%     for i = 1:numel(neuron_ids)
+%         mapdoc = mapdoc.add_dependency_value_n('neuron_id', neuron_ids{i});
+%     end
+%     mapdoc = mapdoc.add_file('neuron_names.txt', names_tempfile);
+%
+% so a REAL map document carries `neuron_id_1..n` (the per-epoch roster, in column
+% order) and one attached file. `neuron_id` is declared in NDI's SCHEMA and written by
+% the WRITER but is ABSENT FROM THE TEMPLATE, which is why a fixture built from the
+% template alone -- this one -- exercised neither. Same shape as the `image_stack`
+% fixtures that were all built without a `files` block and so missed a file defect that
+% four green MATLAB tests also missed.
+%
+% The neurons are minted here (self-contained rule) so the roster edges resolve and the
+% 0-orphan gate means something. ensemble stays PASSTHROUGH -- the signed model's
+% `member_of` edges are the NDI second pass's (ndi.migrate.internal.ensembleMembership),
+% NOT pass 1's, so nothing here mints one.
+%
+% NOT RUN: this container has no MATLAB.
 function batch = fx_ensemble()
 sub = subjDoc('en_sub', 'recSubEN');
+n1  = subjDoc('en_neuron_1', 'neuronEN1');
+n2  = subjDoc('en_neuron_2', 'neuronEN2');
 d = struct();
 d.document_class = struct('class_name','ensemble','class_version','1.0.0', ...
     'superclasses', [ struct('class_name','base','class_version','1.0.0'), ...
                       struct('class_name','epochid','class_version','1.0.0'), ...
                       struct('class_name','app','class_version','1.0.0') ]);
 d.depends_on = [ struct('name','element_id','value','en_sub'), ...
-                 struct('name','element_epoch_id','value','') ];
+                 struct('name','element_epoch_id','value',''), ...
+                 struct('name','neuron_id_1','value','en_neuron_1'), ...
+                 struct('name','neuron_id_2','value','en_neuron_2') ];
 d.base = struct('id','en_01','session_id','sess_09','name','ens','datestamp','2024-06-01T12:00:00.000Z');
 d.epochid = struct('epochid','t00001');
 d.app = struct('name','ndi.app.ensemble','version','1.0');
 d.ensemble = struct('ensemble_name','ens1','value_type','rate', ...
-    'value_description','firing rate','num_neurons',12,'clocktype','dev_local_time');
-batch = { sub, d };
+    'value_description','firing rate','num_neurons',2,'clocktype','dev_local_time');
+% NDI's OWN file name, verbatim -- universalRenames.m:308 skips the `file`/`files`
+% keys, so a passed-through document reaches validation still carrying this spelling.
+d.files = struct('file_list', {{'neuron_names.txt'}});
+batch = { sub, n1, n2, d };
 end
 
 % ----- batch 3: the observation/analysis/entity/rename zoo. Shapes harvested
