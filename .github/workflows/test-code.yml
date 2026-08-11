@@ -50,6 +50,83 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           path: did-schema
 
+      # ---------------------------------------------------------------
+      # MIRRORED FROM test-migrators-quick.yml, DELIBERATELY NOT SHARED.
+      # This workflow runs the SAME `did2.unittest` package, so it runs
+      # testBatchPassWiring too -- and without NDI-matlab that test's
+      # cross-repo half SKIPS. A skip inside a MATLAB log reads as a pass,
+      # so the full suite was quietly measuring less than the fast gate.
+      # GitHub Actions has no include for step lists; a composite action
+      # would be the DRY fix and is a bigger change than closing the hole.
+      # If you edit one copy, edit both -- the confirm step below prints
+      # PRESENT/ABSENT either way, so a divergence is visible in the log.
+      # ---------------------------------------------------------------
+      - name: Resolve the NDI-matlab ref (falls back to main)
+        id: ndi-ref
+        # did2.unittest.testBatchPassWiring asserts that every batch post-pass
+        # diverging between the corpus gate and PRODUCTION
+        # (ndi.migrate.local, in NDI-matlab) is named in a checked-in table
+        # with a reason. It cannot do that without the file, and when the file
+        # is missing it SKIPS -- loudly, but it skips.
+        #
+        # THE REF FALLS BACK RATHER THAN FAILING THE JOB. Most DID-side
+        # branches have no NDI-side twin, and a fast gate that goes red
+        # because a sibling repository does not carry the same branch name is
+        # a gate people delete. The chosen ref is PRINTED either way, so a run
+        # that fell back to main says so instead of looking like a run that
+        # matched -- "we compared against production" and "we compared against
+        # main" are different claims and must not print the same.
+        run: |
+          want="${{ github.head_ref || github.ref_name }}"
+          if git ls-remote --exit-code --heads \
+               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
+            echo "NDI-matlab HAS branch '$want' -- comparing against it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out NDI-matlab (sibling, for the cross-repo wiring gate)
+        uses: actions/checkout@v4
+        # SHALLOW AND SPARSE ON PURPOSE. The test reads local.m as TEXT; NDI is
+        # never put on the MATLAB path and nothing here executes it, so the
+        # whole ~1 GB history and tree would buy nothing. fetch-depth 1 (the
+        # default, stated rather than assumed) plus a cone-mode sparse checkout
+        # of the one package brings down the +migrate directory and little else.
+        #
+        # continue-on-error, deliberately: a repository-access change must
+        # degrade this to the SKIP the test already handles, not turn the ~2
+        # minute gate red for every branch at once. The step below says which
+        # of the two happened.
+        continue-on-error: true
+        with:
+          repository: VH-Lab/NDI-matlab
+          ref: ${{ steps.ndi-ref.outputs.ref }}
+          path: NDI-matlab
+          fetch-depth: 1
+          sparse-checkout: src/ndi/+ndi/+migrate
+          sparse-checkout-cone-mode: true
+
+      - name: Confirm the cross-repo gate has something to read
+        # NOT a gate -- a DENOMINATOR, printed early where a log tail can find
+        # it. testBatchPassWiring SKIPS when local.m is absent, and a skip
+        # inside a MATLAB test log is exactly the kind of thing that reads as a
+        # pass. Say here, before MATLAB starts, whether the fourth call site is
+        # present, how big it is, and what the checkout actually cost.
+        run: |
+          f="${GITHUB_WORKSPACE}/NDI-matlab/src/ndi/+ndi/+migrate/local.m"
+          if [ -f "$f" ]; then
+            echo "PRESENT: $f"
+            echo "  ref checked out: ${{ steps.ndi-ref.outputs.ref }}"
+            echo "  lines: $(wc -l < "$f")"
+            echo "  sparse checkout on disk: $(du -sh "${GITHUB_WORKSPACE}/NDI-matlab" | cut -f1)"
+          else
+            echo "ABSENT: $f"
+            echo "  did2.unittest.testBatchPassWiring will SKIP its cross-repo"
+            echo "  gate. That is 'did not look', NOT 'wired correctly'."
+          fi
+
       - name: Assemble V_eta schema set (stable + draft)
         # V_eta (Brainstorm J) is the migration/validation target. The schema
         # cache loads a single flat dir of *.json; the Brainstorm-J classes live
