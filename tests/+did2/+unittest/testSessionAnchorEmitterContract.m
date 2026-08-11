@@ -808,6 +808,14 @@ verifyEqual(testCase, rep.refused_ambiguous_session, 0);
 verifyEqual(testCase, rep.refused_ambiguous_relation, 0);
 verifyEqual(testCase, rep.refused_unknown_relation, 0);
 verifyEqual(testCase, rep.refused_negative_extent, 0);
+% THE THREE EXTENT REFUSALS ADDED 2026-08-11, asserted here because THIS is the
+% file that drives the real emitter: `durationSeconds` hard-codes the literal
+% 's', so a non-zero here would mean the emitter's own output stopped being
+% readable by the fold -- the 20,411-document defect returning in a new spelling.
+verifyEqual(testCase, rep.refused_unreadable_extent_unit, 0, ...
+    'the emitter''s own duration unit became unreadable to the fold');
+verifyEqual(testCase, rep.refused_malformed_extent, 0);
+verifyEqual(testCase, rep.refused_extent_without_start, 0);
 verifyEqual(testCase, rep.refused_total, 0);
 
 % and BOTH retired classes are gone from the batch entirely
@@ -1108,6 +1116,14 @@ verifyEqual(testCase, rep.refused_ambiguous_session, 0);
 verifyEqual(testCase, rep.refused_ambiguous_relation, 0);
 verifyEqual(testCase, rep.refused_unknown_relation, 0);
 verifyEqual(testCase, rep.refused_negative_extent, 0);
+% THE THREE EXTENT REFUSALS ADDED 2026-08-11, asserted here because THIS is the
+% file that drives the real emitter: `durationSeconds` hard-codes the literal
+% 's', so a non-zero here would mean the emitter's own output stopped being
+% readable by the fold -- the 20,411-document defect returning in a new spelling.
+verifyEqual(testCase, rep.refused_unreadable_extent_unit, 0, ...
+    'the emitter''s own duration unit became unreadable to the fold');
+verifyEqual(testCase, rep.refused_malformed_extent, 0);
+verifyEqual(testCase, rep.refused_extent_without_start, 0);
 verifyEqual(testCase, rep.refused_total, 0);
 
 % THE ID IS PRESERVED -- collected from the emitter's own output, then required
@@ -1185,6 +1201,20 @@ onset = 1249.72; offset = 1265.39;
 [out, rep] = foldEncounter( ...
     {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, 'SID_1', onset, offset);
 verifyEqual(testCase, rep.anchors_folded, 1);
+% THE COUNTER SAYS THE SAME THING THE DOCUMENT DOES, which is the point of
+% adding it: the extent counters were introduced because `anchors_folded` alone
+% cannot distinguish "folded carrying its window" from "folded having lost it".
+% Asserting both here is what stops them drifting apart.
+verifyEqual(testCase, rep.bounded_extents_examined, 1);
+verifyEqual(testCase, rep.bounded_with_start_field, 1);
+verifyEqual(testCase, rep.bounded_with_end_field, 1);
+verifyEqual(testCase, rep.bounded_window_carried, 1, ...
+    ['the fold reports it carried no window, for the emitter''s own output. ' ...
+     'If the assertions below still pass, the COUNTER is wrong; if they fail ' ...
+     'too, the fold is.']);
+verifyEqual(testCase, rep.bounded_no_window_stated, 0);
+verifyEqual(testCase, rep.bounded_start_only_carried, 0);
+verifyEqual(testCase, rep.bounded_blank_extent_cells, 0);
 
 refs = ofClass(out, 'relative_reference');
 assertEqual(testCase, numel(refs), 1);

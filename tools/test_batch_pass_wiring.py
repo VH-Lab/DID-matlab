@@ -17,11 +17,20 @@ file does not, and one this file has instead.
     see it. A pass that is called but invisible is the same defect as a pass
     that is never called, arriving one layer later.
 
-So this file gates all three legs, statically, by reading the sources as text:
+So this file gates all four legs, statically, by reading the sources as text:
 
     CALLED     named in all three DID-side call sites
     PERSISTED  its report key copied by writeCorpusReport
     PRINTED    its report key in runCorpusDiscovery's `expected` table
+    RENDERED   each COUNTER inside the report has a row in census_digest.py
+
+THE FOURTH LEG WAS ADDED 2026-08-11 AND THE FIRST THREE DID NOT COVER IT.
+They gate the PASS. A pass can satisfy all three while a counter inside it is
+invisible: `resolveSessionAnchors` is called, persisted and printed, and ten
+counters added to its report that day would have reached the corpus artifact
+and stopped there -- which is precisely the epochMint defect, one level down,
+and this file's own docstring already says a measurement nobody can see is the
+same as no measurement.
 
 A STATIC SCAN IS THE POINT, not a shortcut. The alternative -- run each
 harness and check -- needs MATLAB and the corpora, which is the hour the whole
@@ -114,9 +123,125 @@ NO_REPORT_YET = {
 }
 
 
+# ---------------------------------------------------------------------------
+# THE RENDERED LEG'S KNOWN DEBT. SAME CONTRACT AS NO_REPORT_YET: SHRINK ONLY.
+# ---------------------------------------------------------------------------
+# Counters that a pass declares and census_digest.py does not print. Listed so
+# a NEW one cannot appear silently, and gated both ways so this list cannot
+# outlive the gap it describes.
+#
+# WHAT IS ON IT AND WHY, because a list of names with no reasons is a list
+# nobody will ever be able to shorten:
+#
+#   epoch_mint.strings_by_source / .epoch_index
+#       NOT COUNTERS. Both are struct ARRAYS -- a per-source table and the
+#       (session_id, local_identifier, epoch_document_id) index -- so there is
+#       no number for a row to print. Rendering them needs a table renderer,
+#       which is a different change with a different owner.
+#   epoch_mint.documents_with_epoch_id / .strings_declined /
+#   .strings_declined_distinct
+#       REAL COUNTERS, REALLY NOT RENDERED. epochMint's own header says a
+#       declined string should be "a number in strings_by_source /
+#       strings_declined rather than" a silence -- and that number does not
+#       reach the digest today.
+#   valid_interval_decompose.anchor_session_from_timeref / _from_document /
+#   method_from_app_block / method_from_class_default
+#       REAL COUNTERS, REALLY NOT RENDERED. They record WHERE a value came
+#       from, which is the provenance half of that pass's report.
+#
+# Closing either group is a digest change, not a pass change, and is out of
+# scope for the change that added this gate. Recording it is not.
+NOT_RENDERED_YET = {
+    "epoch_mint": {
+        "strings_by_source", "epoch_index",
+        "documents_with_epoch_id", "strings_declined",
+        "strings_declined_distinct",
+    },
+    "valid_interval_decompose": {
+        "anchor_session_from_timeref", "anchor_session_from_document",
+        "method_from_app_block", "method_from_class_default",
+    },
+}
+
+# Structural keys every pass carries that are NOT measurements: `ran` says the
+# pass executed and is rendered as its own LINE rather than as a row, and
+# `pass` is the guard's identity stamp from runBatchPass.
+NON_COUNTER_KEYS = {"ran", "pass", "pass_failed", "pass_failed_identifier"}
+
+
 def _read(path):
     with open(path, "r", encoding="utf-8") as handle:
         return handle.read()
+
+
+def struct_field_names(text, assign="report = struct("):
+    """Top-level field NAMES of a `report = struct(...)` initializer.
+
+    A DEPTH-AWARE SCAN, NOT A REGEX, and the difference is load-bearing: a
+    regex over quoted strings inside the call reports epochMint's nested
+    `struct('source', {}, 'documents', {}, ...)` keys as if they were report
+    fields, which would put four names on the debt list that are not counters
+    and are not missing. It tracks (), {}, [], MATLAB char literals (with ''
+    escaping) and `%` comments, splits the outermost argument list on commas at
+    depth 1, and takes the even-indexed items -- name, value, name, value.
+
+    Returns None when the file has no such initializer, so "this pass declares
+    no report" stays distinguishable from "it declares an empty one".
+    """
+    i = text.find(assign)
+    if i < 0:
+        return None
+    j = text.index("(", i)
+    depth, items, cur, k, n = 0, [], [], j, len(text)
+    while k < n:
+        ch = text[k]
+        if ch == "'":
+            k2 = k + 1
+            while k2 < n:
+                if text[k2] == "'":
+                    if k2 + 1 < n and text[k2 + 1] == "'":
+                        k2 += 2
+                        continue
+                    break
+                k2 += 1
+            cur.append(text[k:k2 + 1])
+            k = k2 + 1
+            continue
+        if ch == "%":
+            while k < n and text[k] != "\n":
+                k += 1
+            continue
+        if ch in "({[":
+            depth += 1
+            if depth == 1 and ch == "(":
+                k += 1
+                continue
+            cur.append(ch)
+            k += 1
+            continue
+        if ch in ")}]":
+            depth -= 1
+            if depth == 0:
+                items.append("".join(cur))
+                break
+            cur.append(ch)
+            k += 1
+            continue
+        if ch == "," and depth == 1:
+            items.append("".join(cur))
+            cur = []
+            k += 1
+            continue
+        cur.append(ch)
+        k += 1
+    names = []
+    for idx, item in enumerate(items):
+        if idx % 2:
+            continue
+        s = item.replace("...", "").strip()
+        if len(s) >= 2 and s[0] == "'" and s[-1] == "'":
+            names.append(s[1:-1])
+    return names
 
 
 def discover():
@@ -291,6 +416,130 @@ def test_every_pass_is_printed_by_the_discovery_run():
             missing.append("%s (`%s`) is missing from runCorpusDiscovery's "
                            "`expected` table" % (name, key))
     assert not missing, "\n  ".join(["unprinted batch post-pass(es):"] + missing)
+
+
+def _digest_rows():
+    """census_digest.POST_PASSES as {report key: set(rendered counter keys)}."""
+    import importlib.util
+
+    path = os.path.join(HERE, "census_digest.py")
+    spec = importlib.util.spec_from_file_location("_census_digest_wiring", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return dict((name, set(key for key, _label in rows))
+                for name, _fn, rows in module.POST_PASSES)
+
+
+def test_every_counter_a_rendered_pass_declares_reaches_the_digest():
+    """RENDERED. A counter in the artifact and not on the screen is write-only.
+
+    THE DENOMINATOR IS PRINTED PER PASS -- how many fields its initializer
+    declares -- because a scan that failed to parse a struct would report
+    perfect coverage, which is this repository's most-repeated failure and the
+    reason `struct_field_names` returns None rather than [] when it finds
+    nothing.
+
+    SCOPE, STATED SO THE ZERO IS READABLE: only passes that census_digest.py
+    renders AT ALL are checked. Three passes (lawn_plate_subjects,
+    openminds_citations, response_parameters_fold) have no POST_PASSES entry,
+    so every counter they declare is unrendered -- a whole-pass gap, which is a
+    bigger and different decision than a missing row, and one this test names
+    rather than silently folds into a count.
+    """
+    passes, _exempt, _n_files = discover()
+    rendered = _digest_rows()
+    print("\n--- RENDERED leg: %d pass(es), %d rendered by census_digest ---"
+          % (len(passes), len(rendered)))
+
+    unrendered_passes = []
+    missing, healed = [], []
+    for name, key in passes:
+        if not key:
+            continue
+        text = _read(os.path.join(CONVERT_DIR, name + ".m"))
+        fields = struct_field_names(text)
+        if fields is None:
+            print("  %-30s no `report = struct(` initializer -- NOT SCANNED"
+                  % name)
+            continue
+        counters = [f for f in fields if f not in NON_COUNTER_KEYS]
+        if key not in rendered:
+            unrendered_passes.append((name, key, len(counters)))
+            print("  %-30s %3d counter(s), NO POST_PASSES ENTRY -- the whole "
+                  "pass is unrendered" % (name, len(counters)))
+            continue
+        known = NOT_RENDERED_YET.get(key, set())
+        gap = [f for f in counters if f not in rendered[key]]
+        print("  %-30s %3d counter(s) declared, %d rendered, %d known gap(s)"
+              % (name, len(counters), len(rendered[key] & set(counters)),
+                 len(known)))
+        for f in gap:
+            if f not in known:
+                missing.append("%s.%s" % (key, f))
+        for f in known:
+            if f in rendered[key]:
+                healed.append("%s.%s" % (key, f))
+            elif f not in counters:
+                healed.append("%s.%s (no longer declared)" % (key, f))
+
+    # The whole-pass gap is REPORTED, not asserted on. Adding three POST_PASSES
+    # entries is a digest change with its own reading instructions per block,
+    # and quietly failing this test into existence would get them written badly.
+    for name, key, n in unrendered_passes:
+        print("  NOTE: %s (`%s`) renders none of its %d counter(s)"
+              % (name, key, n))
+
+    assert not missing, (
+        "counter(s) declared by a batch post-pass and rendered NOWHERE in "
+        "tools/census_digest.py: %s.\n"
+        "  A counter that reaches the corpus artifact and not the digest is "
+        "write-only -- exactly the epochMint defect. ADD A ROW to that pass's "
+        "entry in POST_PASSES, or, if the number is genuinely not worth "
+        "printing, add it to NOT_RENDERED_YET in this file WITH THE REASON."
+        % ", ".join(missing)
+    )
+    # SHRINK ONLY, same contract as NO_REPORT_YET above: a debt list that
+    # outlives its debt is a stale claim about our own instruments, in the
+    # direction that understates progress.
+    assert not healed, (
+        "%s is/are now rendered (or no longer declared) and must be removed "
+        "from NOT_RENDERED_YET." % ", ".join(healed)
+    )
+
+
+def test_the_session_anchor_extent_counters_are_rendered():
+    """The bounded-extent group, named rather than left to the sweep above.
+
+    The generic test passes just as well if these counters are DELETED -- a
+    scan over what exists cannot notice something that stopped existing, which
+    is the same reason test_the_response_parameters_fold_is_wired exists. They
+    are the instrument for a defect that discarded 20,411 encounter windows
+    while every other counter in that report read clean, so removing them is a
+    decision that should have to argue with a test.
+    """
+    rendered = _digest_rows()
+    assert "session_anchor_fold" in rendered, (
+        "session_anchor_fold has no POST_PASSES entry at all"
+    )
+    required = {
+        "bounded_extents_examined": "THE DENOMINATOR -- without it every "
+                                    "extent counter's 0 is unreadable",
+        "bounded_with_start_field": "was a window there to lose",
+        "bounded_with_end_field": "was a window there to lose",
+        "bounded_window_carried": "did it survive",
+        "bounded_start_only_carried": "the half-window, kept apart from a "
+                                      "window that was never there",
+        "bounded_no_window_stated": "nothing to lose -- NOT a loss",
+        "refused_unreadable_extent_unit": "the unit the fold will not guess",
+        "refused_malformed_extent": "a shape it does not recognise",
+        "refused_extent_without_start": "an end it cannot anchor",
+    }
+    gone = sorted(k for k in required if k not in rendered["session_anchor_fold"])
+    print("\n--- session_anchor_fold extent rows: %d required, %d missing ---"
+          % (len(required), len(gone)))
+    assert not gone, "\n  ".join(
+        ["bounded-extent row(s) missing from census_digest.POST_PASSES:"]
+        + ["%s -- %s" % (k, required[k]) for k in gone])
 
 
 def test_the_response_parameters_fold_is_wired():

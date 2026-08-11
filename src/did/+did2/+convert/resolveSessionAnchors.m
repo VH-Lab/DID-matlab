@@ -39,6 +39,14 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   IT -- a re-run is what re-measures them, and `refused_negative_extent` is
 %   reachable for the first time.
 %
+%   THEY PREDATE A SECOND CHANGE TOO, 2026-08-11: there are now NINE refusal
+%   reasons, not the six that rollup was summed over, plus ten bounded-extent
+%   counters NO RUN HAS EVER REPORTED. The line "0 REFUSED (total), across all
+%   six refusal reasons" is a correct quote of that run and is left as one; it
+%   is not a statement about this file as it stands. Corpus run 31508009545 was
+%   in flight from an older commit while this was written and contains none of
+%   it.
+%
 %   The two classes it folds are exactly these, and no others --
 %   `epoch_*`/`event_*`/`utc_reference` are NOT touched here. That mattered
 %   because `ndi.migrate.internal.stimulusBathToBath` mints a populated
@@ -175,6 +183,48 @@ function [result, report] = resolveSessionAnchors(result, options)
 %     relation == 'concurrent_with'         -> refused_ambiguous_relation
 %     relation not in the v1 enum           -> refused_unknown_relation
 %     end < start                           -> refused_negative_extent
+%     start/end in a unit it cannot read    -> refused_unreadable_extent_unit
+%     start/end is not a duration cell      -> refused_malformed_extent
+%     an `end` with no readable `start`     -> refused_extent_without_start
+%
+%   THE LAST THREE WERE ADDED 2026-08-11 AND THEY ARE A BEHAVIOUR CHANGE, so the
+%   reasoning is written here rather than left in a commit message. Before them,
+%   a bounded body whose `start`/`end` could not be READ still FOLDED: `cellField`
+%   returned [] for three unrelated situations the caller could not tell apart
+%   (field absent / not a duration cell / a unit `isSecondsUnit` refuses),
+%   `value.start` was never set, `value.duration` was never computed, and NO
+%   COUNTER MOVED. `refused_total` stayed 0 and the window was gone. That is the
+%   same instrument shape as the 20,411-document loss recorded under `cellField`
+%   below -- an absent answer wearing a green badge -- and it is the reason the
+%   repair to `cellField` alone was not enough.
+%
+%   REFUSING RATHER THAN FOLDING-AND-COUNTING was chosen for three reasons, the
+%   third being decisive:
+%     1. It is what this section already says the pass does. `refused_negative_extent`
+%        refuses a whole document over an extent it will not store; an extent it
+%        cannot READ is the same case, not a new one.
+%     2. A refused body is LEFT EXACTLY AS IT IS, so it stays a
+%        `session_bounded_reference` -- visible as unmigrated in `by_class`, with
+%        its window intact for a later pass. A folded-and-counted body is a
+%        `relative_reference` with no window: the data is gone and only a number
+%        in a report remembers it.
+%     3. THE DELETION GATE. The six retiring classes may leave V_eta only when
+%        `refused_total == 0` AND no session_*_reference survives in `by_class`.
+%        Fold-and-count satisfies BOTH halves of that gate while dropping
+%        windows, so it would silently authorise deleting the classes whose
+%        documents were being damaged. Refusal holds the gate shut, which is
+%        exactly what a gate is for.
+%   The cost is a behaviour change that is provably empty today: the only emitter
+%   of `session_bounded_reference` in this repository hard-codes the literal 's'
+%   (ontology_table_row.m, `durationSeconds`), so no migrated document can reach
+%   any of the three. That is what makes this cheap to do now and expensive to do
+%   after a unit arrives.
+%
+%   WHAT IS NOT REFUSED, and must not be conflated with the above: a bounded body
+%   whose `start`/`end` are simply ABSENT states no window, loses nothing by
+%   folding without one, and folds -- counted `bounded_no_window_stated`. The
+%   whole point of the status output on `cellField` is that "nothing was there"
+%   and "something was there and I could not read it" stopped being the same [].
 %
 %   `concurrent_with` is refused because it is genuinely ambiguous between
 %   OWL-Time's intervalEquals and intervalOverlaps -- one of the three defects
@@ -220,6 +270,45 @@ end
 % document is read, so "did not run" and "ran and found nothing" are different
 % readings of the same struct rather than the same reading. This is Operating
 % Rule 5, and silentLoss is what happens without it.
+%
+% THE BOUNDED-EXTENT GROUP, added 2026-08-11, exists because Rule 5 applies to
+% the three new extent refusals too. `refused_unreadable_extent_unit: 0` printed
+% beside `bounded_extents_examined: 0` says NOTHING, and must be readable as
+% saying nothing.
+%
+%   bounded_extents_examined     THE DENOMINATOR of every extent counter, and it
+%                                is NOT `anchors_bounded`: an anchor refused
+%                                earlier (no session id / no session document /
+%                                ambiguous session / ambiguous or unknown
+%                                relation) never reaches the extent read at all.
+%                                The two differ by exactly those refusals.
+%   bounded_with_start_field     how many carried the field AT ALL, whatever its
+%   bounded_with_end_field       status -- so "no window was ever there" and "a
+%                                window was there and was not carried" are
+%                                separable from the report alone.
+%   bounded_blank_extent_cells   A CELL COUNT, NOT A DOCUMENT COUNT. Do not sum
+%                                it with the rows below. One body can contribute
+%                                two.
+%   bounded_window_carried       the three mutually exclusive outcomes for a body
+%   bounded_start_only_carried   that was NOT refused, so "the window survived",
+%   bounded_no_window_stated     "half of it survived" and "there was none to
+%                                survive" are three numbers rather than one.
+%                                Counted at the fold DECISION, i.e. before
+%                                validation, so they are comparable with the
+%                                refusals -- unlike `anchors_folded`, which is
+%                                recounted after quarantine at the end.
+%
+% THE IDENTITY THEY SATISFY, asserted by testTimeReferenceCollapse and worth
+% checking by eye in any corpus report: every examined extent lands in exactly
+% one of seven buckets.
+%
+%   bounded_extents_examined  ==  bounded_window_carried
+%                               + bounded_start_only_carried
+%                               + bounded_no_window_stated
+%                               + refused_negative_extent
+%                               + refused_unreadable_extent_unit
+%                               + refused_malformed_extent
+%                               + refused_extent_without_start
 report = struct( ...
     'documents_inspected',          0, ...
     'documents_unreadable',         0, ...
@@ -234,7 +323,19 @@ report = struct( ...
     'refused_ambiguous_relation',   0, ...
     'refused_unknown_relation',     0, ...
     'refused_negative_extent',      0, ...
+    'refused_unreadable_extent_unit', 0, ...
+    'refused_malformed_extent',     0, ...
+    'refused_extent_without_start', 0, ...
     'refused_total',                0, ...
+    ... % --- the bounded-extent denominator (see the block above) ----------
+    'bounded_extents_examined',     0, ...
+    'bounded_with_start_field',     0, ...
+    'bounded_with_end_field',       0, ...
+    'bounded_blank_extent_cells',   0, ...
+    ... % --- what the fold actually carried forward ------------------------
+    'bounded_window_carried',       0, ...
+    'bounded_start_only_carried',   0, ...
+    'bounded_no_window_stated',     0, ...
     'fold_quarantined',             0, ...
     'ran',                          false);
 result.session_anchor_fold = report;
@@ -338,17 +439,71 @@ for k = 1:n
 
     value = struct('relation', term);
     if isBounded
-        startCell = cellField(blk, 'start');
-        endCell   = cellField(blk, 'end');
-        if ~isempty(startCell)
-            value.start = startCell;
+        % THE STATUS, NOT THE EMPTINESS, DECIDES. `cellField` used to answer
+        % with [] for four unrelated situations and the caller could not tell
+        % them apart, so a window in a unit the fold refuses to read was
+        % indistinguishable from a body that never had one -- and the second
+        % reading is the one the code took, silently. It now answers with a
+        % reason as well as a value.
+        report.bounded_extents_examined = report.bounded_extents_examined + 1;
+        [startCell, startStatus] = cellField(blk, 'start');
+        [endCell,   endStatus]   = cellField(blk, 'end');
+        if ~strcmp(startStatus, 'absent')
+            report.bounded_with_start_field = report.bounded_with_start_field + 1;
         end
-        if ~isempty(startCell) && ~isempty(endCell)
+        if ~strcmp(endStatus, 'absent')
+            report.bounded_with_end_field = report.bounded_with_end_field + 1;
+        end
+        report.bounded_blank_extent_cells = report.bounded_blank_extent_cells ...
+            + double(strcmp(startStatus, 'blank')) ...
+            + double(strcmp(endStatus, 'blank'));
+
+        % REFUSAL PRECEDENCE, fixed and stated so the counters stay a partition:
+        % a refused body moves EXACTLY ONE counter, which is what makes
+        % `refused_total` a document count rather than a reason count. A shape
+        % this does not understand at all outranks a unit it merely cannot read,
+        % because the first is a stronger statement about how little is known.
+        %
+        % BOTH ENDS ARE TESTED TOGETHER, deliberately. The half-case -- `start`
+        % readable, `end` unreadable -- must NOT fold: it would produce a
+        % `relative_reference` carrying a start and no duration, which is a
+        % silently TRUNCATED window that validates clean and reads, downstream,
+        % as an instant that was deliberately recorded as an instant. A truncated
+        % window is worse than an unmigrated one, because nothing downstream can
+        % tell it happened.
+        if strcmp(startStatus, 'malformed') || strcmp(endStatus, 'malformed')
+            report.refused_malformed_extent = report.refused_malformed_extent + 1;
+            continue;
+        end
+        if strcmp(startStatus, 'unreadable_unit') || strcmp(endStatus, 'unreadable_unit')
+            report.refused_unreadable_extent_unit = ...
+                report.refused_unreadable_extent_unit + 1;
+            continue;
+        end
+
+        % Past this point every cell is 'ok', 'absent' or 'blank', and the last
+        % two both mean THE SOURCE STATED NO NUMBER -- so folding without them
+        % loses nothing and is not a refusal.
+        haveStart = strcmp(startStatus, 'ok');
+        haveEnd   = strcmp(endStatus,   'ok');
+        if haveEnd && ~haveStart
+            % An offset with nothing to offset FROM. `relative_reference.value`
+            % has `start` + `duration` and no `end`, so the only ways to keep
+            % this document's number are to invent a start of 0 (a fabricated
+            % fact -- NO TIMES => NO REFERENCE) or to store the end as if it
+            % were a start (a different fabricated fact). Refuse instead, and
+            % leave the body carrying its real `end` for a pass that can read it.
+            report.refused_extent_without_start = ...
+                report.refused_extent_without_start + 1;
+            continue;
+        end
+        if haveStart && haveEnd
             span = secondsOf(endCell) - secondsOf(startCell);
             if span < 0
                 report.refused_negative_extent = report.refused_negative_extent + 1;
                 continue;
             end
+            value.start = startCell;
             % NO source_unit / source_value on the extent. The source wrote two
             % OFFSETS, never a span, so filling a source slot would claim a
             % provenance that does not exist -- the distance_metadata
@@ -356,6 +511,16 @@ for k = 1:n
             value.duration = struct('seconds', span, 'approximate', ...
                 truthy(fieldOr(startCell, 'approximate', false)) || ...
                 truthy(fieldOr(endCell, 'approximate', false)));
+            report.bounded_window_carried = report.bounded_window_carried + 1;
+        elseif haveStart
+            % A start with no end stated. Not a loss -- there was nothing to
+            % lose -- but it IS a bounded reference with no bound, so it is
+            % counted apart from both the full window and the empty one.
+            value.start = startCell;
+            report.bounded_start_only_carried = ...
+                report.bounded_start_only_carried + 1;
+        else
+            report.bounded_no_window_stated = report.bounded_no_window_stated + 1;
         end
     end
 
@@ -386,7 +551,10 @@ report.refused_total = report.refused_no_session_id ...
     + report.refused_ambiguous_session ...
     + report.refused_ambiguous_relation ...
     + report.refused_unknown_relation ...
-    + report.refused_negative_extent;
+    + report.refused_negative_extent ...
+    + report.refused_unreadable_extent_unit ...
+    + report.refused_malformed_extent ...
+    + report.refused_extent_without_start;
 
 if isempty(changedIdx)
     result.session_anchor_fold = report;
@@ -509,12 +677,46 @@ for k = 1:numel(candidates)
 end
 end
 
-function c = cellField(blk, name)
-%CELLFIELD One duration cell off the old block, or [] when it SAYS NOTHING.
+function [c, status] = cellField(blk, name)
+%CELLFIELD One duration cell off the old block, plus WHY when there isn't one.
 %   A cell that states no time is treated as ABSENT rather than as zero: NO
 %   TIMES => NO REFERENCE applies inside a document as well as to whether one
 %   exists, and a fabricated 0 s offset is exactly the hollow value the census
 %   was built to find.
+%
+%   ---------------------------------------------------------------------
+%   SECOND OUTPUT ADDED 2026-08-11: THE VALUE WAS NEVER THE PROBLEM. THE
+%   INDISTINGUISHABILITY WAS.
+%   ---------------------------------------------------------------------
+%   This returned a bare [] for four situations with nothing in common but
+%   their emptiness, and the caller -- which had only `isempty` to ask with --
+%   treated all four as "there was no window here". One of them is that. The
+%   other three are losses:
+%
+%     'ok'               a usable duration cell; C is it, with a canonical
+%                        `seconds` derived if it was missing (see below).
+%     'absent'           the block does not carry the field. NOTHING WAS LOST.
+%                        This is the only status that means that, and telling it
+%                        apart from the other three is the entire point.
+%     'blank'            the field is a duration cell that states no readable
+%                        number in either slot -- the schema's blank_value shape
+%                        (`buildBlankStructure`, +did2/+schema/cache.m), or a
+%                        number in a type this cannot read. Treated by the fold
+%                        as stating nothing, and COUNTED so that reading is
+%                        visible rather than assumed.
+%     'malformed'        the field is present and is NOT a scalar struct, so it
+%                        is not a duration cell at all and this cannot say what
+%                        it is. Refused by the fold.
+%     'unreadable_unit'  the field IS a well-formed cell carrying a real number,
+%                        and `isSecondsUnit` will not read its unit. THE VALUE
+%                        RETURNED IS STILL [] AND THAT IS DELIBERATE AND
+%                        UNCHANGED -- guessing the unit is the distance_metadata
+%                        assumed-shape error and would silently rescale real
+%                        data. What changed is that the fold is now TOLD, and
+%                        refuses the document instead of folding it empty.
+%
+%   The refusal to guess a unit is correct and stays. The silence about having
+%   refused is what was fixed.
 %
 %   ---------------------------------------------------------------------
 %   REPAIR 2026-08-11: "SAYS NOTHING" USED TO MEAN "HAS NO `seconds`", AND
@@ -560,25 +762,41 @@ function c = cellField(blk, name)
 %   resolveValidIntervals all write `seconds`) or is `durationSeconds`'s literal
 %   's', so the unreadable-unit path has no known population -- it exists so that
 %   a future unit cannot be silently misread.
+%
+%   "NO KNOWN POPULATION" IS EXACTLY WHY IT IS NOW COUNTED, not a reason to
+%   leave it uncounted. If the population is truly zero the counter costs
+%   nothing and PROVES it, over a stated denominator; if it is not zero, today
+%   there is no way to tell. The claim above is also read off the emitters IN
+%   THIS REPOSITORY, and the corpora are a SAMPLE -- a `session_bounded_reference`
+%   written by a converter for a dataset still waiting to migrate is precisely
+%   what this migration is for.
 c = [];
+status = 'absent';
 if ~isstruct(blk) || ~isfield(blk, name); return; end
 x = blk.(name);
-if ~isstruct(x) || ~isscalar(x); return; end
+if ~isstruct(x) || ~isscalar(x)
+    status = 'malformed';
+    return;
+end
 if isfield(x, 'seconds') && isnumeric(x.seconds) && isscalar(x.seconds) ...
         && isfinite(x.seconds)
     c = x;
+    status = 'ok';
     return;
 end
 % No canonical value. Derive one ONLY from a source pair that names seconds.
 if ~isfield(x, 'source_value') || ~isnumeric(x.source_value) ...
         || ~isscalar(x.source_value) || ~isfinite(x.source_value)
+    status = 'blank';
     return;
 end
 if ~isSecondsUnit(fieldOr(x, 'source_unit', ''))
+    status = 'unreadable_unit';
     return;
 end
 x.seconds = double(x.source_value);
 c = x;
+status = 'ok';
 end
 
 function tf = isSecondsUnit(u)

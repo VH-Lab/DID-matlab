@@ -279,7 +279,14 @@ expected = {'documents_inspected', 'documents_unreadable', ...
     'anchors_bounded', 'anchors_folded', 'refused_no_session_id', ...
     'refused_no_session_document', 'refused_ambiguous_session', ...
     'refused_ambiguous_relation', 'refused_unknown_relation', ...
-    'refused_negative_extent', 'refused_total', 'fold_quarantined', 'ran'};
+    'refused_negative_extent', 'refused_unreadable_extent_unit', ...
+    'refused_malformed_extent', 'refused_extent_without_start', ...
+    'refused_total', ...
+    'bounded_extents_examined', 'bounded_with_start_field', ...
+    'bounded_with_end_field', 'bounded_blank_extent_cells', ...
+    'bounded_window_carried', 'bounded_start_only_carried', ...
+    'bounded_no_window_stated', ...
+    'fold_quarantined', 'ran'};
 for k = 1:numel(expected)
     verifyTrue(testCase, isfield(rep, expected{k}), ...
         sprintf('report is missing the field %s', expected{k}));
@@ -287,6 +294,13 @@ end
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 1);
 verifyEqual(testCase, rep.anchors_seen, 0);
+% AND THE EXTENT DENOMINATOR IS DEFINED TOO, on a batch with no bounded body in
+% it. `refused_unreadable_extent_unit: 0` beside `bounded_extents_examined: 0` is
+% the reading "nothing was looked at", and it has to be AVAILABLE as a reading --
+% a report that omitted the denominator would make it indistinguishable from
+% "every extent was read cleanly".
+verifyEqual(testCase, rep.bounded_extents_examined, 0);
+verifyEqual(testCase, rep.refused_unreadable_extent_unit, 0);
 end
 
 function testAnEmptyBatchReportsRatherThanReturningSilently(testCase)
@@ -459,21 +473,29 @@ end
 % is reachable only from a hand-built body, and these drive it with one that
 % differs from the emitter's output in the unit string and in nothing else.
 
-function testAWindowInAUnitTheFoldCannotReadKeepsNoExtent(testCase)
-% THE REFUSAL BRANCH. A source pair whose unit `isSecondsUnit` cannot read is
-% NOT read as seconds: the cell stays ABSENT, so the folded document carries no
-% `start` and no `duration` rather than a number rescaled by a guessed factor.
-% Reading `source_value: 1249.72, source_unit: 'ms'` as 1249.72 SECONDS would be
-% a 1000x error that validates cleanly -- the distance_metadata assumed-shape
-% failure with a unit attached.
+function testAWindowInAUnitTheFoldCannotReadIsRefusedNotFoldedEmpty(testCase)
+% THE REFUSAL BRANCH, AND THIS TEST CHANGED ITS MIND ON PURPOSE -- READ WHY.
 %
-% WHAT THIS TEST DOES NOT CLAIM, stated because a green here is easy to
-% over-read: an unreadable unit moves NO refusal counter. `anchors_folded` goes
-% up, `refused_total` stays 0, and the window is absent from the folded
-% document. That is the same instrument shape as the defect this branch was
-% written during -- a loss every counter reports as clean -- and it is pinned
-% here as the CURRENT BEHAVIOUR, not endorsed. It costs nothing today because no
-% emitter can produce such a unit; it would cost a corpus the day one can.
+% Its previous version was `...KeepsNoExtent`, and it pinned the opposite
+% outcome: the document FOLDED, `refused_total` stayed 0, and the window was
+% simply gone. That version's own comment said it was recording the current
+% behaviour "not endorsed", and named the reason -- "a loss every counter
+% reports as clean". This is that behaviour being fixed, so the assertions are
+% inverted rather than adjusted.
+%
+% WHAT IS UNCHANGED: `cellField` still refuses to guess the unit and still
+% returns no value. Reading `source_value: 1249.72, source_unit: 'ms'` as
+% 1249.72 SECONDS would be a 1000x error that validates cleanly -- the
+% distance_metadata assumed-shape failure with a unit attached. What changed is
+% that the fold is now TOLD it was refused ('unreadable_unit' rather than a bare
+% []), and refuses the DOCUMENT instead of quietly emitting an empty one.
+%
+% WHY REFUSING BEATS FOLDING-AND-COUNTING, in one line: a refused body stays a
+% `session_bounded_reference` with its window intact and is visible as
+% unmigrated in `by_class`, and it holds the DELETION GATE shut
+% (`refused_total == 0` AND no surviving session_*_reference). Fold-and-count
+% would satisfy both halves of that gate while dropping windows -- i.e. it would
+% authorise deleting the classes whose documents it was damaging.
 units = {'ms', 'minutes', 'msec', ''};
 for k = 1:numel(units)
     unit = units{k};
@@ -483,21 +505,228 @@ for k = 1:numel(units)
         sessionBody('sess_doc_1', 'SID_1', 'exp1'), ...
         emitterShapedBoundedBody('window_1', 'SID_1', unit, 12, 47)});
 
-    % the document still folds -- the refusal is about the CELL, not the anchor
     verifyEqual(testCase, rep.anchors_bounded, 1, label);
-    verifyEqual(testCase, rep.anchors_folded, 1, label);
-    verifyEqual(testCase, rep.refused_total, 0, label);
+    verifyEqual(testCase, rep.bounded_extents_examined, 1, label);
+    verifyEqual(testCase, rep.refused_unreadable_extent_unit, 1, sprintf( ...
+        ['source_unit ''%s'' produced no refusal. Either it was read as ' ...
+         'seconds, or it was folded away silently -- the two failures this ' ...
+         'branch exists to keep apart.'], label));
+    verifyEqual(testCase, rep.refused_total, 1, label);
+    verifyEqual(testCase, rep.anchors_folded, 0, label);
 
-    ref = oneOfClass(testCase, out, 'relative_reference');
-    value = ref.get('relative_reference.value');
-    verifyFalse(testCase, isfield(value, 'start'), sprintf( ...
-        ['source_unit ''%s'' was read as seconds: the fold set `start` from a ' ...
-         'unit isSecondsUnit refuses. An unreadable unit must leave the cell ' ...
-         'ABSENT.'], label));
-    verifyFalse(testCase, isfield(value, 'duration'), sprintf( ...
-        ['source_unit ''%s'' produced a `duration`, so both offsets were read ' ...
-         'as seconds and subtracted.'], label));
+    % the document is LEFT EXACTLY AS IT IS, window and all
+    verifyEmpty(testCase, ofClass(out, 'relative_reference'), label);
+    windows = ofClass(out, 'session_bounded_reference');
+    verifyNumElements(testCase, windows, 1, label);
+    kept = windows{1}.toStruct();
+    verifyEmpty(testCase, depValue(kept, 'relative_to'), label);
+    verifyEqual(testCase, kept.session_bounded_reference.start.source_value, 12, ...
+        sprintf(['the refused body lost its start value. A refusal must leave ' ...
+                 'the document untouched (unit %s).'], label));
+
+    % AND IT IS NOT COUNTED AS "there was no window here" -- the distinction the
+    % whole change is about. `bounded_no_window_stated` is reserved for a body
+    % whose fields are genuinely ABSENT.
+    verifyEqual(testCase, rep.bounded_no_window_stated, 0, label);
+    verifyEqual(testCase, rep.bounded_with_start_field, 1, label);
+    verifyEqual(testCase, rep.bounded_with_end_field, 1, label);
 end
+end
+
+function testAHalfReadableWindowIsRefusedRatherThanTruncated(testCase)
+% THE HALF-CASE, and it is the one a fold-and-count design gets most wrong.
+% `start` is in seconds and readable; `end` is in milliseconds and is not. Under
+% the old behaviour this folded to a `relative_reference` carrying a start and NO
+% duration -- indistinguishable, downstream and forever, from an instant that was
+% deliberately recorded as an instant. A truncated window is worse than an
+% unmigrated one because nothing can tell it happened.
+b = boundedBody('window_1', 'SID_1', 12, 47);
+b.session_bounded_reference.start = emitterDurationCell('s', 12);
+b.session_bounded_reference.('end') = emitterDurationCell('ms', 47000);
+[out, rep] = foldFrom({sessionBody('sess_doc_1', 'SID_1', 'exp1'), b});
+
+verifyEqual(testCase, rep.bounded_extents_examined, 1);
+verifyEqual(testCase, rep.refused_unreadable_extent_unit, 1, ...
+    ['a window with a readable start and an unreadable end was not refused. ' ...
+     'If it folded, it folded TRUNCATED.']);
+verifyEqual(testCase, rep.refused_total, 1);
+verifyEqual(testCase, rep.anchors_folded, 0);
+verifyEqual(testCase, rep.bounded_start_only_carried, 0, ...
+    ['the half-case was counted as `bounded_start_only_carried`, which is ' ...
+     'reserved for an end that was never stated -- exactly the conflation ' ...
+     'this change removes.']);
+verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+end
+
+function testAWindowThatWasNeverThereIsNotCountedAsALoss(testCase)
+% THE CONTROL FOR THE THREE TESTS ABOVE, and the reason `cellField` reports a
+% REASON rather than a bare emptiness. A bounded body with no `start` and no
+% `end` states no window; folding without one loses nothing, so it must FOLD,
+% move NO refusal counter, and be counted in the bucket that says so.
+%
+% Getting this wrong in the other direction -- refusing everything that produced
+% no metric -- would refuse documents where there is nothing to refuse, and
+% would break the deletion gate in the opposite direction by making
+% `refused_total` permanently non-zero.
+b = boundedBody('window_1', 'SID_1', 12, 47);
+b.session_bounded_reference = rmfield(b.session_bounded_reference, 'start');
+b.session_bounded_reference = rmfield(b.session_bounded_reference, 'end');
+[out, rep] = foldFrom({sessionBody('sess_doc_1', 'SID_1', 'exp1'), b});
+
+verifyEqual(testCase, rep.bounded_extents_examined, 1);
+verifyEqual(testCase, rep.bounded_with_start_field, 0);
+verifyEqual(testCase, rep.bounded_with_end_field, 0);
+verifyEqual(testCase, rep.bounded_no_window_stated, 1);
+verifyEqual(testCase, rep.refused_total, 0, ...
+    'a body that never had a window was counted as a refusal');
+verifyEqual(testCase, rep.anchors_folded, 1);
+value = oneOfClass(testCase, out, 'relative_reference').get('relative_reference.value');
+verifyFalse(testCase, isfield(value, 'start'));
+verifyFalse(testCase, isfield(value, 'duration'));
+end
+
+function testAStartWithNoEndStatedFoldsAndIsCountedApart(testCase)
+% `start` readable, `end` genuinely ABSENT. Nothing is lost, so it folds -- but
+% it is a bounded reference with no bound, so it lands in its own bucket rather
+% than being summed with the full windows. The bucket is what makes the
+% half-case test above meaningful: without it, "start only" and "start plus an
+% end I could not read" would be the same number again.
+b = boundedBody('window_1', 'SID_1', 12, 47);
+b.session_bounded_reference = rmfield(b.session_bounded_reference, 'end');
+[out, rep] = foldFrom({sessionBody('sess_doc_1', 'SID_1', 'exp1'), b});
+
+verifyEqual(testCase, rep.bounded_with_start_field, 1);
+verifyEqual(testCase, rep.bounded_with_end_field, 0);
+verifyEqual(testCase, rep.bounded_start_only_carried, 1);
+verifyEqual(testCase, rep.bounded_window_carried, 0);
+verifyEqual(testCase, rep.refused_total, 0);
+value = oneOfClass(testCase, out, 'relative_reference').get('relative_reference.value');
+verifyTrue(testCase, isfield(value, 'start'));
+verifyEqual(testCase, value.start.seconds, 12);
+verifyFalse(testCase, isfield(value, 'duration'));
+end
+
+function testAnEndWithNoStartIsRefusedNotDropped(testCase)
+% The mirror of the case above, and NOT symmetric with it.
+% `relative_reference.value` has `start` and `duration` and no `end`, so an end
+% with no start cannot be carried without inventing a start of 0 (NO TIMES => NO
+% REFERENCE) or storing the end as if it were a start. Both are fabrications, so
+% the fold refuses and leaves the real number where it is.
+b = boundedBody('window_1', 'SID_1', 12, 47);
+b.session_bounded_reference = rmfield(b.session_bounded_reference, 'start');
+[out, rep] = foldFrom({sessionBody('sess_doc_1', 'SID_1', 'exp1'), b});
+
+verifyEqual(testCase, rep.bounded_with_start_field, 0);
+verifyEqual(testCase, rep.bounded_with_end_field, 1);
+verifyEqual(testCase, rep.refused_extent_without_start, 1);
+verifyEqual(testCase, rep.refused_total, 1);
+verifyEqual(testCase, rep.anchors_folded, 0);
+verifyEqual(testCase, rep.bounded_no_window_stated, 0, ...
+    'an end that WAS stated was counted as "no window stated"');
+verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+end
+
+function testAnExtentThatIsNotADurationCellIsRefusedAndCounted(testCase)
+% 'malformed': the field is present and is not a scalar struct, so this cannot
+% say what it is -- only that the source put something there and the fold cannot
+% carry it. Refused, and counted separately from the unreadable unit, because
+% "a unit I do not know" and "a shape I do not recognise" call for different
+% repairs.
+%
+% A bare number is the shape a hand-edited or foreign-converter document is most
+% likely to carry, which is why it is the fixture.
+b = boundedBody('window_1', 'SID_1', 12, 47);
+b.session_bounded_reference.start = 12;
+[~, rep] = foldFrom({sessionBody('sess_doc_1', 'SID_1', 'exp1'), b});
+
+verifyEqual(testCase, rep.bounded_with_start_field, 1);
+verifyEqual(testCase, rep.refused_malformed_extent, 1);
+verifyEqual(testCase, rep.refused_unreadable_extent_unit, 0, ...
+    'a malformed cell was filed under the unreadable-unit reason');
+verifyEqual(testCase, rep.refused_total, 1);
+verifyEqual(testCase, rep.anchors_folded, 0);
+end
+
+function testABlankDurationCellIsTreatedAsStatingNothingAndIsCounted(testCase)
+% 'blank': a well-formed duration cell that carries no readable number in either
+% slot -- the schema's blank_value shape (buildBlankStructure,
+% +did2/+schema/cache.m). Nothing was stated, so nothing is lost and the body
+% folds; but the cell WAS present, so it is counted, and a reader can see that
+% the fold's "no window" reading rested on an empty cell rather than on an
+% absent field.
+b = boundedBody('window_1', 'SID_1', 12, 47);
+blank = struct('seconds', [], 'source_unit', '', 'source_value', [], ...
+    'approximate', false);
+b.session_bounded_reference.start = blank;
+b.session_bounded_reference.('end') = blank;
+[out, rep] = foldFrom({sessionBody('sess_doc_1', 'SID_1', 'exp1'), b});
+
+verifyEqual(testCase, rep.bounded_with_start_field, 1);
+verifyEqual(testCase, rep.bounded_with_end_field, 1);
+% A CELL COUNT, NOT A DOCUMENT COUNT: one body contributed two.
+verifyEqual(testCase, rep.bounded_blank_extent_cells, 2);
+verifyEqual(testCase, rep.bounded_no_window_stated, 1);
+verifyEqual(testCase, rep.refused_total, 0);
+verifyEqual(testCase, rep.anchors_folded, 1);
+value = oneOfClass(testCase, out, 'relative_reference').get('relative_reference.value');
+verifyFalse(testCase, isfield(value, 'start'));
+end
+
+function testEveryExaminedExtentLandsInExactlyOneBucket(testCase)
+% THE PARTITION, asserted over a batch holding one of each. A counter set that
+% does not add up to its own denominator is a counter set that can hide a case
+% -- which is precisely what happened when four situations shared one [].
+%
+% The identity is stated in resolveSessionAnchors.m's report block:
+%   bounded_extents_examined == window_carried + start_only_carried
+%                             + no_window_stated + refused_negative_extent
+%                             + refused_unreadable_extent_unit
+%                             + refused_malformed_extent
+%                             + refused_extent_without_start
+good      = boundedBody('w_good', 'SID_1', 12, 47);
+reversed  = boundedBody('w_rev',  'SID_1', 47, 12);
+badUnit   = emitterShapedBoundedBody('w_unit', 'SID_1', 'ms', 12, 47);
+
+startOnly = boundedBody('w_start', 'SID_1', 12, 47);
+startOnly.session_bounded_reference = ...
+    rmfield(startOnly.session_bounded_reference, 'end');
+
+endOnly = boundedBody('w_end', 'SID_1', 12, 47);
+endOnly.session_bounded_reference = ...
+    rmfield(endOnly.session_bounded_reference, 'start');
+
+none = boundedBody('w_none', 'SID_1', 12, 47);
+none.session_bounded_reference = rmfield(none.session_bounded_reference, 'start');
+none.session_bounded_reference = rmfield(none.session_bounded_reference, 'end');
+
+malformed = boundedBody('w_bad', 'SID_1', 12, 47);
+malformed.session_bounded_reference.start = 12;
+
+[~, rep] = foldFrom({sessionBody('sess_doc_1', 'SID_1', 'exp1'), ...
+    good, reversed, badUnit, startOnly, endOnly, none, malformed});
+
+verifyEqual(testCase, rep.anchors_bounded, 7);
+verifyEqual(testCase, rep.bounded_extents_examined, 7, ...
+    ['not every bounded anchor reached the extent read -- the denominator ' ...
+     'below is measuring something other than what it claims']);
+buckets = rep.bounded_window_carried + rep.bounded_start_only_carried ...
+    + rep.bounded_no_window_stated + rep.refused_negative_extent ...
+    + rep.refused_unreadable_extent_unit + rep.refused_malformed_extent ...
+    + rep.refused_extent_without_start;
+verifyEqual(testCase, buckets, rep.bounded_extents_examined, ...
+    ['the extent buckets do not sum to the number of extents examined: a ' ...
+     'bounded body is falling through every counter, which is the exact ' ...
+     'defect these counters were added to make impossible']);
+% and each bucket holds the one body built for it
+verifyEqual(testCase, rep.bounded_window_carried, 1);
+verifyEqual(testCase, rep.bounded_start_only_carried, 1);
+verifyEqual(testCase, rep.bounded_no_window_stated, 1);
+verifyEqual(testCase, rep.refused_negative_extent, 1);
+verifyEqual(testCase, rep.refused_unreadable_extent_unit, 1);
+verifyEqual(testCase, rep.refused_malformed_extent, 1);
+verifyEqual(testCase, rep.refused_extent_without_start, 1);
+verifyEqual(testCase, rep.refused_total, 4);
+verifyEqual(testCase, rep.anchors_folded, 3);
 end
 
 function testTheSameBodyInASecondsUnitIsRead(testCase)

@@ -830,6 +830,193 @@ class TestPostPassRendering(DigestCase):
         self.assertEqual(failed, [])
         self.assertIn("MALFORMED", text)
         self.assertIn("--- A ---", text)
+class TestBoundedExtentCounters(DigestCase):
+    """The bounded-extent group added with the extent refusals (2026-08-11).
+
+    WHY A WHOLE CLASS FOR SEVEN COUNTERS. They exist because a
+    `session_bounded_reference` whose `start`/`end` could not be READ used to
+    fold with its window discarded, no counter moving, nothing quarantining --
+    20,411 documents did, and the cross-corpus rollup that covered them printed
+    `0 REFUSED` and was, line by line, correct. So the failure mode these
+    counters guard against is a zero that cannot be told apart from a clean
+    result, and a digest that renders them in a way that produces its own
+    indistinguishable zero would reintroduce the defect one layer up. Every
+    test here is about that: which zero is this.
+    """
+
+    def _fold(self, **over):
+        """The FULL report shape, new counters included.
+
+        Deliberately separate from TestPostPassRendering._fold, which is left
+        WITHOUT the new keys so it keeps exercising the older-report path.
+        """
+        rep = {
+            "documents_inspected": 1000, "documents_unreadable": 0,
+            "session_documents_seen": 2, "anchors_seen": 40,
+            "anchors_relative": 30, "anchors_bounded": 10,
+            "anchors_folded": 40, "refused_total": 0,
+            "refused_no_session_id": 0, "refused_no_session_document": 0,
+            "refused_ambiguous_session": 0, "refused_ambiguous_relation": 0,
+            "refused_unknown_relation": 0, "refused_negative_extent": 0,
+            "refused_unreadable_extent_unit": 0, "refused_malformed_extent": 0,
+            "refused_extent_without_start": 0,
+            "bounded_extents_examined": 10, "bounded_with_start_field": 10,
+            "bounded_with_end_field": 10, "bounded_blank_extent_cells": 0,
+            "bounded_window_carried": 10, "bounded_start_only_carried": 0,
+            "bounded_no_window_stated": 0,
+            "fold_quarantined": 0, "ran": True,
+        }
+        rep.update(over)
+        return rep
+
+    def _corpus(self, name="A", **fields):
+        body = {"corpus": name, "total": 100, "migrated_count": 1000,
+                "quarantine_count": 0,
+                "silent_loss": {"total_docs": 1000, "skipped_docs": 0,
+                                "empty_dependency_count": 0,
+                                "vacuous_field_count": 0}}
+        body.update(fields)
+        self.write(name, body)
+
+    def test_the_extent_counters_are_rendered_at_all(self):
+        # The epochMint defect, restated: a counter that reaches the artifact
+        # and not the screen has not been reported to anybody.
+        self._corpus("A", session_anchor_fold=self._fold())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("bounded extents EXAMINED", text)
+        self.assertIn("extent unit the fold cannot read", text)
+        self.assertIn("extent is not a duration cell", text)
+        self.assertIn("an `end` with no readable `start`", text)
+
+    def test_the_denominator_is_rendered_before_the_refusals(self):
+        # Operating Rule 5 as an ordering assertion, not a presence one: the
+        # examined count must appear ABOVE the refusal it qualifies, because a
+        # reader who meets `0 refused` first has already formed the wrong
+        # impression by the time the denominator arrives.
+        self._corpus("A", session_anchor_fold=self._fold())
+        text, _ = self.run_digest()
+        self.assertLess(text.index("bounded extents EXAMINED"),
+                        text.index("extent unit the fold cannot read"))
+
+    def test_zero_examined_is_VACUOUS_not_clean(self):
+        # The corpus has no bounded anchor at all. Every extent counter is 0 and
+        # means nothing; saying so is the whole job.
+        self._corpus("A", session_anchor_fold=self._fold(
+            anchors_bounded=0, bounded_extents_examined=0,
+            bounded_with_start_field=0, bounded_with_end_field=0,
+            bounded_window_carried=0))
+        text, _ = self.run_digest()
+        self.assertIn("0 bounded extents were EXAMINED", text)
+        self.assertIn("vacuous", text)
+        self.assertIn("NOT 'no window was dropped'", text)
+
+    def test_a_report_predating_the_counters_says_UNMEASURED(self):
+        # An older artifact carries `session_anchor_fold` with none of the new
+        # keys. It has not measured 0 windows dropped; it has measured nothing.
+        rep = self._fold()
+        for key in ("bounded_extents_examined", "bounded_with_start_field",
+                    "bounded_with_end_field", "bounded_window_carried",
+                    "bounded_start_only_carried", "bounded_no_window_stated",
+                    "bounded_blank_extent_cells",
+                    "refused_unreadable_extent_unit",
+                    "refused_malformed_extent",
+                    "refused_extent_without_start"):
+            del rep[key]
+        self._corpus("A", session_anchor_fold=rep)
+        text, _ = self.run_digest()
+        self.assertIn("NOT IN THIS REPORT", text)
+        self.assertIn("UNMEASURED -- it is not zero", text)
+        # and the individual rows still print `(absent)` rather than 0
+        self.assertIn("(absent)  bounded extents EXAMINED", text)
+
+    def test_a_dropped_window_is_visible_in_the_per_corpus_block(self):
+        self._corpus("A", session_anchor_fold=self._fold(
+            refused_unreadable_extent_unit=3, refused_total=3,
+            anchors_folded=37, bounded_window_carried=7))
+        text, _ = self.run_digest()
+        self.assertIn("3    extent unit the fold cannot read", text)
+        # the comparison a reader would otherwise have to make by eye
+        self.assertIn("10 bod(ies) carried a `start` field and only 7 kept a",
+                      text)
+
+    def test_the_rollup_states_its_denominator_and_the_refused_total(self):
+        self._corpus("A", session_anchor_fold=self._fold(
+            bounded_extents_examined=10, refused_malformed_extent=2,
+            refused_total=2))
+        self._corpus("B", session_anchor_fold=self._fold(
+            bounded_extents_examined=5, bounded_window_carried=5))
+        text, _ = self.run_digest()
+        self.assertIn("BOUNDED EXTENTS -- the reading of the group above", text)
+        self.assertIn("DENOMINATOR: 15 bounded extent(s) examined across 2 "
+                      "report(s)", text)
+        self.assertIn("2  bod(ies) REFUSED because their extent could not be "
+                      "carried", text)
+
+    def test_a_zero_rollup_says_it_is_the_expected_reading_and_a_SAMPLE(self):
+        self._corpus("A", session_anchor_fold=self._fold())
+        text, _ = self.run_digest()
+        self.assertIn("0 refused over 10 examined", text)
+        self.assertIn("corpora are a SAMPLE", text)
+
+    def test_a_rollup_over_zero_examined_is_VACUOUS_not_clean(self):
+        self._corpus("A", session_anchor_fold=self._fold(
+            anchors_bounded=0, bounded_extents_examined=0,
+            bounded_with_start_field=0, bounded_with_end_field=0,
+            bounded_window_carried=0))
+        text, _ = self.run_digest()
+        self.assertIn("0 examined -- every extent counter above is VACUOUS",
+                      text)
+        self.assertIn("not 'nothing dropped'", text)
+
+    def test_a_rollup_with_no_carrier_of_the_counters_says_UNMEASURED(self):
+        rep = self._fold()
+        for key in list(rep):
+            if key.startswith("bounded_") or key in (
+                    "refused_unreadable_extent_unit", "refused_malformed_extent",
+                    "refused_extent_without_start"):
+                del rep[key]
+        self._corpus("A", session_anchor_fold=rep)
+        self._corpus("B", session_anchor_fold=dict(rep))
+        text, _ = self.run_digest()
+        self.assertIn("NOT CARRIED BY ANY OF THE 2 REPORT(S)", text)
+        self.assertIn("UNMEASURED, and it is not the same as zero", text)
+
+    def test_a_partial_sum_NAMES_the_reports_that_carried_no_counter(self):
+        # THE legacy_ndi_document PATTERN, one level down. One report has the
+        # counters and one does not, so the total is over half the corpora and
+        # must not be printed as a whole-corpus figure.
+        old = self._fold()
+        for key in ("bounded_extents_examined", "bounded_window_carried"):
+            del old[key]
+        self._corpus("A", session_anchor_fold=self._fold(
+            bounded_extents_examined=10))
+        self._corpus("B", session_anchor_fold=old)
+        text, _ = self.run_digest()
+        self.assertIn("PARTIAL: summed over 1 of 2 report(s)", text)
+        self.assertIn("SOME COUNTERS ARE SUMMED OVER FEWER REPORTS", text)
+        self.assertIn("bounded_extents_examined", text)
+        self.assertIn("no such counter in: B", text)
+
+    def test_a_counter_present_everywhere_is_not_marked_partial(self):
+        # The control. A banner that fired on a complete sum would train people
+        # to ignore it, which is how a real partial sum gets through.
+        self._corpus("A", session_anchor_fold=self._fold())
+        self._corpus("B", session_anchor_fold=self._fold())
+        text, _ = self.run_digest()
+        self.assertNotIn("PARTIAL: summed over", text)
+        self.assertNotIn("SOME COUNTERS ARE SUMMED OVER FEWER REPORTS", text)
+
+    def test_the_blank_cell_row_says_it_is_cells_not_documents(self):
+        # One body can contribute two, so it is not part of the seven-bucket
+        # partition. A reader of the artifact does not have the source comment
+        # that says so, hence the label.
+        self._corpus("A", session_anchor_fold=self._fold(
+            bounded_blank_extent_cells=4))
+        text, _ = self.run_digest()
+        self.assertIn("blank duration CELLS (not documents)", text)
+
+
 class TestEpochAssociation(DigestCase):
     """The epoch-association block (#72) -- measurement only.
 

@@ -102,6 +102,23 @@ POST_PASSES = [
         ("anchors_seen", "anchors seen"),
         ("anchors_relative", "  session_relative_reference"),
         ("anchors_bounded", "  session_bounded_reference"),
+        # THE BOUNDED-EXTENT GROUP, added 2026-08-11 with the extent refusals.
+        # `bounded_extents_examined` LEADS IT because it is the denominator: an
+        # extent counter reading 0 beside an examined count of 0 says nothing,
+        # and printing the refusals without it would make the two readings
+        # identical. It is deliberately NOT `anchors_bounded` -- an anchor
+        # refused earlier never reaches the extent read.
+        ("bounded_extents_examined", "bounded extents EXAMINED"),
+        ("bounded_with_start_field", "  carrying a `start` field at all"),
+        ("bounded_with_end_field", "  carrying an `end` field at all"),
+        ("bounded_window_carried", "  window CARRIED (start + duration)"),
+        ("bounded_start_only_carried", "  start carried, no `end` stated"),
+        ("bounded_no_window_stated", "  no window stated (nothing to lose)"),
+        # A CELL COUNT, NOT A DOCUMENT COUNT -- one body can contribute two, so
+        # it is not part of the seven-bucket partition and must not be summed
+        # with the rows above. Said in the label because a reader of the
+        # artifact does not have this comment.
+        ("bounded_blank_extent_cells", "  blank duration CELLS (not documents)"),
         ("anchors_folded", "FOLDED to relative_reference"),
         ("refused_total", "REFUSED (total)"),
         ("refused_no_session_id", "  no base.session_id"),
@@ -110,6 +127,9 @@ POST_PASSES = [
         ("refused_ambiguous_relation", "  ambiguous relation (concurrent_with)"),
         ("refused_unknown_relation", "  relation not in the v1 enum"),
         ("refused_negative_extent", "  end < start"),
+        ("refused_unreadable_extent_unit", "  extent unit the fold cannot read"),
+        ("refused_malformed_extent", "  extent is not a duration cell"),
+        ("refused_extent_without_start", "  an `end` with no readable `start`"),
         ("fold_quarantined", "QUARANTINED by the fold"),
     ]),
     # TEAM DECISION 2026-08-11: generic_file -> opaque_body + a statement whose
@@ -920,6 +940,7 @@ def render_post_passes(r, out):
         # by_class -- deleting a class whose documents still exist is the
         # epochfiles_ingested regression, which cost 2,484 quarantines.
         if name == "session_anchor_fold":
+            _render_bounded_extent_reading(rep, p)
             survivors = 0
             by_class = r.get("by_class") or {}
             for cls in ("session_relative_reference", "session_bounded_reference"):
@@ -935,6 +956,63 @@ def render_post_passes(r, out):
                   "are a SAMPLE, so this is")
                 p("             one corpus's evidence, not authorisation to "
                   "delete the classes.")
+
+
+def _render_bounded_extent_reading(rep, p):
+    """Say out loud how the bounded-extent counters above should be read.
+
+    THREE DISTINCT STATES, and the first two both print `0` for every extent
+    counter, which is why they have to be named rather than left to the reader:
+
+      the counters are ABSENT     the report predates them (they landed
+                                  2026-08-11). The quantity is UNMEASURED in
+                                  this run, and a run whose numbers are quoted
+                                  as evidence must say so itself.
+      examined == 0               they exist and nothing reached them: this
+                                  corpus has no bounded anchor that survived the
+                                  session/relation gates. VACUOUS, not clean.
+      examined > 0                the numbers mean what they say.
+
+    THE REASON THIS BLOCK IS WORTH ITS LINES. These counters exist because a
+    `session_bounded_reference` whose extent could not be read used to fold with
+    its window discarded and no counter moving -- 20,411 documents did, and the
+    corpus rollup that covered them reported `0 REFUSED` and was correct. An
+    instrument added to catch a silent zero, printed in a way that produces its
+    own indistinguishable zero, would be the same defect wearing the fix.
+    """
+    if "bounded_extents_examined" not in rep:
+        p("          *** the bounded-extent counters are NOT IN THIS REPORT.")
+        p("          *** It predates them (2026-08-11), so whether any window")
+        p("          *** was dropped here is UNMEASURED -- it is not zero.")
+        return
+    try:
+        examined = int(rep.get("bounded_extents_examined") or 0)
+    except (TypeError, ValueError):
+        p("          *** bounded_extents_examined is not a number; the extent")
+        p("          *** counters above cannot be read.")
+        return
+    if examined == 0:
+        p("          *** 0 bounded extents were EXAMINED, so every extent")
+        p("          *** counter above is vacuous. This is 'nothing reached")
+        p("          *** the extent read', NOT 'no window was dropped'.")
+        return
+    carried = _int_or_none(rep.get("bounded_window_carried"))
+    with_start = _int_or_none(rep.get("bounded_with_start_field"))
+    if carried is not None and with_start is not None and with_start > carried:
+        # The shape of the original defect, stated as a comparison the reader
+        # would otherwise have to make by eye: more bodies had a `start` field
+        # than ended up with a window.
+        p("          *** %d bod(ies) carried a `start` field and only %d kept a"
+          % (with_start, carried))
+        p("          *** window. The difference is refusals and half-windows")
+        p("          *** above -- read them before quoting anchors_folded.")
+
+
+def _int_or_none(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def render_legacy_ndi_document(r, out):
@@ -1579,6 +1657,13 @@ def rollup_post_passes(reports, out):
     for name, fn, rows in POST_PASSES:
         carried, missing, failed_in, noop_in = [], [], [], []
         totals = {}
+        # PER-COUNTER presence, not just per-pass. A pass can be present in
+        # every report while a COUNTER inside it is present in only some -- that
+        # is what an older report looks like after a counter is added, and the
+        # sum over the carriers then prints as a whole-corpus figure. Naming the
+        # reports that contributed nothing is the same rule
+        # rollup_legacy_ndi_document already applies one level up.
+        key_missing_in = {}
         for i, r in enumerate(reports):
             rep = r.get(name)
             if not isinstance(rep, dict):
@@ -1597,6 +1682,8 @@ def rollup_post_passes(reports, out):
                         totals[key] = totals.get(key, 0) + int(rep[key] or 0)
                     except (TypeError, ValueError):
                         pass
+                else:
+                    key_missing_in.setdefault(key, []).append(corpus_of(r, i))
 
         p("")
         p("    %s  (%s)" % (name, fn))
@@ -1629,11 +1716,85 @@ def rollup_post_passes(reports, out):
         if not carried:
             p("      (nothing to total)")
             continue
+        partial = []
         for key, label in rows:
             if key in totals:
-                p("          %10d  %s" % (totals[key], label))
+                absent_in = key_missing_in.get(key) or []
+                mark = ""
+                if absent_in:
+                    mark = ("   <-- PARTIAL: summed over %d of %d report(s)"
+                            % (len(carried) - len(absent_in), len(carried)))
+                    partial.append((key, absent_in))
+                p("          %10d  %s%s" % (totals[key], label, mark))
             else:
                 p("          %10s  %s" % ("(absent)", label))
+        if partial:
+            # NAMED, NOT TREATED AS ZEROS. A report that does not carry a
+            # counter has not measured 0 of it; it has measured nothing. The
+            # sum above is over the others, and this says which.
+            p("      *** SOME COUNTERS ARE SUMMED OVER FEWER REPORTS THAN THE")
+            p("      *** PASS RAN IN. A report with no such counter contributes")
+            p("      *** NOTHING and is named here rather than counted as 0:")
+            for key, absent_in in partial:
+                p("      ***   %-32s no such counter in: %s"
+                  % (key, ", ".join(absent_in)))
+        if name == "session_anchor_fold":
+            _rollup_bounded_extent_reading(totals, key_missing_in, carried, p)
+
+
+def _rollup_bounded_extent_reading(totals, key_missing_in, carried, p):
+    """The cross-corpus reading of the bounded-extent group, denominator first.
+
+    THE NUMBER THAT WILL GET QUOTED off this block is "how many encounter
+    windows did the migration drop", and the honest answer has three forms. A
+    total of 0 refusals is only the third of them:
+
+      no report carried the counters   UNMEASURED. The quantity does not exist
+                                       in this run and the rollup says so.
+      0 extents examined               VACUOUS. Nothing reached the extent read
+                                       anywhere, so the zeros below describe the
+                                       instrument, not the corpus.
+      extents examined > 0             a real 0, over a stated denominator.
+
+    The distinction is not academic here. The previous cross-corpus rollup for
+    this pass (6 corpora, 640,651 documents) reported 0 refused and 106,639
+    folded, and 20,411 of those folds had discarded their window. Every counter
+    was right; none of them was measuring the thing that went wrong.
+    """
+    p("      BOUNDED EXTENTS -- the reading of the group above")
+    if "bounded_extents_examined" not in totals:
+        n_missing = len(key_missing_in.get("bounded_extents_examined") or [])
+        p("      *** NOT CARRIED BY ANY OF THE %d REPORT(S) THAT RAN THE PASS"
+          % len(carried))
+        p("      *** (absent in %d). These counters landed 2026-08-11, so this"
+          % (n_missing or len(carried)))
+        p("      *** run has NOT MEASURED whether any window was dropped.")
+        p("      *** That is UNMEASURED, and it is not the same as zero.")
+        return
+    examined = totals.get("bounded_extents_examined", 0)
+    p("      DENOMINATOR: %d bounded extent(s) examined across %d report(s)"
+      % (examined, len(carried)))
+    if examined == 0:
+        p("      *** 0 examined -- every extent counter above is VACUOUS. No")
+        p("      *** bounded anchor reached the extent read in any corpus, so")
+        p("      *** this is 'the rule could not fire', not 'nothing dropped'.")
+        return
+    dropped = (totals.get("refused_unreadable_extent_unit", 0)
+               + totals.get("refused_malformed_extent", 0)
+               + totals.get("refused_extent_without_start", 0))
+    p("      %8d  bod(ies) REFUSED because their extent could not be carried"
+      % dropped)
+    p("      %8d  window(s) carried intact, %d half-window(s), %d with no "
+      "window stated"
+      % (totals.get("bounded_window_carried", 0),
+         totals.get("bounded_start_only_carried", 0),
+         totals.get("bounded_no_window_stated", 0)))
+    if dropped == 0:
+        p("      *** 0 refused over %d examined. The only emitter of" % examined)
+        p("      *** session_bounded_reference in DID-matlab hard-codes the")
+        p("      *** literal 's', so 0 is the EXPECTED reading -- and the")
+        p("      *** corpora are a SAMPLE, so it is a fact about them and not")
+        p("      *** evidence that no other unit exists anywhere.")
 
 
 def digest(reports_dirs):
