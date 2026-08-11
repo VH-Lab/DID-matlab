@@ -114,16 +114,33 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   report the same counts whether the work succeeded, no-opped or threw.
 %
 %   THE FOURTH CALL SITE IS NOT WIRED, AND THAT IS A GAP, NOT A DECISION.
-%   `ndi.migrate.local` is the production second pass and lives in NDI-matlab,
-%   which this session has READ-ONLY. The three DID-side sites
-%   (runCorpusDiscovery, testCorpusPRED, testFixtureCorpus) are wired and are
-%   what testBatchPassWiring.m and tools/test_batch_pass_wiring.py assert;
-%   testBatchPassWiring REPORTS the NDI site rather than asserting it, for the
-%   separate reason that NDI-matlab need not be checked out beside DID-matlab.
-%   Until someone with write access adds the call there, THE CORPUS GATE AND
-%   PRODUCTION DIVERGE on this pass -- the corpus will show the tiers and the
-%   real migration will not. That is exactly the failure the wiring gate was
-%   built for, so it is written here rather than left to be discovered.
+%   `ndi.migrate.local` is the production second pass and lives in NDI-matlab.
+%   The three DID-side sites (runCorpusDiscovery, testCorpusPRED,
+%   testFixtureCorpus) are wired and are what testBatchPassWiring.m and
+%   tools/test_batch_pass_wiring.py assert; testBatchPassWiring REPORTS the NDI
+%   site rather than asserting it, for the separate reason that NDI-matlab need
+%   not be checked out beside DID-matlab. Until the call is added there, THE
+%   CORPUS GATE AND PRODUCTION DIVERGE on this pass -- the corpus will show the
+%   tiers and the real migration will not. That is exactly the failure the
+%   wiring gate was built for, so it is written here rather than left to be
+%   discovered.
+%
+%   CORRECTION. This paragraph said NDI-matlab was "READ-ONLY" in this session
+%   and that the call needed "someone with write access". BOTH WERE FALSE, and
+%   the direction is the one this project's operating rules warn about: it
+%   turned a piece of work that could be finished into someone else's problem.
+%   NDI-matlab is one of the four repositories this work develops in, it is
+%   checked out on the same branch as the rest, and it was COMMITTED AND PUSHED
+%   TO twice on the night this file was written:
+%
+%       $ git -C /home/user/NDI-matlab rev-parse --abbrev-ref HEAD
+%       claude/v-eta-migration-plan-35jj1z
+%       $ git -C /home/user/NDI-matlab log --oneline -2
+%       afa1c5ca2 Correct a made-up denominator in the note I just wrote
+%       5a6508644 Both migrate-assembler failures were stale tests, not broken code
+%
+%   The gap this paragraph describes is real and still open. What was wrong is
+%   only the reason given for not closing it.
 %
 %   ---------------------------------------------------------------------
 %   IT IS ADDITIVE, EXCEPT FOR ONE FIELD ON ONE CLASS
