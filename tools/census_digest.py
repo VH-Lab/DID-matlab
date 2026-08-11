@@ -42,6 +42,14 @@ import traceback
 # corpora; it has not read them.
 MISSING_REPORTS = "<no *-summary.json found>"
 
+# The digest's second non-zero exit, and the only one that is a claim about the
+# MIGRATION rather than about the digest's own input. See epoch_populations()
+# for what makes the figures it compares commensurable; the short version is
+# that every figure in the set counts `epoch` documents in the batch AFTER
+# did2.convert.epochMint has run, so they cannot legitimately differ. If they
+# do, epochs were minted and then lost, and that is worth a red job.
+EPOCH_POPULATIONS_DISAGREE = "<epoch document populations disagree>"
+
 
 def aslist(v):
     """Normalise MATLAB's array-or-object encoding to a list.
@@ -1133,6 +1141,70 @@ def _ea_rows(ea, rows, out, indent="          "):
             out.append("%s%10s  %s" % (indent, "(absent)", label))
 
 
+def _epoch_association_population(r):
+    """Which batch the epoch-association figures describe, in one line.
+
+    Derived from the report -- the pass-1 population against the final
+    `migrated_count` -- not from a belief about the wiring, so it stays true if
+    the wiring changes. Three readings, and "cannot tell" is one of them.
+    """
+    ea = epoch_association(r)
+    if not ea["measured"]:
+        return "unknown -- the block could not be read"
+    pop = _int_or_none(ea["block"].get("docs_inspected"))
+    final = _int_or_none(r.get("migrated_count"))
+    if pop is None or final is None:
+        return ("cannot be determined -- the report does not carry both a "
+                "block population and a migrated_count")
+    if pop == final:
+        return ("the FINAL migrated batch (%d document(s), equal to "
+                "migrated_count)" % pop)
+    return ("the PASS-1 batch (%d document(s)), which is %d SMALLER than the "
+            "migrated output (%d). Batch post-passes -- did2.convert.epochMint "
+            "among them -- run after silent_loss is computed, so these counts "
+            "are NOT comparable with the post-pass epoch figures. See EPOCH "
+            "DOCUMENT POPULATIONS below."
+            % (pop, final - pop, final))
+
+
+def _render_post_pass_epoch_population(name, pop, p, scope=""):
+    """Name the batch a post-pass `epoch` figure counted over, at the figure.
+
+    THE OTHER HALF OF THE SAME REPAIR, and it is not decoration. The
+    epoch-association block now says which batch it read, but the two figures
+    that CONTRADICTED it -- `epochs minted` and `epoch documents to anchor to`
+    -- print here, in the post-pass block, roughly forty lines further down. A
+    reader who arrives at those does not have the epoch-association block on
+    screen, so labelling only one side leaves the two numbers comparable in
+    exactly the direction the defect ran: 8433 here, 0 there, nothing at either
+    site saying they count different batches.
+
+    `documents_inspected` is set on entry to every pass (epochMint.m:212,
+    resolveValidIntervals.m:427), so it IS the population and is read from the
+    report rather than asserted. Absent, this says so and prints no number --
+    a population nobody measured must not arrive as a figure.
+
+    Called from BOTH the per-corpus block and the rollup, because the rollup is
+    where run 31508009545 actually printed 8433 against the epoch-association
+    0. `scope` says whether the population is one corpus's or a sum, so a
+    summed population is never read as a single batch.
+    """
+    batch = ("a batch of UNRECORDED size" if pop is None
+             else "a batch of %d document(s)%s" % (pop, scope))
+    if name == "epoch_mint":
+        p("          POPULATION: `epochs minted` counts documents this pass")
+        p("          ADDED to %s. It is NOT the" % batch)
+        p("          same quantity as the `epoch` count in EPOCH ASSOCIATION")
+        p("          above, which read the PASS-1 batch -- before this pass")
+        p("          ran. Cross-checked in EPOCH DOCUMENT POPULATIONS.")
+    else:
+        p("          POPULATION: `epoch documents to anchor to` counts `epoch`")
+        p("          documents in %s -- AFTER" % batch)
+        p("          did2.convert.epochMint appended. NOT comparable with the")
+        p("          `epoch` count in EPOCH ASSOCIATION above. Cross-checked")
+        p("          in EPOCH DOCUMENT POPULATIONS.")
+
+
 def render_epoch_association(r, out):
     """Render one corpus's epoch-association block. Denominator first."""
     p = lambda s="": out.append(s)
@@ -1152,6 +1224,12 @@ def render_epoch_association(r, out):
     p("      DENOMINATOR: %s document(s) inspected, %s unreadable, %s classified"
       % (ea.get("docs_inspected", "?"), ea.get("docs_unreadable", "?"),
          ea.get("docs_classified", "?")))
+    # THE POPULATION, printed with the denominator and never apart from it.
+    # Rule 5 asks a counter how MANY things it inspected; this says WHICH, and
+    # the difference is the whole defect: 633,432 documents is a true and
+    # complete denominator for a batch that structurally cannot hold a minted
+    # `epoch`. See epoch_populations() for the ladder that measures it.
+    p("      POPULATION: %s" % _epoch_association_population(r))
     # THE NAMES IT FOLLOWED. Everything else in the block is schema-driven;
     # these are not, so a rename would send every count to zero and the report
     # would read clean -- the demo_ndi failure, where a grep against a string
@@ -1256,6 +1334,22 @@ def rollup_epoch_association(reports, out):
       "epoch-association block, %d did not; %d document(s) inspected in total"
       % (len(reports), len(measured), len(unmeasured),
          totals.get("docs_inspected", 0)))
+    # THE POPULATION, beside the denominator, for the same reason as the
+    # per-corpus block: the totals below are a true sum over a batch that is
+    # not the migrated output, and a reader comparing them with the mint's
+    # figures further down has no way to know that from the numbers alone.
+    pre_mint = [str(r.get("corpus") or "report #%d" % (i + 1))
+                for i, r in enumerate(reports)
+                if epoch_populations(r)["ea_is_final_stage"] is False]
+    if pre_mint:
+        p("      POPULATION: the PASS-1 batch in %s -- smaller than the "
+          "migrated output, and measured BEFORE did2.convert.epochMint runs."
+          % ", ".join(pre_mint))
+        p("      NOT comparable with the post-pass `epoch` figures. See EPOCH")
+        p("      DOCUMENT POPULATIONS below, which reconciles them.")
+    else:
+        p("      POPULATION: the FINAL migrated batch in every corpus that "
+          "carried a readable block.")
     if unmeasured:
         p("      *** NOT MEASURED in: %s" % ", ".join(unmeasured))
         p("      *** the totals below are sums over %d corpora, not %d -- do"
@@ -1285,6 +1379,437 @@ def rollup_epoch_association(reports, out):
             p("        %8d  %s" % (n, key))
         if not table:
             p("        (none)")
+
+
+# --- WHICH BATCH DID EACH `epoch` FIGURE COUNT OVER? ----------------------
+#
+# THE DEFECT THIS EXISTS TO PREVENT, stated as it happened.
+#
+# Corpus run 31508009545 (head 602ee141, all 7 jobs green) printed all of these
+# from the same six corpora, in one digest, and reconciled none of them:
+#
+#     epoch_mint                 8433 epochs minted
+#     valid_interval_decompose   8433 epoch documents to anchor to
+#     epoch association          0 `epoch` document(s) in this batch
+#                                0 REACH AN EPOCH  <-- "the number the
+#                                                      decision rests on"
+#
+# Two counters said 8,433 epoch documents exist; a third said none did. A
+# reader had no way to tell from the output whether 8,433 minted epochs were
+# failing to reach the documents that should reference them (a migration
+# defect) or whether one counter was looking somewhere else (a measurement
+# defect). Those are opposite conclusions and both are actionable.
+#
+# IT IS THE SECOND, AND THE PIPELINE ORDER IS WHAT DOES IT.
+# `tests/+did2/+unittest/+helpers/runCorpusDiscovery.m:61` calls
+# `did2.convert.v1_to_v2`, which computes `result.silent_loss` at
+# `v1_to_v2.m:382` over the pass-1 batch. Every batch post-pass runs AFTER
+# that, at runCorpusDiscovery.m:70-302 -- epochMint at :136. Nothing recomputes
+# `silent_loss`. So the epoch-association block reads a batch that CANNOT
+# contain a minted `epoch` document, and its zero is a property of WHEN it ran.
+#
+# The corpus's own numbers say so without needing the source read (Soph):
+#
+#     silent_loss inspected           254304   pass 1
+#     epoch_mint documents_inspected  254239   after two passes that also drop
+#     epochs minted                    +176
+#     valid_interval documents_inspected 254415  = 254239 + 176, exactly
+#     migrated_count                   254415
+#
+# Every pass sets `documents_inspected = numel(result.migrated)` on entry
+# (epochMint.m:212, resolveSessionAnchors.m:355, resolveValidIntervals.m:427),
+# so that ladder is the batch growing under the passes, measured four times.
+#
+# WHAT THIS BLOCK DOES ABOUT IT. It prints the ladder, labels every `epoch`
+# figure with the population it counted over, and splits them into two sets:
+#
+#   COMMENSURABLE -- all count `epoch` documents in a POST-MINT batch. They
+#                    must be equal. A disagreement means epochs were minted and
+#                    then lost, and it exits non-zero.
+#   NOT COMMENSURABLE -- measured before the mint. Printed with the size of the
+#                    gap, and the "REACH AN EPOCH" figure explicitly stripped of
+#                    its authority while it is measured at that stage.
+#
+# THE SPLIT IS DERIVED FROM THE REPORT, NOT HARDCODED. A corpus whose
+# epoch-association population already equals `migrated_count` has been measured
+# on the final batch, and its figures move INTO the commensurable set and get
+# cross-checked like the rest. So if the wiring is ever fixed -- silent_loss
+# recomputed after the passes -- this instrument starts enforcing on its own
+# instead of going quiet. That is deliberate: the rule against absence-as-
+# evidence applies to the digest's own stage assumptions too.
+
+
+def _pass_report(r, key):
+    """One batch-pass report, or (None, why it cannot be read).
+
+    FOUR states, and collapsing any two of them is how a zero becomes a lie:
+    absent (not wired into the run), malformed, `pass_failed` (the harness guard
+    caught a throw and the documents are in pass-1 form), and `ran == false`
+    (a legitimate no-op). None of them is a measurement of zero.
+    """
+    rep = r.get(key)
+    if rep is None:
+        return None, "no `%s` block -- the pass was not wired into this run" % key
+    if not isinstance(rep, dict):
+        return None, "the `%s` block is malformed (%s)" % (key, type(rep).__name__)
+    if rep.get("pass_failed"):
+        return None, "`%s` FAILED (%s) -- its documents are in pass-1 form" \
+                     % (key, rep["pass_failed"])
+    if rep.get("ran") is False:
+        return None, "`%s` did not run (non-V_eta target, or an empty batch)" % key
+    return rep, None
+
+
+def epoch_populations(r):
+    """Every `epoch` figure in one report, tagged with the batch it counted.
+
+    Returns a dict. `ladder` is [(population, label, note)] in pipeline order,
+    with a None population where the report cannot supply one -- absent is not
+    zero. `commensurable` and `pre_mint` are [(count, label)]. `unreadable` is
+    the reasons, named. `disagreement` is None or the message.
+
+    WHY `by_class` IS IN THE COMMENSURABLE SET. It is not the pass-1 census: it
+    is recomputed from `result.migrated` by every post-pass that touches the
+    batch (`recountSummary`, epochMint.m:702, resolveSessionAnchors.m:829,
+    resolveValidIntervals.m:1123) and the last one to run is what
+    writeCorpusReport.m:35 persists. So it is a FINAL class census and the
+    minted epochs must appear in it. It is also the only one of the three that
+    would notice a later pass DELETING an epoch document.
+    """
+    reading = {"ladder": [], "commensurable": [], "pre_mint": [],
+               "unreadable": [], "disagreement": None, "not_comparable": None,
+               "ea_is_final_stage": None, "gap": None}
+
+    final = _int_or_none(r.get("migrated_count"))
+
+    # (1) the pass-1 stage -- what silent_loss actually read.
+    ea = epoch_association(r)
+    ea_pop = None
+    if ea["measured"]:
+        block = ea["block"]
+        ea_pop = _int_or_none(block.get("docs_inspected"))
+        ea_epochs = _int_or_none(block.get("epoch_documents"))
+        ea_reach = _int_or_none(block.get("chain_docs_reaching_epoch"))
+        # THE DERIVED SPLIT. Same population as the final batch => the block was
+        # measured on the migrated output and its figures are comparable.
+        reading["ea_is_final_stage"] = (
+            ea_pop is not None and final is not None and ea_pop == final)
+        bucket = ("commensurable" if reading["ea_is_final_stage"]
+                  else "pre_mint")
+        if ea_epochs is not None:
+            reading[bucket].append(
+                (ea_epochs, "epoch_association: `epoch` document(s) in "
+                            "the batch it read"))
+        # REACH AN EPOCH is NEVER put in the equality check -- it counts
+        # STATEMENTS that reach an epoch, not epoch documents, so it is not the
+        # same quantity as the three below and must not be summed with them.
+        # It is carried so the annotation can name it, which is the whole
+        # point: it is the figure the epoch decision was going to be taken on.
+        if ea_reach is not None:
+            reading["reach_epoch"] = ea_reach
+        if ea_pop is not None and final is not None:
+            reading["gap"] = final - ea_pop
+    else:
+        reading["unreadable"].append("epoch_association: %s" % ea["why"])
+
+    reading["ladder"].append(
+        (ea_pop, "silent_loss / epoch_association",
+         "PASS 1 (did2.convert.v1_to_v2 computes it before any post-pass)"))
+
+    # (2) the mint.
+    mint, why = _pass_report(r, "epoch_mint")
+    if why:
+        reading["unreadable"].append(why)
+        reading["ladder"].append((None, "epoch_mint", "batch post-pass"))
+    else:
+        reading["ladder"].append(
+            (_int_or_none(mint.get("documents_inspected")), "epoch_mint",
+             "batch post-pass -- the batch BEFORE the mint appends"))
+        minted = _int_or_none(mint.get("epochs_minted"))
+        existing = _int_or_none(mint.get("epochs_found_existing"))
+        if minted is None:
+            reading["unreadable"].append(
+                "epoch_mint carries no `epochs_minted` counter")
+        else:
+            # `epochs_found_existing` is part of the population and not part of
+            # the mint's work: an epoch already in the batch is one the next
+            # pass will also see. Absent it reads as unknown, so the row says so
+            # rather than quietly assuming none.
+            if existing is None:
+                reading["unreadable"].append(
+                    "epoch_mint carries no `epochs_found_existing` counter -- "
+                    "its contribution to the population is UNKNOWN, so it is "
+                    "not compared")
+            else:
+                reading["commensurable"].append(
+                    (minted + existing,
+                     "epoch_mint: minted %d + already present %d"
+                     % (minted, existing)))
+
+    # (3) the last pass, which counts `epoch` documents in the batch it got.
+    vid, why = _pass_report(r, "valid_interval_decompose")
+    if why:
+        reading["unreadable"].append(why)
+        reading["ladder"].append(
+            (None, "valid_interval_decompose", "batch post-pass"))
+    else:
+        reading["ladder"].append(
+            (_int_or_none(vid.get("documents_inspected")),
+             "valid_interval_decompose", "batch post-pass"))
+        seen = _int_or_none(vid.get("epoch_documents_seen"))
+        if seen is None:
+            reading["unreadable"].append(
+                "valid_interval_decompose carries no `epoch_documents_seen`")
+        else:
+            reading["commensurable"].append(
+                (seen, "valid_interval_decompose: epoch documents to anchor to"))
+
+    # (4) the end of the pipeline.
+    reading["ladder"].append((final, "migrated_count", "END OF PIPELINE"))
+    by_class = r.get("by_class")
+    if not isinstance(by_class, dict):
+        reading["unreadable"].append(
+            "the report carries no `by_class` -- the FINAL class census is "
+            "the only figure that would notice an epoch DELETED after minting")
+    else:
+        reading["commensurable"].append(
+            (class_count(normalised_class_index(by_class), "epoch"),
+             "by_class: `epoch` in the FINAL class census"))
+
+    values = set(v for v, _label in reading["commensurable"])
+    if len(values) > 1:
+        reading["disagreement"] = (
+            "%d figure(s) counting `epoch` documents in a POST-MINT batch do "
+            "NOT agree: %s" % (len(reading["commensurable"]),
+                               ", ".join("%d (%s)" % (v, lab) for v, lab
+                                         in reading["commensurable"])))
+    return reading
+
+
+def _render_epoch_populations(reading, p, scope):
+    """Shared renderer for one corpus and for the rollup. Returns findings."""
+    findings = []
+    p("  EPOCH DOCUMENT POPULATIONS -- WHICH BATCH EACH FIGURE COUNTED (%s)"
+      % scope)
+    # RULE 5. The denominator here is how many populations could be read at
+    # all, because that is what bounds every comparison below it.
+    readable = [v for v, _l, _n in reading["ladder"] if v is not None]
+    p("      DENOMINATOR: %d of %d pipeline stage(s) reported a population; "
+      "%d figure(s) comparable, %d measured pre-mint, %d unreadable"
+      % (len(readable), len(reading["ladder"]),
+         len(reading["commensurable"]), len(reading["pre_mint"]),
+         len(reading["unreadable"])))
+    for why in reading["unreadable"]:
+        p("      *** NOT MEASURED: %s." % why)
+
+    p("      THE LADDER -- documents in the batch when each instrument ran:")
+    for value, label, note in reading["ladder"]:
+        p("        %10s  %-32s %s"
+          % ("(absent)" if value is None else value, label, note))
+
+    ladder_flat = (len(set(readable)) <= 1)
+    if readable and not ladder_flat:
+        p("      *** THE LADDER IS NOT FLAT (%d .. %d). The instruments below"
+          % (min(readable), max(readable)))
+        p("      *** did NOT read the same batch. A figure from one stage is")
+        p("      *** not comparable with a figure from another.")
+
+    p("      `epoch` DOCUMENTS, POST-MINT -- COMMENSURABLE, must agree:")
+    if not reading["commensurable"]:
+        p("        (none readable -- nothing to cross-check, which is")
+        p("         'untested', not 'agreed')")
+    for value, label in reading["commensurable"]:
+        p("        %10d  %s" % (value, label))
+    if reading["not_comparable"]:
+        # A SUM IS NOT COMPARABLE WITH A SUM OVER A DIFFERENT SET. This is the
+        # 562,422 error in miniature -- six corpora with one of them
+        # substituting a different counter -- and here it would fire as a
+        # migration defect on two corpora that are each internally consistent.
+        p("      *** THESE SUMS ARE NOT COMPARABLE: %s"
+          % reading["not_comparable"])
+        p("      *** No conclusion is drawn from the difference. Read the")
+        p("      *** per-corpus blocks, which compare like with like.")
+    elif reading["disagreement"]:
+        p("      *** %s" % reading["disagreement"])
+        p("      *** These count the SAME THING over the SAME batch. A")
+        p("      *** difference means `epoch` documents were minted and then")
+        p("      *** lost, which is a MIGRATION defect, not a reporting one.")
+        findings.append(reading["disagreement"])
+    elif len(reading["commensurable"]) > 1:
+        p("      -> AGREE (%d figure(s), all %d)."
+          % (len(reading["commensurable"]),
+             reading["commensurable"][0][0]))
+    elif len(reading["commensurable"]) == 1:
+        p("      *** ONE figure only -- nothing to cross-check it against.")
+        p("      *** An unopposed figure is untested, not confirmed.")
+
+    # REACH AN EPOCH is never left bare. Either it is annotated as a stage
+    # artefact below, or -- once the block is measured on the final batch -- it
+    # is announced as a real measurement here, so the two readings of the same
+    # printed number cannot be confused for one another.
+    if reading.get("ea_is_final_stage") and reading.get("reach_epoch") is not None:
+        p("      `REACH AN EPOCH` = %d, measured on the FINAL migrated batch"
+          % reading["reach_epoch"])
+        p("      (the epoch-association population equals migrated_count). At")
+        p("      this stage it is a real measurement, not a stage artefact.")
+
+    # The pre-mint section prints only when something was ACTUALLY measured
+    # pre-mint. When the epoch-association block has been measured on the final
+    # batch its figures moved into the commensurable set above, and printing an
+    # empty "do not compare these" warning would be the reverse of this block's
+    # job: a caution about a hazard that is no longer there.
+    if reading["pre_mint"]:
+        p("      `epoch` FIGURES MEASURED PRE-MINT -- NOT COMMENSURABLE with")
+        p("      the set above. DO NOT COMPARE THEM:")
+        for value, label in reading["pre_mint"]:
+            p("        %10d  %s" % (value, label))
+        if reading.get("reach_epoch") is not None:
+            p("        %10d  epoch_association: REACH AN EPOCH"
+              % reading["reach_epoch"])
+        gap = reading.get("gap")
+        p("      *** silent_loss is computed inside did2.convert.v1_to_v2")
+        p("      *** (v1_to_v2.m:382); every batch post-pass, did2.convert.")
+        p("      *** epochMint included, runs AFTER it and nothing recomputes")
+        p("      *** it. So no minted `epoch` document can be in the batch it")
+        p("      *** read%s."
+          % ("" if gap is None else ", which is %d document(s) smaller than "
+             "the migrated output" % gap))
+        p("      *** A 0 here is a property of WHEN the counter ran.")
+        if reading.get("reach_epoch") == 0:
+            p("      *** `REACH AN EPOCH` is labelled 'the number the decision")
+            p("      *** rests on'. AT THIS STAGE IT CANNOT BE ANYTHING BUT 0,")
+            p("      *** so it is not evidence that nothing reaches an epoch.")
+            p("      *** The post-mint value is UNMEASURED. Do not take the")
+            p("      *** epoch decision on it.")
+    return findings
+
+
+def render_epoch_populations(r, out):
+    """Per corpus. Returns findings (the disagreement, if any)."""
+    p = lambda s="": out.append(s)
+    return _render_epoch_populations(epoch_populations(r), p, "this corpus")
+
+
+def rollup_epoch_populations(reports, out):
+    """Cross-corpus, summed per stage. Returns findings.
+
+    Summed rather than re-derived, and the corpora that could not contribute a
+    given stage are NAMED -- a corpus missing from a sum must not read as a
+    corpus contributing zero. That is the 562,422 error, which was six corpora
+    with one of them substituting a different counter.
+    """
+    p = lambda s="": out.append(s)
+    p("")
+
+    combined = {"ladder": [], "commensurable": [], "pre_mint": [],
+                "unreadable": [], "disagreement": None, "not_comparable": None,
+                "ea_is_final_stage": None, "gap": None}
+    if not reports:
+        p("  EPOCH DOCUMENT POPULATIONS: no corpus report to read.")
+        return []
+
+    per = [epoch_populations(r) for r in reports]
+    names = [str(r.get("corpus") or "report #%d" % (i + 1))
+             for i, r in enumerate(reports)]
+
+    # The ladder rows are positional and identical across corpora by
+    # construction (epoch_populations always appends all four), so summing by
+    # index is sound. A stage absent in one corpus is NAMED, not zero-filled.
+    for idx in range(len(per[0]["ladder"])):
+        total, missing = 0, []
+        for name, reading in zip(names, per):
+            value = reading["ladder"][idx][0]
+            if value is None:
+                missing.append(name)
+            else:
+                total += value
+        label = per[0]["ladder"][idx][1]
+        note = per[0]["ladder"][idx][2]
+        if missing:
+            note = "%s  [NOT from: %s]" % (note, ", ".join(missing))
+        combined["ladder"].append(
+            (None if len(missing) == len(names) else total, label, note))
+
+    contributors = {}
+    for bucket in ("commensurable", "pre_mint"):
+        labels = []
+        for reading in per:
+            for _v, label in reading[bucket]:
+                base = label.split(":")[0]
+                if base not in labels:
+                    labels.append(base)
+        for base in labels:
+            total, sources = 0, []
+            for name, reading in zip(names, per):
+                for value, label in reading[bucket]:
+                    if label.split(":")[0] == base:
+                        total += value
+                        sources.append(name)
+            if bucket == "commensurable":
+                contributors[base] = tuple(sources)
+            combined[bucket].append(
+                (total, "%s (summed over %d of %d corpora)"
+                        % (base, len(sources), len(reports))))
+
+    reach = [reading["reach_epoch"] for reading in per
+             if reading.get("reach_epoch") is not None]
+    if reach:
+        combined["reach_epoch"] = sum(reach)
+    combined["ea_is_final_stage"] = all(
+        reading.get("ea_is_final_stage") for reading in per)
+    gaps = [reading["gap"] for reading in per if reading["gap"] is not None]
+    if gaps:
+        combined["gap"] = sum(gaps)
+    for name, reading in zip(names, per):
+        for why in reading["unreadable"]:
+            combined["unreadable"].append("%s: %s" % (name, why))
+
+    # THE ROLLUP DOES NOT INDEPENDENTLY CLAIM A MIGRATION DEFECT, and the
+    # reason is arithmetic rather than caution. If every figure is contributed
+    # by the SAME corpora, per-corpus agreement forces sum agreement: each
+    # corpus contributes one value x_i to every label, so every sum is the same
+    # sum of the same x_i. So a sum-level disagreement can arise ONLY from
+    # unequal contributing sets -- which is not a fact about epochs at all.
+    #
+    # It was written the other way first, and that version FIRED, red, on two
+    # corpora that were each internally consistent: corpus A carried a
+    # by_class and corpus B did not, so 150+150+100 "disagreed". That is the
+    # 562,422 error exactly -- comparing figures whose denominators differ --
+    # arriving inside the instrument built to stop it.
+    #
+    # What survives is the guard and the forwarding: name the mismatch in the
+    # contributing sets and draw no conclusion from it, and pass every
+    # per-corpus finding up, unconditionally, so a real defect in one corpus
+    # cannot be absorbed into a total.
+    sets = set(contributors.values())
+    if len(sets) > 1:
+        combined["not_comparable"] = "; ".join(
+            "%s from %s" % (base, ", ".join(src) or "(no corpus)")
+            for base, src in sorted(contributors.items()))
+    elif len(set(v for v, _label in combined["commensurable"])) > 1:
+        # Same contributing set and the sums still differ: by the argument
+        # above that is impossible unless this digest's own summing is broken,
+        # so it is reported as a DIGEST defect, not as a migration one.
+        combined["disagreement"] = (
+            "the sums differ while every figure was contributed by the SAME "
+            "corpora, which is arithmetically impossible if the per-corpus "
+            "figures agree. THIS IS A DEFECT IN census_digest.py, not in the "
+            "migration: %s"
+            % ", ".join("%d (%s)" % (v, lab)
+                        for v, lab in combined["commensurable"]))
+
+    findings = _render_epoch_populations(
+        combined, p, "ACROSS ALL %d CORPORA" % len(reports))
+    # Forwarded UNCONDITIONALLY. A per-corpus disagreement that cancels in the
+    # sum is still a disagreement, and summing is how the 4,563-document JH row
+    # nearly hid.
+    for name, reading in zip(names, per):
+        if reading["disagreement"]:
+            p("      *** %s: %s" % (name, reading["disagreement"]))
+            p("      *** A corpus disagrees with ITSELF. The sums above cannot")
+            p("      *** show this; read that corpus's own block.")
+            findings.append("%s: %s" % (name, reading["disagreement"]))
+    return findings
 
 
 def render_post_passes(r, out):
@@ -1348,6 +1873,11 @@ def render_post_passes(r, out):
         # when refused_total is 0 AND no session_*_reference survives in
         # by_class -- deleting a class whose documents still exist is the
         # epochfiles_ingested regression, which cost 2,484 quarantines.
+        # The two passes that report an `epoch` figure say which batch they
+        # counted, AT the figure. See _render_post_pass_epoch_population.
+        if name in ("epoch_mint", "valid_interval_decompose"):
+            _render_post_pass_epoch_population(
+                name, _int_or_none(rep.get("documents_inspected")), p)
         if name == "openminds_citations":
             _render_openminds_citations_reading(rep, p)
         if name == "response_parameters_fold":
@@ -2185,6 +2715,10 @@ def render_report(r, out):
 
     render_ndi_required(r, out)
     render_epoch_association(r, out)
+    # Immediately after, and never separated from it: the epoch-association
+    # block's `epoch` counts are the ones that were being read beside the mint's
+    # without anything saying they came from different batches.
+    render_epoch_populations(r, out)
     render_metadata_tier(r, out)
     render_post_passes(r, out)
 
@@ -2391,8 +2925,14 @@ def rollup(reports, out):
     rollup_legacy_ndi_document(reports, out)
     rollup_ndi_required(reports, out)
     rollup_epoch_association(reports, out)
+    # RETURNS FINDINGS, unlike every other rollup here. A cross-corpus
+    # disagreement between figures that count the same `epoch` documents over
+    # the same batch is the one thing in this digest that is a claim about the
+    # migration rather than about the reports, so it exits non-zero.
+    findings = rollup_epoch_populations(reports, out)
     rollup_metadata_tier(reports, out)
     rollup_post_passes(reports, out)
+    return findings
 
 
 def rollup_legacy_ndi_document(reports, out):
@@ -2692,6 +3232,14 @@ def rollup_post_passes(reports, out):
                 p("          %10d  %s%s" % (totals[key], label, mark))
             else:
                 p("          %10s  %s" % ("(absent)", label))
+        # THE SITE OF THE ORIGINAL DEFECT. Run 31508009545 printed `8433 epochs
+        # minted` and `8433 epoch documents to anchor to` HERE, in the rollup,
+        # while the rollup's epoch-association block printed 0 a few lines
+        # above. Both sides now name their batch.
+        if name in ("epoch_mint", "valid_interval_decompose"):
+            _render_post_pass_epoch_population(
+                name, totals.get("documents_inspected"), p,
+                scope=" (summed over %d report(s))" % len(carried))
         if partial:
             # NAMED, NOT TREATED AS ZEROS. A report that does not carry a
             # counter has not measured 0 of it; it has measured nothing. The
@@ -3002,7 +3550,12 @@ def digest(reports_dirs):
     # must not destroy six corpora's per-corpus output. That is precisely how
     # run #256 lost its two largest reports.
     try:
-        rollup(parsed, out)
+        for _finding in rollup(parsed, out) or []:
+            # One sentinel however many rows disagreed: `failed` is rendered as
+            # a list of report paths and a finding is not a path. The rows
+            # themselves are already printed, in full, above.
+            if EPOCH_POPULATIONS_DISAGREE not in failed:
+                failed.append(EPOCH_POPULATIONS_DISAGREE)
     except Exception:
         out.append("")
         out.append("  *** CROSS-CORPUS ROLLUP FAILED -- per-corpus output above stands:")

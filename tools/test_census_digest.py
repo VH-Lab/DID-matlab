@@ -1173,9 +1173,15 @@ class TestEpochAssociation(DigestCase):
         Scoped on purpose: "NOT MEASURED" appears in the metadata-tier block of
         the same output, and a whole-text assertion would pass or fail for
         reasons that have nothing to do with this measurement.
+
+        The end marker moved from "METADATA TIER:" to the populations block
+        when that block landed BETWEEN the two, for the same reason: the
+        populations block says NOT MEASURED about `epoch_mint` and `by_class`,
+        neither of which is this block's business. TestEpochPopulations owns
+        those assertions.
         """
         start = text.index("EPOCH ASSOCIATION (#72): does a statement")
-        end = text.index("METADATA TIER:", start)
+        end = text.index("EPOCH DOCUMENT POPULATIONS", start)
         return text[start:end]
 
     def test_a_measured_zero_prints_as_a_zero(self):
@@ -2671,6 +2677,464 @@ class TestResponseParametersRendering(ThreePassCase):
         text, _ = self.run_digest()
         self.assertIn("11516 v1 response(s) STILL SUPPRESSED across the run",
                       text)
+
+
+class TestEpochPopulations(DigestCase):
+    """Three counters, three batches, printed side by side and reconciled.
+
+    THE DEFECT. Corpus run 31508009545 (head 602ee141, all 7 jobs green, census
+    digest job 93869969402) printed, from the same six corpora, in one digest:
+
+        epoch_mint                 8433 epochs minted
+        valid_interval_decompose   8433 epoch documents to anchor to
+        epoch association             0 `epoch` document(s) in this batch
+                                      0 REACH AN EPOCH  <-- "the number the
+                                                            decision rests on"
+
+    Nothing in the output reconciled them, so a reader could not tell a
+    MIGRATION defect (epochs minted and then lost) from a MEASUREMENT defect
+    (one counter reading a different batch) -- opposite conclusions, both
+    actionable.
+
+    It is the second. runCorpusDiscovery.m:61 calls v1_to_v2, which computes
+    `silent_loss` at v1_to_v2.m:382; every batch post-pass runs after, epochMint
+    at runCorpusDiscovery.m:136, and nothing recomputes it. Soph's own report
+    shows the ladder without needing the source: silent_loss 254304, epoch_mint
+    254239, +176 minted, valid_interval 254415 = migrated_count.
+
+    These tests hold the DISTINCTION, not the numbers: a figure must carry the
+    population it counted over, the post-mint figures must be cross-checked
+    against each other, and an unreadable stage must never read as a zero.
+    """
+
+    def _corpus(self, name="A", **over):
+        ea = {
+            "docs_inspected": 1000, "docs_unreadable": 0,
+            "docs_classified": 1000, "anchor_edge": "relative_to",
+            "reference_root": "time_reference", "terminal_class": "epoch",
+            "max_depth": 8, "terminal_class_in_schema": 1,
+            "reference_root_in_schema": 1,
+            "family_docs_declaring": 300, "family_docs_absent": 0,
+            "family_docs_present": 300, "family_docs_all_empty": 0,
+            "family_docs_populated": 300, "family_members_total": 300,
+            "family_members_empty": 0, "family_members_populated": 300,
+            "epoch_documents": 0, "epoch_id_docs_declaring": 90,
+            "epoch_id_edges_present": 0, "epoch_id_empty": 0,
+            "epoch_id_resolved": 0, "epoch_id_resolved_not_epoch": 0,
+            "epoch_id_unresolved_in_batch": 0,
+            "chain_docs_examined": 300, "chain_docs_reaching_epoch": 0,
+            "chain_docs_reaching_no_epoch": 300,
+            "chain_docs_undetermined": 0, "chain_members_examined": 300,
+            "chain_member_unresolved": 0, "chain_member_not_a_reference": 0,
+            "chain_member_anchor_absent": 300, "chain_member_anchor_empty": 0,
+            "chain_member_reaches_epoch": 0, "chain_member_reaches_other": 0,
+            "chain_member_incomplete": 0, "chain_member_depth_exceeded": 0,
+            "chain_member_unclassified": 0,
+        }
+        ea.update(over.pop("ea", {}))
+        body = {
+            "corpus": name, "total": 500, "migrated_count": 1100,
+            "quarantine_count": 0,
+            "by_class": {"epoch": 100, "subject": 40},
+            "silent_loss": {"total_docs": 1000, "skipped_docs": 0,
+                            "epoch_association": ea},
+            "epoch_mint": {"ran": True, "documents_inspected": 1000,
+                           "epochs_minted": 100, "epochs_found_existing": 0},
+            "valid_interval_decompose": {"ran": True,
+                                         "documents_inspected": 1100,
+                                         "epoch_documents_seen": 100},
+        }
+        for key, value in over.items():
+            if value is None:
+                body.pop(key, None)
+            elif key == "by_class":
+                # REPLACED, never merged: by_class is a class census and half of
+                # one plus half of another is not a census of anything. Merging
+                # would also make "a corpus whose census has no `epoch` key"
+                # unexpressible, which is the case that separates a measured
+                # zero from an absent table.
+                body[key] = value
+            elif isinstance(value, dict) and isinstance(body.get(key), dict):
+                body[key].update(value)
+            else:
+                body[key] = value
+        self.write(name, body)
+
+    def _block(self, text):
+        start = text.index("EPOCH DOCUMENT POPULATIONS -- WHICH BATCH EACH "
+                           "FIGURE COUNTED (this corpus)")
+        end = text.index("METADATA TIER", start)
+        return text[start:end]
+
+    # --- rule 5: the denominator, and it is the POPULATION -----------------
+
+    def test_the_denominator_prints_first_and_unconditionally(self):
+        self._corpus("A")
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        block = self._block(text)
+        self.assertLess(block.index("DENOMINATOR: 4 of 4 pipeline stage(s)"),
+                        block.index("THE LADDER"))
+
+    def test_the_epoch_association_block_states_which_batch_it_read(self):
+        # THE HEADLINE REPAIR. The three figures may not print side by side
+        # again without the block saying which population it counted over.
+        self._corpus("A")
+        text, _ = self.run_digest()
+        self.assertIn("POPULATION: the PASS-1 batch (1000 document(s)), "
+                      "which is 100 SMALLER than the migrated output (1100)",
+                      text)
+
+    def test_the_ladder_names_every_stage_and_its_population(self):
+        self._corpus("A")
+        block = self._block(self.run_digest()[0])
+        for stage in ("silent_loss / epoch_association", "epoch_mint",
+                      "valid_interval_decompose", "migrated_count"):
+            self.assertIn(stage, block)
+        self.assertIn("THE LADDER IS NOT FLAT (1000 .. 1100)", block)
+
+    # --- the commensurable set, and the cross-check ------------------------
+
+    def test_the_three_post_mint_figures_agree_and_say_so(self):
+        self._corpus("A")
+        block = self._block(self.run_digest()[0])
+        self.assertIn("-> AGREE (3 figure(s), all 100).", block)
+
+    def test_a_post_mint_disagreement_is_a_finding_and_exits_non_zero(self):
+        # THE MIGRATION DEFECT this instrument exists to catch: epochs minted
+        # and then lost before the final class census.
+        self._corpus("A", by_class={"epoch": 3})
+        text, failed = self.run_digest()
+        self.assertIn("do NOT agree", text)
+        self.assertIn("minted and then", text)
+        self.assertIn("<epoch document populations disagree>", failed)
+
+    def test_the_PER_CORPUS_block_reports_its_own_disagreement(self):
+        # Asserted against the per-corpus block SPECIFICALLY. The rollup
+        # computes its own disagreement from its own sums, so a whole-text
+        # assertion passes while the per-corpus check is dead -- exactly the
+        # trap where a partition check becomes `return True` and every test
+        # stays green because another assertion covered the same data.
+        self._corpus("A", by_class={"epoch": 3})
+        block = self._block(self.run_digest()[0])
+        self.assertIn("do NOT agree", block)
+        self.assertIn("3 (by_class", block)
+        self.assertNotIn("-> AGREE", block)
+
+    def test_a_disagreement_that_cancels_in_the_sum_is_still_reported(self):
+        # A + B sum to the same total on two of the three figures while each
+        # corpus disagrees with itself. Summing is how the 4,563-document JH
+        # row nearly hid; the rollup names the corpus rather than averaging.
+        self._corpus("A", by_class={"epoch": 60})
+        self._corpus("B", by_class={"epoch": 140})
+        text, failed = self.run_digest()
+        self.assertIn("A corpus disagrees with ITSELF", text)
+        self.assertIn("A: ", text.split("ACROSS ALL")[-1])
+        self.assertIn("B: ", text.split("ACROSS ALL")[-1])
+        self.assertIn("<epoch document populations disagree>", failed)
+
+    def test_unequal_contributing_sets_are_NOT_COMPARABLE_and_exit_zero(self):
+        # THE REAL SIX-CORPUS SHAPE, and the guard nothing was testing. A
+        # mutation that disabled it stayed GREEN across the whole suite.
+        #
+        # In run 31508009545 five corpora had an epoch-association population
+        # SMALLER than migrated_count (pre-mint) while PRED's equalled it --
+        # legitimately, because PRED minted nothing and no pass changed its
+        # batch. So `epoch_association` contributes to the summed cross-check
+        # from ONE corpus while the other three figures contribute from all
+        # six, and the sums differ for a reason that is not about epochs.
+        #
+        # Comparing sums over different contributing sets is the 562,422 error
+        # exactly. Without the guard this run reports a DIGEST DEFECT and the
+        # corpus job goes red on six internally-consistent corpora.
+        self._corpus("premint")                       # ea pre-mint
+        self._corpus("final", migrated_count=1000,    # ea on the final batch
+                     ea={"docs_inspected": 1000, "epoch_documents": 100},
+                     epoch_mint={"documents_inspected": 900},
+                     valid_interval_decompose={"documents_inspected": 1000})
+        text, failed = self.run_digest()
+        rollup = text.split("ACROSS ALL")[-1]
+        self.assertIn("THESE SUMS ARE NOT COMPARABLE", rollup)
+        self.assertIn("epoch_association from final", rollup)
+        self.assertIn("No conclusion is drawn from the difference", rollup)
+        # and NOT reported as a defect in either direction
+        self.assertNotIn("DEFECT IN census_digest.py", rollup)
+        self.assertEqual(failed, [])
+
+    def test_agreement_across_corpora_exits_zero(self):
+        self._corpus("A")
+        self._corpus("B")
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("-> AGREE (3 figure(s), all 200).", text)
+
+    # --- the pre-mint annotation -------------------------------------------
+
+    def test_reach_an_epoch_is_stripped_of_its_authority_pre_mint(self):
+        # The figure the epoch decision was going to be taken on. At pass 1 it
+        # cannot be anything but 0, and the output has to say so.
+        self._corpus("A")
+        block = self._block(self.run_digest()[0])
+        self.assertIn("AT THIS STAGE IT CANNOT BE ANYTHING BUT 0", block)
+        self.assertIn("The post-mint value is UNMEASURED", block)
+
+    def test_a_pre_mint_zero_is_never_printed_beside_the_mint_unqualified(self):
+        self._corpus("A")
+        block = self._block(self.run_digest()[0])
+        premint = block.index("MEASURED PRE-MINT")
+        self.assertLess(block.index("COMMENSURABLE, must agree"), premint)
+        self.assertIn("DO NOT COMPARE THEM", block)
+
+    # --- self-adjusting: the split is derived, not hardcoded ---------------
+
+    def test_a_block_measured_on_the_final_batch_becomes_commensurable(self):
+        # If silent_loss is ever recomputed after the passes, its population
+        # equals migrated_count and its `epoch` count joins the cross-check
+        # instead of being excused. The instrument must start ENFORCING on its
+        # own rather than staying quiet on a stale assumption about the wiring.
+        self._corpus("A", migrated_count=1000,
+                     ea={"docs_inspected": 1000, "epoch_documents": 100},
+                     epoch_mint={"documents_inspected": 900},
+                     valid_interval_decompose={"documents_inspected": 1000})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        block = self._block(text)
+        self.assertIn("-> AGREE (4 figure(s), all 100).", block)
+        self.assertNotIn("MEASURED PRE-MINT", block)
+        self.assertIn("POPULATION: the FINAL migrated batch", text)
+
+    def test_a_final_stage_block_that_disagrees_is_caught(self):
+        # The other half of the same behaviour: once commensurable, a wrong
+        # figure is a finding rather than an excused stage artefact.
+        self._corpus("A", migrated_count=1000,
+                     ea={"docs_inspected": 1000, "epoch_documents": 7},
+                     epoch_mint={"documents_inspected": 900},
+                     valid_interval_decompose={"documents_inspected": 1000})
+        text, failed = self.run_digest()
+        self.assertIn("<epoch document populations disagree>", failed)
+        self.assertIn("7 (epoch_association", text)
+
+    def test_reach_an_epoch_is_announced_as_real_when_measured_late(self):
+        self._corpus("A", migrated_count=1000,
+                     ea={"docs_inspected": 1000, "epoch_documents": 100,
+                         "chain_docs_reaching_epoch": 42},
+                     epoch_mint={"documents_inspected": 900},
+                     valid_interval_decompose={"documents_inspected": 1000})
+        block = self._block(self.run_digest()[0])
+        self.assertIn("`REACH AN EPOCH` = 42, measured on the FINAL migrated "
+                      "batch", block)
+
+    # --- absent is not zero, in every stage --------------------------------
+
+    def test_an_absent_pass_is_named_not_zero_filled(self):
+        self._corpus("A", epoch_mint=None)
+        block = self._block(self.run_digest()[0])
+        self.assertIn("no `epoch_mint` block -- the pass was not wired", block)
+        self.assertIn("(absent)  epoch_mint", block)
+        self.assertNotIn("epoch_mint: minted", block)
+
+    def test_a_failed_pass_is_not_a_measurement_of_zero(self):
+        self._corpus("A", epoch_mint={"pass_failed": "boom"})
+        block = self._block(self.run_digest()[0])
+        self.assertIn("`epoch_mint` FAILED (boom)", block)
+        self.assertIn("pass-1 form", block)
+
+    def test_a_pass_that_did_not_run_is_its_own_state(self):
+        self._corpus("A", valid_interval_decompose={"ran": False})
+        block = self._block(self.run_digest()[0])
+        self.assertIn("`valid_interval_decompose` did not run", block)
+
+    def test_a_missing_by_class_is_named_as_the_unwatched_direction(self):
+        # by_class is the only figure that would notice an epoch DELETED after
+        # minting, so its absence is a named gap rather than a silent one.
+        self._corpus("A", by_class=None)
+        block = self._block(self.run_digest()[0])
+        self.assertIn("carries no `by_class`", block)
+        self.assertIn("DELETED after minting", block)
+
+    def test_a_by_class_without_an_epoch_key_is_a_measured_zero(self):
+        # DIFFERENT from an absent by_class: the census ran and found none.
+        self._corpus("A", by_class={"subject": 40})
+        text, failed = self.run_digest()
+        self.assertIn("<epoch document populations disagree>", failed)
+        self.assertIn("0 (by_class", text)
+
+    def test_a_mint_without_found_existing_is_not_compared(self):
+        # `epochs_found_existing` is part of the population and not part of the
+        # mint's work. Absent, its contribution is UNKNOWN -- assuming zero
+        # would manufacture a disagreement out of a missing counter.
+        self._corpus("A", epoch_mint={"epochs_found_existing": None})
+        block = self._block(self.run_digest()[0])
+        self.assertIn("its contribution to the population is UNKNOWN", block)
+        self.assertNotIn("epoch_mint: minted", block)
+
+    def test_no_comparable_figure_at_all_is_untested_not_agreed(self):
+        # Every post-mint source gone. An empty cross-check must not read as a
+        # passed one -- this is the `silentLoss` failure (0 empty edges while
+        # reading nothing) in the shape this block could take it.
+        self._corpus("A", epoch_mint=None, valid_interval_decompose=None,
+                     by_class=None)
+        block = self._block(self.run_digest()[0])
+        self.assertIn("(none readable -- nothing to cross-check", block)
+        self.assertIn("'untested', not 'agreed'", block)
+        self.assertNotIn("-> AGREE", block)
+
+    def test_one_figure_alone_is_untested_not_confirmed(self):
+        # Exactly one comparable figure: nothing opposes it, so it cannot have
+        # been checked, and the block must not let it read as confirmed.
+        self._corpus("A", migrated_count=1000,
+                     ea={"docs_inspected": 1000, "epoch_documents": 100},
+                     epoch_mint=None, valid_interval_decompose=None,
+                     by_class=None)
+        block = self._block(self.run_digest()[0])
+        self.assertIn("ONE figure only", block)
+        self.assertIn("untested, not confirmed", block)
+        self.assertNotIn("-> AGREE", block)
+
+    def test_the_rollup_names_the_corpora_a_stage_is_missing_from(self):
+        self._corpus("A")
+        self._corpus("B", epoch_mint=None)
+        text, _ = self.run_digest()
+        self.assertIn("[NOT from: B]", text)
+
+    # --- the shape the real run produced, end to end -----------------------
+
+    def test_the_run_31508009545_shape_reconciles_instead_of_contradicting(self):
+        # Soph's figures, quoted from census digest job 93869969402.
+        self._corpus("Soph", migrated_count=254415,
+                     by_class={"epoch": 176},
+                     ea={"docs_inspected": 254304, "docs_classified": 254304,
+                         "epoch_documents": 0,
+                         "chain_docs_examined": 72441,
+                         "chain_docs_reaching_epoch": 0,
+                         "chain_docs_reaching_no_epoch": 72441},
+                     silent_loss={"total_docs": 254304},
+                     epoch_mint={"documents_inspected": 254239,
+                                 "epochs_minted": 176,
+                                 "epochs_found_existing": 0},
+                     valid_interval_decompose={
+                         "documents_inspected": 254415,
+                         "epoch_documents_seen": 176})
+        text, failed = self.run_digest()
+        # NOT a defect: the three post-mint figures agree.
+        self.assertEqual(failed, [])
+        block = self._block(text)
+        self.assertIn("-> AGREE (3 figure(s), all 176).", block)
+        # ... and the zero is explained rather than left to be compared.
+        self.assertIn("254304  silent_loss / epoch_association", block)
+        self.assertIn("254239  epoch_mint", block)
+        self.assertIn("254415  migrated_count", block)
+        self.assertIn("111 document(s) smaller than the migrated output", block)
+
+
+class TestPostPassEpochPopulation(DigestCase):
+    """The OTHER site the contradicting numbers print at.
+
+    THE HALF-REPAIR THIS EXISTS TO PREVENT. Labelling only the
+    epoch-association block leaves `epochs minted` and `epoch documents to
+    anchor to` bare, and those are the figures that printed 8433 against its 0
+    in run 31508009545 -- in the ROLLUP's post-pass block, some forty lines
+    below the rollup's epoch-association block. A reader at that point does not
+    have the other block on screen. Both sites must name their batch, so the
+    two numbers cannot be read as one comparison from either end.
+
+    The population is READ from `documents_inspected` (set on entry to every
+    pass -- epochMint.m:212, resolveValidIntervals.m:427), never assumed, and
+    an absent one prints as absent rather than as a number.
+    """
+
+    def _report(self, name="A", **over):
+        body = {
+            "corpus": name, "total": 100, "migrated_count": 1100,
+            "quarantine_count": 0,
+            "by_class": {"epoch": 100},
+            "silent_loss": {"total_docs": 1000, "skipped_docs": 0},
+            "epoch_mint": {"ran": True, "documents_inspected": 1000,
+                           "epochs_minted": 100, "epochs_found_existing": 0},
+            "valid_interval_decompose": {"ran": True,
+                                         "documents_inspected": 1100,
+                                         "epoch_documents_seen": 100},
+        }
+        for key, value in over.items():
+            if value is None:
+                body.pop(key, None)
+            elif isinstance(value, dict) and isinstance(body.get(key), dict):
+                body[key].update(value)
+            else:
+                body[key] = value
+        self.write(name, body)
+
+    def _per_corpus(self, text):
+        return text[text.index("batch post-passes:"):text.index("ACROSS ALL")]
+
+    def _rollup(self, text):
+        return text[text.index("BATCH POST-PASSES:"):]
+
+    def test_the_mint_figure_names_its_batch_per_corpus(self):
+        self._report()
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("POPULATION: `epochs minted` counts documents this pass",
+                      block)
+        self.assertIn("ADDED to a batch of 1000 document(s).", block)
+
+    def test_the_valid_interval_figure_names_its_batch_per_corpus(self):
+        self._report()
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("documents in a batch of 1100 document(s) -- AFTER",
+                      block)
+        self.assertIn("did2.convert.epochMint appended.", block)
+
+    def test_both_figures_point_at_the_reconciliation(self):
+        # The cross-reference is the thing that makes a bare number safe: a
+        # reader who lands on 8433 is told where the 0 is explained.
+        self._report()
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertEqual(block.count("Cross-checked"), 2)
+        self.assertEqual(block.count("EPOCH DOCUMENT POPULATIONS"), 2)
+
+    def test_the_ROLLUP_figures_name_their_batch_and_say_it_is_a_sum(self):
+        # THE ACTUAL SITE OF THE DEFECT. Run 31508009545 printed both 8433s
+        # here. A summed population must never read as one batch.
+        self._report("A")
+        self._report("B")
+        block = self._rollup(self.run_digest()[0])
+        self.assertIn("ADDED to a batch of 2000 document(s) (summed over 2 "
+                      "report(s)).", block)
+        self.assertIn("documents in a batch of 2200 document(s) (summed over "
+                      "2 report(s)) -- AFTER", block)
+
+    def test_an_unrecorded_population_prints_as_unrecorded_not_as_a_number(self):
+        # A pass whose report carries no `documents_inspected`. The annotation
+        # must not invent a population -- an unmeasured denominator that
+        # arrives as a figure is the defect this whole file guards.
+        self._report(epoch_mint={"documents_inspected": None})
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("ADDED to a batch of UNRECORDED size.", block)
+
+    def test_a_failed_pass_gets_no_population_line(self):
+        # A pass that threw measured nothing, so there is no batch to name.
+        # Printing one would dress a non-measurement as a measurement.
+        self._report(epoch_mint={"pass_failed": "boom"})
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("*** FAILED: boom", block)
+        self.assertNotIn("`epochs minted` counts documents", block)
+
+    def test_a_pass_that_did_not_run_gets_no_population_line(self):
+        self._report(valid_interval_decompose={"ran": False})
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertIn("did not run", block)
+        self.assertNotIn("`epoch documents to anchor to` counts", block)
+
+    def test_no_other_post_pass_is_annotated(self):
+        # Scoped to the two passes that report an `epoch` figure. Annotating a
+        # pass that reports none would attach a caution to a number that never
+        # took part in the contradiction.
+        self._report(session_anchor_fold={"ran": True,
+                                          "documents_inspected": 1100,
+                                          "anchors_seen": 5})
+        block = self._per_corpus(self.run_digest()[0])
+        self.assertEqual(block.count("POPULATION: `epochs minted`"), 1)
+        self.assertEqual(block.count("POPULATION: `epoch documents"), 1)
 
 
 if __name__ == "__main__":
