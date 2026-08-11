@@ -1335,14 +1335,26 @@ d.ngrid = struct('data_size',8,'data_type','double','data_dim',[4 4], ...
 batch = { d };
 end
 
-% ---- openminds (the BARE bundle class -- NO migrator, identity passthrough) --
-% BUILT FROM THE WRITER, NOT FROM OUR SCHEMA. There is no
+% ---- openminds (the BARE bundle class -- a GUARDED passthrough) -------------
+% BUILT FROM THE WRITER, NOT FROM OUR SCHEMA.
+%
+% CORRECTED 2026-08-11. This block said "NO migrator ... there is no
 % +migrators_j/openminds.m (81 migrators; only openminds_element, _stimulus,
 % _subject), so v1_to_v2 falls through lookupMigrator to
-% did2.convert.migrators.identity and the document is carried unchanged into
-% V_eta under its own class. Nothing in this repo exercised that path -- the
-% claim "it passes through clean" was a code read, and this fixture is what
-% makes it a gate.
+% did2.convert.migrators.identity". THAT IS NO LONGER TRUE:
+% +migrators_j/openminds.m exists and this class is routed to it. The OUTCOME
+% for this fixture is unchanged -- the migrator carries the body VERBATIM in
+% every arm, because two batch assemblers depend on that (this pair is
+% ndi.migrate.internal.strainAssembly's input; the citation graph is
+% did2.convert.resolveOpenmindsCitations') -- but it now ERRORS on a body with
+% no `openminds` block, or with neither `matlab_type` nor `openminds_type`.
+% This fixture carries both, so it still passes through clean.
+%
+% Nothing in this repo exercised that path before this fixture -- the claim "it
+% passes through clean" was a code read, and this fixture is what makes it a
+% gate. It ALSO now gates the citation assembler's leave-it-alone arm: this
+% component holds no DatasetVersion, so resolveOpenmindsCitations must count it
+% under `components_without_dataset_version` and consume nothing.
 %
 % SHAPE, from ndi.database.fun.openMINDSobj2ndi_document (NDI origin/main):
 %   - docName is 'openminds' whenever the caller passes NO dependency_type.
