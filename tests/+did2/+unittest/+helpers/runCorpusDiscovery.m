@@ -330,10 +330,17 @@ reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons
 % quietly does nothing, which is the defect this project keeps paying for.
 % verifyThat is non-fatal in a function-based test, so the summary below still
 % prints and the orphan gate below still runs.
-% THREE PASSES ARE DELIBERATELY NOT IN THIS LIST, and saying so is the point --
+% FIVE PASSES ARE DELIBERATELY NOT IN THIS LIST, and saying so is the point --
 % an omission nobody wrote down is the thing this whole file exists to stop.
-% `response_parameters_fold`, `lawn_plate_subjects` and `openminds_citations`
-% are all new and have NEVER BEEN EXECUTED, and making a throw fatal for an unexecuted pass
+% THIS COUNT SAID "THREE" AND WAS WRONG WHILE SAYING SO, which is the failure in
+% miniature: it named `response_parameters_fold`, `lawn_plate_subjects` and
+% `openminds_citations` while `generic_file_fold` was already unlisted too, and
+% `valid_interval_decompose` has since joined them. A hand-kept enumeration
+% beside a hand-kept count drifts the moment a pass lands; the enumeration is
+% the load-bearing half, so it is now complete:
+%   response_parameters_fold, lawn_plate_subjects, openminds_citations,
+%   generic_file_fold, valid_interval_decompose
+% -- all new, all NEVER EXECUTED, and making a throw fatal for an unexecuted pass
 % red-gates the corpus for everyone on a first run. That is the same judgement
 % resolveSessionAnchors's author made when they left it unwired, and it is
 % correct while it is STATED: printBatchPasses above prints

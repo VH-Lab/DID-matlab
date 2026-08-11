@@ -358,12 +358,25 @@
 %   THE FIX IS A TOMBSTONE, NOT A MIGRATOR -- the vmspikefilteringparameters
 %   shape. Both are now restated from the WRITER in DID-schema
 %   tools/build_v_eta.py and marked `retire`, so the identity fallback carries
-%   the document and the tombstone lets it validate. No fold is built because
-%   none is decided: generic_file's intended opaque_body target is still DRAFT
-%   and has no content_hash for its MD5 `checksum` (#45, blocked on #32), and
-%   valid_interval is a curation judgement about a recording -- neither an
-%   observation of the subject nor a manipulation of it -- so its tier is a team
-%   call. KNOWN, OPEN: valid_interval is the only one of NDI's 91 templates whose
+%   the document and the tombstone lets it validate.
+%
+%   `valid_interval` NOW HAS A GO-FORWARD HOME, AND STILL HAS NO PASS-1
+%   MIGRATOR -- both halves matter. TEAM DECISION 2026-08-11: it becomes a
+%   boolean-valued `subject_statement`, so each interval is one
+%   `validity_observation` about the element-subject. That work is a BATCH pass
+%   (did2.convert.resolveValidIntervals), not a migrator, because
+%   `relative_reference.relative_to` is REQUIRED and names the `epoch` DOCUMENT
+%   while the v1 anchor names an epoch by STRING -- the same wall
+%   resolveSessionAnchors documents. The tombstone STAYS and the source document
+%   is KEPT: the pass adds and never removes, and `sources_fully_decomposed`
+%   measures the deletion gate rather than pre-empting it. This paragraph used
+%   to end "its tier is a team call"; the team made it. What is still open is
+%   the INHERITANCE sub-question -- loadvalidinterval falls back to
+%   `underlying_element` (markgarbage.m:146-155), and whether V_eta re-derives
+%   that at query time or materialises it is undecided; the pass forecloses
+%   neither and reports `inheritance_candidates` so the decision has a size.
+%
+%   KNOWN, OPEN: valid_interval is the only one of NDI's 91 templates whose
 %   property block is a JSON ARRAY and the writer APPENDS to it, so a
 %   multi-interval document is under-specified by any scalar-block schema; the
 %   meta-schema cannot express an array block. See

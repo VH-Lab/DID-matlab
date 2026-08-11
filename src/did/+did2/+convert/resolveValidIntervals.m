@@ -1,0 +1,971 @@
+function [result, report] = resolveValidIntervals(result, options)
+%RESOLVEVALIDINTERVALS Decompose `valid_interval` into boolean `validity_observation`s.
+%
+%   [RESULT, REPORT] = did2.convert.resolveValidIntervals(RESULT) takes the
+%   struct returned by did2.convert.v1_to_v2 (after did2.convert.epochMint) and,
+%   for every `valid_interval` document in the batch, emits ONE
+%   `validity_observation` per interval -- a boolean statement about the
+%   element-subject -- plus the `relative_reference` each statement is anchored
+%   to. REPORT is also attached as RESULT.valid_interval_decompose, so a caller
+%   that ignores the second output still carries the measurement.
+%
+%   STATUS: WRITTEN 2026-08-11 IN A CONTAINER WITH NO MATLAB AND NO OCTAVE
+%   (`command -v matlab octave octave-cli` returns nothing). NOTHING IN THIS
+%   FILE HAS BEEN RUN. test-migrators-quick.yml is the first thing that will
+%   have an opinion about it. Read it as a specification, not as a passing pass.
+%
+%   ---------------------------------------------------------------------
+%   THE DECISION THIS IMPLEMENTS
+%   ---------------------------------------------------------------------
+%   TEAM DECISION 2026-08-11, recorded in DID-schema
+%   `schemas/V_eta_OPEN_WORK.md` under "`valid_interval` becomes a
+%   boolean-valued `subject_statement`". jess@walthamdatascience.com, verbatim:
+%   *"Should valid interval be a new class that takes a subject statement,
+%   shares its time reference and states true or false for each value?"*
+%
+%   NOT SIGNED. No TEAM-SIGN-OFF line exists for this family, so the status
+%   board keeps rendering it as awaiting review, and this pass is built to be
+%   reversible rather than to pre-empt that.
+%
+%   ---------------------------------------------------------------------
+%   IT ADDS. IT NEVER REMOVES. THE SOURCE DOCUMENT IS KEPT.
+%   ---------------------------------------------------------------------
+%   The `valid_interval` document stays in the batch, validating against its own
+%   V_eta tombstone, exactly as it does today. Three reasons, none of them
+%   timidity:
+%
+%     1. VERIFY BEFORE DELETE. `did2.convert.resolveResponseParameters` leaves
+%        11,440 parameters documents in place and MEASURES the deletion gate
+%        instead of pre-empting it; this does the same, with
+%        `sources_fully_decomposed`. Removing a source class ahead of the
+%        evidence is the `epochfiles_ingested` regression (2,484 quarantines).
+%     2. NOTHING THE DECOMPOSITION CANNOT CARRY IS LOST WHILE THE SOURCE IS
+%        THERE. The v1 `app` block (which app marked these intervals), the raw
+%        `referent_epochsetname` / `referent_classname` pair, and the timeref's
+%        own `session_ID` have no slot on the statement. They ride on the
+%        retained source. `sources_with_app_block` counts the first of those so
+%        the gap is a number rather than a silence.
+%     3. NOTHING REFERENCES `valid_interval` BY ID, so keeping it strands
+%        nothing and removing it later strands nothing either. Re-derived
+%        rather than quoted, on NDI origin/main:
+%
+%          git ls-tree -r --name-only origin/main -- .../database_documents
+%              | grep -c '\.json$'                     ->  91 templates
+%          ...none of the 91 declares a valid_interval_id / validInterval_id dep
+%          git grep -c -I -i "validinterval" origin/main
+%              +ndi/+app/+stimulus/tuning_response.m   2
+%              +ndi/+app/markgarbage.m                40
+%              +ndi/+test/+app/markgarbage.m           3
+%              +ndi/+test/+app/spikeextractor.m        1
+%              tests/.../TestMarkGarbage.m            15
+%          81 .m files in +migrators_j, 0 referencing the class outside comments
+%
+%   ---------------------------------------------------------------------
+%   WHY THIS IS A BATCH PASS AND NOT A MIGRATOR
+%   ---------------------------------------------------------------------
+%   The same structural wall `did2.convert.resolveSessionAnchors` documents, one
+%   referent over:
+%
+%     * `relative_reference.relative_to` is REQUIRED (team call, fork A of
+%       V_eta_time_reference_model_plan.md).
+%     * The v1 anchor is `ndi.time.timereference`'s struct, and the thing it
+%       names is an EPOCH -- by the STRING `epoch`, plus `session_ID`
+%       (timereference.m:106-111).
+%     * V_eta reifies the epoch as a DOCUMENT, and that document's `base.id`
+%       exists only after `did2.convert.epochMint` has done its corpus-wide
+%       find-or-create on the (session, epoch-string) PAIR.
+%
+%   A single-document migrator holds the string and cannot map it to an id. The
+%   alternative -- emit `relative_to` empty in pass 1 -- is not an alternative:
+%   `+did2/+validate/references.m:90` SKIPS empty edges, so the husks would
+%   validate clean and no gate would see them, which is the invented-empty-edge
+%   pattern this project has now counted 26,406 documents of.
+%
+%   ORDER IS LOAD-BEARING HERE, UNLIKE THE SIBLING PASSES. resolveSessionAnchors
+%   and resolveLawnPlateSubjects commute with their neighbours; this one does
+%   NOT. It reads the `epoch` documents epochMint appends, so it MUST run after
+%   epochMint. It reads them out of `result.migrated` rather than out of
+%   `result.epoch_mint.epoch_index` deliberately: one source of truth (the
+%   batch) cannot drift from itself, and the pass then behaves identically
+%   whether the epochs were minted this run or were already there.
+%
+%   ---------------------------------------------------------------------
+%   HAZARD 1 -- ABSENCE MUST KEEP MEANING "VALID"
+%   ---------------------------------------------------------------------
+%   `ndi.app.markgarbage` is OPT-IN. Today, NO `valid_interval` document for an
+%   element means the WHOLE epoch is good data -- markgarbage.m:172-176:
+%
+%       vi = ndi_app_markgarbage_obj.loadvalidinterval(ndi_epochset_obj);
+%       if isempty(vi)
+%           intervals = [t0 t1];
+%           return;
+%       end
+%
+%   So a dataset that never ran markgarbage must migrate to a dataset with ZERO
+%   validity statements, NOT to one where every epoch is "unknown". This pass
+%   reads `valid_interval` documents and nothing else; with none in the batch
+%   every counter below reads 0, `documents_appended` is 0, and `result.migrated`
+%   is returned unchanged. It NEVER mints a statement for an element that has no
+%   source document, and the DID-schema half declares the absence rule on the
+%   class so a consumer that never read this file still reads it right.
+%
+%   NOTHING WE GATE ON WOULD CATCH THE OTHER BEHAVIOUR. A corpus with no
+%   markgarbage documents is 0 quarantine / 0 orphans before and after a change
+%   that reclassifies every epoch in it.
+%
+%   ---------------------------------------------------------------------
+%   HAZARD 2 -- ORDER IS LOAD-BEARING, AND THE CONSUMER IS AN ANALYSIS
+%   ---------------------------------------------------------------------
+%   One v1 document holds an ARRAY. `savevalidinterval` reads the existing array
+%   back and APPENDS (markgarbage.m:89, `vi(end+1) = validintervalstruct`), so
+%   the array order is the order the curator marked them in. And there is a
+%   SECOND production consumer that depends on it:
+%
+%       +ndi/+app/+stimulus/tuning_response.m:253-256
+%         vi       = gapp.loadvalidinterval(ndi_timeseries_obj);
+%         interval = gapp.identifyvalidintervals(ndi_timeseries_obj,timeref,0,Inf);
+%         [data,t_raw,timeref] = readtimeseries(ndi_timeseries_obj, ...
+%             ts_epoch_timeref.epoch, interval(1,1), interval(1,2));
+%
+%   -- the FIRST interval only. Decomposing into N statements makes "first"
+%   undefined unless the position is carried, so every emitted statement carries
+%   `validity_observation.sequence` = its 1-based position in the v1 array, in
+%   ARRAY ORDER, assigned by the loop index and by nothing else. The intervals
+%   are never sorted, deduplicated or reordered here.
+%
+%   WHAT THAT DOES AND DOES NOT GUARANTEE, said plainly. `identifyvalidintervals`
+%   projects each entry through `syncgraph.time_convert` and accumulates with
+%   `vlt.math.interval_add`, so whether v1's `interval(1,:)` is the first
+%   APPENDED interval or the first in some accumulated order is a property of
+%   `interval_add`, which is in vhlab-toolbox-matlab and is not read here. This
+%   pass therefore preserves the ONE order it can observe -- the source array's
+%   -- and does not claim to have reproduced `interval_add`'s. Preserving the
+%   observable order keeps the reproduction possible; discarding it would not.
+%
+%   ---------------------------------------------------------------------
+%   HAZARD 3 -- VALIDITY INHERITS, AND THAT IS NOT DECIDED HERE
+%   ---------------------------------------------------------------------
+%   `loadvalidinterval` falls back to the `underlying_element` when a derived
+%   element has no intervals of its own (markgarbage.m:146-155):
+%
+%       if isempty(vi)   % underlying elements could still have garbage intervals
+%           if isprop(ndi_epochset_obj,'underlying_element')
+%               ... loadvalidinterval(ndi_epochset_obj.underlying_element)
+%
+%   That is a QUERY-TIME rule in NDI. Whether V_eta re-derives it through the
+%   `derived_from` chain or MATERIALISES copies onto derived subjects is an OPEN
+%   SUB-QUESTION for the team. THIS PASS DOES NOT PICK ONE, and is built so that
+%   neither is foreclosed:
+%
+%     * the statement's `subject_id` is the element the v1 document named and
+%       nothing else, so a re-deriving answer still has the exact v1 graph --
+%       `migrators_j/element.m:131` already emits the
+%       `child --derived_from--> parent` relation it would walk;
+%     * `subject_observation.derived_from_#` exists, is OPTIONAL, and is left
+%       EMPTY here, so a materialising answer needs no schema change and pass 1
+%       has invented no edge it would have to undo;
+%     * `sequence` is scoped to ONE source document, so materialised copies do
+%       not have to renumber against a sibling element's intervals.
+%
+%   WHAT A LATER DECISION WOULD HAVE TO CHANGE, so the size of it is on the
+%   record rather than discovered later:
+%
+%     RE-DERIVE AT QUERY TIME   nothing here. A reader walks
+%                               `derived_from` upward from the subject until it
+%                               finds a subject with validity statements. The
+%                               cost is that the rule lives in readers, which is
+%                               the thing T14 exists to dislike, and NDI's own
+%                               fallback is single-hop (it recurses on
+%                               `underlying_element`, which is itself recursive)
+%                               while `derived_from` chains can be longer.
+%     MATERIALISE               this pass gains a second emission loop: for each
+%                               subject with an incoming `derived_from` edge to
+%                               an element that HAS statements and none of its
+%                               own, emit a copy with a fresh id,
+%                               `derived_from_#` pointing at the original, and
+%                               (per T6's cache rule) an `is_cache`-style marker
+%                               -- which `subject_observation` does NOT declare
+%                               today, so the schema half would need it, or the
+%                               copies would be indistinguishable from primary
+%                               curation. `sequence` would also need a stated
+%                               meaning across a merged set.
+%
+%   `inheritance_candidates` below MEASURES how big that question is on real
+%   data: the number of subjects in the batch holding a `derived_from` edge to
+%   an element this pass just wrote statements for. It is REPORT-ONLY and
+%   changes nothing.
+%
+%   ---------------------------------------------------------------------
+%   THE ANCHOR, AND DECISION C
+%   ---------------------------------------------------------------------
+%   Each v1 interval carries TWO independent anchors --
+%   `markvalidinterval(epochset, t0, timeref_t0, t1, timeref_t1)` stores
+%   `{timeref_structt0, t0, timeref_structt1, t1}`. Decision C of the signed
+%   time model governs, and a nested anchor block per end is explicitly
+%   rejected:
+%
+%     ends AGREE     ONE `relative_reference`: start = t0, duration = t1 - t0.
+%     ends DIFFER    TWO `relative_reference` documents on the statement, each
+%                    an instant (start only, no duration).
+%
+%   THE SECOND BRANCH IS EXPECTED NEVER TO FIRE, and its counter is how we find
+%   out. CHANGE 5 of the same plan measured every call site --
+%   markgarbage.m:10 (the docstring), +test/+app/markgarbage.m:49 and all six
+%   calls in TestMarkGarbage.m -- and every one passes the SAME reference for
+%   both ends. `split_anchor_intervals` is therefore a prediction under test.
+%
+%   AND IT INTERACTS WITH #52, WHICH IS NOT CLOSED. The signed rule is that
+%   within a `time_reference_#` family every member describes the same instant
+%   or extent and `value.clock` is UNIQUE across the family. Two anchors that
+%   differ by EPOCH but share a CLOCK satisfy neither half. That is reported
+%   (did2.validate.silentLoss counts `family_uniqueness_violation`), not
+%   silently accepted, and it is the reason the counter exists rather than a
+%   quiet emit.
+%
+%   ---------------------------------------------------------------------
+%   "EACH VALUE" IS PER INTERVAL, NOT PER SAMPLE
+%   ---------------------------------------------------------------------
+%   Per-interval is migratable: the intervals are literally in the document. A
+%   per-sample validity mask is NOT -- it needs the sample grid, and a migrator
+%   does not read file bytes to learn it. No `sample_time` cadence is emitted
+%   for the same reason: there is no sampling here, and stating `kind: point`
+%   would assert a cadence the source never described.
+%
+%   ---------------------------------------------------------------------
+%   WHAT IT REFUSES TO DO, AND COUNTS INSTEAD
+%   ---------------------------------------------------------------------
+%   An interval it cannot decompose HONESTLY is left alone and counted. The
+%   source document is untouched in every one of these cases, so a refusal
+%   degrades to "not decomposed", never to a loss:
+%
+%     no element_id on the source           -> refused_no_element_id
+%     block holds no readable interval      -> refused_no_intervals
+%     an entry carries no timeref block     -> refused_no_anchor_block
+%     an anchor names no epoch string       -> refused_no_epoch_string
+%     no `epoch` document for (session, id) -> refused_no_epoch_document
+%     two `epoch` documents claim the pair  -> refused_ambiguous_epoch
+%     clocktypestring absent or `no_time`   -> refused_no_clock
+%     t0 or t1 non-finite                   -> refused_non_finite_times
+%     t1 < t0                               -> refused_negative_extent
+%
+%   `no_time` is a real, reachable value, not defensiveness: `ndi.time.clocktype`
+%   lists it and NDI's own readers fall back to it. NO TIMES => NO REFERENCE is
+%   the signed rule (V_eta_time_reference_model_plan.md); a NaN-valued reference
+%   is the hollow document silentLoss and isFragment exist to catch.
+%
+%   ---------------------------------------------------------------------
+%   THE STAGED ONTOLOGY NODES
+%   ---------------------------------------------------------------------
+%   `variable` and `clock` are emitted as `{node: '', name: ...}`. That is the
+%   standing practice (jEpochClockReferences stages `clock` the same way; the
+%   NDIC identifier authority is in no repository in scope since NDIC.txt left
+%   NDI-matlab at 2c19bf24c) -- but `tools/check_empty_ontology_nodes.py` walks
+%   ONLY `+migrators_j`, so a term staged HERE is invisible to the one
+%   instrument built to make staged terms visible. `staged_ontology_nodes` in
+%   the report is the local stand-in, so the debt is a number in the corpus
+%   report rather than a silence. Widening that tool is a separate change.
+%
+%   Options (name-value), mirroring the sibling passes:
+%     Validate       (1,1 logical, default true)  validate emitted bodies
+%     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
+%     TargetVersion  (1,:) char, default 'V_eta'  no-op on other targets
+%
+%   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
+%   did2.convert.resolveSessionAnchors, did2.convert.resolveResponseParameters,
+%   did2.convert.resolveLawnPlateSubjects.
+
+arguments
+    result (1,1) struct
+    options.Validate (1,1) logical = true
+    options.SchemaCache = []
+    options.TargetVersion (1,:) char = 'V_eta'
+end
+
+% DENOMINATOR FIRST, and unconditionally. Every field is defined before a single
+% document is read, so "did not run" and "ran and found nothing" are different
+% readings of the same struct rather than the same reading. Operating Rule 5;
+% silentLoss is what happens without it.
+report = struct( ...
+    'documents_inspected',            0, ...
+    'documents_unreadable',           0, ...
+    'epoch_documents_seen',           0, ...
+    'sources_seen',                   0, ...
+    'sources_with_app_block',         0, ...
+    'intervals_seen',                 0, ...
+    'intervals_decomposed',           0, ...
+    'statements_emitted',             0, ...
+    'references_emitted',             0, ...
+    'split_anchor_intervals',         0, ...
+    'sources_fully_decomposed',       0, ...
+    'sources_partly_decomposed',      0, ...
+    'anchor_session_from_timeref',    0, ...
+    'anchor_session_from_document',   0, ...
+    'staged_ontology_nodes',          0, ...
+    'inheritance_candidates',         0, ...
+    'refused_no_element_id',          0, ...
+    'refused_no_intervals',           0, ...
+    'refused_no_anchor_block',        0, ...
+    'refused_no_epoch_string',        0, ...
+    'refused_no_epoch_document',      0, ...
+    'refused_ambiguous_epoch',        0, ...
+    'refused_no_clock',               0, ...
+    'refused_non_finite_times',       0, ...
+    'refused_negative_extent',        0, ...
+    'refused_total',                  0, ...
+    'references_quarantined',         0, ...
+    'statements_quarantined',         0, ...
+    'statements_withheld_lost_anchor', 0, ...
+    'documents_appended',             0, ...
+    'ran',                            false);
+result.valid_interval_decompose = report;
+
+if ~strcmp(options.TargetVersion, 'V_eta')
+    return;     % `validity_observation` exists only in V_eta.
+end
+if ~isfield(result, 'migrated') || isempty(result.migrated)
+    report.ran = true;
+    result.valid_interval_decompose = report;
+    return;
+end
+report.ran = true;
+
+docs = result.migrated;
+n = numel(docs);
+report.documents_inspected = n;
+
+% --- read every document once ---------------------------------------------
+% A document this cannot read is COUNTED, never dropped.
+bodies = cell(1, n);
+classes = repmat({''}, 1, n);
+sessionIds = repmat({''}, 1, n);
+docIds = repmat({''}, 1, n);
+for k = 1:n
+    try
+        b = docs{k}.toStruct();
+        bodies{k} = b;
+        classes{k} = classNameOf(b);
+        sessionIds{k} = baseField(b, 'session_id');
+        docIds{k} = baseField(b, 'id');
+    catch
+        report.documents_unreadable = report.documents_unreadable + 1;
+    end
+end
+
+% --- index the `epoch` documents ------------------------------------------
+% Keyed on the PAIR (base.session_id, epoch.local_identifier), never on the
+% string alone. did2.convert.epochMint measured why: an `epochid.epochid` string
+% is REUSED ACROSS SESSIONS -- 142 of corpus B's 149 distinct ids -- so keying
+% on the string would fuse epochs belonging to different sessions, and this pass
+% would then anchor a probe's valid interval to a recording from another animal.
+% A pair claimed by two epoch documents is REFUSED rather than guessed at.
+epochIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
+epochCountByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for k = 1:n
+    if ~strcmp(classes{k}, 'epoch'); continue; end
+    report.epoch_documents_seen = report.epoch_documents_seen + 1;
+    lid = '';
+    if isfield(bodies{k}, 'epoch') && isstruct(bodies{k}.epoch)
+        lid = charField(bodies{k}.epoch, {'local_identifier'});
+    end
+    if isempty(lid) || isempty(docIds{k}); continue; end
+    key = pairKey(sessionIds{k}, lid);
+    if isKey(epochCountByKey, key)
+        epochCountByKey(key) = epochCountByKey(key) + 1;
+    else
+        epochCountByKey(key) = 1;
+        epochIdByKey(key) = docIds{k};
+    end
+end
+
+% --- decompose every interval we can decompose honestly --------------------
+refBodies = {};
+stmtBodies = {};
+stmtRefIds = {};        % the reference ids each statement depends on
+elementsWritten = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:n
+    if ~strcmp(classes{k}, 'valid_interval'); continue; end
+    report.sources_seen = report.sources_seen + 1;
+    src = bodies{k};
+    blk = blockOf(src, 'valid_interval');
+    if isfield(src, 'app') && isstruct(src.app) && ~isempty(fieldnames(src.app))
+        % Counted, not carried: the app provenance stays on the retained source
+        % document. Minting a `software` entity per statement here would produce
+        % one undeduplicated entity per interval --
+        % did2.convert.resolveDatasetEntities, which does the software dedup,
+        % has already run by this point.
+        report.sources_with_app_block = report.sources_with_app_block + 1;
+    end
+
+    elementId = depValue(src, 'element_id');
+    entries = intervalEntries(blk);
+    report.intervals_seen = report.intervals_seen + numel(entries);
+    if isempty(elementId)
+        report.refused_no_element_id = report.refused_no_element_id + 1;
+        continue;
+    end
+    if isempty(entries)
+        report.refused_no_intervals = report.refused_no_intervals + 1;
+        continue;
+    end
+
+    doneHere = 0;
+    for i = 1:numel(entries)
+        e = entries{i};
+        % THE ORDER IS THE LOOP INDEX AND NOTHING ELSE. No sort, no dedup, no
+        % reorder -- see HAZARD 2 in the header.
+        [a0, why0] = resolveAnchor(subStruct(e, {'timeref_structt0'}), ...
+            sessionIds{k}, epochIdByKey, epochCountByKey);
+        [a1, why1] = resolveAnchor(subStruct(e, {'timeref_structt1'}), ...
+            sessionIds{k}, epochIdByKey, epochCountByKey);
+        why = why0; if isempty(why); why = why1; end
+        if ~isempty(why)
+            report.(why) = report.(why) + 1;
+            continue;
+        end
+        % Counted ONCE PER INTERVAL, not once per anchor: both ends of one
+        % interval come off the same source document, so a split anchor would
+        % otherwise double-count the same fact about where the session id
+        % was read from.
+        report.(a0.session_source) = report.(a0.session_source) + 1;
+
+        t0 = numericField(e, {'t0'});
+        t1 = numericField(e, {'t1'});
+        if isempty(t0) || isempty(t1) || ~isfinite(t0) || ~isfinite(t1)
+            report.refused_non_finite_times = report.refused_non_finite_times + 1;
+            continue;
+        end
+        if t1 < t0
+            report.refused_negative_extent = report.refused_negative_extent + 1;
+            continue;
+        end
+
+        if sameAnchor(a0, a1)
+            % DECISION C, the agreeing case: ONE anchor governs both ends.
+            % CHANGE 1 of the signed walkthrough -- the EXTENT is a duration,
+            % not the raw t1, so a fuzzy anchor cannot contaminate the span.
+            refs = {makeReference(src, a0, t0, t1 - t0)};
+        else
+            % DECISION C, the disagreeing case: TWO reference documents, each an
+            % INSTANT. Never a nested anchor block per end -- that is the inline
+            % structure removed from acquisition_epoch.clocks, epochclocktimes,
+            % distance_metadata and the tuning bag.
+            refs = {makeReference(src, a0, t0, []), ...
+                    makeReference(src, a1, t1, [])};
+            report.split_anchor_intervals = report.split_anchor_intervals + 1;
+        end
+
+        refIds = cell(1, numel(refs));
+        for r = 1:numel(refs)
+            refIds{r} = refs{r}.base.id;
+            refBodies{end+1} = refs{r}; %#ok<AGROW>
+            report.staged_ontology_nodes = report.staged_ontology_nodes + 1;  % clock
+        end
+        stmtBodies{end+1} = ...
+            makeValidityObservation(src, elementId, i, true, refIds); %#ok<AGROW>
+        stmtRefIds{end+1} = refIds; %#ok<AGROW>
+        report.staged_ontology_nodes = report.staged_ontology_nodes + 1;      % variable
+        doneHere = doneHere + 1;
+    end
+
+    report.intervals_decomposed = report.intervals_decomposed + doneHere;
+    if doneHere == numel(entries)
+        report.sources_fully_decomposed = report.sources_fully_decomposed + 1;
+        elementsWritten(elementId) = true;
+    elseif doneHere > 0
+        report.sources_partly_decomposed = report.sources_partly_decomposed + 1;
+        elementsWritten(elementId) = true;
+    end
+end
+
+report.refused_total = report.refused_no_element_id ...
+    + report.refused_no_intervals ...
+    + report.refused_no_anchor_block ...
+    + report.refused_no_epoch_string ...
+    + report.refused_no_epoch_document ...
+    + report.refused_ambiguous_epoch ...
+    + report.refused_no_clock ...
+    + report.refused_non_finite_times ...
+    + report.refused_negative_extent;
+
+% --- HAZARD 3, MEASURED ONLY ----------------------------------------------
+% How many subjects in this batch hold a `derived_from` edge to an element this
+% pass just wrote statements for -- i.e. the population NDI's `underlying_element`
+% fallback serves. REPORT-ONLY: nothing is emitted for them, because which of the
+% two answers is right is a TEAM decision. The number is here so the decision can
+% be made against a size rather than against an intuition.
+if elementsWritten.Count > 0
+    for k = 1:n
+        if ~strcmp(classes{k}, 'directed_relation'); continue; end
+        blk = blockOf(bodies{k}, 'directed_relation');
+        rel = '';
+        if isstruct(blk) && isfield(blk, 'relation') && isstruct(blk.relation)
+            rel = charField(blk.relation, {'name'});
+        end
+        if ~strcmp(rel, 'derived_from'); continue; end
+        parent = depValue(bodies{k}, 'parent');
+        if ~isempty(parent) && isKey(elementsWritten, parent)
+            report.inheritance_candidates = report.inheritance_candidates + 1;
+        end
+    end
+end
+
+if isempty(stmtBodies)
+    result.valid_interval_decompose = report;
+    return;
+end
+
+% --- validate the ANCHORS FIRST, then the statements that still have one ---
+% Two rounds, deliberately. A statement whose anchor quarantined would carry a
+% `time_reference_1` edge pointing at a document that is not in the batch -- an
+% ORPHAN, and the corpus gate is 0 orphans. So a statement is emitted only when
+% EVERY reference it names survived; otherwise it is WITHHELD and counted, and
+% the source document (still present) remains the record of that interval.
+[refSurvived, refQuarantined] = validateBodies(refBodies, options);
+report.references_quarantined = numel(refQuarantined);
+if ~isempty(refQuarantined)
+    result = appendQuarantine(result, refQuarantined);
+end
+
+keptStmts = {};
+keptRefIds = {};
+for s = 1:numel(stmtBodies)
+    ids = stmtRefIds{s};
+    ok = true;
+    for r = 1:numel(ids)
+        if ~isKey(refSurvived, ids{r}); ok = false; break; end
+    end
+    if ~ok
+        report.statements_withheld_lost_anchor = ...
+            report.statements_withheld_lost_anchor + 1;
+        continue;
+    end
+    keptStmts{end+1} = stmtBodies{s}; %#ok<AGROW>
+    keptRefIds{end+1} = ids;          %#ok<AGROW>
+end
+
+appended = {};
+usedRefIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if ~isempty(keptStmts)
+    [stmtSurvived, stmtQuarantined] = validateBodies(keptStmts, options);
+    report.statements_quarantined = numel(stmtQuarantined);
+    if ~isempty(stmtQuarantined)
+        result = appendQuarantine(result, stmtQuarantined);
+    end
+    % COUNTED FROM WHAT LANDED, never from what was intended.
+    for s = 1:numel(keptStmts)
+        id = keptStmts{s}.base.id;
+        if ~isKey(stmtSurvived, id); continue; end
+        appended{end+1} = stmtSurvived(id); %#ok<AGROW>
+        report.statements_emitted = report.statements_emitted + 1;
+        for r = 1:numel(keptRefIds{s})
+            usedRefIds(keptRefIds{s}{r}) = true;
+        end
+    end
+end
+
+% Only the references a SURVIVING statement points at are appended. A reference
+% nothing points at is a document that says "some interval, somewhere" -- the
+% hollow-document shape, and it would also make `references_emitted` a count of
+% intentions rather than of anchors in use.
+refKeys = keys(usedRefIds);
+for r = 1:numel(refKeys)
+    appended{end+1} = refSurvived(refKeys{r}); %#ok<AGROW>
+    report.references_emitted = report.references_emitted + 1;
+end
+
+if isempty(appended)
+    result.valid_interval_decompose = report;
+    return;
+end
+
+result.migrated = [docs, appended];
+report.documents_appended = numel(appended);
+result.summary = recountSummary(result);
+result.valid_interval_decompose = report;
+end
+
+% ===================== the anchor ==========================================
+
+function [anchor, why] = resolveAnchor(timeref, docSessionId, epochIdByKey, epochCountByKey)
+%RESOLVEANCHOR One v1 `ndi_timereference_struct` -> the epoch document + clock.
+%   ANCHOR is a struct {epoch_document_id, clock, tolerance_seconds,
+%   session_source}; WHY is '' on success, otherwise the name of the report
+%   counter to bump. Returning the counter NAME rather than a boolean is what
+%   keeps every refusal reason distinct -- a single `false` collapses eight
+%   different facts into one.
+anchor = struct('epoch_document_id', '', 'clock', '', ...
+    'tolerance_seconds', [], 'session_source', '');
+why = 'refused_no_anchor_block';
+if ~isstruct(timeref) || isempty(timeref)
+    return;
+end
+
+clockName = charField(timeref, {'clocktypestring', 'clockTypeString'});
+if isempty(clockName) || strcmp(clockName, 'no_time')
+    % NO TIMES => NO REFERENCE (signed). `no_time` is reachable, not
+    % hypothetical: ndi.time.clocktype lists it among its nine values.
+    why = 'refused_no_clock';
+    return;
+end
+
+epochString = charField(timeref, {'epoch'});
+if isempty(epochString)
+    % timereference.m:71 leaves `epoch` EMPTY whenever the clock does not
+    % needsepoch(). There is then no epoch document to anchor to, and inventing
+    % a session anchor instead would silently change what the interval is
+    % measured against. Refused, counted, source kept.
+    why = 'refused_no_epoch_string';
+    return;
+end
+
+% THE SESSION HALF OF THE KEY. The timeref carries its own `session_ID`
+% (timereference.m:110, via ndi_timereference_struct) and the document carries
+% `base.session_id`. They are the same session for every markgarbage write we
+% can see, but the timeref's is the AUTHORITATIVE one -- it names the session the
+% REFERENT lives in -- so it wins where present. Which one was used is counted,
+% so "they agreed" and "we fell back" stay distinguishable.
+sessionId = charField(timeref, {'session_ID', 'session_id'});
+anchor.session_source = 'anchor_session_from_timeref';
+if isempty(sessionId)
+    sessionId = docSessionId;
+    anchor.session_source = 'anchor_session_from_document';
+end
+
+key = pairKey(sessionId, epochString);
+if ~isKey(epochIdByKey, key)
+    why = 'refused_no_epoch_document';
+    return;
+end
+if epochCountByKey(key) > 1
+    why = 'refused_ambiguous_epoch';
+    return;
+end
+
+[bare, tolerance] = deEncodeApprox(clockName);
+anchor.epoch_document_id = epochIdByKey(key);
+anchor.clock = bare;
+anchor.tolerance_seconds = tolerance;
+why = '';
+end
+
+function tf = sameAnchor(a, b)
+%SAMEANCHOR Do two ends resolve to the SAME anchor?
+%   Same epoch document, same clock, same stated tolerance. Anything else is the
+%   split case, which gets two reference documents (Decision C).
+tf = strcmp(a.epoch_document_id, b.epoch_document_id) ...
+    && strcmp(a.clock, b.clock) ...
+    && isequal(a.tolerance_seconds, b.tolerance_seconds);
+end
+
+function [bare, toleranceSeconds] = deEncodeApprox(clockName)
+%DEENCODEAPPROX Split NDI's `approx_` prefix into a bare clock + a TOLERANCE.
+%   CHANGE 4 of the signed time model. The magnitude is stated by NDI only in
+%   prose -- +ndi/+time/clocktype.m:21,23,26 say "within 5 seconds" / "within 5s"
+%   / "within 5 s" -- so the 5 is TRANSCRIBED, not invented. Folding the prefix
+%   into a boolean would throw the number away, which is the error CHANGE 4
+%   records.
+%
+%   Returns [] (not 0) when the clock states no tolerance, so "no stated
+%   tolerance" and "stated as zero" stay distinguishable.
+%
+%   DUPLICATED FROM +migrators_j/private/jEpochClockReferences.m, and said out
+%   loud rather than hidden: `private/` is not reachable from +did2/+convert, and
+%   the two are twelve lines. If a third copy is ever wanted, that is the signal
+%   to promote it to a shared function instead.
+bare = clockName;
+toleranceSeconds = [];
+if numel(clockName) >= 7 && strcmp(clockName(1:7), 'approx_')
+    bare = clockName(8:end);
+    toleranceSeconds = 5;
+end
+end
+
+% ===================== body builders =======================================
+
+function ref = makeReference(src, anchor, startSeconds, durationSeconds)
+%MAKEREFERENCE One `relative_reference` anchored to an epoch document.
+%   DURATIONSECONDS empty => an INSTANT (the split-anchor case). `relation` is
+%   deliberately OMITTED: it is optional and carries the qualitative Allen
+%   relation used when there is NO metric offset, and here the offsets are the
+%   whole content.
+ref = struct();
+ref.document_class = struct('class_name', 'relative_reference', ...
+    'class_version', '2.0.0', ...
+    'superclasses', struct('class_name', 'time_reference', ...
+        'class_version', '4.0.0'), ...
+    'schema_version', 'V_eta');
+ref.depends_on = struct('name', {'relative_to'}, ...
+    'value', {anchor.epoch_document_id});
+ref.base = freshBase(src, 'migrated_valid_interval_anchor');
+if ~isempty(anchor.tolerance_seconds)
+    % Written ONLY when the source clock stated a tolerance. An empty tolerance
+    % cell would assert "the timeline is good to 0 s", which the source never
+    % said; with no block, ensureClassBlocks pads it.
+    ref.time_reference = struct('clock_tolerance', ...
+        durationCell(anchor.tolerance_seconds));
+end
+value = struct('clock', struct('node', '', 'name', anchor.clock), ...
+    'start', durationCell(startSeconds));
+if ~isempty(durationSeconds)
+    value.duration = durationCell(durationSeconds);
+end
+ref.relative_reference = struct('value', value);
+end
+
+function body = makeValidityObservation(src, elementId, sequence, isValid, refIds)
+%MAKEVALIDITYOBSERVATION One boolean statement about one element-subject.
+%
+%   `subject_id` IS THE ELEMENT, UNQUALIFIED. `element_id` on the v1 document
+%   names the element (in practice a PROBE -- savevalidinterval errors on
+%   anything else, markgarbage.m:76-78), and `migrators_j/element.m` promotes
+%   elements to subjects with their ids PRESERVED, so the edge lands without a
+%   lookup. This is the recurring trap CLAUDE.md names: `element_id` is NOT a
+%   dangling non-subject edge.
+%
+%   ISVALID IS ALWAYS TRUE ON THE MIGRATION PATH, and that is a property of the
+%   SOURCE, not a default. did_v1 encoded validity in the CLASS NAME, so "this
+%   stretch is bad" was expressible only as absence -- markgarbage.m:40 is its
+%   own author writing the gap down ("it would be great to have a
+%   'markinvalidinterval' companion"). The parameter exists because the CLASS
+%   can say false; nothing in v1 can.
+%
+%   NO `sample_time`: there is no sampling here (the value is per INTERVAL), and
+%   `kind: point` would assert a cadence the source never described.
+%   NO `derived_from_#`: see HAZARD 3 in the header -- leaving it empty is what
+%   keeps both answers to the inheritance question buildable.
+%
+%   REFIDS are the `relative_reference` documents this statement is anchored to
+%   -- ONE in the agreeing case, TWO in the split case (Decision C). They are
+%   numbered `time_reference_1..N` in the order given, which for the split case
+%   is (start anchor, end anchor). #52 has not decided what a bare index MEANS
+%   when a family has more than one member, so that ordering is a convention
+%   this pass records rather than a rule it can rely on -- which is exactly what
+%   #52 exists to fix, and why `split_anchor_intervals` is counted.
+body = struct();
+body.document_class = struct('class_name', 'validity_observation', ...
+    'class_version', '1.0.0', ...
+    'superclasses', supersOf({'subject_observation', 'validity'}), ...
+    'schema_version', 'V_eta');
+deps = struct('name', {'subject_id'}, 'value', {elementId});
+for r = 1:numel(refIds)
+    deps(end+1) = struct('name', sprintf('time_reference_%d', r), ...
+        'value', refIds{r}); %#ok<AGROW>
+end
+body.depends_on = deps;
+body.base = freshBase(src, 'migrated_valid_interval');
+body.subject_statement = struct( ...
+    'variable', struct('node', '', 'name', 'data validity'), ...
+    'storage_mode', 'inline');
+body.subject_interaction = struct('method', struct('node', '', 'name', ''));
+body.subject_observation = struct();
+body.validity = struct('value', struct('value', logical(isValid)));
+body.validity_observation = struct('sequence', double(sequence));
+end
+
+function base = freshBase(src, name)
+sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
+if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
+    if isfield(src.base, 'session_id'); sessionId = src.base.session_id; end
+    if isfield(src.base, 'datestamp') && ~isempty(src.base.datestamp)
+        ds = src.base.datestamp;
+    end
+end
+base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+    'name', name, 'datestamp', ds);
+end
+
+function supers = supersOf(chain)
+supers = struct('class_name', {}, 'class_version', {});
+for k = 1:numel(chain)
+    supers(end+1) = struct('class_name', chain{k}, 'class_version', '1.0.0'); %#ok<AGROW>
+end
+end
+
+function c = durationCell(seconds)
+%DURATIONCELL The T14 one-`value` duration cell: canonical + source provenance.
+%   NDI times are already in SECONDS, so `seconds` and `source_value` coincide
+%   and `source_unit` is 's'. `approximate` is FALSE, and that is a claim about
+%   the NUMBER: the t0/t1 the writer stored are exact as recorded. Whatever slop
+%   the clock has is on the TIMELINE and is carried by `clock_tolerance`.
+c = struct('seconds', double(seconds), ...
+    'source_unit', 's', ...
+    'source_value', double(seconds), ...
+    'approximate', false);
+end
+
+% ===================== shape readers =======================================
+
+function entries = intervalEntries(blk)
+%INTERVALENTRIES The intervals in a `valid_interval` block, IN SOURCE ORDER.
+%
+%   `valid_interval` is the ONLY one of NDI's 91 production templates whose
+%   property block is a JSON ARRAY rather than an object, and the writer APPENDS
+%   (markgarbage.m:89), so a probe with three marked intervals is ONE document
+%   holding a 3-element struct array. Accumulation is the normal path, not an
+%   edge case.
+%
+%   THREE SHAPES ARE ACCEPTED, and none of them is a guess: a 1xN struct array
+%   (what the writer produces), a cell of scalar structs (what jsondecode
+%   returns when the entries are not field-homogeneous), and a scalar struct
+%   (the single-interval document, which is also the template's own shape).
+%   Order is preserved exactly in all three; nothing here sorts.
+entries = {};
+if isempty(blk)
+    return;
+end
+if iscell(blk)
+    for k = 1:numel(blk)
+        if isstruct(blk{k}) && isscalar(blk{k}); entries{end+1} = blk{k}; end %#ok<AGROW>
+    end
+    return;
+end
+if ~isstruct(blk)
+    return;
+end
+for k = 1:numel(blk)
+    entries{end+1} = blk(k); %#ok<AGROW>
+end
+end
+
+function s = subStruct(e, names)
+%SUBSTRUCT First present sub-struct among NAMES ([] if none).
+%   The snake/camelCase fallback is the standing migrator rule, applied here
+%   even though these particular names have no camel variant: the rule exists so
+%   the next nested read does not have to remember it.
+s = [];
+for k = 1:numel(names)
+    if isfield(e, names{k}) && isstruct(e.(names{k}))
+        s = e.(names{k});
+        if ~isscalar(s) && ~isempty(s); s = s(1); end
+        return;
+    end
+end
+end
+
+function v = numericField(s, names)
+v = [];
+for k = 1:numel(names)
+    if isfield(s, names{k})
+        x = s.(names{k});
+        if isnumeric(x) && ~isempty(x); v = double(x(1)); end
+        return;
+    end
+end
+end
+
+function c = charField(s, names)
+c = '';
+if ~isstruct(s) || isempty(s); return; end
+for k = 1:numel(names)
+    if isfield(s, names{k})
+        x = s.(names{k});
+        if ischar(x); c = x; elseif isstring(x) && isscalar(x); c = char(x); end
+        return;
+    end
+end
+end
+
+function v = depValue(body, name)
+%DEPVALUE The target id of dependency NAME on BODY, or ''.
+%   Read tolerantly: a raw migrator body spells the target `value`, a body that
+%   has been through did2.convert.universalRenames spells it `document_id`, and
+%   an unconverted v1 body spells it `id` -- the same three keys
+%   +migrators_j/private/jEpochDocId.m reads, for the same reason.
+v = '';
+if ~isfield(body, 'depends_on') || isempty(body.depends_on); return; end
+deps = body.depends_on;
+if isstruct(deps); items = num2cell(deps(:)'); elseif iscell(deps); items = deps;
+else; return; end
+for k = 1:numel(items)
+    d = items{k};
+    if ~isstruct(d) || ~isfield(d, 'name') || ~strcmp(char(d.name), name); continue; end
+    for key = {'document_id', 'value', 'id'}
+        if isfield(d, key{1}) && ~isempty(d.(key{1}))
+            v = char(d.(key{1}));
+            return;
+        end
+    end
+    return;
+end
+end
+
+function blk = blockOf(body, className)
+blk = [];
+if isstruct(body) && isfield(body, className)
+    blk = body.(className);
+end
+end
+
+function cn = classNameOf(b)
+cn = '';
+if isstruct(b) && isfield(b, 'document_class') && isstruct(b.document_class) ...
+        && isfield(b.document_class, 'class_name')
+    cn = char(b.document_class.class_name);
+end
+end
+
+function v = baseField(b, name)
+v = '';
+if isstruct(b) && isfield(b, 'base') && isstruct(b.base) && isfield(b.base, name)
+    x = b.base.(name);
+    if ischar(x); v = x; elseif isstring(x) && isscalar(x); v = char(x); end
+end
+end
+
+function k = pairKey(sessionId, epochString)
+%PAIRKEY The anchor key, length-prefixed so no separator can be forged.
+%   Identical to did2.convert.epochMint/pairKey ON PURPOSE: this pass looks up
+%   what that pass minted, and two different key functions over one index is a
+%   silent miss, not an error.
+k = sprintf('%d:%s|%s', numel(sessionId), sessionId, epochString);
+end
+
+% ===================== validation plumbing =================================
+
+function [survived, quarantined] = validateBodies(newBodies, options)
+%VALIDATEBODIES Push bodies through v1_to_v2 and return what survived, by id.
+%   SURVIVED is a containers.Map from base.id to the produced did2.document, so
+%   a caller can ask "did THIS body land" rather than matching on position -- a
+%   quarantined body leaves no slot, and the id is the one thing this pass
+%   guarantees is unchanged. Mirrors the helper of the same name in
+%   did2.convert.resolveLawnPlateSubjects.
+survived = containers.Map('KeyType', 'char', 'ValueType', 'any');
+quarantined = {};
+if isempty(newBodies); return; end
+out = did2.convert.v1_to_v2(newBodies, ...
+    'Validate',      options.Validate, ...
+    'SchemaCache',   options.SchemaCache, ...
+    'TargetVersion', options.TargetVersion);
+for k = 1:numel(out.migrated)
+    try
+        survived(char(out.migrated{k}.get('base.id'))) = out.migrated{k};
+    catch
+    end
+end
+quarantined = out.quarantine;
+end
+
+function result = appendQuarantine(result, quarantined)
+if isfield(result, 'quarantine') && ~isempty(result.quarantine)
+    result.quarantine = [result.quarantine, quarantined];
+else
+    result.quarantine = quarantined;
+end
+end
+
+function summary = recountSummary(result)
+summary = struct();
+if isfield(result, 'summary') && isstruct(result.summary); summary = result.summary; end
+summary.migrated_count = numel(result.migrated);
+if isfield(result, 'quarantine'); summary.quarantine_count = numel(result.quarantine); end
+byClass = struct();
+for k = 1:numel(result.migrated)
+    fieldName = matlab.lang.makeValidName(result.migrated{k}.className());
+    if isfield(byClass, fieldName)
+        byClass.(fieldName) = byClass.(fieldName) + 1;
+    else
+        byClass.(fieldName) = 1;
+    end
+end
+summary.by_class = byClass;
+end
