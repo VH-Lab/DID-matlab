@@ -11,13 +11,30 @@ function tests = testSessionAnchorEmitterContract
 %   -- so no line in this file has been run, by either session. CI is the first
 %   execution.
 %
-%   TWO TESTS IN THE BOUNDED SECTION ARE EXPECTED TO FAIL ON THAT FIRST RUN, and
-%   they are the point of the extension rather than an accident of it:
-%   `testTheBoundedWindowExtentSurvivesTheFold` and
-%   `testAReversedBoundedWindowIsRefusedNotSilentlyFolded`. Both fail for ONE
-%   cause, recorded under DEFECT below: the real emitter writes a duration cell
-%   with no `seconds`, and the fold reads only `seconds`. The fix belongs in a
-%   SEPARATE commit from this coverage so the two stay separable.
+%   THE FIRST CI RUN FOUND A REAL DEFECT, WHICH IS WHAT THIS EXTENSION WAS FOR.
+%   Two tests in the bounded section failed, both of them new, and nothing else
+%   in the suite did -- quick migrator tests run 31505311064, job 93825341506,
+%   head `925c7cc`:
+%
+%       ================ VERDICT: quick migrator tests ================
+%         tests run        983
+%         passed           981
+%         FAILED             2
+%         incomplete         0
+%
+%         FAILED, by name (2):
+%           .../testSessionAnchorEmitterContract/testTheBoundedWindowExtentSurvivesTheFold
+%           .../testSessionAnchorEmitterContract/testAReversedBoundedWindowIsRefusedNotSilentlyFolded
+%       ================ end verdict: quick migrator tests ================
+%
+%   BOTH FAILURES HAD ONE CAUSE AND THE FOLD WAS THE SIDE THAT WAS WRONG: the
+%   real emitter writes a duration cell with no `seconds`, and `cellField` read
+%   only `seconds`, so a POPULATED window was treated as absent. Neither test
+%   nor fixture is changed -- the fixture is what the real migrator emits, so
+%   the shape it asserts about is the one production produces. FIXED in its own
+%   commit (`fix: the fold discarded every real session_bounded_reference
+%   window`, resolveSessionAnchors.m `cellField` + `isSecondsUnit`), kept apart
+%   from this coverage so the two are reviewable and revertible separately.
 %
 %   NEW FILE, deliberately. `testMigratorsJ.m`, `testFixtureCorpus.m` and
 %   `testCorpusPRED.m` are owned by other sessions and are not touched.
@@ -139,9 +156,13 @@ function tests = testSessionAnchorEmitterContract
 %   of either fold is free to change everything except the anchor contract.
 %
 %   ---------------------------------------------------------------------
-%   DEFECT FOUND WHILE BUILDING THE BOUNDED ARM -- NOT FIXED HERE
+%   THE DEFECT THIS ARM FOUND -- DIAGNOSED HERE, REPAIRED IN ANOTHER COMMIT
 %   ---------------------------------------------------------------------
-%   THE ENCOUNTER WINDOW'S START AND END ARE SILENTLY DISCARDED BY THE FOLD.
+%   Kept in full because it is the evidence for the repair, and because the
+%   repair is one commit away and can therefore be reverted. Everything in
+%   this block describes the state BEFORE that commit.
+%
+%   THE ENCOUNTER WINDOW'S START AND END WERE SILENTLY DISCARDED BY THE FOLD.
 %   Three facts, each read from the code rather than inferred:
 %
 %     1. The emitter's duration cell has NO `seconds` field.
@@ -229,9 +250,10 @@ function tests = testSessionAnchorEmitterContract
 %          -> relative_reference   { relation, start, duration = end-start }
 %                     resolveSessionAnchors.m, "THE MAPPING" header section
 %
-%   -- so they FAIL until one side is changed. They are deliberately not written
-%   to the current behaviour: a test that pinned the drop would make this file
-%   the thing certifying the loss.
+%   -- so they FAILED until one side changed, and the side that changed was the
+%   fold. They were deliberately not written to the then-current behaviour: a
+%   test that pinned the drop would have made this file the thing certifying
+%   the loss.
 %
 %   HOW testTimeReferenceCollapse MISSED IT, which is this file's whole thesis in
 %   one case. Its bounded fixture is a HAND COPY of makeEncounterWindow, and the
@@ -1134,8 +1156,9 @@ verifyEqual(testCase, pointers, 9, ...
 end
 
 function testTheBoundedWindowExtentSurvivesTheFold(testCase)
-% EXPECTED RED ON THE FIRST CI RUN. This is the DEFECT block in the header, and
-% it is the finding this extension exists to surface.
+% THIS TEST WAS RED ON ITS FIRST CI RUN (31505311064) AND THAT WAS THE FINDING.
+% It is green because `cellField` was repaired, not because the assertion was
+% relaxed -- every expected value below is unchanged from the failing version.
 %
 % The fold's own header states the mapping (resolveSessionAnchors.m, "THE
 % MAPPING" section):
@@ -1151,12 +1174,13 @@ function testTheBoundedWindowExtentSurvivesTheFold(testCase)
 % (resolveSessionAnchors.m's STATUS block) were folded this way and reported
 % clean.
 %
-% THIS TEST IS DELIBERATELY WRITTEN TO THE CONTRACT AND NOT TO THE BEHAVIOUR.
-% Pinning the current output would make this file the thing certifying the loss,
-% which is the failure mode the whole repository keeps paying for. The fix --
-% whether the emitter starts writing `seconds` or the fold starts reading
-% `source_value` -- is a SEPARATE commit, so the coverage and the repair stay
-% separable and either can be reverted alone.
+% IT WAS DELIBERATELY WRITTEN TO THE CONTRACT AND NOT TO THE BEHAVIOUR. Pinning
+% the then-current output would have made this file the thing certifying the
+% loss, which is the failure mode the whole repository keeps paying for. The fix
+% went to the FOLD -- cellField now derives the canonical `seconds` from a
+% source pair that DECLARES seconds, and refuses a unit it cannot read -- rather
+% than to the emitter, because the pass-1 mint is a deliberate handle under the
+% signed plan and changing emission was out of scope.
 onset = 1249.72; offset = 1265.39;
 [out, rep] = foldEncounter( ...
     {sessionBody('sess_doc_1', 'SID_1', 'exp1')}, 'SID_1', onset, offset);
@@ -1192,19 +1216,20 @@ end
 end
 
 function testAReversedBoundedWindowIsRefusedNotSilentlyFolded(testCase)
-% EXPECTED RED ON THE FIRST CI RUN, SAME ROOT CAUSE AS THE TEST ABOVE, and worth
-% asserting separately because it is a different guarantee: not "the extent is
-% carried" but "a nonsense extent is REFUSED rather than folded".
+% ALSO RED ON THE FIRST CI RUN (31505311064), SAME ROOT CAUSE AS THE TEST ABOVE,
+% and worth asserting separately because it is a different guarantee: not "the
+% extent is carried" but "a nonsense extent is REFUSED rather than folded".
 %
 % `refused_negative_extent` is one of the six refusal reasons the deletion gate
-% counts (resolveSessionAnchors.m, "WHAT IT REFUSES TO DO"), and it is
+% counts (resolveSessionAnchors.m, "WHAT IT REFUSES TO DO"), and it WAS
 % UNREACHABLE from the only
 % emitter that can produce a negative extent -- the `if span < 0` guard is behind
 % `~isempty(startCell) && ~isempty(endCell)`, and both are empty for every real
 % bounded document. So the counter reads 0 not because no such document exists
 % but because the branch is never entered. A refusal counter that cannot fire is
 % indistinguishable from a clean corpus, which is precisely the shape of every
-% instrument failure recorded in this project.
+% instrument failure recorded in this project. This test is what makes the
+% counter reachable, and therefore what makes its 0 mean something.
 %
 % The reversed window is produced by the REAL migrator: nothing in
 % applyEncounterMap orders onset against offset.
