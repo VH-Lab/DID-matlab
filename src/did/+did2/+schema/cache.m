@@ -30,10 +30,10 @@ classdef cache < handle
     %       loadedClasses   - containers.Map of classname -> raw schema.
     %       curieRegistry   - parsed CURIE_lookups_meta.json contents.
     %
-    %   ENFORCEMENT SWITCHES (open items #37 and #38)
-    %   --------------------------------------------
-    %   Two non-emptiness rules the schema DECLARES were, until this
-    %   change, read by nothing:
+    %   ENFORCEMENT SWITCHES (open items #32, #37 and #38)
+    %   -------------------------------------------------
+    %   Three rules the schema DECLARES were, until this change, read by
+    %   nothing. Two are about non-emptiness:
     %
     %     #37  `mustBeNonEmpty` on a `depends_on` entry. validateDocument
     %          never looked at `depends_on` at all -- the only mentions of
@@ -51,17 +51,38 @@ classdef cache < handle
     %          nothing. isVacuousValue is the recursive all-leaves-blank
     %          test that catches it.
     %
-    %   BOTH ARE NOW ARMED BY DEFAULT (2026-08-10, team's call). This
-    %   header read "BOTH DEFAULT TO OFF" for as long as that was true and
-    %   for a while after it was not -- the same header-vs-state staleness
-    %   the schema repo documents. The authority for the defaults is
-    %   `strictMode` below, and it is where the reasoning lives:
+    %   and the third is about vocabulary:
     %
-    %     #38 NonVacuousFields      ARMED -- 0 measured cost
-    %     #37 RequiredDependencies  ARMED -- 7,233 measured cost, ON PURPOSE
+    %     #32  `constraints.binding` (T8). validateConstraints handled
+    %          five keywords -- maxLength, minLength, minimum, maximum,
+    %          enum -- and dropped every other key into `otherwise`, so a
+    %          binding was a comment with JSON syntax. checkBinding reads
+    %          the two things a binding can state with no ontology loaded:
+    %          an inline `values` set, and `node_form: curie`. Ontology
+    %          MEMBERSHIP is still out of scope (NDIC.txt lives in
+    %          VH-Lab/ndi-ontology-matlab).
     %
-    %   THEY WERE ARMED ON OPPOSITE EVIDENCE, and that distinction must not
-    %   be flattened back out. #38 costs nothing measured. #37 is armed
+    %   TWO ARE ARMED BY DEFAULT (2026-08-10, team's call) AND THE THIRD IS
+    %   NOT. This header read "BOTH DEFAULT TO OFF" for as long as that was
+    %   true and for a while after it was not -- the same header-vs-state
+    %   staleness the schema repo documents. The authority for the defaults
+    %   is `strictMode` below, and it is where the reasoning lives:
+    %
+    %     #38 NonVacuousFields      ARMED    -- 0 measured cost
+    %     #37 RequiredDependencies  ARMED    -- 7,233 measured cost, ON PURPOSE
+    %     #32 BindingConformance    DISARMED -- cost NEVER MEASURED
+    %
+    %   The third default is the odd one out on purpose. #37 and #38 were
+    %   armed knowing what they would cost; nobody knows what #32 costs,
+    %   because no census has ever counted a binding violation -- nothing
+    %   read `binding` until now. A corpus that is green on 627,526
+    %   documents is green on a rule that was not being checked, which is
+    %   not evidence about the rule. Arm it on a discovery run and read the
+    %   rollup before changing that default.
+    %
+    %   THE TWO ARMED ONES WERE ARMED ON OPPOSITE EVIDENCE, and that
+    %   distinction must not be flattened back out. #38 costs nothing
+    %   measured. #37 is armed
     %   AGAINST its measurement -- the same corpus run reports 7,233 empty
     %   required edges, so the corpus gates are EXPECTED TO GO RED. The
     %   team's instruction was "arm it, we want to see issues so we can fix
@@ -78,14 +99,18 @@ classdef cache < handle
     %   did-schema/schemas/V_eta_ground_truth_plan.md Phase 1.
     %
     %   Set them per-process with did2.schema.cache.strictMode, or per-CI-
-    %   job with the environment variables DID_ENFORCE_REQUIRED_DEPENDENCIES
-    %   and DID_ENFORCE_NONVACUOUS_FIELDS.
+    %   job with the environment variables DID_ENFORCE_REQUIRED_DEPENDENCIES,
+    %   DID_ENFORCE_NONVACUOUS_FIELDS and DID_ENFORCE_BINDING_CONFORMANCE.
+    %   The first two are armed, so an explicit 0/false/no/off DISARMS them;
+    %   the third is disarmed, so an explicit 1/true/yes/on ARMS it. In both
+    %   directions an unset or misspelled value leaves the switch as it was.
     %
     %   did2.schema.cache Static Methods:
     %       shared          - return the process-wide singleton cache.
     %       setSchemaPath   - rebuild the singleton at a new schema path.
     %       resetSingleton  - drop the cached singleton (test helper).
-    %       strictMode      - read/set the #37 and #38 enforcement switches.
+    %       strictMode      - read/set the #32, #37 and #38 enforcement
+    %                         switches.
     %
     %   did2.schema.cache Methods:
     %       getClass            - resolved class definition for a name.
@@ -810,7 +835,7 @@ classdef cache < handle
         end
 
         function out = strictMode(varargin)
-            % strictMode - read or set the #37/#38 enforcement switches.
+            % strictMode - read or set the #32/#37/#38 enforcement switches.
             %
             %   S = strictMode()               all switches, as a struct
             %   TF = strictMode(NAME)          one switch
@@ -871,8 +896,48 @@ classdef cache < handle
             %   change:
             %     DID_ENFORCE_REQUIRED_DEPENDENCIES
             %     DID_ENFORCE_NONVACUOUS_FIELDS
-            %   '1', 'true', 'yes' or 'on' (any case) arm it; anything
-            %   else, including unset, leaves it off.
+            %     DID_ENFORCE_BINDING_CONFORMANCE
+            %   For the first two -- which are ARMED by default -- '0',
+            %   'false', 'no' or 'off' (any case) DISARM, and anything
+            %   else, including unset and a typo, leaves them armed.
+            %   BindingConformance is the other way round because it is
+            %   DISARMED by default: '1', 'true', 'yes' or 'on' arm it,
+            %   anything else including unset leaves it off. The two
+            %   readers are envFlagIsOff and envFlag respectively, and
+            %   each is written so that the SAFE reading survives a typo:
+            %   a default-on switch stays on, a default-off switch stays
+            %   off.
+            %
+            %     BindingConformance   #32 (T8). A `constraints.binding`
+            %                          that states BOTH strength:required
+            %                          and something checkable rejects a
+            %                          value that does not conform, with
+            %                          did2:validation:bindingValueMissing,
+            %                          :bindingNodeMalformed or
+            %                          :bindingValueNotInSet.
+            %
+            %                          DISARMED BY DEFAULT, and unlike the
+            %                          two above this is NOT a cost that has
+            %                          been measured -- it is a cost that is
+            %                          KNOWN to be non-zero in at least one
+            %                          direction. `epoch_clock` and the two
+            %                          clock/relation fields carry
+            %                          strength:required inline value sets,
+            %                          and no census has ever counted how
+            %                          many migrated documents hold a value
+            %                          outside them. Arming it blind would be
+            %                          the 2,484-quarantine mistake again.
+            %                          Arm it on a DISCOVERY run, read the
+            %                          per-class/per-reason quarantine
+            %                          rollup, then decide.
+            %
+            %                          NOTHING HERE HAS BEEN EXECUTED. There
+            %                          is no MATLAB in the environment this
+            %                          switch was written in, so the
+            %                          behaviour described above is the
+            %                          intended design and is UNVERIFIED;
+            %                          tests/+did2/+unittest/testBindingConformance.m
+            %                          is its written-but-unrun specification.
             persistent state
             if isempty(state) || (nargin == 1 && isequal(varargin{1}, '-reset'))
                 state = struct( ...
@@ -926,7 +991,41 @@ classdef cache < handle
                     ... the intended outcome then is a LOUD quarantine rather
                     ... than a document that validates while saying nothing.
                     'NonVacuousFields', ...
-                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_NONVACUOUS_FIELDS'));
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_NONVACUOUS_FIELDS'), ...
+                    ... #32 (T8). DISARMED BY DEFAULT, and deliberately the
+                    ... OPPOSITE of the two switches above -- envFlag, not
+                    ... ~envFlagIsOff -- so that unset and a typo both leave it
+                    ... OFF.
+                    ...
+                    ... THE JUSTIFICATION IS EVIDENCE, NOT CAUTION. The two
+                    ... switches above were armed on a MEASURED cost (0 vacuous
+                    ... fields) or on an explicit team instruction to accept a
+                    ... measured one (7,233 empty edges). This one has neither:
+                    ... NO census has ever counted a binding violation, because
+                    ... nothing has ever read `binding`. The corpus is green on
+                    ... 627,526 documents across six corpora -- corpus run
+                    ... 31441923369 (`caf710b`), the rollup quoted in
+                    ... +did2/+convert/resolveSessionAnchors.m:14-15 -- and that
+                    ... green says nothing whatever about this rule: it was not
+                    ... being checked. Arming an unmeasured gate on a
+                    ... 600k-document corpus is precisely the mistake the
+                    ... RequiredDependencies comment above records.
+                    ...
+                    ... AND THE COST IS KNOWN TO BE NON-ZERO SOMEWHERE. Seven
+                    ... V_eta fields declare strength:required WITH an inline
+                    ... admissible set (the four did_clocktype carriers, the two
+                    ... frequency_filter fields, relative_reference's OWL-Time
+                    ... relation). Whether a migrated document ever holds a value
+                    ... outside those sets is UNKNOWN, which is exactly the state
+                    ... in which a gate must not be armed.
+                    ...
+                    ... The three fields #32 increment 2 bound -- variable,
+                    ... method, purpose -- are `preferred`, and checkBinding
+                    ... rejects only on `required`. So even armed, they do not
+                    ... reject today: the strength on the field and this switch
+                    ... are two independent brakes.
+                    'BindingConformance', ...
+                        did2.schema.cache.envFlag('DID_ENFORCE_BINDING_CONFORMANCE'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;
@@ -1023,6 +1122,266 @@ classdef cache < handle
                         return;
                     end
                 end
+            end
+        end
+
+        function checkBinding(value, binding, qualifiedName)
+            % checkBinding - #32 (T8). Enforce what a `constraints.binding`
+            %   ACTUALLY STATES, and nothing more.
+            %
+            %   T8 wants controlled vocabularies hard-validated: a value
+            %   resolved against an admissible set through the binding
+            %   registry. That validator does not exist and cannot be
+            %   written here -- the admissible set for `variable` lives in
+            %   NDIC.txt, which moved to VH-Lab/ndi-ontology-matlab
+            %   (2c19bf24c). So MEMBERSHIP IN AN ONTOLOGY IS OUT OF SCOPE.
+            %
+            %   What a binding can state without any ontology loaded is:
+            %     values     an inline admissible set, enumerated on the
+            %                field itself -- membership IS checkable, the
+            %                set is right there
+            %     node_form  a lexical rule on the value's `node` slot;
+            %                `curie` = must look like `prefix:local`
+            %   and this function checks exactly those two. It does NOT
+            %   check that a CURIE's prefix expands (that is
+            %   check_binding_governance.py B8, schema-side) and it does
+            %   NOT reach the registry.
+            %
+            %   THREE GATES, ALL OF WHICH MUST OPEN, so that a binding that
+            %   says nothing checkable cannot reject anything:
+            %     1. strictMode('BindingConformance') -- DISARMED by
+            %        default. See strictMode for why: no census has ever
+            %        measured a binding violation, so the cost is unknown,
+            %        and seven fields carry strength:required inline sets.
+            %     2. strength == 'required'. `preferred` and `suggested`
+            %        are advisory BY DEFINITION; a validator that rejected
+            %        them would make the word meaningless. This is why the
+            %        three fields #32 bound (variable/method/purpose,
+            %        `preferred`) do not reject even with the switch armed.
+            %     3. the binding names something checkable. A binding of
+            %        {strength: required} alone, or one whose only content
+            %        is `keyed_by` or `term_set`, has nothing behind it --
+            %        check_binding_governance.py B9 counts exactly these --
+            %        so it returns rather than inventing a rule.
+            %
+            %   THREE DISTINCT ERROR IDS, for the same reason #38 got its
+            %   own: a corpus quarantine histogram has to stay legible, and
+            %   "the value is absent" and "the value is present but not
+            %   shaped like a term reference" are different repairs.
+            %     did2:validation:bindingValueMissing    nothing there
+            %     did2:validation:bindingNodeMalformed   node is not a CURIE
+            %                                            (an EMPTY node is
+            %                                            malformed, not
+            %                                            missing, when a name
+            %                                            is present -- the
+            %                                            document said
+            %                                            something, it just
+            %                                            did not say anything
+            %                                            resolvable)
+            %     did2:validation:bindingValueNotInSet   not in `values`
+            %
+            %   NEVER EXECUTED. There is no MATLAB in the environment this
+            %   was written in. See testBindingConformance.m.
+            if ~did2.schema.cache.strictMode('BindingConformance')
+                return;
+            end
+            if ~isstruct(binding) || ~isscalar(binding)
+                return;
+            end
+            strength = '';
+            if isfield(binding, 'strength') && ~isempty(binding.strength) ...
+                    && (ischar(binding.strength) || isstring(binding.strength))
+                strength = char(binding.strength);
+            end
+            if ~strcmp(strength, 'required')
+                return;
+            end
+
+            hasSet = isfield(binding, 'values') && ~isempty(binding.values);
+            hasForm = false;
+            if isfield(binding, 'node_form') && ~isempty(binding.node_form) ...
+                    && (ischar(binding.node_form) || isstring(binding.node_form))
+                % Only `curie` is defined. An unknown node_form is
+                % TOLERATED rather than treated as a failure: a schema
+                % written by newer tooling must not make old code reject
+                % documents it does not understand.
+                hasForm = strcmpi(char(binding.node_form), 'curie');
+            end
+            if ~(hasSet || hasForm)
+                return;
+            end
+
+            [terms, readable] = did2.schema.cache.bindingTerms(value);
+            if ~readable
+                % A binding on a shape this function cannot read as a term
+                % reference (numeric, arbitrary struct). Tolerated, exactly
+                % as validateTypeShape tolerates an unknown type: the
+                % mismatch is a schema defect, and reporting it as a
+                % binding violation would put it in the wrong histogram row.
+                return;
+            end
+            if isempty(terms)
+                error('did2:validation:bindingValueMissing', ...
+                    ['Field "%s" carries a required binding and has no ' ...
+                     'value at all.'], qualifiedName);
+            end
+
+            memberNodes = {};
+            memberNames = {};
+            if hasSet
+                [memberNodes, memberNames] = ...
+                    did2.schema.cache.bindingMembers(binding.values);
+            end
+
+            for k = 1:numel(terms)
+                node = strtrim(terms(k).node);
+                name = strtrim(terms(k).name);
+                if isempty(node) && isempty(name)
+                    error('did2:validation:bindingValueMissing', ...
+                        ['Field "%s" carries a required binding and its ' ...
+                         'value is blank.'], qualifiedName);
+                end
+                if hasForm && ~did2.schema.cache.isCurieToken(node)
+                    error('did2:validation:bindingNodeMalformed', ...
+                        ['Field "%s" is bound with node_form "curie", so ' ...
+                         'its `node` must be a CURIE (prefix:local); got ' ...
+                         '"%s" (name "%s").'], qualifiedName, node, name);
+                end
+                if hasSet
+                    inSet = false;
+                    if ~isempty(node)
+                        inSet = any(strcmp(node, memberNodes));
+                    end
+                    if ~inSet && ~isempty(name)
+                        inSet = any(strcmp(name, memberNames));
+                    end
+                    if ~inSet
+                        error('did2:validation:bindingValueNotInSet', ...
+                            ['Field "%s" value (node "%s", name "%s") is ' ...
+                             'not a member of the %d-member admissible ' ...
+                             'set the binding declares.'], ...
+                            qualifiedName, node, name, numel(memberNames));
+                    end
+                end
+            end
+        end
+
+        function [terms, readable] = bindingTerms(value)
+            % bindingTerms - read a field value as zero or more
+            %   {node, name} term references.
+            %
+            %   READABLE is returned separately from an empty TERMS so that
+            %   "this value holds no term" and "this function cannot read
+            %   this shape" stay distinguishable -- collapsing them would
+            %   let an unreadable value be reported as a missing one, which
+            %   is the reassuring direction.
+            %
+            %   Both wire shapes occur in V_eta: an `ontology_term` field is
+            %   a struct with node/name, while `epoch_bounded_reference`'s
+            %   bound `epoch_clock` is plain char. A char value has no node,
+            %   so its whole content is read as the NAME.
+            terms = struct('node', {}, 'name', {});
+            readable = false;
+            if isstruct(value)
+                if ~isfield(value, 'node') && ~isfield(value, 'name')
+                    return;
+                end
+                readable = true;
+                for k = 1:numel(value)
+                    terms(end + 1) = struct( ...
+                        'node', did2.schema.cache.charOf(value(k), 'node'), ...
+                        'name', did2.schema.cache.charOf(value(k), 'name')); %#ok<AGROW>
+                end
+            elseif ischar(value) || isstring(value)
+                readable = true;
+                items = cellstr(string(value));
+                for k = 1:numel(items)
+                    terms(end + 1) = struct('node', '', 'name', items{k}); %#ok<AGROW>
+                end
+            elseif iscell(value)
+                if ~all(cellfun(@(c) ischar(c) || isstring(c), value(:)))
+                    return;
+                end
+                readable = true;
+                for k = 1:numel(value)
+                    terms(end + 1) = struct('node', '', ...
+                        'name', char(string(value{k}))); %#ok<AGROW>
+                end
+            elseif isnumeric(value) && isempty(value)
+                % jsondecode renders JSON `[]` -- and every blank_value
+                % spelled that way -- as an empty double. That IS a value
+                % slot with nothing in it, so it is readable and empty.
+                readable = true;
+            end
+        end
+
+        function [nodes, names] = bindingMembers(values)
+            % bindingMembers - normalise a binding's `values` list to two
+            %   cellstrs. A member is either a {node, name} NodeRef or a
+            %   bare string; BOTH occur in V_eta today
+            %   (check_binding_governance.py B4 counts the three fields
+            %   where the shape disagrees with the field's declared type),
+            %   so a reader that assumed one of them would silently pass
+            %   every value of the other.
+            nodes = {};
+            names = {};
+            if isstruct(values)
+                for k = 1:numel(values)
+                    nodes{end + 1} = did2.schema.cache.charOf(values(k), 'node'); %#ok<AGROW>
+                    names{end + 1} = did2.schema.cache.charOf(values(k), 'name'); %#ok<AGROW>
+                end
+            elseif iscell(values)
+                for k = 1:numel(values)
+                    v = values{k};
+                    if isstruct(v) && isscalar(v)
+                        nodes{end + 1} = did2.schema.cache.charOf(v, 'node'); %#ok<AGROW>
+                        names{end + 1} = did2.schema.cache.charOf(v, 'name'); %#ok<AGROW>
+                    elseif ischar(v) || isstring(v)
+                        nodes{end + 1} = ''; %#ok<AGROW>
+                        names{end + 1} = char(string(v)); %#ok<AGROW>
+                    end
+                end
+            elseif ischar(values) || isstring(values)
+                items = cellstr(string(values));
+                for k = 1:numel(items)
+                    nodes{end + 1} = ''; %#ok<AGROW>
+                    names{end + 1} = items{k}; %#ok<AGROW>
+                end
+            end
+        end
+
+        function s = charOf(st, fieldName)
+            % charOf - a struct field as trimmed char, '' when absent.
+            s = '';
+            if isstruct(st) && isscalar(st) && isfield(st, fieldName)
+                v = st.(fieldName);
+                if ischar(v) || (isstring(v) && isscalar(v))
+                    s = strtrim(char(v));
+                end
+            end
+        end
+
+        function tf = isCurieToken(s)
+            % isCurieToken - true when S looks like `prefix:local`.
+            %
+            %   THIS PATTERN IS SHARED WITH DID-schema. It is character for
+            %   character the CURIE_PATTERN literal in
+            %   tools/check_binding_governance.py, because `node_form:
+            %   curie` is DECLARED there and ENFORCED here, and one grammar
+            %   implemented twice is how `did_clocktype` came to mean two
+            %   different things in two files. DID-schema
+            %   tests/test_binding_governance.py
+            %   ::test_the_curie_grammar_is_identical_in_cache_m reads this
+            %   line out of this file and fails if the two drift.
+            %
+            %   Deliberately loose on the local part: OBO uses digits
+            %   (UBERON:0000955), OWL-Time uses camelCase names
+            %   (time:intervalDuring). It says NOTHING about whether the
+            %   prefix expands -- that is a separate, schema-side check.
+            pattern = '^[A-Za-z][A-Za-z0-9_.\-]*:[A-Za-z0-9_][A-Za-z0-9_.\-]*$';
+            tf = false;
+            if ischar(s) || (isstring(s) && isscalar(s))
+                tf = ~isempty(regexp(char(s), pattern, 'once'));
             end
         end
 
@@ -1498,6 +1857,16 @@ classdef cache < handle
                             error('did2:validation:enum', ...
                                 'Field "%s" value "%s" not in enum.', qualifiedName, v);
                         end
+                    case 'binding'
+                        % #32 (T8). The SIXTH constraint keyword, and the
+                        % first one that is gated: see checkBinding, and
+                        % strictMode('BindingConformance') which is
+                        % DISARMED by default. With the switch off this
+                        % call returns before it looks at the value, so
+                        % the added cost on a corpus run is one function
+                        % call per bound field per document -- 14 bound
+                        % fields exist in the whole of V_eta.
+                        did2.schema.cache.checkBinding(value, cval, qualifiedName);
                     otherwise
                         % Unrecognised constraint keys are tolerated;
                         % `pattern` and similar can be added later.
