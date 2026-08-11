@@ -107,6 +107,14 @@ rel.directed_relation = struct('relation', otTerm('ro:0001000', 'derived_from'))
 % ---- the shared session anchor ('during') for the quality observation -------
 anchorId = did.ido.unique_id();
 anchor = struct();
+% PASS-1 HANDLE, NOT AN UNMIGRATED CLASS. The signed model retires this class in
+% favour of `relative_reference`, but the same plan makes the change impossible
+% here: `relative_to` is REQUIRED and is not fillable in pass 1 (this body holds
+% base.session_id; the edge needs the session DOCUMENT's base.id). Emitting the
+% new class with an empty required edge would be ~106k husks that validate clean.
+% did2.convert.resolveSessionAnchors folds it in a batch pass, id PRESERVED. Full
+% reasoning in +migrators_j/private/jSessionAnchor.m; the seam is pinned by
+% tests/+did2/+unittest/testSessionAnchorEmitterContract.m.
 anchor.document_class = classBlock('session_relative_reference', {'time_reference'});
 anchor.depends_on = struct('name', {}, 'value', {});
 anchor.base = struct('id', anchorId, 'session_id', sessionId, ...

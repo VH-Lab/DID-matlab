@@ -83,12 +83,12 @@ function tests = testSessionAnchorEmitterContract
 %   TEN sites in +did2/+convert/+migrators_j assign a retired time-reference
 %   class to `document_class`:
 %
-%       session_relative_reference   9   private/jSessionAnchor.m:19  (shared,
-%                                          13 call sites), treatment_transfer.m:101,
-%                                          fitcurve.m:139, jrclust_clusters.m:80,
-%                                          image_stack.m:271, pyraview.m:97,
-%                                          vmspikefit.m:133,
-%                                          neuron_extracellular.m:110,
+%       session_relative_reference   9   private/jSessionAnchor.m:60  (shared,
+%                                          13 call sites), treatment_transfer.m:109,
+%                                          fitcurve.m:147, jrclust_clusters.m:88,
+%                                          image_stack.m:279, pyraview.m:105,
+%                                          vmspikefit.m:141,
+%                                          neuron_extracellular.m:118,
 %                                          ontology_table_row.m:867
 %       session_bounded_reference    1   ontology_table_row.m:275
 %
@@ -101,13 +101,13 @@ function tests = testSessionAnchorEmitterContract
 %                                    in the repository, so the BOUNDED arm of the
 %                                    fold has no emitter-driven coverage at all.
 %                                    A named gap, not a silent one.
-%       image_stack.m:271          NOT DRIVEN -- image_stack is mid-rebuild by
+%       image_stack.m:279          NOT DRIVEN -- image_stack is mid-rebuild by
 %                                    another session (the subject-less
 %                                    passthrough guard at image_stack.m:78, and
 %                                    the phase-8 restoration of both tombstones).
 %                                    Driving it here would assert a shape that is
 %                                    being changed underneath.
-%       pyraview.m:97              NOT DRIVEN -- its fold runs through the data
+%       pyraview.m:105              NOT DRIVEN -- its fold runs through the data
 %                                    body tier (`opaque_body` / `sampled_body`),
 %                                    which another session is rebuilding.
 %
@@ -123,17 +123,17 @@ function roster = emitterRoster()
 %   exercises. `path` is the code path: 'shared' = private/jSessionAnchor.m,
 %   'local' = a hand-rolled duplicate inside the migrator itself.
 roster = { ...
-    struct('name', 'probe_location',       'site', 'private/jSessionAnchor.m:19', ...
+    struct('name', 'probe_location',       'site', 'private/jSessionAnchor.m:60', ...
            'path', 'shared', 'build', @probeLocationBody), ...
-    struct('name', 'treatment_transfer',   'site', 'treatment_transfer.m:101', ...
+    struct('name', 'treatment_transfer',   'site', 'treatment_transfer.m:109', ...
            'path', 'local',  'build', @treatmentTransferBody), ...
-    struct('name', 'fitcurve',             'site', 'fitcurve.m:139', ...
+    struct('name', 'fitcurve',             'site', 'fitcurve.m:147', ...
            'path', 'local',  'build', @fitcurveBody), ...
-    struct('name', 'jrclust_clusters',     'site', 'jrclust_clusters.m:80', ...
+    struct('name', 'jrclust_clusters',     'site', 'jrclust_clusters.m:88', ...
            'path', 'local',  'build', @jrclustClustersBody), ...
-    struct('name', 'vmspikefit',           'site', 'vmspikefit.m:133', ...
+    struct('name', 'vmspikefit',           'site', 'vmspikefit.m:141', ...
            'path', 'local',  'build', @vmspikefitBody), ...
-    struct('name', 'neuron_extracellular', 'site', 'neuron_extracellular.m:110', ...
+    struct('name', 'neuron_extracellular', 'site', 'neuron_extracellular.m:118', ...
            'path', 'local',  'build', @neuronExtracellularBody)};
 end
 
@@ -221,7 +221,7 @@ v1.session = struct('reference', reference);
 end
 
 function v1 = probeLocationBody(sessionId)
-% Exercises the SHARED helper, private/jSessionAnchor.m:19 (13 call sites).
+% Exercises the SHARED helper, private/jSessionAnchor.m:60 (13 call sites).
 % Shape from tests/+did2/+unittest/testMigratorsJ.m:606-611.
 v1 = struct();
 v1.document_class = struct('class_name', 'probe_location', 'class_version', '1.0.0', ...
@@ -234,7 +234,7 @@ v1.probe_location = struct('ontology_name', 'uberon:0002436', ...
 end
 
 function v1 = treatmentTransferBody(sessionId)
-% Exercises treatment_transfer.m:101 (local makeSessionAnchor).
+% Exercises treatment_transfer.m:109 (local makeSessionAnchor).
 % Shape from tests/+did2/+unittest/testMigratorsJ.m:365-374.
 v1 = struct();
 v1.document_class = struct('class_name', 'treatment_transfer', 'class_version', '1.0.0', ...
@@ -250,7 +250,7 @@ v1.treatment_transfer = struct( ...
 end
 
 function v1 = fitcurveBody(sessionId)
-% Exercises fitcurve.m:139 (local jAnchor).
+% Exercises fitcurve.m:147 (local jAnchor).
 % Shape from tests/+did2/+unittest/testMigratorsJ.m:3603-3608 -- fit_equation and
 % fit_sse are the NDI template's own field names.
 v1 = struct();
@@ -263,7 +263,7 @@ v1.fitcurve = struct('fit_equation', 'gaussian', 'fit_sse', 12.5);
 end
 
 function v1 = jrclustClustersBody(sessionId)
-% Exercises jrclust_clusters.m:80 (local classBlock anchor).
+% Exercises jrclust_clusters.m:88 (local classBlock anchor).
 % Shape from tests/+did2/+unittest/testMigratorsJ.m:3207-3213.
 v1 = struct();
 v1.document_class = struct('class_name', 'jrclust_clusters', 'class_version', '1.0.0', ...
@@ -276,7 +276,7 @@ v1.files = struct('file_list', {{'clusters.mat'}});
 end
 
 function v1 = vmspikefitBody(sessionId)
-% Exercises vmspikefit.m:133 (local jAnchor).
+% Exercises vmspikefit.m:141 (local jAnchor).
 % Shape from tests/+did2/+unittest/testMigratorsJ.m:3683-3689.
 v1 = struct();
 v1.document_class = struct('class_name', 'vmspikefit', 'class_version', '1.0.0', ...
@@ -288,7 +288,7 @@ v1.vmspikefit = struct('fit_equation', 'exp2', 'fit_sse', 3.25);
 end
 
 function v1 = neuronExtracellularBody(sessionId)
-% Exercises neuron_extracellular.m:110 (local classBlock anchor).
+% Exercises neuron_extracellular.m:118 (local classBlock anchor).
 % Shape from tests/+did2/+unittest/testMigratorsJ.m:3520-3527.
 v1 = struct();
 v1.document_class = struct('class_name', 'neuron_extracellular', 'class_version', '1.0.0', ...
