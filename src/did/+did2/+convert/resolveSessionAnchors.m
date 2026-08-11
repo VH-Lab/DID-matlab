@@ -30,10 +30,12 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   The two classes it folds are exactly these, and no others --
 %   `epoch_*`/`event_*`/`utc_reference` are NOT touched here. That mattered
 %   because `ndi.migrate.internal.stimulusBathToBath` mints a populated
-%   `epoch_bounded_reference` on the NDI path -- at its `if mintReference`
-%   block, stimulusBathToBath.m:133-148, NOT the :70-81 this line used to cite,
-%   which is the OUTPUT DOCSTRING describing that body rather than the code
-%   that builds it.
+%   `epoch_bounded_reference` on the NDI path -- in its `if mintReference`
+%   block. Cited by BLOCK NAME rather than by line, because the number this
+%   sentence used to carry (:70-81) pointed into that file's OUTPUT DOCSTRING,
+%   which merely describes the body, and not at the code that builds it; a line
+%   citation across repositories goes stale on the next comment edit, and this
+%   one did.
 %
 %   THE SECOND HALF OF THAT SENTENCE -- "that nothing folds" -- IS NO LONGER
 %   TRUE, and is corrected here on positive evidence, not on a failed search.
