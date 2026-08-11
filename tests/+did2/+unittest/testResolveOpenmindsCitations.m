@@ -37,6 +37,16 @@ function tests = testResolveOpenmindsCitations
 %        id that dangles nothing today and breaks a re-run tomorrow, so the
 %        person/funding/publication ids are compared against the SOURCE
 %        document ids, not merely against each other.
+%     5. MORE THAN ONE COMPONENT IN ONE BATCH (added 2026-08-11, after corpus
+%        run 31522068566). Properties 1-3 were each written against a batch
+%        holding ONE component, and the pass's per-component loop is where
+%        `removeMask`, the org dedup map and the rootless counter interact. So
+%        `testEveryRootlessComponentIsCountedNotJustTheFirst` pins the shape JH
+%        actually reports (several rootless components, no root anywhere) and
+%        `testAStrainFamilyBesideACitationGraphIsNotEatenByIt` pins the mixed
+%        batch NO CORPUS CURRENTLY HOLDS -- 0 of 6 carry both stores, so a
+%        leak between a consumable and an untouchable component is unmeasured
+%        by every corpus gate. The corpora are a sample, not the universe.
 %
 %   DENOMINATOR. Every test that asserts a zero asserts a non-zero beside it:
 %   `openminds_documents_seen`, `components_planned` or `edges_examined`. A
@@ -324,6 +334,95 @@ verifyEqual(testCase, rep.documents_consumed, 0);
 verifyEqual(testCase, numel(classesOf(out, 'openminds')), 2);
 end
 
+function testEveryRootlessComponentIsCountedNotJustTheFirst(testCase)
+%TESTEVERYROOTLESSCOMPONENTISCOUNTEDNOTJUSTTHEFIRST The shape the JH corpus
+%   actually presents, which the single-component test above does not reach.
+%
+%   MEASURED, corpus run 31522068566 (`7ed9cda`), JH's openminds_citations
+%   block, quoted from the digest verbatim:
+%
+%           8  `openminds` documents  <- THE DENOMINATOR
+%           2  connected components of them
+%           0  DatasetVersion roots seen
+%           2  components with NO root (untouched)
+%           0  components PLANNED
+%
+%   SEVERAL disjoint rootless components, because the bare `openminds` class
+%   has MORE THAN ONE writer and JH's are not the citation graph at all:
+%   +ndi/+setup/+conv/+haley/doImport.m calls openMINDSobj2ndi_document with NO
+%   dependency_type -- so docName is 'openminds' -- at :87 for OP50 and at :706
+%   for OP50-GFP, i.e. E. coli strains. (What JH's two components are composed
+%   of is NOT asserted here; only the counter behaviour is. The composition was
+%   not read -- the corpus is not in this repository.)
+%
+%   THE FAILURE TO CATCH is `components_without_dataset_version` being SET
+%   rather than INCREMENTED, or the loop returning at the first rootless
+%   component. Either bug leaves a 1 where JH reports a 2, and a rootless
+%   component that is never visited is a component whose documents nothing
+%   proves survived. So the count is asserted at 2 AND the survivors at 4.
+[out, rep] = runPass(testCase, twoRootlessComponents());
+verifyEqual(testCase, rep.openminds_documents_seen, 4, 'denominator');
+verifyEqual(testCase, rep.openminds_components_seen, 2);
+verifyEqual(testCase, rep.dataset_versions_seen, 0);
+verifyEqual(testCase, rep.components_without_dataset_version, 2, ...
+    'a rootless component after the first was not counted');
+verifyEqual(testCase, rep.components_planned, 0);
+verifyEqual(testCase, rep.documents_consumed, 0);
+verifyEqual(testCase, rep.documents_appended, 0);
+verifyEqual(testCase, numel(classesOf(out, 'openminds')), 4, ...
+    'a rootless component lost documents');
+end
+
+function testAStrainFamilyBesideACitationGraphIsNotEatenByIt(testCase)
+%TESTASTRAINFAMILYBESIDEACITATIONGRAPHISNOTEATENBYIT The case where a bug
+%   would actually COST DATA, and the one no corpus can currently exercise.
+%
+%   No corpus carries both stores -- run 31522068566: 1 GRAPH WITHOUT EDITOR
+%   (JH), 1 EDITOR WITHOUT GRAPH (Soph), 4 NEITHER -- and JH's graph documents
+%   are strains rather than citations, so NOTHING measured today puts a
+%   consumable citation component and an untouchable strain component in one
+%   batch. The corpora are a SAMPLE, not the universe: a dataset that ran the
+%   metadata app AND the Haley importer produces exactly this batch, and the
+%   first evidence of a leak would be missing strain documents in a migration
+%   nobody was watching.
+%
+%   THE FAILURE TO CATCH is a partition or closure leak -- the citation walk
+%   reaching across into the strain component, or `removeMask` being indexed by
+%   component-local rather than batch-global position. Both consume documents
+%   that belong to ndi.migrate.internal.strainAssembly, and both leave every
+%   citation-side counter looking exactly right. So this asserts the strain
+%   documents SURVIVE BY ID, not merely that some count is unchanged, and runs
+%   the real did2.validate.references over the result: if the strain pair were
+%   half-consumed, its `openminds_1` edge would dangle.
+[out, rep] = runPass(testCase, [citationGraph(), strainFragmentGraph()]);
+verifyEqual(testCase, rep.openminds_documents_seen, 14, 'denominator');
+verifyEqual(testCase, rep.openminds_components_seen, 2);
+verifyEqual(testCase, rep.dataset_versions_seen, 1);
+verifyEqual(testCase, rep.components_without_dataset_version, 1);
+verifyEqual(testCase, rep.components_planned, 1);
+verifyEqual(testCase, rep.components_consumed, 1);
+% The citation half behaves exactly as it does without the strain half beside
+% it -- 12 consumed, 13 appended, the figures testTheCitationGraphBecomesThe
+% SixEntityClasses pins. A different number here means the strain documents
+% were dragged into the closure.
+verifyEqual(testCase, rep.documents_consumed, 12, ...
+    'the closure reached outside its own component');
+verifyEqual(testCase, rep.documents_appended, 13);
+verifyEqual(testCase, rep.persons_emitted, 1);
+survivors = idsOfClass(out, 'openminds');
+verifyEqual(testCase, numel(survivors), 2, ...
+    'the strain component did not survive intact');
+verifyTrue(testCase, any(strcmp(survivors, 'om_strain')), ...
+    'the Strain document was consumed by the citation walk');
+verifyTrue(testCase, any(strcmp(survivors, 'om_ecoli')), ...
+    'the Species fragment was consumed by the citation walk');
+refRep = did2.validate.references(out.migrated);
+verifyGreaterThan(testCase, refRep.edges_examined, 0, 'denominator');
+verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
+    '%d orphan edge(s) of %d examined', refRep.orphan_count, ...
+    refRep.edges_examined));
+end
+
 % ===================== the pass-1 guarded passthrough =====================
 
 function testTheGuardedPassthroughCarriesTheBodyVerbatim(testCase)
@@ -596,6 +695,29 @@ bodies = { ...
         'https://openminds.om-i.org/types/Species', ...
         struct('name', 'Escherichia coli', ...
             'preferredOntologyIdentifier', 'NCBITaxon:562'), {})};
+end
+
+function bodies = twoRootlessComponents()
+%TWOROOTLESSCOMPONENTS Two DISJOINT strain components -- no DatasetVersion in
+%   either, and no edge between them, so the partition must find 2.
+%
+%   The second pair is deliberately given its OWN Species document rather than
+%   sharing the first one: sharing would fuse the two into a single component
+%   and the test would assert 1 while claiming to test 2. That is the shape
+%   error this fixture exists to avoid, so it is stated rather than left to be
+%   re-derived. Whether JH's real pair shares a Species is NOT known here --
+%   the corpus reports 2 components over 8 documents and this repository does
+%   not hold the corpus to check.
+bodies = strainFragmentGraph();
+bodies{end+1} = omDoc('om_strain_gfp', 'openminds.core.research.Strain', ...
+    'https://openminds.om-i.org/types/Strain', ...
+    struct('name', 'OP50-GFP', ...
+        'species', {{'ndi://om_ecoli_gfp'}}, ...
+        'geneticStrainType', 'transgenic'), {'om_ecoli_gfp'});
+bodies{end+1} = omDoc('om_ecoli_gfp', 'openminds.controlledterms.Species', ...
+    'https://openminds.om-i.org/types/Species', ...
+    struct('name', 'Escherichia coli', ...
+        'preferredOntologyIdentifier', 'NCBITaxon:562'), {});
 end
 
 function d = ontologyLabelDoc(id, targetId)
