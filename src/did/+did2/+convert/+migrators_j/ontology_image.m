@@ -310,12 +310,30 @@ imgObs = jStartInteraction(preBody, 'image_observation', 'subject_observation', 
 % NOT fixed by narrowing `dependencyValue` to match jCarrySubject: image_stack.m
 % reads all three spellings, so narrowing would make this migrator refuse
 % documents its sibling folds -- inventing a failure instead of removing one.
-% ===== TEMP MUTATION M-A (WILL BE REVERTED IN MINUTES) =====
-% The authoritative-subject assignment AND its refusal are removed, so
-% jStartInteraction's own reading wins again -- exactly the state code
-% scanning alert 203 flagged. A `.id`-only edge now yields an
-% image_observation with an EMPTY subject_id. If the suite cannot see
-% that, the suite is not testing the husk.
+% The slot is located BY NAME, not by index. jStartInteraction happens to put
+% `subject_id` first today; an index would silently overwrite whatever moved
+% into position 1 if that ever changed.
+slot = find(strcmp({imgObs.depends_on.name}, 'subject_id'), 1);
+if isempty(slot)
+    imgObs.depends_on(end+1) = struct('name', 'subject_id', 'value', char(subjectId));
+    slot = numel(imgObs.depends_on);
+else
+    imgObs.depends_on(slot).value = char(subjectId);
+end
+
+% BELT AND BRACES, and cheap. The caller has already guarded, so reaching here
+% with an empty subject is a wiring bug rather than a data condition -- and a
+% wiring bug that produces a husk is invisible to every gate. Fail loudly at the
+% point where the cause is known.
+if isempty(imgObs.depends_on(slot).value)
+    error('did2:convert:ontologyImageRasterWithoutASubject', ...
+        ['ontology_image "%s" reached the raster fold with an empty ' ...
+         '`subject_id`. The caller guards on subjectOf() before folding, so ' ...
+         'this is a wiring defect, not a document: an image_observation with ' ...
+         'an empty required edge validates clean (references.m skips empty ' ...
+         'edges) and would be counted as a successful migration.'], ...
+        sourceId(preBody));
+end
 
 imgObs.subject_statement.storage_mode = 'body';
 % storage_mode 'body' means the BODY owns the cadence, so the statement carries
