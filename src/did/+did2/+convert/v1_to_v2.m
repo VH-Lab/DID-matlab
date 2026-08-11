@@ -396,6 +396,25 @@ catch fileErr
     result.file_list_audit = struct('audit_failed', fileErr.message);
 end
 
+% #52 EVIDENCE, not a gate: how many time references does one statement carry,
+% and what shapes occur when it carries more than one. The team has to name (or
+% decline to name) the roles of `time_reference_1..N`, and the one thing it does
+% not have is the distribution and the shapes over real data. This produces
+% them. REPORT ONLY -- it raises nothing and changes no outcome, and it proposes
+% no role vocabulary.
+%
+% It is a SEPARATE INSTRUMENT from silentLoss's `family_uniqueness_violation`,
+% which asks whether the members of a family violate the signed uniqueness rule.
+% A batch can satisfy that rule perfectly and still be full of shapes nobody has
+% decided the meaning of: distinct clocks and distinct anchors are both
+% "unique", and they are not the same modelling situation.
+try
+    result.time_reference_families = did2.validate.timeReferenceFamilies( ...
+        migrated, 'SchemaCache', options.SchemaCache);
+catch trfErr
+    result.time_reference_families = struct('audit_failed', trfErr.message);
+end
+
 if options.CheckReferences
     if ~isempty(options.ReferenceDatabase)
         result.references = did2.validate.references(migrated, ...

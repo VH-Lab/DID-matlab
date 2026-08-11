@@ -41,6 +41,26 @@ report = struct( ...
 if isfield(result, 'silent_loss')
     report.silent_loss = result.silent_loss;
 end
+% #52 EVIDENCE (report-only): the per-statement time-reference COUNT
+% DISTRIBUTION and, for the multi-reference ones, the SHAPES. Persisted for the
+% same reason as the censuses around it -- the team decision it feeds is about
+% what a bare `_1`/`_2` index means, and that call has to rest on measured
+% instances rather than on a function signature someone read.
+%
+% READ `headline` FIRST -- it carries every denominator in one line. Then read
+% `reference_census_vacuous` and `shape_census_vacuous` BEFORE any count: this
+% block is EXPECTED to come back with an empty shape table, and an empty shape
+% table has two completely different meanings. "No statement carries a second
+% reference" is a result; "no statement could have carried one" is not. The two
+% vacuity flags and their `_reason` strings are what keep them apart, and they
+% are the reason this is persisted as a block rather than as a number.
+%
+% NOT YET RENDERED BY tools/census_digest.py. The digest is owned elsewhere and
+% is deliberately not edited here; until it reads this key, the block is in the
+% artifact JSON and not in the end-of-log census.
+if isfield(result, 'time_reference_families')
+    report.time_reference_families = result.time_reference_families;
+end
 if isfield(result.summary, 'unconverted_count')
     report.unconverted_count = result.summary.unconverted_count;
     report.unconverted_by_class = result.summary.unconverted_by_class;
