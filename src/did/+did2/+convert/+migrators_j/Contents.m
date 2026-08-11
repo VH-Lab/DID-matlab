@@ -207,6 +207,13 @@
 %                          quartet the V_zeta fold minted collapses into the one
 %                          sampled_body; NDI-side imaging element/daqreader infra
 %                          is left to the NDI second pass (D2). 7,007 docs in JH.
+%                          The source `document_id` is CARRIED as the
+%                          observation's `ontology_table_row_id` (did-schema
+%                          6cf31f2 minted the slot), CONDITIONALLY: haley
+%                          behaviour has the edge, babu (import.m:474) does not,
+%                          and an absent or blank one is OMITTED, never emitted
+%                          empty. The subject-less haley E. coli sites keep it
+%                          on the guarded passthrough instead.
 %     metadata_editor    - 1 -> N. Decompose the NDIMetaDataEditorApp
 %                          `metadata_structure` blob into first-class entities +
 %                          relations (the dataset-metadata analogue of retiring the

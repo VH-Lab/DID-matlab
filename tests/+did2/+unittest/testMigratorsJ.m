@@ -47,16 +47,22 @@ function tests = testMigratorsJ
 %   the real column sets of all nine ontologyTableRow-producing tables. CI is
 %   the gate.
 %
-%   STATUS of the 2026-08-11 image_stack `document_id` pair
-%   (testImageStackFoldDropsDocumentIdForWantOfASlot,
-%   testImageStackDocumentIdReferentSurvivesTheBatch, plus the
-%   behaviourImageStack / behaviourPlateRow fixtures): SAME CAVEAT -- WRITTEN
-%   WITHOUT MATLAB. There is neither MATLAB nor Octave in the environment they
-%   were authored in and NOTHING IN THIS REPO WAS EXECUTED there. What they
-%   assert was settled from NDI origin/main (+haley/doImport.m,
-%   +NDIMaker/tableDocMaker.m, the ontologyTableRow template) and from this
-%   repo's own sources and `git log`; the migrator header names each command.
-%   Their MUTATION SENSITIVITY was proven on CI, not by transcription --
+%   STATUS of the 2026-08-11 image_stack `document_id` set
+%   (testImageStackFoldCarriesDocumentIdIntoTheOntologyTableRowSlot -- which is
+%   the INVERSION of testImageStackFoldDropsDocumentIdForWantOfASlot, not a
+%   patch of it; testImageStackDocumentIdReferentSurvivesTheBatch, rewritten to
+%   grade the REAL emitted edge instead of a synthetic probe;
+%   testImageStackBabuShapeOmitsTheSlotRatherThanEmittingItBlank and
+%   testImageStackBlankDocumentIdIsOmittedNotCarriedThrough, both new; plus the
+%   behaviourImageStack / behaviourPlateRow / babuImageStack fixtures): SAME
+%   CAVEAT -- WRITTEN WITHOUT MATLAB. There is neither MATLAB nor Octave in the
+%   environment they were authored in and NOTHING IN THIS REPO WAS EXECUTED
+%   there. What they assert was settled from NDI origin/main (+haley/doImport.m,
+%   +babu/import.m, +NDIMaker/tableDocMaker.m, the ontologyTableRow template),
+%   from the did-schema working tree (image_observation's new
+%   `ontology_table_row_id` slot, 6cf31f2) and from this repo's own sources and
+%   `git log`; the migrator header names each command. Their MUTATION
+%   SENSITIVITY was proven on CI, not by transcription --
 %   `test-migrators-quick.yml` on a throwaway branch, one mutation per run.
 %   CI is the gate.
 %
@@ -91,6 +97,24 @@ for k = 1:numel(deps)
             v = deps(k).value;
         end
         return;
+    end
+end
+end
+
+function names = depNamesOf(doc)
+%DEPNAMESOF The `name` of every edge on a CONVERTED document, as a cellstr.
+%
+%   depVal answers "what is this edge's value" and returns '' for BOTH "the
+%   edge is missing" and "the edge is present and empty". Those two are not the
+%   same thing: an emitted-but-blank edge is the invented-empty-edge pattern
+%   (7,233 documents in the last census, every one of them validating clean
+%   because references.m:90 skips empty edges). Any test that has to tell them
+%   apart reads the names instead.
+names = {};
+deps = doc.get('depends_on');
+for k = 1:numel(deps)
+    if isfield(deps(k), 'name')
+        names{end+1} = deps(k).name; %#ok<AGROW>
     end
 end
 end
@@ -864,18 +888,28 @@ verifyEqual(testCase, sb.get('sampled_body.sample_time').n, 10);
 verifyEqual(testCase, depVal(sb, 'statement'), obs.get('base.id'));
 end
 
-% ---- image_stack: the dropped `document_id` edge on the FOLD arm -------
+% ---- image_stack: the `document_id` edge on the FOLD arm ---------------
 %
 % The guard arm (subject-less, E. coli) passes the document through INTACT and
 % therefore keeps `document_id`. The fold arm REBUILDS `depends_on` from
-% scratch (image_stack.m: `obs.depends_on = [...]`) and loses it. The two
-% fixtures below are the haley BEHAVIOUR shape -- doImport.m:421-441, which
-% sets BOTH edges -- because every fold-arm fixture that existed before them
-% carried `subject_id` only, so the drop was structurally invisible to the
-% suite. That is the same hole the `files`-block defect used
-% (testTemplateLiteralTypeTraps' image_stack fixtures declare no files, and a
-% tombstone declaring a file no document has went green for it), arriving one
-% key over on `depends_on`.
+% scratch (image_stack.m: `obs.depends_on = [...]`) and USED TO lose it; since
+% did-schema 6cf31f2 gave `image_observation` an `ontology_table_row_id` slot it
+% carries it instead. The fixtures below are the haley BEHAVIOUR shape --
+% doImport.m:421-441, which sets BOTH edges -- because every fold-arm fixture
+% that existed before them carried `subject_id` only, so the drop was
+% structurally invisible to the suite. That is the same hole the `files`-block
+% defect used (testTemplateLiteralTypeTraps' image_stack fixtures declare no
+% files, and a tombstone declaring a file no document has went green for it),
+% arriving one key over on `depends_on`.
+%
+% THE CARRY IS CONDITIONAL, so ONE fixture cannot gate it. The fold arm sees
+% TWO of NDI's three imageStack populations and they disagree about the edge:
+% haley behaviour has it, babu (+setup/+conv/+babu/import.m:474) does not. The
+% babu fixture below is what proves the absent case OMITS the entry rather than
+% emitting it blank -- and blank is not a cosmetic difference, it is the
+% invented-empty-edge pattern that put 7,233 documents in the census while the
+% RequiredDependencies gate is armed and the corpus is at 0 quarantine /
+% 0 orphans.
 
 function v1 = behaviourImageStack()
 %BEHAVIOURIMAGESTACK The JH C. elegans behaviour-plate imageStack, as NDI's own
@@ -906,6 +940,42 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
     'dimension_order', 'YXT', 'dimension_size', [1024 1024 30], ...
     'dimension_scale', [1.5 1.5 0.2], ...
     'dimension_scale_units', 'micrometer,micrometer,second', ...
+    'clocktype', 'exp_global_time', 'timestamp', 739000);
+v1.files = struct('file_list', {{'imageStack'}});
+end
+
+function v1 = babuImageStack()
+%BABUIMAGESTACK The OTHER fold-arm population: +setup/+conv/+babu/import.m:474.
+%
+%   It is the reason the carry has to be conditional rather than
+%   unconditional, and it is the site the migrator header missed when it said
+%   there were SEVEN imageStack sites -- there are EIGHT:
+%
+%       $ git grep -n "ndi\.document('imageStack'" origin/main -- '*.m'
+%       .../+babu/import.m:474
+%       .../+haley/doImport.m:421,461,477,496,789,811,827
+%
+%       import.m:478-479   set_dependency_value('subject_id', ...
+%                              imStackTable.SubjectGroupIdentifier_Column{i})
+%       import.m:483       add_file('imageStack', imStackFile, ...)
+%
+%   NO `document_id` IS SET ANYWHERE IN THAT LOOP, so this document reaches the
+%   fold arm (it has a subject) with nothing to carry. The parameters block is
+%   the real one from import.m:455-464 -- a compressed .mp4, hence the T axis
+%   and the frame-rate scale.
+v1 = struct();
+v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
+                           'class_version', {'1.0.0', '1.0.0'}));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subjgrp_babu_3'});
+v1.base = struct('id', 'is_babu_01', 'session_id', 'sess_babu', ...
+    'name', 'stack', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.image_stack = struct('format_ontology', 'NCIT:C190180', ...
+    'label', 'A video recording of a behaving animal');
+v1.image_stack_parameters = struct('data_type', 'uint8', ...
+    'dimension_order', 'YXT', 'dimension_size', [480 640 900], ...
+    'dimension_scale', [1 1 30], ...
+    'dimension_scale_units', 'pixel,pixel,second', ...
     'clocktype', 'exp_global_time', 'timestamp', 739000);
 v1.files = struct('file_list', {{'imageStack'}});
 end
@@ -964,19 +1034,27 @@ otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
     'names', strjoin(keys, ','), 'ontology_nodes', nodes, 'data', data);
 end
 
-function testImageStackFoldDropsDocumentIdForWantOfASlot(testCase)
-%TESTIMAGESTACKFOLDDROPSDOCUMENTIDFORWANTOFASLOT Characterisation, not approval.
+function testImageStackFoldCarriesDocumentIdIntoTheOntologyTableRowSlot(testCase)
+%TESTIMAGESTACKFOLDCARRIESDOCUMENTIDINTOTHEONTOLOGYTABLEROWSLOT The carry.
 %
-%   The fold arm loses the source `document_id`. This pins that it happens and
-%   pins the exact edge set that replaces it, so the day someone adds the slot
-%   the change is announced by a red test instead of a silent diff.
+%   THIS IS AN INVERSION, NOT A NEW TEST. It was
+%   testImageStackFoldDropsDocumentIdForWantOfASlot, which asserted that the
+%   fold arm loses the source `document_id` -- true when written, and written
+%   from the pre-slot premise that there was nowhere to put the edge. The slot
+%   landed (did-schema 6cf31f2: image_observation gains `ontology_table_row_id`,
+%   mustBeNonEmpty false, must_refer_to_document_class `ontology_table_row`),
+%   so the test that pinned the loss had to be turned round rather than
+%   deleted. A test written from the same premise as the code cannot catch the
+%   code; three tests in this repo have already had to be inverted for
+%   asserting a bug.
 %
-%   THE ASSERTION IS THE EDGE SET, NOT THE ABSENCE. `verifyEqual(depVal(...,
-%   'document_id'), '')` alone is vacuous-passable: depVal returns '' when it
-%   finds nothing AND when it is itself broken. So the same document is asked
-%   for the two edges that ARE there, and the count is pinned -- an invented
-%   extra edge (the failure mode that produced the 76,766 hollow
-%   ontology_table_row statements) fails here too.
+%   THE ASSERTION IS THE WHOLE EDGE SET, NOT ONE LOOKUP. `verifyEqual(depVal(
+%   ..., 'ontology_table_row_id'), 'otr_plate_1')` alone would pass if depVal
+%   were broken in a way that happened to return that string, and would say
+%   nothing about what else got emitted. So the NAMES are read off the document
+%   and compared as a set, which fails on a dropped edge, on an invented extra
+%   edge (the failure mode behind the 76,766 hollow ontology_table_row
+%   statements), and on a renamed one.
 out = runJ(behaviourImageStack());
 
 verifyEmpty(testCase, out.quarantine);
@@ -985,18 +1063,28 @@ verifyEqual(testCase, numel(out.migrated), 3, ...
 obs = out.migrated{1};
 verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
 
-% NON-VACUITY FIRST: the reader works on this document and these edges exist.
+% THE EDGE SET, as a set. DENOMINATOR: 3 edges on the observation.
+verifyEqual(testCase, sort(depNamesOf(obs)), ...
+    {'ontology_table_row_id', 'subject_id', 'time_reference_1'}, ...
+    'the fold arm emits exactly subject_id + the anchor + the carried row');
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_7');
 verifyNotEmpty(testCase, depVal(obs, 'time_reference_1'));
-% ...and the source edge is gone, on every emitted body, not just the first.
-for k = 1:numel(out.migrated)
-    verifyEqual(testCase, depVal(out.migrated{k}, 'document_id'), '', ...
-        'no emitted body carries the source document_id today');
-    verifyEqual(testCase, depVal(out.migrated{k}, 'ontology_table_row_id'), '', ...
-        'and none has been given the slot name either');
+% THE CARRY: the source `document_id` value, under the slot's name.
+verifyEqual(testCase, depVal(obs, 'ontology_table_row_id'), 'otr_plate_1', ...
+    'the plate row the source document_id named must survive the fold');
+% ...and NOT under its did_v1 name. The slot is `ontology_table_row_id`; an
+% edge still called `document_id` would be undeclared on image_observation,
+% and +did2/+schema/cache.m has no undeclared-dependency check to catch it.
+verifyFalse(testCase, any(strcmp(depNamesOf(obs), 'document_id')), ...
+    'the did_v1 edge name must not survive onto the V_eta observation');
+% The BODY and the ANCHOR are not given the edge -- the observation is the
+% handle, and duplicating a reference is how one fact becomes two that can
+% disagree.
+for k = 2:numel(out.migrated)
+    verifyFalse(testCase, any(strcmp(depNamesOf(out.migrated{k}), ...
+        'ontology_table_row_id')), ...
+        'only the observation carries the row edge');
 end
-% exactly the two edges, no third invented one
-verifyEqual(testCase, numel(obs.get('depends_on')), 2);
 % the fold itself is unaffected by the extra source edge
 verifyEqual(testCase, obs.get('base.id'), 'is_beh_01');
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
@@ -1015,35 +1103,38 @@ verifyFalse(testCase, isfield(obsStruct, 'files'), ...
 end
 
 function testImageStackDocumentIdReferentSurvivesTheBatch(testCase)
-%TESTIMAGESTACKDOCUMENTIDREFERENTSURVIVESTHEBATCH The stated reason for the drop
-%   -- "a corpus reference-integrity orphan" -- is STALE, and this is the test
-%   that says so.
+%TESTIMAGESTACKDOCUMENTIDREFERENTSURVIVESTHEBATCH The carried edge resolves.
+%
+%   REWRITTEN WITH THE CARRY. This test used to prove a COUNTERFACTUAL -- the
+%   edge was dropped, so it could never appear in an orphan report, and the
+%   only way to ask "would it have resolved?" was to append a synthetic probe
+%   document carrying it. Now the migrator emits the edge itself, so the real
+%   thing is examined by the real instrument and the probe is gone.
 %
 %   The referent is an `ontologyTableRow`. Since ef58c15 (2026-07-29, nineteen
 %   days after the migrator header was written) every path of
 %   +migrators_j/ontology_table_row.m keeps the source `base.id` on exactly one
 %   emitted body, and a real row -- which never declares `subject_id`, because
 %   tableDocMaker.m:231 sets only `document_id` -- takes the guarded
-%   passthrough and keeps it trivially. So the id is still in the batch after
-%   migration, and an edge naming it CANNOT dangle.
+%   passthrough and keeps it trivially.
 %
-%   THE COUNTERFACTUAL IS TESTED DIRECTLY, because the edge is dropped and so
-%   can never appear in an orphan report on its own: a probe document carrying
-%   the edge is appended to the migrated set and run through
-%   +did2/+validate/references. That is the same function the corpus gate uses.
+%   THE CONTROL ARM IS NOT OPTIONAL, and it is the same batch minus the row.
+%   references.m:90 SKIPS empty edges, so an observation whose edge failed to
+%   serialise -- or was quietly emitted blank -- would report 0 orphans and
+%   look exactly like proof. Dropping the referent must therefore produce
+%   EXACTLY ONE orphan naming it; without that half, the zero above means
+%   nothing.
 %
-%   THE CONTROL ARM IS NOT OPTIONAL. references.m:90 SKIPS empty edges, so a
-%   probe whose edge failed to serialise would report 0 orphans and look like
-%   proof. The second half points the probe at an id nobody minted and requires
-%   exactly 1 orphan; without it, a zero here means nothing.
+%   THAT CONTROL IS ALSO THE RISK, STATED AS A TEST. A discovery-mode batch
+%   need not contain the referent, and then this edge orphans -- jSessionAnchor's
+%   note about that is CORRECT and is not being overridden. The first half
+%   asserts the FULL-batch case, which is what a full migration is; the second
+%   half is what a subset looks like.
 %
 %   THE BATCH IS SELF-CONTAINED ON PURPOSE -- the image, its plate row AND the
 %   subject group its `subject_id` names. A batch missing the group would
 %   orphan for a reason that has nothing to do with this question, and reading
-%   `orphan_count` past that would be guesswork. (The corpora are a sample and
-%   a discovery-mode batch may legitimately not contain a referent;
-%   jSessionAnchor's note about that is correct. This test asserts the
-%   FULL-batch case, which is what a full migration is.)
+%   `orphan_count` past that would be guesswork.
 group = struct();
 group.document_class = struct('class_name', 'subject_group', ...
     'class_version', '1.0.0', ...
@@ -1070,28 +1161,83 @@ classes = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
 verifyTrue(testCase, any(strcmp(classes, 'ontology_table_row')), ...
     'a real ontologyTableRow has no subject_id, so it passes through');
 
-% the batch as migrated is already clean -- so any orphan below is the probe's
-baseline = did2.validate.references(out.migrated);
-verifyEqual(testCase, baseline.orphan_count, 0, ...
-    'the batch must be self-contained before the probe means anything');
+% NON-VACUITY: the observation really is carrying the edge that is about to be
+% graded. A zero orphan count over a batch that emitted no such edge is not a
+% result, it is an empty denominator.
+obs = out.migrated{find(strcmp(classes, 'image_observation'), 1)};
+verifyEqual(testCase, depVal(obs, 'ontology_table_row_id'), 'otr_plate_1');
 
-% THE COUNTERFACTUAL: would the dropped edge have resolved?
-probe = struct('base', struct('id', 'probe_doc'), ...
-    'document_class', struct('class_name', 'probe'), ...
-    'depends_on', struct('name', 'document_id', 'document_id', 'otr_plate_1'));
-rep = did2.validate.references([out.migrated(:); {probe}]);
-verifyGreaterThan(testCase, rep.edges_examined, baseline.edges_examined, ...
-    'DENOMINATOR: the probe edge must actually be examined, not skipped');
+rep = did2.validate.references(out.migrated);
+verifyGreaterThan(testCase, rep.edges_examined, 0, ...
+    'DENOMINATOR: references must have examined edges at all');
 verifyEqual(testCase, rep.orphan_count, 0, ...
-    'carrying image_stack.document_id would NOT orphan -- the old reason is stale');
+    'the carried ontology_table_row_id resolves in a full batch');
 
-% CONTROL: the same instrument, an id nobody minted -> exactly one orphan.
-missing = probe;
-missing.depends_on = struct('name', 'document_id', 'document_id', 'otr_never_minted');
-repMissing = did2.validate.references([out.migrated(:); {missing}]);
+% CONTROL: the same instrument, the same image, the referent REMOVED. This is
+% both the discrimination check and the discovery-mode case.
+outNoRow = runJ({behaviourImageStack(), group});
+repMissing = did2.validate.references(outNoRow.migrated);
 verifyEqual(testCase, repMissing.orphan_count, 1, ...
     'the control proves the check discriminates rather than passing everything');
-verifyEqual(testCase, repMissing.orphans(1).edge_document_id, 'otr_never_minted');
+verifyEqual(testCase, repMissing.orphans(1).edge_document_id, 'otr_plate_1');
+end
+
+function testImageStackBabuShapeOmitsTheSlotRatherThanEmittingItBlank(testCase)
+%TESTIMAGESTACKBABUSHAPEOMITSTHESLOTRATHERTHANEMITTINGITBLANK The other half.
+%
+%   The carry has to be conditional, so proving it fires is only half the
+%   gate: the population that has no `document_id` at all must come out with
+%   NO ENTRY, not with an entry whose value is ''. Those two look identical to
+%   depVal and to references.m (which skips empty edges, references.m:90), and
+%   the blank one is the invented-empty-edge pattern -- 7,233 documents in the
+%   last census, each validating clean while naming nobody.
+%
+%   The fixture is +setup/+conv/+babu/import.m:474, the eighth
+%   `ndi.document('imageStack')` site and the one the migrator header did not
+%   know about: it sets `subject_id` (import.m:478-479) and no `document_id`
+%   anywhere in the loop, so it reaches the FOLD arm with nothing to carry.
+out = runJ(babuImageStack());
+
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 3, ...
+    'a babu imageStack has a subject, so it folds like any other');
+obs = out.migrated{1};
+verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+
+% NON-VACUITY FIRST: the fold happened and the edges that SHOULD be there are.
+verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_babu_3');
+verifyNotEmpty(testCase, depVal(obs, 'time_reference_1'));
+
+% THE ASSERTION: the slot is ABSENT, not present-and-empty. Read by NAME --
+% depVal cannot tell those apart and would pass either way.
+verifyEqual(testCase, sort(depNamesOf(obs)), {'subject_id', 'time_reference_1'}, ...
+    'no document_id on the source means no ontology_table_row_id on the fold');
+for k = 1:numel(out.migrated)
+    verifyFalse(testCase, any(strcmp(depNamesOf(out.migrated{k}), ...
+        'ontology_table_row_id')), ...
+        'a blank edge is worse than no edge -- omit the entry entirely');
+end
+end
+
+function testImageStackBlankDocumentIdIsOmittedNotCarriedThrough(testCase)
+%TESTIMAGESTACKBLANKDOCUMENTIDISOMITTEDNOTCARRIEDTHROUGH The third shape.
+%
+%   Absent and present-but-blank are different inputs and must reach the same
+%   output. This is the shape the NDI templates actually ship (the
+%   ontologyTableRow template carries `depends_on: [{"name":"document_id",
+%   "value":""}]`), so an imageStack could plausibly arrive with the key
+%   declared and unset -- and copying that through would recreate, on a brand
+%   new edge, the exact pattern the census was built to find.
+v1 = babuImageStack();
+v1.depends_on = struct('name', {'subject_id', 'document_id'}, ...
+                       'value', {'subjgrp_babu_3', ''});
+
+out = runJ(v1);
+obs = out.migrated{1};
+verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_babu_3');
+verifyEqual(testCase, sort(depNamesOf(obs)), {'subject_id', 'time_reference_1'}, ...
+    'an empty source document_id must not become an empty V_eta edge');
 end
 
 % ============ ontology_table_row per-table map: C. elegans encounter ====
