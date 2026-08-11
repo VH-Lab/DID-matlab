@@ -54,6 +54,60 @@ function v2Body = metadata_editor(preBody)
 %   Bucket 3 -- GUI STATE -> dropped. Any editor-app view state (selected tab,
 %     visibility, tooltips) is not dataset identity. (VersionInnovation is genuine
 %     dataset metadata, not view state, so it moves to bucket 1.)
+%
+%   ---------------------------------------------------------------------
+%   SHAPE TOLERANCE -- WHY THE READERS BELOW ACCEPT A CELL
+%   ---------------------------------------------------------------------
+%   STATUS 2026-08-11: this shape-tolerance edit and its five new tests were
+%   WRITTEN WITHOUT MATLAB. There is neither MATLAB nor Octave in the
+%   container they were authored in, so NOTHING HERE HAS BEEN EXECUTED. The
+%   mutation check was a transcription of jsondecode's documented array rule
+%   plus the two readers changed here, not a run. CI is the gate.
+%
+%   A corpus body reaches this migrator as raw JSON text that
+%   `v1_to_v2/ensureStruct` hands to `jsondecode` (v1_to_v2.m:332-341); the
+%   hand-built struct fixtures in testMigratorsJ.m do NOT take that path.
+%   jsondecode turns a JSON array of objects into a STRUCT ARRAY only when
+%   every object carries the same field names IN THE SAME ORDER; otherwise it
+%   returns a CELL of scalar structs. The old `getStructArray` accepted a
+%   struct array only and answered `struct([])` for a cell, so the Author /
+%   Funding / RelatedPublication loops below ran ZERO times and the migrator
+%   emitted a lone `dataset` body -- no error, no counter, nothing.
+%
+%   That loss is invisible to every detector we have: `unconverted_by_class`
+%   sees output ~= input (a `dataset` IS emitted), `isFragment` sees a
+%   substantive `dataset`, the empty-required-edge census sees nothing
+%   (`dataset`/`person` declare `depends_on: []`), and the vacuous-required-
+%   field census is defeated by the `full_name = '(unnamed dataset)'` fallback
+%   at the top of the body. So the only thing that can catch it is a test that
+%   drives the migrator through a real jsonencode/jsondecode round trip --
+%   testMigratorsJ.m's `runJRoundTrip` block.
+%
+%   The idiom is the pipeline's own, not a new one: `jEpochClockReferences`
+%   (clockNames/intervalColumns, "the two shapes a serialisation round-trip
+%   can leave behind"), `jFileMatchList:71`, `epochfiles_ingested:158`,
+%   `sourceCensus:407` and `silentLoss:984` all read the cell alternative.
+%
+%   NOT CLAIMED: that any corpus document in hand delivers `Author` as a cell.
+%   The task that prompted this edit attributed the cell to VALUE-type
+%   heterogeneity (`AuthorData.getDefaultAuthorItem` setting
+%   `affiliation = struct.empty` beside a filled author's struct); that is NOT
+%   jsondecode's trigger -- differing field-name SETS or ORDER is, and every
+%   NDI writer of this blob builds `Author` as a uniform MATLAB struct array
+%   (`AuthorData.AuthorList (:,1) struct`, `table2struct` for Funding /
+%   RelatedPublication). The guard is here because the failure mode is silent
+%   and undetectable, not because a cell has been observed.
+%
+%   OPEN, FOUND WHILE DOING THIS, DELIBERATELY NOT FIXED HERE (out of scope --
+%   a different reader, and it changes what is emitted): an author with TWO OR
+%   MORE affiliations loses all of them. `AuthorData.addAffiliation` grows the
+%   field into a struct ARRAY (`affiliation(end+1) = affiliationStruct`, +class/
+%   AuthorData.m), and `nestedChar` below walks only SCALAR structs
+%   (`isstruct(cur) && isscalar(cur)`), so it returns '' and no organization
+%   and no `affiliated_with` edge is minted. This is not a round-trip artefact:
+%   it fails identically on a hand-built struct fixture. Same silent-loss
+%   family, same four blind detectors; needs a team call on whether a person
+%   gets one `affiliated_with` edge per affiliation.
 
 arguments
     preBody (1,1) struct
@@ -63,11 +117,7 @@ block = struct();
 if isfield(preBody, 'metadata_editor') && isstruct(preBody.metadata_editor)
     block = preBody.metadata_editor;
 end
-ms = struct();
-if isfield(block, 'metadata_structure') && isstruct(block.metadata_structure) ...
-        && ~isempty(block.metadata_structure)
-    ms = block.metadata_structure(1);      % scalar struct; guard array shape
-end
+ms = getScalarStruct(block, 'metadata_structure');
 
 % The dataset entity is keyed on the DATASET id (D.id() = base.session_id), the
 % id every dataset-level doc and every dataset-referencing relation converges on
@@ -301,11 +351,76 @@ for k = 1:numel(varargin)
 end
 end
 
+function s = getScalarStruct(block, name)
+%GETSCALARSTRUCT Read a field as ONE scalar struct (empty struct if absent).
+%   The metadata blob itself. Accepts the struct a live document carries, the
+%   struct ARRAY a one-element JSON array decodes to, and the CELL jsondecode
+%   returns for a heterogeneous array. `struct()` -- the answer for the NDI
+%   template's own `"metadata_structure": []`, which decodes to a 0x0 double --
+%   is UNCHANGED behaviour: every reader below then returns blank, the
+%   `(unnamed dataset)` fallback fires, and one bare `dataset` body is emitted,
+%   which is the right answer for a document that states no metadata.
+s = struct();
+if ~(isstruct(block) && isfield(block, name)); return; end
+v = block.(name);
+if iscell(v)
+    for k = 1:numel(v)
+        if isstruct(v{k}) && ~isempty(v{k}); s = v{k}(1); return; end
+    end
+    return;
+end
+if isstruct(v) && ~isempty(v); s = v(1); end
+end
+
 function arr = getStructArray(block, name)
-%GETSTRUCTARRAY Read a field as a struct array ('empty' if absent / not a struct).
+%GETSTRUCTARRAY Read a field as a struct array ('empty' if absent / not a list
+%   of objects). Accepts BOTH shapes a JSON array of objects can arrive in --
+%   see the SHAPE TOLERANCE note in the file header. A cell is normalised to a
+%   struct array so callers keep indexing it with (i).
 arr = struct([]);
-if isstruct(block) && isfield(block, name) && isstruct(block.(name))
-    arr = block.(name);
+if ~(isstruct(block) && isfield(block, name)); return; end
+v = block.(name);
+if isstruct(v)
+    arr = v;
+    return;
+end
+if ~iscell(v); return; end
+items = {};
+for k = 1:numel(v)
+    e = v{k};
+    if ~isstruct(e); continue; end
+    for j = 1:numel(e)
+        items{end+1} = e(j); %#ok<AGROW>
+    end
+end
+if isempty(items); return; end
+arr = toStructArray(items);
+end
+
+function arr = toStructArray(items)
+%TOSTRUCTARRAY Concatenate scalar structs that need NOT agree on their fields.
+%   A plain [items{:}] errors the moment two entries carry different field
+%   names -- which is the very condition that made jsondecode hand back a cell
+%   instead of a struct array. Missing fields become [], which every reader
+%   here (getChar / nestedChar) already treats as absent.
+names = {};
+for k = 1:numel(items)
+    f = fieldnames(items{k});
+    for j = 1:numel(f)
+        if ~any(strcmp(f{j}, names)); names{end+1} = f{j}; end %#ok<AGROW>
+    end
+end
+if isempty(names)
+    arr = repmat(struct(), 1, numel(items));
+    return;
+end
+blank = cell2struct(repmat({[]}, numel(names), 1), names(:), 1);
+arr = repmat(blank, 1, numel(items));
+for k = 1:numel(items)
+    f = fieldnames(items{k});
+    for j = 1:numel(f)
+        arr(k).(f{j}) = items{k}.(f{j});
+    end
 end
 end
 

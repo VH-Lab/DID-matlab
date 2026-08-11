@@ -1399,6 +1399,242 @@ verifyEqual(testCase, depVal(documented, 'child'), ds.get('base.id'));
 verifyEqual(testCase, depVal(documented, 'parent'), wr.get('base.id'));
 end
 
+% ---- metadata_editor THROUGH A JSON ROUND TRIP -------------------------
+%
+% STATUS 2026-08-11: the five tests below
+%   testMetadataEditorSurvivesTheJsonRoundTrip
+%   testMetadataEditorAuthorsSurviveTheCellDecode
+%   testMetadataEditorFundingAndPublicationSurviveTheCellDecode
+%   testMetadataEditorEmptyStructureStillYieldsTheUnnamedDataset
+%   testMetadataEditorStructureInsideACellIsStillRead
+% and the `runJRoundTrip` helper were WRITTEN WITHOUT MATLAB -- there is neither
+% MATLAB nor Octave in the container they were authored in, and NONE OF THEM
+% HAS BEEN EXECUTED. Their mutation sensitivity was checked by transcribing
+% jsondecode's documented array rule together with the two readers changed in
+% migrators_j/metadata_editor.m (getScalarStruct, getStructArray); that is a
+% transcription, not a run. CI is the gate.
+%
+% WHY THEY EXIST. Every other fixture in this file hands `v1_to_v2` a
+% hand-written MATLAB struct. A CORPUS body is raw JSON text
+% (helpers/runCorpusDiscovery.m:59 `fileread`) that ensureStruct pushes
+% through `jsondecode` (v1_to_v2.m:332-341), and jsondecode does NOT return a
+% struct array for every JSON array of objects: it returns a CELL unless all
+% the objects carry the same field names in the same order. `getStructArray`
+% used to answer `struct([])` for a cell, so the Author / Funding /
+% RelatedPublication loops ran zero times and the migrator emitted a lone
+% `dataset` -- with no error and no counter, and invisible to all four
+% detectors (unconverted_by_class sees output ~= input, isFragment sees a
+% substantive dataset, the empty-required-edge census sees no edges because
+% dataset/person declare `depends_on: []`, and the vacuous-required-field
+% census is defeated by the `(unnamed dataset)` fallback). A struct fixture
+% cannot see any of that. The round trip is the point of these tests, so do
+% NOT "simplify" them by dropping the jsonencode/jsondecode pair.
+%
+% TRANSCRIBED MUTATION RESULT (guard reverted to the struct-only readers vs
+% the readers as committed). NOT a MATLAB run -- see the STATUS above.
+%
+%   DENOMINATOR: 5 tests, each evaluated twice
+%   test                                  mutated -> guarded   sensitive?
+%   SurvivesTheJsonRoundTrip              16 -> 16             no, by design
+%   AuthorsSurviveTheCellDecode            9 -> 16   person 0 -> 2      YES
+%   FundingAndPublicationSurvive...       10 -> 22   funding 0 -> 2,
+%                                                    publication 0 -> 2 YES
+%   EmptyStructureStillYields...           1 ->  1             no, by design
+%   StructureInsideACellIsStillRead        1 -> 16             YES
+%
+% The two insensitive ones are PINS, not proofs: the baseline pins that the
+% round trip alone changes nothing, and the empty-structure one pins that the
+% `(unnamed dataset)` fallback still fires for the NDI template's own default.
+
+function out = runJRoundTrip(v1)
+%RUNJROUNDTRIP Run the migrator on the shape the CORPUS delivers, not the
+%   shape a MATLAB fixture is written in: serialise the fixture and decode it
+%   back exactly as `v1_to_v2/ensureStruct` does for a corpus file.
+out = did2.convert.v1_to_v2(jsondecode(jsonencode(v1)), ...
+    'Validate', false, 'TargetVersion', 'V_eta');
+end
+
+function n = countRelsByName(migrated, relName)
+n = 0;
+for k = 1:numel(migrated)
+    d = migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
+            && strcmp(d.get('directed_relation.relation').name, relName)
+        n = n + 1;
+    end
+end
+end
+
+function testMetadataEditorSurvivesTheJsonRoundTrip(testCase)
+% The BASELINE: the existing fixture, serialised and decoded, must decompose
+% into exactly the same 16 documents the struct-fed test asserts. Its Author
+% array is key-uniform, so jsondecode hands back a struct array and this
+% passes with or without the cell tolerance -- that is deliberate. It pins
+% that the round trip itself (Keyword as a JSON string array, `depends_on`
+% as `[]`, the nested PascalCase blob) changes nothing.
+out = runJRoundTrip(metadataEditorDoc());
+bc = out.summary.by_class;
+verifyEqual(testCase, numel(out.migrated), 16);
+verifyEqual(testCase, bc.dataset, 1);
+verifyEqual(testCase, bc.person, 2);
+verifyEqual(testCase, bc.organization, 2);
+verifyEqual(testCase, bc.funding, 1);
+verifyEqual(testCase, bc.publication, 1);
+verifyEqual(testCase, bc.web_resource, 1);
+verifyEqual(testCase, bc.directed_relation, 8);
+ds = firstOfClassJ(out.migrated, 'dataset');
+verifyEqual(testCase, ds.get('base.id'), 'sess_09');
+verifyEqual(testCase, ds.get('dataset.full_name'), 'The Big Worm Dataset');
+kw = ds.get('dataset.keyword');
+verifyEqual(testCase, sort(kw(:)'), {'calcium imaging', 'worm'});
+ada = personByFamily(allOfClassJ(out.migrated, 'person'), 'Lovelace');
+verifyNotEmpty(testCase, ada);
+verifyEqual(testCase, ada.get('person.email'), 'ada@example.org');
+end
+
+function v1 = metadataEditorDocCellShapedAuthors()
+% Two authors whose objects DIFFER IN FIELD ORDER, which is one of the two
+% documented triggers for jsondecode returning a cell instead of a struct
+% array (the other is a differing field-name set; author 2 also omits
+% `authorRole`, so both triggers are present). Author 1 is written in the
+% order ndi.database.metadata_app.class.AuthorData.getDefaultAuthorItem
+% produces (affiliation, contactInformation, digitalIdentifier, familyName,
+% givenName, authorRole). Assigned as a CELL because a MATLAB struct array
+% cannot hold elements with different fields -- and a cell is precisely what
+% comes back out of jsondecode.
+v1 = metadataEditorDoc();
+ms = v1.metadata_editor.metadata_structure;
+a1 = struct( ...
+    'affiliation',        struct('memberOf', struct('fullName', 'Analytical Society')), ...
+    'contactInformation', struct('email', 'ada@example.org'), ...
+    'digitalIdentifier',  struct('identifier', '0000-0001-2345-6789'), ...
+    'familyName',         'Lovelace', ...
+    'givenName',          'Ada', ...
+    'authorRole',         'Custodian');
+a2 = struct( ...
+    'givenName',          'Alan', ...
+    'familyName',         'Turing', ...
+    'contactInformation', struct('email', ''), ...
+    'digitalIdentifier',  struct('identifier', ''), ...
+    'affiliation',        struct('memberOf', struct('fullName', 'Analytical Society')));
+ms.Author = {a1, a2};
+v1.metadata_editor.metadata_structure = ms;
+end
+
+function testMetadataEditorAuthorsSurviveTheCellDecode(testCase)
+% THE REGRESSION. Before the cell tolerance this produced 9 documents and
+% ZERO persons: no person, no has_author, no affiliated_with, and no
+% 'Analytical Society' organization (it is minted only from an affiliation).
+% The dataset / funding / publication / web_resource half still came out,
+% which is exactly why nothing downstream noticed.
+out = runJRoundTrip(metadataEditorDocCellShapedAuthors());
+bc = out.summary.by_class;
+verifyEqual(testCase, numel(out.migrated), 16);
+verifyEqual(testCase, bc.person, 2);
+verifyEqual(testCase, bc.organization, 2);      % Analytical Society + NIH
+verifyEqual(testCase, countRelsByName(out.migrated, 'has_author'), 2);
+verifyEqual(testCase, countRelsByName(out.migrated, 'affiliated_with'), 2);
+% the per-author payload survives the cell -> struct-array normalisation
+persons = allOfClassJ(out.migrated, 'person');
+ada = personByFamily(persons, 'Lovelace');
+verifyNotEmpty(testCase, ada);
+verifyEqual(testCase, ada.get('person.given_name'), 'Ada');
+verifyEqual(testCase, ada.get('person.email'), 'ada@example.org');
+agid = ada.get('entity.global_identifier');
+verifyEqual(testCase, agid(1).scheme, 'ORCID');
+verifyEqual(testCase, agid(1).value, '0000-0001-2345-6789');
+% author 2 carries neither an ORCID nor the `authorRole` key at all: the
+% field-union normalisation must leave it empty, not error and not inherit
+% author 1's value
+alan = personByFamily(persons, 'Turing');
+verifyNotEmpty(testCase, alan);
+verifyEqual(testCase, alan.get('person.given_name'), 'Alan');
+verifyEmpty(testCase, alan.get('entity.global_identifier'));
+% both affiliations still dedup to ONE organization id
+orgs = allOfClassJ(out.migrated, 'organization');
+names = cellfun(@(o) o.get('organization.full_name'), orgs, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(names, 'Analytical Society')), 1);
+end
+
+function v1 = metadataEditorDocCellShapedFundingAndPublications()
+% The same cell trigger on the other two lists the migrator reads with
+% getStructArray. Two funders and two publications, each pair differing in
+% field order / field set.
+v1 = metadataEditorDoc();
+ms = v1.metadata_editor.metadata_structure;
+f1 = struct('funder', 'NIH', 'awardTitle', 'BRAIN Initiative', ...
+    'awardNumber', 'R01-12345');
+f2 = struct('awardTitle', 'Neural Circuits', 'funder', 'NSF');   % no awardNumber
+ms.Funding = {f1, f2};
+p1 = struct('Publication', 'On Worms', 'DOI', '10.1/worm', ...
+    'PMID', '123', 'PMCID', 'PMC9');
+p2 = struct('DOI', '10.1/worms-again', 'Publication', 'On Worms, Again');
+ms.RelatedPublication = {p1, p2};
+v1.metadata_editor.metadata_structure = ms;
+end
+
+function testMetadataEditorFundingAndPublicationSurviveTheCellDecode(testCase)
+% Before the cell tolerance: 10 documents, ZERO funding and ZERO publication
+% entities, and only ONE organization (the authors' affiliation) because both
+% funders are minted from the Funding list.
+out = runJRoundTrip(metadataEditorDocCellShapedFundingAndPublications());
+bc = out.summary.by_class;
+verifyEqual(testCase, bc.funding, 2);
+verifyEqual(testCase, bc.publication, 2);
+verifyEqual(testCase, bc.organization, 3);      % Analytical Society + NIH + NSF
+verifyEqual(testCase, countRelsByName(out.migrated, 'funded_by'), 2);
+verifyEqual(testCase, countRelsByName(out.migrated, 'issued_by'), 2);
+verifyEqual(testCase, countRelsByName(out.migrated, 'cites'), 2);
+verifyEqual(testCase, numel(out.migrated), 22);
+% the award WITHOUT an awardNumber must still be an entity, with no identifier
+awards = allOfClassJ(out.migrated, 'funding');
+titles = cellfun(@(a) a.get('funding.title'), awards, 'UniformOutput', false);
+verifyEqual(testCase, sort(titles), {'BRAIN Initiative', 'Neural Circuits'});
+nsf = awards{strcmp(titles, 'Neural Circuits')};
+verifyEmpty(testCase, nsf.get('entity.global_identifier'));
+% the publication that carries only a DOI keeps exactly that one identifier
+pubs = allOfClassJ(out.migrated, 'publication');
+ptitles = cellfun(@(p) p.get('publication.title'), pubs, 'UniformOutput', false);
+again = pubs{strcmp(ptitles, 'On Worms, Again')};
+agid = again.get('entity.global_identifier');
+verifyEqual(testCase, numel(agid), 1);
+verifyEqual(testCase, agid(1).scheme, 'DOI');
+verifyEqual(testCase, agid(1).value, '10.1/worms-again');
+end
+
+function testMetadataEditorEmptyStructureStillYieldsTheUnnamedDataset(testCase)
+% `"metadata_structure": []` is the NDI TEMPLATE'S OWN DEFAULT
+% (ndi_common/database_documents/ingestion/metadata_editor.json on
+% origin/main), and it decodes to a 0x0 double, not a struct. One bare
+% `dataset` is the RIGHT answer for a document that states no metadata, and
+% the `(unnamed dataset)` fallback is load-bearing for it. This test pins
+% that the shape-tolerance edit did not change either.
+v1 = metadataEditorDoc();
+v1.metadata_editor = struct('metadata_structure', []);
+out = runJRoundTrip(v1);
+verifyEqual(testCase, numel(out.migrated), 1);
+ds = out.migrated{1};
+verifyEqual(testCase, ds.get('document_class.class_name'), 'dataset');
+verifyEqual(testCase, ds.get('base.id'), 'sess_09');
+verifyEqual(testCase, ds.get('dataset.full_name'), '(unnamed dataset)');
+end
+
+function testMetadataEditorStructureInsideACellIsStillRead(testCase)
+% The same tolerance one level up: the blob itself arriving as a JSON array
+% of unlike objects, which jsondecode hands back as a cell. NO corpus
+% document is known to be shaped this way -- this covers the cell branch of
+% getScalarStruct so it is not new code with no test, per the standing rule
+% that a reader added for a shape nobody exercises is a reader nobody checks.
+v1 = metadataEditorDoc();
+ms = v1.metadata_editor.metadata_structure;
+other = struct('SomeOtherKey', 'ignored');
+v1.metadata_editor.metadata_structure = {ms, other};
+out = runJRoundTrip(v1);
+verifyEqual(testCase, numel(out.migrated), 16);
+ds = firstOfClassJ(out.migrated, 'dataset');
+verifyEqual(testCase, ds.get('dataset.full_name'), 'The Big Worm Dataset');
+end
+
 function r = relByName(migrated, relName)
 r = [];
 for k = 1:numel(migrated)
