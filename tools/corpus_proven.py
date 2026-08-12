@@ -304,6 +304,19 @@ def corpus_row(path, rep):
 # (3) THE INTERFACE: coverage.py --corpus-reports
 # ---------------------------------------------------------------------------
 
+def mtime_after(schema_repo):
+    """The ledger's mtime, or None if it is not there.
+
+    None is deliberately a VALUE and not an error: a run that creates a ledger
+    where none existed has rewritten it, and None != any float makes that fall
+    out of the comparison rather than needing a special case."""
+    path = os.path.join(schema_repo, LEDGER_REL)
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return None
+
+
 def run_coverage(schema_repo, roots, timeout=1800):
     """Invoke did-schema's coverage.py over the same roots. Never reimplement it.
 
@@ -317,6 +330,10 @@ def run_coverage(schema_repo, roots, timeout=1800):
     not an option -- it exits before stage 5's input is ever read.
     """
     out = {"ran": False, "schema_repo": schema_repo, "roots": list(roots)}
+    # Sampled BEFORE the invocation so "did it write?" is answerable after it.
+    # A missing ledger reads as None, which differs from every real mtime, so an
+    # absent-then-created file correctly counts as REWRITTEN.
+    before_mtime = mtime_after(schema_repo)
     tool = os.path.join(schema_repo, COVERAGE_REL)
     if not os.path.isdir(schema_repo):
         out["why"] = ("the did-schema checkout is not at `%s` -- stage 5 has no "
@@ -353,6 +370,35 @@ def run_coverage(schema_repo, roots, timeout=1800):
         out["why"] = ("coverage.py exited %d. Its own output is reproduced "
                       "above; this is a did-schema-side failure, not a corpus "
                       "result." % proc.returncode)
+    # DID IT ACTUALLY WRITE THE LEDGER? EXIT 0 DOES NOT ANSWER THAT.
+    #
+    # Run 31572667236 is why this exists. Every job was green, coverage.py
+    # exited 0, and this tool reported `0 instrument fault(s)` -- while
+    # coverage.py had printed `ledger: SKIPPED (NDI-matlab sibling not found)`
+    # (its `main()` takes that branch and writes nothing) and the rung was read
+    # back off an untouched ledger as 102 NOT MEASURED. A correct answer from an
+    # instrument that was never fed, reported as a clean result.
+    #
+    # The check is BEHAVIOURAL, not textual: mtime before and after. A tool that
+    # regenerates writes the file even when the bytes are identical, so an
+    # unchanged mtime means it did not write. Keying on the message alone would
+    # bind this to a sentence in another repository that nobody has to keep.
+    #
+    # The message is still read, but only to NAME the cause -- so a future skip
+    # for a different reason still faults, and reports that the reason is
+    # unrecognised rather than inventing one.
+    out["ledger_rewritten"] = (mtime_after(schema_repo) != before_mtime)
+    if not out["ledger_rewritten"] and not out.get("why"):
+        named = "ledger: SKIPPED" in out["stdout"]
+        out["why"] = (
+            "coverage.py exited 0 WITHOUT REWRITING THE LEDGER, so the rung "
+            "below was read off a file this run never touched. "
+            + ("Its own output says `ledger: SKIPPED (NDI-matlab sibling not "
+               "found)` -- the census job needs an NDI-matlab checkout."
+               if named else
+               "Its output does NOT carry a recognised skip message, so the "
+               "cause is UNKNOWN and is not guessed at here; read the "
+               "coverage.py output reproduced above."))
     return out
 
 

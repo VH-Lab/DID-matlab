@@ -235,6 +235,50 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           path: did-schema
 
+      - name: Resolve the NDI-matlab ref
+        id: ndi-ref
+        # Same fallback as test-code.yml:78-88, and the reason is the same: most
+        # DID-side branches have no NDI-side twin, and the chosen ref is PRINTED
+        # either way -- "we read production" and "we read main" are different
+        # claims and must not look alike in a log.
+        run: |
+          want="${{ github.head_ref || github.ref_name }}"
+          if git ls-remote --exit-code --heads \
+               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
+            echo "NDI-matlab HAS branch '$want' -- reading it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out NDI-matlab (sibling, required by coverage.py)
+        # WITHOUT THIS THE RUNG MEASURES NOTHING, and run 31572667236 proved it:
+        # every job green, and `coverage.py` printed `ledger: SKIPPED
+        # (NDI-matlab sibling not found)` then exited 0, so the rung read back
+        # an untouched ledger and reported all 102 rows NOT MEASURED. A correct
+        # answer from an unfed instrument.
+        #
+        # FULL AND NON-SPARSE, UNLIKE test-code.yml's checkout of the same
+        # repository, and the difference is load-bearing rather than incidental.
+        # That one reads `local.m` as TEXT and takes `sparse-checkout:
+        # src/ndi/+ndi/+migrate` with `fetch-depth: 1`. `coverage.py` reads NDI
+        # templates from `origin/main` VIA GIT -- CLAUDE.md records that a
+        # shallow clone here DOES NOT ERROR: the ref lookup falls through and
+        # the tool reports a SMALLER UNIVERSE. Copying the sparse pattern would
+        # have produced a plausible, wrong number instead of a missing one,
+        # which is worse.
+        #
+        # NOT continue-on-error. There it degrades to a SKIP the test handles;
+        # here the sibling is the input, and a rung computed without it is the
+        # silent zero this step exists to stop.
+        uses: actions/checkout@v4
+        with:
+          repository: VH-Lab/NDI-matlab
+          ref: ${{ steps.ndi-ref.outputs.ref }}
+          path: NDI-matlab
+          fetch-depth: 0
+
       - name: Download every corpus report
         uses: actions/download-artifact@v4
         with:
