@@ -8,3 +8,18 @@ releases/
 *.m~
 *.sqlite
 __pycache__
+
+# CORPUS RUN OUTPUT -- written into the repo root, never committed.
+#
+# `tests/+did2/+unittest/+helpers/writeCorpusReport.m` writes `corpus-reports/`
+# and `tools/corpus_proven.py` writes `corpus-proven/`. Both are CI artifacts,
+# uploaded by test-code.yml and test-corpus.yml; neither is source.
+#
+# `corpus-proven/` holds a REGENERATED COPY of DID-schema's
+# V_eta_coverage_ledger.json (441 KB). Committing it here would put a second,
+# unowned copy of another repository's generated artifact under version control
+# in this one -- the drift this project has spent the day removing, installed
+# fresh. Neither directory has ever been tracked (`git ls-files corpus-reports/`
+# -> 0); this makes that deliberate rather than luck.
+corpus-reports/
+corpus-proven/
