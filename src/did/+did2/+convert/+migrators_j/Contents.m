@@ -532,7 +532,7 @@
 %   gate diffs this block against the generator and a hand edit fails it. To
 %   change an entry, change that migrator's H1 and re-run with --write.
 %
-%   81 migrator(s).
+%   83 migrator(s).
 %
 %     binaryseries_parameters
 %         Brainstorm-J migrator: did_v1 binaryseries_parameters -- a GUARDED
@@ -634,6 +634,17 @@
 %         dataset edge per member session (best-effort; dropped by
 %         resolveDatasetEntities when a linked member session is not in the batch).
 %         The assembly/reconstruction fields are dropped as NDI-internal handles.
+%     demo_ndi
+%         Brainstorm-J migrator: did_v1 `demoNDI` -> the V_eta `demo` class, 1 -> 1
+%         with base.id PRESERVED, `value` carried and `is_mock` FALSE. Part of the 3
+%         -> 1 demo collapse signed by the team on 2026-08-06 (did-schema
+%         `tools/build_v_eta.py:1817-1867`); the fold itself is in private/jDemoFold.
+%     demo_ndi_mock
+%         Brainstorm-J migrator: did_v1 `demoNDIMock` -> the V_eta `demo` class, 1 ->
+%         1 with base.id PRESERVED, the INHERITED `demoNDI.value` carried and
+%         `is_mock` TRUE. The other half of the 3 -> 1 demo collapse signed by the
+%         team on 2026-08-06 (did-schema `tools/build_v_eta.py:1817-1867`); the fold
+%         itself is in private/jDemoFold.
 %     distance_metadata
 %         Brainstorm-J migrator: reshape a did_v1 distance_metadata into the validated
 %         V_eta distance_metadata. 1 -> 1.
