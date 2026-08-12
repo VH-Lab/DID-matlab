@@ -66,6 +66,54 @@ function bodies = vmspikefilteringparameters(preBody)
 %   tombstone unchanged.
 %
 %   ------------------------------------------------------------------
+%   OPEN, MEASURED 2026-08-12: THE GUARD PATH LANDS ON A TOMBSTONE THAT
+%   CANNOT ACCEPT THE DOCUMENT. NOT A REGRESSION -- AN INHERITED HOLE.
+%   ------------------------------------------------------------------
+%   The guard preserves the document; the tombstone it falls back to then
+%   rejects it, TWICE, and neither rejection is visible from this file alone.
+%   Sweep of the four spike-settings classes, template literal vs V_eta
+%   declared type:
+%
+%     DENOMINATOR: 4 classes, 4 NDI origin/main templates read,
+%                  44 template literal field(s) compared
+%     DIVERGENCES: 2 -- both on this class, both only on the guard path
+%       threshold    literal=string  declared=double
+%       spiketimes   literal=string  declared=double  (mustBeScalar true)
+%
+%   1. `threshold`. NDI's TEMPLATE writes the string "0.030"; NDI's own
+%      schema_documents pair declares it `"type": "number"`, and the V_eta
+%      tombstone followed the schema. +did2/+schema/cache.m validateTypeShape
+%      case {'double','matrix'} raises did2:validation:typeMismatch on
+%      ~isnumeric, so the char "0.030" quarantines.
+%   2. `spiketimes`. Declared double with mustBeScalar true, while the guard
+%      fires PRECISELY when spiketimes is a non-empty ARRAY of event times, so
+%      cache.m isScalarValue -> otherwise -> isscalar([...]) is false and
+%      did2:validation:notScalar fires as well.
+%
+%   THE TEMPLATE AND NDI'S OWN SCHEMA DISAGREE AND THERE IS NO WRITER TO BREAK
+%   THE TIE. The ground-truth rule settles template-vs-writer; it says nothing
+%   about template-vs-schema_documents, and this class is the case with no
+%   third voice (see the "THERE IS NO WRITER" denominator above). So the fix is
+%   a TEAM CALL on the tombstone, not a migrator change: coercing the string
+%   here would be the guess this whole repair track exists to remove, and
+%   dropping either field would discard real content rather than a placeholder
+%   (contrast testTemplateLiteralTypeTraps, where "the repair is to DROP the
+%   placeholder, never to coerce it" applies because '' IS the placeholder).
+%
+%   WHY NO TEST GATES THIS: testMigratorsJMethodParams drives the guard through
+%   runJ, which passes Validate=false, and its one validating test
+%   (testMethodParametersValidatesAgainstItsSchema) drives vmspikeBody with
+%   spiketimes '' -- the FOLD path. So the pair has never been validated
+%   together. A test asserting the quarantine would assert the bug, which this
+%   project inverts rather than adds; it is recorded here instead so the next
+%   reader meets it before a corpus run does.
+%
+%   SIZE UNMEASURED: this container has no MATLAB and no corpus artifacts, so
+%   how many real documents carry a non-empty `spiketimes` is unknown. Per the
+%   standing rule the corpora are a SAMPLE, and absence from them would not
+%   settle it either.
+%
+%   ------------------------------------------------------------------
 %   FIELD DISPOSITION on the folding path -- nothing dropped
 %   ------------------------------------------------------------------
 %     refract        -> parameter `refractory period`.  UNIFIES with
