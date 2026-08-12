@@ -217,6 +217,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Check out did-schema (sibling, for the per-class rung)
+        # WITHOUT THIS THE REPORTS AND THE TOOL NEVER COEXIST IN THIS JOB.
+        # `corpus_proven.py` invokes did-schema's `tools/coverage.py
+        # --corpus-reports` rather than reimplementing the verdict, so it needs
+        # the sibling checked out. `test-code.yml` is a SINGLE job and already
+        # had one; this workflow is two (`corpus` builds the reports, `census`
+        # digests them), and only `corpus` checked out did-schema -- so the one
+        # job holding the reports was the one job that could not read them.
+        #
+        # Same ref expression as test-code.yml:39-51, deliberately: the three
+        # repos share a branch name, and off-PR runs (push / workflow_dispatch,
+        # where head_ref is empty) fall back to ref_name.
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: ${{ github.head_ref || github.ref_name }}
+          path: did-schema
+
       - name: Download every corpus report
         uses: actions/download-artifact@v4
         with:
@@ -235,10 +253,36 @@ jobs:
         # files, printed "NO CORPUS REPORTS FOUND" and went GREEN.
         run: python3 tools/census_digest.py corpus-reports tests/corpus-reports
 
+      - name: Per-class corpus proof (the CORPUS-PROVEN rung)
+        # The only rung that can say a v1 class is DONE. It reads each report's
+        # `source_census.by_class` -- keyed by the v1 SOURCE class -- and hands
+        # the roots to did-schema's `coverage.py --corpus-reports`.
+        #
+        # A CORPUS-LEVEL ZERO IS A SOUND UPPER BOUND, and that is what makes
+        # this computable at all: failure counters are keyed by the EMITTED
+        # V_eta class, and 25 of 85 targets are reachable from more than one
+        # source (48 sources have no unshared target), so a failure often
+        # cannot be attributed. When the run is globally clean there is nothing
+        # to attribute and every class present is proven; when it is not, the
+        # tool names the AMBIGUOUS BY CONSTRUCTION classes instead of guessing.
+        #
+        # `if: always()` for the same reason the digest above has it: a corpus
+        # failure is exactly when this evidence matters most.
+        if: always()
+        run: |
+          python3 tools/corpus_proven.py --schema-repo did-schema \
+              corpus-reports tests/corpus-reports
+
       - name: Upload combined reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: corpus-discovery-reports
-          path: corpus-reports/
+          # `corpus-proven/` is the rung step's output -- the rendered rung,
+          # the machine-readable verdicts, coverage.py's stdout and the
+          # regenerated ledger. Named explicitly so the evidence survives the
+          # run even when a corpus is red.
+          path: |
+            corpus-reports/
+            corpus-proven/
           if-no-files-found: ignore
