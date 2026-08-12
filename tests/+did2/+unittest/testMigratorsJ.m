@@ -2446,8 +2446,15 @@ end
 
 function testDaqreaderNdrDeEncodesToDaqreader(testCase)
 % Chunk c: daqreader_ndr de-encodes onto daqreader -- the ndr subtype fields move
-% (ndr_reader_string -> reader_string, file_extension carried, ndi_daqreader_ndr_class
-% dropped) and the daqreader_ndr block is removed. Tested on the migrator FUNCTION
+% (ndr_reader_string -> reader_string, ndi_daqreader_ndr_class dropped) and the
+% daqreader_ndr block is removed. Tested on the migrator FUNCTION
+%
+% THIS COMMENT SAID "file_extension carried" AND THIS TEST ASSERTS THE OPPOSITE
+% ~29 LINES BELOW. Corrected 2026-08-12. The field is DELETED by the signed
+% daq-configuration decision, no V_eta schema declares it (0 of 247), and the
+% migrator makes no assignment to it -- every remaining mention in that file is
+% a comment. The same wrong clause was in the migrator's own docstring and in
+% DID-schema's build_v_eta.py, each a few lines from something contradicting it.
 % directly (the quick CI's V_zeta schema still has daqreader_ndr; under the V_eta
 % corpus run daqreader_ndr is gone and the folded daqreader validates).
 body = struct();
