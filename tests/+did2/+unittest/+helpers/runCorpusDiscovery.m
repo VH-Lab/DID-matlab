@@ -426,6 +426,37 @@ catch retentionErr
     result.epoch_string_retention = struct('audit_failed', retentionErr.message);
 end
 
+% REFERENCE-INTEGRITY SWEEP -- COMPUTED HERE, AND THE POSITION IS THE WHOLE
+% POINT OF THIS BLOCK. It used to run ~65 lines BELOW writeCorpusReport, which
+% meant the number existed, was asserted, and could never reach the artifact
+% the digest reads. The corpus gate is quoted everywhere in this project as
+% "0 quarantine + 0 orphans"; `quarantine_count` has been persisted since the
+% report was written and `orphan_count` never has, so EVERY "0 quarantine +
+% 0 orphans" ever quoted from a digest has quoted one measurement and one
+% silence (V_eta_OPEN_WORK.md #101). The assert stays where it was, below --
+% only the COMPUTATION moved up, so the gate's behaviour is unchanged and the
+% figure now also lands in <corpus>-summary.json.
+%
+% STILL BEST-EFFORT, for the reason every instrument above it is: writeCorpusReport
+% is the next statement, and an uncaught throw here would cost the corpus its
+% entire census to protect a counter. The catch is deliberately NOT widened to
+% the assert -- that stays outside, below, so a real orphan still fails the job.
+%
+% A FAILED SWEEP AND A CORPUS THAT NEVER SWEPT MUST NOT RENDER ALIKE. If the
+% validator throws we persist the block anyway, carrying `audit_failed` and no
+% counts; a corpus that never calls the validator (testCorpusPRED does not)
+% persists no block at all. The digest tells those two apart and prints both as
+% NOT MEASURED rather than as 0 -- an absent count is never summed as a zero.
+refRep = [];
+refErrMsg = '';
+try
+    refRep = did2.validate.references(result.migrated);
+catch refReportErr
+    refErrMsg = refReportErr.message;
+    fprintf('reference report skipped: %s\n', refErrMsg);
+end
+result.reference_integrity = referenceIntegrityBlock(refRep, refErrMsg);
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 
@@ -490,12 +521,12 @@ end
 % only logging it. Building the report is still best-effort (a failure to run
 % the validator must not mask the migrated/quarantine signal), but the
 % resulting orphan_count is asserted below, outside the catch.
-refRep = [];
-try
-    refRep = did2.validate.references(result.migrated);
-catch refReportErr
-    fprintf('reference report skipped: %s\n', refReportErr.message);
-end
+%
+% THE COMPUTATION MOVED ABOVE writeCorpusReport so the count reaches the
+% artifact; `refRep` is the SAME struct this block always asserted on, and this
+% site is unchanged apart from no longer computing it. Deliberately NOT
+% recomputed here: two sweeps could disagree, and then the number in the report
+% and the number in the gate would be different numbers wearing one name.
 if ~isempty(refRep)
     fprintf('\n--- reference integrity (%s): %d orphan(s) of %d edges ---\n', ...
         corpusName, refRep.orphan_count, refRep.edges_examined);
@@ -567,6 +598,68 @@ if ~isempty(counts)
     [counts, order] = sort(counts, 'descend');
     names = names(order);
 end
+end
+
+function block = referenceIntegrityBlock(refRep, errMsg)
+%REFERENCEINTEGRITYBLOCK The persistable form of did2.validate.references.
+%   The second half of the "0 quarantine + 0 orphans" gate, shaped so it can be
+%   written into <corpus>-summary.json and rendered by tools/census_digest.py.
+%
+%   `audit` NAMES THE INSTRUMENT INSIDE THE BLOCK. The digest finds this block
+%   BY SHAPE rather than by key name -- guessing a key name and then reporting
+%   ABSENT when the guess missed is the demo_ndi failure (a query against a
+%   string the input never contained, reported as a fact about the input). A
+%   self-describing block means the FAILED case is findable by shape too, and
+%   not only the successful one.
+%
+%   TWO DENOMINATORS, BOTH CARRIED, because one of them is the whole reason a
+%   zero here is readable. `orphan_count == 0` with `edges_examined == 0` means
+%   the sweep looked at nothing; `orphan_count == 0` with `edges_examined` in
+%   the hundreds of thousands means every edge resolved. Those are opposite
+%   findings and they print the same digit.
+%
+%   THE `orphans` ARRAY IS A CAPPED SAMPLE AND THE CAP ANNOUNCES ITSELF, the
+%   same rule v1_to_v2's quarantine sample follows: a silent truncation is how
+%   a report starts lying. JH alone carries >900k edges, so an unbounded array
+%   would put a multi-hundred-megabyte artifact in the failure case -- exactly
+%   the run whose report you need. `orphan_rows` is the COMPLETE aggregate
+%   (bounded by the number of distinct class.edge pairs, not by the number of
+%   orphans), so no count is lost to the cap: the sample shows what one looked
+%   like, the rows say how many there were.
+sampleCap = 200;
+if isempty(refRep)
+    % NOT a zero. The sweep did not produce a report, and the reason travels
+    % with the block so "the audit failed" and "this corpus never swept"
+    % (testCorpusPRED calls did2.validate.references at no point) are
+    % different output rather than one shared silence.
+    if isempty(errMsg)
+        errMsg = 'did2.validate.references returned no report';
+    end
+    block = struct('audit', 'did2.validate.references', ...
+        'audit_failed', errMsg);
+    return;
+end
+[names, counts] = aggregateOrphans(refRep.orphans);
+rows = struct('key', {}, 'count', {});
+for k = 1:numel(names)
+    rows(end+1) = struct('key', names{k}, 'count', counts(k)); %#ok<AGROW>
+end
+shown = min(sampleCap, numel(refRep.orphans));
+% BUILT FIELD BY FIELD RATHER THAN WITH struct(...). struct() EXPANDS a cell
+% value into a struct ARRAY, and `orphan_rows` / `orphans` are arrays here;
+% one of them arriving as a cell would silently turn this single block into an
+% N-element struct array and the digest would then see a shape no test covers.
+% This code has never been executed (no MATLAB in the authoring container), so
+% it is written to have one behaviour rather than a documented one.
+block = struct();
+block.audit = 'did2.validate.references';
+block.total_docs = refRep.total_docs;
+block.edges_examined = refRep.edges_examined;
+block.orphan_count = refRep.orphan_count;
+block.orphan_rows = rows;
+block.orphans_shown = shown;
+block.orphan_sample_cap = sampleCap;
+block.orphans = refRep.orphans(1:shown);
 end
 
 

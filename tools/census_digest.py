@@ -4574,15 +4574,32 @@ def render_legacy_ndi_document(r, out):
 # entirely. So every "0 quarantine + 0 orphans" ever quoted from a digest has
 # quoted one measurement and one silence.
 #
-# THE NUMBER EXISTS AND IS NOT IN THE ARTIFACT THIS DIGEST READS.
-# `did2.validate.references` returns `orphan_count`, `edges_examined`,
-# `total_docs` and an `orphans` row per dangling edge;
+# THE NUMBER EXISTS AND -- UNTIL 2026-08-12 -- WAS NOT IN THE ARTIFACT THIS
+# DIGEST READS. `did2.validate.references` returns `orphan_count`,
+# `edges_examined`, `total_docs` and an `orphans` row per dangling edge;
 # `runCorpusDiscovery` calls it and hard-asserts `orphan_count == 0`. But it
-# calls it AFTER `writeCorpusReport` has already written the *-summary.json,
-# and `writeCorpusReport` persists no orphan field at all -- so the figure
-# reaches the runner's log and dies there. `testCorpusPRED` never calls
-# `did2.validate.references` at any point, so the corpus we hard-gate on is not
-# orphan-checked even in its log.
+# called it ~65 lines AFTER `writeCorpusReport` had already written the
+# *-summary.json, and `writeCorpusReport` persisted no orphan field at all --
+# so the figure reached the runner's log and died there.
+#
+# THE WIRING IS NOW BUILT (V_eta_OPEN_WORK.md #101): the sweep is computed
+# ABOVE `writeCorpusReport`, stashed on `result.reference_integrity`, and
+# persisted. THE THREE PARAGRAPHS ABOVE ARE KEPT IN THE PAST TENSE RATHER THAN
+# DELETED, because the ABSENT branch below is not dead code and a reader needs
+# to know what an absence means. IT HAS THREE CAUSES NOW, and they are
+# different findings:
+#
+#   * `testCorpusPRED` STILL never calls `did2.validate.references` at any
+#     point. The corpus we hard-gate on is not orphan-checked even in its log,
+#     so PRED renders NOT MEASURED. That is the gap #101 named and it is NOT
+#     closed by persisting the count -- there is no count on that path to
+#     persist. It is a MATLAB change, deliberately not made with the wiring.
+#   * a report written by a run that PREDATES the wiring carries no block. Run
+#     31556573159 (`326eb9b`) was in flight while this was written and its
+#     artifacts are in exactly that state.
+#   * the sweep itself threw. That block IS persisted, carrying `audit_failed`,
+#     so "the instrument broke" and "this corpus never ran it" are told apart
+#     rather than sharing one silence.
 #
 # THIS BLOCK THEREFORE PRINTS "ABSENT", LOUDLY, RATHER THAN NOT PRINTING. An
 # instrument that omits a counter it cannot find is indistinguishable from one
@@ -4595,13 +4612,21 @@ def render_legacy_ndi_document(r, out):
 # says nothing whatever about dangling references. One is "the edge is blank",
 # the other is "the edge names a document that is not there".
 #
-# THE BLOCK IS FOUND BY SHAPE, NOT BY NAME. Nothing has been persisted yet, so
-# no key name is settled; guessing one and reporting ABSENT when the guess
-# missed would be `demo_ndi` again -- a query against a string the input has
-# never contained, reported as a fact about the input. Any top-level object
+# THE BLOCK IS FOUND BY SHAPE, NOT BY NAME, and it stays that way now that the
+# harness does persist one. Guessing a key name and reporting ABSENT when the
+# guess missed would be `demo_ndi` again -- a query against a string the input
+# has never contained, reported as a fact about the input. Any top-level object
 # carrying `orphan_count` is rendered, whatever it is called, and the key's
-# name is printed so the reader knows what was read.
+# name is printed so the reader knows what was read. (The harness calls it
+# `reference_integrity`; this digest does not require that and must not.)
 ORPHAN_MARKER_FIELD = "orphan_count"
+
+# A FAILED sweep has no `orphan_count` to be found by, so it names ITSELF: the
+# harness stamps the block with the instrument that produced it. That keeps the
+# failure case discoverable by shape exactly like the success case, instead of
+# falling back to a key-name guess for the one branch where the reader most
+# needs a reason.
+REFERENCE_AUDIT_NAME = "did2.validate.references"
 
 # The shape `did2.validate.references` actually returns. Rendered in this
 # order: both denominators before the finding, per Rule 5.
@@ -4624,6 +4649,21 @@ def _orphan_keys_by_name(r):
     return sorted(k for k in r if isinstance(k, str) and "orphan" in k.lower())
 
 
+def _reference_audit_failed(r):
+    """A block that NAMES itself as this audit and reports that it failed.
+
+    Found BY SHAPE like the success case -- the block carries `audit` set to
+    the instrument's own name -- so a broken instrument and a corpus that never
+    ran one are different output rather than one shared silence. Returns
+    (key, message), or (None, None) when no such block is present.
+    """
+    for k, v in sorted(r.items()):
+        if (isinstance(v, dict) and v.get("audit") == REFERENCE_AUDIT_NAME
+                and "audit_failed" in v):
+            return k, v["audit_failed"]
+    return None, None
+
+
 def orphan_block(r):
     """Find one report's reference-integrity block BY SHAPE. Absent is not 0."""
     if not isinstance(r, dict):
@@ -4642,6 +4682,10 @@ def orphan_block(r):
     elif ORPHAN_MARKER_FIELD in r:
         key, block = "<top level>", r
     else:
+        failedKey, msg = _reference_audit_failed(r)
+        if failedKey is not None:
+            return {"measured": False, "key": failedKey, "audit_failed": True,
+                    "why": "the reference-integrity sweep FAILED (%s)" % msg}
         return {"measured": False, "key": None, "absent": True,
                 "named": _orphan_keys_by_name(r),
                 "why": "no top-level object in this report carries `%s`"
@@ -4655,36 +4699,83 @@ def orphan_block(r):
 
 
 def _orphan_rows(block):
-    """Aggregate the `orphans` array to (class.edge -> count), desc."""
+    """Aggregate dangling edges to (class.edge -> count).
+
+    PREFERS `orphan_rows` -- the COMPLETE aggregate the harness persists --
+    over counting the `orphans` array, which is a CAPPED SAMPLE (JH alone
+    carries >900k edges, so an unbounded array would put a
+    multi-hundred-megabyte artifact in exactly the failing run whose report you
+    need). Counting the sample while the complete table sits beside it would
+    understate every row in that run: a truncation reported as a count, which
+    is how a report starts lying.
+
+    Falls back to `orphans` so a report written by an older harness -- or by
+    anything else that returns the raw `did2.validate.references` shape -- still
+    renders. Both paths go through aslist: jsonencode emits a 1-element struct
+    array as a bare object.
+    """
     rows = {}
+    for o in aslist(block.get("orphan_rows")):
+        if not isinstance(o, dict):
+            continue
+        key, n = o.get("key"), o.get("count")
+        if isinstance(key, str) and isinstance(n, int) and not isinstance(n, bool):
+            rows[key] = rows.get(key, 0) + n
+    if rows:
+        return rows
     for o in aslist(block.get("orphans")):
         if not isinstance(o, dict):
             continue
-        rows["%s.%s" % (o.get("doc_class", "?"), o.get("edge_name", "?"))] = (
-            rows.get("%s.%s" % (o.get("doc_class", "?"),
-                                o.get("edge_name", "?")), 0) + 1)
+        key = "%s.%s" % (o.get("doc_class", "?"), o.get("edge_name", "?"))
+        rows[key] = rows.get(key, 0) + 1
     return rows
 
 
 def _orphan_absent_note(p, indent, plural):
     """Say what is missing, why it is not a zero, and what would change it."""
     p("%s*** THIS IS NOT A ZERO, AND IT IS NOT A CLEAN RESULT. It is the" % indent)
-    p("%s*** HALF OF THE GATE THAT WAS NEVER RENDERED. The gate this" % indent)
+    p("%s*** HALF OF THE GATE THAT WAS NOT MEASURED HERE. The gate this" % indent)
     p("%s*** project quotes is '0 quarantine + 0 orphans'; the quarantine" % indent)
-    p("%s*** half is printed above, the orphan half has never appeared in" % indent)
-    p("%s*** any digest output." % indent)
-    p("%sWHERE THE NUMBER IS TODAY: `did2.validate.references` computes" % indent)
-    p("%s`orphan_count` / `edges_examined` and `runCorpusDiscovery` asserts it" % indent)
-    p("%s-- but it runs AFTER `writeCorpusReport` has written this file, and" % indent)
-    p("%s`writeCorpusReport` persists no orphan field, so the figure reaches" % indent)
-    p("%sthe runner's log and stops. `testCorpusPRED` never calls it at all." % indent)
-    p("%sTO CLOSE IT: persist the reference report into the *-summary.json" % indent)
-    p("%s(any key -- this digest finds it by shape) and call the validator in" % indent)
-    p("%sthe PRED path too. This digest renders it the moment it is there;" % indent)
-    p("%sthat wiring is a MATLAB change and is deliberately not made here." % indent)
+    p("%s*** half is printed above, and for this report the orphan half is" % indent)
+    p("%s*** missing rather than clean." % indent)
+    p("%sTHE WIRING EXISTS AS OF 2026-08-12: runCorpusDiscovery computes" % indent)
+    p("%s`did2.validate.references` ABOVE writeCorpusReport and persists it as" % indent)
+    p("%s`reference_integrity`. So an absence now has three causes, and they" % indent)
+    p("%sare different findings -- do not read it as one:" % indent)
+    p("%s  (1) testCorpusPRED NEVER CALLS did2.validate.references, at any" % indent)
+    p("%s      point. PRED is hard-gated and has no orphan figure even in its" % indent)
+    p("%s      log, so there is nothing on that path to persist. Persisting" % indent)
+    p("%s      the count did NOT close this; it is a MATLAB change still open." % indent)
+    p("%s  (2) the report was written by a run PREDATING the wiring." % indent)
+    p("%s  (3) the sweep threw -- but that case persists a block carrying" % indent)
+    p("%s      `audit_failed` and prints its reason, so if you are reading" % indent)
+    p("%s      this line without one, it was not (3)." % indent)
     p("%sNOT THE SAME FACT AS AN EMPTY EDGE: `references.m:90` SKIPS an edge" % indent)
     p("%swhose document_id is empty, so the empty-required-edge census above" % indent)
     p("%scannot substitute for %s." % (indent, plural))
+
+
+def _orphan_sample_note(p, block, orphans, indent):
+    """Announce the cap on the `orphans` array, rather than truncating quietly.
+
+    The harness persists at most `orphan_sample_cap` raw entries and the
+    COMPLETE per-row aggregate beside them. Silence here would let a reader
+    count the sample and quote it as the finding.
+    """
+    shown = block.get("orphans_shown")
+    if not isinstance(shown, int) or isinstance(shown, bool):
+        return
+    if not isinstance(orphans, int) or shown >= orphans:
+        return
+    cap = block.get("orphan_sample_cap")
+    p("%s*** the `orphans` array is a CAPPED SAMPLE: %d of %d shown%s."
+      % (indent, shown, orphans,
+         (" (cap %d)" % cap) if isinstance(cap, int)
+         and not isinstance(cap, bool) else ""))
+    p("%s*** the row counts below are read from `orphan_rows`, the COMPLETE"
+      % indent)
+    p("%s*** aggregate, so they are NOT truncated -- do not recount the" % indent)
+    p("%s*** sample and quote that instead." % indent)
 
 
 def render_reference_integrity(r, out):
@@ -4694,6 +4785,19 @@ def render_reference_integrity(r, out):
     if not m["measured"]:
         p("  ORPHAN depends_on EDGES: *** NOT MEASURED IN THIS REPORT ***")
         p("      %s." % m["why"])
+        if m.get("audit_failed"):
+            # The instrument broke. That is a DIFFERENT finding from a corpus
+            # that never ran it, and the reason above is the whole reason the
+            # harness persists a block on the failure path at all.
+            p("      *** THE SWEEP RAN AND THREW. This is an INSTRUMENT")
+            p("      *** FAILURE, not a corpus that skipped the check and not")
+            p("      *** a zero. The orphan gate below still asserted on")
+            p("      *** whatever the harness had; fix the sweep before")
+            p("      *** reading any orphan figure from this run.")
+            p("      NOT THE SAME FACT AS AN EMPTY EDGE: `references.m:90`")
+            p("      skips an edge whose document_id is empty, so the")
+            p("      empty-required-edge census above cannot substitute for it.")
+            return
         named = m.get("named")
         if named:
             p("      A key whose NAME mentions an orphan IS present (%s) and"
@@ -4714,6 +4818,7 @@ def render_reference_integrity(r, out):
     p("      NOT the empty-required-edge census above: `references.m:90` skips")
     p("      an edge whose document_id is empty, so the two counters can never")
     p("      substitute for one another.")
+    _orphan_sample_note(p, block, m["orphans"], "      ")
     rows = _orphan_rows(block)
     if rows:
         for key, n in sorted(rows.items(), key=lambda kv: (-kv[1], kv[0]))[:15]:
@@ -4729,6 +4834,7 @@ def rollup_reference_integrity(reports, out):
     measured, unmeasured = [], []
     totals = {"total_docs": 0, "edges_examined": 0, ORPHAN_MARKER_FIELD: 0}
     rows = {}
+    edge_addends, orphan_addends = [], []
     for i, r in enumerate(reports):
         name = str((r or {}).get("corpus") or "report #%d" % (i + 1))
         m = orphan_block(r)
@@ -4741,6 +4847,9 @@ def rollup_reference_integrity(reports, out):
                 totals[key] += int(m["block"].get(key) or 0)
             except (TypeError, ValueError):
                 pass
+        edge_addends.append(
+            (name, _int_or_none(m["block"].get("edges_examined")) or 0))
+        orphan_addends.append((name, m["orphans"]))
         for key, n in _orphan_rows(m["block"]).items():
             rows[key] = rows.get(key, 0) + n
 
@@ -4762,6 +4871,26 @@ def rollup_reference_integrity(reports, out):
           % (len(measured), len(reports)))
         p("      *** not quote them as a whole-corpus figure.")
     _ea_rows(totals, ORPHAN_BLOCK_ROWS, out, indent="        ")
+    # THE ADDENDS, NAMED, and the counter they came from NAMED with them --
+    # the rule the silent-loss rollup exists to enforce. That total was once
+    # recorded 26 documents light because one corpus's `migrated_count` was
+    # read for its `inspected`, two lines apart in the same block. This block
+    # has the identical hazard: `edges_examined`, `total_docs` and
+    # `orphan_count` sit three lines apart and only one of them is the
+    # denominator for the finding.
+    p("      addends -- `edges_examined`, NOT `total_docs` and NOT "
+      "`orphan_count`:")
+    p("      %s = %d"
+      % (" + ".join("%s %d" % (n, v) for n, v in edge_addends) or "(none)",
+         totals["edges_examined"]))
+    p("      addends -- `orphan_count`, the finding:")
+    p("      %s = %d"
+      % (" + ".join("%s %d" % (n, v) for n, v in orphan_addends) or "(none)",
+         totals[ORPHAN_MARKER_FIELD]))
+    if totals["edges_examined"] == 0:
+        p("      *** 0 EDGES EXAMINED ACROSS EVERY MEASURED CORPUS. The sweep")
+        p("      *** looked at nothing, so the orphan total is VACUOUS rather")
+        p("      *** than clean -- 'untested', not '0 orphans'.")
     p("      %d orphan(s) across %d row(s)" % (sum(rows.values()), len(rows)))
     for key, n in sorted(rows.items(), key=lambda kv: (-kv[1], kv[0])):
         p("      %8d  %s" % (n, key))

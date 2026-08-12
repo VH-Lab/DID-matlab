@@ -4117,13 +4117,22 @@ class TestReferenceIntegrity(DigestCase):
         self.assertIn("THIS IS NOT A ZERO", text)
 
     def test_the_absent_message_says_what_would_have_to_change(self):
-        # "Report what would have to change to measure it" -- the wiring is a
-        # MATLAB change and is named, not made.
+        # "Report what would have to change to measure it". THIS ASSERTION
+        # MOVED 2026-08-12 and the move is the finding: the note used to say
+        # "writeCorpusReport persists no orphan field", which was true and is
+        # no longer -- the persistence landed. An absence now has THREE causes
+        # and the note has to name them, because reading a post-wiring absence
+        # as the pre-wiring one would send a reader to fix something already
+        # fixed while the real cause (PRED) went untouched.
         self.write("Bare", self.BARE)
         text, _failed = self.run_digest()
         self.assertIn("did2.validate.references", text)
         self.assertIn("writeCorpusReport", text)
-        self.assertIn("`testCorpusPRED` never calls it at all", text)
+        self.assertIn("THE WIRING EXISTS AS OF 2026-08-12", text)
+        self.assertIn("testCorpusPRED NEVER CALLS did2.validate.references",
+                      text)
+        self.assertIn("PREDATING the wiring", text)
+        self.assertIn("audit_failed", text)
 
     def test_orphans_and_empty_edges_are_never_conflated(self):
         # references.m:90 skips empty edges, which is why mustBeNonEmpty on a
@@ -4232,6 +4241,221 @@ class TestReferenceIntegrity(DigestCase):
         self.assertIn("NOT MEASURED in: Lacks", text)
         self.assertIn("sums over 1 corpora, not 2", text)
         self.assertIn("1 orphan(s) across 1 row(s)", text)
+
+
+class TestReferenceIntegrityPersisted(DigestCase):
+    """THE HALF THAT WAS BUILT 2026-08-12 -- the count now REACHES the report.
+
+    `V_eta_OPEN_WORK.md` #101: the orphan half of the "0 quarantine + 0
+    orphans" gate was asserted by `runCorpusDiscovery` and never persisted,
+    because `did2.validate.references` ran ~65 lines AFTER `writeCorpusReport`.
+    The sweep now runs ABOVE it and the block lands on
+    `result.reference_integrity`.
+
+    EVERY FIXTURE HERE IS THE SHAPE `referenceIntegrityBlock` EMITS, not a
+    shape convenient for the digest -- `audit`, both denominators, the COMPLETE
+    `orphan_rows` aggregate and the CAPPED `orphans` sample. A test written
+    from the digest's own premise cannot catch the digest.
+    """
+
+    BARE = {"corpus": "X", "total": 10, "migrated_count": 12,
+            "quarantine_count": 0,
+            "silent_loss": {"total_docs": 12, "skipped_docs": 0}}
+
+    def harness_block(self, edges, orphans=(), cap=200):
+        """Exactly what tests/+did2/+unittest/+helpers/runCorpusDiscovery.m
+        `referenceIntegrityBlock` builds, JSON-encoded."""
+        rows = {}
+        for o in orphans:
+            key = "%s.%s" % (o["doc_class"], o["edge_name"])
+            rows[key] = rows.get(key, 0) + 1
+        return {
+            "audit": "did2.validate.references",
+            "total_docs": 12,
+            "edges_examined": edges,
+            "orphan_count": len(orphans),
+            "orphan_rows": [{"key": k, "count": n} for k, n in
+                            sorted(rows.items(), key=lambda kv: -kv[1])],
+            "orphans_shown": min(cap, len(orphans)),
+            "orphan_sample_cap": cap,
+            "orphans": list(orphans)[:cap],
+        }
+
+    def write_corpus(self, name, block=None):
+        r = dict(self.BARE, corpus=name)
+        if block is not None:
+            r["reference_integrity"] = block
+        self.write(name, r)
+
+    def orphan(self, cls="stimulus_presentation", edge="element_id", i=0):
+        return {"doc_id": "d%d" % i, "doc_class": cls, "edge_name": edge,
+                "edge_document_id": "missing%d" % i}
+
+    # --- 1. THE CLEAN CASE ------------------------------------------------
+    def test_clean_run_renders_a_zero_WITH_the_denominator_that_earns_it(self):
+        # The whole point of persisting `edges_examined` beside the count. A
+        # clean run must not print the same thing as a run that swept nothing.
+        self.write_corpus("Soph", self.harness_block(254304))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("254304", text)
+        self.assertIn("NON-EMPTY depends_on edge(s) examined", text)
+        self.assertIn("0  ORPHAN(S): edge names a document not in the batch",
+                      text)
+        self.assertNotIn("NOT MEASURED IN THIS REPORT", text)
+        # the SPECIFIC phrase -- a bare "VACUOUS" also matches the unrelated
+        # "VACUOUS REQUIRED FIELDS" heading further down the digest.
+        self.assertNotIn("VACUOUS rather than clean", text)
+
+    def test_a_clean_zero_and_a_swept_nothing_are_DIFFERENT_output(self):
+        # The requirement in one test: both print `orphan_count: 0`, and the
+        # reader must be able to tell them apart from the output alone.
+        self.write_corpus("Real", self.harness_block(254304))
+        clean, _ = self.run_digest()
+        shutil.rmtree(self.dir, ignore_errors=True)
+        os.mkdir(self.dir)
+        self.write_corpus("Empty", self.harness_block(0))
+        vacuous, _ = self.run_digest()
+        self.assertNotIn("VACUOUS rather than clean", clean)
+        self.assertIn("0 EDGES EXAMINED", vacuous)
+        self.assertIn("VACUOUS rather than clean", vacuous)
+
+    def test_the_rollup_flags_a_run_where_NO_corpus_examined_an_edge(self):
+        # The per-corpus vacuity check existed; the rollup summed 0 + 0 and
+        # printed a clean-looking total.
+        self.write_corpus("A", self.harness_block(0))
+        self.write_corpus("B", self.harness_block(0))
+        text, _ = self.run_digest()
+        self.assertIn("0 EDGES EXAMINED ACROSS EVERY MEASURED CORPUS", text)
+        self.assertIn("'untested', not '0 orphans'", text)
+
+    # --- 2. THE ORPHANS-FOUND CASE ---------------------------------------
+    def test_orphans_found_are_counted_named_and_summed(self):
+        self.write_corpus("JH", self.harness_block(
+            900000, [self.orphan(i=0), self.orphan(i=1),
+                     self.orphan("image_observation", "subject_id", 2)]))
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("2  stimulus_presentation.element_id", text)
+        self.assertIn("1  image_observation.subject_id", text)
+        self.assertIn("3 orphan(s) across 2 row(s)", text)
+
+    def test_row_counts_come_from_the_COMPLETE_aggregate_not_the_SAMPLE(self):
+        # THE TRUNCATION TRAP. JH carries >900k edges, so the raw array is
+        # capped; counting the sample while the complete table sits beside it
+        # understates every row in exactly the run whose report you need.
+        block = self.harness_block(
+            900000, [self.orphan(i=i) for i in range(10)], cap=3)
+        self.assertEqual(len(block["orphans"]), 3)      # the sample IS capped
+        self.assertEqual(block["orphan_rows"][0]["count"], 10)
+        self.write_corpus("JH", block)
+        text, _ = self.run_digest()
+        self.assertIn("10  stimulus_presentation.element_id", text)
+        self.assertNotIn("3  stimulus_presentation.element_id", text)
+        self.assertIn("10 orphan(s) across 1 row(s)", text)
+
+    def test_the_cap_announces_itself(self):
+        # v1_to_v2's rule, applied here: a silent truncation is how a report
+        # starts lying.
+        self.write_corpus("JH", self.harness_block(
+            900000, [self.orphan(i=i) for i in range(10)], cap=3))
+        text, _ = self.run_digest()
+        self.assertIn("CAPPED SAMPLE: 3 of 10 shown (cap 3)", text)
+        self.assertIn("NOT truncated", text)
+
+    def test_an_uncapped_run_does_NOT_claim_a_truncation(self):
+        self.write_corpus("Small", self.harness_block(
+            50, [self.orphan(i=0)], cap=200))
+        text, _ = self.run_digest()
+        self.assertNotIn("CAPPED SAMPLE", text)
+
+    def test_a_single_orphan_row_arrives_as_an_OBJECT_not_a_list(self):
+        # jsonencode emits a 1-element struct array as a bare object. Every
+        # list-shaped read goes through aslist -- including the new one.
+        block = self.harness_block(50, [self.orphan(i=0)])
+        block["orphan_rows"] = block["orphan_rows"][0]
+        self.write_corpus("One", block)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("1  stimulus_presentation.element_id", text)
+
+    # --- 3. THE NOT-MEASURED CASE -- AND PRED IS THE ONE THAT MATTERS -----
+    def test_PRED_renders_UNMEASURED_and_is_never_summed_as_a_zero(self):
+        # `testCorpusPRED.m` never calls did2.validate.references at any point
+        # (0 matches), so persisting the count did NOT give PRED one. A corpus
+        # we hard-gate on and never measure is a denominator missing from every
+        # figure we quote -- and it must not read as a clean zero.
+        for name in ("20211116", "B", "Dab", "JH", "Soph"):
+            self.write_corpus(name, self.harness_block(1000))
+        self.write_corpus("PRED", None)          # exactly what PRED writes
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("DENOMINATOR: 6 corpus report(s); 5 carried an orphan "
+                      "count, 1 did not", text)
+        self.assertIn("NOT MEASURED in: PRED", text)
+        self.assertIn("sums over 5 corpora, not 6", text)
+        self.assertIn("testCorpusPRED NEVER CALLS did2.validate.references",
+                      text)
+        # and the sums are over the five that measured, not six
+        self.assertIn("= 5000", text)
+
+    def test_the_addends_are_NAMED_and_the_counter_is_named_with_them(self):
+        # The 562,422-vs-562,448 lesson: a total whose inputs are three screens
+        # up gets re-derived by hand, and the hand picks up the adjacent line.
+        # `edges_examined`, `total_docs` and `orphan_count` sit three lines
+        # apart in this very block.
+        self.write_corpus("B", self.harness_block(14181))
+        self.write_corpus("Dab", self.harness_block(30354,
+                                                    [self.orphan(i=0)]))
+        text, _ = self.run_digest()
+        self.assertIn("addends -- `edges_examined`, NOT `total_docs` and NOT "
+                      "`orphan_count`:", text)
+        self.assertIn("B 14181 + Dab 30354 = 44535", text)
+        self.assertIn("addends -- `orphan_count`, the finding:", text)
+        self.assertIn("B 0 + Dab 1 = 1", text)
+
+    def test_a_FAILED_sweep_is_not_an_absent_one(self):
+        # The block is persisted on the failure path too, naming the audit, so
+        # "the instrument broke" and "this corpus never ran it" are different
+        # output rather than one shared silence.
+        self.write_corpus("Broke", {"audit": "did2.validate.references",
+                                    "audit_failed": "Out of memory."})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("NOT MEASURED IN THIS REPORT", text)
+        self.assertIn("the reference-integrity sweep FAILED (Out of memory.)",
+                      text)
+        self.assertIn("THE SWEEP RAN AND THREW", text)
+        self.assertIn("INSTRUMENT", text)
+
+    def test_a_failed_sweep_does_not_claim_the_report_predates_the_wiring(self):
+        # The three causes of an absence are different findings; the PER-CORPUS
+        # failure branch must not print the other two. A measured sibling is
+        # written alongside on purpose -- with ONLY a broken corpus the ROLLUP
+        # correctly falls back to the generic note that lists all three causes,
+        # and asserting against that would be asserting against correct output.
+        self.write_corpus("Good", self.harness_block(1000))
+        self.write_corpus("Broke", {"audit": "did2.validate.references",
+                                    "audit_failed": "boom"})
+        text, _ = self.run_digest()
+        self.assertIn("THE SWEEP RAN AND THREW", text)
+        self.assertNotIn("PREDATING the wiring", text)
+
+    def test_a_failed_sweep_is_named_in_the_rollup_and_not_summed(self):
+        self.write_corpus("Good", self.harness_block(1000))
+        self.write_corpus("Broke", {"audit": "did2.validate.references",
+                                    "audit_failed": "boom"})
+        text, _ = self.run_digest()
+        self.assertIn("NOT MEASURED in: Broke (the reference-integrity sweep "
+                      "FAILED (boom))", text)
+        self.assertIn("sums over 1 corpora, not 2", text)
+
+    def test_an_orphan_and_an_empty_edge_are_never_conflated_here_either(self):
+        # references.m:90 SKIPS an empty edge, so it cannot dangle and cannot
+        # be counted here. Said in the measured branch, not only the absent one.
+        self.write_corpus("Soph", self.harness_block(254304))
+        text, _ = self.run_digest()
+        self.assertIn("references.m:90", text)
 
 
 class TestEpochStringRetention(DigestCase):

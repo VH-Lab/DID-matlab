@@ -18,6 +18,16 @@ function reportPath = writeCorpusReport(corpusName, result, reasons)
 %   key and IS tested (TestLegacyNdiDocumentBlock in
 %   tools/test_census_digest.py, run green), so the Python half is covered and
 %   the MATLAB half is not.
+%
+%   STATUS of the 2026-08-12 edit (`reference_integrity`): THE SAME AGAIN, and
+%   said again rather than inherited from the two paragraphs above it. Written
+%   with NO MATLAB and NO OCTAVE in the container (`command -v matlab`,
+%   `octave`, `octave-cli` all exit 1), NOT EXECUTED; CI is its first run. The
+%   Python half IS covered and was run green: tools/census_digest.py renders
+%   the key and TestReferenceIntegrity in tools/test_census_digest.py exercises
+%   the clean, orphans-found, not-measured, audit-failed and truncated-sample
+%   cases. The MATLAB half -- that runCorpusDiscovery puts the block on
+%   `result` in this shape -- is unexecuted.
 
 reportDir = fullfile(pwd, 'corpus-reports');
 if ~exist(reportDir, 'dir')
@@ -35,6 +45,36 @@ report = struct( ...
     'by_class',          result.summary.by_class, ...
     'quarantine_reasons', reasons);
 
+% THE SECOND HALF OF THE HEADLINE CORPUS GATE, PERSISTED FOR THE FIRST TIME.
+% The gate is quoted everywhere in this project as "0 quarantine + 0 orphans".
+% `quarantine_count` is four lines above and has been in this report since it
+% was written; the orphan half was computed by `did2.validate.references`,
+% hard-asserted by runCorpusDiscovery, and then DROPPED -- the validator ran
+% ~65 lines AFTER this function, so the figure reached the runner's log and
+% died there, and no digest has ever rendered it (V_eta_OPEN_WORK.md #101).
+% This file's own comment at the valid_interval block says "both are 0
+% quarantine and 0 orphans" while the second of those two fields was not
+% written. So every "0 quarantine + 0 orphans" quoted from a digest has quoted
+% one measurement and one silence.
+%
+% WRITTEN AS A BLOCK, NOT A BARE COUNT, and the extra fields are not padding:
+% `edges_examined` is the denominator that makes the zero readable. A run where
+% every edge resolved and a run where no edge was examined both print
+% `orphan_count: 0`, and nothing else in this report can tell them apart.
+%
+% AN ORPHAN IS NOT AN EMPTY EDGE. `+did2/+validate/references.m:90` SKIPS an
+% edge whose document_id is empty, which is why `mustBeNonEmpty` on a
+% depends_on is decorative -- so `silent_loss`'s empty-required-edge census
+% below and this counter answer different questions and neither may ever be
+% quoted for the other.
+%
+% ABSENT IS NOT ZERO: written only when runCorpusDiscovery put it there.
+% `testCorpusPRED` never calls `did2.validate.references` at all, so PRED's
+% report carries no such key and the digest prints it as NOT MEASURED rather
+% than summing a zero it does not have. That gap is stated, not closed here.
+if isfield(result, 'reference_integrity')
+    report.reference_integrity = result.reference_integrity;
+end
 % Phase 1 report-only census (V_eta_ground_truth_plan.md): data that migrates
 % away without tripping any gate. Persisted in the uploaded artifact so the
 % count is reviewable per corpus without re-reading a 2.5-hour log.
