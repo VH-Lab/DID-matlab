@@ -78,10 +78,21 @@ function tests = testMigratorsJDaqConfiguration
 %     testDaqsystemPassthroughValidatesUnderVEta
 %         -> testDaqsystemClassNameFoldValidatesUnderVEta
 %
-%   A residual passthrough remains and is still tested: a body with NO class name
-%   AND NO edges has nothing to declare, so `daqsystem` stays in `_KEEP_INFRA`
-%   and its tombstone still has to validate
-%   (testDaqsystemTombstoneStillExistsForTheEmptyBody).
+%   A residual passthrough remains, and CI showed it does NOT do what this
+%   paragraph claimed. It read: "a body with NO class name AND NO edges has
+%   nothing to declare, so `daqsystem` stays in `_KEEP_INFRA` and its tombstone
+%   still has to validate". The tombstone does not validate that body -- it
+%   REQUIRES `filenavigator_id`, `daqreader_id` and the `ndi_daqsystem_class`
+%   field non-empty, which are the same three absences that route a body to the
+%   passthrough in the first place. The branch is therefore a quarantine path by
+%   construction, unreachable for real data (NDI writes the class name on every
+%   document), and pinned as such by
+%   testTheResidualPassthroughIsAQuarantinePathByConstruction.
+%
+%   THAT CORRECTION IS WHY THE LINE BELOW MATTERS, and it stayed true for
+%   exactly one commit: nothing here had been executed when it was written, and
+%   the first execution refuted a claim in this header. `daqsystem` does stay in
+%   `_KEEP_INFRA` -- that half is right, and unrelated to the passthrough.
 %
 %   NOT VERIFIED BY EXECUTION: there is no MATLAB in the authoring environment,
 %   so none of these tests has been run.
@@ -562,19 +573,49 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
 end
 
-function testDaqsystemTombstoneStillExistsForTheEmptyBody(testCase)
-% THE PASSTHROUGH SAFETY NET DID NOT GO AWAY WITH THE GUARD, and it must not.
-% `daqsystem` is still in build_v_eta.py's `_KEEP_INFRA` and NOT in
-% `_DELETE_PHASE8`, so the residual passthrough -- a body with no class name AND
-% no edges -- still has a schema to validate against. Deleting a source tombstone
-% ahead of its migrator is what put 2,484 corpus-B documents in quarantine once;
-% this test is what would say so.
+function testTheResidualPassthroughIsAQuarantinePathByConstruction(testCase)
+% INVERTED 2026-08-12, ON ITS FIRST EXECUTION. It was
+% `testDaqsystemTombstoneStillExistsForTheEmptyBody` and asserted
+% quarantine_count 0 with the body surviving as `daqsystem`. CI says 1 and
+% nothing survives, and CI is right -- the assertion was written from intent
+% while the schema says the opposite.
+%
+% THE CONTRADICTION, and it is exact. `migrators_j/daqsystem.m:251` takes the
+% residual passthrough only when implClass AND navId AND readerId AND mdIds are
+% ALL empty. The `daqsystem` tombstone requires three of those same things:
+%
+%     filenavigator_id       mustBeNonEmpty TRUE
+%     daqreader_id           mustBeNonEmpty TRUE
+%     ndi_daqsystem_class    mustBeNonEmpty TRUE   (a field)
+%
+% So THE ONLY BODY THAT REACHES THE PASSTHROUGH IS THE ONE THE TOMBSTONE CANNOT
+% VALIDATE. With #37 RequiredDependencies and #38 NonVacuousFields both ARMED,
+% that is a quarantine, not a rescue. The migrator's comment at :253 -- "the
+% source at least still carries its base identity" -- describes a preservation
+% that does not happen, and is corrected there.
+%
+% WHY THIS IS NOT A REGRESSION TO FIX BY RELAXING THE SCHEMA. Those three
+% constraints are the tombstone restated from the NDI writer, which sets
+% `ndi_daqsystem_class` on every document it creates and gives every real rig a
+% filenavigator and a daqreader. An all-empty `daqsystem` is not a document NDI
+% can produce; it is a hollow one, and #38 exists to catch exactly that. Loosening
+% the tombstone to admit it would trade a real guard for an unreachable case.
+%
+% WHAT IS LEFT OPEN, and it belongs to the team rather than to this test: the
+% residual branch is now DEAD FOR REAL DATA and a TRAP if it ever fires. Either
+% it should go, or it should refuse loudly instead of emitting a body that
+% quarantines downstream. This test pins the behaviour as it is so the choice is
+% made deliberately and not discovered in a corpus run.
 assumeVEtaSchemas(testCase);
 v1 = daqsystemV1('', {});
 v1.depends_on = struct('name', {}, 'id', {});
 out = runJValidated(v1);
-verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
-verifyEqual(testCase, classNames(out), {'daqsystem'});
+verifyEqual(testCase, out.summary.quarantine_count, 1, ...
+    ['an all-empty daqsystem is a HOLLOW document: the tombstone requires ' ...
+     'two edges and a field it does not have. Quarantine is #37/#38 working, ' ...
+     'not a defect -- see this test''s header before changing either side.']);
+verifyEmpty(testCase, classNames(out), ...
+    'nothing survives, so the passthrough preserves nothing');
 end
 
 function testTheFoldsLeaveNoEmptyRequiredEdgeAndNoFragment(testCase)

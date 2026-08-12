@@ -250,7 +250,25 @@ mdIds    = dependencyFamily(preBody, 'daqmetadatareader_id');
 
 if isempty(implClass) && isempty(navId) && isempty(readerId) && isempty(mdIds)
     % Nothing to declare. An acquisition_system with no edges and no fields is a
-    % hollow document; the source at least still carries its base identity.
+    % hollow document.
+    %
+    % THE NEXT CLAUSE USED TO READ "the source at least still carries its base
+    % identity", AND THAT IS FALSE. Measured on this branch's first execution of
+    % it (CI, 2026-08-12): the body passed through here QUARANTINES. The
+    % `daqsystem` tombstone requires `filenavigator_id` and `daqreader_id`
+    % non-empty and the `ndi_daqsystem_class` FIELD non-empty -- the same three
+    % facts whose absence is the condition for arriving here. So the only body
+    % that reaches this branch is the only body the tombstone rejects, and with
+    % #37 RequiredDependencies and #38 NonVacuousFields armed it is dropped, not
+    % preserved. The passthrough rescues nothing.
+    %
+    % IT IS LEFT AS IT IS, DELIBERATELY, and pinned by
+    % testTheResidualPassthroughIsAQuarantinePathByConstruction. NDI sets
+    % `ndi_daqsystem_class` on every document it writes and gives every real rig
+    % a filenavigator and a daqreader, so this branch is unreachable for real
+    % data; relaxing the tombstone to admit a hollow document would trade a live
+    % guard for a case that cannot occur. Whether the branch should be deleted or
+    % made to refuse LOUDLY is a team call, recorded rather than taken here.
     %
     % `implClass` JOINED THIS TEST WHEN THE GUARD WAS DELETED. Before 2026-08-12
     % a class name meant "pass through" (it had no home); now it is the one fact
