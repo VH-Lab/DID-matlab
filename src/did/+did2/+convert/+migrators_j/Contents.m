@@ -180,24 +180,30 @@
 %                          it the other way round. Guarded passthrough when the
 %                          block declares neither field.
 %                          TEAM-SIGN-OFF [daq configuration], jess 2026-08-08.
-%     daqsystem          - 1 -> 1 -> `acquisition_system` (<- entity; base.id AND
+%     daqsystem          - 1 -> 2 -> `acquisition_system` (<- entity; base.id AND
 %                          base.name PRESERVED -- the name is the probe->device
-%                          join key, strcmpi'd at +ndi/+daq/system.m:229).
+%                          join key, strcmpi'd at +ndi/+daq/system.m:229)
+%                          + a `software` entity for its own implementation class.
 %                          filenavigator_id -> epoch_file_pattern_id,
 %                          daqreader_id -> reader_id, and the NUMBERED family
 %                          daqmetadatareader_id_# -> acquisition_metadata_reader_#
 %                          (re-indexed from 1, skipping the template's empty bare
 %                          entry). TEAM-SIGN-OFF [daq configuration], jess
 %                          2026-08-08.
-%                          PASSTHROUGH ON EVERY REAL DOCUMENT TODAY, BY DESIGN:
-%                          `acquisition_system` declares no fields, so the
-%                          source's `ndi_daqsystem_class` has no home -- and it is
-%                          the object-reconstruction key, read through a
-%                          CONSTRUCTED field name at
+%                          THE GUARD IS GONE (2026-08-12) AND THE FOLD IS LIVE.
+%                          This entry read "PASSTHROUGH ON EVERY REAL DOCUMENT
+%                          TODAY, BY DESIGN": `acquisition_system` declared no
+%                          fields, so the source's `ndi_daqsystem_class` had no
+%                          home -- and it is the object-reconstruction key, read
+%                          through a CONSTRUCTED field name at
 %                          +ndi/+database/+fun/ndi_document2ndi_object.m:38-42
-%                          (reached from +ndi/session.m:167-169). Naming a second
-%                          `software` edge on acquisition_system is a team call,
-%                          so the fold stays guarded until it is taken.
+%                          (reached from +ndi/session.m:167-169). jess named the
+%                          home on 2026-08-12 (option A): acquisition_system
+%                          gained a second software edge, `software_id`, and the
+%                          class name now folds to a `software` entity exactly as
+%                          filenavigator's and daqmetadatareader's do. Only a body
+%                          with NO class name AND NO edges still passes through.
+%                          1 -> 1 when there is no class name to fold.
 %     image_stack        - 1 -> 3. -> a body-backed image_observation
 %                          (storage_mode: body; modality on the spine variable,
 %                          geometry/format inline on the `image` mixin) + a

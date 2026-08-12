@@ -5,7 +5,7 @@ function tests = testMigratorsJDaqConfiguration
 %
 %     daqreader          -> `software`                    (dissolves, id preserved)
 %     daqmetadatareader  -> `acquisition_metadata_reader` + `software`
-%     daqsystem          -> `acquisition_system`          (GUARDED -- see below)
+%     daqsystem          -> `acquisition_system` + `software`   (LIVE 2026-08-12)
 %
 %   The fourth member of the family, `filenavigator` -> `epoch_file_pattern`,
 %   already has a migrator and its own test file
@@ -53,19 +53,35 @@ function tests = testMigratorsJDaqConfiguration
 %         has to skip an empty bare entry and re-index from 1.
 %
 %   ---------------------------------------------------------------------
-%   HALF THE daqsystem TESTS DRIVE A GUARD, NOT A FOLD -- DELIBERATELY
+%   THE daqsystem GUARD IS GONE (2026-08-12) AND TWO TESTS ARE INVERTED
 %   ---------------------------------------------------------------------
-%   `acquisition_system` declares NO fields, so the source's one field,
-%   `ndi_daqsystem_class`, has nowhere to land -- and it is not dead weight: it
+%   `acquisition_system` declared NO fields, so the source's one field,
+%   `ndi_daqsystem_class`, had nowhere to land -- and it is not dead weight: it
 %   is the object-reconstruction key, read at
 %   +ndi/+database/+fun/ndi_document2ndi_object.m:38-42 via a CONSTRUCTED field
 %   name (`['ndi_' obj_parent_string '_class']`) that no literal grep finds, and
-%   reached from +ndi/session.m:167-169 (daqsystem_load). Naming a second
-%   software edge on `acquisition_system` is a team decision, so until it is
-%   taken the migrator passes every real document through. Both branches are
-%   tested: a test that drove only the fold would assert behaviour the corpus
-%   never reaches, and a test that drove only the guard would not notice the
-%   fold rotting.
+%   reached from +ndi/session.m:167-169 (daqsystem_load). So the migrator passed
+%   every real document through, and half these tests drove the guard.
+%
+%   jess@walthamdatascience.com named the home on 2026-08-12: option A, a SECOND
+%   software edge, `software_id`, so the class name folds to a `software` entity
+%   like the other three in this family. (Prose, not a signature line; the
+%   signature for this family is in did-schema
+%   schemas/V_eta_daq_family_decisions.md.)
+%
+%   TWO TESTS WERE INVERTED IN PLACE, NOT DELETED, because the old ones asserted
+%   a DELIBERATE non-conversion and one of them said in its own comment that
+%   inversion -- not patching -- was the correct treatment:
+%
+%     testDaqsystemPassesThroughWhileTheClassNameHasNoHome
+%         -> testDaqsystemClassNameNowFoldsToASoftwareEntity
+%     testDaqsystemPassthroughValidatesUnderVEta
+%         -> testDaqsystemClassNameFoldValidatesUnderVEta
+%
+%   A residual passthrough remains and is still tested: a body with NO class name
+%   AND NO edges has nothing to declare, so `daqsystem` stays in `_KEEP_INFRA`
+%   and its tombstone still has to validate
+%   (testDaqsystemTombstoneStillExistsForTheEmptyBody).
 %
 %   NOT VERIFIED BY EXECUTION: there is no MATLAB in the authoring environment,
 %   so none of these tests has been run.
@@ -357,28 +373,98 @@ end
 
 % ===================== daqsystem -> acquisition_system =====================
 
-function testDaqsystemPassesThroughWhileTheClassNameHasNoHome(testCase)
-% THE LIVE BEHAVIOUR ON EVERY REAL DOCUMENT. +ndi/+daq/system.m:486 sets
-% ndi_daqsystem_class on every daqsystem it writes, and `acquisition_system`
-% declares no fields, so the fold would drop the object-reconstruction key
+function testDaqsystemClassNameNowFoldsToASoftwareEntity(testCase)
+% THE INVERSION, 2026-08-12. This test was
+% `testDaqsystemPassesThroughWhileTheClassNameHasNoHome` and asserted the exact
+% opposite: a populated ndi_daqsystem_class meant PASS THROUGH, because
+% `acquisition_system` had no home for the object-reconstruction key
 % (+ndi/+database/+fun/ndi_document2ndi_object.m:38-42, reached from
-% +ndi/session.m:167-169). Passing through loses nothing and is visible in
-% `unconverted_by_class`.
+% +ndi/session.m:167-169).
 %
-% WHEN THE TEAM NAMES A HOME, THIS TEST IS INVERTED, NOT PATCHED: it asserts a
-% deliberate non-conversion, so "updating" it to expect a fold would erase the
-% only record that the guard was intentional.
+% The old test's own comment demanded this treatment -- "WHEN THE TEAM NAMES A
+% HOME, THIS TEST IS INVERTED, NOT PATCHED" -- so the assertion is REVERSED in
+% place rather than deleted, and the history stays legible. The team named the
+% home on 2026-08-12 (jess@walthamdatascience.com, option A: a second software
+% edge, `software_id`).
+%
+% THIS IS THE SHAPE OF EVERY REAL DOCUMENT: +ndi/+daq/system.m:486 writes
+% class(obj) into ndi_daqsystem_class on every daqsystem NDI creates, so this
+% test -- not the empty-class-name one below -- is the corpus path.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
-verifyEqual(testCase, classNames(out), {'daqsystem'});
-verifyEqual(testCase, out.summary.unconverted_count, 1);
+verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
+verifyEqual(testCase, out.summary.unconverted_count, 0);
+
+sys = firstOfClass(out, 'acquisition_system');
+sw  = firstOfClass(out, 'software');
+
+% The class name is carried as the software entity's identity, and the edge
+% points at THAT document -- not at a string field, which acquisition_system
+% still does not have ("fields": []).
+verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.system.mfdaq');
+verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.daq.system.mfdaq');
+verifyEqual(testCase, depValue(sys, 'software_id'), sw.get('base.id'));
+
+% v1's daqsystem template has ONE field and it is the class name, so there is no
+% version to invent. verifyEmpty + verifyClass rather than verifyEqual(...,''),
+% for the reason spelled out in testDaqreaderDissolvesIntoSoftware.
+verifyClass(testCase, sw.get('software.version'), 'char');
+verifyEmpty(testCase, sw.get('software.version'));
+end
+
+function testDaqsystemSoftwareIdIsDistinctFromReaderId(testCase)
+% THE WHOLE POINT OF THE SECOND EDGE. Both point at `software`, and they must
+% name DIFFERENT documents: `software_id` is the rig's OWN implementation class,
+% `reader_id` is the daqreader's preserved base.id -- a different component
+% entirely. A fold that collapsed them would silently claim the rig and its
+% reader are the same software.
+out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {}));
+sys = firstOfClass(out, 'acquisition_system');
+verifyEqual(testCase, depValue(sys, 'reader_id'), 'reader_id_1');
+verifyNotEqual(testCase, depValue(sys, 'software_id'), 'reader_id_1');
+verifyNotEqual(testCase, depValue(sys, 'software_id'), '');
+end
+
+function testDaqsystemSoftwareTakesAFreshIdNotTheSystemsOwn(testCase)
+% THE DIFFERENCE FROM daqreader.m, asserted so it cannot drift. daqreader
+% DISSOLVES, so its base.id MOVES to the software document or four templates'
+% `daqreader_id` edges dangle. A daqsystem does NOT dissolve -- its base.id stays
+% on the acquisition_system, which is also where base.name (THE JOIN KEY) lives
+% -- so the software entity gets a fresh id, as in filenavigator.m and
+% daqmetadatareader.m. Overwriting it here would give two documents one id.
+out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {}));
+sys = firstOfClass(out, 'acquisition_system');
+sw  = firstOfClass(out, 'software');
+verifyEqual(testCase, sys.get('base.id'), 'system_id_1');
+verifyNotEqual(testCase, sw.get('base.id'), 'system_id_1');
+end
+
+function testDaqsystemWithAClassNameAndNoEdgesStillConverts(testCase)
+% BEFORE 2026-08-12 THIS BODY PASSED THROUGH: a class name was not
+% something-to-declare (it had no home), so a daqsystem with nothing but a class
+% name fell into the "nothing to declare" branch. It now carries a document on
+% its own, via software_id, so the branch had to learn about implClass. The
+% companion assertion -- that a body with NEITHER a class name NOR edges still
+% passes through -- is testDaqsystemWithNoEdgesAtAllPassesThrough below.
+v1 = daqsystemV1('ndi.daq.system.image', {});
+v1.depends_on = struct('name', {}, 'id', {});
+out = runJ(v1);
+verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
+sys = firstOfClass(out, 'acquisition_system');
+verifyNotEqual(testCase, depValue(sys, 'software_id'), '');
+verifyFalse(testCase, hasDependency(sys, 'reader_id'));
 end
 
 function testDaqsystemFoldsTheThreeEdges(testCase)
-% The fold itself, driven through a body with no ndi_daqsystem_class -- the one
-% shape the guard lets past today.
+% The three v1 edges, driven through a body with no ndi_daqsystem_class so that
+% ONLY the edge mapping is under test. This body is no longer "the one shape the
+% guard lets past" -- there is no guard -- but it is still worth keeping
+% separate: it is the one shape that emits an acquisition_system with NO
+% software beside it, which is what makes software_id's optionality real rather
+% than theoretical.
 out = runJ(daqsystemV1('', {'md_id_1', 'md_id_2'}));
 verifyEqual(testCase, classNames(out), {'acquisition_system'});
 sys = out.migrated{1};
+verifyFalse(testCase, hasDependency(sys, 'software_id'));
 verifyEqual(testCase, depValue(sys, 'reader_id'), 'reader_id_1');
 verifyEqual(testCase, depValue(sys, 'epoch_file_pattern_id'), 'nav_id_1');
 verifyEqual(testCase, depValue(sys, 'acquisition_metadata_reader_1'), 'md_id_1');
@@ -458,15 +544,37 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 verifyEqual(testCase, classNames(out), {'acquisition_system'});
 end
 
-function testDaqsystemPassthroughValidatesUnderVEta(testCase)
-% The passthrough is only SAFE because `daqsystem` is still in the built set
-% (build_v_eta.py `_KEEP_INFRA`, NOT `_DELETE_PHASE8`) and its depends_on was
-% repaired in the schema half. Deleting a source tombstone ahead of its migrator
-% is what put 2,484 corpus-B documents in quarantine once; this test is what
-% would say so.
+function testDaqsystemClassNameFoldValidatesUnderVEta(testCase)
+% THE CORPUS PATH UNDER THE REAL VALIDATOR, and it is the assertion that would
+% have caught a REQUIRED `software_id`. #37 RequiredDependencies is ARMED by
+% default (+did2/+schema/cache.m:967-968), so had the new edge been declared
+% required, every daqsystem whose class name is absent would quarantine here.
+% It is declared OPTIONAL, and this test plus testDaqsystemFoldsTheThreeEdges
+% (which emits NO software at all) cover both sides of that choice.
+%
+% This test was `testDaqsystemPassthroughValidatesUnderVEta` and asserted that
+% the same body survived validation AS A daqsystem. The passthrough it protected
+% is gone; what it was really guarding -- that this body reaches the validator
+% cleanly -- is kept, now against the folded shape.
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
+verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
+end
+
+function testDaqsystemTombstoneStillExistsForTheEmptyBody(testCase)
+% THE PASSTHROUGH SAFETY NET DID NOT GO AWAY WITH THE GUARD, and it must not.
+% `daqsystem` is still in build_v_eta.py's `_KEEP_INFRA` and NOT in
+% `_DELETE_PHASE8`, so the residual passthrough -- a body with no class name AND
+% no edges -- still has a schema to validate against. Deleting a source tombstone
+% ahead of its migrator is what put 2,484 corpus-B documents in quarantine once;
+% this test is what would say so.
+assumeVEtaSchemas(testCase);
+v1 = daqsystemV1('', {});
+v1.depends_on = struct('name', {}, 'id', {});
+out = runJValidated(v1);
+verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
+verifyEqual(testCase, classNames(out), {'daqsystem'});
 end
 
 function testTheFoldsLeaveNoEmptyRequiredEdgeAndNoFragment(testCase)
@@ -480,6 +588,18 @@ verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
 verifyEqual(testCase, out.summary.fragment_count, 0);
 
 out = runJValidated(daqsystemV1('', {'md_id_1'}));
+verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
+verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
+verifyEqual(testCase, out.summary.fragment_count, 0);
+
+% AND THE CORPUS SHAPE, added 2026-08-12 with the second software edge. This is
+% the check condition 1 of the signed decision asks for by name
+% (V_eta_daq_family_decisions.md:273 -- "check those edge names BY NAME in the
+% silentLoss output rather than trusting quarantine=0"): every edge on
+% acquisition_system is OPTIONAL and +did2/+validate/references.m:90 SKIPS empty
+% edges, so quarantine_count alone cannot see a `software_id` that was declared
+% and left blank.
+out = runJValidated(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
 verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
 verifyEqual(testCase, out.summary.fragment_count, 0);
