@@ -200,19 +200,37 @@ function c = controlBlock(tc, block)
 % NOT MAPPED, and this is the evidenced refusal rather than an oversight:
 %       control_individual_responses_real       -> (nothing)
 %       control_individual_responses_imaginary  -> (nothing)
-% They are the two halves of ONE COMPLEX quantity, not two quantities. The only reader
-% of them in NDI recombines them before using either -- tuning_response.m:820-823:
-%       control_ind{i} = ...control_individual_responses_real{i} + ...
-%           sqrt(-1)*...control_individual_responses_imaginary{i};
-%       control_ind_real{i} = control_ind{i};
-%       if any(~isreal(control_ind_real{i})), control_ind_real{i} = abs(...); end
-% So the real-valued per-trial control matrix that the composite slot `control_individual`
-% holds (DID-schema conversions/from_did_v1/orientation_direction_tuning.md:38,75-77 and
-% speed_tuning.md:34,59-62: "per-trial control responses", matrix<double>, rows index
-% sampled points and columns index trials) is abs(real + i*imag), NOT the real part.
-% Aliasing `_real` onto `control_individual` would therefore relabel a COMPONENT as the
-% WHOLE, and would be wrong for exactly the modulated (F1) data the imaginary part exists
-% for. The honest alternative -- minting `control_individual_real` and
+% They are the two halves of ONE COMPLEX quantity, not two quantities.
+%
+% AN EARLIER REVISION OF THIS PARAGRAPH SAID "THE ONLY READER OF THEM IN NDI". THERE ARE
+% TWO, AND THE SECOND ONE PROVES THE POINT OUTRIGHT INSTEAD OF SUGGESTING IT. Both
+% recombine before using either half; the sweep, case-insensitive over NDI origin/main:
+%
+%   DENOMINATOR: 927 tracked .m file(s), `git grep -in control_individual_responses`
+%   src/ndi/+ndi/+app/+stimulus/tuning_response.m   :404 :445-446 :464-467 :476-477
+%                                                   :493-494 :719-722 :820-821 :865-898
+%   src/ndi/+ndi/+app/oridirtuning.m                :145-146          <-- WAS MISSED
+%
+% And `oridirtuning.m` is not merely a second reader: it is a FIRST-PARTY NDI WRITER OF
+% `orientation_direction_tuning` (`ndi.document('orientation_direction_tuning', ...` at
+% :205), so it states what the composite slot holds in its own code rather than by
+% inference. Verified on NDI origin/main (42c94e5), same line numbers:
+%
+%   :145-148  control_ind{i} = ...control_individual_responses_real{i} + ...
+%                 sqrt(-1)*...control_individual_responses_imaginary{i};
+%             control_ind_real{i} = control_ind{i};
+%             if any(~isreal(control_ind_real{i})), control_ind_real{i} = abs(...); end
+%   :182      'control_individual', vlt.data.cellarray2mat(control_ind_real));
+%
+% So `control_individual` IS abs(real + i*imag) -- by construction, in the writer's own
+% assignment -- and NOT the real part. Aliasing `_real` onto it would relabel a COMPONENT
+% as the WHOLE, and would be wrong for exactly the modulated (F1) data the imaginary part
+% exists for. This replaces the previous citation, which reached the same conclusion
+% through DID-schema's own conversions/from_did_v1/*.md; those are DID-SIDE derived
+% documents, and the ground-truth rule of this repair track is that a claim about did_v1
+% comes from the WRITER and never from a DID-side schema. The old citation was the kind
+% this track exists to stop using.
+% The honest alternative -- minting `control_individual_real` and
 % `control_individual_imaginary` -- invents two names that no writer and no V_eta slot
 % has, so it is reported instead: `tuning_curve.value.control_response` is declared in
 % DID-schema schemas/V_eta/draft/tuning_curve.json as a `structure` with "fields": [],

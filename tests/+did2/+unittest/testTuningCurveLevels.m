@@ -68,9 +68,31 @@ function tests = testTuningCurveLevels
 %   ---------------------------------------------------------------------
 %   EVERY FIXTURE IS BUILT FROM THE WRITER, AND THE WRITER IS NOT NDI-matlab
 %   ---------------------------------------------------------------------
-%   None of the five result classes ships an NDI-matlab template writer; the
+%   CORRECTED 2026-08-12: THIS SAID "None of the five result classes ships an
+%   NDI-matlab template writer" AND "EXACTLY ONE construction site". BOTH ARE FALSE
+%   FOR orientation_direction_tuning, and the positive evidence is on NDI origin/main
+%   (42c94e5) -- it ships BOTH a template and a first-party writer:
+%
+%       $ git ls-files | grep -i orientation_direction_tuning
+%         src/ndi/ndi_common/database_documents/stimulus/vision/oridir/
+%             orientation_direction_tuning.json
+%         src/ndi/ndi_common/schema_documents/stimulus/vision/oridir/
+%             orientation_direction_tuning_schema.json          (+ a _schema.json_old)
+%       $ git show origin/main:src/ndi/+ndi/+app/oridirtuning.m | grep -n ...
+%         182:   'control_individual', vlt.data.cellarray2mat(control_ind_real));
+%         205:   oriprops = ndi.document('orientation_direction_tuning', ...
+%
+%   THE FIXTURES SURVIVE THIS INTACT, which is why the file is corrected rather than
+%   rebuilt: oridirtuning.m:176-182 emits `tuning_curve` with exactly
+%   direction / mean / stddev / stderr / individual / raw_individual /
+%   control_individual -- 7 for 7 against oridirCurve() below, a writer nobody had
+%   consulted agreeing field-for-field with the mock-corpus reading. It matters anyway,
+%   because the ground-truth rule is that where template and WRITER disagree the WRITER
+%   wins, and an unconsulted first-party writer is exactly the thing that rule is about.
+%
+%   For the other FOUR the original statement stands: no NDI-matlab template, and the
 %   producing repo is VH-Lab/NDIcalc-vis-matlab at 65718ed (HEAD == origin/HEAD,
-%   153 tracked .m files). Each class has EXACTLY ONE construction site:
+%   153 tracked .m files). Construction sites, one per class:
 %
 %       contrast_tuning               +ndi/+calc/+vis/contrast_tuning.m:274
 %       orientation_direction_tuning  +ndi/+calc/+vis/oridir_tuning.m:257
@@ -517,11 +539,12 @@ end
 function testFlatRawCurveControlBlockIsExactlyTheThreeMappedNames(testCase)
 % DEFECT C's overshoot guard, and the record of the two names that are NOT mapped.
 % `control_individual_responses_real` and `_imaginary` are the two halves of ONE complex
-% quantity: NDI's only reader of them recombines them before using either
-% (tuning_response.m:820-823, `real + sqrt(-1)*imag`, then abs() if complex). The
-% composite slot `control_individual` holds the REAL-VALUED per-trial control matrix
-% (DID-schema conversions/from_did_v1/orientation_direction_tuning.md:38 and
-% speed_tuning.md:34), which is abs(real + i*imag) and NOT the real part -- so aliasing
+% quantity, and the composite slot `control_individual` holds the RECOMBINED, real-valued
+% per-trial matrix -- stated by a first-party NDI writer of orientation_direction_tuning
+% rather than inferred (`+ndi/+app/oridirtuning.m` on origin/main 42c94e5, :145-148 forms
+% `real + sqrt(-1)*imag` then abs()es it into control_ind_real, :182 assigns
+% `'control_individual', vlt.data.cellarray2mat(control_ind_real)`, :205 mints the
+% document). So control_individual IS abs(real + i*imag), NOT the real part, and aliasing
 % `_real` onto it would relabel a component as the whole, wrongly and silently, for
 % exactly the modulated data the imaginary part exists for. Minting new
 % `control_individual_real`/`_imaginary` keys instead would invent names no writer and
