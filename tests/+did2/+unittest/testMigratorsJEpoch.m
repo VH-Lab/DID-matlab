@@ -156,9 +156,29 @@ end
 
 function testIngestedDocumentStaysItsOwnClass(testCase)
 % #60 renames the class to `ingestion_manifest`. THE RENAME IS NOT DONE IN PASS
-% ONE and this asserts it, because a half-done rename is worse than none: the
-% target declares `epoch_id -> epoch` REQUIRED, and no `epoch` document exists
-% until the second pass mints one.
+% ONE and this asserts it, because a half-done rename is worse than none.
+%
+% THE ASSERTION IS UNCHANGED; ITS STATED REASON WAS STALE AND IS REPLACED
+% (2026-08-12), because the reason is the part a reader acts on. It read:
+%
+%   "the target declares `epoch_id -> epoch` REQUIRED, and no `epoch` document
+%    exists until the second pass mints one."
+%
+% Both halves have moved. `epoch` documents DO exist -- `did2.convert.epochMint`
+% mints them DID-side, not in the NDI second pass, and this very class is one of
+% its key sources (did2.validate.epochStrings reads
+% `body.epochfiles_ingested.epoch_id`; testEpochMint.m's
+% testTheIngestedManifestIsAKeySource asserts it). The mint landed 45 minutes
+% after the migrator this file tests, which is why neither knew.
+%
+% THE SURVIVING REASON IS `epochprobemap`. `ingestion_manifest` declares no home
+% for it (fields: ['files']; nor does `base`), it is non-empty on 2,484 of 2,484
+% corpus-B documents, and it is the per-epoch probe->subject attribution. The
+% signed decision is "B as the model, A as pass-1 behaviour". So a rename today
+% is a drop. Which half of the signature governs pass 1 is a TEAM question, recorded
+% in the migrator header -- not something this test may settle by going green
+% either way. See testTheProbemapAndEpochStringSurviveVerbatim below, which is
+% the other half of the pair.
 out = runJ(ingestedBody('efi_1', 'sess_A', 't00070', 'nav_1'));
 verifyEmpty(testCase, out.quarantine, 'epochfiles_ingested must not quarantine');
 verifyEqual(testCase, numel(out.migrated), 1, ...
@@ -194,9 +214,15 @@ end
 
 function testNoEpochEntityIsMintedInPassOne(testCase)
 % Minting one `epoch` per epoch id is a grouping over the whole corpus, so it
-% belongs to the NDI second pass (ndi.migrate.local, beside pathSPromotion) and
-% cannot happen here. Two independent whole-corpus lookups are involved and
-% neither is available to a single document:
+% cannot happen in a single-document migrator. Two independent whole-corpus
+% lookups are involved and neither is available to a single document:
+%
+% CORRECTED 2026-08-12: this said the mint "belongs to the NDI second pass
+% (ndi.migrate.local, beside pathSPromotion)". It does not -- it is
+% `did2.convert.epochMint`, a batch post-pass in THIS repository, and
+% pathSPromotion is the shape it was modelled on rather than where it lives.
+% The assertion below is unaffected: epochMint runs AFTER pass 1, so pass 1
+% still mints nothing, which is exactly what this test pins.
 %
 %   1. THE GROUPING KEY IS (session, id), NOT the id. Corpus B's 2,484
 %      epochfiles_ingested documents carry 149 distinct `epoch_id` strings but
