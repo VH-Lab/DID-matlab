@@ -3692,6 +3692,244 @@ dogEntry = mf(arrayfun(@(e) strcmp(e.model.name, 'dog'), mf));
 verifyEqual(testCase, dogEntry.coefficients.r2, 0.95, 'AbsTol', 1e-9);
 end
 
+% ==== temporal_frequency_tuning: the fifth tuning family, built FROM THE WRITER ====
+
+function body = temporalFrequencyTuningBody()
+%TEMPORALFREQUENCYTUNINGBODY The did_v1 `temporal_frequency_tuning` body, taken from
+%   the WRITER rather than from any DID-side schema. The class ships NO NDI-matlab
+%   template -- it is one of the vhlab calculator classes -- measured rather than
+%   assumed, and case-insensitively, because this project has twice reported an
+%   absence that was a property of the query:
+%
+%     $ cd NDI-matlab && git ls-files | wc -l
+%     1450
+%     $ git grep -ril temporal_frequency_tuning   -- . | wc -l    ->  0
+%     $ git grep -ril temporalfrequencytuning     -- . | wc -l    ->  0
+%     $ git grep -ril tftuning                    -- . | wc -l    ->  0
+%
+%   So the writer is NDIcalc-vis-matlab, and it is the ONLY construction site of the
+%   bare class name in that repository:
+%
+%     DENOMINATOR: 153 .m file(s) tracked in NDIcalc-vis-matlab (65718ed);
+%                  1 construction site for class `temporal_frequency_tuning`
+%     +ndi/+calc/+vis/temporal_frequency_tuning.m
+%       :274-293  builds the block
+%       :295-296  ndi.document('temporal_frequency_tuning', ...
+%                     'temporal_frequency_tuning', temporal_frequency_tuning)
+%       :297-300  set_dependency_value('element_id', ...) and
+%                 set_dependency_value('stimulus_tuningcurve_id', tuning_doc.id())
+%
+%   THE FIELD NAMES BELOW ARE THE WRITER'S, VERBATIM, AND FOUR OF THEM DIFFER FROM
+%   THE ONES THE SIBLING FIXTURE ABOVE GUESSED (testSpatialFrequencyTuningFoldsTo
+%   CalculationLeaf builds `fitless.pref/.l50/.h50` and `fit_dog.r2`; the writer
+%   emits `Pref`/`L50`/`H50`, and sets no `R2` on the DOG fit at all). The empirical
+%   summary block spells its three frequency landmarks CAPITALISED, and the sibling
+%   family's writer agrees -- +vis/+frequency/spatial_frequency_analysis.m:66 is the
+%   same line for SF. Positive evidence, +vis/+frequency/temporal_frequency_analysis.m:58-68:
+%
+%     [tf_props.fitless.L50,tf_props.fitless.Pref,tf_props.fitless.H50] = ...
+%     tf_props.fitless.bandwidth = vis.frequency.bandwidth(...)
+%     tf_props.fitless.low_pass_index  = ...
+%     tf_props.fitless.high_pass_index = ...
+%
+%   and universalRenames does NOT lower-case them: its snake_case sweep touches only
+%   the IMMEDIATE field names of a property block ("nested struct values ... are left
+%   alone for per-class migrators to handle", universalRenames.m:33-37), and `L50`
+%   sits one level down inside `fitless`. So the migrator really does see `Pref`.
+%
+%   THERE ARE FIVE CO-EXISTING FITS, not one, and their coefficient blocks are NOT
+%   the same shape as each other -- read off all 8 of the writer's own mock documents
+%   (+ndi/+calc/+vis/mock/temporal_frequency_tuning/mock.[1-8].json):
+%
+%     DENOMINATOR: 8 mock document(s) read; every field below present in 8/8
+%     fit_dog        parameters values fit L50 Pref H50 bandwidth        (no R2)
+%     fit_movshon    parameters values fit L50 Pref H50 bandwidth R2
+%     fit_movshon_c  parameters values fit L50 Pref H50 bandwidth R2
+%     fit_spline                values fit L50 Pref H50 bandwidth        (no parameters)
+%     fit_gausslog   parameters values fit L50 Pref H50 bandwidth        (no R2)
+%
+%   The TEMPLATE disagrees with the writer in at least two ways that matter here,
+%   and per the ground-truth rule the WRITER WINS:
+%   ndi_common/database_documents/vision/temporal_frequency_tuning.json declares a
+%   `fit_sgauss` block the writer never emits, and gives `fit_dog` an `R2` the writer
+%   never sets (it also omits `fit_gausslog`, which the writer always emits). The
+%   fixture follows the writer; none of the template-only fields appear below.
+%
+%   `abs` (a complete second analysis of the rectified responses: fitless + the same
+%   five fits, writer :288-293) IS included here because real documents carry it. So
+%   are `properties.response_units` -- whose real value is EMPTY in 8/8 mocks -- and
+%   the five control-response fields, which the writer puts INSIDE `tuning_curve`
+%   (:260-264), not beside it. The current reshape carries none of those three; that
+%   is reported as an open item and is deliberately NOT asserted here, so repairing
+%   the reshape does not have to fight a test that pinned the gap.
+body = struct();
+body.document_class = struct('class_name', 'temporal_frequency_tuning', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'tf_elem_3'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_tf_9')];
+body.base = struct('id', 'tft_1', 'session_id', 'sess_09', 'name', 'tft', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+
+% properties: response_units is EMPTY in 8/8 of the writer's mock documents, so it is
+% built by assignment rather than through struct(), which would be a lie about shape.
+props = struct('response_type', 'mean');
+props.response_units = [];
+
+% tuning_curve, writer :254-264. The independent axis is named `temporal_frequency`;
+% the control vectors live in here, not on the block.
+tc = struct( ...
+    'temporal_frequency', [1; 2; 4; 8], ...
+    'mean',               [1; 5; 9; 3], ...
+    'stddev',             [0.1; 0.2; 0.3; 0.4], ...
+    'stderr',             [0.05; 0.1; 0.15; 0.2], ...
+    'control_mean',       [0.5; 0.5; 0.5; 0.5], ...
+    'control_stddev',     [0.02; 0.02; 0.02; 0.02], ...
+    'control_stderr',     [0.01; 0.01; 0.01; 0.01], ...
+    'control_mean_stddev', 0.02, ...
+    'control_mean_stderr', 0.01);
+tc.individual = [1.0 5.1 8.8 3.2; 1.1 4.9 9.2 2.8];   % vlt.data.cellarray2mat(resp.ind)
+
+fitless = struct('L50', 1.4, 'Pref', 4.2, 'H50', 9.6, 'bandwidth', 2.78, ...
+    'low_pass_index', 0.31, 'high_pass_index', 0.07);
+
+fitDog = struct('parameters', [0; 1.1; 2.2; 3.3; 4.4], 'values', [1; 2; 4; 8], ...
+    'fit', [1.2; 5.0; 8.9; 3.1], 'L50', 1.5, 'Pref', 4.1, 'H50', 9.4, ...
+    'bandwidth', 2.65);
+fitMovshon = struct('parameters', [1; 2; 3; 4], 'values', [1; 2; 4; 8], ...
+    'fit', [1.1; 5.2; 8.7; 3.0], 'L50', 1.6, 'Pref', 4.0, 'H50', 9.1, ...
+    'R2', 0.83, 'bandwidth', 2.51);
+fitMovshonC = struct('parameters', [1; 2; 3; 4; 5], 'values', [1; 2; 4; 8], ...
+    'fit', [1.0; 5.3; 8.6; 3.4], 'L50', 1.7, 'Pref', 3.9, 'H50', 9.0, ...
+    'R2', 0.87, 'bandwidth', 2.40);
+fitSpline = struct('values', [1; 2; 4; 8], 'fit', [1.0; 5.0; 9.0; 3.0], ...
+    'L50', 1.3, 'Pref', 4.3, 'H50', 9.8, 'bandwidth', 2.91);
+fitGausslog = struct('parameters', [1; 2; 3; 4], 'values', [1; 2; 4; 8], ...
+    'fit', [1.3; 4.8; 9.1; 2.9], 'L50', 1.45, 'Pref', 4.15, 'H50', 9.5, ...
+    'bandwidth', 2.71);
+
+blk = struct();
+blk.properties    = props;
+blk.tuning_curve  = tc;
+blk.significance  = struct('visual_response_anova_p', 0.002, ...
+                           'across_stimuli_anova_p', 0.031);
+blk.fitless       = fitless;
+blk.fit_dog       = fitDog;
+blk.fit_movshon   = fitMovshon;
+blk.fit_movshon_c = fitMovshonC;
+blk.fit_spline    = fitSpline;
+blk.fit_gausslog  = fitGausslog;
+% the rectified-response duplicate analysis, abridged to two of its six sub-blocks
+blk.abs = struct('fitless', fitless, 'fit_dog', fitDog);
+
+body.temporal_frequency_tuning = blk;
+end
+
+function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
+% R2/R3 tuning collapse: did_v1 temporal_frequency_tuning -> the `tuning_curve`
+% composite + the `tuning_curve_calculation` leaf, id-PRESERVED, plus a session
+% anchor. 1 -> 2 and not 3: the writer's template declares `base` as its ONLY
+% superclass (ndi_common/database_documents/vision/temporal_frequency_tuning.json),
+% so a bare document carries no `app` block and jSoftwareFromApp mints nothing.
+out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
+
+assertEqual(testCase, numel(out), 2, ...
+    'expected exactly {leaf, session anchor} -- a third body means an app/software mint');
+names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
+assertTrue(testCase, any(strcmp(names, 'tuning_curve_calculation')), ...
+    'no tuning_curve_calculation leaf was emitted');
+assertTrue(testCase, any(strcmp(names, 'session_relative_reference')), ...
+    'no session anchor was emitted');
+% the per-tuning result classes are gone (R2/R3) and nothing is decomposed to scalars
+verifyFalse(testCase, any(strcmp(names, 'temporal_frequency_tuning_calculation')));
+verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
+
+leaf   = out{find(strcmp(names, 'tuning_curve_calculation'), 1)};
+anchor = out{find(strcmp(names, 'session_relative_reference'), 1)};
+
+% ---- the fold's contract: id preserved, edges re-pointed, nothing minted ----
+verifyEqual(testCase, leaf.base.id, 'tft_1');            % downstream refs must resolve
+verifyEqual(testCase, leaf.base.session_id, 'sess_09');
+verifyEqual(testCase, depValue(leaf, 'subject_id'), 'tf_elem_3');    % element_id ->
+verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_tf_9');  % the consumed curve
+verifyEqual(testCase, depValue(leaf, 'time_reference_1'), anchor.base.id);
+verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
+% the leaf pairs the statement direction with the result composite
+superNames = {leaf.document_class.superclasses.class_name};
+verifyTrue(testCase, any(strcmp(superNames, 'subject_calculation')));
+verifyTrue(testCase, any(strcmp(superNames, 'tuning_curve')));
+verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.calc.vis.temporalfrequency');
+verifyEqual(testCase, leaf.subject_statement.variable.name, 'temporal frequency tuning');
+
+% ---- input_parameters -> method_parameters ----
+% A BARE result document has none: the writer puts input_parameters on the CALC block
+% (+ndi/+calc/+vis/temporal_frequency_tuning.m:33, `temporal_frequency_tuning_calc =
+% parameters`), and the merged calc document is what temporal_frequency_tuning_calc.m
+% handles. So the honest assertion here is that the slot exists and is EMPTY -- not
+% that some invented parameter survived.
+mp = leaf.subject_interaction.method_parameters;
+verifyTrue(testCase, isstruct(mp));
+verifyEqual(testCase, numel(fieldnames(mp)), 0, ...
+    'a bare temporal_frequency_tuning document carries no input_parameters to carry');
+
+% ---- the reshape: jTuningCurveValue, the half that is real data ----
+verifyTrue(testCase, isfield(leaf.tuning_curve, 'value'), ...
+    'the composite must carry a `value` cell (T14), not the v1 block verbatim');
+v = leaf.tuning_curve.value;
+% the independent axis is found under the family's own name, `temporal_frequency`
+assertFalse(testCase, isempty(v.independent_values), 'the TF axis was dropped');
+verifyEqual(testCase, v.independent_values, [1; 2; 4; 8]);
+assertFalse(testCase, isempty(v.response_mean), 'the mean response curve was dropped');
+verifyEqual(testCase, v.response_mean, [1; 5; 9; 3]);
+verifyEqual(testCase, v.response_stddev, [0.1; 0.2; 0.3; 0.4]);
+verifyEqual(testCase, v.response_stderr, [0.05; 0.1; 0.15; 0.2]);
+verifyEqual(testCase, size(v.individual_responses), [2 4]);
+% significance stays a TYPED, queryable sub-block (not flattened into a name/value bag)
+verifyEqual(testCase, v.significance.visual_response_anova_p, 0.002, 'AbsTol', 1e-12);
+verifyEqual(testCase, v.significance.across_stimuli_anova_p, 0.031, 'AbsTol', 1e-12);
+% the frequency families carry no `vector` block -- circular statistics belong to the
+% orientation/direction family -- so this stays an empty, DECLARED slot.
+verifyEqual(testCase, numel(fieldnames(v.circular_statistics)), 0);
+
+% ---- fitless -> interpolated_values, carried with the WRITER'S spelling ----
+iv = v.interpolated_values;
+verifyTrue(testCase, isfield(iv, 'Pref'), ...
+    ['the writer spells the empirical landmarks Pref/L50/H50 (capitalised, ' ...
+     'temporal_frequency_analysis.m:58) and universalRenames does not reach ' ...
+     'nested fields -- a lower-cased key here means the block was rewritten']);
+verifyEqual(testCase, iv.Pref, 4.2, 'AbsTol', 1e-12);
+verifyEqual(testCase, iv.L50, 1.4, 'AbsTol', 1e-12);
+verifyEqual(testCase, iv.H50, 9.6, 'AbsTol', 1e-12);
+verifyEqual(testCase, iv.bandwidth, 2.78, 'AbsTol', 1e-12);
+verifyEqual(testCase, iv.low_pass_index, 0.31, 'AbsTol', 1e-12);
+verifyFalse(testCase, isfield(iv, 'pref'), ...
+    'a lower-case `pref` would be an invented field: no writer emits one');
+
+% ---- the five co-existing fits become a model_fit ARRAY, one entry per fit ----
+mf = v.model_fit;
+assertEqual(testCase, numel(mf), 5, ...
+    ['the TF family carries five co-existing fits (dog, movshon, movshon_c, ' ...
+     'spline, gausslog); a single model_fit means the array collapsed']);
+gotModels = sort(arrayfun(@(e) e.model.name, mf, 'UniformOutput', false));
+verifyEqual(testCase, gotModels, ...
+    {'dog', 'gausslog', 'movshon', 'movshon_c', 'spline'});
+% coefficient blocks are NOT uniform between fits, and each is carried whole
+mv = mf(arrayfun(@(e) strcmp(e.model.name, 'movshon'), mf));
+assertEqual(testCase, numel(mv), 1, 'expected exactly one movshon entry');
+verifyEqual(testCase, mv.coefficients.R2, 0.83, 'AbsTol', 1e-12);
+verifyEqual(testCase, mv.coefficients.Pref, 4.0, 'AbsTol', 1e-12);
+dg = mf(arrayfun(@(e) strcmp(e.model.name, 'dog'), mf));
+assertEqual(testCase, numel(dg), 1, 'expected exactly one dog entry');
+verifyEqual(testCase, numel(dg.coefficients.parameters), 5);   % [0 a1 b1 a2 b2]
+verifyEqual(testCase, dg.coefficients.bandwidth, 2.65, 'AbsTol', 1e-12);
+sp = mf(arrayfun(@(e) strcmp(e.model.name, 'spline'), mf));
+assertEqual(testCase, numel(sp), 1, 'expected exactly one spline entry');
+verifyFalse(testCase, isfield(sp.coefficients, 'parameters'), ...
+    'the spline fit has no parameters block in the writer; one here would be invented');
+% `abs` is not a fit and must not become a sixth model_fit entry
+verifyFalse(testCase, any(strcmp(gotModels, 'abs')));
+end
+
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
 % recording. neuron_extracellular -> subject + derived_from relation (unit <- the
