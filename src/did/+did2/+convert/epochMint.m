@@ -816,6 +816,27 @@ for k = 1:n
                      'names. Add the counter; do not widen an existing ' ...
                      'one.'], why);
         end
+        % A REFUSED FOLD IS A WITHHELD FOLD, and this line is why CI went red
+        % on the commit that introduced the refusals. The withheld tally runs
+        % over `armings` (see the carry loop), and a refusal `continue`s BEFORE
+        % the `armings{end+1}` append below -- so a fold refused here was
+        % counted in `metadata_refused_*` and in `arming_bodies_dropped_*` and
+        % then vanished from the emitted/withheld pair, which is the split a
+        % reader uses to ask "did every source document get folded?".
+        %
+        % `metadata_ingested_seen` counts the sources; emitted + withheld is
+        % what it is meant to be reconciled against. Leaving refusals out makes
+        % that sum quietly short -- a source seen, not emitted, and not
+        % withheld either. Same shape as the counters this file already
+        % records: not a wrong number, a MISSING one, which reads as "nothing
+        % happened" rather than "we refused".
+        %
+        % Every arming in this loop is the metadata fold (`is_metadata_fold` is
+        % set unconditionally below), so no guard is needed here; if a second
+        % fold kind is ever armed in this loop, this line needs the same flag
+        % the append uses.
+        report.metadata_ingested_folds_withheld = ...
+            report.metadata_ingested_folds_withheld + 1;
         continue;
     end
     % Body 1 takes the source document's slot; bodies 2..N are NEW documents
