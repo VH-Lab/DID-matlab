@@ -195,6 +195,15 @@ jobs:
         # all -- not about a count. A silent zero here is the failure mode.
         run: python3 tools/test_census_digest_uniqueness.py
 
+      - name: Corpus-proven rung tests (python, <1s)
+        # `tools/corpus_proven.py` runs only at the end of a ~2.5-hour
+        # test-code run, so every defect in it costs a full corpus pass to
+        # find. Its failure modes are the ones this project has already paid
+        # for -- zero reports read as a clean zero, a one-level search against
+        # a path the artifact upload moved, absence rendered as a pass -- and
+        # each is a fixture, not a corpus.
+        run: python3 tools/test_corpus_proven.py
+
       - name: Batch post-passes must be called, persisted and printed (python, <1s)
         # tests/+did2/+unittest/testBatchPassWiring.m gates the CALLED leg from
         # inside the harness, and is the better place for it -- but it needs

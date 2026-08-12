@@ -267,11 +267,59 @@ jobs:
         if: always()
         run: python3 tools/census_digest.py corpus-reports tests/corpus-reports
 
+      - name: V_eta CORPUS-PROVEN rung (feed the did-schema coverage ladder)
+        # THE ONLY RUNG THAT CAN HONESTLY SAY A CLASS IS DONE, and until this
+        # step it read `0 yes / 0 no / 102 NOT MEASURED` for one reason: the
+        # reports that answer it are written HERE, by the corpus tests above,
+        # and the tool that reads them lives in did-schema. Both halves were
+        # already written. Nothing carried the evidence across.
+        #
+        # THE TWO THINGS IT NEEDS ARE IN THIS JOB, WHICH IS WHY THE STEP IS
+        # HERE AND NOT IN test-corpus.yml. `test-code` is a SINGLE job: the
+        # did-schema checkout is made at the top of it (`path: did-schema`) and
+        # the corpus reports are on disk by the time the digest above runs.
+        # test-corpus.yml is two jobs -- `corpus` checks out did-schema, and
+        # `census` downloads the reports -- so over there the reports and the
+        # tool never coexist and this step could not run as written.
+        #
+        # IT INVOKES, IT DOES NOT REIMPLEMENT. The verdict is coverage.py's
+        # `corpus_verdict()`; this step finds the reports, hands them over,
+        # cross-checks the rung it gets back against the census it fed in, and
+        # makes the attribution limit visible. Two implementations of "is this
+        # class proven" that disagree would be worse than the one that was
+        # missing.
+        #
+        # NOTE coverage.py REGENERATES `did-schema/schemas/V_eta_coverage_*`
+        # in that checkout. It is a throwaway sibling clone here, which is the
+        # only reason that is acceptable; `--check` is not an alternative,
+        # because it exits before stage 5's input is ever read.
+        #
+        # REPORT-ONLY on a migration defect, FATAL on an instrument fault. A
+        # class whose rung comes back `no` prints in full and does NOT fail
+        # this step: the step exists to carry evidence, and a corpus failure is
+        # exactly when that evidence must reach the artifact. Zero reports
+        # found, a report with no readable v1 source census, an absent
+        # coverage.py and a rung that contradicts its own census all DO fail --
+        # run #3 printed `NO CORPUS REPORTS FOUND` after an hour of green
+        # corpora and exited 0, and that must not be expressible here.
+        if: always()
+        run: |
+          python3 tools/corpus_proven.py --schema-repo did-schema \
+              corpus-reports tests/corpus-reports
+
       - name: Upload corpus discovery reports
         # Discovery-mode corpus tests (e.g., testCorpus20211116) write
         # JSON summaries into corpus-reports/. Upload them as a CI
         # artifact regardless of test outcome so the migrated/quarantine
         # signal survives the run.
+        #
+        # `corpus-proven/` is the rung step's output: the rendered rung, the
+        # per-class JSON, coverage.py's own log and the regenerated
+        # V_eta_coverage_ledger.json, so the ladder's top rung can be read back
+        # in did-schema without re-running a 2.5-hour corpus. It is a THIRD
+        # repo-root path and does NOT move the artifact root: the least common
+        # ancestor of the first two is already the repo root, which is the
+        # promotion that made run #3's reports unfindable.
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -279,4 +327,5 @@ jobs:
           path: |
             corpus-reports/
             tests/corpus-reports/
+            corpus-proven/
           if-no-files-found: warn
