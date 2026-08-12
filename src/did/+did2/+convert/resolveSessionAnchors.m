@@ -8,6 +8,25 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   the SESSION DOCUMENT, with its `base.id` PRESERVED.
 %
 %   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set.
+%
+%   BATCH-PASS-CONSUMES: session_relative_reference, session_bounded_reference
+%   BATCH-PASS-EMITS: session_relative_reference -> document: relative_reference
+%   BATCH-PASS-EMITS: session_bounded_reference -> document: relative_reference
+%
+%   NEITHER CONSUMED NAME IS A did_v1 SOURCE CLASS. Both are DID-side
+%   intermediates -- V_zeta/V_eta time_reference classes that the per-document
+%   migrators and resolveDeferredBaths mint on the way through -- so neither
+%   matches a row of the v1 coverage ledger and neither can move a rung. The
+%   declaration is written anyway because the alternative is a pass with no
+%   declaration, which is the state this mechanism exists to make impossible.
+%   ---------------------------------------------------------------------
+%
+%   ---------------------------------------------------------------------
 %   STATUS: EXECUTED ON A FULL CORPUS, 2026-08-11. Wired 2026-08-10 into all
 %   four call sites; this header said "NEVER EXECUTED" until the run below,
 %   which is the stale-header defect this repo keeps finding, in the direction

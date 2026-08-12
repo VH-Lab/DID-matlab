@@ -9,6 +9,27 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %   RESULT.lawn_plate_subjects, so a caller that ignores the second output still
 %   carries the measurement.
 %
+%   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set.
+%
+%   BATCH-PASS-CONSUMES: ontology_table_row
+%   BATCH-PASS-EMITS: ontology_table_row -> document: subject,
+%       directed_relation, concentration_observation, volume_observation,
+%       length_observation, score_observation
+%
+%   `ROW = 'ontology_table_row'` at :507 is the only class this pass selects
+%   on; everything else it touches it has just minted. The four observation
+%   leaves are the MEASURES tables at :1090-1093 and :1106-1107 -- the pass
+%   emits exactly the leaf named there for a variable it recognises and nothing
+%   for one it does not. It reads the MIGRATED bodies, so the name matched in
+%   code is the V_eta spelling; the ledger row is NDI's `ontologyTableRow`, and
+%   coverage.py joins on either spelling rather than on a guess about casing.
+%   ---------------------------------------------------------------------
+%
 %   STATUS: WRITTEN 2026-08-11 IN A CONTAINER WITH NO MATLAB, and still edited
 %   from one -- `command -v matlab octave octave-cli` finds nothing here, so no
 %   line of this file has ever been run in this session. It HAS now been run by

@@ -7,6 +7,32 @@ function [result, report] = resolveResponseParameters(result, options)
 %   cannot do. REPORT is also attached as RESULT.response_parameters_fold, so a
 %   caller that ignores the second output still carries the measurement.
 %
+%   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set.
+%
+%   BATCH-PASS-CONSUMES: stimulus_response_scalar_parameters_basic
+%   BATCH-PASS-EMITS: stimulus_response_scalar_parameters_basic -> inline:
+%       method_parameters
+%
+%   `inline` IS NOT A SOFTER `document`, AND THE DISTINCTION IS THE THIRD OF
+%   THE THREE EMISSION SHAPES row 107 names. The destination is the
+%   `subject_interaction.method_parameters` BLOCK, written at :328 onto the
+%   response document, with the `method_parameters_id` edge dropped at :329 --
+%   no document is minted, and none may be, because subject_interaction.json
+%   says a statement carries the inline field OR the edge, NEVER BOTH. The
+%   class `method_parameters` nonetheless EXISTS in the built set
+%   (schemas/V_eta/stable/method_parameters.json), which is what makes it the
+%   decided target the ledger checks the emission against.
+%
+%   THIS PASS DELETES NOTHING. The source documents stay where they are pending
+%   the corpus verify-before-delete gate below, so an emission declared here is
+%   an emission ADDED, never a source consumed away.
+%   ---------------------------------------------------------------------
+%
 %   STATUS: WRITTEN 2026-08-11 IN A CONTAINER WITH NO MATLAB. NOT ONE LINE OF
 %   THIS FILE HAS BEEN EXECUTED. test-migrators-quick.yml is the first thing
 %   with an opinion. Said here rather than in a commit message because a header

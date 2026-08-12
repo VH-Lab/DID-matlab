@@ -18,6 +18,21 @@ function [result, report] = foldGenericFiles(result, options)
 %   the reason it was refused.
 %
 %   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set --
+%   the grammar is in the parser's docstring.
+%
+%   BATCH-PASS-CONSUMES: generic_file, ontology_label
+%   BATCH-PASS-EMITS: generic_file -> document: term_observation, opaque_body
+%   BATCH-PASS-EMITS: ontology_label -> nothing: read at :332-341 for the
+%       sibling label's `ontologyNode`, which becomes the observation's
+%       `variable`. The label document itself is left exactly where it is.
+%   ---------------------------------------------------------------------
+%
+%   ---------------------------------------------------------------------
 %   STATUS: WRITTEN 2026-08-11 in a container with NO MATLAB AND NO OCTAVE
 %   (`command -v matlab octave octave-cli` -> nothing, exit 1), so nothing here
 %   was ever run by its author. CI IS THE ONLY THING THAT HAS EXECUTED IT.

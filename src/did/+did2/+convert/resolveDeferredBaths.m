@@ -20,6 +20,29 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   bath preserves the source stimulus_bath's base.id, so inbound references
 %   resolve to it.
 %
+%   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set.
+%
+%   BATCH-PASS-CONSUMES: stimulus_bath
+%   BATCH-PASS-EMITS: stimulus_bath -> document: session_relative_reference,
+%       dose_manipulation, term_observation
+%
+%   SCOPE OF THAT LINE: it states the V_eta path (makeBathVEta, :396), which is
+%   what the corpus harness runs -- runCorpusDiscovery.m:46 defaults
+%   `TargetVersion` to 'V_eta'. THIS FILE'S DEFAULT IS 'V_zeta', and on that
+%   branch makeBath (:341) emits `bath` + `pharmacological_manipulation`
+%   instead. Those are V_zeta classes with no V_eta home, so they are
+%   deliberately NOT declared: the ledger this declaration feeds is the V_eta
+%   one, and naming them there would credit a class V_eta retired.
+%   `term_observation` is CONDITIONAL (:462-466, only when the source names a
+%   location); the declaration states what the pass can emit, not what every
+%   document produces.
+%   ---------------------------------------------------------------------
+%
 %   This is the COARSE resolver for callers without a live session (e.g. corpus
 %   discovery). The PRECISE version -- an epoch_bounded_reference on the
 %   stimulator's epoch -- is ndi.migrate.local's second pass

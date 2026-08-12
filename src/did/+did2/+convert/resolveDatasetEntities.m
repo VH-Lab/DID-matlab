@@ -7,6 +7,26 @@ function [result, report] = resolveDatasetEntities(result, options)
 %   also attached as RESULT.dataset_entity_resolution, so a caller that ignores
 %   the second output still carries the measurement.
 %
+%   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set --
+%   which is why the emptiness below is STATED, with its reason, rather than
+%   left to be inferred from a marker nobody wrote.
+%
+%   BATCH-PASS-CONSUMES: NONE -- this pass reads no did_v1 source class. Both
+%       fixups operate on documents the per-document migrators have ALREADY
+%       emitted: minted `dataset` entities (deduplicated) and
+%       `directed_relation` membership edges (pruned). The v1 classes behind
+%       them -- metadata_editor, dataset_remote, session_in_a_dataset,
+%       dataset_session_info -- are each consumed by their own per-class
+%       migrator and are credited there, not here.
+%   BATCH-PASS-EMITS: NONE -- this pass only REMOVES documents and edges. There
+%       is no `document_class` write anywhere in the file.
+%   ---------------------------------------------------------------------
+%
 %     1. DEDUPLICATE dataset entities. Every dataset-level source
 %        (metadata_editor / dataset_remote / session_in_a_dataset /
 %        dataset_session_info) mints a `dataset` entity keyed on the SAME dataset

@@ -15,6 +15,30 @@ function [result, report] = epochMint(result, options)
 %   second output still carries the measurement.
 %
 %   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set.
+%
+%   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested
+%   BATCH-PASS-EMITS: epochid -> document: epoch
+%   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
+%       at :727 only STAMPS the `epoch_id` edge onto the body and re-runs the
+%       ARMED per-class migrator. The `acquisition_metadata_file` document is
+%       minted there, in +migrators_j, and is credited to that migrator -- not
+%       to this pass. Declaring it here would count one emission twice.
+%
+%   `epochid` is the did_v1 MIXIN, and it is the class this pass dissolves: the
+%   string was only ever a way to find the epoch, and the epoch now has a
+%   document. The string is read through did2.validate.epochStrings, whose
+%   other two sources -- `epochfiles_ingested` and `method_parameters` -- are
+%   NOT declared as consumed: this pass reads a string off them and rewrites
+%   neither. `epochfiles_ingested` already carries `epoch` in the ledger's
+%   `second_pass` column for the same emission.
+%   ---------------------------------------------------------------------
+%
+%   ---------------------------------------------------------------------
 %   WHY THIS IS A BATCH PASS AND NOT A MIGRATOR
 %   ---------------------------------------------------------------------
 %   A single-document migrator cannot do this, and the reason is not

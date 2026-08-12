@@ -11,6 +11,25 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %   metadata, appending the entities they decompose into. REPORT also rides on
 %   RESULT.openminds_citations.
 %
+%   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set.
+%
+%   BATCH-PASS-CONSUMES: openminds
+%   BATCH-PASS-EMITS: openminds -> document: dataset, person, organization,
+%       funding, publication, web_resource, directed_relation
+%
+%   The seven are the six entity classes named in the H1 line plus the
+%   `directed_relation` edges between them, all minted through
+%   did2.convert.entities (entityDoc :586/:610/:664/:703/:731, orgFor
+%   :633/:673, relationDoc :614/:640/:668/:681/:706/:735). It is ADDITIVE to
+%   migrators_j.metadata_editor, which emits the same seven from the other
+%   store; neither replaces the other.
+%   ---------------------------------------------------------------------
+%
 %   STATUS 2026-08-11: WRITTEN WITHOUT MATLAB. There is neither MATLAB nor
 %   Octave in the container this was authored in, so NOTHING IN THIS FILE HAS
 %   BEEN EXECUTED. CI is the first execution. Do not read the header's

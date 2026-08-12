@@ -39,6 +39,30 @@ function [result, report] = resolveValidIntervals(result, options)
 %   forbid, so `sources_seen` and `intervals_seen` are counted in the dormant
 %   path and are the whole point of still running it.
 %
+%   ---------------------------------------------------------------------
+%   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
+%   ---------------------------------------------------------------------
+%   Read by tools/batch_pass_declarations.py and, across the repo boundary, by
+%   DID-schema tools/coverage.py, which credits the completion ladder from it.
+%   A pass carrying no declaration is an ERROR there, never an empty set.
+%
+%   BATCH-PASS-CONSUMES: valid_interval
+%   BATCH-PASS-EMITS: valid_interval -> nothing: DORMANT BY TEAM DECISION
+%       2026-08-12. `options.Decompose` is FALSE by default (:471) and the
+%       census arm at :594 returns before any emission, so this pass emits
+%       nothing today. The `logical_observation` + `relative_reference`
+%       decomposition behind the guard is NOT the signed model and waits on
+%       `axes[]`.
+%
+%   THAT `nothing` IS LOAD-BEARING AND MUST NOT BE "FIXED" INTO AN EMISSION.
+%   The `valid_interval` ledger row carries `logical_observation` as its
+%   DECIDED target, so declaring it emitted here would move that row to the
+%   top of the completion ladder on the strength of code that is switched off
+%   -- the reassuring-direction error this repository keeps paying for, in a
+%   mechanism built to correct the opposite one. When the guard is armed, the
+%   declaration changes with it and not before.
+%   ---------------------------------------------------------------------
+%
 %   WHERE THE DOCUMENTS GO MEANWHILE: nowhere. Each `valid_interval` passes
 %   through to its own v1 tombstone (`schemas/V_eta/stable/valid_interval.json`,
 %   restated from the WRITER in DID-schema build_v_eta.py), which declares
