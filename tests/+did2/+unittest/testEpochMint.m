@@ -1014,3 +1014,336 @@ verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 1);
 verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 0);
 verifyNumElements(testCase, ofClass(out, 'acquisition_metadata_file'), 1);
 end
+
+% ===================== the 1 -> N arming path ==========================
+%
+%   ADDED 2026-08-12. Until then every arming loop in did2.convert.epochMint was
+%   1 -> 1 and the file said so in as many words -- `:641 isscalar(folded)` and
+%   `:689 "this batch is 1 -> 1 throughout"`. All three migrators waiting on the
+%   epoch pass return MORE THAN ONE BODY on their armed branch, re-derived
+%   2026-08-12 by reading the branch rather than the note:
+%
+%     +migrators_j/stimulus_response_scalar.m:287,307-310  {leaf, anchor[, sw]}
+%     +migrators_j/daqreader_epochdata_ingested.m:105      [{preBody}, refs]
+%     +migrators_j/daqreader_image_epochdata_ingested.m:103  same
+%
+%   so reusing the scalar assertion would have DROPPED the minted references and
+%   left `time_reference_1` pointing outside the batch -- an ORPHAN, which the
+%   corpus digest prints no counter for (open item #95).
+%
+%   NOTHING IN PRODUCTION RETURNS N TODAY, and that is a SCHEMA fact, not an
+%   omission: re-derived 2026-08-12 over the built tree (247 JSON files, 241
+%   with a document_class, deps read by JSON path and not by grep) exactly FOUR
+%   classes declare an `epoch_id` dependency -- acquisition_metadata_file,
+%   ingestion_manifest, directed_relation, method_parameters -- and none of the
+%   three migrators above emits one of them on the arm. So the 1 -> N path is
+%   driven here through `ArmingMigrators`, which exists for exactly that. A path
+%   that ships without ever executing is this project's signature defect: a zero
+%   that is a property of never having run.
+%
+%   THE STUB IS NOT AN INVENTION. It calls the REAL fold for the primary and the
+%   REAL +migrators_j/daqreader_epochdata_ingested for the extras, so the extra
+%   bodies are built by jEpochClockReferences -- the very helper both daqreader
+%   arms use. Fixtures come from the emitter, never from a schema.
+
+function tbl = armingTable(fcn)
+%ARMINGTABLE The ArmingMigrators override, one row, same key epochMint arms.
+tbl = struct('daqmetadatareader_epochdata_ingested', fcn);
+end
+
+function refs = realEpochExtentReferences(nClocks)
+%REALEPOCHEXTENTREFERENCES N `relative_reference` bodies from the REAL emitter.
+%   +migrators_j/daqreader_epochdata_ingested returns [{preBody}, refs] on its
+%   armed branch; refs is what jEpochClockReferences built, one per clock. Take
+%   everything after the pre-body.
+refs = {};
+if nClocks < 1
+    % The migrator returns the BARE pre-body (not a cell) when there is nothing
+    % to reference -- daqreader_epochdata_ingested.m:101-104 -- so `bodies(2:end)`
+    % below would not be a cell. Short-circuit rather than special-case it after.
+    return;
+end
+clocks = cell(1, nClocks);
+t0t1   = zeros(2, nClocks);
+for k = 1:nClocks
+    clocks{k}  = sprintf('dev_local_time_%d', k);
+    t0t1(:, k) = [0; 10 * k];
+end
+v1 = struct();
+v1.document_class = struct('class_name', 'daqreader_epochdata_ingested', ...
+    'class_version', '1.0.0', ...
+    'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+        struct('class_name', 'epochid', 'class_version', '1.0.0') ]);
+v1.depends_on = [ struct('name', 'daqreader_id', 'value', 'dr_1'), ...
+                  struct('name', 'epoch_id',     'value', 'epoch_doc_stub') ];
+v1.base = struct('id', 'ing_stub', 'session_id', 'sess_A', ...
+    'name', 'ingested', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.epochid = struct('epochid', 't00001');
+v1.daqreader_epochdata_ingested = struct('epochtable', ...
+    struct('epochclock', {clocks}, 't0_t1', t0t1));
+bodies = did2.convert.migrators_j.daqreader_epochdata_ingested(v1);
+refs = bodies(2:end);
+end
+
+function fcn = foldPlusNReferences(nExtras)
+%FOLDPLUSNREFERENCES The production fold, then N real reference bodies.
+%   The SHAPE all three waiting migrators return: body 1 replaces the source,
+%   bodies 2..N are new documents the source points at.
+fcn = @(b) [ {realFoldPrimary(b)}, realEpochExtentReferences(nExtras) ];
+end
+
+function primary = realFoldPrimary(b)
+%REALFOLDPRIMARY The production fold's single body -- unchanged, not simulated.
+primary = did2.convert.migrators_j.daqmetadatareader_epochdata_ingested(b);
+if iscell(primary); primary = primary{1}; end
+end
+
+function [out, rep] = mintWithArming(v1, fcn)
+out = runJ(v1);
+[out, rep] = did2.convert.epochMint(out, 'Validate', false, ...
+    'TargetVersion', 'V_eta', 'ArmingMigrators', armingTable(fcn));
+end
+
+function v1 = oneMetadataBatch()
+v1 = { sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+       metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'}) };
+end
+
+function testTheArmingPathStatesItsDenominatorBeforeItsResult(testCase)
+% RULE 5. `arming_bodies_offered` is the denominator -- every body every armed
+% migrator handed back -- and `..._carried` and `..._dropped` are only readable
+% against it. On the production table this is the 1 -> 1 case and must be
+% EXACTLY what it was before the rebuild.
+[~, rep] = mintFrom(oneMetadataBatch());
+verifyFalse(testCase, rep.arming_vacuous, ...
+    'a batch that armed a migrator is not a vacuous run');
+verifyEqual(testCase, rep.arming_calls, 1);
+verifyEqual(testCase, rep.arming_bodies_offered, 1);
+verifyEqual(testCase, rep.arming_bodies_carried, 1);
+verifyEqual(testCase, rep.arming_bodies_dropped, 0, ...
+    'a MEASURED zero: one body was offered and that same body was carried');
+verifyEqual(testCase, rep.arming_extra_bodies_offered, 0);
+verifyEqual(testCase, rep.arming_extra_bodies_carried, 0);
+verifyEqual(testCase, rep.arming_max_bodies_per_call, 1, ...
+    'the 1 -> N witness reads 1 while the only armed migrator returns one body');
+verifyEqual(testCase, rep.arming_calls_returning_multiple, 0);
+end
+
+function testNoArmedMigratorAtAllIsVACUOUSNotZero(testCase)
+% "did not run" and "ran and found nothing" must not read the same. With no
+% source document the arming path never fires, and `arming_vacuous` is what says
+% so -- every arming zero below it is then a zero over a zero denominator.
+[~, rep] = mintFrom({ sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
+                      elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1') });
+verifyTrue(testCase, rep.arming_vacuous);
+verifyEqual(testCase, rep.arming_calls, 0);
+verifyEqual(testCase, rep.arming_bodies_offered, 0);
+verifyEqual(testCase, rep.arming_bodies_carried, 0);
+verifyEqual(testCase, rep.arming_bodies_dropped, 0);
+end
+
+function testAMigratorReturningThreeBodiesLandsAllThree(testCase)
+% THE HEADLINE OF THIS BUILD. The old path unwrapped a 1-cell and treated
+% anything else as a refusal, so two of these three would have been built,
+% and silently discarded.
+[out, rep] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(2));
+
+verifyEqual(testCase, rep.arming_calls, 1);
+verifyEqual(testCase, rep.arming_bodies_offered, 3, ...
+    'the DENOMINATOR: the migrator handed back three bodies');
+verifyEqual(testCase, rep.arming_bodies_carried, 3, ...
+    'all three must reach the batch -- this is the assertion the rebuild is for');
+verifyEqual(testCase, rep.arming_bodies_dropped, 0);
+verifyEqual(testCase, rep.arming_extra_bodies_offered, 2);
+verifyEqual(testCase, rep.arming_extra_bodies_carried, 2);
+verifyEqual(testCase, rep.arming_max_bodies_per_call, 3);
+verifyEqual(testCase, rep.arming_calls_returning_multiple, 1);
+
+verifyNumElements(testCase, ofClass(out, 'acquisition_metadata_file'), 1, ...
+    'body 1 still takes the source document''s slot');
+verifyEmpty(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), ...
+    'the source class must not survive alongside the fold');
+verifyNumElements(testCase, ofClass(out, 'relative_reference'), 2, ...
+    'bodies 2..N must be APPENDED -- the half that did not exist before');
+end
+
+function testTheMintedReferencesAreTheEmittersOwnAndKeepTheirIds(testCase)
+% Not merely "two documents of the right class arrived". The bodies the migrator
+% built must be the bodies that landed, id for id, or the batch holds something
+% nobody minted.
+[out, ~] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(2));
+landed = ofClass(out, 'relative_reference');
+ids = sort(cellfun(@(d) char(d.get('base.id')), landed, 'UniformOutput', false));
+verifyNumElements(testCase, unique(ids), 2, ...
+    'two distinct reference documents, not one document counted twice');
+for k = 1:numel(landed)
+    verifyNotEmpty(testCase, depValue(landed{k}.toStruct(), 'relative_to'), ...
+        'a reference with no referent is the empty-required-edge pattern');
+end
+end
+
+function testAddingOneMoreBodyAddsOneMoreDocument(testCase)
+% THE MUTATION-SHAPED ASSERTION, and the one that fails the day anyone
+% reintroduces `if iscell(folded) && isscalar(folded); folded = folded{1}; end`.
+% Under that line every N would land the same single document, so the count
+% would not move with N. It is asked as a DIFFERENCE so no constant can satisfy
+% it.
+[outA, repA] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(1));
+[outB, repB] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(3));
+verifyEqual(testCase, repA.arming_bodies_offered, 2);
+verifyEqual(testCase, repB.arming_bodies_offered, 4);
+verifyEqual(testCase, numel(outB.migrated) - numel(outA.migrated), 2, ...
+    'two extra bodies offered must be two extra documents in the batch');
+verifyEqual(testCase, repB.arming_extra_bodies_carried ...
+    - repA.arming_extra_bodies_carried, 2);
+end
+
+function testDroppedEqualsOfferedMinusCarriedAndTheReasonsSumToIt(testCase)
+% An instrument whose parts do not add up is not an instrument. Checked on a
+% batch that carries AND on one that refuses, so the identity cannot hold by
+% both sides being zero.
+for nExtras = [0 2]
+    [~, rep] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(nExtras));
+    verifyEqual(testCase, rep.arming_bodies_dropped, ...
+        rep.arming_bodies_offered - rep.arming_bodies_carried);
+    verifyEqual(testCase, rep.arming_bodies_dropped, ...
+        rep.arming_bodies_dropped_declined ...
+        + rep.arming_bodies_dropped_id_not_preserved ...
+        + rep.arming_bodies_dropped_undeclared_edge ...
+        + rep.arming_bodies_dropped_not_rebuilt ...
+        + rep.arming_bodies_dropped_epoch_lost, ...
+        'every dropped body must be dropped for a NAMED reason');
+end
+[~, repBad] = mintWithArming(oneMetadataBatch(), @(b) reIdentifiedFold(b));
+verifyEqual(testCase, repBad.arming_bodies_dropped, ...
+    repBad.arming_bodies_offered - repBad.arming_bodies_carried);
+verifyEqual(testCase, repBad.arming_bodies_dropped, ...
+    repBad.arming_bodies_dropped_declined ...
+    + repBad.arming_bodies_dropped_id_not_preserved ...
+    + repBad.arming_bodies_dropped_undeclared_edge ...
+    + repBad.arming_bodies_dropped_not_rebuilt ...
+    + repBad.arming_bodies_dropped_epoch_lost);
+end
+
+function bodies = reIdentifiedFold(b)
+%REIDENTIFIEDFOLD The production fold with the primary's base.id REPLACED.
+%   A fold that does not preserve `base.id` deletes the source id from the batch
+%   and dangles every inbound reference to it -- the 11,448-orphan dissolution
+%   failure recorded in CLAUDE.md, arriving as a fold instead of a migrator.
+primary = realFoldPrimary(b);
+primary.base.id = did.ido.unique_id();
+bodies = [ {primary}, realEpochExtentReferences(1) ];
+end
+
+function testAPrimaryThatDoesNotPreserveTheIdIsRefusedWHOLE(testCase)
+% The refusal is per CALL, not per body: the extras are minted for a primary
+% that is not going to be carried, so carrying them would leave two documents
+% referenced by nothing.
+[out, rep] = mintWithArming(oneMetadataBatch(), @(b) reIdentifiedFold(b));
+verifyEqual(testCase, rep.arming_bodies_offered, 2);
+verifyEqual(testCase, rep.arming_bodies_carried, 0);
+verifyEqual(testCase, rep.arming_bodies_dropped_id_not_preserved, 2, ...
+    'BOTH bodies are dropped, and counted -- not just the offending one');
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0);
+verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 1);
+verifyEqual(testCase, rep.metadata_refused_unsafe_output, 1);
+verifyNumElements(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), 1, ...
+    'the ORIGINAL passthrough stays in the batch; nothing is lost');
+verifyEmpty(testCase, ofClass(out, 'relative_reference'), ...
+    'and the extras minted for it do not land');
+end
+
+function testAMigratorThatDeclinesStillReportsItsBodies(testCase)
+% The declined body was still OFFERED. Counting only what is carried would make
+% the denominator move with the outcome, which is the defect Rule 5 names.
+[~, rep] = mintWithArming(oneMetadataBatch(), @(b) b);
+verifyEqual(testCase, rep.arming_bodies_offered, 1);
+verifyEqual(testCase, rep.arming_bodies_carried, 0);
+verifyEqual(testCase, rep.arming_bodies_dropped_declined, 1);
+verifyEqual(testCase, rep.metadata_refused_migrator_declined, 1);
+end
+
+function testAnArmingTableWithNoRowForTheClassIsAnError(testCase)
+% A caller that overrode the table meant to override it. Falling back to the
+% production migrator would let a test that thinks it is driving 1 -> N pass
+% while driving 1 -> 1 -- a green result from machinery that never ran.
+out = runJ(oneMetadataBatch());
+verifyError(testCase, @() did2.convert.epochMint(out, 'Validate', false, ...
+        'TargetVersion', 'V_eta', 'ArmingMigrators', struct('something_else', @(b) b)), ...
+    'did2:convert:epochMint:noArmingMigrator');
+end
+
+function testAnExtraThatDoesNotSurviveTakesTHEWHOLECALLWithIt(testCase)
+% THE ORPHAN GUARD, and the reason the carry is atomic. The primary references
+% the bodies minted beside it, so emitting it while a sibling quarantined would
+% put `time_reference_1` (or here `relative_to`'s referent) outside the batch.
+% #37 RequiredDependencies is ARMED, so a `relative_reference` with an empty
+% `relative_to` quarantines -- which is exactly the sibling failure to drive.
+%
+% VALIDATION ON. Needs the assembled V_eta schema set on DID_SCHEMA_PATH, like
+% testMintedEpochValidatesAgainstItsSchema; the rest of this block runs with it
+% off because the machinery, not the schema, is what those assert.
+did2.unittest.helpers.installSchemaPath(testCase, ...
+    'skipping the atomic-carry validation test');
+try
+    did2.schema.cache.shared().getClass('relative_reference');
+catch err
+    assumeFail(testCase, ...
+        ['DID_SCHEMA_PATH does not resolve relative_reference (' ...
+         err.message ').']);
+end
+out = runJ(oneMetadataBatch());
+[out, rep] = did2.convert.epochMint(out, 'Validate', true, ...
+    'TargetVersion', 'V_eta', ...
+    'ArmingMigrators', armingTable(@(b) foldPlusUnreferencedExtent(b)));
+
+verifyEqual(testCase, rep.arming_bodies_offered, 2);
+verifyEqual(testCase, rep.arming_bodies_carried, 0, ...
+    'the primary validated, and is STILL not carried -- they live or die together');
+verifyEqual(testCase, rep.arming_bodies_dropped_not_rebuilt, 2);
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0);
+verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 1, ...
+    'withheld is read off the CARRY DECISION, not off whether the primary came back');
+verifyGreaterThan(testCase, rep.mint_quarantined, 0, ...
+    'the bad extra is quarantined loudly, on a 0-quarantine gate');
+verifyNumElements(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), 1, ...
+    'the ORIGINAL passthrough stays -- valid under its own restored tombstone');
+verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+end
+
+function bodies = foldPlusUnreferencedExtent(b)
+%FOLDPLUSUNREFERENCEDEXTENT The fold, plus one reference with NO referent.
+%   `relative_to` is mustBeNonEmpty (schemas/V_eta/stable/relative_reference.json),
+%   so with #37 armed this body cannot validate. It is the invented-empty-edge
+%   pattern used deliberately, as the sibling that must take the call down.
+primary = realFoldPrimary(b);
+refs = realEpochExtentReferences(1);
+bad = refs{1};
+bad.depends_on = struct('name', {'relative_to'}, 'value', {''});
+bodies = { primary, bad };
+end
+
+function testTheMintCarriesTheSchemaAuthoritysOwnCounters(testCase)
+% did2.convert.epochIndex is the schema authority the `undeclared_edge` refusal
+% reads, and it answers FALSE both for "this class does not declare the edge"
+% and for "I could not look". Those are different problems with different
+% owners, so its own counters ride out with the report and
+% `arming_edge_declaration_unchecked` is readable against them.
+[~, rep] = mintFrom(oneMetadataBatch());
+verifyTrue(testCase, isfield(rep, 'epoch_index_report'));
+verifyTrue(testCase, isfield(rep.epoch_index_report, 'schema_lookups_unavailable'));
+verifyTrue(testCase, isfield(rep.epoch_index_report, 'schema_lookups_failed'));
+verifyTrue(testCase, isfield(rep, 'arming_edge_declaration_unchecked'));
+end
+
+function testTheEdgeDeclarationCheckIsSkippedNotFAKEDWhenValidationIsOff(testCase)
+% Validate false says the caller turned schema checking off for this call. The
+% guard does not then pretend to have checked: every body carrying `epoch_id`
+% is counted UNCHECKED. A guard whose verdict depended on whether a schema path
+% happened to resolve would let a configuration difference change the DATA.
+[~, rep] = mintFrom(oneMetadataBatch());
+verifyEqual(testCase, rep.arming_edge_declaration_unchecked, 1, ...
+    'the folded acquisition_metadata_file carries epoch_id and was not checked');
+verifyEqual(testCase, rep.arming_bodies_dropped_undeclared_edge, 0, ...
+    'an unchecked body is not a refused body');
+end

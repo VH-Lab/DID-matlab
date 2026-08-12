@@ -170,37 +170,70 @@ function [result, report] = epochMint(result, options)
 %   day it can be done losslessly.
 %
 %   ---------------------------------------------------------------------
-%   EVERY REMAINING ARMING LOOP IS 1 -> N. THE ONE ABOVE IS 1 -> 1.
-%   DO NOT COPY IT. RECORDED 2026-08-11, BEFORE anyone writes the next one.
+%   THE ARMING PATH IS NOW 1 -> N. IT WAS 1 -> 1 UNTIL 2026-08-12.
 %   ---------------------------------------------------------------------
 %   THREE migrators are waiting on this pass to stamp `epoch_id` onto their
-%   pre-body, and each says so in its own header. All three were checked, and
-%   all three return MORE THAN ONE BODY on the armed branch:
+%   pre-body, and each says so in its own header. All three were re-checked
+%   2026-08-12 by reading the armed branch, and all three return MORE THAN ONE
+%   BODY there:
 %
-%     stimulus_response_scalar.m        GUARD 4; armed branch returns
-%                                       {leaf, anchor} -- `epochAnchor` mints a
-%                                       NEW relative_reference and retargets
-%                                       `time_reference_1` onto it.
-%     daqreader_epochdata_ingested.m    armed branch returns
-%                                       [{preBody}, refs] -- jEpochClockReferences
-%                                       mints ONE relative_reference PER
-%                                       epochtable entry.
-%     daqreader_image_epochdata_ingested.m   same shape, same helper.
+%     +migrators_j/stimulus_response_scalar.m:287,307-310
+%         `bodies = jCalculation(...)` -> {leaf, anchor[, software]}
+%         (jCalculation.m:118-121), then the armed `if ~isempty(epochDocId)`
+%         branch REPLACES bodies{2} with `epochAnchor`'s relative_reference and
+%         retargets the leaf's `time_reference_1` onto it.
+%     +migrators_j/daqreader_epochdata_ingested.m:105
+%         `bodies = [{preBody}, refs]` -- jEpochClockReferences mints ONE
+%         relative_reference PER epochtable entry.
+%     +migrators_j/daqreader_image_epochdata_ingested.m:103   same, same helper.
 %
-%   The metadata fold above is 1 -> 1 and this pass is built on that:
+%   The two assertions this pass USED to rest on were, verbatim:
 %
 %     :641   if iscell(folded) && isscalar(folded); folded = folded{1}; end
 %     :689   "v1_to_v2 preserves input order and this batch is 1 -> 1 throughout"
 %
-%   `daqmetadatareader_epochdata_ingested` returns `{out}` or `{preBody}` -- one
-%   body, always -- which is the ONLY reason the loop above could be written as a
-%   stamp. Arming any of the three needs the rebuild path extended to 1 -> N: the
-%   `changedIdx` replacement loop, the emitted/withheld split and
-%   `recountSummary` all assume one body back per body in. Reusing the scalar
-%   assertion at :641 would silently DROP the minted references and leave the
-%   leaf pointing `time_reference_1` at a document that is not in the batch --
-%   an ORPHAN, and the digest prints no orphan counter (open item #95), so
-%   nothing in the corpus report would say so.
+%   Reusing them for any of the three would have DROPPED the minted references
+%   and left `time_reference_1` pointing at a document not in the batch -- an
+%   ORPHAN, which the digest prints no counter for (open item #95). Both are
+%   gone. The arming path now takes whatever cell of bodies a migrator returns,
+%   carries body 1 back into the slot the source occupied and APPENDS bodies
+%   2..N to the batch, and it is ATOMIC PER CALL: if any body of one call fails
+%   to come back out of the re-fold, NONE of that call's bodies are carried and
+%   the original passthrough stays. That is what makes the orphan unreachable
+%   rather than merely unlikely -- a surviving primary can never reference a
+%   sibling that quarantined, because they live or die together.
+%
+%   THREE MORE THINGS THE CARRY REFUSES, each counted, none of them hypothetical:
+%
+%     * a primary body that does NOT preserve `base.id`. Replacing docs{k} with
+%       a differently-identified document deletes the original id from the batch
+%       and every inbound reference to it dangles -- the 11,448-orphan
+%       dissolution failure recorded in CLAUDE.md, arriving through a fold.
+%     * a returned body carrying `epoch_id` whose CLASS does not declare that
+%       dependency. This is the invented-edge pattern with the sign flipped and
+%       NOTHING ELSE CATCHES IT: cache.m:761 lists `depends_on` wholesale in
+%       `allowedTop`, so an undeclared edge NAME validates clean. The schema is
+%       the authority, read through did2.convert.epochIndex/classDeclaresEpochEdge.
+%     * an arming whose epoch document did not survive validation.
+%
+%   THE COUNTER THAT WOULD HAVE CAUGHT THE ORIGINAL BUG. `arming_bodies_offered`
+%   is the denominator -- every body every armed migrator handed back --
+%   `arming_bodies_carried` is how many reached `result.migrated`, and
+%   `arming_bodies_dropped` is the difference, split by named reason. A body a
+%   migrator mints and this pass discards is now a number instead of a silence.
+%   `arming_vacuous` is TRUE when no arming call was made at all, so a run with
+%   nothing to arm cannot read as a run that armed everything. And
+%   `arming_max_bodies_per_call` is the 1 -> N witness: it reads 1 while
+%   `daqmetadatareader_epochdata_ingested` is the only armed migrator, and the
+%   day a class declares the edge it reads what that migrator returned.
+%
+%   THE 1 -> N PATH IS EXERCISED, NOT MERELY WRITTEN. Nothing in production
+%   returns more than one body on an armed branch today (see the schema block
+%   below), so `ArmingMigrators` exists as a name-value override for exactly one
+%   purpose: to let a test drive a real N-body return through the real
+%   registration and carry code. It defaults to the production table. An
+%   untested 1 -> N path would be this file's own recurring error -- machinery
+%   whose zero is a property of never having run.
 %
 %   AND FOR THE TWO daqreader ARMS THERE IS A SECOND, SEPARATE BLOCKER, which is
 %   a SCHEMA question and not this function's to answer. `jEpochDocId` reads the
@@ -212,11 +245,13 @@ function [result, report] = epochMint(result, options)
 %   dependency:
 %
 %     DENOMINATOR: 247 JSON files under schemas/V_eta, 241 with a document_class
+%       (RE-DERIVED 2026-08-12; deps read by JSON path, not by grep)
 %       epoch_id DEPENDENCY declared by 4: acquisition_metadata_file (required),
 %         ingestion_manifest (required), directed_relation (optional),
 %         method_parameters (optional)
 %       daqreader_epochdata_ingested        depends_on: [daqreader_id]
 %       daqreader_image_epochdata_ingested  depends_on: [daqreader_id]
+%       stimulus_response_scalar            does NOT declare it either
 %
 %   So their armed branches are DEAD on real data today, reachable only by
 %   fixtures that hand-add the edge (testMigratorsJIngested.m's `withEpochEdge`,
@@ -228,15 +263,26 @@ function [result, report] = epochMint(result, options)
 %   document or an ambiguous one), and `RequiredDependencies` is ARMED, so a
 %   required edge that cannot be filled QUARANTINES rather than sitting empty.
 %
-%   NOTE THE ORDER: declaring the edge ALONE would not arm them, because the
-%   1 -> N rebuild above still cannot carry their output.
+%   THE ORDER HAS NOW REVERSED, and that is the only part of this block that
+%   changed on 2026-08-12. The rebuild machinery is no longer the blocker; the
+%   schema increment is the whole of what is left, for two of the three. The
+%   arming table below is the one place a fourth row would be added, and the
+%   `undeclared_edge` refusal is what stops a row being added before its class
+%   declares the edge -- it reads the schema, so it cannot go stale the way a
+%   list kept here would.
 %
-%   Stated as scope rather than as a warning: what remains of #60's item 2 is a
-%   change to the rebuild machinery plus (for two of the three) a team decision
-%   on a schema increment -- not "an arming loop". None of it was attempted in
-%   the container that wrote this note, which has no MATLAB and no Octave
-%   (`command -v matlab octave octave-cli` prints nothing and exits 1), and the
-%   1 -> N path has no test today because nothing has ever produced one.
+%   `stimulus_response_scalar` is the one whose stamp would NOT persist --
+%   jCalculation.m:82-92 builds the leaf's `deps` by NAMING the edges it carries
+%   and never copies `preBody.depends_on` wholesale, so the transient
+%   `epoch_id` does not reach the emitted leaf. Whether that makes it armable
+%   without a schema increment is a question about the SOURCE tombstone, not
+%   about this machinery, and it is not answered here.
+%
+%   NOTHING BELOW HAS BEEN EXECUTED IN THIS CONTAINER. It has no MATLAB and no
+%   Octave -- `command -v matlab octave octave-cli` prints nothing and exits 1
+%   (re-checked 2026-08-12) -- so the quick gate is the first thing that will
+%   have an opinion about the 1 -> N path, and the CI run ids are the only
+%   durable evidence.
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH-STRING READER MOVED OUT, AND WIDENED (2026-08-10)
@@ -262,6 +308,10 @@ function [result, report] = epochMint(result, options)
 %     Validate       (1,1 logical, default true)  validate minted/changed bodies
 %     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
 %     TargetVersion  (1,:) char, default 'V_eta'  no-op on other targets
+%     ArmingMigrators ([] or struct)              source class -> migrator
+%                    handle. [] means the production table (one row today).
+%                    Exists so the 1 -> N carry can be DRIVEN by a test; see
+%                    the arming block above.
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveDatasetEntities,
 %   did2.convert.resolveDeferredBaths, did2.validate.sourceCensus,
@@ -272,6 +322,11 @@ arguments
     options.Validate (1,1) logical = true
     options.SchemaCache = []
     options.TargetVersion (1,:) char = 'V_eta'
+    options.ArmingMigrators = []
+end
+armingMigrators = options.ArmingMigrators;
+if isempty(armingMigrators)
+    armingMigrators = defaultArmingMigrators();
 end
 
 % DENOMINATOR FIRST, and unconditionally. Every field below is defined before a
@@ -299,6 +354,31 @@ report = struct( ...
     'method_parameters_seen',         0, ...
     'method_parameters_edges_filled', 0, ...
     'method_parameters_unresolved',   0, ...
+    'method_parameters_epoch_not_in_batch', 0, ...
+    ...
+    ... % THE ARMING DENOMINATOR AND WHAT BECAME OF IT. `..._offered` counts
+    ... % every body every armed migrator handed back; `..._carried` counts the
+    ... % ones that reached result.migrated; `..._dropped` is the difference and
+    ... % equals the sum of the five named reasons below it. A body minted by a
+    ... % migrator and discarded here is the defect this instrument exists for --
+    ... % it would have left `time_reference_1` pointing outside the batch, and
+    ... % the corpus digest prints no orphan counter (open item #95).
+    'arming_calls',                        0, ...
+    'arming_bodies_offered',               0, ...
+    'arming_bodies_carried',               0, ...
+    'arming_bodies_dropped',               0, ...
+    'arming_bodies_dropped_declined',      0, ...
+    'arming_bodies_dropped_id_not_preserved',   0, ...
+    'arming_bodies_dropped_undeclared_edge',    0, ...
+    'arming_bodies_dropped_not_rebuilt',   0, ...
+    'arming_bodies_dropped_epoch_lost',    0, ...
+    'arming_extra_bodies_offered',         0, ...
+    'arming_extra_bodies_carried',         0, ...
+    'arming_calls_returning_multiple',     0, ...
+    'arming_max_bodies_per_call',          0, ...
+    'arming_edge_declaration_unchecked',   0, ...
+    'arming_vacuous',                   true, ...
+    'epoch_index_report',      did2.convert.epochIndex.blankReport(), ...
     'metadata_ingested_seen',              0, ...
     'metadata_ingested_already_folded',    0, ...
     'metadata_ingested_edges_stamped',     0, ...
@@ -307,6 +387,7 @@ report = struct( ...
     'metadata_refused_no_epoch_string',    0, ...
     'metadata_refused_no_epoch_document',  0, ...
     'metadata_refused_migrator_declined',  0, ...
+    'metadata_refused_unsafe_output',      0, ...
     'metadata_refused_total',              0, ...
     'metadata_fold_vacuous',               true, ...
     'mint_quarantined',               0, ...
@@ -418,6 +499,11 @@ end
 % still carry their `epochid` string. A find-or-create that only creates is a
 % duplicate factory.
 epochIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
+% The epochs that were ALREADY in the batch. They are never rebuilt, so they
+% cannot fail validation here and are alive unconditionally -- which is exactly
+% what the carry decision below needs to know, and what it must not confuse
+% with "absent from out.migrated".
+foundExistingIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 indexRows = struct('session_id', {}, 'local_identifier', {}, ...
                    'epoch_document_id', {});
 for k = 1:n
@@ -430,6 +516,7 @@ for k = 1:n
     existingKey = pairKey(rows(k).session_id, lid);
     if isKey(epochIdByKey, existingKey); continue; end
     epochIdByKey(existingKey) = rows(k).doc_id;
+    foundExistingIds(rows(k).doc_id) = true;
     report.epochs_found_existing = report.epochs_found_existing + 1;
     indexRows(end+1) = struct('session_id', rows(k).session_id, ...
         'local_identifier', lid, 'epoch_document_id', rows(k).doc_id); %#ok<AGROW>
@@ -505,12 +592,39 @@ report.pairs_minus_strings = ...
 
 % --- fill the ONE declared, fillable epoch edge ---------------------------
 changedIdx = [];
-% The subset of `changedIdx` that is an ingested-metadata FOLD. Kept beside it
-% rather than recovered afterwards by class name: after the rebuild the body in
-% `docs{k}` may be either the folded document or the original passthrough
-% (whichever survived), so asking "what class is it now" cannot tell an emitted
-% fold from a withheld one -- which is precisely the number to report.
-metadataFoldIdx = [];
+% The primary body whose id must come back out of the re-fold for `changedIdx(j)`
+% to be replaced. Kept EXPLICITLY rather than taken from `rows(...).doc_id`,
+% because a fold that does not preserve the id would otherwise match nothing,
+% leave the original in place and report nothing -- a silent no-op. The carry
+% loop refuses such a fold out loud instead, and this array is what lets it.
+changedPrimaryId = {};
+% Which armed call, if any, produced the body at changedIdx(j). Index into
+% `armings`; 0 for a plain in-place edge fill (method_parameters) that no
+% migrator was involved in.
+changedArming = [];
+% One entry per armed migrator CALL, not per body: {index, primary_id,
+% extra_ids, body_count, epoch_id, is_metadata_fold}. The CALL is the unit
+% because the carry decision is all-or-nothing across it.
+armings = {};
+extraBodies = {};    % bodies 2..N of every armed call, awaiting the re-fold
+% The epoch-edge declaration check reads the SCHEMA (epochIndex, which walks the
+% superclass chain and answers false when it cannot look). It is consulted only
+% when the caller asked for validation: `Validate=false` says the caller has
+% turned schema checking off for this call, and a guard whose verdict depended
+% on whether a schema path happened to be configured would make a silent
+% configuration difference change the DATA. The skips are counted, not assumed.
+edgeIndex = did2.convert.epochIndex([], 'SchemaCache', options.SchemaCache);
+checkEdgeDeclaration = options.Validate;
+% class name -> 1 declares / 0 does not / -1 could not be checked. See
+% declaresEpochEdge for why the third value cannot be recovered from
+% epochIndex's counters alone.
+edgeMemo = containers.Map('KeyType', 'char', 'ValueType', 'double');
+% NOTE the `is_metadata_fold` flag on each `armings` entry, which replaced a
+% parallel `metadataFoldIdx` array. The reason for recording it at all is
+% unchanged: after the rebuild the body in `docs{k}` may be either the folded
+% document or the original passthrough (whichever survived), so asking "what
+% class is it now" cannot tell an emitted fold from a withheld one -- which is
+% precisely the number to report.
 for k = 1:n
     if ~strcmp(rows(k).class_name, 'method_parameters'); continue; end
     report.method_parameters_seen = report.method_parameters_seen + 1;
@@ -541,7 +655,9 @@ for k = 1:n
         b.method_parameters.other = rmfield(b.method_parameters.other, 'epochid');
     end
     bodies{k} = b;
-    changedIdx(end+1) = k; %#ok<AGROW>
+    changedIdx(end+1)      = k;                %#ok<AGROW>
+    changedPrimaryId{end+1} = rows(k).doc_id;  %#ok<AGROW>
+    changedArming(end+1)   = 0;                %#ok<AGROW>
     report.method_parameters_edges_filled = ...
         report.method_parameters_edges_filled + 1;
 end
@@ -590,13 +706,19 @@ end
 %      follow the mint, and the mint is above.
 %
 % NOTHING CAN BE LOST HERE, and that is a property of the rebuild path below
-% rather than a claim about this loop. A folded body is pushed through
-% did2.convert.v1_to_v2 with the rest; the replacement loop overwrites
-% `docs{k}` ONLY when the folded body's id came back out of it, so a body that
-% quarantines leaves the ORIGINAL passthrough document in the batch -- valid
-% under its own restored source tombstone -- while still landing in
+% rather than a claim about this loop. EVERY body an armed migrator returns is
+% pushed through did2.convert.v1_to_v2 -- body 1 alongside the other changed
+% bodies, bodies 2..N alongside the mints -- and the carry decision is ALL OR
+% NOTHING per call: unless every one of them came back out, `docs{k}` keeps the
+% ORIGINAL passthrough document (valid under its own restored source tombstone)
+% and the extras are not appended. Whatever quarantined still lands in
 % `result.quarantine`, which is a 0-quarantine gate failure and the correct
 % volume for a builder that emitted an invalid document.
+%
+% "NOTHING CAN BE LOST" IS NOW A MEASURED CLAIM RATHER THAN AN ARGUMENT.
+% `arming_bodies_offered` minus `arming_bodies_carried` is the number of bodies
+% this loop discarded, split by named reason, and it is the counter whose
+% absence let the 1 -> 1 assumption stand unexamined.
 %
 % VACUITY IS REPORTED, NOT INFERRED FROM ZEROS. `metadata_fold_vacuous` is TRUE
 % when this batch held no source documents at all, so a run with nothing to do
@@ -637,30 +759,101 @@ for k = 1:n
     b = setDep(bodies{k}, 'epoch_id', epochIdByKey(key));
     report.metadata_ingested_edges_stamped = ...
         report.metadata_ingested_edges_stamped + 1;
-    folded = did2.convert.migrators_j.daqmetadatareader_epochdata_ingested(b);
-    if iscell(folded) && isscalar(folded); folded = folded{1}; end
-    if ~isstruct(folded) || ~isscalar(folded) ...
-            || ~strcmp(classNameOf(folded), 'acquisition_metadata_file')
-        % The migrator's OTHER guards -- no reader edge, no bytes -- fired and
-        % it returned the source. It is the authority on whether the fold is
-        % safe; this loop only supplies the epoch. The stamped edge is dropped
-        % with the body, so the passthrough is byte-identical to no-op.
-        report.metadata_refused_migrator_declined = ...
-            report.metadata_refused_migrator_declined + 1;
+    % 1 -> N FROM HERE DOWN. The migrator's return is taken as a CELL OF BODIES
+    % -- the same contract v1_to_v2/normaliseMigratorOutput applies to every
+    % split migrator -- and not as one body that happens to be wrapped.
+    migrator = armingMigratorFor(armingMigrators, ...
+        'daqmetadatareader_epochdata_ingested');
+    offered = normaliseArmingOutput(migrator(b));
+    nOffered = numel(offered);
+    report.arming_calls          = report.arming_calls + 1;
+    report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
+    report.arming_extra_bodies_offered = ...
+        report.arming_extra_bodies_offered + max(0, nOffered - 1);
+    if nOffered > report.arming_max_bodies_per_call
+        report.arming_max_bodies_per_call = nOffered;
+    end
+    if nOffered > 1
+        report.arming_calls_returning_multiple = ...
+            report.arming_calls_returning_multiple + 1;
+    end
+    [safe, why, unchecked] = armingIsSafe(offered, ...
+        'acquisition_metadata_file', rows(k).doc_id, ...
+        checkEdgeDeclaration, edgeIndex, edgeMemo);
+    report.arming_edge_declaration_unchecked = ...
+        report.arming_edge_declaration_unchecked + unchecked;
+    if ~safe
+        switch why
+            case 'declined'
+                % The migrator's OTHER guards -- no reader edge, no bytes --
+                % fired and it returned the source. It is the authority on
+                % whether the fold is safe; this loop only supplies the epoch.
+                % The stamped edge is dropped with the body, so the passthrough
+                % is byte-identical to no-op.
+                report.metadata_refused_migrator_declined = ...
+                    report.metadata_refused_migrator_declined + 1;
+                report.arming_bodies_dropped_declined = ...
+                    report.arming_bodies_dropped_declined + nOffered;
+            case 'id_not_preserved'
+                report.metadata_refused_unsafe_output = ...
+                    report.metadata_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_id_not_preserved = ...
+                    report.arming_bodies_dropped_id_not_preserved + nOffered;
+            case 'undeclared_edge'
+                report.metadata_refused_unsafe_output = ...
+                    report.metadata_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_undeclared_edge = ...
+                    report.arming_bodies_dropped_undeclared_edge + nOffered;
+            otherwise
+                % UNREACHABLE by construction -- armingIsSafe returns one of
+                % the three above -- and it ERRORS rather than folding into a
+                % neighbouring counter, because a refusal counted under the
+                % wrong name is worse than a loud stop. runCorpusDiscovery
+                % records this on `epoch_mint.pass_failed` and leaves every
+                % document in its pass-1 form.
+                error('did2:convert:epochMint:unknownRefusal', ...
+                    ['armingIsSafe returned refusal "%s", which no counter ' ...
+                     'names. Add the counter; do not widen an existing ' ...
+                     'one.'], why);
+        end
         continue;
     end
-    bodies{k} = folded;
-    changedIdx(end+1) = k;      %#ok<AGROW>
-    metadataFoldIdx(end+1) = k; %#ok<AGROW>
+    % Body 1 takes the source document's slot; bodies 2..N are NEW documents
+    % and are appended to the batch after the re-fold. Neither is carried
+    % unless ALL of them come back out of it -- see the carry loop.
+    bodies{k} = offered{1};
+    extraIds  = cell(1, nOffered - 1);
+    for e = 2:nOffered
+        extraBodies{end+1} = offered{e};        %#ok<AGROW>
+        extraIds{e-1}      = baseIdOf(offered{e});
+    end
+    armEntry = struct();
+    armEntry.index            = k;
+    armEntry.primary_id       = baseIdOf(offered{1});
+    armEntry.extra_ids        = extraIds;
+    armEntry.body_count       = nOffered;
+    armEntry.epoch_id         = epochIdByKey(key);
+    armEntry.is_metadata_fold = true;
+    armings{end+1} = armEntry;                      %#ok<AGROW>
+    changedIdx(end+1)       = k;                    %#ok<AGROW>
+    changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
+    changedArming(end+1)    = numel(armings);       %#ok<AGROW>
 end
+report.arming_vacuous = (report.arming_calls == 0);
 report.metadata_refused_total = report.metadata_refused_no_epoch_string ...
     + report.metadata_refused_no_epoch_document ...
-    + report.metadata_refused_migrator_declined;
+    + report.metadata_refused_migrator_declined ...
+    + report.metadata_refused_unsafe_output;
 report.metadata_fold_vacuous = (report.metadata_ingested_seen == 0);
 
 report.epochs_minted = numel(minted);
 report.epoch_index = indexRows;
 if isempty(minted) && isempty(changedIdx)
+    % Nothing to re-fold. Every body an armed migrator offered was refused
+    % before this point, so all of them are dropped and the arithmetic must say
+    % so rather than reading 0 dropped over an unstated denominator.
+    report.arming_bodies_dropped = report.arming_bodies_offered;
+    report.epoch_index_report = edgeIndex.report;
     result.epoch_mint = report;
     return;
 end
@@ -671,7 +864,11 @@ end
 % that cannot validate lands in `quarantine` and is NOT emitted -- loudly, on a
 % 0-quarantine gate, which is the correct volume for a builder that produced an
 % invalid document.
-rebuildIn = [bodies(changedIdx), minted];
+% `extraBodies` -- bodies 2..N of every armed call -- go through the SAME door.
+% They are new documents, so they are appended rather than replacing anything,
+% but they must be validated exactly like a mint: an unvalidated extra is a
+% document nobody checked, referenced by a document that did validate.
+rebuildIn = [bodies(changedIdx), extraBodies, minted];
 out = did2.convert.v1_to_v2(rebuildIn, ...
     'Validate',      options.Validate, ...
     'SchemaCache',   options.SchemaCache, ...
@@ -686,10 +883,11 @@ if ~isempty(out.quarantine)
     end
 end
 
-% v1_to_v2 preserves input order and this batch is 1 -> 1 throughout (no
-% migrator runs on an already-target body), so position maps back directly --
-% but only while nothing quarantined. When something did, fall back to matching
-% on base.id rather than on position, because a quarantined body leaves no slot.
+% POSITION IS NO LONGER USABLE AND THE OLD COMMENT SAYING IT WAS IS GONE. It
+% read "this batch is 1 -> 1 throughout", which was true only while the single
+% armed migrator returned one body; an armed call returning N puts N entries
+% into `rebuildIn` for one entry of `changedIdx`. Matching is on base.id, which
+% was already the fallback and is now the only rule.
 producedById = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:numel(out.migrated)
     try
@@ -699,21 +897,96 @@ for k = 1:numel(out.migrated)
         % counted in out.migrated and appended below if it is a mint.
     end
 end
+
+% --- decide each armed call, ALL OR NOTHING -------------------------------
+% An armed migrator's bodies reference each other -- the leaf's
+% `time_reference_1` names the anchor it minted alongside it -- so carrying the
+% primary while an extra quarantined would emit a document pointing at one that
+% is not in the batch. That is an ORPHAN, and the corpus digest prints no orphan
+% counter (open item #95), so nothing downstream would say so. They live or die
+% together, and the refusal is COUNTED in whole bodies so `offered - carried`
+% closes.
+armingCarried = false(1, numel(armings));
+for a = 1:numel(armings)
+    ar = armings{a};
+    alive = ~isempty(ar.primary_id) && isKey(producedById, ar.primary_id);
+    for e = 1:numel(ar.extra_ids)
+        alive = alive && ~isempty(ar.extra_ids{e}) ...
+            && isKey(producedById, ar.extra_ids{e});
+    end
+    if ~alive
+        report.arming_bodies_dropped_not_rebuilt = ...
+            report.arming_bodies_dropped_not_rebuilt + ar.body_count;
+        continue;
+    end
+    % The epoch this call was armed FOR must itself be in the batch. A minted
+    % epoch that failed validation is not a document anything may point at, and
+    % `acquisition_metadata_file.epoch_id` is REQUIRED, so carrying the fold
+    % anyway would emit a required edge naming a document nobody can resolve.
+    if ~isempty(ar.epoch_id) && ~isKey(producedById, ar.epoch_id) ...
+            && ~isKey(foundExistingIds, ar.epoch_id)
+        report.arming_bodies_dropped_epoch_lost = ...
+            report.arming_bodies_dropped_epoch_lost + ar.body_count;
+        continue;
+    end
+    armingCarried(a) = true;
+end
+
 for j = 1:numel(changedIdx)
-    id = rows(changedIdx(j)).doc_id;
-    if ~isempty(id) && isKey(producedById, id)
-        docs{changedIdx(j)} = out.migrated{producedById(id)};
+    armIdx = changedArming(j);
+    if armIdx > 0 && ~armingCarried(armIdx)
+        continue;   % refused: docs{k} keeps the ORIGINAL passthrough document
+    end
+    id = changedPrimaryId{j};
+    if isempty(id) || ~isKey(producedById, id); continue; end
+    docs{changedIdx(j)} = out.migrated{producedById(id)};
+    if armIdx > 0
+        report.arming_bodies_carried = report.arming_bodies_carried + 1;
+    elseif ~isempty(rows(changedIdx(j)).class_name) ...
+            && strcmp(rows(changedIdx(j)).class_name, 'method_parameters')
+        % MEASURED, NOT REPAIRED, and deliberately so. `method_parameters.epoch_id`
+        % is OPTIONAL, so an epoch that quarantined leaves this body carrying an
+        % edge to a document not in the batch -- an orphan. That path predates
+        % this rebuild and changing it would change a current result, so it is
+        % counted here and left for the team. It is reachable only when a mint
+        % quarantined, which is already a 0-quarantine gate failure.
+        eid = depValueOf(bodies{changedIdx(j)}, 'epoch_id');
+        if ~isempty(eid) && ~isKey(producedById, eid) ...
+                && ~isKey(foundExistingIds, eid)
+            report.method_parameters_epoch_not_in_batch = ...
+                report.method_parameters_epoch_not_in_batch + 1;
+        end
     end
 end
+
+% --- append bodies 2..N of every carried call -----------------------------
+% THE HALF THAT DID NOT EXIST BEFORE. Without this loop an armed migrator's
+% minted references are built, validated, and then dropped on the floor.
+for a = 1:numel(armings)
+    if ~armingCarried(a); continue; end
+    ar = armings{a};
+    for e = 1:numel(ar.extra_ids)
+        docs{end+1} = out.migrated{producedById(ar.extra_ids{e})}; %#ok<AGROW>
+        report.arming_extra_bodies_carried = ...
+            report.arming_extra_bodies_carried + 1;
+        report.arming_bodies_carried = report.arming_bodies_carried + 1;
+    end
+end
+report.arming_bodies_dropped = ...
+    report.arming_bodies_offered - report.arming_bodies_carried;
+
 % THE FOLD'S OWN DENOMINATOR, split by what actually landed. A fold that
 % quarantined leaves `docs{k}` holding the ORIGINAL passthrough document, so
 % nothing is lost -- but nothing was gained either, and the two must not print
 % the same. `withheld` is the count of documents that stayed did_v1 despite
 % having an epoch to point at, and it is exactly the number a 0-quarantine gate
-% failure should be read against.
-for j = 1:numel(metadataFoldIdx)
-    id = rows(metadataFoldIdx(j)).doc_id;
-    if ~isempty(id) && isKey(producedById, id)
+% failure should be read against. Read off the CARRY DECISION rather than off
+% `producedById` alone: a fold whose primary validated but whose sibling did not
+% is withheld, and asking only whether the primary came back would call it
+% emitted.
+for a = 1:numel(armings)
+    if ~armings{a}.is_metadata_fold; continue; end
+    if armingCarried(a)
         report.metadata_ingested_folds_emitted = ...
             report.metadata_ingested_folds_emitted + 1;
     else
@@ -748,6 +1021,11 @@ end
 
 result.migrated = docs;
 result.summary = recountSummary(result);
+% The schema authority's own counters, carried out with the report so
+% `arming_edge_declaration_unchecked` can be read against WHY it could not look:
+% `schema_lookups_unavailable` (no cache at all) and `schema_lookups_failed`
+% (the chain lookup threw) are different problems with different owners.
+report.epoch_index_report = edgeIndex.report;
 result.epoch_mint = report;
 end
 
@@ -778,13 +1056,185 @@ body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
 body.epoch = struct('local_identifier', epochString);
 end
 
+% ===================== the arming path =================================
+
+function tbl = defaultArmingMigrators()
+%DEFAULTARMINGMIGRATORS SOURCE CLASS -> the migrator this pass re-runs armed.
+%   ONE ROW TODAY, and the reason there is only one is a SCHEMA fact, not an
+%   omission: a migrator may be armed only once some class in its output can
+%   legally hold the `epoch_id` edge, and the three migrators waiting on this
+%   pass emit bodies whose classes do not declare it. Re-derived 2026-08-12 over
+%   the built tree (247 JSON files, 241 with a document_class, deps read by JSON
+%   path rather than by grep): exactly FOUR classes declare the dependency --
+%   acquisition_metadata_file, ingestion_manifest, directed_relation,
+%   method_parameters. `daqreader_epochdata_ingested`,
+%   `daqreader_image_epochdata_ingested` and `stimulus_response_scalar` are not
+%   among them. Adding a row here before that changes is caught by the
+%   `undeclared_edge` refusal in armingIsSafe, which reads the schema.
+tbl = struct( ...
+    'daqmetadatareader_epochdata_ingested', ...
+        @did2.convert.migrators_j.daqmetadatareader_epochdata_ingested);
+end
+
+function fcn = armingMigratorFor(tbl, sourceClass)
+%ARMINGMIGRATORFOR The handle for one source class, or an error.
+%   ERRORS rather than falling back to the production migrator. A caller that
+%   overrode the table meant to override it, and quietly running the real
+%   migrator instead would make a test that thinks it is driving the 1 -> N path
+%   pass while driving the 1 -> 1 one -- a green result from machinery that
+%   never ran, which is this file's own recurring failure.
+if ~isstruct(tbl) || ~isfield(tbl, sourceClass)
+    error('did2:convert:epochMint:noArmingMigrator', ...
+        ['ArmingMigrators carries no entry for "%s". The table must name ' ...
+         'every source class this pass arms.'], sourceClass);
+end
+fcn = tbl.(sourceClass);
+end
+
+function bodies = normaliseArmingOutput(out)
+%NORMALISEARMINGOUTPUT A migrator's return as a CELL OF BODIES, N >= 0.
+%   Same contract as did2.convert.v1_to_v2/normaliseMigratorOutput -- a struct
+%   array is N bodies, a cell is N bodies, a scalar struct is one -- so an armed
+%   re-run reads a migrator's output exactly the way pass 1 does. The old code
+%   here unwrapped a 1-cell and treated everything else as a failure, which is
+%   why a 1 -> N migrator would have lost every body after the first.
+%   An unrecognised return is EMPTY, not an error: the caller reports it as a
+%   refusal and keeps the passthrough, which is the safe reading of "the
+%   migrator did not give me documents".
+if iscell(out)
+    bodies = out(:)';
+elseif isstruct(out)
+    bodies = cell(1, numel(out));
+    for k = 1:numel(out)
+        bodies{k} = out(k);
+    end
+else
+    bodies = {};
+end
+end
+
+function [declares, checkable] = declaresEpochEdge(edgeIndex, memo, className)
+%DECLARESEPOCHEDGE Does CLASSNAME declare `epoch_id`, and could we even look?
+%   did2.convert.epochIndex/classDeclaresEpochEdge answers FALSE for both "no"
+%   and "could not check", which is right for a writer guard and wrong for a
+%   caller that must tell them apart. It does keep the two apart in its report,
+%   so the delta on `schema_lookups_unavailable + schema_lookups_failed` is the
+%   discriminator -- but ONLY ON THE FIRST CALL for a class: the `failed` branch
+%   MEMOISES its false (epochIndex.m:333), so the counter never moves again and
+%   a second look would read "the schema said no". Hence this memo, which
+%   records -1 for uncheckable and is consulted before the delta ever is.
+declares  = false;
+checkable = true;
+if isempty(className)
+    return;     % a body with no class name cannot be checked against a schema
+end
+if isKey(memo, className)
+    v = memo(className);
+    checkable = (v >= 0);
+    declares  = (v == 1);
+    return;
+end
+before = edgeIndex.report.schema_lookups_unavailable ...
+    + edgeIndex.report.schema_lookups_failed;
+tf = edgeIndex.classDeclaresEpochEdge(className);
+after = edgeIndex.report.schema_lookups_unavailable ...
+    + edgeIndex.report.schema_lookups_failed;
+if after > before
+    checkable = false;
+    memo(className) = -1;
+    return;
+end
+declares = tf;
+memo(className) = double(tf);
+end
+
+function [safe, why, unchecked] = armingIsSafe(offered, primaryClass, ...
+        originalId, checkDeclaration, edgeIndex, edgeMemo)
+%ARMINGISSAFE May this armed call's bodies be carried into the batch?
+%   Returns SAFE false plus a named WHY, and UNCHECKED counts the bodies whose
+%   edge declaration could not be consulted (see the caller for when that is).
+%
+%   THE THREE REFUSALS, in the order they are asked:
+%     declined          the migrator's own guards fired and it did not produce
+%                       the target class. It is the authority on that.
+%     id_not_preserved  the primary does not carry the source's `base.id`.
+%                       Replacing docs{k} with it would delete that id from the
+%                       batch and dangle every inbound reference -- the
+%                       11,448-orphan dissolution failure, arriving as a fold.
+%     undeclared_edge   some returned body would PERSIST an `epoch_id` on a
+%                       class that does not declare it. Nothing else catches
+%                       this: did2.schema.cache:761 puts `depends_on` in
+%                       `allowedTop` wholesale, so an undeclared edge NAME
+%                       validates clean. This is the guard that keeps the two
+%                       daqreader arms -- which return their stamped pre-body --
+%                       from being armed before their schema increment lands.
+safe = false;
+why  = '';
+unchecked = 0;
+if isempty(offered)
+    why = 'declined';
+    return;
+end
+primary = offered{1};
+if ~isstruct(primary) || ~isscalar(primary) ...
+        || ~strcmp(classNameOf(primary), primaryClass)
+    why = 'declined';
+    return;
+end
+if ~strcmp(baseIdOf(primary), originalId)
+    why = 'id_not_preserved';
+    return;
+end
+for k = 1:numel(offered)
+    b = offered{k};
+    if ~isstruct(b) || ~isscalar(b)
+        why = 'declined';
+        return;
+    end
+    if isempty(depValueOf(b, 'epoch_id')); continue; end
+    if ~checkDeclaration
+        unchecked = unchecked + 1;
+        continue;
+    end
+    % "THE SCHEMA SAID NO" AND "THE SCHEMA COULD NOT BE CONSULTED" ARE NOT THE
+    % SAME ANSWER. Refusing on the second would make the fold depend on whether
+    % a schema path happened to resolve -- a configuration difference changing
+    % the DATA. A lookup that could not be made is counted as UNCHECKED and does
+    % not refuse; only a schema that answered NO refuses.
+    [declares, checkable] = declaresEpochEdge(edgeIndex, edgeMemo, classNameOf(b));
+    if ~checkable
+        unchecked = unchecked + 1;
+        continue;
+    end
+    if ~declares
+        why = 'undeclared_edge';
+        return;
+    end
+end
+safe = true;
+end
+
 % ===================== readers =========================================
 
+function id = baseIdOf(b)
+%BASEIDOF `base.id` off a body STRUCT, '' when it has none.
+id = '';
+if ~isstruct(b) || ~isscalar(b); return; end
+id = baseField(b, 'id');
+end
+
 function k = pairKey(sessionId, epochString)
-%PAIRKEY The mint key, length-prefixed so no separator can be forged.
-%   `[sessionId '|' epochString]` would let a session id ending in '|' collide
-%   with another pair. Cheap to prevent; expensive to notice.
-k = sprintf('%d:%s|%s', numel(sessionId), sessionId, epochString);
+%PAIRKEY The mint key -- DELEGATED, no longer a copy.
+%   This was the FIRST of four byte-identical hand-rolled copies
+%   (did2.convert.resolveValidIntervals/pairKey,
+%   did2.validate.epochStringRetention/pairKey, and
+%   did2.convert.epochIndex.pairKey, whose header calls itself "the ONE
+%   implementation any NEW consumer must use" and records the removal of the
+%   other three as follow-up). This is that follow-up, for one of them: the
+%   body is gone and the call goes to the shared static. A key that differs
+%   between the writer and the reader resolves to nothing while looking like a
+%   data problem, and four copies is four chances for that.
+k = did2.convert.epochIndex.pairKey(sessionId, epochString);
 end
 
 function cn = classNameOf(b)
