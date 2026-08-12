@@ -219,12 +219,28 @@ function v = carryProbeMap(src)
 %   Carried VERBATIM (char or struct) rather than coerced: the value is opaque
 %   to this migrator and the only safe transformation is none.
 %
-%   NOTE THE SCHEMA IS THE ONE THAT IS WRONG. V_eta's syncrule_mapping tombstone
-%   declares `epochnode_a.epochprobemap` as type `structure`. That does not
-%   quarantine a char today -- schema/cache.m validateField type-checks only the
-%   IMMEDIATE fields of a property block, and this is two levels down -- but the
+%   THE SCHEMA HALF HAS SINCE LANDED, AND THIS PARAGRAPH USED TO SAY IT HAD NOT.
+%   It read: "NOTE THE SCHEMA IS THE ONE THAT IS WRONG. V_eta's syncrule_mapping
+%   tombstone declares `epochnode_a.epochprobemap` as type `structure` [...] the
 %   declaration should say `char`. Schema-side, out of this change's scope;
-%   reported with the build.
+%   reported with the build." That was true when written and is not true now. It
+%   is corrected here rather than deleted because, left standing, it instructs a
+%   reader to go and change a schema that is ALREADY CORRECT -- and changing the
+%   V_eta schema is a separate decision with its own blast radius.
+%
+%     DID-schema tools/build_v_eta.py:6696-6710
+%        # TYPE CORRECTED 2026-08-10: it was `structure`; it is a CHAR.
+%        subfield("epochprobemap", "string", ...
+%     DID-schema schemas/V_eta/stable/syncrule_mapping.json
+%        epochnode_a.epochprobemap: type='string'   (epochnode_b likewise)
+%
+%   `string` and not `char` because an absent value decodes as an empty double,
+%   which `char` rejects -- the generator states that reason in its own words.
+%
+%   The non-quarantine half of the old paragraph is UNCHANGED and is exactly why
+%   the wrong declaration survived unnoticed: schema/cache.m validateField
+%   type-checks only the IMMEDIATE fields of a property block, and this sits two
+%   levels down.
 v = '';
 if ~isstruct(src); return; end
 for name = {'epochprobemap', 'epochProbeMap'}

@@ -400,6 +400,29 @@ verifyEqual(testCase, depVal(doc, 'syncgraph_id'), 'graph_0001');
 verifyEqual(testCase, depVal(doc, 'syncrule_id'), 'rule_ctoe');
 % the invented required edge stays REMOVED
 verifyEmpty(testCase, depVal(doc, 'epochid'));
+
+% epoch_clock -- THE SEVENTH WRITER FIELD, AND THE ONLY ONE NOTHING PINNED.
+% The writer's field list is closed and is seven long:
+%   syncgraph.m:253
+%     epoch_node_fields = {'epoch_id','epoch_session_id','epochprobemap',
+%                          'epoch_clock','t0_t1','objectname','objectclass'};
+% Six of the seven were asserted across this test and the probe-map one;
+% `epoch_clock` was asserted by neither, and it is the ONE field this branch
+% RE-NESTS -- v1 stores it flat at `epochnode_a.epoch_clock`,
+% reshapeEpochNode moves it under `time_reference`. Live NDI reads it at four
+% sites: syncgraph.m:274-277 (the saved-rule match, which skips the document
+% and RE-DERIVES the mapping from raw device files when the strcmp fails) and
+% syncgraph.m:926,932 (the ingested-graph rebuild). A silent relocation here is
+% the #58 failure exactly -- a field dropped on every real document with the
+% suite green -- so it is pinned on BOTH endpoints.
+verifyEqual(testCase, ...
+    doc.get('syncrule_mapping.epochnode_a.time_reference.epoch_clock'), 'dev_local_time');
+verifyEqual(testCase, ...
+    doc.get('syncrule_mapping.epochnode_b.time_reference.epoch_clock'), 'dev_local_time');
+% ...and the b-side epoch_id, which was a-side only. Both endpoints are read:
+% commonTriggersOverlappingEpochs.m:156-157 ANDs epochnode_a.epoch_id with
+% epochnode_b.epoch_id, and syncgraph.m:268,271 does the same.
+verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_b.time_reference.epoch_id'), 't00002');
 end
 
 function testPassthroughNoLongerDropsTheSerialisedProbeMap(testCase)
