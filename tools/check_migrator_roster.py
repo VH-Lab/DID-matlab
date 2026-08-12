@@ -92,15 +92,33 @@ END = "%   ====================== END GENERATED ROSTER ======================"
 # Migrators with no quoted class-name literal in the executable code of any
 # test file. A RATCHET: it may shrink freely; anything new here fails.
 #
-# temporal_frequency_tuning is the odd one out of a uniform family -- its four
-# sibling v1 tuning result classes (contrast_tuning, orientation_direction_
-# tuning, spatial_frequency_tuning, speed_tuning) each have a class_name fixture
-# in testMigratorsJ.m AND testFixtureCorpus.m, and this one has neither. It is
-# recorded rather than papered over: writing a fixture to close the number is
-# the move this file exists to prevent.
-UNTESTED = {
-    "temporal_frequency_tuning",
-}
+# EMPTY AS OF 2026-08-12, and the reason is worth more than the zero.
+#
+# This set held `temporal_frequency_tuning`, with a note warning that "writing a
+# fixture to close the number is the move this file exists to prevent". The
+# fixture that closed it was NOT that move, and the evidence is what it found:
+# built from the WRITER (NDIcalc-vis-matlab `65718ed`, the single construction
+# site at `+ndi/+calc/+vis/temporal_frequency_tuning.m:295`) rather than from a
+# sibling, it turned up FOUR field names the uniform-family assumption had
+# guessed wrong -- `+vis/+frequency/temporal_frequency_analysis.m:58` writes
+# `L50`/`Pref`/`H50` capitalised and universalRenames does not reach nested
+# fields, and the writer sets no R2 on the DOG fit at all. The NDI template
+# disagrees with the writer three further ways; the writer wins, per the
+# standing ground-truth rule.
+#
+# It also surfaced three defects it deliberately does NOT assert, so that a
+# repair need not fight a pinned gap: `jTuningCurveValue` reads `response_units`
+# at block level while the writer puts it under `properties` (and its real value
+# is the EMPTY MATRIX in 8 of 8 mock documents while V_eta types the slot
+# `char`, so this is not a one-line path fix); `controlBlock` reads three
+# control fields off the block while the writer puts five inside `tuning_curve`;
+# and `abs`, a complete second analysis, has no destination at all.
+#
+# THE RATCHET IS NOW STRICT AT ZERO. A new entry here fails rather than being
+# recorded, which is the correct end state for this list -- and if a future
+# migrator genuinely cannot be tested, the honest move is to say why in a
+# comment beside its name, not to re-open the set silently.
+UNTESTED = set()
 
 
 # ----------------------------------------------------------------- discovery
