@@ -13,7 +13,10 @@ inversion of one:
     down (the same run, and the cause of it);
   * absence rendered as a pass -- a class in no corpus reading as proven;
   * a counter the report does not carry, summed as a zero;
-  * a failure attributed to one of several sources sharing a target.
+  * a failure attributed to one of several sources sharing a target;
+  * a ladder computed over a SMALLER UNIVERSE than the one on record, written
+    and rendered and exited 0 (run 31587869672: 91 v1 rows instead of 102,
+    `rung 1  10 yes / 81 no` instead of 86/16, every job green).
 
 The verdict itself is NOT tested here. It belongs to did-schema's
 `coverage.py`, is tested there, and is invoked across the repo boundary by a
@@ -26,7 +29,9 @@ import io
 import json
 import os
 import contextlib
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -34,7 +39,11 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from corpus_proven import (analyse, attribution_census,  # noqa: E402
-                           corpus_row, find_reports, norm_class, render)
+                           committed_ledger_classes, corpus_row, find_reports,
+                           norm_class, render, universe_check)
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WORKFLOW = os.path.join(REPO, ".github", "workflows", "test-corpus.yml")
 
 
 def report(corpus, classes, **kw):
@@ -127,6 +136,30 @@ class Case(unittest.TestCase):
                     "command": "stub", "schema_repo": schema_repo,
                     "roots": list(roots)}
         return run
+
+    def commit_ledger(self, classes):
+        """Make the fake did-schema checkout a real git repo whose HEAD carries
+        a ledger over `classes`.
+
+        A REAL `git show`, not a stub, because the thing under test is whether
+        the baseline can be READ -- and every way that read fails (no git, no
+        commit, no file) is a way this check quietly stops checking.
+        """
+        if shutil.which("git") is None:               # pragma: no cover
+            self.skipTest("git is not on PATH")
+        path = os.path.join(self.schema, "schemas",
+                            "V_eta_coverage_ledger.json")
+        with open(path, "w") as fh:
+            json.dump({"rows": [ledger_row(c, [c]) for c in classes]}, fh)
+        env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull,
+                   GIT_CONFIG_SYSTEM=os.devnull)
+        run = lambda *a: subprocess.run(a, cwd=self.schema, env=env,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL, check=True)
+        run("git", "init", "-q")
+        run("git", "add", "--", "schemas")
+        run("git", "-c", "user.email=t@example.invalid", "-c", "user.name=t",
+            "commit", "-q", "-m", "ledger")
 
     def run_tool(self, roots, gate=False, runner=None):
         cwd = os.getcwd()
@@ -372,6 +405,124 @@ class Case(unittest.TestCase):
         self.assertEqual(state["rung"]["yes"], 1)
         self.assertEqual(state["rung"]["unknown"], 0)
 
+    # --- MUTATION 5: a ledger REWRITTEN over a SMALLER UNIVERSE -------------
+    #
+    # The mtime gate above catches "coverage.py wrote nothing" (run
+    # 31572667236). Run 31587869672 WROTE -- and wrote 91 v1 rows where the
+    # committed ledger carries 102, because DID_MATLAB did not resolve on the
+    # runner, so the migrator scan was skipped and the 11 vhlab
+    # app/calculator classes with no NDI template were dropped. The rung
+    # rendered `10 yes / 81 no` for a ladder whose committed answer is 86/16,
+    # and every job was green. Not "measured nothing" -- measured a smaller
+    # world, silently, and exited 0.
+
+    def test_a_shrunken_universe_is_an_instrument_fault_naming_both_counts(self):
+        self.write_report("corpus-reports/A-summary.json",
+                          report("A", {"subject": 5}))
+        committed = ["subject"] + ["class_%02d" % i for i in range(1, 102)]
+        self.commit_ledger(committed)                 # 102 rows at HEAD
+        self.ledger_rows = [ledger_row(c, [c], "not measured", "0 documents")
+                            for c in committed[:91]]  # 91 rows regenerated
+        state, text = self.run_tool(["corpus-reports"])
+        self.assertNotEqual(state["exit_code"], 0,
+                            "a ladder computed over 91 of 102 classes is not a "
+                            "smaller answer, it is an answer to a different "
+                            "question -- and run 31587869672 exited 0")
+        self.assertIn("THE V1 UNIVERSE SHRANK UNDER THE REGENERATION", text)
+        # BOTH counts named, in the fault itself, not only in the render.
+        fault = "\n".join(state["instrument_faults"])
+        self.assertIn("wrote 91 v1 row(s)", fault)
+        self.assertIn("carries 102", fault)
+        # And the missing classes NAMED, so the cause is diagnosable from the
+        # log alone -- 11 classes dropping out is a different fault from one.
+        self.assertEqual(len(state["universe"]["missing"]), 11)
+        self.assertIn("class_101", fault)
+        self.assertIn("MISSING FROM THE REGENERATED LEDGER  class_101", text)
+        # It is an INSTRUMENT fault, not a migration defect: the ladder was
+        # computed over the wrong world, which says nothing about migration.
+        self.assertEqual(state["rung"]["no"], 0)
+
+    def test_an_equal_or_larger_universe_is_not_a_fault(self):
+        # The universe legitimately GROWS -- NDI adds templates, and the count
+        # has moved before. Only a shrink is a fault.
+        for label, regenerated in (
+                ("equal", ["subject", "alpha", "beta"]),
+                ("larger", ["subject", "alpha", "beta", "gamma"])):
+            with self.subTest(label):
+                shutil.rmtree(self.dir, ignore_errors=True)
+                self.setUp()
+                self.write_report("corpus-reports/A-summary.json",
+                                  report("A", {"subject": 5}))
+                self.commit_ledger(["subject", "alpha", "beta"])
+                self.ledger_rows = [
+                    ledger_row(c, [c], "not measured", "0 documents")
+                    for c in regenerated]
+                state, text = self.run_tool(["corpus-reports"])
+                self.assertEqual(state["exit_code"], 0)
+                self.assertEqual(state["universe"]["committed"], 3)
+                self.assertEqual(state["universe"]["regenerated"],
+                                 len(regenerated))
+                self.assertIsNone(state["universe"]["fault"])
+                self.assertIn("no shrink", text)
+                self.assertNotIn("SHRANK", text)
+
+    def test_an_unreadable_baseline_is_NOT_EVALUATED_never_a_silent_pass(self):
+        # No git, no commit, no file -- three ways the baseline read fails, and
+        # every one of them is a check that DID NOT HAPPEN. The one thing it
+        # may never look like is agreement.
+        self.write_report("corpus-reports/A-summary.json",
+                          report("A", {"subject": 5}))
+        self.ledger_rows = [ledger_row("subject", ["subject"], "yes", "clean")]
+        state, text = self.run_tool(["corpus-reports"])   # self.schema: no .git
+        self.assertFalse(state["universe"]["evaluated"])
+        self.assertIsNone(state["universe"]["committed"])
+        self.assertIsNone(state["universe"]["fault"])
+        self.assertIn("NOT EVALUATED", text)
+        self.assertIn("is not a git checkout", text)
+        self.assertIn("This is NOT a pass", text)
+        self.assertNotIn("no shrink", text)
+
+    def test_the_baseline_read_names_each_way_it_can_fail(self):
+        # Exercised against the REAL function, the way the mtime check is.
+        if shutil.which("git") is None:                # pragma: no cover
+            self.skipTest("git is not on PATH")
+        classes, why = committed_ledger_classes(self.schema)
+        self.assertIsNone(classes)
+        self.assertIn("is not a git checkout", why)
+
+        env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull,
+                   GIT_CONFIG_SYSTEM=os.devnull)
+        subprocess.run(["git", "init", "-q"], cwd=self.schema, env=env,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       check=True)
+        classes, why = committed_ledger_classes(self.schema)
+        self.assertIsNone(classes, "an empty repo has no HEAD to read")
+        self.assertIn("git", why)
+
+        self.commit_ledger(["subject", "alpha"])
+        classes, why = committed_ledger_classes(self.schema)
+        self.assertIsNone(why)
+        self.assertEqual(classes, ["subject", "alpha"])
+        # And the ledger ON DISK is deliberately not the baseline: the run
+        # overwrites it, so reading it back would compare a file to itself.
+        with open(os.path.join(self.schema, "schemas",
+                               "V_eta_coverage_ledger.json"), "w") as fh:
+            json.dump({"rows": [ledger_row("subject", ["subject"])]}, fh)
+        classes, why = committed_ledger_classes(self.schema)
+        self.assertEqual(classes, ["subject", "alpha"],
+                         "the baseline must come from `git show HEAD:`, never "
+                         "from the working copy the run just rewrote")
+
+    def test_a_same_size_ledger_with_different_names_reports_and_does_not_fault(self):
+        # Nothing measured says a rename is an instrument problem. It is
+        # reported and NOT judged -- inventing a verdict is the error this
+        # whole file is against.
+        out = universe_check([{"v1_class": "a"}, {"v1_class": "renamed"}],
+                             ["a", "b"], None)
+        self.assertIsNone(out["fault"])
+        self.assertEqual(out["missing"], ["b"])
+        self.assertEqual(out["added"], ["renamed"])
+
     def test_a_restructured_ledger_is_an_instrument_fault_not_a_default(self):
         self.write_report("corpus-reports/A-summary.json",
                           report("A", {"subject": 5}))
@@ -379,6 +530,94 @@ class Case(unittest.TestCase):
         state, text = self.run_tool(["corpus-reports"])
         self.assertNotEqual(state["exit_code"], 0)
         self.assertIn("NO recognised stage-5 state", text)
+
+
+def rung_step_env_scoped():
+    """The `env:` mapping of the census job's rung step, by a SCOPED read.
+
+    NOT a grep of the whole file: `DID_MATLAB` appearing SOMEWHERE in
+    test-corpus.yml says nothing about whether the step that invokes
+    corpus_proven.py carries it, and the six corpus jobs above it are a
+    different job entirely. The scope is narrowed twice -- to the `census:`
+    job, then to the step named `Per-class corpus proof` -- before a single
+    key is read.
+
+    Implemented without a YAML dependency and cross-checked against one when
+    it imports (below), so the reader that always runs is the one that is
+    always exercised. Comment lines are skipped: this env block is mostly
+    comment, on purpose.
+    """
+    with open(WORKFLOW) as fh:
+        lines = fh.read().split("\n")
+    job = [i for i, ln in enumerate(lines) if ln == "  census:"]
+    if len(job) != 1:
+        raise AssertionError("expected exactly one `  census:` job header, "
+                             "found %d" % len(job))
+    start = job[0]
+    end = next((i for i in range(start + 1, len(lines))
+                if re.match(r"^  \S.*:\s*$", lines[i])), len(lines))
+    steps = [i for i in range(start, end)
+             if re.match(r"^      - name: .*Per-class corpus proof", lines[i])]
+    if len(steps) != 1:
+        raise AssertionError("expected exactly one `Per-class corpus proof` "
+                             "step in the census job, found %d" % len(steps))
+    s0 = steps[0]
+    s1 = next((i for i in range(s0 + 1, end)
+               if re.match(r"^      - ", lines[i])), end)
+    envs = [i for i in range(s0, s1) if lines[i] == "        env:"]
+    if not envs:
+        return {}
+    out = {}
+    for ln in lines[envs[0] + 1:s1]:
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            continue
+        if not ln.startswith("          "):           # dedent ends the block
+            break
+        m = re.match(r"^          ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", ln)
+        if m:
+            out[m.group(1)] = m.group(2).strip()
+    return out
+
+
+class CensusJobWiringCase(unittest.TestCase):
+    """The rung step must export BOTH sibling paths.
+
+    WHY A TEST AND NOT A COMMENT. `coverage.py`'s `find_repo` tries `$ENV`,
+    `/home/user/<name>`, then `<dirname of the did-schema root>/<name>`. On a
+    runner `/home/user` does not exist and did-schema sits at
+    `$GITHUB_WORKSPACE/did-schema`, so the third candidate is
+    `$GITHUB_WORKSPACE/DID-matlab` -- which does not exist, because the
+    workspace IS the DID-matlab checkout. `DID_MATLAB` came back None, the
+    migrator scan was skipped, and the ladder was rendered over 91 classes.
+    NDI_MATLAB resolves today WITHOUT the var, by the accident of being
+    checked out at a path the third candidate matches; a future reader
+    deleting it as redundant is the failure this test exists to stop.
+    """
+
+    def test_the_rung_step_exports_both_sibling_paths(self):
+        env = rung_step_env_scoped()
+        self.assertEqual(env.get("DID_MATLAB"), "${{ github.workspace }}",
+                         "the workspace IS the DID-matlab checkout")
+        self.assertEqual(env.get("NDI_MATLAB"),
+                         "${{ github.workspace }}/NDI-matlab")
+
+    def test_the_scoped_read_agrees_with_a_yaml_parser(self):
+        # The scoped reader is the one that always runs, so it is the one that
+        # must not rot. When PyYAML is present, a second parse of the same
+        # step is a free cross-check of the reader itself.
+        try:
+            import yaml
+        except ImportError:                            # pragma: no cover
+            self.skipTest("PyYAML not installed; the scoped read stands alone")
+        with open(WORKFLOW) as fh:
+            doc = yaml.safe_load(fh)
+        steps = [s for s in doc["jobs"]["census"]["steps"]
+                 if "Per-class corpus proof" in str(s.get("name", ""))]
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(steps[0].get("env"), rung_step_env_scoped())
+        # And the step really is the one that runs this tool -- an env block
+        # on the wrong step is exactly as useless as no env block.
+        self.assertIn("tools/corpus_proven.py", steps[0]["run"])
 
 
 class AttributionCensusCase(unittest.TestCase):

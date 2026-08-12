@@ -313,6 +313,38 @@ jobs:
         # `if: always()` for the same reason the digest above has it: a corpus
         # failure is exactly when this evidence matters most.
         if: always()
+        env:
+          # DO NOT DELETE THESE AS REDUNDANT. They are the only thing that makes
+          # `coverage.py` see this repository, and run 31587869672 is what they
+          # cost: every job green, the ledger rewritten, and the rung rendered
+          # over 91 v1 classes instead of 102 -- `rung 1 a migrator CONSUMES it
+          # 10 yes / 81 no` where the committed ledger says 86 yes / 16 no.
+          #
+          # THE TRAP IS THE SHAPE OF THE PATHS, NOT A MISSING CHECKOUT.
+          # `coverage.py`'s `find_repo(name, env)` -- cited by SEARCHABLE
+          # CONTENT (`grep -n "def find_repo" did-schema/tools/coverage.py`)
+          # rather than a line number, because that file is under active edit
+          # and this repo's citation audit measured hours as a realistic
+          # half-life for a line number into it -- tries, in order,
+          # `$ENV`, `/home/user/<name>`, and `<dirname of the did-schema
+          # root>/<name>`. On a runner `/home/user` does not exist and
+          # did-schema is checked out at `$GITHUB_WORKSPACE/did-schema`, so the
+          # third candidate is `$GITHUB_WORKSPACE/DID-matlab` -- which does NOT
+          # exist, because the workspace directory IS the DID-matlab checkout.
+          # So DID_MATLAB resolved to None, `migrator_files()` returned an empty
+          # set, the whole migrator scan was skipped and the 11 vhlab
+          # app/calculator classes with no NDI template were dropped. 102 - 91.
+          #
+          # NDI_MATLAB currently resolves WITHOUT this var, and that is an
+          # ACCIDENT, not a design: NDI-matlab happens to be checked out at
+          # `$GITHUB_WORKSPACE/NDI-matlab`, which is the one path shape the
+          # third candidate does match. Move either checkout and it goes the
+          # same way DID-matlab did, silently. It is named here so it does not
+          # have to be rediscovered. DID-schema's own `tests.yml` exports both
+          # for this reason; `find_repo` treats the environment as
+          # authoritative, and that is the only candidate a workflow controls.
+          DID_MATLAB: ${{ github.workspace }}
+          NDI_MATLAB: ${{ github.workspace }}/NDI-matlab
         run: |
           python3 tools/corpus_proven.py --schema-repo did-schema \
               corpus-reports tests/corpus-reports

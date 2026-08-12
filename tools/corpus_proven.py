@@ -26,7 +26,13 @@ owns is
       fault, not a result;
   (4) making the ATTRIBUTION LIMIT visible, because the failure signals are
       keyed by the EMITTED class and the census is keyed by the v1 SOURCE
-      class, and inverting that map is not clean.
+      class, and inverting that map is not clean;
+  (5) checking that the ladder was computed over the WHOLE v1 UNIVERSE -- the
+      regenerated ledger against the one COMMITTED in the did-schema
+      checkout. Run 31587869672 rendered a rung over 91 v1 classes instead of
+      102, every job green, because a sibling path did not resolve on the
+      runner. `wrote the file` and `wrote the whole world` are two questions
+      and both are asked here.
 
 THE ATTRIBUTION LIMIT, stated once. A corpus-level ZERO is a sound upper bound
 for every class in it: if the whole corpus has 0 quarantine, 0 orphans, 0
@@ -104,6 +110,8 @@ import sys
 REPORT_SUFFIX = "-summary.json"
 LEDGER_REL = os.path.join("schemas", "V_eta_coverage_ledger.json")
 COVERAGE_REL = os.path.join("tools", "coverage.py")
+# git speaks forward slashes on every platform; `os.path.join` does not.
+LEDGER_GIT_PATH = "schemas/V_eta_coverage_ledger.json"
 
 # The three rung states coverage.py emits, spelled as it spells them.
 S_YES = "yes"
@@ -418,6 +426,103 @@ def read_ledger(schema_repo):
     return rows, None
 
 
+def committed_ledger_classes(schema_repo, timeout=60):
+    """The v1 class names in the ledger COMMITTED at HEAD of the did-schema
+    checkout, read with `git show` -- never off disk, which the run overwrites.
+
+    Returns (classes, why). `classes` is None whenever the committed copy could
+    not be read, and `why` then names the reason. That case is NOT EVALUATED
+    and is announced as such: an unreadable baseline is a check that did not
+    happen, and rendering it as agreement is the whole family of errors this
+    tool exists to stop.
+    """
+    if not os.path.isdir(os.path.join(schema_repo, ".git")):
+        return None, ("`%s` is not a git checkout (no `.git`), so there is no "
+                      "committed ledger to compare against"
+                      % schema_repo)
+    cmd = ["git", "-C", schema_repo, "show", "HEAD:" + LEDGER_GIT_PATH]
+    try:
+        proc = subprocess.run(cmd, timeout=timeout, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE)
+    except OSError as err:
+        return None, "`%s` could not be run: %s" % (" ".join(cmd), err)
+    except subprocess.TimeoutExpired:
+        return None, "`%s` did not finish within %ds" % (" ".join(cmd), timeout)
+    if proc.returncode != 0:
+        return None, ("`%s` exited %d: %s" % (
+            " ".join(cmd), proc.returncode,
+            proc.stderr.decode("utf-8", "replace").strip().replace("\n", " ")
+            or "no message"))
+    try:
+        doc = json.loads(proc.stdout.decode("utf-8", "replace"))
+    except json.JSONDecodeError as err:
+        return None, "the committed `%s` is not readable JSON: %s" % (
+            LEDGER_GIT_PATH, err)
+    rows = doc.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return None, "the committed `%s` carries no `rows`" % LEDGER_GIT_PATH
+    return [r.get("v1_class") for r in rows], None
+
+
+def universe_check(rows, committed, why):
+    """DID THE V1 UNIVERSE SHRINK UNDER THE REGENERATION?
+
+    WHY THIS IS NOT THE MTIME CHECK. The gate directly above asks whether
+    coverage.py WROTE the ledger, because run 31572667236 exited 0 having
+    written nothing. Run 31587869672 passed that gate: the tool wrote. It wrote
+    a SMALLER WORLD -- 91 v1 rows where the committed ledger carries 102, and
+    `rung 1 a migrator CONSUMES it 10 yes / 81 no` where the committed ledger
+    says 86 yes / 16 no -- because `DID_MATLAB` did not resolve on the runner,
+    so the migrator scan was skipped and the 11 vhlab app/calculator classes
+    with no NDI template were dropped. Every job was green. This repository's
+    signature failure one notch over: not `measured nothing`, but `measured a
+    smaller world, silently, and exited 0`.
+
+    WHY THE COMPARISON IS THE COMMITTED LEDGER AND NOT A SENTENCE. The obvious
+    check is to grep coverage.py's stdout for a warning. That binds this gate
+    to prose in another repository that nobody over there has to keep, which is
+    exactly the reasoning recorded against the mtime check. The committed
+    ledger is a BEHAVIOURAL baseline: it is what that repo's own gates keep
+    green, it travels with the checkout, and it is comparable without knowing
+    anything about how coverage.py phrases a degrade.
+
+    EQUAL OR MORE IS FINE. The universe legitimately grows -- NDI adds
+    templates, and the count has moved before. Only a SHRINK is a fault, and it
+    is an INSTRUMENT fault (the ladder was computed over the wrong world), not
+    a migration defect.
+
+    A same-size ledger with different class names is reported and does NOT
+    fault: nothing measured says that is an instrument problem rather than a
+    rename, and inventing a verdict for it is the error this file is against.
+    """
+    regenerated = [r.get("v1_class") for r in rows]
+    out = {"regenerated": len(regenerated), "committed": None, "why": why,
+           "evaluated": committed is not None, "missing": [], "added": [],
+           "fault": None}
+    if committed is None:
+        return out
+    out["committed"] = len(committed)
+    out["missing"] = sorted(set(committed) - set(regenerated),
+                            key=lambda n: str(n))
+    out["added"] = sorted(set(regenerated) - set(committed),
+                          key=lambda n: str(n))
+    if len(regenerated) < len(committed):
+        named = out["missing"][:40]
+        out["fault"] = (
+            "THE V1 UNIVERSE SHRANK UNDER THE REGENERATION. coverage.py wrote "
+            "%d v1 row(s); the ledger COMMITTED at HEAD of the did-schema "
+            "checkout carries %d. The ladder above was therefore computed over "
+            "a SMALLER WORLD than the one on record, and every count in it is "
+            "a count of that smaller world. %d class(es) in the committed "
+            "ledger are absent from the regenerated one%s: %s"
+            % (len(regenerated), len(committed), len(out["missing"]),
+               " (first 40 named)" if len(out["missing"]) > 40 else "",
+               ", ".join(str(n) for n in named) or "(none by name -- the row "
+               "count fell without any class name disappearing, which is a "
+               "duplicate-row change and is still a shrink)"))
+    return out
+
+
 def rung_state(row):
     """coverage.py's stage-5 state for one ledger row, or None if absent.
 
@@ -680,6 +785,43 @@ def render(state, out):
             p("      FAILED   %-32s %s" % (item["v1_class"], item["why"]))
 
     p("")
+    p("  THE UNIVERSE THE LADDER WAS COMPUTED OVER -- regenerated vs the copy")
+    p("  COMMITTED at HEAD of the did-schema checkout. The gate above asks")
+    p("  whether coverage.py WROTE; this one asks whether it wrote the WHOLE")
+    p("  WORLD. Run 31587869672 passed the first and failed this one.")
+    uni = state["universe"]
+    if uni is None:
+        p("    *** NOT EVALUATED -- the ledger was never read back, so there")
+        p("    is nothing to compare. See the fault(s) below.")
+    elif not uni["evaluated"]:
+        # NOT a pass. An unreadable baseline is a check that did not happen,
+        # and the one thing it may never look like is agreement.
+        p("    DENOMINATOR: %d v1 row(s) regenerated, the committed copy NOT "
+          "READ" % uni["regenerated"])
+        p("    *** NOT EVALUATED -- %s." % uni["why"])
+        p("    This is NOT a pass: nothing here says the regenerated ledger")
+        p("    covers the same universe as the one on record.")
+    else:
+        p("    DENOMINATOR: %d v1 row(s) regenerated, %d v1 row(s) in "
+          "`git show HEAD:%s`" % (uni["regenerated"], uni["committed"],
+                                  LEDGER_GIT_PATH))
+        if uni["fault"]:
+            p("    *** SHRANK by %d row(s). Every count above is a count of "
+              "the smaller world." % (uni["committed"] - uni["regenerated"]))
+            for name in uni["missing"]:
+                p("      MISSING FROM THE REGENERATED LEDGER  %s" % name)
+        else:
+            p("    no shrink: the regenerated universe is %s the committed "
+              "one, which is the only direction that is fine (it grows when "
+              "NDI adds templates)."
+              % ("the same size as" if uni["regenerated"] == uni["committed"]
+                 else "LARGER than"))
+            for name in uni["missing"]:
+                p("      note: `%s` is in the committed ledger and not the "
+                  "regenerated one, while the row COUNT did not fall -- a "
+                  "rename, or a swap. Reported, not judged." % name)
+
+    p("")
     p("  THE ATTRIBUTION LIMIT -- failure signals are keyed by the EMITTED")
     p("  class; the census is keyed by the v1 SOURCE class.")
     att = state["attribution"]
@@ -773,6 +915,7 @@ def analyse(roots, schema_repo, gate_on_failed_rung=False, run_coverage_fn=None)
         "gate_on_failed_rung": gate_on_failed_rung,
         "instrument_faults": [], "gates": [], "rung": None,
         "attribution": None, "ambiguous": {}, "ledger_why": None,
+        "universe": None,
         "coverage": {"ran": False, "why": "not reached"},
     }
     faults = state["instrument_faults"]
@@ -807,6 +950,15 @@ def analyse(roots, schema_repo, gate_on_failed_rung=False, run_coverage_fn=None)
                 faults.append("THE LEDGER COULD NOT BE READ BACK: " + why)
             else:
                 state["rows"] = rows
+                # BEFORE anything is counted off these rows: are they the whole
+                # universe? A ladder computed over 91 of 102 classes is not a
+                # smaller answer, it is an answer to a different question, and
+                # every tally below inherits it.
+                committed, why_committed = committed_ledger_classes(schema_repo)
+                state["universe"] = universe_check(rows, committed,
+                                                   why_committed)
+                if state["universe"]["fault"]:
+                    faults.append(state["universe"]["fault"])
                 tally = {"rows": len(rows), "with_state": 0, "yes": 0, "no": 0,
                          "not_measured": 0, "unknown": 0,
                          "absent_from_corpora": 0, "yes_classes": [],
@@ -871,6 +1023,7 @@ def publish(state, out_dir, schema_repo, text):
         "coverage_interface": {k: v for k, v in state["coverage"].items()
                                if k != "stdout"},
         "rung": state["rung"],
+        "universe": state["universe"],
         "attribution": (None if state["attribution"] is None else {
             "recorded": {k: v for k, v in state["attribution"]["recorded"].items()
                          if k not in ("sources_of", "per_source")},
