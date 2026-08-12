@@ -422,6 +422,46 @@ verifyEqual(testCase, d.get([blk 'spiketrain_dt']), 0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
+function testParametersBasicKeepsTheTwoEmptyFieldsPRESENT(testCase)
+% THE SEAM BETWEEN THIS MIGRATOR AND did2.convert.resolveResponseParameters, and
+% the one part of it the test above does not assert: it checks four of the six
+% fields, and the two it skips are the two that are EMPTY.
+%
+% They are empty at the writer, on every document ever written --
+% `git show origin/main:src/ndi/+ndi/+app/+stimulus/tuning_response.m`:
+%
+%     :174  prestimulus_time          = []
+%     :175  prestimulus_normalization = []
+%     :276-281  the document is built from exactly the six via vlt.data.var2struct
+%
+% and the resolver copies them INLINE rather than skipping them, deliberately:
+% "Dropping them would make 'the writer's default was in force' and 'nobody
+% recorded this' the same shape -- and the second is a claim the source never
+% made." testResponseParametersFold.m:123-126 asserts that with isfield +
+% verifyEmpty on the resolver's OUTPUT.
+%
+% Nothing asserted it on the INPUT. `bodies = {preBody}` cannot drop a field by
+% itself, but the fixture does not reach the assertion untouched: it goes
+% through universalRenames and a document round-trip, and a `[]` that arrives as
+% an ABSENT field instead of an EMPTY one is exactly the distinction the
+% resolver rests on -- it would silently degrade to `refused_no_fields` or to a
+% five-knob inline, with no counter naming the cause. So the property is
+% asserted as presence-AND-emptiness, never as a value comparison, which would
+% pass on an absent field.
+out = runJ(parametersFixture());
+verifyEmpty(testCase, out.quarantine);
+b = out.migrated{1}.toStruct();
+verifyTrue(testCase, isfield(b, 'stimulus_response_scalar_parameters_basic'), ...
+    'the v1 block must survive the passthrough under its own name');
+blk = b.stimulus_response_scalar_parameters_basic;
+verifyTrue(testCase, isfield(blk, 'prestimulus_time'), ...
+    'prestimulus_time must be PRESENT-but-empty, not absent');
+verifyEmpty(testCase, blk.prestimulus_time);
+verifyTrue(testCase, isfield(blk, 'prestimulus_normalization'), ...
+    'prestimulus_normalization must be PRESENT-but-empty, not absent');
+verifyEmpty(testCase, blk.prestimulus_normalization);
+end
+
 function testParametersBasicMustNotRegainTheInventedReverseEdge(testCase)
 % This class was the LARGEST instance of the invented-empty-edge pattern: 11,440
 % documents, 100% of them carrying an empty, REQUIRED `stimulus_response_scalar_id`

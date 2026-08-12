@@ -24,6 +24,53 @@ function bodies = stimulus_response_scalar_parameters_basic(preBody)
 %   nobody reads and then deleting it, or deleting the document here and losing
 %   the fields entirely. Both are worse than waiting.
 %
+%   THE RESOLVER IS NO LONGER OWED. IT EXISTS, AND IT IS NAMED HERE (2026-08-12)
+%   ---------------------------------------------------------------------------
+%   The paragraph above reads as an argument for work still outstanding, and it
+%   was true when it was written and is not now. It named
+%   `did2.convert.resolveDeferredBaths` as the SHAPE the resolver would take,
+%   which is what the plan says; it could not name the resolver, because there
+%   was none. There is:
+%
+%       did2.convert.resolveResponseParameters
+%
+%   -- the second half of #61, and the half this file defers to. It reads the
+%   referenced parameters document out of the migrated batch, writes the five
+%   run knobs INLINE onto the leaf's `subject_interaction.method_parameters`,
+%   and REMOVES `method_parameters_id`. It is wired into BOTH corpus harnesses
+%   (+unittest/+helpers/runCorpusDiscovery.m and +unittest/testCorpusPRED.m) and
+%   covered by +unittest/testResponseParametersFold.m.
+%
+%   The dates are the whole of why this header did not say so: this file was
+%   last written at 1c8ab1e (2026-08-10 20:41) and the resolver landed at
+%   70ca3f4 (2026-08-11 05:05) -- `git cat-file -e 1c8ab1e:<resolver path>`
+%   reports the path absent at this file's own commit. A blocker dismantled in
+%   a sibling file, never propagated back to the file that describes it.
+%
+%   NOTHING ABOUT THIS MIGRATOR CHANGES, and that is the point rather than a
+%   caveat. Passing through is what the resolver REQUIRES of pass 1: it reads
+%   the six values off this document and follows the leaf's
+%   `method_parameters_id` edge to find it. Folding or deleting here would take
+%   both away. The passthrough is the built design, not an unfinished one.
+%
+%   AND THE FOLD IS DORMANT ON REAL CORPORA -- WHICH IS A THIRD FACT, NOT A
+%   CONTRADICTION OF THE SECOND. +migrators_j/stimulus_response_scalar.m carries
+%   an EPOCH GATE, and on every did_v1 document it takes BRANCH 2 (an epoch
+%   STRING but no epoch document): the response passes through unfolded, so no
+%   leaf is emitted and `resolveResponseParameters` reports `leaves_seen = 0`
+%   beside a non-zero `suppressed_responses_seen`. Branch 1 needs
+%   `did2.convert.epochMint` to stamp `epoch_id` onto the pre-body, and
+%   epochMint's production arming table (`defaultArmingMigrators`) carries ONE
+%   entry today -- `daqmetadatareader_epochdata_ingested`. Adding a row for
+%   `stimulus_response_scalar` is #60's build and epochMint's owner's call; it
+%   is NOT this file's, and nothing here arms anything.
+%
+%   So a reader asking "why does the ledger say this class does not emit
+%   `method_parameters`" has three separate answers and needs all three: the
+%   decided target is an INLINE FIELD BLOCK on another document rather than a
+%   class this migrator could ever emit; the emitter is a batch post-pass, not
+%   a per-class migrator; and it is gated shut upstream.
+%
 %   THE DOCUMENTS MUST SURVIVE PASS 1, NOT MERELY "MAY"
 %   ---------------------------------------------------
 %   migrators_j.stimulus_response_scalar re-homes the v1
