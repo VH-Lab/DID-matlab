@@ -211,6 +211,33 @@ jobs:
         # EXISTS cannot notice something that stopped existing.
         run: python3 tools/test_batch_pass_wiring.py
 
+      - name: Every migrator is in Contents.m and has a test (python, <1s)
+        # +migrators_j/Contents.m is consulted as FACT about which classes
+        # deliberately have NO migrator -- DID-schema/CLAUDE.md cites its
+        # `projectvar` clause for exactly that. On 2026-08-12 it named 43 of the
+        # 81 migrators in the package, so silence there was reading as a
+        # deliberate absence for 38 files that have one. A hand-maintained index
+        # consulted as fact, drifting in the direction that UNDERSTATES what
+        # exists: it never produced a wrong build, only work redone and wrong
+        # answers to "what is left".
+        #
+        # TWO STEPS, deliberately, because they fail for different reasons and
+        # one of them is a ratchet whose zero is not the point. This one is the
+        # repo-state gate: a missing roster entry, a hand-edited roster block, or
+        # a migrator with no test that is not on the pinned baseline.
+        run: python3 tools/check_migrator_roster.py
+
+      - name: The roster gate's own tests, including its mutations (python, <1s)
+        # The gate is a staleness detector, and the intolerable defect in one of
+        # those is reading CLEAN while measuring nothing or measuring the wrong
+        # thing. These tests are what stop that: the scan pointed at an empty
+        # directory must FAIL rather than print a tidy zero, the matching rule is
+        # proved against a fixture where a naive substring test would PASS, and
+        # the twelve stale `*_calculation` headers found while writing it cannot
+        # come back. It runs beside the gate rather than inside it so a broken
+        # detector and a broken repo are distinguishable from the job list alone.
+        run: python3 tools/test_check_migrator_roster.py
+
       - name: Unminted ontology terms must not increase (#70)
         # Staging a term as {node: '', name: '...'} is the accepted practice --
         # a migration can go green and the CURIEs be minted after. The hazard is

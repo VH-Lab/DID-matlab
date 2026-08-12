@@ -191,18 +191,31 @@ def test_every_migrator_is_mentioned_in_contents():
 
 
 def test_deleting_a_roster_entry_reddens():
-    """MUTATION: remove one entry's lines from the roster and re-check."""
+    """MUTATION: remove one entry's lines from the roster and re-check.
+
+    Built on a SYNTHETIC Contents assembled here (this file's narrative + a
+    freshly generated block) rather than on the committed file. An earlier draft
+    mutated the committed text, so when the committed roster was itself mutated
+    -- which is one of the states this suite is run in -- the substitution
+    silently matched nothing and the test crashed on an empty candidate search
+    instead of failing. Whether the committed roster is current is a separate
+    test's job; this one is about the mutation being detectable at all.
+    """
     names = gate.migrator_names()
     with open(gate.CONTENTS) as handle:
         original = handle.read()
     block = gate.render_roster(names)
-    outside = original.replace(block, "")
-    # A migrator the narrative ALSO names would still be "mentioned" after the
-    # roster entry is removed -- the roster diff would catch it and the mention
-    # leg would not. Pick one of the 38 the narrative never named, so the
-    # mutation is visible to BOTH legs and the demonstration is not weaker than
-    # it looks.
-    victim = next(n for n in names if not gate.is_mentioned(n, outside))
+    narrative = original.replace(gate.read_roster(original) or "", "")
+    # A migrator the narrative ALSO names would still be "mentioned" after its
+    # roster entry is removed -- the roster diff would catch that and the
+    # mention leg would not. Pick one of the 38 the narrative never named, so
+    # the mutation is visible to BOTH legs and the demonstration is not weaker
+    # than it looks.
+    candidates = [n for n in names if not gate.is_mentioned(n, narrative)]
+    assert candidates, (
+        "every migrator is named in the hand-written narrative too, so this "
+        "mutation cannot isolate the roster; pick a different probe")
+    victim = candidates[0]
     lines = block.split("\n")
     start = next(i for i, l in enumerate(lines) if l == "%     " + victim)
     stop = start + 1
@@ -210,8 +223,10 @@ def test_deleting_a_roster_entry_reddens():
         stop += 1
     mutated = "\n".join(lines[:start] + lines[stop:])
     assert mutated != block
-    holed = original.replace(block, mutated)
+    holed = narrative + "\n" + mutated
     print("--- mutation: dropped the %r entry (%d line(s)) ---" % (victim, stop - start))
+    assert gate.is_mentioned(victim, narrative + "\n" + block), \
+        "fixture is wrong: the intact roster must mention the victim"
     assert not gate.is_mentioned(victim, holed), \
         "the entry was removed and the name is still matched somewhere"
     assert gate.read_roster(holed) != block, "the roster diff would not notice"
@@ -344,8 +359,13 @@ if __name__ == "__main__":
         try:
             fn()
             print("PASS %s" % name)
-        except AssertionError as err:
+        except Exception as err:  # noqa: BLE001 -- see below
+            # Exception, not AssertionError. A test that CRASHES is a failing
+            # test; catching only assertions let one traceback abort the run
+            # after four tests, so the remaining twelve reported nothing at all
+            # and the suite still looked like it had said something. Found by
+            # mutation M2.
             failures += 1
-            print("FAIL %s\n  %s" % (name, err))
+            print("FAIL %s\n  %s: %s" % (name, type(err).__name__, err))
     print("\n%d failure(s)" % failures)
     sys.exit(1 if failures else 0)
