@@ -558,6 +558,95 @@ verifyTrue(testCase, isfield(md, 'israster'));
 verifyTrue(testCase, isfield(md, 'lines_per_frame'));
 end
 
+function testImageIngestedCarriesNoEdgeToASubjectOrElement(testCase)
+% A DURABLE FACT about the did_v1 class, not a snapshot of unfinished work --
+% this one never needs inverting, and it is the reason the signed fold
+% (V_eta_ingested_payload_findings.md:275) cannot be built rather than merely
+% being deferred.
+%
+% The writer sets exactly one dependency, `daqreader_id`
+% (+ndi/+daq/+reader/image.m:220), and the template declares exactly that one.
+% What was not recorded until 2026-08-12 is that a BATCH POST-PASS -- the usual
+% rescue for a missing subject -- has nothing to walk either. Over the NDI
+% template graph, all 91 origin/main templates parsed:
+%
+%   forward closure from this class:  {daqreader_image_epochdata_ingested,
+%                                      daqreader};  neither declares subject_id
+%                                      or element_id
+%   pointing AT daqreader:            the three ingested classes + daqsystem,
+%                                      whose own edges are filenavigator_id /
+%                                      daqreader_id / daqmetadatareader_id
+%   declaring a subject_id edge:      10 of 91 (element, image, imageCollection,
+%                                      imageStack, measurement, openminds_subject,
+%                                      subjectmeasurement, treatment,
+%                                      treatment_drug, virus_injection)
+%   of those 10, declaring daqreader_id or daqsystem_id: NONE
+%
+% The device-to-subject join is not in the database at all: +ndi/+daq/system.m:
+% 229-234 matches `strcmpi(myprobemap.devicename, obj.name)` against the
+% EPOCHPROBEMAP FILES and takes `subject_id` from `epc(ec).subjectstring`, one
+% daqsystem to MANY probes. If this test ever goes red, a source shape gained an
+% edge and the migrator header's blocker 1 is the thing to re-read first.
+out = runJ(imageIngestedV1());
+% ASSERT, not verify: everything below reads out.migrated{1}, and a verify on
+% the count would let an empty result set pass the rest vacuously.
+assertEqual(testCase, numel(out.migrated), 1, ...
+    'the passthrough emitted no document; every assertion below would be vacuous');
+doc = out.migrated{1};
+deps = doc.get('depends_on');
+assertEqual(testCase, numel(deps), 1, ...
+    'daqreader_image_epochdata_ingested acquired a second edge; see the migrator header');
+verifyEqual(testCase, char(deps(1).name), 'daqreader_id');
+verifyEqual(testCase, depVal(doc, 'daqreader_id'), 'dr_img');
+% stated separately from the count so a failure says WHICH edge appeared
+verifyEmpty(testCase, depVal(doc, 'subject_id'));
+verifyEmpty(testCase, depVal(doc, 'element_id'));
+end
+
+function testImageIngestedPassthroughKeepsEveryHeaderFieldWithNoDestination(testCase)
+% THE PASSTHROUGH'S ACTUAL CONTRACT, asserted across the WHOLE header rather
+% than the two fields that happened to be spot-checked.
+%
+% Revision 2 of the signed plan (V_eta_ingested_payload_findings.md:307-317)
+% re-specifies the fold through the data_body AXIS ENTRY -- dimension_order to
+% the order of the axes[] entries, dimension_size to each axis's n, data_type to
+% `datum_type` ON THE STATEMENT, frametimes to the time axis's `values`. Measured
+% over did-schema's built tree (245 json files, 241 with a document_class, 991
+% declared field paths walked including nested ones): `datum_type` has 0
+% declarations; `axes` is declared by 4 classes (sampled_body, acquisition_epoch,
+% image, zarr) and NOT by subject_statement; and NO axes shape declares a
+% per-sample `values` slot, so the writer's irregular one-time-per-frame
+% `frametimes` (+ndi/+daq/+reader/image.m:180, :196-202) has nowhere to land.
+%
+% Until those exist, every one of these seven fields survives only because the
+% document is carried whole -- which is what this asserts.
+out = runJ(imageIngestedV1());
+assertEqual(testCase, numel(out.migrated), 1, ...
+    'the passthrough emitted no document; every assertion below would be vacuous');
+doc = out.migrated{1};
+blk = doc.get('daqreader_image_epochdata_ingested');
+headerFields = {'dimension_order', 'dimension_size', 'data_type', 'num_frames', ...
+                'frametimes', 'clocktype', 'metadata'};
+% the loop's iterable is a literal, and its length is pinned so it cannot shrink
+% to nothing and still pass
+assertEqual(testCase, numel(headerFields), 7);
+for k = 1:numel(headerFields)
+    verifyTrue(testCase, isfield(blk, headerFields{k}), ...
+        ['the passthrough dropped header field ' headerFields{k}]);
+end
+% and the values, not merely the keys -- a field present but blanked is the
+% silent-loss shape this repository keeps paying for
+verifyEqual(testCase, blk.dimension_order, 'YXCZT');
+verifyEqual(testCase, blk.dimension_size, [64 64 1 1 3]);
+verifyEqual(testCase, blk.data_type, 'uint16');
+verifyEqual(testCase, blk.frametimes, [0 0.5 1.0]);
+verifyEqual(testCase, blk.clocktype, 'dev_local_time');
+% the INHERITED parent block, which is where the clock extents live, and the file
+verifyEqual(testCase, ...
+    doc.get('daqreader_epochdata_ingested.epochtable.t0_t1'), [0; 12.5]);
+verifyEqual(testCase, doc.get('files.file_list'), {'frames.bin'});
+end
+
 % ===================== under the real V_eta validator ======================
 
 function testMetadataFoldValidatesUnderVEta(testCase)
