@@ -284,6 +284,51 @@ POST_PASSES = [
         ("metadata_refused_no_epoch_document", "  no epoch document for the pair"),
         ("metadata_refused_migrator_declined", "  migrator declined (no reader edge / no bytes)"),
         ("mint_quarantined", "QUARANTINED by the mint"),
+        # THE ARMING PATH, added 2026-08-12 with the 1 -> N rebuild. The old
+        # arming unwrapped a 1-cell and treated anything else as a failure,
+        # while ALL THREE migrators it arms return more than one body, so every
+        # body after the first would have been dropped and its `time_reference_1`
+        # left pointing outside the batch -- an orphan, in a digest that prints
+        # no orphan counter.
+        #
+        # `arming_vacuous` LEADS, for the reason `metadata_fold_vacuous` does:
+        # a batch with nothing to arm and a batch where the arming carried
+        # everything both render all-zero, and only this row tells them apart.
+        #
+        # THE FIVE `dropped_*` REASONS SUM TO `arming_bodies_dropped`, and
+        # offered = carried + dropped. Printing the split rather than the total
+        # is the point: "a body was dropped" is not actionable, "a body was
+        # dropped because its class does not declare epoch_id" names the schema
+        # increment that would fix it.
+        ("arming_vacuous", "arming: NOTHING TO ARM in this batch"),
+        ("arming_calls", "arming: calls made"),
+        ("arming_bodies_offered", "  bodies OFFERED (denominator)"),
+        ("arming_bodies_carried", "  bodies carried into the batch"),
+        ("arming_bodies_dropped", "  bodies DROPPED"),
+        ("arming_bodies_dropped_declined", "    dropped: migrator declined"),
+        ("arming_bodies_dropped_id_not_preserved",
+         "    dropped: primary did not preserve base.id"),
+        ("arming_bodies_dropped_undeclared_edge",
+         "    dropped: class does not declare epoch_id"),
+        ("arming_bodies_dropped_not_rebuilt", "    dropped: rebuild failed"),
+        ("arming_bodies_dropped_epoch_lost", "    dropped: epoch edge lost"),
+        ("arming_extra_bodies_offered", "  of those, EXTRA bodies offered"),
+        ("arming_extra_bodies_carried", "  of those, EXTRA bodies carried"),
+        ("arming_calls_returning_multiple", "  calls returning more than one body"),
+        # THE 1 -> N WITNESS. 1 today, because no class the arming reaches
+        # declares `epoch_id` yet; the day one does, this moves and the rebuild
+        # is exercised on real data for the first time. A 1 here is NOT proof
+        # the rebuild works -- it is proof it has not been needed.
+        ("arming_max_bodies_per_call", "  MAX bodies returned by one call"),
+        ("arming_edge_declaration_unchecked",
+         "  bodies whose edge declaration COULD NOT be consulted"),
+        ("metadata_refused_unsafe_output", "  metadata fold: refused, unsafe output"),
+        # NOT an arming counter: reachable only when `mint_quarantined` > 0
+        # (already a gate failure), and left un-repaired deliberately because
+        # changing it would change a current result. Printed so the pre-existing
+        # path is a number rather than a comment.
+        ("method_parameters_epoch_not_in_batch",
+         "method_parameters: epoch edge to a document NOT in the batch"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
         ("documents_inspected", "documents inspected"),

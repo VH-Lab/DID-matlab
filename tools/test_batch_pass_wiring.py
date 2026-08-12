@@ -167,6 +167,16 @@ NO_REPORT_YET = {}
 NOT_RENDERED_YET = {
     "epoch_mint": {
         "strings_by_source", "epoch_index",
+        # epoch_index_report (added 2026-08-12 with the 1 -> N arming rebuild)
+        #     NOT A COUNTER. It is did2.convert.epochIndex's OWN report struct,
+        #     carried out whole so the index's denominators survive to the
+        #     artifact; there is no scalar for a row to print and no cross-corpus
+        #     rollup could sum it. The numbers a reader wants FROM it are already
+        #     rendered as epoch_mint rows in their own right -- the arming block
+        #     added in the same change -- so this is a nested duplicate of
+        #     printed facts, not a missing one. Same shape and same reason as
+        #     `epoch_index` above.
+        "epoch_index_report",
     },
     "openminds_citations": {
         "withheld_reasons",
