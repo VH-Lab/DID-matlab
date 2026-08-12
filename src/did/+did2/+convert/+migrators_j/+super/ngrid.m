@@ -1,9 +1,38 @@
 function v2Body = ngrid(preBody)
 %NGRID Brainstorm-J SUPERCLASS migrator: carry the did_v1 `ngrid` block VERBATIM.
 %
-%   STATUS: NOT RUN. There is no MATLAB in the environment this was written in,
-%   so nothing here has been executed. The unit tests are in
-%   tests/+did2/+unittest/testNgridCoordinates.m and are also unrun.
+%   STATUS, CORRECTED 2026-08-12. THIS BLOCK READ "NOT RUN ... nothing here has
+%   been executed ... [the unit tests] are also unrun". That was true when it was
+%   WRITTEN (674f328, 2026-08-10, in a container with no MATLAB) and has been
+%   false since the next CI run. It is corrected rather than softened because
+%   "not run" is the reassuring direction for a migrator: it invites the next
+%   reader to discount a green gate and re-derive work that is already pinned.
+%
+%   THIS FUNCTION RUNS ON EVERY QUICK GATE. Three links, each with its output:
+%
+%     1. .github/workflows/test-migrators-quick.yml:273 selects by PACKAGE, not
+%        by a hand-maintained list:
+%            suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
+%            suite = suite(~contains(names, "testCorpus"));
+%     2. tests/+did2/+unittest/testNgridCoordinates.m sits in that package, its
+%        name contains no "testCorpus", and it calls THIS function by name:
+%            :58  out = did2.convert.migrators_j.super.ngrid(v1NgridBody());
+%            :71  out = did2.convert.migrators_j.super.ngrid(b);
+%            :82  verifyError(testCase, @() did2.convert.migrators_j.super.ngrid(b), ...
+%        and at :110/:126/:139 drives did2.convert.v1_to_v2 at TargetVersion
+%        'V_eta', so the DISPATCHER is under test too, not just the function.
+%     3. run 31624396648, head 9fd6593, job "Migrator transform tests (no
+%        corpora)", conclusion success:
+%            ================ VERDICT: quick migrator tests ================
+%              tests run       1167
+%              passed          1167
+%              FAILED             0
+%
+%   WHAT IS STILL UNMEASURED, so this correction does not overshoot: the CORPUS
+%   rung. schemas/V_eta_coverage_ledger.json carries ngrid as
+%   `disposition: in_progress` with `targets: []`, and did-schema's confirm sheet
+%   renders its corpus column `not measured`. Unit-green is not corpus-proven and
+%   nothing here claims it is.
 %
 %   Selected by did2.convert.v1_to_v2 (applySuperclassMigrators) in place of
 %   +did2/+convert/+migrators/ngrid.m whenever TargetVersion == 'V_eta'.
