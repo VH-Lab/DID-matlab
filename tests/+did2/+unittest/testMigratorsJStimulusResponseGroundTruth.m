@@ -12,7 +12,7 @@ function tests = testMigratorsJStimulusResponseGroundTruth
 %   A SECOND file for the stimulus response family, deliberately. Its sibling
 %   `testMigratorsJStimulusResponse.m` asserts the TRANSFORM -- that the fold
 %   produces a harmonic_component_calculation with the right edges and the right
-%   value. This file asserts three things that survive review only if somebody
+%   value. This file asserts four things that survive review only if somebody
 %   writes them down:
 %
 %     1. WHAT THE FOLD DOES TO THE TWO EPOCH STRINGS. `stimulator_epochid` does
@@ -37,6 +37,14 @@ function tests = testMigratorsJStimulusResponseGroundTruth
 %        like a regression unless the expectation is written down -- and until the
 %        epoch mint runs, the gate in 1. means pass 1 does not even do THAT, so
 %        both arithmetics are pinned.
+%     4. THAT THE HARMONIC IS A NUMBER AND NOT AN ENUM OF THREE. Everything
+%        anyone has written about this family quotes `:202
+%        freq_response_commands = [0 1 2]`, and both the migrator's parser and
+%        the two schemas are deliberately WIDER than that. Nothing pinned the
+%        width, so a later reader "tightening" either to {mean, F1, F2} would
+%        find every test still green. Section 4 pins it, and states in its own
+%        comments exactly how far the evidence reaches -- see there, because the
+%        honest answer is narrower than the line usually quoted for it.
 %
 %   THE EPOCH GATE, AND WHY MOST FIXTURES BELOW ARE STAMPED. The fold now refuses
 %   to run on an `element_epochid` string with no `epoch` document behind it, so a
@@ -450,6 +458,117 @@ verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
     'stimulus_response_scalar');
 end
 
+% ============ 4. THE HARMONIC IS A NUMBER, NOT AN ENUM OF THREE =============
+%
+% WHAT THE EVIDENCE ACTUALLY SHOWS, stated before the tests so nobody quotes
+% them for more than they establish. Three separate questions, three answers:
+%
+%   (a) WHICH HARMONICS DOES NDI PRODUCE IN-TREE? EXACTLY {0, 1, 2}.
+%       `compute_stimulus_response_scalar` is a public method, and it has
+%       exactly ONE caller in the whole of NDI-matlab origin/main:
+%
+%         $ git grep -n "compute_stimulus_response_scalar" origin/main -- '*.m'
+%         ...+app/+stimulus/tuning_response.m:133   the call
+%         ...+app/+stimulus/tuning_response.m:140   the definition
+%         ...+app/+stimulus/tuning_response.m:332   end % ...
+%
+%       and that caller supplies only two values (:107-111):
+%
+%         :108   freq_response = 0;    when do_mean_only == 1
+%         :110   freq_response = [];   otherwise
+%
+%       `0` reaches :207 and yields the single harmonic 0; `[]` takes the :191
+%       branch and yields [0 1 2] (:202) or 0 (:204). So there is NO IN-TREE
+%       WITNESS for a harmonic above 2, and these tests are NOT evidence that
+%       one exists. Do not cite them as such.
+%
+%   (b) CAN A HARMONIC ABOVE 2 REACH A STORED DOCUMENT AT ALL? YES, BY
+%       CONSTRUCTION -- and this is why (a) does not settle the question. The
+%       method is public and takes name-value arguments through
+%       `vlt.data.assign(varargin{:})` (:185); :207 assigns the caller's value
+%       to `freq_response_commands` VERBATIM, with no clamp and no validation;
+%       :260 takes each element; and :265 formats it as
+%       `['F' int2str(freq_response)]`. An out-of-tree lab script calling the
+%       method with 'freq_response', 3 stores `response_type = 'F3'`. The
+%       standing rule -- the corpora are a SAMPLE, and a writer check runs
+%       against origin/main, not against what we happen to hold -- forbids
+%       reading "no in-tree caller" as "cannot happen".
+%
+%   (c) SO WHAT IS PINNED HERE? THE WIDTH OF OUR OWN CODE, nothing about NDI.
+%       The migrator parses any `F<digits>` (harmonicFromResponseType), and both
+%       schemas admit any non-negative integer -- re-derived from the BUILT tree,
+%       not from the plan:
+%
+%         stimulus_response_scalar_parameters_basic.freq_response
+%                                              constraints {'minimum': 0}
+%         harmonic_component.value.harmonic     constraints {}
+%
+%       Those three facts agree with each other today by intent. Nothing checked
+%       that they keep agreeing, and the whole family's documentation quotes
+%       ":202 [0 1 2]" -- so narrowing any one of them to three values would
+%       have left every other test in this family green while silently routing a
+%       real F3 document to the passthrough guard (migrator) or to quarantine
+%       (either schema). That is what section 4 exists to stop.
+
+function testAHarmonicAboveTwoFoldsInsteadOfFallingToTheGuard(testCase)
+% The migrator half of (c). `harmonicFromResponseType` inverts :262-266 by
+% PARSING rather than by table lookup, so 'F3' must fold and carry 3 -- not hit
+% the unparseable-response_type guard and pass through.
+%
+% The failure this catches is silent in the worst way: a passthrough is a valid,
+% green outcome, so narrowing the parser would not turn any corpus red. It would
+% just stop converting a class of document, and the only visible trace would be
+% an `unconverted` count nobody has a baseline for.
+out  = runJ(withEpochEdge(responseFixture('F3')));
+leaf = findClass(testCase, out, 'harmonic_component_calculation');
+verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 3);
+% ...and it is the FOLD, not a passthrough that happens to be present too.
+verifyFalse(testCase, anyClass(out, 'stimulus_response_scalar'));
+end
+
+function testAHarmonicAboveTwoAlsoSurvivesBothSchemas(testCase)
+% The schema half of (c), as a validating round trip rather than a JSON read.
+%
+% `freq_response` carried `{min: 0, max: 1}` until repair 4 of the signed plan.
+% Those keys are INERT -- +did2/+schema/cache.m's constraint switch recognises
+% maxLength (:1831), minLength (:1837), minimum (:1843), maximum (:1848), enum
+% (:1853) and binding (:1860), and its `otherwise` (:1870) tolerates everything
+% else -- so the repair had to fix the KEY and the BOUND together. Fixing only
+% the key, to `{minimum: 0, maximum: 1}`, would have quarantined every F2
+% document; fixing it to `{minimum: 0, maximum: 2}` would quarantine this one.
+% The bound that shipped is `{minimum: 0}`, open above, and this is what holds
+% it open.
+%
+% Both documents in one batch on purpose: the leaf's `harmonic` and the
+% parameters document's `freq_response` are the same fact in two classes, and a
+% bound reintroduced on either one alone would fail here.
+out = did2.convert.v1_to_v2( ...
+    {withEpochEdge(responseFixture('F3')), parametersFixture(3)}, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
+if ~isempty(out.quarantine)
+    verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
+        out.quarantine(1).class_name, out.quarantine(1).reason));
+end
+% leaf + epoch anchor + the passed-through parameters document
+verifyEqual(testCase, numel(out.migrated), 3);
+leaf = findClass(testCase, out, 'harmonic_component_calculation');
+verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 3);
+verifyEqual(testCase, findClass(testCase, out, ...
+    'stimulus_response_scalar_parameters_basic').get( ...
+    'stimulus_response_scalar_parameters_basic.freq_response'), 3);
+end
+
+% THE OTHER SIDE OF THIS BOUNDARY IS ALREADY PINNED, AND DELIBERATELY NOT
+% RE-PINNED HERE. Widening the parser to any `F<n>` is not the same as removing
+% the guard, and the guard has a test:
+% `testMigratorsJStimulusResponse.m::testUnparseableResponseTypePassesThrough`
+% drives 'peak' -- a value the V_eta tombstone's own documentation claims is
+% possible, inherited from DID-schema's V_alpha snapshot, and which the writer
+% cannot emit (only 'mean' at :263 and ['F' int2str(n)] at :265). A second copy
+% of that assertion here would add no coverage and one more thing to keep in
+% step, so the two tests are named as a pair instead: section 4 says the parser
+% is open upward, that one says it is not open sideways.
+
 % ===================== helpers =============================================
 
 function out = runJ(v1)
@@ -458,11 +577,20 @@ end
 
 function h = harmonicFor(responseType)
 %HARMONICFOR The writer's own mapping, inverted (tuning_response.m:262-266).
-switch responseType
-    case 'mean', h = 0;
-    case 'F1',   h = 1;
-    case 'F2',   h = 2;
-    otherwise,   h = -1;   % only reached by a fixture testing the guard
+%   PARSED, not a three-way lookup, for the same reason the migrator's
+%   harmonicFromResponseType is: :265 formats `['F' int2str(freq_response)]` for
+%   whatever :207 was handed, so 'F3' is a shape the writer can produce even
+%   though no in-tree caller asks for one (see section 4). A table here would
+%   have made an F3 fixture point its parameters edge at `param_gt-1` -- a
+%   fixture quietly disagreeing with itself, which is worse than no fixture.
+if strcmp(responseType, 'mean')
+    h = 0;
+    return;
+end
+h = -1;   % anything the writer cannot emit -- reached by the guard fixtures
+if numel(responseType) >= 2 && responseType(1) == 'F' ...
+        && all(isstrprop(responseType(2:end), 'digit'))
+    h = str2double(responseType(2:end));
 end
 end
 
