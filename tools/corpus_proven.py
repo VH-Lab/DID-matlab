@@ -375,21 +375,31 @@ def read_ledger(schema_repo):
 def rung_state(row):
     """coverage.py's stage-5 state for one ledger row, or None if absent.
 
-    Read from `stage.stage5_state`, falling back to the ladder entry. Absent
-    means the ledger has been restructured -- reported as an interface gap
-    rather than defaulted, because defaulting it to `not measured` would make
-    a broken read indistinguishable from an honest one.
+    READ BY NAME, NOT BY NUMBER, and that is not fussiness -- it is the one
+    thing measured to break. The committed ledger numbers this rung 5 and
+    keys it `stage.stage5_state`; a restructure in flight renumbers it to 4
+    and keys it `stage.corpus_rung_state`. A reader pinned to `stage == 5`
+    returns None on every row of the second shape, and a reader that then
+    defaulted to `not measured` would print `0 PROVEN / 0 FAILED / 102 NOT
+    MEASURED` -- indistinguishable from an honest measurement of a corpus that
+    proved nothing. The ladder ENTRY NAME (`CORPUS-PROVEN`) survived the
+    renumbering; the number did not.
+
+    Returns (state, why), or (None, None) when the rung cannot be located --
+    which `analyse()` raises as an INSTRUMENT FAULT rather than a result.
     """
     stage = row.get("stage")
     if not isinstance(stage, dict):
         return None, None
-    state = stage.get("stage5_state")
-    why = None
     for entry in (stage.get("ladder") or []):
-        if isinstance(entry, dict) and entry.get("stage") == 5:
-            state = state or entry.get("state")
-            why = entry.get("why")
-    return state, why
+        if not isinstance(entry, dict):
+            continue
+        if "corpus-proven" in str(entry.get("name", "")).lower():
+            return entry.get("state"), entry.get("why")
+    for key in ("corpus_rung_state", "stage5_state"):
+        if stage.get(key):
+            return stage[key], None
+    return None, None
 
 
 # ---------------------------------------------------------------------------

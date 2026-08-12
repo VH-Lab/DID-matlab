@@ -65,6 +65,7 @@ def report(corpus, classes, **kw):
 
 
 def ledger_row(v1_class, targets=(), state="not measured", why="", **kw):
+    """A ledger row in the shape the COMMITTED coverage.py writes."""
     return {
         "v1_class": v1_class,
         "targets": list(targets),
@@ -72,6 +73,24 @@ def ledger_row(v1_class, targets=(), state="not measured", why="", **kw):
         "second_pass": list(kw.get("second_pass", ())),
         "stage": {"stage5_state": state,
                   "ladder": [{"stage": 5, "name": "CORPUS-PROVEN",
+                              "state": state, "why": why}]},
+    }
+
+
+def renumbered_row(v1_class, targets=(), state="not measured", why=""):
+    """The same row after the ladder was renumbered under this reader.
+
+    Observed, not invented: a coverage.py restructure in flight moves
+    CORPUS-PROVEN from rung 5 to rung 4 and renames `stage5_state` to
+    `corpus_rung_state`. The ENTRY NAME is what survives both.
+    """
+    return {
+        "v1_class": v1_class, "targets": list(targets),
+        "decided_targets": [], "second_pass": [],
+        "stage": {"corpus_rung_state": state,
+                  "ladder": [{"stage": 1, "name": "a migrator CONSUMES it",
+                              "state": "yes", "why": ""},
+                             {"stage": 4, "name": "CORPUS-PROVEN",
                               "state": state, "why": why}]},
     }
 
@@ -310,6 +329,48 @@ class Case(unittest.TestCase):
         self.assertFalse(out["ran"])
         self.assertIn("--corpus-reports", out["why"])
         self.assertIn("load_corpus_evidence", out["why"])
+
+    def test_the_rung_is_found_by_NAME_so_a_renumbered_ladder_still_reads(self):
+        # Pinning the read to `stage == 5` returned None on every row of the
+        # renumbered shape, and a reader that defaulted that to `not measured`
+        # would have printed 0 PROVEN / 0 FAILED / N NOT MEASURED -- a broken
+        # read wearing the exact costume of an honest measurement.
+        self.write_report("corpus-reports/A-summary.json",
+                          report("A", {"subject": 5}))
+        self.ledger_rows = [renumbered_row("subject", ["subject"], "yes",
+                                           "5 documents, 0 quarantine")]
+        state, text = self.run_tool(["corpus-reports"])
+        self.assertEqual(state["exit_code"], 0)
+        self.assertEqual(state["rung"]["yes"], 1)
+        self.assertEqual(state["rung"]["unknown"], 0)
+        self.assertIn("PROVEN   subject", text)
+
+    def test_the_ladder_entry_name_alone_is_enough_to_find_the_rung(self):
+        # THE PREVIOUS TEST DOES NOT PIN THE NAME-BASED READ, and that was
+        # found by mutation: replacing the name match with `stage == 5` left
+        # the whole suite green, because the observed restructure ALSO carries
+        # `corpus_rung_state` and the key fallback caught it. Two mechanisms,
+        # two shapes, one test each -- a fixture that exercises both at once
+        # pins neither.
+        self.write_report("corpus-reports/A-summary.json",
+                          report("A", {"subject": 5}))
+        row = renumbered_row("subject", ["subject"], "yes", "clean")
+        del row["stage"]["corpus_rung_state"]          # ladder entry only
+        self.ledger_rows = [row]
+        state, _text = self.run_tool(["corpus-reports"])
+        self.assertEqual(state["rung"]["yes"], 1)
+        self.assertEqual(state["rung"]["unknown"], 0)
+
+    def test_a_top_level_state_key_alone_is_enough_too(self):
+        self.write_report("corpus-reports/A-summary.json",
+                          report("A", {"subject": 5}))
+        row = renumbered_row("subject", ["subject"], "yes", "clean")
+        row["stage"]["ladder"] = [{"stage": 1, "name": "a migrator CONSUMES it",
+                                   "state": "yes", "why": ""}]
+        self.ledger_rows = [row]
+        state, _text = self.run_tool(["corpus-reports"])
+        self.assertEqual(state["rung"]["yes"], 1)
+        self.assertEqual(state["rung"]["unknown"], 0)
 
     def test_a_restructured_ledger_is_an_instrument_fault_not_a_default(self):
         self.write_report("corpus-reports/A-summary.json",
