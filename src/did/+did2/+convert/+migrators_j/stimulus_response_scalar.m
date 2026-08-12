@@ -136,6 +136,35 @@ function bodies = stimulus_response_scalar(preBody)
 %   is a join key into a document that always exists and is always referenced, not
 %   content of this document. The axis lands with #45; until then a reader joins.
 %
+%   THAT ARGUMENT IS TRUE TODAY AND HAS AN EXPIRY CONDITION. IT IS WRITTEN DOWN
+%   HERE BECAUSE IT IS INVISIBLE FROM EITHER FAMILY ALONE.
+%   Today the join is exact, and that is checked rather than assumed:
+%   +migrators_j/stimulus_presentation.m is a DELIBERATE PASSTHROUGH (`bodies =
+%   {preBody}` at :196, with four blockers stated above it), and V_eta's
+%   stimulus_presentation tombstone declares `presentation_order` (matrix). So the
+%   v1 numbers survive on the referenced document, unrenumbered, and a reader who
+%   follows `derived_from_1` gets the same array `stimid` held.
+%
+%   The stimulus model (#31/#43, TEAM-SIGN-OFF [stimulus] 2026-08-08) ends that
+%   passthrough. `V_eta_stimulus_model_plan.md:97` maps the decompose as *"its
+%   `stimuli` dictionary -> N standalone `data_type` docs (DEDUPED BY CONTENT);
+%   its `presentation_order` -> the index array"*, and :22 and :230 both define
+%   `timed_sequence.value.presentation_order` as *"an INDEX ARRAY INTO THE
+%   `presented_id` REFS"*. That is a numbering over the deduped refs, and v1's
+%   `presentation_order` -- which is what `stimid` IS -- is a numbering over the
+%   pre-dedup `stimuli` array. The two coincide only while no two dictionary
+%   entries dedupe together.
+%
+%   THIS IS AN OPEN QUESTION, NOT A PREDICTED BREAK, and the distinction is the
+%   point: the signed plan does not say whether the decompose preserves the v1
+%   index values, so nobody has decided that it does not. What is established is
+%   only that this family's recovery path depends on an answer that lives in
+%   another family's build. Whoever builds the decompose should either preserve
+%   the numbering or carry `stimid` onto this leaf before the passthrough ends --
+%   and if the axis (#45) lands first, the question dissolves, because `stimid`
+%   stops being a join and becomes this document's own axis values. Nothing here
+%   should be changed on the strength of this note alone.
+%
 %   ---------------------------------------------------------------------
 %   `element_epochid`: THE FOLD IS NOW GATED ON IT, NOT WILLING TO DROP IT
 %   ---------------------------------------------------------------------
