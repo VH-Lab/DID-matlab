@@ -349,6 +349,40 @@ jobs:
           python3 tools/corpus_proven.py --schema-repo did-schema \
               corpus-reports tests/corpus-reports
 
+      - name: Carry the proof out of CI as a committable snapshot
+        # THE NUMBER THIS RUN PRODUCES OTHERWISE SURVIVES NOWHERE. The rung is
+        # printed to a log that scrolls and written to an artifact that
+        # EXPIRES, while the committed ledger reads `not measured` for every
+        # row -- correctly, because coverage.py is generated without corpus
+        # reports on a developer machine and rung 4 refuses to guess. So the
+        # repository's own record says nothing has ever been proven while the
+        # strongest evidence we have says otherwise.
+        #
+        # did-schema's snapshot tool renders the verdicts, WITH the run id and
+        # sha that produced them, into `schemas/V_eta_corpus_proof.{json,md}`
+        # inside the did-schema checkout. Nothing is pushed from here: the file
+        # rides out in the artifact below, and committing it stays a deliberate
+        # human act. Its own anti-clobber rule refuses to overwrite a real
+        # measurement with an empty one, so a run that measured nothing cannot
+        # erase the last one that did.
+        #
+        # `continue-on-error` because this is EVIDENCE CARRIAGE, not a gate --
+        # a corpus run must never go red over the bookkeeping of its own proof.
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f corpus-proven/v_eta_corpus_proven.json ]; then
+            python3 did-schema/tools/corpus_proof_snapshot.py \
+                --from corpus-proven/v_eta_corpus_proven.json \
+                --run "${{ github.run_id }}" --sha "${{ github.sha }}"
+            mkdir -p corpus-proven/snapshot
+            cp did-schema/schemas/V_eta_corpus_proof.json \
+               did-schema/schemas/V_eta_corpus_proof.md corpus-proven/snapshot/ || true
+          else
+            echo "no v_eta_corpus_proven.json -- the rung step produced none;"
+            echo "NOT writing a snapshot, so the last real one is preserved."
+          fi
+
       - name: Upload combined reports
         if: always()
         uses: actions/upload-artifact@v4
