@@ -59,8 +59,11 @@ function tests = testTuningCurveLevels
 %       composite orientation_direction    control_individual            control_individual
 %       composite fixtures whose OLD and NEW output DIFFER: 0
 %   -> the two DEFECT C presence tests FAIL against the pre-repair code (it emits an
-%      empty struct for this shape); the two guard tests PASS against it and must keep
-%      passing. No composite output moves.
+%      empty struct for this shape). Of the three guard tests, two PASS against it and
+%      must keep passing; the third
+%      (testFlatRawCurveKeepsItsUnmappedControlNamesOutOfTheBlockEntirely) FAILS on its
+%      DENOMINATOR line only -- see its own header for why that line had to be added.
+%      No composite output moves.
 %
 %   ---------------------------------------------------------------------
 %   EVERY FIXTURE IS BUILT FROM THE WRITER, AND THE WRITER IS NOT NDI-matlab
@@ -564,9 +567,20 @@ function testFlatRawCurveKeepsItsUnmappedControlNamesOutOfTheBlockEntirely(testC
 % under any spelling. Asserted by SUBSTRING so a future alias cannot slip one in under a
 % renamed key.
 %
-% PASSES against the pre-repair code. A guard, not a catch.
+% FAILS AGAINST THE PRE-REPAIR CODE, but only on its DENOMINATOR line, and the
+% distinction is the point. As first written this test had no denominator: it swept
+% fieldnames(control_response) and asserted a property of each, so against the
+% pre-repair code -- which emits ZERO keys for this shape -- the loop body never ran and
+% the test passed having inspected nothing. That is this repo's signature failure
+% (`silentLoss` printing "0 empty edges" while reading nothing for two days) reproduced
+% in a test, and the direction is the reassuring one. The count is now asserted FIRST
+% and UNCONDITIONALLY, so "no key carries them" and "there were no keys" cannot be
+% confused. The substring half is still a guard, not a catch.
 v = flatFoldedValue(flatRawCurve());
 fns = fieldnames(v.control_response);
+verifyEqual(testCase, numel(fns), 3, ...
+    ['DENOMINATOR: the sweep below inspects the emitted control keys. With none ' ...
+     'emitted there is nothing to inspect and its silence would mean nothing.']);
 for k = 1:numel(fns)
     verifyEmpty(testCase, strfind(fns{k}, 'individual'), sprintf( ...
         ['control_response.%s: the real/imaginary per-trial control matrices are ' ...
