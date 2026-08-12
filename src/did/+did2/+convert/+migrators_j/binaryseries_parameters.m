@@ -27,6 +27,102 @@ function bodies = binaryseries_parameters(preBody)
 %   therefore reach validation in its did_v1 shape, against the V_eta source
 %   tombstone -- and that is what this migrator exists to make survivable.
 %
+%   RE-MEASURED 2026-08-12, since the sentence above names three field slots
+%   and prose about a built tree is the thing this project re-derives rather
+%   than repeats. It holds, and it is sharper than it was written:
+%
+%     DENOMINATOR: 247 json file(s) under did-schema schemas/V_eta/ read,
+%                  every field declaration walked including nested ones
+%       leaf field `datum_type`  : 0 declarations   <- BOTH datum_type targets
+%       leaf field `datum`       : 1  sampled_body.datum
+%       leaf field `regular`     : 1  sampled_body.sample_time.regular
+%       leaf field `regularity`  : 2  sampled_body.axes.regularity,
+%                                     acquisition_epoch.axes.regularity
+%
+%   So `datum_type` -- the destination the signature names TWICE, for
+%   `time_type` and for `data_type` -- exists nowhere, and `time_size`/
+%   `data_size` are "implied by their datum_type", which makes FOUR of the six
+%   fields dependent on a slot that has not been built. The remaining two are
+%   no better off: the signature says `samples_regular_intervals` becomes "the
+%   axis `regular` flag", and there is no such flag -- there is a boolean
+%   `sample_time.regular` and a char enum `axes.regularity`, which are two of
+%   the three encodings #45 exists to COLLAPSE into one. Naming which field is
+%   blocked rather than which item number is blocked is deliberate; see
+%   did-schema V_eta_OPEN_WORK.md row #106.
+%
+%   ---------------------------------------------------------------------
+%   AND A SECOND BLOCKER, WHICH #45 DOES NOT LIFT. RECORDED, NOT RESOLVED.
+%   ---------------------------------------------------------------------
+%   Everything above reads as though `axes[]`/`datum_type` are the only thing
+%   in the way -- so that the fold becomes a straightforward build the day #45
+%   lands. IT IS NOT. The signed targets are `subject_statement` +
+%   `sampled_body` (did-schema V_eta_coverage_ledger.json, `decided_targets`),
+%   and both require something this class has never carried.
+%
+%   THE SOURCE HAS NO EDGES AT ALL. All three declarations agree, which is
+%   rare enough to be worth writing out:
+%
+%     NDI origin/main database_documents/data/binaryseries_parameters.json
+%         no `depends_on` key at all
+%     NDI origin/main schema_documents/data/binaryseries_parameters_schema.json
+%         "depends_on": []   -- and "file": []
+%     did-schema schemas/V_eta/stable/binaryseries_parameters.json
+%         "depends_on": []
+%
+%   And there is no writer anywhere to disagree with them (below), so the
+%   ground-truth rule cannot overturn this the way it overturns a template.
+%   There is no element_id, no subject_id, and NOTHING TO JOIN ON -- not here,
+%   and not in a batch post-pass either, which is the usual escape hatch for
+%   exactly this shortfall (jSessionAnchor, ensembleMembership). A pass that
+%   sees the whole migrated-id graph still needs a key INTO that graph, and
+%   this class carries none.
+%
+%   WHAT THE TARGETS DEMAND, read off the built schemas rather than recalled:
+%
+%     subject_statement.subject_id   mustBeNonEmpty TRUE   -> subject
+%     subject_statement.variable     mustBeNonEmpty TRUE   (ontology_term)
+%     sampled_body.statement         mustBeNonEmpty TRUE   -> subject_statement
+%
+%   So folding today would mint a statement about NOBODY carrying an invented
+%   `variable`. That is the image_stack husk exactly (4,563
+%   `image_observation.subject_id` empties) -- except it would no longer even
+%   be a quiet husk: #37 RequiredDependencies is ARMED BY DEFAULT, so every
+%   such document QUARANTINES instead of validating clean. Grep
+%   `RequiredDependencies` in +did2/+schema/cache.m: the defaults table says
+%   "ARMED -- 7,233 measured cost, ON PURPOSE", and strictMode sets it from
+%   `~envFlagIsOff('DID_ENFORCE_REQUIRED_DEPENDENCIES')`, i.e. ON unless
+%   explicitly disabled -- the opposite polarity from #32's `envFlag`.
+%
+%   `variable` IS THE HARDER HALF, AND IT IS NOT PLUMBING. The six fields are
+%   BYTE LAYOUT -- element widths, dtypes, dimensionality, sampling regularity.
+%   There is no measured quantity here for a statement to be ABOUT. Note that
+%   the signature is consistent with that: it routes the fields onto an axis
+%   and onto "the statement's" datum_type, i.e. onto A STATEMENT THAT ALREADY
+%   EXISTS FOR THE SERIES THIS METADATA DESCRIBES. It does not ask for a
+%   statement of this class's own.
+%
+%   AND THE BODY WOULD HAVE NO BYTES. The NDI schema declares "file": [] and
+%   the template carries no file_list, so a `sampled_body` minted from this
+%   document would be payload-free -- +did2/+validate/fileList.m would count it
+%   as `declared_but_absent` for `sampled_body|body_data`. (That audit is
+%   report-only, so it would not gate; it would just be one more instrument
+%   quietly recording a husk.)
+%
+%   THIS IS AN OPEN TEAM QUESTION AND IT IS NOT THIS FILE'S TO SETTLE
+%   (Operating Rule 4). WHICH statement do these parameters attach to? Nothing
+%   on the document says. Until that is answered, #45 landing does NOT unblock
+%   the fold, and if the answer turns out to be "nothing links them", then the
+%   class is a PERMANENT passthrough -- a different disposition from the
+%   "deferred" one everybody currently reads off the ledger. DO NOT RESOLVE IT
+%   BY MINTING A SUBJECT.
+%
+%   THE LEDGER'S RUNG 3 IS THEREFORE CORRECT, AND DELIBERATE. Its row reads
+%   stage 2, `blocked_by: 3, state: no`, "the decided target(s)
+%   `subject_statement`, `sampled_body` are not all among what the migrator
+%   emits today". That is this migrator behaving as designed, not a gap to
+%   close. It is recorded here so the next reader of that row does not read a
+%   red rung as an instruction to build.
+%
 %   ---------------------------------------------------------------------
 %   THE DEFECT IT REPAIRS: NO EMPTY INTEGER VALIDATES
 %   ---------------------------------------------------------------------

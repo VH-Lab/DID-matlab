@@ -63,7 +63,7 @@ function tests = testMiscSingletons
 %   ---------------------------------------------------------------------
 %   TESTS THAT MUST BE INVERTED, NOT PATCHED
 %   ---------------------------------------------------------------------
-%   Two tests below assert CURRENT, KNOWN-DEFECTIVE behaviour on purpose, so
+%   Three tests below assert CURRENT, KNOWN-INCOMPLETE behaviour on purpose, so
 %   that nobody discovers the change by accident on a corpus run:
 %
 %     testProjectvarNumericPayloadQuarantinesToday
@@ -77,6 +77,12 @@ function tests = testMiscSingletons
 %         (#63): cache.requiredDependencies excludes numbered families by
 %         design, so a purpose with no interaction validates clean and is only
 %         COUNTED, by silentLoss. INVERT when the family gate is armed.
+%
+%     testBinaryseriesFoldIsNotBuiltAndNeedsMoreThanAxes
+%         The signed fold (-> subject_statement + sampled_body) is not built,
+%         and this pins BOTH reasons so that #45 landing is not mistaken for
+%         the all-clear. INVERT only after the team has answered WHICH
+%         statement these parameters attach to -- see the migrator header.
 
 tests = functiontests(localfunctions);
 end
@@ -305,6 +311,82 @@ verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, isfield(out.silent_loss, 'empty_dependency_count'), ...
     'silent-loss audit did not run');
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
+end
+
+function testBinaryseriesCarriesNoEdgeSoNoSubjectIsReachable(testCase)
+% A DURABLE FACT, not a snapshot of unfinished work -- this one never needs
+% inverting, because it is a property of the did_v1 class itself.
+%
+% All three declarations of this class agree that it has NO dependencies, and
+% there is no writer anywhere in NDI to overrule them (git grep -i binaryseries
+% on origin/main matches 3 files, none of them a .m, out of 1002 .m files):
+%
+%   NDI database_documents/data/binaryseries_parameters.json  no depends_on key
+%   NDI schema_documents/data/binaryseries_parameters_schema.json  "depends_on": []
+%   did-schema schemas/V_eta/stable/binaryseries_parameters.json   "depends_on": []
+%
+% That is what makes the signed fold unreachable rather than merely deferred:
+% `subject_statement.subject_id` is mustBeNonEmpty, and there is no key here to
+% resolve a subject FROM -- not in this migrator and not in a batch post-pass,
+% which is the usual rescue for a missing subject. If a future source shape ever
+% does carry an edge, this test goes red and the migrator header's "OPEN TEAM
+% QUESTION" section is the thing to read before changing it.
+out = runJ({ binaryseriesTemplateBody('bsp_e1', 'sess_V'), ...
+             binaryseriesPopulatedBody('bsp_e2', 'sess_V') });
+verifyEmpty(testCase, out.quarantine);
+% ASSERT, not verify: everything below loops over out.migrated, and a verify on
+% the count would let an empty result set pass every assertion vacuously.
+assertEqual(testCase, numel(out.migrated), 2);
+for k = 1:numel(out.migrated)
+    s = out.migrated{k}.toStruct();
+    % The GENERAL claim first -- no edge of ANY name, which is the fact that
+    % makes a subject unreachable however a future fold tries to reach one.
+    verifyTrue(testCase, ~isfield(s, 'depends_on') || isempty(s.depends_on), ...
+        'binaryseries_parameters acquired a depends_on edge; see the migrator header');
+    % Then the two names a fold would actually reach for, stated separately so a
+    % failure says WHICH edge appeared rather than only that the count moved.
+    verifyEmpty(testCase, depValue(s, 'element_id'));
+    verifyEmpty(testCase, depValue(s, 'subject_id'));
+end
+end
+
+function testBinaryseriesFoldIsNotBuiltAndNeedsMoreThanAxes(testCase)
+% INVERT-WHEN, and NOT when #45 lands. See the header list above.
+%
+% did-schema's coverage ledger records `decided_targets: [subject_statement,
+% sampled_body]` for this class and grades it stage 2, blocked at rung 3 with
+% state `no`. That red rung is THIS MIGRATOR BEHAVING AS DESIGNED, and this
+% test exists so that reading the rung as an instruction to build produces a
+% failing test with a pointer, rather than a husk on a corpus run.
+%
+% TWO independent blockers, and #45 lifts only the first:
+%   (1) `datum_type` is declared in 0 of the 247 json files under
+%       schemas/V_eta/, and the single collapsed axis `regular` flag does not
+%       exist either (there is a boolean sample_time.regular and a char
+%       axes.regularity -- two of the three encodings #45 collapses). Four of
+%       the six fields have no destination.
+%   (2) no subject and no `variable`, per the test above -- which #45 does not
+%       touch, and which is a TEAM question, not a build.
+out = runJ({ binaryseriesTemplateBody('bsp_f1', 'sess_V'), ...
+             binaryseriesPopulatedBody('bsp_f2', 'sess_V') });
+verifyEmpty(testCase, out.quarantine);
+% ASSERT before the all()/any() below. `all(strcmp({}, ...))` is TRUE on an
+% empty set, so a verify here would let a run that migrated NOTHING report a
+% clean pass -- the denominator defect this repo has already paid for once.
+assertEqual(testCase, numel(out.migrated), 2);
+names = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    names{k} = out.migrated{k}.get('document_class.class_name');
+end
+% The passthrough, and ONLY the passthrough: 2 in, 2 out, class unchanged.
+verifyTrue(testCase, all(strcmp(names, 'binaryseries_parameters')));
+verifyFalse(testCase, any(strcmp(names, 'subject_statement')), ...
+    ['a subject_statement was minted from binaryseries_parameters. It carries ' ...
+     'no subject and no measured quantity -- read the OPEN TEAM QUESTION ' ...
+     'section of +migrators_j/binaryseries_parameters.m before inverting this.']);
+verifyFalse(testCase, any(strcmp(names, 'sampled_body')), ...
+    ['a sampled_body was minted from binaryseries_parameters. The source ' ...
+     'declares "file": [], so the body would carry no payload.']);
 end
 
 % ===================== projectvar ==========================================
