@@ -15,13 +15,30 @@ function bodies = jCalculation(preBody, leafClass, composite, variableName, meth
 %   (superseding the v1 `app` mixin, Item-1 decision); and the input document(s) it
 %   consumed -> `derived_from_#` provenance. Emits {leaf, anchor[, software]}.
 %
-%   leafClass     the concrete leaf class (e.g. 'orientation_direction_tuning_calculation').
+%   leafClass     the concrete leaf class (e.g. 'tuning_curve_calculation').
 %   composite     the result composite data_type = the leaf's other superclass and its
-%                 value block (e.g. 'orientation_direction_tuning'); kept verbatim.
+%                 value block (e.g. 'tuning_curve'). Kept VERBATIM only when no
+%                 reshape applies; the two families below hand `value` to a reshaper.
 %   variableName  the subject_statement.variable label (what was computed).
 %   methodName    the algorithm identity for subject_interaction.method (the applet).
 %
 %   Emits {leaf, anchor}. Shared helper for the Brainstorm-J (+migrators_j) migrators.
+%
+%   CORRECTED 2026-08-12. The two examples above read
+%   'orientation_direction_tuning_calculation' and 'orientation_direction_tuning'.
+%   NEITHER CLASS EXISTS: the R2/R3 tuning collapse folded the six per-tuning result
+%   classes and their leaves into ONE `tuning_curve` composite + ONE
+%   `tuning_curve_calculation` leaf, and no caller has passed the old names since.
+%   The example was the SOURCE of the same stale claim in twelve migrator headers.
+%
+%       $ find DID-schema/schemas/V_eta -name 'orientation_direction_tuning*.json'
+%         (no match)
+%       $ find DID-schema/schemas/V_eta -name 'tuning_curve*.json'
+%         schemas/V_eta/draft/tuning_curve.json
+%         schemas/V_eta/draft/tuning_curve_calculation.json
+%
+%   "kept verbatim" was stale in the same direction: the switch below hands every
+%   `tuning_curve` and `contrast_sensitivity` composite to a reshaper.
 arguments
     preBody (1,1) struct
     leafClass (1,:) char

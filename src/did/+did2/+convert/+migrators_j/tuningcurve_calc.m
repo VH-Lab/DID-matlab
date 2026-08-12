@@ -1,12 +1,30 @@
 function bodies = tuningcurve_calc(preBody)
 %TUNINGCURVE_CALC Brainstorm-J migrator: the ndi.calc.stimulus.tuningcurve calculator
-%   OUTPUT document -> the subject_calculation LEAF stimulus_tuningcurve_calculation
-%   (id-preserved) + a session anchor. Un-defers the last calculator in the vision
-%   family (Lepsky et al., the calculator-motif paper): a calculator produces ONE
-%   output document type, kept as a first-class composite LEAF -- `subject_calculation`
-%   + the `stimulus_tuningcurve` result composite (the mean/stddev/stderr-per-condition
-%   tuning curve), exactly as visual_grating_manipulation pairs subject_manipulation
-%   with visual_grating.
+%   OUTPUT document -> the subject_calculation LEAF `tuning_curve_calculation` + the
+%   `tuning_curve` result composite, with the id preserved, + a session anchor. R2/R3
+%   TUNING COLLAPSE: the v1 `stimulus_tuningcurve` result block is RESHAPED into the
+%   one tuning_curve value (a model_fit ARRAY + typed significance /
+%   interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT carried
+%   verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so downstream
+%   calc references resolve) and the input document(s) consumed -> derived_from_#. See
+%   did2.convert.migrators_j.private.jCalculation.
+%
+%   CORRECTED 2026-08-12 -- THE SUMMARY ABOVE NAMED A CLASS THAT DOES NOT EXIST. It
+%   read "the subject_calculation LEAF stimulus_tuningcurve_calculation" (and, where
+%   it named a composite, the per-tuning result class). The R2/R3 tuning collapse
+%   folded the six per-tuning result classes and their leaves into ONE `tuning_curve`
+%   composite + ONE `tuning_curve_calculation` leaf, and this header never caught up.
+%   The BEHAVIOUR was never wrong -- only the description was, which is why the code
+%   below is untouched. Positive evidence, both halves:
+%
+%       $ grep -n "jCalculation(preBody" tuningcurve_calc.m
+%         20:bodies = jCalculation(preBody, 'tuning_curve_calculation', 'tuning_curve', ...
+%       $ find DID-schema/schemas/V_eta -name 'stimulus_tuningcurve_calculation.json'
+%         (no match)
+%       $ find DID-schema/schemas/V_eta -name 'tuning_curve_calculation.json'
+%         schemas/V_eta/draft/tuning_curve_calculation.json
+%
+%   See DID-schema schemas/V_eta_tuning_model_plan.md for the collapse itself.
 %
 %   Single-doc, contrary to an earlier (mistaken) belief that this doc lacked a
 %   subject: a real tuningcurve_calc IS-A stimulus_tuningcurve (v1 superclass) and so
