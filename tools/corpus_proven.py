@@ -52,6 +52,39 @@ down. The denominator below prints roots named, roots missing, directories
 walked and files matched, first and unconditionally, so "found nothing" and
 "looked in the wrong place" are distinguishable from the output alone.
 
+WHAT THE FIRST REAL RUN WILL SAY -- MEASURED, NOT GUESSED, 2026-08-12. The
+six corpus zips were fetched from the public S3 fixture and read directly with
+did2.validate.sourceCensus's own reader (`document_class.class_name` off the
+RAW v1 body, normalised lowercase + underscores stripped, `__MACOSX/` skipped).
+
+    DENOMINATOR: 6 corpora, 221,827 v1 document(s), 0 skipped, 45 distinct
+                 normalised v1 class name(s); 102 ledger rows
+    addends: 20211116 1,220 + B 12,917 + Dab 27,561 + JH 78,688
+             + PRED 14 + Soph 101,427 = 221,827
+      PRESENT in at least one corpus : 45   <- can read PROVEN
+      ABSENT from all six            : 57   <- read NOT MEASURED, forever,
+                                              until a dataset holding them
+                                              migrates
+      in a corpus but not a ledger row: 0
+    per corpus: 20211116 21, B 18, Dab 26, JH 15, PRED 10, Soph 32
+
+THAT DENOMINATOR IS THE HARNESS'S OWN. `epochMint.m:39` and `epochIndex.m:52`
+both record *"did2.validate.sourceCensus over 6 corpora, 221,827 v1
+documents"*, and six per-class counts land on figures already in the record to
+the document -- stimulus_response_scalar_parameters_basic 11,440,
+epochfiles_ingested 6,921, syncrule_mapping 5,316, stimulus_presentation
+2,670, distance_metadata 2,078, ontologyLabel 7,007. So the reader is the same
+reader.
+
+SO 45 IS A CEILING AND IT IS CONDITIONAL. Those 45 read PROVEN only if the run
+is globally clean; run 31556573159 was (633,612 documents, 0 quarantined, 0
+fragments, 0 empty required edges), and in that regime the corpus-level zero
+bounds every class in it. If it is not clean, some of the 45 come back `no`
+and the attribution report below says which of those verdicts is inherited
+from a corpus-level counter rather than attributed. The 57 are UNTESTED, not
+clean: 56% of the v1 universe is not in the sample we hold, which is the
+number this rung exists to make visible.
+
 WHAT FAILS THE STEP AND WHAT ONLY REPORTS. Instrument faults fail: no reports,
 no readable source census, coverage.py absent or erroring, a rung that
 contradicts the census it was computed from. A MIGRATION DEFECT -- a class
