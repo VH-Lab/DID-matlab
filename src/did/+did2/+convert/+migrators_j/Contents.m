@@ -29,7 +29,21 @@
 %   did-schema/schemas/V_eta/conversions/from_did_v1/ and the authoritative
 %   field-level mapping in did-schema/schemas/V_eta_migration_plan.md Part D.
 %
-%   Registered migrators:
+%   WHERE THE COMPLETE LIST IS, AND WHY IT IS NOT THIS ONE. Everything from here
+%   to the roster at the bottom is HAND-WRITTEN NARRATIVE -- rationale, team
+%   sign-offs, corrections and their evidence -- and it has never been complete.
+%   On 2026-08-12 it named 43 of the 81 migrators in this package; the other 38
+%   had a file here and no entry anywhere in this comment. That mattered because
+%   this file is read as FACT about the opposite: DID-schema/CLAUDE.md cites the
+%   `projectvar` clause below to establish which classes deliberately have NO
+%   migrator, so silence here read as a deliberate absence for 38 that were not.
+%   The COMPLETE index is now the GENERATED ROSTER at the bottom of this file,
+%   one entry per file, each taken from that migrator's own H1 summary.
+%   `tools/check_migrator_roster.py` fails when a migrator is missing from it,
+%   when the block differs from the generator, or when a migrator has no test.
+%   READ THE ROSTER FOR "does X have a migrator"; read the narrative for WHY.
+%
+%   Registered migrators (a NARRATIVE SUBSET -- see above):
 %
 %     subject_group      - 1 -> 1. -> bare `subject` (v3.0.0; no is_group).
 %     treatment_transfer - 1 -> 3. -> term_manipulation (the act) + a
@@ -510,3 +524,415 @@
 %                      out of _DELETE_PHASE8. Non-scalar or char timestamps
 %                      error rather than being truncated or parsed. Gate:
 %                      tests/+did2/+unittest/testTemplateLiteralTypeTraps.m.
+%
+%   ===================== BEGIN GENERATED ROSTER =====================
+%
+%   One entry per file in this package, GENERATED from each migrator's own H1
+%   summary paragraph by tools/check_migrator_roster.py. DO NOT HAND-EDIT: the
+%   gate diffs this block against the generator and a hand edit fails it. To
+%   change an entry, change that migrator's H1 and re-run with --write.
+%
+%   81 migrator(s).
+%
+%     binaryseries_parameters
+%         Brainstorm-J migrator: did_v1 binaryseries_parameters -- a GUARDED
+%         PASSTHROUGH that normalises the template's own placeholders.
+%     binnedspikeratevm
+%         Brainstorm-J migrator: did_v1 binnedspikeratevm -- DEFERRED to the NDI
+%         second pass; the document is passed through UNCHANGED.
+%     contrast_sensitivity_calc
+%         Brainstorm-J migrator: the ndi.calc.vis.contrast_sensitivity calculator
+%         OUTPUT document -> the subject_calculation LEAF
+%         contrast_sensitivity_calculation (id-preserved) + a session anchor.
+%         Un-defers the aggregate contrast-sensitivity calculation. This doc HAS
+%         element_id (like every vision calculator, tuningcurve_calc included), so the
+%         fold is single-doc: element_id -> subject_id; the result fields (sensitivity
+%         / gain / c50 / p-value matrices) sit on the concrete
+%         contrast_sensitivity_calc block, so it is passed as the sourceBlock (its
+%         inherited input_parameters stripped -> method_parameters); app kept; the raw
+%         responses (stimulus_response_scalar_id) -> derived_from_1.
+%     contrast_tuning
+%         Brainstorm-J migrator: did_v1 contrast_tuning -> the subject_calculation
+%         LEAF `tuning_curve_calculation` + the `tuning_curve` result composite, with
+%         the id preserved, + a session anchor. R2/R3 TUNING COLLAPSE: the v1
+%         `contrast_tuning` result block is RESHAPED into the one tuning_curve value
+%         (a model_fit ARRAY + typed significance / interpolated_values sub-blocks) by
+%         private/jTuningCurveValue -- it is NOT carried verbatim; the fold is 1 -> 1
+%         with base.id + depends_on preserved (so downstream calc references resolve)
+%         and the input document(s) consumed -> derived_from_#. See
+%         did2.convert.migrators_j.private.jCalculation.
+%     contrast_tuning_calc
+%         Brainstorm-J migrator: the ndi.calc.vis.contrast calculator OUTPUT document
+%         -> the subject_calculation LEAF `tuning_curve_calculation` + the
+%         `tuning_curve` result composite, with the id preserved, + a session anchor.
+%         R2/R3 TUNING COLLAPSE: the v1 `contrast_tuning` result block is RESHAPED
+%         into the one tuning_curve value (a model_fit ARRAY + typed significance /
+%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
+%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
+%         downstream calc references resolve) and the input document(s) consumed ->
+%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%     control_stimulus_ids
+%         Brainstorm-J migrator: did_v1 control_stimulus_ids -> `control_designation`
+%         (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08). A
+%         DERIVED annotation of WHICH presented trials are the control reference,
+%         computed by the tuning_response app. It is NOT baked into the immutable
+%         stimulus body: it REFERENCES the presentation (the timed_sequence
+%         body-of-record, id-preserved through the second-pass decompose, so the edge
+%         resolves either way) and carries the derivation method; marked derived_from
+%         the presentation (T10). Drops the v1 `app` mixin (software model, R1) and
+%         the `ids` container word (T13).
+%     daqmetadatareader
+%         Brainstorm-J migrator: did_v1 daqmetadatareader ->
+%         `acquisition_metadata_reader` (+ the `software` entity for the
+%         implementation class). 1 -> 2, or 1 -> 1, or a guarded passthrough.
+%     daqmetadatareader_epochdata_ingested
+%         Brainstorm-J migrator: the per-epoch companion-spreadsheet bytes ->
+%         `acquisition_metadata_file`.
+%     daqreader
+%         Brainstorm-J migrator: did_v1 daqreader DISSOLVES into a `software` entity.
+%         1 -> 1, base.id PRESERVED.
+%     daqreader_epochdata_ingested
+%         Brainstorm-J migrator: lift the epoch's clock extents out of `epochtable`
+%         into `relative_reference` documents.
+%     daqreader_image_epochdata_ingested
+%         Brainstorm-J migrator: the camera's ingested epoch. Lifts the inherited
+%         epoch clock extents; the image fold is BLOCKED and the document is
+%         preserved.
+%     daqreader_mfdaq_epochdata_ingested
+%         Chunk-b/c de-encode: the mfdaq ingested cache dissolves into the generic
+%         daqreader_epochdata_ingested.
+%     daqreader_ndr
+%         Chunk-c de-encode: daqreader_ndr dissolves into daqreader. The reader
+%         subtype ('ndr') was encoded in the CLASS NAME, but it is already
+%         discriminated by ndi_daqreader_class, so the distinguishing fields de-encode
+%         onto the generic daqreader: ndr_reader_string -> daqreader.reader_string,
+%         and ndi_daqreader_ndr_class dropped (redundant). `file_extension` is NOT
+%         carried -- see the block at the copy site below for why, and do not restore
+%         it from this line. The daqreader superclass chain is rebuilt by
+%         ensureClassBlocks after this.
+%     daqsystem
+%         Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system` (<- entity)
+%         + a `software` entity for its own implementation class. 1 -> 2, or 1 -> 1
+%         when there is no class name. base.id AND base.name PRESERVED on the
+%         acquisition_system.
+%     dataset_remote
+%         Brainstorm-J migrator: did_v1 dataset_remote -> the remote copy as a
+%         first-class relation. A dataset_remote records that a local dataset is
+%         mirrored to a cloud location (its cloud `dataset_id` + remote
+%         `organization_id`). In J that is not a bespoke class but the entity-layer
+%         pattern used for every external reference: the remote copy IS a
+%         `web_resource`, and the association is a `directed_relation` (exactly as
+%         dataset documentation became dataset -documented_by-> web_resource).
+%     dataset_session_info
+%         Brainstorm-J migrator: did_v1 dataset_session_info -> the session<->dataset
+%         membership as first-class relations. This is the legacy AGGREGATE form of
+%         session_in_a_dataset: the `dataset_session_info` block holds a
+%         `dataset_session_info` structure (scalar or array), one entry per member
+%         session, each with the same fields (session_id, is_linked, session_creator,
+%         session_creator_input1..6, session_reference). It dissolves exactly like
+%         session_in_a_dataset — a bare dataset entity + one session -part_of->
+%         dataset edge per member session (best-effort; dropped by
+%         resolveDatasetEntities when a linked member session is not in the batch).
+%         The assembly/reconstruction fields are dropped as NDI-internal handles.
+%     distance_metadata
+%         Brainstorm-J migrator: reshape a did_v1 distance_metadata into the validated
+%         V_eta distance_metadata. 1 -> 1.
+%     electrode_offset_voltage
+%         Brainstorm-J migrator: did_v1 electrode_offset_voltage -> a
+%         voltage_observation of the probe-subject, qualified by the temperature it
+%         was measured at, + the session anchor. 1 -> 2.
+%     element
+%         Brainstorm-J migrator: did_v1 element -> subject (+ kind assertions + the
+%         raw-recording observation + a lineage relation). Strict J retires the
+%         recording-side `element` class (J:214, D2): any identifiable thing -- an
+%         organism, a device/probe, a derived signal or sorted unit -- is a `subject`.
+%         The element document therefore becomes a `subject` with its id PRESERVED, so
+%         the ~50 classes that reference it (`element_id` / `underlying_element_id` /
+%         `stimulator_id`) keep resolving -- now to a subject.
+%     element_epoch
+%         Brainstorm-J migrator: element_epoch -> acquisition_epoch.
+%     epochfiles_ingested
+%         Brainstorm-J migrator: DELIBERATE GUARDED PASSTHROUGH.
+%     filenavigator
+%         Brainstorm-J migrator: did_v1 filenavigator -> epoch_file_pattern (+ the
+%         `software` entity for the implementation class). 1 -> 1 or 1 -> 2.
+%     fitcurve
+%         Brainstorm-J migrator: did_v1 fitcurve -> a fit-residual score_observation
+%         (+ the shared session anchor).
+%     image
+%         Brainstorm-J migrator: did_v1 `image` -> a body-backed image_observation + a
+%         sampled_body (+ the shared session anchor). 1 -> 3.
+%     image_stack
+%         Brainstorm-J migrator: did_v1 image_stack -> a body-backed image_observation
+%         + a sampled_body (+ the shared session anchor).
+%     jrclust_clusters
+%         Brainstorm-J migrator: did_v1 jrclust_clusters -> a body-backed
+%         count_observation (the per-spike cluster assignments) + the session anchor.
+%     kiasort_clusters
+%         Brainstorm-J migrator: did_v1 kiasort_clusters -> the D-C analysis-tier
+%         shape (count_observation + opaque_body + session anchor).
+%     kilosort_clusters
+%         Brainstorm-J migrator: did_v1 kilosort_clusters -> the D-C analysis-tier
+%         shape (count_observation + opaque_body + session anchor).
+%     measurement
+%         Brainstorm-J migrator: did_v1 measurement -> a typed subject_observation
+%         leaf (+ the shared session anchor), for the rows that can be typed honestly;
+%         everything else is carried through for the second pass.
+%     metadata_editor
+%         Brainstorm-J migrator: did_v1 metadata_editor -> a structured `dataset`
+%         entity + the person / organization / funding / publication / web_resource
+%         entities it references + the `directed_relation`s that connect them. Strict
+%         J stops storing dataset metadata as one opaque `metadata_structure` blob
+%         (the NDIMetaDataEditorApp serialization) and instead decomposes it into
+%         first-class, queryable entities, exactly as the subject side stopped storing
+%         openMINDS bundles.
+%     neuron_extracellular
+%         Brainstorm-J migrator: did_v1 neuron_extracellular -> a DERIVED SUBJECT (the
+%         sorted unit) + a derived_from relation + a quality observation (+ the shared
+%         session anchor).
+%     oneepoch
+%         Brainstorm-J migrator: keep the class, fold its inherited block.
+%     ontology_image
+%         Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE. The
+%         current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the
+%         `ngrid` raster) is a GUARDED PASSTHROUGH deferred to the NDI second pass: a
+%         table row is not a subject, so pass 1 cannot fill
+%         `subject_statement.subject_id` without minting the husk the image_stack
+%         guard exists to stop. The legacy `ontology_name` + `ontology_region` shape
+%         (which the correction below shows has never existed in NDI) would migrate 1
+%         -> 2 to a term_observation about the element-subject + a session anchor. Any
+%         third shape ERRORS rather than emitting. The raster and the provenance edge
+%         are deferred with the passthrough (#47).
+%     ontology_label
+%         Brainstorm-J migrator: did_v1 ontology_label -- DEFERRED to the NDI second
+%         pass; the document is passed through UNCHANGED.
+%     ontology_table_row
+%         Brainstorm-J split migrator: did_v1 ontology_table_row -> the
+%         subject_statement tier (1 -> N).
+%     openminds
+%         Brainstorm-J migrator: did_v1 `openminds` -- a GUARDED PASSTHROUGH.
+%     openminds_element
+%         Brainstorm-J migrator: did_v1 openminds_element -> term_assertion.
+%     openminds_stimulus
+%         Brainstorm-J migrator: did_v1 openminds_stimulus -- DEFERRED to the NDI
+%         second pass; the document is passed through UNCHANGED.
+%     openminds_subject
+%         Brainstorm-J migrator: did_v1 openminds_subject -> term_assertion.
+%     oridirtuning_calc
+%         Brainstorm-J migrator: the ndi.calc.vis.oridir calculator OUTPUT document ->
+%         the subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
+%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
+%         COLLAPSE: the v1 `orientation_direction_tuning` result block is RESHAPED
+%         into the one tuning_curve value (a model_fit ARRAY + typed significance /
+%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
+%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
+%         downstream calc references resolve) and the input document(s) consumed ->
+%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%     orientation_direction_tuning
+%         Brainstorm-J migrator: did_v1 orientation_direction_tuning -> the
+%         subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
+%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
+%         COLLAPSE: the v1 `orientation_direction_tuning` result block is RESHAPED
+%         into the one tuning_curve value (a model_fit ARRAY + typed significance /
+%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
+%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
+%         downstream calc references resolve) and the input document(s) consumed ->
+%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%     position_metadata
+%         Brainstorm-J migrator: did_v1 position_metadata -> term_observation (WHAT
+%         kind of position was recorded) about the element-subject + a session anchor.
+%         1 -> 2.
+%     probe_geometry
+%         Brainstorm-J migrator: did_v1 probe_geometry -> one length_observation PER
+%         SPATIAL AXIS about the probe-subject, plus the session anchor, plus an
+%         optional probe-model term_assertion.
+%     probe_location
+%         Brainstorm-J migrator: did_v1 probe_location -> term_observation.
+%     pyraview
+%         Brainstorm-J migrator: did_v1 pyraview -> a body-backed
+%         dataseries_observation + a sampled_body (+ the shared session anchor).
+%     session_in_a_dataset
+%         Brainstorm-J migrator: did_v1 session_in_a_dataset -> the session<->dataset
+%         membership as a first-class relation. Now that `session` is an `entity`, a
+%         session belonging to a dataset is a `directed_relation` (session -part_of->
+%         dataset), not a bookkeeping record.
+%     simple_calc
+%         Brainstorm-J migrator: did_v1 simple_calc -- DEFERRED to the NDI second
+%         pass; the document is passed through UNCHANGED.
+%     site2channelmap
+%         Brainstorm-J migrator: did_v1 site2channelmap -- DEFERRED to the NDI second
+%         pass; the document is passed through UNCHANGED.
+%     sorting_parameters
+%         Brainstorm-J migrator: did_v1 sorting_parameters -> ONE `method_parameters`
+%         document (+ the `software` entity its v1 `app` block names).
+%     spatial_frequency_tuning
+%         Brainstorm-J migrator: did_v1 spatial_frequency_tuning -> the
+%         subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
+%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
+%         COLLAPSE: the v1 `spatial_frequency_tuning` result block is RESHAPED into
+%         the one tuning_curve value (a model_fit ARRAY + typed significance /
+%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
+%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
+%         downstream calc references resolve) and the input document(s) consumed ->
+%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%     spatial_frequency_tuning_calc
+%         Brainstorm-J migrator: the ndi.calc.vis.spatialfrequency calculator OUTPUT
+%         document -> the subject_calculation LEAF `tuning_curve_calculation` + the
+%         `tuning_curve` result composite, with the id preserved, + a session anchor.
+%         R2/R3 TUNING COLLAPSE: the v1 `spatial_frequency_tuning` result block is
+%         RESHAPED into the one tuning_curve value (a model_fit ARRAY + typed
+%         significance / interpolated_values sub-blocks) by private/jTuningCurveValue
+%         -- it is NOT carried verbatim; the fold is 1 -> 1 with base.id + depends_on
+%         preserved (so downstream calc references resolve) and the input document(s)
+%         consumed -> derived_from_#. See
+%         did2.convert.migrators_j.private.jCalculation.
+%     speed_tuning
+%         Brainstorm-J migrator: did_v1 speed_tuning -> the subject_calculation LEAF
+%         `tuning_curve_calculation` + the `tuning_curve` result composite, with the
+%         id preserved, + a session anchor. R2/R3 TUNING COLLAPSE: the v1
+%         `speed_tuning` result block is RESHAPED into the one tuning_curve value (a
+%         model_fit ARRAY + typed significance / interpolated_values sub-blocks) by
+%         private/jTuningCurveValue -- it is NOT carried verbatim; the fold is 1 -> 1
+%         with base.id + depends_on preserved (so downstream calc references resolve)
+%         and the input document(s) consumed -> derived_from_#. See
+%         did2.convert.migrators_j.private.jCalculation.
+%     speed_tuning_calc
+%         Brainstorm-J migrator: the ndi.calc.vis.speed calculator OUTPUT document ->
+%         the subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
+%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
+%         COLLAPSE: the v1 `speed_tuning` result block is RESHAPED into the one
+%         tuning_curve value (a model_fit ARRAY + typed significance /
+%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
+%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
+%         downstream calc references resolve) and the input document(s) consumed ->
+%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%     spike_clusters
+%         Brainstorm-J migrator: did_v1 spike_clusters -- DEFERRED to the NDI second
+%         pass; the document is passed through UNCHANGED.
+%     spike_extraction_parameters
+%         Brainstorm-J migrator: did_v1 spike_extraction_parameters -> ONE
+%         `method_parameters` document (+ the `software` entity its v1 `app` block
+%         names).
+%     spike_extraction_parameters_modification
+%         Brainstorm-J migrator: did_v1 spike_extraction_parameters_modification -> a
+%         SECOND `method_parameters` document (+ the `software` entity its v1 `app`
+%         block names).
+%     spike_interface_sorting_outputs
+%         Brainstorm-J migrator: did_v1 spike_interface_sorting_outputs -- DEFERRED to
+%         the NDI second pass; the document is passed through UNCHANGED.
+%     spikewaves
+%         Brainstorm-J migrator: did_v1 spikewaves -- DEFERRED to the NDI second pass;
+%         the document is passed through UNCHANGED.
+%     stimulus_bath
+%         Deferred: stimulus_bath migrates to a dose_manipulation in the NDI layer /
+%         the coarse resolveDeferredBaths pass.
+%     stimulus_parameter
+%         Brainstorm-J migrator: did_v1 stimulus_parameter -- a PASSTHROUGH that
+%         normalises the template's own untypeable placeholder.
+%     stimulus_presentation
+%         Brainstorm-J migrator: did_v1 stimulus_presentation -- the decomposition is
+%         DEFERRED to the NDI second pass; pass 1 is a GUARDED PASSTHROUGH that
+%         carries the document intact.
+%     stimulus_response_scalar
+%         Brainstorm-J migrator: did_v1 stimulus_response_scalar -> the
+%         subject_calculation LEAF `harmonic_component_calculation` (id PRESERVED) +
+%         the shared session anchor. Routed from did2.convert.v1_to_v2 only when
+%         TargetVersion == 'V_eta'.
+%     stimulus_response_scalar_parameters_basic
+%         Brainstorm-J migrator: DEFERRED guarded passthrough. The signed model folds
+%         this class INLINE into `subject_interaction.method_parameters` on the
+%         response leaf; pass 1 cannot, and must not delete the documents in the
+%         meantime. Routed from did2.convert.v1_to_v2 only when TargetVersion ==
+%         'V_eta'.
+%     stimulus_tuningcurve
+%         Brainstorm-J migrator: a raw ndi.app.stimulus.tuning_response tuning curve
+%         (the pre-calculator-framework stimulus_tuningcurve document) -> the
+%         subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
+%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
+%         COLLAPSE: the v1 `stimulus_tuningcurve` result block is RESHAPED into the
+%         one tuning_curve value (a model_fit ARRAY + typed significance /
+%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
+%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
+%         downstream calc references resolve) and the input document(s) consumed ->
+%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%     subject
+%         Brainstorm-J carry-forward for a v1 subject: guarantee a non-empty
+%         local_identifier. V_eta makes subject.local_identifier REQUIRED (a subject
+%         must be nameable); a v1 subject's handle was optional, so an empty or
+%         missing one now needs filling. Fill it from the preserved document id.
+%         Everything else is unchanged -- the body is already post-universalRenames
+%         and ensureClassBlocks runs after this (exactly as the mechanical path did
+%         before), so the only delta is the guaranteed handle.
+%     subject_group
+%         Brainstorm-J migrator: did_v1 subject_group -> bare subject (+ member_of
+%         relations).
+%     subjectmeasurement
+%         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed
+%         subject_observation leaf + an `absolute_reference` carrying the measurement
+%         instant. Routed from did2.convert.v1_to_v2 only when TargetVersion ==
+%         'V_eta'.
+%     syncgraph
+%         Brainstorm-J migrator: did_v1 `syncgraph` -> `clock_alignment_policy`.
+%     syncrule
+%         Brainstorm-J migrator: did_v1 `syncrule` -> `clock_alignment_configuration`.
+%     syncrule_mapping
+%         Brainstorm-J migrator: did_v1 `syncrule_mapping` -> `clock_alignment`.
+%     temporal_frequency_tuning
+%         Brainstorm-J migrator: did_v1 temporal_frequency_tuning -> the
+%         subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
+%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
+%         COLLAPSE: the v1 `temporal_frequency_tuning` result block is RESHAPED into
+%         the one tuning_curve value (a model_fit ARRAY + typed significance /
+%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
+%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
+%         downstream calc references resolve) and the input document(s) consumed ->
+%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%     temporal_frequency_tuning_calc
+%         Brainstorm-J migrator: the ndi.calc.vis.temporalfrequency calculator OUTPUT
+%         document -> the subject_calculation LEAF `tuning_curve_calculation` + the
+%         `tuning_curve` result composite, with the id preserved, + a session anchor.
+%         R2/R3 TUNING COLLAPSE: the v1 `temporal_frequency_tuning` result block is
+%         RESHAPED into the one tuning_curve value (a model_fit ARRAY + typed
+%         significance / interpolated_values sub-blocks) by private/jTuningCurveValue
+%         -- it is NOT carried verbatim; the fold is 1 -> 1 with base.id + depends_on
+%         preserved (so downstream calc references resolve) and the input document(s)
+%         consumed -> derived_from_#. See
+%         did2.convert.migrators_j.private.jCalculation.
+%     treatment
+%         Brainstorm-J split migrator: did_v1 treatment -> a data-type-named
+%         subject_manipulation leaf (+ an optional site term_observation + the shared
+%         session anchor).
+%     treatment_drug
+%         Brainstorm-J migrator: did_v1 treatment_drug -> dose_manipulation.
+%     treatment_transfer
+%         Brainstorm-J migrator: did_v1 treatment_transfer -> term_manipulation + a
+%         provenance directed_relation.
+%     tuningcurve_calc
+%         Brainstorm-J migrator: the ndi.calc.stimulus.tuningcurve calculator OUTPUT
+%         document -> the subject_calculation LEAF `tuning_curve_calculation` + the
+%         `tuning_curve` result composite, with the id preserved, + a session anchor.
+%         R2/R3 TUNING COLLAPSE: the v1 `stimulus_tuningcurve` result block is
+%         RESHAPED into the one tuning_curve value (a model_fit ARRAY + typed
+%         significance / interpolated_values sub-blocks) by private/jTuningCurveValue
+%         -- it is NOT carried verbatim; the fold is 1 -> 1 with base.id + depends_on
+%         preserved (so downstream calc references resolve) and the input document(s)
+%         consumed -> derived_from_#. See
+%         did2.convert.migrators_j.private.jCalculation.
+%     virus_injection
+%         Brainstorm-J migrator: did_v1 virus_injection -> dose_manipulation.
+%     vmneuralresponseresiduals
+%         Brainstorm-J migrator: did_v1 vmneuralresponseresiduals -- DEFERRED to the
+%         NDI second pass; the document is passed through UNCHANGED.
+%     vmspikefilteringparameters
+%         Brainstorm-J migrator: did_v1 vmspikefilteringparameters -> ONE
+%         `method_parameters` document (+ the `software` entity its v1 `app` block
+%         names) -- GUARDED, because this class mixes OUTPUT DATA into a configuration
+%         document.
+%     vmspikefit
+%         Brainstorm-J migrator: did_v1 vmspikefit -> a fit-residual score_observation
+%         (+ the shared session anchor).
+%     vmspikesummary
+%         Brainstorm-J migrator: did_v1 vmspikesummary -- DEFERRED to the NDI second
+%         pass; the document is passed through UNCHANGED.
+%
+%   ====================== END GENERATED ROSTER ======================
