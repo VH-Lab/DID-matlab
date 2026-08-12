@@ -44,13 +44,29 @@ function body = jAcquisitionChannels(preBody, deviceName, channelSpec)
 %   ---------------------------------------------------------------------
 %   `acquisition_system_id` IS DELIBERATELY NOT EMITTED
 %   ---------------------------------------------------------------------
-%   The edge is OPTIONAL in the schema and is documented there as "UNTYPED for
-%   now: `acquisition_system` is #59's class and does not exist yet". Two facts
-%   about that, both checked rather than repeated:
+%   The edge is OPTIONAL in the schema. This paragraph USED TO SAY it was also
+%   "documented there as 'UNTYPED for now: `acquisition_system` is #59's class
+%   and does not exist yet'", and then corrected that quotation on its own
+%   evidence -- the class DID exist, so the schema's sentence was stale. THE
+%   CORRECTION WAS RIGHT AND THE SCHEMA HAS SINCE CAUGHT UP, so the QUOTATION is
+%   now the stale half: DID-schema `9c0f532` (2026-08-12, "The edge was untyped
+%   for a day-old reason, and the class arrived the next day") TYPED the edge and
+%   rewrote the sentence being quoted. Re-derived from the built artifact rather
+%   than from either prose:
 %
-%     * the class DOES exist -- schemas/V_eta/stable/acquisition_system.json,
-%       maturity stable, entity subclass. The schema comment is stale.
-%     * it makes no difference here. What a syncrule stores is a device NAME
+%       $ python3 -c "import json;print([d for d in json.load(open(
+%             'schemas/V_eta/draft/acquisition_channels.json'))['depends_on']
+%             if d['name']=='acquisition_system_id'])"
+%         name                          acquisition_system_id
+%         must_refer_to_document_class  acquisition_system      <- TYPED
+%         mustBeNonEmpty                False                   <- still OPTIONAL
+%
+%   Two facts about the edge, both checked rather than repeated:
+%
+%     * it is TYPED at `acquisition_system`, and the class exists --
+%       schemas/V_eta/stable/acquisition_system.json, maturity stable, entity
+%       subclass. Nothing about the schema is stale any more; this header was.
+%     * NEITHER FACT CHANGES THE CODE. What a syncrule stores is a device NAME
 %       ('vhtaste_sync'), and `must_refer_to_document_class` needs a DOCUMENT
 %       ID. Resolving name -> id needs the migrated-id graph, which a
 %       single-document migrator does not have -- the same wall that defers
