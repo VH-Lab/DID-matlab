@@ -1,15 +1,18 @@
 function tests = testTuningCurveLevels
-%TESTTUNINGCURVELEVELS A LEVEL defect in the shared tuning reshape.
+%TESTTUNINGCURVELEVELS The two LEVEL defects in the shared tuning reshape.
 %
 %   `+migrators_j/private/jTuningCurveValue.m` is shared by 12 migrators (the 5 v1
 %   tuning result classes, their 5 `*_calc` wrappers, `stimulus_tuningcurve` and
 %   `tuningcurve_calc` -- every `jCalculation(..., 'tuning_curve', ...)` call site).
-%   One of its reads went to a level the writers do not populate:
+%   Two of its reads went to a level the writers do not populate:
 %
 %     A  controlBlock read control_mean / control_stddev / control_stderr off the
 %        BLOCK. All five writers put every control field INSIDE `tuning_curve`, and
 %        two of them (spatial_frequency, temporal_frequency) write two more names
 %        -- control_mean_stddev, control_mean_stderr -- that the read never mentioned.
+%     B  response_units was read off the BLOCK. That is correct for the FLAT raw
+%        stimulus_tuningcurve and wrong for all five fitted composites, which spell
+%        it `properties.response_units`.
 %
 %   ***** UNVERIFIED: THESE TESTS HAVE NEVER BEEN EXECUTED. *****
 %   Written 2026-08-12 in a container with NO MATLAB (`command -v matlab octave`
@@ -20,7 +23,7 @@ function tests = testTuningCurveLevels
 %   EACH TEST BELOW STATES WHETHER IT FAILS AGAINST THE PRE-REPAIR CODE, and how
 %   that was established is stated here rather than implied: the old and new helper
 %   bodies were transcribed and run over these exact fixture shapes OUTSIDE MATLAB.
-%   That is a SIMULATION of an 8-line function, not an execution of the migrator,
+%   That is a SIMULATION of two ~8-line functions, not an execution of the migrator,
 %   and it is quoted as such -- it is reproducible evidence for the direction of the
 %   change, not proof the MATLAB runs. It did earn its keep: it caught this file
 %   asserting a control-field total of 16 where the table sums to 15.
@@ -30,7 +33,8 @@ function tests = testTuningCurveLevels
 %       spatial_frequency_tuning      5  0  5      FAILS against old
 %       speed_tuning                  2  0  2      FAILS against old
 %       temporal_frequency_tuning     5  0  5      FAILS against old
-%   -> 14 of 15 asserted control fields are absent under the old code.
+%   -> 14 of 15 asserted control fields are absent under the old code; response_units
+%      is the numeric [] under the old code in all five, where 'Hz' and '' are asserted.
 %
 %   ---------------------------------------------------------------------
 %   EVERY FIXTURE IS BUILT FROM THE WRITER, AND THE WRITER IS NOT NDI-matlab
@@ -70,12 +74,15 @@ function tests = testTuningCurveLevels
 %   `tuning_curve` level. It is exercised here as the control case: it must keep
 %   working, and it is the reason the honest denominator for A is 4 of 5, not 5.
 %
-%   The fixtures set `properties.response_units = []`, which is the writers' REAL
-%   value in 64/64 mock documents (the upstream field is declared in NDI-matlab
-%   +ndi/+app/+stimulus/tuning_response.m's emptystruct at :405 and NEVER ASSIGNED in
-%   that file). A plausible-looking 'spikes/s' there would be a guess. Nothing in this
-%   file asserts on response_units -- that read is a SEPARATE defect, still open, and
-%   pinning it here would make its repair fight a test.
+%   response_units, all five, identically -- contrast_tuning.m:213,
+%   oridir_tuning.m:207, spatial_frequency_tuning.m:234, speed_tuning.m:245,
+%   temporal_frequency_tuning.m:237:
+%       properties.response_units = tuning_doc.document_properties. ...
+%                                       stimulus_tuningcurve.response_units;
+%   and 64/64 mock documents carry `properties.response_units = []`, because the
+%   upstream field is declared in NDI-matlab +ndi/+app/+stimulus/tuning_response.m's
+%   emptystruct at :405 and NEVER ASSIGNED in that file. So the honest fixture value
+%   is the EMPTY MATRIX, not a plausible-looking 'spikes/s'.
 %
 %   Run with:  results = runtests('did2.unittest.testTuningCurveLevels');
 
@@ -290,6 +297,88 @@ verifyEqual(testCase, cr.control_mean, [0.5; 0.5; 0.5; 0.5], 'AbsTol', 1e-12);
 assertTrue(testCase, isfield(cr, 'control_mean_stddev'), ...
     'the camelCase nested spelling controlMeanStddev was not recognised');
 verifyEqual(testCase, cr.control_mean_stddev, 0.022, 'AbsTol', 1e-12);
+end
+
+% ===================== DEFECT B ============================================
+
+function testResponseUnitsAreReadFromProperties(testCase)
+% DEFECT B, all five families. The units live under `properties`, never on the block.
+% A real char is used here so the test distinguishes "found the right level" from
+% "guarded a bad type" -- the empty case is a separate test below, because the two
+% failure modes are different and one of them is a type hazard.
+%
+% FAILS AGAINST THE OLD CODE for all five: the old read looked at block level, found
+% nothing, and getf returned the numeric [] -- so v.response_units was [], not 'Hz'.
+fam = familyTable();
+props = struct('response_type', 'mean', 'response_units', 'Hz');
+inspected = 0;
+for k = 1:numel(fam)
+    mk = fam(k).curve;
+    v = foldedValue(fam(k).className, mk(), props);
+    inspected = inspected + 1;
+    verifyEqual(testCase, v.response_units, 'Hz', sprintf( ...
+        ['%s: response_units must come from properties.response_units ' ...
+         '(the writer sets it there and nowhere else)'], fam(k).className));
+end
+verifyEqual(testCase, inspected, 5, 'the sweep must cover all five families');
+end
+
+function testEmptyUnitsBecomeTheSchemaBlankAndNotAnEmptyMatrix(testCase)
+% DEFECT B's type hazard, and the reason correcting the path alone is not the fix.
+% The writer's REAL value is the empty matrix in 64/64 mock documents, because
+% response_units is declared in NDI-matlab tuning_response.m's emptystruct (:405) and
+% never assigned. V_eta types tuning_curve.value.response_units as `char`
+% (blank_value ''), and did2.schema.cache/validateTypeShape raises
+% did2:validation:typeMismatch for a numeric in a char field. So the emitted value
+% must be char -- the schema's own blank -- never [].
+%
+% FAILS AGAINST THE OLD CODE: it emitted the numeric [] (ischar false) for every one
+% of these documents, from the wrong level. The old value and the correct blank are
+% BOTH "empty", which is exactly why this asserts the TYPE and not emptiness.
+fam = familyTable();
+for k = 1:numel(fam)
+    mk = fam(k).curve;
+    v = foldedValue(fam(k).className, mk(), emptyUnitsProperties());
+    assertTrue(testCase, ischar(v.response_units), sprintf( ...
+        ['%s: response_units is %s, not char. V_eta types the slot char and a ' ...
+         'numeric there is a typeMismatch, so an absent/empty source value must ' ...
+         'become the declared blank '''' rather than be passed through.'], ...
+        fam(k).className, class(v.response_units)));
+    verifyEqual(testCase, v.response_units, '', sprintf( ...
+        '%s: the declared blank_value is the empty CHAR', fam(k).className));
+end
+end
+
+function testFlatRawCurveStillReadsUnitsAtBlockLevel(testCase)
+% THE REGRESSION GUARD, and the reason DEFECT B is a level FALLBACK and not a level
+% MOVE. The flat raw stimulus_tuningcurve genuinely carries response_units at BLOCK
+% level -- NDI-matlab +ndi/+app/+stimulus/tuning_response.m:405 declares it there and
+% NDIcalc-vis +ndi/+calc/+vis/contrast_sensitivity.m:146 sets it to 'Hz' -- and that
+% block has no `properties` sub-struct at all. Moving the read would have broken the
+% one shape it was right for.
+%
+% PASSES against the old code too. It is here so the repair cannot regress it.
+body = struct();
+body.document_class = struct('class_name', 'stimulus_tuningcurve', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', 'element_id', 'value', 'elem_lvl_2');
+body.base = struct('id', 'lvl_doc_2', 'session_id', 'sess_lvl', 'name', 'raw', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+% the flat block, tuning_response.m:400-405 -- no `properties`, no `tuning_curve`
+body.stimulus_tuningcurve = struct( ...
+    'independent_variable_label', {{'Contrast'}}, ...
+    'independent_variable_value', [0.1; 0.2; 0.4; 0.8], ...
+    'response_mean',   [1; 5; 9; 12], ...
+    'response_stddev', [0.1; 0.2; 0.3; 0.4], ...
+    'response_stderr', [0.05; 0.1; 0.15; 0.2], ...
+    'response_units',  'Spikes/s');
+
+out = did2.convert.migrators_j.stimulus_tuningcurve(body);
+v = tuningValue(out);
+verifyEqual(testCase, v.response_units, 'Spikes/s', ...
+    'the flat raw curve carries its units at BLOCK level and must keep resolving');
+verifyEqual(testCase, v.independent_values, [0.1; 0.2; 0.4; 0.8], 'AbsTol', 1e-12);
 end
 
 % ===================== helpers =============================================

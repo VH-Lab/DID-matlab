@@ -15,28 +15,23 @@ function value = jTuningCurveValue(block)
 %   to the response_* fields.
 %
 %   "Field-name refinement (exact v1 keys) is a follow-up" -- PARTLY DONE, AND THE PART
-%   THAT IS NOT DONE IS NAMED HERE RATHER THAN LEFT AS A BLANKET DISCLAIMER. ONE read
-%   was corrected against the writers (NDIcalc-vis 65718ed); its evidence sits on the
-%   helper that does it, so it is next to the code it justifies:
-%     * controlBlock  read control_mean/_stddev/_stderr at BLOCK level, a level 0 of the
-%                     writer's 64 mock documents populate, and never named
-%                     control_mean_stddev / control_mean_stderr at all. Now reads the
-%                     `tuning_curve` level, all six names.
-%
-%   STILL UNREFINED, and deliberately untouched by this change -- two further defects,
-%   each reported so that a repair arrives on its own rather than folded in here:
-%     * `response_units` is read at BLOCK level. Correct for the FLAT raw
-%       stimulus_tuningcurve; WRONG for all five fitted composites, which spell it
-%       `properties.response_units` (contrast_tuning.m:213, oridir_tuning.m:207,
-%       spatial_frequency_tuning.m:234, speed_tuning.m:245,
-%       temporal_frequency_tuning.m:237). Correcting the LEVEL alone is not enough:
-%       the writer's real value there is the numeric EMPTY MATRIX in 64/64 mock
-%       documents, while V_eta types the slot `char`.
-%     * the FLAT raw stimulus_tuningcurve names its control fields
-%       control_response_mean / control_response_stddev / control_response_stderr /
-%       control_individual_responses_real / _imaginary (NDI-matlab
-%       +ndi/+app/+stimulus/tuning_response.m:400-405), NONE of which is in the name
-%       list controlBlock searches -- so that shape still contributes no control block.
+%   THAT IS NOT DONE IS NAMED HERE RATHER THAN LEFT AS A BLANKET DISCLAIMER. Two reads
+%   were corrected against the writers (NDIcalc-vis 65718ed); the evidence for each sits
+%   on the helper that does it, so it is next to the code it justifies:
+%     * controlBlock   read control_mean/_stddev/_stderr at BLOCK level, a level 0 of the
+%                      writer's 64 mock documents populate, and never named
+%                      control_mean_stddev / control_mean_stderr at all. Now reads the
+%                      `tuning_curve` level, all six names.
+%     * responseUnits  read `response_units` at BLOCK level -- correct for the FLAT raw
+%                      stimulus_tuningcurve, wrong for all five fitted composites, which
+%                      spell it `properties.response_units`. Now reads both, char-guarded.
+%   STILL UNREFINED, and deliberately untouched here: the FLAT raw stimulus_tuningcurve
+%   names its control fields control_response_mean / control_response_stddev /
+%   control_response_stderr / control_individual_responses_real / _imaginary (NDI-matlab
+%   +ndi/+app/+stimulus/tuning_response.m:400-405), NONE of which is in the name list
+%   controlBlock searches -- so that shape still contributes no control block. That is a
+%   third defect, reported rather than fixed, so a repair does not arrive alongside two
+%   unrelated ones.
 arguments
     block struct
 end
@@ -65,7 +60,7 @@ value.response_stderr     = getf(tc, {'stderr', 'response_stderr'});
 value.individual_responses = getf(tc, {'individual', 'individual_responses', ...
                                        'individual_responses_real'});
 value.independent_values  = independentAxis(tc, block);
-value.response_units      = getf(block, {'response_units'});
+value.response_units      = responseUnits(block);
 value.control_response    = controlBlock(tc, block);
 
 if isfield(block, 'significance') && isstruct(block.significance)
@@ -97,6 +92,42 @@ ax = getf(tc, {'independent_variable_value', 'direction', 'contrast', ...
     'spatial_frequency', 'temporal_frequency', 'speed', 'independent_variable'});
 if isempty(ax)
     ax = getf(block, {'independent_variable_value', 'independent_variable'});
+end
+end
+
+function u = responseUnits(block)
+% THE UNITS ARE SPELLED AT TWO DIFFERENT LEVELS, ONE PER SHAPE, AND BOTH ARE REAL.
+%   * the FLAT raw `stimulus_tuningcurve` block carries `response_units` at BLOCK
+%     level -- NDI-matlab +ndi/+app/+stimulus/tuning_response.m:405 declares it in the
+%     emptystruct, and NDIcalc-vis +ndi/+calc/+vis/contrast_sensitivity.m:146 sets it
+%     to 'Hz'. That is the level this function's predecessor read, and for this shape
+%     it was right.
+%   * the FIVE fitted composites carry it under `properties`, not on the block --
+%     ALL FIVE writers, identically (NDIcalc-vis 65718ed):
+%         contrast_tuning.m:213   oridir_tuning.m:207   spatial_frequency_tuning.m:234
+%         speed_tuning.m:245      temporal_frequency_tuning.m:237
+%             properties.response_units = tuning_doc.document_properties. ...
+%                                            stimulus_tuningcurve.response_units;
+%     Measured over the writer's own mock corpus: 64/64 documents across the five
+%     families carry `properties.response_units`, and 0/64 carry a block-level one.
+%     So the block-level read found nothing in every one of them.
+%
+% THE VALUE IS CHAR-GUARDED, AND THAT IS NOT DEFENSIVE PADDING -- IT IS THE POINT.
+% `response_units` is declared in tuning_response.m's emptystruct (:405) and then
+% NEVER ASSIGNED anywhere in that file, so it reaches the composites as the numeric
+% EMPTY MATRIX: 64/64 of the mock documents have `properties.response_units = []`.
+% V_eta types tuning_curve.value.response_units as `char` with blank_value '', and
+% did2.schema.cache/validateTypeShape rejects a numeric for a char field
+% (`did2:validation:typeMismatch`). Correcting the LEVEL without guarding the TYPE
+% would therefore trade "reads nothing from the wrong place" for "reads an empty
+% matrix into a char slot". A non-char value becomes the schema's own blank_value ''.
+% The sibling helper jTuningFold/charField applies exactly this rule.
+u = '';
+levels = {block, subStruct(block, 'properties')};
+for k = 1:numel(levels)
+    v = getf(levels{k}, {'response_units', 'responseUnits'});
+    if ischar(v) && ~isempty(v); u = v; return; end
+    if isstring(v) && isscalar(v) && strlength(v) > 0; u = char(v); return; end
 end
 end
 
@@ -133,6 +164,11 @@ for i = 1:numel(names)
     if isempty(v); v = getf(block, {nm, camelOf(nm)}); end
     if ~isempty(v); c.(nm) = v; end
 end
+end
+
+function b = subStruct(s, name)
+b = struct();
+if isstruct(s) && isfield(s, name) && isstruct(s.(name)); b = s.(name); end
 end
 
 function out = camelOf(nm)
