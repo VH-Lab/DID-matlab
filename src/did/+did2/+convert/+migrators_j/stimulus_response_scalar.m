@@ -205,6 +205,46 @@ function bodies = stimulus_response_scalar(preBody)
 %   so the epochs those anchors need are minted; what is missing is only the
 %   stamp onto the pre-body, which is #60's remaining line.
 %
+%   WHAT THIS FAMILY DOES AND DOES NOT NEED FROM THAT LINE -- answered here
+%   because epochMint asks the question and says it is not answering it.
+%   epochMint.m:274-279 (2026-08-12) records: *"`stimulus_response_scalar` is the
+%   one whose stamp would NOT persist -- jCalculation.m:82-92 builds the leaf's
+%   `deps` by NAMING the edges it carries and never copies `preBody.depends_on`
+%   wholesale, so the transient `epoch_id` does not reach the emitted leaf.
+%   Whether that makes it armable without a schema increment is a question about
+%   the SOURCE tombstone, not about this machinery, and it is not answered
+%   here."* Both halves of the answer are properties of THIS file and its
+%   helpers, so they belong here, and they are derived by ENUMERATING every
+%   `depends_on` write on the path rather than by grepping for the edge name:
+%
+%     THE FOLD PATH emits two bodies and their COMPLETE edge sets are
+%       leaf    subject_id       jCarrySubject.m:30 -- a FRESH
+%                                struct('name','subject_id',...), not a copy
+%               time_reference_1, derived_from_1, software_id
+%                                jCalculation.m:83,87,90, each by name
+%               instrument_id, derived_from_1, derived_from_2,
+%               method_parameters_id, time_reference_1
+%                                this file, setDep by name
+%       anchor  relative_to      epochAnchor, a fresh one-entry struct
+%     Nothing on that path copies `preBody.depends_on` wholesale, so a stamped
+%     `epoch_id` CANNOT reach either body. epochMint's `undeclared_edge` refusal
+%     therefore cannot fire on a folded document, and this family needs no
+%     `epoch_id` declaration to be armed -- unlike the two daqreader arms, which
+%     RETURN the stamped pre-body and are genuinely blocked on a schema
+%     increment.
+%
+%     THE GUARD PATHS return `{preBody}`, which WOULD carry the stamp on a class
+%     that does not declare it -- and that is exactly what the refusal is for.
+%     Such a document is refused and keeps the passthrough it has today, which
+%     is the current behaviour either way. The carry is atomic per call, so a
+%     refusal cannot leave a half-armed document behind.
+%
+%   THIS IS EVIDENCE, NOT AN ARMING, AND NOT A DECISION. Adding a row to
+%   epochMint's arming table is #60's build and that file's owner's call; nothing
+%   here arms anything, and this note must not be read as authorisation. What it
+%   removes is one specific uncertainty: for THIS family the blocker is the
+%   arming row alone, and no V_eta schema increment stands behind it.
+%
 %   WHY NOT PARK THE STRING ON THE LEAF INSTEAD. The only free-form slot on this
 %   leaf is `subject_interaction.method_parameters`, and this migrator writes
 %   `method_parameters_id`: subject_interaction.json says, in the schema's own
