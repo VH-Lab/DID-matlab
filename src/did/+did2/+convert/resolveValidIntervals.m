@@ -1,13 +1,60 @@
 function [result, report] = resolveValidIntervals(result, options)
-%RESOLVEVALIDINTERVALS Decompose `valid_interval` into boolean `validity_observation`s.
+%RESOLVEVALIDINTERVALS DORMANT BY DECISION -- census only; emits nothing.
+%
+%   ---------------------------------------------------------------------
+%   READ THIS FIRST: THIS PASS DOES NOT EMIT. IT IS NOT BROKEN.
+%   ---------------------------------------------------------------------
+%   TEAM DECISION 2026-08-12, jess@walthamdatascience.com, verbatim: *"Axes is
+%   the decision... I'd rather wait until axes is built and it can be migrated
+%   properly."* The TARGET MODEL is ONE statement per source document carrying
+%   an ARRAY of booleans with the intervals on a TIME AXIS. The 1->N
+%   decomposition written in this file -- one statement per interval -- is NOT
+%   that model, and the team declined to ship it as an interim step. So the
+%   emission path is guarded OFF and this pass runs as a CENSUS.
+%
+%   WHAT UNBLOCKS IT: `axes[]` on `subject_statement` -- DID-schema
+%   `V_eta_data_body_model_plan.md`, OPEN_WORK #45, itself blocked on #32.
+%   Until that lands there is nowhere to put a time axis, and a boolean array
+%   with no axis cannot say WHICH stretch each element of it is about.
+%
+%   WHY THE CODE IS STILL HERE. The anchor resolution, the (session, epoch-id)
+%   pair keying, Decision C's split-anchor branch, the verb resolution and
+%   every refusal reason are the parts that will be needed unchanged when the
+%   array model is built; only the SHAPE of the emitted body changes. Deleting
+%   them and rewriting from the header later is how a repository loses the
+%   evidence its decisions were made on. They are preserved behind
+%   `options.Decompose`, which is FALSE by default and which
+%   `testValidIntervalDecompose.m` sets to true so the logic keeps being
+%   exercised rather than rotting unreferenced.
 %
 %   [RESULT, REPORT] = did2.convert.resolveValidIntervals(RESULT) takes the
-%   struct returned by did2.convert.v1_to_v2 (after did2.convert.epochMint) and,
-%   for every `valid_interval` document in the batch, emits ONE
-%   `validity_observation` per interval -- a boolean statement about the
-%   element-subject -- plus the `relative_reference` each statement is anchored
-%   to. REPORT is also attached as RESULT.valid_interval_decompose, so a caller
-%   that ignores the second output still carries the measurement.
+%   struct returned by did2.convert.v1_to_v2 (after did2.convert.epochMint),
+%   COUNTS the `valid_interval` documents in the batch and the intervals they
+%   hold, and returns RESULT with NOTHING APPENDED. REPORT is also attached as
+%   RESULT.valid_interval_decompose, so a caller that ignores the second output
+%   still carries the measurement. `dormant` is TRUE in that report and
+%   `statements_emitted` / `references_emitted` / `intervals_decomposed` /
+%   `documents_appended` are 0 BY DECISION, not by accident -- a zero with no
+%   `sources_seen` beside it is exactly the silence Operating Rule 5 exists to
+%   forbid, so `sources_seen` and `intervals_seen` are counted in the dormant
+%   path and are the whole point of still running it.
+%
+%   WHERE THE DOCUMENTS GO MEANWHILE: nowhere. Each `valid_interval` passes
+%   through to its own v1 tombstone (`schemas/V_eta/stable/valid_interval.json`,
+%   restated from the WRITER in DID-schema build_v_eta.py), which declares
+%   nothing required and an OPTIONAL `element_id`, so a passthrough cannot trip
+%   `mustBeNonEmpty` or `undeclaredField`. That is the same pattern every other
+%   deferred family uses.
+%
+%   WHEN `axes[]` LANDS, the class this emits is `logical_observation`
+%   (over {subject_observation, logical}) and NOT `validity_observation` -- see
+%   THE CLASS NAMING below. The dormant emission path already names it, so the
+%   rename does not have to be rediscovered later.
+%
+%   THE DECOMPOSING PATH, for when it is re-armed: for every `valid_interval`
+%   document it emits ONE `logical_observation` per interval -- a boolean
+%   statement about the element-subject -- plus the `relative_reference` each
+%   statement is anchored to.
 %
 %   STATUS: WRITTEN 2026-08-11 IN A CONTAINER WITH NO MATLAB AND NO OCTAVE
 %   (`command -v matlab octave octave-cli` returns nothing). NOTHING IN THIS
@@ -21,15 +68,39 @@ function [result, report] = resolveValidIntervals(result, options)
 %   ---------------------------------------------------------------------
 %   THE DECISION THIS IMPLEMENTS
 %   ---------------------------------------------------------------------
-%   TEAM DECISION 2026-08-11, recorded in DID-schema
-%   `schemas/V_eta_OPEN_WORK.md` under "`valid_interval` becomes a
-%   boolean-valued `subject_statement`". jess@walthamdatascience.com, verbatim:
-%   *"Should valid interval be a new class that takes a subject statement,
-%   shares its time reference and states true or false for each value?"*
+%   THREE DIFFERENT THINGS, AND THIS HEADER USED TO CONFLATE THE FIRST TWO.
 %
-%   NOT SIGNED. No TEAM-SIGN-OFF line exists for this family, so the status
-%   board keeps rendering it as awaiting review, and this pass is built to be
-%   reversible rather than to pre-empt that.
+%   THE MODEL -- ASKED, DECLINED. On 2026-08-11 the team ASKED, verbatim:
+%   *"Should valid interval be a new class that takes a subject statement,
+%   shares its time reference and states true or false for each value?"* -- and
+%   then said *"Can we skip this decision for now?"*. This header used to quote
+%   the question under the words "TEAM DECISION 2026-08-11", which is exactly
+%   the error DID-schema `V_eta_OPEN_WORK.md` #103 records: a question written
+%   up as an answer. NOT SIGNED, NOT AGREED. No TEAM-SIGN-OFF line exists for
+%   this family, the status board renders it as BUILT AHEAD OF THE DECISION,
+%   and this pass is built to be reversible rather than to pre-empt that.
+%   RESOLVED 2026-08-12 IN THE OTHER DIRECTION: the team chose the ARRAY model
+%   (one statement, N booleans, a time axis) and chose to WAIT for `axes[]`
+%   rather than ship this 1->N shape as an interim. Hence the dormancy at the
+%   top of this file. "Built ahead of the decision" is no longer the state --
+%   the decision arrived and it was "not this shape, and not yet".
+%
+%   THE CLASS NAMING -- DECIDED 2026-08-12 by jess@walthamdatascience.com:
+%   `validity` and `validity_observation` are REPLACED by `logical` and
+%   `logical_observation`. The 32 `*_observation` data_types name a KIND OF
+%   VALUE (length, intensity, count, score, term, image); `validity` was the
+%   only one naming a SEMANTIC -- what the measurement is ABOUT -- and the
+%   semantic belongs in `subject_statement.variable`. That is not a proposal:
+%   `resolveLawnPlateSubjects.m:1106-1113` already sends six distinct
+%   fluorescence semantics to ONE `intensity_observation`, told apart only by
+%   `variable` (`:689 variableTerm(c{1})` -> `:1317`). It is also the error
+%   R2/R3 fixed for tuning, where six classes named by their independent
+%   variable collapsed into one `tuning_curve`. `boolean` was impossible as the
+%   class name -- it is a hard-coded primitive in the validator's type switch
+%   (`+did2/+schema/cache.m:1793`) -- so `logical` follows the existing
+%   `term`/`ontology_term` precedent: the data_type name differs from the field
+%   type it wraps. The `variable` this pass emits is UNCHANGED and is now the
+%   only thing carrying the semantic: `data validity`.
 %
 %   ---------------------------------------------------------------------
 %   IT ADDS. IT NEVER REMOVES. THE SOURCE DOCUMENT IS KEPT.
@@ -106,7 +177,10 @@ function [result, report] = resolveValidIntervals(result, options)
 %       end
 %
 %   So a dataset that never ran markgarbage must migrate to a dataset with ZERO
-%   validity statements, NOT to one where every epoch is "unknown". This pass
+%   validity statements, NOT to one where every epoch is "unknown". (The
+%   absence rule is scoped BY `variable` now that the class is generic: a
+%   subject with no `logical` statement about SOME OTHER boolean says nothing
+%   about its data validity.) This pass
 %   reads `valid_interval` documents and nothing else; with none in the batch
 %   every counter below reads 0, `documents_appended` is 0, and `result.migrated`
 %   is returned unchanged. It NEVER mints a statement for an element that has no
@@ -118,12 +192,13 @@ function [result, report] = resolveValidIntervals(result, options)
 %   that reclassifies every epoch in it.
 %
 %   ---------------------------------------------------------------------
-%   HAZARD 2 -- ORDER IS LOAD-BEARING, AND THE CONSUMER IS AN ANALYSIS
+%   HAZARD 2 -- ORDER IS *NOT* LOAD-BEARING. THIS SECTION SAID THE OPPOSITE.
 %   ---------------------------------------------------------------------
-%   One v1 document holds an ARRAY. `savevalidinterval` reads the existing array
-%   back and APPENDS (markgarbage.m:89, `vi(end+1) = validintervalstruct`), so
-%   the array order is the order the curator marked them in. And there is a
-%   SECOND production consumer that depends on it:
+%   IT USED TO READ "ORDER IS LOAD-BEARING, AND THE CONSUMER IS AN ANALYSIS",
+%   and every statement carried `validity_observation.sequence` = its 1-based
+%   position in the v1 array because of it. The premise was one unchecked
+%   reading of a call site, and it is FALSE. Positive evidence, from NDI
+%   `origin/main` (42c94e53b):
 %
 %       +ndi/+app/+stimulus/tuning_response.m:253-256
 %         vi       = gapp.loadvalidinterval(ndi_timeseries_obj);
@@ -131,20 +206,35 @@ function [result, report] = resolveValidIntervals(result, options)
 %         [data,t_raw,timeref] = readtimeseries(ndi_timeseries_obj, ...
 %             ts_epoch_timeref.epoch, interval(1,1), interval(1,2));
 %
-%   -- the FIRST interval only. Decomposing into N statements makes "first"
-%   undefined unless the position is carried, so every emitted statement carries
-%   `validity_observation.sequence` = its 1-based position in the v1 array, in
-%   ARRAY ORDER, assigned by the loop index and by nothing else. The intervals
-%   are never sorted, deduplicated or reordered here.
+%   `interval` is the RETURN VALUE of `identifyvalidintervals`. The stored array
+%   `vi` is loaded at :253 into a variable that is then NEVER READ AGAIN -- the
+%   old text read `interval(1,1)` as indexing the stored array, and it does not.
+%   And `identifyvalidintervals` (markgarbage.m:178-204) is:
 %
-%   WHAT THAT DOES AND DOES NOT GUARANTEE, said plainly. `identifyvalidintervals`
-%   projects each entry through `syncgraph.time_convert` and accumulates with
-%   `vlt.math.interval_add`, so whether v1's `interval(1,:)` is the first
-%   APPENDED interval or the first in some accumulated order is a property of
-%   `interval_add`, which is in vhlab-toolbox-matlab and is not read here. This
-%   pass therefore preserves the ONE order it can observe -- the source array's
-%   -- and does not claim to have reproduced `interval_add`'s. Preserving the
-%   observable order keeps the reproduction possible; discarding it would not.
+%       for i=1:size(vi,1)
+%           ...
+%           explicitly_good_intervals = vlt.math.interval_add( ...
+%               explicitly_good_intervals, [epoch_t0_out epoch_t1_out]);
+%       end
+%
+%   -- it iterates EVERY row and accumulates through a SET UNION. It never
+%   indexes `vi` by position. So v1's append order is invisible to every reader
+%   of the class: it is a storage artifact, not a fact. `sequence` IS DELETED
+%   and `logical_observation` declares NO FIELDS AT ALL, like
+%   `length_observation` and `count_observation`.
+%
+%   LIMIT OF THIS CHECK, STATED RATHER THAN GLOSSED. `vlt.math.interval_add` is
+%   in vhlab-toolbox-matlab, which was not available when this was re-verified,
+%   so whether the union SORTS its output was not read from source. The
+%   conclusion does not rest on it -- `interval(1,1)` indexes the union's
+%   output either way, and one source document's rows are unordered INPUT to
+%   that union -- but the sort behaviour itself is unverified.
+%
+%   THE SHAPE OF THE ERROR IS THE PART WORTH KEEPING. The schema declared
+%   `sequence`, this pass emitted it, and `testValidIntervalDecompose.m`
+%   asserted it -- three artifacts written from ONE unchecked premise, which is
+%   CLAUDE.md's "a test written from the same premise as the code cannot catch
+%   the code". The premise was never re-read until it was re-read.
 %
 %   ---------------------------------------------------------------------
 %   HAZARD 3 -- VALIDITY INHERITS, AND THAT IS NOT DECIDED HERE
@@ -168,8 +258,9 @@ function [result, report] = resolveValidIntervals(result, options)
 %     * `subject_observation.derived_from_#` exists, is OPTIONAL, and is left
 %       EMPTY here, so a materialising answer needs no schema change and pass 1
 %       has invented no edge it would have to undo;
-%     * `sequence` is scoped to ONE source document, so materialised copies do
-%       not have to renumber against a sibling element's intervals.
+%     * there is no per-statement ordinal to reconcile across a merged set --
+%       `sequence` was deleted with HAZARD 2, so a materialising answer has one
+%       fewer thing to define.
 %
 %   WHAT A LATER DECISION WOULD HAVE TO CHANGE, so the size of it is on the
 %   record rather than discovered later:
@@ -191,8 +282,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %                               -- which `subject_observation` does NOT declare
 %                               today, so the schema half would need it, or the
 %                               copies would be indistinguishable from primary
-%                               curation. `sequence` would also need a stated
-%                               meaning across a merged set.
+%                               curation.
 %
 %   `inheritance_candidates` below MEASURES how big that question is on real
 %   data: the number of subjects in the batch holding a `derived_from` edge to
@@ -260,7 +350,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   ---------------------------------------------------------------------
 %   THE VERB -- WHY `method` IS STATED, AND WITH WHAT
 %   ---------------------------------------------------------------------
-%   A `validity_observation` records a CURATORIAL JUDGEMENT: a person ran
+%   A validity `logical_observation` records a CURATORIAL JUDGEMENT: a person ran
 %   `ndi.app.markgarbage` and marked which stretches of a recording are good
 %   data. It is NOT a measurement taken from the subject. V_eta's four statement
 %   directions are assertion / observation / manipulation / calculation and none
@@ -360,6 +450,14 @@ function [result, report] = resolveValidIntervals(result, options)
 %     Validate       (1,1 logical, default true)  validate emitted bodies
 %     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
 %     TargetVersion  (1,:) char, default 'V_eta'  no-op on other targets
+%     Decompose      (1,1 logical, default FALSE) arm the 1->N emission path.
+%                    DORMANT BY TEAM DECISION 2026-08-12 -- see the top of this
+%                    file. The default is FALSE and no production caller passes
+%                    it; `testValidIntervalDecompose.m` passes true so the
+%                    preserved logic stays exercised. Do NOT flip the default
+%                    to re-arm the pass: the shape it emits is not the model
+%                    the team chose, so re-arming is a rewrite (array + time
+%                    axis), not a boolean.
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
 %   did2.convert.resolveSessionAnchors, did2.convert.resolveResponseParameters,
@@ -370,6 +468,7 @@ arguments
     options.Validate (1,1) logical = true
     options.SchemaCache = []
     options.TargetVersion (1,:) char = 'V_eta'
+    options.Decompose (1,1) logical = false
 end
 
 % DENOMINATOR FIRST, and unconditionally. Every field is defined before a single
@@ -409,11 +508,12 @@ report = struct( ...
     'statements_quarantined',         0, ...
     'statements_withheld_lost_anchor', 0, ...
     'documents_appended',             0, ...
+    'dormant',                        true, ...
     'ran',                            false);
 result.valid_interval_decompose = report;
 
 if ~strcmp(options.TargetVersion, 'V_eta')
-    return;     % `validity_observation` exists only in V_eta.
+    return;     % `logical_observation` exists only in V_eta.
 end
 if ~isfield(result, 'migrated') || isempty(result.migrated)
     report.ran = true;
@@ -469,6 +569,40 @@ for k = 1:n
         epochIdByKey(key) = docIds{k};
     end
 end
+
+% --- DORMANT BY DECISION: census only, then stop ---------------------------
+% TEAM DECISION 2026-08-12 (see the top of this file). The ARRAY model is the
+% target and it waits for `axes[]`; the 1->N shape below is not it and does not
+% run. This branch is deliberately placed AFTER the document read and the epoch
+% index so `documents_inspected`, `documents_unreadable` and
+% `epoch_documents_seen` are real numbers rather than structural zeros.
+%
+% WHAT IT COUNTS AND WHAT THOSE COUNTS DO NOT MEAN.
+%   sources_seen    the `valid_interval` documents in the batch. THE
+%                   DENOMINATOR. Every emission counter below is 0 by
+%                   decision, and a 0 with no denominator beside it is
+%                   indistinguishable from an instrument reading nothing --
+%                   which is exactly what silentLoss did for two days.
+%   intervals_seen  the intervals those documents hold. This is a CEILING on
+%                   what a re-armed pass would decompose, NOT a prediction of
+%                   it: the eight `refused_*` reasons are computable only by
+%                   the path that is switched off, so they stay 0 and mean
+%                   "not evaluated", not "none".
+% Everything else -- intervals_decomposed, statements_emitted,
+% references_emitted, documents_appended, sources_fully_decomposed -- is 0
+% STRUCTURALLY: there is no code path from here that can raise them.
+if ~options.Decompose
+    for k = 1:n
+        if ~strcmp(classes{k}, 'valid_interval'); continue; end
+        report.sources_seen = report.sources_seen + 1;
+        report.intervals_seen = report.intervals_seen + ...
+            numel(intervalEntries(blockOf(bodies{k}, 'valid_interval')));
+    end
+    report.dormant = true;
+    result.valid_interval_decompose = report;
+    return;
+end
+report.dormant = false;
 
 % --- decompose every interval we can decompose honestly --------------------
 refBodies = {};
@@ -557,8 +691,8 @@ for k = 1:n
             refBodies{end+1} = refs{r}; %#ok<AGROW>
             report.staged_ontology_nodes = report.staged_ontology_nodes + 1;  % clock
         end
-        stmtBodies{end+1} = makeValidityObservation( ...
-            src, elementId, i, true, refIds, methodTerm); %#ok<AGROW>
+        stmtBodies{end+1} = makeLogicalObservation( ...
+            src, elementId, true, refIds, methodTerm); %#ok<AGROW>
         stmtRefIds{end+1} = refIds; %#ok<AGROW>
         report.staged_ontology_nodes = report.staged_ontology_nodes + 1;      % variable
         report.staged_ontology_nodes = report.staged_ontology_nodes + 1;      % method
@@ -815,8 +949,8 @@ end
 ref.relative_reference = struct('value', value);
 end
 
-function body = makeValidityObservation(src, elementId, sequence, isValid, refIds, methodTerm)
-%MAKEVALIDITYOBSERVATION One boolean statement about one element-subject.
+function body = makeLogicalObservation(src, elementId, isValid, refIds, methodTerm)
+%MAKELOGICALOBSERVATION One boolean statement about one element-subject.
 %
 %   `subject_id` IS THE ELEMENT, UNQUALIFIED. `element_id` on the v1 document
 %   names the element (in practice a PROBE -- savevalidinterval errors on
@@ -831,6 +965,13 @@ function body = makeValidityObservation(src, elementId, sequence, isValid, refId
 %   own author writing the gap down ("it would be great to have a
 %   'markinvalidinterval' companion"). The parameter exists because the CLASS
 %   can say false; nothing in v1 can.
+%
+%   THE STATEMENT CARRIES NO FIELDS OF ITS OWN. `logical_observation` declares
+%   none (`sequence` went with HAZARD 2), so everything here is inherited:
+%   `subject_id` + `variable` from subject_statement, `method` +
+%   `time_reference_#` from subject_interaction, the boolean from `logical`.
+%   THE SEMANTIC IS IN `variable`, NOT IN THE CLASS NAME -- `data validity` --
+%   which is the whole reason the class is `logical` and not `validity`.
 %
 %   NO `sample_time`: there is no sampling here (the value is per INTERVAL), and
 %   `kind: point` would assert a cadence the source never described.
@@ -850,9 +991,9 @@ function body = makeValidityObservation(src, elementId, sequence, isValid, refId
 %   this pass records rather than a rule it can rely on -- which is exactly what
 %   #52 exists to fix, and why `split_anchor_intervals` is counted.
 body = struct();
-body.document_class = struct('class_name', 'validity_observation', ...
+body.document_class = struct('class_name', 'logical_observation', ...
     'class_version', '1.0.0', ...
-    'superclasses', supersOf({'subject_observation', 'validity'}), ...
+    'superclasses', supersOf({'subject_observation', 'logical'}), ...
     'schema_version', 'V_eta');
 deps = struct('name', {'subject_id'}, 'value', {elementId});
 for r = 1:numel(refIds)
@@ -866,8 +1007,12 @@ body.subject_statement = struct( ...
     'storage_mode', 'inline');
 body.subject_interaction = struct('method', methodTerm);
 body.subject_observation = struct();
-body.validity = struct('value', struct('value', logical(isValid)));
-body.validity_observation = struct('sequence', double(sequence));
+% NO NESTED CELL: `logical.value` is a bare `boolean` array. The old
+% `validity` shape wrapped it in a one-field struct -- `value.value`, a wrapper
+% around nothing -- and the composites that DO nest are the ones carrying
+% provenance (canonical + source_unit + source_value, or count's semantic
+% unit), which a truth value has none of.
+body.logical = struct('value', logical(isValid));
 end
 
 function name = curationMethodName()

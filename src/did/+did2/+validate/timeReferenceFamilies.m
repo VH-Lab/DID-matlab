@@ -122,12 +122,19 @@ function report = timeReferenceFamilies(docs, opts)
 %        0 code lines anywhere write `time_reference_2` or higher
 %        1 site numbers a family programmatically
 %
-%   That one site is `did2.convert.resolveValidIntervals:857-860`, whose
-%   split-anchor branch mints two instants when an interval's two ends resolve
-%   to different (epoch, clock, tolerance) anchors. The signed model predicts
-%   that branch NEVER FIRES (every `markvalidinterval` call site passes one
+%   That one site is `did2.convert.resolveValidIntervals`'s split-anchor
+%   branch, which mints two instants when an interval's two ends resolve to
+%   different (epoch, clock, tolerance) anchors. The signed model predicts that
+%   branch NEVER FIRES (every `markvalidinterval` call site passes one
 %   reference for both ends) and the pass already counts it as
 %   `split_anchor_intervals`.
+%
+%   AS OF 2026-08-12 THAT SITE CANNOT FIRE AT ALL: the pass is DORMANT by team
+%   decision (the array-with-a-time-axis model waits on `axes[]`), so
+%   `options.Decompose` is FALSE everywhere in production and the branch is
+%   reachable only from `testValidIntervalDecompose.m`. The count above is
+%   therefore a fact about the CODE, not about what runs -- which makes the
+%   programmatic-numbering population ZERO in practice today.
 %
 %   So the expectation is: every statement carries exactly ONE reference, the
 %   count distribution has a single row at 1, and the shape table is VACUOUS.

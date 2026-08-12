@@ -360,11 +360,19 @@
 %   tools/build_v_eta.py and marked `retire`, so the identity fallback carries
 %   the document and the tombstone lets it validate.
 %
-%   `valid_interval` NOW HAS A GO-FORWARD HOME, AND STILL HAS NO PASS-1
-%   MIGRATOR -- both halves matter. TEAM DECISION 2026-08-11: it becomes a
-%   boolean-valued `subject_statement`, so each interval is one
-%   `validity_observation` about the element-subject. That work is a BATCH pass
-%   (did2.convert.resolveValidIntervals), not a migrator, because
+%   `valid_interval` HAS NO PASS-1 MIGRATOR AND, AS OF 2026-08-12, NO ACTIVE
+%   GO-FORWARD EMISSION EITHER -- it lives on its v1 tombstone until `axes[]`
+%   lands. TEAM DECISION 2026-08-12: the model is ONE boolean-valued
+%   `subject_statement` per source document carrying an ARRAY of booleans on a
+%   TIME AXIS, and the team chose to WAIT for `axes[]` (DID-schema OPEN_WORK
+%   #45 -> #32) rather than ship the 1->N one-statement-per-interval shape as
+%   an interim. `did2.convert.resolveValidIntervals` is therefore DORMANT: it
+%   runs as a census, counts `sources_seen`/`intervals_seen`, and appends
+%   nothing. When it is re-armed the class it emits is `logical_observation`
+%   (renamed from `validity_observation` on 2026-08-12: the 32 `*_observation`
+%   data_types name a KIND OF VALUE, and the SEMANTIC belongs in
+%   `subject_statement.variable`). That work is a BATCH pass, not a migrator,
+%   because
 %   `relative_reference.relative_to` is REQUIRED and names the `epoch` DOCUMENT
 %   while the v1 anchor names an epoch by STRING -- the same wall
 %   resolveSessionAnchors documents. The tombstone STAYS and the source document

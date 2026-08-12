@@ -299,35 +299,40 @@ if strcmp(options.TargetVersion, 'V_eta')
         @(r) did2.convert.foldGenericFiles(r, ...
             'Validate', true, 'TargetVersion', options.TargetVersion));
 
-    % TEAM DECISION 2026-08-11: `valid_interval` becomes a boolean-valued
-    % `subject_statement`. This decomposes each v1 document's interval ARRAY
-    % into one `validity_observation` per interval (the element-subject as
-    % `subject_id`, the v1 array position as `sequence`) plus the
-    % `relative_reference` each is anchored to.
+    % DORMANT BY TEAM DECISION 2026-08-12. It is still WIRED and still RUNS --
+    % as a CENSUS. It emits nothing.
     %
-    % ORDER: LAST, AND ITS DEPENDENCE ON epochMint IS REAL, unlike the "they
-    % commute" notes above. It anchors to the `epoch` DOCUMENTS epochMint
-    % appends -- read out of `result.migrated`, so it behaves the same whether
-    % they were minted this run or were already there -- and run BEFORE
-    % epochMint it would refuse every interval with `refused_no_epoch_document`
-    % and change nothing. Nothing else reads or writes `valid_interval`,
-    % `validity_observation` or `relative_reference` in a way that conflicts:
-    % resolveSessionAnchors rewrites only the two session_*_reference classes.
+    % The team chose the ARRAY model (ONE statement per source document holding
+    % an ARRAY of booleans against a TIME AXIS) and chose to WAIT for `axes[]`
+    % (DID-schema OPEN_WORK #45 -> #32) rather than ship the 1->N
+    % one-statement-per-interval decomposition as an interim step. The
+    % decomposition code is preserved behind `options.Decompose`, default
+    % FALSE; nothing here passes it.
     %
-    % IT ADDS AND NEVER REMOVES. The `valid_interval` source document stays in
-    % the batch under its own tombstone, so a wrong decomposition loses nothing
-    % and `sources_fully_decomposed` MEASURES the deletion gate instead of
-    % pre-empting it.
+    % WHY IT IS STILL IN THE CHAIN. `sources_seen` and `intervals_seen` are the
+    % only measurement anyone has of how much `valid_interval` data is waiting
+    % on `axes[]`. Unwiring the pass would replace that number with a silence,
+    % and a silence reads as a zero -- which is the whole reason this file
+    % prints denominators at all.
     %
-    % READ ITS ZEROS WITH `sources_seen` BESIDE THEM. All six corpora held ZERO
-    % `valid_interval` documents at run 31327383671, so all-zero is the EXPECTED
-    % reading and says nothing about whether the decompose works. AND THAT IS
-    % ALSO WHAT HAZARD 1 LOOKS LIKE WHEN IT IS HANDLED CORRECTLY: markgarbage is
-    % opt-in, absence means "all of this is good data", and a corpus with no
-    % source documents must come out with no validity statements rather than
-    % with every epoch reclassified as unknown. A non-zero `sources_seen` beside
-    % `intervals_decomposed` at 0 is the interesting line; `refused_*` then says
-    % which reason.
+    % ORDER: LAST, unchanged. Its dependence on epochMint is REAL for the
+    % ARMED path (it anchors to the `epoch` DOCUMENTS epochMint appends), and
+    % keeping it last means re-arming it later needs no reordering. Nothing
+    % else reads or writes `valid_interval`, `logical_observation` or
+    % `relative_reference` in a way that conflicts: resolveSessionAnchors
+    % rewrites only the two session_*_reference classes.
+    %
+    % IT ADDS AND NEVER REMOVES -- and while dormant it adds nothing at all.
+    % The `valid_interval` source document stays in the batch under its own v1
+    % tombstone, which is where these documents live until the array model is
+    % built.
+    %
+    % READ ITS ZEROS WITH `sources_seen` BESIDE THEM. Every emission counter is
+    % now 0 BY DECISION, so the ONLY informative lines are `sources_seen` and
+    % `intervals_seen`. All six corpora held ZERO `valid_interval` documents at
+    % run 31327383671, so even those are expected to be 0 -- a statement about
+    % the SAMPLE, not about the pass. A non-zero `sources_seen` is the line
+    % worth looking at: it is deferred work with a size.
     %
     % GUARDED like its six siblings: writeCorpusReport is below and an uncaught
     % throw here costs the run its whole census.

@@ -447,12 +447,13 @@ result = did2.convert.resolveLawnPlateSubjects(result, ...
 % more informative than a captured message.
 result = did2.convert.foldGenericFiles(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
-% TEAM DECISION 2026-08-11: `valid_interval` becomes a boolean-valued
-% `subject_statement` -- one `validity_observation` per interval, plus the
-% `relative_reference` it is anchored to. Same post-pass set and the SAME ORDER
-% as runCorpusDiscovery and testCorpusPRED, and after the epoch mint above,
-% which is a REAL dependence: it anchors to the `epoch` documents that pass
-% appends. CALLED BARE, like the passes above and for the identical reason.
+% DORMANT BY TEAM DECISION 2026-08-12: the target is ONE statement holding an
+% ARRAY of booleans on a TIME AXIS, and we wait for `axes[]` rather than ship
+% the 1->N decomposition. Called with the DEFAULT (`Decompose` false), so this
+% runs as a census and appends nothing; it stays in the chain, in the SAME
+% ORDER as runCorpusDiscovery and testCorpusPRED, so re-arming it later needs
+% no reordering. CALLED BARE, like the passes above and for the identical
+% reason.
 result = did2.convert.resolveValidIntervals(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 

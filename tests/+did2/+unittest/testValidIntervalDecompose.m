@@ -1,5 +1,5 @@
 function tests = testValidIntervalDecompose
-%TESTVALIDINTERVALDECOMPOSE `valid_interval` -> boolean `validity_observation`s.
+%TESTVALIDINTERVALDECOMPOSE `valid_interval` -> boolean `logical_observation`s.
 %
 %   STATUS: WRITTEN 2026-08-11, NEVER EXECUTED. There is no MATLAB and no
 %   Octave in the container this file was written in (`command -v matlab octave
@@ -20,13 +20,31 @@ function tests = testValidIntervalDecompose
 %   coupling two files two sessions are editing at once.
 %
 %   ---------------------------------------------------------------------
+%   THE PASS IS DORMANT BY DECISION. THESE TESTS ARM IT ON PURPOSE.
+%   ---------------------------------------------------------------------
+%   TEAM DECISION 2026-08-12 (jess@walthamdatascience.com): the target model is
+%   ONE statement holding an ARRAY of booleans against a TIME AXIS, and the
+%   team chose to WAIT for `axes[]` (DID-schema OPEN_WORK #45 -> #32) rather
+%   than ship the 1->N decomposition as an interim step. So
+%   `did2.convert.resolveValidIntervals` runs as a CENSUS by default and emits
+%   nothing.
+%
+%   EVERY TEST BELOW EXCEPT THE DORMANCY ONES PASSES `'Decompose', true`
+%   THROUGH `runPass`. That is deliberate, and it is the reason the pass was
+%   guarded rather than deleted: the anchor resolution, the (session, epoch-id)
+%   pair keying, Decision C's split-anchor branch, the verb and the eight
+%   refusal reasons are all needed unchanged when the array model is built, and
+%   preserved code that nothing exercises rots. Read a green run here as "the
+%   preserved logic still works", NOT as "the pass emits in production" -- it
+%   does not, and `testTheDefaultIsDormantAndSaysSo` is the gate on that.
+%
+%   ---------------------------------------------------------------------
 %   WHAT IS UNDER TEST
 %   ---------------------------------------------------------------------
-%   TEAM DECISION 2026-08-11 (DID-schema `schemas/V_eta_OPEN_WORK.md`):
-%   `valid_interval` becomes a boolean-valued `subject_statement`.
-%   did2.convert.resolveValidIntervals decomposes each v1 document's interval
-%   ARRAY into one `validity_observation` per interval plus the
-%   `relative_reference` it is anchored to.
+%   With the emission path ARMED, did2.convert.resolveValidIntervals decomposes
+%   each v1 document's interval ARRAY into one `logical_observation` per
+%   interval plus the `relative_reference` it is anchored to. THAT SHAPE IS NOT
+%   THE AGREED MODEL (see above); it is preserved work.
 %
 %   THE DECISION NAMED THREE HAZARDS -- three ways to go green while destroying
 %   meaning -- and this file is organised around them, one section each, so a
@@ -38,12 +56,19 @@ function tests = testValidIntervalDecompose
 %               is 0-quarantine and 0-orphan both before AND after a change that
 %               reclassifies every epoch in it as "unknown", so NOTHING WE GATE
 %               ON WOULD CATCH IT. These tests are the gate.
-%     HAZARD 2  ORDER IS LOAD-BEARING. One v1 document holds an ARRAY appended
-%               to in call order (markgarbage.m:89), and
-%               +app/+stimulus/tuning_response.m:253-256 reads
-%               `interval(1,1)`..`interval(1,2)` -- the FIRST interval -- to
-%               choose which stretch of signal to analyse. Losing the order
-%               fails nothing and silently changes what gets analysed.
+%     HAZARD 2  ORDER IS *NOT* LOAD-BEARING -- AND THIS FILE ASSERTED THAT IT
+%               WAS. Two tests here pinned a `sequence` ordinal, on the reading
+%               that +app/+stimulus/tuning_response.m:253-256 takes the FIRST
+%               entry of the STORED array. It does not: `interval` at :254 is
+%               the RETURN VALUE of `identifyvalidintervals`, the stored `vi`
+%               loaded at :253 is never read again, and
+%               `identifyvalidintervals` (markgarbage.m:178-204) iterates every
+%               row accumulating through `vlt.math.interval_add`, a SET UNION,
+%               never indexing by position. The schema, the pass and these
+%               tests were all written from that one unchecked premise --
+%               CLAUDE.md's "a test written from the same premise as the code
+%               cannot catch the code". `sequence` is DELETED and the two tests
+%               are replaced by one that pins the deletion.
 %     HAZARD 3  VALIDITY INHERITS (loadvalidinterval falls back to
 %               `underlying_element`, markgarbage.m:146-155). THAT IS AN OPEN
 %               TEAM QUESTION. The tests here assert that BOTH answers stay
@@ -52,7 +77,7 @@ function tests = testValidIntervalDecompose
 %
 %   A FOURTH SECTION was added when `subject_interaction.method` stopped being
 %   emitted blank, and it belongs beside the three hazards because it has their
-%   shape: a `validity_observation` is a CURATORIAL JUDGEMENT, not a measurement,
+%   shape: a validity `logical_observation` is a CURATORIAL JUDGEMENT, not a measurement,
 %   and an empty `method` validates (mustBeNonEmpty:false) while reading as the
 %   default observation verb the schema itself names -- `measurement`. Nothing we
 %   gate on distinguishes the two. See "the verb" below.
@@ -68,8 +93,8 @@ function tests = testValidIntervalDecompose
 %   and its counter is a prediction under test, not a modelled case.
 %
 %   Requires the V_eta schema set on DID_SCHEMA_PATH (the quick gate assembles
-%   stable/ + draft/ + deprecated/ into one directory). `validity` and
-%   `validity_observation` are in the DRAFT tier, so a stable-only path fails
+%   stable/ + draft/ + deprecated/ into one directory). `logical` and
+%   `logical_observation` are in the DRAFT tier, so a stable-only path fails
 %   these with did2:schema:missingClass -- which is a path problem, not a bug in
 %   the pass.
 
@@ -224,8 +249,14 @@ result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
 end
 
 function result = runPass(result)
+%RUNPASS Run the pass WITH THE EMISSION PATH ARMED.
+%   `Decompose` is FALSE by default -- the pass is dormant by team decision,
+%   2026-08-12, waiting on `axes[]`. Every test that exercises the preserved
+%   decomposition logic goes through here and arms it explicitly; the dormancy
+%   tests call the function directly, without the flag, so the DEFAULT is what
+%   they measure.
 result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
-    'TargetVersion', 'V_eta');
+    'TargetVersion', 'V_eta', 'Decompose', true);
 end
 
 function out = docsOfClass(result, className)
@@ -282,6 +313,82 @@ for k = 1:numel(items)
 end
 end
 
+% ===================== DORMANT BY DECISION (2026-08-12) ====================
+%
+% THE DEFAULT IS "COUNT, DO NOT EMIT", AND THAT IS A DECISION, NOT A BUG.
+% Team, 2026-08-12: the target model is ONE statement holding an ARRAY of
+% booleans against a TIME AXIS, and we WAIT for `axes[]` (DID-schema OPEN_WORK
+% #45 -> #32) rather than ship the 1->N shape as an interim. Every other test in
+% this file passes `'Decompose', true` through `runPass` to exercise the
+% preserved logic; THESE TWO CALL THE PASS THE WAY PRODUCTION CALLS IT.
+%
+% WITHOUT THESE, RE-ARMING THE PASS WOULD BE A ONE-CHARACTER CHANGE NOTHING
+% NOTICES: the emitted documents validate, the corpus stays 0-quarantine and
+% 0-orphan, and the only visible difference is a model the team declined.
+
+function testTheDefaultIsDormantAndSaysSo(testCase)
+% The pass runs, reports, and appends NOTHING -- with real source documents in
+% the batch, which is the only version of this test worth having. A dormant
+% pass on an empty batch proves nothing.
+entries = [intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
+           intervalEntry(30, 40, 'dev_local_time', 't00001')];
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBody('vi_1', 'element_1', entries)});
+before = numel(result.migrated);
+
+% NO `Decompose` ARGUMENT -- the production call.
+result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+
+rep = result.valid_interval_decompose;
+verifyTrue(testCase, rep.ran, 'the pass must report that it ran');
+verifyTrue(testCase, rep.dormant, ...
+    ['the pass emitted by default. The 1->N decomposition is NOT the agreed ' ...
+     'model -- the team chose one statement with a boolean ARRAY on a time ' ...
+     'axis and chose to wait for axes[] -- so arming it by default ships a ' ...
+     'shape nobody approved, and every gate we own stays green while it does']);
+verifyEqual(testCase, rep.statements_emitted, 0, ...
+    'statements_emitted must be 0 BY DECISION, not by accident');
+verifyEqual(testCase, rep.references_emitted, 0);
+verifyEqual(testCase, rep.intervals_decomposed, 0);
+verifyEqual(testCase, rep.documents_appended, 0);
+verifyEmpty(testCase, docsOfClass(result, 'logical_observation'));
+verifyEmpty(testCase, docsOfClass(result, 'relative_reference'));
+verifyEqual(testCase, numel(result.migrated), before, ...
+    'the dormant pass changed the batch');
+end
+
+function testTheDormantPassStillReportsItsDenominator(testCase)
+% OPERATING RULE 5. A pass that emits nothing and counts nothing is
+% indistinguishable from a pass that read nothing -- `silentLoss` printed
+% "0 empty edges" for two days while reading nothing at all. The whole reason
+% this pass still RUNS instead of being unwired is that `sources_seen` tells us
+% how much work is waiting on `axes[]`.
+entries = [intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
+           intervalEntry(30, 40, 'dev_local_time', 't00001'), ...
+           intervalEntry(50, 60, 'dev_local_time', 't00001')];
+result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
+    elementSubject('element_1'), ...
+    validIntervalBody('vi_1', 'element_1', entries), ...
+    elementSubject('element_2'), ...
+    validIntervalBody('vi_2', 'element_2', intervalEntry(0, 5, 'dev_local_time', 't00001'))});
+result = did2.convert.resolveValidIntervals(result, 'Validate', true, ...
+    'TargetVersion', 'V_eta');
+rep = result.valid_interval_decompose;
+verifyEqual(testCase, rep.sources_seen, 2, ...
+    'the dormant pass stopped counting its source documents');
+verifyEqual(testCase, rep.intervals_seen, 4, ...
+    ['the dormant pass stopped counting intervals. This is the CEILING on ' ...
+     'what a re-armed pass would decompose -- not a prediction of it, since ' ...
+     'the refusal reasons are only computable by the path that is off']);
+verifyTrue(testCase, rep.documents_inspected > 0, ...
+    'documents_inspected is 0 with documents in the batch -- the census read nothing');
+verifyEqual(testCase, rep.epoch_documents_seen, 1, ...
+    ['the dormant branch was placed before the epoch index, so a denominator ' ...
+     'that costs nothing to keep was thrown away']);
+end
+
 % ===================== HAZARD 1: absence must keep meaning "valid" =========
 
 function testNoSourceDocumentsMeansNoStatementsAndNoChange(testCase)
@@ -304,8 +411,8 @@ verifyTrue(testCase, rep.ran, 'the pass must report that it ran');
 verifyEqual(testCase, rep.sources_seen, 0);
 verifyEqual(testCase, rep.statements_emitted, 0);
 verifyEqual(testCase, rep.documents_appended, 0);
-verifyEmpty(testCase, docsOfClass(result, 'validity_observation'), ...
-    ['a validity statement was minted for an element with NO valid_interval ' ...
+verifyEmpty(testCase, docsOfClass(result, 'logical_observation'), ...
+    ['a logical statement was minted for an element with NO valid_interval ' ...
      'document. Absence means the data is VALID; minting anything here turns ' ...
      'every markgarbage-free dataset from "all good" into "annotated", and ' ...
      'no corpus gate can see the difference']);
@@ -346,15 +453,33 @@ end
 
 % ===================== HAZARD 2: order is load-bearing =====================
 
-function testThreeIntervalsKeepTheirV1AppendOrder(testCase)
-% THE HAZARD-2 GATE. savevalidinterval APPENDS (markgarbage.m:89), so array
-% position IS the order the curator marked them in, and
-% +app/+stimulus/tuning_response.m:253-256 reads interval(1,:) -- the FIRST one.
-% Decomposing to N statements destroys that unless the position is carried.
+function testNoOrdinalIsCarriedBecauseOrderIsNotLoadBearing(testCase)
+%TESTNOORDINALISCARRIED... HAZARD 2, RESOLVED AND INVERTED 2026-08-12.
 %
-% The t0 values are deliberately NOT ascending: if `sequence` were derived from
-% the times rather than from the array position, this test fails, and a test
-% built on ascending times could not tell the two apart.
+%   THIS REPLACES TWO TESTS THAT ASSERTED THE OPPOSITE --
+%   `testSequenceIsTheV1ArrayPositionAndNotTheTimeOrder` and
+%   `testASingleIntervalStillGetsSequenceOne` -- which pinned a `sequence`
+%   ordinal onto every emitted statement. Their premise was that
+%   +app/+stimulus/tuning_response.m:253-256 reads the FIRST entry of the
+%   STORED array. It does not. From NDI `origin/main` (42c94e53b):
+%
+%       253:  vi       = gapp.loadvalidinterval(ndi_timeseries_obj);
+%       254:  interval = gapp.identifyvalidintervals(ndi_timeseries_obj,timeref,0,Inf);
+%       256:  readtimeseries(..., interval(1,1), interval(1,2));
+%
+%   `interval` is `identifyvalidintervals`'s RETURN VALUE; `vi` is loaded into a
+%   variable that is never read again. And `identifyvalidintervals`
+%   (markgarbage.m:178-204) runs `for i=1:size(vi,1)` accumulating through
+%   `vlt.math.interval_add` -- a SET UNION -- and never indexes `vi` by
+%   position. So v1's append order is invisible to its only consumer.
+%
+%   LIMIT, STATED: `vlt.math.interval_add` is in vhlab-toolbox-matlab, which was
+%   not available when this was re-verified, so whether the union SORTS was not
+%   read from source. The conclusion does not rest on it.
+%
+%   The t0 values are deliberately NOT ascending, kept from the deleted test:
+%   if any ordinal ever comes back, this fixture is the one that shows whether
+%   it tracks the array or the clock.
 entries = [intervalEntry(50, 60, 'dev_local_time', 't00001'), ...
            intervalEntry(10, 20, 'dev_local_time', 't00001'), ...
            intervalEntry(30, 40, 'dev_local_time', 't00001')];
@@ -363,51 +488,38 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     validIntervalBody('vi_1', 'element_1', entries)});
 result = runPass(result);
 
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 3, ...
     'one statement per interval; the v1 block is an ARRAY and accumulation is the normal path');
 
-% sequence -> the t0 of the reference it anchors to, then compared against the
-% SOURCE ARRAY's order.
-seen = containers.Map('KeyType', 'double', 'ValueType', 'double');
+% `logical_observation` declares NO FIELDS AT ALL -- like length_observation and
+% count_observation. Asking for the deleted ordinal must not silently return
+% something, so this reads the block and asserts it carries nothing.
 for k = 1:numel(stmts)
-    seq = double(stmts{k}.get('validity_observation.sequence'));
+    blk = stmts{k}.get('logical_observation');
+    verifyTrue(testCase, isempty(blk) || isempty(fieldnames(blk)), ...
+        ['logical_observation carries a field. It has none: `sequence` was ' ...
+         'deleted with HAZARD 2, and an ordinal nobody reads is a fact we ' ...
+         'would have to keep true forever']);
+end
+
+% All three intervals still arrive, each with its own anchor, and the SET of
+% start times is what is preserved -- not an order over it.
+starts = [];
+for k = 1:numel(stmts)
     refIds = allDepTargets(stmts{k}, 'time_reference_');
     verifyNumElements(testCase, refIds, 1, ...
         'agreeing anchors must produce exactly ONE reference document');
-    ref = [];
     for r = 1:numel(result.migrated)
         if strcmp(char(result.migrated{r}.get('base.id')), refIds{1})
-            ref = result.migrated{r};
+            starts(end+1) = double(result.migrated{r}.get( ...
+                'relative_reference.value.start.seconds')); %#ok<AGROW>
         end
     end
-    verifyNotEmpty(testCase, ref, 'the anchor a statement names must be in the batch');
-    seen(seq) = double(ref.get('relative_reference.value.start.seconds'));
 end
-verifyEqual(testCase, sort(cell2mat(keys(seen))), [1 2 3], ...
-    'sequence must be 1-based and contiguous over the source array');
-verifyEqual(testCase, seen(1), 50, ...
-    ['sequence 1 is not the FIRST APPENDED interval. tuning_response.m reads ' ...
-     'interval(1,:) to choose the stretch of signal it analyses, so a ' ...
-     'reordering here silently changes what a tuning re-run computes -- and ' ...
-     'nothing fails: the documents still validate and the corpus is still ' ...
-     '0-quarantine']);
-verifyEqual(testCase, seen(2), 10);
-verifyEqual(testCase, seen(3), 30);
-end
-
-function testASingleIntervalStillGetsSequenceOne(testCase)
-% The template's own shape is one interval, and a scalar struct must not read as
-% "no order". A `sequence` of 0 or empty here would make the single-interval
-% case indistinguishable from a statement that came from no array at all.
-entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
-result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
-    elementSubject('element_1'), ...
-    validIntervalBody('vi_1', 'element_1', entries)});
-result = runPass(result);
-stmts = docsOfClass(result, 'validity_observation');
-verifyNumElements(testCase, stmts, 1);
-verifyEqual(testCase, double(stmts{1}.get('validity_observation.sequence')), 1);
+verifyEqual(testCase, sort(starts), [10 30 50], ...
+    ['an interval was lost or duplicated. The ORDER is not carried, but every ' ...
+     'interval in the source array must still produce exactly one statement']);
 end
 
 % ===================== HAZARD 3: validity inherits (NOT DECIDED) ===========
@@ -432,7 +544,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     validIntervalBody('vi_1', 'element_1', entries)});
 result = runPass(result);
 
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 1, ...
     ['exactly ONE statement: the derived element must not receive a ' ...
      'materialised copy. Which answer is right is a TEAM decision, and ' ...
@@ -517,7 +629,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
 result = runPass(result);
 
 verifyEqual(testCase, result.valid_interval_decompose.split_anchor_intervals, 1);
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 1);
 refIds = allDepTargets(stmts{1}, 'time_reference_');
 verifyNumElements(testCase, refIds, 2, ...
@@ -599,21 +711,21 @@ function testTheMigratedValueIsTrueAndTheClassCanSayFalse(testCase)
 % Every migrated value is therefore TRUE, and that is a property of the SOURCE.
 % The second half of this test is the one that matters: FALSE must be a legal,
 % NON-VACUOUS value, or the symmetry the decision was made for does not exist.
-% (`validity.value` is mustBeNonEmpty and #38's NonVacuousFields check is ARMED
+% (`logical.value` is mustBeNonEmpty and #38's NonVacuousFields check is ARMED
 % BY DEFAULT; a `false` that read as blank would quarantine.)
 entries = intervalEntry(10, 100, 'dev_local_time', 't00001');
 result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     elementSubject('element_1'), ...
     validIntervalBody('vi_1', 'element_1', entries)});
 result = runPass(result);
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 1);
-verifyTrue(testCase, logical(stmts{1}.get('validity.value.value')), ...
+verifyTrue(testCase, logical(stmts{1}.get('logical.value')), ...
     'a migrated interval is VALID; v1 cannot express anything else');
 
-falseBody = etaBody('validity_observation', ...
-    {'subject_observation', 'validity'}, 'stmt_false_1', ...
-    'validity', struct('value', struct('value', false)), ...
+falseBody = etaBody('logical_observation', ...
+    {'subject_observation', 'logical'}, 'stmt_false_1', ...
+    'logical', struct('value', false), ...
     struct('name', {'subject_id'}, 'value', {'element_1'}));
 falseBody.subject_statement = struct( ...
     'variable', struct('node', '', 'name', 'data validity'), ...
@@ -622,11 +734,10 @@ falseBody.subject_statement = struct( ...
 % what the pass emits rather than a blank-method template a later reader copies.
 falseBody.subject_interaction = struct('method', ...
     struct('node', '', 'name', expectedMethodName()));
-falseBody.validity_observation = struct('sequence', 1);
 out = did2.convert.v1_to_v2({falseBody}, 'Validate', true, ...
     'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine, ...
-    ['a FALSE validity statement must validate. If it does not, the class ' ...
+    ['a FALSE logical statement must validate. If it does not, the class ' ...
      'cannot express invalidity and the whole point of the boolean is gone -- ' ...
      'v1 already had "valid or nothing"']);
 end
@@ -653,7 +764,7 @@ end
 
 % ===================== the verb (subject_interaction.method) ===============
 %
-% A `validity_observation` records a CURATORIAL JUDGEMENT -- a person ran
+% A validity `logical_observation` records a CURATORIAL JUDGEMENT -- a person ran
 % markgarbage and marked which stretches are good -- not a measurement taken
 % from the subject. V_eta's four directions are assertion / observation /
 % manipulation / calculation and none of them is "a human judged this", so the
@@ -686,7 +797,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     validIntervalBody('vi_1', 'element_1', entries)});
 result = runPass(result);
 
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 3);
 for k = 1:numel(stmts)
     verifyNotEmpty(testCase, ...
@@ -716,7 +827,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     elementSubject('element_1'), ...
     validIntervalBody('vi_1', 'element_1', entries)});
 result = runPass(result);
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 1);
 verifyEqual(testCase, char(stmts{1}.get('subject_interaction.method.name')), ...
     expectedMethodName(), ...
@@ -734,7 +845,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     elementSubject('element_1'), ...
     validIntervalBody('vi_1', 'element_1', entries)});
 result = runPass(result);
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 1);
 name = char(stmts{1}.get('subject_interaction.method.name'));
 verifyEmpty(testCase, strfind(lower(name), 'garbage'), ...
@@ -756,7 +867,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     elementSubject('element_1'), ...
     validIntervalBody('vi_1', 'element_1', entries)});
 result = runPass(result);
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 1);
 verifyEmpty(testCase, char(stmts{1}.get('subject_interaction.method.node')), ...
     ['the node must stay EMPTY. NDIC.txt left NDI-matlab at 2c19bf24c and no ' ...
@@ -776,7 +887,7 @@ result = batchOf({sessionDoc(), epochDoc('epoch_doc_1', 't00001'), ...
     validIntervalBodyNoApp('vi_1', 'element_1', entries)});
 result = runPass(result);
 
-stmts = docsOfClass(result, 'validity_observation');
+stmts = docsOfClass(result, 'logical_observation');
 verifyNumElements(testCase, stmts, 1);
 verifyEqual(testCase, char(stmts{1}.get('subject_interaction.method.name')), ...
     expectedMethodName(), ...

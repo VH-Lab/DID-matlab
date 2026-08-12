@@ -216,12 +216,15 @@ result = did2.unittest.helpers.runBatchPass(result, ...
 % -- it anchors to the `epoch` documents epochMint appends, and run before them
 % it would refuse every interval and change nothing.
 %
+% DORMANT BY TEAM DECISION 2026-08-12 -- it runs as a CENSUS and emits nothing
+% (the array-with-a-time-axis model waits on `axes[]`). It cannot move PRED's
+% zero-quarantine gate at all now: there is no code path from the dormant
+% branch that appends a document.
+%
 % WHAT IT WILL REPORT ON PRED, with the one measured fact and no guess beyond
 % it: run 31327383671 found ZERO `valid_interval` documents in any of the six
 % corpora, PRED included, so the expected line is `sources_seen 0` -- a
-% statement about the SAMPLE, not about the decompose. It cannot move PRED's
-% zero-quarantine gate on such a corpus: with nothing to decompose it returns
-% before minting anything, and it never removes a document in any case.
+% statement about the SAMPLE, not about the pass.
 result = did2.unittest.helpers.runBatchPass(result, ...
     'did2.convert.resolveValidIntervals', 'valid_interval_decompose', ...
     @(r) did2.convert.resolveValidIntervals(r, 'Validate', true, ...

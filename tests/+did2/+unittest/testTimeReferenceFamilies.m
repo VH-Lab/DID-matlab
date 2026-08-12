@@ -18,14 +18,20 @@ function tests = testTimeReferenceFamilies
 %   DID-schema's own V_alpha snapshot: build a fixture from what the WRITER
 %   emits. Every body below is traced to a live emitter:
 %
-%     validityObservation()   +did2/+convert/resolveValidIntervals.m:851-871
-%                             (makeValidityObservation) -- class
-%                             `validity_observation` over {subject_observation,
-%                             validity}, deps `subject_id` +
+%     logicalObservation()    +did2/+convert/resolveValidIntervals.m
+%                             (makeLogicalObservation) -- class
+%                             `logical_observation` over {subject_observation,
+%                             logical}, deps `subject_id` +
 %                             `time_reference_1..N` numbered in the order given,
-%                             base.name `migrated_valid_interval`.
-%     splitAnchorPair()       resolveValidIntervals.m:544-551 + :787-816
-%                             (makeReference with an EMPTY duration) -- the
+%                             base.name `migrated_valid_interval`. NOTE the
+%                             emitter is DORMANT by team decision 2026-08-12
+%                             (the array-with-a-time-axis model waits on
+%                             `axes[]`), so this fixture is copied from
+%                             preserved code that does not run in production.
+%                             It is kept because the FAMILY-NUMBERING rule
+%                             under test is about shape, not about traffic.
+%     splitAnchorPair()       resolveValidIntervals.m (makeReference with an
+%                             EMPTY duration) -- the
 %                             Decision C disagreeing case: two `relative_reference`
 %                             INSTANTS, each anchored to its own epoch document,
 %                             base.name `migrated_valid_interval_anchor`.
@@ -171,10 +177,10 @@ verifyEqual(testCase, rep.docs_classified, 0);
 end
 
 function testAStatementWithNoReferenceIsAMeasuredZeroNotAVacuousOne(testCase)
-% The distinction the whole report turns on. A `validity_observation` that
+% The distinction the whole report turns on. A validity `logical_observation` that
 % declares the family and carries no member IS a result: the family could have
 % been populated and was not. It must NOT be reported as vacuous.
-b = validityObservation('vo_1', {});
+b = logicalObservation('vo_1', {});
 rep = did2.validate.timeReferenceFamilies({did2.document(b)});
 verifyEqual(testCase, rep.docs_declaring_family, 1);
 verifyEqual(testCase, rep.slots_examined, 1);
@@ -189,7 +195,7 @@ function testABlankMemberIsNotAReference(testCase)
 % `time_reference_1 = ''` satisfies min_count and names no document. Counting it
 % as a reference would make "one anchor" and "one blank where an anchor goes"
 % the same number, which is the hole #72 had to open in silentLoss.
-b = validityObservation('vo_1', {});
+b = logicalObservation('vo_1', {});
 b.depends_on(end+1) = struct('name', 'time_reference_1', 'value', '');
 rep = did2.validate.timeReferenceFamilies({did2.document(b)});
 verifyEqual(testCase, rep.members_examined, 1, ...
@@ -348,7 +354,7 @@ docs = statementWithReferences('vo_split', splitAnchorPair());
 rep = did2.validate.timeReferenceFamilies(docs);
 verifyEqual(testCase, numel(rep.shape), 1);
 verifyEqual(testCase, rep.shape(1).example_document_id, 'vo_split');
-verifyEqual(testCase, rep.shape(1).example_class_name, 'validity_observation');
+verifyEqual(testCase, rep.shape(1).example_class_name, 'logical_observation');
 verifyEqual(testCase, rep.shape(1).members, 2);
 verifyEqual(testCase, rep.shape(1).family, 'time_reference_#');
 end
@@ -362,7 +368,7 @@ function testTheEmitterIsAttributedFromWhatTheDocumentsActuallyCarry(testCase)
 docs = statementWithReferences('vo_split', splitAnchorPair());
 rep = did2.validate.timeReferenceFamilies(docs);
 verifyEqual(testCase, numel(rep.emitter), 1);
-verifyEqual(testCase, rep.emitter(1).statement_class, 'validity_observation');
+verifyEqual(testCase, rep.emitter(1).statement_class, 'logical_observation');
 verifyEqual(testCase, rep.emitter(1).statement_name, 'migrated_valid_interval');
 verifyEqual(testCase, rep.emitter(1).anchor_names, 'migrated_valid_interval_anchor');
 verifyEqual(testCase, rep.emitter(1).statements, 1);
@@ -472,7 +478,7 @@ function testTheAuditNeverRaises(testCase)
 verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies({[]}));
 verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies(struct([])));
 verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies({}));
-b = validityObservation('vo_bad', {});
+b = logicalObservation('vo_bad', {});
 b.depends_on(end+1) = struct('name', 'time_reference_1', 'value', 'nope');
 verifyWarningFree(testCase, ...
     @() did2.validate.timeReferenceFamilies({did2.document(b)}));
@@ -488,23 +494,23 @@ end
 % here is composed from a V_eta schema or from a docstring.
 
 function docs = statementWithReferences(stmtId, refs)
-%STATEMENTWITHREFERENCES A `validity_observation` wired to REFS as
+%STATEMENTWITHREFERENCES A `logical_observation` wired to REFS as
 %   `time_reference_1..N`, followed by the reference documents themselves.
-%   The numbering is resolveValidIntervals.m:857-860 verbatim: the family is
-%   numbered in the order given, and the order is the ONLY thing distinguishing
-%   the members -- which is #52.
-b = validityObservation(stmtId, refs);
+%   The numbering is makeLogicalObservation's verbatim: the family is numbered
+%   in the order given, and the order is the ONLY thing distinguishing the
+%   members -- which is #52.
+b = logicalObservation(stmtId, refs);
 docs = {did2.document(b)};
 for k = 1:numel(refs)
     docs{end+1} = did2.document(refs{k}); %#ok<AGROW>
 end
 end
 
-function b = validityObservation(stmtId, refs)
-%VALIDITYOBSERVATION resolveValidIntervals.m:851-871 (makeValidityObservation).
-b = bodyOf('validity_observation', stmtId);
+function b = logicalObservation(stmtId, refs)
+%LOGICALOBSERVATION resolveValidIntervals.m (makeLogicalObservation).
+b = bodyOf('logical_observation', stmtId);
 b.document_class.superclasses = struct( ...
-    'class_name',    {'subject_observation', 'validity'}, ...
+    'class_name',    {'subject_observation', 'logical'}, ...
     'class_version', {'1.0.0', '1.0.0'});
 b.base.name = 'migrated_valid_interval';
 deps = struct('name', {'subject_id'}, 'value', {'element_sub_1'});
@@ -518,12 +524,14 @@ b.subject_statement = struct( ...
     'storage_mode', 'inline');
 b.subject_interaction = struct('method', struct('node', '', 'name', 'curation'));
 b.subject_observation = struct();
-b.validity = struct('value', struct('value', true));
-b.validity_observation = struct('sequence', 1);
+% NO NESTED CELL and NO LEAF BLOCK: `logical.value` is a bare boolean array,
+% and `logical_observation` declares no fields at all (`sequence` was deleted
+% with HAZARD 2 -- v1's array order is invisible to its only consumer).
+b.logical = struct('value', true);
 end
 
 function refs = splitAnchorPair()
-%SPLITANCHORPAIR resolveValidIntervals.m:544-551 -- Decision C's DISAGREEING
+%SPLITANCHORPAIR resolveValidIntervals.m -- Decision C's DISAGREEING
 %   case. Two `relative_reference` INSTANTS (start, no duration) on the SAME
 %   clock, each anchored to a DIFFERENT epoch document. This is the branch the
 %   signed model predicts never fires; the pass counts it as

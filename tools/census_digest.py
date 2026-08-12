@@ -511,9 +511,18 @@ POST_PASSES = [
         ("labels_deleted", "ontology_label documents deleted"),
         ("labels_modified", "ontology_label documents modified"),
     ]),
-    # TEAM DECISION 2026-08-11: valid_interval becomes a boolean-valued
-    # subject_statement -- one validity_observation per interval, plus the
-    # relative_reference it is anchored to.
+    # DORMANT BY TEAM DECISION 2026-08-12. The pass RUNS and EMITS NOTHING.
+    # The agreed model is ONE statement per source document holding an ARRAY of
+    # booleans against a TIME AXIS, and the team chose to WAIT for `axes[]`
+    # (DID-schema OPEN_WORK #45 -> #32) rather than ship the 1->N
+    # one-statement-per-interval shape as an interim step.
+    #
+    # SO EXACTLY TWO ROWS BELOW ARE INFORMATIVE TODAY: `sources_seen` and
+    # `intervals_seen` -- how much `valid_interval` data is waiting on that
+    # build. `dormant` prints first among them. Every emission row is 0 BY
+    # DECISION; every `refused_*` row is 0 because IT WAS NOT EVALUATED, which
+    # is not the same as "nothing was refused". The rest of this note describes
+    # the ARMED path and is kept for when it is re-armed.
     #
     # READ `sources_seen` BEFORE ANYTHING ELSE ON THIS BLOCK, and read it twice,
     # because zero means two different things here and only one of them is a
@@ -543,11 +552,12 @@ POST_PASSES = [
     ("valid_interval_decompose", "did2.convert.resolveValidIntervals", [
         ("documents_inspected", "documents inspected"),
         ("documents_unreadable", "UNREADABLE"),
-        ("sources_seen", "valid_interval documents"),
+        ("dormant", "DORMANT (1 = emits nothing by decision, 2026-08-12)"),
+        ("sources_seen", "valid_interval documents (deferred work, waiting on axes[])"),
         ("epoch_documents_seen", "epoch documents to anchor to"),
         ("intervals_seen", "intervals seen"),
-        ("intervals_decomposed", "DECOMPOSED"),
-        ("statements_emitted", "validity_observation emitted"),
+        ("intervals_decomposed", "DECOMPOSED (0 while dormant)"),
+        ("statements_emitted", "logical_observation emitted (0 while dormant)"),
         ("references_emitted", "relative_reference emitted"),
         ("split_anchor_intervals", "split-anchor intervals (expect 0)"),
         # THE PROVENANCE HALF OF THIS REPORT, unrendered until 2026-08-11.

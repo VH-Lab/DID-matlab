@@ -323,14 +323,25 @@ if isfield(result, 'openminds_citations')
     report.openminds_citations = result.openminds_citations;
 end
 
-% `valid_interval_decompose` (TEAM DECISION 2026-08-11: `valid_interval` becomes
-% a boolean-valued `subject_statement`). PERSISTED FOR THE SAME REASON AS ITS
-% SIBLINGS -- and for this pass the reason is not generic. THE WHOLE CLASS
-% EXISTS SO THAT "THIS STRETCH IS BAD DATA" IS SAYABLE: did_v1 encoded validity
-% in the CLASS NAME, so invalidity was expressible only as absence, and
-% markgarbage's own author wrote the gap down (markgarbage.m:40). A pass that
-% measures that repair and whose counters nobody can read reproduces the same
-% defect one level up. Four reading instructions:
+% `valid_interval_decompose` -- DORMANT BY TEAM DECISION 2026-08-12. The pass
+% RUNS and EMITS NOTHING: the agreed model is ONE statement holding an ARRAY of
+% booleans against a TIME AXIS, and it waits on `axes[]` (DID-schema OPEN_WORK
+% #45 -> #32) rather than shipping the 1->N decomposition as an interim.
+%
+% SO ONLY TWO OF ITS COUNTERS ARE INFORMATIVE NOW, and they are the reason the
+% block is still persisted: `sources_seen` and `intervals_seen` are the only
+% measurement anyone has of how much `valid_interval` data is waiting on that
+% build. `dormant` is TRUE and every emission counter is 0 BY DECISION.
+% Reading instructions (1)-(4) below describe the ARMED path and are kept for
+% when it is re-armed; (1) applies unchanged today.
+%
+% PERSISTED FOR THE SAME REASON AS ITS SIBLINGS -- and for this pass the reason
+% is not generic. THE WHOLE CLASS EXISTS SO THAT "THIS STRETCH IS BAD DATA" IS
+% SAYABLE: did_v1 encoded validity in the CLASS NAME, so invalidity was
+% expressible only as absence, and markgarbage's own author wrote the gap down
+% (markgarbage.m:40). A pass that measures that repair and whose counters
+% nobody can read reproduces the same defect one level up. Four reading
+% instructions:
 %
 % (1) THE DENOMINATOR IS `sources_seen` BESIDE `epoch_documents_seen`. Every
 %     counter at 0 with `sources_seen` at 0 means "this corpus holds no
