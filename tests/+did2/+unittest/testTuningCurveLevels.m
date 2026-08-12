@@ -1,5 +1,6 @@
 function tests = testTuningCurveLevels
-%TESTTUNINGCURVELEVELS The two LEVEL defects in the shared tuning reshape.
+%TESTTUNINGCURVELEVELS The LEVEL defects in the shared tuning reshape, and the
+%   flat raw curve's control fields.
 %
 %   `+migrators_j/private/jTuningCurveValue.m` is shared by 12 migrators (the 5 v1
 %   tuning result classes, their 5 `*_calc` wrappers, `stimulus_tuningcurve` and
@@ -13,6 +14,14 @@ function tests = testTuningCurveLevels
 %     B  response_units was read off the BLOCK. That is correct for the FLAT raw
 %        stimulus_tuningcurve and wrong for all five fitted composites, which spell
 %        it `properties.response_units`.
+%     C  the FLAT raw stimulus_tuningcurve spells its control fields
+%        control_response_mean / _stddev / _stderr / control_individual_responses_real
+%        / _imaginary, and NOT ONE of those five matched any of the six names
+%        controlBlock searched -- so that shape contributed an EMPTY control block and
+%        the data was dropped. Defect A's repair fixed the LEVEL for the composites and
+%        left this untouched, deliberately and in writing; this is the follow-up.
+%        THREE of the five now land (see the DEFECT C section below); the two
+%        `control_individual_responses_*` do NOT, on evidence, and the tests say so.
 %
 %   ***** UNVERIFIED: THESE TESTS HAVE NEVER BEEN EXECUTED. *****
 %   Written 2026-08-12 in a container with NO MATLAB (`command -v matlab octave`
@@ -35,6 +44,23 @@ function tests = testTuningCurveLevels
 %       temporal_frequency_tuning     5  0  5      FAILS against old
 %   -> 14 of 15 asserted control fields are absent under the old code; response_units
 %      is the numeric [] under the old code in all five, where 'Hz' and '' are asserted.
+%
+%   DEFECT C was established the same way, and the same caveat applies: the pre- and
+%   post-repair `controlBlock` bodies were transcribed and run over the exact fixtures
+%   below, OUTSIDE MATLAB. Its result, quoting the run:
+%       DENOMINATOR: 5 fixture shape(s) driven through BOTH helper bodies;
+%                    2 helper function(s) transcribed (getf, controlBlock);
+%                    0 MATLAB processes run
+%       fixture                            OLD keys                      NEW keys
+%       flat raw, control data present     (none)   control_mean,control_stddev,control_stderr
+%       flat raw, control data absent      (none)                        (none)
+%       composite spatial_frequency        (5 names)                     the same 5
+%       composite contrast                 (2 names)                     the same 2
+%       composite orientation_direction    control_individual            control_individual
+%       composite fixtures whose OLD and NEW output DIFFER: 0
+%   -> the two DEFECT C presence tests FAIL against the pre-repair code (it emits an
+%      empty struct for this shape); the two guard tests PASS against it and must keep
+%      passing. No composite output moves.
 %
 %   ---------------------------------------------------------------------
 %   EVERY FIXTURE IS BUILT FROM THE WRITER, AND THE WRITER IS NOT NDI-matlab
@@ -172,6 +198,73 @@ tc = struct('temporal_frequency', [1; 2; 4; 8], ...
     'control_mean_stddev', 0.022, ...
     'control_mean_stderr', 0.011);
 tc.individual = [1.0 5.1 8.8 3.2; 1.1 4.9 9.2 2.8];
+end
+
+function tc = flatRawCurve()
+%FLATRAWCURVE The FLAT raw `stimulus_tuningcurve` result block, field for field from
+%   its ONLY writer, NDI-matlab +ndi/+app/+stimulus/tuning_response.m. This is not the
+%   composites' shape: there is no `tuning_curve` sub-struct and no `properties`.
+%
+%   Names from the emptystruct at :400-405; VALUES and SHAPES from the assignments,
+%   because the two disagree for two of the fields and the declaration is the half that
+%   lies:
+%       :445-446   control_individual_responses_real/_imaginary = cell(1,num_points)
+%       :464-467   filled per point from the stimulus_response_scalar responses
+%       :478-483   control_response_mean/_stddev/_stderr assigned by (I) -> 1xN rows;
+%                  :479-481 abs() them if complex, so the stored values are real
+%       :493-494   the two cell arrays flattened to matrices (rows index sampled
+%                  points, columns index trials)
+%       :403,:405  control_stimid and response_units are DECLARED AND NEVER ASSIGNED
+%                  anywhere in that file, so a real document carries [] for both.
+%                  They are fixtured as [] for that reason, not as a convenience.
+tc = struct();
+tc.independent_variable_label = {'Contrast'};
+tc.independent_variable_value = [0.1; 0.2; 0.4; 0.8];
+tc.stimid                     = [1 2 3 4];
+tc.response_mean              = [1 5 9 12];
+tc.response_stddev            = [0.1 0.2 0.3 0.4];
+tc.response_stderr            = [0.05 0.1 0.15 0.2];
+tc.individual_responses_real      = [1.0 1.1 0.9; 5.1 4.9 5.0; 8.8 9.2 9.0; 12.2 11.8 12.0];
+tc.individual_responses_imaginary = zeros(4, 3);
+tc.stimulus_presentation_number   = [1 2 3; 4 5 6; 7 8 9; 10 11 12];
+tc.control_stimid  = [];
+tc.response_units  = [];
+tc.control_response_mean   = [0.50 0.52 0.48 0.51];
+tc.control_response_stddev = [0.02 0.03 0.02 0.04];
+tc.control_response_stderr = [0.01 0.015 0.01 0.02];
+tc.control_individual_responses_real = ...
+    [0.5 0.6 0.4; 0.5 0.6 0.5; 0.4 0.5 0.5; 0.5 0.5 0.6];
+tc.control_individual_responses_imaginary = ...
+    [0.1 0.0 -0.1; 0 0 0; 0 0 0; 0 0 0];
+end
+
+function tc = flatRawCurveWithNoControlData()
+%FLATRAWCURVEWITHNOCONTROLDATA The same document with no control data recorded.
+%   Every control name is still PRESENT and EMPTY, which is not a contrivance: all five
+%   are declared by vlt.data.emptystruct at tuning_response.m:400-405 and the struct is
+%   grown to 1x1 at :407, so any name the loop never assigns reaches the document as [].
+%   This is the shape that makes the empty-guard load-bearing.
+tc = flatRawCurve();
+tc.control_response_mean   = [];
+tc.control_response_stddev = [];
+tc.control_response_stderr = [];
+tc.control_individual_responses_real      = [];
+tc.control_individual_responses_imaginary = [];
+end
+
+function body = flatRawBody(tc)
+%FLATRAWBODY A did_v1 raw `stimulus_tuningcurve` document, post-universalRenames.
+%   The writer mints the document at tuning_response.m:497 and sets a populated
+%   element_id from the consumed stimulus_response_scalar at :499, which is why the fold
+%   needs no NDI second pass.
+body = struct();
+body.document_class = struct('class_name', 'stimulus_tuningcurve', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', 'element_id', 'value', 'elem_flat_1');
+body.base = struct('id', 'flat_doc_1', 'session_id', 'sess_flat', 'name', 'raw', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.stimulus_tuningcurve = tc;
 end
 
 % ===================== the family table ====================================
@@ -381,7 +474,134 @@ verifyEqual(testCase, v.response_units, 'Spikes/s', ...
 verifyEqual(testCase, v.independent_values, [0.1; 0.2; 0.4; 0.8], 'AbsTol', 1e-12);
 end
 
+% ===================== DEFECT C ============================================
+
+function testFlatRawCurveControlStatisticsReachTheControlBlock(testCase)
+% DEFECT C, the half that has a destination. The flat raw curve's control statistics
+% are spelled control_response_mean / _stddev / _stderr; the V_eta control block's
+% names are control_mean / _stddev / _stderr. Same statistic, same population, same
+% per-point shape -- the flat spelling merely repeats the word `response` inside a slot
+% already called `control_response`.
+%
+% FAILS AGAINST THE PRE-REPAIR CODE: none of the three flat names appeared in any name
+% list controlBlock searched, at any level, so `control_response` came out as a struct
+% with ZERO fields and all three vectors were dropped. The transcription run in the
+% header reports `(none)` for this exact fixture.
+v = flatFoldedValue(flatRawCurve());
+cr = v.control_response;
+assertTrue(testCase, isstruct(cr), 'control_response is not a struct');
+expected = {'control_mean',   [0.50 0.52 0.48 0.51]; ...
+            'control_stddev', [0.02 0.03 0.02 0.04]; ...
+            'control_stderr', [0.01 0.015 0.01 0.02]};
+checked = 0;
+for k = 1:size(expected, 1)
+    nm = expected{k, 1};
+    assertTrue(testCase, isfield(cr, nm), sprintf( ...
+        ['the flat raw curve carries this as control_response_%s ' ...
+         '(tuning_response.m:478-483); it must arrive as control_response.%s'], ...
+        strrep(nm, 'control_', ''), nm));
+    verifyEqual(testCase, cr.(nm), expected{k, 2}, ...
+        sprintf('control_response.%s carries the wrong value', nm), 'AbsTol', 1e-12);
+    checked = checked + 1;
+end
+% DENOMINATOR, asserted rather than printed: 3 of the flat curve's 5 control names are
+% mapped. If that becomes 5, this number must be changed deliberately and the two
+% `control_individual_responses_*` rows argued for, not slipped in.
+verifyEqual(testCase, checked, 3, ...
+    '3 of the flat curve''s 5 control names have a V_eta destination');
+end
+
+function testFlatRawCurveControlBlockIsExactlyTheThreeMappedNames(testCase)
+% DEFECT C's overshoot guard, and the record of the two names that are NOT mapped.
+% `control_individual_responses_real` and `_imaginary` are the two halves of ONE complex
+% quantity: NDI's only reader of them recombines them before using either
+% (tuning_response.m:820-823, `real + sqrt(-1)*imag`, then abs() if complex). The
+% composite slot `control_individual` holds the REAL-VALUED per-trial control matrix
+% (DID-schema conversions/from_did_v1/orientation_direction_tuning.md:38 and
+% speed_tuning.md:34), which is abs(real + i*imag) and NOT the real part -- so aliasing
+% `_real` onto it would relabel a component as the whole, wrongly and silently, for
+% exactly the modulated data the imaginary part exists for. Minting new
+% `control_individual_real`/`_imaginary` keys instead would invent names no writer and
+% no V_eta slot has: `tuning_curve.value.control_response` is declared in DID-schema
+% schemas/V_eta/draft/tuning_curve.json with "fields": [] -- ZERO named sub-slots -- so
+% a fabricated key is not schema-checked and would pass unnoticed. Hence: reported, not
+% forced, and pinned here so the omission is a decision the suite defends.
+%
+% FAILS AGAINST THE PRE-REPAIR CODE, which emitted no keys at all for this shape.
+v = flatFoldedValue(flatRawCurve());
+got = sort(fieldnames(v.control_response));
+verifyEqual(testCase, got, sort({'control_mean'; 'control_stddev'; 'control_stderr'}), ...
+    ['the flat raw curve maps exactly three control names. control_individual, ' ...
+     'control_mean_stddev and control_mean_stderr are COMPOSITE-only spellings and ' ...
+     'must not be minted here; control_individual_responses_real/_imaginary are ' ...
+     'deliberately unmapped and must not be invented under any name.']);
+end
+
+function testFlatRawCurveWithNoControlDataInventsNothing(testCase)
+% testControlBlockInventsNothing's idea, extended to the new aliases -- and it bites
+% harder here than it ever did for the composites. vlt.data.emptystruct declares all
+% five control names on EVERY raw curve (tuning_response.m:400-405), so a document that
+% recorded no control data carries them PRESENT AND EMPTY. A name list applied without
+% the empty-guard would mint three blank slots on every one of those documents: the
+% invented-empty-field pattern this repo keeps a corpus census for.
+%
+% PASSES against the pre-repair code as well (it minted nothing because it matched
+% nothing). It exists so the repair cannot overshoot, not to catch the old defect.
+v = flatFoldedValue(flatRawCurveWithNoControlData());
+verifyTrue(testCase, isstruct(v.control_response), 'control_response must stay a struct');
+verifyEmpty(testCase, fieldnames(v.control_response), ...
+    ['a raw curve with no control data must yield a control block with NO fields. ' ...
+     'The five names are present-and-empty on every such document, and emitting ' ...
+     'them would invent blank slots wholesale.']);
+end
+
+function testFlatRawCurveKeepsItsUnmappedControlNamesOutOfTheBlockEntirely(testCase)
+% The other direction of the same guard: `control_stimid` (tuning_response.m:403) is
+% DECLARED AND NEVER ASSIGNED in the writer -- its only other mention, :304, is a
+% name-value argument to vlt.neuro.stimulus.stimulus_response_scalar, a different
+% function's parameter and not this field -- so it is [] in every document. Neither it
+% nor the two `control_individual_responses_*` matrices may appear in the emitted block
+% under any spelling. Asserted by SUBSTRING so a future alias cannot slip one in under a
+% renamed key.
+%
+% PASSES against the pre-repair code. A guard, not a catch.
+v = flatFoldedValue(flatRawCurve());
+fns = fieldnames(v.control_response);
+for k = 1:numel(fns)
+    verifyEmpty(testCase, strfind(fns{k}, 'individual'), sprintf( ...
+        ['control_response.%s: the real/imaginary per-trial control matrices are ' ...
+         'deliberately unmapped (they are halves of one complex quantity) -- no key ' ...
+         'may carry them'], fns{k}));
+    verifyEmpty(testCase, strfind(fns{k}, 'stimid'), sprintf( ...
+        'control_response.%s: control_stimid is never assigned by the writer', fns{k}));
+end
+end
+
+function testFlatRawCurveControlRepairDoesNotDisturbTheEmpiricalCurve(testCase)
+% The flat shape's other reads must be untouched by the alias list. Named separately
+% from the control assertions because a regression here would otherwise be reported as
+% a control-block failure and looked for in the wrong place.
+%
+% PASSES against the pre-repair code.
+v = flatFoldedValue(flatRawCurve());
+verifyEqual(testCase, v.independent_values, [0.1; 0.2; 0.4; 0.8], 'AbsTol', 1e-12);
+verifyEqual(testCase, v.response_mean,   [1 5 9 12], 'AbsTol', 1e-12);
+verifyEqual(testCase, v.response_stddev, [0.1 0.2 0.3 0.4], 'AbsTol', 1e-12);
+verifyEqual(testCase, v.response_stderr, [0.05 0.1 0.15 0.2], 'AbsTol', 1e-12);
+% response_units is declared and never assigned by this writer, so the honest value is
+% the schema's blank CHAR and not the numeric [] -- the DEFECT B type hazard, on the
+% one shape whose LEVEL was always right.
+assertTrue(testCase, ischar(v.response_units), ...
+    'response_units must be char even when the writer leaves it []');
+verifyEqual(testCase, v.response_units, '');
+end
+
 % ===================== helpers =============================================
+
+function v = flatFoldedValue(tc)
+%FLATFOLDEDVALUE Run the raw curve's own migrator and return the tuning_curve `value`.
+v = tuningValue(did2.convert.migrators_j.stimulus_tuningcurve(flatRawBody(tc)));
+end
 
 function v = foldedValue(className, tc, props)
 %FOLDEDVALUE Run the class's own migrator and return the tuning_curve `value` cell.

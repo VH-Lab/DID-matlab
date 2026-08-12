@@ -25,13 +25,14 @@ function value = jTuningCurveValue(block)
 %     * responseUnits  read `response_units` at BLOCK level -- correct for the FLAT raw
 %                      stimulus_tuningcurve, wrong for all five fitted composites, which
 %                      spell it `properties.response_units`. Now reads both, char-guarded.
-%   STILL UNREFINED, and deliberately untouched here: the FLAT raw stimulus_tuningcurve
-%   names its control fields control_response_mean / control_response_stddev /
-%   control_response_stderr / control_individual_responses_real / _imaginary (NDI-matlab
-%   +ndi/+app/+stimulus/tuning_response.m:400-405), NONE of which is in the name list
-%   controlBlock searches -- so that shape still contributes no control block. That is a
-%   third defect, reported rather than fixed, so a repair does not arrive alongside two
-%   unrelated ones.
+%     * controlBlock (again) THE THIRD DEFECT, REPORTED THERE AND FIXED HERE -- but only
+%                      THREE of its five names had a destination. The paragraph this
+%                      replaces said the flat raw stimulus_tuningcurve "still contributes
+%                      no control block"; it now contributes control_mean /
+%                      control_stddev / control_stderr, aliased from the flat spellings.
+%                      control_individual_responses_real and _imaginary are STILL
+%                      unmapped, and that is a decision with evidence behind it rather
+%                      than an omission -- see controlBlock's own header for both.
 arguments
     block struct
 end
@@ -155,13 +156,98 @@ function c = controlBlock(tc, block)
 % shapes without inventing a level. The camelCase fallback is the repo's standing rule
 % for a NESTED read: universalRenames.m:32-37 snake_cases only the IMMEDIATE field
 % names of a property block and leaves nested struct values alone.
+%
+% ---------------------------------------------------------------------------
+% THE FLAT RAW CURVE SPELLS ITS CONTROL FIELDS DIFFERENTLY, AND THREE OF THE FIVE
+% NAMES ARE ALIASED HERE. THE OTHER TWO ARE NOT, ON EVIDENCE.
+% ---------------------------------------------------------------------------
+% The flat `stimulus_tuningcurve` is written by NDI-matlab
+% +ndi/+app/+stimulus/tuning_response.m. Its emptystruct declares SEVEN names across
+% :403-405 -- six control fields plus response_units, which is listed with them because
+% it fails in the same way. What each one actually HOLDS, read from the ASSIGNMENTS and
+% not from the declaration -- the distinction matters, because two of the seven are
+% declared and never assigned and so reach every document as the numeric []:
+%
+%   control_response_mean     :478  nanmean(all_control_responses) per independent
+%                                   point, indexed (I) -> a 1xnum_points row.
+%                                   :479-481 takes abs() if any element is complex,
+%                                   so the stored value is ALWAYS real.
+%   control_response_stddev   :482  nanstd,          same shape, same realness.
+%   control_response_stderr   :483  vlt.data.nanstderr, same shape, same realness.
+%   control_individual_responses_real       :445 cell(1,num_points), filled :464-465,
+%                                   flattened to a matrix at :493.
+%   control_individual_responses_imaginary  :446 / :466-467 / :494, the same.
+%   control_stimid            :403  DECLARED, NEVER ASSIGNED anywhere in the file
+%                                   (its only other mention, :304, is a name-value
+%                                   argument to vlt.neuro.stimulus.stimulus_response_scalar
+%                                   -- a different function's parameter, not this field).
+%   response_units            :405  DECLARED, NEVER ASSIGNED -- see responseUnits above.
+%
+% MAPPED, because the flat name and the composite name are the same statistic of the
+% same population and differ only by the word `response`, which is redundant inside a
+% slot already called `control_response`:
+%       control_response_mean   -> control_mean
+%       control_response_stddev -> control_stddev
+%       control_response_stderr -> control_stderr
+% Composite-side citations: the writers' own mock corpus (recorded in the DENOMINATOR
+% above, and in tests/+did2/+unittest/testTuningCurveLevels.m's fixtures, where
+% spatial_frequency's control_mean is a per-point 4-vector while control_mean_stddev is
+% a scalar -- i.e. control_mean is per-point, exactly like control_response_mean), and
+% DID-schema schemas/V_eta/conversions/from_did_v1/{contrast,spatial_frequency,
+% temporal_frequency}_tuning.md:34, which type control_stddev/control_stderr as
+% matrix<double>.
+%
+% NOT MAPPED, and this is the evidenced refusal rather than an oversight:
+%       control_individual_responses_real       -> (nothing)
+%       control_individual_responses_imaginary  -> (nothing)
+% They are the two halves of ONE COMPLEX quantity, not two quantities. The only reader
+% of them in NDI recombines them before using either -- tuning_response.m:820-823:
+%       control_ind{i} = ...control_individual_responses_real{i} + ...
+%           sqrt(-1)*...control_individual_responses_imaginary{i};
+%       control_ind_real{i} = control_ind{i};
+%       if any(~isreal(control_ind_real{i})), control_ind_real{i} = abs(...); end
+% So the real-valued per-trial control matrix that the composite slot `control_individual`
+% holds (DID-schema conversions/from_did_v1/orientation_direction_tuning.md:38,75-77 and
+% speed_tuning.md:34,59-62: "per-trial control responses", matrix<double>, rows index
+% sampled points and columns index trials) is abs(real + i*imag), NOT the real part.
+% Aliasing `_real` onto `control_individual` would therefore relabel a COMPONENT as the
+% WHOLE, and would be wrong for exactly the modulated (F1) data the imaginary part exists
+% for. The honest alternative -- minting `control_individual_real` and
+% `control_individual_imaginary` -- invents two names that no writer and no V_eta slot
+% has, so it is reported instead: `tuning_curve.value.control_response` is declared in
+% DID-schema schemas/V_eta/draft/tuning_curve.json as a `structure` with "fields": [],
+% i.e. ZERO named sub-slots, so nothing here is schema-checked and a fabricated name
+% would pass silently. That is the reason to be strict by hand, not a licence.
+%
+% control_stimid is not mapped either, and cannot be: it is never assigned, so it is []
+% in every document and the empty-guard below would drop it even if a slot existed.
 c = struct();
-names = {'control_individual', 'control_mean', 'control_stddev', 'control_stderr', ...
-         'control_mean_stddev', 'control_mean_stderr'};
-for i = 1:numel(names)
-    nm = names{i};
-    v = getf(tc, {nm, camelOf(nm)});
-    if isempty(v); v = getf(block, {nm, camelOf(nm)}); end
+% {canonical V_eta key, additional spellings the FLAT raw curve uses}. The canonical
+% name is searched FIRST at every level, so the five fitted composites resolve exactly
+% as they did before this alias list existed -- an ADDITION for a shape that yielded
+% nothing, never a re-mapping of the shape that worked.
+spec = { ...
+    'control_individual',   {}; ...
+    'control_mean',         {'control_response_mean'}; ...
+    'control_stddev',       {'control_response_stddev'}; ...
+    'control_stderr',       {'control_response_stderr'}; ...
+    'control_mean_stddev',  {}; ...
+    'control_mean_stderr',  {}};
+for i = 1:size(spec, 1)
+    nm = spec{i, 1};
+    cands = [{nm}, spec{i, 2}];
+    search = cell(1, 2 * numel(cands));
+    for k = 1:numel(cands)
+        search{2*k - 1} = cands{k};
+        search{2*k}     = camelOf(cands{k});
+    end
+    v = getf(tc, search);
+    if isempty(v); v = getf(block, search); end
+    % THE EMPTY GUARD IS THE "INVENTS NOTHING" RULE, and it is load-bearing for the flat
+    % shape in a way it never was for the composites: vlt.data.emptystruct declares all
+    % five flat names on EVERY raw curve, so a document with no control data carries them
+    % present-and-empty. Emitting them would mint five blank slots on every such
+    % document -- the invented-empty-field pattern this repo keeps a census for.
     if ~isempty(v); c.(nm) = v; end
 end
 end
