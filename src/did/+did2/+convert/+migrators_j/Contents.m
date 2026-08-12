@@ -361,10 +361,29 @@
 %   ndi.app.markgarbage (:93-96) and read BOTH by markgarbage itself (:130,:141)
 %   and by the tuning pipeline (+app/+stimulus/tuning_response.m:253-256, which
 %   uses it to choose which stretch of signal to analyse).
-%   THE FIX IS A TOMBSTONE, NOT A MIGRATOR -- the vmspikefilteringparameters
-%   shape. Both are now restated from the WRITER in DID-schema
+%   THE FIX IS A TOMBSTONE, NOT A MIGRATOR -- the `projectvar` shape, described
+%   under "DELIBERATELY WITHOUT A MIGRATOR" just above. Both are restated from
+%   the WRITER in DID-schema
 %   tools/build_v_eta.py and marked `retire`, so the identity fallback carries
 %   the document and the tombstone lets it validate.
+%
+%   CITATION CORRECTED 2026-08-12. This named "the vmspikefilteringparameters
+%   shape", and that class has NOT been tombstone-only since 2026-08-10: it has
+%   a migrator, and THIS FILE describes it at the `vmspikefilteringparameters`
+%   entry ~230 lines above. The two halves of one file disagreed. The analogy
+%   was already false when it was written, which is why it is corrected rather
+%   than aged out -- positive evidence, not absence:
+%
+%     git log -1 --date=iso --format="%h %ad %s" \
+%         -- +did2/+convert/+migrators_j/vmspikefilteringparameters.m
+%        9dc8eea 2026-08-10 20:49:59  (the migrator lands)
+%     git blame -L 364,364 +did2/+convert/+migrators_j/Contents.m
+%        354481f4 2026-08-10 22:31:45  (this sentence is written)
+%     git merge-base --is-ancestor 9dc8eea 354481f4   -> true
+%
+%   i.e. the migrator was already an ancestor, by 1h42m, of the commit that
+%   cited the class as having none. Only the exemplar changed here; the claim
+%   about generic_file and valid_interval is unaffected and stands.
 %
 %   `valid_interval` HAS NO PASS-1 MIGRATOR AND, AS OF 2026-08-12, NO ACTIVE
 %   GO-FORWARD EMISSION EITHER -- it lives on its v1 tombstone until `axes[]`
