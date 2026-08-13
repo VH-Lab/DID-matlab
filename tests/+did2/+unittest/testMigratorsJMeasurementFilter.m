@@ -196,8 +196,13 @@ verifyEqual(testCase, ref.get('absolute_reference.value.start.approximate'), fal
 % tombstone says so ("SHADOWS base.datestamp"). It must not be confused with the
 % measurement instant on either document.
 obs = docOfClass(testCase, out, 'duration_observation');
-verifyEqual(testCase, obs.get('base.datestamp'), '2024-06-01T12:00:00.000Z');
-verifyEqual(testCase, ref.get('base.datestamp'), '2024-06-01T12:00:00.000Z');
+% base.datestamp -> base.creation_timestamp (did-schema 72fa57f). The FIXTURE
+% above still writes did_v1 `datestamp`, deliberately: these assertions are
+% about the MIGRATED output, and the rename happens on the way out.
+verifyEqual(testCase, obs.get('base.creation_timestamp'), ...
+    '2024-06-01T12:00:00.000Z');
+verifyEqual(testCase, ref.get('base.creation_timestamp'), ...
+    '2024-06-01T12:00:00.000Z');
 
 % and the v1 block is gone -- no `datestamp` field survives anywhere
 s = obs.toStruct();
