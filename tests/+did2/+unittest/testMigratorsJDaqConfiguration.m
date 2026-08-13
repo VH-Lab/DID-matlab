@@ -257,9 +257,23 @@ end
 % ===================== daqreader -> software ===============================
 
 function testDaqreaderDissolvesIntoSoftware(testCase)
+% RENAMED IN EFFECT, NOT IN TITLE: the fold is now reader + software, matching
+% its sibling testMetadataReaderFoldsToTheReaderPlusSoftware below. `daqreader`
+% used to go straight to a `software` entity, which left `reader_string`
+% homeless -- `software` declares name / version / local_identifier and nothing
+% else. `acquisition_reader` (did-schema 69fa66d) is the missing sibling, and
+% the daq family now folds one way for both readers.
 out = runJ(daqreaderV1('ndi.daq.reader.mfdaq.intan'));
-verifyEqual(testCase, classNames(out), {'software'});
-sw = out.migrated{1};
+names = classNames(out);
+verifyEqual(testCase, numel(names), 2);
+verifyTrue(testCase, any(strcmp(names, 'acquisition_reader')));
+verifyTrue(testCase, any(strcmp(names, 'software')));
+
+reader = firstOfClass(out, 'acquisition_reader');
+verifyEqual(testCase, depValue(reader, 'software_id'), ...
+    firstOfClass(out, 'software').get('base.id'));
+
+sw = firstOfClass(out, 'software');
 verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.reader.mfdaq.intan');
 verifyEqual(testCase, sw.get('software.local_identifier'), ...
     'ndi.daq.reader.mfdaq.intan');
@@ -300,15 +314,53 @@ verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
 function testDaqreaderWithAReaderStringPassesThrough(testCase)
-% `software` declares name / version / local_identifier and nothing else, so a
-% reader's file-type string has no home. The signed decision KEEPS
-% `reader_string` (it is the de-encoded daqreader_ndr.ndr_reader_string), so a
-% body carrying one is passed through rather than folded lossily.
+% INVERTED 2026-08-13, and the old assertion is worth keeping in view because
+% it was RIGHT ABOUT THE CODE AND WRONG ABOUT THE MODEL. It read:
+%
+%     verifyEqual(testCase, classNames(out), {'daqreader'});
+%
+% and it passed, because daqreader.m guarded on a populated `reader_string`
+% and passed the body through. The guard existed for a real reason -- there
+% was nowhere to put the string -- but the effect was that exactly the
+% documents carrying the field the signed decision KEEPS were the ones that
+% never folded, and they came to rest as `daqreader`, a class that decision
+% retires. Both PRED `daqreader_ndr` documents are this case.
+%
+% `acquisition_reader` gives the string a home, so the guard is gone and the
+% fold is unconditional. The test name is kept so the history is greppable;
+% what it asserts is now the opposite.
 v1 = daqreaderV1('ndi.daq.reader.mfdaq.ndr');
 v1.daqreader.reader_string = 'intan';
 out = runJ(v1);
-verifyEqual(testCase, classNames(out), {'daqreader'});
-verifyEqual(testCase, out.migrated{1}.get('daqreader.reader_string'), 'intan');
+names = classNames(out);
+verifyEqual(testCase, numel(names), 2);
+verifyTrue(testCase, any(strcmp(names, 'acquisition_reader')));
+reader = firstOfClass(out, 'acquisition_reader');
+verifyEqual(testCase, reader.get('acquisition_reader.reader_string'), 'intan');
+% The id still rides on the reader -- that is what keeps daqsystem.reader_id
+% resolving, and it is asserted separately in testDaqreaderPreservesItsBaseId.
+verifyEqual(testCase, reader.get('base.id'), 'reader_id_1');
+end
+
+function testDaqreaderWithAReaderStringButNoClassEmitsNoEmptyEdge(testCase)
+% A BRANCH THAT DID NOT EXIST BEFORE 2026-08-13, so it gets its own test
+% rather than riding on another. Removing the reader_string guard created a
+% path where there IS something to say (the string) but NO software entity to
+% say it about -- jSoftware returns [] for an empty name, by design.
+%
+% The reader must still be emitted, and its `software_id` edge must be ABSENT,
+% not present-and-blank. That distinction is the invented-empty-edge pattern
+% this repository has paid for six times, and #37 RequiredDependencies being
+% armed does NOT catch it here because the edge is optional -- so nothing but
+% this assertion stands between us and a seventh row.
+v1 = daqreaderV1('');
+v1.daqreader.reader_string = 'intan';
+out = runJ(v1);
+verifyEqual(testCase, classNames(out), {'acquisition_reader'});
+reader = firstOfClass(out, 'acquisition_reader');
+verifyEqual(testCase, reader.get('acquisition_reader.reader_string'), 'intan');
+verifyEmpty(testCase, depValue(reader, 'software_id'), ...
+    'software_id must be ABSENT when there is no software, never blank');
 end
 
 % ===================== daqmetadatareader -> the reader class ===============
@@ -538,7 +590,12 @@ function testDaqreaderFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqreaderV1('ndi.daq.reader.mfdaq.intan'));
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
-verifyEqual(testCase, classNames(out), {'software'});
+% Two bodies now, as for the metadata reader below. This is the assertion that
+% would catch a REQUIRED `software_id` on `acquisition_reader`: #37
+% RequiredDependencies is armed, so had that edge been declared required, a
+% reader with no class name would quarantine here. It is declared OPTIONAL,
+% matching its sibling.
+verifyEqual(testCase, numel(out.migrated), 2);
 end
 
 function testMetadataReaderFoldValidatesUnderVEta(testCase)
