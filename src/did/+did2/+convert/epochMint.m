@@ -468,7 +468,7 @@ for k = 1:n
             'epoch_string', first, ...
             'session_id',   baseField(b, 'session_id'), ...
             'doc_id',       baseField(b, 'id'), ...
-            'datestamp',    baseField(b, 'datestamp'));
+            'datestamp',    creationTime(b));
     catch
         report.documents_unreadable = report.documents_unreadable + 1;
         rows(k) = struct('class_name', '', 'epoch_string', '', ...
@@ -1097,7 +1097,7 @@ body.document_class = struct( ...
     'schema_version', 'V_eta');
 body.depends_on = struct('name', 'session_id', 'value', sessionDocumentId);
 body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_epoch', 'datestamp', datestamp);
+    'name', 'migrated_epoch', 'creation_timestamp', datestamp);
 body.epoch = struct('local_identifier', epochString);
 end
 
@@ -1462,4 +1462,33 @@ for k = 1:numel(result.migrated)
     end
 end
 summary.by_class = byClass;
+end
+
+function ts = creationTime(body)
+%CREATIONTIME The document's creation time, EITHER VINTAGE.
+%   V_eta renamed `base.datestamp` -> `base.creation_timestamp` (did-schema,
+%   signed 2026-08-13) and the rename is applied OUTBOUND, inside
+%   did2.convert.v1_to_v2 (renameOutboundBaseFields, v1_to_v2.m:272). Every
+%   batch post-pass runs AFTER that, so the bodies reaching this file carry
+%   the NEW key while a pre-migration body carries the old one.
+%
+%   Reading only `datestamp` returned '' on every migrated document and the
+%   caller then substituted a default -- a WRONG timestamp on a valid-looking
+%   document, which no gate would ever flag. That is the quiet half of the
+%   same rename whose loud half stopped the database write dead
+%   (did2.database.sqlitedb/requireCreationTimestamp).
+%
+%   Returns '' when neither key is present, so callers keep their own
+%   fallback rather than having one imposed here.
+ts = '';
+if ~isstruct(body) || ~isfield(body, 'base') || ~isstruct(body.base)
+    return;
+end
+for name = {'creation_timestamp', 'datestamp'}
+    f = name{1};
+    if isfield(body.base, f) && ~isempty(body.base.(f))
+        ts = body.base.(f);
+        return;
+    end
+end
 end

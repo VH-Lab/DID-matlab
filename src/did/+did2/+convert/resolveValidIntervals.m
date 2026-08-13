@@ -1102,12 +1102,13 @@ function base = freshBase(src, name)
 sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
 if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
     if isfield(src.base, 'session_id'); sessionId = src.base.session_id; end
-    if isfield(src.base, 'datestamp') && ~isempty(src.base.datestamp)
-        ds = src.base.datestamp;
+    ds0 = creationTime(src);
+    if ~isempty(ds0)
+        ds = ds0;
     end
 end
 base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', name, 'datestamp', ds);
+    'name', name, 'creation_timestamp', ds);
 end
 
 function supers = supersOf(chain)
@@ -1304,4 +1305,33 @@ for k = 1:numel(result.migrated)
     end
 end
 summary.by_class = byClass;
+end
+
+function ts = creationTime(body)
+%CREATIONTIME The document's creation time, EITHER VINTAGE.
+%   V_eta renamed `base.datestamp` -> `base.creation_timestamp` (did-schema,
+%   signed 2026-08-13) and the rename is applied OUTBOUND, inside
+%   did2.convert.v1_to_v2 (renameOutboundBaseFields, v1_to_v2.m:272). Every
+%   batch post-pass runs AFTER that, so the bodies reaching this file carry
+%   the NEW key while a pre-migration body carries the old one.
+%
+%   Reading only `datestamp` returned '' on every migrated document and the
+%   caller then substituted a default -- a WRONG timestamp on a valid-looking
+%   document, which no gate would ever flag. That is the quiet half of the
+%   same rename whose loud half stopped the database write dead
+%   (did2.database.sqlitedb/requireCreationTimestamp).
+%
+%   Returns '' when neither key is present, so callers keep their own
+%   fallback rather than having one imposed here.
+ts = '';
+if ~isstruct(body) || ~isfield(body, 'base') || ~isstruct(body.base)
+    return;
+end
+for name = {'creation_timestamp', 'datestamp'}
+    f = name{1};
+    if isfield(body.base, f) && ~isempty(body.base.(f))
+        ts = body.base.(f);
+        return;
+    end
+end
 end
