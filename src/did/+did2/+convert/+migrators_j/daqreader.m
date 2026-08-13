@@ -1,6 +1,7 @@
 function bodies = daqreader(preBody)
-%DAQREADER Brainstorm-J migrator: did_v1 daqreader DISSOLVES into a `software`
-%   entity. 1 -> 1, base.id PRESERVED.
+%DAQREADER Brainstorm-J migrator: did_v1 daqreader folds to an
+%   `acquisition_reader` + a `software` entity. 1 -> 2, base.id PRESERVED ON
+%   THE READER.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -61,21 +62,29 @@ function bodies = daqreader(preBody)
 %   same id now names.
 %
 %   ---------------------------------------------------------------------
-%   TWO GUARDS, BOTH "A FACT WITH NO HOME MEANS PASS THE DOCUMENT THROUGH"
+%   ONE GUARD, AND THE SECOND ONE'S REMOVAL IS RECORDED BECAUSE IT MATTERED
 %   ---------------------------------------------------------------------
-%   1. NO CLASS NAME => NO ENTITY. `software` is identified by its name; an
-%      entity with no name is a hollow document, and jSoftware returns [] for an
-%      empty name precisely so a caller cannot mint one.
+%   NOTHING TO SAY => PASS THROUGH. A body with neither a class name nor a
+%   reader string carries no fact, and minting entities from it is the
+%   hollow-document defect. `software` is identified by its name, and
+%   jSoftware returns [] for an empty name precisely so a caller cannot mint a
+%   nameless one -- so a reader string with no class name still emits the
+%   reader, with its `software_id` edge ABSENT rather than blank.
 %
-%   2. A POPULATED `reader_string` => PASS THROUGH. `software` declares name /
-%      version / local_identifier and nothing else, so a reader's file-type
-%      string ('intan', 'SpikeGadgets') has nowhere to go. It reaches a
-%      `daqreader` body only through the chunk-(c) de-encode
-%      (migrators_j/daqreader_ndr.m, ndr_reader_string -> daqreader.reader_string,
-%      a field the signed decision explicitly KEEPS), and this migrator is not on
-%      that path today -- v1_to_v2 routes by the SOURCE class name, so a
-%      daqreader_ndr document is handed to daqreader_ndr.m and never to this
-%      function. The guard is here so the fact stays safe if that ever changes.
+%   THE SECOND GUARD IS GONE (2026-08-13). It read "a POPULATED `reader_string`
+%   => PASS THROUGH", because `software` declares name / version /
+%   local_identifier and had nowhere to put a file-type string. That was true
+%   and its effect was perverse: exactly the documents carrying the field the
+%   signed decision KEEPS were the ones that never folded, and they came to
+%   rest as `daqreader`, a class the same decision retires. `acquisition_reader`
+%   (did-schema 69fa66d) gives the string a home, so the guard would now only
+%   preserve the gap it documented.
+%
+%   AND THE DISPATCH GAP IS CLOSED. This header used to say a daqreader_ndr
+%   document "is handed to daqreader_ndr.m and never to this function", which
+%   was true and was the bug: v1_to_v2 dispatches ONCE on the source class and
+%   never re-dispatches after a rename. daqreader_ndr.m now delegates here
+%   after de-encoding.
 %
 %   A passthrough is safe: `daqreader` is in build_v_eta.py's `_KEEP_INFRA` and
 %   NOT in `_DELETE_PHASE8`, so the V_eta source tombstone still exists and the
@@ -141,10 +150,6 @@ end
 % the id forward or every reader_id edge dangles. `software` keeps the fresh
 % id jSoftware minted, which is also what lets the deferred dedup pass merge
 % two rigs sharing one implementation class (#25).
-ds = datestamp;
-if isempty(ds)
-    ds = '2024-01-01T00:00:00.000Z';   % the sentinel jSoftware/jSessionAnchor use
-end
 readerId = srcId;
 if isempty(readerId)
     readerId = did.ido.unique_id();
@@ -164,8 +169,7 @@ if isempty(swId)
 else
     reader.depends_on = struct('name', {'software_id'}, 'value', {swId});
 end
-reader.base = struct('id', readerId, 'session_id', char(sessionId), ...
-    'name', srcName, 'datestamp', ds);
+reader.base = jBase(readerId, char(sessionId), srcName, datestamp);
 reader.acquisition_reader = struct('reader_string', readerString);
 
 % The reader leads: it is the body that keeps the source id, so a caller

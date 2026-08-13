@@ -134,14 +134,9 @@ software.document_class = struct('class_name', 'software', ...
     'superclasses', struct('class_name', 'entity', 'class_version', '1.0.0'), ...
     'schema_version', 'V_eta');
 software.depends_on = struct('name', {}, 'value', {});
-% base.datestamp is mustBeNonEmpty on `base`; fall back to the same sentinel
-% jSessionAnchor uses rather than emit a document that cannot validate.
-ds = char(datestamp);
-if isempty(ds)
-    ds = '2024-01-01T00:00:00.000Z';
-end
-software.base = struct('id', swId, 'session_id', char(sessionId), ...
-    'name', name, 'datestamp', ds);
+% The mustBeNonEmpty-datestamp sentinel now lives in ONE place, jBase, rather
+% than being copy-pasted here and in jSessionAnchor with a comment each.
+software.base = jBase(swId, char(sessionId), name, char(datestamp));
 software.entity = struct('global_identifier', {gids});
 % NORMALISE THE EMPTY, and it is not cosmetic. `version` is declared
 % `(1,:) char = ''` in the arguments block, and that size spec COERCES a 0x0

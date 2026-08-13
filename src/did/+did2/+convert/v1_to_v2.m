@@ -269,6 +269,7 @@ for k = 1:numel(bodies)
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
             outBody = ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+            outBody = renameOutboundBaseFields(outBody, options.TargetVersion);
             if ~strcmp(options.TargetVersion, 'V_delta') ...
                     && isfield(outBody, 'document_class') ...
                     && isstruct(outBody.document_class)
@@ -568,6 +569,61 @@ else
     error('did2:convert:badMigratorOutput', ...
         'A split migrator must return a struct or cell of bodies (got %s).', ...
         class(out));
+end
+end
+
+function body = renameOutboundBaseFields(body, targetVersion)
+%RENAMEOUTBOUNDBASEFIELDS did_v1 `base` field names -> their V_eta spellings.
+%
+%   ONE PLACE, ON THE WAY OUT, FOR EVERY BODY. This runs on each emitted body
+%   immediately after ensureClassBlocks and before validation, which is the
+%   only point in the pipeline that ALL documents pass through -- the ones a
+%   migrator constructed, the ones a 1->N split produced, and the passthroughs
+%   that no migrator touched at all.
+%
+%   ---------------------------------------------------------------------
+%   WHY NOT AT THE 65 CONSTRUCTION SITES, AND WHY NOT IN universalRenames
+%   ---------------------------------------------------------------------
+%   The obvious version of this change is to rename the field wherever a
+%   `base` block is built. That is 65+ sites, and it MISSES EVERY PASSTHROUGH:
+%   a document with no migrator still carries a `base` block, still validates
+%   against a V_eta tombstone, and would still be carrying the old field name.
+%
+%   The other obvious version is universalRenames, which every document also
+%   passes through -- but that runs INBOUND, before the migrators. Renaming
+%   there would break every migrator that reads `baseField(preBody,
+%   'datestamp')`, and it would break them SILENTLY: the read returns empty,
+%   the caller falls back to the sentinel, and the document validates carrying
+%   a fabricated creation time. Nothing counts that. Doing it outbound means
+%   migrators keep reading and writing did_v1 spelling internally and NOT ONE
+%   of them needed to change.
+%
+%   THE FAILURE MODE IS LOUD BY CONSTRUCTION. If this function ever fails to
+%   reach a body, that body keeps `base.datestamp` -- an undeclared field
+%   under V_eta -- and quarantines. The dangerous direction (a silently
+%   wrong timestamp) is not reachable from here.
+%
+%   V_delta IS UNTOUCHED. The rename is a V_eta spelling change; a V_delta run
+%   must keep emitting `datestamp` or its own schema rejects the document.
+%
+%   STATUS: NOT VERIFIED BY EXECUTION -- no MATLAB in the authoring
+%   environment.
+if ~strcmp(targetVersion, 'V_eta')
+    return;
+end
+if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base)
+    return;
+end
+% `datestamp` -> `creation_timestamp`. `<noun>_<kind>` is the measured house
+% style (13 `_name`, 11 `_time`, 10 `_type`, 5 `_id`; 0 bare participles in
+% 472 field names), and the kind word is `_timestamp` rather than `_time`
+% because all 22 existing `_time`/`_times` fields are NUMERIC -- offsets and
+% durations in seconds, never wall-clock instants.
+if isfield(body.base, 'datestamp')
+    if ~isfield(body.base, 'creation_timestamp')
+        body.base.creation_timestamp = body.base.datestamp;
+    end
+    body.base = rmfield(body.base, 'datestamp');
 end
 end
 

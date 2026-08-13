@@ -589,8 +589,8 @@
 %         Brainstorm-J migrator: the per-epoch companion-spreadsheet bytes ->
 %         `acquisition_metadata_file`.
 %     daqreader
-%         Brainstorm-J migrator: did_v1 daqreader DISSOLVES into a `software` entity.
-%         1 -> 1, base.id PRESERVED.
+%         Brainstorm-J migrator: did_v1 daqreader folds to an `acquisition_reader` + a
+%         `software` entity. 1 -> 2, base.id PRESERVED ON THE READER.
 %     daqreader_epochdata_ingested
 %         Brainstorm-J migrator: lift the epoch's clock extents out of `epochtable`
 %         into `relative_reference` documents.
