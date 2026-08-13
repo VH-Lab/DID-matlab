@@ -161,6 +161,23 @@ if ~isempty(epochStr) && ~isempty(subjectId)
         epochClk = 'dev_local_time';
     end
     epochRef.epoch_bounded_reference = struct('epoch_clock', epochClk);
+    % THE EXTENT, in the shape relative_reference uses, so epochAnchorFold's
+    % job is a COPY and not a translation (did-schema: the slot is a verbatim
+    % deep copy of relative_reference.value). ANCHOR AND EXTENT ARE SEPARATE
+    % FACTS -- start + duration, NOT start + end -- which is the signed time
+    % model, so t1 is converted here rather than carried raw.
+    %
+    % NO TIMES => NO VALUE. A NaN or absent interval is a hollow reference,
+    % the exact thing silentLoss and isFragment exist to catch, so the block
+    % is attached only when both ends are real numbers.
+    t0t1 = numVec(getField(getBlock(preBody, 'epochclocktimes'), 't0_t1'));
+    if numel(t0t1) >= 2 && all(isfinite(t0t1(1:2)))
+        epochRef.value = struct( ...
+            'relation', otTerm(''), ...
+            'clock',    otTerm(epochClk), ...
+            'start',    withSeconds(double(t0t1(1))), ...
+            'duration', withSeconds(double(t0t1(2) - t0t1(1))));
+    end
 end
 
 % ---- the discoverable, body-backed voltage_observation ----------------------
@@ -254,6 +271,18 @@ end
 
 function c = durationComposite(seconds)
 c = struct('source_unit', 's', 'source_value', double(seconds), 'approximate', false);
+end
+
+function c = withSeconds(seconds)
+%WITHSECONDS A `duration` composite WITH its canonical filled.
+%   durationComposite/1 sets only the provenance triple (source_unit,
+%   source_value, approximate) and leaves `seconds` -- the CANONICAL, and the
+%   field a cross-document query actually reads -- to the schema blank. That is
+%   fine where the source unit is the whole story; it is not fine for an epoch
+%   extent, which exists to be compared. Set here rather than inside
+%   durationComposite so the shared helper's other call sites keep their shape.
+c = durationComposite(seconds);
+c.seconds = double(seconds);
 end
 
 function t = otTerm(name)
