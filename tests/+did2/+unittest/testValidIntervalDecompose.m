@@ -207,8 +207,14 @@ b.(blockName) = block;
 end
 
 function b = sessionDoc()
+% `local_identifier`, NOT `reference`. This is a V_eta body, and V_eta renamed
+% the field on 2026-08-13 (signed) so `session` names its handle the way
+% `epoch` and `subject` directly below already do. `reference` is now
+% UNDECLARED, so the old spelling quarantined this fixture, which took the
+% anchor out of the batch and turned a fixture typo into an orphan edge --
+% caught by testEveryEmittedEdgeResolvesInsideTheBatch, which is what it is for.
 b = etaBody('session', {'entity'}, 'session_doc_1', 'session', ...
-    struct('reference', 'fixture_session'), []);
+    struct('local_identifier', 'fixture_session'), []);
 end
 
 function b = epochDoc(id, localIdentifier)

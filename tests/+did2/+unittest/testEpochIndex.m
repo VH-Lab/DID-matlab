@@ -592,8 +592,13 @@ id = ['sd_' sessionId];
 end
 
 function b = sessionDoc(sessionId)
+% `local_identifier`, NOT `reference` -- V_eta renamed the field on 2026-08-13
+% (signed) and `reference` is now UNDECLARED on this class. Unlike the same
+% fixture in testValidIntervalDecompose this one was NOT failing, because
+% nothing here validates it; that makes it a latent quarantine rather than a
+% correct fixture, so it moves with the schema.
 b = etaBody('session', {'entity'}, sessionDocIdFor(sessionId), sessionId, ...
-    'session', struct('reference', 'fixture_session'), []);
+    'session', struct('local_identifier', 'fixture_session'), []);
 end
 
 function b = epochDoc(id, sessionId, localIdentifier)

@@ -64,6 +64,28 @@ function out = runJValidated(v1)
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 end
 
+function blk = bodyBlock(doc)
+%BODYBLOCK The emitted `session` block, as a plain struct.
+%   THROUGH doc.toStruct(), AND THAT IS NOT INCIDENTAL. The first draft of
+%   this file reached for `doc.document_properties.session`, which threw and
+%   took both absence tests down with it -- did2.document names the property
+%   `documentProperties`, not `document_properties`. That exact confusion is
+%   already on the record here: it is the bug that made
+%   `did2.validate.silentLoss` report `total_docs = 0` on all five corpora
+%   for two days while reading nothing (testSilentLoss.m:25-26).
+%
+%   `get` is no use for these two tests: they assert a field is GONE, and
+%   `get` on an absent path errors rather than returning empty, so a failure
+%   and the condition under test look identical. toStruct + isfield is what
+%   the demo fold uses for the same job (testMigratorsJDemoFold.m:147-149).
+s = doc.toStruct();
+if ~isfield(s, 'session')
+    blk = struct();
+    return;
+end
+blk = s.session;
+end
+
 function msg = reasonsOf(out)
 %REASONSOF The quarantine reasons, as a NON-EMPTY diagnostic.
 if isempty(out.quarantine)
@@ -156,7 +178,7 @@ function testTheOldSpellingIsGoneNotMerelyShadowed(testCase)
 % drift the rename exists to end.
 out = runJ(sessionV1('ts_2024'));
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
-blk = out.migrated{1}.document_properties.session;
+blk = bodyBlock(out.migrated{1});
 verifyFalse(testCase, isfield(blk, 'reference'), ...
     'session.reference survived the rename alongside session.local_identifier');
 end
@@ -166,7 +188,7 @@ function testTheThreeVZetaInventionsAreRemoved(testCase)
 % on the post-rename schema and would quarantine the document if carried.
 out = runJ(sessionVZetaVintage('ts_2024'));
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
-blk = out.migrated{1}.document_properties.session;
+blk = bodyBlock(out.migrated{1});
 for f = {'type', 'date', 'purpose'}
     verifyFalse(testCase, isfield(blk, f{1}), ...
         sprintf('session.%s survived; it is undeclared and will quarantine', f{1}));
