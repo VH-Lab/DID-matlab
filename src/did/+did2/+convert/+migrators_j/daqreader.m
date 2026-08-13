@@ -105,8 +105,15 @@ end
 implClass    = jGetChar(blk, 'ndi_daqreader_class');
 readerString = jGetChar(blk, 'reader_string');
 
-if isempty(implClass) || ~isempty(readerString)
-    bodies = {preBody};     % see THE GUARDS above
+% GUARD 2 IS GONE, and its removal is the point of this change. It read
+% `|| ~isempty(readerString)` and passed the document through because
+% `software` had nowhere to put a reader string. `acquisition_reader` now
+% does (did-schema b014e27), so the fact has a home and the guard would only
+% preserve the gap it documented. Guard 1 survives in the weaker form below:
+% a body with NEITHER a class name NOR a reader string says nothing at all,
+% and minting entities from it would be the hollow-document defect.
+if isempty(implClass) && isempty(readerString)
+    bodies = {preBody};
     return;
 end
 
@@ -124,20 +131,47 @@ end
 % v1 records no version for a reader -- the template has no version field -- so
 % the entity carries a name only and jSoftware's local_identifier is the bare
 % class name, which is the dedup key the second pass will merge on.
-software = jSoftware(implClass, '', '', sessionId, datestamp);
+[software, swId] = jSoftware(implClass, '', '', sessionId, datestamp);
 
-% base.id PRESERVED (see above). jSoftware mints a fresh id because most of its
-% callers need one; here the id is the point of the fold, so it is overwritten
-% rather than left to drift.
-if ~isempty(srcId)
-    software.base.id = srcId;
+% THE PRESERVED id MOVES TO THE READER, AND THAT IS A DELIBERATE REVERSAL.
+% It used to sit on the `software` body, because `software` was what
+% `acquisition_system.reader_id` pointed at. That edge now points at
+% `acquisition_reader` (did-schema b014e27), and v1's `daqsystem.daqreader_id`
+% names the v1 DAQREADER document -- so the reader is the body that must carry
+% the id forward or every reader_id edge dangles. `software` keeps the fresh
+% id jSoftware minted, which is also what lets the deferred dedup pass merge
+% two rigs sharing one implementation class (#25).
+ds = datestamp;
+if isempty(ds)
+    ds = '2024-01-01T00:00:00.000Z';   % the sentinel jSoftware/jSessionAnchor use
 end
-% base.name: v1's reader writer sets none (only base.id and base.session_id), so
-% jSoftware's default -- the class name -- normally stands. A document that DOES
-% carry a name keeps it rather than having it replaced by the class string.
-if ~isempty(srcName)
-    software.base.name = srcName;
+readerId = srcId;
+if isempty(readerId)
+    readerId = did.ido.unique_id();
 end
 
-bodies = {software};
+reader = struct();
+reader.document_class = struct('class_name', 'acquisition_reader', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
+    'schema_version', 'V_eta');
+% NEVER AN EMPTY EDGE. `software_id` is optional on `acquisition_reader`, and
+% #37 RequiredDependencies is armed, so an absent software is an ABSENT edge
+% rather than a present-but-blank one -- the invented-empty-edge pattern this
+% repository has paid for six times.
+if isempty(swId)
+    reader.depends_on = struct('name', {}, 'value', {});
+else
+    reader.depends_on = struct('name', {'software_id'}, 'value', {swId});
+end
+reader.base = struct('id', readerId, 'session_id', char(sessionId), ...
+    'name', srcName, 'datestamp', ds);
+reader.acquisition_reader = struct('reader_string', readerString);
+
+% The reader leads: it is the body that keeps the source id, so a caller
+% reading bodies{1} gets the document the graph still points at.
+bodies = {reader};
+if ~isempty(software)
+    bodies{end+1} = software;
+end
 end

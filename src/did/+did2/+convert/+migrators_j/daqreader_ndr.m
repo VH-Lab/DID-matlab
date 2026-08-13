@@ -72,4 +72,20 @@ end
 if isfield(v2Body, 'daqreader_ndr')
     v2Body = rmfield(v2Body, 'daqreader_ndr');
 end
+
+% AND NOW HAND IT ON, which is the half that was missing. Renaming the class to
+% `daqreader` did NOT put this document on daqreader.m's path:
+% did2.convert.v1_to_v2/runConcreteMigrator dispatches ONCE, on the SOURCE class
+% name, and never re-dispatches after a migrator rewrites it. So a
+% `daqreader_ndr` document came out of here as a `daqreader` -- a class the
+% signed daq decision retires -- and daqreader.m's own header said so:
+% "this migrator is not on that path today".
+%
+% Delegating here is the whole fix, and it is safe in both directions: the
+% de-encode above has already moved ndr_reader_string onto
+% daqreader.reader_string, so daqreader.m sees exactly the shape it expects,
+% and if it decides there is nothing to say it returns the body unchanged.
+% Both PRED `daqreader_ndr` documents carry reader_string 'intan', which is
+% precisely the case the old guard passed through.
+v2Body = did2.convert.migrators_j.daqreader(v2Body);
 end

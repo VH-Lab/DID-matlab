@@ -2468,8 +2468,33 @@ body.daqreader = struct('ndi_daqreader_class', 'ndi.daq.reader.mfdaq.ndr');
 body.daqreader_ndr = struct('ndi_daqreader_ndr_class', 'ndi.daq.reader.mfdaq.ndr', ...
     'ndr_reader_string', 'intan', 'file_extension', '.rhd');
 out = did2.convert.migrators_j.daqreader_ndr(body);
-verifyEqual(testCase, out.document_class.class_name, 'daqreader');
-verifyEqual(testCase, out.daqreader.reader_string, 'intan');
+% THE CONTRACT CHANGED 2026-08-13 AND SO DID THESE ASSERTIONS. This used to
+% assert the INTERMEDIATE -- a body whose class_name had become `daqreader` --
+% and that intermediate was the defect: v1_to_v2 dispatches once on the SOURCE
+% class, so nothing ever handed it on to daqreader.m and the document came to
+% rest as `daqreader`, a class the signed daq decision retires. daqreader_ndr.m
+% now delegates, so the de-encode and the fold are one step and the output is a
+% CELL of bodies rather than one struct.
+verifyClass(testCase, out, 'cell');
+verifyEqual(testCase, numel(out), 2, ...
+    'expected the acquisition_reader + its software entity');
+reader = out{1};
+software = out{2};
+% The READER leads and keeps the source id: acquisition_system.reader_id points
+% at `acquisition_reader`, and v1 daqsystem.daqreader_id names the v1 daqreader
+% document, so this is the body every reader_id edge still resolves to.
+verifyEqual(testCase, reader.document_class.class_name, 'acquisition_reader');
+verifyEqual(testCase, reader.base.id, 'ndr_1', ...
+    'base.id must be preserved on the reader or reader_id edges dangle');
+verifyEqual(testCase, reader.acquisition_reader.reader_string, 'intan');
+% The implementation class became a `software` entity with its OWN id -- which
+% is what lets the deferred dedup pass merge rigs sharing one class (#25).
+verifyEqual(testCase, software.document_class.class_name, 'software');
+verifyEqual(testCase, software.software.name, 'ndi.daq.reader.mfdaq.ndr');
+verifyNotEqual(testCase, software.base.id, reader.base.id);
+% The edge is PRESENT and POPULATED, never present-and-blank.
+verifyEqual(testCase, reader.depends_on(1).name, 'software_id');
+verifyEqual(testCase, reader.depends_on(1).value, software.base.id);
 % INVERTED 2026-08-10. This asserted that `file_extension` is carried across.
 % It is an INVENTED field -- `git grep -l "file_extension" origin/main --
 % '*.m' '*.json'` returns ZERO files, so no NDI template declares it and no
@@ -2482,11 +2507,21 @@ verifyEqual(testCase, out.daqreader.reader_string, 'intan');
 % -- the source field cannot appear on a real document -- which is exactly why
 % it survived. The fixture above still SETS it, deliberately: that is what
 % makes this an assertion about the migrator rather than about the fixture.
-verifyFalse(testCase, isfield(out.daqreader, 'file_extension'), ...
-    'file_extension is invented; carrying it emits an undeclared field');
-verifyEqual(testCase, out.daqreader.ndi_daqreader_class, 'ndi.daq.reader.mfdaq.ndr');
-% the subtype block is gone
-verifyFalse(testCase, isfield(out, 'daqreader_ndr'));
+% The invented field must not survive ANYWHERE now, which is a stronger claim
+% than the old one: it used to be checked on the intermediate's `daqreader`
+% block, and that block no longer exists on either emitted body.
+verifyFalse(testCase, isfield(reader, 'daqreader'), ...
+    'the daqreader block dissolves; it is not carried onto the reader');
+for k = 1:numel(out)
+    verifyFalse(testCase, isfield(out{k}, 'daqreader_ndr'), ...
+        'the subtype block is gone');
+    verifyFalse(testCase, isfield(out{k}, 'file_extension'), ...
+        'file_extension is invented; carrying it emits an undeclared field');
+end
+% The implementation class is not LOST by dissolving -- it is the software
+% entity's name, which is where the signed decision puts it.
+verifyEqual(testCase, software.software.local_identifier, ...
+    'ndi.daq.reader.mfdaq.ndr');
 end
 
 function testMfdaqIngestedDeEncodesToDaqreaderEpochdataIngested(testCase)
