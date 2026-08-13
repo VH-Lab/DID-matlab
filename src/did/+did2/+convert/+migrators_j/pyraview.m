@@ -109,6 +109,60 @@ anchor.base = struct('id', anchorId, 'session_id', sessionId, ...
 anchor.time_reference = struct('is_approximate', true);
 anchor.session_relative_reference = struct('relation', 'during');
 
+% ---- the EPOCH HANDLE: identity + clock, for the batch passes ---------------
+% WITHOUT THIS, PYRAVIEW'S EPOCH DISAPPEARS ENTIRELY. `pyraview` is EPOCH-SCOPED
+% BY DECLARATION -- NDI's template declares superclasses
+% ['epochclocktimes.json', 'filter.json'], and that mixin carries the `epochid`
+% block. This migrator read NEITHER, so migration dropped the epoch dimension in
+% two pieces: WHICH epoch (`epochid.epochid`) and its EXTENT + CLOCK
+% (`epochclocktimes`). In the PRED corpus, pyraview is the ONLY document
+% carrying an epoch id, so the whole corpus minted no epoch at all.
+%
+% `epoch_bounded_reference` is the right carrier and is NOT a new class: it
+% already carries the `epochid` mixin AND is a `time_reference`, which is
+% exactly the pass-1 HANDLE pattern this pipeline uses for anchors it cannot
+% resolve yet (see the session anchor above, and
+% did2.convert.resolveSessionAnchors). It is not in the persist set, and does
+% not need to be -- a handle is consumed, not kept:
+%
+%     did2.convert.epochMint      reads `epochid.epochid` off migrated bodies
+%                                 and mints one `epoch` per (session, id)
+%     ndi.migrate.internal.epochAnchorFold
+%                                 folds this handle into a `relative_reference`
+%                                 anchored to that epoch, base.id PRESERVED
+%
+% THE EXTENT IS DELIBERATELY NOT CARRIED HERE. `epoch_bounded_reference` has no
+% slot for an interval, and adding one to a class scheduled for deletion was
+% considered and REJECTED (team, 2026-08-13). The extent belongs to the EPOCH --
+% several documents can share one epoch and would each report the same interval
+% -- so epochMint mints it off the epoch's own `time_reference_#`. That half is
+% signed and NOT YET BUILT; this commit is the identity half it depends on.
+%
+% NO EPOCH ID => NO HANDLE. An epoch_bounded_reference with an empty epochid
+% names no epoch and is a hollow document; `element_id` is REQUIRED on the class
+% and is the same referent the observation uses.
+epochStr = getCharField(getBlock(preBody, 'epochid'), 'epochid');
+epochClk = getCharField(getBlock(preBody, 'epochclocktimes'), 'clocktype');
+epochRefId = '';
+if ~isempty(epochStr) && ~isempty(subjectId)
+    epochRefId = did.ido.unique_id();
+    epochRef = struct();
+    epochRef.document_class = classBlock('epoch_bounded_reference', ...
+        {'time_reference', 'epochid'}, TV);
+    epochRef.depends_on = struct('name', {'element_id'}, 'value', {subjectId});
+    epochRef.base = struct('id', epochRefId, 'session_id', sessionId, ...
+        'name', 'migrated_epoch_anchor', 'datestamp', datestamp);
+    epochRef.time_reference = struct('is_approximate', false);
+    epochRef.epochid = struct('epochid', epochStr);
+    % `epoch_clock` is mustBeNonEmpty. v1 records it in the epochclocktimes
+    % block; NDI's own default for a device-local epoch clock is dev_local_time,
+    % and PRED's document says exactly that.
+    if isempty(epochClk)
+        epochClk = 'dev_local_time';
+    end
+    epochRef.epoch_bounded_reference = struct('epoch_clock', epochClk);
+end
+
 % ---- the discoverable, body-backed voltage_observation ----------------------
 % A pyraview is a decimated view of a continuous recorded signal -> default to the
 % voltage_observation quantity leaf (the abstract/collapsed dataseries_observation
@@ -174,6 +228,14 @@ for k = 1:numel(fileList)
     bodies{end+1} = b; %#ok<AGROW>
 end
 bodies{end+1} = anchor;
+% The epoch handle rides alongside the session anchor rather than replacing it:
+% they answer different questions ("during the session, approximately" vs "which
+% epoch, in which clock"), and the session anchor is what the observation's
+% time_reference_1 edge already points at. Emitted only when there is an epoch
+% id to name -- see the guard above.
+if ~isempty(epochRefId)
+    bodies{end+1} = epochRef;
+end
 if ~isempty(filterDoc)
     bodies{end+1} = filterDoc;
 end
