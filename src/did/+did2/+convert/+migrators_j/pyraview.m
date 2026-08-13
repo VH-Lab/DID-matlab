@@ -197,6 +197,25 @@ obs.document_class = classBlock('voltage_observation', {'subject_observation', '
 obs.depends_on = [ ...
     struct('name', 'subject_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
+% AND time_reference_2 -> THE EPOCH, when there is one. Without this edge the
+% epoch reference emitted above is UNREACHABLE from the observation: the epoch
+% identity and extent survive migration, but a reader holding the signal cannot
+% get from it to "when did this happen, in the device clock". An emitted
+% document nothing points at reads as finished work and is not.
+%
+% THE FAMILY IS LEGAL BY CONSTRUCTION, not by luck. The uniqueness rule
+% (`referent_unique_by`, subject_interaction: time_reference_# discriminated by
+% `value.clock`) says members of one family must differ by clock -- and these
+% two do: the session anchor names no clock at all, the epoch reference names
+% `dev_local_time`. Two members, two distinct clocks.
+%
+% This is the LINK, not the `epoch_id` edge. That edge is declared by exactly
+% four V_eta classes and `voltage_observation` is not one of them, so wiring it
+% needs a schema increment and belongs with the epoch family (#60).
+if ~isempty(epochRefId)
+    obs.depends_on(end+1) = ...
+        struct('name', 'time_reference_2', 'value', epochRefId);
+end
 obs.base = struct('id', obsId, 'session_id', sessionId, ...
     'name', 'migrated_signal', 'datestamp', datestamp);
 % storage_mode: body -> the value is in the sampled_body; the statement carries no
