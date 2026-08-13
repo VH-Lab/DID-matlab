@@ -44,6 +44,14 @@ on:
       #   corpus-run-token: 3
       - ".github/workflows/test-corpus.yml"
   workflow_dispatch:
+    inputs:
+      corpora:
+        description: >-
+          Space- or comma-separated corpus names to run, e.g. "PRED" or
+          "PRED Dab". Empty runs all six.
+        required: false
+        default: ''
+        type: string
   schedule:
     # 07:00 UTC daily. The full corpus is the slow, thorough gate; PRs are
     # served by test-migrators-quick.yml (~2 min). Measured 2026-08-10 on the
@@ -61,7 +69,59 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # WHICH CORPORA TO RUN. Added 2026-08-13 because iterating on ONE corpus was
+  # costing six MATLAB runners. PRED is 14 documents and finishes in seconds;
+  # JH alone is ~70 minutes of the 70-minute wall clock, and a 6-wide matrix
+  # queued 85 MINUTES for runners on 2026-08-13 while single-job workflows on
+  # the same account got one in seconds. So the cost of "just re-run the
+  # corpus" was two hours to learn something about 14 documents.
+  #
+  # THE DEFAULT IS STILL ALL SIX. An empty input runs the full set, so the
+  # schedule, the push trigger and a bare dispatch are unchanged -- the subset
+  # is opt-in and cannot silently narrow the nightly gate. That matters more
+  # than the convenience: a corpus gate that quietly stopped covering five
+  # corpora would read exactly like one that passed.
+  select:
+    name: "select corpora"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          set -euo pipefail
+          ALL='["20211116","B","Dab","JH","PRED","Soph"]'
+          RAW='${{ inputs.corpora }}'
+          if [ -z "$(echo "$RAW" | tr -d '[:space:],')" ]; then
+            echo "DENOMINATOR: no selection given -- running all 6 corpora"
+            echo "matrix=$ALL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # NO HEREDOC. The first draft piped an indented python heredoc, and
+          # `<<'EOF'` preserves leading whitespace -- the interpreter would have
+          # hit an IndentationError on the runner and nowhere else. Pure bash
+          # has no such trap and this validation is a membership test.
+          picked=""
+          for want in $(echo "$RAW" | tr ',' ' '); do
+            case "$want" in
+              20211116|B|Dab|JH|PRED|Soph) ;;
+              *) echo "::error::unknown corpus '$want'; known: 20211116 B Dab JH PRED Soph"
+                 exit 1 ;;
+            esac
+            # A TYPO MUST FAIL, NOT SILENTLY RUN NOTHING. An empty matrix is a
+            # green job that measured zero documents -- the all-zero census this
+            # repository has shipped before.
+            case ",$picked," in
+              *",\"$want\","*) ;;                      # already selected
+              *) picked="$picked${picked:+,}\"$want\"" ;;
+            esac
+          done
+          echo "DENOMINATOR: selection '$RAW' -> [$picked]"
+          echo "matrix=[$picked]" >> "$GITHUB_OUTPUT"
+
   corpus:
+    needs: select
     name: "corpus: ${{ matrix.corpus }}"
     runs-on: ubuntu-latest
     strategy:
@@ -69,7 +129,7 @@ jobs:
       # see every corpus's numbers in one pass.
       fail-fast: false
       matrix:
-        corpus: ["20211116", "B", "Dab", "JH", "PRED", "Soph"]
+        corpus: ${{ fromJSON(needs.select.outputs.matrix) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
