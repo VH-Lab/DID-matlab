@@ -1419,7 +1419,7 @@ classdef cache < handle
         function aff = affinityFor(fieldType)
             % affinityFor - SQLite type affinity for a V_delta scalar type.
             switch fieldType
-                case {'char', 'did_uid', 'timestamp', 'string'}
+                case {'char', 'did_uid', 'timestamp', 'date', 'string'}
                     aff = 'TEXT';
                 case {'boolean', 'integer'}
                     aff = 'INTEGER';
@@ -1753,7 +1753,7 @@ classdef cache < handle
 
         function tf = isScalarValue(~, value, fieldType)
             switch fieldType
-                case {'char', 'string', 'did_uid', 'timestamp'}
+                case {'char', 'string', 'did_uid', 'timestamp', 'date'}
                     tf = (ischar(value) && (isempty(value) || size(value,1) <= 1)) ...
                         || (isstring(value) && isscalar(value));
                 otherwise
@@ -1763,7 +1763,7 @@ classdef cache < handle
 
         function validateTypeShape(~, value, fieldType, qualifiedName)
             switch fieldType
-                case {'char', 'did_uid', 'timestamp'}
+                case {'char', 'did_uid', 'timestamp', 'date'}
                     if ~(ischar(value) || (isstring(value) && isscalar(value)))
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be char/string (type %s).', qualifiedName, fieldType);

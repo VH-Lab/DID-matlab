@@ -1511,6 +1511,38 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             field_name, doc_name);
                     end
 
+                case 'date'
+                    % A CALENDAR DATE, NOT AN INSTANT, and the difference is
+                    % the whole reason `date` exists as a type separate from
+                    % `timestamp` (DID-schema 2026-08-13). PARTIAL PRECISION IS
+                    % VALID: a source may give a year, a year-month or a full
+                    % date, and forcing the shorter ones into an instant would
+                    % invent a month, a day and a time nobody supplied --
+                    % `publication.publication_date` is documented "Publication
+                    % date/year" for exactly that reason.
+                    %
+                    % Deliberately NOT parsed with java.time.LocalDateTime like
+                    % the `timestamp` case above: LocalDateTime rejects '2019'
+                    % and '2019-03', which are the values this type exists to
+                    % accept. The regexp is the constraint.
+                    %
+                    % THIS CASE IS REQUIRED, not defensive: the `otherwise`
+                    % branch below ERRORS on an unrecognised type, so a
+                    % `date`-typed field reaching this legacy validator without
+                    % it would fail as an invalid type rather than be checked.
+                    assert(ischar(value) || isempty(value), ...
+                        'DID:Database:ValidationFieldDate', ...
+                        'Invalid non-char sub-field %s found in %s', ...
+                        field_name, doc_name);
+                    if ~isempty(value)
+                        isOk = ~isempty(regexp(value, ...
+                            '^\d{4}(-\d{2}(-\d{2})?)?$', 'once'));
+                        assert(isOk, 'DID:Database:ValidationFieldDate', ...
+                            ['Invalid date sub-field %s in %s: expected ' ...
+                             'YYYY, YYYY-MM or YYYY-MM-DD'], ...
+                            field_name, doc_name);
+                    end
+
                 case {'char','string'}
                     isOk = isempty(value)|ischar(value);
                     assert(isOk, ...
