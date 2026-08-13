@@ -455,7 +455,12 @@ catch refReportErr
     refErrMsg = refReportErr.message;
     fprintf('reference report skipped: %s\n', refErrMsg);
 end
-result.reference_integrity = referenceIntegrityBlock(refRep, refErrMsg);
+% MOVED to +helpers/referenceIntegrityBlock.m 2026-08-13, unchanged, when
+% testCorpusPRED became a second caller. One implementation of "how an orphan
+% sweep is recorded", so the two call sites cannot drift into reporting the
+% same fact two ways.
+result.reference_integrity = ...
+    did2.unittest.helpers.referenceIntegrityBlock(refRep, refErrMsg);
 
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
@@ -530,7 +535,8 @@ end
 if ~isempty(refRep)
     fprintf('\n--- reference integrity (%s): %d orphan(s) of %d edges ---\n', ...
         corpusName, refRep.orphan_count, refRep.edges_examined);
-    [orphNames, orphCounts] = aggregateOrphans(refRep.orphans);
+    [orphNames, orphCounts] = ...
+        did2.unittest.helpers.aggregateOrphans(refRep.orphans);
     for i = 1:numel(orphNames)
         fprintf('  %6d  %s\n', orphCounts(i), orphNames{i});
     end
@@ -578,88 +584,6 @@ for k = 1:min(numel(reasons), 15)
     fprintf('  %5d  [%s] %s\n', reasons(k).count, ...
         reasons(k).class_name, reasons(k).reason);
 end
-end
-
-function [names, counts] = aggregateOrphans(orphans)
-%AGGREGATEORPHANS Count dangling edges by "doc_class.edge_name", desc.
-names = {};
-counts = [];
-for k = 1:numel(orphans)
-    key = sprintf('%s.%s', orphans(k).doc_class, orphans(k).edge_name);
-    idx = find(strcmp(names, key), 1);
-    if isempty(idx)
-        names{end+1} = key;  %#ok<AGROW>
-        counts(end+1) = 1;   %#ok<AGROW>
-    else
-        counts(idx) = counts(idx) + 1;
-    end
-end
-if ~isempty(counts)
-    [counts, order] = sort(counts, 'descend');
-    names = names(order);
-end
-end
-
-function block = referenceIntegrityBlock(refRep, errMsg)
-%REFERENCEINTEGRITYBLOCK The persistable form of did2.validate.references.
-%   The second half of the "0 quarantine + 0 orphans" gate, shaped so it can be
-%   written into <corpus>-summary.json and rendered by tools/census_digest.py.
-%
-%   `audit` NAMES THE INSTRUMENT INSIDE THE BLOCK. The digest finds this block
-%   BY SHAPE rather than by key name -- guessing a key name and then reporting
-%   ABSENT when the guess missed is the demo_ndi failure (a query against a
-%   string the input never contained, reported as a fact about the input). A
-%   self-describing block means the FAILED case is findable by shape too, and
-%   not only the successful one.
-%
-%   TWO DENOMINATORS, BOTH CARRIED, because one of them is the whole reason a
-%   zero here is readable. `orphan_count == 0` with `edges_examined == 0` means
-%   the sweep looked at nothing; `orphan_count == 0` with `edges_examined` in
-%   the hundreds of thousands means every edge resolved. Those are opposite
-%   findings and they print the same digit.
-%
-%   THE `orphans` ARRAY IS A CAPPED SAMPLE AND THE CAP ANNOUNCES ITSELF, the
-%   same rule v1_to_v2's quarantine sample follows: a silent truncation is how
-%   a report starts lying. JH alone carries >900k edges, so an unbounded array
-%   would put a multi-hundred-megabyte artifact in the failure case -- exactly
-%   the run whose report you need. `orphan_rows` is the COMPLETE aggregate
-%   (bounded by the number of distinct class.edge pairs, not by the number of
-%   orphans), so no count is lost to the cap: the sample shows what one looked
-%   like, the rows say how many there were.
-sampleCap = 200;
-if isempty(refRep)
-    % NOT a zero. The sweep did not produce a report, and the reason travels
-    % with the block so "the audit failed" and "this corpus never swept"
-    % (testCorpusPRED calls did2.validate.references at no point) are
-    % different output rather than one shared silence.
-    if isempty(errMsg)
-        errMsg = 'did2.validate.references returned no report';
-    end
-    block = struct('audit', 'did2.validate.references', ...
-        'audit_failed', errMsg);
-    return;
-end
-[names, counts] = aggregateOrphans(refRep.orphans);
-rows = struct('key', {}, 'count', {});
-for k = 1:numel(names)
-    rows(end+1) = struct('key', names{k}, 'count', counts(k)); %#ok<AGROW>
-end
-shown = min(sampleCap, numel(refRep.orphans));
-% BUILT FIELD BY FIELD RATHER THAN WITH struct(...). struct() EXPANDS a cell
-% value into a struct ARRAY, and `orphan_rows` / `orphans` are arrays here;
-% one of them arriving as a cell would silently turn this single block into an
-% N-element struct array and the digest would then see a shape no test covers.
-% This code has never been executed (no MATLAB in the authoring container), so
-% it is written to have one behaviour rather than a documented one.
-block = struct();
-block.audit = 'did2.validate.references';
-block.total_docs = refRep.total_docs;
-block.edges_examined = refRep.edges_examined;
-block.orphan_count = refRep.orphan_count;
-block.orphan_rows = rows;
-block.orphans_shown = shown;
-block.orphan_sample_cap = sampleCap;
-block.orphans = refRep.orphans(1:shown);
 end
 
 

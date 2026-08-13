@@ -267,6 +267,51 @@ try
 catch retentionErr
     result.epoch_string_retention = struct('audit_failed', retentionErr.message);
 end
+% REFERENCE INTEGRITY -- THE OTHER HALF OF THE GATE, ADDED 2026-08-13.
+%
+% The corpus gate is stated everywhere in this project as "0 quarantine AND 0
+% ORPHANS". This file asserted the first half only: it never called
+% did2.validate.references at any point, so the corpus we treat as the HARD
+% gate was the one corpus with no orphan check at all. runCorpusDiscovery has
+% swept for orphans on the other five since it was written; PRED was left out
+% by omission rather than by decision, and the omission was invisible because
+% a green PRED reads identically whether the sweep ran or not.
+%
+% IT IS NOT ACADEMIC ON THIS CORPUS, WHICH IS WHY IT IS WORTH THE LINES. PRED
+% is where today's new cross-document edges land: pyraview's `time_reference_2`
+% pointing at the epoch reference, element's `instrument_id` on the
+% voltage_observation, and the daqreader_ndr fold's preserved id, which two
+% `daqsystem` documents name through `daqreader_id`. Every one of those is an
+% edge that did not exist last week, and a dangling one would have passed this
+% gate.
+%
+% THE SOURCE GRAPH IS CLEAN, so a non-zero here is OURS, not the corpus's --
+% measured 2026-08-13 by reading the zip directly:
+%
+%   DENOMINATOR: 14 document(s), 14 distinct base.id, 1 distinct session_id
+%     edges examined 13, empty 4, DANGLING 0
+%   The 4 empty edges are the two `element.underlying_element_id` (neither
+%   element is derived) and the two `daqsystem.daqmetadatareader_id` bare slots
+%   that NDI's add_dependency_value_n leaves empty beside `_id_1`. All four are
+%   optional on their V_eta targets, so none can trip #37.
+%
+% SITED BEFORE writeCorpusReport, deliberately and for the reason this file
+% already gives three times: the report must reach the artifact even when the
+% gate goes red, and a red orphan gate is exactly the run whose report you
+% need. The assertion is BELOW the write, with the other fatal checks.
+refRep = [];
+refErrMsg = '';
+try
+    refRep = did2.validate.references(result.migrated);
+catch refReportErr
+    % A FAILED SWEEP AND A CORPUS THAT NEVER SWEPT MUST NOT RENDER ALIKE.
+    % Carried as `audit_failed` with no counts, never as a zero.
+    refErrMsg = refReportErr.message;
+    fprintf('PRED reference report skipped: %s\n', refErrMsg);
+end
+result.reference_integrity = ...
+    did2.unittest.helpers.referenceIntegrityBlock(refRep, refErrMsg);
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
 
@@ -320,6 +365,50 @@ end
 verifyEqual(testCase, result.summary.quarantine_count, 0, diag);
 verifyGreaterThanOrEqual(testCase, result.summary.migrated_count, ...
     result.summary.total, diag);
+
+% ...AND ZERO ORPHANS. The report is already on disk, so this can be fatal
+% without costing the run its census -- the same order every other assertion
+% in this file follows.
+%
+% A MISSING SWEEP IS ITS OWN FAILURE, NOT A PASS. If did2.validate.references
+% threw, `reference_integrity` carries `audit_failed` and NO counts, and the
+% branch below fails on that rather than skipping -- because "no orphans" and
+% "nobody looked" printing the same green is the exact defect this project
+% has paid for repeatedly.
+%
+% AND THE DENOMINATOR IS ASSERTED ALONGSIDE THE COUNT. `orphan_count == 0`
+% with `edges_examined == 0` means the sweep read nothing; PRED's source
+% carries 13 non-empty-or-empty edges and its migration adds more, so a zero
+% denominator here would be an instrument fault wearing a clean result.
+ri = result.reference_integrity;
+sweepFailure = '';
+if ~isstruct(ri) || ~isscalar(ri)
+    sweepFailure = 'no reference_integrity block was written at all';
+elseif isfield(ri, 'audit_failed')
+    sweepFailure = ri.audit_failed;
+elseif ~isfield(ri, 'orphan_count') || ~isfield(ri, 'edges_examined')
+    sweepFailure = 'the block carries no counts';
+end
+assertEmpty(testCase, sweepFailure, sprintf( ...
+    ['PRED: the reference-integrity sweep did not run (%s). A corpus with no ' ...
+     'orphan check is not a corpus with no orphans.'], sweepFailure));
+verifyGreaterThan(testCase, ri.edges_examined, 0, ...
+    ['PRED: the orphan sweep examined 0 edges, so its 0 orphans is a ' ...
+     'statement about the sweep and not about the corpus.']);
+if ri.orphan_count > 0
+    rowLines = cell(1, numel(ri.orphan_rows));
+    for k = 1:numel(ri.orphan_rows)
+        rowLines{k} = sprintf('  %s x%d', ...
+            ri.orphan_rows(k).key, ri.orphan_rows(k).count);
+    end
+    orphanDiag = sprintf( ...
+        'PRED: %d orphan edge(s) of %d examined across %d document(s):\n%s', ...
+        ri.orphan_count, ri.edges_examined, ri.total_docs, ...
+        strjoin(rowLines, sprintf('\n')));
+else
+    orphanDiag = '';
+end
+verifyEqual(testCase, ri.orphan_count, 0, orphanDiag);
 end
 
 % --- helpers ---
