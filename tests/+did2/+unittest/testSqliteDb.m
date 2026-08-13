@@ -291,6 +291,84 @@ doc = doc.set('base.name', name);
 doc = doc.set('demoA.value', value);
 end
 
+% ---- the creation timestamp, BOTH VINTAGES ------------------------------
+%
+% REGRESSION TEST, and the regression is the reason this block exists rather
+% than a hypothetical. V_eta renamed `base.datestamp` ->
+% `base.creation_timestamp` (signed 2026-08-13) and the outbound rename in
+% v1_to_v2 strips the old key from every migrated body. `addOne` still
+% required `base.datestamp`, so it threw did2:database:missingField on EVERY
+% migrated document and ndi.migrate.local could not write one.
+%
+% IT WAS INVISIBLE FOR A DAY, AND THE REASON IS STRUCTURAL: every DID-side
+% corpus test validates IN MEMORY and never opens a database. Only
+% ndi.migrate.local writes. So testCorpusPRED stayed green across the whole
+% window while the real migration path was broken end to end, and it was the
+% FIRST RUN of the NDI-side PRED end-to-end test that surfaced it.
+%
+% Both directions are pinned. `blank()` fills whichever name the loaded
+% schema declares, so each test SETS its key explicitly and REMOVES the other
+% -- a document carrying both would pass under any implementation and prove
+% nothing.
+
+function testAddAcceptsTheVEtaCreationTimestamp(testCase)
+db = testCase.TestData.db;
+doc = withOnlyTimeKey(makeDemoA('eta', 'v'), 'creation_timestamp');
+db.add(doc, 'Validate', false);
+verifyEqual(testCase, db.count(), 1, ...
+    'a V_eta document (base.creation_timestamp) was refused by the database');
+end
+
+function testAddStillAcceptsTheDidV1Datestamp(testCase)
+% The old spelling must keep working: a database may hold pre-migration
+% documents, and a one-way rename here would refuse them.
+db = testCase.TestData.db;
+doc = withOnlyTimeKey(makeDemoA('v1', 'v'), 'datestamp');
+db.add(doc, 'Validate', false);
+verifyEqual(testCase, db.count(), 1, ...
+    'a did_v1 document (base.datestamp) was refused by the database');
+end
+
+function testADocumentWithNeitherTimeKeyIsRefusedNamingBoth(testCase)
+% Carrying neither is a REAL fault and must still throw -- accepting it would
+% put a NULL into a NOT NULL column. The message names both spellings so the
+% next reader is not sent looking for the wrong field.
+db = testCase.TestData.db;
+doc = withOnlyTimeKey(makeDemoA('none', 'v'), '');
+err = '';
+try
+    db.add(doc, 'Validate', false);
+catch thrown
+    err = thrown.identifier;
+    msg = thrown.message;
+end
+verifyEqual(testCase, err, 'did2:database:missingField', ...
+    'a document with no creation time was accepted');
+verifySubstring(testCase, msg, 'base.creation_timestamp');
+verifySubstring(testCase, msg, 'base.datestamp');
+end
+
+function verifySubstring(testCase, haystack, needle)
+verifyTrue(testCase, contains(haystack, needle), sprintf( ...
+    'the error message does not name %s: %s', needle, haystack));
+end
+
+function doc = withOnlyTimeKey(doc, keep)
+%WITHONLYTIMEKEY Leave exactly one of the two creation-time keys populated.
+%   `keep` is 'creation_timestamp', 'datestamp', or '' for neither.
+s = doc.toStruct();
+for name = {'creation_timestamp', 'datestamp'}
+    f = name{1};
+    if isfield(s.base, f)
+        s.base = rmfield(s.base, f);
+    end
+end
+if ~isempty(keep)
+    s.base.(keep) = '2024-06-01T12:00:00.000Z';
+end
+doc = did2.document(s);
+end
+
 function doc = makeDemoB(name, valueA, valueB)
 doc = did2.document.blank('demoB');
 doc = doc.set('base.session_id', sprintf('session-%s', name));
