@@ -1,14 +1,32 @@
 function bodies = pyraview(preBody)
 %PYRAVIEW Brainstorm-J migrator: did_v1 pyraview -> a body-backed
-%   dataseries_observation + a sampled_body (+ the shared session anchor).
+%   voltage_observation + a sampled_body (+ the shared session anchor).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
+%
+%   THIS HEADER SAID `dataseries_observation` IN THREE PLACES UNTIL 2026-08-13
+%   AND THE CODE HAS EMITTED `voltage_observation` THROUGHOUT. Team, 2026-08-13:
+%   "There is no dataseries_observation anymore. Voltage is correct." The CODE
+%   was right; the header named a class that does not exist:
+%
+%     DENOMINATOR: 248 json file(s) under DID-schema schemas/V_eta/
+%       dataseries_observation    NOT IN THE BUILT SET
+%       imageseries_observation   NOT IN THE BUILT SET
+%       timeseries_observation    NOT IN THE BUILT SET
+%       voltage_observation       stable/voltage_observation.json  (stable)
+%
+%   The three series-observation classes were phase-8 DELETED -- abstract and
+%   unminted in J, so no document can be an instance of one. A reader trusting
+%   the old title would have gone looking for a schema that was removed, and
+%   `confirm_sheet.py` rendered the mismatch to the team as an open question
+%   about which of the two was intended. It was never a question about the
+%   model; it was a docstring outliving a deletion.
 %   pyraview is a multi-resolution PYRAMID view of a sampled signal (level1..10.bin
 %   decimation levels + native_rate/channels/data_type), tied to a subject via
 %   element_id. In J it dissolves into the data_body model (2.D), exactly like the
 %   image_stack fold:
 %
-%       dataseries_observation  the discoverable spine handle: subject_id, a shared
+%       voltage_observation the discoverable spine handle: subject_id, a shared
 %                           time anchor, a placeholder subject_statement.variable
 %                           (the signal `label`), and storage_mode 'body' (the
 %                           cadence lives in the body, D1).
@@ -49,9 +67,18 @@ function bodies = pyraview(preBody)
 %   `jFrequencyFilter` returns nothing and no `filter_id` is written, so the
 %   output is exactly what it was before.
 %
-%   NOTE: dataseries_observation and the *_body classes are `draft` in V_eta. This
-%   is the pattern-setter for the #9 analysis-tier folds (mint observation + attach
-%   sampled_body). pyraview stays in the schema until this is corpus-proven.
+%   NOTE ON MATURITY, RE-DERIVED 2026-08-13 RATHER THAN CARRIED FORWARD. This
+%   read "dataseries_observation and the *_body classes are `draft`", and half
+%   of it was wrong in each direction -- it named a class that no longer exists,
+%   and it grouped the observation with the bodies when they now differ:
+%
+%       voltage_observation   stable      frequency_filter         stable
+%       sampled_body          DRAFT       epoch_bounded_reference  stable
+%       opaque_body           DRAFT
+%
+%   So the only draft classes this fold touches are the two data bodies. That is
+%   the pattern-setter for the #9 analysis-tier folds (mint observation + attach
+%   sampled_body), and pyraview stays in the schema until this is corpus-proven.
 
 arguments
     preBody (1,1) struct

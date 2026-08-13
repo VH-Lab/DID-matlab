@@ -760,8 +760,8 @@
 %     probe_location
 %         Brainstorm-J migrator: did_v1 probe_location -> term_observation.
 %     pyraview
-%         Brainstorm-J migrator: did_v1 pyraview -> a body-backed
-%         dataseries_observation + a sampled_body (+ the shared session anchor).
+%         Brainstorm-J migrator: did_v1 pyraview -> a body-backed voltage_observation
+%         + a sampled_body (+ the shared session anchor).
 %     session
 %         Brainstorm-J migrator: `reference` -> `local_identifier`, and drop the three
 %         V_zeta inventions. 1 -> 1, base.id PRESERVED.
