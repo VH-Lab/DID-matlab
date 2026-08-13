@@ -532,7 +532,7 @@
 %   gate diffs this block against the generator and a hand edit fails it. To
 %   change an entry, change that migrator's H1 and re-run with --write.
 %
-%   83 migrator(s).
+%   84 migrator(s).
 %
 %     binaryseries_parameters
 %         Brainstorm-J migrator: did_v1 binaryseries_parameters -- a GUARDED
@@ -762,6 +762,9 @@
 %     pyraview
 %         Brainstorm-J migrator: did_v1 pyraview -> a body-backed
 %         dataseries_observation + a sampled_body (+ the shared session anchor).
+%     session
+%         Brainstorm-J migrator: `reference` -> `local_identifier`, and drop the three
+%         V_zeta inventions. 1 -> 1, base.id PRESERVED.
 %     session_in_a_dataset
 %         Brainstorm-J migrator: did_v1 session_in_a_dataset -> the session<->dataset
 %         membership as a first-class relation. Now that `session` is an `entity`, a
