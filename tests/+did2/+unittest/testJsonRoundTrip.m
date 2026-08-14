@@ -225,7 +225,19 @@ s = doc.toStruct();
 s.base.id = did.ido.unique_id();
 s.base.session_id = '';
 s.base.name = 'round-trip-fixture';
-s.base.datestamp = '2024-01-01T00:00:00.000Z';
+% THE CREATION-TIME FIELD IS MID-RENAME ACROSS TWO REPOSITORIES, so it is
+% written to whichever name the SCHEMA produced rather than to a literal.
+% `base.datestamp` -> `base.creation_timestamp` is signed and implemented
+% DID-side (v1_to_v2/renameOutboundBaseFields strips the old key from every
+% V_eta body; sqlitedb/requireCreationTimestamp accepts either), while the
+% did-schema half is not built yet. Hard-coding either spelling would make
+% this test fail on the day the other one lands -- and fail for a reason
+% that has nothing to do with what it is testing.
+for stamp = {'creation_timestamp', 'datestamp'}
+    if isfield(s.base, stamp{1})
+        s.base.(stamp{1}) = '2024-01-01T00:00:00.000Z';
+    end
+end
 
 gids = struct('scheme', {}, 'value', {});   % jSoftware.m:120, verbatim
 if ~isempty(url)
