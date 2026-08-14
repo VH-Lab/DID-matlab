@@ -403,6 +403,24 @@ report = struct( ...
     'arming_edge_declaration_unchecked',   0, ...
     'arming_vacuous',                   true, ...
     'epoch_index_report',      did2.convert.epochIndex.blankReport(), ...
+    ... % #60 OPTION A -- acquisition_epoch's clocks become the epoch's own
+    ... % time_reference_# family. `..._sources_seen` is the DENOMINATOR: how
+    ... % many acquisition_epoch documents this pass looked at, whether or not
+    ... % any produced a reference. `..._vacuous` is TRUE when the batch held
+    ... % none at all, so a run with nothing to do cannot read as a run that
+    ... % did everything -- every zero under it is then a zero over a zero.
+    'epoch_extent_sources_seen',           0, ...
+    'epoch_extent_clocks_read',            0, ...
+    'epoch_extent_references_emitted',     0, ...
+    'epoch_extent_epochs_given_extent',    0, ...
+    'epoch_extent_refused_no_epoch_string', 0, ...
+    'epoch_extent_refused_no_clocks',      0, ...
+    'epoch_extent_refused_no_epoch_document', 0, ...
+    'epoch_extent_refused_no_session_document', 0, ...
+    'epoch_extent_skipped_no_time',        0, ...
+    'epoch_extent_duplicate_clock',        0, ...
+    'epoch_extent_conflicting_clock',      0, ...
+    'epoch_extent_vacuous',             true, ...
     'metadata_ingested_seen',              0, ...
     'metadata_ingested_already_folded',    0, ...
     'metadata_ingested_edges_stamped',     0, ...
@@ -594,6 +612,76 @@ for k = 1:n
             'epoch_document_id', body.base.id); %#ok<AGROW>
     end
 end
+
+% --- #60 OPTION A: the epoch carries its own extents ------------------------
+% TEAM DECISION (jess, in session, 2026-08-14), answering the one thing the #60
+% signature left open. The signature says "acquisition_epoch dissolves and its
+% clocks become relative_reference documents" and does NOT say who HOLDS them.
+% Two readings were possible and only one survives the class going away:
+%
+%   (a) CHOSEN. The `epoch` holds them -- `epoch.time_reference_#` -> one
+%       `relative_reference` per clock -- and each reference's `relative_to`
+%       points at the SESSION. Non-circular, and it is the only option that
+%       still stands when acquisition_epoch is gone. The team's words:
+%       "A. Acquisition_epoch won't exist."
+%   (b) REJECTED. acquisition_epoch keeps holding them, pointing at the epoch
+%       (the shape `daqreader_epochdata_ingested` uses). Consistent with that
+%       precedent, but it keeps a dissolving class load-bearing.
+%
+% WHY `relative_to` IS THE SESSION AND NOT THE EPOCH. Under (a) the holder IS
+% the epoch, so anchoring to the epoch would make the document point at its own
+% holder -- a self-reference that says nothing. The session is the referent the
+% extent is actually measured against, and #51 established a session document
+% exists in every corpus (run 31327383671, all six), so the required
+% `relative_to` can always be filled. A reference that cannot be anchored is
+% NOT emitted: `RequiredDependencies` is armed, so an empty required edge
+% quarantines rather than sitting silently, and that is the correct outcome.
+%
+% THE INLINE `clocks` BLOCK IS DELIBERATELY LEFT IN PLACE. This pass ADDS the
+% references and removes nothing, which is row #60's own rule -- "Nothing may
+% be deleted until the corpus proves the fold" -- and the discipline that the
+% 2,484 corpus-B quarantines were the price of skipping. Clearing the block is
+% a follow-up gated on a corpus run, not on a decision. Until then the fact is
+% stored twice, which is #69's defect and is the LESSER of the two evils here,
+% recorded rather than glossed.
+%
+% ONE REFERENCE PER CLOCK, AND THE UNIQUENESS IS ALREADY DECLARED. `epoch.json`
+% carries `referent_unique_by: {time_reference_#, value.clock}` -- so several
+% acquisition_epoch documents sharing one epoch (the normal case: corpus B has
+% 1,239 element_epoch documents over 149 epoch strings) must not each add their
+% own copy of the same clock. Duplicates are counted and dropped; a duplicate
+% that DISAGREES about t0/t1 is counted separately and still dropped, because
+% picking a winner would be inventing a fact neither source states.
+clocksByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:n
+    if ~strcmp(rows(k).class_name, 'acquisition_epoch'); continue; end
+    report.epoch_extent_sources_seen = report.epoch_extent_sources_seen + 1;
+    % The `epochid` MIXIN string specifically -- acquisition_epoch's chain is
+    % {base, epochid}, the same shape the metadata fold reads. Taking
+    % "whichever string this body has" is the error the loops above avoid.
+    es = valueForSource(epochValues{k}, epochSources{k}, 'epochid');
+    if isempty(es)
+        report.epoch_extent_refused_no_epoch_string = ...
+            report.epoch_extent_refused_no_epoch_string + 1;
+        continue;
+    end
+    entries = acquisitionEpochClocks(bodies{k});
+    if isempty(entries)
+        report.epoch_extent_refused_no_clocks = ...
+            report.epoch_extent_refused_no_clocks + 1;
+        continue;
+    end
+    report.epoch_extent_clocks_read = ...
+        report.epoch_extent_clocks_read + numel(entries);
+    key = pairKey(rows(k).session_id, es);
+    if isKey(clocksByKey, key)
+        clocksByKey(key) = [clocksByKey(key), entries];
+    else
+        clocksByKey(key) = entries;
+    end
+end
+report.epoch_extent_vacuous = (report.epoch_extent_sources_seen == 0);
+
 % `.Count`, NOT `numel`: numel() on a containers.Map returns 1 (it is a scalar
 % handle object), so a count written that way reads 1 forever regardless of what
 % is in the map. A denominator that cannot move is worse than no denominator.
@@ -631,6 +719,41 @@ changedArming = [];
 % because the carry decision is all-or-nothing across it.
 armings = {};
 extraBodies = {};    % bodies 2..N of every armed call, awaiting the re-fold
+
+for m = 1:numel(minted)
+    epochBody = minted{m};
+    key = pairKey(epochBody.base.session_id, epochBody.epoch.local_identifier);
+    if ~isKey(clocksByKey, key); continue; end
+    sessionDocumentId = depValueOf(epochBody, 'session_id');
+    if isempty(sessionDocumentId)
+        % Cannot happen through mintEpoch, which sets it unconditionally --
+        % asserted rather than assumed, because a silently unanchored
+        % reference is the invented-empty-edge pattern.
+        report.epoch_extent_refused_no_session_document = ...
+            report.epoch_extent_refused_no_session_document + 1;
+        continue;
+    end
+    [refs, stats] = epochExtentReferences(clocksByKey(key), ...
+        sessionDocumentId, epochBody.base.session_id, creationTime(epochBody));
+    report.epoch_extent_skipped_no_time = ...
+        report.epoch_extent_skipped_no_time + stats.no_time;
+    report.epoch_extent_duplicate_clock = ...
+        report.epoch_extent_duplicate_clock + stats.duplicate;
+    report.epoch_extent_conflicting_clock = ...
+        report.epoch_extent_conflicting_clock + stats.conflicting;
+    if isempty(refs); continue; end
+    for r = 1:numel(refs)
+        epochBody = setDep(epochBody, sprintf('time_reference_%d', r), ...
+            refs{r}.base.id);
+        extraBodies{end+1} = refs{r}; %#ok<AGROW>
+    end
+    minted{m} = epochBody;
+    report.epoch_extent_references_emitted = ...
+        report.epoch_extent_references_emitted + numel(refs);
+    report.epoch_extent_epochs_given_extent = ...
+        report.epoch_extent_epochs_given_extent + 1;
+end
+
 % The epoch-edge declaration check reads the SCHEMA (epochIndex, which walks the
 % superclass chain and answers false when it cannot look). It is consulted only
 % when the caller asked for validation: `Validate=false` says the caller has
@@ -1462,6 +1585,120 @@ for k = 1:numel(result.migrated)
     end
 end
 summary.by_class = byClass;
+end
+
+function entries = acquisitionEpochClocks(body)
+%ACQUISITIONEPOCHCLOCKS The `clocks` struct array, as a cell of {name,t0,t1}.
+%
+%   The block is REQUIRED on acquisition_epoch and its three sub-fields are all
+%   mustBeNonEmpty, so a valid document always has them -- but this pass runs
+%   over a batch that may include bodies from a partial or re-run migration, so
+%   the shape is READ rather than assumed. A missing block yields {}, which the
+%   caller counts as `refused_no_clocks` rather than treating as zero clocks.
+%
+%   NOT snake_case-fallback'd: `clocks` is an IMMEDIATE field of the property
+%   block, so universalRenames has already normalised it. The camelCase fallback
+%   rule applies one level down, which is why jEpochClockReferences needs it for
+%   `epochtable.epochclock` and this does not.
+entries = {};
+if ~isstruct(body) || ~isfield(body, 'acquisition_epoch') ...
+        || ~isstruct(body.acquisition_epoch) ...
+        || ~isfield(body.acquisition_epoch, 'clocks')
+    return;
+end
+c = body.acquisition_epoch.clocks;
+if ~isstruct(c); return; end
+for k = 1:numel(c)
+    e = struct('name', '', 't0', NaN, 't1', NaN);
+    if isfield(c(k), 'name'); e.name = char(c(k).name); end
+    if isfield(c(k), 't0') && isscalar(c(k).t0); e.t0 = double(c(k).t0); end
+    if isfield(c(k), 't1') && isscalar(c(k).t1); e.t1 = double(c(k).t1); end
+    entries{end+1} = e; %#ok<AGROW>
+end
+end
+
+function [refs, stats] = epochExtentReferences(entries, sessionDocumentId, ...
+    sessionId, datestamp)
+%EPOCHEXTENTREFERENCES One `relative_reference` per DISTINCT clock of an epoch.
+%
+%   #60 option A. Each reference is anchored to the SESSION, not to the epoch --
+%   the epoch is the HOLDER (`epoch.time_reference_#`), so anchoring to it would
+%   point a document at its own holder.
+%
+%   THE TARGET SHAPE IS jEpochClockReferences', DELIBERATELY, FIELD FOR FIELD:
+%   class_version 2.0.0 over `time_reference` 4.0.0, `relative_to` the only
+%   edge, and `value = {clock, start, duration}` with the EXTENT stored as a
+%   duration rather than a raw end time (CHANGE 1 of the time model -- `end` is
+%   exactly recoverable as start + duration, and storing it separately lets the
+%   anchor's uncertainty contaminate the span's).
+%
+%   THIS IS NOT A SECOND IMPLEMENTATION OF THAT HELPER, and the distinction
+%   matters because "two implementations that disagree is worse than one that is
+%   missing" is a rule this project states out loud. jEpochClockReferences reads
+%   a DIFFERENT SOURCE -- `daqreader_epochdata_ingested.epochtable`, a cell of
+%   clock names beside a 2xN matrix -- and it lives in +migrators_j/private/,
+%   which MATLAB makes unreachable from this folder. What is shared is the
+%   TARGET, and five batch passes already construct relative_reference bodies
+%   locally for the same reason.
+%
+%   `relation` IS OMITTED, as there: it carries the qualitative Allen relation
+%   used when there is NO metric offset, and here the offsets are the content.
+%
+%   NO TIMES => NO REFERENCE. A clock with no finite t0/t1, or the `no_time`
+%   sentinel, produces nothing rather than a NaN-valued document -- the hollow
+%   document silentLoss and isFragment exist to catch.
+refs = {};
+stats = struct('no_time', 0, 'duplicate', 0, 'conflicting', 0);
+seen = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:numel(entries)
+    e = entries{k};
+    if isempty(e.name) || strcmp(e.name, 'no_time') ...
+            || ~isfinite(e.t0) || ~isfinite(e.t1)
+        stats.no_time = stats.no_time + 1;
+        continue;
+    end
+    if isKey(seen, e.name)
+        % `epoch.json` declares referent_unique_by {time_reference_#,
+        % value.clock}, so a second copy of one clock would violate the rule
+        % the schema already states. Several acquisition_epoch documents
+        % sharing one epoch is the NORMAL case, not an anomaly.
+        prior = seen(e.name);
+        if prior.t0 ~= e.t0 || prior.t1 ~= e.t1
+            % Two sources disagree about the same clock's extent. Neither is
+            % authoritative and picking one would invent a fact -- counted
+            % separately from a harmless duplicate, and still dropped.
+            stats.conflicting = stats.conflicting + 1;
+        else
+            stats.duplicate = stats.duplicate + 1;
+        end
+        continue;
+    end
+    seen(e.name) = e;
+    ref = struct();
+    ref.document_class = struct('class_name', 'relative_reference', ...
+        'class_version', '2.0.0', ...
+        'superclasses', struct('class_name', 'time_reference', ...
+            'class_version', '4.0.0'), ...
+        'schema_version', 'V_eta');
+    ref.depends_on = struct('name', {'relative_to'}, 'value', {sessionDocumentId});
+    ref.base = struct('id', did.ido.unique_id(), ...
+        'session_id', sessionId, ...
+        'name', 'migrated_epoch_extent', ...
+        'creation_timestamp', datestamp);
+    ref.relative_reference = struct('value', struct( ...
+        'clock',    struct('node', '', 'name', e.name), ...
+        'start',    extentDuration(e.t0), ...
+        'duration', extentDuration(e.t1 - e.t0)));
+    refs{end+1} = ref; %#ok<AGROW>
+end
+end
+
+function c = extentDuration(seconds)
+%EXTENTDURATION A V_eta `duration` cell. `source_unit` is 's' because the v1
+%   clocks block stores seconds -- stated, not converted, per the standing rule
+%   that the source's own unit is carried verbatim beside the canonical value.
+c = struct('seconds', double(seconds), 'source_unit', 's', ...
+    'source_value', double(seconds), 'approximate', false);
 end
 
 function ts = creationTime(body)

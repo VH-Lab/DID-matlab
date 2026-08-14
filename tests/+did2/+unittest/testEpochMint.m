@@ -112,6 +112,141 @@ end
 
 % ===================== fixtures, from the NDI writer ===================
 
+% ============ #60 option A: the epoch carries its own extents ==============
+% TEAM DECISION 2026-08-14. The #60 signature says acquisition_epoch's clocks
+% become relative_reference documents and does NOT say who holds them. Option A:
+% the EPOCH holds them (`epoch.time_reference_#`) and each reference is anchored
+% to the SESSION. Anchoring to the epoch would point a document at its own
+% holder; the session is the referent the extent is measured against, and #51
+% established a session document exists in every corpus.
+
+function testEpochGainsATimeReferencePerClock(testCase)
+out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
+epochs = ofClass(out, 'epoch');
+verifyEqual(testCase, numel(epochs), 1, 'one epoch for one epoch-id string');
+refs = ofClass(out, 'relative_reference');
+verifyEqual(testCase, numel(refs), 1, 'one reference for the one clock');
+
+% THE EDGE DIRECTION IS THE DECISION, so it is asserted in both directions
+% rather than inferred from the count.
+% Read through depValueOf rather than by indexing the edge list directly:
+% `depends_on` is a struct array on some paths and a cell on others, and the
+% helper handles both. The first draft here read
+% `epochs{1}.get('depends_on')(1).name`, which MATLAB cannot evaluate at all --
+% you cannot index into the result of a function call.
+verifyEqual(testCase, depValueOf(epochs{1}, 'time_reference_1'), ...
+    char(refs{1}.get('base.id')), 'the epoch HOLDS the reference');
+verifyEqual(testCase, depValueOf(refs{1}, 'relative_to'), 'sess_doc_1', ...
+    'the reference is anchored to the SESSION, not to its own holder');
+verifyNotEqual(testCase, depValueOf(refs{1}, 'relative_to'), ...
+    char(epochs{1}.get('base.id')), 'anchoring to the epoch would be circular');
+
+% the clock and the extent, carried from the v1 block
+v = refs{1}.get('relative_reference.value');
+verifyEqual(testCase, char(v.clock.name), 'dev_local_time');
+verifyEqual(testCase, v.start.seconds, 0);
+% CHANGE 1 of the time model: the EXTENT is t1 - t0, not the raw t1.
+verifyEqual(testCase, v.duration.seconds, 452.709856, 'AbsTol', 1e-9);
+end
+
+function testTheInlineClocksBlockIsLeftInPlace(testCase)
+% Row #60's own rule: "Nothing may be deleted until the corpus proves the fold."
+% This pass ADDS and removes nothing, so the fact is stored twice for now --
+% #69's defect, and the lesser evil against the 2,484 corpus-B quarantines that
+% deleting ahead of a corpus run cost last time. If a later change clears the
+% block, THIS test is the one that should fail and be inverted deliberately.
+out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
+ae = ofClass(out, 'acquisition_epoch');
+verifyEqual(testCase, numel(ae), 1);
+clocks = ae{1}.get('acquisition_epoch.clocks');
+verifyEqual(testCase, numel(clocks), 1);
+verifyEqual(testCase, char(clocks(1).name), 'dev_local_time');
+end
+
+function testManyDocumentsSharingOneEpochGiveOneReferencePerClock(testCase)
+% THE NORMAL CASE, not an edge case: corpus B carries 1,239 element_epoch
+% documents over 149 distinct epoch-id strings. `epoch.json` declares
+% referent_unique_by {time_reference_#, value.clock}, so a second copy of one
+% clock would violate a rule the schema already states.
+out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1'), ...
+    elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2'), ...
+    elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3')});
+verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1);
+verifyEqual(testCase, numel(ofClass(out, 'relative_reference')), 1, ...
+    'three documents, one epoch, one clock -> ONE reference');
+[~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1'), ...
+    elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2')});
+verifyEqual(testCase, rep.epoch_extent_sources_seen, 2, 'the DENOMINATOR');
+verifyEqual(testCase, rep.epoch_extent_references_emitted, 1);
+verifyEqual(testCase, rep.epoch_extent_duplicate_clock, 1, ...
+    'the dropped copy is COUNTED, not silently discarded');
+verifyEqual(testCase, rep.epoch_extent_conflicting_clock, 0, ...
+    'identical extents are a duplicate, not a conflict');
+end
+
+function testTwoSourcesDisagreeingAboutOneClockAreCountedSeparately(testCase)
+% A duplicate that DISAGREES is not the same event as one that repeats. Neither
+% source is authoritative, so picking a winner would invent a fact -- both are
+% dropped, and the disagreement gets its own counter so it cannot hide inside
+% the benign one.
+a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+b.element_epoch.t0_t1 = [0, 999.5];
+[~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b});
+verifyEqual(testCase, rep.epoch_extent_conflicting_clock, 1);
+verifyEqual(testCase, rep.epoch_extent_duplicate_clock, 0);
+verifyEqual(testCase, rep.epoch_extent_references_emitted, 1, ...
+    'the first reading stands; the disagreeing one is dropped, not merged');
+end
+
+function testNoTimesMeansNoReference(testCase)
+% "NO TIMES => NO REFERENCE" -- a NaN-valued reference is a hollow document,
+% the exact thing silentLoss and isFragment exist to catch.
+v1 = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+v1.element_epoch.epoch_clock = 'no_time';
+[out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), v1});
+verifyEmpty(testCase, ofClass(out, 'relative_reference'));
+verifyEqual(testCase, rep.epoch_extent_skipped_no_time, 1);
+verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, ...
+    'it was SEEN and refused -- not invisible');
+% and the epoch is still minted: identity does not depend on having an extent
+verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1);
+end
+
+function testAnEmptyBatchReportsVacuityRatherThanZeros(testCase)
+% A run with nothing to do must not read as a run that did everything. Every
+% `epoch_extent_*` zero is meaningless unless the denominator is non-zero, so
+% the vacuity flag is what distinguishes them.
+[~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref')});
+verifyTrue(testCase, rep.epoch_extent_vacuous);
+verifyEqual(testCase, rep.epoch_extent_sources_seen, 0);
+[~, rep2] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
+verifyFalse(testCase, rep2.epoch_extent_vacuous);
+end
+
+function v = depValueOf(doc, name)
+%DEPVALUEOF The value of one depends_on entry, over both wire spellings.
+%   BOTH CONTAINER SHAPES, because the pipeline produces both: a struct array
+%   from the re-fold, a cell where setDep had to grow one. Reading only the
+%   struct form would fail on exactly the bodies this pass adds.
+deps = doc.get('depends_on');
+v = '';
+for k = 1:numel(deps)
+    if iscell(deps); e = deps{k}; else; e = deps(k); end
+    if ~isstruct(e) || ~isfield(e, 'name'); continue; end
+    if strcmp(char(e.name), name)
+        if isfield(e, 'value'); v = char(e.value);
+        elseif isfield(e, 'document_id'); v = char(e.document_id); end
+        return;
+    end
+end
+end
+
 function v1 = sessionBody(docId, sessionId, reference)
 %SESSIONBODY A did_v1 `session` document.
 %
