@@ -104,12 +104,38 @@ function testDataDimBecomesOneAxisEntryPerDimension(testCase)
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
 axes = pick(out, 'sampled_body').sampled_body.axes;
 verifyEqual(testCase, numel(axes), 2, 'data_dim [4 4] is two dimensions');
-verifyEqual(testCase, [axes.length], [4 4]);
-% `name` is the ONE axis sub-field declared mustBeNonEmpty, so a blank would
-% quarantine the body it describes. Positional names when no labels are given.
-verifyEqual(testCase, {axes.name}, {'axis_1', 'axis_2'});
-verifyEqual(testCase, {axes.kind}, {'index', 'index'});
-verifyEqual(testCase, {axes.regularity}, {'regular', 'regular'});
+% UPDATED 2026-08-14 for the signed axis entry (DID-schema TEAM-SIGN-OFF
+% [data_body] + AMENDMENT 1). The old shape {name, kind, length, regularity,
+% spacing, unit} no longer exists; `variable` and `n` are the required pair.
+%
+% NOT AN INVERSION -- every property asserted here is the SAME property under a
+% new field name, which is why the values are unchanged: two dimensions, extents
+% [4 4], positional labels when none are supplied, and a regular index axis.
+%
+% THE THREE COMPOSITE SUB-FIELDS ARE READ WITH `arrayfun`, NOT WITH A CHAINED
+% DOT. `axes` is a 1x2 STRUCT ARRAY, so `axes.variable` is a comma-separated
+% list of two values and MATLAB refuses to index into one ("Intermediate dot
+% indexing produced a comma-separated list with 2 values"). The chained form
+% reads fine and cannot run. It is legal elsewhere in this suite only because
+% those chains start at a SCALAR -- `rep.family_count_violation.edge_name`
+% (testSilentLoss:131) has a scalar `rep`, so the first hop yields one value.
+% The old shape hid this: `name`/`length`/`kind` were all leaf scalars, so a
+% chained read was never needed until the signed entry made three of them
+% composites.
+verifyEqual(testCase, [axes.n], [4 4]);                       % was `.length`
+% `variable` is now one of the two mustBeNonEmpty sub-fields (with `n`), so a
+% blank would still quarantine the body it describes. Positional variables when
+% no labels are given, exactly as before.
+verifyEqual(testCase, ...
+    arrayfun(@(a) a.variable.name, axes, 'UniformOutput', false), ...
+    {'axis_1', 'axis_2'});                                    % was `.name`
+verifyEqual(testCase, [axes.regular], [true true]);           % was `.regularity`
+% `origin` is NEW and is required when regular. 1 is not a default: the
+% coordinates guard has already established they are MATLAB's default index
+% vector, which starts at 1. The old shape had no origin at all, so this fact
+% could only be assumed by convention -- the gap the signed entry closes.
+verifyEqual(testCase, arrayfun(@(a) a.origin.value, axes), [1 1]);
+verifyEqual(testCase, arrayfun(@(a) a.spacing.value, axes), [1 1]);  % was `.spacing`
 end
 
 function testDtypeIsCarriedVerbatimAndDataSizeIsDropped(testCase)

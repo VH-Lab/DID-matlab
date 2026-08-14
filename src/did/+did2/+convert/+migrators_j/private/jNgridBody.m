@@ -79,20 +79,30 @@ function body = jNgridBody(preBody, statementId, name, axisLabels)
 %           d['fields'] if f['name']=='datum'][0])"   # via the datum subfields
 %     'array' is admissible.
 %
-%   `axes[].name` is the ONLY sub-field of the axis entry declared
-%   mustBeNonEmpty TRUE, so a nameless axis would quarantine. Positional names
-%   (`axis_1` ...) are emitted when no labels are supplied, rather than blanks.
+%   STALE AS OF 2026-08-14 AND CORRECTED HERE. This said "`axes[].name` is the
+%   ONLY sub-field declared mustBeNonEmpty TRUE". There is no `name` sub-field
+%   any more: the signed axis entry requires `variable` and `n`. Positional
+%   variables (`axis_1` ...) are still emitted when no labels are supplied, for
+%   the same reason -- a blank required field quarantines the body it describes.
 %
 %   ---------------------------------------------------------------------
 %   THE COORDINATES GUARD -- WHY THIS REFUSES INSTEAD OF FOLDING
 %   ---------------------------------------------------------------------
-%   The plan sends `ngrid.coordinates` to `axes[k].values`. THAT FIELD DOES NOT
-%   EXIST. Read from the built schema set rather than from the plan:
+%   The plan sends `ngrid.coordinates` to `axes[k].values`. THAT FIELD NOW
+%   EXISTS -- the sentence here said it did not, and that was true until
+%   2026-08-14. Re-read from the built schema set, which is what the old note
+%   asked the next reader to do:
 %
 %     $ python3 -c "import json;d=json.load(open('schemas/V_eta/draft/ \
 %           sampled_body.json'));print([s['name'] for f in d['fields'] \
 %           if f['name']=='axes' for s in f['fields']])"
-%       ['name', 'kind', 'length', 'regularity', 'spacing', 'unit']
+%       ['variable', 'unit', 'source_unit', 'approximate', 'n', 'regular',
+%        'origin', 'spacing', 'values', 'labels']
+%
+%   SO THE REFUSAL BELOW IS NOW A DEFERRAL, NOT A NECESSITY, and it stays for a
+%   different reason than the one it was written for: retiring `ngrid` is gated
+%   on BOTH its consumers (#46/#48) and folding real positions without carrying
+%   them would DELETE them. When the carry lands, this guard goes with it.
 %
 %   No `values`, no `coordinates`. That is #45 (the data_body tier), which is
 %   BLOCKED ON #32 -- V_eta_ngrid_family_findings.md F3b records the same gap and
@@ -239,25 +249,52 @@ end
 function ax = ngridAxes(dataDim, axisLabels)
 %NGRIDAXES One axis entry per dimension of `data_dim`.
 %
-%   `axes[].name` is the one sub-field declared mustBeNonEmpty TRUE, so a
-%   positional name is emitted when the caller supplies no label -- blank names
-%   would quarantine the body they are meant to describe.
+%   REWRITTEN 2026-08-14 FOR THE SIGNED AXIS ENTRY (DID-schema
+%   TEAM-SIGN-OFF [data_body] + AMENDMENT 1). The old shape
+%   {name, kind, length, regularity, spacing, unit} NO LONGER EXISTS. This was
+%   the ONLY live writer of `sampled_body.axes` in the repository, so it is also
+%   the only thing that had to move -- but it had to move in the SAME change,
+%   because `variable` and `n` are mustBeNonEmpty and a body written in the old
+%   shape quarantines outright. DID-schema's own test said so before either half
+%   landed: "jNgridBody fills `name` and leaves the rest defaulted, so a new
+%   requirement quarantines every folded body."
 %
-%   `kind: 'index'` and `spacing: 1` state what the DEFAULT coordinates mean and
-%   nothing more. The guard above has already established that the coordinates
-%   are indices (or absent), so this is a restatement of a checked fact, not an
-%   assumption about the data.
+%   THE MAPPING, and every value is one the guard above has already checked:
+%       name      -> variable   the label IS the variable (the plan's own point:
+%                               'contrast' and 'orientation' are variables, and a
+%                               free-text name beside a bound term is the escape
+%                               hatch that makes the binding pointless)
+%       length    -> n
+%       regularity-> regular (a boolean now, not an enum of two strings)
+%       spacing 1 -> spacing.value 1, and origin.value 1
+%       kind/unit -> GONE. `kind` was one of three unrelated fields of that
+%                    name; `unit` is now a bound ontology_term and an index axis
+%                    has none, so it is left absent rather than blank.
+%
+%   `origin` IS NEW AND IS REQUIRED WHEN REGULAR, and 1 is the honest value: the
+%   guard has established the coordinates are MATLAB's default index vector,
+%   which starts at 1. The old shape could not say this at all -- it had no
+%   origin -- so a reader had to assume it by convention. That gap is exactly
+%   what the signed entry closes.
+%
+%   THE COORDINATE CARRY IS STILL NOT DONE. `axes[].values` now EXISTS, so the
+%   refusal above (`did2:convert:ngridCoordinatesHaveNoHome`) is a DEFERRAL
+%   rather than a necessity -- but retiring `ngrid` is gated on BOTH its
+%   consumers (#46/#48) and is not this change. Folding real positions without
+%   carrying them would DELETE them, which is what that guard exists to stop.
 labels = normaliseLabels(axisLabels);
-ax = struct('name', {}, 'kind', {}, 'length', {}, ...
-    'regularity', {}, 'spacing', {}, 'unit', {});
+ax = struct('variable', {}, 'n', {}, 'regular', {}, 'origin', {}, 'spacing', {});
 for k = 1:numel(dataDim)
     nm = sprintf('axis_%d', k);
     if k <= numel(labels) && ~isempty(labels{k})
         nm = labels{k};
     end
-    ax(end+1) = struct('name', nm, 'kind', 'index', ...
-        'length', dataDim(k), 'regularity', 'regular', ...
-        'spacing', 1, 'unit', ''); %#ok<AGROW>
+    ax(end+1) = struct( ...
+        'variable', jOntologyTerm('', nm), ...
+        'n',        dataDim(k), ...
+        'regular',  true, ...
+        'origin',   struct('value', 1, 'source_value', 1), ...
+        'spacing',  struct('value', 1, 'source_value', 1)); %#ok<AGROW>
 end
 end
 
