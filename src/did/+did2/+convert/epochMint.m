@@ -747,6 +747,14 @@ for m = 1:numel(minted)
             refs{r}.base.id);
         extraBodies{end+1} = refs{r}; %#ok<AGROW>
     end
+    % Code scanning flags this line as "variable appears to change size on
+    % every loop iteration" (alert 218). FALSE POSITIVE, verified by reading
+    % rather than assumed -- the same check jEpochClockReferences records for
+    % alerts 170 and 171. `minted` is indexed by `m` over `1:numel(minted)`, so
+    % this OVERWRITES an existing cell and cannot grow it; the only growth in
+    % this loop is `extraBodies{end+1}` two lines up, which carries the
+    % house-style AGROW pragma. Preallocating here would mean preallocating a
+    % cell that is already exactly the right size.
     minted{m} = epochBody;
     report.epoch_extent_references_emitted = ...
         report.epoch_extent_references_emitted + numel(refs);

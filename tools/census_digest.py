@@ -320,6 +320,32 @@ POST_PASSES = [
         # is exercised on real data for the first time. A 1 here is NOT proof
         # the rebuild works -- it is proof it has not been needed.
         ("arming_max_bodies_per_call", "  MAX bodies returned by one call"),
+        # #60 OPTION A -- the epoch's own extents. VACUITY LEADS, for the same
+        # reason `arming_vacuous` and `metadata_fold_vacuous` do: a batch with
+        # no acquisition_epoch documents makes every number under it a zero
+        # over a zero denominator, and a run that did nothing must not read
+        # like a run that did everything.
+        ("epoch_extent_vacuous", "epoch extents: NO acquisition_epoch IN THIS BATCH"),
+        ("epoch_extent_sources_seen", "epoch extents: acquisition_epoch seen (denominator)"),
+        ("epoch_extent_clocks_read", "  clock entries read"),
+        ("epoch_extent_references_emitted", "  relative_references emitted"),
+        ("epoch_extent_epochs_given_extent", "  epochs given an extent"),
+        # THE REFUSALS, each its own row. Rolling them into one total would
+        # reproduce the defect this pass's own header describes: "nobody looked"
+        # and "looked and found nothing" are different facts.
+        ("epoch_extent_refused_no_epoch_string", "  REFUSED: no epoch string"),
+        ("epoch_extent_refused_no_clocks", "  REFUSED: no clocks block"),
+        ("epoch_extent_refused_no_epoch_document", "  REFUSED: no epoch document"),
+        ("epoch_extent_refused_no_session_document",
+         "  REFUSED: no session document to anchor to"),
+        ("epoch_extent_skipped_no_time", "  SKIPPED: no times => no reference"),
+        # DUPLICATE and CONFLICTING are counted apart on purpose. A repeated
+        # clock is expected (many acquisition_epoch documents share one epoch);
+        # a repeat that DISAGREES about t0/t1 is a data fact worth seeing, and
+        # summing the two would hide it inside the ordinary case.
+        ("epoch_extent_duplicate_clock", "  duplicate clock dropped (expected)"),
+        ("epoch_extent_conflicting_clock",
+         "  CONFLICTING clock dropped -- two sources disagree on t0/t1"),
         ("arming_edge_declaration_unchecked",
          "  bodies whose edge declaration COULD NOT be consulted"),
         ("metadata_refused_unsafe_output", "  metadata fold: refused, unsafe output"),
