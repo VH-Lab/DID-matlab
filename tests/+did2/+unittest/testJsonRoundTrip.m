@@ -305,7 +305,14 @@ end
 s = doc.toStruct();
 
 s.base.id = did.ido.unique_id();
-s.base.session_id = '';
+% NOT '' -- `base.session_id` is mustBeNonEmpty and the write rejects it:
+%     did2:validation:emptyField
+%     Field "base.session_id" is required to be non-empty.
+% jSoftware passes '' here quite legitimately (its RequireSession option
+% exists for exactly the no-session case, and it RETURNS EARLY rather than
+% emitting), so copying that literal into a fixture that then WRITES was
+% the mistake -- the writer never reaches the database with an empty one.
+s.base.session_id = did.ido.unique_id();
 s.base.name = 'round-trip-fixture';
 % THE CREATION-TIME FIELD IS MID-RENAME ACROSS TWO REPOSITORIES, so it is
 % written to whichever name the SCHEMA produced rather than to a literal.
