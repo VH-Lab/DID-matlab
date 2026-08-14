@@ -2762,7 +2762,9 @@ verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_7');
 % levels are told apart by dt (native 1/1000 vs decimated 1/500)
 for j = 1:numel(sbods)
     verifyEqual(testCase, depValue(sbods{j}, 'statement'), 'pv_1');
-    verifyEqual(testCase, sbods{j}.sampled_body.datum.dtype, 'int16');
+    % `datum` collapsed (signed sec.5); the encoding is on the STATEMENT now,
+    % normalised -- 'int16' is already canonical, so no source spelling is kept.
+    verifyFalse(testCase, isfield(sbods{j}.sampled_body, 'datum'));
     verifyEqual(testCase, numel(sbods{j}.files.file_list), 1);
 end
 dts = sort(cellfun(@(b) b.sampled_body.sample_time.dt.source_value, sbods));
@@ -3517,7 +3519,9 @@ verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_8');
 
 sbod = out{find(strcmp(names, 'sampled_body'), 1)};
 verifyEqual(testCase, depValue(sbod, 'statement'), obs.base.id);   % == 'jc_1'
-verifyEqual(testCase, sbod.sampled_body.datum.kind, 'scalar');
+% `datum.kind` is gone with `datum`: scalar-vs-array WAS the axis count, which
+% axes[] now states directly.
+verifyFalse(testCase, isfield(sbod.sampled_body, 'datum'));
 verifyEqual(testCase, sbod.sampled_body.sample_time.n, 0);         % unknown length
 verifyEqual(testCase, sbod.files.file_list{1}, 'clusters.mat');
 end

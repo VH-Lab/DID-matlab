@@ -386,7 +386,14 @@ imgObs.image.value = struct( ...
     'pixels', [], ...
     'dtype', jGetChar(preBody.ngrid, 'data_type'));
 
-imgBody = jNgridBody(preBody, imgObs.base.id, 'migrated_ontology_image_raster');
+[imgBody, rasterDatumType, rasterSourceDatumType] = ...
+    jNgridBody(preBody, imgObs.base.id, 'migrated_ontology_image_raster');
+% The raster's encoding belongs to the STATEMENT (signed sec.5), and the helper
+% that reads it mints the BODY -- so it hands the value back and the statement
+% is set here. `ngrid.data_type` is real source data ('ubit1' for a logical
+% mask), so dropping it with `datum` would have been a silent loss.
+imgObs.subject_statement.datum_type = rasterDatumType;
+imgObs.subject_statement.source_datum_type = rasterSourceDatumType;
 % The raster bytes move WITH the grid. The file name is NDI's own
 % (`ontologyImage.ngrid`): universalRenames.m:308 skips the structural keys
 % outright, so file/files arrive verbatim and must be carried verbatim -- the

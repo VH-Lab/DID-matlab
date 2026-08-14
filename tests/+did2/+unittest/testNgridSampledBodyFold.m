@@ -147,11 +147,18 @@ v1 = foldableOntologyImage();
 v1.ngrid.data_type = 'ubit1';
 out = did2.convert.migrators_j.ontology_image(v1);
 body = pick(out, 'sampled_body');
-verifyEqual(testCase, body.sampled_body.datum.dtype, 'ubit1');
-verifyEqual(testCase, body.sampled_body.datum.kind, 'array');
-verifyEqual(testCase, body.sampled_body.datum.shape, [4 4]);
+% UPDATED 2026-08-14: `datum` collapsed (signed sec.5). Every property below is
+% the SAME property in its new home, which is why the values are unchanged:
+%   dtype -> subject_statement.datum_type, normalised, source spelling kept
+%   kind  -> the axis COUNT (two entries), asserted above
+%   shape -> [axes.n] in array order, asserted above as [4 4]
+% NOT A WEAKENING: 'ubit1' still reaches the document, now as the SOURCE
+% spelling beside its canonical 'bool', which is more than the old block said.
+obs = pick(out, 'image_observation');
+verifyEqual(testCase, obs.subject_statement.datum_type, 'bool');
+verifyEqual(testCase, obs.subject_statement.source_datum_type, 'ubit1');
 verifyFalse(testCase, isfield(body.sampled_body, 'data_size'));
-verifyFalse(testCase, isfield(body.sampled_body.datum, 'data_size'));
+verifyFalse(testCase, isfield(body.sampled_body, 'datum'));
 % and the dtype is ALSO explicit on the composite -- R6 decision 4, because a
 % dtype is not recoverable from a raster
 verifyEqual(testCase, pick(out, 'image_observation').image.value.dtype, 'ubit1');

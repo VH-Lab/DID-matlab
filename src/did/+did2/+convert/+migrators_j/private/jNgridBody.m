@@ -1,9 +1,17 @@
-function body = jNgridBody(preBody, statementId, name, axisLabels)
+function [body, datumType, sourceDatumType] = jNgridBody(preBody, statementId, name, axisLabels)
 %JNGRIDBODY did_v1 `ngrid` block -> a V_eta `sampled_body`, bound to a statement.
 %
 %   BODY = JNGRIDBODY(PREBODY, STATEMENTID, NAME) reads the did_v1 `ngrid` block
 %   off PREBODY and returns ONE `sampled_body` document whose `statement` edge
-%   points at STATEMENTID. BODY = JNGRIDBODY(..., AXISLABELS) names the axes from
+%   points at STATEMENTID.
+%
+%   [BODY, DATUMTYPE, SOURCEDATUMTYPE] = JNGRIDBODY(...) also returns the ngrid's
+%   element encoding, normalised. IT IS RETURNED RATHER THAN WRITTEN because
+%   `datum_type` lives on the STATEMENT (signed sec.5) and this helper mints the
+%   BODY -- the caller owns the statement and is the only one that can set it.
+%   Returning it is what stops the encoding being silently dropped when `datum`
+%   went away: `ngrid.data_type` is real source data ('ubit1' for a logical
+%   mask), not a derivable. BODY = JNGRIDBODY(..., AXISLABELS) names the axes from
 %   a cellstr or a comma-separated char instead of the positional default.
 %
 %   THE CALLER ATTACHES THE BYTES (body.files / body.file), the same division of
@@ -192,7 +200,12 @@ end
 % meaning rides on the owning statement's `variable` (the R4 principle -- "a
 % raw-numeric observation with no dimensioned meaning is valued by a bare
 % self-describing sampled_body"). data_size is NOT carried.
-datum = struct('kind', 'array', 'dtype', dataType, 'unit', '', 'shape', dataDim);
+% `datum` IS GONE (signed sec.5). What it carried:
+%   dtype -> RETURNED to the caller for subject_statement.datum_type
+%   kind  -> the axis COUNT, which axes[] states directly
+%   shape -> [axes.n] in array order
+%   unit  -> the value's unit comes from `variable`
+[datumType, sourceDatumType] = jDatumType(dataType);
 
 % n = 1, not prod(data_dim): the whole grid is ONE datum whose intra-datum
 % extent is `shape`. An ngrid declares no time axis at all, so t0 and dt are
@@ -202,7 +215,7 @@ sampleTime = struct('regular', true, ...
 
 body = jSampledBody(char(statementId), baseField(preBody, 'session_id', ''), ...
     baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'), ...
-    char(name), datum, sampleTime);
+    char(name), sampleTime);
 
 % Assigned in its own statement, NOT inside struct(...): a non-scalar struct
 % value passed to struct() would distribute into a struct ARRAY of bodies
