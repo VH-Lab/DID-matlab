@@ -147,6 +147,49 @@ verifyEqual(testCase, out.entity.global_identifier, 42, ...
     'rehydrate silently reshaped a value that is genuinely wrong.');
 end
 
+function testRehydrateSurvivesAClassWhoseBlockDeclaresNoFields(testCase)
+% THE CRASH THE FIRST VERSION SHIPPED WITH, pinned so it cannot come back.
+%
+%   `resolvePlacement` returns TWO things that do not have the same keys:
+%   `blocksContributed` (a concrete class ALWAYS contributes a block) and
+%   `fieldsByBlock` (a class earns an entry only if it DECLARES a field).
+%   rehydrate iterated the first and indexed the second, so any class with
+%   an empty `fields` list threw
+%
+%       The specified key is not present in this container.
+%
+%   It is not a corner: 88 of 242 concrete V_eta classes declare zero own
+%   fields -- every `*_observation`, every `*_assertion`, every
+%   `*_calculation` leaf, and `acquisition_system`, which is what
+%   `daqsystem_load` searches for. So the FIRST real read after opening a
+%   migrated session hit it.
+%
+%   The guard is not novel: validateDocument and buildBlockFromEntries both
+%   already test isKey before indexing this map. Two call sites had the
+%   pattern and the third did not copy it -- which is why this asserts the
+%   BEHAVIOUR rather than trusting the reading.
+cache = localCache(testCase);
+if ~cache.hasClass('acquisition_system')
+    assumeFail(testCase, ...
+        'acquisition_system is not in this schema set; nothing to check.');
+end
+info = cache.resolvePlacement('acquisition_system');
+testCase.log(sprintf( ...
+    'DENOMINATOR: acquisition_system contributes %d block(s); %d carry a fieldsByBlock entry', ...
+    numel(info.blocksContributed), ...
+    sum(cellfun(@(b) double(isKey(info.fieldsByBlock, b)), info.blocksContributed))));
+
+doc = did2.document.blank('acquisition_system', 'SchemaCache', cache);
+s = doc.toStruct();
+
+% Must not throw. The assertion IS that the call returns.
+out = cache.rehydrate(s);
+verifyTrue(testCase, isstruct(out), ...
+    'rehydrate did not return a struct for a class with a fieldless block.');
+verifyTrue(testCase, isfield(out, 'acquisition_system'), ...
+    'rehydrate dropped the fieldless block it was iterating over.');
+end
+
 function testRehydrateIsANoOpForAnUnknownClass(testCase)
 % Reading must not be gated on a schema being present: validation is where
 % "no such class" belongs, and it already raises there.

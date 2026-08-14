@@ -332,6 +332,22 @@ classdef cache < handle
                 if ~isfield(s, blockName) || ~isstruct(s.(blockName))
                     continue;
                 end
+                % `blocksContributed` and `fieldsByBlock` DO NOT HAVE THE
+                % SAME KEYS, and this line was written as though they did.
+                % A concrete class ALWAYS contributes a block; it earns a
+                % `fieldsByBlock` entry only if it declares a field. Every
+                % `*_calculation` leaf is exactly that shape -- `fields: []`
+                % and `depends_on: []` -- so the map lookup threw "The
+                % specified key is not present in this container" on the
+                % first real read.
+                %
+                % The guard is not invented here: validateDocument (`:843`)
+                % and buildBlockFromEntries (`:1854`) both already test
+                % isKey before indexing this map. Two call sites had the
+                % pattern and the third did not copy it.
+                if ~isKey(info.fieldsByBlock, blockName)
+                    continue;
+                end
                 entries = info.fieldsByBlock(blockName);
                 s.(blockName) = did2.schema.cache.coerceBlock( ...
                     s.(blockName), {entries.fieldDef});
