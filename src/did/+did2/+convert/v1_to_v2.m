@@ -473,11 +473,15 @@ function tf = isAlreadyTarget(body, targetVersion)
 % migrators (it still gets ensureClassBlocks + validate). Both conditions
 % must hold so the short-circuit only fires when we have high confidence
 % the body is already at the target:
-%   (a) document_class.schema_version is the literal char TARGETVERSION
-%       (set by the last run of universalRenames, the writer, or -- for
-%       'V_epsilon' -- a context assembler such as
-%       ndi.migrate.internal.stimulusBathToBath that emits ready-made
-%       target bodies), AND
+%   (a) document_class.schema_version ranks AT OR BEYOND TARGETVERSION on the
+%       did_v1 -> V_eta line (did2.convert.schemaVersionRank), the version
+%       having been set by the last run of universalRenames, the writer, or --
+%       for 'V_epsilon' -- a context assembler such as
+%       ndi.migrate.internal.stimulusBathToBath that emits ready-made target
+%       bodies. This was an EQUALITY test until 2026-08-14, which made a body
+%       newer than the target indistinguishable from one older than it; an
+%       unrecognised version still falls through to conversion, deliberately,
+%       AND
 %   (b) the body carries no v1-only structural markers — underscore-
 %       prefixed top-level keys (e.g., legacy _classname,
 %       _class_version) that predate the document_class header and
@@ -501,7 +505,29 @@ sv = body.document_class.schema_version;
 if isstring(sv) && isscalar(sv)
     sv = char(sv);
 end
-if ~ischar(sv) || ~strcmp(sv, targetVersion)
+if ~ischar(sv)
+    return;
+end
+% AT OR BEYOND THE TARGET, not equal to it. `strcmp` here had no notion of
+% before and after, so a body NEWER than the target took the same branch as one
+% older than it -- and that branch runs the migrators. Converting an old body
+% forward is the point; running the same pipeline over a body that has already
+% passed the target is the opposite, and it was silent.
+%
+% Reached in production, not in theory: ndi.database.internal.
+% applyReadNormalization calls this converter on EVERY read without passing a
+% target, so it inherits the 'V_delta' default, and a V_eta document compared
+% unequal and was pushed through universalRenames plus the per-class migrators.
+%
+% An UNRECOGNISED version is NOT treated as beyond the target -- it falls
+% through to the conversion path exactly as before. A name this code does not
+% know is a body written by a newer did2, and quietly skipping the migration
+% for it would assume the very compatibility that is in question. The caller
+% that can act on it (a read boundary, which knows whether it is allowed to
+% fail) is where that decision belongs.
+[svRank, svKnown] = did2.convert.schemaVersionRank(sv);
+[tgtRank, tgtKnown] = did2.convert.schemaVersionRank(targetVersion);
+if ~svKnown || ~tgtKnown || svRank < tgtRank
     return;
 end
 topKeys = fieldnames(body);
