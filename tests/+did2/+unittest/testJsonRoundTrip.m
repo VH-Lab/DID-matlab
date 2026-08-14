@@ -208,24 +208,63 @@ end
 function testWrittenDocumentSurvivesAFullDatabaseRoundTrip(testCase)
 % THE TEST THAT SHOULD HAVE EXISTED. Write -> sqlite -> read -> validate.
 % Everything above is a unit; this is the actual claim.
+%
+% EVERY STEP IS NAMED AND ITS ERROR IS PRINTED TO STDOUT, and that is not
+% belt-and-braces. This test failed in CI on 2026-08-14 and the cause was
+% NOT RECOVERABLE FROM THE LOG: the harness's verdict block prints failing
+% test NAMES only, and MATLAB's own diagnostic never reached the output --
+% `grep` for "Error occurred in", "Verification failed" and "did2:" each
+% returned 0 hits across the whole job log. The test knew why it failed
+% and the log did not, which makes a red branch undebuggable from a
+% distance.
+%
+% `fprintf` rather than `testCase.log`, deliberately: log() output is
+% suppressed at the default verbosity the runner uses, so it would have
+% been just as invisible. This is an instrument that has to report where
+% it stopped, which is the same rule everything else in this work follows.
 localAssumeMksqlite(testCase);
 cache = localCache(testCase);
 
-dbFile = [tempname '.sqlite'];
-fileCleanup = onCleanup(@() localDelete(dbFile)); %#ok<NASGU>
+step = 'start';
+try
+    step = 'tempname';
+    dbFile = [tempname '.sqlite'];
+    fileCleanup = onCleanup(@() localDelete(dbFile)); %#ok<NASGU>
 
-db = did2.database.sqlitedb(dbFile, 'SchemaCache', cache);
-dbCleanup = onCleanup(@() localClose(db)); %#ok<NASGU>
+    step = 'open sqlitedb';
+    db = did2.database.sqlitedb(dbFile, 'SchemaCache', cache);
+    dbCleanup = onCleanup(@() localClose(db)); %#ok<NASGU>
 
-doc = did2.document(localSoftwareBody(testCase, cache, ''));
-db.add(doc, 'Validate', true);
+    step = 'build the fixture body';
+    body = localSoftwareBody(testCase, cache, '');
 
-readBack = db.get(doc.get('base.id'));
+    step = 'construct did2.document';
+    doc = did2.document(body);
 
-% DENOMINATOR first, and unconditionally.
-log(testCase, sprintf( ...
-    'DENOMINATOR: 1 document written and read back, class "%s"', ...
-    readBack.className()));
+    step = 'db.add (this is where validation on WRITE happens)';
+    db.add(doc, 'Validate', true);
+
+    step = 'db.get (this is the READ the whole test is about)';
+    readBack = db.get(doc.get('base.id'));
+catch err
+    % PRINTED, not just thrown. The stack is included because "which line
+    % of which file" is exactly what the verdict block cannot say.
+    fprintf(2, ['\n*** testJsonRoundTrip round trip FAILED at step: %s\n' ...
+                '    identifier: %s\n    message   : %s\n'], ...
+        step, err.identifier, err.message);
+    for k = 1:numel(err.stack)
+        fprintf(2, '    at %s (line %d)\n', err.stack(k).name, err.stack(k).line);
+    end
+    fprintf(2, '\n');
+    verifyFail(testCase, sprintf( ...
+        'Round trip threw at "%s": %s (%s)', step, err.message, err.identifier));
+    return;
+end
+
+% DENOMINATOR first, and unconditionally. fprintf so it survives the
+% runner's verbosity, for the reason in the header.
+fprintf('DENOMINATOR: 1 document written and read back, class "%s"\n', ...
+    readBack.className());
 
 gids = readBack.get('entity.global_identifier');
 verifyTrue(testCase, isstruct(gids), sprintf( ...
