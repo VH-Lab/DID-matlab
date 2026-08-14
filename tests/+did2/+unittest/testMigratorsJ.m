@@ -1060,9 +1060,36 @@ imageCell = obs.get('image.value');
 verifyEqual(testCase, imageCell.dtype, 'uint16');
 verifyEmpty(testCase, imageCell.pixels);          % storage_mode:body -> pixels in the body
 verifyEqual(testCase, numel(imageCell.axes), 5);  % YXCZT, the full N-D calibration
-verifyEqual(testCase, imageCell.axes(1).name, 'Y');
-verifyEqual(testCase, imageCell.axes(1).length, 512);
-verifyEqual(testCase, imageCell.axes(1).spacing, 0.5);
+% UPDATED 2026-08-14 for the signed axis entry (DID-schema TEAM-SIGN-OFF
+% [data_body] + AMENDMENT 1, addendum sec.5). The old shape
+% {name, length, spacing, unit} no longer exists.
+%
+% NOT AN INVERSION -- every property below is the SAME property under a new
+% field name, which is why the values are unchanged: five dimensions, the Y
+% label, 512 samples, 0.5 spacing.
+%
+% Read with `axes(1).` rather than a chained `axes.variable.name`: `axes` is a
+% 1x5 STRUCT ARRAY, so `axes.variable` is a comma-separated list and MATLAB
+% refuses to index into one. Indexing first yields a scalar, so the chain is
+% then legal.
+verifyEqual(testCase, imageCell.axes(1).variable.name, 'Y');   % was `.name`
+verifyEqual(testCase, imageCell.axes(1).n, 512);               % was `.length`
+verifyEqual(testCase, imageCell.axes(1).spacing.value, 0.5);   % was `.spacing`
+% `regular` and `origin` are NEW and are the point of the fold: the old shape
+% declared a `spacing` with no way to say whether spacing was meaningful, and no
+% origin at all. A calibrated axis is anchored at the raster's own corner.
+verifyTrue(testCase, imageCell.axes(1).regular);
+verifyEqual(testCase, imageCell.axes(1).origin.value, 0);
+% EMPTY because THIS fixture sets `dimension_scale` and no
+% `dimension_scale_units` -- so a real stack can carry a CALIBRATED axis whose
+% spacing has no stated unit, 0.5 of something. Fixtures that DO set it are
+% covered by testImageStackScaleUnitsAreSplitPerAxis.
+verifyEqual(testCase, imageCell.axes(1).source_unit, '');
+% C/Z/T carry scale 1 here and land on the CALIBRATED arm, not the index arm,
+% because v1 recorded a scale for them. Treating a recorded 1 as filler would be
+% a guess about intent the data does not support.
+verifyEqual(testCase, imageCell.axes(3).spacing.value, 1);
+verifyEqual(testCase, imageCell.axes(3).origin.value, 0);
 % frames in the sampled_body; cadence n = T*Z = 10*1
 sb = out.migrated{2};
 verifyEqual(testCase, sb.get('document_class.class_name'), 'sampled_body');
@@ -1093,6 +1120,57 @@ end
 % invented-empty-edge pattern that put 7,233 documents in the census while the
 % RequiredDependencies gate is armed and the corpus is at 0 quarantine /
 % 0 orphans.
+
+function testImageStackScaleUnitsAreSplitPerAxis(testCase)
+%TESTIMAGESTACKSCALEUNITSARESPLITPERAXIS v1's unit list is per-axis, not shared.
+%
+%   THIS PINS A DEFECT THE FOLD FIXED, not just a new field name. v1 writes
+%   `dimension_scale_units` comma-separated and positionally aligned with
+%   `dimension_order` -- this fixture is NDI's own haley writer, 'YXT' against
+%   'micrometer,micrometer,second'. The old `imageAxes` read the field once and
+%   assigned the WHOLE STRING to every axis's `unit`, so the time axis claimed to
+%   be measured in micrometres and seconds and micrometres at once.
+%
+%   Nothing caught it because the old assertions stopped at
+%   `name`/`length`/`spacing` -- the one field that was wrong was the one field
+%   no test read.
+out = runJ(behaviourImageStack());
+obs = out.migrated{1};
+axes = obs.get('image.value').axes;
+verifyEqual(testCase, numel(axes), 3, 'dimension_order YXT is three axes');
+verifyEqual(testCase, axes(1).variable.name, 'Y');
+verifyEqual(testCase, axes(3).variable.name, 'T');
+% THE POINT: one unit each, in order -- not the joined string three times.
+verifyEqual(testCase, axes(1).source_unit, 'micrometer');
+verifyEqual(testCase, axes(2).source_unit, 'micrometer');
+verifyEqual(testCase, axes(3).source_unit, 'second');
+% and the scales stay paired with their own axis
+verifyEqual(testCase, axes(1).spacing.value, 1.5);
+verifyEqual(testCase, axes(3).spacing.value, 0.2);
+end
+
+function testImageStackAxisWithNoRecordedScaleIsAnIndexAxis(testCase)
+%TESTIMAGESTACKAXISWITHNORECORDEDSCALEISANINDEXAXIS 0 spacing is not a spacing.
+%
+%   The old shape emitted `spacing: 0` when v1 recorded no resolution, which says
+%   every sample sits at the same position. The signed entry can say what is
+%   actually true -- an axis indexed 1,2,3... with no physical unit -- which is
+%   the convention jNgridBody uses for MATLAB's default index vector.
+v1 = behaviourImageStack();
+v1.image_stack_parameters.dimension_scale = [];        % nothing recorded
+v1.image_stack_parameters.dimension_scale_units = '';
+out = runJ(v1);
+axes = out.migrated{1}.get('image.value').axes;
+verifyEqual(testCase, numel(axes), 3);
+for k = 1:3
+    verifyTrue(testCase, axes(k).regular);
+    verifyEqual(testCase, axes(k).spacing.value, 1);
+    verifyEqual(testCase, axes(k).origin.value, 1, ...
+        'an index axis starts at 1, not at 0');
+    verifyEqual(testCase, axes(k).source_unit, '', ...
+        'an index axis carries no unit');
+end
+end
 
 function v1 = behaviourImageStack()
 %BEHAVIOURIMAGESTACK The JH C. elegans behaviour-plate imageStack, as NDI's own

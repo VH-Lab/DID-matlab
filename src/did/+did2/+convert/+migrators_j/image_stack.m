@@ -488,18 +488,115 @@ end
 end
 
 function ax = imageAxes(dimOrder, dimSize, params)
-% Build the per-axis descriptor array {name, length, spacing, unit} from the v1
-% dimension_order/dimension_size/dimension_scale — the N-D calibration (image model
-% decision 4). Defensive: missing pieces yield empty/zero slots (declared, valid).
-ax = struct('name', {}, 'length', {}, 'spacing', {}, 'unit', {});
-unit = firstNonEmpty(getCharField(params, 'dimension_scale_units'), '');
+%IMAGEAXES One signed axis entry per dimension, from the v1 N-D calibration.
+%
+%   REWRITTEN 2026-08-14 FOR THE SIGNED AXIS ENTRY (DID-schema TEAM-SIGN-OFF
+%   [data_body] + AMENDMENT 1, addendum sec.5 "ALL THREE AXES DECLARATIONS FOLD
+%   INTO THE ONE ENTRY"). The old shape {name, length, spacing, unit} no longer
+%   exists. It was the WEAKEST of the three that folded: no regularity flag at
+%   all, so it declared a `spacing` with no way to say whether spacing was even
+%   meaningful, and no `origin`, so it could not say where an axis starts.
+%
+%   LOCKSTEP. `variable` and `n` are mustBeNonEmpty in the new entry, so a cell
+%   written in the old shape quarantines outright. This is the only live writer
+%   of `image.value.axes` in the V_eta path.
+%
+%   THE MAPPING:
+%       name    -> variable.name   the v1 label, VERBATIM (see below)
+%       length  -> n
+%       spacing -> spacing.value + .source_value
+%       unit    -> source_unit     (per-axis now, rather than one shared value)
+%
+%   THE LABEL IS CARRIED VERBATIM AND IS NOT TRANSLATED, deliberately. It would
+%   read better as `space_y`/`channel`/`time` -- the old `kind` field on the
+%   OTHER two axes declarations enumerated exactly that vocabulary -- but this
+%   declaration never had a `kind`, so translating would be INVENTING the
+%   semantic rather than moving it. 'Z' is the case that decides it: depth in a
+%   confocal stack, section index in a serial reconstruction, and v1 does not
+%   say which. A wrong map is a silent semantic error; a bare label is merely
+%   thin. Binding these to real terms is #32, which also fills `node` -- empty
+%   here for the same reason it is empty everywhere else today.
+%
+%   TWO ARMS, BECAUSE AN UNCALIBRATED AXIS IS NOT A CALIBRATED ONE WITH ZERO
+%   SPACING. The old code emitted `spacing: 0` when v1 recorded no resolution,
+%   which says every pixel sits at the same position -- false, and now sayable
+%   as what it is:
+%       resolution known -> a PHYSICAL axis: origin 0 (the raster's own corner,
+%                           which is what a per-pixel spacing is measured from),
+%                           spacing = the v1 scale, source_unit = the v1 unit.
+%       no resolution    -> an INDEX axis: origin 1, spacing 1, no unit. The
+%                           same convention jNgridBody uses for MATLAB's default
+%                           1-based index vector.
+%   Both arms are `regular`, so `origin` is always populated -- the entry
+%   requires it exactly when regular, and both arms are.
+%
+%   `origin` IS THE ONE FIELD v1 DOES NOT SUPPLY, AND THE CONVENTION ABOVE IS
+%   STATED RATHER THAN DERIVED. v1 records extent and scale, never an anchor,
+%   and the entry requires an origin whenever regular, so something must be
+%   written. 0-at-the-corner for a calibrated axis and 1 for an index axis are
+%   the conventional readings, not measurements -- worth a team look if a
+%   dataset ever anchors a stack somewhere else.
+%
+%   NO UNIT CONVERSION IS PERFORMED, and `unit` is left blank while
+%   `source_unit` carries the v1 spelling. That follows every other dimensioned
+%   emission in this package -- treatment.m writes source_unit 'celsius',
+%   virus_injection.m writes 'dilution', jMeasurementFold writes '' -- none of
+%   which converts. Canonicalising 'micrometer' to metres would need a
+%   conversion table this package does not have, and a wrong factor is a silent
+%   1e6 error.
+%
+%   `dimension_scale_units` IS A PER-AXIS LIST AND IS NOW SPLIT. THE OLD CODE
+%   ASSIGNED THE WHOLE STRING TO EVERY AXIS. v1 writes it comma-separated,
+%   positionally aligned with `dimension_order` -- 'YXT' pairs with
+%   'micrometer,micrometer,second' -- so the old per-axis `unit` field was filled
+%   with 'micrometer,micrometer,second' on all three axes, saying the time axis
+%   is measured in micrometres AND seconds AND micrometres. The old shape had
+%   the slot and filled it wrongly; splitting is part of the fold rather than a
+%   separate repair, because the entry that made `source_unit` per-axis is what
+%   makes the joined string obviously wrong.
+%
+%   A SHORT LIST IS NOT PADDED AND A LONG ONE IS NOT TRUNCATED-WITH-A-GUESS: an
+%   axis past the end of the list gets '', which is what an axis with no
+%   recorded unit already gets.
+ax = struct('variable', {}, 'n', {}, 'regular', {}, 'origin', {}, ...
+    'spacing', {}, 'source_unit', {});
+unitList = splitScaleUnits(getCharField(params, 'dimension_scale_units'));
 n = numel(dimOrder);
 for k = 1:n
     nm = dimOrder(k);
     len = 0;
     if k <= numel(dimSize); len = dimSize(k); end
     sp = axisResolution(params, nm);
-    ax(end+1) = struct('name', nm, 'length', len, ...
-        'spacing', sp, 'unit', unit); %#ok<AGROW>
+    axisUnit = '';
+    if k <= numel(unitList); axisUnit = unitList{k}; end
+    if sp ~= 0
+        originValue  = 0;      % the raster's own corner
+        spacingValue = sp;
+    else
+        originValue  = 1;      % MATLAB's default index vector
+        spacingValue = 1;
+        axisUnit     = '';     % an index axis has no unit
+    end
+    ax(end+1) = struct( ...
+        'variable',    jOntologyTerm('', nm), ...
+        'n',           len, ...
+        'regular',     true, ...
+        'origin',      struct('value', originValue, 'source_value', originValue), ...
+        'spacing',     struct('value', spacingValue, 'source_value', spacingValue), ...
+        'source_unit', axisUnit); %#ok<AGROW>
+end
+end
+
+function u = splitScaleUnits(raw)
+%SPLITSCALEUNITS v1's comma-separated per-axis unit list -> a cell of char.
+%   '' yields an empty cell, so every axis falls through to ''. Whitespace
+%   around a separator is trimmed: the field is hand-entered in the converters,
+%   and 'micrometer, second' must not become ' second'.
+u = {};
+if isempty(raw); return; end
+parts = strsplit(char(raw), ',');
+u = cell(1, numel(parts));
+for k = 1:numel(parts)
+    u{k} = strtrim(parts{k});
 end
 end
