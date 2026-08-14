@@ -79,7 +79,12 @@ verifyNotEmpty(testCase, obs, 'no voltage_observation was emitted for an n-trode
 verifyEqual(testCase, depValue(obs, 'subject_id'), 'specimen_1');   % the SPECIMEN
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');      % the electrode (T7)
 verifyEqual(testCase, obs.get('subject_statement.variable').name, 'voltage');
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
+% INVERTED 2026-08-14, not updated. This asserted 'body', matching the code,
+% and both were written from the same premise -- so the test could never have
+% caught it. `element` declares NO files (15 of 91 v1 templates do; element is
+% not one), so a body minted here is empty by construction in every session,
+% ingested or not. Team: "a body means bytes".
+verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
 % timing: the shared session 'during' anchor (the epoch join is the second pass)
 verifyNotEmpty(testCase, depValue(obs, 'time_reference_1'));
 anchor = firstOfClass(out, 'session_relative_reference');
@@ -87,15 +92,27 @@ verifyNotEmpty(testCase, anchor);
 verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
 end
 
-function testTheBodyValuesTheObservation(testCase)
-% storage_mode 'body' has to point at a real sampled_body, and that body has to
-% point back at THIS observation (sampled_body.statement is a required edge).
+function testNoBodyIsEmittedBecauseTheElementCarriesNoBytes(testCase)
+% INVERTED 2026-08-14. This was `testTheBodyValuesTheObservation` and asserted
+% that a `sampled_body` IS emitted -- the exact behaviour now removed.
+%
+% WHY IT IS AN INVERSION AND NOT AN UPDATE: the test and the code were written
+% from one premise (an observation with storage_mode 'body' needs a body), so
+% the suite agreed with the defect all the way into a real migrated session --
+% 11 bodies with dtype '', shape [] and an empty sample_time. That is this
+% repository's own documented failure shape: "a test written from the same
+% premise as the code cannot catch the code."
+%
+% THE PREMISE THAT WAS WRONG: `element` declares no files at all, so there are
+% never bytes on this path. Ingestion does not change it -- ingested bytes go
+% to `epochfiles_ingested` / `daqreader_*_epochdata_ingested`, different
+% documents with their own migrators.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
 obs = firstOfClass(out, 'voltage_observation');
-body = firstOfClass(out, 'sampled_body');
-verifyNotEmpty(testCase, body, 'the observation is not valued by a sampled_body');
-verifyEqual(testCase, depValue(body, 'statement'), obs.get('base.id'));
-verifyEqual(testCase, body.get('sampled_body.datum').kind, 'array');
+verifyNotEmpty(testCase, obs, 'the observation itself must still be emitted');
+verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0, ...
+    ['a sampled_body was emitted for an element, which carries no files -- ' ...
+     'it can only be an empty body claiming a value that is not there']);
 end
 
 function testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId(testCase)
@@ -113,25 +130,26 @@ end
 % ===================== multi-channel ======================================
 
 function testMultiChannelProbeIsOneObservationWithAChannelAxis(testCase)
-% SIGNED: a 32-site probe is ONE observation whose sampled_body carries a channel
-% axis, NOT N observations.
+% SIGNED: a 32-site probe is ONE observation, NOT N observations.
+%
+% NARROWED 2026-08-14. The signed property under test is the CARDINALITY -- one
+% observation per probe, not one per site -- and that is unchanged. What is
+% removed is the assertion that a `sampled_body` carries the channel axis: no
+% body is emitted at all now (see testNoBodyIsEmittedBecauseTheElementCarriesNoBytes).
+% The channel axis rides with the bytes, wherever they are described, which for
+% an element is not here.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1, ...
     'a multi-site probe must not fan out into one observation per site');
-verifyEqual(testCase, countOfClass(out, 'sampled_body'), 1);
-
-body = firstOfClass(out, 'sampled_body');
-axs = body.get('sampled_body.axes');
-verifyEqual(testCase, numel(axs), 1);
-verifyEqual(testCase, axs(1).name, 'channel');
-verifyEqual(testCase, axs(1).kind, 'index');
-% The EXTENT is deliberately absent: the channel count is not on the element
-% document (PROBE-TYPES.md: for an n-trode it "is calculated from the number of
-% channels specified in the device string", which lives in the epochprobemap).
-% Writing a 0 here would be the spikewaves bug -- a body that cleanly describes
-% an empty recording. This assertion is the tripwire against that.
-verifyFalse(testCase, isfield(axs(1), 'length') && ~isempty(axs(1).length), ...
-    'the channel axis invented a length the element document does not carry');
+verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
+% THE CHANNEL-AXIS ASSERTIONS THAT STOOD HERE ARE REMOVED WITH THE BODY, and
+% the property they protected is worth restating because it did not go away:
+% the channel COUNT is not on the element document (PROBE-TYPES.md -- for an
+% n-trode it "is calculated from the number of channels specified in the device
+% string", which lives in the epochprobemap). Writing a 0 there would have been
+% the spikewaves bug: a body cleanly describing an empty recording. Emitting no
+% body is a stronger form of the same refusal -- there is now no slot in which
+% to invent an extent.
 end
 
 function testUnderscoredElectrodeSpellingAlsoResolves(testCase)
@@ -141,20 +159,23 @@ function testUnderscoredElectrodeSpellingAlsoResolves(testCase)
 % +ndi/+database/+metadata_app/+fun/loadProbes.m:46 matches real data with
 % regexp 'electrode-\d'. All three reach the same row.
 out = runJ(elementDoc('ctx', 'extracellular_electrode-4', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+% NARROWED 2026-08-14: the property under test is that all three spellings
+% RESOLVE to the voltage row. The channel-axis assertion rode on a body that is
+% no longer emitted; resolution is what this test is for.
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
-body = firstOfClass(out, 'sampled_body');
-axesOut = body.get('sampled_body.axes');
-verifyEqual(testCase, axesOut(1).name, 'channel');
+obs = firstOfClass(out, 'voltage_observation');
+verifyEqual(testCase, obs.get('subject_statement.variable').name, 'voltage');
 end
 
 function testSingleChannelPipetteCarriesNoChannelAxis(testCase)
 % PROBE-TYPES.md: patch-Vm is "single channel, specifies voltage recording".
 % A single-channel body has no channel dimension to declare.
 out = runJ(elementDoc('Vm_a', 'patch-Vm', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+% NARROWED 2026-08-14 for the same reason as the multichannel test: no body is
+% emitted, so there is no axes slot to assert about either way. What survives is
+% the cardinality -- a single-channel pipette is ONE observation.
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
-body = firstOfClass(out, 'sampled_body');
-verifyError(testCase, @() body.get('sampled_body.axes'), ?MException, ...
-    'a single-channel pipette body declared a channel axis');
+verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 end
 
 % ===================== the retired `observes` relation =====================
@@ -187,7 +208,10 @@ function testPatchProducesAVoltageAndACurrentObservation(testCase)
 out = runJ(elementDoc('patch_a', 'patch', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
 verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
-verifyEqual(testCase, countOfClass(out, 'sampled_body'), 2);
+% was 2 -- one body per observation. No bodies are emitted now; the signed
+% property is that patch yields TWO STATEMENTS, not one with a 2-long channel
+% axis that would label a current trace 'voltage'. That is untouched.
+verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 % both are OF the specimen and WITH the same instrument, and share one anchor
 volt = firstOfClass(out, 'voltage_observation');
 curr = firstOfClass(out, 'current_observation');

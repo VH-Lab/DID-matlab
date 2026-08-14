@@ -16,9 +16,35 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %                                                role -- T7)
 %                                variable      = the modality, from the element
 %                                                type via jRecordingModality
-%                                storage_mode  = 'body'
-%       sampled_body             the samples; `statement` -> the observation
+%                                storage_mode  = 'reference'
 %       session_relative_reference  the 'during' anchor (see TIMING below)
+%
+%   NO `sampled_body` IS EMITTED, AND THAT IS THE POINT -- CHANGED 2026-08-14,
+%   team decision "a body means bytes" (V_eta_data_body_model_plan.md, the
+%   storage-mode walkthrough addendum).
+%
+%   This function is reached from ONE place -- `+migrators_j/element.m:118` --
+%   and the v1 `element` template DECLARES NO FILES AT ALL. Measured:
+%
+%       DENOMINATOR: 91 v1 template(s) on NDI origin/main
+%         declare a file_list : 15
+%         `element` among them: NO
+%
+%   So an element document NEVER carries bytes, in ANY session. Ingestion does
+%   not change it: ingesting attaches files to `epochfiles_ingested` and
+%   `daqreader_*_epochdata_ingested`, which are DIFFERENT documents with their
+%   own migrators. A body minted here was empty by construction and always
+%   would have been -- 11 of them in one PRED-like session, each with dtype '',
+%   shape [] and an empty sample_time.
+%
+%   V1'S OWN ANSWER IS THE ONE TAKEN. `ndi.file.navigator` has exactly two
+%   states (`navigator.m:218`, `:795-807`): not ingested -> the files are on
+%   disk, located BY PATTERN through the file navigator, and no document points
+%   at them; ingested -> an `epochfiles_ingested` document carries them. No v1
+%   template names a raw acquisition file (0 hits for `rhd` across all 91). The
+%   observation is still emitted -- it is the true and valuable half, and the
+%   whole reason #30 exists -- and the route to the bytes stays the route v1
+%   uses: epoch -> file pattern -> navigator.
 %
 %   and the loose `probe observes specimen` directed_relation RETIRES -- the
 %   `instrument_id` edge says the same thing inside a statement that also says
@@ -93,12 +119,19 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %
 %   This function builds the landing pad that quote names. Re-pointing the bytes
 %   onto it is the other half of #30 and needs the epoch<->element join, i.e. the
-%   second pass. CONSEQUENCE, STATED SO IT IS NOT A SURPRISE IN A REPORT:
-%   `sampled_body` declares a `body_data` file, so each of these bodies will show
-%   up as one `declared_but_absent` row in did2.validate.fileList (#64) until
-%   that half lands. That is a VISIBLE, counted state; the alternative -- an
-%   observation with storage_mode 'body' and no body -- is an invisible one, and
-%   this project's entire error history is invisible states winning.
+%   second pass.
+%
+%   THE PARAGRAPH THAT STOOD HERE CHOSE THE WRONG ONE OF TWO BAD OPTIONS, and it
+%   is replaced rather than deleted because its REASONING was right. It said a
+%   body declaring an absent `body_data` file is a VISIBLE, counted state
+%   (`declared_but_absent` in did2.validate.fileList, #64) while "an observation
+%   with storage_mode 'body' and no body is an invisible one, and this project's
+%   entire error history is invisible states winning." Both halves true. What it
+%   missed is that there was a THIRD option: emit no body and say
+%   `storage_mode: 'reference'`, which is neither invisible NOR a false promise
+%   -- the document states plainly that the value is outside the database, which
+%   is exactly what v1 says. A body that can never be filled is not a landing
+%   pad; it is a declaration that something is here when nothing is.
 %
 %   `datum.unit` is left EMPTY for the same class of reason: the modality is
 %   known, the per-sample unit is not (raw ADC counts, mV and V are all live
@@ -213,9 +246,11 @@ for k = 1:numel(entries)
         struct('name', 'time_reference_1', 'value', anchorId)];
     obs.base = struct('id', obsId, 'session_id', sessionId, ...
         'name', 'migrated_recording_observation', 'datestamp', datestamp);
+    % 'reference', not 'body': see the header. The samples live in the
+    % acquisition files, reached the way v1 reaches them.
     obs.subject_statement = struct( ...
         'variable', jOntologyTerm('', e.variable), ...
-        'storage_mode', 'body');
+        'storage_mode', 'reference');
     % `method` is left blank: the leaf class already names the act (the
     % jStartInteraction convention), and no algorithm produced this value.
     % No `sample_time` on the statement -- the body owns the cadence (D1).
@@ -223,19 +258,11 @@ for k = 1:numel(entries)
     obs.subject_observation = struct();
     obs = attachQuantityBlock(obs, e.mixin);
 
-    % ---- the sampled_body that VALUES the observation ------------------------
-    % datum.kind 'array': a continuous recording is an array of samples.
-    % dtype/unit/shape and the whole sample_time cadence are UNKNOWN from the
-    % element document -- omitted rather than defaulted to zeros (see the header).
-    body = jSampledBody(obsId, sessionId, datestamp, 'migrated_recording_body', ...
-        struct('kind', 'array', 'dtype', '', 'unit', '', 'shape', []), ...
-        struct());
-    if e.multichannel
-        body.sampled_body.axes = struct('name', 'channel', 'kind', 'index');
-    end
-
+    % NO BODY. The element document carries no files -- see the header -- so a
+    % `sampled_body` minted here could only ever be empty. The observation
+    % alone is the honest record: this electrode measured this modality from
+    % this specimen, and the value is outside the database.
     bodies{end+1} = obs;  %#ok<AGROW>
-    bodies{end+1} = body; %#ok<AGROW>
 end
 
 if isempty(bodies)
