@@ -818,10 +818,16 @@ classdef sqlitedb < handle
             docs = {};
             % Resolved ONCE for the batch, not per row: `shared()` is cheap
             % but this runs over every row of every query.
-            schemaCache = obj.resolveSchemaCache();
+            %
+            % NAMED `batchCache`, NOT `schemaCache`: that is the name of a
+            % private PROPERTY of this class, and a local shadowing it reads
+            % as `obj.schemaCache` to anyone skimming -- which is a
+            % different thing, because `resolveSchemaCache` falls back to
+            % the shared singleton when the property is empty.
+            batchCache = obj.resolveSchemaCache();
             for k = 1:n
                 d = did2.document.fromJSON(rows(k).body, ...
-                    'SchemaCache', schemaCache);
+                    'SchemaCache', batchCache);
                 if q.matches(d)
                     docs{end+1} = d; %#ok<AGROW>
                 end
