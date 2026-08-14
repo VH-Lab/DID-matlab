@@ -352,9 +352,14 @@ end
 
 function testExtracellularRecordingValidatesAgainstVEta(testCase)
 % THE ONE VALIDATING RUN. The whole emitted set -- subject + two kind assertions
-% + voltage_observation + sampled_body + session anchor -- has to satisfy V_eta
-% as declared: no undeclaredField, no missing mustBeNonEmpty, and no abstract
-% class instantiated.
+% + voltage_observation + session anchor -- has to satisfy V_eta as declared: no
+% undeclaredField, no missing mustBeNonEmpty, and no abstract class
+% instantiated.
+%
+% `sampled_body` LEFT THAT LIST 2026-08-14 (a body means bytes; `element`
+% declares no files). This assertion is also the one that PROVES
+% `storage_mode: 'reference'` validates -- the run above quarantines nothing,
+% so the enum accepts it and the observation stands without a body.
 v1 = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 if ~isempty(out.quarantine)
@@ -362,7 +367,7 @@ if ~isempty(out.quarantine)
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
-verifyEqual(testCase, countOfClass(out, 'sampled_body'), 1);
+verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);   % was 1
 verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);
 end
 
