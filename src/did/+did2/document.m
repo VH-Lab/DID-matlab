@@ -164,11 +164,35 @@ classdef document < handle
     end
 
     methods (Static)
-        function obj = fromJSON(jsonText)
+        function obj = fromJSON(jsonText, opts)
+            % fromJSON - parse JSON document text.
+            %
+            %   D = did2.document.fromJSON(TXT)
+            %   D = did2.document.fromJSON(TXT, 'SchemaCache', C)
+            %
+            %   PASS THE CACHE WHEN THE TEXT CAME OUT OF A DATABASE. JSON
+            %   cannot carry every MATLAB shape -- an empty array of
+            %   structs decodes as a 0x0 double, and a ragged array of
+            %   objects decodes as a cell -- so a document that validated
+            %   on the way in can fail on the way out. `rehydrate` restores
+            %   the declared shapes, and it needs a schema to do it.
+            %
+            %   WITHOUT a cache this is raw `jsondecode` shapes, on
+            %   purpose: this is the low-level parser, the scaffold tests
+            %   use it with no schema path set, and silently reaching for
+            %   the singleton would make those depend on global state.
+            %   `did2.database.sqlitedb` -- which is where the round trip
+            %   actually happens, and which already resolves a cache for
+            %   `add` -- passes one at every read site.
             arguments
                 jsonText (1,:) char
+                opts.SchemaCache = []
             end
             obj = did2.document(jsonText);
+            if ~isempty(opts.SchemaCache)
+                obj.documentProperties = ...
+                    opts.SchemaCache.rehydrate(obj.documentProperties);
+            end
         end
 
         function obj = fromStruct(s)

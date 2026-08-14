@@ -233,6 +233,127 @@ classdef cache < handle
             chain = [fliplr(obj.superclasses(className)), {className}];
         end
 
+        function s = rehydrate(obj, s)
+            % rehydrate - restore MATLAB shapes JSON cannot carry.
+            %
+            %   S = obj.rehydrate(S) walks a jsondecode'd document body
+            %   against its schema and coerces each declared field back to
+            %   the shape the schema says it has. Returns S unchanged when
+            %   the class is unknown here.
+            %
+            %   WHY THIS IS NEEDED, AND WHY IT IS THE READ SIDE THAT NEEDS IT
+            %   ------------------------------------------------------------
+            %   Found on a real session, 2026-08-14: seven documents that
+            %   had validated on the way IN could not be read back out --
+            %
+            %       software: Field "entity.global_identifier" must be a struct.
+            %
+            %   NOTHING IS LOST ON WRITE. `entity.global_identifier` is a
+            %   non-scalar `structure`, and a writer with nothing to say
+            %   emits a 0x0 struct array ON PURPOSE (jSoftware.m:120,
+            %   "present-and-empty rather than absent-and-guessed-at").
+            %   `jsonencode` turns that into `[]`, which is a faithful
+            %   record of "zero elements": the subfield NAMES were never
+            %   document data, since an empty array has no elements to
+            %   carry them. They are SCHEMA data.
+            %
+            %   The loss is entirely on decode. JSON cannot distinguish an
+            %   empty array of objects from an empty array, so `jsondecode`
+            %   must guess a MATLAB type and returns a 0x0 double. It
+            %   guesses wrong only because it is not consulting the one
+            %   thing that knows. That is T14 one layer down: anything a
+            %   consumer must know in order to read a value is declared in
+            %   the schema, so the schema is what restores the type.
+            %
+            %   WHY NOT LOOSEN THE VALIDATOR INSTEAD. Accepting `[]` for a
+            %   structure field would silence the error without making the
+            %   value right, and would leave the same document as a 0x0
+            %   struct when freshly built and a 0x0 double when loaded --
+            %   `numel` agreeing while `isstruct` disagreed, and
+            %   `x(k).scheme` working on one and erroring on the other.
+            %   Consumers would have to test provenance to know which they
+            %   held, which is the drift rule ("a representation must not
+            %   vary between datasets") broken by the storage layer.
+            %
+            %   TWO SHAPES ARE RESTORED, not one. The empty case is what
+            %   was observed; the second is what would have been observed
+            %   next. `jsondecode` returns a CELL ARRAY of structs, not a
+            %   struct array, whenever the objects in a JSON array carry
+            %   DIFFERENT keys -- which is exactly `subject_statement.conditions`
+            %   (one entry with `count`, another with `quantity`) and is
+            %   about to be written everywhere by the data_body tier.
+            %
+            %   NOT SILENT ABOUT WHAT IT CANNOT DO: an unknown class is
+            %   returned unchanged rather than error, because reading must
+            %   not be gated on a schema being present -- validation is
+            %   where that error belongs, and it already raises there.
+            %
+            %   TWO LIMITS, NAMED RATHER THAN DISCOVERED LATER.
+            %
+            %   1. SCALAR `structure` fields are not coerced. Only the
+            %      non-scalar case was observed, and a scalar struct does
+            %      survive JSON (`{}` decodes to a 1x1 struct with no
+            %      fields). A scalar field written as a literal `[]` would
+            %      still reach the validator as `[]` -- which is the right
+            %      outcome while no writer is known to do it, and the
+            %      wrong one the moment one does.
+            %
+            %   2. COST. `resolvePlacement` is recomputed per document and
+            %      is not memoised, so this roughly doubles the schema
+            %      walking a read already pays for (validateDocument makes
+            %      the same call). Measured at nothing so far: the sessions
+            %      this was found on hold tens of documents, and no corpus
+            %      run has exercised it. Memoise before quoting a corpus
+            %      timing, not after.
+            arguments
+                obj
+                s (1,1) struct
+            end
+            className = '';
+            if isfield(s, 'document_class') && isstruct(s.document_class) ...
+                    && isfield(s.document_class, 'class_name')
+                className = char(s.document_class.class_name);
+            end
+            if isempty(className) || ~obj.hasClass(className)
+                return;
+            end
+
+            % `depends_on` first: it is the one non-`fields` member with the
+            % same shape, and the same writer idiom produces it
+            % (`struct('name', {}, 'value', {})`).
+            if isfield(s, 'depends_on')
+                s.depends_on = did2.schema.cache.coerceStructArray( ...
+                    s.depends_on, {'name', 'value'});
+            end
+
+            info = obj.resolvePlacement(className);
+            for k = 1:numel(info.blocksContributed)
+                blockName = info.blocksContributed{k};
+                if ~isfield(s, blockName) || ~isstruct(s.(blockName))
+                    continue;
+                end
+                entries = info.fieldsByBlock(blockName);
+                s.(blockName) = did2.schema.cache.coerceBlock( ...
+                    s.(blockName), {entries.fieldDef});
+            end
+        end
+
+        function tf = hasClass(obj, className)
+            % hasClass - true when a schema file for CLASSNAME is readable.
+            %   Asked rather than caught: `getClass` errors on a missing
+            %   class, and using that error as control flow would swallow a
+            %   genuinely malformed schema alongside an absent one.
+            arguments
+                obj
+                className (1,:) char
+            end
+            if obj.loadedClasses.isKey(className)
+                tf = true;
+                return;
+            end
+            tf = isfile(fullfile(obj.schemaPath, [className '.json']));
+        end
+
         function names = requiredDependencies(obj, className)
             % requiredDependencies - names of `depends_on` entries declared
             %   `mustBeNonEmpty` anywhere in CLASSNAME's chain (#37).
@@ -1061,6 +1182,156 @@ classdef cache < handle
             % did-schema checkout typically lives. (The previous two
             % '..'s expected did-schema *inside* DID-matlab.)
             p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
+        end
+
+        function block = coerceBlock(block, fieldDefs)
+            % coerceBlock - apply coerceField to every declared field present.
+            %   Fields the block does not carry are left absent: adding one
+            %   would invent a value, and `undeclaredField`/`mustBeNonEmpty`
+            %   are the checks that own that question.
+            for i = 1:numel(fieldDefs)
+                fdef = fieldDefs{i};
+                if ~isstruct(fdef) || ~isfield(fdef, 'name')
+                    continue;
+                end
+                fname = char(fdef.name);
+                if ~isfield(block, fname)
+                    continue;
+                end
+                block.(fname) = did2.schema.cache.coerceField(block.(fname), fdef);
+            end
+        end
+
+        function value = coerceField(value, fdef)
+            % coerceField - restore one field to its declared shape.
+            %   Only `structure` fields are touched. Numeric, char and
+            %   boolean fields survive JSON with their type intact, so
+            %   reaching into them would be scope this function has not
+            %   earned.
+            if ~isfield(fdef, 'type') || ~strcmp(char(fdef.type), 'structure')
+                return;
+            end
+            subDefs = {};
+            if isfield(fdef, 'fields') && ~isempty(fdef.fields)
+                subDefs = did2.schema.cache.asCellOfDefs(fdef.fields);
+            end
+            subNames = cell(1, numel(subDefs));
+            for i = 1:numel(subDefs)
+                subNames{i} = char(subDefs{i}.name);
+            end
+
+            isScalarField = true;
+            if isfield(fdef, 'mustBeScalar')
+                isScalarField = logical(fdef.mustBeScalar);
+            end
+
+            if ~isScalarField
+                value = did2.schema.cache.coerceStructArray(value, subNames);
+            end
+            if ~isstruct(value) || isempty(subDefs)
+                return;
+            end
+            % Recurse. Element-wise assignment is safe because coercion
+            % changes VALUES only -- it never adds or removes a field name --
+            % so the array's field set cannot diverge between elements.
+            for k = 1:numel(value)
+                value(k) = did2.schema.cache.coerceBlock(value(k), subDefs);
+            end
+        end
+
+        function value = coerceStructArray(value, subNames)
+            % coerceStructArray - the two shapes jsondecode gets wrong.
+            %
+            %   1. EMPTY. `[]` for a field the schema says is an array of
+            %      structs is zero structs, not zero doubles.
+            %   2. RAGGED. A JSON array whose objects carry different keys
+            %      decodes to a CELL of structs. Filling the missing keys
+            %      with [] and concatenating restores the struct array --
+            %      and `[]` is the right filler because that is exactly
+            %      what an absent JSON key means here.
+            if isstruct(value)
+                return;
+            end
+            if iscell(value)
+                value = did2.schema.cache.mergeStructCell(value, subNames);
+                return;
+            end
+            if isempty(value)
+                value = did2.schema.cache.emptyStructArray(subNames);
+            end
+            % A NON-EMPTY non-struct, non-cell value is left ALONE so the
+            % validator still reports it. Coercing it would convert a real
+            % type error into a silent reshape, which is the failure mode
+            % this whole repair exists to remove.
+        end
+
+        function out = emptyStructArray(names)
+            % emptyStructArray - 0x0 struct array carrying NAMES.
+            if isempty(names)
+                out = struct([]);
+                return;
+            end
+            args = cell(1, 2 * numel(names));
+            for i = 1:numel(names)
+                args{2*i - 1} = names{i};
+                args{2*i}     = {};
+            end
+            out = struct(args{:});
+        end
+
+        function out = mergeStructCell(c, subNames)
+            % mergeStructCell - a cell of structs back into a struct array.
+            keep = false(1, numel(c));
+            for k = 1:numel(c)
+                keep(k) = isstruct(c{k}) && isscalar(c{k});
+            end
+            if ~all(keep)
+                % Not the ragged-object case -- leave it for the validator.
+                out = c;
+                return;
+            end
+            names = subNames;
+            for k = 1:numel(c)
+                fn = fieldnames(c{k})';
+                for j = 1:numel(fn)
+                    if ~any(strcmp(fn{j}, names))
+                        names{end+1} = fn{j}; %#ok<AGROW>
+                    end
+                end
+            end
+            if isempty(names)
+                out = did2.schema.cache.emptyStructArray({});
+                return;
+            end
+            for k = 1:numel(c)
+                for j = 1:numel(names)
+                    if ~isfield(c{k}, names{j})
+                        c{k}.(names{j}) = [];
+                    end
+                end
+                c{k} = orderfields(c{k}, names);
+            end
+            out = [c{:}];
+        end
+
+        function defs = asCellOfDefs(raw)
+            % asCellOfDefs - schema `fields` as a cell array of field defs.
+            %   jsondecode gives a struct ARRAY when the entries share keys
+            %   and a CELL when they do not -- the same variability this
+            %   function exists to undo, one level up, in the schema files
+            %   themselves.
+            if iscell(raw)
+                defs = raw(:)';
+                return;
+            end
+            if isstruct(raw)
+                defs = cell(1, numel(raw));
+                for i = 1:numel(raw)
+                    defs{i} = raw(i);
+                end
+                return;
+            end
+            defs = {};
         end
 
         function tf = envFlag(varName)

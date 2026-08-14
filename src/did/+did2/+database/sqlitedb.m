@@ -143,7 +143,11 @@ classdef sqlitedb < handle
                 error('did2:database:missingDocument', ...
                     'No document with id "%s".', id);
             end
-            doc = did2.document.fromJSON(row(1).body);
+            % SchemaCache: JSON cannot carry an empty struct array or a
+            % ragged one, so a document read back without rehydration is
+            % not the document that was written. See cache.rehydrate.
+            doc = did2.document.fromJSON(row(1).body, ...
+                'SchemaCache', obj.resolveSchemaCache());
         end
 
         function ids = allIds(obj)
@@ -809,11 +813,15 @@ classdef sqlitedb < handle
             end
         end
 
-        function docs = rowsToDocs(~, rows, q)
+        function docs = rowsToDocs(obj, rows, q)
             n = numel(rows);
             docs = {};
+            % Resolved ONCE for the batch, not per row: `shared()` is cheap
+            % but this runs over every row of every query.
+            schemaCache = obj.resolveSchemaCache();
             for k = 1:n
-                d = did2.document.fromJSON(rows(k).body);
+                d = did2.document.fromJSON(rows(k).body, ...
+                    'SchemaCache', schemaCache);
                 if q.matches(d)
                     docs{end+1} = d; %#ok<AGROW>
                 end
