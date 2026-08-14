@@ -330,6 +330,8 @@ POST_PASSES = [
         ("epoch_extent_clocks_read", "  clock entries read"),
         ("epoch_extent_references_emitted", "  relative_references emitted"),
         ("epoch_extent_epochs_given_extent", "  epochs given an extent"),
+        ("epoch_extent_references_lost",
+         "  references LOST in the re-fold -- the epoch edge would dangle"),
         # THE REFUSALS, each its own row. Rolling them into one total would
         # reproduce the defect this pass's own header describes: "nobody looked"
         # and "looked and found nothing" are different facts.

@@ -791,19 +791,40 @@ verifyEqual(testCase, depValue(d.toStruct(), 'session_id'), 'sd_A');
 end
 
 function testTheMintEmitsNoEdgeItCannotPopulate(testCase)
-% `time_reference_#` (the epoch's extent) and `instrument_id` (the recording
-% device) are both OPTIONAL and neither is derivable from an epoch-id string:
-% the per-clock extents live in `daqreader_epochdata_ingested.epochtable` and
-% the device needs the daq graph (#59). Declaring them empty is the pattern that
-% put 26,406 documents into the census while every gate stayed green, so the
-% assertion is about PRESENCE, not value.
+% SPLIT 2026-08-14, and the `time_reference_1` half is INVERTED rather than
+% deleted. This test asserted BOTH edges were absent, on the stated premise that
+% "neither is derivable from an epoch-id string: the per-clock extents live in
+% `daqreader_epochdata_ingested.epochtable`".
+%
+% THAT PREMISE WAS INCOMPLETE, and #60 option A is the team recognising it: the
+% extents ALSO live in `acquisition_epoch.clocks`, which this very fixture
+% carries. So the mint CAN now populate `time_reference_#` -- with a real
+% relative_reference document in the same batch -- and the half of this test
+% covering it moved to testEpochGainsATimeReferencePerClock.
+%
+% THE TEST'S INTENT SURVIVES UNCHANGED and is why the split is a split rather
+% than a deletion: no edge may be emitted that cannot be populated. That is
+% still asserted here for `instrument_id`, which genuinely is not derivable --
+% it needs the daq graph (#59). Declaring an edge empty is the pattern that put
+% 26,406 documents into the census while every gate stayed green.
 [out, ~] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
 epochs = ofClass(out, 'epoch');
 s = epochs{1}.toStruct();
-verifyFalse(testCase, hasDep(s, 'time_reference_1'));
-verifyFalse(testCase, hasDep(s, 'instrument_id'));
+verifyFalse(testCase, hasDep(s, 'instrument_id'), ...
+    'instrument_id needs the daq graph (#59) and must stay absent');
+% AND THE EDGE THAT IS NOW EMITTED MUST NOT DANGLE -- which is the defect this
+% inversion was paid for. The first version of option A put the references in
+% `extraBodies` without an arming entry, so they were validated and then dropped
+% while the epoch kept pointing at them. Asserting the edge EXISTS is not
+% enough; the document it names has to be in the batch.
+verifyTrue(testCase, hasDep(s, 'time_reference_1'));
+target = depValueOf(epochs{1}, 'time_reference_1');
+refIds = cellfun(@(d) char(d.get('base.id')), ofClass(out, 'relative_reference'), ...
+    'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(refIds, target)), ...
+    'the epoch names a relative_reference that is NOT in the batch -- a dangling edge');
 end
 
 function testPassOneBehaviourIsUnchangedByTheMint(testCase)

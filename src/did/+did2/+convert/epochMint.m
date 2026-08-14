@@ -412,6 +412,10 @@ report = struct( ...
     'epoch_extent_sources_seen',           0, ...
     'epoch_extent_clocks_read',            0, ...
     'epoch_extent_references_emitted',     0, ...
+    ... % emitted MINUS survived: a reference built and validated but dropped by
+    ... % the re-fold, which would leave the epoch's edge dangling. Optional edges
+    ... % do not fail validation, so without this counter the loss is silent.
+    'epoch_extent_references_lost',        0, ...
     'epoch_extent_epochs_given_extent',    0, ...
     'epoch_extent_refused_no_epoch_string', 0, ...
     'epoch_extent_refused_no_clocks',      0, ...
@@ -720,6 +724,15 @@ changedArming = [];
 armings = {};
 extraBodies = {};    % bodies 2..N of every armed call, awaiting the re-fold
 
+% THE IDS ARE TRACKED SEPARATELY, AND THAT IS THE WHOLE BUG FROM 68a1900.
+% Putting a body in `extraBodies` gets it VALIDATED (it joins `rebuildIn`) and
+% does NOT get it EMITTED: the append-back loop below is driven entirely by
+% `armings{a}.extra_ids`, so a body with no arming entry is built, validated and
+% then dropped on the floor -- the exact failure the comment above that loop
+% names. The epoch meanwhile kept the `time_reference_#` edge pointing at it, so
+% the result was a dangling reference. CI caught all three tests; this list and
+% the append loop after the mint are the repair.
+extentRefIds = {};
 for m = 1:numel(minted)
     epochBody = minted{m};
     key = pairKey(epochBody.base.session_id, epochBody.epoch.local_identifier);
@@ -745,7 +758,11 @@ for m = 1:numel(minted)
     for r = 1:numel(refs)
         epochBody = setDep(epochBody, sprintf('time_reference_%d', r), ...
             refs{r}.base.id);
+        % TWO LISTS, TWO JOBS. `extraBodies` gets the body VALIDATED (it joins
+        % rebuildIn); `extentRefIds` gets it EMITTED (the append loop after the
+        % mint). Using only the first is what dropped them in 68a1900.
         extraBodies{end+1} = refs{r}; %#ok<AGROW>
+        extentRefIds{end+1} = refs{r}.base.id; %#ok<AGROW>
     end
     % Code scanning flags this line as "variable appears to change size on
     % every loop iteration" (alert 218). FALSE POSITIVE, verified by reading
@@ -1179,6 +1196,22 @@ for j = 1:numel(mintedIds)
     end
 end
 report.epochs_minted = emitted;
+
+% --- append the epoch-extent references (#60 option A) ---------------------
+% Same shape as the mint append directly above, and for the same reason: a
+% document that survived the re-fold must be EMITTED, not merely validated.
+% A reference that did NOT survive is counted rather than passed over --
+% `time_reference_#` is optional (min_count 0), so a dangling edge does not fail
+% validation and would otherwise be silent. The corpus gate is 0-quarantine, so
+% any loss here already fails the run loudly; this counter says WHICH loss.
+for j = 1:numel(extentRefIds)
+    if isKey(producedById, extentRefIds{j})
+        docs{end+1} = out.migrated{producedById(extentRefIds{j})}; %#ok<AGROW>
+    else
+        report.epoch_extent_references_lost = ...
+            report.epoch_extent_references_lost + 1;
+    end
+end
 % Keep the index honest: an epoch that did not survive validation is not an
 % epoch anything may point at. Entries that were FOUND (already in the batch)
 % were never rebuilt, so they are kept unconditionally; only the minted ones are
