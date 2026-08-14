@@ -1094,3 +1094,86 @@ verifyEqual(testCase, L.moved_vintage_unreadable_block, 1);
 verifyEqual(testCase, L.moved_missing_id, 2);
 verifyEqual(testCase, L.moved_missing_session_id, 3);
 end
+
+% ===========================================================================
+% VERSION ORDERING AND THE REFUSAL
+% ===========================================================================
+% `isAlreadyTarget` compared schema_version to the target with strcmp, so a
+% document NEWER than the target was indistinguishable from one OLDER, and both
+% took the branch that runs the migrators. These pin the ordering and the
+% refusal that replaced it.
+
+function testABodyBeyondTheTargetIsNotConverted(testCase)
+% THE BUG. A V_eta body normalised at TargetVersion V_delta -- which is what
+% ndi.database.internal.applyReadNormalization does on EVERY read -- was pushed
+% through universalRenames and the per-class migrators aimed at a version it
+% had already passed.
+v1 = makeV1Skeleton('treatment');
+v1.document_class.schema_version = 'V_eta';
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
+    'numeric_value', 2.0, 'string_value', '2 percent');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+verifyEmpty(testCase, r.quarantine, ...
+    'a body beyond the target must not quarantine');
+verifyNotEmpty(testCase, r.migrated, 'the body was dropped entirely');
+verifyEqual(testCase, ...
+    r.migrated{1}.toStruct().document_class.schema_version, 'V_eta', ...
+    ['the body was converted BACKWARDS -- its version was rewritten to the ' ...
+     'target it had already passed']);
+end
+
+function testABodyBelowTheTargetStillConverts(testCase)
+% The counterpart, so the ordering fix cannot pass by refusing everything.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
+    'numeric_value', 2.0, 'string_value', '2 percent');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+verifyNotEmpty(testCase, r.migrated);
+verifyEqual(testCase, ...
+    r.migrated{1}.toStruct().document_class.schema_version, 'V_delta');
+end
+
+function testAnUnknownSchemaVersionIsREFUSEDNotConverted(testCase)
+% Team, 2026-08-14: "an unrecognized version shouldn't convert". A name this
+% did2 does not know belongs to a document written by a NEWER one, and running
+% the v1-era migrators over it would reshape fields whose meaning is unknown
+% here. It quarantines with a named identifier instead.
+v1 = makeV1Skeleton('treatment');
+v1.document_class.schema_version = 'V_omega';
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
+    'numeric_value', 2.0, 'string_value', '2 percent');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+verifyEmpty(testCase, r.migrated, ...
+    'an unknown vintage was converted -- it must be refused');
+verifyNotEmpty(testCase, r.quarantine, ...
+    'an unknown vintage vanished silently instead of quarantining');
+verifyEqual(testCase, r.quarantine(1).identifier, ...
+    'did2:convert:unknownSchemaVersion');
+end
+
+function testAMissingSchemaVersionIsDidV1AndIsNotRefused(testCase)
+% The distinction the refusal turns on. ABSENT is the ORIGIN of the line, not
+% an unknown vintage -- collapsing the two would quarantine every real did_v1
+% document in existence.
+v1 = makeV1Skeleton('treatment');
+verifyFalse(testCase, isfield(v1.document_class, 'schema_version'), ...
+    'the fixture already declares a version; this test would prove nothing');
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
+    'numeric_value', 2.0, 'string_value', '2 percent');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+verifyEmpty(testCase, r.quarantine, 'a did_v1 body was refused');
+verifyNotEmpty(testCase, r.migrated);
+end
+
+function testTheVersionRankOrdersTheLineAndFlagsTheUnknown(testCase)
+[r0, k0] = did2.convert.schemaVersionRank('');
+[rd, kd] = did2.convert.schemaVersionRank('V_delta');
+[re, ke] = did2.convert.schemaVersionRank('V_eta');
+[rx, kx] = did2.convert.schemaVersionRank('V_omega');
+verifyTrue(testCase, k0 && kd && ke);
+verifyEqual(testCase, r0, 0, 'did_v1 is the origin of the line');
+verifyTrue(testCase, rd < re, 'V_delta must rank before V_eta');
+verifyFalse(testCase, kx, 'an unknown name must not be reported as known');
+verifyTrue(testCase, isnan(rx), ...
+    'an unknown name must not get rank 0 -- that is did_v1, "convert this"');
+end

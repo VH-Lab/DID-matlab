@@ -187,6 +187,7 @@ for k = 1:numel(bodies)
     className = '<unknown>';
     try
         preBody = ensureStruct(rawBody);
+        refuseUnknownSchemaVersion(preBody);
         if isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already V_delta,
             % so skip universalRenames and the per-class migrators.
@@ -467,6 +468,55 @@ else
 end
 end
 
+function refuseUnknownSchemaVersion(body)
+%REFUSEUNKNOWNSCHEMAVERSION Stop, rather than migrate a vintage we do not know.
+%   A body whose `document_class.schema_version` is present but NOT on the
+%   did_v1 -> V_eta line is one written by a did2 NEWER than this one. There are
+%   only two things to do with it and one of them is destructive:
+%
+%     convert it  -- run universalRenames and the v1-era per-class migrators
+%                    over a document from the future, reshaping fields whose
+%                    meaning this code does not know. SILENT, and lossy.
+%     refuse it   -- quarantine with a named reason and let the caller decide.
+%
+%   The first version of the ordering fix chose CONVERT, on the reasoning that
+%   an unrecognised name is "not at the target, so migrate it forward". That is
+%   backwards: forward from WHERE is precisely what is unknown. Corrected on the
+%   team's instruction, 2026-08-14 -- "an unrecognized version shouldn't
+%   convert".
+%
+%   A body with NO schema_version at all is did_v1 and is NOT refused: absence
+%   is the origin of the line (rank 0), not an unknown vintage. Collapsing those
+%   two would quarantine every real v1 document in existence.
+%
+%   Thrown rather than returned so the per-body catch quarantines it with an
+%   IDENTIFIER, which is what the rollup groups by -- message text interpolates
+%   the version name and would scatter one failure kind across many groups.
+if ~isstruct(body) || ~isscalar(body) ...
+        || ~isfield(body, 'document_class') ...
+        || ~isstruct(body.document_class) || ~isscalar(body.document_class) ...
+        || ~isfield(body.document_class, 'schema_version')
+    return;
+end
+sv = body.document_class.schema_version;
+if isstring(sv) && isscalar(sv)
+    sv = char(sv);
+end
+if ~ischar(sv) || isempty(sv)
+    return;      % absent or blank == did_v1, the origin of the line
+end
+[~, known] = did2.convert.schemaVersionRank(sv);
+if ~known
+    error('did2:convert:unknownSchemaVersion', ...
+        ['document_class.schema_version is ''%s'', which is not on the ' ...
+         'did_v1 -> V_eta line this did2 knows. Refusing to migrate it: ' ...
+         'this document was written by a NEWER did2, and running the v1-era ' ...
+         'migrators over it would reshape fields whose meaning is unknown ' ...
+         'here. Upgrade did2, or migrate this document with the version that ' ...
+         'wrote it.'], sv);
+end
+end
+
 function tf = isAlreadyTarget(body, targetVersion)
 % Return true when BODY is already a TARGETVERSION-shaped document so the
 % per-body migration loop can skip universalRenames and the per-class
@@ -519,12 +569,11 @@ end
 % target, so it inherits the 'V_delta' default, and a V_eta document compared
 % unequal and was pushed through universalRenames plus the per-class migrators.
 %
-% An UNRECOGNISED version is NOT treated as beyond the target -- it falls
-% through to the conversion path exactly as before. A name this code does not
-% know is a body written by a newer did2, and quietly skipping the migration
-% for it would assume the very compatibility that is in question. The caller
-% that can act on it (a read boundary, which knows whether it is allowed to
-% fail) is where that decision belongs.
+% An UNRECOGNISED version cannot reach here: refuseUnknownSchemaVersion runs
+% first and quarantines it. The `~svKnown` guard below is kept as a defence for
+% any other caller of this helper, and it returns FALSE only because a body
+% that got this far with an unknown version is already a contradiction -- the
+% refusal, not this line, is what decides that case.
 [svRank, svKnown] = did2.convert.schemaVersionRank(sv);
 [tgtRank, tgtKnown] = did2.convert.schemaVersionRank(targetVersion);
 if ~svKnown || ~tgtKnown || svRank < tgtRank
