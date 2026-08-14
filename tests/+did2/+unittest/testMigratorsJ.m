@@ -3564,8 +3564,8 @@ verifyEqual(testCase, depValue(obs, 'subject_id'), 'sub_ks');
 
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, depValue(ob, 'statement'), 'ks_1');             % body -> the obs
-verifyEqual(testCase, ob.opaque_body.filename, 'ks_out/session1');    % directory preserved
-verifyTrue(testCase, contains(ob.opaque_body.description, 'd41d8cd9'));% MD5 noted
+verifyEqual(testCase, ob.data_body.filename, 'ks_out/session1');    % directory preserved
+verifyTrue(testCase, contains(ob.data_body.description, 'd41d8cd9'));% MD5 noted
 end
 
 function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
@@ -3592,7 +3592,7 @@ obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'ka_1');
 verifyEqual(testCase, obs.subject_interaction.method.name, 'kiasort');
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
-verifyEqual(testCase, ob.opaque_body.filename, 'ka_out/session1');
+verifyEqual(testCase, ob.data_body.filename, 'ka_out/session1');
 end
 
 function body = sortingOutputsBody()
