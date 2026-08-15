@@ -21,11 +21,33 @@ name: Corpus (parallel)
 # cancel an in-flight test-code run.
 
 on:
-  # workflow_dispatch cannot reach a workflow that does not yet exist on the
-  # DEFAULT branch -- the API 404s. Until this merges, a push trigger scoped to
-  # this file is the only way to exercise it. Deliberately narrow: it fires when
-  # the workflow itself changes, NOT on every source push, so validating the
-  # pipeline does not spend six MATLAB runners on unrelated commits.
+  # DISPATCH WORKS. USE IT. This block said "workflow_dispatch cannot reach a
+  # workflow that does not yet exist on the DEFAULT branch -- the API 404s",
+  # and sent the reader to the push lever instead. CORRECTED 2026-08-15.
+  #
+  # The PREMISE is still true and the CONCLUSION is not, which is why the whole
+  # sentence had to go rather than be softened:
+  #
+  #   $ git ls-tree origin/main .github/workflows/ | awk '{print $4}'
+  #   prepare-release.yml  run-codespell.yml  test-code.yml  test-symmetry.yml
+  #                                          <- test-corpus.yml still absent
+  #   $ gh api -X POST .../actions/workflows/test-corpus.yml/dispatches \
+  #         -f ref=claude/... -f inputs[corpora]=20211116
+  #   204 No Content        <- run 31888644708, event=workflow_dispatch
+  #
+  # And run 31866857585 (2026-08-15T05:24Z) was ALSO event=workflow_dispatch, so
+  # this is not a one-off. Two dispatched runs on record.
+  #
+  # THE COST OF THE STALE LINE IS SIX RUNNERS. Following it means editing this
+  # file, and the push trigger below fires with an EMPTY `inputs.corpora`, which
+  # the `select` job expands to ALL SIX corpora -- ~70 minutes and six MATLAB
+  # runners. A dispatch naming one corpus costs seconds. A note that routes a
+  # reader from the cheap lever to the expensive one is worse than no note.
+  #
+  # The push trigger stays: it is the right lever when the workflow ITSELF
+  # changes, which is exactly when all six should run. Deliberately narrow --
+  # it fires on changes to this file, NOT on every source push, so validating
+  # the pipeline does not spend six MATLAB runners on unrelated commits.
   push:
     branches: ["claude/**"]
     paths:
@@ -36,12 +58,14 @@ on:
       # run and `cancel-in-progress` killed the one before it. Four consecutive
       # runs died that way and Soph and JH were never measured once.
       #
-      # Editing THIS file remains the on-demand lever, and it has to be: the
-      # workflow does not exist on the default branch yet, so the dispatch API
-      # 404s (verified 2026-08-10 -- `git ls-tree origin/main .github/workflows/`
-      # lists only prepare-release, run-codespell, test-code, test-symmetry).
-      # To run the corpus now: bump the comment below and push.
-      #   corpus-run-token: 3
+      # TO RUN ONE CORPUS, DISPATCH -- do not touch this file. See the corrected
+      # note at the top of `on:`. Editing here runs ALL SIX.
+      #
+      #   gh workflow run test-corpus.yml --ref <branch> -f corpora=20211116
+      #
+      # Bumping the token below is the ALL-SIX lever and is what you want when
+      # the workflow itself is what changed.
+      #   corpus-run-token: 4
       - ".github/workflows/test-corpus.yml"
   workflow_dispatch:
     inputs:
