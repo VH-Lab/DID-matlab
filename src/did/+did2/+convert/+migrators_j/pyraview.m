@@ -291,6 +291,29 @@ for k = 1:numel(fileList)
     b = jSampledBody(obsId, sessionId, datestamp, 'migrated_signal_body', ...
         struct('regular', true, ...
             't0', durationComposite(t0_k), 'dt', durationComposite(dt_k), 'n', 0));
+    % THE CHANNEL COUNT KEEPS A HOME. It used to ride in `datum.shape`, and when
+    % `datum` collapsed (signed sec.5) its only consumer went with it -- code
+    % scanning alert 219 caught the orphaned `channels` assignment, which was a
+    % REAL loss and not a false positive: the plan says `shape` becomes
+    % `[axes.n] in array order`, not that it disappears.
+    %
+    % ONE ENTRY, FOR THE CHANNEL DIMENSION ONLY, and the reason it is not two is
+    % worth stating: `axes[k] IS array dimension k`, so a partial list would
+    % claim dimension 1 is channels. The TIME dimension is still carried by
+    % `sample_time` above, which is exactly what step 5 of the build order
+    % retires ("time becomes an ordinary axis"). Until that lands, this body
+    % states its channel extent as `axes(1)` alongside a `sample_time` that
+    % states its time extent -- ONE fact each, no duplication -- and when
+    % sample_time retires the time axis is PREPENDED and this becomes axes(2).
+    nChannels = numScalar(channels, 0);
+    if nChannels > 0
+        b.sampled_body.axes = struct( ...
+            'variable', jOntologyTerm('', 'channel'), ...
+            'n',        nChannels, ...
+            'regular',  true, ...
+            'origin',   struct('value', 1, 'source_value', 1), ...
+            'spacing',  struct('value', 1, 'source_value', 1));
+    end
     % this body owns exactly its level's file
     b.files = struct('file_list', {fileList(k)});
     % every level was produced by the SAME filter (filterData is called once per
