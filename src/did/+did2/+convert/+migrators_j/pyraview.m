@@ -301,6 +301,33 @@ if numel(epochSpan) >= 2 && all(isfinite(epochSpan(1:2)))
     epochDur = double(epochSpan(2)) - double(epochSpan(1));
 end
 
+% THE CHANNEL AXIS IS LOOP-INVARIANT AND IS BUILT ONCE. `channels` is a
+% document-level field: every resolution level of the pyramid holds the same
+% channel count, and only the TIME axis differs per level (its rate and start).
+% It used to be rebuilt inside the loop and appended with `axesEntries(end+1)`,
+% which GitHub code scanning 220 flagged as a grow-in-loop.
+%
+% THE PERFORMANCE CLAIM IS A FALSE POSITIVE and is recorded as one: the variable
+% was reset to [] on every iteration and reached at most TWO elements, so it was
+% bounded, not growing. This file has form both ways -- 218 was a false positive
+% and is documented in place, 219 was real -- so the alert was read rather than
+% assumed either way. Third alert, third separate answer.
+%
+% IT IS RESTRUCTURED ANYWAY, because the line the scanner pointed at sat on a
+% real (if cheap) defect it did not report: a loop-invariant built N times. The
+% growing assignment is gone as a side effect, so the alert clears on its merits
+% instead of being suppressed.
+nChannels   = numScalar(channels, 0);
+channelAxis = [];
+if nChannels > 0
+    % An INDEX axis, the convention jNgridBody and image_stack's uncalibrated
+    % arm both use: origin 1, spacing 1, no unit.
+    channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
+        'regular', true, ...
+        'origin',  struct('value', 1, 'source_value', 1), ...
+        'spacing', struct('value', 1, 'source_value', 1));
+end
+
 bodies = {obs};
 for k = 1:numel(fileList)
     rate_k = nativeRt;
@@ -338,27 +365,28 @@ for k = 1:numel(fileList)
     % incomplete, it is false, whereas an ABSENT list merely says nothing. The
     % channel count is then unhomed again -- a known, recorded loss (#45) --
     % rather than a wrong claim about layout.
-    axesEntries = [];
     if n_k > 0
-        axesEntries = jAxis(jOntologyTerm('', 'time'), n_k, ...
+        timeAxis = jAxis(jOntologyTerm('', 'time'), n_k, ...
             'regular',     true, ...
             'source_unit', 's', ...
             'origin',      struct('value', t0_k, 'source_value', t0_k), ...
             'spacing',     struct('value', dt_k, 'source_value', dt_k));
-        nChannels = numScalar(channels, 0);
-        if nChannels > 0
-            % An INDEX axis, the convention jNgridBody and image_stack's
-            % uncalibrated arm both use: origin 1, spacing 1, no unit.
-            axesEntries(end + 1) = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
-                'regular', true, ...
-                'origin',  struct('value', 1, 'source_value', 1), ...
-                'spacing', struct('value', 1, 'source_value', 1));
+        % Assigned in its own statement, NOT inside struct(...): a non-scalar
+        % struct value passed to struct() distributes into a struct ARRAY of
+        % bodies. Concatenation is safe only because jAxis gives every entry the
+        % same field set in the same order -- that is what the helper is for.
+        %
+        % BRANCHED RATHER THAN `[timeAxis, channelAxis]` WITH AN EMPTY SECOND
+        % OPERAND. That would rest on MATLAB dropping a 0x0 double when
+        % concatenating it with a struct, which there is no MATLAB in this
+        % container to confirm -- and a wrong guess there is a class error on the
+        % no-channel path only, i.e. exactly the path least likely to be
+        % fixtured. Two explicit arms cost one `if` and depend on nothing.
+        if isempty(channelAxis)
+            b.sampled_body.axes = timeAxis;
+        else
+            b.sampled_body.axes = [timeAxis, channelAxis];
         end
-    end
-    % Assigned in its own statement, NOT inside struct(...): a non-scalar struct
-    % value passed to struct() distributes into a struct ARRAY of bodies.
-    if ~isempty(axesEntries)
-        b.sampled_body.axes = axesEntries;
     end
     % this body owns exactly its level's file
     b.files = struct('file_list', {fileList(k)});
