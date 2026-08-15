@@ -363,6 +363,44 @@ obs.image = struct();
 obs.image.value = imageCell;
 
 % ---- the sampled_body holding the digital frames ----------------------------
+% THIS IS THE ONE `sample_time` WRITER LEFT ON THE BODY, AND IT IS HELD ON
+% PURPOSE. Step 5 of the signed build order retires `sampled_body.sample_time`;
+% pyraview, jNgridBody and jrclust_clusters have all converted. This one cannot
+% follow without answering a question two SIGNED documents answer differently,
+% so it is recorded rather than resolved (Operating Rule 4).
+%
+% THE QUESTION: where does a body-backed IMAGE state its axes?
+%
+%   V_eta_data_body_model_plan.md (signed 2026-08-14) -- "storage_mode: body ->
+%       each sampled_body.axes[] populated; statement.axes[] EMPTY".
+%   V_eta_image_model_plan.md (R6) -- descriptors (dtype/axes/color_model/
+%       channels) are ALWAYS explicit ON THE COMPOSITE, because dtype is not
+%       recoverable from an inline matrix.
+%
+% This migrator already does the second: `image.value.axes = imageAxes(dimOrder,
+% dimSize, params)`, one entry per v1 dimension INCLUDING T and Z. And the body's
+% extent is derived from the same two fields --
+%
+%       numFrames = frameCount(dimOrder, dimSize)   % product of the T and Z sizes
+%
+% -- so `sampled_body.axes` here would RESTATE what `image.value.axes` already
+% says, which is the store-it-twice shape (#69) this whole step is removing. The
+% mount rule and the composite rule do not conflict for pyraview (a
+% voltage_observation has no composite axes slot); they conflict only where the
+% composite carries its own axes, i.e. `image`.
+%
+% Converting either way would be a model decision:
+%   (a) body axes, composite axes dropped   -> contradicts the image plan and
+%       loses the descriptors on an inline (storage_mode != body) image;
+%   (b) composite axes only, body silent    -> contradicts the mount rule and
+%       leaves a body-backed value with no positional description of its bytes;
+%   (c) both, defined as describing different things (the IMAGE vs the STORED
+%       ARRAY) -- coherent, but it is a new rule neither document states.
+%
+% Until that is answered, the block stays as it is: it is still declared, still
+% optional, and still carries the only fact it ever carried here (t0 + the frame
+% cadence + the frame count). Nothing is lost by waiting, and (a) or (b) chosen
+% wrongly deletes a descriptor set on every image document.
 body = jSampledBody(stackId, sessionId, datestamp, 'migrated_image_frames', ...
     struct('regular', true, ...
         't0', durationComposite(t0), 'dt', durationComposite(frameDt(clockName)), ...
