@@ -128,9 +128,17 @@ function bodies = epochfiles_ingested(preBody)
 %   RE-CHECKED 2026-08-12, BOTH SIDES, because one clause of the sentence above
 %   used to read "option B is blocked on the raw-recording observation model
 %   (#30), which is UNSIGNED" and that clause is STALE. #30 IS SIGNED:
+%   HISTORICAL-BUILD-CLAIM -- the quoted "which is UNSIGNED" above is history.
 %
 %     $ grep -c TEAM-SIGN-OFF DID-schema/schemas/V_eta_recording_observation_plan.md
 %     1                       (the line is at :99, dated 2026-08-10)
+%     2  <- RE-DERIVED 2026-08-15. A SECOND signature landed on 2026-08-13 (the
+%           pyraview clause: "`pyraview` ENDS AS a `voltage_observation` + one
+%           `sampled_body` PER STORED RESOLUTION LEVEL + a `frequency_filter`,
+%           and that is the end state"). The `1` is kept as the 2026-08-12
+%           reading rather than overwritten -- a dated measurement is a
+%           measurement -- but do not quote it as current. The CONCLUSION is
+%           unaffected and is now doubly supported.
 %
 %   THE BLOCKER SURVIVES THE CORRECTION, AND THE CORRECTION MATTERS ANYWAY --
 %   a reader who checked that clause would find it false and could read the

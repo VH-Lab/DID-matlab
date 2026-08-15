@@ -41,13 +41,21 @@ function v2Body = element_epoch(preBody)
 %   ---------------------------------------------------------------------------
 %   WHY THE DISSOLUTION IS NOT BUILT (#60 migrator half, deferred)
 %   ---------------------------------------------------------------------------
+%   HISTORICAL-BUILD-CLAIM -- the two `UNSIGNED` labels in the table below are
+%   REPRODUCED AS HISTORY, not asserted. Both were true when written and both
+%   are false now; the correction, with the signature lines that establish it,
+%   follows the table. Marked so `DID-schema tools/check_build_claims.py` reads
+%   them as a quote rather than a live claim.
+%
 %   Under the signed model this class dissolves into pieces that do not exist yet:
 %
 %       t0_t1 / epoch_clock     -> relative_reference documents  (time model)
 %       epoch_binary_data.vhsb  -> sampled_body                  (2.D data_body,
 %                                                                 #45, UNSIGNED)
+%   HISTORICAL-BUILD-CLAIM  (the label above; #45 was signed 2026-08-14)
 %       element_id              -> the observation's subject/instrument per T7
 %                                  (raw-recording model, #30, UNSIGNED)
+%   HISTORICAL-BUILD-CLAIM  (the label above; #30 signed 2026-08-10 and -13)
 %       + an epoch_id edge      -> the minted `epoch`            (second pass)
 %
 %   TWO OF THOSE THREE "UNSIGNED" LABELS ARE STALE AS OF 2026-08-15, AND THEY
