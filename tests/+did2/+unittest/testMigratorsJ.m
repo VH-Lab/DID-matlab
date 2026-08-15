@@ -3558,7 +3558,15 @@ verifyEqual(testCase, depValue(sbod, 'statement'), obs.base.id);   % == 'jc_1'
 % `datum.kind` is gone with `datum`: scalar-vs-array WAS the axis count, which
 % axes[] now states directly.
 verifyFalse(testCase, isfield(sbod.sampled_body, 'datum'));
-verifyEqual(testCase, sbod.sampled_body.sample_time.n, 0);         % unknown length
+% THE UNKNOWN LENGTH IS NOW SAID BY SILENCE RATHER THAN BY A ZERO. This asserted
+% `sample_time.n == 0` and called it "unknown length" -- but 0 is a VALUE, and on
+% an axis entry (`n` is mustBeNonEmpty) it would assert a zero-length dimension,
+% which is the fabricated measurement testSpikewavesDefersToSecondPass refuses in
+% this same file. jrclust_clusters carries no spike count and the real one lives
+% in the payload, so the body now states no extent at all.
+verifyFalse(testCase, isfield(sbod.sampled_body, 'sample_time') ...
+    && ~isempty(fieldnames(sbod.sampled_body.sample_time)));
+verifyFalse(testCase, isfield(sbod.sampled_body, 'axes'));
 verifyEqual(testCase, sbod.files.file_list{1}, 'clusters.mat');
 end
 

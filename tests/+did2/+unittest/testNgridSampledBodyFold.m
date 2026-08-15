@@ -166,14 +166,21 @@ end
 
 function testAnNgridHasNoTimeAxisSoTheBodyIsOneDatum(testCase)
 % An ngrid declares no time dimension at all -- contrast image_stack, whose v1
-% block carries dimension_order/T and really does have frames to count. n = 1
-% with the extent in `shape`, rather than an invented cadence.
+% block carries dimension_order/T and really does have frames to count.
+%
+% THE BLOCK THIS USED TO ASSERT IS GONE, AND IT WAS ENTIRELY PLACEHOLDER: it
+% pinned `sample_time` as {regular: true, t0: 0, dt: 0, n: 1}, i.e. a regular
+% timeline whose origin and spacing were both zero and whose length was "one
+% datum" rather than one sample. Three of the four sub-fields carried no fact,
+% and the fourth restated a cardinality `axes` already carries. The signed model
+% retires the block (step 5); this writer had nothing in it to migrate, so the
+% assertion becomes its ABSENCE plus the axes that do carry the extent.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-st = pick(out, 'sampled_body').sampled_body.sample_time;
-verifyEqual(testCase, st.n, 1);
-verifyTrue(testCase, st.regular);
-verifyEqual(testCase, st.t0.source_value, 0);
-verifyEqual(testCase, st.dt.source_value, 0);
+sb = pick(out, 'sampled_body').sampled_body;
+verifyFalse(testCase, isfield(sb, 'sample_time') ...
+    && ~isempty(fieldnames(sb.sample_time)));
+verifyTrue(testCase, isfield(sb, 'axes'));
+verifyTrue(testCase, numel(sb.axes) >= 1);
 end
 
 function testTheRasterBytesMoveToTheBodyUnderNDIsOwnFileName(testCase)

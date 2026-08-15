@@ -12,9 +12,10 @@ function bodies = jrclust_clusters(preBody)
 %       count_observation  the discoverable spine handle: subject_id, a shared time
 %                          anchor, variable = 'spike cluster assignment',
 %                          storage_mode 'body'.
-%       sampled_body       one datum per spike (the cluster index); sample_time
-%                          irregular, n = 0 (unknown length -- this class has no
-%                          num_spikes/num_clusters metadata); + the carried bytes;
+%       sampled_body       one datum per spike (the cluster index); NO axes and no
+%                          sample_time -- the length is unknown (this class has no
+%                          num_spikes/num_clusters metadata and the count lives in
+%                          the payload, which a migrator does not read); + the bytes;
 %                          statement -> the observation. The *_res.mat MD5 checksum
 %                          is carried into the body summary note.
 %       session_relative_reference   the 'during' anchor.
@@ -69,10 +70,6 @@ sessionId = baseField(preBody, 'session_id', '');
 datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
 obsId     = baseField(preBody, 'id', did.ido.unique_id());
 
-% jrclust_clusters carries no num_spikes/num_clusters, so the label series length
-% is unknown at migration time; n = 0 marks an unknown-length sample_time.
-numSpikes = 0;
-
 anchorId = did.ido.unique_id();
 
 % ---- the session-relative time anchor ('during') ----------------------------
@@ -120,9 +117,32 @@ if ~isempty(fieldnames(execEnv))
 end
 
 % ---- the sampled_body: one cluster index per spike --------------------------
+% NO `sample_time` AND NO `axes`, AND THE SECOND HALF IS THE DELIBERATE ONE.
+%
+% The retired `sample_time` here was three-quarters placeholder: `regular: false`
+% with `t0` and `dt` both zero -- an irregular timeline containing no times. Its
+% only content was `n`, and `n` was a hardcoded literal 0 meaning UNKNOWN rather
+% than "zero spikes".
+%
+% So there is nothing to convert into an axis. The array is one cluster index per
+% spike, so array dimension 1 is the spike ordinal, but its EXTENT is not on this
+% document -- the count lives in the JRCLUST payload the body carries, and a
+% migrator does not read bytes. `n` is mustBeNonEmpty on an axis entry, so the
+% only axis expressible here is one of extent zero, and that ASSERTS a
+% zero-length dimension. It is the fabricated-measurement shape the spikewaves
+% fold refuses in exactly these words: "every document described an extraction of
+% ZERO spikes of ZERO samples -- a fabricated measurement that validates
+% cleanly". That the old block wrote n = 0 anyway is not a precedent for
+% repeating it; it is the defect being removed.
+%
+% An absent axes list says nothing. A zero-extent one says something false. No
+% guarded emission is written either: the spike count was a hardcoded `numSpikes
+% = 0` local, and a branch gated on a literal constant is dead code pretending to
+% be a capability. The variable is gone with it -- left in place it would have
+% been assigned and never read, which is the orphan code scanning 219 caught in
+% pyraview. When the count becomes derivable, the axis is four lines (see jAxis).
 body = jSampledBody(obsId, sessionId, datestamp, 'migrated_jrclust_clusters_body', ...
-    struct('regular', false, ...
-        't0', durationComposite(0), 'dt', durationComposite(0), 'n', numSpikes));
+    struct());
 % carry the JRCLUST output bytes verbatim (this doc owns them now). The *_res.mat
 % MD5 checksum is a regenerable file hash -- not re-expressed on the body.
 if isfield(preBody, 'files'); body.files = preBody.files; end
@@ -145,9 +165,6 @@ dc = struct('class_name', name, 'class_version', '1.0.0', ...
     'superclasses', sc, 'schema_version', tv);
 end
 
-function c = durationComposite(seconds)
-c = struct('source_unit', 's', 'source_value', double(seconds), 'approximate', false);
-end
 
 function t = otTerm(name)
 t = struct('node', '', 'name', name);

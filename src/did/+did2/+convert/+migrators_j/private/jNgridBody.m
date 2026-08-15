@@ -207,15 +207,15 @@ end
 %   unit  -> the value's unit comes from `variable`
 [datumType, sourceDatumType] = jDatumType(dataType);
 
-% n = 1, not prod(data_dim): the whole grid is ONE datum whose intra-datum
-% extent is `shape`. An ngrid declares no time axis at all, so t0 and dt are
-% zero rather than invented.
-sampleTime = struct('regular', true, ...
-    't0', durationComposite(0), 'dt', durationComposite(0), 'n', 1);
-
+% `sample_time` IS NO LONGER WRITTEN. It was already vestigial here and said so
+% in its own words -- "an ngrid declares no time axis at all, so t0 and dt are
+% zero rather than invented", with n = 1 meaning "one datum", not one sample.
+% Three of its four sub-fields were placeholders, and the fourth restated a
+% cardinality the axes below already carry. The signed model retires the block
+% (step 5); this writer had nothing in it to migrate.
 body = jSampledBody(char(statementId), baseField(preBody, 'session_id', ''), ...
     baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'), ...
-    char(name), sampleTime);
+    char(name), struct());
 
 % Assigned in its own statement, NOT inside struct(...): a non-scalar struct
 % value passed to struct() would distribute into a struct ARRAY of bodies
@@ -331,12 +331,6 @@ if ischar(axisLabels) || (isstring(axisLabels) && isscalar(axisLabels))
 end
 end
 
-function c = durationComposite(seconds)
-%DURATIONCOMPOSITE The dimensioned-cell shape image_stack.m already emits.
-%   Matched deliberately rather than improved: two spellings of one composite in
-%   sibling migrators is the drift T14 exists to prevent.
-c = struct('source_unit', 's', 'source_value', double(seconds), 'approximate', false);
-end
 
 % ===================== small readers =======================================
 
