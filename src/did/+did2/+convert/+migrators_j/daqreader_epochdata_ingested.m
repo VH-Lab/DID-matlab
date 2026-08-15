@@ -41,6 +41,19 @@ function bodies = daqreader_epochdata_ingested(preBody)
 %     the attached recording archives -> sampled_body on a
 %                                        <modality>_observation  #30, NOT BUILT
 %
+%   "#30, NOT BUILT" IS TOO BROAD AND IS CORRECTED HERE, 2026-08-15. #30 is
+%   SIGNED (2026-08-10 and 2026-08-13) and its assembler is LIVE:
+%   `private/jRecordingObservation.m`, called from `element.m:118`, covered by
+%   `tests/+did2/+unittest/testMigratorsJRecordingObservation.m`. What is not
+%   built is the NARROWER thing this line is really about -- RE-POINTING THESE
+%   ARCHIVES onto such an observation -- and the reason is in the assembler's
+%   own signature: the subject is an INPUT it is handed, not something it
+%   resolves, so an ingested payload needs the epoch<->element join first, i.e.
+%   the second pass. `daqreader_image_epochdata_ingested.m` already carries this
+%   correction in its own header; `jRecordingObservation.m:118` QUOTES the stale
+%   line above as evidence, which is how a wrong claim in one file becomes a
+%   citation in another.
+%
 %   And for an INGESTED session those archives are the only copy of the
 %   recording. From the writer, attached under runtime-computed names the
 %   template never declares (#64, the undeclared-file gap):

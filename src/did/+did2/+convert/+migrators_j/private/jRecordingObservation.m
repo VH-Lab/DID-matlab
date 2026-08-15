@@ -117,9 +117,18 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %          the attached recording archives -> sampled_body on a
 %                                             <modality>_observation  #30, NOT BUILT"
 %
+%   THAT QUOTE IS STALE IN THE SOURCE AND HAS BEEN CORRECTED THERE (2026-08-15);
+%   it is kept here because the SECOND sentence below is what this file relies
+%   on and that half is still true. "#30, NOT BUILT" is too broad -- #30 is
+%   signed (2026-08-10, 2026-08-13) and THIS FUNCTION is its assembler, live
+%   from `element.m:118`. Quoting a sibling's build claim as evidence is how a
+%   wrong sentence in one file becomes a citation in another; cite the SIGNATURE
+%   or the emitter, not another comment.
+%
 %   This function builds the landing pad that quote names. Re-pointing the bytes
 %   onto it is the other half of #30 and needs the epoch<->element join, i.e. the
-%   second pass.
+%   second pass -- because the subject is an INPUT to this function, not
+%   something it resolves.
 %
 %   THE PARAGRAPH THAT STOOD HERE CHOSE THE WRONG ONE OF TWO BAD OPTIONS, and it
 %   is replaced rather than deleted because its REASONING was right. It said a

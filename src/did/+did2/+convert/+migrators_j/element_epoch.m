@@ -50,6 +50,29 @@ function v2Body = element_epoch(preBody)
 %                                  (raw-recording model, #30, UNSIGNED)
 %       + an epoch_id edge      -> the minted `epoch`            (second pass)
 %
+%   TWO OF THOSE THREE "UNSIGNED" LABELS ARE STALE AS OF 2026-08-15, AND THEY
+%   ARE THE STATED REASON THIS DISSOLUTION IS NOT BUILT -- so the paragraph
+%   below is reasoning from blockers that no longer exist. Corrected here rather
+%   than acted on: whether the dissolution now proceeds is a build decision and
+%   is the team's, not this comment's. Positive evidence, from the plans' own
+%   signature lines:
+%
+%     $ grep -oh "^TEAM-SIGN-OFF \[[a-z_ ]*\]: [a-z@.]* / [0-9-]*" \
+%           V_eta_data_body_model_plan.md V_eta_recording_observation_plan.md
+%     TEAM-SIGN-OFF [data_body]:                 jess@... / 2026-08-14
+%     TEAM-SIGN-OFF [raw recording observation]: jess@... / 2026-08-10
+%     TEAM-SIGN-OFF [raw recording observation]: jess@... / 2026-08-13
+%
+%   So #45 is SIGNED (the axis entry is built -- `private/jAxis.m`, and
+%   `sampled_body.axes` carries all ten signed sub-fields), and #30 is SIGNED
+%   AND BUILT (`private/jRecordingObservation.m`, called from `element.m:118`).
+%   `daqreader_image_epochdata_ingested.m` already carries the #30 half of this
+%   correction in its own header ("3'. #30 IS BUILT, and the sentence above is
+%   now false as written"); this file and `daqreader_epochdata_ingested.m` never
+%   got the news. THE FOURTH TARGET IS UNCHANGED AND IS REAL: the `epoch_id`
+%   edge still needs the second pass.
+%
+%   [historical, and it is why the class survives today]
 %   Three of those four targets are unsigned or unbuilt, so dissolving now would
 %   strand the payload rather than move it. `acquisition_epoch` therefore SURVIVES
 %   as the carrier and this migrator keeps renaming into it. Two consequences the
