@@ -251,9 +251,39 @@ obs.depends_on = [ ...
 % two do: the session anchor names no clock at all, the epoch reference names
 % `dev_local_time`. Two members, two distinct clocks.
 %
-% This is the LINK, not the `epoch_id` edge. That edge is declared by exactly
-% four V_eta classes and `voltage_observation` is not one of them, so wiring it
-% needs a schema increment and belongs with the epoch family (#60).
+% This is the LINK, and it is the WHOLE of what the signed model asks for here.
+%
+% THIS COMMENT READ: "This is the LINK, not the `epoch_id` edge. That edge is
+% declared by exactly four V_eta classes and `voltage_observation` is not one of
+% them, so wiring it needs a schema increment and belongs with the epoch family
+% (#60)." CORRECTED 2026-08-15. Every FACT in it is true and the CONCLUSION is
+% backwards: the edge is not OWED here, it is FORBIDDEN here, and the sentence
+% reads as a deferral. TEAM-SIGN-OFF [epoch], 2026-08-08 amended 2026-08-10
+% (DID-schema `V_eta_epoch_plan.md:869`), verbatim:
+%
+%   "a document reaches its epoch through the TIME_REFERENCE CHAIN
+%    (subject_interaction -> time_reference_# -> relative_reference ->
+%    relative_to -> epoch) -- a direct `epoch_id` edge is added ONLY where the
+%    epoch is the document's own content (`directed_relation`, per the ensemble
+%    sign-off), NOT on subject_interaction"
+%
+% `voltage_observation` is UNDER `subject_interaction`, and the four classes that
+% DO declare `epoch_id` are exactly the four that are not:
+%
+%   DENOMINATOR: 245 json file(s) under DID-schema schemas/V_eta/ read;
+%                241 class(es) indexed; 4 declare an epoch_id edge
+%     acquisition_metadata_file  <- base                     required
+%     directed_relation          <- relation <- base         optional
+%     ingestion_manifest         <- base                     required
+%     method_parameters          <- base                     optional
+%     voltage_observation        <- subject_observation
+%                                <- subject_interaction ...  <- THE EXCLUSION
+%
+% So the `time_reference_2` edge below IS the epoch link the model specifies and
+% nothing further is owed by this migrator. A reader who acted on the old
+% sentence would have added `epoch_id` to a subject_interaction descendant --
+% the phantom-work shape CLAUDE.md records for #52, where a note left standing
+% instructs the one build a signature rules out.
 if ~isempty(epochRefId)
     obs.depends_on(end+1) = ...
         struct('name', 'time_reference_2', 'value', epochRefId);
