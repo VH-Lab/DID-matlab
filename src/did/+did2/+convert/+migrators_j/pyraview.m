@@ -279,6 +279,28 @@ if isempty(fileList); fileList = {''}; end   % at least the native body
 rates  = numVec(getField(blk, 'decimation_sampling_rates'));
 starts = numVec(getField(blk, 'decimation_start_times'));
 
+% THE PER-LEVEL SAMPLE COUNT, DERIVED -- v1 RECORDS NO LENGTH ANYWHERE. The
+% writer's own document (NDI +gui/+app/+pyraview/makePyraviewDoc.m:155-163)
+% stores label, nativeRate, nativeStartTime, channels, dataType,
+% decimationLevels, decimationSamplingRates and decimationStartTimes. There is
+% no sample count in the template, and a migrator does not read the attached
+% bytes, so the extent is recoverable ONLY from the epoch interval and the
+% level's rate.
+%
+% THE CONVENTION IS THE WRITER'S, NOT A GUESS. makePyraviewDoc:127-128 converts
+% a duration to a sample range as `start_idx = round(offset*sr)+1; end_idx =
+% round(offset_end*sr)`, i.e. a span of D seconds at rate sr yields round(D*sr)
+% samples. Same arithmetic here.
+%
+% Read independently of the epoch-anchor block above: `t0t1` there is assigned
+% inside `if ~isempty(epochStr) && ~isempty(subjectId)`, so it is not defined on
+% every path that reaches this loop.
+epochSpan = numVec(getField(getBlock(preBody, 'epochclocktimes'), 't0_t1'));
+epochDur  = NaN;
+if numel(epochSpan) >= 2 && all(isfinite(epochSpan(1:2)))
+    epochDur = double(epochSpan(2)) - double(epochSpan(1));
+end
+
 bodies = {obs};
 for k = 1:numel(fileList)
     rate_k = nativeRt;
@@ -288,31 +310,55 @@ for k = 1:numel(fileList)
     t0_k = t0;
     if k <= numel(starts); t0_k = starts(k); end
 
-    b = jSampledBody(obsId, sessionId, datestamp, 'migrated_signal_body', ...
-        struct('regular', true, ...
-            't0', durationComposite(t0_k), 'dt', durationComposite(dt_k), 'n', 0));
-    % THE CHANNEL COUNT KEEPS A HOME. It used to ride in `datum.shape`, and when
-    % `datum` collapsed (signed sec.5) its only consumer went with it -- code
-    % scanning alert 219 caught the orphaned `channels` assignment, which was a
-    % REAL loss and not a false positive: the plan says `shape` becomes
-    % `[axes.n] in array order`, not that it disappears.
+    n_k = 0;
+    if isfinite(epochDur) && rate_k > 0
+        n_k = round(epochDur * rate_k);
+    end
+
+    % `sample_time` IS LEFT BLANK AND THE AXES CARRY THE CADENCE. The field is
+    % optional and is what step 5 of the build order retires outright; writing
+    % t0/dt/n into it AND into axes(1) would store one fact twice, which is the
+    % #69 shape this whole step exists to remove. Blank here means "this writer
+    % has stopped using it", not "unknown".
+    b = jSampledBody(obsId, sessionId, datestamp, 'migrated_signal_body', struct());
+
+    % A CORRECTION TO WHAT THIS FILE SHIPPED IN ccfb1eb, WHICH WAS WRONG IN THE
+    % WAY ITS OWN COMMIT MESSAGE PREDICTED. That commit emitted ONE axis entry,
+    % `channel`, and argued the time dimension could stay in `sample_time`
+    % meanwhile. The schema's axes field says `axes[k] IS array dimension k`, so
+    % a one-entry list does not mean "here is one of the dimensions" -- it
+    % ASSERTS that array dimension 1 is channels. It is not:
+    % makePyraviewDoc.m:135 slices `data_central = data(start_idx:end_idx, :)`,
+    % so dimension 1 is SAMPLES and dimension 2 is channels. The commit message
+    % stated the hazard verbatim ("a partial list would claim dimension 1 is
+    % channels") and then shipped it. A positional list has no partial mode.
     %
-    % ONE ENTRY, FOR THE CHANNEL DIMENSION ONLY, and the reason it is not two is
-    % worth stating: `axes[k] IS array dimension k`, so a partial list would
-    % claim dimension 1 is channels. The TIME dimension is still carried by
-    % `sample_time` above, which is exactly what step 5 of the build order
-    % retires ("time becomes an ordinary axis"). Until that lands, this body
-    % states its channel extent as `axes(1)` alongside a `sample_time` that
-    % states its time extent -- ONE fact each, no duplication -- and when
-    % sample_time retires the time axis is PREPENDED and this becomes axes(2).
-    nChannels = numScalar(channels, 0);
-    if nChannels > 0
-        b.sampled_body.axes = struct( ...
-            'variable', jOntologyTerm('', 'channel'), ...
-            'n',        nChannels, ...
-            'regular',  true, ...
-            'origin',   struct('value', 1, 'source_value', 1), ...
-            'spacing',  struct('value', 1, 'source_value', 1));
+    % SO BOTH AXES OR NEITHER, and neither is the honest answer when the time
+    % extent cannot be derived: an axes list that omits dimension 1 is not
+    % incomplete, it is false, whereas an ABSENT list merely says nothing. The
+    % channel count is then unhomed again -- a known, recorded loss (#45) --
+    % rather than a wrong claim about layout.
+    axesEntries = [];
+    if n_k > 0
+        axesEntries = jAxis(jOntologyTerm('', 'time'), n_k, ...
+            'regular',     true, ...
+            'source_unit', 's', ...
+            'origin',      struct('value', t0_k, 'source_value', t0_k), ...
+            'spacing',     struct('value', dt_k, 'source_value', dt_k));
+        nChannels = numScalar(channels, 0);
+        if nChannels > 0
+            % An INDEX axis, the convention jNgridBody and image_stack's
+            % uncalibrated arm both use: origin 1, spacing 1, no unit.
+            axesEntries(end + 1) = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
+                'regular', true, ...
+                'origin',  struct('value', 1, 'source_value', 1), ...
+                'spacing', struct('value', 1, 'source_value', 1));
+        end
+    end
+    % Assigned in its own statement, NOT inside struct(...): a non-scalar struct
+    % value passed to struct() distributes into a struct ARRAY of bodies.
+    if ~isempty(axesEntries)
+        b.sampled_body.axes = axesEntries;
     end
     % this body owns exactly its level's file
     b.files = struct('file_list', {fileList(k)});

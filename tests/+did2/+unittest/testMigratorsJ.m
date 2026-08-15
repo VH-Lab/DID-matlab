@@ -2723,7 +2723,7 @@ function testPyraviewFoldsToObservationPlusSampledBody(testCase)
 %
 % The levels are KEPT, not dropped. All level bodies share the statement (the
 % observation) -- the multi-body-per-statement stream sampled_body was designed
-% for -- and are told apart by sample_time.dt, the per-level rate, with level 1
+% for -- and are told apart by the time axis spacing, the per-level rate, level 1
 % native. Each body owns exactly its level_k.bin. A pyramid is a precomputed
 % performance cache, not a disposable thumbnail, so nothing is discarded.
 % (Decided in review; commit 7ce8e8c superseded the earlier drop-the-levels fold.)
@@ -2742,6 +2742,14 @@ body.base = struct('id', 'pv_1', 'session_id', 'sess_09', ...
 body.pyraview = struct('label', 'lfp', 'native_rate', 1000, ...
     'native_start_time', 0, 'channels', 4, 'data_type', 'int16', ...
     'decimation_sampling_rates', [1000 500]);
+% THE EPOCH INTERVAL IS PART OF THE FIXTURE BECAUSE IT IS PART OF THE DOCUMENT:
+% pyraview.json declares `epochclocktimes` as a superclass, and the real PRED
+% document carries it. The fixture omitted it, which mattered once the axis fold
+% landed -- v1 records NO sample count anywhere, so the per-level extent is
+% derivable only from this interval and the level's rate, and a fixture without
+% it silently exercises the no-axes path instead of the one the assertions below
+% are about. 10 s at 1000 Hz -> 10000 samples; the decimated level, 500 Hz -> 5000.
+body.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', [0 10]);
 body.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
 
 out = did2.convert.migrators_j.pyraview(body);
@@ -2767,8 +2775,36 @@ for j = 1:numel(sbods)
     verifyFalse(testCase, isfield(sbods{j}.sampled_body, 'datum'));
     verifyEqual(testCase, numel(sbods{j}.files.file_list), 1);
 end
-dts = sort(cellfun(@(b) b.sampled_body.sample_time.dt.source_value, sbods));
+% THE AXES ARE POSITIONAL, AND THIS IS THE ASSERTION THAT SAYS SO. The schema's
+% `axes` documentation is `axes[k] IS array dimension k`, so the ORDER is load
+% bearing and not a presentation detail. ccfb1eb shipped a one-entry list
+% holding `channel`, which asserts that array dimension 1 is channels; the NDI
+% writer slices `data(start_idx:end_idx, :)`, so dimension 1 is SAMPLES. The
+% whole MATLAB suite was green over that defect because nothing here looked at
+% axes at all -- the file's own lesson, that a test written from the same
+% premise as the code cannot catch the code, in its weaker form: there was no
+% test, so there was no premise to be wrong about.
+for j = 1:numel(sbods)
+    ax = sbods{j}.sampled_body.axes;
+    verifyEqual(testCase, numel(ax), 2, ...
+        'both dimensions or neither -- a positional list has no partial mode');
+    verifyEqual(testCase, ax(1).variable.name, 'time');
+    verifyEqual(testCase, ax(2).variable.name, 'channel');
+    verifyEqual(testCase, ax(2).n, 4);          % the `channels` field
+    verifyTrue(testCase, ax(1).regular);
+end
+% Levels are told apart by the TIME axis spacing now, not by sample_time.dt --
+% that block is no longer written here (step 5 of the signed build order), and
+% writing the cadence into both would store one fact twice.
+dts = sort(arrayfun(@(k) sbods{k}.sampled_body.axes(1).spacing.source_value, ...
+    1:numel(sbods)));
 verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
+% and by extent: 10 s at 1000 Hz and at 500 Hz. `n` was hardcoded 0 on every
+% body until this change, on bodies with real bytes attached.
+ns = sort(arrayfun(@(k) sbods{k}.sampled_body.axes(1).n, 1:numel(sbods)));
+verifyEqual(testCase, ns, [5000 10000]);
+verifyFalse(testCase, isfield(sbods{1}.sampled_body, 'sample_time') ...
+    && ~isempty(fieldnames(sbods{1}.sampled_body.sample_time)));
 end
 
 function body = spikewavesBody()
