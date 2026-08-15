@@ -44,29 +44,41 @@ on:
   # runners. A dispatch naming one corpus costs seconds. A note that routes a
   # reader from the cheap lever to the expensive one is worse than no note.
   #
-  # The push trigger stays: it is the right lever when the workflow ITSELF
-  # changes, which is exactly when all six should run. Deliberately narrow --
-  # it fires on changes to this file, NOT on every source push, so validating
-  # the pipeline does not spend six MATLAB runners on unrelated commits.
-  push:
-    branches: ["claude/**"]
-    paths:
-      # ONLY this file. `tools/census_digest.py` was here and was removed
-      # 2026-08-10: the digest is a PYTHON renderer with 62 unit tests that run
-      # in 0.03s, so it never needed a 70-minute six-runner corpus to validate --
-      # and while an agent was iterating on it, each edit fired a fresh corpus
-      # run and `cancel-in-progress` killed the one before it. Four consecutive
-      # runs died that way and Soph and JH were never measured once.
-      #
-      # TO RUN ONE CORPUS, DISPATCH -- do not touch this file. See the corrected
-      # note at the top of `on:`. Editing here runs ALL SIX.
-      #
-      #   gh workflow run test-corpus.yml --ref <branch> -f corpora=20211116
-      #
-      # Bumping the token below is the ALL-SIX lever and is what you want when
-      # the workflow itself is what changed.
-      #   corpus-run-token: 4
-      - ".github/workflows/test-corpus.yml"
+  # THE PUSH TRIGGER IS GONE, REMOVED 2026-08-15 IN THE COMMIT AFTER THE ONE
+  # THAT CORRECTED THE NOTE ABOVE -- and the gap between those two commits is
+  # the part worth keeping.
+  #
+  # Its ONLY stated justification was the sentence corrected above: "Until this
+  # merges, a push trigger scoped to this file is the only way to exercise it."
+  # The dispatch works, so that justification expired. The previous commit
+  # nonetheless KEPT the trigger, on a rationale invented in that same commit --
+  # "it is the right lever when the workflow ITSELF changes, which is exactly
+  # when all six should run." That reason had never been given for it before.
+  #
+  # Preserving a mechanism by manufacturing a new reason for it, in the same
+  # edit that retires its real one, is the phantom-work shape one level up: not
+  # a task carried after a signature killed it, but a TRIGGER carried after its
+  # premise died. It cost six MATLAB runners immediately -- the commit that
+  # corrected the note fired the all-six run (31888793256), which had to be
+  # cancelled by hand.
+  #
+  # WHAT REPLACES IT: nothing, because two levers already cover both cases.
+  #   one corpus   gh workflow run test-corpus.yml --ref <branch> -f corpora=20211116
+  #   all six      gh workflow run test-corpus.yml --ref <branch>
+  #                (empty input; `select` expands to all six) -- or wait for the
+  #                nightly schedule below, which is the real gate and is
+  #                UNTOUCHED by this change.
+  #
+  # Removing the trigger in THIS commit means this commit does not fire it:
+  # a push event is evaluated against the workflow file at the pushed commit.
+  #
+  # The history the trigger's `paths:` block carried is kept, because it records
+  # a real failure: `tools/census_digest.py` was listed there until 2026-08-10,
+  # and while an agent iterated on that pure-Python renderer each edit fired a
+  # fresh six-runner corpus while `cancel-in-progress` killed the one before it.
+  # Four consecutive runs died that way and Soph and JH were never measured
+  # once. Narrowing the paths fixed the symptom; deleting the trigger removes
+  # the mechanism.
   workflow_dispatch:
     inputs:
       corpora:
