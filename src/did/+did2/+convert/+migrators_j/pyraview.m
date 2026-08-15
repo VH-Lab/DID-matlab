@@ -162,8 +162,23 @@ anchor.session_relative_reference = struct('relation', 'during');
 % slot for an interval, and adding one to a class scheduled for deletion was
 % considered and REJECTED (team, 2026-08-13). The extent belongs to the EPOCH --
 % several documents can share one epoch and would each report the same interval
-% -- so epochMint mints it off the epoch's own `time_reference_#`. That half is
-% signed and NOT YET BUILT; this commit is the identity half it depends on.
+% -- so epochMint mints it off the epoch's own `time_reference_#`.
+%
+% "That half is signed and NOT YET BUILT" -- STALE, corrected 2026-08-15. It IS
+% built, in the file this comment nominates, and a reader acting on the old
+% sentence would build a second emitter for an extent that is already minted:
+%
+%   $ grep -n "class_name', 'relative_reference'" ../epochMint.m
+%   1719:    ref.document_class = struct('class_name', 'relative_reference', ...
+%   $ grep -n "EPOCHEXTENTREFERENCES\|epoch_extent_references_emitted" ../epochMint.m
+%   414:    'epoch_extent_references_emitted',     0, ...
+%   776:        report.epoch_extent_references_emitted + numel(refs);
+%   1663:%EPOCHEXTENTREFERENCES One `relative_reference` per DISTINCT clock of an epoch.
+%
+% Twelve `epoch_extent_*` counters travel with it, four of them NAMED REFUSAL
+% REASONS, so a run that mints nothing says which refusal fired rather than
+% reporting a bare zero. What this commit contributed is unchanged and is still
+% the identity half: the handle below is what epochMint keys on.
 %
 % NO EPOCH ID => NO HANDLE. An epoch_bounded_reference with an empty epochid
 % names no epoch and is a hollow document; `element_id` is REQUIRED on the class
