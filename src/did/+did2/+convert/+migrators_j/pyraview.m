@@ -347,7 +347,7 @@ for k = 1:numel(fileList)
     % t0/dt/n into it AND into axes(1) would store one fact twice, which is the
     % #69 shape this whole step exists to remove. Blank here means "this writer
     % has stopped using it", not "unknown".
-    b = jSampledBody(obsId, sessionId, datestamp, 'migrated_signal_body', struct());
+    b = jSampledBody(obsId, sessionId, datestamp, 'migrated_signal_body');
 
     % A CORRECTION TO WHAT THIS FILE SHIPPED IN ccfb1eb, WHICH WAS WRONG IN THE
     % WAY ITS OWN COMMIT MESSAGE PREDICTED. That commit emitted ONE axis entry,

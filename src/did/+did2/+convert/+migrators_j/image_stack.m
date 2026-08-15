@@ -363,48 +363,34 @@ obs.image = struct();
 obs.image.value = imageCell;
 
 % ---- the sampled_body holding the digital frames ----------------------------
-% THIS IS THE ONE `sample_time` WRITER LEFT ON THE BODY, AND IT IS HELD ON
-% PURPOSE. Step 5 of the signed build order retires `sampled_body.sample_time`;
-% pyraview, jNgridBody and jrclust_clusters have all converted. This one cannot
-% follow without answering a question two SIGNED documents answer differently,
-% so it is recorded rather than resolved (Operating Rule 4).
+% ONE AXIS: THE FRAME ORDINAL. The stored bytes are the frame SEQUENCE, so array
+% dimension 1 is the frame, and `numFrames = frameCount(dimOrder, dimSize)` (the
+% product of the v1 T and Z extents) is its length. `t0` and the per-frame
+% cadence become the axis origin and spacing -- the same three facts the retired
+% `sample_time` carried, in the field that replaces it (signed sec.2, "time
+% becomes an ordinary axis").
 %
-% THE QUESTION: where does a body-backed IMAGE state its axes?
+% THE RASTER DIMENSIONS STAY ON `image.value.axes` AND ARE NOT RESTATED HERE.
+% They describe the IMAGE (R6: descriptors are always explicit on the composite,
+% because dtype is not recoverable from an inline matrix); this describes the
+% STORED SEQUENCE. Copying them onto the body would store one fact twice, the
+% #69 shape this step removes.
 %
-%   V_eta_data_body_model_plan.md (signed 2026-08-14) -- "storage_mode: body ->
-%       each sampled_body.axes[] populated; statement.axes[] EMPTY".
-%   V_eta_image_model_plan.md (R6) -- descriptors (dtype/axes/color_model/
-%       channels) are ALWAYS explicit ON THE COMPOSITE, because dtype is not
-%       recoverable from an inline matrix.
-%
-% This migrator already does the second: `image.value.axes = imageAxes(dimOrder,
-% dimSize, params)`, one entry per v1 dimension INCLUDING T and Z. And the body's
-% extent is derived from the same two fields --
-%
-%       numFrames = frameCount(dimOrder, dimSize)   % product of the T and Z sizes
-%
-% -- so `sampled_body.axes` here would RESTATE what `image.value.axes` already
-% says, which is the store-it-twice shape (#69) this whole step is removing. The
-% mount rule and the composite rule do not conflict for pyraview (a
-% voltage_observation has no composite axes slot); they conflict only where the
-% composite carries its own axes, i.e. `image`.
-%
-% Converting either way would be a model decision:
-%   (a) body axes, composite axes dropped   -> contradicts the image plan and
-%       loses the descriptors on an inline (storage_mode != body) image;
-%   (b) composite axes only, body silent    -> contradicts the mount rule and
-%       leaves a body-backed value with no positional description of its bytes;
-%   (c) both, defined as describing different things (the IMAGE vs the STORED
-%       ARRAY) -- coherent, but it is a new rule neither document states.
-%
-% Until that is answered, the block stays as it is: it is still declared, still
-% optional, and still carries the only fact it ever carried here (t0 + the frame
-% cadence + the frame count). Nothing is lost by waiting, and (a) or (b) chosen
-% wrongly deletes a descriptor set on every image document.
-body = jSampledBody(stackId, sessionId, datestamp, 'migrated_image_frames', ...
-    struct('regular', true, ...
-        't0', durationComposite(t0), 'dt', durationComposite(frameDt(clockName)), ...
-        'n', numFrames));
+% An earlier version of this comment put that split to the team as an open
+% question about where a body-backed image states its axes. That was a
+% MISREADING of which class was under discussion: `image_stack` is a v1 SOURCE
+% with disposition `retire` -- the same disposition as pyraview and
+% jrclust_clusters, both converted without a question -- and the go-forward
+% `image` composite is a different class whose descriptors R6 already settles.
+% A retiring migrator only has to emit valid V_eta and stop writing a field the
+% schema is dropping.
+body = jSampledBody(stackId, sessionId, datestamp, 'migrated_image_frames');
+body.sampled_body.axes = jAxis(jOntologyTerm('', 'frame'), numFrames, ...
+    'regular',     true, ...
+    'source_unit', 's', ...
+    'origin',      struct('value', t0, 'source_value', t0), ...
+    'spacing',     struct('value', frameDt(clockName), ...
+                          'source_value', frameDt(clockName)));
 % carry the pixel bytes over verbatim as the body's frames (universal renames
 % leave file/files untouched; this doc owns the digital bytes now).
 if isfield(preBody, 'files'); body.files = preBody.files; end
@@ -460,9 +446,6 @@ dc = struct('class_name', name, 'class_version', '1.0.0', ...
     'superclasses', sc, 'schema_version', tv);
 end
 
-function c = durationComposite(seconds)
-c = struct('source_unit', 's', 'source_value', double(seconds), 'approximate', false);
-end
 
 function t = otTerm(name)
 t = struct('node', '', 'name', name);

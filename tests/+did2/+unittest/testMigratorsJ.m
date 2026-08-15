@@ -1093,7 +1093,9 @@ verifyEqual(testCase, imageCell.axes(3).origin.value, 0);
 % frames in the sampled_body; cadence n = T*Z = 10*1
 sb = out.migrated{2};
 verifyEqual(testCase, sb.get('document_class.class_name'), 'sampled_body');
-verifyEqual(testCase, sb.get('sampled_body.sample_time').n, 10);
+% the frame ORDINAL axis replaces sample_time (signed sec.2): n = T*Z = 10*1.
+verifyEqual(testCase, sb.get('sampled_body.axes').n, 10);
+verifyEqual(testCase, sb.get('sampled_body.axes').variable.name, 'frame');
 % the body belongs to the image_observation statement
 verifyEqual(testCase, depVal(sb, 'statement'), obs.get('base.id'));
 end

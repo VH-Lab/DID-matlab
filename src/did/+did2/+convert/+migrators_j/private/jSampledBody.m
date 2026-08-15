@@ -1,4 +1,4 @@
-function body = jSampledBody(statementId, sessionId, datestamp, name, sampleTime)
+function body = jSampledBody(statementId, sessionId, datestamp, name)
 %JSAMPLEDBODY Mint a V_eta sampled_body doc bound to a statement.
 %   The shared body-doc skeleton for the Brainstorm-J body-backed folds
 %   (image_stack, pyraview, spikewaves, binnedspikeratevm, spike_clusters): the
@@ -16,7 +16,6 @@ function body = jSampledBody(statementId, sessionId, datestamp, name, sampleTime
 %   sessionId    session_id for the minted body doc (the source doc's session).
 %   datestamp    datestamp for the minted body doc.
 %   name         base.name for the minted body doc.
-%   sampleTime   the sampled_body.sample_time struct (regular/t0/dt/n | n only).
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) body-backed migrators.
 body = struct();
@@ -48,5 +47,18 @@ body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
 % that takes a value it does not use is how a caller comes to believe it has
 % recorded something; all four callers now set `datum_type` on their own
 % statement, where it belongs.
-body.sampled_body = struct('sample_time', sampleTime);
+% `sample_time` IS NO LONGER EMITTED, AND THE ARGUMENT IS GONE WITH IT (signed
+% sec.2, step 5: "time becomes an ordinary axis; both sample_time blocks retire").
+% All four callers now state their extents as `axes` -- pyraview a time + channel
+% pair, image_stack the frame ordinal, jNgridBody one entry per grid dimension,
+% jrclust nothing at all because its length is genuinely unknown.
+%
+% THE ARGUMENT WENT WITH THE FIELD rather than being accepted and ignored, for
+% the same reason `datum` did: a helper that takes a value it does not use is how
+% a caller comes to believe it has recorded something.
+%
+% This block is left EMPTY here. The caller owns `axes`, because only the caller
+% knows what its bytes are indexed by -- the same division of labour that already
+% puts the file attachment on the caller.
+body.sampled_body = struct();
 end

@@ -215,7 +215,7 @@ end
 % (step 5); this writer had nothing in it to migrate.
 body = jSampledBody(char(statementId), baseField(preBody, 'session_id', ''), ...
     baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'), ...
-    char(name), struct());
+    char(name));
 
 % Assigned in its own statement, NOT inside struct(...): a non-scalar struct
 % value passed to struct() would distribute into a struct ARRAY of bodies

@@ -347,7 +347,7 @@ for k = 1:numel(out.migrated)
 end
 verifyTrue(testCase, any(strcmp(names, 'image_observation')));
 body = out.migrated{find(strcmp(names, 'sampled_body'), 1)};
-verifyEqual(testCase, body.get('sampled_body.sample_time.t0.source_value'), ...
+verifyEqual(testCase, body.get('sampled_body.axes').origin.source_value, ...
     739038.5, 'AbsTol', 1e-9);
 end
 
@@ -365,6 +365,6 @@ for k = 1:numel(out.migrated)
     names{k} = out.migrated{k}.get('document_class.class_name');
 end
 body = out.migrated{find(strcmp(names, 'sampled_body'), 1)};
-verifyEqual(testCase, body.get('sampled_body.sample_time.t0.source_value'), 0, ...
+verifyEqual(testCase, body.get('sampled_body.axes').origin.source_value, 0, ...
     'AbsTol', 1e-12);
 end

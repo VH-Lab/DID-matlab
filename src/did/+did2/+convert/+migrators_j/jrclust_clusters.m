@@ -141,8 +141,7 @@ end
 % be a capability. The variable is gone with it -- left in place it would have
 % been assigned and never read, which is the orphan code scanning 219 caught in
 % pyraview. When the count becomes derivable, the axis is four lines (see jAxis).
-body = jSampledBody(obsId, sessionId, datestamp, 'migrated_jrclust_clusters_body', ...
-    struct());
+body = jSampledBody(obsId, sessionId, datestamp, 'migrated_jrclust_clusters_body');
 % carry the JRCLUST output bytes verbatim (this doc owns them now). The *_res.mat
 % MD5 checksum is a regenerable file hash -- not re-expressed on the body.
 if isfield(preBody, 'files'); body.files = preBody.files; end
