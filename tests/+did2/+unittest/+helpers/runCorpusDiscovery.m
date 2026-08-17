@@ -426,6 +426,71 @@ catch retentionErr
     result.epoch_string_retention = struct('audit_failed', retentionErr.message);
 end
 
+% ---------------------------------------------------------------------------
+% THE EPOCH CHAIN, RE-READ AFTER THE MINT (#60, #86a)
+% ---------------------------------------------------------------------------
+% SAME DEFECT AS THE BLOCK ABOVE, SAME FIX, ONE TIER OVER -- and this one has
+% been printing a structural zero into every corpus report we have.
+%
+% did2.validate.silentLoss carries an `epoch_association` block whose headline
+% is `REACH AN EPOCH`, which the digest labels "the number the decision rests
+% on". silentLoss is called EXACTLY ONCE, at v1_to_v2.m:384, INSIDE PASS 1 --
+% and did2.convert.epochMint appends every `epoch` document AFTERWARDS. So the
+% chain walk runs over a batch that CANNOT contain an epoch, `epoch_documents`
+% is 0 by construction, and `reach_an_epoch` is 0 by construction with it.
+%
+% The digest already says so in its own words, which is why this is a gap and
+% not a discovery: *"AT THIS STAGE IT CANNOT BE ANYTHING BUT 0, so it is not
+% evidence that nothing reaches an epoch. The post-mint value is UNMEASURED.
+% Do not take the epoch decision on it."* This call is what makes it measured.
+%
+% RE-CALLING silentLoss RATHER THAN REIMPLEMENTING THE WALK. The chain walk is
+% ~200 lines of schema-driven traversal (eaClassInfo / eaMemberOutcome /
+% eaWalk) embedded in silentLoss's per-document loop. A second implementation
+% of "does this statement reach an epoch" that disagreed with the first would
+% be worse than one that is missing -- the reason DID-schema's corpus_proven.py
+% reaches back across the repo boundary rather than reimplementing a verdict.
+% So: ONE implementation, called TWICE, at two stages, with the two results
+% kept apart and never summed.
+%
+% ONLY THE `epoch_association` BLOCK IS KEPT. The rest of a second silentLoss
+% report -- its quarantine rollup, its empty-edge census, its fragment count --
+% describes a DIFFERENT batch from the pass-1 report those numbers are quoted
+% from, and two `quarantined` figures in one artifact is an invitation to
+% quote the wrong one. Discarded at the point of capture rather than filtered
+% at the point of rendering.
+%
+% WHAT THE TWO NUMBERS MEAN, so neither can be quoted for the other:
+%   * `epoch_association`           PASS 1. "Before any epoch exists, what did
+%                                   the migrators leave the chain pointing at?"
+%                                   Its epoch counts are 0 BY CONSTRUCTION.
+%   * `epoch_association_post_pass` AFTER the whole chain. "As shipped, does a
+%                                   statement reach its epoch?" This is the one
+%                                   #60 is answerable from.
+%
+% Best-effort, like every instrument in this block: the migration summary is
+% the primary deliverable and an audit failure must not mask it.
+try
+    % No SchemaCache argument, deliberately: this file does not thread one --
+    % `v1_to_v2` at :72 is called without it too, so silentLoss's own default
+    % is the SAME cache the pass-1 call used. Passing an undefined variable
+    % here would have been an error at the first real corpus run rather than
+    % at any gate that runs in this container.
+    postMint = did2.validate.silentLoss(result.migrated);
+    if isfield(postMint, 'epoch_association')
+        result.epoch_association_post_pass = postMint.epoch_association;
+    else
+        % Not a silent [] -- if the block ever disappears from silentLoss the
+        % artifact must say that, or a reader sees an absent key and assumes
+        % the pass did not run.
+        result.epoch_association_post_pass = struct( ...
+            'audit_failed', 'silentLoss returned no epoch_association block');
+    end
+catch postMintErr
+    result.epoch_association_post_pass = struct( ...
+        'audit_failed', postMintErr.message);
+end
+
 % REFERENCE-INTEGRITY SWEEP -- COMPUTED HERE, AND THE POSITION IS THE WHOLE
 % POINT OF THIS BLOCK. It used to run ~65 lines BELOW writeCorpusReport, which
 % meant the number existed, was asserted, and could never reach the artifact

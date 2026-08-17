@@ -5270,3 +5270,168 @@ class TestEdgeArity(DigestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestPostMintEpochChain(DigestCase):
+    """#60 / #86a -- the SAME chain walk, re-read after every batch post-pass.
+
+    THE DEFECT THESE PIN. `silent_loss.epoch_association` is computed inside
+    pass 1 (v1_to_v2.m:384) and did2.convert.epochMint appends every `epoch`
+    document AFTERWARDS, so its `chain_docs_reaching_epoch` is 0 BY
+    CONSTRUCTION. The digest already said so in words; what it could not do
+    was print the real number, because nothing measured it. These tests hold
+    the THREE-STATE distinction that makes the new block honest:
+
+        key absent        a run older than the instrument -> the original
+                          "UNMEASURED" wording, unsoftened
+        key present, bad  present and unreadable -> "nobody looked", NEVER a 0
+        key present, ok   the measurement, announced as the one #60 is
+                          answerable from
+
+    The middle state is the one worth a test: it is the `silentLoss` defect's
+    own shape, and collapsing it into either neighbour is how a structural
+    zero gets read as a finding.
+    """
+
+    def _corpus(self, name="A", post=None, drop_post=False, **over):
+        ea = {
+            "docs_inspected": 1000, "docs_unreadable": 0,
+            "docs_classified": 1000, "epoch_documents": 0,
+            "chain_docs_with_member": 300, "chain_docs_reaching_epoch": 0,
+            "chain_docs_terminating_elsewhere": 300,
+        }
+        ea.update(over.pop("ea", {}))
+        body = {
+            "corpus": name, "total": 500, "migrated_count": 1100,
+            "quarantine_count": 0,
+            "by_class": {"epoch": 100},
+            "silent_loss": {"total_docs": 1000, "skipped_docs": 0,
+                            "epoch_association": ea},
+            "epoch_mint": {"ran": True, "documents_inspected": 1000,
+                           "epochs_minted": 100, "epochs_found_existing": 0},
+            "valid_interval_decompose": {"ran": True,
+                                         "documents_inspected": 1100,
+                                         "epoch_documents_seen": 100},
+        }
+        if not drop_post:
+            body["epoch_association_post_pass"] = post if post is not None else {
+                "docs_inspected": 1100, "docs_unreadable": 0,
+                "docs_classified": 1100, "epoch_documents": 100,
+                "chain_docs_with_member": 300,
+                "chain_docs_reaching_epoch": 287,
+                "chain_docs_terminating_elsewhere": 13,
+            }
+        body.update(over)
+        self.write(name, body)
+
+    def test_an_absent_block_keeps_the_unmeasured_wording(self):
+        # A run older than the instrument. Softening this would be the
+        # reassuring direction: there the value really is unmeasured.
+        self._corpus(drop_post=True)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("The post-mint value is UNMEASURED", text)
+
+    def test_a_measured_block_replaces_the_unmeasured_wording(self):
+        self._corpus()
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("THE POST-MINT VALUE IS MEASURED", text)
+        self.assertNotIn("The post-mint value is UNMEASURED", text)
+
+    def test_the_measured_block_prints_the_number_the_decision_rests_on(self):
+        self._corpus()
+        text, _ = self.run_digest()
+        self.assertIn("287 REACH AN EPOCH", text)
+        self.assertIn("100 `epoch` document(s) in it", text)
+
+    def test_it_states_the_population_it_read(self):
+        # Rule 5, and the whole reason the pass-1 figure was misleading: a
+        # figure without its population is what let a structural zero pass as
+        # a finding.
+        self._corpus()
+        text, _ = self.run_digest()
+        self.assertIn("1100 document(s) inspected AFTER every batch", text)
+
+    def test_an_unreadable_block_is_nobody_looked_not_a_zero(self):
+        self._corpus(post={"audit_failed": "cache exploded"})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("post-mint block IS present and is NOT", text)
+        self.assertIn("cache exploded", text)
+        self.assertIn("That is 'nobody looked'", text)
+        self.assertNotIn("THE POST-MINT VALUE IS MEASURED", text)
+
+    def test_a_block_that_inspected_nothing_is_not_measured(self):
+        # The original silentLoss defect, one tier over: a block that read no
+        # documents must not report its zeros as findings.
+        self._corpus(post={"docs_inspected": 0, "docs_unreadable": 0,
+                           "epoch_documents": 0,
+                           "chain_docs_reaching_epoch": 0})
+        text, _ = self.run_digest()
+        self.assertIn("post-mint block IS present and is NOT", text)
+        self.assertIn("it inspected 0 document(s)", text)
+
+    def test_an_all_unreadable_block_is_not_measured(self):
+        self._corpus(post={"docs_inspected": 50, "docs_unreadable": 50,
+                           "epoch_documents": 0,
+                           "chain_docs_reaching_epoch": 0})
+        text, _ = self.run_digest()
+        self.assertIn("post-mint block IS present and is NOT", text)
+        self.assertIn("all 50 document(s) handed to it were unreadable", text)
+
+    def test_the_two_stages_are_never_summed_and_the_output_says_so(self):
+        # The two figures answer different questions over different batches.
+        # The renderer must say that where both are printed, or the next
+        # reader adds them.
+        self._corpus()
+        text, _ = self.run_digest()
+        self.assertIn("Never sum or substitute them", text)
+
+    def test_the_pre_mint_caution_still_prints_beside_the_measurement(self):
+        # The post-mint number does not make the pass-1 zero safe to quote --
+        # it makes it explicable. Both must be on the page.
+        self._corpus()
+        text, _ = self.run_digest()
+        self.assertIn("AT THIS STAGE IT CANNOT BE ANYTHING BUT 0", text)
+        self.assertIn("THE POST-MINT VALUE IS MEASURED", text)
+
+    # --- the rollup: all-or-nothing, and name who is missing --------------
+
+    def test_the_rollup_sums_when_every_corpus_measured(self):
+        self._corpus("A")
+        self._corpus("B")
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        # 287 + 287 over the two corpora, and 1100 + 1100 inspected.
+        self.assertIn("574 REACH AN EPOCH", text)
+        self.assertIn("2200 document(s) inspected AFTER every batch", text)
+
+    def test_one_missing_corpus_demotes_the_whole_rollup(self):
+        # THE 562,422 RULE. A partial sum is the worst available output: it
+        # looks like a measurement of the run and is a measurement of part of
+        # it. So one corpus short means no total at all.
+        self._corpus("A")
+        self._corpus("B", drop_post=True)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("could not contribute, so no total is printed", text)
+        self.assertIn("no block at all in: B", text)
+
+    def test_the_rollup_names_an_unreadable_corpus_and_why(self):
+        self._corpus("A")
+        self._corpus("B", post={"audit_failed": "cache exploded"})
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("present but unreadable in: B", text)
+        self.assertIn("cache exploded", text)
+
+    def test_a_partial_rollup_never_prints_a_reach_total(self):
+        # The assertion that matters: not merely that a caution appears, but
+        # that no summed figure appears beside it to be quoted instead.
+        self._corpus("A")
+        self._corpus("B", drop_post=True)
+        text, _ = self.run_digest()
+        rollup = text[text.index("ACROSS ALL 2 CORPORA"):]
+        self.assertNotIn("REACH AN EPOCH", rollup.split("EPOCH-STRING")[0]
+                         .split("could not contribute")[1])

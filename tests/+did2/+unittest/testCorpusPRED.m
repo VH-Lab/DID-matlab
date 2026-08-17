@@ -267,6 +267,35 @@ try
 catch retentionErr
     result.epoch_string_retention = struct('audit_failed', retentionErr.message);
 end
+
+% THE POST-MINT EPOCH CHAIN (#60, #86a). Mirrors the block in
+% runCorpusDiscovery, which carries the full reasoning; the short version is
+% that silentLoss runs INSIDE pass 1 (v1_to_v2.m:384) while epochMint appends
+% `epoch` documents afterwards, so the `REACH AN EPOCH` headline in
+% `silent_loss.epoch_association` is 0 BY CONSTRUCTION and says nothing about
+% the corpus. This second call reads the same walk over the SHIPPED batch.
+%
+% IT IS ADDED HERE AND NOT ONLY IN runCorpusDiscovery FOR THE REASON PRED HAS
+% ALREADY COST US ONCE: PRED is a hard 0-quarantine gate rather than a
+% discovery run, so it does not go through runCorpusDiscovery, and an
+% instrument added only there leaves this corpus unmeasured while looking
+% complete. That is exactly how `testCorpusPRED` contributed nothing to the
+% census for months, and how its missing `orphan_count` was later read as a
+% FAILURE by the corpus-proven rung.
+%
+% REPORT-ONLY, like the retention block above it. Nothing here gates.
+try
+    predPostMint = did2.validate.silentLoss(result.migrated);
+    if isfield(predPostMint, 'epoch_association')
+        result.epoch_association_post_pass = predPostMint.epoch_association;
+    else
+        result.epoch_association_post_pass = struct( ...
+            'audit_failed', 'silentLoss returned no epoch_association block');
+    end
+catch predPostMintErr
+    result.epoch_association_post_pass = struct( ...
+        'audit_failed', predPostMintErr.message);
+end
 % REFERENCE INTEGRITY -- THE OTHER HALF OF THE GATE, ADDED 2026-08-13.
 %
 % The corpus gate is stated everywhere in this project as "0 quarantine AND 0

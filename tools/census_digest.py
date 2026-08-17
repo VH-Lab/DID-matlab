@@ -3052,6 +3052,18 @@ def epoch_association(r):
         return {"measured": False,
                 "why": "the epoch_association block is malformed (%s)"
                        % type(ea).__name__}
+    return _ea_validate(ea)
+
+
+def _ea_validate(ea):
+    """The two content conditions, shared by both stages of the same walk.
+
+    Split out when the POST-MINT block arrived (#60, #86a) so the two readings
+    cannot drift into disagreeing about what "measured" means. A second
+    implementation of that judgement is exactly the hazard the post-mint block
+    was itself designed around by RE-CALLING silentLoss rather than
+    reimplementing the chain walk.
+    """
     inspected = ea.get("docs_inspected")
     if not isinstance(inspected, int) or inspected <= 0:
         return {"measured": False, "block": ea,
@@ -3062,6 +3074,39 @@ def epoch_association(r):
                 "why": "all %s document(s) handed to it were unreadable"
                        % inspected}
     return {"measured": True, "block": ea, "inspected": inspected}
+
+
+def epoch_association_post_pass(r):
+    """The SAME chain walk, re-read AFTER every batch post-pass (#60, #86a).
+
+    `silent_loss.epoch_association` is computed inside pass 1, before
+    did2.convert.epochMint has appended a single `epoch` document, so its
+    `chain_docs_reaching_epoch` is 0 BY CONSTRUCTION and is not evidence about
+    the corpus. This block is the same walk over the SHIPPED batch, and it is
+    the only one of the two that can answer #60.
+
+    THE TWO ARE NEVER SUMMED, SUBSTITUTED OR AVERAGED -- different questions
+    over different batches. The renderer prints both, labelled by stage.
+
+    An ABSENT key is "the run predates this instrument", never a zero -- the
+    rule the pass-1 accessor already applies, which is why both end in
+    _ea_validate.
+    """
+    ea = r.get("epoch_association_post_pass")
+    if ea is None:
+        return {"measured": False,
+                "why": "this report carries no epoch_association_post_pass "
+                       "block -- the run predates the post-mint instrument, "
+                       "so the chain was measured ONLY before the mint"}
+    if not isinstance(ea, dict):
+        return {"measured": False,
+                "why": "the epoch_association_post_pass block is malformed "
+                       "(%s)" % type(ea).__name__}
+    if "audit_failed" in ea:
+        return {"measured": False,
+                "why": "the post-mint epoch-association audit FAILED (%s)"
+                       % ea["audit_failed"]}
+    return _ea_validate(ea)
 
 
 def _ea_rows(ea, rows, out, indent="          "):
@@ -3410,9 +3455,26 @@ def epoch_populations(r):
     """
     reading = {"ladder": [], "commensurable": [], "pre_mint": [],
                "unreadable": [], "disagreement": None, "not_comparable": None,
-               "ea_is_final_stage": None, "gap": None}
+               "ea_is_final_stage": None, "gap": None, "post_pass": None}
 
     final = _int_or_none(r.get("migrated_count"))
+
+    # (0) THE POST-MINT CHAIN (#60, #86a). Read FIRST so the pre-mint
+    # annotation further down can name it -- the whole point of the block is
+    # that a reader who reaches the "0 REACH AN EPOCH" caution should find the
+    # real number in the same breath rather than an instruction to go looking.
+    #
+    # `None` means the report has no such key AT ALL (a run older than the
+    # instrument), which is different from present-and-unreadable. The
+    # renderer keeps the three cases apart and only the first keeps the
+    # original "UNMEASURED" wording.
+    post = epoch_association_post_pass(r)
+    reading["post_pass"] = None if (
+        not post["measured"]
+        and "carries no epoch_association_post_pass" in post["why"]) else post
+    if reading["post_pass"] is not None and not post["measured"]:
+        reading["unreadable"].append(
+            "epoch_association_post_pass: %s" % post["why"])
 
     # (1) the pass-1 stage -- what silent_loss actually read.
     ea = epoch_association(r)
@@ -3611,8 +3673,32 @@ def _render_epoch_populations(reading, p, scope):
             p("      *** `REACH AN EPOCH` is labelled 'the number the decision")
             p("      *** rests on'. AT THIS STAGE IT CANNOT BE ANYTHING BUT 0,")
             p("      *** so it is not evidence that nothing reaches an epoch.")
-            p("      *** The post-mint value is UNMEASURED. Do not take the")
-            p("      *** epoch decision on it.")
+            post = reading.get("post_pass")
+            if post is None:
+                # Unchanged wording for a run with no post-mint block: the
+                # value really is unmeasured there, and softening this line
+                # for a report that predates the instrument would be the
+                # reassuring direction.
+                p("      *** The post-mint value is UNMEASURED. Do not take the")
+                p("      *** epoch decision on it.")
+            elif not post["measured"]:
+                p("      *** The post-mint block IS present and is NOT")
+                p("      *** readable: %s." % post["why"])
+                p("      *** That is 'nobody looked', not 'nothing reaches an")
+                p("      *** epoch'. Still do not take the epoch decision.")
+            else:
+                blk = post["block"]
+                p("      *** THE POST-MINT VALUE IS MEASURED, and it is the")
+                p("      *** one #60 is answerable from:")
+                p("      ***     %s document(s) inspected AFTER every batch"
+                  % blk.get("docs_inspected"))
+                p("      ***     post-pass (the SHIPPED batch)")
+                p("      ***     %s `epoch` document(s) in it"
+                  % blk.get("epoch_documents", "(absent)"))
+                p("      ***     %s REACH AN EPOCH"
+                  % blk.get("chain_docs_reaching_epoch", "(absent)"))
+                p("      *** The two numbers answer DIFFERENT questions over")
+                p("      *** DIFFERENT batches. Never sum or substitute them.")
     return findings
 
 
@@ -3635,7 +3721,7 @@ def rollup_epoch_populations(reports, out):
 
     combined = {"ladder": [], "commensurable": [], "pre_mint": [],
                 "unreadable": [], "disagreement": None, "not_comparable": None,
-                "ea_is_final_stage": None, "gap": None}
+                "ea_is_final_stage": None, "gap": None, "post_pass": None}
     if not reports:
         p("  EPOCH DOCUMENT POPULATIONS: no corpus report to read.")
         return []
@@ -3692,6 +3778,46 @@ def rollup_epoch_populations(reports, out):
     gaps = [reading["gap"] for reading in per if reading["gap"] is not None]
     if gaps:
         combined["gap"] = sum(gaps)
+
+    # THE POST-MINT CHAIN, SUMMED -- and summed under the 562,422 rule: a
+    # corpus that cannot contribute is NAMED, never zero-filled, because a sum
+    # missing a corpus reads exactly like a sum including a clean one.
+    #
+    # ALL-OR-NOTHING, deliberately. A partial sum here would be the worst
+    # available output: `287 REACH AN EPOCH` over four corpora when six ran
+    # looks like a measurement of the run and is a measurement of part of it.
+    # So a single unmeasured corpus demotes the whole rollup to unmeasured,
+    # with the reason naming which corpora were missing.
+    post_per = [(name, reading.get("post_pass"))
+                for name, reading in zip(names, per)]
+    if all(post is None for _n, post in post_per):
+        combined["post_pass"] = None            # nothing carries the key
+    elif all(post is not None and post["measured"] for _n, post in post_per):
+        summed = {}
+        for key in ("docs_inspected", "docs_unreadable", "docs_classified",
+                    "epoch_documents", "chain_docs_with_member",
+                    "chain_docs_reaching_epoch",
+                    "chain_docs_terminating_elsewhere"):
+            values = [post["block"].get(key) for _n, post in post_per]
+            if all(isinstance(v, int) for v in values):
+                summed[key] = sum(values)
+        combined["post_pass"] = {"measured": True, "block": summed,
+                                 "inspected": summed.get("docs_inspected")}
+    else:
+        absent = [n for n, post in post_per if post is None]
+        bad = ["%s (%s)" % (n, post["why"])
+               for n, post in post_per if post is not None
+               and not post["measured"]]
+        why = []
+        if absent:
+            why.append("no block at all in: %s" % ", ".join(absent))
+        if bad:
+            why.append("present but unreadable in: %s" % "; ".join(bad))
+        combined["post_pass"] = {
+            "measured": False,
+            "why": ("%d of %d corpora could not contribute, so no total is "
+                    "printed -- %s" % (len(absent) + len(bad), len(names),
+                                       "; ".join(why)))}
     for name, reading in zip(names, per):
         for why in reading["unreadable"]:
             combined["unreadable"].append("%s: %s" % (name, why))

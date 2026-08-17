@@ -191,6 +191,16 @@ end
 if isfield(result, 'epoch_string_retention')
     report.epoch_string_retention = result.epoch_string_retention;
 end
+% THE POST-MINT EPOCH CHAIN (#60, #86a). A SECOND `epoch_association` block,
+% from a second silentLoss call sited after every batch post-pass, so that
+% `REACH AN EPOCH` is measured on a batch that can actually contain an `epoch`.
+% The pass-1 block stays exactly where it is under `silent_loss` and the two
+% are NEVER summed or substituted: the pass-1 epoch counts are 0 BY
+% CONSTRUCTION (epochMint appends afterwards), which is why the digest prints
+% them under "FIGURES MEASURED PRE-MINT -- NOT COMMENSURABLE".
+if isfield(result, 'epoch_association_post_pass')
+    report.epoch_association_post_pass = result.epoch_association_post_pass;
+end
 % `deferred_bath_resolution` -- the FIRST pass in the chain, and the last one
 % to acquire a report (2026-08-11). PERSISTED BECAUSE IT SWALLOWED ITS OWN
 % FAILURES: the per-bath handler was a bare `catch` whose body was two comment
