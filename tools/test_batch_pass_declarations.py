@@ -190,3 +190,111 @@ def test_the_live_declarations_include_the_three_row_107_shapes(out):
     assert vi["emits"]["valid_interval"]["form"] == "nothing", (
         "resolveValidIntervals is DORMANT by team decision; declaring an "
         "emission here would credit a rung off code that is switched off")
+
+
+# ============================================================================
+# THE SHARED HELPER -- the same grammar, a different denominator.
+# ============================================================================
+#
+# These gate the FOURTH channel. The property under test is the opposite of the
+# one above: a pass in the derived chain MUST declare and the gate is armed,
+# because the chain is derived so the denominator is known. Nothing derives "a
+# helper that owes a declaration", so declaring is VOLUNTARY here -- and what
+# replaces the gate is that an undeclared helper credits NOTHING and the scan
+# says how many mint while declaring nothing. Both halves are asserted, because
+# "voluntary" degrades into "silently unmeasured" the moment the second half
+# stops being printed.
+
+
+@pytest.fixture(scope="module")
+def helpers():
+    return bpd.scan_helpers()
+
+
+def test_the_helper_population_is_not_empty(helpers, capsys):
+    """The `silentLoss` guard for this scan: zero candidates is a failed
+    lookup, and every assertion below it would pass over an empty set."""
+    with capsys.disabled():
+        print("\nDENOMINATOR: %d helper .m file(s) across %d dir(s), %d MINTING;"
+              " %d declared, %d undeclared, %d INVALID"
+              % (helpers["candidates"], len(helpers["dirs"]),
+                 len(helpers["minting"]), len(helpers["declared"]),
+                 len(helpers["undeclared"]), len(helpers["invalid"])))
+    assert helpers["candidates"] > 0
+    assert all(d["exists"] for d in helpers["dirs"]), \
+        "a helper directory named here and absent on disk silently shrinks " \
+        "the population: %s" % [d for d in helpers["dirs"] if not d["exists"]]
+
+
+def test_no_helper_declaration_is_malformed(helpers):
+    """A HALF-WRITTEN declaration -- one marker, not both -- is INVALID rather
+    than undeclared. It was written on purpose, so silence is the wrong read."""
+    assert helpers["invalid"] == [], \
+        "; ".join("%s: %s" % (fn, helpers["helpers"][fn]["errors"] or
+                              "one marker present, the other absent")
+                  for fn in helpers["invalid"])
+
+
+def test_jSoftwareFromApp_declares_the_app_fold(helpers):
+    """The row the channel exists for. Asserted against evidence PRESENT."""
+    dec = helpers["helpers"].get("jSoftwareFromApp")
+    assert dec is not None, "jSoftwareFromApp is not in the helper population"
+    assert dec["declared"], "it must carry BOTH markers"
+    assert dec["consumes"] == ["app"]
+    assert dec["emits"]["app"]["form"] == "document"
+    assert dec["emits"]["app"]["targets"] == ["software"]
+
+
+def test_the_declaration_sits_on_the_fold_not_on_the_mint(helpers):
+    """jSoftwareFromApp carries no `class_name` literal at all -- jSoftware
+    does. A rule of "the file with the literal declares" would put the sentence
+    on a helper that has never heard of `app` and cannot say what becomes of
+    it. This asserts the split is real and not an accident of where it landed."""
+    assert helpers["helpers"]["jSoftwareFromApp"]["mints"] == []
+    assert "software" in helpers["helpers"]["jSoftware"]["mints"]
+
+
+def test_an_undeclared_helper_contributes_nothing_to_the_index(helpers):
+    idx = bpd.helper_index(helpers)
+    declared = set(helpers["declared"])
+    for entries in idx.values():
+        for e in entries:
+            assert e["helper"] in declared
+
+
+def test_the_undeclared_minters_are_named_not_just_counted(helpers):
+    """`nobody looked` stays a third state. The unmeasured set must have a
+    shape a reader can act on, not a bare integer."""
+    for fn in helpers["helpers_minting_undeclared"]:
+        assert helpers["helpers"][fn]["mints"], \
+            "%s is listed as a minting helper and mints nothing" % fn
+        assert fn not in helpers["declared"]
+
+
+def test_a_marker_outside_the_helper_header_does_not_count():
+    """Same rule as the passes: a declaration lives in the header, where the
+    next reader sees it. A marker in a mid-file comment is not one."""
+    text = ("function y = jThing(x)\n%JTHING Summary.\ny = x;\n"
+            "% " + bpd.CONSUMES_TOKEN + ": thing\n"
+            "% " + bpd.EMITS_TOKEN + ": thing -> document: other\n")
+    assert not bpd.parse_declaration(text)["declared"]
+
+
+def test_minted_classes_ignores_a_commented_out_mint():
+    """The minting census strips comments, so a mint site quoted in prose --
+    which this repository's headers do constantly -- is not counted as one."""
+    live = "x.document_class = struct('class_name', 'real_thing');"
+    dead = "%   x.document_class = struct('class_name', 'prose_thing');"
+    assert bpd.minted_classes(live) == ["real_thing"]
+    assert bpd.minted_classes(dead) == []
+
+
+def test_helper_index_drops_a_declaration_carrying_errors():
+    """Rule 4: a typo must not become a credited rung."""
+    out = {"declared": ["jBroken"],
+           "helpers": {"jBroken": {
+               "declared": True, "consumes": ["thing"],
+               "emits": {"thing": {"form": "document", "targets": ["t"],
+                                   "reason": None}},
+               "errors": ["EMITS: `other` is not in CONSUMES"]}}}
+    assert bpd.helper_index(out) == {}

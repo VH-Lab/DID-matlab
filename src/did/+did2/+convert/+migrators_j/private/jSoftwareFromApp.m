@@ -37,6 +37,39 @@ function [software, swId, execEnv, appLeftover] = jSoftwareFromApp(preBody, opts
 %   control flow exactly.
 %
 %   ---------------------------------------------------------------------
+%   THE DECLARATION, AND THE MIS-SCORE IT REPAIRS
+%   ---------------------------------------------------------------------
+%   BATCH-PASS-CONSUMES: app
+%   BATCH-PASS-EMITS: app -> document: software
+%
+%   DID-schema's completion ladder scored `app` at rung 3 = `no`, in its own
+%   words "the decided target(s) `software` are not all among what the migrator
+%   emits today (nothing)". It IS emitted -- here, at six call sites
+%   (vmspikefit, neuron_extracellular, jCalculation, jSorterOutput,
+%   jMethodParameters, jrclust_clusters) -- and the ladder could not see it
+%   because all three of its channels look for a name: a migrator file named
+%   after the class (there is no `+migrators_j/app.m`), a batch post-pass, or
+%   an `emitted_by` cross-reference. This file is named after neither the
+%   source nor the target. Same tell as subjectStrainAssembly, softwareDedup
+%   and ensembleMembership: work that landed under a different name and read
+%   as work not done.
+%
+%   WHY THE SENTENCE IS HERE AND NOT ON jSoftware. jSoftware carries the
+%   `'class_name','software'` literal and this file carries none -- but
+%   jSoftware is called for several folds and has never heard of `app`, so it
+%   cannot say what becomes of an `app` block. The declaration belongs to
+%   whoever owns the FOLD. The grammar is the batch post-passes' own,
+%   deliberately unchanged: one grammar, one place it can drift from
+%   (tools/batch_pass_declarations.py, `scan_helpers`).
+%
+%   THE `nothing` BRANCH IS DELIBERATELY NOT DECLARED SEPARATELY. A nameless
+%   or session-less app block yields no software and rides out in APPLEFTOVER,
+%   which is a per-DOCUMENT outcome, not a per-CLASS one. The grammar's
+%   `-> nothing` form states that a pass emits nothing for a class AT ALL --
+%   resolveValidIntervals is dormant by signature and says so. Using it here
+%   would assert this fold never fires, which is false at six call sites.
+%
+%   ---------------------------------------------------------------------
 %   THE FIELD NAMES ARE READ TOLERANTLY, AND THAT IS A REPAIR
 %   ---------------------------------------------------------------------
 %   NDI's app template (ndi_common/database_documents/app.json on origin/main)

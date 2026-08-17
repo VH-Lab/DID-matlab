@@ -271,6 +271,203 @@ def parse_declaration(text):
     return d
 
 
+# ============================================================================
+# THE SHARED HELPER -- the FOURTH consumption channel, and the smallest one.
+# ============================================================================
+#
+# THE ROW THIS REPAIRS. DID-schema's ladder scored `app` at rung 3 = `no`,
+# "the decided target `software` is not among what the migrator emits today
+# (nothing)". It is emitted, at six live call sites, by
+# `+migrators_j/private/jSoftwareFromApp.m` -- which is named after neither the
+# source class nor the target, so the ladder's three existing channels (a
+# migrator NAMED AFTER the class, a batch post-pass, an `emitted_by`
+# cross-reference) all miss it. Tell (1) of the four the open-list
+# reconciliation recorded: work landed under a different name.
+#
+# WHY THE SAME GRAMMAR AND NOT A NEW ONE. A helper's fold is the same statement
+# a pass makes -- "I read class C, and C becomes T" -- so it reuses
+# CONSUMES/EMITS verbatim and `parse_declaration` is not touched. The file's
+# own design note is the reason: ONE grammar, one place it can drift from. A
+# second grammar for the same sentence is how the two halves of a file come to
+# disagree.
+#
+# WHY THE DECLARATION SITS ON THE FOLD AND NOT ON THE MINT. `jSoftwareFromApp`
+# carries no `'class_name','software'` literal at all; it calls `jSoftware`,
+# which does. A rule of "the file with the literal declares" would put the
+# sentence on a helper that has never heard of `app` and cannot say what
+# becomes of it. The declaration belongs to whoever owns the FOLD.
+#
+# AND WHY THIS IS NOT ARMED. `scan()` errors on an undeclared pass, and can,
+# because the chain is DERIVED so the denominator is known and every member of
+# it was declared before the gate went on. There is no equivalent derivation
+# here: nothing distinguishes "a helper that owes a declaration" from "a helper
+# that folds nothing" without reading intent. So a helper declaration is
+# VOLUNTARY, an undeclared helper credits NOTHING, and the report prints both
+# counts -- which keeps rule 1's substance (a missing declaration can only
+# leave a rung where it was, never make one look better) without arming a gate
+# nobody has measured. `helpers_minting_undeclared` names the ones most likely
+# to owe one, so "nobody looked" stays visible instead of reading as zero.
+HELPER_DIRS = (
+    os.path.join("+migrators_j", "private"),
+    os.path.join("+migrators_j", "+super"),
+    "+entities",
+)
+
+_STRONG_MINT = (
+    re.compile(r"['\"]class_name['\"]\s*,\s*['\"]([A-Za-z_]\w*)['\"]"),
+    re.compile(r"classBlock\s*\(\s*['\"]([A-Za-z_]\w*)['\"]"),
+)
+
+
+def _decomment(line):
+    """Drop a MATLAB trailing comment, keep code. A `%` with an even number of
+    single quotes before it opens a comment."""
+    out, quotes = [], 0
+    for ch in line:
+        if ch == "'":
+            quotes += 1
+        elif ch == "%" and quotes % 2 == 0:
+            break
+        out.append(ch)
+    return "".join(out)
+
+
+def minted_classes(text):
+    """Classes this file MINTS, read from code with comments stripped.
+
+    Reported per helper so `helpers_minting_undeclared` can name the files
+    whose folds are unmeasured. It is NOT used to credit anything: a mint site
+    says a class is constructed here, never which v1 source reached it, and
+    reading it as an emission for some source is the guess this whole module
+    exists to avoid.
+    """
+    found = set()
+    for raw in text.splitlines():
+        code = _decomment(raw)
+        for rx in _STRONG_MINT:
+            for m in rx.finditer(code):
+                found.add(m.group(1))
+    return sorted(found)
+
+
+def scan_helpers(root=None):
+    """Shared helpers, with their declaration or its absence.
+
+    Denominator FIRST, and it is TWO numbers, because they answer different
+    questions: `candidates` is every helper file (the population a declaration
+    could ever come from) and `minting` is the subset that constructs a
+    document (the population most likely to owe one). A single count would
+    make an undeclared minter indistinguishable from a helper that folds
+    nothing.
+    """
+    root = root or REPO_ROOT
+    out = {"root": root, "dirs": [], "candidates": 0, "helpers": {},
+           "declared": [], "undeclared": [], "invalid": [],
+           "minting": [], "helpers_minting_undeclared": [], "why": None}
+
+    for rel in HELPER_DIRS:
+        d = os.path.join(root, CONVERT_PKG, rel)
+        out["dirs"].append({"path": rel, "exists": os.path.isdir(d)})
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            if not name.endswith(".m") or name == "Contents.m":
+                continue
+            fn = name[:-2]
+            out["candidates"] += 1
+            text = _read_text(os.path.join(d, name))
+            if text is None:
+                out["helpers"][fn] = {
+                    "declared": False, "consumes": [], "emits": {},
+                    "unattributed": [], "consumes_none_reason": None,
+                    "mints": [], "path": os.path.join(rel, name),
+                    "errors": ["source not readable"]}
+                out["undeclared"].append(fn)
+                continue
+            mints = minted_classes(text)
+            if mints:
+                out["minting"].append(fn)
+            has_marker = (CONSUMES_TOKEN in text) or (EMITS_TOKEN in text)
+            if not has_marker:
+                out["helpers"][fn] = {
+                    "declared": False, "consumes": [], "emits": {},
+                    "unattributed": [], "consumes_none_reason": None,
+                    "mints": mints, "path": os.path.join(rel, name),
+                    "errors": []}
+                out["undeclared"].append(fn)
+                if mints:
+                    out["helpers_minting_undeclared"].append(fn)
+                continue
+            dec = parse_declaration(text)
+            dec["mints"] = mints
+            dec["path"] = os.path.join(rel, name)
+            out["helpers"][fn] = dec
+            if dec["declared"]:
+                out["declared"].append(fn)
+                if dec["errors"]:
+                    out["invalid"].append(fn)
+            else:
+                # A file carrying ONE marker is a HALF-WRITTEN declaration, not
+                # an absent one, and it is the dangerous shape: CONSUMES alone
+                # names a class with nothing said about what becomes of it. It
+                # is INVALID, so the gate fails, rather than undeclared, which
+                # would pass silently.
+                out["invalid"].append(fn)
+    return out
+
+
+def helper_index(out):
+    """{v1_class: [{helper, form, targets, reason}, ...]} over VALID
+    declarations only. An invalid declaration credits nothing -- a typo must
+    not become a credited rung, which is rule 4 of the grammar."""
+    idx = {}
+    for fn in sorted(out.get("declared", [])):
+        dec = out["helpers"][fn]
+        if dec.get("errors"):
+            continue
+        for src, e in sorted(dec["emits"].items()):
+            idx.setdefault(src, []).append(
+                {"helper": fn, "form": e["form"], "targets": list(e["targets"]),
+                 "reason": e["reason"]})
+    return idx
+
+
+def render_helpers(out, stream=sys.stdout):
+    p = lambda *a: print(*a, file=stream)
+    p("SHARED HELPER DECLARATIONS   (voluntary; an undeclared helper credits "
+      "nothing)")
+    p("DENOMINATOR: %d helper .m file(s) across %d dir(s), %d of them MINTING; "
+      "%d declared, %d undeclared, %d declared-but-INVALID"
+      % (out["candidates"], len(out["dirs"]), len(out["minting"]),
+         len(out["declared"]), len(out["undeclared"]), len(out["invalid"])))
+    for d in out["dirs"]:
+        if not d["exists"]:
+            p("  *** DIRECTORY ABSENT: %s" % d["path"])
+    for fn in out["declared"]:
+        dec = out["helpers"][fn]
+        if dec["consumes_none_reason"] is not None:
+            p("  %-26s consumes NONE -- %s" % (fn, dec["consumes_none_reason"]))
+        else:
+            p("  %-26s consumes %s" % (fn, ", ".join(dec["consumes"])))
+        for src, e in sorted(dec["emits"].items()):
+            if e["form"] == "nothing":
+                p("  %-26s   %s -> nothing: %s" % ("", src, e["reason"]))
+            else:
+                p("  %-26s   %s -> %s: %s"
+                  % ("", src, e["form"], ", ".join(e["targets"])))
+        for err in dec["errors"]:
+            p("  %-26s   *** INVALID: %s" % ("", err))
+    for fn in out["invalid"]:
+        if fn not in out["declared"]:
+            p("  %-26s *** HALF-WRITTEN: one marker present, the other absent"
+              % fn)
+    p("  UNMEASURED -- %d helper(s) mint a document and declare nothing, so "
+      "what they fold is not credited anywhere:" % len(out["helpers_minting_undeclared"]))
+    for fn in out["helpers_minting_undeclared"]:
+        p("      %-24s mints %s"
+          % (fn, ", ".join(out["helpers"][fn]["mints"])))
+
+
 def scan(root=None):
     """Every pass in the DERIVED chain, with its declaration or its absence.
 
@@ -379,12 +576,21 @@ def main(argv=None):
     ap.add_argument("--root", default=None)
     args = ap.parse_args(argv)
     out = scan(args.root)
+    helpers = scan_helpers(args.root)
     if args.json:
-        json.dump(out, sys.stdout, indent=1, sort_keys=True)
+        json.dump({"passes": out, "helpers": helpers}, sys.stdout, indent=1,
+                  sort_keys=True)
         print()
     else:
         render(out)
+        print()
+        render_helpers(helpers)
     bad = bool(out["missing"]) or bool(out["invalid"]) or not out["chain_derived"]
+    # A helper declaration is voluntary, so an UNDECLARED helper is not a
+    # failure -- see the design note above. A MALFORMED one is: it was written
+    # on purpose and does not parse, which is the typo-becomes-a-credited-rung
+    # case rule 4 exists for.
+    bad = bad or bool(helpers["invalid"])
     return 1 if bad else 0
 
 
