@@ -6,8 +6,9 @@ function tests = testNgridCoordinates
 %   AMENDED 2026-08-17. The unqualified H1 was true when written and is not
 %   now: `hartley_calc` no longer passes through, it DECOMPOSES (the signed
 %   receptive_field fold), so for that class the requirement is the opposite --
-%   no emitted document may still carry an `ngrid` block. Both claims live
-%   below, one per consumer. The H1 is amended rather than left to be
+%   the block is CONSUMED, and a grid whose coordinates cannot be accounted
+%   for is REFUSED rather than carried. Both claims live below, one per
+%   consumer. The H1 is amended rather than left to be
 %   discovered because a header that overstates a guarantee is how this project
 %   has repeatedly read "we are further along / more protected than we are",
 %   and a reader who stops at this line would take the carry as universal.
@@ -147,7 +148,7 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, ...
 verifyEqual(testCase, out.summary.migrated_count, 1);
 end
 
-function testHartleyCalcNoLongerCarriesNgridBecauseItDecomposes(testCase)
+function testHartleyCalcConsumesNgridAndRefusesAnUnaccountableGrid(testCase)
 % INVERTED 2026-08-17, NOT DELETED, AND THE INVERSION IS THE POINT.
 %
 % This test used to be `testHartleyCalcAlsoKeepsItsCoordinates` and asserted
@@ -179,35 +180,42 @@ function testHartleyCalcNoLongerCarriesNgridBecauseItDecomposes(testCase)
 % volume whose last plane is a p-value map, not a second image. Both planes now
 % have somewhere to land; the shape assertions live in
 % testMigratorsJHartleyCalc, which owns the fold.
+% WHAT THIS FIXTURE CAN AND CANNOT ESTABLISH -- written down because two
+% drafts of this test got it wrong in a row, and both times by asserting a
+% shape rather than reading the fixture. `hartleyCalcV1` here is a STUB: it
+% carries `coordinates [1;2;3]` against `data_dim [200 200 36 2]`, numbers
+% chosen when this class was a PASSTHROUGH and nothing looked at them. The
+% fold reads them, and no leading run of that data_dim sums to 3, so
+% hartley_calc.m:466 refuses with `hartleyCoordinateCountUnaccounted` --
+% v1_to_v2 routes a migrator error to QUARANTINE rather than rethrowing, so
+% the observable outcome is a quarantined document and an EMPTY migrated set.
+%
+% So this file cannot assert the fold's emitted shape from this fixture, and
+% it should not try: `testMigratorsJHartleyCalc` owns that, drives the fold
+% with a coherent fixture, and asserts the leaf, both planes and the spike
+% input. What IS assertable here, and is worth asserting, is the property this
+% file has always been about -- whether the ngrid block survives -- now read
+% the other way round: hartley_calc CONSUMES it, and when it cannot account
+% for the coordinates it REFUSES rather than carrying them through.
+%
+% That refusal is the #46 narrowing in its observable form. Before the fold, a
+% stub like this migrated clean and kept its ngrid block; the carry was the
+% guarantee. Now an unaccountable grid stops, which is the "refuse rather than
+% emit a husk" discipline the ontology_image husk cost us.
 out = runJ(hartleyCalcV1());
-verifyEqual(testCase, out.summary.quarantine_count, 0);
 
-% `get` and `documentProperties`, NOT `document_properties`. The first draft
-% of this test used the snake_case spelling and CI failed it -- which is
-% exactly the defect CLAUDE.md records against `silentLoss`, where `asStruct`
-% asked a `did2.document` for `document_properties`, got `[]` for every
-% document, and reported `total_docs = 0` for two days while appearing to
-% measure. The property is declared `documentProperties` at
-% `+did2/document.m:41`; the tests above this one use the `get` dot-path
-% accessor, so this one does too.
-names = cellfun(@(d) d.get('document_class.class_name'), ...
-    out.migrated, 'UniformOutput', false);
-verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1, ...
-    sprintf(['the signed fold emits exactly one receptive_field_calculation; ' ...
-             'got {%s}'], strjoin(names, ', ')));
-
-% THE CLAIM THAT REPLACES THE OLD ONE: no emitted document still carries an
-% `ngrid` block. Asserted over EVERY emitted document rather than over
-% migrated{1}, because the fold turns one document into several and a
-% first-only check would pass while a plane body carried the block.
-for k = 1:numel(out.migrated)
-    verifyFalse(testCase, ...
-        isfield(out.migrated{k}.documentProperties, 'ngrid'), ...
-        sprintf(['emitted %s still carries an `ngrid` block -- the fold is ' ...
-                 'meant to CONSUME it, and a surviving block means the ' ...
-                 'superclass carry and the decomposition are both running'], ...
-                names{k}));
-end
+verifyEqual(testCase, out.summary.quarantine_count, 1, ...
+    ['the stub coordinates cannot be accounted for against the data_dim, ' ...
+     'so the fold must refuse -- a 0 here means hartley_calc is passing ' ...
+     'the ngrid block through again']);
+verifyEmpty(testCase, out.migrated, ...
+    'a refused document must emit nothing, not a partial decomposition');
+verifyEqual(testCase, out.quarantine(1).class_name, 'hartley_calc');
+verifyTrue(testCase, ...
+    contains(out.quarantine(1).reason, 'coordinates'), ...
+    sprintf(['the refusal must name the coordinate accounting, so a future ' ...
+             'unrelated failure here is not mistaken for this one; got: %s'], ...
+            out.quarantine(1).reason));
 end
 
 % ===================== fixtures (from the WRITER) ==========================
