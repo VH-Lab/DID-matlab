@@ -21,13 +21,34 @@ function [result, report] = epochMint(result, options)
 %   DID-schema tools/coverage.py, which credits the completion ladder from it.
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
-%   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested
+%   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested,
+%       acquisition_epoch
 %   BATCH-PASS-EMITS: epochid -> document: epoch
+%   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
 %       at :727 only STAMPS the `epoch_id` edge onto the body and re-runs the
 %       ARMED per-class migrator. The `acquisition_metadata_file` document is
 %       minted there, in +migrators_j, and is credited to that migrator -- not
 %       to this pass. Declaring it here would count one emission twice.
+%
+%   `acquisition_epoch` ADDED 2026-08-17, and it was a REAL OMISSION, not a
+%   tidy-up. The #60 OPTION A loop below reads `acquisition_epoch` bodies (see
+%   `if ~strcmp(rows(k).class_name, 'acquisition_epoch')`) and mints one
+%   `relative_reference` per distinct clock onto `epoch.time_reference_#`. That
+%   is a consumption and an emission the declaration did not state, so
+%   DID-schema's completion ladder could not credit it: `element_epoch` read
+%   stage 1 and `epochclocktimes` read rung 3 = `no` while the work was
+%   shipping. Same shape as the `jSoftwareFromApp` mis-score fixed the same day,
+%   one channel over -- and the same direction, understating what is built.
+%
+%   THE NAME IS THE MIGRATED ONE ON PURPOSE. This pass runs AFTER the per-class
+%   migrators, so the batch carries `acquisition_epoch`, never the did_v1
+%   `element_epoch` it was renamed from. `resolveLawnPlateSubjects` declares
+%   `ontology_table_row` for the same reason. Whether DID-schema's ledger can
+%   JOIN that name to the `element_epoch` row is a question about the ledger,
+%   not about this sentence: both rows currently carry `veta_class = None`, so
+%   the join may not reach them. Declaring what the code does is right either
+%   way; a declaration bent to fit a matcher would be the reassuring direction.
 %
 %   `epochid` is the did_v1 MIXIN, and it is the class this pass dissolves: the
 %   string was only ever a way to find the epoch, and the epoch now has a
