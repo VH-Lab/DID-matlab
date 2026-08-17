@@ -283,6 +283,26 @@ POST_PASSES = [
         ("metadata_refused_no_epoch_string", "  no epoch string on the document"),
         ("metadata_refused_no_epoch_document", "  no epoch document for the pair"),
         ("metadata_refused_migrator_declined", "  migrator declined (no reader edge / no bytes)"),
+        # THE SECOND ARMED FOLD (#60, 2026-08-17) -- `stimulus_response_scalar`.
+        # Rendered as its own block rather than summed into the metadata rows
+        # above: the two folds refuse for the same REASONS over different
+        # DENOMINATORS, and one shared row would make "273 responses had no
+        # epoch document" indistinguishable from "59 metadata readers did".
+        # `_vacuous` leads for the same reason it leads there -- a batch with no
+        # sources must not read as a batch where everything succeeded.
+        ("response_fold_vacuous", "stimulus-response fold VACUOUS (no sources)"),
+        ("response_scalar_seen", "stimulus_response_scalar seen"),
+        ("response_scalar_already_folded", "  already harmonic_component_calculation"),
+        ("response_scalar_edges_stamped", "  epoch_id stamped"),
+        ("response_scalar_folds_emitted", "FOLDED to harmonic_component_calculation"),
+        ("response_scalar_folds_withheld", "  WITHHELD (fold did not validate)"),
+        ("response_refused_total", "REFUSED (total)"),
+        ("response_refused_no_epoch_string", "  no element_epochid on the document"),
+        ("response_refused_no_epoch_document", "  no epoch document for the pair"),
+        # The migrator's own four guards -- no element_id, an unparseable
+        # response_type, no responses.response_real, or an epoch string with no
+        # epoch document. A DECLINED fold keeps the passthrough it has today.
+        ("response_refused_migrator_declined", "  migrator declined (its own guards)"),
         ("mint_quarantined", "QUARANTINED by the mint"),
         # THE ARMING PATH, added 2026-08-12 with the 1 -> N rebuild. The old
         # arming unwrapped a 1-cell and treated anything else as a failure,
@@ -351,6 +371,14 @@ POST_PASSES = [
         ("arming_edge_declaration_unchecked",
          "  bodies whose edge declaration COULD NOT be consulted"),
         ("metadata_refused_unsafe_output", "  metadata fold: refused, unsafe output"),
+        # The stimulus-response fold's sibling, rendered HERE beside it rather
+        # than in that fold's own block above, because both count the SAME two
+        # armingIsSafe refusals (`id_not_preserved`, `undeclared_edge`) and a
+        # reader comparing them wants them adjacent. For this fold the second
+        # one is EXPECTED on the guard arms: a declined stimulus_response_scalar
+        # returns its stamped pre-body, whose class does not declare `epoch_id`,
+        # so the refusal fires and the document keeps today's passthrough.
+        ("response_refused_unsafe_output", "  response fold: refused, unsafe output"),
         # NOT an arming counter: reachable only when `mint_quarantined` > 0
         # (already a gate failure), and left un-repaired deliberately because
         # changing it would change a current result. Printed so the pre-existing

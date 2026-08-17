@@ -22,7 +22,7 @@ function [result, report] = epochMint(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested,
-%       acquisition_epoch
+%       acquisition_epoch, stimulus_response_scalar
 %   BATCH-PASS-EMITS: epochid -> document: epoch
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
@@ -30,6 +30,15 @@ function [result, report] = epochMint(result, options)
 %       ARMED per-class migrator. The `acquisition_metadata_file` document is
 %       minted there, in +migrators_j, and is credited to that migrator -- not
 %       to this pass. Declaring it here would count one emission twice.
+%   BATCH-PASS-EMITS: stimulus_response_scalar -> nothing: SAME REASON, exactly.
+%       The second armed loop stamps the `epoch_id` edge and re-runs
+%       +migrators_j/stimulus_response_scalar; the
+%       `harmonic_component_calculation` leaf and its anchor are minted THERE
+%       and are already credited to that migrator, whose rung 3 reads `yes` on
+%       the ladder today. Declaring them here would count one emission twice --
+%       which is the failure the `-> nothing` form exists to prevent, and is
+%       why arming a migrator is NOT the same shape as `acquisition_epoch`
+%       below, where this pass mints the document itself.
 %
 %   `acquisition_epoch` ADDED 2026-08-17, and it was a REAL OMISSION, not a
 %   tidy-up. The #60 OPTION A loop below reads `acquisition_epoch` bodies (see
@@ -457,6 +466,25 @@ report = struct( ...
     'metadata_refused_unsafe_output',      0, ...
     'metadata_refused_total',              0, ...
     'metadata_fold_vacuous',               true, ...
+    ... % THE SECOND ARMED FOLD (#60, 2026-08-17) -- `stimulus_response_scalar`.
+    ... % A PARALLEL COUNTER SET rather than a widened `metadata_*` one: the two
+    ... % folds refuse for the same REASONS and over different DENOMINATORS, and
+    ... % one shared counter would make "273 responses had no epoch document"
+    ... % indistinguishable from "59 metadata readers did". The vocabulary is
+    ... % deliberately identical name-for-name so the two can be read side by
+    ... % side, and tests/+did2/+unittest/testEpochMintResponseArming.m asserts
+    ... % that correspondence rather than trusting it to survive editing.
+    'response_scalar_seen',                0, ...
+    'response_scalar_already_folded',      0, ...
+    'response_scalar_edges_stamped',       0, ...
+    'response_scalar_folds_emitted',       0, ...
+    'response_scalar_folds_withheld',      0, ...
+    'response_refused_no_epoch_string',    0, ...
+    'response_refused_no_epoch_document',  0, ...
+    'response_refused_migrator_declined',  0, ...
+    'response_refused_unsafe_output',      0, ...
+    'response_refused_total',              0, ...
+    'response_fold_vacuous',               true, ...
     'mint_quarantined',               0, ...
     'ran',                            false, ...
     'epoch_index', struct('session_id', {}, 'local_identifier', {}, ...
@@ -1048,17 +1076,171 @@ for k = 1:n
     armEntry.body_count       = nOffered;
     armEntry.epoch_id         = epochIdByKey(key);
     armEntry.is_metadata_fold = true;
+    % Set here too, and NOT left absent: `armings` entries are asked for this
+    % field by the carry loop, and a struct set whose members disagree about
+    % which fields exist makes the read an ERROR rather than a false.
+    armEntry.is_response_fold = false;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
     changedArming(end+1)    = numel(armings);       %#ok<AGROW>
 end
+% ===========================================================================
+% THE SECOND ARMED FOLD -- `stimulus_response_scalar` (#60, 2026-08-17)
+% ===========================================================================
+% WHY A SEPARATE LOOP AND NOT A ROW IN THE ONE ABOVE. The table
+% (`defaultArmingMigrators`) generalises; the LOOP does not. The metadata block
+% hard-codes four things this fold differs on:
+%
+%     source class    daqmetadatareader_epochdata_ingested  vs stimulus_response_scalar
+%     epoch string    the `epochid` MIXIN                   vs `stimulus_response.element_epochid`
+%     primary class   acquisition_metadata_file             vs harmonic_component_calculation
+%     counters        metadata_*                            vs response_*
+%
+% Unifying the two would be the better end state and is OWED -- but it means
+% editing a corpus-green path that cannot be executed in the authoring
+% environment, and this repository's own rule is that a change you cannot run
+% is a guess. The duplication is therefore DELIBERATE and TEMPORARY: unify once
+% this fold is corpus-proven, and until then
+% testEpochMintResponseArming/testTheTwoArmedFoldsShareARefusalVocabulary keeps
+% the two from drifting.
+%
+% WHY THIS FAMILY NEEDS NO SCHEMA INCREMENT, unlike the two daqreader arms.
+% Derived in +migrators_j/stimulus_response_scalar.m's own header by ENUMERATING
+% every `depends_on` write on the fold path: the leaf's edges are set BY NAME
+% (jCarrySubject, jCalculation, this migrator's setDep calls) and nothing copies
+% `preBody.depends_on` wholesale, so the transient `epoch_id` stamped below
+% CANNOT reach either emitted body. `armingIsSafe`'s `undeclared_edge` refusal
+% therefore cannot fire on a FOLDED document. It can and should fire on a
+% GUARDED one -- those return `{preBody}`, which does carry the stamp -- and
+% that refusal leaves the document exactly as it is today.
+%
+% THE GATE THIS OPENS. Branch 2 of that migrator is live on every did_v1
+% document because `jEpochDocId` answers '' by construction; stamping the edge
+% is what lets branch 1 take over, with no change in the migrator. Measured on
+% 20211116: `stimulus_response.element_epochid` is populated on 273 of 273
+% documents over 11 distinct values, and the mint already SEES that source
+% (did2.validate.epochStrings reads it), so the epochs those anchors need exist.
+for k = 1:n
+    if strcmp(rows(k).class_name, 'harmonic_component_calculation')
+        % A re-run -- find-or-create, as the metadata block above.
+        report.response_scalar_already_folded = ...
+            report.response_scalar_already_folded + 1;
+        continue;
+    end
+    if ~strcmp(rows(k).class_name, 'stimulus_response_scalar'); continue; end
+    report.response_scalar_seen = report.response_scalar_seen + 1;
+    % `element_epochid` SPECIFICALLY, never "whichever string this body has".
+    % The class carries TWO (`stimulus_response.stimulator_epochid` as well) and
+    % they name different epochs -- the stimulator's and the element's. The
+    % caller anchoring a RESPONSE wants the element's, which is what
+    % did2.validate.epochStrings' own header records at :87.
+    es = valueForSource(epochValues{k}, epochSources{k}, ...
+        'stimulus_response.element_epochid');
+    if isempty(es)
+        report.response_refused_no_epoch_string = ...
+            report.response_refused_no_epoch_string + 1;
+        continue;
+    end
+    key = pairKey(rows(k).session_id, es);
+    if ~isKey(epochIdByKey, key)
+        report.response_refused_no_epoch_document = ...
+            report.response_refused_no_epoch_document + 1;
+        continue;
+    end
+    b = setDep(bodies{k}, 'epoch_id', epochIdByKey(key));
+    report.response_scalar_edges_stamped = ...
+        report.response_scalar_edges_stamped + 1;
+    migrator = armingMigratorFor(armingMigrators, 'stimulus_response_scalar');
+    offered = normaliseArmingOutput(migrator(b));
+    nOffered = numel(offered);
+    report.arming_calls          = report.arming_calls + 1;
+    report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
+    report.arming_extra_bodies_offered = ...
+        report.arming_extra_bodies_offered + max(0, nOffered - 1);
+    if nOffered > report.arming_max_bodies_per_call
+        report.arming_max_bodies_per_call = nOffered;
+    end
+    if nOffered > 1
+        report.arming_calls_returning_multiple = ...
+            report.arming_calls_returning_multiple + 1;
+    end
+    [safe, why, unchecked] = armingIsSafe(offered, ...
+        'harmonic_component_calculation', rows(k).doc_id, ...
+        checkEdgeDeclaration, edgeIndex, edgeMemo);
+    report.arming_edge_declaration_unchecked = ...
+        report.arming_edge_declaration_unchecked + unchecked;
+    if ~safe
+        switch why
+            case 'declined'
+                % The migrator's OTHER guards fired -- no `element_id`, an
+                % unparseable `response_type`, or no `responses.response_real`.
+                % It is the authority; this loop only supplies the epoch.
+                report.response_refused_migrator_declined = ...
+                    report.response_refused_migrator_declined + 1;
+                report.arming_bodies_dropped_declined = ...
+                    report.arming_bodies_dropped_declined + nOffered;
+            case 'id_not_preserved'
+                report.response_refused_unsafe_output = ...
+                    report.response_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_id_not_preserved = ...
+                    report.arming_bodies_dropped_id_not_preserved + nOffered;
+            case 'undeclared_edge'
+                report.response_refused_unsafe_output = ...
+                    report.response_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_undeclared_edge = ...
+                    report.arming_bodies_dropped_undeclared_edge + nOffered;
+            otherwise
+                error('did2:convert:epochMint:unknownRefusal', ...
+                    ['armingIsSafe returned refusal "%s", which no counter ' ...
+                     'names. Add the counter; do not widen an existing ' ...
+                     'one.'], why);
+        end
+        % SAME REASON AS THE METADATA BLOCK: a refusal `continue`s before the
+        % `armings{end+1}` append, so without this line a refused fold would be
+        % counted in `response_refused_*` and then vanish from the
+        % emitted/withheld pair that `response_scalar_seen` is reconciled
+        % against -- a source seen, not emitted, not withheld either.
+        report.response_scalar_folds_withheld = ...
+            report.response_scalar_folds_withheld + 1;
+        continue;
+    end
+    bodies{k} = offered{1};
+    extraIds  = cell(1, nOffered - 1);
+    for e = 2:nOffered
+        extraBodies{end+1} = offered{e};        %#ok<AGROW>
+        extraIds{e-1}      = baseIdOf(offered{e});
+    end
+    armEntry = struct();
+    armEntry.index            = k;
+    armEntry.primary_id       = baseIdOf(offered{1});
+    armEntry.extra_ids        = extraIds;
+    armEntry.body_count       = nOffered;
+    armEntry.epoch_id         = epochIdByKey(key);
+    % BOTH FLAGS ON EVERY ENTRY. The carry loop filters on
+    % `is_metadata_fold`; adding a second kind without giving the first kind's
+    % entries the new field would make `armings` a struct set with
+    % inconsistent fields, and asking for a missing field is an error rather
+    % than a false. Set explicitly on both sides.
+    armEntry.is_metadata_fold = false;
+    armEntry.is_response_fold = true;
+    armings{end+1} = armEntry;                      %#ok<AGROW>
+    changedIdx(end+1)       = k;                    %#ok<AGROW>
+    changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
+    changedArming(end+1)    = numel(armings);       %#ok<AGROW>
+end
+
 report.arming_vacuous = (report.arming_calls == 0);
 report.metadata_refused_total = report.metadata_refused_no_epoch_string ...
     + report.metadata_refused_no_epoch_document ...
     + report.metadata_refused_migrator_declined ...
     + report.metadata_refused_unsafe_output;
 report.metadata_fold_vacuous = (report.metadata_ingested_seen == 0);
+report.response_refused_total = report.response_refused_no_epoch_string ...
+    + report.response_refused_no_epoch_document ...
+    + report.response_refused_migrator_declined ...
+    + report.response_refused_unsafe_output;
+report.response_fold_vacuous = (report.response_scalar_seen == 0);
 
 report.epochs_minted = numel(minted);
 report.epoch_index = indexRows;
@@ -1199,14 +1381,31 @@ report.arming_bodies_dropped = ...
 % is withheld, and asking only whether the primary came back would call it
 % emitted.
 for a = 1:numel(armings)
-    if ~armings{a}.is_metadata_fold; continue; end
-    if armingCarried(a)
-        report.metadata_ingested_folds_emitted = ...
-            report.metadata_ingested_folds_emitted + 1;
-    else
-        report.metadata_ingested_folds_withheld = ...
-            report.metadata_ingested_folds_withheld + 1;
+    if armings{a}.is_metadata_fold
+        if armingCarried(a)
+            report.metadata_ingested_folds_emitted = ...
+                report.metadata_ingested_folds_emitted + 1;
+        else
+            report.metadata_ingested_folds_withheld = ...
+                report.metadata_ingested_folds_withheld + 1;
+        end
+    elseif armings{a}.is_response_fold
+        % THE SAME READ FOR THE SECOND FOLD, and for the same stated reason:
+        % after the rebuild `docs{k}` holds either the folded document or the
+        % original passthrough, so the CLASS cannot tell an emitted fold from a
+        % withheld one. The carry decision can.
+        if armingCarried(a)
+            report.response_scalar_folds_emitted = ...
+                report.response_scalar_folds_emitted + 1;
+        else
+            report.response_scalar_folds_withheld = ...
+                report.response_scalar_folds_withheld + 1;
+        end
     end
+    % NO `else` BRANCH, DELIBERATELY: a third fold kind added without a reader
+    % here would be silently uncounted, so the invariant is asserted in
+    % testEpochMintResponseArming rather than guessed at with a catch-all that
+    % would attribute it to whichever counter came last.
 end
 mintedIds = cellfun(@(b) b.base.id, minted, 'UniformOutput', false);
 emitted = 0;
@@ -1290,20 +1489,43 @@ end
 
 function tbl = defaultArmingMigrators()
 %DEFAULTARMINGMIGRATORS SOURCE CLASS -> the migrator this pass re-runs armed.
-%   ONE ROW TODAY, and the reason there is only one is a SCHEMA fact, not an
-%   omission: a migrator may be armed only once some class in its output can
-%   legally hold the `epoch_id` edge, and the three migrators waiting on this
-%   pass emit bodies whose classes do not declare it. Re-derived 2026-08-12 over
-%   the built tree (247 JSON files, 241 with a document_class, deps read by JSON
-%   path rather than by grep): exactly FOUR classes declare the dependency --
+%   TWO ROWS. The paragraph below said "ONE ROW TODAY, and the reason there is
+%   only one is a SCHEMA fact" and listed `stimulus_response_scalar` among the
+%   classes that could not be armed. THAT REASONING WAS SOUND FOR THE TWO
+%   daqreader ARMS AND WRONG FOR THIS ONE, and the distinction is worth stating
+%   because it is not visible from the schema alone.
+%
+%   WHAT THE SCHEMA SAYS, re-derived 2026-08-17 over the built tree (249 JSON
+%   files, 243 with a document_class, deps read by JSON path rather than by
+%   grep): exactly FOUR classes declare an `epoch_id` dependency --
 %   acquisition_metadata_file, ingestion_manifest, directed_relation,
-%   method_parameters. `daqreader_epochdata_ingested`,
-%   `daqreader_image_epochdata_ingested` and `stimulus_response_scalar` are not
-%   among them. Adding a row here before that changes is caught by the
-%   `undeclared_edge` refusal in armingIsSafe, which reads the schema.
+%   method_parameters. Unchanged from the 2026-08-12 reading, and
+%   `harmonic_component_calculation` is NOT among them.
+%
+%   WHY THAT DOES NOT BLOCK THIS ROW. The refusal exists to stop a body being
+%   PERSISTED with an `epoch_id` its class does not declare. The two daqreader
+%   arms RETURN THE STAMPED PRE-BODY, so for them the schema is decisive. The
+%   stimulus_response_scalar FOLD does not: it emits a leaf and an anchor whose
+%   edges are set BY NAME and never copies `preBody.depends_on` wholesale, so
+%   the stamp cannot reach either emitted body. Derived by enumerating every
+%   `depends_on` write on that path in +migrators_j/stimulus_response_scalar.m's
+%   own header, which states the conclusion and explicitly declines to act on
+%   it: "Adding a row to epochMint's arming table is #60's build and that
+%   file's owner's call; nothing here arms anything."
+%
+%   THE GUARD STILL COVERS THE OTHER HALF. That migrator's four guard paths
+%   return `{preBody}`, which DOES carry the stamp, on a class that does not
+%   declare the edge -- so `armingIsSafe` refuses them as `undeclared_edge` and
+%   the document keeps the passthrough it has today. The refusal is not being
+%   worked around; it is doing exactly its job on the arm where it applies.
+%
+%   Adding a row for either daqreader arm before its schema increment lands is
+%   still caught by that refusal, which reads the schema rather than this list.
 tbl = struct( ...
     'daqmetadatareader_epochdata_ingested', ...
-        @did2.convert.migrators_j.daqmetadatareader_epochdata_ingested);
+        @did2.convert.migrators_j.daqmetadatareader_epochdata_ingested, ...
+    'stimulus_response_scalar', ...
+        @did2.convert.migrators_j.stimulus_response_scalar);
 end
 
 function fcn = armingMigratorFor(tbl, sourceClass)
