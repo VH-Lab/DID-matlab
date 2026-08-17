@@ -21,41 +21,66 @@ function bodies = binaryseries_parameters(preBody)
 %     samples_regular_intervals -> the axis `regular` flag
 %     time_size / data_size     -> implied by their datum_type
 %
-%   NONE OF THOSE SLOTS EXIST YET. That fold is the data_body tier (#45), which
-%   is BLOCKED ON #32; `axes[]`, `datum_type` and `regular` are unbuilt, so
-%   folding today would mean inventing them. Until #45 lands the document must
-%   therefore reach validation in its did_v1 shape, against the V_eta source
-%   tombstone -- and that is what this migrator exists to make survivable.
+%   THE PARAGRAPH THAT STOOD HERE SAID "NONE OF THOSE SLOTS EXIST YET ... #45,
+%   which is BLOCKED ON #32; `axes[]`, `datum_type` and `regular` are unbuilt".
+%   THAT IS STALE. #45 IS SIGNED (2026-08-14) AND THREE OF THE FOUR SLOTS ARE
+%   NOW BUILT. The passthrough still stands -- see the second blocker below --
+%   but NOT for the reason the old text gave, and the correction is written out
+%   rather than edited away because it points the direction this project's
+%   errors usually do not: it claimed LESS built than exists, and a reader
+%   acting on it would report the whole data_body tier as unlanded.
 %
-%   RE-MEASURED 2026-08-12, since the sentence above names three field slots
-%   and prose about a built tree is the thing this project re-derives rather
-%   than repeats. It holds, and it is sharper than it was written:
+%   RE-MEASURED 2026-08-17, same method as the 2026-08-12 sweep it replaces
+%   (every field declaration walked, nested ones included):
 %
-%     DENOMINATOR: 247 json file(s) under did-schema schemas/V_eta/ read,
-%                  every field declaration walked including nested ones
-%       leaf field `datum_type`  : 0 declarations   <- BOTH datum_type targets
-%       leaf field `datum`       : 1  sampled_body.datum
-%       leaf field `regular`     : 1  sampled_body.sample_time.regular
-%       leaf field `regularity`  : 2  sampled_body.axes.regularity,
-%                                     acquisition_epoch.axes.regularity
+%     DENOMINATOR: 247 json file(s) under did-schema schemas/V_eta/ read
+%       leaf field `axes`        : 4  subject_statement.axes  <- NEW MOUNT
+%                                     sampled_body.axes
+%                                     acquisition_epoch.axes, image.value.axes
+%       leaf field `datum_type`  : 1  subject_statement.datum_type
+%                                     char, enum of 14 (uint8..bool)
+%       leaf field `datum`       : 0  <- collapsed, as the plan decided
+%       leaf field `sample_time` : 1  subject_interaction.sample_time
+%                                     (sampled_body.sample_time is GONE)
+%       axis subfields, IDENTICAL on both mounts (10):
+%         variable unit source_unit approximate n regular origin spacing
+%         values labels
 %
-%   So `datum_type` -- the destination the signature names TWICE, for
-%   `time_type` and for `data_type` -- exists nowhere, and `time_size`/
-%   `data_size` are "implied by their datum_type", which makes FOUR of the six
-%   fields dependent on a slot that has not been built. The remaining two are
-%   no better off: the signature says `samples_regular_intervals` becomes "the
-%   axis `regular` flag", and there is no such flag -- there is a boolean
-%   `sample_time.regular` and a char enum `axes.regularity`, which are two of
-%   the three encodings #45 exists to COLLAPSE into one. Naming which field is
-%   blocked rather than which item number is blocked is deliberate; see
-%   did-schema V_eta_OPEN_WORK.md row #106.
+%   So, against the four mappings the signature names:
+%
+%     data_type                 -> subject_statement.datum_type    EXISTS
+%     data_dim                  -> the axis count (numel(axes))    EXISTS
+%     samples_regular_intervals -> the axis `regular` flag         EXISTS
+%                                  (a BOOLEAN now, not the old char
+%                                  `regularity`; the three encodings really
+%                                  did collapse into one)
+%     time_type                 -> the time axis's `datum_type`    DOES NOT
+%                                                                  EXIST
+%
+%   THE ONE THAT DID NOT LAND IS THE AXIS'S OWN `datum_type`, and it is not an
+%   oversight of this migrator's: it is the 2026-08-09 ADDENDUM to
+%   V_eta_data_body_model_plan.md ("the axis carries its own `datum_type`"),
+%   which THIS CLASS is what surfaced -- the plan says so in its own words,
+%   "Found in the misc-singletons sign-off review, from
+%   `binaryseries_parameters`, which declares TWO independent byte encodings
+%   where this plan had one". The signed axis entry was built with 10
+%   subfields and the addendum's eleventh is not among them, on either mount.
+%   Until it is, `time_type` has nowhere to go, and the plan's own words for
+%   that outcome are that the fold "would have had to drop the timestamp
+%   encoding ... a real limit, not a lossless fold".
+%
+%   Naming which FIELD is blocked rather than which item number is blocked is
+%   deliberate; see did-schema V_eta_OPEN_WORK.md row #106.
 %
 %   ---------------------------------------------------------------------
-%   AND A SECOND BLOCKER, WHICH #45 DOES NOT LIFT. RECORDED, NOT RESOLVED.
+%   AND A SECOND BLOCKER, WHICH #45 DOES NOT LIFT -- IT IS NOW THE ONLY ONE
+%   THAT MATTERS. RECORDED, NOT RESOLVED.
 %   ---------------------------------------------------------------------
-%   Everything above reads as though `axes[]`/`datum_type` are the only thing
-%   in the way -- so that the fold becomes a straightforward build the day #45
-%   lands. IT IS NOT. The signed targets are `subject_statement` +
+%   The section above used to read as though `axes[]`/`datum_type` were the
+%   only thing in the way -- so that the fold became a straightforward build
+%   the day #45 landed. #45 HAS NOW LANDED AND THE FOLD IS STILL UNBUILDABLE,
+%   which is exactly what that prediction was for. The signed targets are
+%   `subject_statement` +
 %   `sampled_body` (did-schema V_eta_coverage_ledger.json, `decided_targets`),
 %   and both require something this class has never carried.
 %
@@ -77,11 +102,35 @@ function bodies = binaryseries_parameters(preBody)
 %   sees the whole migrated-id graph still needs a key INTO that graph, and
 %   this class carries none.
 %
-%   WHAT THE TARGETS DEMAND, read off the built schemas rather than recalled:
+%   WHAT THE TARGETS DEMAND, re-read off the built schemas 2026-08-17 rather
+%   than recalled:
 %
 %     subject_statement.subject_id   mustBeNonEmpty TRUE   -> subject
 %     subject_statement.variable     mustBeNonEmpty TRUE   (ontology_term)
 %     sampled_body.statement         mustBeNonEmpty TRUE   -> subject_statement
+%                                    (inherited: the edge is declared on the
+%                                     abstract parent data_body, and sampled_body
+%                                     itself now declares only `filter_id`)
+%
+%   AND A THIRD FACT, WHICH NOTHING HAD RECORDED AND WHICH BITES BEFORE EITHER
+%   OF THOSE: `subject_statement` IS ABSTRACT, so it cannot be minted at all.
+%
+%     did-schema schemas/V_eta/stable/subject_statement.json
+%         "document_class": { ..., "abstract": true }
+%     +did2/+schema/cache.m:794-796   validateDocument raises
+%         did2:validation:abstractInstantiation for any document naming a class
+%         whose header carries abstract == true
+%
+%   So the target the ledger records by name is not instantiable even GIVEN a
+%   subject and a `variable`. Something concrete has to be chosen from the 83
+%   classes whose chain reaches `subject_statement` -- 5 of them abstract
+%   (subject_assertion / _calculation / _interaction / _manipulation /
+%   _observation) and 78 concrete, every one of which is a NAMED QUANTITY
+%   (`voltage_observation`, `count_observation`, ...). Choosing among 78
+%   quantities for a document that measures nothing is the same question as
+%   inventing `variable`, arriving through the class name instead of the field.
+%   That is the same shape as the `timed_sequence` abstract flag recorded in
+%   did-schema CLAUDE.md, and it is a modelling decision, not plumbing.
 %
 %   So folding today would mint a statement about NOBODY carrying an invented
 %   `variable`. That is the image_stack husk exactly (4,563
@@ -110,11 +159,19 @@ function bodies = binaryseries_parameters(preBody)
 %
 %   THIS IS AN OPEN TEAM QUESTION AND IT IS NOT THIS FILE'S TO SETTLE
 %   (Operating Rule 4). WHICH statement do these parameters attach to? Nothing
-%   on the document says. Until that is answered, #45 landing does NOT unblock
-%   the fold, and if the answer turns out to be "nothing links them", then the
-%   class is a PERMANENT passthrough -- a different disposition from the
-%   "deferred" one everybody currently reads off the ledger. DO NOT RESOLVE IT
-%   BY MINTING A SUBJECT.
+%   on the document says. That prediction has now been TESTED rather than
+%   argued: #45 landed on 2026-08-14 and the fold is no closer, because the
+%   question was never about slots. If the answer turns out to be "nothing
+%   links them", then the class is a PERMANENT passthrough -- a different
+%   disposition from the "deferred" one everybody currently reads off the
+%   ledger. DO NOT RESOLVE IT BY MINTING A SUBJECT.
+%
+%   THE QUESTION HAS A SECOND HALF NOW, and it is smaller and answerable
+%   without a corpus: does the axis entry still get the `datum_type` the
+%   2026-08-09 addendum gave it? Three of the signature's four mappings landed
+%   with #45 and that one did not. Whether it was dropped on purpose or simply
+%   missed, `time_type` has no destination until it is settled -- and it is a
+%   did-schema question, not a migrator one, so it is recorded here and left.
 %
 %   THE LEDGER'S RUNG 3 IS THEREFORE CORRECT, AND DELIBERATE. Its row reads
 %   stage 2, `blocked_by: 3, state: no`, "the decided target(s)
@@ -195,9 +252,13 @@ function bodies = binaryseries_parameters(preBody)
 %   ---------------------------------------------------------------------
 %   WHAT NO ONE CAN TELL YOU ABOUT THIS CLASS
 %   ---------------------------------------------------------------------
-%   There is NO WRITER. Denominator: 1467 files tracked on NDI origin/main, 1002
-%   of them .m; `git grep -i binaryseries origin/main` matches 3 files and NONE
-%   is a .m -- the template, its schema, and ndiDocumentAttributes.json. And no
+%   There is NO WRITER. Re-run 2026-08-17, and the DENOMINATOR has moved while
+%   the result has not: 1471 files tracked on NDI origin/main (was 1467), 1005
+%   of them .m (was 1002); `git grep -il binaryseries origin/main` matches 3
+%   files and NONE is a .m -- the template, its schema, and
+%   ndiDocumentAttributes.json. `git grep -il binary_series origin/main`
+%   matches 0, so the underscore spelling is not hiding one either (the
+%   `demo_ndi` failure was exactly a grep that could not have matched). And no
 %   corpus has ever contained one. Per the standing rule that the corpora are a
 %   SAMPLE, that is not licence to skip the class; it is the reason this migrator
 %   normalises rather than models.

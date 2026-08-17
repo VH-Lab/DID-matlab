@@ -22,9 +22,17 @@ function tests = testMiscSingletons
 %                              the time axis's datum_type, data_type -> the
 %                              statement's, data_dim -> the axis count,
 %                              samples_regular_intervals -> the axis `regular`
-%                              flag. NONE of those slots is built: that is #45,
-%                              blocked on #32. So it PASSES THROUGH today, and
-%                              these tests gate the passthrough, not the fold.
+%                              flag.
+%                              THIS ENTRY USED TO END "NONE of those slots is
+%                              built: that is #45, blocked on #32". STALE --
+%                              #45 was SIGNED 2026-08-14 and THREE OF THE FOUR
+%                              slots are now built (see
+%                              testBinaryseriesFoldBlockersAreStillInTheSchema,
+%                              which measures it rather than asserting it). It
+%                              still PASSES THROUGH, for the OTHER blocker: the
+%                              class carries no edge, and `subject_statement`
+%                              is abstract. These tests gate the passthrough,
+%                              not the fold.
 %     projectvar               stays a deprecated passthrough until real
 %                              documents exist to model its untyped `data`
 %                              field against.
@@ -81,8 +89,22 @@ function tests = testMiscSingletons
 %     testBinaryseriesFoldIsNotBuiltAndNeedsMoreThanAxes
 %         The signed fold (-> subject_statement + sampled_body) is not built,
 %         and this pins BOTH reasons so that #45 landing is not mistaken for
-%         the all-clear. INVERT only after the team has answered WHICH
-%         statement these parameters attach to -- see the migrator header.
+%         the all-clear. #45 HAS NOW LANDED and this test is unchanged, which
+%         is the whole point of having written it that way. INVERT only after
+%         the team has answered WHICH statement these parameters attach to --
+%         see the migrator header.
+%
+%   And ONE test that is deliberately NOT an invert-when, because it measures
+%   the schema instead of asserting a conclusion about it:
+%
+%     testBinaryseriesFoldBlockersAreStillInTheSchema
+%         Reads the LIVE V_eta schemas for what the signature's four mappings
+%         need, and goes red the day any of it changes -- in either direction.
+%         It is the answer to a specific failure this repo has already paid
+%         for: the migrator header carried a hand-typed census ("`datum_type`:
+%         0 declarations") that went stale in the PESSIMISTIC direction when
+%         #45 landed, so the record claimed less built than existed. A census
+%         typed into a comment cannot notice that; this one can.
 
 tests = functiontests(localfunctions);
 end
@@ -363,14 +385,20 @@ function testBinaryseriesFoldIsNotBuiltAndNeedsMoreThanAxes(testCase)
 % test exists so that reading the rung as an instruction to build produces a
 % failing test with a pointer, rather than a husk on a corpus run.
 %
-% TWO independent blockers, and #45 lifts only the first:
-%   (1) `datum_type` is declared in 0 of the 247 json files under
+% TWO independent blockers, and #45 lifts only the first. THE FIRST HAS NOW
+% BEEN LIFTED (#45 signed 2026-08-14) AND THIS TEST IS UNCHANGED:
+%   (1) WAS "`datum_type` is declared in 0 of the 247 json files under
 %       schemas/V_eta/, and the single collapsed axis `regular` flag does not
-%       exist either (there is a boolean sample_time.regular and a char
-%       axes.regularity -- two of the three encodings #45 collapses). Four of
-%       the six fields have no destination.
+%       exist either". STALE. `subject_statement.datum_type` and the boolean
+%       axis `regular` both exist now, and `axes[]` mounts on BOTH
+%       subject_statement and sampled_body. What is STILL missing is the ONE
+%       slot the 2026-08-09 addendum added for this very class: the AXIS's own
+%       `datum_type`, the destination for `time_type`. Measured, not asserted,
+%       by testBinaryseriesFoldBlockersAreStillInTheSchema below.
 %   (2) no subject and no `variable`, per the test above -- which #45 does not
-%       touch, and which is a TEAM question, not a build.
+%       touch, and which is a TEAM question, not a build. Plus a third fact
+%       nothing had recorded: `subject_statement` is ABSTRACT, so the target
+%       the ledger names cannot be instantiated at all.
 out = runJ({ binaryseriesTemplateBody('bsp_f1', 'sess_V'), ...
              binaryseriesPopulatedBody('bsp_f2', 'sess_V') });
 verifyEmpty(testCase, out.quarantine);
@@ -391,6 +419,175 @@ verifyFalse(testCase, any(strcmp(names, 'subject_statement')), ...
 verifyFalse(testCase, any(strcmp(names, 'sampled_body')), ...
     ['a sampled_body was minted from binaryseries_parameters. The source ' ...
      'declares "file": [], so the body would carry no payload.']);
+end
+
+function testBinaryseriesFoldBlockersAreStillInTheSchema(testCase)
+% WHAT THE SIGNED FOLD NEEDS, MEASURED AGAINST THE LIVE SCHEMAS -- not against
+% a census typed into a comment. This test is the repair for a specific defect:
+% the migrator header carried "leaf field `datum_type`: 0 declarations" for
+% five days after #45 built one, so the record understated what existed and a
+% reader would have reported the whole data_body tier as unlanded. Prose about
+% a built tree cannot notice that it has gone stale; this can.
+%
+% It is NOT an invert-when. It asserts the CURRENT state of four slots in both
+% directions -- three present, one absent -- so it goes red on any movement and
+% the failure message names which slot moved and which way. Whoever sees it red
+% reads the migrator header, they do not "fix" the test.
+%
+% TEAM-SIGN-OFF [misc singletons], jess 2026-08-09, quoted for the four
+% mappings this checks:
+%   time_type -> the time axis's datum_type    data_type -> the statement's
+%   data_dim  -> the axis count      samples_regular_intervals -> axis `regular`
+cache = did2.schema.cache.shared();
+
+% DENOMINATOR FIRST. All three classes must RESOLVE or every assertion below is
+% vacuous -- "the slot is absent" and "the schema set is not on the path" would
+% otherwise read identically, which is the silentLoss defect in miniature.
+try
+    statement = cache.getClass('subject_statement');
+    body      = cache.getClass('sampled_body');
+    tombstone = cache.getClass('binaryseries_parameters');
+catch err
+    assumeFail(testCase, ...
+        ['DID_SCHEMA_PATH does not resolve the V_eta data_body classes (' ...
+         err.message ') -- this test measured NOTHING.']);
+    return;
+end
+verifyTrue(testCase, isstruct(tombstone), ...
+    'the binaryseries_parameters source tombstone must exist to pass through to');
+
+% ---- (1) THE THREE SLOTS #45 BUILT. Absence here means the tier REGRESSED.
+verifyTrue(testCase, ~isempty(fieldDecl(statement, 'datum_type')), ...
+    ['subject_statement.datum_type has gone -- it is the destination the ' ...
+     'signature names for binaryseries_parameters.data_type.']);
+stmtAxes = fieldDecl(statement, 'axes');
+bodyAxes = fieldDecl(body, 'axes');
+verifyNotEmpty(testCase, stmtAxes, 'subject_statement.axes[] has gone (#45 regressed)');
+verifyNotEmpty(testCase, bodyAxes, 'sampled_body.axes[] has gone (#45 regressed)');
+% `data_dim -> the axis count` needs no field: it is numel(axes). `regular` does.
+for m = {{'subject_statement', stmtAxes}, {'sampled_body', bodyAxes}}
+    verifyTrue(testCase, ~isempty(subDecl(m{1}{2}, 'regular')), ...
+        sprintf(['%s.axes[].regular has gone -- it is the destination for ' ...
+                 'samples_regular_intervals.'], m{1}{1}));
+end
+
+% ---- (2) THE ONE SLOT THAT DID NOT LAND, and the reason `time_type` is still
+% homeless. V_eta_data_body_model_plan.md's ADDENDUM of 2026-08-09 ("the axis
+% carries its own `datum_type`") was written FROM this class -- the plan says so
+% -- and the built axis entry does not carry it, on either mount. If this goes
+% red the addendum has landed and `time_type` finally has a destination; that is
+% a genuine change in the fold's status and the migrator header says what to do.
+for m = {{'subject_statement', stmtAxes}, {'sampled_body', bodyAxes}}
+    verifyEmpty(testCase, subDecl(m{1}{2}, 'datum_type'), ...
+        sprintf(['%s.axes[] now declares `datum_type`. The 2026-08-09 addendum ' ...
+                 'has landed, so binaryseries_parameters.time_type has a ' ...
+                 'destination for the first time -- read the migrator header ' ...
+                 'before changing anything. It does NOT lift the edge blocker.'], ...
+                m{1}{1}));
+end
+
+% ---- (3) THE BLOCKER #45 NEVER TOUCHED, in the schema rather than in prose.
+% subject_statement is ABSTRACT (+did2/+schema/cache.m raises
+% did2:validation:abstractInstantiation for any document naming such a class),
+% so the target the coverage ledger records BY NAME cannot be minted even given
+% a subject. sampled_body must stay CONCRETE -- that half also proves this
+% predicate can return false, so the assertion above is not vacuous.
+verifyTrue(testCase, schemaSaysAbstract(statement), ...
+    ['V_eta subject_statement is no longer abstract. The signed target is now ' ...
+     'directly instantiable -- which does NOT make the fold buildable (the ' ...
+     'source still carries no edge and no `variable`), but it does change the ' ...
+     'reason. Read the migrator header.']);
+verifyFalse(testCase, schemaSaysAbstract(body), ...
+    'V_eta sampled_body must stay concrete; it is the other signed target');
+
+% ---- (4) and the required-ness that makes minting one a quarantine, not a
+% husk. Read off the schema so that a relaxation is noticed here rather than on
+% a corpus run.
+verifyTrue(testCase, depIsRequired(statement, 'subject_id'), ...
+    'subject_statement.subject_id stopped being mustBeNonEmpty');
+verifyTrue(testCase, ~isempty(fieldDecl(statement, 'variable')), ...
+    'subject_statement.variable has gone');
+end
+
+% ---- helpers for the schema read -----------------------------------------
+
+function d = fieldDecl(classSchema, name)
+%FIELDDECL The top-level field declaration NAME, or [] when absent.
+d = [];
+if ~isstruct(classSchema) || ~isfield(classSchema, 'fields'); return; end
+d = declNamed(classSchema.fields, name);
+end
+
+function d = subDecl(parentDecl, name)
+%SUBDECL The nested field declaration NAME under PARENTDECL, or [] when absent.
+d = [];
+if isempty(parentDecl) || ~isstruct(parentDecl); return; end
+if ~isfield(parentDecl, 'fields'); return; end
+d = declNamed(parentDecl.fields, name);
+end
+
+function d = declNamed(fieldList, name)
+%DECLNAMED The entry of FIELDLIST whose `name` is NAME, or [] when absent.
+%   jsondecode hands back a STRUCT ARRAY when every entry carries the same keys
+%   and a CELL of structs when they do not. Both shapes are live in this tree
+%   (subject_statement's field list mixes leaf and nested declarations), so
+%   handle both rather than assume -- the same tolerance testMigratorsJAppFold
+%   applies to depends_on.
+%
+%   NOTE the list is passed whole rather than re-wrapped with
+%   struct('fields', list): struct() given a non-scalar value builds a STRUCT
+%   ARRAY of that size instead of one struct holding the array, which would
+%   silently make every lookup here miss.
+d = [];
+if isempty(fieldList); return; end
+fs = fieldList;
+if ~iscell(fs); fs = num2cell(fs); end
+for k = 1:numel(fs)
+    f = fs{k};
+    if isstruct(f) && isfield(f, 'name') && strcmp(char(f.name), name)
+        d = f;
+        return;
+    end
+end
+end
+
+function tf = depIsRequired(classSchema, name)
+%DEPISREQUIRED True when CLASSSCHEMA declares depends_on NAME as mustBeNonEmpty.
+tf = false;
+if ~isstruct(classSchema) || ~isfield(classSchema, 'depends_on'); return; end
+deps = classSchema.depends_on;
+if isempty(deps); return; end
+if ~iscell(deps); deps = num2cell(deps); end
+for k = 1:numel(deps)
+    d = deps{k};
+    if ~isstruct(d) || ~isfield(d, 'name') || ~strcmp(char(d.name), name); continue; end
+    tf = isfield(d, 'mustBeNonEmpty') && ...
+        (islogical(d.mustBeNonEmpty) || isnumeric(d.mustBeNonEmpty)) && ...
+        logical(d.mustBeNonEmpty);
+    return;
+end
+end
+
+function tf = schemaSaysAbstract(classSchema)
+%SCHEMASAYSABSTRACT True when a schema struct's header carries `abstract: true`.
+%
+%   A LOCAL COPY, ON PURPOSE, exactly as testMigratorsJ carries one:
+%   did2.schema.cache.classIsAbstract is PRIVATE, so a test calling it errors
+%   with MATLAB:class:MethodRestricted rather than failing a verification. The
+%   header is public data on the struct getClass returns.
+%
+%   ABSENCE IS CONCRETE: build_v_eta.py emits the key only on abstract classes,
+%   so a concrete one carries no `abstract` field at all. Both the logical and
+%   the numeric spelling are accepted because jsondecode's shape for a JSON
+%   `true` is not something a test should assume.
+tf = false;
+if ~isstruct(classSchema) || ~isfield(classSchema, 'document_class'); return; end
+dc = classSchema.document_class;
+if ~isstruct(dc) || ~isfield(dc, 'abstract'); return; end
+v = dc.abstract;
+if islogical(v) || isnumeric(v)
+    tf = ~isempty(v) && logical(v(1));
+end
 end
 
 % ===================== projectvar ==========================================

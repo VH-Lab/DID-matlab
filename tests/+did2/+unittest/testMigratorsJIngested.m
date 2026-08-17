@@ -124,6 +124,59 @@ catch err
 end
 end
 
+function names = fieldNamesOf(cache, className)
+%FIELDNAMESOF Top-level field names declared anywhere in CLASSNAME's chain.
+%   Reads the cache rather than a json path, so it follows superclasses and
+%   cannot go stale against a moved file.
+tagged = cache.fieldsFor(className);
+names = {};
+for k = 1:numel(tagged)
+    fd = tagged(k).fieldDef;
+    if isstruct(fd) && isfield(fd, 'name')
+        names{end+1} = char(fd.name); %#ok<AGROW>
+    end
+end
+end
+
+function fd = namedField(cache, className, fieldName)
+%NAMEDFIELD The declaration of one top-level field, or [] if absent.
+fd = [];
+tagged = cache.fieldsFor(className);
+for k = 1:numel(tagged)
+    d = tagged(k).fieldDef;
+    if isstruct(d) && isfield(d, 'name') && strcmp(char(d.name), fieldName)
+        fd = d;
+        return;
+    end
+end
+end
+
+function names = subFieldNames(fieldDef)
+%SUBFIELDNAMES Names nested one level inside a `structure` field declaration.
+%   The json decoder gives `fields` as a struct array when every entry has the
+%   same keys and a CELL array when they differ, and the axis entry mixes
+%   shapes (ontology_term, boolean, structure), so both are handled. Returning
+%   {} for a field with no nested declarations is correct, not an error.
+names = {};
+if ~isstruct(fieldDef) || ~isfield(fieldDef, 'fields')
+    return;
+end
+sub = fieldDef.fields;
+if iscell(sub)
+    for k = 1:numel(sub)
+        if isstruct(sub{k}) && isfield(sub{k}, 'name')
+            names{end+1} = char(sub{k}.name); %#ok<AGROW>
+        end
+    end
+elseif isstruct(sub)
+    for k = 1:numel(sub)
+        if isfield(sub(k), 'name')
+            names{end+1} = char(sub(k).name); %#ok<AGROW>
+        end
+    end
+end
+end
+
 % ===================== fixtures, built from the writer ======================
 
 function v1 = metadataIngestedV1()
@@ -610,16 +663,21 @@ function testImageIngestedPassthroughKeepsEveryHeaderFieldWithNoDestination(test
 % Revision 2 of the signed plan (V_eta_ingested_payload_findings.md:307-317)
 % re-specifies the fold through the data_body AXIS ENTRY -- dimension_order to
 % the order of the axes[] entries, dimension_size to each axis's n, data_type to
-% `datum_type` ON THE STATEMENT, frametimes to the time axis's `values`. Measured
-% over did-schema's built tree (245 json files, 241 with a document_class, 991
-% declared field paths walked including nested ones): `datum_type` has 0
-% declarations; `axes` is declared by 4 classes (sampled_body, acquisition_epoch,
-% image, zarr) and NOT by subject_statement; and NO axes shape declares a
-% per-sample `values` slot, so the writer's irregular one-time-per-frame
-% `frametimes` (+ndi/+daq/+reader/image.m:180, :196-202) has nowhere to land.
+% `datum_type` ON THE STATEMENT, frametimes to the time axis's `values`.
 %
-% Until those exist, every one of these seven fields survives only because the
-% document is carried whole -- which is what this asserts.
+% THIS COMMENT USED TO SAY THOSE DESTINATIONS DID NOT EXIST -- "`datum_type` has
+% 0 declarations; `axes` [...] NOT by subject_statement; [...] NO axes shape
+% declares a per-sample `values` slot". Measured over 245 json files on
+% 2026-08-12; ALL THREE ARE FALSE AS OF THE SIGNED data_body BUILD, and the
+% wording is corrected rather than dropped because it read as schema work
+% outstanding when the schema work had landed. See the migrator header's 4' for
+% the re-derivation (247 files / 241 classes / 1021 field paths), and
+% testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks below, which
+% MACHINE-CHECKS it so it cannot go stale silently a second time.
+%
+% What the fold still lacks is a SUBJECT, not a slot. Until that is answered,
+% every one of these seven fields survives only because the document is carried
+% whole -- which is what this asserts.
 out = runJ(imageIngestedV1());
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the passthrough emitted no document; every assertion below would be vacuous');
@@ -645,6 +703,81 @@ verifyEqual(testCase, blk.clocktype, 'dev_local_time');
 verifyEqual(testCase, ...
     doc.get('daqreader_epochdata_ingested.epochtable.t0_t1'), [0; 12.5]);
 verifyEqual(testCase, doc.get('files.file_list'), {'frames.bin'});
+end
+
+function testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks(testCase)
+% WHY THE SIGNED FOLD IS STILL UNBUILT, ASSERTED AGAINST THE SCHEMA RATHER THAN
+% RESTATED IN PROSE. Four of this class's recorded blockers have now been
+% checked twice by hand and gone stale twice in the SAME direction -- claiming
+% less built than exists -- so the ones that can be machine-read are read.
+%
+% Two halves, and the test's whole point is that they now disagree:
+%
+%   the DESTINATIONS exist   -- revision 2 of the signed plan
+%       (V_eta_ingested_payload_findings.md:307-317) routes the raster header
+%       through the data_body axis entry, and every slot it names is in the
+%       built tree since TEAM-SIGN-OFF [data_body] 2026-08-14.
+%   the SUBJECT does not     -- image_observation requires `subject_id`, and
+%       the did_v1 document carries exactly one edge, `daqreader_id`
+%       (+ndi/+daq/+reader/image.m:220), with no id path to a subject anywhere
+%       in the 91 templates.
+%
+% So a red line HERE means the schema moved and the migrator header's 4' needs
+% re-deriving; a red line in
+% testImageIngestedCarriesNoEdgeToASubjectOrElement means the SOURCE moved and
+% blocker 1 -- the team question -- may have an answer. Those are different
+% events and this file must not report them as one.
+assumeVEtaSchemas(testCase);
+cache = did2.schema.cache.shared();
+% assumeVEtaSchemas probes `acquisition_metadata_file` and `relative_reference`,
+% and BOTH are in schemas/V_eta/stable. The two classes this test is about are
+% in schemas/V_eta/DRAFT, and did2.schema.cache reads ONE non-recursive folder
+% (`dir(fullfile(obj.schemaPath, '*.json'))`), so a stable-only path satisfies
+% that probe and would then make this test ERROR on a missing class rather than
+% skip. CI assembles stable + draft + deprecated into one flat directory
+% (test-code.yml:157); locally it may not. Probe what THIS test needs.
+try
+    cache.getClass('image_observation');
+    cache.getClass('sampled_body');
+catch err
+    assumeFail(testCase, ...
+        ['DID_SCHEMA_PATH resolves the stable tier but not the DRAFT ' ...
+         'classes this test reads (' err.message '). Point it at an ' ...
+         'assembled stable+draft V_eta set.']);
+end
+
+% -- the subject is REQUIRED, on both unemitted targets -------------------
+% stated as a set membership rather than a count: the assertion is about
+% subject_id specifically, and a count would pass on the wrong edge.
+obsRequired = cache.requiredDependencies('image_observation');
+verifyTrue(testCase, any(strcmp(obsRequired, 'subject_id')), ...
+    ['image_observation no longer requires subject_id; blocker 1 in ' ...
+     '+migrators_j/daqreader_image_epochdata_ingested.m is the thing to re-read']);
+bodyRequired = cache.requiredDependencies('sampled_body');
+verifyTrue(testCase, any(strcmp(bodyRequired, 'statement')), ...
+    ['sampled_body no longer requires `statement`; both unemitted targets ' ...
+     'hung off that one edge, which is why the fold was one fact away']);
+
+% -- and the destinations the header would land in DO exist ---------------
+stmtFields = fieldNamesOf(cache, 'subject_statement');
+verifyTrue(testCase, ismember('datum_type', stmtFields), ...
+    'subject_statement.datum_type is where revision 2 puts `data_type`');
+verifyTrue(testCase, ismember('axes', stmtFields), ...
+    'subject_statement.axes is the statement half of the axis entry');
+
+% the IRREGULAR case specifically -- `frametimes` is one time per frame
+% (+ndi/+daq/+reader/image.m:180, :196-202), so origin/spacing cannot hold it
+% and a `values` slot is the only landing place.
+axesDef = namedField(cache, 'sampled_body', 'axes');
+assertNotEmpty(testCase, axesDef, ...
+    'sampled_body declares no `axes`; every assertion below would be vacuous');
+axisSub = subFieldNames(axesDef);
+verifyTrue(testCase, ismember('values', axisSub), ...
+    'sampled_body.axes[].values is the only home for irregular frametimes');
+verifyTrue(testCase, ismember('regular', axisSub), ...
+    'without `regular` nothing distinguishes stored coordinates from generated ones');
+verifyTrue(testCase, ismember('n', axisSub), ...
+    'each axis`s `n` is where dimension_size lands');
 end
 
 % ===================== under the real V_eta validator ======================

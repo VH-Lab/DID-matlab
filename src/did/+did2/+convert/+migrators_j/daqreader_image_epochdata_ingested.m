@@ -177,6 +177,86 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %       fold and not the all-clear.
 %
 %   ---------------------------------------------------------------------
+%   RE-DERIVED 2026-08-17. BLOCKER 4 HAS FALLEN. 1 AND 2 STAND, RE-MEASURED.
+%   THE FOLD IS NOW BLOCKED BY EXACTLY ONE FACT, AND IT IS A TEAM QUESTION.
+%   ---------------------------------------------------------------------
+%   4'. BLOCKER 4 IS FALSE AS WRITTEN, and it is spelled out rather than
+%       deleted because it is the reassuring direction INVERTED: left standing
+%       it reads as schema work still outstanding, and the schema work LANDED.
+%       The signed data_body build (`V_eta_data_body_model_plan.md`,
+%       TEAM-SIGN-OFF [data_body] 2026-08-14) minted every destination
+%       revision 2 names. Re-derived from the built tree, not from the commit:
+%
+%         DENOMINATOR: 247 json file(s) under did-schema schemas/V_eta/,
+%                      241 carrying a document_class, 1021 declared field
+%                      paths walked including nested ones
+%         `datum_type` : 1 declaration  -- subject_statement.datum_type
+%                        (blocker 4 measured 0)
+%         `axes`       : declared BY subject_statement, which is exactly where
+%                        revision 2 puts the statement half and which blocker 4
+%                        recorded as NOT declaring it
+%         a per-sample `values` slot   : sampled_body.axes[].values.values +
+%                        .source_values, with `regular` (boolean) selecting
+%                        between origin/spacing and stored coordinates
+%
+%       So the writer's IRREGULAR one-time-per-frame `frametimes`
+%       (+ndi/+daq/+reader/image.m:180, :196-202) now HAS a destination:
+%       a time axis with `regular` false and its coordinates in `values`.
+%       `dimension_size` -> each axis's `n`; `data_type` -> the statement's
+%       `datum_type`; `dimension_order` -> the order of the axes[] entries,
+%       with sampled_body.datum_order carrying C-vs-F and byte_order the
+%       endianness. NONE OF THIS IS EMITTED HERE -- see 1'' -- but the reason
+%       is no longer that there is nowhere to put it.
+%
+%   1''. BLOCKER 1 STANDS, and it is now the ONLY structural one. Re-derived
+%       2026-08-17 over the same template graph, with superclass-inherited
+%       edges followed this time (a WIDER read than the 2026-08-12 sweep, and
+%       it reaches the same answer):
+%
+%         DENOMINATOR: 91 template json file(s) under ndi_common/
+%                      database_documents/ on origin/main; 91 parsed,
+%                      91 distinct class_name, 0 unparseable
+%         forward-reachable from this class : {daqreader_image_epochdata_-
+%                                              ingested, daqreader}
+%         of those, declaring subject_id or element_id : NONE
+%         declaring subject_id or element_id anywhere in the 91 : 33
+%         of those 33, declaring daqreader_id or daqsystem_id  : NONE
+%
+%       (The earlier sweep said 10 of 91 rather than 33 because it read only
+%       own-class edges. The number that decides anything is the last line,
+%       and it is NONE under both readings.)
+%
+%       AND THE COST OF GETTING THIS WRONG WENT UP. #37 RequiredDependencies
+%       is ARMED BY DEFAULT since 2026-08-10 -- `+did2/+schema/cache.m:1104`
+%       reads `~did2.schema.cache.envFlagIsOff('DID_ENFORCE_REQUIRED_-
+%       DEPENDENCIES')`, ON unless explicitly disabled. `image_observation`
+%       requires exactly one edge, `subject_id`, inherited from
+%       subject_statement; `sampled_body` requires `statement` ->
+%       subject_statement, so BOTH of the two unemitted targets hang off the
+%       same missing fact. Emitting either today no longer produces a quiet
+%       husk -- it produces a QUARANTINE.
+%
+%   2'. BLOCKER 2 STANDS, re-measured 2026-08-17 over the same 247/241/1021
+%       denominator: israster / frame_period / line_period / dwell_time /
+%       lines_per_frame / pixels_per_line / bidirectional still have exactly
+%       1 declaration each, all of them this class's own source tombstone.
+%       The signed plan leaves it open in its own words ("metadata[] ->
+%       UNTYPED ARRAY. Bag it honestly or read real documents first").
+%
+%   SO THE TEAM QUESTION, RECORDED AND NOT RESOLVED (Operating Rule 4). The
+%   signature decides the SHAPE -- image_observation + sampled_body +
+%   relative_reference -- and it cannot supply the subject, because the
+%   device-to-subject join is not in the database: +ndi/+daq/system.m:229-234
+%   matches the EPOCHPROBEMAP files and takes `subject_id` from
+%   `epc(ec).subjectstring`, one daqsystem to MANY probes. Even holding those
+%   files, WHICH of an epochprobemap's subjects a camera epoch's frames are an
+%   observation of is a modelling call. Until it is answered the fold cannot
+%   be built by any migrator or any batch pass, and the passthrough is what
+%   preserves the data. UNVERIFIED IN THIS CONTAINER: no corpus artifact and
+%   no MATLAB here, so the number of affected documents is unmeasured --
+%   SETTLED BY a corpus run's `by_class` count for this class.
+%
+%   ---------------------------------------------------------------------
 %   THE OPEN FACTUAL QUESTION IN OPEN_WORK #27, ANSWERED FROM THE WRITER
 %   ---------------------------------------------------------------------
 %   #27 asks whether `_image` is a distinct cache SHAPE or merely a modality
