@@ -1,5 +1,16 @@
 function tests = testNgridCoordinates
-%TESTNGRIDCOORDINATES `ngrid.coordinates` must survive the V_eta pipeline.
+%TESTNGRIDCOORDINATES `ngrid.coordinates` must survive the V_eta pipeline --
+%   FOR THE CONSUMER THAT STILL PASSES THROUGH, which since 2026-08-17 is
+%   `ontology_image` ALONE.
+%
+%   AMENDED 2026-08-17. The unqualified H1 was true when written and is not
+%   now: `hartley_calc` no longer passes through, it DECOMPOSES (the signed
+%   receptive_field fold), so for that class the requirement is the opposite --
+%   no emitted document may still carry an `ngrid` block. Both claims live
+%   below, one per consumer. The H1 is amended rather than left to be
+%   discovered because a header that overstates a guarantee is how this project
+%   has repeatedly read "we are further along / more protected than we are",
+%   and a reader who stops at this line would take the carry as universal.
 %
 %   STATUS: NEVER RUN. There is no MATLAB in the environment these were written
 %   in, so every assertion below is unexecuted. Treat a first green run as the
@@ -136,23 +147,59 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, ...
 verifyEqual(testCase, out.summary.migrated_count, 1);
 end
 
-function testHartleyCalcAlsoKeepsItsCoordinates(testCase)
-% The SECOND consumer (F4). Retiring `ngrid` is gated on both, so the carry has
-% to hold for both -- and hartley_calc reaches the ngrid block through two
-% intermediate superclasses (hartley_reverse_correlation -> reverse_correlation
-% -> ngrid), which is a different path through applySuperclassMigrators than
-% ontologyImage's direct one.
+function testHartleyCalcNoLongerCarriesNgridBecauseItDecomposes(testCase)
+% INVERTED 2026-08-17, NOT DELETED, AND THE INVERSION IS THE POINT.
 %
-% NOTE the payload shape: NDIcalc-vis `+ndi/+calc/+vis/hartley.m` writes
-% `ngridp.data_dim = [size(sta) 2]` and `fwrite(fid, cat(4, sta, p_val))` -- a
-% [T x X x Y x 2] volume whose last plane is a p-value map, not a second image.
-% That is recorded as a FACT here and asserted as nothing: the RF fold (#48) is
-% not built, and the repo it came from is out of session scope.
+% This test used to be `testHartleyCalcAlsoKeepsItsCoordinates` and asserted
+% that a hartley_calc document reaches the far end of the pipeline still
+% carrying `ngrid.data_dim` and `ngrid.coordinates` verbatim. That was correct
+% for exactly as long as hartley_calc was a PASSTHROUGH, and its own header
+% said so in its own words -- "the RF fold (#48) is not built, and the repo it
+% came from is out of session scope".
+%
+% #48 IS NOW BUILT AND SIGNED (DID-schema V_eta_ngrid_family_findings.md,
+% TEAM-SIGN-OFF [receptive field fold], 2026-08-17). hartley_calc decomposes
+% into a `receptive_field_calculation` leaf plus two plane bodies, so there is
+% no surviving `ngrid` block to carry and the old assertion asserts the
+% pre-decision behaviour. This file's own governing rule is the one being
+% followed here: a test written from the same premise as the code cannot catch
+% the code, so a superseded assertion is INVERTED to state the new decided
+% behaviour rather than patched away -- deleting it would leave the strongest
+% claim about this class untested at precisely the moment it changed.
+%
+% WHAT THE CARRY NOW MEANS FOR #46. Retiring `ngrid` was gated on BOTH of its
+% consumers. hartley_calc is now the one that no longer needs the carry at all
+% -- it consumes the block and emits typed documents -- so the gate reduces to
+% `ontology_image` alone, which the test above still covers. That is a
+% NARROWING of #46, not a closure: the second consumer is unchanged.
+%
+% The payload shape stays recorded because it is what the fold had to model:
+% NDIcalc-vis `+ndi/+calc/+vis/hartley.m` writes `ngridp.data_dim =
+% [size(sta) 2]` and `fwrite(fid, cat(4, sta, p_val))` -- a [T x X x Y x 2]
+% volume whose last plane is a p-value map, not a second image. Both planes now
+% have somewhere to land; the shape assertions live in
+% testMigratorsJHartleyCalc, which owns the fold.
 out = runJ(hartleyCalcV1());
 verifyEqual(testCase, out.summary.quarantine_count, 0);
-doc = out.migrated{1};
-verifyEqual(testCase, doc.get('ngrid.data_dim'), [200 200 36 2]);
-verifyEqual(testCase, doc.get('ngrid.coordinates'), [1;2;3]);
+
+names = cellfun(@(d) d.document_properties.document_class.class_name, ...
+    out.migrated, 'UniformOutput', false);
+verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1, ...
+    sprintf(['the signed fold emits exactly one receptive_field_calculation; ' ...
+             'got {%s}'], strjoin(names, ', ')));
+
+% THE CLAIM THAT REPLACES THE OLD ONE: no emitted document still carries an
+% `ngrid` block. Asserted over EVERY emitted document rather than over
+% migrated{1}, because the fold turns one document into several and a
+% first-only check would pass while a plane body carried the block.
+for k = 1:numel(out.migrated)
+    verifyFalse(testCase, ...
+        isfield(out.migrated{k}.document_properties, 'ngrid'), ...
+        sprintf(['emitted %s still carries an `ngrid` block -- the fold is ' ...
+                 'meant to CONSUME it, and a surviving block means the ' ...
+                 'superclass carry and the decomposition are both running'], ...
+                names{k}));
+end
 end
 
 % ===================== fixtures (from the WRITER) ==========================
