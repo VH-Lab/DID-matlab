@@ -705,8 +705,9 @@
 %         openMINDS bundles.
 %     neuron_extracellular
 %         Brainstorm-J migrator: did_v1 neuron_extracellular -> a DERIVED SUBJECT (the
-%         sorted unit) + a derived_from relation + a quality observation (+ the shared
-%         session anchor).
+%         sorted unit) + a derived_from relation + the MEAN SPIKE WAVEFORM as a
+%         voltage_observation + the sorter's cluster index + a quality observation (+
+%         the shared session anchor).
 %     oneepoch
 %         Brainstorm-J migrator: keep the class, fold its inherited block.
 %     ontology_image

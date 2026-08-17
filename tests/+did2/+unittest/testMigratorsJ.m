@@ -4096,7 +4096,14 @@ end
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
 % recording. neuron_extracellular -> subject + derived_from relation (unit <- the
-% recording subject) + a score_observation of the unit + anchor. 1 -> 4.
+% recording subject) + a count_assertion of the sorter's cluster_index + a
+% score_observation of the unit + anchor. 1 -> 5.
+%
+% WAS 4 UNTIL 2026-08-17. The fifth body is the `count_assertion` carrying
+% `cluster_index`, which until then survived only as text inside
+% `subject.local_identifier`. This fixture carries NO `mean_waveform`, so the
+% sixth body (the voltage_observation) is correctly absent here -- that fold has
+% its own file, testMigratorsJNeuronExtracellular.m.
 body = struct();
 body.document_class = struct('class_name', 'neuron_extracellular', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -4108,10 +4115,14 @@ body.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
 
 out = did2.convert.migrators_j.neuron_extracellular(body);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 4);
+verifyEqual(testCase, numel(out), 5, ...
+    sprintf('expected 5 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyTrue(testCase, any(strcmp(names, 'subject')));
 verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
 verifyTrue(testCase, any(strcmp(names, 'score_observation')));
+verifyTrue(testCase, any(strcmp(names, 'count_assertion')));
+verifyFalse(testCase, any(strcmp(names, 'voltage_observation')), ...
+    'no mean_waveform in this fixture -- an observation here would be a husk');
 
 neuron = out{find(strcmp(names, 'subject'), 1)};
 verifyEqual(testCase, neuron.subject.local_identifier, 'unit_7');

@@ -110,7 +110,14 @@ function tests = testMigratorsJAppFold
 %   NOT AFFECTED, checked one by one: testJrclustClustersFoldsToCountObservation
 %   (:2250), testNeuronExtracellularMintsDerivedSubject (:2550) and
 %   testVmspikefitFoldsToResidualScore (:2712) all use fixtures with NO `app`
-%   block, so their counts are unchanged. testFixtureCorpus.m's
+%   block, so their counts are unchanged BY THIS CHANGE.
+%
+%   AMENDED 2026-08-17, and the amendment is why the qualifier is there:
+%   testNeuronExtracellularMintsDerivedSubject's count DID move, 4 -> 5, for an
+%   unrelated reason -- the mean-waveform fold added a `count_assertion` for
+%   `cluster_index` to every neuron_extracellular. Its `app` reasoning above is
+%   unaffected; only the arity is. The two neuron tests in THIS file moved for
+%   the same reason (5 -> 6 and 3 -> 4). testFixtureCorpus.m's
 %   fx_kilosort_clusters / fx_kiasort_clusters DO carry `app` but assert only
 %   0 quarantine / 0 orphans, which the extra entity does not disturb.
 %
@@ -411,12 +418,19 @@ end
 % ===================== neuron_extracellular ================================
 
 function testNeuronExtracellularHangsSoftwareOnTheQualityObservation(testCase)
-% Of the four bodies this migrator emits, only the score_observation reaches
-% subject_interaction, so that is where the edge goes. The derived subject and
-% the derived_from relation get NOTHING -- deliberately.
+% Of the bodies this migrator emits, only the observations reach
+% subject_interaction, so that is where the edge goes. The derived subject, the
+% derived_from relation and the cluster-index ASSERTION get NOTHING --
+% deliberately: `subject_assertion` does not pass through subject_interaction,
+% so `count_assertion` declares no `software_id` either.
+%
+% ARITY WAS 5 UNTIL 2026-08-17; the sixth body is the `count_assertion` carrying
+% `cluster_index`. This fixture has no `mean_waveform`, so the score_observation
+% is still the ONLY software carrier here.
 out = runJ(neuronBody(true, true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 5);   % subject + relation + anchor + obs + software
+% subject + relation + anchor + count_assertion + score_observation + software
+verifyEqual(testCase, numel(out.migrated), 6);
 
 sw   = onlyClass(testCase, out, 'software');
 qobs = onlyClass(testCase, out, 'score_observation');
@@ -427,19 +441,31 @@ neuron = onlyClass(testCase, out, 'subject');
 verifyEmpty(testCase, depValue(neuron, 'software_id'));
 rel = onlyClass(testCase, out, 'directed_relation');
 verifyEmpty(testCase, depValue(rel, 'software_id'));
+cidx = onlyClass(testCase, out, 'count_assertion');
+verifyEmpty(testCase, depValue(cidx, 'software_id'));
 end
 
 function testNeuronExtracellularWithoutQualityStillHasNowhereToPutItsSoftware(testCase)
-% A RESIDUAL LOSS, ASSERTED AS ONE. Without `quality_number` there is no
-% score_observation, and none of {subject, directed_relation,
-% session_relative_reference} declares `software_id`. No slot is invented for
-% it. INVERT THIS TEST when the team gives those bodies a home -- do not patch
-% it, because a patched version would assert whatever the code then did.
+% A RESIDUAL LOSS, ASSERTED AS ONE -- AND IT IS SMALLER THAN IT WAS. Without
+% `quality_number` there is no score_observation; without `mean_waveform` there
+% is no voltage_observation either, and none of {subject, directed_relation,
+% session_relative_reference, count_assertion} declares `software_id`. No slot
+% is invented for it. INVERT THIS TEST when the team gives those bodies a home
+% -- do not patch it, because a patched version would assert whatever the code
+% then did.
+%
+% THE FIXTURE NOW HAS TO WITHHOLD TWO THINGS, NOT ONE, and that is the point:
+% since 2026-08-17 the mean-waveform fold emits a voltage_observation, which
+% DOES reach subject_interaction, so a document with a waveform and no quality
+% number no longer loses its software. testTheWaveformObservationCarriesTheAppBlock
+% in testMigratorsJNeuronExtracellular.m asserts that half.
 out = runJ(neuronBody(true, false));
 verifyEmpty(testCase, out.quarantine);
 verifyFalse(testCase, hasClass(out, 'score_observation'));
+verifyFalse(testCase, hasClass(out, 'voltage_observation'));
 verifyFalse(testCase, hasClass(out, 'software'));
-verifyEqual(testCase, numel(out.migrated), 3);
+% subject + relation + anchor + count_assertion
+verifyEqual(testCase, numel(out.migrated), 4);
 end
 
 % ===================== vmspikefit ==========================================
