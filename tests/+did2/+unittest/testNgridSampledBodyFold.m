@@ -23,13 +23,41 @@ function tests = testNgridSampledBodyFold
 %                            The document passes through intact. This is the
 %                            arm every real NDI document takes -- see guard 3
 %                            below -- and it is the 4,563-husk lesson.
-%     GUARD 2 (COORDINATES)  explicit coordinate positions are REFUSED, because
-%                            `sampled_body.axes[]` declares {name, kind, length,
-%                            regularity, spacing, unit} and NO coordinate array.
-%                            The decided destination `axes[k].values` is #45,
-%                            blocked on #32. Folding anyway would delete real
-%                            data -- the exact loss +super/ngrid.m was written
-%                            to stop, arriving through a different door.
+%     GUARD 2 (COORDINATES)  explicit coordinate positions this fold cannot
+%                            ACCOUNT FOR are REFUSED. Folding anyway would
+%                            delete real data -- the exact loss +super/ngrid.m
+%                            was written to stop, arriving through a different
+%                            door.
+%
+%                            THE REASON CHANGED ON 2026-08-17 AND THE TESTS DID
+%                            NOT, WHICH IS WHY THIS IS CORRECTED RATHER THAN
+%                            DELETED. It read: "because `sampled_body.axes[]`
+%                            declares {name, kind, length, regularity, spacing,
+%                            unit} and NO coordinate array. The decided
+%                            destination `axes[k].values` is #45, blocked on
+%                            #32." Every clause is now false. `axes[].values`
+%                            EXISTS, #45 was signed and unblocked 2026-08-14,
+%                            and the carry is signed for this family
+%                            (V_eta_ngrid_family_findings.md, TEAM-SIGN-OFF
+%                            [receptive field fold]).
+%
+%                            WHAT STILL REFUSES, and it is a narrower thing:
+%                            `coordinates` is ONE FLAT VECTOR whose segment
+%                            order is the WRITER's -- `mat2ngrid` documents
+%                            data_dim order and the Hartley writer stores
+%                            [T; X; Y] against a data_dim of [X Y T 2]. So a
+%                            caller must SUPPLY the per-axis vectors, and
+%                            jNgridBody checks they re-concatenate to the
+%                            stored one exactly. `ontology_image` supplies
+%                            none, which is correct: its one in-tree writer
+%                            passes a single argument to mat2ngrid, so its
+%                            coordinates are always the default index vector
+%                            and there is nothing to carry. The three tests
+%                            below are unchanged and still pass, because the
+%                            arm they exercise is unchanged.
+%                            The CARRY arm is exercised by
+%                            testMigratorsJHartleyCalc.m, on the one document
+%                            class that has real positions.
 %
 %   ---------------------------------------------------------------------
 %   PROVENANCE OF THE FIXTURES, STATED RATHER THAN ASSUMED

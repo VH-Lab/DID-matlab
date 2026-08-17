@@ -532,7 +532,7 @@
 %   gate diffs this block against the generator and a hand edit fails it. To
 %   change an entry, change that migrator's H1 and re-run with --write.
 %
-%   84 migrator(s).
+%   85 migrator(s).
 %
 %     binaryseries_parameters
 %         Brainstorm-J migrator: did_v1 binaryseries_parameters -- a GUARDED
@@ -670,6 +670,12 @@
 %     fitcurve
 %         Brainstorm-J migrator: did_v1 fitcurve -> a fit-residual score_observation
 %         (+ the shared session anchor).
+%     hartley_calc
+%         Brainstorm-J migrator: the ndi.calc.vis.hartley reverse-correlation OUTPUT
+%         document -> the subject_calculation LEAF `receptive_field_calculation` + the
+%         `receptive_field` result composite, id- and depends_on-PRESERVED, plus the
+%         response volume in TWO `sampled_body` documents (one per plane) and the
+%         windowed spike train as a THIRD, input-side body.
 %     image
 %         Brainstorm-J migrator: did_v1 `image` -> a body-backed image_observation + a
 %         sampled_body (+ the shared session anchor). 1 -> 3.

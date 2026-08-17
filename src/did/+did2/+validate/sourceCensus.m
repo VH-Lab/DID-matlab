@@ -2,8 +2,12 @@ function report = sourceCensus(v1Bodies)
 %SOURCECENSUS Measure the v1 SOURCE corpus for facts the V_eta build is blocked on.
 %
 %   REPORT = did2.validate.sourceCensus(V1BODIES) reads the ORIGINAL did_v1
-%   documents -- not the migrated ones -- and answers three questions that three
+%   documents -- not the migrated ones -- and answers four questions that four
 %   separate open items each say must be MEASURED before a build may proceed.
+%   IT WAS THREE UNTIL 2026-08-17; question 4 arrived with the receptive-field
+%   fold and the count in this sentence moved with it, because a header that
+%   says `three` above a list of four is the prose-versus-artifact drift this
+%   project has now paid for a dozen times.
 %   Every other instrument in this package inspects the OUTPUT of a migration;
 %   this one inspects the input, because these questions are about what the
 %   source data actually contains.
@@ -13,8 +17,8 @@ function report = sourceCensus(v1Bodies)
 %
 %   REPORT-ONLY. Raises nothing, gates nothing, changes no outcome.
 %
-%   THE THREE QUESTIONS
-%   -------------------
+%   THE FOUR QUESTIONS
+%   ------------------
 %   1. IS GROUPING ON `epochid.epochid` SAFE?  (V_eta_epoch_plan.md, "HAZARD
 %      for the build -- synthetic epoch ids COLLIDE".) The epoch model mints one
 %      `epoch` document per distinct epoch-id string. That is only correct if
@@ -109,6 +113,58 @@ function report = sourceCensus(v1Bodies)
 %                                struct array {n_subjects, n_epochs} -- the
 %                                distribution that answers question 3
 %
+%   4. IS EACH `hartley_calc`'s `stimulus_properties` BLOCK EQUAL TO THE
+%      GENERATOR SPEC OF THE `stimulus_presentation` IT NAMES?
+%      (V_eta_ngrid_family_findings.md, TEAM-SIGN-OFF [receptive field fold],
+%      2026-08-17: "`stimulus_properties` is checked for equality against the
+%      presentation's generator spec and dropped only when equal, refused and
+%      reported when not.")
+%
+%      +migrators_j/hartley_calc.m DROPS the block, on the ground that the
+%      referenced presentation holds the same spec. THAT MIGRATOR CANNOT CHECK
+%      IT. v1_to_v2 calls a migrator with exactly one argument
+%      (`feval(fqn, v2Body)`, :621) -- there is no batch and no way to follow
+%      `stimulus_presentation_id`. The same division is on the record for #61:
+%      "A single-document migrator cannot inline the parameters -- it cannot
+%      follow `stimulus_response_scalar_parameters_id`."
+%
+%      So the migrator refuses on what it CAN see -- no presentation edge, or a
+%      key outside the eight the spec supplies -- and the value comparison is
+%      done HERE, over the v1 source batch, where both documents are in hand.
+%
+%      THE EIGHT KEYS ARE NOT THE SAME NAME ON BOTH SIDES, which is why they
+%      are listed rather than intersected. Measured over corpus 20211116:
+%
+%        DENOMINATOR: 210 hartley_calc doc(s) x their referenced presentation;
+%                     10 distinct presentations, all resolved
+%          M -> M           L_max -> L_absmax   K_max -> K_absmax
+%          sf_max -> sfmax  fps -> fps          rect -> rect
+%          color_high -> chromhigh              color_low -> chromlow
+%          ALL 8 EQUAL: 210 of 210
+%
+%      REPORT-ONLY, like the rest of this function. That number is a
+%      MEASUREMENT of one corpus, not a licence: the corpora are a sample, and
+%      re-measuring it on every run is the point of putting it here instead of
+%      quoting it.
+%
+%     rf_source_docs             `hartley_calc` documents seen -- THE
+%                                DENOMINATOR, and it is stated even when zero,
+%                                because "no mismatches" and "no documents" are
+%                                different facts.
+%     rf_docs_with_properties    of those, how many carry a `stimulus_properties`
+%                                block at all (a document with none has nothing
+%                                to drop and nothing to check)
+%     rf_presentation_unresolved how many name a presentation this batch does
+%                                not contain. NOT a mismatch: it is a batch that
+%                                cannot answer, which is a third state.
+%     rf_checked                 how many were actually compared
+%     rf_equal                   of those, how many matched on all eight keys
+%     rf_mismatch                of those, how many did not
+%     rf_mismatch_by_key         struct: key -> how many documents differed on it
+%     rf_mismatch_examples       struct array {doc_id, presentation_id, keys}
+%                                capped at 10 -- enough to diagnose, not enough
+%                                to bury the report
+%
 %   See also: did2.validate.silentLoss, did2.validate.fileList.
 
 arguments
@@ -138,7 +194,16 @@ report = struct( ...
     'approach_epoch_prefixes',     struct('prefix', {}, 'n_distinct', {}, 'n_docs', {}), ...
     'presentation_epoch_prefixes', struct('prefix', {}, 'n_distinct', {}, 'n_docs', {}), ...
     'approach_presentation_shared_epochs', 0, ...
-    'subjects_per_approach_epoch', struct('n_subjects', {}, 'n_epochs', {}));
+    'subjects_per_approach_epoch', struct('n_subjects', {}, 'n_epochs', {}), ...
+    'rf_source_docs',              0, ...
+    'rf_docs_with_properties',     0, ...
+    'rf_presentation_unresolved',  0, ...
+    'rf_checked',                  0, ...
+    'rf_equal',                    0, ...
+    'rf_mismatch',                 0, ...
+    'rf_mismatch_by_key',          struct(), ...
+    'rf_mismatch_examples',        struct('doc_id', {}, 'presentation_id', {}, ...
+                                          'keys', {}));
 
 items = normalise(v1Bodies);
 report.total_docs = numel(items);
@@ -150,6 +215,12 @@ if isempty(items); return; end
 % not be indistinguishable from a clean one. That is the silentLoss failure.
 rows = struct('class_name', {}, 'epoch_id', {}, 'element_id', {}, ...
               'doc_id', {}, 'session_id', {});
+% Question 4 needs two WHOLE bodies, not a row summary, so the two classes it
+% joins are stashed as they go past. Kept here rather than re-walked afterwards:
+% a second pass would re-parse every JSON string in the batch (633,432 of them
+% on a six-corpus run), and the census is not the place to double that cost.
+rfDocs = {};
+specsByPresentationId = struct();
 for k = 1:numel(items)
     try
         b = asBody(items{k});
@@ -166,10 +237,30 @@ for k = 1:numel(items)
             report.skipped_docs = report.skipped_docs + 1; continue;
         end
         rows(end+1) = r; %#ok<AGROW>
+        % NORMALISED spellings: normClass lowercases and strips underscores, so
+        % the keys here are `hartleycalc` / `stimuluspresentation`. Writing the
+        % snake_case form would match nothing and read as "this corpus holds
+        % none" -- the demo_ndi failure, arriving through this function's own
+        % normaliser.
+        switch r.class_name
+            case 'hartleycalc'
+                rfDocs{end+1} = b; %#ok<AGROW>
+            case 'stimuluspresentation'
+                % ONLY THE GENERATOR SPEC IS KEPT, not the body. A six-corpus
+                % run holds 2,670 presentations and a Hartley one carries 225
+                % per-stimulus parameter entries; stashing whole bodies would
+                % add a second copy of the largest class in the batch for a
+                % check that reads eight fields of it.
+                if ~isempty(r.doc_id)
+                    specsByPresentationId.(idKey(r.doc_id)) = ...
+                        presentationGeneratorSpec(b);
+                end
+        end
     catch
         report.skipped_docs = report.skipped_docs + 1;
     end
 end
+report = receptiveFieldStimulusCheck(report, rfDocs, specsByPresentationId);
 if isempty(rows); return; end
 
 classes = {rows.class_name};
@@ -488,4 +579,162 @@ for p = 1:numel(names)
     t(end+1) = struct('prefix', names{p}, ...
         'n_distinct', numel(unique(keep(sel))), 'n_docs', sum(sel)); %#ok<AGROW>
 end
+end
+
+% ===================== question 4: the RF stimulus spec ====================
+
+function report = receptiveFieldStimulusCheck(report, rfDocs, specsByPresentationId)
+%RECEPTIVEFIELDSTIMULUSCHECK Compare each `hartley_calc`'s copied stimulus spec
+%   against the `stimulus_presentation` it names.
+%
+%   REPORT-ONLY, and its DENOMINATOR is written unconditionally -- including
+%   when it is zero. `rf_source_docs = 0` and `rf_mismatch = 0` mean completely
+%   different things, and a report that prints only the second is the shape
+%   `silentLoss` printed for two days.
+%
+%   THREE STATES, NEVER TWO. equal / mismatch / UNRESOLVED. A hartley_calc whose
+%   presentation is not in this batch is not a pass and not a failure: nobody
+%   looked. Collapsing it into either is the collapse this repository has now
+%   made in both directions -- "absent from the corpora" read as clean, and a
+%   missing counter read as a refutation.
+%
+%   THE KEY MAP IS THE MIGRATOR'S, and the two must not drift: the migrator
+%   refuses a block carrying a key outside this list, and this function checks
+%   the values of the keys on it. Read them together --
+%   +migrators_j/hartley_calc.m STIMULUS_PROPERTY_KEYS.
+%
+%   Names differ across the join, which is why this is a table and not an
+%   intersection:  hartley key -> presentation key
+KEYS = { ...
+    'M',          'M'; ...
+    'L_max',      'L_absmax'; ...
+    'K_max',      'K_absmax'; ...
+    'sf_max',     'sfmax'; ...
+    'fps',        'fps'; ...
+    'color_high', 'chromhigh'; ...
+    'color_low',  'chromlow'; ...
+    'rect',       'rect'};
+
+report.rf_source_docs = numel(rfDocs);
+if isempty(rfDocs); return; end
+
+mismatchKeys = {};
+mismatchCounts = [];
+for k = 1:numel(rfDocs)
+    b = rfDocs{k};
+    props = rfStimulusProperties(b);
+    if isempty(props) || isempty(fieldnames(props)); continue; end
+    report.rf_docs_with_properties = report.rf_docs_with_properties + 1;
+
+    presId = edgeValue(b, {'stimulus_presentation_id'});
+    if isempty(presId) || ~isfield(specsByPresentationId, idKey(presId))
+        report.rf_presentation_unresolved = report.rf_presentation_unresolved + 1;
+        continue;
+    end
+    spec = specsByPresentationId.(idKey(presId));
+    if isempty(spec) || ~isstruct(spec) || isempty(fieldnames(spec))
+        % The presentation is here and carries no parameters. That is a
+        % property of the presentation, not an answer about this document.
+        report.rf_presentation_unresolved = report.rf_presentation_unresolved + 1;
+        continue;
+    end
+
+    report.rf_checked = report.rf_checked + 1;
+    differing = {};
+    for j = 1:size(KEYS, 1)
+        a = KEYS{j, 1};
+        c = KEYS{j, 2};
+        if ~isfield(props, a); continue; end     % nothing to compare
+        if ~isfield(spec, c) || ~isequaln(normaliseNumeric(props.(a)), ...
+                normaliseNumeric(spec.(c)))
+            differing{end+1} = a; %#ok<AGROW>
+        end
+    end
+    if isempty(differing)
+        report.rf_equal = report.rf_equal + 1;
+        continue;
+    end
+    report.rf_mismatch = report.rf_mismatch + 1;
+    for j = 1:numel(differing)
+        idx = find(strcmp(mismatchKeys, differing{j}), 1);
+        if isempty(idx)
+            mismatchKeys{end+1} = differing{j}; %#ok<AGROW>
+            mismatchCounts(end+1) = 1; %#ok<AGROW>
+        else
+            mismatchCounts(idx) = mismatchCounts(idx) + 1;
+        end
+    end
+    if numel(report.rf_mismatch_examples) < 10
+        report.rf_mismatch_examples(end+1) = struct( ...
+            'doc_id', baseField(b, 'id'), ...
+            'presentation_id', presId, ...
+            'keys', {differing});
+    end
+end
+for j = 1:numel(mismatchKeys)
+    report.rf_mismatch_by_key.(mismatchKeys{j}) = mismatchCounts(j);
+end
+end
+
+function props = rfStimulusProperties(b)
+%RFSTIMULUSPROPERTIES The v1 block, or struct().
+%   Reads the SOURCE document, so the field names are did_v1's own:
+%   `hartley_reverse_correlation.stimulus_properties`. universalRenames has not
+%   run on these -- this census reads the INPUT, which is the whole point of it.
+props = struct();
+if isfield(b, 'hartley_reverse_correlation') ...
+        && isstruct(b.hartley_reverse_correlation) ...
+        && isscalar(b.hartley_reverse_correlation) ...
+        && isfield(b.hartley_reverse_correlation, 'stimulus_properties') ...
+        && isstruct(b.hartley_reverse_correlation.stimulus_properties)
+    props = b.hartley_reverse_correlation.stimulus_properties;
+    if ~isscalar(props); props = props(1); end
+end
+end
+
+function spec = presentationGeneratorSpec(b)
+%PRESENTATIONGENERATORSPEC The stimulus generator parameters, or struct().
+%
+%   `stimulus_presentation.stimuli` is a struct ARRAY -- one entry per distinct
+%   stimulus (decoder.m builds one per `data.parameters{k}`). All 11
+%   presentations in corpus 20211116 carry exactly ONE entry, which is what
+%   makes a Hartley presentation a single generator spec rather than a
+%   dictionary. MORE THAN ONE IS NOT AVERAGED OR PICKED FROM: the first is
+%   taken and only because a mismatch is then reported rather than hidden --
+%   a wrong comparison that FAILS is recoverable, a wrong one that passes is
+%   not.
+spec = struct();
+if ~isfield(b, 'stimulus_presentation') || ~isstruct(b.stimulus_presentation)
+    return;
+end
+blk = b.stimulus_presentation;
+if ~isscalar(blk); blk = blk(1); end
+if ~isfield(blk, 'stimuli'); return; end
+st = blk.stimuli;
+if isempty(st) || ~isstruct(st); return; end
+st = st(1);
+if isfield(st, 'parameters') && isstruct(st.parameters) && ~isempty(st.parameters)
+    p = st.parameters;
+    spec = p(1);
+end
+end
+
+function v = normaliseNumeric(v)
+%NORMALISENUMERIC Compare shape-insensitively for numeric vectors ONLY.
+%   `rect` and the two colour triples arrive as 1x4 / 1x3 from one decoder and
+%   could arrive transposed from another; the VALUES are the fact. Nothing else
+%   is normalised -- a char and a number stay different, which is what
+%   `isequaln` is for.
+if isnumeric(v) && ~isscalar(v)
+    v = double(v(:))';
+elseif isnumeric(v)
+    v = double(v);
+end
+end
+
+function k = idKey(id)
+%IDKEY A did uid as a struct fieldname. Uids are 16hex_16hex and a fieldname
+%   cannot start with a digit, so prefix -- the same trick
+%   +did2/+validate/references.m:209-210 uses, for the same reason.
+k = ['k_', regexprep(char(id), '[^A-Za-z0-9_]', '_')];
 end
