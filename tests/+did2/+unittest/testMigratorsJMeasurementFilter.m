@@ -156,8 +156,13 @@ verifyEqual(testCase, obs.get('subject_statement.variable.name'), 'age');
 verifyEqual(testCase, obs.get('subject_statement.variable.node'), '');
 
 % `value` becomes the value. NO UNIT is asserted -- the class carries none.
-verifyEqual(testCase, obs.get('duration.value.source_value'), 30);
-verifyEqual(testCase, obs.get('duration.value.source_unit'), '');
+% THE BLOCK NAME IS THE LEAF STEM, so [time dtype] moved it too: the class is
+% `time_observation` and the block it carries is `time`. These two lines read
+% `duration.` and were the ONE thing the class-name sweep missed -- `get` on a
+% block that does not exist THROWS, so the test errored rather than failing an
+% assertion, and the runner reported it as Failed AND Incomplete.
+verifyEqual(testCase, obs.get('time.value.source_value'), 30);
+verifyEqual(testCase, obs.get('time.value.source_unit'), '');
 
 % the observation points at the instant document, not at a session anchor
 verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_1'), ...
