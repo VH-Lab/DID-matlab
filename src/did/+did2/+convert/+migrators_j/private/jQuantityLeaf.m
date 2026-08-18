@@ -1,7 +1,7 @@
 function leaf = jQuantityLeaf(hay, wordBoundary)
 %JQUANTITYLEAF Resolve a measurement label to a V_eta quantity leaf stem.
 %   LEAF = jQuantityLeaf(HAY) returns one of 'mass' | 'temperature' | 'length' |
-%   'duration', or '' when the label names no quantity this migration can type
+%   'time', or '' when the label names no quantity this migration can type
 %   honestly. HAY is a lowercased haystack built from whatever the source class
 %   offers as the name of the thing measured (an ontology CURIE plus its label
 %   for `measurement`; the free-text `measurement` string for
