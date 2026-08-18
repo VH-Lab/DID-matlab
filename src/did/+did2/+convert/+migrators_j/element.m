@@ -104,19 +104,54 @@ if ~isempty(ndiClass)
     bodies{end+1} = kindAssertion(preBody, elementId, 'ndi element class', ndiClass);
 end
 
-% --- the raw recording as a typed observation of the specimen (#30) ----------
-% Only for a DIRECT element: `direct` = 1 means the element feeds data straight
-% through (element_schema.json: "Does this element directly feed data from an
-% underlying element?"), and ndi.probe sets it to 1 by construction
-% (+ndi/probe.m:47-50 fills inputs{6} = 1). A DERIVED element (direct = 0) is a
-% computed signal or a sorted unit -- spike trains ride with the ensemble model
-% and its NDI second pass, not here.
+% --- the recording as a typed observation (#30, and #117 for spike trains) ---
+% TWO ROLE ASSIGNMENTS, NOT ONE, and which applies is decided by `direct`.
+%
+% DIRECT (`direct` = 1) means the element feeds data straight through
+% (element_schema.json: "Does this element directly feed data from an underlying
+% element?"), and ndi.probe sets it to 1 by construction (+ndi/probe.m:47-50
+% fills inputs{6} = 1). That is the signed #30 shape: the SPECIMEN is observed,
+% WITH the electrode (T7).
+%
+% DERIVED (`direct` = 0) is a computed signal or a sorted unit, and until
+% 2026-08-18 this branch emitted NOTHING -- the `if isDirect` below returned
+% before jRecordingModality was ever consulted. THAT IS A CORRECTION TO
+% V_eta_OPEN_WORK.md row #118, which says 'spikes' elements "take this path
+% today", meaning Guard A's `modality unresolved` term_assertion. They do not
+% and never did: Guard A is inside jRecordingObservation, and nothing derived
+% reached it. Measured on 20211116: 21 of 23 elements are
+% `type = 'spikes', direct = false, ndi_element_class = 'ndi.neuron'`, and each
+% produced a subject, two kind assertions and a `derived_from` -- no observation
+% of any kind, and no worklist entry either.
+%
+% A SPIKE TRAIN INVERTS THE ROLES. TEAM-SIGN-OFF [spike train leaf]
+% (V_eta_ensemble_plan.md:218) makes the train an observation OF THE NEURON --
+% and the neuron-subject is THIS element, whose id is preserved by the subject
+% document minted above. The instrument is the probe underneath it. So the
+% arguments are the mirror of the direct case, which is why
+% jRecordingObservation's parameters were renamed to say `instrumentId` and
+% `subjectId` rather than `elementId` and `specimenId`.
+%
+% Only 'spikes' takes the derived branch. Every other derived type falls
+% through to jRecordingModality's `otherwise` and would surface as a
+% `modality unresolved` worklist entry for a signal whose modality question is
+% a different one (#118) -- so the branch is opened for the type that has a
+% signature and no wider.
 recordingBodies = {};
 retireObserves = false;
 unresolvedLabel = '';
 if isDirect
     [recordingBodies, retireObserves, unresolvedLabel] = jRecordingObservation( ...
         preBody, elementId, specimenId, type, ndiClass);
+elseif strcmpi(strtrim(type), 'spikes')
+    [recordingBodies, ~, unresolvedLabel] = jRecordingObservation( ...
+        preBody, underlyingId, elementId, type, ndiClass);
+    % `retireObserves` is deliberately DISCARDED here. It governs whether the
+    % loose `observes` relation may be dropped now that `instrument_id` names
+    % the instrument -- and the lineage branch below never emits `observes` for
+    % a derived element anyway (it emits `derived_from` to the underlying
+    % element). Threading it through would let a spike train silently change a
+    % relation that belongs to a different decision.
 end
 if ~isempty(unresolvedLabel)
     % Guard A's queryable worklist entry, built from declared fields only --

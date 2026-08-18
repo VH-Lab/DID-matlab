@@ -21,6 +21,27 @@ function tests = testMigratorsJRecordingObservation
 %   private/jRecordingObservation.m (the assembler) and
 %   private/jRecordingModality.m (the type -> modality map and its denominator).
 %
+%   AND SINCE 2026-08-18 IT ALSO COVERS OPEN ITEM #117, which reuses all three:
+%
+%     TEAM-SIGN-OFF [spike train leaf]  jess, 2026-08-17
+%       (did-schema schemas/V_eta_ensemble_plan.md:218)
+%       "a per-neuron spike train is a `time_observation` [...] with
+%        `subject_statement.variable` = spike. The SPIKE TIMES ARE THE VALUE."
+%
+%   It is here rather than in a file of its own because it is the same
+%   assembler with the two id ROLES exchanged -- the neuron is the subject and
+%   the probe beneath it is the instrument -- and splitting it would have put
+%   two callers of one function under two suites that could disagree about what
+%   it emits. The roles are why `jRecordingObservation`'s arguments are named
+%   `instrumentId` / `subjectId` and not `elementId` / `specimenId`.
+%
+%   WHAT THE SIGNATURE ASKS FOR THAT PASS 1 STILL CANNOT GIVE: the times
+%   themselves. They live in the sorter's `.vhsb`, which the `element` document
+%   does not carry -- the same reason the voltage case emits no body -- so the
+%   statement says `storage_mode: 'reference'` and the `time` block is empty.
+%   That is the identical landing-pad state #30 shipped in, not a shortfall
+%   peculiar to spikes.
+%
 %   ---------------------------------------------------------------------
 %   TWO PLACES WHERE THE BUILD DOES NOT MATCH THE SIGNED TEXT, AND WHY THE
 %   TESTS ASSERT THE BUILD
@@ -190,13 +211,75 @@ verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
 end
 
 function testDerivedElementKeepsItsDerivedFromLineage(testCase)
-% REGRESSION GUARD. Only `observes` retires. A derived element (direct = 0 with an
-% underlying element) is untouched: derived_from stays and NO observation is
-% minted -- spike trains ride with the ensemble model's NDI second pass.
+% REGRESSION GUARD. Only `observes` retires; `derived_from` is untouched.
+%
+% INVERTED 2026-08-18, NOT PATCHED. This test read "...and NO observation is
+% minted -- spike trains ride with the ensemble model's NDI second pass", and
+% asserted `verifyFalse(anyObservationEmitted(out))`. That was written from the
+% same premise as `element.m`'s `if isDirect` and could never have caught it;
+% TEAM-SIGN-OFF [spike train leaf] (V_eta_ensemble_plan.md:218) retires the
+% premise, so the assertion is reversed rather than deleted. The `derived_from`
+% half of this test was and remains correct, which is why the test survives
+% under its own name.
 out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1'));
 verifyTrue(testCase, hasRelation(out, 'derived_from'));
+% Still no body: the element declares no files, exactly as for a direct probe.
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-verifyFalse(testCase, anyObservationEmitted(out));
+verifyTrue(testCase, anyObservationEmitted(out), ...
+    ['a derived `spikes` element emitted no observation. It is a per-neuron ' ...
+     'spike train and the signed shape is a time_observation.']);
+end
+
+function testDerivedSpikesBecomesATimeObservationOfTheNeuronItself(testCase)
+% THE SIGNED SHAPE, and the ROLES ARE THE MIRROR of the direct case above --
+% which is the whole reason this needs its own test rather than a line added to
+% the n-trode one. TEAM-SIGN-OFF [spike train leaf]: "a per-neuron spike train
+% is a `time_observation` [...] with `subject_statement.variable` = spike."
+%
+% The neuron IS the element: `migrators_j/element.m` mints a `subject` for every
+% element with `base.id` PRESERVED, so the subject of this observation is
+% `el_1`, not the animal. The animal (`specimen_1`) is not wrong, it is a
+% different fact -- the neuron's own lineage -- and it is carried by the
+% element's `subject_id` edge, not by this document.
+out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1'));
+
+obs = firstOfClass(out, 'time_observation');
+verifyNotEmpty(testCase, obs, 'no time_observation was emitted for a spikes element');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'el_1', ...
+    'the spike train is an observation OF THE NEURON, whose id the element keeps');
+verifyEqual(testCase, depValue(obs, 'instrument_id'), 'probe_1', ...
+    'the instrument is the probe underneath the unit, not the unit itself');
+verifyEqual(testCase, obs.get('subject_statement.variable').name, 'spike');
+% `reference`, not `body`: the times are in the sorter's .vhsb, which the
+% element document does not carry -- the same reason the voltage case says so.
+verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
+% and it is anchored, like every other observation this assembler emits
+anchor = firstOfClass(out, 'session_relative_reference');
+verifyNotEmpty(testCase, anchor);
+verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
+% NOT the unresolved path. `spikes` has a signature; it must never surface on
+% the Guard A worklist, which is where every derived type still goes.
+verifyEqual(testCase, countOfClass(out, 'time_observation'), 1);
+end
+
+function testASpikesElementWithNoUnderlyingProbeOmitsTheInstrumentEdge(testCase)
+% THE THIRD ANSWER, and both of the other two are wrong. An empty
+% `instrument_id` would be the invented-empty-edge defect (7,233 documents, and
+% `references.m:90` skips empty edges so it validates clean); dropping the
+% observation would lose a real spike train because we do not know which probe
+% recorded it. `instrument_id` is optional on `subject_interaction`
+% (mustBeNonEmpty false), so saying nothing is expressible.
+%
+% NOT REACHABLE FROM 20211116 -- all 21 of its `spikes` elements carry an
+% `underlying_element_id` -- and that is why it is asserted here rather than
+% left to a corpus. The corpora are a sample.
+out = runJ(elementDoc('orphan_unit', 'spikes', 'ndi.neuron', 0, 'specimen_1', ''));
+obs = firstOfClass(out, 'time_observation');
+verifyNotEmpty(testCase, obs, ...
+    'a spikes element with no underlying probe emitted no observation at all');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'el_1');
+verifyEmpty(testCase, depValue(obs, 'instrument_id'), ...
+    'an instrument_id edge was emitted naming nothing');
 end
 
 % ===================== two quantities on one instrument ====================
@@ -366,6 +449,25 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
+end
+
+function testTheSpikeTrainAlsoValidatesAgainstVEta(testCase)
+% THE SECOND VALIDATING RUN, and it is not redundant with the first. It is the
+% only thing that proves `time_observation` is INSTANTIABLE: `time` is an
+% ABSTRACT data_type and `+did2/+schema/cache.m` raises
+% `did2:validation:abstractInstantiation` for a document naming an abstract
+% class, so a leaf wired to the wrong superclass fails exactly here and
+% nowhere else. It also proves an EMPTY `time` block is legal -- `time.value`
+% is mustBeNonEmpty false, unlike the ten classes that are not -- which is what
+% lets the times live in the sorter's file rather than in the document.
+v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
+out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+if ~isempty(out.quarantine)
+    verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
+        out.quarantine(1).class_name, out.quarantine(1).reason));
+end
+verifyNotEmpty(testCase, firstOfClass(out, 'time_observation'), ...
+    'the validating run emitted no time_observation, so it proved nothing');
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);   % was 1
 verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);

@@ -95,10 +95,16 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %       INPUT it is handed, not something it resolves:
 %
 %         function [bodies, retireObserves, unresolvedLabel] = ...
-%             jRecordingObservation(preBody, elementId, specimenId, ...
+%             jRecordingObservation(preBody, instrumentId, subjectId, ...
 %                                   elementType, bestKnownLabel)
 %
-%       An element supplies `specimenId` from its own `subject_id` edge. This
+%       (Those two ids were spelled `elementId` / `specimenId` until
+%       2026-08-18; they were renamed for their ROLES when the spike-train
+%       caller landed, which passes them the other way round. Quoted here in
+%       the current spelling so the signature stays greppable -- the argument
+%       below is about the subject being an INPUT and is unaffected.)
+%
+%       An element supplies `subjectId` from its own `subject_id` edge. This
 %       class has no element and no subject, so blocker 1 is what remains, and
 %       #30 landing does not touch it. The correction is spelled out rather than
 %       the old line quietly deleted, because a reader checking "has #30 landed?"

@@ -324,6 +324,14 @@ end
 function testElementDerivedBecomesSubjectDerivedFrom(testCase)
 % A derived element (direct=0 with an underlying element) -> a subject (id
 % preserved) + kind assertions (nothing dropped) + a derived_from lineage edge.
+%
+% SINCE 2026-08-18 A DERIVED `spikes` ELEMENT ALSO EMITS a time_observation of
+% the neuron plus its session anchor (TEAM-SIGN-OFF [spike train leaf]). Every
+% assertion below still holds -- the term_assertion count is unchanged at 2,
+% because the observation is not an assertion -- so this test keeps passing and
+% would keep passing if that emission regressed. It is NOT the gate for it:
+% testMigratorsJRecordingObservation.m owns that, and the note is here so the
+% next reader does not mistake a green run of this test for coverage of it.
 out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
 sub = firstOfClassJ(out.migrated, 'subject');
 verifyEqual(testCase, sub.get('base.id'), 'el_1');                 % id preserved

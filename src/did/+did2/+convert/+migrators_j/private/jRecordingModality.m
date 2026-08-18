@@ -57,6 +57,14 @@ function [entries, disposition] = jRecordingModality(elementType)
 %   plus 4 documented-but-unregistered types from (B), all 'stimulator'
 %   (display, stim-n-trode, n-LED) or already covered ('sharp-I').
 %
+%   AND ONE ROW FROM OUTSIDE BOTH FILES: 'spikes'. It is an ELEMENT type, not
+%   a probe type, so neither (A) nor (B) can contain it and the 24 above is
+%   unchanged by its arrival. It is here because it has its own signature --
+%   TEAM-SIGN-OFF [spike train leaf] -- and because leaving it out is not
+%   neutral: it is the type 21 of 20211116's 23 elements carry. Its per-row
+%   evidence is at the `case 'spikes'` below rather than in the block above,
+%   since the block above is about probes.
+%
 %   The three unresolved rows are unresolved for a stated reason, not by
 %   omission:
 %     lick-spout   ZERO occurrences in any .m file on origin/main outside
@@ -212,6 +220,34 @@ switch key
     case {'wide-field-imaging', 'two-photon-imaging', ...
           'one-photon-imaging', 'brightfield-imaging'}
         entries = mk('image_observation', 'image', 'image', false);
+
+    % --- the one DERIVED type with a signed shape ---------------------------
+    % TEAM-SIGN-OFF [spike train leaf], V_eta_ensemble_plan.md:218,
+    % 2026-08-17: "a per-neuron spike train is a `time_observation` [...] with
+    % `subject_statement.variable` = spike. The SPIKE TIMES ARE THE VALUE".
+    %
+    % `spikes` IS NOT A PROBE TYPE, so it is outside the 24-row denominator
+    % this map's header enumerates, and that is why it sits in its own case
+    % rather than being folded into a block above. It is an ELEMENT type, and
+    % NDI writes it from four places on origin/main:
+    %
+    %   +ndi/+element/spikesForProbe.m:33  ndi.neuron(..., 'spikes', ...)
+    %   +ndi/+app/spikesorter.m:275        '...' , reference, 'spikes', ...
+    %   +ndi/+element/timeseries.m:233     etype = 'spikes'   (THE DEFAULT)
+    %   +fun/+probe/+import/+kiasort/probe.m:351  and +kilosort/probe.m:578
+    %
+    % and reads it back the same way -- `ndi.query('element.type',
+    % 'exact_string', 'spikes', '')` at +fun/+ensemble/load.m:125, and
+    % `strcmpi(ndi_timeseries_obj.type, 'spikes')` at
+    % +app/+stimulus/tuning_response.m:180.
+    %
+    % `multichannel` IS FALSE, and the reason is not "one electrode". A sorted
+    % unit is one train no matter how many sites it was sorted from: 20211116's
+    % neurons carry `number_of_channels: 32` on their `neuron_extracellular`
+    % document and are still ONE spike train each. The channel axis belongs to
+    % the waveform, which is a different document.
+    case 'spikes'
+        entries = mk('time_observation', 'time', 'spike', false);
 
     % --- instruments whose name is the quantity ------------------------------
     case {'ecg', 'eeg'}

@@ -1,19 +1,31 @@
-function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBody, elementId, specimenId, elementType, bestKnownLabel)
+function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBody, instrumentId, subjectId, elementType, bestKnownLabel)
 %JRECORDINGOBSERVATION Assemble the typed observation(s) for a DIRECT recording
 %   element -- open item #30, SIGNED 2026-08-10 in
 %   V_eta_recording_observation_plan.md.
 %
 %   [BODIES, RETIREOBSERVES, UNRESOLVEDLABEL] = jRecordingObservation(PREBODY,
-%       ELEMENTID, SPECIMENID, ELEMENTTYPE, BESTKNOWNLABEL)
+%       INSTRUMENTID, SUBJECTID, ELEMENTTYPE, BESTKNOWNLABEL)
 %
 %   The signed model, one line: a raw continuous recording IS a
 %   `<modality>_observation` of the SPECIMEN, taken WITH the electrode.
 %
-%       <modality>_observation   subject_id    = SPECIMENID (the slice/animal --
+%       <modality>_observation   subject_id    = SUBJECTID (the slice/animal --
 %                                                v1's element.subject_id)
-%                                instrument_id = ELEMENTID  (the electrode, its
+%                                instrument_id = INSTRUMENTID  (the electrode, its
 %                                                own subject, in the instrument
 %                                                role -- T7)
+%
+%   THE TWO ID ARGUMENTS ARE NAMED FOR THEIR ROLES, NOT FOR THE DOCUMENTS THEY
+%   USUALLY COME FROM, AND THAT MATTERS AS OF 2026-08-18. They were
+%   `elementId` / `specimenId`, which read as "the element document's id" and
+%   "the animal's id" -- true for every DIRECT element and false for the second
+%   caller. A per-neuron spike train (TEAM-SIGN-OFF [spike train leaf],
+%   V_eta_ensemble_plan.md:218) is an observation OF THE NEURON, taken with the
+%   probe underneath it, so `element.m` passes the ELEMENT's own id as
+%   SUBJECTID and its `underlying_element_id` as INSTRUMENTID -- the exact
+%   opposite assignment. Under the old names that call site read like a bug.
+%   Nothing about the emitted document changed with the rename; both callers
+%   are positional.
 %                                variable      = the modality, from the element
 %                                                type via jRecordingModality
 %                                storage_mode  = 'reference'
@@ -55,7 +67,7 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   ---------------------------------------------------------------------
 %   ID PRESERVATION -- READ BEFORE CHANGING ANYTHING HERE
 %   ---------------------------------------------------------------------
-%   ELEMENTID stays on the SUBJECT that migrators_j.element mints. It is NOT
+%   INSTRUMENTID stays on the SUBJECT that migrators_j.element mints. It is NOT
 %   reused here: the observations get FRESH ids. That is deliberate and it is the
 %   safe direction. ~50 v1 classes reference the element document
 %   (`element_id` / `underlying_element_id` / `stimulator_id`) and every one of
@@ -197,16 +209,16 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 
 arguments
     preBody (1,1) struct
-    elementId = ''
-    specimenId = ''
+    instrumentId = ''
+    subjectId = ''
     elementType = ''
     bestKnownLabel = ''
 end
 % Deliberately unsized/untyped above: every one of these can legitimately be the
 % empty char '' (0x0), which does not satisfy a `(1,:) char` declaration -- an
 % element with no `subject_id`, or with an empty `type`, is a real did_v1 shape.
-elementId      = char(elementId);
-specimenId     = char(specimenId);
+instrumentId      = char(instrumentId);
+subjectId     = char(subjectId);
 elementType    = char(elementType);
 bestKnownLabel = char(bestKnownLabel);
 
@@ -214,13 +226,25 @@ bodies = {};
 retireObserves = false;
 unresolvedLabel = '';
 
-% NO SPECIMEN => NO OBSERVATION (subject_statement.subject_id is REQUIRED, and an
-% empty required edge validates clean because +did2/+validate/references.m:90
-% skips empty edges -- the invented-empty-edge pattern, 7,233 documents and
-% counting). NO ELEMENT ID => no instrument to name either.
-if isempty(specimenId) || isempty(elementId)
+% NO SUBJECT => NO OBSERVATION. `subject_statement.subject_id` is the ONE
+% required edge on this chain (measured: subject_observation declares only
+% `derived_from_#`, subject_interaction only optional edges), and an empty
+% required edge validates clean because +did2/+validate/references.m:90 skips
+% empty edges -- the invented-empty-edge pattern, 7,233 documents and counting.
+if isempty(subjectId)
     return;
 end
+
+% NO INSTRUMENT => THE EDGE IS OMITTED, NOT EMITTED EMPTY. This used to be a
+% second `return`, which was safe only because the caller passed `base.id` and
+% that is never empty. The spike-train caller passes `underlying_element_id`,
+% which CAN be absent, and the two wrong answers are both available here: an
+% empty `instrument_id` is the invented-empty-edge defect, and dropping the
+% observation entirely would lose a real spike train because we do not know
+% which probe recorded it. `instrument_id` is optional in the schema
+% (subject_interaction, mustBeNonEmpty false), so saying nothing is expressible
+% and is what the source actually says.
+hasInstrument = ~isempty(instrumentId);
 
 [entries, disposition] = jRecordingModality(elementType);
 
@@ -249,10 +273,12 @@ for k = 1:numel(entries)
 
     obs = struct();
     obs.document_class = classBlock(e.class, {'subject_observation', e.mixin});
-    obs.depends_on = [ ...
-        struct('name', 'subject_id',       'value', specimenId), ...  % the SPECIMEN
-        struct('name', 'instrument_id',    'value', elementId), ...   % the electrode (T7)
-        struct('name', 'time_reference_1', 'value', anchorId)];
+    obs.depends_on = struct('name', 'subject_id', 'value', subjectId);
+    if hasInstrument
+        obs.depends_on(end+1) = ...
+            struct('name', 'instrument_id', 'value', instrumentId);   % T7
+    end
+    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
     obs.base = struct('id', obsId, 'session_id', sessionId, ...
         'name', 'migrated_recording_observation', 'datestamp', datestamp);
     % 'reference', not 'body': see the header. The samples live in the
