@@ -1560,7 +1560,7 @@ verifyTrue(testCase, isfield(bc, 'concentration_observation'));
 verifyTrue(testCase, isfield(bc, 'directed_relation'));
 verifyTrue(testCase, isfield(bc, 'session_bounded_reference'));
 % onset/offset are the window (not observations); encounter # is derived (dropped)
-verifyFalse(testCase, isfield(bc, 'duration_observation'));
+verifyFalse(testCase, isfield(bc, 'time_observation'));
 verifyFalse(testCase, isfield(bc, 'count_observation'));
 verifyEqual(testCase, bc.velocity_observation, 3);
 % a measurement is about the worm and shares the encounter window

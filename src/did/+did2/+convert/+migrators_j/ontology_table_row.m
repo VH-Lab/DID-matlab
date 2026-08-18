@@ -688,7 +688,11 @@ elseif containsAny(hay, {'velocity', 'speed'})
     leafClass = 'velocity_observation'; shapeClass = 'velocity';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'onset time', 'offset time', 'age', 'duration', 'latency', 'time'})
-    leafClass = 'duration_observation'; shapeClass = 'duration';
+    % `time`, not `duration`: the V_eta shape mixin was renamed by
+    % TEAM-SIGN-OFF [time dtype] (DID-schema V_eta_tenet_audit.md, 2026-08-17).
+    % The HAYSTACK words are unchanged -- they match the source column's label,
+    % which is did_v1 text and did not move.
+    leafClass = 'time_observation'; shapeClass = 'time';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'volume'})
     leafClass = 'volume_observation'; shapeClass = 'volume';

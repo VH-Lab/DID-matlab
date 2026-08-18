@@ -48,7 +48,7 @@ function leaf = jQuantityLeaf(hay, wordBoundary)
 %   field is FREE TEXT with no ontology term behind it (see the class tombstone:
 %   "FREE TEXT -- unbound, with no ontology term, unlike measurement.ontology_name
 %   which is always a resolved CURIE"). Typing a free-text 'voltage' as a
-%   DURATION because it contains the letters 'age' is guessing a leaf, which the
+%   TIME because it contains the letters 'age' is guessing a leaf, which the
 %   guard-and-pass-through rule forbids. Word-boundary matching only ever
 %   NARROWS: it can turn a typed leaf into a passthrough, never the reverse.
 %
@@ -61,11 +61,17 @@ if nargin < 2 || isempty(wordBoundary)
     wordBoundary = false;
 end
 
+% COLUMN 1 IS THE V_eta LEAF STEM, COLUMN 2 IS did_v1 SOURCE TEXT, and the two
+% moved independently: `time` replaced `duration` as the shape mixin's name
+% under TEAM-SIGN-OFF [time dtype] (DID-schema V_eta_tenet_audit.md,
+% 2026-08-17), while the words a source label is matched against are unchanged
+% -- a column still says "age" or "duration". Renaming the needles to match the
+% stem would silently stop matching real data.
 table = { ...
     'mass',        {'weight', 'mass'}; ...
     'temperature', {'temperature'}; ...
     'length',      {'length', 'height', 'width', 'diameter'}; ...
-    'duration',    {'age', 'duration', 'elapsed'}};
+    'time',        {'age', 'duration', 'elapsed'}};
 
 leaf = '';
 hay = lower(char(hay));

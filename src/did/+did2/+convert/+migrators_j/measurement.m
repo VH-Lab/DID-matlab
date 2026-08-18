@@ -40,7 +40,8 @@ function bodies = measurement(preBody)
 %     mass / weight        -> mass_observation
 %     temperature          -> temperature_observation
 %     length / height      -> length_observation
-%     age / duration       -> duration_observation
+%     age / duration       -> time_observation   (was duration_observation
+%                             until TEAM-SIGN-OFF [time dtype], 2026-08-17)
 %     a CURIE string_value -> term_observation (the value IS an ontology term)
 %     anything else        -> CARRIED THROUGH UNCHANGED
 %

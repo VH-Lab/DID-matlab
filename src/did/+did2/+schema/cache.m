@@ -2097,7 +2097,17 @@ classdef cache < handle
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be a struct.', qualifiedName);
                     end
-                case {'duration','volume','mass','length','voltage','current','frequency','concentration','ontology_term'}
+                % `time` JOINS `duration`, it does not replace it. V_eta renamed
+                % the composite (DID-schema TEAM-SIGN-OFF [time dtype],
+                % V_eta_tenet_audit.md, 2026-08-17) and this cache validates
+                % V_zeta and V_eta schemas alike, so dropping `duration` would
+                % stop struct-checking every V_zeta `scalar_duration`. And note
+                % what the `otherwise` arm below does with a type it has never
+                % heard of: it TOLERATES it. A renamed composite missing from
+                % this list is not a loud failure -- it is a field that silently
+                % stops being checked, which is the shape of defect this
+                % repository keeps paying for.
+                case {'duration','time','volume','mass','length','voltage','current','frequency','concentration','ontology_term'}
                     if ~isstruct(value)
                         error('did2:validation:typeMismatch', ...
                             'Field "%s" must be a struct (named composite type %s).', ...

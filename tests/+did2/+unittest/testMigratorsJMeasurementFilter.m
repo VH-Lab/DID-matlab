@@ -143,7 +143,7 @@ out = runJ(subjectMeasurementBody());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 
-obs = docOfClass(testCase, out, 'duration_observation');
+obs = docOfClass(testCase, out, 'time_observation');
 ref = docOfClass(testCase, out, 'absolute_reference');
 
 % subject_id CARRIES OVER, and the source id is PRESERVED (dissolving a
@@ -195,7 +195,7 @@ verifyEqual(testCase, ref.get('absolute_reference.value.start.approximate'), fal
 % base.datestamp is the RECORD-CREATION stamp and is a DIFFERENT FACT -- the
 % tombstone says so ("SHADOWS base.datestamp"). It must not be confused with the
 % measurement instant on either document.
-obs = docOfClass(testCase, out, 'duration_observation');
+obs = docOfClass(testCase, out, 'time_observation');
 % base.datestamp -> base.creation_timestamp (did-schema 72fa57f). The FIXTURE
 % above still writes did_v1 `datestamp`, deliberately: these assertions are
 % about the MIGRATED output, and the rename happens on the way out.
@@ -222,7 +222,7 @@ verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
 verifyFalse(testCase, any(strcmp(names, 'absolute_reference')));
 anchor = docOfClass(testCase, out, 'session_relative_reference');
-obs = docOfClass(testCase, out, 'duration_observation');
+obs = docOfClass(testCase, out, 'time_observation');
 verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_1'), ...
     anchor.get('base.id'));
 end
@@ -295,7 +295,7 @@ cases = { 'weight', 'mass_observation'; ...
           'body mass', 'mass_observation'; ...
           'temperature', 'temperature_observation'; ...
           'body length', 'length_observation'; ...
-          'age', 'duration_observation' };
+          'age', 'time_observation' };
 for k = 1:size(cases, 1)
     b = subjectMeasurementBody();
     b.subjectmeasurement.measurement = cases{k, 1};
@@ -345,7 +345,7 @@ if ~isempty(out.quarantine)
         out.quarantine(1).reason));
 end
 names = sort(classNames(out));
-verifyEqual(testCase, names, {'absolute_reference', 'duration_observation'});
+verifyEqual(testCase, names, {'absolute_reference', 'time_observation'});
 end
 
 function testMeasurementSiblingIsUnchangedByTheExtraction(testCase)
