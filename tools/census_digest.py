@@ -696,6 +696,27 @@ POST_PASSES = [
         ("statements_withheld_lost_anchor", "WITHHELD (anchor quarantined)"),
         ("documents_appended", "documents appended"),
     ]),
+
+    # #57 syncgraph half. Un-gates syncgraph -> clock_alignment_policy by
+    # supplying the session-document id (a corpus-wide lookup). READ
+    # `syncgraphs_seen` BESIDE `policies_folded`: 0 folded of 0 seen is a corpus
+    # with no syncgraph, not a broken fold. The four refusal causes are never
+    # collapsed into `refused_total` alone -- each is a different reason a
+    # session id did not resolve to exactly one session document.
+    ("clock_alignment_fold", "did2.convert.resolveClockAlignment", [
+        ("documents_inspected", "documents inspected  <- THE DENOMINATOR"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("session_documents_seen", "session documents indexed"),
+        ("syncgraphs_seen", "syncgraph documents (0 seen is not 0 folded)"),
+        ("refused_no_session_id", "refused: no base.session_id"),
+        ("refused_no_session_document", "refused: no session document claims that id"),
+        ("refused_ambiguous_session", "refused: two session documents claim it"),
+        ("refused_migrator_declined", "refused: migrator declined after the stamp"),
+        ("refused_total", "  refused TOTAL"),
+        ("policies_folded", "clock_alignment_policy FOLDED"),
+        ("extra_bodies_emitted", "  software entities appended"),
+        ("fold_quarantined", "QUARANTINED on re-validation"),
+    ]),
 ]
 
 

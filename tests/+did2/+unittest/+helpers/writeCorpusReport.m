@@ -423,6 +423,13 @@ if isfield(result, 'valid_interval_decompose')
     report.valid_interval_decompose = result.valid_interval_decompose;
 end
 
+% `clock_alignment_fold` (#57 syncgraph half). PERSISTED for the same reason as
+% every pass above: a report that never reaches the artifact is a pass that
+% measured nothing. Written unconditionally with whatever the pass left.
+if isfield(result, 'clock_alignment_fold')
+    report.clock_alignment_fold = result.clock_alignment_fold;
+end
+
 fid = fopen(reportPath, 'w');
 if fid < 0
     error('did2:test:reportWriteFailed', ...

@@ -111,8 +111,33 @@ ch2   = jGetCharAny(params, {'daqsystem_ch2', 'daqsystemCh2'});
 
 channelsA = jAcquisitionChannels(preBody, name1, ch1);
 channelsB = jAcquisitionChannels(preBody, name2, ch2);
-if isempty(channelsA) || isempty(channelsB)
-    bodies = {preBody};      % THE GUARD -- see the header
+
+% THE GUARD, AMENDED 2026-08-18 for the FILE-BASED rule. TEAM-SIGN-OFF
+% [sync configuration amendment 1] (DID-schema V_eta_clock_alignment_cluster_
+% plan.md): a rule that names NO device pair -- a `filematch` rule, whose whole
+% parameter set is `number_fullpath_matches` -- is STILL a real alignment rule
+% (its apply() returns an identity timemapping when two epochs share >=N
+% filenames), so it becomes a `clock_alignment_configuration` with ZERO
+% acquisition_channels and its criterion carried in the fields the schema
+% already declares. `acquisition_channels_#` was relaxed to {0,2} in the same
+% sign-off to make room for it.
+%
+% THREE CASES, and only the middle one is new:
+%   * BOTH channels present  -> the device-pair configuration (unchanged).
+%   * NEITHER present, but a file criterion IS  -> the channel-less
+%     configuration (this amendment).
+%   * exactly one present, or neither with no criterion  -> PASSTHROUGH. A
+%     half-specified device pair would lose its one named device if flattened to
+%     a channel-less config, and a rule with neither devices nor a criterion is
+%     genuinely empty. `jAcquisitionChannels` is NOT widened -- its refusal
+%     stays correct (inventing an empty channel is the invented-empty-edge
+%     pattern this repository has paid for six times).
+haveBoth    = ~isempty(channelsA) && ~isempty(channelsB);
+haveNeither = isempty(channelsA) && isempty(channelsB);
+minPaths    = readNumber(params, {'number_fullpath_matches', 'numberFullpathMatches'});
+isFileBased = ~isempty(minPaths);
+if ~haveBoth && ~(haveNeither && isFileBased)
+    bodies = {preBody};      % half-specified pair, or no criterion at all
     return;
 end
 

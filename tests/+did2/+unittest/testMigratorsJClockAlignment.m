@@ -5,10 +5,13 @@ function tests = testMigratorsJClockAlignment
 %   `V_eta_clock_alignment_cluster_plan.md` (both TEAM-SIGN-OFF lines,
 %   jess@walthamdatascience.com / 2026-08-08):
 %
-%     syncrule         -> clock_alignment_configuration + EXACTLY 2
-%                         acquisition_channels + a software entity (1 -> 4),
-%                         or a guarded passthrough when the rule names no
-%                         device pair (filematch).
+%     syncrule         -> clock_alignment_configuration: a DEVICE-PAIR rule
+%                         (commonTriggers/randomPulses/filefind) gains EXACTLY 2
+%                         acquisition_channels + a software entity (1 -> 4); a
+%                         FILE-BASED rule (filematch, no device pair) gains ZERO
+%                         channels and carries its file criterion instead (1 -> 2)
+%                         -- TEAM-SIGN-OFF [sync configuration amendment 1],
+%                         which relaxed acquisition_channels_# to {0,2}.
 %     syncgraph        -> clock_alignment_policy + a software entity (1 -> 2),
 %                         or a guarded passthrough when there is no session to
 %                         point the REQUIRED session_id edge at.
@@ -253,17 +256,35 @@ verifyEqual(testCase, block.minimum_matching_file_paths, 1);
 verifyFalse(testCase, isfield(block, 'clock'));
 end
 
-function testFilematchPassesThroughRatherThanBreakingCardinality(testCase)
-% filematch's ENTIRE parameter set is number_fullpath_matches (filematch.m:25):
-% no devices, so no two acquisition_channels, so a converted document would
-% violate its own declared min_count 2 / max_count 2 while validating clean.
-% Guard and pass through -- and the passthrough is VISIBLE in unconverted_count.
+function testFilematchBecomesAChannellessConfiguration(testCase)
+% INVERTED 2026-08-18, NOT patched. This was
+% `testFilematchPassesThroughRatherThanBreakingCardinality` and asserted a v1
+% `syncrule` passthrough with `unconverted_count == 1`. That was written from
+% the same premise as the guard it tested -- "a filematch rule has no channels,
+% so it cannot be a configuration" -- and TEAM-SIGN-OFF [sync configuration
+% amendment 1] retires that premise: `acquisition_channels_#` relaxed to {0,2},
+% and a file-based rule becomes a `clock_alignment_configuration` with ZERO
+% channels carrying its file criterion. So the assertion is reversed.
+%
+% filematch's ENTIRE parameter set is number_fullpath_matches (filematch.m:25),
+% so the config carries that as `minimum_matching_file_paths`, no channels, and
+% the software entity for its rule class.
 out = runJ(syncruleFixture('filematch'));
-verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'syncrule');
-verifyEqual(testCase, out.summary.unconverted_count, 1);
-% base.id survives trivially, so syncgraph's syncrule_id_# still resolves.
-verifyEqual(testCase, out.migrated{1}.get('base.id'), 'rule_filematch');
+cfg = findClass(testCase, out, 'clock_alignment_configuration');
+% base.id PRESERVED, so syncgraph's syncrule_id_# still resolves.
+verifyEqual(testCase, cfg.get('base.id'), 'rule_filematch');
+% ZERO acquisition_channels -- the whole point of the amendment.
+verifyEqual(testCase, countClass(out, 'acquisition_channels'), 0);
+verifyEmpty(testCase, depVal(cfg, 'acquisition_channels_1'));
+% the file criterion is carried, not bagged.
+block = cfg.get('clock_alignment_configuration');
+verifyEqual(testCase, block.minimum_matching_file_paths, 2);
+% the rule class becomes a software entity, edged from the config.
+verifyEqual(testCase, countClass(out, 'software'), 1);
+verifyNotEmpty(testCase, depVal(cfg, 'software_id'));
+% and it is NO LONGER an unconverted passthrough.
+verifyEqual(testCase, out.summary.unconverted_count, 0);
+verifyEqual(testCase, countClass(out, 'syncrule'), 0);
 end
 
 function testSoftwareCarriesTheImplementationClass(testCase)
@@ -610,16 +631,18 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
-% 4 (ctoe fold) + 1 (filematch passthrough) + 2 (policy + software) + 1 (mapping)
-% The graph in this batch carries a `session_document_id` stamp so the policy
-% branch runs; without it the graph passes through and the count is 7.
-verifyEqual(testCase, numel(out.migrated), 8);
-verifyEqual(testCase, countClass(out, 'clock_alignment_configuration'), 1);
+% 4 (ctoe fold) + 2 (filematch fold: config + software) + 2 (policy + software)
+% + 1 (mapping). The filematch rule now FOLDS to a channel-less configuration
+% (amendment 1) rather than passing through, so it contributes 2 bodies, not 1,
+% and no `syncrule` survives. The graph carries a `session_document_id` stamp so
+% the policy branch runs; without it the graph passes through and the count is 8.
+verifyEqual(testCase, numel(out.migrated), 9);
+verifyEqual(testCase, countClass(out, 'clock_alignment_configuration'), 2);
 verifyEqual(testCase, countClass(out, 'clock_alignment_policy'), 1);
-verifyEqual(testCase, countClass(out, 'syncrule'), 1);
+verifyEqual(testCase, countClass(out, 'syncrule'), 0);
 verifyEqual(testCase, countClass(out, 'syncrule_mapping'), 1);
 if isfield(out, 'silent_loss') && isfield(out.silent_loss, 'total_docs')
-    verifyEqual(testCase, out.silent_loss.total_docs, 8);
+    verifyEqual(testCase, out.silent_loss.total_docs, 9);
     verifyEqual(testCase, out.silent_loss.skipped_docs, 0);
     verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
     verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);

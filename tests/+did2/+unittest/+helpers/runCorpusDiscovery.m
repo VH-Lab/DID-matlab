@@ -340,6 +340,30 @@ if strcmp(options.TargetVersion, 'V_eta')
         'did2.convert.resolveValidIntervals', 'valid_interval_decompose', ...
         @(r) did2.convert.resolveValidIntervals(r, ...
             'Validate', true, 'TargetVersion', options.TargetVersion));
+
+    % #57 syncgraph half: un-gate the `syncgraph` -> `clock_alignment_policy`
+    % fold, which a single-document migrator cannot finish because
+    % `clock_alignment_policy.session_id` names the session DOCUMENT's base.id
+    % (a corpus-wide lookup). This pass builds the same session index
+    % resolveSessionAnchors does, stamps `session_document_id`, and re-runs
+    % +migrators_j/syncgraph.
+    %
+    % ORDER: last, and it commutes with all seven above. It reads only
+    % `syncgraph` and `session` documents and writes only a
+    % `clock_alignment_policy` (on the syncgraph's own id) plus a possible
+    % `software` entity; none of the seven reads or writes either class.
+    %
+    % READ ITS ZEROS WITH `syncgraphs_seen` BESIDE THEM. A corpus with no
+    % syncgraph folds nothing, which says nothing about whether the fold works.
+    %
+    % GUARDED like its seven siblings: writeCorpusReport is below and an
+    % uncaught throw here costs the run its whole census. A failure leaves every
+    % syncgraph in its pass-1 passthrough, which is the state the corpus is
+    % green in today.
+    result = did2.unittest.helpers.runBatchPass(result, ...
+        'did2.convert.resolveClockAlignment', 'clock_alignment_fold', ...
+        @(r) did2.convert.resolveClockAlignment(r, ...
+            'Validate', true, 'TargetVersion', options.TargetVersion));
 end
 
 % Census of the V1 SOURCE bodies -- the only instrument here that reads the
@@ -926,7 +950,8 @@ expected = { ...
     'response_parameters_fold', 'did2.convert.resolveResponseParameters'; ...
     'lawn_plate_subjects',      'did2.convert.resolveLawnPlateSubjects'; ...
     'generic_file_fold',        'did2.convert.foldGenericFiles'; ...
-    'valid_interval_decompose', 'did2.convert.resolveValidIntervals'};
+    'valid_interval_decompose', 'did2.convert.resolveValidIntervals'; ...
+    'clock_alignment_fold',     'did2.convert.resolveClockAlignment'};
 fprintf('\n--- batch post-passes (%d expected) ---\n', size(expected, 1));
 for k = 1:size(expected, 1)
     field = expected{k, 1};
