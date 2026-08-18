@@ -153,13 +153,16 @@ deps = struct('name', {}, 'value', {});
 if ~isempty(swId)
     deps(end+1) = struct('name', 'software_id', 'value', swId);
 end
-% EXACTLY 2, UNORDERED. `acquisition_channels_#` and not from_/to_ because the
-% rule is SYMMETRIC: commonTriggersOverlappingEpochs.m:110-115 accepts the pair
-% in either order ("Names do not match the pair we are looking for") and
-% normalises which is 1 and which is 2 afterwards, and filefind.m:133-136
-% computes `forward` and `backward` and takes either.
-deps(end+1) = struct('name', 'acquisition_channels_1', 'value', channelsA.base.id);
-deps(end+1) = struct('name', 'acquisition_channels_2', 'value', channelsB.base.id);
+% DEVICE-PAIR RULE: EXACTLY 2 acquisition_channels, UNORDERED. `_#` and not
+% from_/to_ because the rule is SYMMETRIC: commonTriggersOverlappingEpochs.m:
+% 110-115 accepts the pair in either order and normalises 1/2 afterwards, and
+% filefind.m:133-136 computes `forward`/`backward` and takes either. A FILE-BASED
+% rule (haveNeither) carries ZERO channels -- amendment 1 -- so these edges and
+% the two channel bodies are emitted ONLY when both channels exist.
+if haveBoth
+    deps(end+1) = struct('name', 'acquisition_channels_1', 'value', channelsA.base.id);
+    deps(end+1) = struct('name', 'acquisition_channels_2', 'value', channelsB.base.id);
+end
 cfg.depends_on = deps;
 % base PRESERVED verbatim, id and name included.
 cfg.base = carryBase(preBody);
@@ -190,7 +193,11 @@ end
 % errorOnFailure is deliberately NOT carried (repair 5).
 cfg.clock_alignment_configuration = cfgBlock;
 
-bodies = {cfg, channelsA, channelsB};
+if haveBoth
+    bodies = {cfg, channelsA, channelsB};
+else
+    bodies = {cfg};   % file-based rule: the channel-less configuration only
+end
 if ~isempty(software)
     bodies{end+1} = software;
 end

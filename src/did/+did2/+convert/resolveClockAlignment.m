@@ -165,7 +165,7 @@ for k = 1:n
     % a fold: it would replace the passthrough with the SAME body carrying a
     % `session_document_id` dep the class does not declare, which validateDocument
     % would then quarantine. Detect it by class of the first body.
-    if numel(folded) == 1 && strcmp(classNameOf(folded{1}), 'syncgraph')
+    if isscalar(folded) && strcmp(classNameOf(folded{1}), 'syncgraph')
         report.refused_migrator_declined = report.refused_migrator_declined + 1;
         continue;
     end
@@ -253,21 +253,33 @@ function b = stampSessionDocument(body, sessionDocumentId)
 %   never copies preBody.depends_on wholesale, so this transient stamp does not
 %   reach the emitted policy -- it is read and discarded.
 b = body;
-dep = struct('name', 'session_document_id', 'value', sessionDocumentId);
-if ~isfield(b, 'depends_on') || isempty(b.depends_on)
-    b.depends_on = dep;
+if ~isfield(b, 'depends_on') || isempty(b.depends_on) || ~isstruct(b.depends_on)
+    b.depends_on = struct('name', 'session_document_id', 'value', sessionDocumentId);
     return;
 end
+% APPEND, preserving every existing edge INTACT. The existing deps came through
+% did2.convert.universalRenames, which spells an edge target `document_id`, not
+% `value` -- so the new dep must carry the SAME fields as the existing struct
+% array (else the `(end+1)` append errors on a field mismatch AND the syncrule_id
+% targets, stored in `document_id`, would be lost). jSessionDocId reads
+% document_id / value / id in that order, so writing the id into whichever target
+% field the array already uses is sufficient; the value field is filled too when
+% both exist.
 d = b.depends_on;
-if isstruct(d)
-    % Normalise to a 1xN struct array with the SAME fields, then append.
-    if ~isfield(d, 'name');  [d.name]  = deal(''); end
-    if ~isfield(d, 'value'); [d.value] = deal(''); end
-    keep = struct('name', {d.name}, 'value', {d.value});
-    b.depends_on = [keep, dep];
-else
-    b.depends_on = dep;   % a malformed edge list is replaced by the one we need
+fn = fieldnames(d);
+newdep = struct();
+for i = 1:numel(fn)
+    newdep.(fn{i}) = '';
 end
+newdep.name = 'session_document_id';
+if any(strcmp(fn, 'document_id'))
+    newdep.document_id = sessionDocumentId;
+end
+if any(strcmp(fn, 'value'))
+    newdep.value = sessionDocumentId;
+end
+d(end+1) = newdep;
+b.depends_on = d;
 end
 
 function cn = classNameOf(b)

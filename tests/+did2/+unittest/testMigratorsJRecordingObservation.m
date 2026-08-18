@@ -468,7 +468,13 @@ if ~isempty(out.quarantine)
 end
 verifyNotEmpty(testCase, firstOfClass(out, 'time_observation'), ...
     'the validating run emitted no time_observation, so it proved nothing');
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
+% ZERO voltage_observation, not one. A derived `spikes`/`ndi.neuron` element
+% takes the spike-train branch (element.m:146), NOT the direct-probe branch
+% that mints voltage/current -- so the ONLY observation here is the time one
+% asserted above. The `1` this line carried was copy-paste residue from the
+% extracellular validating test it was cloned from; the migrator emits 0 and
+% testDerivedSpikesBecomesATimeObservationOfTheNeuronItself proves why.
+verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 0);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);   % was 1
 verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);
 end
