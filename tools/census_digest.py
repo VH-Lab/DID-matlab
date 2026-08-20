@@ -303,6 +303,24 @@ POST_PASSES = [
         # response_type, no responses.response_real, or an epoch string with no
         # epoch document. A DECLINED fold keeps the passthrough it has today.
         ("response_refused_migrator_declined", "  migrator declined (its own guards)"),
+        # THE THIRD ARMED FOLD (#60, 2026-08-20) -- `syncrule_mapping`. Its own
+        # block, same reasoning as the two above: the three folds refuse for the
+        # same REASONS over different DENOMINATORS, so one shared row would make
+        # "2,484 sync mappings had no epoch document" indistinguishable from the
+        # metadata and response counts. This fold stamps TWO endpoint edges
+        # (epoch_id_1 / epoch_id_2) per source, and its migrator's branch 1
+        # emits clock_alignment + two relative_reference bodies.
+        ("syncrule_fold_vacuous", "syncrule_mapping fold VACUOUS (no sources)"),
+        ("syncrule_seen", "syncrule_mapping seen"),
+        ("syncrule_already_folded", "  already clock_alignment"),
+        ("syncrule_edges_stamped", "  epoch_id_1/epoch_id_2 stamped"),
+        ("syncrule_folds_emitted", "FOLDED to clock_alignment"),
+        ("syncrule_folds_withheld", "  WITHHELD (fold did not validate)"),
+        ("syncrule_refused_total", "REFUSED (total)"),
+        ("syncrule_refused_no_epoch_string", "  no endpoint epoch string"),
+        ("syncrule_refused_no_epoch_document", "  no epoch document for an endpoint"),
+        ("syncrule_refused_migrator_declined", "  migrator declined (no polynomial / no syncgraph_id)"),
+        ("syncrule_refused_unsafe_output", "  unsafe output (id not preserved / undeclared edge)"),
         ("mint_quarantined", "QUARANTINED by the mint"),
         # THE ARMING PATH, added 2026-08-12 with the 1 -> N rebuild. The old
         # arming unwrapped a 1-cell and treated anything else as a failure,
