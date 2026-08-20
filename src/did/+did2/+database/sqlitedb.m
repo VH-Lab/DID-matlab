@@ -114,8 +114,25 @@ classdef sqlitedb < handle
                 opts.Validate (1,1) logical = true
             end
             list = obj.normaliseDocList(docOrList);
-            for k = 1:numel(list)
-                obj.addOne(list{k}, opts.Validate);
+            if isempty(list)
+                return;
+            end
+            % BATCH THE WHOLE LIST IN ONE TRANSACTION. Previously this looped
+            % addOne, and each addOne committed on its own -- one fsync per
+            % document. That dominated large writes: a ~16k-document migration
+            % issued ~16k commits (measured ~450 s, ~393k mksqlite statements).
+            % One transaction issues a single commit. This makes a batch add
+            % all-or-nothing on error, which is the standard and safer semantics
+            % for a bulk insert (no partially-written set is left behind).
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                for k = 1:numel(list)
+                    obj.insertRows(list{k}, opts.Validate);
+                end
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
             end
         end
 
@@ -733,6 +750,25 @@ classdef sqlitedb < handle
         end
 
         function addOne(obj, doc, doValidate)
+            % Single-document insert in its own transaction. Bulk inserts go
+            % through add(), which wraps the whole list in ONE transaction and
+            % calls insertRows directly, so this per-document commit is not on
+            % the batch write path.
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                obj.insertRows(doc, doValidate);
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
+        end
+
+        function insertRows(obj, doc, doValidate)
+            % The row-level inserts for one document, WITHOUT any transaction
+            % control -- the caller owns BEGIN/COMMIT (addOne for a single doc,
+            % add for a batch). All statements for one document still go in
+            % together, so a batch transaction stays consistent per document.
             if doValidate
                 doc.validate('SchemaCache', obj.resolveSchemaCache());
             end
@@ -745,36 +781,28 @@ classdef sqlitedb < handle
             bodyText = doc.toJSON();
             bodyHash = did2.database.sqlitedb.computeHash(bodyText);
 
-            mksqlite(obj.dbid, 'BEGIN');
-            try
+            mksqlite(obj.dbid, ...
+                ['INSERT INTO documents(id, classname, class_version, ' ...
+                 'session_id, datestamp, body, body_hash) ' ...
+                 'VALUES(?, ?, ?, ?, ?, ?, ?)'], ...
+                id, classname, classVersion, sessionId, datestamp, ...
+                bodyText, bodyHash);
+
+            chain = obj.classChainFromStruct(s);
+            for k = 1:numel(chain)
                 mksqlite(obj.dbid, ...
-                    ['INSERT INTO documents(id, classname, class_version, ' ...
-                     'session_id, datestamp, body, body_hash) ' ...
-                     'VALUES(?, ?, ?, ?, ?, ?, ?)'], ...
-                    id, classname, classVersion, sessionId, datestamp, ...
-                    bodyText, bodyHash);
-
-                chain = obj.classChainFromStruct(s);
-                for k = 1:numel(chain)
-                    mksqlite(obj.dbid, ...
-                        'INSERT INTO superclasses(doc_id, classname) VALUES(?, ?)', ...
-                        id, chain{k});
-                end
-
-                deps = obj.dependsOnEntries(s);
-                for k = 1:numel(deps)
-                    mksqlite(obj.dbid, ...
-                        'INSERT INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
-                        id, deps{k}.name, deps{k}.document_id);
-                end
-
-                obj.insertSidecarRowsFromStruct(id, s);
-
-                mksqlite(obj.dbid, 'COMMIT');
-            catch err
-                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
-                rethrow(err);
+                    'INSERT INTO superclasses(doc_id, classname) VALUES(?, ?)', ...
+                    id, chain{k});
             end
+
+            deps = obj.dependsOnEntries(s);
+            for k = 1:numel(deps)
+                mksqlite(obj.dbid, ...
+                    'INSERT INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
+                    id, deps{k}.name, deps{k}.document_id);
+            end
+
+            obj.insertSidecarRowsFromStruct(id, s);
         end
 
         function cache = resolveSchemaCache(obj)
