@@ -51,6 +51,8 @@ verifyTrue(testCase, contains(src, ...
     'the metadata row left defaultArmingMigrators');
 verifyTrue(testCase, contains(src, '''stimulus_response_scalar'', ...'), ...
     'the stimulus_response_scalar row is not in defaultArmingMigrators');
+verifyTrue(testCase, contains(src, '''syncrule_mapping'', ...'), ...
+    'the syncrule_mapping row is not in defaultArmingMigrators');
 end
 
 function testTheHeaderStatesTheRowCountItActuallyCarries(testCase)
@@ -66,8 +68,12 @@ function testTheHeaderStatesTheRowCountItActuallyCarries(testCase)
 % withdraws it, never silently deleted (the HISTORICAL-BUILD-CLAIM convention).
 % The old wording is therefore still in the file, correctly, and what must hold
 % is that the CURRENT claim leads.
+% UPDATED for the THIRD row (syncrule_mapping, #60). The count moved TWO -> THREE
+% and the header now leads with 'THREE ROWS.'; the superseded 'TWO ROWS' is kept
+% inside the note that withdrew it (HISTORICAL-BUILD-CLAIM), so what must hold is
+% that the CURRENT count leads.
 src = epochMintSource();
-verifyTrue(testCase, contains(src, 'TWO ROWS.'), ...
+verifyTrue(testCase, contains(src, 'THREE ROWS.'), ...
     'defaultArmingMigrators does not state the row count it carries');
 end
 
@@ -79,9 +85,13 @@ function testTheTwoArmedFoldsShareARefusalVocabulary(testCase)
 % while their counter names correspond suffix-for-suffix. A refusal added to
 % one and not the other is a silent hole: the fold refuses, and the number
 % lands nowhere.
+% EXTENDED to the THIRD fold (syncrule_mapping, #60). The invariant was the two
+% armed folds sharing a refusal vocabulary; there are now three, and all three
+% must agree suffix-for-suffix or a refusal added to one lands nowhere in another.
 src = epochMintSource();
 metaSuffixes = counterSuffixes(src, 'metadata_refused_');
 respSuffixes = counterSuffixes(src, 'response_refused_');
+syncSuffixes = counterSuffixes(src, 'syncrule_refused_');
 
 verifyNotEmpty(testCase, metaSuffixes, ...
     'no metadata_refused_* counters found -- the scan is broken, and a broken scan makes this test vacuous');
@@ -90,6 +100,11 @@ verifyEqual(testCase, sort(respSuffixes), sort(metaSuffixes), sprintf( ...
      '  metadata_refused_*: %s\n' ...
      '  response_refused_*: %s'], ...
     strjoin(sort(metaSuffixes), ', '), strjoin(sort(respSuffixes), ', ')));
+verifyEqual(testCase, sort(syncSuffixes), sort(metaSuffixes), sprintf( ...
+    ['the syncrule fold has drifted from the other two.\n' ...
+     '  metadata_refused_*: %s\n' ...
+     '  syncrule_refused_*: %s'], ...
+    strjoin(sort(metaSuffixes), ', '), strjoin(sort(syncSuffixes), ', ')));
 end
 
 function testTheTwoArmedFoldsShareAProgressVocabulary(testCase)
@@ -106,20 +121,27 @@ for want = {'seen', 'already_folded', 'edges_stamped', ...
         sprintf('the metadata fold has no `%s` counter', w));
     verifyTrue(testCase, contains(src, ['response_scalar_' w]), ...
         sprintf('the response fold has no `%s` counter', w));
+    verifyTrue(testCase, contains(src, ['syncrule_' w]), ...
+        sprintf('the syncrule fold has no `%s` counter', w));
 end
 end
 
-function testBothFoldKindsSetBothFlags(testCase)
-% `armings` is a struct set and the carry loop asks every entry for BOTH flags.
-% An entry missing one makes that read an ERROR, not a false -- so the two
-% assignments must appear the same number of times as each other.
+function testEveryFoldKindSetsEveryFlag(testCase)
+% `armings` is a struct set and the carry loop asks every entry for ALL flags.
+% An entry missing one makes that read an ERROR, not a false -- so every flag
+% assignment must appear once per arming block. There are now THREE blocks
+% (metadata, response, syncrule), each setting all three flags, so each flag
+% name appears exactly three times.
 src = epochMintSource();
 nMeta = numel(strfind(src, 'armEntry.is_metadata_fold ='));
 nResp = numel(strfind(src, 'armEntry.is_response_fold ='));
-verifyEqual(testCase, nMeta, 2, ...
-    'expected both arming blocks to set is_metadata_fold');
-verifyEqual(testCase, nResp, 2, ...
-    'expected both arming blocks to set is_response_fold');
+nSync = numel(strfind(src, 'armEntry.is_syncrule_fold ='));
+verifyEqual(testCase, nMeta, 3, ...
+    'expected all three arming blocks to set is_metadata_fold');
+verifyEqual(testCase, nResp, 3, ...
+    'expected all three arming blocks to set is_response_fold');
+verifyEqual(testCase, nSync, 3, ...
+    'expected all three arming blocks to set is_syncrule_fold');
 end
 
 function testEveryFoldFlagHasACarryReader(testCase)
@@ -130,10 +152,14 @@ function testEveryFoldFlagHasACarryReader(testCase)
 src = epochMintSource();
 verifyTrue(testCase, contains(src, 'response_scalar_folds_emitted'), ...
     'the response fold has no emitted reader in the carry loop');
+verifyTrue(testCase, contains(src, 'syncrule_folds_emitted'), ...
+    'the syncrule fold has no emitted reader in the carry loop');
 verifyTrue(testCase, contains(src, 'if armings{a}.is_metadata_fold'), ...
     'the carry loop no longer branches on is_metadata_fold');
 verifyTrue(testCase, contains(src, 'elseif armings{a}.is_response_fold'), ...
     'the carry loop does not read is_response_fold');
+verifyTrue(testCase, contains(src, 'elseif armings{a}.is_syncrule_fold'), ...
+    'the carry loop does not read is_syncrule_fold');
 end
 
 % ===================== the string source, which is not the mixin =======

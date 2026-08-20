@@ -170,6 +170,16 @@ end
 % untouched: read snake-first with a camelCase fallback, as syncrule_mapping.m
 % and every other +migrators_j nested read does.
 clockName = jGetCharAny(node, {'epoch_clock', 'epochClock'});
+% BRANCH 2 of syncrule_mapping (reshapeEpochNode) moves `epoch_clock` UNDER
+% `epochnode_a.time_reference`, and the epochMint syncrule arming re-runs this
+% migrator on that reshaped body -- so `epoch_clock` is one level down there.
+% Fall back to it when the flat read came up empty. `t0_t1` and `objectname`
+% stay at NODE level in the reshape, so their reads are unchanged; this is the
+% only node field the reshape moves that referenceFor reads.
+if isempty(clockName) && isfield(node, 'time_reference') ...
+        && isstruct(node.time_reference) && isscalar(node.time_reference)
+    clockName = jGetCharAny(node.time_reference, {'epoch_clock', 'epochClock'});
+end
 if isempty(clockName) || strcmp(clockName, 'no_time')
     return;                                  % NO TIMES => NO REFERENCE
 end

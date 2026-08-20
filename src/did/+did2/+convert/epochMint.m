@@ -22,7 +22,7 @@ function [result, report] = epochMint(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested,
-%       acquisition_epoch, stimulus_response_scalar
+%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping
 %   BATCH-PASS-EMITS: epochid -> document: epoch
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
@@ -39,6 +39,12 @@ function [result, report] = epochMint(result, options)
 %       which is the failure the `-> nothing` form exists to prevent, and is
 %       why arming a migrator is NOT the same shape as `acquisition_epoch`
 %       below, where this pass mints the document itself.
+%   BATCH-PASS-EMITS: syncrule_mapping -> nothing: SAME REASON, the third time.
+%       The third armed loop stamps `epoch_id_1` / `epoch_id_2` onto the
+%       passed-through mapping and re-runs +migrators_j/syncrule_mapping; the
+%       `clock_alignment` and its two `relative_reference` endpoints are minted
+%       THERE, in +migrators_j, and credited to that migrator. Declaring them
+%       here would count one emission twice.
 %
 %   `acquisition_epoch` ADDED 2026-08-17, and it was a REAL OMISSION, not a
 %   tidy-up. The #60 OPTION A loop below reads `acquisition_epoch` bodies (see
@@ -485,6 +491,29 @@ report = struct( ...
     'response_refused_unsafe_output',      0, ...
     'response_refused_total',              0, ...
     'response_fold_vacuous',               true, ...
+    ... % THE THIRD ARMED FOLD (#60) -- `syncrule_mapping`. A PARALLEL COUNTER
+    ... % SET, name-for-name with the other two, for the same reason: the three
+    ... % folds refuse for the same REASONS over different DENOMINATORS, and one
+    ... % shared counter would make "273 responses had no epoch document"
+    ... % indistinguishable from "2,484 sync mappings did". The vocabulary is
+    ... % identical so the three can be read side by side;
+    ... % tests/+did2/+unittest/testEpochMintResponseArming.m asserts that
+    ... % correspondence rather than trusting it to survive editing. This fold
+    ... % stamps TWO endpoint edges (epoch_id_1 / epoch_id_2) per source, one per
+    ... % epochnode, and its migrator's branch 1 emits clock_alignment + two
+    ... % relative_reference bodies; `edges_stamped` counts the source documents
+    ... % whose BOTH endpoints resolved, not the individual edges.
+    'syncrule_seen',                       0, ...
+    'syncrule_already_folded',             0, ...
+    'syncrule_edges_stamped',              0, ...
+    'syncrule_folds_emitted',              0, ...
+    'syncrule_folds_withheld',             0, ...
+    'syncrule_refused_no_epoch_string',    0, ...
+    'syncrule_refused_no_epoch_document',  0, ...
+    'syncrule_refused_migrator_declined',  0, ...
+    'syncrule_refused_unsafe_output',      0, ...
+    'syncrule_refused_total',              0, ...
+    'syncrule_fold_vacuous',               true, ...
     'mint_quarantined',               0, ...
     'ran',                            false, ...
     'epoch_index', struct('session_id', {}, 'local_identifier', {}, ...
@@ -1080,6 +1109,7 @@ for k = 1:n
     % field by the carry loop, and a struct set whose members disagree about
     % which fields exist makes the read an ERROR rather than a false.
     armEntry.is_response_fold = false;
+    armEntry.is_syncrule_fold = false;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
@@ -1224,6 +1254,148 @@ for k = 1:n
     % than a false. Set explicitly on both sides.
     armEntry.is_metadata_fold = false;
     armEntry.is_response_fold = true;
+    armEntry.is_syncrule_fold = false;
+    armings{end+1} = armEntry;                      %#ok<AGROW>
+    changedIdx(end+1)       = k;                    %#ok<AGROW>
+    changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
+    changedArming(end+1)    = numel(armings);       %#ok<AGROW>
+end
+% ===========================================================================
+% THE THIRD ARMED FOLD -- `syncrule_mapping` (#60, the clock-alignment endpoints)
+% ===========================================================================
+% WHY A SEPARATE LOOP, AGAIN. Same reasoning as the response block above -- the
+% table generalises, the loop does not -- and this fold differs on FOUR things
+% AND a fifth the other two do not have:
+%
+%     source class    stimulus_response_scalar   vs syncrule_mapping
+%     epoch string    element_epochid (ONE)      vs TWO, one per endpoint node
+%     primary class   harmonic_component_calculation vs clock_alignment
+%     counters        response_*                 vs syncrule_*
+%     edges stamped   ONE (epoch_id)             vs TWO (epoch_id_1, epoch_id_2)
+%
+% THE TWO ENDPOINTS. A did_v1 syncrule_mapping relates the clocks of TWO epochs
+% (epochnode_a / epochnode_b). Branch 1 of its migrator is gated on BOTH endpoint
+% epoch documents existing (syncrule_mapping.m/epochDocIds reads `epoch_id_1` and
+% `epoch_id_2`), so this loop must resolve two (session, string) pairs and stamp
+% two edges. Either endpoint unresolved => no fold, for the same reason the other
+% folds refuse a single missing epoch: relative_reference.relative_to is REQUIRED,
+% and a clock_alignment naming a reference whose referent is empty is the
+% invented-empty-edge pattern the sync cluster's sign-off REMOVED (the phantom
+% `epochid`, 5,316 documents, 100% empty).
+%
+% THE EPOCH STRINGS ARE THE ENDPOINTS' OWN, and they are NOT minted by this
+% document. did2.validate.epochStrings returns the syncrule endpoints in its
+% DECLINED bucket, not HITS, so the mint loop above never made an epoch from
+% them; the endpoint epochs exist only because the element_epoch / ingested
+% documents that share those strings minted them. If nothing else in the batch
+% carried the string, `epochIdByKey` has no entry and this loop refuses -- which
+% is correct: there is no epoch to anchor to.
+for k = 1:n
+    if strcmp(rows(k).class_name, 'clock_alignment')
+        % A re-run -- find-or-create, as the two folds above. The armed branch
+        % emitted a clock_alignment last time; do not re-fold it.
+        report.syncrule_already_folded = report.syncrule_already_folded + 1;
+        continue;
+    end
+    if ~strcmp(rows(k).class_name, 'syncrule_mapping'); continue; end
+    report.syncrule_seen = report.syncrule_seen + 1;
+    % BOTH endpoint strings, read off the (possibly reshaped) passthrough body.
+    [esA, esB] = syncEndpointEpochStrings(bodies{k});
+    if isempty(esA) || isempty(esB)
+        report.syncrule_refused_no_epoch_string = ...
+            report.syncrule_refused_no_epoch_string + 1;
+        continue;
+    end
+    % SAME session key the mint used: rows(k).session_id (this document's
+    % base.session_id), paired with each endpoint's epoch string.
+    keyA = pairKey(rows(k).session_id, esA);
+    keyB = pairKey(rows(k).session_id, esB);
+    if ~isKey(epochIdByKey, keyA) || ~isKey(epochIdByKey, keyB)
+        report.syncrule_refused_no_epoch_document = ...
+            report.syncrule_refused_no_epoch_document + 1;
+        continue;
+    end
+    b = setDep(bodies{k}, 'epoch_id_1', epochIdByKey(keyA));
+    b = setDep(b, 'epoch_id_2', epochIdByKey(keyB));
+    report.syncrule_edges_stamped = report.syncrule_edges_stamped + 1;
+    migrator = armingMigratorFor(armingMigrators, 'syncrule_mapping');
+    offered = normaliseArmingOutput(migrator(b));
+    nOffered = numel(offered);
+    report.arming_calls          = report.arming_calls + 1;
+    report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
+    report.arming_extra_bodies_offered = ...
+        report.arming_extra_bodies_offered + max(0, nOffered - 1);
+    if nOffered > report.arming_max_bodies_per_call
+        report.arming_max_bodies_per_call = nOffered;
+    end
+    if nOffered > 1
+        report.arming_calls_returning_multiple = ...
+            report.arming_calls_returning_multiple + 1;
+    end
+    % Primary is `clock_alignment`: jClockAlignmentBodies preserves base.id from
+    % the source (align.base.id <- preBody.base.id), so id-preservation holds and
+    % the syncgraph_id / syncrule_id edges into it still resolve.
+    [safe, why, unchecked] = armingIsSafe(offered, ...
+        'clock_alignment', rows(k).doc_id, ...
+        checkEdgeDeclaration, edgeIndex, edgeMemo);
+    report.arming_edge_declaration_unchecked = ...
+        report.arming_edge_declaration_unchecked + unchecked;
+    if ~safe
+        switch why
+            case 'declined'
+                % The migrator's OTHER guards fired -- no polynomial, a 'no_time'
+                % clock, a non-finite extent, or a missing syncgraph_id /
+                % syncrule_id -- and branch 1 returned {} so branch 2 handed back
+                % the passthrough (class syncrule_mapping, not clock_alignment).
+                % It is the authority; this loop only supplies the epochs. The
+                % stamped edges are dropped with the body, so the passthrough is
+                % byte-identical to no-op.
+                report.syncrule_refused_migrator_declined = ...
+                    report.syncrule_refused_migrator_declined + 1;
+                report.arming_bodies_dropped_declined = ...
+                    report.arming_bodies_dropped_declined + nOffered;
+            case 'id_not_preserved'
+                report.syncrule_refused_unsafe_output = ...
+                    report.syncrule_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_id_not_preserved = ...
+                    report.arming_bodies_dropped_id_not_preserved + nOffered;
+            case 'undeclared_edge'
+                report.syncrule_refused_unsafe_output = ...
+                    report.syncrule_refused_unsafe_output + 1;
+                report.arming_bodies_dropped_undeclared_edge = ...
+                    report.arming_bodies_dropped_undeclared_edge + nOffered;
+            otherwise
+                error('did2:convert:epochMint:unknownRefusal', ...
+                    ['armingIsSafe returned refusal "%s", which no counter ' ...
+                     'names. Add the counter; do not widen an existing ' ...
+                     'one.'], why);
+        end
+        % SAME REASON AS THE OTHER TWO BLOCKS: a refusal `continue`s before the
+        % `armings{end+1}` append, so without this line a refused fold would be
+        % counted in `syncrule_refused_*` and then vanish from the
+        % emitted/withheld pair that `syncrule_seen` is reconciled against.
+        report.syncrule_folds_withheld = report.syncrule_folds_withheld + 1;
+        continue;
+    end
+    bodies{k} = offered{1};
+    extraIds  = cell(1, nOffered - 1);
+    for e = 2:nOffered
+        extraBodies{end+1} = offered{e};        %#ok<AGROW>
+        extraIds{e-1}      = baseIdOf(offered{e});
+    end
+    armEntry = struct();
+    armEntry.index            = k;
+    armEntry.primary_id       = baseIdOf(offered{1});
+    armEntry.extra_ids        = extraIds;
+    armEntry.body_count       = nOffered;
+    % ENDPOINT A represents "an armed epoch is in the batch" for the carry loop's
+    % epoch-lost guard. One epoch_id per arming entry, and endpoint A is chosen
+    % arbitrarily: if endpoint B's epoch quarantined the run already fails the
+    % 0-quarantine gate, exactly as the existing single-epoch tolerance assumes.
+    armEntry.epoch_id         = epochIdByKey(keyA);
+    armEntry.is_metadata_fold = false;
+    armEntry.is_response_fold = false;
+    armEntry.is_syncrule_fold = true;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
@@ -1241,6 +1413,11 @@ report.response_refused_total = report.response_refused_no_epoch_string ...
     + report.response_refused_migrator_declined ...
     + report.response_refused_unsafe_output;
 report.response_fold_vacuous = (report.response_scalar_seen == 0);
+report.syncrule_refused_total = report.syncrule_refused_no_epoch_string ...
+    + report.syncrule_refused_no_epoch_document ...
+    + report.syncrule_refused_migrator_declined ...
+    + report.syncrule_refused_unsafe_output;
+report.syncrule_fold_vacuous = (report.syncrule_seen == 0);
 
 report.epochs_minted = numel(minted);
 report.epoch_index = indexRows;
@@ -1401,8 +1578,19 @@ for a = 1:numel(armings)
             report.response_scalar_folds_withheld = ...
                 report.response_scalar_folds_withheld + 1;
         end
+    elseif armings{a}.is_syncrule_fold
+        % THE SAME READ FOR THE THIRD FOLD. A carried call means the
+        % clock_alignment (and its two relative_reference endpoints) reached the
+        % batch; a withheld one means the syncrule_mapping passthrough stayed.
+        if armingCarried(a)
+            report.syncrule_folds_emitted = ...
+                report.syncrule_folds_emitted + 1;
+        else
+            report.syncrule_folds_withheld = ...
+                report.syncrule_folds_withheld + 1;
+        end
     end
-    % NO `else` BRANCH, DELIBERATELY: a third fold kind added without a reader
+    % NO `else` BRANCH, DELIBERATELY: a FOURTH fold kind added without a reader
     % here would be silently uncounted, so the invariant is asserted in
     % testEpochMintResponseArming rather than guessed at with a catch-all that
     % would attribute it to whichever counter came last.
@@ -1489,11 +1677,24 @@ end
 
 function tbl = defaultArmingMigrators()
 %DEFAULTARMINGMIGRATORS SOURCE CLASS -> the migrator this pass re-runs armed.
-%   TWO ROWS. The paragraph below said "ONE ROW TODAY, and the reason there is
-%   only one is a SCHEMA fact" and listed `stimulus_response_scalar` among the
-%   classes that could not be armed. THAT REASONING WAS SOUND FOR THE TWO
-%   daqreader ARMS AND WRONG FOR THIS ONE, and the distinction is worth stating
-%   because it is not visible from the schema alone.
+%   THREE ROWS. It said TWO ROWS until `syncrule_mapping` was armed (#60, the
+%   clock-alignment endpoints), and read ONE ROW before that -- each superseded
+%   count kept in the note that withdrew it (HISTORICAL-BUILD-CLAIM). An earlier
+%   paragraph said "ONE ROW TODAY, and the reason there is only one is a SCHEMA
+%   fact" and listed `stimulus_response_scalar` among the classes that could not
+%   be armed. THAT REASONING WAS SOUND FOR THE TWO daqreader ARMS AND WRONG FOR
+%   THIS ONE, and the distinction is worth stating because it is not visible
+%   from the schema alone.
+%
+%   THE `syncrule_mapping` ROW is the same shape as `stimulus_response_scalar`:
+%   its armed branch 1 (jClockAlignmentBodies) emits a `clock_alignment` plus two
+%   `relative_reference` bodies whose edges are set BY NAME -- it never copies
+%   `preBody.depends_on`, so the transient `epoch_id_1` / `epoch_id_2` this pass
+%   stamps CANNOT reach an emitted body, and `armingIsSafe`'s `undeclared_edge`
+%   refusal therefore cannot fire on a FOLDED document. It DOES fire on the
+%   branch-2 passthrough (which returns the stamped body), leaving it exactly as
+%   it is today. Unlike the other folds this one stamps TWO endpoint edges (one
+%   per epochnode) rather than one, because a mapping anchors two epochs.
 %
 %   WHAT THE SCHEMA SAYS, re-derived 2026-08-17 over the built tree (249 JSON
 %   files, 243 with a document_class, deps read by JSON path rather than by
@@ -1525,7 +1726,9 @@ tbl = struct( ...
     'daqmetadatareader_epochdata_ingested', ...
         @did2.convert.migrators_j.daqmetadatareader_epochdata_ingested, ...
     'stimulus_response_scalar', ...
-        @did2.convert.migrators_j.stimulus_response_scalar);
+        @did2.convert.migrators_j.stimulus_response_scalar, ...
+    'syncrule_mapping', ...
+        @did2.convert.migrators_j.syncrule_mapping);
 end
 
 function fcn = armingMigratorFor(tbl, sourceClass)
@@ -1715,6 +1918,53 @@ for k = 1:numel(sources)
         return;
     end
 end
+end
+
+function [esA, esB] = syncEndpointEpochStrings(body)
+%SYNCENDPOINTEPOCHSTRINGS The two endpoint epoch-id strings of a syncrule_mapping.
+%   Reads them off a (possibly reshaped) `syncrule_mapping` body. did_v1 stores
+%   each endpoint's id flat at `epochnode_a.epoch_id`; +migrators_j/syncrule_mapping.m's
+%   #58 passthrough reshape nests it under `epochnode_a.time_reference.epoch_id`.
+%   Try the reshaped location first, then the flat one, with the camelCase
+%   fallbacks the nested-read rule calls for (universalRenames snake_cases only
+%   the IMMEDIATE fields of a property block, so these deeper fields keep raw v1
+%   casing on a body that never went through it). Returns ('', '') when the block
+%   or a node is absent. Same declined-source read as did2.validate.epochStrings,
+%   split per-endpoint because the mapping's own gate needs one answer per node.
+esA = '';
+esB = '';
+if ~isstruct(body) || ~isscalar(body) ...
+        || ~isfield(body, 'syncrule_mapping') || ~isstruct(body.syncrule_mapping) ...
+        || ~isscalar(body.syncrule_mapping)
+    return;
+end
+sm = body.syncrule_mapping;
+esA = endpointEpochString(sm, {'epochnode_a', 'epochNodeA'});
+esB = endpointEpochString(sm, {'epochnode_b', 'epochNodeB'});
+end
+
+function es = endpointEpochString(sm, nodeNames)
+%ENDPOINTEPOCHSTRING One endpoint's epoch-id string, '' if the node is absent.
+es = '';
+node = [];
+for j = 1:numel(nodeNames)
+    if isfield(sm, nodeNames{j}) && isstruct(sm.(nodeNames{j})) ...
+            && isscalar(sm.(nodeNames{j}))
+        node = sm.(nodeNames{j});
+        break;
+    end
+end
+if isempty(node); return; end
+% the #58 passthrough reshape nests it one level down, under time_reference
+for trName = {'time_reference', 'timeReference'}
+    if isfield(node, trName{1}) && isstruct(node.(trName{1})) ...
+            && isscalar(node.(trName{1}))
+        es = charField(node.(trName{1}), {'epoch_id', 'epochId', 'epochID', 'epochid'});
+        if ~isempty(es); return; end
+    end
+end
+% a raw did_v1 (unreshaped) body carries it flat on the node
+es = charField(node, {'epoch_id', 'epochId', 'epochID', 'epochid'});
 end
 
 function rowsOut = perSourceCounts(epochValues, epochSources)
