@@ -321,6 +321,55 @@ POST_PASSES = [
         ("syncrule_refused_no_epoch_document", "  no epoch document for an endpoint"),
         ("syncrule_refused_migrator_declined", "  migrator declined (no polynomial / no syncgraph_id)"),
         ("syncrule_refused_unsafe_output", "  unsafe output (id not preserved / undeclared edge)"),
+        # ================================================================
+        # #2 "MEASURE FIRST" (team 2026-08-20) -- REPORT-ONLY, no fold.
+        # Two numbers the epochprobemap-decomposition decision (#60 option B)
+        # needs, taken off the batch epochMint already reads and changing no
+        # document. The per-count histogram (probemap_rows_by_count) is a struct
+        # array, not a row -- rendered by _render_probemap_measurement below and
+        # listed in test_batch_pass_wiring.NOT_RENDERED_YET, like strings_by_source.
+        #
+        # MEASUREMENT 1 -- PROBES-PER-EPOCH. `probemap_vacuous` LEADS for the
+        # reason every _vacuous flag here does: a corpus with no
+        # epochfiles_ingested makes every number below a zero over a zero
+        # denominator. The shape partition (empty / char / non-char) is printed
+        # so a struct-shaped probemap -- which cannot be counted for rows -- is a
+        # number rather than a silent omission from the totals.
+        ("probemap_vacuous", "probemap fan-out: NO epochfiles_ingested IN THIS BATCH"),
+        ("probemap_documents_seen", "epochfiles_ingested seen (denominator)"),
+        ("probemap_nonempty", "  with a non-empty epochprobemap"),
+        ("probemap_empty", "  with an empty/absent epochprobemap"),
+        ("probemap_char_shape", "  epochprobemap is a char (serialized)"),
+        ("probemap_struct_shape", "  epochprobemap is a struct/non-char (NOT row-counted)"),
+        ("probemap_unrecognized_header", "  char without the 5-column header (anomaly)"),
+        ("probemap_probe_rows_total", "PROBE ROWS total (the 1->N fan-out)"),
+        ("probemap_docs_with_rows", "  documents with >=1 probe row"),
+        ("probemap_docs_zero_rows", "  documents with a header but 0 rows"),
+        ("probemap_probe_rows_min", "  min probe rows per document"),
+        ("probemap_probe_rows_max", "  max probe rows per document"),
+        # MEASUREMENT 2 -- #30-OBSERVATION OVERLAP. `overlap_vacuous` LEADS.
+        # `recording_obs_epoch_scoped` is the number the decision turns on: a #30
+        # observation carries a SESSION anchor, never an epoch one, so it is 0 by
+        # construction and there is nothing at the per-epoch level to duplicate.
+        # It is MEASURED (by resolving each observation's time_reference_1), not
+        # assumed, so a future epoch-scoped observation would move it.
+        ("overlap_vacuous", "#30 overlap: NO epochfiles_ingested OR NO #30 obs"),
+        ("recording_obs_seen", "#30 recording-observations seen (denominator)"),
+        ("recording_obs_session_scoped", "  session-scoped anchor"),
+        ("recording_obs_epoch_scoped", "  EPOCH-scoped anchor (0 => nothing to duplicate)"),
+        ("recording_obs_anchor_unresolved", "  time_reference_1 unresolved in batch"),
+        # The (session, subject) join, with its own reliability denominator. The
+        # probemap's subjectstring is a v1 subject local id; matching it to a
+        # migrated subject document's local_identifier can fail on real data, so
+        # matched/unmatched is printed and covered/uncovered is over the MATCHED
+        # strings only. `unmatched` > 0 means the subject-level overlap could not
+        # be computed for those strings -- named, not hidden in a 0.
+        ("probemap_subject_attributions", "probemap subject attributions (distinct/doc)"),
+        ("probemap_distinct_subject_strings", "  distinct subjectstrings"),
+        ("probemap_subject_strings_matched", "    matched to a subject document"),
+        ("probemap_subject_strings_unmatched", "    UNMATCHED (join not possible)"),
+        ("probemap_epoch_subject_covered", "  (session,subject) already covered by a #30 obs"),
+        ("probemap_epoch_subject_uncovered", "  (session,subject) NOT covered by a #30 obs"),
         ("mint_quarantined", "QUARANTINED by the mint"),
         # THE ARMING PATH, added 2026-08-12 with the 1 -> N rebuild. The old
         # arming unwrapped a 1-cell and treated anything else as a failure,
@@ -3249,6 +3298,68 @@ def _render_post_pass_epoch_population(name, pop, p, scope=""):
         p("          in EPOCH DOCUMENT POPULATIONS.")
 
 
+def _render_probemap_measurement(rep, p):
+    """The #2 "measure first" reading -- the two numbers, and what they decide.
+
+    REPORT-ONLY, like the pass rows above it. This block does not add a counter;
+    it renders the per-count histogram (a struct array the row loop cannot print)
+    and states the ONE conclusion the scalar rows already carry the evidence for:
+    a #30 recording-observation is session-scoped, so `recording_obs_epoch_scoped`
+    is 0 and a per-epoch probemap observation duplicates nothing that exists.
+
+    Nothing here is derived; every value is read off the epoch_mint report.
+    Absent fields (an older artifact) print nothing rather than a 0.
+    """
+    # An artifact that predates this instrument carries none of these fields;
+    # print nothing rather than a block of "(no probemap parsed)" noise.
+    if "probemap_documents_seen" not in rep and "recording_obs_seen" not in rep:
+        return
+    if rep.get("probemap_vacuous") is True and rep.get("overlap_vacuous") is True:
+        return
+    hist = rep.get("probemap_rows_by_count")
+    p("          -- #2 MEASURE FIRST (epochprobemap decomposition), REPORT-ONLY --")
+    total = _int_or_none(rep.get("probemap_probe_rows_total"))
+    docs = _int_or_none(rep.get("probemap_docs_with_rows"))
+    if total is not None and docs is not None:
+        mean = ("%.2f" % (total / docs)) if docs else "n/a"
+        p("          PROBES/EPOCH: %s probe row(s) over %s document(s) with "
+          "rows (mean %s)" % (total, docs, mean))
+    # The per-count histogram. A struct array decodes to a list of dicts (one
+    # row) or a single dict (one bin); normalise before iterating.
+    if isinstance(hist, dict):
+        hist = [hist]
+    if isinstance(hist, list) and hist:
+        p("          probe-row histogram (probe_rows -> documents):")
+        for row in hist:
+            if not isinstance(row, dict):
+                continue
+            p("          %14s probe(s):  %s document(s)"
+              % (row.get("probe_rows", "?"), row.get("documents", "?")))
+    elif not rep.get("probemap_vacuous"):
+        p("          probe-row histogram: (no char-shaped probemap parsed)")
+    # The overlap conclusion, stated from the measured epoch-scoped count.
+    ep = _int_or_none(rep.get("recording_obs_epoch_scoped"))
+    seen = _int_or_none(rep.get("recording_obs_seen"))
+    if ep is not None and seen is not None:
+        if seen == 0:
+            p("          #30 OVERLAP: no #30 recording-observation in this batch "
+              "-- overlap not computable here")
+        elif ep == 0:
+            p("          #30 OVERLAP: %d #30 observation(s), 0 EPOCH-scoped -- "
+              "a per-epoch probemap observation would NOT duplicate one "
+              "(#30 is session-scoped; per-epoch is the deferred second pass)"
+              % seen)
+        else:
+            p("          #30 OVERLAP: %d #30 observation(s), %d EPOCH-scoped -- "
+              "a per-epoch probemap observation COULD duplicate these; inspect"
+              % (seen, ep))
+    unmatched = _int_or_none(rep.get("probemap_subject_strings_unmatched"))
+    if unmatched:
+        p("          NOTE: %d probemap subjectstring(s) matched no subject "
+          "document -- the (session,subject) overlap is UNCOMPUTABLE for those"
+          % unmatched)
+
+
 def render_epoch_association(r, out):
     """Render one corpus's epoch-association block. Denominator first."""
     p = lambda s="": out.append(s)
@@ -4053,6 +4164,8 @@ def render_post_passes(r, out, chain=None):
         if name in ("epoch_mint", "valid_interval_decompose"):
             _render_post_pass_epoch_population(
                 name, _int_or_none(rep.get("documents_inspected")), p)
+        if name == "epoch_mint":
+            _render_probemap_measurement(rep, p)
         if name == "openminds_citations":
             _render_openminds_citations_reading(rep, p)
         if name == "response_parameters_fold":

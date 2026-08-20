@@ -842,6 +842,81 @@ class TestPostPassRendering(DigestCase):
         self.assertEqual(failed, [])
         self.assertIn("MALFORMED", text)
         self.assertIn("--- A ---", text)
+
+    # ---- #2 "measure first": probemap fan-out + #30 overlap render ----------
+
+    def _probemap(self, **over):
+        """A mint report carrying the #2 'measure first' instrument fields."""
+        rep = self._mint()
+        rep.update({
+            "probemap_vacuous": False,
+            "probemap_documents_seen": 3,
+            "probemap_nonempty": 3, "probemap_empty": 0,
+            "probemap_char_shape": 3, "probemap_struct_shape": 0,
+            "probemap_unrecognized_header": 0,
+            "probemap_probe_rows_total": 7,
+            "probemap_docs_with_rows": 3, "probemap_docs_zero_rows": 0,
+            "probemap_probe_rows_min": 1, "probemap_probe_rows_max": 3,
+            "probemap_rows_by_count": [
+                {"probe_rows": 1, "documents": 1},
+                {"probe_rows": 3, "documents": 2}],
+            "overlap_vacuous": False,
+            "recording_obs_seen": 4, "recording_obs_session_scoped": 4,
+            "recording_obs_epoch_scoped": 0,
+            "recording_obs_anchor_unresolved": 0,
+            "probemap_subject_attributions": 5,
+            "probemap_distinct_subject_strings": 3,
+            "probemap_subject_strings_matched": 2,
+            "probemap_subject_strings_unmatched": 1,
+            "probemap_epoch_subject_covered": 2,
+            "probemap_epoch_subject_uncovered": 0,
+        })
+        rep.update(over)
+        return rep
+
+    def test_probemap_rows_and_histogram_are_rendered(self):
+        self._corpus("A", epoch_mint=self._probemap())
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        self.assertIn("PROBE ROWS total (the 1->N fan-out)", text)
+        # the struct-array histogram, printed by _render_probemap_measurement
+        self.assertIn("probe-row histogram", text)
+        self.assertIn("1 probe(s):", text)
+        self.assertIn("3 probe(s):", text)
+
+    def test_the_overlap_conclusion_reads_off_the_epoch_scoped_count(self):
+        # 0 epoch-scoped => a per-epoch probemap observation would NOT duplicate.
+        self._corpus("A", epoch_mint=self._probemap())
+        text, _ = self.run_digest()
+        self.assertIn("would NOT duplicate one", text)
+        self.assertIn("session-scoped", text)
+
+    def test_an_epoch_scoped_observation_flips_the_conclusion(self):
+        self._corpus("A", epoch_mint=self._probemap(recording_obs_epoch_scoped=2))
+        text, _ = self.run_digest()
+        self.assertIn("COULD duplicate these", text)
+
+    def test_no_recording_observation_says_overlap_not_computable(self):
+        self._corpus("A", epoch_mint=self._probemap(
+            recording_obs_seen=0, recording_obs_session_scoped=0,
+            overlap_vacuous=True))
+        text, _ = self.run_digest()
+        self.assertIn("overlap not computable here", text)
+
+    def test_an_unmatched_subjectstring_is_named(self):
+        self._corpus("A", epoch_mint=self._probemap(
+            probemap_subject_strings_unmatched=1))
+        text, _ = self.run_digest()
+        self.assertIn("UNCOMPUTABLE for those", text)
+
+    def test_the_instrument_is_silent_on_a_report_that_predates_it(self):
+        # An older artifact carries none of these fields. The block must not
+        # print "(no probemap parsed)" noise -- absence is not a zero.
+        self._corpus("A", epoch_mint=self._mint())
+        text, _ = self.run_digest()
+        self.assertNotIn("MEASURE FIRST (epochprobemap", text)
+
+
 class TestBoundedExtentCounters(DigestCase):
     """The bounded-extent group added with the extent refusals (2026-08-11).
 

@@ -177,6 +177,13 @@ NOT_RENDERED_YET = {
         #     printed facts, not a missing one. Same shape and same reason as
         #     `epoch_index` above.
         "epoch_index_report",
+        # probemap_rows_by_count (added 2026-08-20 with the #2 "measure first"
+        #     instrument) -- NOT A SCALAR COUNTER. It is the probes-per-epoch
+        #     HISTOGRAM as a struct array {probe_rows, documents}; there is no
+        #     single number for a row to print. It is rendered by
+        #     census_digest._render_probemap_measurement (a dedicated block, not
+        #     a POST_PASSES row), the same treatment strings_by_source gets.
+        "probemap_rows_by_count",
     },
     "openminds_citations": {
         "withheld_reasons",

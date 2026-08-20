@@ -514,6 +514,62 @@ report = struct( ...
     'syncrule_refused_unsafe_output',      0, ...
     'syncrule_refused_total',              0, ...
     'syncrule_fold_vacuous',               true, ...
+    ... % ==================================================================
+    ... % #2 "MEASURE FIRST" (team decision 2026-08-20) -- REPORT-ONLY.
+    ... % Two numbers the epochprobemap-decomposition decision needs, taken off
+    ... % the batch this pass already reads and CHANGING NOTHING: no document is
+    ... % minted, folded or edge-stamped from any counter below. It is the same
+    ... % stance as `pairs_minus_strings` and `strings_by_source` above -- an
+    ... % observation, not a conversion. See measureIngestionProbemap.
+    ... %
+    ... % MEASUREMENT 1 -- PROBES-PER-EPOCH. `epochfiles_ingested.epochprobemap`
+    ... % is the tab-delimited serialize() of an ndi.epoch.epochprobemap_daqsystem
+    ... % array (NDI origin/main +ndi/+epoch/epochprobemap_daqsystem.m:136-168):
+    ... % a header line `name<TAB>reference<TAB>type<TAB>devicestring<TAB>
+    ... % subjectstring` then ONE line per probe. The probe-row count is the fold's
+    ... % 1 -> N fan-out. `probemap_vacuous` LEADS the group, for the reason every
+    ... % other _vacuous flag in this report does: a corpus with no
+    ... % epochfiles_ingested document makes every number below it a zero over a
+    ... % zero denominator, and must not read as a corpus where the fold found
+    ... % nothing to fan out.
+    'probemap_vacuous',                    true, ...
+    'probemap_documents_seen',             0, ...
+    'probemap_nonempty',                   0, ...
+    'probemap_empty',                      0, ...
+    'probemap_char_shape',                 0, ...
+    'probemap_struct_shape',               0, ...
+    'probemap_unrecognized_header',        0, ...
+    'probemap_probe_rows_total',           0, ...
+    'probemap_docs_with_rows',             0, ...
+    'probemap_docs_zero_rows',             0, ...
+    'probemap_probe_rows_min',             0, ...
+    'probemap_probe_rows_max',             0, ...
+    ... % The full per-count tally {probe_rows, documents}. A struct array, not a
+    ... % scalar -- rendered by a dedicated block in tools/census_digest.py and
+    ... % listed in test_batch_pass_wiring.NOT_RENDERED_YET, exactly as
+    ... % `strings_by_source` is.
+    'probemap_rows_by_count', struct('probe_rows', {}, 'documents', {}), ...
+    ... %
+    ... % MEASUREMENT 2 -- #30-OBSERVATION OVERLAP. The question the team asked is
+    ... % "would minting a per-epoch observation from the probemap DUPLICATE a #30
+    ... % recording-observation that already covers the same (subject, epoch)".
+    ... % What is COMPUTABLE at this hook and what is NOT is stated in the header
+    ... % of measureIngestionProbemap; the short version is that a #30 observation
+    ... % (base.name == 'migrated_recording_observation', from jRecordingObservation)
+    ... % carries a SESSION anchor, never an epoch one, so the per-EPOCH overlap is
+    ... % 0 by construction (recording_obs_epoch_scoped) and the answerable overlap
+    ... % is at the (session, subject) level.
+    'overlap_vacuous',                     true, ...
+    'recording_obs_seen',                  0, ...
+    'recording_obs_session_scoped',        0, ...
+    'recording_obs_epoch_scoped',          0, ...
+    'recording_obs_anchor_unresolved',     0, ...
+    'probemap_subject_attributions',       0, ...
+    'probemap_distinct_subject_strings',   0, ...
+    'probemap_subject_strings_matched',    0, ...
+    'probemap_subject_strings_unmatched',  0, ...
+    'probemap_epoch_subject_covered',      0, ...
+    'probemap_epoch_subject_uncovered',    0, ...
     'mint_quarantined',               0, ...
     'ran',                            false, ...
     'epoch_index', struct('session_id', {}, 'local_identifier', {}, ...
@@ -595,6 +651,14 @@ if isempty(declinedValues)
 else
     report.strings_declined_distinct = numel(unique(declinedValues));
 end
+
+% --- #2 "measure first": probemap fan-out + #30 overlap (REPORT-ONLY) ------
+% Computed HERE, off the snapshots `rows` / `bodies` taken at the top of this
+% function, so it reads the batch as it ARRIVED -- before this pass mints any
+% epoch, stamps any edge or folds anything. It writes only `report.*` fields and
+% returns nothing to the batch, so every later return path carries the numbers
+% and none of them changes a document. See measureIngestionProbemap.
+report = measureIngestionProbemap(report, rows, bodies, n);
 
 % --- index the session documents ------------------------------------------
 % base.session_id -> the session document's base.id, plus a count so a session
@@ -2003,6 +2067,354 @@ for k = 1:numel(order)
     rowsOut(end+1) = struct('source', order{k}, ...
         'documents', docCounts(k), ...
         'distinct_strings', numel(unique(valLists{k}))); %#ok<AGROW>
+end
+end
+
+% ===================== #2 "measure first" instrument ===================
+
+function report = measureIngestionProbemap(report, rows, bodies, n)
+%MEASUREINGESTIONPROBEMAP #2 "measure first" (team, 2026-08-20). REPORT-ONLY.
+%
+%   Fills the `probemap_*`, `recording_obs_*` and `overlap_*` fields of REPORT
+%   and CHANGES NOTHING ELSE. It mints no document, folds nothing and stamps no
+%   edge -- it reads the snapshots `rows` / `bodies` this pass already took of
+%   the incoming batch and counts. Same stance as `pairs_minus_strings`: an
+%   observation, not a conversion. The two numbers it produces are the inputs to
+%   the `epochfiles_ingested.epochprobemap` decomposition decision (#60 option B,
+%   still open), so they are gathered on the next corpus run BEFORE the fold is
+%   designed rather than after.
+%
+%   ---------------------------------------------------------------------
+%   MEASUREMENT 1 -- PROBES-PER-EPOCH (the fold's 1 -> N fan-out)
+%   ---------------------------------------------------------------------
+%   `epochfiles_ingested` is a guarded PASSTHROUGH (+migrators_j/epochfiles_ingested.m),
+%   so it reaches this batch as a did_v1 body whose block `epochfiles_ingested`
+%   carries `{epoch_id, epochprobemap, files}`. `epochprobemap` is the char
+%   serialize() of an ndi.epoch.epochprobemap_daqsystem array. CONFIRMED from the
+%   writer, NDI origin/main src/ndi/+ndi/+epoch/epochprobemap_daqsystem.m
+%   serialize() (:136-168):
+%
+%       s = '';                              % header line, then one line/probe
+%       fn = {'name','reference','type','devicestring','subjectstring'};
+%       <join fn by sprintf('\t')>, sprintf('\n')      % HEADER, tab-delimited
+%       for each probe:  <join the 5 field values by '\t'>, sprintf('\n')
+%
+%   so the shape is a HEADER line `name<TAB>reference<TAB>type<TAB>devicestring
+%   <TAB>subjectstring` then ONE '\n'-terminated line per probe. `reference` is
+%   int2str'd; every other column is the raw string. The PROBE-ROW COUNT is the
+%   data-line count (all lines after the header). Note an EMPTY probemap object
+%   still serialises to the header line alone -- a non-empty string with ZERO
+%   data rows -- which is why `probemap_docs_zero_rows` is counted apart from
+%   `probemap_empty` (an absent / '' field).
+%
+%   PARSED DEFENSIVELY. carryProbeMap (+migrators_j/syncrule_mapping.m:194-253)
+%   records that the field is USUALLY a char but CAN be a struct, and the
+%   template default is '' -- so `probemap_empty`, `probemap_struct_shape` and
+%   `probemap_char_shape` partition the seen documents, and only the char shape
+%   is parsed for rows (a struct cannot be counted without the writer's
+%   serialize(), and guessing would be the distance_metadata wrong-shape bug).
+%   `probemap_unrecognized_header` flags a char whose first line is NOT the
+%   5-column header the writer always emits; on that anomaly every non-empty line
+%   is counted as a probe row rather than silently dropping a real one.
+%
+%   ---------------------------------------------------------------------
+%   MEASUREMENT 2 -- #30-OBSERVATION OVERLAP: WHAT IS AND IS NOT COMPUTABLE HERE
+%   ---------------------------------------------------------------------
+%   The decision is "mint NEW per-epoch observations from the probemap" vs
+%   "attach the probemap's attribution to the #30 recording-observations that
+%   already exist". The literal question -- would a per-epoch probemap
+%   observation DUPLICATE a #30 observation of the same (subject, EPOCH) -- has a
+%   structural answer that this instrument makes explicit rather than assumes:
+%
+%     A #30 recording-observation (+migrators_j/private/jRecordingObservation.m,
+%     driven from +migrators_j/element.m:144-148) is emitted ONE PER ELEMENT with
+%     a SESSION 'during' anchor -- jSessionAnchor(preBody,'during'), a
+%     `session_relative_reference` -- NEVER an epoch anchor. Its own header says
+%     so: "one observation per element is emitted, with the shared session
+%     'during' anchor -- coarse but true. Per-epoch observations are the second
+%     pass" (:108-118). This pass runs BEFORE resolveSessionAnchors
+%     (runCorpusDiscovery.m: epoch_mint at :171, session_anchor_fold at :208), so
+%     the anchor is still class `session_relative_reference` when read here.
+%
+%   So `recording_obs_epoch_scoped` is expected 0 -- there is NO per-epoch #30
+%   observation for a per-epoch probemap observation to duplicate -- and that 0
+%   is MEASURED (by resolving each observation's `time_reference_1` to the class
+%   of the document it points at) rather than asserted, so a future epoch-scoped
+%   observation would move it. The `recording_obs_*` block is the fully reliable
+%   half: it needs no name join, only edge resolution within the batch.
+%
+%   WHAT IS COMPUTABLE at the (session, SUBJECT) level, and how reliably: for
+%   each (session, subjectstring) the probemap attributes, does a #30
+%   recording-observation already exist on that subject in that session? The join
+%   is subjectstring (probemap column 5, a v1 subject local identifier) ->
+%   migrated `subject` document (matched on `subject.local_identifier`) ->
+%   `subject_id` edge of a #30 observation. That join's RELIABILITY is itself
+%   reported -- `probemap_subject_strings_matched` / `_unmatched` is its
+%   denominator -- so an unreliable match on real data is a visible number, never
+%   a silent 0. `_covered` / `_uncovered` are the (session, subject) overlap over
+%   the MATCHED strings only.
+%
+%   WHAT IS NOT COMPUTABLE HERE, stated so the gap has a shape: the true
+%   per-(subject, EPOCH) overlap, because #30 carries no epoch to compare the
+%   probemap's epoch against. It is not a stage limitation this hook could fix by
+%   moving -- no DID-side pass emits an epoch-scoped recording-observation today
+%   (that is the deferred #30 second pass) -- so the epoch-level overlap is 0
+%   everywhere by construction, which `recording_obs_epoch_scoped` records.
+%
+%   `overlap_vacuous` is TRUE when the batch holds no epochfiles_ingested
+%   document OR no #30 observation, so an all-zero overlap block cannot be read
+%   as "measured and empty" when it is "nothing to compare".
+
+report.probemap_documents_seen = 0;   % re-assigned below; declared for clarity
+
+% ---- pre-pass: index classes, subjects and #30 observations --------------
+% id -> class name (resolving a time_reference edge to its target's class), and
+% subject document local_identifier <-> id (the probemap join key). Built from
+% the same `rows` / `bodies` snapshots, so nothing is read twice off a document.
+classById        = containers.Map('KeyType', 'char', 'ValueType', 'char');
+bodyById         = containers.Map('KeyType', 'char', 'ValueType', 'any');
+subjectLocalById = containers.Map('KeyType', 'char', 'ValueType', 'char');
+subjectIdByLocal = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:n
+    id = rows(k).doc_id;
+    cn = rows(k).class_name;
+    if isempty(id); continue; end
+    if ~isempty(cn) && ~isKey(classById, id); classById(id) = cn; end
+    if ~isKey(bodyById, id) && isstruct(bodies{k}); bodyById(id) = bodies{k}; end
+    if strcmp(cn, 'subject') && isstruct(bodies{k}) ...
+            && isfield(bodies{k}, 'subject') && isstruct(bodies{k}.subject)
+        lid = charField(bodies{k}.subject, {'local_identifier'});
+        if ~isempty(lid)
+            if ~isKey(subjectLocalById, id);  subjectLocalById(id) = lid; end
+            if ~isKey(subjectIdByLocal, lid); subjectIdByLocal(lid) = id; end
+        end
+    end
+end
+
+% (session, subject-local-id) -> a #30 recording-observation covers it. The
+% marker is the assembler's OWN base.name stamp, set at exactly one site
+% (jRecordingObservation.m: obs.base.name = 'migrated_recording_observation'),
+% so it needs no modality-class list to maintain and is precisely the set the
+% overlap question is about.
+coveredSubjectSession = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+recSeen = 0; recSession = 0; recEpoch = 0; recUnresolved = 0;
+for k = 1:n
+    if ~isRecordingObservation(bodies{k}); continue; end
+    recSeen = recSeen + 1;
+    trId = depValueOf(bodies{k}, 'time_reference_1');
+    if isempty(trId) || ~isKey(classById, trId)
+        recUnresolved = recUnresolved + 1;
+    elseif any(strcmp(classById(trId), ...
+            {'session_relative_reference', 'session_bounded_reference'}))
+        recSession = recSession + 1;
+    elseif isKey(bodyById, trId) ...
+            && referenceIsEpochScoped(bodyById(trId), classById)
+        recEpoch = recEpoch + 1;
+    else
+        % an absolute_reference, or a relative_reference anchored to a session
+        % DOCUMENT -- neither is epoch-scoped.
+        recSession = recSession + 1;
+    end
+    subjId = depValueOf(bodies{k}, 'subject_id');
+    if isempty(subjId) || ~isKey(subjectLocalById, subjId); continue; end
+    coveredSubjectSession(pairKey(rows(k).session_id, ...
+        subjectLocalById(subjId))) = true;
+end
+report.recording_obs_seen              = recSeen;
+report.recording_obs_session_scoped    = recSession;
+report.recording_obs_epoch_scoped      = recEpoch;
+report.recording_obs_anchor_unresolved = recUnresolved;
+
+% ---- the probemap loop ---------------------------------------------------
+countTally          = containers.Map('KeyType', 'double', 'ValueType', 'double');
+distinctSubjStrings = containers.Map('KeyType', 'char',   'ValueType', 'logical');
+coveredPairs        = containers.Map('KeyType', 'char',   'ValueType', 'logical');
+uncoveredPairs      = containers.Map('KeyType', 'char',   'ValueType', 'logical');
+docsSeen = 0; nonEmpty = 0; emptyN = 0; charN = 0; nonCharN = 0;
+unrecHeader = 0; rowsTotal = 0; docsWithRows = 0; docsZeroRows = 0;
+rowMin = Inf; rowMax = 0; attributions = 0;
+for k = 1:n
+    if ~strcmp(rows(k).class_name, 'epochfiles_ingested'); continue; end
+    docsSeen = docsSeen + 1;
+    pm = probemapField(bodies{k});
+    if isempty(pm)
+        emptyN = emptyN + 1;
+        continue;
+    end
+    nonEmpty = nonEmpty + 1;
+    if ~(ischar(pm) || (isstring(pm) && isscalar(pm)))
+        % a struct (the shape carryProbeMap notes) or any other non-char value.
+        % Not parseable for rows without the writer's serialize(); counted apart
+        % rather than guessed at.
+        nonCharN = nonCharN + 1;
+        continue;
+    end
+    charN = charN + 1;
+    [nrows, subjStrings, recognized] = parseProbemap(char(pm));
+    if ~recognized; unrecHeader = unrecHeader + 1; end
+    rowsTotal = rowsTotal + nrows;
+    if nrows == 0
+        docsZeroRows = docsZeroRows + 1;
+    else
+        docsWithRows = docsWithRows + 1;
+        if nrows < rowMin; rowMin = nrows; end
+        if nrows > rowMax; rowMax = nrows; end
+    end
+    if isKey(countTally, nrows)
+        countTally(nrows) = countTally(nrows) + 1;
+    else
+        countTally(nrows) = 1;
+    end
+    % (session, subject) overlap. Distinct subjectstrings PER DOCUMENT feed the
+    % attribution count; matched/covered are resolved against the pre-pass maps.
+    sess = rows(k).session_id;
+    perDocSeen = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+    for s = 1:numel(subjStrings)
+        ss = subjStrings{s};
+        if isempty(ss); continue; end
+        if ~isKey(perDocSeen, ss)
+            perDocSeen(ss) = true;
+            attributions = attributions + 1;
+        end
+        distinctSubjStrings(ss) = true;
+        if ~isempty(sess) && isKey(subjectIdByLocal, ss)
+            pk = pairKey(sess, ss);
+            if isKey(coveredSubjectSession, pk)
+                coveredPairs(pk) = true;
+            else
+                uncoveredPairs(pk) = true;
+            end
+        end
+    end
+end
+
+report.probemap_documents_seen      = docsSeen;
+report.probemap_vacuous             = (docsSeen == 0);
+report.probemap_nonempty            = nonEmpty;
+report.probemap_empty               = emptyN;
+report.probemap_char_shape          = charN;
+report.probemap_struct_shape        = nonCharN;
+report.probemap_unrecognized_header = unrecHeader;
+report.probemap_probe_rows_total    = rowsTotal;
+report.probemap_docs_with_rows      = docsWithRows;
+report.probemap_docs_zero_rows      = docsZeroRows;
+if isfinite(rowMin)
+    report.probemap_probe_rows_min = rowMin;
+else
+    report.probemap_probe_rows_min = 0;   % no document carried a probe row
+end
+report.probemap_probe_rows_max      = rowMax;
+report.probemap_rows_by_count       = tallyToStruct(countTally);
+
+report.probemap_subject_attributions     = attributions;
+nDistinct = double(distinctSubjStrings.Count);
+report.probemap_distinct_subject_strings = nDistinct;
+matched = 0;
+ssKeys = distinctSubjStrings.keys;
+for i = 1:numel(ssKeys)
+    if isKey(subjectIdByLocal, ssKeys{i}); matched = matched + 1; end
+end
+report.probemap_subject_strings_matched   = matched;
+report.probemap_subject_strings_unmatched = nDistinct - matched;
+report.probemap_epoch_subject_covered     = double(coveredPairs.Count);
+report.probemap_epoch_subject_uncovered   = double(uncoveredPairs.Count);
+report.overlap_vacuous = (docsSeen == 0) || (recSeen == 0);
+end
+
+function v = probemapField(body)
+%PROBEMAPFIELD The raw `epochprobemap` value off a migrated epochfiles_ingested
+%   body, [] when the block or field is absent or the value is empty ('').
+%   Snake-first with a camelCase fallback, per the standing nested-read rule.
+v = [];
+if ~isstruct(body) || ~isfield(body, 'epochfiles_ingested') ...
+        || ~isstruct(body.epochfiles_ingested) ...
+        || ~isscalar(body.epochfiles_ingested)
+    return;
+end
+blk = body.epochfiles_ingested;
+for name = {'epochprobemap', 'epochProbeMap'}
+    f = name{1};
+    if isfield(blk, f) && ~isempty(blk.(f))
+        v = blk.(f);
+        return;
+    end
+end
+end
+
+function [nrows, subjStrings, recognized] = parseProbemap(s)
+%PARSEPROBEMAP Probe-row count + per-row subjectstring of a serialize() char.
+%   The writer (NDI epochprobemap_daqsystem.serialize) emits a 5-column
+%   tab-delimited HEADER line then one '\n'-terminated line per probe. Returns
+%   NROWS (data-line count), SUBJSTRINGS (column 5 of each data line) and
+%   RECOGNIZED (was the first line the expected header). On an unrecognised
+%   header every non-empty line is counted as a probe row, so a real row is
+%   never dropped to a mis-detected header; the anomaly is flagged instead.
+nrows = 0;
+subjStrings = {};
+recognized = false;
+s = char(s);
+tab = sprintf('\t');
+nl  = sprintf('\n');
+% CollapseDelimiters false so an empty column keeps its position; the trailing
+% '\n' after every line is stripped by the non-empty filter below.
+lines = strsplit(s, nl, 'CollapseDelimiters', false);
+keep = {};
+for i = 1:numel(lines)
+    if ~isempty(strtrim(lines{i})); keep{end+1} = lines{i}; end %#ok<AGROW>
+end
+if isempty(keep); return; end
+expected = {'name', 'reference', 'type', 'devicestring', 'subjectstring'};
+hfields = strsplit(keep{1}, tab, 'CollapseDelimiters', false);
+recognized = numel(hfields) == numel(expected) ...
+    && all(cellfun(@(a, b) strcmpi(strtrim(a), b), hfields, expected));
+if recognized
+    dataLines = keep(2:end);
+else
+    dataLines = keep;
+end
+nrows = numel(dataLines);
+subjStrings = cell(1, nrows);
+for i = 1:nrows
+    cols = strsplit(dataLines{i}, tab, 'CollapseDelimiters', false);
+    if numel(cols) >= 5
+        subjStrings{i} = strtrim(cols{5});
+    else
+        subjStrings{i} = '';
+    end
+end
+end
+
+function tf = isRecordingObservation(body)
+%ISRECORDINGOBSERVATION True for a #30 observation, by its assembler's own stamp.
+%   jRecordingObservation sets obs.base.name = 'migrated_recording_observation'
+%   at exactly one site; matching on it needs no modality-class list and cannot
+%   drift as modalities are added.
+tf = false;
+if ~isstruct(body) || ~isfield(body, 'base') || ~isstruct(body.base) ...
+        || ~isfield(body.base, 'name')
+    return;
+end
+tf = strcmp(char(body.base.name), 'migrated_recording_observation');
+end
+
+function tf = referenceIsEpochScoped(refBody, classById)
+%REFERENCEISEPOCHSCOPED True when a reference document's `relative_to` names an
+%   `epoch`. Used only for reference classes other than the session anchors the
+%   switch already handles -- a robustness path, expected never to fire today.
+tf = false;
+if ~isstruct(refBody); return; end
+target = depValueOf(refBody, 'relative_to');
+if isempty(target); return; end
+tf = isKey(classById, target) && strcmp(classById(target), 'epoch');
+end
+
+function s = tallyToStruct(m)
+%TALLYTOSTRUCT A containers.Map(probe_rows -> documents) as a sorted struct array.
+s = struct('probe_rows', {}, 'documents', {});
+if m.Count == 0; return; end
+ks = sort(cell2mat(m.keys));
+for i = 1:numel(ks)
+    s(end+1) = struct('probe_rows', ks(i), 'documents', m(ks(i))); %#ok<AGROW>
 end
 end
 
