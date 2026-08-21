@@ -163,17 +163,19 @@ verifyEqual(testCase, depValue(leaf, 'derived_from_2'), 'ctrl_20e84c');
 verifyNotEmpty(testCase, depValue(leaf, 'time_reference_1'));
 end
 
-function testTheParametersDocumentIsNotDeleted(testCase)
-% VERIFY-BEFORE-DELETE. The plan requires a corpus check before the parameters
-% documents may go -- the gate the ensemble fold got. This pass
-% MEASURES that gate; it must not pre-empt it.
+function testTheUnreferencedParametersDocumentIsDeleted(testCase)
+% VERIFY-BEFORE-DELETE, ARMED PER DOCUMENT (team, 2026-08-21). The F1 parameters
+% document folds inline and nothing points at it afterwards, so THIS run's own
+% edge-walk proves it unreferenced and it is deleted -- the fold's decided
+% end-state (source retires once its content is inline on method_parameters).
 [out, ~, rep] = foldPair(testCase, 'F1');
-verifyTrue(testCase, anyClass(out, 'stimulus_response_scalar_parameters_basic'));
-verifyEqual(testCase, rep.parameters_documents_deleted, 0);
+verifyFalse(testCase, anyClass(out, 'stimulus_response_scalar_parameters_basic'));
 verifyEqual(testCase, rep.parameters_documents_seen, 1);
-% ...and the gate's own number: after the edge is dropped nothing points at it.
+% the gate's own number: after the edge is dropped nothing points at it,
 verifyEqual(testCase, rep.parameters_documents_unreferenced_after, 1);
 verifyEqual(testCase, rep.parameters_documents_referenced_after, 0);
+% ...and the eligible document actually went.
+verifyEqual(testCase, rep.parameters_documents_deleted, 1);
 end
 
 function testTheUnreferencedCountIsMeasuredNotInferred(testCase)
@@ -183,11 +185,15 @@ function testTheUnreferencedCountIsMeasuredNotInferred(testCase)
 % not tell the difference, and a wrong 1 here authorises deleting a document
 % something still points at.
 extra = otherReferrerFixture('param_77c19b');
-[~, rep] = runFold(testCase, ...
+[out, rep] = runFold(testCase, ...
     {withEpochEdge(responseFixture('F1')), parametersFixture(), extra});
 verifyEqual(testCase, rep.inlined, 1);
 verifyEqual(testCase, rep.parameters_documents_referenced_after, 1);
 verifyEqual(testCase, rep.parameters_documents_unreferenced_after, 0);
+% AND THE SAFETY PROOF: a document something still points at is KEPT, never
+% deleted on the strength of "unreferenced in the corpora we tested".
+verifyEqual(testCase, rep.parameters_documents_deleted, 0);
+verifyTrue(testCase, anyClass(out, 'stimulus_response_scalar_parameters_basic'));
 end
 
 % ===================== what it refuses =====================================

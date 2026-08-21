@@ -28,9 +28,12 @@ function [result, report] = resolveResponseParameters(result, options)
 %   (schemas/V_eta/stable/method_parameters.json), which is what makes it the
 %   decided target the ledger checks the emission against.
 %
-%   THIS PASS DELETES NOTHING. The source documents stay where they are pending
-%   the corpus verify-before-delete gate below, so an emission declared here is
-%   an emission ADDED, never a source consumed away.
+%   THIS PASS NOW DELETES the source documents THIS run's own edge-walk proves
+%   unreferenced (team, 2026-08-21 -- the verify-before-delete, armed PER
+%   DOCUMENT so nothing is deleted on the strength of the sample; see the walk
+%   at the end of the file). A parameters document anything still points at is
+%   KEPT. Until 2026-08-21 it deleted nothing and only MEASURED the eligible
+%   count; that gate is now armed conditionally rather than pending.
 %   ---------------------------------------------------------------------
 %
 %   STATUS: WRITTEN 2026-08-11 IN A CONTAINER WITH NO MATLAB. NOT ONE LINE OF
@@ -62,26 +65,30 @@ function [result, report] = resolveResponseParameters(result, options)
 %   BOTH (team, 2026-08-09)".
 %
 %   ---------------------------------------------------------------------
-%   IT DELETES NOTHING. THAT IS A GATE, NOT AN OMISSION.
+%   THE VERIFY-BEFORE-DELETE, NOW ARMED PER DOCUMENT (team, 2026-08-21).
 %   ---------------------------------------------------------------------
 %   The plan requires a corpus verify-before-delete before the parameters
 %   documents may go, the same gate the ensemble fold got. (11,440 of them, and
 %   10,124 responses, across five corpora -- test-code.yml run #257 / 0458dae,
 %   2026-07-29, quoted from the plan's own corpus table. Those figures are a
 %   SAMPLE and a year-old one; this pass reports what it actually saw and every
-%   number below comes from the batch in hand, never from that table.) So this
-%   pass leaves
-%   every `stimulus_response_scalar_parameters_basic` document exactly where it
-%   is and instead MEASURES the thing that gate needs:
+%   number below comes from the batch in hand, never from that table.) The team
+%   armed the delete PER DOCUMENT: rather than a global flip once "our corpora
+%   read 0 referenced" -- which would trust the sample -- this pass deletes ONLY
+%   the `stimulus_response_scalar_parameters_basic` documents THIS run's own edge
+%   walk proves unreferenced, and KEEPS any a real document still points at. A
+%   dataset that references one is self-protecting: its edge lands in
+%   `referenced` and the source stays. So the numbers it needs are still
+%   measured, and now acted on for the eligible subset:
 %
 %       parameters_documents_seen              the denominator
-%       parameters_documents_referenced_after  still pointed at by something
-%       parameters_documents_unreferenced_after
+%       parameters_documents_referenced_after  still pointed at -> KEPT
+%       parameters_documents_unreferenced_after  eligible
+%       parameters_documents_deleted           actually removed this run
 %
-%   `unreferenced_after` is the count that may be deleted, and it is computed by
-%   walking EVERY edge of EVERY migrated document -- not by assuming this pass
-%   removed the only referent. It is evidence for a later decision, never
-%   authorisation, and the corpora are a sample either way.
+%   `unreferenced_after` is computed by walking EVERY edge of EVERY migrated
+%   document -- not by assuming this pass removed the only referent -- so the
+%   deletion rests on a per-document measurement, never on the sample.
 %
 %   ---------------------------------------------------------------------
 %   THE FIVE FIELDS, AND WHY `freq_response` IS NOT ONE OF THEM
@@ -430,6 +437,7 @@ for k = 1:n
         if ~isempty(v); referenced(v) = true; end
     end
 end
+toDelete = [];
 for k = 1:n
     if ~strcmp(classes{k}, PARAMS); continue; end
     if ~isempty(docIds{k}) && isKey(referenced, docIds{k})
@@ -438,7 +446,24 @@ for k = 1:n
     else
         report.parameters_documents_unreferenced_after = ...
             report.parameters_documents_unreferenced_after + 1;
+        toDelete(end+1) = k; %#ok<AGROW>
     end
+end
+
+% ARM THE VERIFY-BEFORE-DELETE, PER DOCUMENT (team, 2026-08-21). Delete ONLY the
+% source documents THIS run's own edge-walk (above) proved unreferenced -- never
+% a global flip on the strength of the sample. A dataset where anything still
+% points at a parameters document keeps it (its id is in `referenced`), so
+% nothing is stranded by "unreferenced in the corpora we tested". This reaches
+% the fold's decided end-state -- `stimulus_response_scalar_parameters_basic`
+% folds inline to `method_parameters` and the source retires -- without the
+% sample risk the gate was guarding against. `unreferenced_after` stays the
+% count that WAS eligible; `deleted` is what actually went (equal here, but kept
+% distinct so a future referent that blocks a delete is visible in the report).
+if ~isempty(toDelete)
+    result.migrated(toDelete) = [];
+    report.parameters_documents_deleted = numel(toDelete);
+    result.summary = recountSummary(result);
 end
 
 result.response_parameters_fold = report;
