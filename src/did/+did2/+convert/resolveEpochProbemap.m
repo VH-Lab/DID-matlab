@@ -694,6 +694,7 @@ m.subject_interaction = struct('method', mkOntologyTerm('', 'stimulate'));
 if ~isempty(channels)
     m.subject_interaction.channels = channels;  % channel half (hoisted, increment 3)
 end
+m.subject_manipulation = struct('notes', '');   % the concrete leaf's abstract parent block
 m.term = struct('value', typeTerm);
 end
 

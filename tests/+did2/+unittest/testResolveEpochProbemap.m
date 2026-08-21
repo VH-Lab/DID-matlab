@@ -313,11 +313,19 @@ ing  = ingestedWithRows('ing_s', 'sess_s', 't0s', { ...
     {'stim', '1', 'stimulator', 'L'}, ...
     {'lick', '',  'lick-spout', 'L'}});
 [out, rep] = decompose({sessionBody('sd_s', 'sess_s', 'ref'), subj, stim, ing});
+% DIAGNOSTIC (printed unconditionally so a red run shows the cause in the log)
+manips = bodiesNamed(out, 'migrated_probemap_manipulation');
+fprintf(['DIAG stimulator: rows_stim=%d manip_emitted=%d obs_emitted=%d ' ...
+         'quarantined=%d manips_found=%d\n'], rep.rows_stimulator, ...
+    rep.manipulations_emitted, rep.observations_emitted, ...
+    rep.fold_quarantined, numel(manips));
+if ~isempty(manips); fprintf('DIAG body: %s\n', jsonencode(manips{1})); end
 verifyEqual(testCase, rep.probe_rows_total, 2);
 verifyEqual(testCase, rep.rows_stimulator, 1);
 verifyEqual(testCase, rep.rows_unresolved_modality, 1);
 verifyEqual(testCase, rep.observations_emitted, 0);
 verifyEqual(testCase, rep.manipulations_emitted, 1);
+verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
 
 % the manipulation: a term_manipulation of the specimen, stimulator TYPE as
