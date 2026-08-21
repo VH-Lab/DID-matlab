@@ -318,13 +318,23 @@ ing  = ingestedWithRows('ing_s', 'sess_s', 't0s', { ...
 manips = bodiesNamed(out, 'migrated_probemap_manipulation');
 end
 
-function testStimCounters(testCase)
-[out, rep, ~] = stimDecompose();
-verifyEqual(testCase, rep.probe_rows_total, 2);
-verifyEqual(testCase, rep.rows_stimulator, 1);
-verifyEqual(testCase, rep.rows_unresolved_modality, 1);
-verifyEqual(testCase, rep.observations_emitted, 0);
-verifyEqual(testCase, rep.manipulations_emitted, 1);
+function testStimProbeRowsTotal(testCase)
+[~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.probe_rows_total, 2);
+end
+function testStimRowsStimulator(testCase)
+[~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.rows_stimulator, 1);
+end
+function testStimRowsUnresolved(testCase)
+[~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.rows_unresolved_modality, 1);
+end
+function testStimObservationsEmittedZero(testCase)
+[~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.observations_emitted, 0);
+end
+function testStimManipulationsEmittedOne(testCase)
+[~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.manipulations_emitted, 1);
+end
+function testStimNoObservationBody(testCase)
+[out, ~, ~] = stimDecompose();
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
 end
 
