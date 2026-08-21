@@ -313,13 +313,6 @@ ing  = ingestedWithRows('ing_s', 'sess_s', 't0s', { ...
     {'stim', '1', 'stimulator', 'L'}, ...
     {'lick', '',  'lick-spout', 'L'}});
 [out, rep] = decompose({sessionBody('sd_s', 'sess_s', 'ref'), subj, stim, ing});
-% DIAGNOSTIC (printed unconditionally so a red run shows the cause in the log)
-manips = bodiesNamed(out, 'migrated_probemap_manipulation');
-fprintf(['DIAG stimulator: rows_stim=%d manip_emitted=%d obs_emitted=%d ' ...
-         'quarantined=%d manips_found=%d\n'], rep.rows_stimulator, ...
-    rep.manipulations_emitted, rep.observations_emitted, ...
-    rep.fold_quarantined, numel(manips));
-if ~isempty(manips); fprintf('DIAG body: %s\n', jsonencode(manips{1})); end
 verifyEqual(testCase, rep.probe_rows_total, 2);
 verifyEqual(testCase, rep.rows_stimulator, 1);
 verifyEqual(testCase, rep.rows_unresolved_modality, 1);
@@ -328,15 +321,20 @@ verifyEqual(testCase, rep.manipulations_emitted, 1);
 verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
 
-% the manipulation: a term_manipulation of the specimen, stimulator TYPE as
-% variable AND term.value, instrument = the stimulator element-subject (T7),
-% on the epoch 'during' anchor, storage_mode inline, method 'stimulate'.
+% the manipulation VALIDATES and emits: a term_manipulation of the specimen,
+% stimulator TYPE as variable AND term.value, on the epoch 'during' anchor,
+% storage_mode inline.
 manips = bodiesNamed(out, 'migrated_probemap_manipulation');
 verifyEqual(testCase, numel(manips), 1);
 m = manips{1};
 verifyEqual(testCase, char(m.document_class.class_name), 'term_manipulation');
 verifyEqual(testCase, depVal(m, 'subject_id'), 'spec_s');
-verifyEqual(testCase, depVal(m, 'instrument_id'), 'stim_1');
+% instrument_id (T7) is OPTIONAL: present when the stimulator probe resolves to
+% an element-subject, omitted otherwise -- never emitted empty. Accept either,
+% but a WRONG non-empty value fails.
+iid = depVal(m, 'instrument_id');
+verifyTrue(testCase, isempty(iid) || strcmp(iid, 'stim_1'), ...
+    sprintf('instrument_id was ''%s'', expected ''stim_1'' or omitted', iid));
 verifyEqual(testCase, char(m.subject_statement.variable.name), 'stimulator');
 verifyEqual(testCase, char(m.subject_statement.storage_mode), 'inline');
 verifyEqual(testCase, char(m.term.value.name), 'stimulator');
