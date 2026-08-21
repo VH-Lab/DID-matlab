@@ -423,6 +423,14 @@ result = did2.convert.epochMint(result, ...
 % broken post-pass should die here, loudly, before any corpus job starts.
 result = did2.convert.resolveSessionAnchors(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+% #66 INCREMENT 1: decompose an ingested epoch's `epochprobemap` into
+% epoch-scoped `<modality>_observation`s, retiring #30's coarse session-scoped
+% observation per probe. Same post-pass set and the SAME ORDER as
+% runCorpusDiscovery and testCorpusPRED. CALLED BARE, like the passes above and
+% for the identical reason: this test writes no report, so there is nothing for
+% the guard to protect and a raw stack trace is strictly more informative.
+result = did2.convert.resolveEpochProbemap(result, ...
+    'Validate', true, 'TargetVersion', 'V_eta');
 % #61: inline the stimulus-response run knobs onto the
 % `harmonic_component_calculation` leaf and drop `method_parameters_id`. Same
 % post-pass set and the SAME ORDER as runCorpusDiscovery and testCorpusPRED.

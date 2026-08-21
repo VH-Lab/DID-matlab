@@ -155,6 +155,22 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     @(r) did2.convert.resolveSessionAnchors(r, 'Validate', true, ...
         'TargetVersion', 'V_eta'));
 
+% #66 INCREMENT 1: decompose each ingested epoch's `epochprobemap` into
+% epoch-scoped `<modality>_observation`s, retiring #30's coarse session-scoped
+% observation per probe. Same post-pass set and the SAME ORDER as
+% runCorpusDiscovery and testFixtureCorpus -- after epochMint (it anchors to the
+% minted `epoch` documents) and after resolveSessionAnchors.
+%
+% PRED holds `pyraview` and `daqreader_ndr` but its ingested epochs are the real
+% test here; whether it carries `epochfiles_ingested` documents is not predicted
+% in this comment -- the pass prints its own denominator, read that. It can only
+% APPEND observations/anchors and REMOVE #30 observations it replaced, so on a
+% corpus with no ingested epochs it cannot move PRED's zero-quarantine gate.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveEpochProbemap', 'epoch_probemap_fold', ...
+    @(r) did2.convert.resolveEpochProbemap(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
 % #61, the RESOLVER half of the signed stimulus-response fold: the five run
 % knobs move from `stimulus_response_scalar_parameters_basic` INLINE onto the
 % `harmonic_component_calculation` leaf and the `method_parameters_id` edge goes

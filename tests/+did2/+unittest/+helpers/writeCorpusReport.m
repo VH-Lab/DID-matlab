@@ -276,6 +276,22 @@ end
 if isfield(result, 'session_anchor_fold')
     report.session_anchor_fold = result.session_anchor_fold;
 end
+% THE EPOCH-PROBEMAP FOLD (#66 increment 1, jess/2026-08-21). PERSISTED BECAUSE
+% the artifact is where the fan-out is read weeks later, and two of its zeros are
+% ambiguous without their denominator in the same record:
+%   `epochfiles_ingested_seen 0` means this corpus has no ingested epochs (a fact
+%       about the SAMPLE -- only PRED/Dab/Soph carry them), NOT a pass that did
+%       nothing wrong on a corpus that had work for it.
+%   `session30_observations_retired 0` beside a non-zero `observations_emitted`
+%       means replacements landed but no #30 obs matched a probe (or the match
+%       was the ambiguous patch/sharp case) -- distinct from "nothing was
+%       emitted, so nothing to replace". `retire_skipped_ambiguous` /
+%       `retire_no_match` are what tell those apart, so they belong in the record.
+% Written UNCONDITIONALLY with whatever the pass left, `pass_failed` included, so
+% a failed pass is a field rather than an absence.
+if isfield(result, 'epoch_probemap_fold')
+    report.epoch_probemap_fold = result.epoch_probemap_fold;
+end
 % THE RESPONSE-PARAMETERS FOLD (#61): the resolver half of the signed
 % stimulus-response model -- the five run knobs inlined onto the
 % `harmonic_component_calculation` leaf, the `method_parameters_id` edge

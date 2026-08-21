@@ -490,6 +490,50 @@ POST_PASSES = [
         ("refused_extent_without_start", "  an `end` with no readable `start`"),
         ("fold_quarantined", "QUARANTINED by the fold"),
     ]),
+    # #66 INCREMENT 1 (jess/2026-08-21): decompose an ingested epoch's serialized
+    # `epochprobemap` into one epoch-scoped `<modality>_observation` per probe
+    # row, retiring #30's coarse session-scoped observation for that same probe.
+    #
+    # READ `epochfiles_ingested_seen` FIRST -- it is the denominator and it is
+    # ROUTINELY 0: only PRED, Dab and Soph carry ingested epochs, so three of six
+    # corpora produce an all-zero block that says nothing about whether the fold
+    # works. `probe_rows_total` is the FAN-OUT denominator (1 ingested doc -> N
+    # probe rows); `observations_emitted` is the fan-out (and can EXCEED
+    # probe_rows_total, because a `patch`/`sharp` row yields two observations).
+    #
+    # THE ROW PARTITION HOLDS BY CONSTRUCTION and is the cheapest defect check:
+    #     probe_rows_total == (rows that emitted) + rows_no_subjectstring
+    #                       + refused_no_subject + rows_unresolved_modality
+    #                       + rows_stimulator
+    # Each row takes exactly one of those exits, so a violation is a counter that
+    # stopped moving, not a corpus fact. (rows-that-emitted is not its own
+    # counter; observations_emitted / numel(entries) recovers it when no
+    # patch/sharp rows are present, which is the common case.)
+    #
+    # `session30_observations_retired 0` beside a non-zero `observations_emitted`
+    # is "replacements landed, no #30 obs matched (or the match was the ambiguous
+    # patch/sharp case)", NOT "nothing to do". `retire_skipped_ambiguous` and
+    # `retire_no_match` are what separate those readings, so they are printed.
+    ("epoch_probemap_fold", "did2.convert.resolveEpochProbemap", [
+        ("documents_inspected", "documents inspected"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("epochfiles_ingested_seen", "epochfiles_ingested seen  <- THE DENOMINATOR"),
+        ("refused_no_epoch", "  REFUSED: no minted epoch document for this epoch"),
+        ("probe_rows_total", "probe rows total  <- THE FAN-OUT DENOMINATOR"),
+        ("rows_no_subjectstring", "  rows with an empty subjectstring column"),
+        ("refused_no_subject", "  rows whose subjectstring resolved to no subject"),
+        ("rows_unresolved_modality", "  rows with an unresolved modality (Guard A)"),
+        ("rows_stimulator", "  rows whose type is a stimulator (the other direction)"),
+        ("observations_emitted", "OBSERVATIONS emitted (>= rows: patch/sharp yield 2)"),
+        ("instrument_resolved", "  with an instrument_id edge (probe resolved)"),
+        ("instrument_omitted", "  instrument_id OMITTED (probe unresolved; edge optional)"),
+        ("epoch_anchors_minted", "epoch 'during' anchors minted (one per epoch)"),
+        ("session30_observations_retired", "#30 observations RETIRED (replaced)"),
+        ("session30_anchors_removed", "  #30 session anchors removed (now unreferenced)"),
+        ("retire_skipped_ambiguous", "  retire SKIPPED: >1 #30 obs (patch/sharp)"),
+        ("retire_no_match", "  no #30 obs matched the probe"),
+        ("fold_quarantined", "QUARANTINED by the fold"),
+    ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # five run knobs move inline onto the harmonic_component_calculation leaf
     # and `method_parameters_id` is dropped, because the schema says a statement
