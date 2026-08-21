@@ -96,12 +96,12 @@ verifyEqual(testCase, rep.device_channels_parsed, 2);
 verifyEqual(testCase, rep.manifests_renamed, 1);
 verifyEqual(testCase, rep.rename_quarantined, 0);
 
-% --- THE ROW PARTITION reconciles: probe_rows_total = emitted + refused +
-%     unresolved. Single-modality rows, so observations == emitting rows.
+% --- THE ROW PARTITION reconciles. Single-modality rows, so observations ==
+%     recording rows and manipulations == stimulator rows (increment 3).
 refused = rep.rows_no_subjectstring + rep.refused_no_subject;
-unresolved = rep.rows_unresolved_modality + rep.rows_stimulator;
+deferred = rep.rows_unresolved_modality + rep.rows_image_deferred;
 verifyEqual(testCase, rep.probe_rows_total, ...
-    rep.observations_emitted + refused + unresolved);
+    rep.observations_emitted + rep.manipulations_emitted + refused + deferred);
 
 % --- exactly two migrated_probemap_observation documents ------------------
 obs = bodiesNamed(out, 'migrated_probemap_observation');
@@ -152,7 +152,7 @@ verifyEqual(testCase, numel(recObs), 0);   % el_1 was the only direct element
 % --- each observation carries the parsed channels, no acquisition_system edge
 for i = 1:numel(obs)
     verifyEmpty(testCase, depVal(obs{i}, 'acquisition_system_id')); % unresolved
-    ch = obs{i}.subject_observation.channels;
+    ch = obs{i}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
     verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
     verifyEqual(testCase, char(ch(1).type.name), 'ai');
     verifyEqual(testCase, double(ch(1).numbers), [11 12 13 14]);
@@ -303,19 +303,37 @@ want = sort({'voltage_observation', 'current_observation', ...
 verifyEqual(testCase, got, want);
 end
 
-function testStimulatorAndUnresolvedRowsEmitNothing(testCase)
-% A stimulator type is the OTHER direction (a manipulation, not an observation);
-% an unmapped type is Guard A. Both emit nothing here, and are counted apart.
+function testStimulatorRowMintsATermManipulationUnresolvedEmitsNothing(testCase)
+% A stimulator type decomposes into a `term_manipulation` (#66 increment 3, the
+% T3 direction) -- NOT an observation; an unmapped type (lick-spout) is Guard A
+% and still emits nothing. Both counted apart.
 subj = subjectBody('spec_s', 'sess_s', 'L');
+stim = elementBody('stim_1', 'sess_s', 'stim', '1', 'stimulator', 1, 'spec_s');
 ing  = ingestedWithRows('ing_s', 'sess_s', 't0s', { ...
-    {'stim', '', 'stimulator', 'L'}, ...
-    {'lick', '', 'lick-spout', 'L'}});
-[out, rep] = decompose({sessionBody('sd_s', 'sess_s', 'ref'), subj, ing});
+    {'stim', '1', 'stimulator', 'L'}, ...
+    {'lick', '',  'lick-spout', 'L'}});
+[out, rep] = decompose({sessionBody('sd_s', 'sess_s', 'ref'), subj, stim, ing});
 verifyEqual(testCase, rep.probe_rows_total, 2);
 verifyEqual(testCase, rep.rows_stimulator, 1);
 verifyEqual(testCase, rep.rows_unresolved_modality, 1);
 verifyEqual(testCase, rep.observations_emitted, 0);
+verifyEqual(testCase, rep.manipulations_emitted, 1);
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
+
+% the manipulation: a term_manipulation of the specimen, stimulator TYPE as
+% variable AND term.value, instrument = the stimulator element-subject (T7),
+% on the epoch 'during' anchor, storage_mode inline, method 'stimulate'.
+manips = bodiesNamed(out, 'migrated_probemap_manipulation');
+verifyEqual(testCase, numel(manips), 1);
+m = manips{1};
+verifyEqual(testCase, char(m.document_class.class_name), 'term_manipulation');
+verifyEqual(testCase, depVal(m, 'subject_id'), 'spec_s');
+verifyEqual(testCase, depVal(m, 'instrument_id'), 'stim_1');
+verifyEqual(testCase, char(m.subject_statement.variable.name), 'stimulator');
+verifyEqual(testCase, char(m.subject_statement.storage_mode), 'inline');
+verifyEqual(testCase, char(m.term.value.name), 'stimulator');
+verifyEqual(testCase, char(m.subject_interaction.method.name), 'stimulate');
+verifyNotEmpty(testCase, depVal(m, 'time_reference_1'));
 end
 
 % ===================== the device half (increment 2) ==================
@@ -338,7 +356,7 @@ verifyEqual(testCase, rep.device_channels_unparsable, 0);
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 1);
 verifyEqual(testCase, depVal(obs{1}, 'acquisition_system_id'), 'acqsys_d');
-ch = obs{1}.subject_observation.channels;
+ch = obs{1}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).type.name), 'ai');
 verifyEqual(testCase, double(ch(1).numbers), [27 28 45]);

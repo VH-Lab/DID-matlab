@@ -13,9 +13,10 @@ function [result, report] = resolveEpochProbemap(result, options)
 %        field ({type, numbers} per group) on the observation.
 %     3  RENAME-THIN: the source `epochfiles_ingested` becomes `ingestion_manifest`
 %        (filenavigator_id RESTORED, epoch_id an EDGE, the char `epoch_id` dropped;
-%        the serialized `epochprobemap` KEPT VERBATIM for lossless read-back --
-%        stimulator/imaging rows do not decompose, so the string is the only full
-%        record) once the probemap has been decomposed off it.
+%        the serialized `epochprobemap` KEPT VERBATIM for lossless read-back)
+%        once the probemap has been decomposed off it. STIMULATOR rows ALSO
+%        decompose as of the 2026-08-21 increment -- one `term_manipulation` each
+%        (T3, mkManipulation) -- so only IMAGING rows still ride the string alone.
 %
 %   ---------------------------------------------------------------------
 %   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
@@ -25,7 +26,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested
-%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, ingestion_manifest, relative_reference
+%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, term_manipulation, ingestion_manifest, relative_reference
 %
 %   `image_observation` is DELIBERATELY NOT in that list. Imaging types are a
 %   recognised modality (jRecordingModality maps them to image_observation, and
@@ -121,6 +122,7 @@ report = struct( ...
     'rows_image_deferred',            0, ...
     'rows_stimulator',                0, ...
     'observations_emitted',           0, ...
+    'manipulations_emitted',          0, ...
     'instrument_resolved',            0, ...
     'instrument_omitted',             0, ...
     'device_strings_seen',            0, ...
@@ -312,8 +314,12 @@ for k = 1:n
         [entries, disposition] = localModality(row.type);
         switch disposition
             case 'stimulator'
+                % #66 increment 3 (TEAM-SIGNED 2026-08-21): a stimulator row
+                % decomposes into a `term_manipulation` (mirror of the recording
+                % observation, T3 direction), assembled below alongside the
+                % recording case. It shares the instrument/device/anchor
+                % resolution, so it falls through rather than `continue`.
                 report.rows_stimulator = report.rows_stimulator + 1;
-                continue;
             case 'recording'
                 % assemble below
             case 'image_deferred'
@@ -374,6 +380,27 @@ for k = 1:n
             anchorByEpochId(epochDocId) = anchorId;
             anchorBodyById(anchorId) = anchor;
             report.epoch_anchors_minted = report.epoch_anchors_minted + 1;
+        end
+
+        % ---- STIMULATOR: mint the manipulation (#66 increment 3) -----------
+        % The manipulation-side mirror of the recording observation below. One
+        % `term_manipulation` per stimulator row: subject = the specimen,
+        % instrument = the stimulator element-subject (T7), the stimulator TYPE
+        % as `variable` + `term.value`, the device wiring carried the same way.
+        % No #30 retirement: a stimulator has no #30 recording observation to
+        % supersede (jRecordingModality returns no `recording` entry for it).
+        if strcmp(disposition, 'stimulator')
+            manip = mkManipulation(row.type, subjectId, instrumentId, ...
+                anchorId, sid, datestamp, acqSystemId, channels);
+            newBodies{end+1} = manip;              %#ok<AGROW>
+            newGroupAnchor{end+1} = anchorId;      %#ok<AGROW>
+            report.manipulations_emitted = report.manipulations_emitted + 1;
+            if isempty(instrumentId)
+                report.instrument_omitted = report.instrument_omitted + 1;
+            else
+                report.instrument_resolved = report.instrument_resolved + 1;
+            end
+            continue;
         end
 
         % ---- mint the observation(s) (patch/sharp yield two) + RETIRE #30 --
@@ -620,11 +647,54 @@ obs.subject_statement = struct( ...
     'variable', mkOntologyTerm('', entry.variable), ...
     'storage_mode', 'reference');
 obs.subject_interaction = struct('method', mkOntologyTerm('', ''));
-obs.subject_observation = struct();
 if ~isempty(channels)
-    obs.subject_observation.channels = channels;  % channel half of the devicestring
+    % channel half of the devicestring. HOISTED to subject_interaction (#66
+    % increment 3, 2026-08-21) so a stimulator manipulation carries it too;
+    % was subject_observation.channels.
+    obs.subject_interaction.channels = channels;
 end
 obs = attachQuantityBlock(obs, entry.mixin);
+end
+
+function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
+        sessionId, datestamp, acqSystemId, channels)
+%MKMANIPULATION One `term_manipulation` for a stimulator probemap row -- #66
+%   increment 3, TEAM-SIGNED 2026-08-21. The manipulation-side mirror of
+%   mkObservation: a stimulator ACTS ON the specimen (T3), so it is NOT an
+%   observation. A `term_manipulation` (subject_manipulation + term) whose
+%   `variable` and `term.value` are the stimulator TYPE, subject_id the specimen,
+%   instrument_id the stimulator element-subject (T7), carrying the SAME device
+%   wiring as a recording observation (acquisition_system_id + channels, both on
+%   subject_interaction as of increment 3). The stimulus CONTENT is NOT here -- it
+%   lives in `timed_sequence_manipulation` from the stimulus model (#31); this is
+%   the probemap-level "this stimulator, wired thus, acted on this subject in this
+%   epoch" record the serialized `epochprobemap` string used to be the only home
+%   for. `storage_mode` is 'inline' (the term value is inline, not body-backed).
+%   base.name is distinct so it is never mistaken for an observation.
+if nargin < 7; acqSystemId = ''; end
+if nargin < 8; channels = emptyChannels(); end
+typeTerm = mkOntologyTerm('', stimType);
+m = struct();
+m.document_class = classBlock('term_manipulation', {'subject_manipulation', 'term'});
+m.depends_on = struct('name', 'subject_id', 'value', subjectId);
+if ~isempty(instrumentId)
+    m.depends_on(end+1) = struct('name', 'instrument_id', 'value', instrumentId); % T7
+end
+if ~isempty(acqSystemId)
+    m.depends_on(end+1) = struct('name', 'acquisition_system_id', ...
+        'value', acqSystemId); % device half of the devicestring
+end
+m.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
+m.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+    'name', 'migrated_probemap_manipulation', 'datestamp', datestamp);
+m.subject_statement = struct( ...
+    'variable', typeTerm, ...
+    'storage_mode', 'inline');
+m.subject_interaction = struct('method', mkOntologyTerm('', 'stimulate'));
+if ~isempty(channels)
+    m.subject_interaction.channels = channels;  % channel half (hoisted, increment 3)
+end
+m.term = struct('value', typeTerm);
 end
 
 function anchor = mkEpochAnchor(epochDocId, sessionId, datestamp)
