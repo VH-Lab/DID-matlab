@@ -526,6 +526,7 @@ POST_PASSES = [
         ("rows_image_deferred", "  imaging rows DEFERRED (image cell not emittable in inc 1)"),
         ("rows_stimulator", "  rows whose type is a stimulator (the other direction)"),
         ("observations_emitted", "OBSERVATIONS emitted (>= rows: patch/sharp yield 2)"),
+        ("manipulations_emitted", "MANIPULATIONS emitted (one term_manipulation per stimulator row)"),
         ("instrument_resolved", "  with an instrument_id edge (probe resolved)"),
         ("instrument_omitted", "  instrument_id OMITTED (probe unresolved; edge optional)"),
         # device half (increment 2): the devicestring -> acq system + channels.
