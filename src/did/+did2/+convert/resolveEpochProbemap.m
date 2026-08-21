@@ -18,7 +18,13 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested
-%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, image_observation, time_observation, acceleration_observation, temperature_observation, relative_reference
+%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, relative_reference
+%
+%   `image_observation` is DELIBERATELY NOT in that list. Imaging types are a
+%   recognised modality (jRecordingModality maps them to image_observation, and
+%   localModality mirrors that), but they CANNOT be emitted VALIDLY in increment
+%   1 -- see the IMAGE IS DEFERRED note on localModality. They are counted
+%   (rows_image_deferred) and left to the second pass, never emitted blank.
 %
 %   `epochfiles_ingested` is NOT consumed in the sense of being rewritten -- it
 %   is READ for its `epoch_id` and `epochprobemap`, and left exactly as it is
@@ -67,6 +73,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %     empty subjectstring column                 -> rows_no_subjectstring
 %     subjectstring resolves to no `subject`     -> refused_no_subject
 %     modality is 'stimulator'                   -> rows_stimulator
+%     modality is imaging (image, not emittable)  -> rows_image_deferred
 %     modality is 'unresolved'                   -> rows_unresolved_modality
 %
 %   `subject_id` is the ONE required edge on the observation chain, and an empty
@@ -101,6 +108,7 @@ report = struct( ...
     'rows_no_subjectstring',          0, ...
     'refused_no_subject',             0, ...
     'rows_unresolved_modality',       0, ...
+    'rows_image_deferred',            0, ...
     'rows_stimulator',                0, ...
     'observations_emitted',           0, ...
     'instrument_resolved',            0, ...
@@ -248,6 +256,12 @@ for k = 1:n
                 continue;
             case 'recording'
                 % assemble below
+            case 'image_deferred'
+                % Recognised imaging modality, but not emittable in increment 1
+                % (a blank image `value` cell is refused by #38; see
+                % localModality). Counted and left to the second pass.
+                report.rows_image_deferred = report.rows_image_deferred + 1;
+                continue;
             otherwise    % 'unresolved' or anything unexpected
                 report.rows_unresolved_modality = ...
                     report.rows_unresolved_modality + 1;
@@ -493,10 +507,15 @@ end
 
 function obs = attachQuantityBlock(obs, mixin)
 %ATTACHQUANTITYBLOCK The data_type block, empty because the value is body-backed
-%   (storage_mode 'reference'). `image` declares `value` mustBeNonEmpty, so its
-%   raster cell must be present even when the pixels are not; every other mixin
-%   takes an empty struct. Reconstructed from jRecordingObservation's own
-%   attachQuantityBlock -- see the note there on the `image`-only branch.
+%   (storage_mode 'reference'). Every mixin takes an empty struct because its
+%   `value` is optional and so absent-is-valid. `image` is the exception --
+%   `image.value` is mustBeNonEmpty, and a blank cell is refused by the #38
+%   NonVacuousFields gate -- so imaging is DEFERRED upstream (localModality
+%   returns 'image_deferred') and NEVER reaches this function. The `image` branch
+%   below is therefore currently unreachable; it is kept, matching
+%   jRecordingObservation's shape, so a second increment that can fill the cell
+%   (from real raster metadata) has the landing pad ready. Reconstructed from
+%   jRecordingObservation's own attachQuantityBlock.
 if strcmp(mixin, 'image')
     obs.image = struct();
     obs.image.value = struct('pixels', [], 'dtype', '', ...
@@ -528,7 +547,11 @@ function [entries, disposition] = localModality(elementType)
 %   Its rows are pinned against jRecordingModality's by
 %   testResolveEpochProbemap.m so the two cannot drift. Covers the SAME rows;
 %   `multichannel` is dropped (this pass mints no body, so there is no axis to
-%   flag). If jRecordingModality gains a row, add it here and update that test.
+%   flag). The ONLY intentional divergence is DISPOSITION, not mapping: imaging
+%   types map to image_observation exactly as jRecordingModality does, but this
+%   pass returns disposition 'image_deferred' (see the IMAGE IS DEFERRED note
+%   below) because it cannot emit a valid pure-reference image cell in increment
+%   1. If jRecordingModality gains a row, add it here and update that test.
 if nargin < 1 || isempty(elementType); elementType = ''; end
 key = lower(strtrim(char(elementType)));
 
@@ -549,6 +572,27 @@ if strcmp(key, 'n-trode') || ~isempty(regexp(key, '^([a-z0-9_]*_)?electrode-', '
     return;
 end
 
+% IMAGE IS DEFERRED, NOT UNRESOLVED. Imaging types ARE a recognised modality --
+% jRecordingModality maps them to image_observation and the entry below records
+% that mapping so the map still mirrors it -- but they cannot be emitted VALIDLY
+% in increment 1. `image` is the one data_type whose `value` cell is
+% mustBeNonEmpty, and a probemap row carries NO raster metadata, so every
+% descriptor (dtype/axes/color_model) is genuinely unknown. A blank `value` cell
+% is REFUSED by the #38 NonVacuousFields gate (armed by default: +did2/+schema/
+% cache.m validateField -> did2:validation:vacuousField), and inventing a dtype
+% to satisfy it is exactly the guess R6/#30 wrote their rule against. So imaging
+% is COUNTED (rows_image_deferred) and left to the second pass, which reaches the
+% raster metadata -- never emitted as a vacuous husk. This differs from
+% jRecordingModality only in the DISPOSITION (the type->leaf mapping is identical);
+% jRecordingObservation carries the same latent blank-cell shape, untested because
+% its own tests validate with Validate=false.
+if any(strcmp(key, {'wide-field-imaging', 'two-photon-imaging', ...
+        'one-photon-imaging', 'brightfield-imaging'}))
+    entries = mkEntry('image_observation', 'image', 'image');
+    disposition = 'image_deferred';
+    return;
+end
+
 switch key
     case {'patch-vm', 'patch-attached', 'sharp-vm'}
         entries = mkEntry('voltage_observation', 'voltage', 'voltage');
@@ -557,9 +601,6 @@ switch key
     case {'patch', 'sharp'}
         entries = [mkEntry('voltage_observation', 'voltage', 'voltage'), ...
                    mkEntry('current_observation', 'current', 'current')];
-    case {'wide-field-imaging', 'two-photon-imaging', ...
-          'one-photon-imaging', 'brightfield-imaging'}
-        entries = mkEntry('image_observation', 'image', 'image');
     case 'spikes'
         entries = mkEntry('time_observation', 'time', 'spike');
     case {'ecg', 'eeg'}

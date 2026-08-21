@@ -504,7 +504,7 @@ POST_PASSES = [
     # THE ROW PARTITION HOLDS BY CONSTRUCTION and is the cheapest defect check:
     #     probe_rows_total == (rows that emitted) + rows_no_subjectstring
     #                       + refused_no_subject + rows_unresolved_modality
-    #                       + rows_stimulator
+    #                       + rows_image_deferred + rows_stimulator
     # Each row takes exactly one of those exits, so a violation is a counter that
     # stopped moving, not a corpus fact. (rows-that-emitted is not its own
     # counter; observations_emitted / numel(entries) recovers it when no
@@ -523,6 +523,7 @@ POST_PASSES = [
         ("rows_no_subjectstring", "  rows with an empty subjectstring column"),
         ("refused_no_subject", "  rows whose subjectstring resolved to no subject"),
         ("rows_unresolved_modality", "  rows with an unresolved modality (Guard A)"),
+        ("rows_image_deferred", "  imaging rows DEFERRED (image cell not emittable in inc 1)"),
         ("rows_stimulator", "  rows whose type is a stimulator (the other direction)"),
         ("observations_emitted", "OBSERVATIONS emitted (>= rows: patch/sharp yield 2)"),
         ("instrument_resolved", "  with an instrument_id edge (probe resolved)"),

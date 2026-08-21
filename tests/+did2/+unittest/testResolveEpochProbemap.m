@@ -195,23 +195,34 @@ function testModalityRowsResolveToTheRightObservationLeaf(testCase)
 % One row per modality family that yields a single observation, all resolvable to
 % the same specimen. Asserts localModality maps each type to the leaf
 % jRecordingModality maps it to -- the pin that keeps the duplicated map honest.
+%
+% IMAGING IS DEFERRED, NOT EMITTED, IN INCREMENT 1. `image.value` is
+% mustBeNonEmpty, and a probemap row carries no raster metadata, so a
+% pure-reference image cell is all-blank and the #38 NonVacuousFields gate (armed
+% by default) refuses it -- inventing a dtype to satisfy it is the guess R6/#30
+% forbid. So the two-photon-imaging row is COUNTED (rows_image_deferred) and emits
+% nothing; the other SIX rows emit. This is the pass recognising a modality it
+% cannot honestly express yet, not a validation bug -- see resolveEpochProbemap's
+% localModality IMAGE IS DEFERRED note. jRecordingObservation carries the same
+% latent blank-image shape but never validates it (its tests run Validate=false).
 subj = subjectBody('spec_m', 'sess_m', 'L');
 ing  = ingestedWithRows('ing_m', 'sess_m', 't0m', { ...
     {'a', '', 'n-trode',              'L'}, ...   % voltage
     {'b', '', 'patch-i',              'L'}, ...   % current
-    {'c', '', 'two-photon-imaging',   'L'}, ...   % image
+    {'c', '', 'two-photon-imaging',   'L'}, ...   % image (DEFERRED, not emitted)
     {'d', '', 'spikes',               'L'}, ...   % time
     {'e', '', 'accelerometer',        'L'}, ...   % acceleration
     {'f', '', 'thermometer',          'L'}, ...   % temperature
     {'g', '', 'extracellular_electrode-4', 'L'}}); % voltage (electrode stem)
 [out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subj, ing});
 verifyEqual(testCase, rep.probe_rows_total, 7);
-verifyEqual(testCase, rep.observations_emitted, 7);
+verifyEqual(testCase, rep.observations_emitted, 6);
+verifyEqual(testCase, rep.rows_image_deferred, 1);
 verifyEqual(testCase, rep.rows_unresolved_modality, 0);
 
 got = sort(cellfun(@(b) char(b.document_class.class_name), ...
     bodiesNamed(out, 'migrated_probemap_observation'), 'UniformOutput', false));
-want = sort({'voltage_observation', 'current_observation', 'image_observation', ...
+want = sort({'voltage_observation', 'current_observation', ...
     'time_observation', 'acceleration_observation', 'temperature_observation', ...
     'voltage_observation'});
 verifyEqual(testCase, got, want);
