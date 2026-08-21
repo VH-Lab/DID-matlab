@@ -445,6 +445,15 @@ jobs:
           python3 tools/corpus_proven.py --schema-repo did-schema \
               corpus-reports tests/corpus-reports
 
+      - name: Per-corpus Bar-2 gap (report-only)
+        # Per corpus, how many of its classes are at their DECIDED FINAL shape --
+        # the husks/bridges/superseded emissions Bar-1 hides. REPORT-ONLY (no
+        # --gate): Bar-2 is in progress, so not reaching it is expected.
+        if: always()
+        run: |
+          python3 did-schema/tools/bar2_gap.py \
+              corpus-reports tests/corpus-reports || true
+
       - name: Carry the proof out of CI as a committable snapshot
         # THE NUMBER THIS RUN PRODUCES OTHERWISE SURVIVES NOWHERE. The rung is
         # printed to a log that scrolls and written to an artifact that

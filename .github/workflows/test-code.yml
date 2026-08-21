@@ -307,6 +307,18 @@ jobs:
           python3 tools/corpus_proven.py --schema-repo did-schema \
               corpus-reports tests/corpus-reports
 
+      - name: Per-corpus Bar-2 gap (report-only)
+        # BAR-1 (corpus_proven / the corpus tests) says the documents migrate and
+        # validate. This says, per corpus, how many of its classes are at their
+        # DECIDED FINAL shape -- the husks/bridges/superseded emissions a green
+        # run hides. REPORT-ONLY: Bar-2 is the work in progress, so not reaching
+        # it is expected and must not fail CI (no --gate). did-schema's tool
+        # reads its own coverage ledger; we only hand it the corpus reports.
+        if: always()
+        run: |
+          python3 did-schema/tools/bar2_gap.py \
+              corpus-reports tests/corpus-reports || true
+
       - name: Upload corpus discovery reports
         # Discovery-mode corpus tests (e.g., testCorpus20211116) write
         # JSON summaries into corpus-reports/. Upload them as a CI
