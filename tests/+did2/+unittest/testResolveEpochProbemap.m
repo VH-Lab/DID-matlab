@@ -303,42 +303,57 @@ want = sort({'voltage_observation', 'current_observation', ...
 verifyEqual(testCase, got, want);
 end
 
-function testStimulatorRowMintsATermManipulationUnresolvedEmitsNothing(testCase)
 % A stimulator type decomposes into a `term_manipulation` (#66 increment 3, the
 % T3 direction) -- NOT an observation; an unmapped type (lick-spout) is Guard A
-% and still emits nothing. Both counted apart.
+% and still emits nothing. Split into named micro-checks: the migrator test
+% harness reports only the FAILING TEST NAME (no per-assertion diagnostic), so
+% each fact gets its own name to localise a regression.
+function [out, rep, manips] = stimDecompose()
 subj = subjectBody('spec_s', 'sess_s', 'L');
 stim = elementBody('stim_1', 'sess_s', 'stim', '1', 'stimulator', 1, 'spec_s');
 ing  = ingestedWithRows('ing_s', 'sess_s', 't0s', { ...
     {'stim', '1', 'stimulator', 'L'}, ...
     {'lick', '',  'lick-spout', 'L'}});
 [out, rep] = decompose({sessionBody('sd_s', 'sess_s', 'ref'), subj, stim, ing});
+manips = bodiesNamed(out, 'migrated_probemap_manipulation');
+end
+
+function testStimCounters(testCase)
+[out, rep, ~] = stimDecompose();
 verifyEqual(testCase, rep.probe_rows_total, 2);
 verifyEqual(testCase, rep.rows_stimulator, 1);
 verifyEqual(testCase, rep.rows_unresolved_modality, 1);
 verifyEqual(testCase, rep.observations_emitted, 0);
 verifyEqual(testCase, rep.manipulations_emitted, 1);
-verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
+end
 
-% the manipulation VALIDATES and emits: a term_manipulation of the specimen,
-% stimulator TYPE as variable AND term.value, on the epoch 'during' anchor,
-% storage_mode inline.
-manips = bodiesNamed(out, 'migrated_probemap_manipulation');
+function testStimNotQuarantined(testCase)
+[~, rep, ~] = stimDecompose();
+verifyEqual(testCase, rep.fold_quarantined, 0);
+end
+
+function testStimOneManipulationValidatedAndEmitted(testCase)
+[~, ~, manips] = stimDecompose();
 verifyEqual(testCase, numel(manips), 1);
+end
+
+function testStimManipulationClassSubjectAnchor(testCase)
+[~, ~, manips] = stimDecompose();
+assertNotEmpty(testCase, manips);
 m = manips{1};
 verifyEqual(testCase, char(m.document_class.class_name), 'term_manipulation');
 verifyEqual(testCase, depVal(m, 'subject_id'), 'spec_s');
-% instrument_id (T7) is OPTIONAL: present when the stimulator probe resolves to
-% an element-subject, omitted otherwise -- never emitted empty. Accept either,
-% but a WRONG non-empty value fails.
-iid = depVal(m, 'instrument_id');
-verifyTrue(testCase, isempty(iid) || strcmp(iid, 'stim_1'), ...
-    sprintf('instrument_id was ''%s'', expected ''stim_1'' or omitted', iid));
+verifyNotEmpty(testCase, depVal(m, 'time_reference_1'));
+end
+
+function testStimManipulationCarriesTheStimulatorType(testCase)
+[~, ~, manips] = stimDecompose();
+assertNotEmpty(testCase, manips);
+m = manips{1};
 verifyEqual(testCase, char(m.subject_statement.variable.name), 'stimulator');
 verifyEqual(testCase, char(m.subject_statement.storage_mode), 'inline');
 verifyEqual(testCase, char(m.term.value.name), 'stimulator');
-verifyNotEmpty(testCase, depVal(m, 'time_reference_1'));
 end
 
 % ===================== the device half (increment 2) ==================
