@@ -528,12 +528,23 @@ POST_PASSES = [
         ("observations_emitted", "OBSERVATIONS emitted (>= rows: patch/sharp yield 2)"),
         ("instrument_resolved", "  with an instrument_id edge (probe resolved)"),
         ("instrument_omitted", "  instrument_id OMITTED (probe unresolved; edge optional)"),
+        # device half (increment 2): the devicestring -> acq system + channels.
+        ("device_strings_seen", "device strings seen (rows reaching the device half)"),
+        ("device_acqsystem_resolved", "  device name RESOLVED to an acquisition_system"),
+        ("device_acqsystem_unresolved", "  device name UNRESOLVED (edge omitted, not empty)"),
+        ("device_channels_parsed", "  channel spec parsed cleanly"),
+        ("device_channels_unparsable", "  channel spec had an unparsable group (partial)"),
         ("epoch_anchors_minted", "epoch 'during' anchors minted (one per epoch)"),
         ("session30_observations_retired", "#30 observations RETIRED (replaced)"),
         ("session30_anchors_removed", "  #30 session anchors removed (now unreferenced)"),
-        ("retire_skipped_ambiguous", "  retire SKIPPED: >1 #30 obs (patch/sharp)"),
-        ("retire_no_match", "  no #30 obs matched the probe"),
-        ("fold_quarantined", "QUARANTINED by the fold"),
+        ("retire_skipped_ambiguous", "  retire SKIPPED: >1 #30 obs of the same triple"),
+        ("retire_no_match", "  no #30 obs matched the probe's (subject, instrument, class)"),
+        # rename-thin (increment 3): epochfiles_ingested -> ingestion_manifest.
+        ("manifests_renamed", "ingestion_manifests renamed (epochfiles_ingested consumed)"),
+        ("rename_skipped_no_filenavigator", "  rename SKIPPED: no filenavigator_id (tombstone kept)"),
+        ("rename_skipped_no_epoch", "  rename SKIPPED: no resolved epoch (tombstone kept)"),
+        ("rename_quarantined", "  rename QUARANTINED (tombstone kept, Bar-1 fallback)"),
+        ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # five run knobs move inline onto the harmonic_component_calculation leaf
