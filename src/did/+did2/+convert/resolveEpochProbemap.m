@@ -3,12 +3,17 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   into one epoch-scoped `<modality>_observation` per probe row, retiring #30's
 %   coarse session-scoped observation for that same probe.
 %
-%   INCREMENT 1 of the epochprobemap decomposition (DID-schema V_eta_OPEN_WORK.md
-%   row #66). This is the OBSERVATION half only. It DELIBERATELY does NOT rename
-%   `epochfiles_ingested` -> `ingestion_manifest`, does NOT drop the probemap, and
-%   does NOT touch the device half (`acquisition_system_id`, `channels`) -- those
-%   are increments 2/3 and need a schema change this build may not make (Operating
-%   Rule 1). `+migrators_j/epochfiles_ingested.m` stays a guarded passthrough.
+%   The epochprobemap decomposition (DID-schema V_eta_OPEN_WORK.md row #66),
+%   ALL THREE INCREMENTS:
+%     1  OBSERVATION half: one epoch-scoped `<modality>_observation` per probe
+%        row (subject_id, instrument_id, per-epoch 'during' anchor).
+%     2  DEVICE half: the row's `devicestring` (`intan1:ai27-28,45;di1-4`)
+%        splits into an `acquisition_system_id` edge (device name resolved
+%        against `acquisition_system.base.name`) and a structured `channels`
+%        field ({type, numbers} per group) on the observation.
+%     3  RENAME-THIN: the source `epochfiles_ingested` becomes `ingestion_manifest`
+%        (filenavigator_id RESTORED, epoch_id an EDGE, `epochprobemap` + the char
+%        `epoch_id` dropped) once the probemap has been decomposed off it.
 %
 %   ---------------------------------------------------------------------
 %   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
@@ -18,18 +23,21 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested
-%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, relative_reference
+%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, ingestion_manifest, relative_reference
 %
 %   `image_observation` is DELIBERATELY NOT in that list. Imaging types are a
 %   recognised modality (jRecordingModality maps them to image_observation, and
-%   localModality mirrors that), but they CANNOT be emitted VALIDLY in increment
-%   1 -- see the IMAGE IS DEFERRED note on localModality. They are counted
+%   localModality mirrors that), but they CANNOT be emitted VALIDLY here --
+%   see the IMAGE IS DEFERRED note on localModality. They are counted
 %   (rows_image_deferred) and left to the second pass, never emitted blank.
 %
-%   `epochfiles_ingested` is NOT consumed in the sense of being rewritten -- it
-%   is READ for its `epoch_id` and `epochprobemap`, and left exactly as it is
-%   (increment 3 renames it). The emissions are the per-probe observations and,
-%   one per epoch, the shared 'during' anchor they point at.
+%   `epochfiles_ingested` IS now consumed: after its probemap is decomposed into
+%   observations, the document itself is rewritten to `ingestion_manifest`
+%   (increment 3), GUARDED -- a document that cannot supply the manifest's two
+%   required edges (filenavigator_id, a resolvable epoch) is left as the
+%   `epochfiles_ingested` tombstone rather than quarantined. The other emissions
+%   are the per-probe observations and, one per epoch, the shared 'during' anchor
+%   they point at.
 %
 %   ---------------------------------------------------------------------
 %   WHY THIS IS A BATCH PASS AND NOT A MIGRATOR
@@ -113,11 +121,20 @@ report = struct( ...
     'observations_emitted',           0, ...
     'instrument_resolved',            0, ...
     'instrument_omitted',             0, ...
+    'device_strings_seen',            0, ...
+    'device_acqsystem_resolved',      0, ...
+    'device_acqsystem_unresolved',    0, ...
+    'device_channels_parsed',         0, ...
+    'device_channels_unparsable',     0, ...
     'epoch_anchors_minted',           0, ...
     'session30_observations_retired', 0, ...
     'session30_anchors_removed',      0, ...
     'retire_skipped_ambiguous',       0, ...
     'retire_no_match',                0, ...
+    'manifests_renamed',              0, ...
+    'rename_skipped_no_filenavigator',0, ...
+    'rename_skipped_no_epoch',        0, ...
+    'rename_quarantined',             0, ...
     'fold_quarantined',               0, ...
     'ran',                            false);
 result.epoch_probemap_fold = report;
@@ -162,10 +179,23 @@ epochIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
 %     and the probe (name, reference) columns (encoded 'name (ref X)' the way
 %     +migrators_j/element.m mints a probe-subject's local_identifier).
 subjectIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
-% (d) #30 observations grouped by their instrument_id value. jRecordingObservation
-%     stamps base.name = 'migrated_recording_observation' at exactly one site, so
-%     the marker needs no modality-class list. A cell of {index} per instrument.
-obs30ByInstrument = containers.Map('KeyType', 'char', 'ValueType', 'any');
+% (c) `acquisition_system` documents by (session_id, base.name) -> id. The device
+%     half: a probemap devicestring names a rig by NAME (daqsystem.base.name,
+%     PRESERVED onto the acquisition_system by +migrators_j/daqsystem.m), so this
+%     resolves that name to the migrated document id. base.name is the join key
+%     the live NDI query uses too (system.m:229 / syncgraph.m:404-408).
+acqSystemIdByName = containers.Map('KeyType', 'char', 'ValueType', 'char');
+% (d) #30 observations keyed by the (subject_id, instrument_id, class_name)
+%     TRIPLE -- NOT instrument_id alone. jRecordingObservation stamps
+%     base.name = 'migrated_recording_observation'; but a single probe (instrument)
+%     carries MORE THAN ONE #30 observation whenever it is spike-sorted: its own
+%     direct recording (subject = the specimen) AND one per derived neuron
+%     (subject = the neuron, instrument = this probe, per the spike-train leaf).
+%     Keying on instrument alone made every such probe `retire_skipped_ambiguous`
+%     (174 of 174 on Soph, 0 retired). The probemap observation supersedes ONLY
+%     the probe's own direct recording of the SAME specimen and modality, so the
+%     subject and the class must be in the key. A cell of {index} per triple.
+obs30ByTriple = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:n
     if isempty(bodies{k}); continue; end
     b = bodies{k};
@@ -188,14 +218,24 @@ for k = 1:n
                 key = epochKey(sessionIds{k}, lid);
                 if ~isKey(subjectIdByKey, key); subjectIdByKey(key) = docIds{k}; end
             end
+        case 'acquisition_system'
+            nm = baseField(b, 'name');
+            if ~isempty(nm) && ~isempty(docIds{k})
+                key = epochKey(sessionIds{k}, nm);
+                if ~isKey(acqSystemIdByName, key)
+                    acqSystemIdByName(key) = docIds{k};
+                end
+            end
     end
     if isRecording30Observation(b)
+        subj  = depValueOf(b, 'subject_id');
         instr = depValueOf(b, 'instrument_id');
-        if ~isempty(instr)
-            if isKey(obs30ByInstrument, instr)
-                obs30ByInstrument(instr) = [obs30ByInstrument(instr), {k}];
+        if ~isempty(subj) && ~isempty(instr)
+            tk = obs30TripleKey(subj, instr, classOf{k});
+            if isKey(obs30ByTriple, tk)
+                obs30ByTriple(tk) = [obs30ByTriple(tk), {k}];
             else
-                obs30ByInstrument(instr) = {k};
+                obs30ByTriple(tk) = {k};
             end
         end
     end
@@ -212,6 +252,9 @@ retire30Ids = {};     % #30 observation base.ids to remove, once replacements la
 retireReplacementIds = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % #30 anchor id -> {retired-obs-id, ...}: candidate for removal once its obs go.
 retire30AnchorCand = containers.Map('KeyType', 'char', 'ValueType', 'any');
+% INCREMENT 3: source epochfiles_ingested docId -> its ingestion_manifest body.
+% Applied in the rebuild, GUARDED on the manifest surviving validation.
+renameBodyBySrcId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
@@ -221,16 +264,31 @@ for k = 1:n
     es = epochStringOf(b);
     if isempty(es) || ~isKey(epochIdByKey, epochKey(sid, es))
         report.refused_no_epoch = report.refused_no_epoch + 1;
-        continue;
+        report.rename_skipped_no_epoch = report.rename_skipped_no_epoch + 1;
+        continue;     % no epoch -> cannot fill ingestion_manifest.epoch_id; stays
     end
     epochDocId = epochIdByKey(epochKey(sid, es));
+    datestamp = baseField(b, 'datestamp');
+    if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+
+    % ---- INCREMENT 3: schedule the rename-thin (guarded) -------------------
+    % epochfiles_ingested -> ingestion_manifest, the moment its epoch resolves.
+    % Scheduled BEFORE the probemap decode so a manifest with no probemap is
+    % still renamed. GUARDED on filenavigator_id (NDI writes it; V_eta dropped
+    % it): absent -> leave the tombstone, counted, never quarantined.
+    fnId = depValueOf(b, 'filenavigator_id');
+    if isempty(fnId)
+        report.rename_skipped_no_filenavigator = ...
+            report.rename_skipped_no_filenavigator + 1;
+    else
+        renameBodyBySrcId(docIds{k}) = ...
+            mkIngestionManifest(b, fnId, epochDocId, sid, datestamp);
+    end
 
     pm = probemapCharOf(b);
     if isempty(pm); continue; end     % no probemap text -> no rows to decompose
     rowsPM = parseProbemapRows(pm);
     if isempty(rowsPM); continue; end
-    datestamp = baseField(b, 'datestamp');
-    if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
 
     for r = 1:numel(rowsPM)
         report.probe_rows_total = report.probe_rows_total + 1;
@@ -276,6 +334,35 @@ for k = 1:n
             instrumentId = subjectIdByKey(probeKey);
         end
 
+        % ---- DEVICE half (increment 2): devicestring -> acq system + channels
+        % `intan1:ai27-28,45;di1-4` -> device name (resolved against
+        % acquisition_system.base.name) + grouped {type, numbers} channels.
+        % Both OPTIONAL on the observation: an unresolved name OMITS the edge
+        % (never emitted empty), an unparsable channel spec yields no channels.
+        acqSystemId = '';
+        channels = emptyChannels();
+        if ~isempty(row.devicestring)
+            report.device_strings_seen = report.device_strings_seen + 1;
+            [deviceName, channels, chanOk] = parseDeviceString(row.devicestring);
+            if chanOk
+                report.device_channels_parsed = report.device_channels_parsed + 1;
+            else
+                report.device_channels_unparsable = ...
+                    report.device_channels_unparsable + 1;
+            end
+            if ~isempty(deviceName)
+                dk = epochKey(sid, deviceName);
+                if isKey(acqSystemIdByName, dk)
+                    acqSystemId = acqSystemIdByName(dk);
+                    report.device_acqsystem_resolved = ...
+                        report.device_acqsystem_resolved + 1;
+                else
+                    report.device_acqsystem_unresolved = ...
+                        report.device_acqsystem_unresolved + 1;
+                end
+            end
+        end
+
         % ---- the shared per-epoch 'during' anchor --------------------------
         if isKey(anchorByEpochId, epochDocId)
             anchorId = anchorByEpochId(epochDocId);
@@ -287,83 +374,111 @@ for k = 1:n
             report.epoch_anchors_minted = report.epoch_anchors_minted + 1;
         end
 
-        % ---- mint the observation(s) (patch/sharp yield two) ---------------
-        mintedIdsThisRow = {};
+        % ---- mint the observation(s) (patch/sharp yield two) + RETIRE #30 --
+        % Retirement is PER ENTRY (per emitted observation CLASS), matched to the
+        % #30 observation of the SAME (subject, instrument, class) triple. A
+        % spike-sorted probe carries a #30 observation per derived neuron on this
+        % instrument (subject = the neuron); the triple key excludes those (their
+        % subject is not this specimen), leaving exactly the probe's own direct
+        % recording of this modality to supersede. Committed only after a
+        % replacement survives validation (below).
         for e = 1:numel(entries)
             obs = mkObservation(entries(e), subjectId, instrumentId, anchorId, ...
-                sid, datestamp);
+                sid, datestamp, acqSystemId, channels);
             newBodies{end+1} = obs;                 %#ok<AGROW>
             newGroupAnchor{end+1} = anchorId;       %#ok<AGROW>
-            mintedIdsThisRow{end+1} = obs.base.id;  %#ok<AGROW>
+
+            if ~isempty(instrumentId)
+                tk = obs30TripleKey(subjectId, instrumentId, entries(e).class);
+                if isKey(obs30ByTriple, tk)
+                    hits = obs30ByTriple(tk);
+                    if isscalar(hits)
+                        obs30Id = docIds{hits{1}};
+                        if ~isempty(obs30Id) && ~any(strcmp(obs30Id, retire30Ids))
+                            retire30Ids{end+1} = obs30Id;         %#ok<AGROW>
+                            retireReplacementIds(obs30Id) = {obs.base.id};
+                            anchorId30 = depValueOf(bodies{hits{1}}, 'time_reference_1');
+                            if ~isempty(anchorId30)
+                                retire30AnchorCand(anchorId30) = {obs30Id};
+                            end
+                        elseif ~isempty(obs30Id) && isKey(retireReplacementIds, obs30Id)
+                            % same probe in another epoch already scheduled it:
+                            % add this replacement so the retirement survives if
+                            % ANY epoch's observation validates.
+                            retireReplacementIds(obs30Id) = ...
+                                [retireReplacementIds(obs30Id), {obs.base.id}];
+                        end
+                    elseif numel(hits) > 1
+                        report.retire_skipped_ambiguous = ...
+                            report.retire_skipped_ambiguous + 1;
+                    end
+                else
+                    report.retire_no_match = report.retire_no_match + 1;
+                end
+            end
         end
         if isempty(instrumentId)
             report.instrument_omitted = report.instrument_omitted + numel(entries);
         else
             report.instrument_resolved = report.instrument_resolved + numel(entries);
         end
-
-        % ---- REPLACE #30's coarse observation for this probe ---------------
-        % Only when the probe resolved to an element-subject AND exactly one #30
-        % observation names it. 0 -> nothing to retire; >1 -> a patch/sharp
-        % element with two #30 observations, ambiguous, so KEEP them rather than
-        % risk stranding one. The retirement is committed only after a
-        % replacement survives validation (below).
-        if ~isempty(instrumentId) && isKey(obs30ByInstrument, instrumentId)
-            hits = obs30ByInstrument(instrumentId);
-            if numel(hits) == 1
-                obsIdx = hits{1};
-                obs30Id = docIds{obsIdx};
-                if ~isempty(obs30Id) && ~any(strcmp(obs30Id, retire30Ids))
-                    retire30Ids{end+1} = obs30Id;                %#ok<AGROW>
-                    retireReplacementIds(obs30Id) = mintedIdsThisRow;
-                    anchorId30 = depValueOf(bodies{obsIdx}, 'time_reference_1');
-                    if ~isempty(anchorId30)
-                        retire30AnchorCand(anchorId30) = {obs30Id};
-                    end
-                end
-            elseif numel(hits) > 1
-                report.retire_skipped_ambiguous = ...
-                    report.retire_skipped_ambiguous + 1;
-            end
-        elseif ~isempty(instrumentId)
-            report.retire_no_match = report.retire_no_match + 1;
-        end
     end
 end
 
-if isempty(newBodies)
+renameBodies = renameBodyBySrcId.values;
+if isempty(newBodies) && isempty(renameBodies)
     result.epoch_probemap_fold = report;
     return;
 end
 
-% --- validate the new bodies through the same door every other pass uses ---
+% --- validate the OBSERVATIONS + anchors: quarantines here are REAL --------
 % Observations + their epoch anchors go through together, so an observation's
 % `time_reference_1` names a document present in the same batch. Cross-batch
 % edges (subject_id, instrument_id) point OUTSIDE this rebuild set, exactly as
 % resolveSessionAnchors' relative_to does -- v1_to_v2's per-batch validate does
 % not resolve references (that is the corpus orphan gate), so this is fine.
-anchorBodies = anchorBodyById.values;
-rebuildIn = [newBodies, anchorBodies(:)'];
-out = did2.convert.v1_to_v2(rebuildIn, ...
-    'Validate',      options.Validate, ...
-    'SchemaCache',   options.SchemaCache, ...
-    'TargetVersion', options.TargetVersion);
-
-report.fold_quarantined = numel(out.quarantine);
-if ~isempty(out.quarantine)
-    if isfield(result, 'quarantine') && ~isempty(result.quarantine)
-        result.quarantine = [result.quarantine, out.quarantine];
-    else
-        result.quarantine = out.quarantine;
+% A quarantined observation is a defect and propagates to the 0-quarantine gate.
+producedById = containers.Map('KeyType', 'char', 'ValueType', 'any');
+if ~isempty(newBodies)
+    anchorBodies = anchorBodyById.values;
+    out = did2.convert.v1_to_v2([newBodies, anchorBodies(:)'], ...
+        'Validate',      options.Validate, ...
+        'SchemaCache',   options.SchemaCache, ...
+        'TargetVersion', options.TargetVersion);
+    report.fold_quarantined = numel(out.quarantine);
+    if ~isempty(out.quarantine)
+        if isfield(result, 'quarantine') && ~isempty(result.quarantine)
+            result.quarantine = [result.quarantine, out.quarantine];
+        else
+            result.quarantine = out.quarantine;
+        end
+    end
+    % Match on base.id, not position: a quarantined body leaves no slot.
+    for k = 1:numel(out.migrated)
+        try
+            producedById(char(out.migrated{k}.get('base.id'))) = out.migrated{k};
+        catch
+        end
     end
 end
 
-% Match on base.id, not position: a quarantined body leaves no slot.
-producedById = containers.Map('KeyType', 'char', 'ValueType', 'double');
-for k = 1:numel(out.migrated)
-    try
-        producedById(char(out.migrated{k}.get('base.id'))) = k;
-    catch
+% --- validate the RENAMES SEPARATELY: a manifest quarantine is NOT a gate ---
+% failure. Renaming epochfiles_ingested -> ingestion_manifest is a Bar-2 step;
+% the source tombstone is a valid Bar-1 fallback, so a manifest that cannot
+% validate leaves the source unchanged (guarded) and is counted
+% (rename_quarantined), never added to result.quarantine. Same idiom as every
+% guarded passthrough (fitcurve, openminds_stimulus, image_stack).
+manifestById = containers.Map('KeyType', 'char', 'ValueType', 'any');
+if ~isempty(renameBodies)
+    outRen = did2.convert.v1_to_v2(renameBodies(:)', ...
+        'Validate',      options.Validate, ...
+        'SchemaCache',   options.SchemaCache, ...
+        'TargetVersion', options.TargetVersion);
+    for k = 1:numel(outRen.migrated)
+        try
+            manifestById(char(outRen.migrated{k}.get('base.id'))) = outRen.migrated{k};
+        catch
+        end
     end
 end
 
@@ -387,7 +502,7 @@ for j = 1:numel(newBodies)
     aid = newGroupAnchor{j};
     if ~anchorAlive(aid); continue; end          % group withheld: anchor died
     if ~isKey(producedById, id); continue; end    % this observation quarantined
-    appended{end+1} = out.migrated{producedById(id)}; %#ok<AGROW>
+    appended{end+1} = producedById(id); %#ok<AGROW>
     report.observations_emitted = report.observations_emitted + 1;
     emittedNewIds(id) = true;
     anchorHasSurvivor(aid) = true;
@@ -397,7 +512,7 @@ for a = 1:numel(anchorKeys)
     aid = anchorKeys{a};
     if isKey(anchorHasSurvivor, aid) && anchorHasSurvivor(aid) ...
             && isKey(producedById, aid)
-        appended{end+1} = out.migrated{producedById(aid)}; %#ok<AGROW>
+        appended{end+1} = producedById(aid); %#ok<AGROW>
     end
 end
 
@@ -448,11 +563,24 @@ if ~isempty(anchorCandKeys)
 end
 
 % --- rebuild the migrated set: drop retired obs + removable anchors, append -
+% and REPLACE each renamed epochfiles_ingested with its ingestion_manifest
+% (increment 3), id-preserved. A manifest that quarantined leaves the source
+% doc unchanged (guarded, counted rename_quarantined above).
 kept = {};
 for k = 1:n
     id = docIds{k};
     if ~isempty(id) && (isKey(retireSet, id) || isKey(removeAnchorSet, id))
         continue;
+    end
+    if ~isempty(id) && isKey(renameBodyBySrcId, id)
+        if isKey(manifestById, id)   % manifest survived (it preserves the id)
+            kept{end+1} = manifestById(id); %#ok<AGROW>
+            report.manifests_renamed = report.manifests_renamed + 1;
+            continue;
+        else
+            report.rename_quarantined = report.rename_quarantined + 1;
+            % fall through: keep the source epochfiles_ingested unchanged
+        end
     end
     kept{end+1} = docs{k}; %#ok<AGROW>
 end
@@ -464,15 +592,24 @@ end
 % ===================== builders ========================================
 
 function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
-        sessionId, datestamp)
+        sessionId, datestamp, acqSystemId, channels)
 %MKOBSERVATION One <modality>_observation. Field-for-field the shape
 %   +migrators_j/private/jRecordingObservation.m emits, base.name distinct
 %   ('migrated_probemap_observation') so it is never mistaken for a #30 obs.
+%   ACQSYSTEMID / CHANNELS are the DEVICE HALF (increment 2): both OPTIONAL, so
+%   an unresolved rig OMITS the edge and an empty channel spec OMITS the field --
+%   never emitted empty (the invented-empty-edge pattern, and #38 for the field).
+if nargin < 7; acqSystemId = ''; end
+if nargin < 8; channels = emptyChannels(); end
 obs = struct();
 obs.document_class = classBlock(entry.class, {'subject_observation', entry.mixin});
 obs.depends_on = struct('name', 'subject_id', 'value', subjectId);
 if ~isempty(instrumentId)
     obs.depends_on(end+1) = struct('name', 'instrument_id', 'value', instrumentId); % T7
+end
+if ~isempty(acqSystemId)
+    obs.depends_on(end+1) = struct('name', 'acquisition_system_id', ...
+        'value', acqSystemId); % device half of the devicestring
 end
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
 obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
@@ -482,6 +619,9 @@ obs.subject_statement = struct( ...
     'storage_mode', 'reference');
 obs.subject_interaction = struct('method', mkOntologyTerm('', ''));
 obs.subject_observation = struct();
+if ~isempty(channels)
+    obs.subject_observation.channels = channels;  % channel half of the devicestring
+end
 obs = attachQuantityBlock(obs, entry.mixin);
 end
 
@@ -537,6 +677,131 @@ end
 function t = mkOntologyTerm(node, name)
 %MKONTOLOGYTERM {node, name}. Reconstructed jOntologyTerm (unreachable private).
 t = struct('node', char(node), 'name', char(name));
+end
+
+function m = mkIngestionManifest(srcBody, filenavigatorId, epochDocId, ...
+        sessionId, datestamp)
+%MKINGESTIONMANIFEST epochfiles_ingested -> ingestion_manifest (increment 3).
+%   base.id PRESERVED (same document, renamed). filenavigator_id RESTORED as a
+%   real edge (NDI writes it; V_eta had dropped it for an invented `epochid`);
+%   epoch_id becomes an EDGE to the epoch document; the char epoch_id and the
+%   `epochprobemap` (now decomposed into observations) are DROPPED.
+m = struct();
+m.document_class = struct( ...
+    'class_name', 'ingestion_manifest', 'class_version', '2.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
+    'schema_version', 'V_eta');
+m.depends_on = struct('name', 'filenavigator_id', 'value', filenavigatorId);
+m.depends_on(end+1) = struct('name', 'epoch_id', 'value', epochDocId);
+srcId = baseField(srcBody, 'id');
+if isempty(srcId); srcId = did.ido.unique_id(); end
+m.base = struct('id', srcId, 'session_id', sessionId, ...
+    'name', baseField(srcBody, 'name'), 'datestamp', datestamp);
+blk = struct();
+blk.files = ingestedFilesOf(srcBody);   % the manifest payload, carried verbatim
+m.ingestion_manifest = blk;
+end
+
+function files = ingestedFilesOf(body)
+%INGESTEDFILESOF The `files` list off an epochfiles_ingested block, {} if absent.
+files = {};
+if ~isstruct(body) || ~isfield(body, 'epochfiles_ingested') ...
+        || ~isstruct(body.epochfiles_ingested)
+    return;
+end
+blk = body.epochfiles_ingested;
+if isfield(blk, 'files') && ~isempty(blk.files)
+    v = blk.files;
+    if iscell(v); files = v(:)';
+    elseif ischar(v); files = {v};
+    elseif isstring(v); files = cellstr(v(:)');
+    end
+end
+end
+
+function k = obs30TripleKey(subjectId, instrumentId, className)
+%OBS30TRIPLEKEY The (subject, instrument, class) key a probemap observation and
+%   the #30 observation it supersedes must share. NUL-joined so no component
+%   value can bleed into the next (ids and class names never contain NUL).
+k = [char(subjectId), char(0), char(instrumentId), char(0), char(className)];
+end
+
+% ===================== the device string ==============================
+
+function ch = emptyChannels()
+%EMPTYCHANNELS A 0x0 struct array of the channels shape, so `isempty` is true and
+%   the observation OMITS the field (absent-is-valid) when no device string
+%   parsed. Fields match subject_observation.channels ({type, numbers}).
+ch = struct('type', {}, 'numbers', {});
+end
+
+function [deviceName, channels, ok] = parseDeviceString(devicestring)
+%PARSEDEVICESTRING Split v1's devicestring into a device NAME and grouped
+%   {type, numbers} CHANNELS -- the two halves the epoch plan mounts on the
+%   observation. Format (ndi daqsystemstring / acquisition_channels.json):
+%
+%       'intan1:ai27-28,45,88;di1-4'
+%        \____/ \_______________________/
+%        name   groups, ';'-separated; each is a TYPE (letters) + a
+%               ','-separated list of numbers or 'a-b' inclusive ranges.
+%
+%   `deviceName` is '' when there is no ':'. `channels` is a struct array, one
+%   entry per group. `ok` is false when a group could not be parsed; what did
+%   parse is still emitted (partial, never invented).
+deviceName = '';
+channels = emptyChannels();
+ok = true;
+s = strtrim(char(devicestring));
+if isempty(s); return; end
+colon = find(s == ':', 1);
+if isempty(colon)
+    deviceName = s;      % a bare device name, no channel spec
+    return;
+end
+deviceName = strtrim(s(1:colon-1));
+spec = strtrim(s(colon+1:end));
+if isempty(spec); return; end
+groups = strsplit(spec, ';');
+for g = 1:numel(groups)
+    grp = strtrim(groups{g});
+    if isempty(grp); continue; end
+    tok = regexp(grp, '^([A-Za-z]+)(.*)$', 'tokens', 'once');
+    if isempty(tok); ok = false; continue; end
+    [nums, numsOk] = parseNumberSpec(tok{2});
+    if ~numsOk; ok = false; end
+    channels(end+1) = struct('type', mkOntologyTerm('', tok{1}), ...
+        'numbers', nums); %#ok<AGROW>
+end
+end
+
+function [nums, ok] = parseNumberSpec(s)
+%PARSENUMBERSPEC 'ai27-28,45,88' tail -> [27 28 45 88]. Comma-separated single
+%   numbers or 'a-b' inclusive ranges. ok is false on an unparsable token.
+nums = [];
+ok = true;
+s = strtrim(char(s));
+if isempty(s); return; end
+parts = strsplit(s, ',');
+for p = 1:numel(parts)
+    part = strtrim(parts{p});
+    if isempty(part); continue; end
+    rng = regexp(part, '^(\d+)-(\d+)$', 'tokens', 'once');
+    if ~isempty(rng)
+        a = str2double(rng{1}); b = str2double(rng{2});
+        if isfinite(a) && isfinite(b) && b >= a
+            nums = [nums, a:b]; %#ok<AGROW>
+        else
+            ok = false;
+        end
+        continue;
+    end
+    v = str2double(part);
+    if isfinite(v) && v == floor(v)
+        nums = [nums, v]; %#ok<AGROW>
+    else
+        ok = false;
+    end
+end
 end
 
 % ===================== the modality map ================================

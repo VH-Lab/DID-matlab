@@ -1,5 +1,5 @@
 function tests = testResolveEpochProbemap
-%TESTRESOLVEEPOCHPROBEMAP The #66 increment-1 epochprobemap OBSERVATION fold.
+%TESTRESOLVEEPOCHPROBEMAP The #66 epochprobemap fold, ALL THREE increments.
 %
 %   STATUS: WRITTEN 2026-08-21, NEVER EXECUTED HERE. This container has no MATLAB
 %   -- `command -v matlab octave octave-cli` prints nothing -- so not one line
@@ -9,9 +9,15 @@ function tests = testResolveEpochProbemap
 %   WHAT IS UNDER TEST: did2.convert.resolveEpochProbemap decomposes an ingested
 %   epoch's serialized `epochprobemap` into one epoch-scoped
 %   `<modality>_observation` per probe row, anchored to the minted `epoch`
-%   document via a shared 'during' relative_reference, and RETIRES #30's coarse
-%   session-scoped observation for a probe when EXACTLY ONE such observation
-%   names it.
+%   document via a shared 'during' relative_reference, and:
+%     1  (observation) attributes each to its subject + instrument;
+%     2  (device half) splits the row's devicestring into an acquisition_system_id
+%        edge + a grouped `channels` field;
+%     3  (rename-thin) rewrites the source epochfiles_ingested to
+%        ingestion_manifest, guarded on filenavigator_id + a resolved epoch;
+%   and RETIRES #30's coarse session observation for a probe, matched on the
+%   (subject, instrument, class) TRIPLE so a spike-sorted probe's neuron trains
+%   (same instrument, different subject) are left intact.
 %
 %   THE FIXTURES ARE BUILT FROM THE WRITER, never from a DID-side schema (the
 %   ground-truth rule): the probemap string is the exact tab-delimited shape NDI
@@ -78,6 +84,17 @@ verifyEqual(testCase, rep.epoch_anchors_minted, 1);
 verifyEqual(testCase, rep.session30_observations_retired, 1);
 verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
 verifyEqual(testCase, rep.fold_quarantined, 0);
+% device half: rows 1+2 reach it (row 3 refused at subject first); the
+% devicestring names 'vhspike2', for which no acquisition_system exists here,
+% so the edge is OMITTED (unresolved), and the channel spec parses.
+verifyEqual(testCase, rep.device_strings_seen, 2);
+verifyEqual(testCase, rep.device_acqsystem_unresolved, 2);
+verifyEqual(testCase, rep.device_acqsystem_resolved, 0);
+verifyEqual(testCase, rep.device_channels_parsed, 2);
+% increment 3: the ingested doc is renamed to ingestion_manifest (its
+% filenavigator_id 'nav_1' and epoch resolve).
+verifyEqual(testCase, rep.manifests_renamed, 1);
+verifyEqual(testCase, rep.rename_quarantined, 0);
 
 % --- THE ROW PARTITION reconciles: probe_rows_total = emitted + refused +
 %     unresolved. Single-modality rows, so observations == emitting rows.
@@ -131,14 +148,36 @@ for i = 1:numel(recObs)
     verifyNotEqual(testCase, depVal(recObs{i}, 'instrument_id'), 'el_1');
 end
 verifyEqual(testCase, numel(recObs), 0);   % el_1 was the only direct element
+
+% --- each observation carries the parsed channels, no acquisition_system edge
+for i = 1:numel(obs)
+    verifyEmpty(testCase, depVal(obs{i}, 'acquisition_system_id')); % unresolved
+    ch = obs{i}.subject_observation.channels;
+    verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
+    verifyEqual(testCase, char(ch(1).type.name), 'ai');
+    verifyEqual(testCase, double(ch(1).numbers), [11 12 13 14]);
 end
 
-% ===================== retirement is conservative =====================
+% --- INCREMENT 3: the ingested document is now an ingestion_manifest --------
+verifyEqual(testCase, numel(bodiesOfClass(out, 'epochfiles_ingested')), 0);
+mani = bodiesOfClass(out, 'ingestion_manifest');
+verifyEqual(testCase, numel(mani), 1);
+m = mani{1};
+verifyEqual(testCase, m.base.id, 'ing_1');                    % id PRESERVED
+verifyEqual(testCase, depVal(m, 'filenavigator_id'), 'nav_1'); % RESTORED
+verifyEqual(testCase, depVal(m, 'epoch_id'), epochs{1}.base.id); % now an EDGE
+verifyEqual(testCase, m.ingestion_manifest.files, {'epochid://t00001'});
+end
 
-function testAPatchElementWithTwoHash30ObsIsNotRetired(testCase)
+% ===================== the triple key resolves patch/sharp ===============
+
+function testAPatchElementRetiresBOTHClassesViaTheTripleKey(testCase)
 % A `patch` element emits TWO #30 observations (voltage + current), both with
-% instrument_id el_2. >1 match is AMBIGUOUS, so the #30 observations are KEPT
-% rather than risk stranding one -- counted retire_skipped_ambiguous.
+% instrument_id el_2 and subject specimen_2 -- but DIFFERENT classes. Keying the
+% retirement on instrument ALONE was ambiguous (2 hits) and kept both; the
+% (subject, instrument, CLASS) triple distinguishes them, so the probemap's
+% voltage_observation supersedes the #30 voltage_observation and its
+% current_observation supersedes the #30 current_observation. BOTH retire.
 subj = subjectBody('specimen_2', 'sess_2', 'L');
 el   = elementBody('el_2', 'sess_2', 'pat', '1', 'patch', 1, 'specimen_2');
 ing  = ingestedWithRows('ing_2', 'sess_2', 't00002', { ...
@@ -147,11 +186,41 @@ ing  = ingestedWithRows('ing_2', 'sess_2', 't00002', { ...
 
 % one patch row -> two observations (voltage + current)
 verifyEqual(testCase, rep.observations_emitted, 2);
-verifyEqual(testCase, rep.session30_observations_retired, 0);
-verifyEqual(testCase, rep.retire_skipped_ambiguous, 1);
-% the two #30 observations for el_2 SURVIVE
+verifyEqual(testCase, rep.session30_observations_retired, 2);
+verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
+verifyEqual(testCase, rep.retire_no_match, 0);
+% both #30 observations for el_2 are RETIRED
 recObs = bodiesNamed(out, 'migrated_recording_observation');
-verifyEqual(testCase, numel(recObs), 2);
+verifyEqual(testCase, numel(recObs), 0);
+end
+
+function testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording(testCase)
+% THE BUG THE TRIPLE KEY FIXES (174/174 skipped-ambiguous on Soph). A spike-
+% sorted probe carries MORE THAN ONE #30 observation on the same instrument:
+%   el_probe  DIRECT n-trode  -> #30 voltage_observation
+%                                 subject = specimen, instrument = el_probe
+%   el_neuron 'spikes', derived, underlying = el_probe
+%                              -> #30 time_observation (spike-train leaf)
+%                                 subject = el_neuron, instrument = el_probe
+% Keyed on instrument alone that is 2 hits -> ambiguous -> nothing retired. The
+% (subject, instrument, class) triple matches only the probe's OWN direct
+% recording (subject = the specimen), leaving the neuron's spike train intact.
+subj = subjectBody('specimen_sp', 'sess_sp', 'L');
+elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp');
+elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
+ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', { ...
+    {'tet', '1', 'n-trode', 'L'}});
+[out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ing});
+
+verifyEqual(testCase, rep.observations_emitted, 1);       % one probemap voltage obs
+verifyEqual(testCase, rep.session30_observations_retired, 1);
+verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
+% the probe's OWN direct recording (subject specimen_sp) is gone; the neuron's
+% spike-train observation (subject el_neuron, instrument el_probe) SURVIVES.
+recObs = bodiesNamed(out, 'migrated_recording_observation');
+verifyEqual(testCase, numel(recObs), 1);
+verifyEqual(testCase, depVal(recObs{1}, 'subject_id'), 'el_neuron');
+verifyEqual(testCase, depVal(recObs{1}, 'instrument_id'), 'el_probe');
 end
 
 % ===================== an unresolvable subject emits nothing ===========
@@ -243,6 +312,55 @@ verifyEqual(testCase, rep.observations_emitted, 0);
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
 end
 
+% ===================== the device half (increment 2) ==================
+
+function testDeviceStringResolvesAcqSystemAndParsesGroupedChannels(testCase)
+% `intan1:ai27-28,45;di0-2` -> acquisition_system_id (the migrated daqsystem
+% named 'intan1') + two channel groups {ai [27 28 45]} and {di [0 1 2]}.
+subj = subjectBody('spec_d', 'sess_d', 'L');
+daq  = daqsystemBody('acqsys_d', 'sess_d', 'intan1');
+ing  = ingestedWithDeviceRows('ing_d', 'sess_d', 't0d', { ...
+    {'p', '', 'n-trode', 'intan1:ai27-28,45;di0-2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_d', 'sess_d', 'ref'), subj, daq, ing});
+
+verifyEqual(testCase, rep.device_strings_seen, 1);
+verifyEqual(testCase, rep.device_acqsystem_resolved, 1);
+verifyEqual(testCase, rep.device_acqsystem_unresolved, 0);
+verifyEqual(testCase, rep.device_channels_parsed, 1);
+verifyEqual(testCase, rep.device_channels_unparsable, 0);
+
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+verifyEqual(testCase, numel(obs), 1);
+verifyEqual(testCase, depVal(obs{1}, 'acquisition_system_id'), 'acqsys_d');
+ch = obs{1}.subject_observation.channels;
+verifyEqual(testCase, numel(ch), 2);
+verifyEqual(testCase, char(ch(1).type.name), 'ai');
+verifyEqual(testCase, double(ch(1).numbers), [27 28 45]);
+verifyEqual(testCase, char(ch(2).type.name), 'di');
+verifyEqual(testCase, double(ch(2).numbers), [0 1 2]);
+end
+
+% ===================== the rename-thin guard (increment 3) =============
+
+function testRenameIsGuardedWhenNoFilenavigatorId(testCase)
+% ingestion_manifest REQUIRES filenavigator_id. A source epochfiles_ingested
+% that carries none is LEFT as the tombstone (never quarantined) and counted --
+% the guarded-passthrough idiom. Empty probemap here, so the rename decision is
+% the only thing under test.
+ing = ingestedRaw('ing_g', 'sess_g', 't0g', '');
+ing.depends_on = struct('name', {}, 'value', {});   % NO filenavigator_id
+[out, rep] = decompose({sessionBody('sd_g', 'sess_g', 'ref'), ing});
+
+verifyEqual(testCase, rep.epochfiles_ingested_seen, 1);
+verifyEqual(testCase, rep.refused_no_epoch, 0);              % epoch DOES resolve
+verifyEqual(testCase, rep.rename_skipped_no_filenavigator, 1);
+verifyEqual(testCase, rep.manifests_renamed, 0);
+verifyEqual(testCase, rep.rename_quarantined, 0);
+% the source document is preserved unchanged as the tombstone class
+verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 0);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'epochfiles_ingested')), 1);
+end
+
 % ===================== no epoch document ==============================
 
 function testAnIngestedDocWithNoMintedEpochIsRefused(testCase)
@@ -266,7 +384,9 @@ end
 function v1 = ingestedWithRows(docId, sessionId, epochId, rows)
 %INGESTEDWITHROWS A did_v1 epochfiles_ingested whose epochprobemap serialises the
 %   given rows, each {name, reference, type, subjectstring}. devicestring is a
-%   constant filler -- this pass does not read it. Exact serialize() shape.
+%   constant 'vhspike2:ai11-14' (parsed by the device half but resolving to no
+%   acquisition_system in these fixtures). For a per-row devicestring, use
+%   ingestedWithDeviceRows. Exact serialize() shape.
 pm = sprintf('name\treference\ttype\tdevicestring\tsubjectstring\n');
 for i = 1:numel(rows)
     r = rows{i};
@@ -327,6 +447,49 @@ el.base = struct('id', docId, 'session_id', sessionId, ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 el.element = struct('ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
     'name', name, 'reference', reference, 'type', typ, 'direct', direct);
+end
+
+function el = derivedElementBody(docId, sessionId, name, typ, underlyingId)
+%DERIVEDELEMENTBODY A did_v1 DERIVED element (direct = 0) with an
+%   underlying_element_id -- a sorted neuron on a probe. For type 'spikes' this
+%   drives element.m's spike-train leaf: a #30 observation whose SUBJECT is this
+%   element (the neuron, id preserved) and whose INSTRUMENT is the underlying
+%   probe. That is what puts a SECOND #30 observation on the probe's instrument.
+el = struct();
+el.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+el.depends_on = struct('name', {'underlying_element_id'}, 'value', {underlyingId});
+el.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+el.element = struct('ndi_element_class', 'ndi.neuron', ...
+    'name', name, 'reference', '1', 'type', typ, 'direct', 0);
+end
+
+function v1 = daqsystemBody(docId, sessionId, deviceName)
+%DAQSYSTEMBODY A did_v1 daqsystem; +migrators_j/daqsystem.m folds it to an
+%   `acquisition_system` with base.id AND base.name PRESERVED. base.name is the
+%   device half's join key (the name before the ':' in a devicestring).
+v1 = struct();
+v1.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', deviceName, 'datestamp', '2024-05-01T00:00:00.000Z');
+v1.daqsystem = struct('ndi_daqsystem_class', '');
+v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'id', {'', ''});
+end
+
+function v1 = ingestedWithDeviceRows(docId, sessionId, epochId, rows)
+%INGESTEDWITHDEVICEROWS Like ingestedWithRows, but each row is the FULL 5-tuple
+%   {name, reference, type, devicestring, subjectstring} so a test can drive the
+%   device half. Exact serialize() shape.
+pm = sprintf('name\treference\ttype\tdevicestring\tsubjectstring\n');
+for i = 1:numel(rows)
+    r = rows{i};
+    pm = [pm, sprintf('%s\t%s\t%s\t%s\t%s\n', ...
+        r{1}, r{2}, r{3}, r{4}, r{5})]; %#ok<AGROW>
+end
+v1 = ingestedRaw(docId, sessionId, epochId, pm);
 end
 
 function v1 = subjectBody(docId, sessionId, localId)
