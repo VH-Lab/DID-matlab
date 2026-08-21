@@ -674,8 +674,14 @@ function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
 if nargin < 7; acqSystemId = ''; end
 if nargin < 8; channels = emptyChannels(); end
 typeTerm = mkOntologyTerm('', stimType);
+% Field-for-field the shape the PROVEN term_manipulation emitter builds --
+% +migrators_j/treatment.m makeTermManipulation via private/jStartInteraction:
+% superclasses are the DIRECTION class ONLY ({subject_manipulation}); the `term`
+% data_type is carried by the block, not the declared superclass list. method
+% blank ("the leaf class already names the act"), single-point sample_time,
+% subject_manipulation block present, term.value = the variable.
 m = struct();
-m.document_class = classBlock('term_manipulation', {'subject_manipulation', 'term'});
+m.document_class = classBlock('term_manipulation', {'subject_manipulation'});
 m.depends_on = struct('name', 'subject_id', 'value', subjectId);
 if ~isempty(instrumentId)
     m.depends_on(end+1) = struct('name', 'instrument_id', 'value', instrumentId); % T7
@@ -687,14 +693,13 @@ end
 m.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
 m.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', 'migrated_probemap_manipulation', 'datestamp', datestamp);
-m.subject_statement = struct( ...
-    'variable', typeTerm, ...
-    'storage_mode', 'inline');
-m.subject_interaction = struct('method', mkOntologyTerm('', 'stimulate'));
+m.subject_statement = struct('variable', typeTerm, 'storage_mode', 'inline');
+m.subject_interaction = struct('method', mkOntologyTerm('', ''), ...
+    'sample_time', struct('kind', 'point'));
 if ~isempty(channels)
     m.subject_interaction.channels = channels;  % channel half (hoisted, increment 3)
 end
-m.subject_manipulation = struct('notes', '');   % the concrete leaf's abstract parent block
+m.subject_manipulation = struct('notes', '');
 m.term = struct('value', typeTerm);
 end
 

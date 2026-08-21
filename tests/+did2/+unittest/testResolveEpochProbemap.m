@@ -340,7 +340,6 @@ verifyEqual(testCase, depVal(m, 'instrument_id'), 'stim_1');
 verifyEqual(testCase, char(m.subject_statement.variable.name), 'stimulator');
 verifyEqual(testCase, char(m.subject_statement.storage_mode), 'inline');
 verifyEqual(testCase, char(m.term.value.name), 'stimulator');
-verifyEqual(testCase, char(m.subject_interaction.method.name), 'stimulate');
 verifyNotEmpty(testCase, depVal(m, 'time_reference_1'));
 end
 
