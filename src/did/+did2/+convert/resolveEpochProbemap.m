@@ -394,7 +394,11 @@ for k = 1:n
                 anchorId, sid, datestamp, acqSystemId, channels);
             newBodies{end+1} = manip;              %#ok<AGROW>
             newGroupAnchor{end+1} = anchorId;      %#ok<AGROW>
-            report.manipulations_emitted = report.manipulations_emitted + 1;
+            % manipulations_emitted is counted with observations_emitted in the
+            % survival loop below (post-validation), so both report SURVIVORS and
+            % a manipulation is never mistaken for an observation. Instrument
+            % bookkeeping stays here: it describes the input row's resolution,
+            % pre-validation, exactly as the observation path counts it.
             if isempty(instrumentId)
                 report.instrument_omitted = report.instrument_omitted + 1;
             else
@@ -530,9 +534,17 @@ for j = 1:numel(newBodies)
     id = newBodies{j}.base.id;
     aid = newGroupAnchor{j};
     if ~anchorAlive(aid); continue; end          % group withheld: anchor died
-    if ~isKey(producedById, id); continue; end    % this observation quarantined
+    if ~isKey(producedById, id); continue; end    % this body quarantined
     appended{end+1} = producedById(id); %#ok<AGROW>
-    report.observations_emitted = report.observations_emitted + 1;
+    % newBodies carries BOTH the recording observations and the stimulator
+    % manipulations (#66 increment 3). Count each into its own counter, by the
+    % base.name the mint sites set, so a manipulation is never counted as an
+    % observation. Both are survivor-counts (post-validation).
+    if strcmp(newBodies{j}.base.name, 'migrated_probemap_manipulation')
+        report.manipulations_emitted = report.manipulations_emitted + 1;
+    else
+        report.observations_emitted = report.observations_emitted + 1;
+    end
     emittedNewIds(id) = true;
     anchorHasSurvivor(aid) = true;
 end
