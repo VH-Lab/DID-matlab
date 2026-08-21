@@ -12,8 +12,10 @@ function [result, report] = resolveEpochProbemap(result, options)
 %        against `acquisition_system.base.name`) and a structured `channels`
 %        field ({type, numbers} per group) on the observation.
 %     3  RENAME-THIN: the source `epochfiles_ingested` becomes `ingestion_manifest`
-%        (filenavigator_id RESTORED, epoch_id an EDGE, `epochprobemap` + the char
-%        `epoch_id` dropped) once the probemap has been decomposed off it.
+%        (filenavigator_id RESTORED, epoch_id an EDGE, the char `epoch_id` dropped;
+%        the serialized `epochprobemap` KEPT VERBATIM for lossless read-back --
+%        stimulator/imaging rows do not decompose, so the string is the only full
+%        record) once the probemap has been decomposed off it.
 %
 %   ---------------------------------------------------------------------
 %   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
@@ -684,8 +686,13 @@ function m = mkIngestionManifest(srcBody, filenavigatorId, epochDocId, ...
 %MKINGESTIONMANIFEST epochfiles_ingested -> ingestion_manifest (increment 3).
 %   base.id PRESERVED (same document, renamed). filenavigator_id RESTORED as a
 %   real edge (NDI writes it; V_eta had dropped it for an invented `epochid`);
-%   epoch_id becomes an EDGE to the epoch document; the char epoch_id and the
-%   `epochprobemap` (now decomposed into observations) are DROPPED.
+%   epoch_id becomes an EDGE to the epoch document; the char epoch_id is DROPPED.
+%   The serialized `epochprobemap` is CARRIED VERBATIM (2026-08-21, lossless
+%   round-trip): its recording rows also decompose into observations, but
+%   stimulator/imaging rows do NOT (localModality returns 'stimulator' /
+%   'image_deferred' -> no observation), so dropping the string would lose their
+%   per-epoch presence with nowhere to land. ndi.vintage reads it back to rebuild
+%   the exact v1 epochprobemap; retired when every row has a decomposed home.
 m = struct();
 m.document_class = struct( ...
     'class_name', 'ingestion_manifest', 'class_version', '2.0.0', ...
@@ -699,6 +706,7 @@ m.base = struct('id', srcId, 'session_id', sessionId, ...
     'name', baseField(srcBody, 'name'), 'datestamp', datestamp);
 blk = struct();
 blk.files = ingestedFilesOf(srcBody);   % the manifest payload, carried verbatim
+blk.epochprobemap = probemapCharOf(srcBody);  % lossless read-back provenance
 m.ingestion_manifest = blk;
 end
 

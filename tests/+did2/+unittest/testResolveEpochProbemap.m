@@ -167,6 +167,12 @@ verifyEqual(testCase, m.base.id, 'ing_1');                    % id PRESERVED
 verifyEqual(testCase, depVal(m, 'filenavigator_id'), 'nav_1'); % RESTORED
 verifyEqual(testCase, depVal(m, 'epoch_id'), epochs{1}.base.id); % now an EDGE
 verifyEqual(testCase, m.ingestion_manifest.files, {'epochid://t00001'});
+% LOSSLESS ROUND-TRIP: the serialized epochprobemap is carried VERBATIM, so the
+% stimulator/imaging rows that do not decompose into observations are still
+% preserved on the manifest. Recording rows also become observations (above);
+% this string is the full-fidelity record ndi.vintage reads back.
+verifyEqual(testCase, m.ingestion_manifest.epochprobemap, ...
+    ing.epochfiles_ingested.epochprobemap);
 end
 
 % ===================== the triple key resolves patch/sharp ===============
