@@ -474,7 +474,11 @@ v1.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', 
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.base = struct('id', docId, 'session_id', sessionId, ...
     'name', deviceName, 'datestamp', '2024-05-01T00:00:00.000Z');
-v1.daqsystem = struct('ndi_daqsystem_class', '');
+% ndi_daqsystem_class MUST be non-empty: daqsystem.m returns the source as a
+% (quarantining) passthrough when implClass AND all edges are empty, so a hollow
+% fixture never becomes an acquisition_system. A real class name takes the
+% software-fold path and PRESERVES base.id + base.name onto the acquisition_system.
+v1.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
 v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
     'id', {'', ''});
 end
