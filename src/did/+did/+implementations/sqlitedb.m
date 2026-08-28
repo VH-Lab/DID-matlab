@@ -348,9 +348,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 doOnDuplicate = lower(options.OnDuplicate);
                 switch doOnDuplicate
                     case 'ignore'
-                        % do nothing
+                        % Document already in this branch: return early. Falling
+                        % through to the branch_docs INSERT below would violate
+                        % PRIMARY KEY(branch_id,doc_idx) and throw, and re-running
+                        % the file-caching loop would be duplicate work - so
+                        % 'ignore' must be a genuine no-op, not merely non-erroring.
+                        return
                     case 'warn'
                         warning('DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg);
+                        return
                     otherwise %case 'error'
                         error('DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg);
                 end
@@ -740,23 +746,29 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 error('DID:SQLITEDB:open','The requested filename must be specified in check_exist_doc()');
             end
             data = this_obj.run_sql_query(query_str, true);  %structArray=true
-            if isempty(data)
-                tf = false; % File does not exist
-            elseif numel(data) == 1
-                tf = true;
-                file_path = [this_obj.FileDir, filesep, data.uid];
-            else
-                file_path = fullfile( this_obj.FileDir, {data.uid} );
-                tf = false( size( file_path) );
-                for i = numel(file_path)
-                    tf = ~isempty(file_path{i}) && isfile(file_path{i});
+            tf = false;
+            if ~isempty(data)
+                % A row in the files table does NOT guarantee a file on disk:
+                % do_add_doc inserts a files row even when caching failed and
+                % destPath = ''. So verify existence with isfile rather than
+                % trusting the row, and search the same candidate roots that
+                % do_open_doc searches (the global file cache and this
+                % database's FileDir). Return the path that actually exists.
+                fileCacheRoot = did.common.PathConstants.filecachepath;
+                for idx = 1 : numel(data)
+                    candidates = { fullfile(fileCacheRoot, data(idx).uid), ...
+                                   fullfile(this_obj.FileDir, data(idx).uid) };
+                    for c = 1 : numel(candidates)
+                        if isfile(candidates{c})
+                            tf = true;
+                            file_path = candidates{c};
+                            break
+                        end
+                    end
+                    if tf
+                        break
+                    end
                 end
-                tf = any(tf);
-                file_path = file_path(tf);
-                if numel(file_path) > 1
-                    warning('Expected to find exactly one file matching filename.')
-                end
-                file_path = file_path{1};
             end
             if nargout < 2
                 clear file_path

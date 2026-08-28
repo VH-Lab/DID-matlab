@@ -468,7 +468,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
             % Disable database journalling if no validation requested
             if ~doValidation
-                try database_obj.run_sql_query('pragma journal_mode=OFF'); catch, end
+                try
+                    database_obj.run_sql_query('pragma journal_mode=OFF');
+                    % Restore journalling on ANY exit, including a throw in the
+                    % document loop below (e.g. an OnDuplicate UNIQUE-constraint
+                    % error). Previously the restore lived only on the normal
+                    % exit path, so a throw left journal_mode=OFF - and hence no
+                    % rollback protection - for the rest of the connection's life.
+                    restoreJournalCleanup = onCleanup(@() restoreJournalMode(database_obj)); %#ok<NASGU>
+                catch
+                end
             end
 
             % Ensure branch IDs validity (unless requested not to)
@@ -503,10 +512,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 database_obj.do_add_doc(doc, branch_id, varargin_to_pass{:});
             end
 
-            % Restore journaling if no validation requested
-            if ~doValidation
-                try database_obj.run_sql_query('pragma journal_mode=DELETE'); catch, end
-            end
+            % Journalling (if it was disabled above) is restored by the
+            % restoreJournalCleanup onCleanup object when this method returns.
         end % add_doc()
 
         function document_objs = get_docs(database_obj, document_ids, options)
@@ -611,12 +618,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 % Replace did.document object reference with its unique doc id
                 doc_id = database_obj.validate_doc_id(documents{i}, false);
 
-                % Call the specific database's removal method
-                try % failure is not an error
-                    database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
-                catch
-                    % ignore errors
-                end
+                % Call the specific database's removal method. do_remove_doc
+                % already honours OnMissing (ignore/warn return quietly, error
+                % raises DID:SQLITEDB:NO_SUCH_DOC), so it is called directly:
+                % the previous bare try/catch with an empty handler nullified
+                % every failure - read-only file, lock, and even the requested
+                % OnMissing='error' - so removal always reported success.
+                database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
 
                 % TODO also delete all documents that depend on the deleted doc
             end
@@ -783,16 +791,24 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
         function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
             % Convert a single did.query object/struct into SQL query string
             sql_str = ''; %#ok<NASGU>
-            field  = query_struct.field;
+            % Charset-restrict the field name (interpolated into SQL below) and
+            % escape every user-supplied literal to prevent SQL injection - the
+            % search path does not use mksqlite bind parameters, so values must
+            % be neutralized here (see sqlEscapeLiteral / validateSqlFieldName).
+            field  = did.database.validateSqlFieldName(query_struct.field);
             param1 = query_struct.param1;
             param2 = query_struct.param2;
             param1Str = num2str(param1);
+            param1StrEsc = did.database.sqlEscapeLiteral(param1Str);   % for double-quoted literals
+            param1RegexEsc = regexptranslate('escape', param1Str);      % literal inside a regex() pattern
             if numel(param1)>=1
-                param1Val = num2str(param1(1));
+                param1Val = sprintf('%.17g', param1(1));  % full double precision (was num2str, ~5 sig digits)
             else
                 param1Val = [];
             end
-            param1Like = regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'});
+            param1Like = did.database.sqlEscapeLiteral( ...
+                regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'}));
+            param2Esc = did.database.sqlEscapeLiteral(num2str(param2));
             field_check = ['fields.field_name="' field '"'];
             op = strtrim(lower(query_struct.operation));
             isNot = op(1)=='~';
@@ -807,9 +823,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1) ' OR ' ...
                         query_struct_to_sql_str(sqlitedb_obj, param2)];
                 case 'exact_string'
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1Str '"'];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1StrEsc '"'];
                 case 'exact_string_anycase'
-                    sql_str = [field_check ' AND ' notStr 'LOWER(doc_data.value) = "' lower(param1Str) '"'];
+                    sql_str = [field_check ' AND ' notStr 'LOWER(doc_data.value) = "' lower(param1StrEsc) '"'];
                 case 'contains_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'exact_number'
@@ -832,16 +848,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     field_check = ['(' field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\")'];
                     %value_check= ['(doc_data.value like "%' param1 ',%"' ...
-                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' param1Str '\s*(,.*)*$") NOT NULL' ...
-                        ' OR doc_data.value='  param1Str ...
-                        ' OR doc_data.value="' param1Str '")'];
+                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' did.database.sqlEscapeLiteral(param1RegexEsc) '\s*(,.*)*$") NOT NULL' ...
+                        ' OR doc_data.value='  param1StrEsc ...
+                        ' OR doc_data.value="' param1StrEsc '")'];
                     sql_str = [field_check ' AND ' notStr value_check];
                 case 'hasfield'
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     sql_str = [field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\"'];
                 case 'depends_on'
                     field_check = 'fields.field_name="meta.depends_on"';
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like ',' param2 ';%" ESCAPE "\"'];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like ',' param2Esc ';%" ESCAPE "\"'];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasanysubfield_contains_string'  %TODO
@@ -849,12 +865,17 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 case 'hasanysubfield_exact_string'     %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'regexp'
-                    sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,"' param1Str '") NOT NULL'];
+                    % 'regexp' intentionally accepts a user-supplied regex, so
+                    % do NOT regex-escape param1; only SQL-escape the literal.
+                    sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,"' param1StrEsc '") NOT NULL'];
                 case 'isa'
                     %sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
                     %    '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\")'];
-                    param1regExp = ['(^|, )' param1Str '(,|$)'];
-                    sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
+                    % param1 is a class name matched literally within the
+                    % comma-separated superclass list, so regex-escape it (so
+                    % metacharacters are literal) then SQL-escape the pattern.
+                    param1regExp = did.database.sqlEscapeLiteral(['(^|, )' param1RegexEsc '(,|$)']);
+                    sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1StrEsc '") OR ' ...
                         '(fields.field_name="meta.superclass" AND ' notStr 'regex(doc_data.value,"' param1regExp '") NOT NULL)'];
                 otherwise
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
@@ -868,7 +889,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 'FROM   docs, branch_docs, doc_data, fields ' ...
                 'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
                 '  AND  docs.doc_idx = branch_docs.doc_idx ' ...
-                '  AND  branch_docs.branch_id = "' branch_id '" ' ...
+                '  AND  branch_docs.branch_id = "' did.database.sqlEscapeLiteral(branch_id) '" ' ...
                 '  AND  fields.field_idx = doc_data.field_idx'];
             %((fields.field_name = "meta.class" AND doc_data.value = "ndi_document") OR (fields.field_name = "meta.superclass" AND doc_data.value like "%ndi_document%"))')';
             for i = 1 : numel(query_structs)
@@ -1582,6 +1603,45 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 document_ids = num2cell(document_ids);
             end
         end
+
+        function s = sqlEscapeLiteral(s)
+            % sqlEscapeLiteral - escape a value for a double-quoted SQL literal
+            %
+            % S = sqlEscapeLiteral(S)
+            %
+            % The search query builder (query_struct_to_sql_str /
+            % get_sql_query_str) interpolates user-supplied did.query values,
+            % branch ids and field names into SQL string literals delimited by
+            % double quotes, e.g. ['... doc_data.value = "' value '"']. Those
+            % values are NOT passed to mksqlite as bind parameters
+            % (run_sql_query does not forward varargin for search), so they must
+            % be escaped to prevent SQL injection from a crafted query value.
+            % Inside a double-quoted token SQLite treats "" as an escaped ", so
+            % doubling the double quotes neutralizes any attempt to break out of
+            % the literal. This mirrors sqlitedb.escapeSqlLiteral and the
+            % DID-python _sql_escape primitive.
+            s = strrep(char(s), '"', '""');
+        end % sqlEscapeLiteral()
+
+        function fld = validateSqlFieldName(fld)
+            % validateSqlFieldName - charset-restrict a query field name
+            %
+            % FLD = validateSqlFieldName(FLD)
+            %
+            % Field names are interpolated into the SQL search string. A did.
+            % field name is a dotted path of identifier segments, so restrict it
+            % to [A-Za-z0-9_.] and ERROR on any other character. Unlike
+            % DID-python (which falls back to a brute-force scan on a rejected
+            % field name), the MATLAB sql layer has no fallback, so an invalid
+            % field name is a hard error. An empty field name is permitted
+            % (some operations - e.g. depends_on/isa - do not use it).
+            fld = char(fld);
+            if ~isempty(fld) && isempty(regexp(fld, '^[A-Za-z0-9_.]+$', 'once'))
+                error('DID:Database:InvalidFieldName', ...
+                    ['did.query field name "%s" contains characters outside ' ...
+                     'the allowed set [A-Za-z0-9_.]'], fld);
+            end
+        end % validateSqlFieldName()
     end
 
     % Preferences management
@@ -1671,6 +1731,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             missing_files = setdiff(expectedNamesList,actual_file_list);
             if ~isempty(missing_files)
                 errmsg = sprintf('Some required files are missing (including %s) from the file_list in document %s', missing_files{1}, doc_name);
+                % A required file_list entry is absent - reject the document.
+                % Previously execution fell through to isvalid = 1, so add_docs
+                % committed a document that was missing a required file (schema
+                % validation failed open).
+                isvalid = 0;
+                return;
             end
 
             % Step 2: are all files in the actual document's file_list valid?
@@ -1768,20 +1834,44 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 elseif startsWith(fileLocation, 'http')
                     try
                         req = matlab.net.http.RequestMessage('HEAD');
-                        response = req.send(url);
+                        response = req.send(fileLocation);  % was undefined variable `url`
                         if strcmp( response.StatusCode, 'OK' )
                             found = true;
+                            break
                         end
-                    catch
-                        % ignore this location
+                    catch ME
+                        % A network/auth failure is NOT the same as a genuinely
+                        % absent file. Warn (instead of silently swallowing the
+                        % error) so an http HEAD failure is distinguishable from
+                        % a file that truly does not exist.
+                        warning('DID:Database:FileCheck', ...
+                            'Could not verify http file location "%s": %s', ...
+                            fileLocation, ME.message);
                     end
                 else
-                    % If it is neither a local file nor an HTTP URL,
-                    % existence will not be pre-checked, but will be 
-                    % evaluated when attempting to read or download the file.
-                    found = true;
+                    % Neither a local file nor an HTTP URL. Existence cannot be
+                    % pre-checked here. NOTE (Steve review): previously this
+                    % branch set found = true unconditionally (fail-open), so an
+                    % unrecognised location type was always accepted. That
+                    % default is removed - such a location is now left
+                    % unverified (found stays false unless another location for
+                    % the same file resolves). This tightens add_docs validation
+                    % for documents whose only location is an unrecognised type.
                 end
             end
         end % canfindonefile
     end % Static methods
 end % database classdef
+
+function restoreJournalMode(database_obj)
+    % restoreJournalMode - restore the SQLite rollback journal.
+    %
+    % Local helper used by add_docs' onCleanup so that journal_mode is
+    % restored to DELETE even if the document insertion loop throws. Failures
+    % to restore are best-effort and ignored (mirrors the original guarded call).
+    try
+        database_obj.run_sql_query('pragma journal_mode=DELETE');
+    catch
+        % best-effort restore; ignore failures
+    end
+end

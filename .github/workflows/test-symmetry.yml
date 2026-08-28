@@ -22,6 +22,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # The readArtifacts suite is parameterized over
+      # SourceType = {matlabArtifacts, pythonArtifacts}. Without the Python
+      # side checked out and run, the pythonArtifacts leg can never do
+      # anything but skip, and "Test symmetry" green would mean only that
+      # MATLAB can read its own output. VH-Lab/DID-python's own
+      # "Cross-Language Symmetry Tests" workflow already runs both halves in
+      # one job (and its MATLAB readArtifacts step passes BOTH legs), so the
+      # generator and the artifact contract are known-good; this mirrors that
+      # job so the gate here is genuinely cross-language too.
+      # Unpinned on purpose, symmetric with DID-python checking out
+      # DID-matlab@main in its half of the pair.
+      - name: Check out DID-python
+        uses: actions/checkout@v4
+        with:
+          repository: VH-Lab/DID-python
+          path: DID-python
+
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
         with:
@@ -40,6 +57,17 @@ jobs:
             addpath(genpath("tools"));
             matbox.installRequirements(didtools.projectdir());
 
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install DID-python
+        working-directory: DID-python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
       - name: Run makeArtifacts tests
         uses: matlab-actions/run-command@v2
         with:
@@ -55,6 +83,14 @@ jobs:
             makeResults = runner.run(makeSuite);
             disp(table(makeResults));
             assert(all([makeResults.Passed]), "makeArtifacts tests failed");
+
+      # Writes <tempdir>/DID/symmetryTest/pythonArtifacts/... , the other half
+      # of what the readArtifacts suite below is parameterized over. MATLAB's
+      # tempdir() and Python's tempfile.gettempdir() both resolve to /tmp on
+      # the ubuntu runner, which is how the two halves meet.
+      - name: Run Python makeArtifacts tests
+        working-directory: DID-python
+        run: pytest -m make_artifacts -v
 
       - name: Run readArtifacts tests
         uses: matlab-actions/run-command@v2
@@ -74,3 +110,11 @@ jobs:
             nFailed = sum([readResults.Failed]);
             fprintf("Results: %d passed, %d failed, %d skipped\n", nPassed, nFailed, nSkipped);
             assert(nFailed == 0, "readArtifacts tests failed");
+            % A skipped variant (e.g. the pythonArtifacts leg when its artifacts
+            % were never generated) must NOT report green: the gate previously
+            % asserted only on nFailed, so an all-skipped run passed and the
+            % "Test symmetry" badge meant only that MATLAB could read its own
+            % output. Fail when anything was skipped, and require at least one
+            % pass so an empty suite cannot slip through.
+            assert(nSkipped == 0, "readArtifacts had skipped (Incomplete) variants - the cross-language leg did not run");
+            assert(nPassed > 0, "readArtifacts ran no passing tests");

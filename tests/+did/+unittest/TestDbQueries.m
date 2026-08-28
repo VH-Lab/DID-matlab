@@ -248,5 +248,65 @@ classdef TestDbQueries < matlab.unittest.TestCase
             q = did.query('base.datestamp','regexp',regexp_chosen);
             testCase.testQuery(q)
         end
+
+        function testExactStringSqlInjection(testCase)
+            % Regression: a crafted did.query value must not break out of the
+            % SQL string literal and return the whole branch. Without escaping,
+            % 'x" OR "1"="1' makes the parenthesized predicate unconditionally
+            % TRUE and search returns every document id; with escaping it
+            % matches no document.
+            payload = 'x" OR "1"="1';
+            q = did.query('base.id', 'exact_string', payload);
+            ids = testCase.db.search(q);
+            testCase.verifyEmpty(ids, ...
+                'SQL-injection payload in exact_string must match no documents');
+        end
+
+        function testInvalidFieldNameRejected(testCase)
+            % Regression: field names are interpolated into the SQL search
+            % string, so a field name outside [A-Za-z0-9_.] must be a hard
+            % error rather than a silent wrong-result / injection vector.
+            qQuote = did.query('base.id" OR "1"="1', 'exact_string', 'anything');
+            testCase.verifyError(@() testCase.db.search(qQuote), ...
+                'DID:Database:InvalidFieldName');
+
+            qSpace = did.query('base id', 'exact_string', 'anything');
+            testCase.verifyError(@() testCase.db.search(qSpace), ...
+                'DID:Database:InvalidFieldName');
+        end
+
+        function testExactNumberFullPrecision(testCase)
+            % Regression: numeric query operands were rendered with num2str,
+            % which emits only ~5 significant digits, so a stored full-precision
+            % double could never be matched by exact_number. The operand is now
+            % rendered with sprintf('%.17g',...). A 15-significant-digit value
+            % must round-trip through exact_number search.
+            %
+            % This uses demoDouble, not demoA: demoA/demoB/demoC all declare
+            % 'value' as type "integer", and the schema validator rejects a
+            % fractional value outright (DID:Database:ValidationFieldInteger),
+            % so a full-precision double can never be stored in them.
+            % demoDouble declares 'value' as type "double" for exactly this.
+            testCase.applyFixture(matlab.unittest.fixtures.WorkingFolderFixture);
+            db = did.implementations.sqlitedb('precision_db.sqlite');
+            db.add_branch('a');
+
+            v = 12.3456789012345;
+            doc = did.document('demoDouble', 'demoDouble.value', v);
+            db.add_doc(doc);
+
+            % Full-precision operand matches the stored value.
+            idsHit = db.search(did.query('demoDouble.value', 'exact_number', v));
+            testCase.verifyNumElements(idsHit, 1, ...
+                'exact_number must match a stored full-precision double');
+
+            % A ~5-sig-digit rounding of the value is a genuinely different
+            % number and must NOT match (confirms the comparison is exact).
+            % Under the old num2str rendering both operands collapsed to the
+            % same 5-digit string, so this rounded value falsely matched.
+            idsMiss = db.search(did.query('demoDouble.value', 'exact_number', 12.3457));
+            testCase.verifyEmpty(idsMiss, ...
+                'A rounded operand must not match the full-precision value');
+        end
     end
 end
