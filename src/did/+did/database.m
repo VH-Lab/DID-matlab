@@ -992,7 +992,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
         % Document-related methods
         doc_ids = do_get_doc_ids(database_obj, branch_id, varargin)
-        do_add_doc(database_obj, document_obj, branch_id, varargin)
+        % do_add_doc takes name-value arguments through a trailing `options`
+        % argument, declared with an arguments block in the implementation.
+        % An abstract declaration is a signature only and cannot carry an
+        % arguments block itself, so naming the argument `options` rather than
+        % `varargin` is what states the contract here.
+        do_add_doc(database_obj, document_obj, branch_id, options)
         document_obj = do_get_doc(database_obj, document_id, varargin)
         do_remove_doc(database_obj, document_id, branch_id, varargin)
         file_obj = do_open_doc(database_obj, document_id, filename, varargin)
