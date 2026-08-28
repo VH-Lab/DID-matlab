@@ -282,11 +282,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
+            %   - 'customFileHandler' - a function handle called as
+            %       HANDLER(DESTPATH, SOURCEPATH) to retrieve a file whose
+            %       location is not a local path. See DID.DATABASE/ADD_DOCS.
             arguments
                 this_obj
                 document_obj
                 branch_id
                 options.OnDuplicate {mustBeMember(options.OnDuplicate,{'ignore','warn','error'})} = 'error'
+                options.customFileHandler = []
             end
 
             % Open the database for update
@@ -377,12 +381,25 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             destDir = this_obj.FileDir;
                             destPath = fullfile(destDir, thisLocation.uid);
                             try
+                                errMsg = '';
                                 file_type = lower(strtrim(thisLocation.location_type));
                                 if strcmpi(file_type, 'file')
                                     [status,errMsg] = copyfile(sourcePath, destPath, 'f');
-                                else  % url
-                                    [status] = ndi.cloud.api.files.getFile(sourcePath, destPath);
-                                    if ~status, errMsg = 'ndi.cloud.api.files.getFile failed'; end
+                                elseif ~isempty(options.customFileHandler)
+                                    % Retrieval of any non-'file' location is
+                                    % supplied by the caller, exactly as in
+                                    % do_open_doc. DID downloads nothing itself;
+                                    % this previously called
+                                    % ndi.cloud.api.files.getFile, which made
+                                    % this package depend on NDI.
+                                    options.customFileHandler(destPath, sourcePath);
+                                    status = isfile(destPath);
+                                    if ~status
+                                        errMsg = sprintf('customFileHandler did not produce a file at "%s"', destPath);
+                                    end
+                                else
+                                    status = false;
+                                    errMsg = sprintf('file type "%s" needs a customFileHandler and none was supplied', file_type);
                                 end
                             catch err
                                 status = false;
@@ -392,7 +409,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                                 warning('DID:SQLiteDB:add_doc','Failed to cache "%s" %s referenced in document object: %s',filename,file_type,errMsg);
                                 destPath = '';
                             else
-                                if thisLocation.delete_original
+                                % Only a local file can be deleted. A remote
+                                % location (anything carrying a '://' scheme)
+                                % is not ours to remove, and delete() on such a
+                                % string would either do nothing or, worse,
+                                % match something unintended on disk.
+                                if thisLocation.delete_original && ~contains(sourcePath,'://')
                                     delete(sourcePath);
                                 end
                                 %this_obj.insert_doc_data_field(doc_idx, 'files', 'cached_file_path', destPath);
