@@ -1765,20 +1765,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 if isfile(fileLocation)
                     found = true;
                     break
-                elseif startsWith(fileLocation, 'http')
-                    try
-                        req = matlab.net.http.RequestMessage('HEAD');
-                        response = req.send(url);
-                        if strcmp( response.StatusCode, 'OK' )
-                            found = true;
-                        end
-                    catch
-                        % ignore this location
-                    end
                 else
-                    % If it is neither a local file nor an HTTP URL,
-                    % existence will not be pre-checked, but will be 
-                    % evaluated when attempting to read or download the file.
+                    % If it is not a local file, existence is not pre-checked
+                    % here; it is evaluated when attempting to read or download
+                    % the file. This includes http(s) URLs: validation does no
+                    % network I/O, so an unreachable URL is reported when the
+                    % file is read rather than when the document is added.
                     found = true;
                 end
             end
