@@ -651,11 +651,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     if strcmpi(file_type,'file')
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                         if ~status, error(errMsg); end
-                    elseif strcmpi(file_type,'url')
-                        % call ndi cloud API for reliable file downloads (esp. AWS)
-                        [dlStatus] = ndi.cloud.api.files.getFile(sourcePath, destPath);
-                        if ~dlStatus, error('ndi.cloud.api.files.getFile failed'); end
                     else
+                        % Every non-'file' type -- 'url', 'ndicloud', anything
+                        % else -- is retrieved by the caller's handler. DID
+                        % downloads nothing itself: it previously called
+                        % ndi.cloud.api.files.getFile for the 'url' type, which
+                        % made this package depend on NDI being on the path, a
+                        % lower-level package reaching for a higher-level one.
+                        % NDI already supplies retrieval through this hook.
                         if ~isempty(customFileHandler)
                             tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
                         else
