@@ -68,6 +68,57 @@ classdef TestPathConstants < matlab.unittest.TestCase
                 did.common.userPathOrDefault(userpath()));
         end
 
+        function testHomeDirectoryIsReturnedUnchanged(testCase)
+            given = fullfile(tempdir, 'someHome');
+            testCase.verifyEqual(did.common.homeDirectory(given), given);
+        end
+
+        function testAnEmptyHomeFallsBackToSomethingAbsolute(testCase)
+            p = did.common.homeDirectory('');
+            testCase.verifyTrue(did.unittest.TestPathConstants.isAbsolutePath(p), ...
+                sprintf('"%s" is not an absolute path', p));
+        end
+
+        function testHomeDirectoryWhitespaceIsTrimmed(testCase)
+            given = fullfile(tempdir, 'someHome');
+            testCase.verifyEqual(did.common.homeDirectory(['  ' given '  ']), given);
+        end
+
+        function testTheDefaultHomeIsTheEnvironmentsHome(testCase)
+            if ispc
+                expected = getenv('USERPROFILE');
+            else
+                expected = getenv('HOME');
+            end
+            testCase.assumeNotEmpty(expected, 'no home directory is set here');
+            testCase.verifyEqual(did.common.homeDirectory(), expected);
+        end
+
+        function testTheFileCacheIsWhereDidPythonPutsIt(testCase)
+            % The whole point of pointing this at the home directory: both
+            % languages must name one directory. DID-python builds
+            % Path.home()/Documents/DID/fileCache, and Path.home() resolves
+            % to the same variable did.common.homeDirectory() reads.
+            %
+            % The symmetry pair did.symmetry.*.common.pathAgreement checks
+            % the two languages against each other for real; this pins the
+            % MATLAB side on its own so a change here fails immediately
+            % rather than only in the cross-language job.
+            testCase.verifyEqual(did.common.PathConstants.filecachepath, ...
+                fullfile(did.common.homeDirectory(), 'Documents', 'DID', 'fileCache'));
+        end
+
+        function testTheFileCacheIsNotUnderUserpath(testCase)
+            % It was fullfile(userpath, 'Documents','DID','fileCache'), which
+            % on a normal install is <home>/Documents/MATLAB/Documents/DID/
+            % fileCache -- a doubled 'Documents', and nowhere DID-python
+            % would ever look.
+            testCase.verifyEmpty( ...
+                strfind(did.common.PathConstants.filecachepath, ...
+                    fullfile('Documents', 'MATLAB')), ...
+                'the file cache must not live under userpath any more');
+        end
+
         function testThePathConstantsAreAbsolute(testCase)
             % The property that was actually broken. A relative constant
             % here means the cache follows the working directory around.
