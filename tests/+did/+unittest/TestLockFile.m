@@ -68,6 +68,7 @@ classdef TestLockFile < matlab.unittest.TestCase
         function testWhatWeWriteIsWhatWeCanRead(testCase)
             [fid, key] = did.file.checkout_lock_file(testCase.lockFile);
             testCase.assertGreaterThan(fid, -1);
+            fclose(fid);
             C = did.file.readlines(testCase.lockFile);
             testCase.verifyEqual(numel(C), 2);
             t = did.file.lock_expiration_time(C{1});
@@ -77,12 +78,53 @@ classdef TestLockFile < matlab.unittest.TestCase
             testCase.verifyFalse(isfile(testCase.lockFile));
         end
 
+        function testASingleInputCallStillReturnsAnOpenFid(testCase)
+            % The deprecated contract: called with one input, the caller is
+            % handed an open fid. The read-back has to close the file to see
+            % what it wrote, so this checks the reopen was not dropped.
+            [fid, key] = did.file.checkout_lock_file(testCase.lockFile);
+            testCase.verifyGreaterThan(fid, 0);
+            testCase.verifyNotEmpty(fopen(fid), 'the returned fid must be open');
+            fclose(fid);
+            did.file.release_lock_file(testCase.lockFile, key);
+        end
+
+        function testTheKeyWeWroteIsTheKeyOnDisk(testCase)
+            % What the read-back in checkout_lock_file compares. If two
+            % processes both wrote here, only one of their keys survives.
+            [fid, key] = did.file.checkout_lock_file(testCase.lockFile, 5, false);
+            testCase.assertGreaterThan(fid, -1);
+            testCase.verifyEqual(did.file.lock_file_key(testCase.lockFile), key);
+            did.file.release_lock_file(testCase.lockFile, key);
+        end
+
+        function testLockFileKeyOnAMissingFile(testCase)
+            % '' never equals a real key, so an unreadable lock reads as one
+            % we do not hold.
+            testCase.verifyEqual( ...
+                did.file.lock_file_key(fullfile(pwd,'nosuch.bin-lock')), '');
+        end
+
+        function testLockFileKeyOnATruncatedFile(testCase)
+            fid = fopen(testCase.lockFile, 'wt');
+            fprintf(fid, '%s\n', '2026-08-29T14:35:12.123456');  % expiry, no key
+            fclose(fid);
+            testCase.verifyEqual(did.file.lock_file_key(testCase.lockFile), '');
+        end
+
+        function testLockFileKeyIgnoresTrailingWhitespace(testCase)
+            testCase.writeLock('2026-08-29T14:35:12.123456', 'someKey');
+            testCase.verifyEqual( ...
+                did.file.lock_file_key(testCase.lockFile), 'someKey');
+        end
+
         function testWeWriteIso8601(testCase)
             % Not char(datetime(...)): that renders month names in the
             % ambient locale, so a lock written by a French-locale MATLAB
             % could not be read by an English one, and DID-python's
             % datetime.fromisoformat cannot read it at all.
-            [~, key] = did.file.checkout_lock_file(testCase.lockFile);
+            [fid, key] = did.file.checkout_lock_file(testCase.lockFile);
+            fclose(fid);
             C = did.file.readlines(testCase.lockFile);
             testCase.verifyNotEmpty( ...
                 regexp(strtrim(C{1}), '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}', 'once'), ...

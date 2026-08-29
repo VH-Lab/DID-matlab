@@ -150,6 +150,35 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
         t2.Format = 'uuuu-MM-dd''T''HH:mm:ss.SSSSSS';
         exp_str = char(t2);
         fprintf(fid,'%s\n%s\n',exp_str,key);
+        fclose(fid);
+
+        % Confirm the key that survived is ours. FOPEN(...,'wt') does not
+        % fail if another process created the file between the ISFILE test
+        % in the loop above and this open, so two processes can both write
+        % here. The records are a fixed length, so the loser reads a
+        % well-formed file holding someone else's key rather than a mangled
+        % one, and stands down. Without this check both would believe they
+        % held the lock and would go on to write to whatever it guards.
+        %
+        % The window is a few statements wide and contenders are spread by
+        % the PAUSE(1) above, so this is rare -- but the consequence is
+        % silent, which is what makes it worth the two lines.
+        %
+        % It does NOT resolve a race with DID-python, whose
+        % checkout_lock_file creates the file atomically with open(...,'x'):
+        % 'wt' truncates whatever that created and the read-back then
+        % legitimately finds our own key. Closing that needs create-exclusive
+        % semantics, which MATLAB's FOPEN does not offer; the alternatives
+        % are a Java dependency or an on-disk protocol change, and neither
+        % is worth it for a window this narrow.
+        if ~strcmp(did.file.lock_file_key(filename), key)
+            fid = -1;  % another process got there first
+        elseif nargin<=1
+            % Legacy contract: called with a single input, the caller is
+            % handed an open fid. Reopen to append rather than 'wt', which
+            % would truncate the lock just written.
+            fid = fopen(filename,'a','ieee-le');
+        end
     else
         fid = -1;
     end
@@ -159,9 +188,5 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
             error(['Unable to obtain lock with file ' filename ...
                 '.  If you believe a program that has crashed ' ...
                 'created this file then you should manually delete it.']);
-        end
-    else
-        if nargin>1 % if we are getting the key, we should close the lock file
-            fclose(fid);
         end
     end

@@ -39,7 +39,23 @@ classdef PathConstants
         temppath {mustBeWritable} = fullfile(tempdir, 'didtemp')
 
         % filecachepath - A path where files may be cached (not deleted every time)
-        filecachepath {mustBeWritable} = fullfile(did.common.userPathOrDefault(), 'Documents', 'DID', 'fileCache')
+        %
+        % Built on the home directory rather than on userpath, so that this
+        % names the same directory as DID-python's PathConstants.
+        % filecachepath, which is Path.home()/Documents/DID/fileCache. The
+        % two share a cache: sqlitedb.do_open_doc consults this on every
+        % document-file open and DID-python's open_doc does the same, and
+        % since both now write the same .fileCacheInfo layout and contend
+        % for the same '<file>-lock', a file fetched by either is found by
+        % the other.
+        %
+        % This used to be fullfile(userpath, 'Documents', 'DID',
+        % 'fileCache'), which on a normal install resolved to
+        % <home>/Documents/MATLAB/Documents/DID/fileCache -- a doubled
+        % 'Documents' that reads like the line was written assuming
+        % userpath was the home directory. Anything left in the old
+        % location is simply an unused cache; it can be deleted.
+        filecachepath {mustBeWritable} = fullfile(did.common.homeDirectory(), 'Documents', 'DID', 'fileCache')
 
         % preferences - A path to a directory of preferences files
         preferences {mustBeWritable} = fullfile(did.common.userPathOrDefault(), 'Documents', 'DID', 'Preferences') % Todo: Use prefdir
@@ -52,11 +68,14 @@ function mustBeWritable(folderPath)
             mkdir(folderPath)
         catch
             % See issue #29, R2022a)
-            % userPathOrDefault(), not userpath: userpath is empty exactly
-            % where this fallback is needed, and strrep(x, '', y) returns x
-            % unchanged -- so the retry used to re-attempt the same
-            % unwritable path it had just failed on.
-            folderPath = strrep(folderPath, did.common.userPathOrDefault(), tempdir);
+            % Rebase under tempdir. Every constant here is built on the home
+            % directory or on userpath, and userpath defaults to a folder
+            % inside home, so replacing home alone covers both. This used to
+            % strrep on userpath, which is empty exactly where the fallback
+            % is needed -- and strrep(x, '', y) returns x unchanged, so the
+            % retry re-attempted the same unwritable path it had just failed
+            % on.
+            folderPath = strrep(folderPath, did.common.homeDirectory(), tempdir);
             mkdir(folderPath)
         end
     end
