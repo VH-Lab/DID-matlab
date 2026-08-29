@@ -214,6 +214,12 @@ classdef binaryTable < handle
             binaryTableObj.file.fopen();
 
             [r,~] = binaryTableObj.getSize();
+            if isinf(row) & r==0 % nothing to read; reshape below would divide by zero
+                data = feval(binaryTableObj.recordType{col},zeros(0,binaryTableObj.elementsPerColumn(col)));
+                binaryTableObj.file.fclose();
+                binaryTableObj.releaseLock(lockfid,key);
+                return;
+            end
             if isinf(row) % read them all
                 fseek(binaryTableObj.file, binaryTableObj.headerSize+sum(binaryTableObj.recordSize(1:col-1)), 'bof');
                 skipBytes = binaryTableObj.rowSize()-binaryTableObj.recordSize(col);
@@ -262,7 +268,10 @@ classdef binaryTable < handle
 
             [r,~] = binaryTableObj.getSize();
 
-            if insertAfter>r+1
+            % Must be in 0..r. r+1 was permitted here, which then took the
+            % copy branch below and wrote the new row past the end of the
+            % data, leaving a table whose rows no longer line up.
+            if insertAfter>r
                 error(['Row must be in 0..number of rows (' int2str(r) ').']);
             end
 
@@ -334,7 +343,9 @@ classdef binaryTable < handle
 
             [r,~] = binaryTableObj.getSize();
 
-            if row>r+1
+            % Must be in 1..r; r+1 was permitted here and deleted nothing
+            % while still rewriting the file.
+            if row>r
                 error(['Row must be in 1..number of rows (' int2str(r) ').']);
             end
 

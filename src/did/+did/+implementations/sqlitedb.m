@@ -653,7 +653,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     parent = fileparts(this_file);
                     if strcmp(parent,did.common.PathConstants.filecachepath) % fileCache,
-                        didCache.touch(this_file); % we used it so indicate that we did
+                        % touch() looks the name up in the cache catalog,
+                        % whose column is the name inside the cache -- the
+                        % uid. Passing the full path never matched, so a
+                        % cache hit never refreshed the access time and
+                        % eviction dropped exactly the files read most.
+                        [~,cacheName,cacheExt] = fileparts(this_file);
+                        didCache.touch([cacheName cacheExt]); % we used it so indicate that we did
                     end
                     file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin_to_pass{:});
                     return

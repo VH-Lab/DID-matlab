@@ -62,6 +62,20 @@ classdef fileCache < handle
                         error('fileNameCharacters may not be altered once established.');
                     end
                 end
+
+                % getProperties built the table with the caller's guess at
+                % the name width, which is only the header's business.
+                % Rebuild it now that the stored width is known: every row is
+                % fixed-width, so a table built at the wrong width reads the
+                % file at the wrong offsets. Opening an existing 33-character
+                % cache as did.file.fileCache(dir) -- no second argument, so
+                % the default 32 -- left exactly that mismatch.
+                fileCacheObj.binaryTable = did.file.binaryTable(...
+                    did.file.fileobj('fullpathfilename',iFileName),...
+                    {'char','double','uint64'}, ...
+                    [fileCacheObj.fileNameCharacters*1 8 8], ...
+                    [fileCacheObj.fileNameCharacters 1 1], ...
+                    2+8+8+8);
             end
 
             if nargin>2 % try to set the properties with the updated version
@@ -109,6 +123,14 @@ classdef fileCache < handle
                     2+8+8+8); % headerSize: fileNameCharacters (uint16) + maxSize & reduceSize & totalSize (uint64)
                 h1 = typecast(uint16(fileCacheObj.fileNameCharacters),'uint8');
             else % retrieve the fileCharacter number from the existing header
+                if isnumeric(fileCacheObj.binaryTable) % not built yet
+                    fileCacheObj.binaryTable = did.file.binaryTable(...
+                        did.file.fileobj('fullpathfilename',iFileName),...
+                        {'char','double','uint64'}, ...
+                        [fileCacheObj.fileNameCharacters*1 8 8], ...
+                        [fileCacheObj.fileNameCharacters 1 1], ...
+                        2+8+8+8);
+                end
                 hd = fileCacheObj.binaryTable.readHeader();
                 h1 = hd(1:2);
                 h1 = h1(:)';
@@ -211,7 +233,7 @@ classdef fileCache < handle
             [row,~] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
             if ~row
                 fileCacheObj.binaryTable.releaseLock(lockfid,key);
-                error(['File ' filename ' is not in file cache manifest.']);
+                error(['File ' fileNameInCache ' is not in file cache manifest.']);
             end
             p = fileCacheObj.getProperties();
             szHere = fileCacheObj.binaryTable.readRow(row,3);
@@ -359,7 +381,12 @@ classdef fileCache < handle
             else
                 %disp(['Not full, total size is ' int2str(newTotalSize) ' and maxSize is ' int2str(fileCacheObj.maxSize) '.']);
                 for i=1:numel(newFileName)
-                    data_here{i} = newFileName{i};
+                    % Column 1, not i: indexing by the loop variable meant
+                    % that adding a second file wrote its name into the
+                    % last-accessed column, where the next line immediately
+                    % overwrote it -- so every file after the first was
+                    % catalogued under the first file's name.
+                    data_here{1} = newFileName{i};
                     data_here{2} = now;
                     data_here{3} = newFileSize(i);
                     [~,insertSpot] = fileCacheObj.binaryTable.findRow(1,newFileName{i},'sorted',true);
