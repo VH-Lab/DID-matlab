@@ -109,9 +109,10 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
             C = did.file.readlines(filename);
 
             if ~isempty(C)
-                try
-                    expiration_time_of_file = datetime(strtrim(C{1}),'TimeZone','UTCLeapSeconds');
-                end
+                % Both formats, and never silently: the bare try/end this
+                % replaces swallowed a parse failure, so an expiry it could
+                % not read looked exactly like a lock that never expires.
+                expiration_time_of_file = did.file.lock_expiration_time(C{1});
             end
         end
 
@@ -137,7 +138,12 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
         fid = fopen(filename,'wt','ieee-le');
         t1 = datetime('now','TimeZone','UTCLeapSeconds');
         t2 = t1 + seconds(expiration_time);
-        exp_str = char(datetime(t2,'TimeZone','UTCLeapSeconds'));
+        % ISO 8601 explicitly. char(datetime(...)) uses the ambient
+        % locale's month names, so a lock written by a French-locale MATLAB
+        % could not be read by an English one -- let alone by DID-python,
+        % whose datetime.fromisoformat cannot parse that form at all.
+        t2.Format = 'uuuu-MM-dd''T''HH:mm:ss.SSSSSS';
+        exp_str = char(t2);
         fprintf(fid,'%s\n%s\n',exp_str,key);
     else
         fid = -1;
