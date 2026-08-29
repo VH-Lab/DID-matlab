@@ -123,14 +123,12 @@ classdef fileCache < handle
                     2+8+8+8); % headerSize: fileNameCharacters (uint16) + maxSize & reduceSize & totalSize (uint64)
                 h1 = typecast(uint16(fileCacheObj.fileNameCharacters),'uint8');
             else % retrieve the fileCharacter number from the existing header
-                if isnumeric(fileCacheObj.binaryTable) % not built yet
-                    fileCacheObj.binaryTable = did.file.binaryTable(...
-                        did.file.fileobj('fullpathfilename',iFileName),...
-                        {'char','double','uint64'}, ...
-                        [fileCacheObj.fileNameCharacters*1 8 8], ...
-                        [fileCacheObj.fileNameCharacters 1 1], ...
-                        2+8+8+8);
-                end
+                % No "is the table built yet" guard here: reaching this branch
+                % means the info file exists, and every route to it -- the
+                % constructor, addFile, removeFile, clear, resizeAndAdd --
+                % goes through getProperties or the branch above first, both
+                % of which build the table. getProperties keeps the guard
+                % because it is the one that actually runs.
                 hd = fileCacheObj.binaryTable.readHeader();
                 h1 = hd(1:2);
                 h1 = h1(:)';
