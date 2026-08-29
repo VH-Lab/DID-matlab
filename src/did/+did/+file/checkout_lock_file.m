@@ -24,10 +24,21 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     %  calls CHECKOUT_LOCK_FILE is able to create the file (that is, FID>0),
     %  then it should call RELEASE_LOCK_FILE to remove the lock file.
     %
-    %  IMPORTANT: FILE CLOSURE: If 2 output arguments are given (that is, KEY is
-    %  examined), then the lock file is closed before CHECKOUT_LOCK_FILE exits.
-    %  If KEY is not requested in output, then the FID is left open for
-    %  backwards compatibility.
+    %  IMPORTANT: FILE CLOSURE: this depends on the number of INPUTS.
+    %
+    %  If FILENAME is the only input, the lock file is left OPEN and FID is a
+    %  valid identifier the caller is expected to FCLOSE itself. This is the
+    %  legacy form, kept for backwards compatibility.
+    %
+    %  If any further input is given, the lock file is closed before
+    %  CHECKOUT_LOCK_FILE exits, and the returned FID names a file that is
+    %  already closed -- test it with FID>0 to see whether the lock was
+    %  obtained, but do not read or write it.
+    %
+    %  Earlier versions of this help said the number of OUTPUTS decided this.
+    %  They were wrong: the code has always branched on NARGIN. New code
+    %  should pass CHECKLOOPS and take both outputs, which is the closed-FID
+    %  form.
     %
     %  Deprecated release instructions (new code should not use):
     %  1) close the file with fclose(FID) and 2) delete the file
