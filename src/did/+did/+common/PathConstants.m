@@ -68,20 +68,14 @@ function mustBeWritable(folderPath)
             mkdir(folderPath)
         catch
             % See issue #29, R2022a)
-            % Rebase under tempdir. Which root a constant was built on
-            % differs -- the home directory for filecachepath, userpath for
-            % preferences -- so try both and replace the one that matches.
-            % This used to strrep on userpath alone, and userpath is empty
-            % exactly where the fallback is needed; strrep(x, '', y) returns
-            % x unchanged, so the retry re-attempted the same unwritable
-            % path it had just failed on.
-            roots = {did.common.homeDirectory(), did.common.userPathOrDefault()};
-            for i = 1:numel(roots)
-                if startsWith(folderPath, roots{i})
-                    folderPath = strrep(folderPath, roots{i}, tempdir);
-                    break;
-                end
-            end
+            % Rebase under tempdir. Every constant here is built on the home
+            % directory or on userpath, and userpath defaults to a folder
+            % inside home, so replacing home alone covers both. This used to
+            % strrep on userpath, which is empty exactly where the fallback
+            % is needed -- and strrep(x, '', y) returns x unchanged, so the
+            % retry re-attempted the same unwritable path it had just failed
+            % on.
+            folderPath = strrep(folderPath, did.common.homeDirectory(), tempdir);
             mkdir(folderPath)
         end
     end
