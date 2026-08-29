@@ -39,10 +39,10 @@ classdef PathConstants
         temppath {mustBeWritable} = fullfile(tempdir, 'didtemp')
 
         % filecachepath - A path where files may be cached (not deleted every time)
-        filecachepath {mustBeWritable} = fullfile(userpath, 'Documents', 'DID', 'fileCache')
+        filecachepath {mustBeWritable} = fullfile(did.common.userPathOrDefault(), 'Documents', 'DID', 'fileCache')
 
         % preferences - A path to a directory of preferences files
-        preferences {mustBeWritable} = fullfile(userpath, 'Documents', 'DID', 'Preferences') % Todo: Use prefdir
+        preferences {mustBeWritable} = fullfile(did.common.userPathOrDefault(), 'Documents', 'DID', 'Preferences') % Todo: Use prefdir
     end
 end
 
@@ -52,7 +52,11 @@ function mustBeWritable(folderPath)
             mkdir(folderPath)
         catch
             % See issue #29, R2022a)
-            folderPath = strrep(folderPath, userpath, tempdir);
+            % userPathOrDefault(), not userpath: userpath is empty exactly
+            % where this fallback is needed, and strrep(x, '', y) returns x
+            % unchanged -- so the retry used to re-attempt the same
+            % unwritable path it had just failed on.
+            folderPath = strrep(folderPath, did.common.userPathOrDefault(), tempdir);
             mkdir(folderPath)
         end
     end
