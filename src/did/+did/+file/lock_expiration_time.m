@@ -36,6 +36,8 @@ function t = lock_expiration_time(str)
         'uuuu-MM-dd''T''HH:mm:ss.SSSSSS', ...
         'uuuu-MM-dd''T''HH:mm:ss.SSS', ...
         'uuuu-MM-dd''T''HH:mm:ss', ...
+        'uuuu-MM-dd''T''HH:mm:ss.SSSSSS''Z''', ...  % a UTCLeapSeconds writer
+        'uuuu-MM-dd''T''HH:mm:ss''Z''', ...
         'dd-MMM-uuuu HH:mm:ss', ...   % char(datetime(...)), the older form
         'dd-MMM-uuuu HH:mm:ss.SSS'};
 
@@ -44,8 +46,12 @@ function t = lock_expiration_time(str)
             % 'en_US' rather than the ambient locale: the month in the old
             % form is an English abbreviation wherever it was written, so
             % parsing it must not depend on the reader's locale.
+            % 'UTC', not 'UTCLeapSeconds': the latter accepts only a
+            % Z-suffixed Format, which would reject most of the forms above
+            % outright. The leap-second difference is nothing against a
+            % one-hour expiry.
             t = datetime(str, 'InputFormat', formats{i}, ...
-                'TimeZone', 'UTCLeapSeconds', 'Locale', 'en_US');
+                'TimeZone', 'UTC', 'Locale', 'en_US');
             return;
         catch
             % try the next format

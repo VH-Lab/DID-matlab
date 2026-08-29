@@ -39,7 +39,7 @@ classdef lockFile < matlab.unittest.TestCase
             end
             mkdir(artifactDir);
 
-            now_ = datetime('now', 'TimeZone', 'UTCLeapSeconds');
+            now_ = datetime('now', 'TimeZone', 'UTC');
             testCase.writeLock(fullfile(artifactDir, testCase.liveLock), ...
                 now_ + hours(1), testCase.liveKey);
             testCase.writeLock(fullfile(artifactDir, testCase.expiredLock), ...

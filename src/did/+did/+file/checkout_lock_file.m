@@ -117,7 +117,7 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
         end
 
         if ~isinf(expiration_time_of_file)
-            isexpired = expiration_time_of_file < datetime('now','TimeZone','UTCLeapSeconds');
+            isexpired = expiration_time_of_file < datetime('now','TimeZone','UTC');
         end
 
         if ~isexpired
@@ -136,7 +136,12 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
 
     if loop<loops % we made it
         fid = fopen(filename,'wt','ieee-le');
-        t1 = datetime('now','TimeZone','UTCLeapSeconds');
+        % 'UTC', not 'UTCLeapSeconds': a UTCLeapSeconds datetime accepts
+        % only a Z-suffixed display format, and DID-python writes no Z --
+        % datetime.fromisoformat rejects one before Python 3.11. The two
+        % differ by the leap seconds, which is nothing against a one-hour
+        % expiry, and plain UTC is what DID-python records.
+        t1 = datetime('now','TimeZone','UTC');
         t2 = t1 + seconds(expiration_time);
         % ISO 8601 explicitly. char(datetime(...)) uses the ambient
         % locale's month names, so a lock written by a French-locale MATLAB

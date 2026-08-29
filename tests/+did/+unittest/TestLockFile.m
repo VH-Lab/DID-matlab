@@ -87,11 +87,16 @@ classdef TestLockFile < matlab.unittest.TestCase
             testCase.verifyNotEmpty( ...
                 regexp(strtrim(C{1}), '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}', 'once'), ...
                 sprintf('"%s" is not ISO 8601', strtrim(C{1})));
+            % And no trailing 'Z'. datetime.fromisoformat rejects one before
+            % Python 3.11, and DID-python's CI still covers 3.10 -- so a
+            % Z would make every lock we write unreadable there.
+            testCase.verifyEmpty(regexp(strtrim(C{1}), 'Z$', 'once'), ...
+                sprintf('"%s" carries a trailing Z', strtrim(C{1})));
             did.file.release_lock_file(testCase.lockFile, key);
         end
 
         function testAnExpiredLockIsReclaimed(testCase)
-            past = datetime('now','TimeZone','UTCLeapSeconds') - hours(1);
+            past = datetime('now','TimeZone','UTC') - hours(1);
             past.Format = 'uuuu-MM-dd''T''HH:mm:ss.SSSSSS';
             testCase.writeLock(char(past), 'someoneElsesKey');
 
@@ -104,7 +109,7 @@ classdef TestLockFile < matlab.unittest.TestCase
         function testAnExpiredLockInPythonsFormatIsReclaimed(testCase)
             % Byte-for-byte what DID-python's checkout_lock_file writes:
             % datetime.isoformat(), then the key.
-            past = datetime('now','TimeZone','UTCLeapSeconds') - hours(1);
+            past = datetime('now','TimeZone','UTC') - hours(1);
             past.Format = 'uuuu-MM-dd''T''HH:mm:ss.SSSSSS';
             testCase.writeLock(char(past), '2026-08-29T13:00:00_0f1e2d3c-4b5a-6789-abcd-ef0123456789');
 
@@ -115,7 +120,7 @@ classdef TestLockFile < matlab.unittest.TestCase
         end
 
         function testAnExpiredLockInTheLegacyFormatIsReclaimed(testCase)
-            past = datetime('now','TimeZone','UTCLeapSeconds') - hours(1);
+            past = datetime('now','TimeZone','UTC') - hours(1);
             testCase.writeLock(char(past), 'someoneElsesKey');  % char(datetime(...))
 
             [fid, key] = did.file.checkout_lock_file(testCase.lockFile, 5, false);
@@ -125,7 +130,7 @@ classdef TestLockFile < matlab.unittest.TestCase
         end
 
         function testALiveLockIsNotStolen(testCase)
-            future = datetime('now','TimeZone','UTCLeapSeconds') + hours(1);
+            future = datetime('now','TimeZone','UTC') + hours(1);
             future.Format = 'uuuu-MM-dd''T''HH:mm:ss.SSSSSS';
             testCase.writeLock(char(future), 'someoneElsesKey');
 
@@ -144,7 +149,7 @@ classdef TestLockFile < matlab.unittest.TestCase
         end
 
         function testTheWrongKeyDoesNotRelease(testCase)
-            future = datetime('now','TimeZone','UTCLeapSeconds') + hours(1);
+            future = datetime('now','TimeZone','UTC') + hours(1);
             future.Format = 'uuuu-MM-dd''T''HH:mm:ss.SSSSSS';
             testCase.writeLock(char(future), 'someoneElsesKey');
 
