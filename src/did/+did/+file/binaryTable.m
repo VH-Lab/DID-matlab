@@ -61,7 +61,13 @@ classdef binaryTable < handle
             if isfile(binaryTableObj.file.fullpathfilename)
                 d = dir(binaryTableObj.file.fullpathfilename);
                 sz = d(1).bytes;
-                dataSize = sz - binaryTableObj.headerSize;
+                % double(): headerSize is uint16, and MATLAB gives an
+                % integer/double expression the integer class, so this
+                % subtraction used to produce a uint16 dataSize -- saturating
+                % at 65535 bytes and taking the row count, and every offset
+                % derived from it, with it. A .fileCacheInfo of 49-byte rows
+                % hit that ceiling at about 1300 files.
+                dataSize = double(sz) - double(binaryTableObj.headerSize);
             end
 
             c = numel(binaryTableObj.recordSize);
@@ -181,9 +187,12 @@ classdef binaryTable < handle
             %
             % S = ROWSIZE(BINARYTABLEOBJ)
             %
-            % The size of each row of the binaryTable object file, in bytes.
+            % The size of each row of the binaryTable object file, in bytes,
+            % as a double. sum() over an integer array returns double unless
+            % 'native' is asked for, and the offset arithmetic wants a double
+            % so that it does not saturate at the uint16 ceiling.
             %
-            s = sum(binaryTableObj.recordSize);
+            s = double(sum(binaryTableObj.recordSize));
         end % rowSize()
 
         function data = readRow(binaryTableObj, row, col)
@@ -214,9 +223,15 @@ classdef binaryTable < handle
             binaryTableObj.file.fopen();
 
             [r,~] = binaryTableObj.getSize();
+            if isinf(row) & r==0 % nothing to read; reshape below would divide by zero
+                data = feval(binaryTableObj.recordType{col},zeros(0,binaryTableObj.elementsPerColumn(col)));
+                binaryTableObj.file.fclose();
+                binaryTableObj.releaseLock(lockfid,key);
+                return;
+            end
             if isinf(row) % read them all
-                fseek(binaryTableObj.file, binaryTableObj.headerSize+sum(binaryTableObj.recordSize(1:col-1)), 'bof');
-                skipBytes = binaryTableObj.rowSize()-binaryTableObj.recordSize(col);
+                fseek(binaryTableObj.file, double(binaryTableObj.headerSize)+double(sum(binaryTableObj.recordSize(1:col-1))), 'bof');
+                skipBytes = double(binaryTableObj.rowSize())-double(binaryTableObj.recordSize(col));
                 data = fread(binaryTableObj.file, Inf, ...
                     [int2str(binaryTableObj.elementsPerColumn(col)) '*' binaryTableObj.recordType{col}], ...
                     skipBytes);
@@ -230,8 +245,8 @@ classdef binaryTable < handle
                 data = feval(binaryTableObj.recordType{col},zeros(numel(row),binaryTableObj.elementsPerColumn(col)));
                 for i=1:numel(row)
                     status=fseek(binaryTableObj.file,...
-                        binaryTableObj.headerSize+(row(i)-1)*binaryTableObj.rowSize()+...
-                        sum(binaryTableObj.recordSize(1:col-1)),...
+                        double(binaryTableObj.headerSize)+(row(i)-1)*double(binaryTableObj.rowSize())+...
+                        double(sum(binaryTableObj.recordSize(1:col-1))),...
                         'bof');
                     if status~=0
                         binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
@@ -262,7 +277,10 @@ classdef binaryTable < handle
 
             [r,~] = binaryTableObj.getSize();
 
-            if insertAfter>r+1
+            % Must be in 0..r. r+1 was permitted here, which then took the
+            % copy branch below and wrote the new row past the end of the
+            % data, leaving a table whose rows no longer line up.
+            if insertAfter>r
                 error(['Row must be in 0..number of rows (' int2str(r) ').']);
             end
 
@@ -281,8 +299,8 @@ classdef binaryTable < handle
             else % copy over everything to temp file before inserting and moving back
                 binaryTableObj.file = binaryTableObj.file.setproperties('permission','rb');
                 binaryTableObj.file.fopen();
-                beforeBytes = binaryTableObj.headerSize + insertAfter * binaryTableObj.rowSize();
-                totalBytes = (binaryTableObj.headerSize + r * binaryTableObj.rowSize());
+                beforeBytes = double(binaryTableObj.headerSize) + insertAfter * double(binaryTableObj.rowSize());
+                totalBytes = (double(binaryTableObj.headerSize) + r * double(binaryTableObj.rowSize()));
                 bufferSize = 1e6; % 1 MB buffer
                 copied = 0;
                 fid = fopen(binaryTableObj.tempFileName(),'w');
@@ -334,7 +352,9 @@ classdef binaryTable < handle
 
             [r,~] = binaryTableObj.getSize();
 
-            if row>r+1
+            % Must be in 1..r; r+1 was permitted here and deleted nothing
+            % while still rewriting the file.
+            if row>r
                 error(['Row must be in 1..number of rows (' int2str(r) ').']);
             end
 
@@ -342,8 +362,8 @@ classdef binaryTable < handle
             binaryTableObj.file.fclose();
             binaryTableObj.file = binaryTableObj.file.setproperties('permission','rb');
             binaryTableObj.file.fopen();
-            beforeBytes = binaryTableObj.headerSize + (row-1) * binaryTableObj.rowSize();
-            totalBytes = (binaryTableObj.headerSize + r * binaryTableObj.rowSize());
+            beforeBytes = double(binaryTableObj.headerSize) + (row-1) * double(binaryTableObj.rowSize());
+            totalBytes = (double(binaryTableObj.headerSize) + r * double(binaryTableObj.rowSize()));
             bufferSize = 1e6; % 1 MB buffer
             copied = 0;
             fid = fopen(binaryTableObj.tempFileName(),'w');
@@ -360,7 +380,7 @@ classdef binaryTable < handle
                 copied = copied + chunkSize;
             end
             % skip the row to be deleted
-            status = fseek(binaryTableObj.file, binaryTableObj.headerSize+(row)*binaryTableObj.rowSize(), 'bof');
+            status = fseek(binaryTableObj.file, double(binaryTableObj.headerSize)+(row)*double(binaryTableObj.rowSize()), 'bof');
             if status ~= 0
                 warning(ferror(binaryTableObj.file))
             end
@@ -399,8 +419,8 @@ classdef binaryTable < handle
             binaryTableObj.file.fopen();
 
             status=fseek(binaryTableObj.file,...
-                binaryTableObj.headerSize+(row-1)*binaryTableObj.rowSize()+...
-                sum(binaryTableObj.recordSize(1:col-1)),...
+                double(binaryTableObj.headerSize)+(row-1)*double(binaryTableObj.rowSize())+...
+                double(sum(binaryTableObj.recordSize(1:col-1))),...
                 'bof');
             if status~=0
                 binaryTableObj.releaseLock(lockfid,key); % release if we checked out the lock
