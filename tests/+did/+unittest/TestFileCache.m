@@ -42,7 +42,7 @@ classdef TestFileCache < matlab.unittest.TestCase
         function p = makeSource(testCase, index, nBytes)
             p = fullfile(testCase.sourceDir, ['source_' int2str(index)]);
             fid = fopen(p,'w','ieee-le');
-            fwrite(fid, uint8(mod(index,256))*ones(1,nBytes), 'uint8');
+            fwrite(fid, repmat(uint8(mod(index,256)),1,nBytes), 'uint8');
             fclose(fid);
         end
     end

@@ -16,6 +16,12 @@ classdef TestBinaryTable < matlab.unittest.TestCase
     methods
         function bT = makeTable(testCase, fileName)
             if nargin < 2, fileName = 'table.bin'; end
+            % Start from nothing. Reusing the name without this left the
+            % previous table's rows in place, so a test that builds a table
+            % more than once was reading a table twice the size it expected.
+            if isfile(fullfile(pwd,fileName))
+                delete(fullfile(pwd,fileName));
+            end
             bT = did.file.binaryTable(...
                 did.file.fileobj('fullpathfilename',fullfile(pwd,fileName)),...
                 {'char','double','uint64'}, ...
@@ -52,7 +58,7 @@ classdef TestBinaryTable < matlab.unittest.TestCase
 
         function testRowSize(testCase)
             bT = testCase.makeTable();
-            testCase.verifyEqual(bT.rowSize(), uint16(testCase.NameCharacters+8+8));
+            testCase.verifyEqual(bT.rowSize(), double(testCase.NameCharacters+8+8));
         end
 
         function testLockAndTempFileNames(testCase)
@@ -175,6 +181,35 @@ classdef TestBinaryTable < matlab.unittest.TestCase
             hd = bT.readHeader();
             testCase.verifyEqual(typecast(uint8(hd(1:2)),'uint16'), uint16(testCase.NameCharacters));
             testCase.verifyEqual(typecast(uint8(hd(3:10)),'uint64'), uint64(9000));
+        end
+
+        function testATableLargerThanTheOldUint16Ceiling(testCase)
+            % Offsets were computed as headerSize (uint16) + something, which
+            % MATLAB makes uint16 -- so every byte position saturated at
+            % 65535. With 49-byte rows that ceiling arrives at about 1337
+            % rows, well inside a real file cache. 2000 rows is past it.
+            nRows = 2000;
+            bT = testCase.makeTable();
+            bT.writeHeader([typecast(uint16(testCase.NameCharacters),'uint8') ...
+                typecast(uint64(9000),'uint8') typecast(uint64(8000),'uint8') ...
+                typecast(uint64(0),'uint8')]);
+            data = cell(nRows,3);
+            for i=1:nRows
+                data{i,1} = testCase.nameOf(i);
+                data{i,2} = 700000+i;
+                data{i,3} = uint64(i);
+            end
+            bT.writeTable(data);
+
+            testCase.verifyEqual(double(bT.getSize()), nRows, ...
+                'the row count must not saturate');
+            testCase.verifyEqual(bT.readRow(nRows,1), testCase.nameOf(nRows), ...
+                'the last row must be seekable');
+            testCase.verifyEqual(bT.readRow(nRows,3), uint64(nRows));
+            names = bT.readRow(Inf,1);
+            testCase.verifyEqual(size(names,1), nRows);
+            testCase.verifyEqual(bT.findRow(1, testCase.nameOf(nRows), 'sorted', true), nRows, ...
+                'the binary search must reach past the old ceiling');
         end
 
         function testFindRowUnsorted(testCase)
