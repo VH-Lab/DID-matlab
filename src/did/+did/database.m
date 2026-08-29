@@ -1748,6 +1748,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             missing_files = setdiff(expectedNamesList,actual_file_list);
             if ~isempty(missing_files)
                 errmsg = sprintf('Some required files are missing (including %s) from the file_list in document %s', missing_files{1}, doc_name);
+                % A required file_list entry is absent - reject the document.
+                % Execution used to fall through to isvalid = 1 below, so
+                % add_docs committed a document that was missing a required
+                % file: schema validation failed open.
+                isvalid = 0;
+                return;
             end
 
             % Step 2: are all files in the actual document's file_list valid?
