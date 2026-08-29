@@ -433,12 +433,23 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
             %   - 'Validate' - followed by false or true (default)
+            %   - 'customFileHandler' - a function handle used to retrieve a
+            %       file whose location is not a local path (e.g. 'ndicloud').
+            %       It is called as HANDLER(DESTPATH, SOURCEPATH) and must
+            %       produce a local file at DESTPATH. DID retrieves no remote
+            %       file itself; a downstream package supplies retrieval
+            %       through this handler. Only locations marked for ingestion
+            %       are retrieved here, which for remote locations is rare --
+            %       ingest defaults to 0 for 'url' and 'ndicloud'.
+            %
+            % See also: DID.DATABASE/OPEN_DOC, which takes the same handler.
             arguments
                 database_obj
                 document_objs
                 branch_id = ''
                 options.OnDuplicate {mustBeMember(options.OnDuplicate,{'ignore','warn','error'})} = 'error'
                 options.Validate {mustBeNumericOrLogical} = true
+                options.customFileHandler = []
             end
 
             % Ensure we got a valid input doc object
@@ -480,6 +491,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
 
             downstream_options.OnDuplicate = options.OnDuplicate;
+            downstream_options.customFileHandler = options.customFileHandler;
             varargin_to_pass = namedargs2cell(downstream_options);
 
             % Call the database's addition method separately for each doc
@@ -980,7 +992,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
         % Document-related methods
         doc_ids = do_get_doc_ids(database_obj, branch_id, varargin)
-        do_add_doc(database_obj, document_obj, branch_id, varargin)
+        % do_add_doc takes name-value arguments through a trailing `options`
+        % argument, declared with an arguments block in the implementation.
+        % An abstract declaration is a signature only and cannot carry an
+        % arguments block itself, so naming the argument `options` rather than
+        % `varargin` is what states the contract here.
+        do_add_doc(database_obj, document_obj, branch_id, options)
         document_obj = do_get_doc(database_obj, document_id, varargin)
         do_remove_doc(database_obj, document_id, branch_id, varargin)
         file_obj = do_open_doc(database_obj, document_id, filename, varargin)
@@ -1765,20 +1782,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 if isfile(fileLocation)
                     found = true;
                     break
-                elseif startsWith(fileLocation, 'http')
-                    try
-                        req = matlab.net.http.RequestMessage('HEAD');
-                        response = req.send(url);
-                        if strcmp( response.StatusCode, 'OK' )
-                            found = true;
-                        end
-                    catch
-                        % ignore this location
-                    end
                 else
-                    % If it is neither a local file nor an HTTP URL,
-                    % existence will not be pre-checked, but will be 
-                    % evaluated when attempting to read or download the file.
+                    % If it is not a local file, existence is not pre-checked
+                    % here; it is evaluated when attempting to read or download
+                    % the file. This includes http(s) URLs: validation does no
+                    % network I/O, so an unreachable URL is reported when the
+                    % file is read rather than when the document is added.
                     found = true;
                 end
             end
