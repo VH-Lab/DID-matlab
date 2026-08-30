@@ -301,6 +301,20 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             meta_data_struct = cell2struct({meta_data.columns}',{meta_data.name}');
             doc_id = meta_data_struct.meta(1).value;
 
+            % A document id that was removed from its last branch is retired for
+            % good, and cannot be used again (issue #55). Re-using one used to
+            % produce a document that silently inherited the previous document's
+            % doc_data rows - stale field values that no part of the new document
+            % ever supplied. Reclaiming those rows on removal fixes that, and
+            % retiring the id as well means the case cannot come back through a
+            % database written before the reclamation existed.
+            if this_obj.is_deleted_doc_id(doc_id)
+                error('DID:SQLITEDB:DELETED_DOC', ...
+                    ['Cannot add document %s - a document with this id was ' ...
+                     'previously removed from every branch. Document ids are ' ...
+                     'never re-used; generate a new id for a new document.'], doc_id);
+            end
+
             % If the document was not already defined (for any branch)
             doc_props = document_obj.document_properties;
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
@@ -515,6 +529,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID.
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
+            % Removing the document from its last remaining branch removes it
+            % from the database entirely: its cached files are deleted from
+            % disk and its doc_data, files and docs records are all dropped.
+            % Its id is retained in the deleted_docs table and can never be
+            % added to the database again.
+            %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
             %   - 'OnMissing' - followed by 'ignore', 'warn', or 'error' (default)
@@ -570,16 +590,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Remove the document from the branch_docs table
             this_obj.run_sql_noOpen(['DELETE FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '" AND doc_idx=?'], doc_idx);
 
-            % TODO - remove all document records if no branch references remain?
-            %{
-            % If no more branches reference this document
-            remaining_ids = this_obj.run_sql_noOpen('SELECT branch_id FROM branch_docs WHERE doc_idx=?', doc_idx));
+            % If no branch references this document any more, it is gone for
+            % good, so nothing of it should be left behind (issue #55).
+            remaining_ids = this_obj.run_sql_noOpen('SELECT branch_id FROM branch_docs WHERE doc_idx=?', doc_idx);
             if isempty(remaining_ids)
-                % Remove all document records from docs, doc_data tables
-                this_obj.run_sql_noOpen('DELETE FROM docs     WHERE doc_idx=?', doc_idx)
-                this_obj.run_sql_noOpen('DELETE FROM doc_data WHERE doc_idx=?', doc_idx)
+                this_obj.reclaim_unreferenced_doc(doc_idx, doc_id);
             end
-            %}
         end % do_remove_doc()
 
         function file_obj = do_open_doc(this_obj, document_id, filename, varargin)
@@ -865,6 +881,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 try
                     tables = this_obj.run_sql_noOpen('show tables');
                     tablenames = {tables.tablename};
+                    % "deleted_docs" is deliberately absent from this list:
+                    % it arrived with issue #55 and is created on demand, so a
+                    % database written by an earlier DID - or by DID-python,
+                    % which has no such table - is still perfectly valid.
                     mandatory_tables = {'branches','docs','branch_docs','fields','doc_data'};
                     for i = 1 : numel(mandatory_tables)
                         table_name = mandatory_tables{i};
@@ -1014,6 +1034,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     'FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx)', ...
                     'PRIMARY KEY(doc_idx,filename,uid)'});
 
+                %% Create "deleted_docs" table
+                % Ids of documents that were removed from their last branch.
+                % These are never re-used - see do_add_doc (issue #55).
+                this_obj.create_deleted_docs_table();
+
                 %% Add indexes (performance)
                 this_obj.run_sql_noOpen('CREATE INDEX "docs_doc_id"       ON "docs"     ("doc_id")');
                 this_obj.run_sql_noOpen('CREATE INDEX "doc_data_value"    ON "doc_data" ("value")');
@@ -1025,6 +1050,95 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 try delete(filename); catch, end
                 error('DID:SQLITEDB:CREATE','Error creating %s as a new DID SQLite database: %s',filename,err.message);
             end
+        end
+
+        function reclaim_unreferenced_doc(this_obj, doc_idx, doc_id)
+            % reclaim_unreferenced_doc - Erase every trace of an unreferenced document
+            %
+            % reclaim_unreferenced_doc(this_obj, doc_idx, doc_id)
+            %
+            % Called by do_remove_doc once the last branch_docs row for DOC_IDX
+            % is gone. Deletes the document's cached files from disk, then its
+            % doc_data, files and docs records, and finally retires DOC_ID so
+            % that it can never be added again (issue #55).
+            %
+            % The order of the deletes matters. Both doc_data and files carry
+            % FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx), so the docs row has
+            % to go last. SQLite only enforces that when foreign keys are turned
+            % on for the connection, which this class does not currently do -
+            % but DID-python does, and it runs these same three deletes in this
+            % same order (see _do_remove_doc there). Getting the order right here
+            % keeps enabling the pragma later a one-line change rather than a
+            % bug hunt.
+
+            % Delete this document's cached files from disk. A files row whose
+            % cached_location is empty was never ingested (do_add_doc still
+            % records the row), so there is no file to delete for it.
+            cache_data = this_obj.run_sql_noOpen('SELECT cached_location FROM files WHERE doc_idx=?', doc_idx);
+            if ~isempty(cache_data)
+                oldWarn = warning('off','MATLAB:DELETE:FileNotFound');
+                hRestoreWarn = onCleanup(@()warning(oldWarn)); %#ok<NASGU>
+                for idx = 1 : numel(cache_data)
+                    this_file = cache_data(idx).cached_location;
+                    if isempty(this_file) || ~ischar(this_file), continue, end
+                    if this_obj.debug
+                        fprintf('Deleting cached file %s\n', this_file);
+                    end
+                    % A file that is already gone is not a failure: the point is
+                    % that it must not be there afterwards.
+                    try delete(this_file); catch, end
+                end
+            end
+
+            % Remove the document's records - dependents before the docs row
+            this_obj.run_sql_noOpen('DELETE FROM doc_data WHERE doc_idx=?', doc_idx);
+            this_obj.run_sql_noOpen('DELETE FROM files    WHERE doc_idx=?', doc_idx);
+            this_obj.run_sql_noOpen('DELETE FROM docs     WHERE doc_idx=?', doc_idx);
+
+            % Retire the id
+            this_obj.record_deleted_doc_id(doc_id);
+        end % reclaim_unreferenced_doc()
+
+        function create_deleted_docs_table(this_obj)
+            % create_deleted_docs_table - Create the "deleted_docs" table (issue #55)
+            this_obj.create_table('deleted_docs', ...
+                {'doc_id    TEXT NOT NULL UNIQUE', ...
+                'timestamp NUMERIC', ...
+                'PRIMARY KEY(doc_id)'});
+        end
+
+        function tf = has_deleted_docs_table(this_obj)
+            % has_deleted_docs_table - Does this database carry a "deleted_docs" table?
+            %
+            % The table arrived with issue #55, and DID-python does not create it
+            % at all, so a database written by an earlier DID or by Python will
+            % not have one. That is not an error - it simply means no document
+            % has been permanently removed from it yet.
+            data = this_obj.run_sql_noOpen(...
+                'SELECT name FROM sqlite_master WHERE type=''table'' AND name=''deleted_docs''');
+            tf = ~isempty(data);
+        end
+
+        function tf = is_deleted_doc_id(this_obj, doc_id)
+            % is_deleted_doc_id - Was a document with this id permanently removed?
+            tf = false;
+            if ~this_obj.has_deleted_docs_table(), return, end
+            data = this_obj.run_sql_noOpen('SELECT doc_id FROM deleted_docs WHERE doc_id=?', doc_id);
+            tf = ~isempty(data);
+        end
+
+        function record_deleted_doc_id(this_obj, doc_id)
+            % record_deleted_doc_id - Retire a document id, so it is never re-used
+            %
+            % The table is created on demand rather than when the database is
+            % opened, so that merely reading a database written by an earlier
+            % DID or by DID-python never writes to it.
+            if ~this_obj.has_deleted_docs_table()
+                this_obj.create_deleted_docs_table();
+            end
+            % OR IGNORE: recording an id that is already retired is a no-op, not
+            % a UNIQUE-constraint failure.
+            this_obj.run_sql_noOpen('INSERT OR IGNORE INTO deleted_docs (doc_id,timestamp) VALUES (?,?)', doc_id, now);
         end
 
         function create_table(this_obj, table_name, columns, extra)
