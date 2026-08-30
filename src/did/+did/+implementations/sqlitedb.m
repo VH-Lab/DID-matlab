@@ -189,17 +189,45 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % Deletes the branch with the specified BRANCH_ID from the database.
             % An error is generated if BRANCH_ID is not a valid branch ID.
+            %
+            % Any document left referenced by no branch at all is removed from
+            % the database entirely, exactly as when the last branch holding it
+            % drops it via do_remove_doc - see reclaim_unreferenced_doc.
+
+            % Open the database for update, so that the branch's rows and the
+            % reclamation of whatever they last referenced happen on one
+            % connection rather than reopening per statement
+            hCleanup = this_obj.open_db(); %#ok<NASGU>
 
             % First remove all documents from the branch
             doc_ids = this_obj.do_get_doc_ids(branch_id); %this croaks if branch_id is invalid - good!
             if ~isempty(doc_ids)
+                % Note which documents this branch holds BEFORE dropping its
+                % rows: afterwards nothing leads from the branch back to them.
+                branch_doc_data = this_obj.run_sql_noOpen(...
+                    ['SELECT docs.doc_idx, docs.doc_id FROM docs,branch_docs ' ...
+                     ' WHERE docs.doc_idx = branch_docs.doc_idx ' ...
+                     '   AND branch_docs.branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+
                 % Remove all documents from the branch_docs table
-                % TODO: also delete records of unreferenced docs ???
-                this_obj.run_sql_query(['DELETE FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+                this_obj.run_sql_noOpen(['DELETE FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+
+                % Deleting a branch is the other way a document can come to be
+                % referenced by no branch at all, so it owes the same clean-up
+                % that do_remove_doc does (issue #55). The test is the same one
+                % too - no surviving branch_docs row anywhere - so a document
+                % that any other branch still holds is left completely alone.
+                for idx = 1 : numel(branch_doc_data)
+                    doc_idx = branch_doc_data(idx).doc_idx;
+                    remaining_ids = this_obj.run_sql_noOpen('SELECT branch_id FROM branch_docs WHERE doc_idx=?', doc_idx);
+                    if isempty(remaining_ids)
+                        this_obj.reclaim_unreferenced_doc(doc_idx, branch_doc_data(idx).doc_id);
+                    end
+                end
             end
 
             % Now delete the branch record
-            this_obj.run_sql_query(['DELETE FROM branches WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+            this_obj.run_sql_noOpen(['DELETE FROM branches WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
         end % do_delete_branch()
 
         function parent_branch_id = do_get_branch_parent(this_obj, branch_id, varargin)

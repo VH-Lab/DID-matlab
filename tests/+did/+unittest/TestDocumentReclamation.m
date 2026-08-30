@@ -210,6 +210,58 @@ classdef TestDocumentReclamation < matlab.unittest.TestCase
             end
         end
 
+        function testDeletingLastBranchReclaimsItsDocuments(testCase)
+            % Deleting a branch is the other way a document comes to be
+            % referenced by no branch at all, and it owes the same clean-up.
+            % The guard is the same as do_remove_doc's - no surviving
+            % branch_docs row anywhere - so a document another branch still
+            % holds must come through a branch deletion untouched.
+            doc = testCase.makeFileDocument();
+            testCase.db.add_docs(doc);
+
+            doc_idx = testCase.docIdx(doc.id());
+            testCase.assertNotEmpty(doc_idx, 'setup: the docs row should exist');
+            cached_files = testCase.cachedFilesOf(doc_idx);
+            testCase.assertNotEmpty(cached_files, ...
+                'setup: the document should have cached files');
+
+            % Deleting a branch that is NOT the last holder reclaims nothing:
+            % branch 'a' still references the document.
+            testCase.db.add_branch('a_a','a');
+            testCase.db.delete_branch('a_a');
+
+            testCase.verifyEqual(testCase.docIdx(doc.id()), doc_idx, ...
+                'deleting one branch must not reclaim a document another branch holds');
+            for i = 1:numel(cached_files)
+                testCase.verifyTrue(isfile(cached_files{i}), ...
+                    ['the cached file must survive while branch a holds the ' ...
+                     'document: ' cached_files{i}]);
+            end
+
+            % Deleting the last branch that holds it reclaims it completely
+            testCase.db.delete_branch('a');
+
+            testCase.verifyEmpty(testCase.docIdx(doc.id()), ...
+                'the docs row must be gone once its last branch is deleted');
+            testCase.verifyEmpty(testCase.queryRows(...
+                sprintf('SELECT field_idx FROM doc_data WHERE doc_idx=%d', doc_idx)), ...
+                'the doc_data rows must be gone once its last branch is deleted');
+            testCase.verifyEmpty(testCase.queryRows(...
+                sprintf('SELECT uid FROM files WHERE doc_idx=%d', doc_idx)), ...
+                'the files rows must be gone once its last branch is deleted');
+            for i = 1:numel(cached_files)
+                testCase.verifyFalse(isfile(cached_files{i}), ...
+                    ['the cached file must be deleted from disk: ' cached_files{i}]);
+            end
+
+            % ...and its id is retired, exactly as when remove_docs drops the
+            % last reference
+            testCase.db.add_branch('b');
+            testCase.verifyError(@() testCase.db.add_docs(doc,'b'), ...
+                'DID:SQLITEDB:DELETED_DOC', ...
+                'an id orphaned by deleting its last branch must also be retired');
+        end
+
         function testDatabaseWithoutDeletedDocsTableStillWorks(testCase)
             % A database written before issue #55 - or by DID-python, which has
             % no deleted_docs table at all - must stay fully usable. The table
