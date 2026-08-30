@@ -1096,6 +1096,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
         end
 
+    end % methods (Access=protected)
+
+    methods
+        % validate_docs is public so a caller can validate documents it did
+        % not create -- the cross-language symmetry suite validates the
+        % documents the OTHER language wrote (DID-matlab#155 /
+        % DID-python#28), which is impossible from outside a protected
+        % method. DID-python's Database.validate_docs has been public since
+        % DID-python#27; this makes the two agree. add_docs still calls it
+        % on the Validate path exactly as before.
         function validate_docs(database_obj, document_objs)
 
             % Get the superset of all doc IDs in the database and the input docs
@@ -1148,6 +1158,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 assert(~isempty(value),'Doc %s %s field is empty!',doc_id,fieldName);
             end
         end
+    end % methods
+
+    methods (Access=protected)
 
         function schemaStruct = get_document_schema(database_obj, schema_filename) %#ok<INUSL>
             % Get the path location of path placeholders
