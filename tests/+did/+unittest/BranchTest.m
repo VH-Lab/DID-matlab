@@ -75,16 +75,26 @@ classdef BranchTest < matlab.unittest.TestCase
             % argument and rejects '', so did.database has no way to clear the
             % current branch and therefore no way to make a second root. The
             % helper must refuse rather than mislead.
+            %
+            % This runs against its OWN database. testCase.db is built once in
+            % TestClassSetup and shared by every test in this class, so the
+            % branch added below would surface as an unexpected sub-branch in
+            % testRandomBranchDeletions. A fresh database also has no current
+            % branch, which is what makes the single-root case below add a
+            % genuine root rather than a child.
+            scratch_db = did.implementations.sqlitedb('test_multiroot.sqlite');
+
             two_roots = digraph(sparse(zeros(2)), {'a','b'});
 
             testCase.verifyError(...
-                @() did.test.helper.branch.add_branch_nodes(testCase.db, '', two_roots, [1 2]), ...
+                @() did.test.helper.branch.add_branch_nodes(scratch_db, '', two_roots, [1 2]), ...
                 'DID:Test:MultiRootTree');
 
-            % A single root is still added normally
+            % A single root is still added normally, and is genuinely a root
             one_root = digraph(sparse(zeros(1)), {'solo'});
-            did.test.helper.branch.add_branch_nodes(testCase.db, '', one_root, 1);
-            testCase.verifyTrue(ismember('solo', testCase.db.all_branch_ids()));
+            did.test.helper.branch.add_branch_nodes(scratch_db, '', one_root, 1);
+            testCase.verifyTrue(ismember('solo', scratch_db.all_branch_ids()));
+            testCase.verifyEmpty(scratch_db.get_branch_parent('solo'));
         end
 
         function testRandomBranchDeletions(testCase)
