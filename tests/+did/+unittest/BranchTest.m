@@ -61,6 +61,71 @@ classdef BranchTest < matlab.unittest.TestCase
             testCase.verifyTrue(b, msg);
         end
 
+        function testMultiRootForestIsRefused(testCase)
+            % Regression for issue #165. add_branch_nodes used to build a
+            % multi-root forest silently wrong: an empty starting branch id
+            % leaves the current branch alone, and add_branch reads an empty
+            % parent as "the current branch", so the first root was a root and
+            % every root after it became a child of whatever was added last.
+            % verify_branch_node_structure would have caught the result, but
+            % BranchTest builds make_tree(1,...) -- a single root -- so the
+            % path was never taken.
+            %
+            % It cannot be built correctly either: set_branch validates its
+            % argument and rejects '', so did.database has no way to clear the
+            % current branch and therefore no way to make a second root. The
+            % helper must refuse rather than mislead.
+            %
+            % This runs against its OWN database. testCase.db is built once in
+            % TestClassSetup and shared by every test in this class, so the
+            % branch added below would surface as an unexpected sub-branch in
+            % testRandomBranchDeletions. A fresh database also has no current
+            % branch, which is what makes the single-root case below add a
+            % genuine root rather than a child.
+            scratch_db = did.implementations.sqlitedb('test_multiroot.sqlite');
+
+            two_roots = digraph(sparse(zeros(2)), {'a','b'});
+
+            testCase.verifyError(...
+                @() did.test.helper.branch.add_branch_nodes(scratch_db, '', two_roots, [1 2]), ...
+                'DID:Test:MultiRootTree');
+
+            % A single root is still added normally, and is genuinely a root
+            one_root = digraph(sparse(zeros(1)), {'solo'});
+            did.test.helper.branch.add_branch_nodes(scratch_db, '', one_root, 1);
+            testCase.verifyTrue(ismember('solo', scratch_db.all_branch_ids()));
+            testCase.verifyEmpty(scratch_db.get_branch_parent('solo'));
+        end
+
+        function testThreeArgumentCallFindsTheRootItself(testCase)
+            % The other two defects fixed for issue #165, both on the path
+            % taken when NODE_START_INDEX is omitted. Nothing in either
+            % repository passes three arguments, so neither had ever run:
+            %
+            %   * the guard read nargin<3 for a FOURTH argument, so a
+            %     three-argument call fell through to an undefined variable
+            %     instead of defaulting to 0; and
+            %   * the root search returned cellfun's logical MASK, while the
+            %     loop below it indexes dG.Nodes{node_start_index(i),1} --
+            %     subscripts. With any non-root present the mask is longer
+            %     than the number of roots and its zeros index Nodes{0,1}.
+            %
+            % Two nodes and no edges makes both bite: 'auto_a' holds an
+            % underscore so the search must select node 1 alone, which the
+            % mask [true false] does not do.
+            scratch_db = did.implementations.sqlitedb('test_threearg.sqlite');
+            g = digraph(sparse(zeros(2)), {'auto','auto_a'});
+
+            did.test.helper.branch.add_branch_nodes(scratch_db, '', g);
+
+            % By membership and count, not by comparing the cell array: the
+            % shape all_branch_ids returns comes from mksqlite and is not
+            % worth pinning here.
+            branch_ids = scratch_db.all_branch_ids();
+            testCase.verifyNumElements(branch_ids, 1);
+            testCase.verifyTrue(ismember('auto', branch_ids));
+        end
+
         function testRandomBranchDeletions(testCase)
             % Step 5: Randomly delete some branches and re-verify
             num_random_deletions = min(35, numel(testCase.node_names));
