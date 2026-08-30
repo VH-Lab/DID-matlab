@@ -61,6 +61,32 @@ classdef BranchTest < matlab.unittest.TestCase
             testCase.verifyTrue(b, msg);
         end
 
+        function testMultiRootForestIsRefused(testCase)
+            % Regression for issue #165. add_branch_nodes used to build a
+            % multi-root forest silently wrong: an empty starting branch id
+            % leaves the current branch alone, and add_branch reads an empty
+            % parent as "the current branch", so the first root was a root and
+            % every root after it became a child of whatever was added last.
+            % verify_branch_node_structure would have caught the result, but
+            % BranchTest builds make_tree(1,...) -- a single root -- so the
+            % path was never taken.
+            %
+            % It cannot be built correctly either: set_branch validates its
+            % argument and rejects '', so did.database has no way to clear the
+            % current branch and therefore no way to make a second root. The
+            % helper must refuse rather than mislead.
+            two_roots = digraph(sparse(zeros(2)), {'a','b'});
+
+            testCase.verifyError(...
+                @() did.test.helper.branch.add_branch_nodes(testCase.db, '', two_roots, [1 2]), ...
+                'DID:Test:MultiRootTree');
+
+            % A single root is still added normally
+            one_root = digraph(sparse(zeros(1)), {'solo'});
+            did.test.helper.branch.add_branch_nodes(testCase.db, '', one_root, 1);
+            testCase.verifyTrue(ismember('solo', testCase.db.all_branch_ids()));
+        end
+
         function testRandomBranchDeletions(testCase)
             % Step 5: Randomly delete some branches and re-verify
             num_random_deletions = min(35, numel(testCase.node_names));
