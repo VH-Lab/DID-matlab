@@ -97,6 +97,35 @@ classdef BranchTest < matlab.unittest.TestCase
             testCase.verifyEmpty(scratch_db.get_branch_parent('solo'));
         end
 
+        function testThreeArgumentCallFindsTheRootItself(testCase)
+            % The other two defects fixed for issue #165, both on the path
+            % taken when NODE_START_INDEX is omitted. Nothing in either
+            % repository passes three arguments, so neither had ever run:
+            %
+            %   * the guard read nargin<3 for a FOURTH argument, so a
+            %     three-argument call fell through to an undefined variable
+            %     instead of defaulting to 0; and
+            %   * the root search returned cellfun's logical MASK, while the
+            %     loop below it indexes dG.Nodes{node_start_index(i),1} --
+            %     subscripts. With any non-root present the mask is longer
+            %     than the number of roots and its zeros index Nodes{0,1}.
+            %
+            % Two nodes and no edges makes both bite: 'auto_a' holds an
+            % underscore so the search must select node 1 alone, which the
+            % mask [true false] does not do.
+            scratch_db = did.implementations.sqlitedb('test_threearg.sqlite');
+            g = digraph(sparse(zeros(2)), {'auto','auto_a'});
+
+            did.test.helper.branch.add_branch_nodes(scratch_db, '', g);
+
+            % By membership and count, not by comparing the cell array: the
+            % shape all_branch_ids returns comes from mksqlite and is not
+            % worth pinning here.
+            branch_ids = scratch_db.all_branch_ids();
+            testCase.verifyNumElements(branch_ids, 1);
+            testCase.verifyTrue(ismember('auto', branch_ids));
+        end
+
         function testRandomBranchDeletions(testCase)
             % Step 5: Randomly delete some branches and re-verify
             num_random_deletions = min(35, numel(testCase.node_names));
