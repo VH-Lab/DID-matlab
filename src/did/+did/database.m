@@ -1096,6 +1096,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
         end
 
+    end % methods (Access=protected)
+
+    methods
+        % validate_docs is public so a caller can validate documents it did
+        % not create -- the cross-language symmetry suite validates the
+        % documents the OTHER language wrote (DID-matlab#155 /
+        % DID-python#28), which is impossible from outside a protected
+        % method. DID-python's Database.validate_docs has been public since
+        % DID-python#27; this makes the two agree. add_docs still calls it
+        % on the Validate path exactly as before.
         function validate_docs(database_obj, document_objs)
 
             % Get the superset of all doc IDs in the database and the input docs
@@ -1148,6 +1158,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 assert(~isempty(value),'Doc %s %s field is empty!',doc_id,fieldName);
             end
         end
+    end % methods
+
+    methods (Access=protected)
 
         function schemaStruct = get_document_schema(database_obj, schema_filename) %#ok<INUSL>
             % Get the path location of path placeholders
@@ -1360,34 +1373,65 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             assert(areSame,'DID:Database:ValidationDependsOn', ...
                                 errorMsgFormat, doc_name, expectedStr, foundStr);
                         end
-                        % Loop over all dependencies and ensure they exist
+                        % Loop over all dependencies and ensure they exist.
+                        %
+                        % Match on docNames_alt, the enumeration-stripped
+                        % names, not on docNames. A document holds
+                        % 'syncrule_id_1' where the schema declares
+                        % 'syncrule_id', so matching the raw names never found
+                        % the entry: value stayed empty and BOTH checks below
+                        % were skipped. An enumerated dependency could name a
+                        % document that exists nowhere -- not in the database,
+                        % not in the batch -- and still validate.
+                        %
+                        % An enumerated dependency may legitimately have
+                        % several entries (syncrule_id_1, syncrule_id_2), which
+                        % is exactly the assumption the old one-match lookup
+                        % broke, so check every entry sharing the stem.
                         for idx = 1 : numel(mustHaveValue)
                             item_name = expectedNames{idx};
-                            idx2 = find(strcmpi(item_name,docNames),1);
-                            if isempty(idx2)
-                                value = [];
-                            else
-                                value = depends(idx2).value;
-                            end
-                            % If dependency is marked as MustBeNotEmpty, ensure it's not empty
+                            matchIdx = find(strcmpi(item_name,docNames_alt));
                             expectedValue = mustHaveValue{idx};
-                            if ~isempty(expectedValue) && expectedValue
-                                assert(~isempty(value), ...
+                            isRequiredHere = ~isempty(expectedValue) && expectedValue;
+
+                            if isempty(matchIdx)
+                                % Nothing in the document under this name. Only
+                                % a required dependency is an error here; the
+                                % presence check above has already passed for
+                                % the optional case.
+                                assert(~isRequiredHere, ...
                                     'DID:Database:ValidationDependEmpty', ...
                                     'Empty dependency found for "%s" in %s', ...
                                     item_name, doc_name)
+                                continue
                             end
 
-                            % Ensure the dependent ID exists in database or input docs
-                            if ~isempty(value)
-                                assert(ischar(value),'DID:Database:ValidationDependNotACharacterArray',...
-                                    'Non-character dependency value entered for "%s" in %s',...
-                                    item_name,doc_name);
-                                % compare the dependent value to all doc IDs
-                                isOk = ismember(lower(value), all_ids);
-                                assert(isOk,'DID:Database:ValidationDependency', ...
-                                    'Dependent doc ID "%s" (%s) of %s not found in the database or input docs', ...
-                                    value, item_name, doc_name)
+                            for m = 1 : numel(matchIdx)
+                                value = depends(matchIdx(m)).value;
+                                % Report the document's own name for the entry
+                                % ('syncrule_id_2'), which says which of
+                                % several enumerated entries is at fault.
+                                thisName = docNames{matchIdx(m)};
+
+                                % If dependency is marked as MustBeNotEmpty, ensure it's not empty
+                                if isRequiredHere
+                                    assert(~isempty(value), ...
+                                        'DID:Database:ValidationDependEmpty', ...
+                                        'Empty dependency found for "%s" in %s', ...
+                                        thisName, doc_name)
+                                end
+
+                                % Ensure the dependent ID exists in database or input docs
+                                if ~isempty(value)
+                                    assert(ischar(value),'DID:Database:ValidationDependNotACharacterArray',...
+                                        'Non-character dependency value entered for "%s" in %s',...
+                                        thisName,doc_name);
+                                    % compare the dependent value to all doc IDs
+                                    isOk = ismember(lower(value), all_ids);
+                                    assert(isOk,'DID:Database:ValidationDependency', ...
+                                        'Dependent doc ID "%s" (%s) of %s not found in the database or input docs', ...
+                                        value, thisName, doc_name)
+                                end
                             end
                         end
 
