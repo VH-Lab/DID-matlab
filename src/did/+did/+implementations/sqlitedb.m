@@ -345,6 +345,31 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % If the document was not already defined (for any branch)
             doc_props = document_obj.document_properties;
+
+            % Pre-flight security guard (DID-matlab issue #167).
+            % Refuse a document whose file_list[i].locations[j].uid or
+            % location would let ingest escape FileDir/db_dir. Do this
+            % BEFORE any writes -- the docs row, the branch_docs row, and
+            % the per-file try/catch further down all fire after this --
+            % so a corrupt document stays out of the DB rather than being
+            % partly written.
+            try preflight_files = doc_props.files.file_info; catch, preflight_files = []; end
+            for pfIdx = 1 : numel(preflight_files)
+                try
+                    pfName = char(preflight_files(pfIdx).name);
+                catch
+                    pfName = sprintf('#%d', pfIdx);
+                end
+                try
+                    pfLocations = preflight_files(pfIdx).locations;
+                catch
+                    continue
+                end
+                for pfLocIdx = 1 : numel(pfLocations)
+                    this_obj.validateIngestFileEntry(pfName, pfLocations(pfLocIdx));
+                end
+            end
+
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             if isempty(data)
                 % Get the JSON code that parses all the document's properties
@@ -405,30 +430,6 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         return
                     otherwise %case 'error'
                         error('DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg);
-                end
-            end
-
-            % Pre-flight security guard (DID-matlab issue #167).
-            % Refuse a document whose file_list[i].locations[j].uid or
-            % location would let ingest escape FileDir/db_dir. Do this
-            % BEFORE the branch_docs INSERT, so a corrupt document stays
-            % out of the DB rather than being partly written -- the
-            % per-file try/catch further down would otherwise swallow
-            % the error into a warning and leave the doc in branch_docs.
-            try prevalidate_files = doc_props.files.file_info; catch, prevalidate_files = []; end
-            for pfIdx = 1 : numel(prevalidate_files)
-                try
-                    pfName = char(prevalidate_files(pfIdx).name);
-                catch
-                    pfName = sprintf('#%d', pfIdx);
-                end
-                try
-                    pfLocations = prevalidate_files(pfIdx).locations;
-                catch
-                    continue
-                end
-                for pfLocIdx = 1 : numel(pfLocations)
-                    this_obj.validateIngestFileEntry(pfName, pfLocations(pfLocIdx));
                 end
             end
 

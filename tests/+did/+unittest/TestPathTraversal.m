@@ -113,10 +113,17 @@ classdef TestPathTraversal < matlab.unittest.TestCase
                     'DID:SQLITEDB:PathTraversal');
             end
 
-            rows = testCase.db.run_sql_query( ...
-                sprintf('SELECT doc_id FROM docs WHERE doc_id="%s"', ...
+            % A refused ingest must not leave any row for this doc_id
+            % behind -- neither the docs row nor a files row. run_sql_query
+            % may return an empty numeric or a struct with an empty field
+            % depending on the driver's shape; the direct signal that the
+            % doc landed anyway is being able to get_docs it.
+            count = testCase.db.run_sql_query( ...
+                sprintf('SELECT COUNT(*) AS n FROM docs WHERE doc_id="%s"', ...
                     doc.id()), true);
-            testCase.verifyEmpty(rows, ...
+            n = 0;
+            try, n = double(count(1).n); catch, end
+            testCase.verifyEqual(n, 0, ...
                 'A refused ingest must not leave the document behind.');
         end
 
