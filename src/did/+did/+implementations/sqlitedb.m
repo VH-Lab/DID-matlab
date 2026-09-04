@@ -408,6 +408,30 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 end
             end
 
+            % Pre-flight security guard (DID-matlab issue #167).
+            % Refuse a document whose file_list[i].locations[j].uid or
+            % location would let ingest escape FileDir/db_dir. Do this
+            % BEFORE the branch_docs INSERT, so a corrupt document stays
+            % out of the DB rather than being partly written -- the
+            % per-file try/catch further down would otherwise swallow
+            % the error into a warning and leave the doc in branch_docs.
+            try prevalidate_files = doc_props.files.file_info; catch, prevalidate_files = []; end
+            for pfIdx = 1 : numel(prevalidate_files)
+                try
+                    pfName = char(prevalidate_files(pfIdx).name);
+                catch
+                    pfName = sprintf('#%d', pfIdx);
+                end
+                try
+                    pfLocations = prevalidate_files(pfIdx).locations;
+                catch
+                    continue
+                end
+                for pfLocIdx = 1 : numel(pfLocations)
+                    this_obj.validateIngestFileEntry(pfName, pfLocations(pfLocIdx));
+                end
+            end
+
             % Add the document reference to the branch_docs table
             this_obj.insert_into_table('branch_docs', 'branch_id,doc_idx,timestamp', branch_id, doc_idx, now);
 
@@ -690,6 +714,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % First try to access the global cached file, if defined and if exists
             file_paths = {};
             for uids=1:numel(data)
+                % Cache and FileDir candidates both key off uid; an unsafe
+                % uid (one written by an unguarded DID before issue #167)
+                % would build a path outside filecachepath or outside
+                % FileDir, so skip those candidates. The row's orig_location
+                % is still tried through the read-time containment filter
+                % below.
+                if ~did.implementations.sqlitedb.isSafeUid(data(uids).uid)
+                    continue
+                end
                 file_paths{end+1} = [did.common.PathConstants.filecachepath filesep data(uids).uid ]; %#ok<AGROW>
                 file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid]; %#ok<AGROW>
             end
@@ -720,12 +753,24 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             for idx = 1 : numel(data)  %data is a struct array
                 this_file_struct = data(idx);
                 sourcePath = this_file_struct.orig_location;
+                % Defense in depth (DID-matlab issue #167): a database
+                % written by an older DID may carry a `..`-crafted
+                % orig_location or an unsafe uid. Skip such rows so
+                % copyfile is not steered outside the database directory,
+                % and destPath cannot escape temppath.
+                if ~did.implementations.sqlitedb.isSafeUid(this_file_struct.uid)
+                    continue
+                end
+                file_type = lower(strtrim(this_file_struct.type));
+                if strcmpi(file_type,'file') && ...
+                        ~this_obj.isSafeLocalLocation(sourcePath, file_type)
+                    continue
+                end
                 destDir =  did.common.PathConstants.temppath;
                 %destDir = this_obj.FileDir;  % SDV this should be changed to file cache
                 %destDir = this_obj.get_preference('cache_folder');
                 destPath = fullfile(destDir, this_file_struct.uid);
                 try
-                    file_type = lower(strtrim(this_file_struct.type));
                     if strcmpi(file_type,'file')
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                         if ~status, error(errMsg); end
@@ -831,6 +876,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % database's FileDir). Return the path that actually exists.
                 fileCacheRoot = did.common.PathConstants.filecachepath;
                 for idx = 1 : numel(data)
+                    % Skip rows with an unsafe uid, so candidates cannot
+                    % escape filecachepath or FileDir. See DID-matlab
+                    % issue #167.
+                    if ~did.implementations.sqlitedb.isSafeUid(data(idx).uid)
+                        continue
+                    end
                     candidates = { fullfile(fileCacheRoot, data(idx).uid), ...
                                    fullfile(this_obj.FileDir, data(idx).uid) };
                     for c = 1 : numel(candidates)
@@ -1233,6 +1284,172 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Insert a new row record to the doc_data table
             this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
+        end
+
+        function tf = isSafeLocalLocation(this_obj, location, file_type)
+            % isSafeLocalLocation - Would this local location resolve inside db_dir?
+            %
+            % A location from an ingested document is attacker-reachable when
+            % the document itself was pulled from a cloud store. A `..`-crafted
+            % or absolute-outside path would otherwise reach copyfile at ingest
+            % time or fopen at open time. Remote locations (URI scheme, or
+            % location_type in {'url','ndicloud'}) are not filesystem paths and
+            % are left alone here. See DID-matlab issue #167.
+            if nargin < 3, file_type = ''; end
+            if isempty(location), tf = false; return, end
+            if isstring(location) && isscalar(location), location = char(location); end
+            if ~ischar(location), tf = false; return, end
+            if did.implementations.sqlitedb.isRemoteLocation(location, file_type)
+                tf = true;
+                return
+            end
+            if did.implementations.sqlitedb.containsTraversal(location)
+                tf = false;
+                return
+            end
+            db_dir = fileparts(this_obj.connection);
+            if isempty(db_dir), db_dir = pwd; end
+            if did.implementations.sqlitedb.isAbsolutePath(location)
+                tf = did.implementations.sqlitedb.isWithin(db_dir, location);
+            else
+                % No '..' segment: a relative path cannot escape db_dir once
+                % rebased against it, so the containment check would pass
+                % regardless.
+                tf = true;
+            end
+        end
+
+        function validateIngestFileEntry(this_obj, filename, thisLocation)
+            % validateIngestFileEntry - Refuse a corrupt file-entry at ingest.
+            %
+            % Called before any writes so a document whose uid or location
+            % would let ingest escape FileDir/db_dir stays out of the DB
+            % rather than being partly written. Refuse, do not substitute.
+            % See DID-matlab issue #167.
+            uid = '';
+            try, uid = thisLocation.uid; catch, end
+            if ~did.implementations.sqlitedb.isSafeUid(uid)
+                if isstring(uid) && isscalar(uid), uid = char(uid); end
+                if ~ischar(uid), uid = ''; end
+                error('DID:SQLITEDB:PathTraversal', ...
+                    ['Refusing to ingest "%s": uid "%s" is not a plain filename ', ...
+                     '(no path separators, no ''.'' or ''..'', no empty basename). ', ...
+                     'See DID-matlab issue #167.'], filename, uid);
+            end
+            location = '';
+            try, location = thisLocation.location; catch, end
+            file_type = '';
+            try, file_type = thisLocation.location_type; catch, end
+            if did.implementations.sqlitedb.isRemoteLocation(location, file_type)
+                return
+            end
+            if ~this_obj.isSafeLocalLocation(location, file_type)
+                if isstring(location) && isscalar(location), location = char(location); end
+                if ~ischar(location), location = ''; end
+                db_dir = fileparts(this_obj.connection);
+                error('DID:SQLITEDB:PathTraversal', ...
+                    ['Refusing to ingest "%s": location "%s" resolves outside ', ...
+                     'the database directory "%s". See DID-matlab issue #167.'], ...
+                    filename, location, db_dir);
+            end
+        end
+    end
+
+    methods (Static, Access=public)
+        function tf = isSafeUid(uid)
+            % isSafeUid - Is uid safe to use as a filename under FileDir?
+            %
+            % A uid stands in for a file basename under
+            % <FileDir>/<uid>, so any value that would leave that
+            % directory once joined -- a path separator, a dot segment,
+            % a NUL, an empty or whitespace-padded string -- is refused.
+            % See DID-matlab issue #167.
+            tf = false;
+            if isempty(uid), return, end
+            if isstring(uid) && isscalar(uid), uid = char(uid); end
+            if ~ischar(uid), return, end
+            uid = char(uid);
+            if isempty(uid), return, end
+            if ~isequal(strtrim(uid), uid), return, end
+            if any(strcmp(uid, {'.','..'})), return, end
+            if any(uid == '/') || any(uid == '\') || any(uid == 0), return, end
+            [~, name, ext] = fileparts(uid);
+            if ~isequal([name ext], uid), return, end
+            tf = true;
+        end
+
+        function tf = containsTraversal(p)
+            % containsTraversal - Does p contain a '..' segment?
+            %
+            % A textual check across both separators, so it catches a
+            % traversal segment regardless of the base directory the
+            % path would later resolve against. See DID-matlab issue #167.
+            tf = false;
+            if isempty(p), return, end
+            if isstring(p) && isscalar(p), p = char(p); end
+            if ~ischar(p), return, end
+            parts = regexp(char(p), '[\\/]', 'split');
+            tf = any(strcmp(parts, '..'));
+        end
+
+        function tf = isAbsolutePath(p)
+            % isAbsolutePath - Is p an absolute filesystem path?
+            tf = false;
+            if isempty(p), return, end
+            if isstring(p) && isscalar(p), p = char(p); end
+            if ~ischar(p) || isempty(p), return, end
+            p = char(p);
+            if p(1) == '/' || p(1) == '\'
+                tf = true;
+                return
+            end
+            if ispc && numel(p) >= 2 && isletter(p(1)) && p(2) == ':'
+                tf = true;
+                return
+            end
+        end
+
+        function tf = isRemoteLocation(location, file_type)
+            % isRemoteLocation - Is location a URI-scheme / URL / ndicloud?
+            tf = false;
+            if nargin >= 2 && ~isempty(file_type)
+                if isstring(file_type) && isscalar(file_type), file_type = char(file_type); end
+                if ischar(file_type)
+                    ft = lower(strtrim(char(file_type)));
+                    if any(strcmp(ft, {'url','ndicloud'}))
+                        tf = true;
+                        return
+                    end
+                end
+            end
+            if isempty(location), return, end
+            if isstring(location) && isscalar(location), location = char(location); end
+            if ~ischar(location), return, end
+            tf = contains(char(location), '://');
+        end
+
+        function tf = isWithin(root, p)
+            % isWithin - Does p resolve inside root (or equal it)?
+            %
+            % Both are compared with symlinks resolved (java.io.File
+            % .getCanonicalPath) so a symlink under root that points
+            % outside cannot smuggle a read past the guard.
+            tf = false;
+            try
+                rootR = char(java.io.File(char(root)).getCanonicalPath());
+                pR    = char(java.io.File(char(p)).getCanonicalPath());
+            catch
+                return
+            end
+            if strcmp(rootR, pR)
+                tf = true;
+                return
+            end
+            sep = filesep;
+            if ~endsWith(rootR, sep)
+                rootR = [rootR sep];
+            end
+            tf = strncmp(pR, rootR, length(rootR));
         end
     end
 
