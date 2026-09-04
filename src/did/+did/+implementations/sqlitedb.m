@@ -1320,13 +1320,22 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
         end
 
-        function validateIngestFileEntry(this_obj, filename, thisLocation)
+        function validateIngestFileEntry(this_obj, filename, thisLocation) %#ok<INUSD>
             % validateIngestFileEntry - Refuse a corrupt file-entry at ingest.
             %
-            % Called before any writes so a document whose uid or location
-            % would let ingest escape FileDir/db_dir stays out of the DB
-            % rather than being partly written. Refuse, do not substitute.
-            % See DID-matlab issue #167.
+            % Called before any writes so a document whose uid would let
+            % ingest escape FileDir stays out of the DB rather than being
+            % partly written. Refuse, do not substitute. See DID-matlab
+            % issue #167.
+            %
+            % The destination <FileDir>/<uid> is fully constrained by the
+            % uid check below; the source location is caller-supplied
+            % ("add this file to my DB") and legitimately lives outside
+            % db_dir in normal ingest workflows, so no source containment
+            % check runs here. The read-side filter (isSafeLocalLocation
+            % applied when locations are pulled back out of the DB) still
+            % defends open_doc against a crafted stored location. See
+            % DID-matlab issue #169.
             uid = '';
             try, uid = thisLocation.uid; catch, end
             if ~did.implementations.sqlitedb.isSafeUid(uid)
@@ -1336,22 +1345,6 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     ['Refusing to ingest "%s": uid "%s" is not a plain filename ', ...
                      '(no path separators, no ''.'' or ''..'', no empty basename). ', ...
                      'See DID-matlab issue #167.'], filename, uid);
-            end
-            location = '';
-            try, location = thisLocation.location; catch, end
-            file_type = '';
-            try, file_type = thisLocation.location_type; catch, end
-            if did.implementations.sqlitedb.isRemoteLocation(location, file_type)
-                return
-            end
-            if ~this_obj.isSafeLocalLocation(location, file_type)
-                if isstring(location) && isscalar(location), location = char(location); end
-                if ~ischar(location), location = ''; end
-                db_dir = fileparts(this_obj.connection);
-                error('DID:SQLITEDB:PathTraversal', ...
-                    ['Refusing to ingest "%s": location "%s" resolves outside ', ...
-                     'the database directory "%s". See DID-matlab issue #167.'], ...
-                    filename, location, db_dir);
             end
         end
     end

@@ -2,18 +2,20 @@ classdef TestPathTraversal < matlab.unittest.TestCase
     % Directory-traversal guards on ingest and open_doc.
     %
     % Regression test for DID-matlab issue #167 (parity with
-    % DID-python#58): a document's file_info(i).locations(j).uid and
-    % .location are attacker-controlled when the document is pulled from
-    % a cloud store, and both used to reach the filesystem verbatim --
-    % fullfile(FileDir, uid) on the write side, and copyfile / isfile on
-    % the read side.
+    % DID-python#58) and its follow-up #169: a document's
+    % file_info(i).locations(j).uid and .location are attacker-controlled
+    % when the document is pulled from a cloud store, and both used to
+    % reach the filesystem verbatim -- fullfile(FileDir, uid) on the
+    % write side, and copyfile / isfile on the read side.
     %
-    % The behaviour to pin is the "refuse, do not substitute" rule:
+    % The behaviour to pin:
     %
     % * an unsafe uid (path separator, '.', '..', empty basename, NUL) is
-    %   refused at ingest -- the document is not partly written;
-    % * an unsafe location ('..' that escapes the db dir, or an absolute
-    %   path outside it) is refused at ingest for the same reason;
+    %   refused at ingest -- the document is not partly written. The
+    %   destination <FileDir>/<uid> is fully constrained by that check;
+    % * a legitimate ingest source outside the database directory is
+    %   accepted (see #169): "add this file to my DB" is the normal call
+    %   and the destination is already contained by the uid check above;
     % * on the read side, a row written by an older, unguarded DID that
     %   carries such a value is filtered out -- open_doc cannot be steered
     %   into reading a file outside the database directory through it.
@@ -143,24 +145,32 @@ classdef TestPathTraversal < matlab.unittest.TestCase
                 'The traversal target must not have been written.');
         end
 
-        % -- location refused at ingest ---------------------------------
+        % -- legitimate ingest source outside db_dir is accepted --------
 
-        function testRelativeLocationThatEscapesDbDirIsRefused(testCase)
-            doc = testCase.docWithLocation('u-1', '../../etc/passwd');
-            testCase.verifyError( ...
-                @() testCase.db.add_docs(doc), ...
-                'DID:SQLITEDB:PathTraversal');
-        end
+        function testLegitimateSourceOutsideDbDirIsIngested(testCase)
+            % See DID-matlab issue #169. Ingest workflows commonly stage
+            % the source file somewhere outside the database directory
+            % ("take this file from wherever it lives and add it to my
+            % DB"). The destination path is already constrained under
+            % <FileDir>/<uid> by isSafeUid, so a source outside db_dir is
+            % not an attack -- refusing it broke downstream ingest.
+            outsideDir = fullfile(tempdir, ['did-outside-' char(java.util.UUID.randomUUID())]);
+            mkdir(outsideDir);
+            cleanupDir = onCleanup(@() rmdir(outsideDir, 's')); %#ok<NASGU>
+            outsideSource = fullfile(outsideDir, 'staged.bin');
+            fid = fopen(outsideSource, 'w');
+            testCase.assertNotEqual(fid, -1, ...
+                'Could not create the staged source file.');
+            fwrite(fid, uint8([1 2 3 4]), 'uint8');
+            fclose(fid);
 
-        function testAbsoluteLocationOutsideDbDirIsRefused(testCase)
-            % Anywhere outside db_dir will do; the point is only that the
-            % ingest source path check rejects it before any copy runs.
-            outside = fullfile(fileparts(fileparts(testCase.dbFile)), ...
-                'far-away.bin');
-            doc = testCase.docWithLocation('u-1', outside);
-            testCase.verifyError( ...
-                @() testCase.db.add_docs(doc), ...
-                'DID:SQLITEDB:PathTraversal');
+            doc = testCase.docWithLocation('u-outside', outsideSource);
+            testCase.db.add_docs(doc);
+
+            % The ingested copy must land at <FileDir>/<uid>.
+            fileDir = testCase.db.FileDir;
+            testCase.verifyTrue(isfile(fullfile(fileDir, 'u-outside')), ...
+                'The ingested copy must land at <FileDir>/<uid>.');
         end
 
         % -- static predicates ------------------------------------------
