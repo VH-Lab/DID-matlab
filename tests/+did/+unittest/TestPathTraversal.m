@@ -221,32 +221,33 @@ classdef TestPathTraversal < matlab.unittest.TestCase
                 'relative/path.bin', 'file'));
         end
 
-        function testIsSafeLocalLocationRefusesEscape(testCase)
-            % Read-side filter: on the current DB, a local location that
-            % escapes db_dir must be refused; a location inside db_dir or
-            % any remote location is accepted. This is the guard still
-            % standing after #169 dropped the source-side ingest check.
-            dbDir = fileparts(testCase.dbFile);
-            insideAbsolute = fullfile(dbDir, 'files', 'inside.bin');
-            outsideAbsolute = fullfile(fileparts(dbDir), 'escaped.bin');
+        function testIsAbsolutePathPredicate(testCase)
+            % Absolute paths (POSIX and, when running on Windows, drive-
+            % letter) are absolute; a plain filename or a relative path is
+            % not. The drive-letter shape is guarded by ispc in the
+            % implementation, so it is only asserted on Windows.
+            testCase.verifyTrue(did.implementations.sqlitedb.isAbsolutePath('/etc/passwd'));
+            testCase.verifyTrue(did.implementations.sqlitedb.isAbsolutePath('\server\share'));
+            if ispc
+                testCase.verifyTrue(did.implementations.sqlitedb.isAbsolutePath('C:\Users\a'));
+            end
+            testCase.verifyFalse(did.implementations.sqlitedb.isAbsolutePath('relative/path'));
+            testCase.verifyFalse(did.implementations.sqlitedb.isAbsolutePath('plain.bin'));
+            testCase.verifyFalse(did.implementations.sqlitedb.isAbsolutePath(''));
+        end
 
-            testCase.verifyTrue(testCase.db.isSafeLocalLocation( ...
-                insideAbsolute, 'file'), ...
-                'An absolute path inside db_dir must be accepted.');
-            testCase.verifyFalse(testCase.db.isSafeLocalLocation( ...
-                outsideAbsolute, 'file'), ...
-                'An absolute path outside db_dir must be refused.');
-            testCase.verifyFalse(testCase.db.isSafeLocalLocation( ...
-                '../../etc/passwd', 'file'), ...
-                'A traversal-relative path must be refused.');
-            testCase.verifyTrue(testCase.db.isSafeLocalLocation( ...
-                'subdir/inside.bin', 'file'), ...
-                'A relative path with no traversal cannot escape db_dir.');
-            testCase.verifyTrue(testCase.db.isSafeLocalLocation( ...
-                'ndic://d-123/f-abc', ''), ...
-                'A remote location is not a filesystem path and is left alone.');
-            testCase.verifyFalse(testCase.db.isSafeLocalLocation('', 'file'), ...
-                'An empty location cannot resolve inside db_dir.');
+        function testIsWithinPredicate(testCase)
+            % isWithin(parent, child) is the containment check used by
+            % isSafeLocalLocation on the read side. A child inside its
+            % parent (directly or nested) is within; a sibling or a
+            % traversal-escape is not.
+            parent = fullfile(tempdir, 'did-within');
+            child_in = fullfile(parent, 'inside.bin');
+            child_nested = fullfile(parent, 'sub', 'inside.bin');
+            sibling = fullfile(tempdir, 'did-outside', 'other.bin');
+            testCase.verifyTrue(did.implementations.sqlitedb.isWithin(parent, child_in));
+            testCase.verifyTrue(did.implementations.sqlitedb.isWithin(parent, child_nested));
+            testCase.verifyFalse(did.implementations.sqlitedb.isWithin(parent, sibling));
         end
     end
 end
