@@ -236,6 +236,34 @@ classdef TestPathTraversal < matlab.unittest.TestCase
             testCase.verifyFalse(did.implementations.sqlitedb.isAbsolutePath(''));
         end
 
+        % -- read-side filter integration --------------------------------
+
+        function testOpenDocRefusesUnsafeStoredLocation(testCase)
+            % Defense in depth (#167/#169): a document whose location
+            % escapes db_dir may be added post-#169 (source-side check is
+            % gone), but do_open_doc must still refuse to open through
+            % that stored location -- isSafeLocalLocation, called from
+            % line 767 of do_open_doc, filters the row before copyfile
+            % or fopen ever runs.
+            doc = testCase.docWithLocation('u-safe', '../../etc/passwd');
+            % The add succeeds (uid is safe, source-side check is gone
+            % post-#169); the copy at ingest fails silently with a
+            % warning because the source does not exist, so orig_location
+            % is recorded as '../../etc/passwd' with an empty
+            % cached_location.
+            testCase.applyFixture( ...
+                matlab.unittest.fixtures.SuppressedWarningsFixture( ...
+                    'DID:SQLiteDB:add_doc'));
+            testCase.db.add_docs(doc);
+
+            % open_doc must not steer copyfile at '../../etc/passwd':
+            % isSafeLocalLocation refuses the orig_location, the loop
+            % exhausts, and the "cannot be accessed" error fires.
+            testCase.verifyError( ...
+                @() testCase.db.open_doc(doc.id(), 'filename1.ext'), ...
+                'DID:SQLITEDB:open');
+        end
+
         function testIsWithinPredicate(testCase)
             % isWithin(parent, child) is the containment check used by
             % isSafeLocalLocation on the read side. A child inside its
