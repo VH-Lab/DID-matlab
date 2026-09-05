@@ -651,6 +651,18 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
         end % do_remove_doc()
 
+        function roots = do_cachedPathRoots(this_obj)
+            % do_cachedPathRoots - this database's own uid-named file root
+            %
+            % Returns FileDir, which do_open_doc and check_exist_doc already
+            % search as <FileDir>/<uid> after the global file cache. Keeping
+            % the list here means did.database/cachedPathForFile searches
+            % exactly what those two search, in the same order, without
+            % knowing anything about this implementation.
+
+            roots = {this_obj.FileDir};
+        end % do_cachedPathRoots()
+
         function file_obj = do_open_doc(this_obj, document_id, filename, varargin)
             % do_open_doc - Return a did.file.readonly_fileobj for the specified document ID
             %
@@ -1358,18 +1370,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % directory once joined -- a path separator, a dot segment,
             % a NUL, an empty or whitespace-padded string -- is refused.
             % See DID-matlab issue #167.
-            tf = false;
-            if isempty(uid), return, end
-            if isstring(uid) && isscalar(uid), uid = char(uid); end
-            if ~ischar(uid), return, end
-            uid = char(uid);
-            if isempty(uid), return, end
-            if ~isequal(strtrim(uid), uid), return, end
-            if any(strcmp(uid, {'.','..'})), return, end
-            if any(uid == '/') || any(uid == '\') || any(uid == 0), return, end
-            [~, name, ext] = fileparts(uid);
-            if ~isequal([name ext], uid), return, end
-            tf = true;
+            %
+            % The implementation moved to did.file.isSafeUid so that code
+            % outside this implementation can apply the same guard without
+            % depending on a database implementation. This remains the
+            % public entry point that existing callers use.
+            tf = did.file.isSafeUid(uid);
         end
 
         function tf = containsTraversal(p)
