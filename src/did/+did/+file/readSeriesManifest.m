@@ -30,6 +30,12 @@ end
 
 fid = fopen(filename, 'r', 'ieee-le');
 if fid < 0
+    % Deliberately not unit tested. mustBeFile above already rejects a
+    % path that does not exist, so reaching this needs an existing file
+    % the process cannot read -- which is a permissions state that is
+    % awkward to create portably and flaky in CI, especially where tests
+    % run as root and the mode bits are ignored. The branch is kept
+    % because fopen can still fail for reasons mustBeFile does not cover.
     error('DID:FileSeries:readSeriesManifest:cannotOpen', ...
         'Could not open ''%s'' for reading.', filename);
 end

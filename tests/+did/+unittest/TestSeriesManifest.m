@@ -238,6 +238,33 @@ classdef TestSeriesManifest < matlab.unittest.TestCase
                 'DID:FileSeries:readSeriesManifest:truncated');
         end
 
+        function testTruncatedOffsetTableIsRejected(testCase)
+            % Distinct from a truncated name-BYTE section: here the offset
+            % table itself is short, so the reader never learns how many
+            % name bytes to expect and must not read the members it has as
+            % if the file were whole.
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            testCase.writeHeader(fid, 1, 2, 4, 1);
+            fwrite(fid, uint8([abs('ab') 0 0]), 'uint8');
+            fwrite(fid, uint8([abs('cd') 0 0]), 'uint8');
+            fwrite(fid, uint32([0 1]), 'uint32');   % 2 offsets; 3 are required
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifest(p), ...
+                'DID:FileSeries:readSeriesManifest:truncated');
+        end
+
+        function testUnwritableDestinationIsAnError(testCase)
+            % A manifest that silently fails to write would leave a series
+            % whose members cannot be resolved at all.
+            p = fullfile(pwd, 'no_such_directory', 'series.manifest');
+
+            testCase.verifyError( ...
+                @() did.file.writeSeriesManifest(p, {did.ido.unique_id()}), ...
+                'DID:FileSeries:writeSeriesManifest:cannotOpen');
+        end
+
         function testStringUidsAndNamesAreAccepted(testCase)
             % Callers mix char and string; both must write identically.
             p = testCase.manifestPath();
