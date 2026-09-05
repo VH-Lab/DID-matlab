@@ -133,6 +133,24 @@ classdef TestCachedPath < matlab.unittest.TestCase
 
         % ---- did.database/cachedPathForFile ---------------------------
 
+        function testFileUidsNameNotAddedIsEmpty(testCase)
+            % A document that HAS files, asked for a declared name that was
+            % never added. This is the ordinary miss for a caller walking a
+            % pyramid level -- thousands of members present, this one absent --
+            % and it takes a different path from a document whose file_info is
+            % empty altogether, which is what the previous test covers.
+            local = testCase.writeFile(pwd, 'filename1.ext', 'abc');
+            doc = did.document('demoFile', 'demoFile.value', 1);
+            doc = doc.add_file('filename1.ext', local);
+
+            testCase.verifyEmpty(doc.fileUids('filename2.ext'));
+
+            db = did.test.helper.NoQueryDatabase();
+            [tf, p] = db.cachedPathForFile(doc, 'filename2.ext');
+            testCase.verifyFalse(tf);
+            testCase.verifyEmpty(p);
+        end
+
         function testResolvesWithoutTouchingTheDatabase(testCase)
             % THE POINT OF THE WHOLE CHANGE. Every database operation on this
             % stub errors, so a pass means cachedPathForFile reached none of
