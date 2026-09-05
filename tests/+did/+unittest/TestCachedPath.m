@@ -99,11 +99,11 @@ classdef TestCachedPath < matlab.unittest.TestCase
         % ---- did.document/fileUids -----------------------------------
 
         function testFileUidsReturnsRecordedUids(testCase)
-            local = testCase.writeFile(pwd, 'f1.ext', 'abc');
+            local = testCase.writeFile(pwd, 'filename1.ext', 'abc');
             doc = did.document('demoFile', 'demoFile.value', 1);
-            doc = doc.add_file('f1.ext', local);
+            doc = doc.add_file('filename1.ext', local);
 
-            uids = doc.fileUids('f1.ext');
+            uids = doc.fileUids('filename1.ext');
 
             testCase.verifyClass(uids, 'cell');
             testCase.verifyNumElements(uids, 1);
@@ -114,12 +114,12 @@ classdef TestCachedPath < matlab.unittest.TestCase
         function testFileUidsReturnsAllLocationsInOrder(testCase)
             % add_file appends a location per call, and any of them may be
             % the one that is on disk, so all uids must come back.
-            local = testCase.writeFile(pwd, 'f1.ext', 'abc');
+            local = testCase.writeFile(pwd, 'filename1.ext', 'abc');
             doc = did.document('demoFile', 'demoFile.value', 1);
-            doc = doc.add_file('f1.ext', local);
-            doc = doc.add_file('f1.ext', 'https://nosuchserver.example/f1.ext');
+            doc = doc.add_file('filename1.ext', local);
+            doc = doc.add_file('filename1.ext', 'https://nosuchserver.example/filename1.ext');
 
-            uids = doc.fileUids('f1.ext');
+            uids = doc.fileUids('filename1.ext');
             recorded = {doc.document_properties.files.file_info(1).locations.uid};
 
             testCase.verifyEqual(uids, recorded);
@@ -137,16 +137,16 @@ classdef TestCachedPath < matlab.unittest.TestCase
             % stub errors, so a pass means cachedPathForFile reached none of
             % them -- which is what makes it callable off the session's own
             % thread.
-            local = testCase.writeFile(pwd, 'f1.ext', 'abc');
+            local = testCase.writeFile(pwd, 'filename1.ext', 'abc');
             doc = did.document('demoFile', 'demoFile.value', 1);
-            doc = doc.add_file('f1.ext', local);
+            doc = doc.add_file('filename1.ext', local);
             uid = doc.document_properties.files.file_info(1).locations(1).uid;
 
             fileRoot = fullfile(pwd, 'stubFileDir');
             expected = testCase.writeFile(fileRoot, uid, 'abc');
 
             db = did.test.helper.NoQueryDatabase({fileRoot});
-            [tf, p] = db.cachedPathForFile(doc, 'f1.ext');
+            [tf, p] = db.cachedPathForFile(doc, 'filename1.ext');
 
             testCase.verifyTrue(tf);
             testCase.verifyEqual(p, expected);
@@ -155,12 +155,12 @@ classdef TestCachedPath < matlab.unittest.TestCase
         function testAbsentFileIsFalseNotAnError(testCase)
             % "Not on this machine" is an answer, not a failure: a caller
             % walking a level's files uses it to decide what to retrieve.
-            local = testCase.writeFile(pwd, 'f1.ext', 'abc');
+            local = testCase.writeFile(pwd, 'filename1.ext', 'abc');
             doc = did.document('demoFile', 'demoFile.value', 1);
-            doc = doc.add_file('f1.ext', local);
+            doc = doc.add_file('filename1.ext', local);
 
             db = did.test.helper.NoQueryDatabase({fullfile(pwd, 'emptyDir')});
-            [tf, p] = db.cachedPathForFile(doc, 'f1.ext');
+            [tf, p] = db.cachedPathForFile(doc, 'filename1.ext');
 
             testCase.verifyFalse(tf);
             testCase.verifyEmpty(p);
@@ -182,13 +182,13 @@ classdef TestCachedPath < matlab.unittest.TestCase
             db = did.implementations.sqlitedb(testCase.db_filename);
             db.add_branch('a');
 
-            local = testCase.writeFile(pwd, 'f1.ext', 'abcdefghij');
+            local = testCase.writeFile(pwd, 'filename1.ext', 'abcdefghij');
             doc = did.document('demoFile', 'demoFile.value', 1);
-            doc = doc.add_file('f1.ext', local);
+            doc = doc.add_file('filename1.ext', local);
             db.add_docs(doc);
 
-            [tfExist, pExist] = db.exist_doc(doc.id(), 'f1.ext');
-            [tfCached, pCached] = db.cachedPathForFile(doc, 'f1.ext');
+            [tfExist, pExist] = db.exist_doc(doc.id(), 'filename1.ext');
+            [tfCached, pCached] = db.cachedPathForFile(doc, 'filename1.ext');
 
             testCase.verifyTrue(tfExist, ...
                 'precondition: exist_doc should find the ingested file');
