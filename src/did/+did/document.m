@@ -611,6 +611,57 @@ classdef document
 
         end % is_in_file_list()
 
+        function uids = fileUids(did_document_obj, name)
+            % FILEUIDS - the uids recorded for a named file, from memory alone
+            %
+            % UIDS = FILEUIDS(DID_DOCUMENT_OBJ, NAME)
+            %
+            % Returns a cell array of the uid strings recorded for the file
+            % NAME in this document, in the order the locations were added by
+            % ADD_FILE. Returns {} if this document has no such file.
+            %
+            % This reads only the in-memory document; it runs no query. It is
+            % the first half of resolving a file without touching the
+            % database, the second half being did.file.cachedPathForUid, and
+            % did.database/cachedPathForFile is the two together.
+            %
+            % IMPORTANT: this answers about THE DOCUMENT YOU HOLD, which is
+            % not necessarily the document in the database. A file added to a
+            % stored copy after this object was read is not visible here. For
+            % iterating the files a document declares -- the case this exists
+            % for -- that is exactly right; when you need what the database
+            % currently holds, use did.database/exist_doc instead.
+            %
+            % See also: did.database/cachedPathForFile, did.file.cachedPathForUid
+
+            uids = {};
+
+            if ~isfield(did_document_obj.document_properties,'files')
+                return;
+            end
+            files = did_document_obj.document_properties.files;
+            if ~isfield(files,'file_info') || isempty(files.file_info)
+                return;
+            end
+
+            index = find(strcmpi(name,{files.file_info.name}));
+            if isempty(index)
+                return;
+            end
+
+            locations = files.file_info(index(1)).locations;
+            uids = cell(1,numel(locations));
+            for i=1:numel(locations)
+                if isfield(locations(i),'uid')
+                    uids{i} = locations(i).uid;
+                else
+                    uids{i} = '';
+                end
+            end
+            uids = uids(~cellfun('isempty',uids));
+
+        end % fileUids()
+
         function did_document_obj = reset_file_info(did_document_obj)
             % RESET_FILE_INFO - reset the file information parameters for a new did.document
             %

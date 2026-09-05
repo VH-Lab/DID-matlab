@@ -677,6 +677,75 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             file_obj = database_obj.do_open_doc(document_id, filename, options{:});
         end % open_doc()
 
+        function [tf, filePath] = cachedPathForFile(database_obj, document_obj, filename)
+            % CACHEDPATHFORFILE - where a document's file is on disk, with NO query
+            %
+            % [TF, FILEPATH] = cachedPathForFile(DATABASE_OBJ, DOCUMENT_OBJ, FILENAME)
+            %
+            % Returns whether FILENAME of DOCUMENT_OBJ is present on this
+            % machine, and its full path if so ('' if not). DOCUMENT_OBJ must
+            % be a did.document OBJECT, not a document id -- the uid is taken
+            % from the object in memory, which is the whole point.
+            %
+            % HOW THIS DIFFERS FROM EXIST_DOC. exist_doc takes a document id,
+            % queries the docs/files tables for the uid, and then builds the
+            % same candidate paths this does. That query is unavoidable when
+            % all you have is an id; it is pure overhead when you already hold
+            % the document. Two consequences follow:
+            %
+            %   Speed. Resolving N files costs N queries through exist_doc and
+            %   none through this. For a caller walking the files of one
+            %   document -- a tiled image pyramid, say, whose level can be
+            %   tens of thousands of files -- that is the difference between
+            %   a query per file and none at all.
+            %
+            %   Threads. A SQLite connection belongs to the thread that opened
+            %   it, so exist_doc must run on the thread that owns the session.
+            %   This function touches no database, so it may be called from
+            %   any thread and from any process. That is what lets a viewer
+            %   resolve files in parallel without a session per worker.
+            %
+            % It is otherwise the same answer: the same candidate roots, in
+            % the same order (global file cache first, then this database's
+            % own file root), behind the same did.file.isSafeUid guard.
+            %
+            % TF IS FALSE FOR A FILE THAT EXISTS ONLY REMOTELY. Nothing here
+            % retrieves anything. A false answer means "not on this machine
+            % yet", not "no such file"; use OPEN_DOC to retrieve it.
+            %
+            % It also answers about THE DOCUMENT YOU HOLD rather than the
+            % document in the database -- see did.document/fileUids.
+            %
+            % See also: EXIST_DOC, OPEN_DOC, did.file.cachedPathForUid,
+            %   did.document/fileUids
+            arguments
+                database_obj
+                document_obj (1,1) did.document
+                filename (1,:) char
+            end
+
+            tf = false;
+            filePath = '';
+
+            uids = document_obj.fileUids(filename);
+            if isempty(uids)
+                return;
+            end
+
+            additionalRoots = database_obj.do_cachedPathRoots();
+
+            for i=1:numel(uids)
+                thisPath = did.file.cachedPathForUid(uids{i}, ...
+                    'additionalRoots', additionalRoots);
+                if ~isempty(thisPath)
+                    tf = true;
+                    filePath = thisPath;
+                    return;
+                end
+            end
+
+        end % cachedPathForFile()
+
         function [tf, file_path] = exist_doc(database_obj, document_id, filename, options)
             % EXIST_DOC - Check if a did.document exists as a file
             %
@@ -800,6 +869,24 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
     end
 
     methods (Access=protected)
+        function roots = do_cachedPathRoots(database_obj) %#ok<MANU>
+            % DO_CACHEDPATHROOTS - directories, besides the global file cache,
+            % where this database stores files under their uid
+            %
+            % ROOTS = do_cachedPathRoots(DATABASE_OBJ)
+            %
+            % Returns a cell array of directories searched by
+            % CACHEDPATHFORFILE after the global file cache, in order.
+            %
+            % The default is {} -- the global file cache only -- so an
+            % implementation that keeps no uid-named file root of its own
+            % needs no override and keeps working unchanged. An
+            % implementation that does keep one (see
+            % did.implementations.sqlitedb) returns it here.
+
+            roots = {};
+        end % do_cachedPathRoots()
+
         function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
             % Convert a single did.query object/struct into SQL query string
             sql_str = ''; %#ok<NASGU>
