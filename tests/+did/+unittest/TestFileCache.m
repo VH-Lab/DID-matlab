@@ -253,5 +253,143 @@ classdef TestFileCache < matlab.unittest.TestCase
                 ?MException);
         end
 
+        function testAddingRecoversFromAStaleIndexRow(testCase)
+            % The failure the issue reports: an index row survives while
+            % its file is gone from disk. addFile used to error out with
+            % "already a file with name <uid> in the cache" for the rest
+            % of the session; the file cache is now expected to notice
+            % that the row is a broken promise and retract it so the
+            % caller who has the bytes can proceed.
+            fc = testCase.makeCache();
+            fc.addFile(testCase.makeSource(1,40), testCase.nameOf(1));
+            % Simulate the poisoned state -- delete the file behind the
+            % cache's back, leaving the row in place.
+            delete(fullfile(testCase.cacheDir, testCase.nameOf(1)));
+            testCase.verifyFalse(isfile(fullfile(testCase.cacheDir, testCase.nameOf(1))));
+            testCase.verifyTrue(logical(fc.isFile(testCase.nameOf(1))));
+
+            % A second add of the same uid, with the bytes in hand, must
+            % now succeed instead of raising "already in cache".
+            fc.addFile(testCase.makeSource(2,50), testCase.nameOf(1));
+            testCase.verifyTrue(isfile(fullfile(testCase.cacheDir, testCase.nameOf(1))));
+            p = fc.getProperties();
+            % currentSize accounting: stale 40-byte row was dropped
+            % (currentSize 0), then the 50-byte add was accounted.
+            testCase.verifyEqual(p.currentSize, uint64(50));
+        end
+
+        function testAddingIsStillRefusedWhenTheFileIsActuallyThere(testCase)
+            % Reconciliation must not become an "always overwrite". If
+            % the file really is in the cache the duplicate is still a
+            % programmer error and gets refused.
+            fc = testCase.makeCache();
+            fc.addFile(testCase.makeSource(1,40), testCase.nameOf(1));
+            testCase.verifyError(...
+                @() fc.addFile(testCase.makeSource(2,40), testCase.nameOf(1)), ...
+                ?MException);
+        end
+
+        function testAddFailureLeavesNoStaleRowBehind(testCase)
+            % When the copy/move fails, the index row must not be left
+            % behind -- otherwise the next add of the same uid is
+            % refused as "already in cache" for a file that never
+            % existed. The pre-fix addFile inserted the row before
+            % moving the bytes and did not roll back on move failure.
+            fc = testCase.makeCache();
+            missing = fullfile(testCase.sourceDir, 'does_not_exist');
+            testCase.verifyError(...
+                @() fc.addFile(missing, testCase.nameOf(1)), ?MException);
+            testCase.verifyFalse(logical(fc.isFile(testCase.nameOf(1))));
+
+            % The retry with real bytes must succeed.
+            fc.addFile(testCase.makeSource(1,40), testCase.nameOf(1));
+            testCase.verifyTrue(logical(fc.isFile(testCase.nameOf(1))));
+        end
+
+        function testAddFailureReleasesTheLock(testCase)
+            % The stuck-lock mechanism: an error path that skipped
+            % releaseLock left binaryTable.hasLock = true for the rest
+            % of the session, silently disabling concurrency protection.
+            fc = testCase.makeCache();
+            missing = fullfile(testCase.sourceDir, 'does_not_exist');
+            try
+                fc.addFile(missing, testCase.nameOf(1));
+            catch
+            end
+            testCase.verifyFalse(fc.binaryTable.hasLock);
+        end
+
+        function testClearResetsTheLockStateEvenIfStuck(testCase)
+            % clear() previously left hasLock as it found it; a caller
+            % running clear() to recover from a poisoned singleton was
+            % surprised that the singleton stayed poisoned.
+            fc = testCase.makeCache();
+            fc.binaryTable.resetLockState(); % start from a known state
+            fc.addFile(testCase.makeSource(1,40), testCase.nameOf(1));
+
+            % Force hasLock stuck true, the shape the failure takes on a
+            % real user's machine after addFile crashed past releaseLock.
+            [~,~] = fc.binaryTable.getLock();
+            testCase.verifyTrue(fc.binaryTable.hasLock);
+
+            fc.clear();
+            testCase.verifyFalse(fc.binaryTable.hasLock);
+        end
+
+        function testCheckReportsStaleRows(testCase)
+            fc = testCase.makeCache();
+            fc.addFile(testCase.makeSource(1,40), testCase.nameOf(1));
+            fc.addFile(testCase.makeSource(2,50), testCase.nameOf(2));
+            delete(fullfile(testCase.cacheDir, testCase.nameOf(1)));
+
+            report = fc.check();
+            testCase.verifyEqual(numel(report.staleRows), 1);
+            testCase.verifyEqual(report.staleRows{1}, testCase.nameOf(1));
+            testCase.verifyEmpty(report.orphanFiles);
+            testCase.verifyEqual(report.repaired.rowsDropped, 0);
+        end
+
+        function testCheckReportsOrphanFiles(testCase)
+            fc = testCase.makeCache();
+            fc.addFile(testCase.makeSource(1,40), testCase.nameOf(1));
+            % Drop an orphan file straight into the cache dir.
+            orphanName = testCase.nameOf(99);
+            fid = fopen(fullfile(testCase.cacheDir, orphanName), 'w');
+            fwrite(fid, uint8(1:20), 'uint8');
+            fclose(fid);
+
+            report = fc.check();
+            testCase.verifyEmpty(report.staleRows);
+            testCase.verifyEqual(numel(report.orphanFiles), 1);
+            testCase.verifyEqual(report.orphanFiles{1}, orphanName);
+        end
+
+        function testCheckRepairsStaleRows(testCase)
+            fc = testCase.makeCache();
+            fc.addFile(testCase.makeSource(1,40), testCase.nameOf(1));
+            fc.addFile(testCase.makeSource(2,50), testCase.nameOf(2));
+            delete(fullfile(testCase.cacheDir, testCase.nameOf(1)));
+
+            report = fc.check('Repair', true);
+            testCase.verifyEqual(report.repaired.rowsDropped, 1);
+            testCase.verifyFalse(logical(fc.isFile(testCase.nameOf(1))));
+            testCase.verifyTrue(logical(fc.isFile(testCase.nameOf(2))));
+            p = fc.getProperties();
+            testCase.verifyEqual(p.currentSize, uint64(50));
+        end
+
+        function testCheckRemoveOrphansDeletesOrphanFiles(testCase)
+            fc = testCase.makeCache();
+            fc.addFile(testCase.makeSource(1,40), testCase.nameOf(1));
+            orphanName = testCase.nameOf(99);
+            fid = fopen(fullfile(testCase.cacheDir, orphanName), 'w');
+            fwrite(fid, uint8(1:20), 'uint8');
+            fclose(fid);
+
+            report = fc.check('Repair', true, 'RemoveOrphans', true);
+            testCase.verifyEqual(report.repaired.filesDeleted, 1);
+            testCase.verifyFalse(isfile(fullfile(testCase.cacheDir, orphanName)));
+        end
+
     end
 end

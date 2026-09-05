@@ -159,6 +159,22 @@ classdef binaryTable < handle
             end
         end
 
+        function resetLockState(binaryTableObj)
+            % RESETLOCKSTATE - reset the in-memory lock flag
+            %
+            % RESETLOCKSTATE(BINARYTABLEOBJ)
+            %
+            % Recovery method: force hasLock back to false without touching
+            % the on-disk lock file. Use when an error path unwound past
+            % releaseLock and left hasLock stuck true -- in that state every
+            % subsequent getLock() returns empty (a no-op release) and the
+            % table is effectively unlocked against itself. The on-disk lock
+            % file, if some other holder actually has it, is left alone; the
+            % next getLock() re-enters checkout_lock_file's polling loop and
+            % resolves real contention normally.
+            binaryTableObj.hasLock = false;
+        end
+
         function lFileName = lockFileName(binaryTableObj)
             % LOCKFILENAME - return the lock file name for a binaryTable object
             %
