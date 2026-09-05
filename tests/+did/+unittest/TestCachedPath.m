@@ -85,14 +85,15 @@ classdef TestCachedPath < matlab.unittest.TestCase
 
         function testEmptyAndInvalidRootsAreSkipped(testCase)
             % A root that is empty or not text must be stepped over rather
-            % than turned into a bad path or an error.
+            % than turned into a bad path or an error. The surviving root is
+            % given as a string rather than a char, since both are accepted.
             uid = did.ido.unique_id();
             otherRoot = fullfile(pwd, 'someFileDir');
             expected = testCase.writeFile(otherRoot, uid, 'z');
 
             testCase.verifyEqual( ...
                 did.file.cachedPathForUid(uid, ...
-                    'additionalRoots', {'', 5, otherRoot}), ...
+                    'additionalRoots', {'', 5, string(otherRoot)}), ...
                 expected);
         end
 
@@ -145,7 +146,7 @@ classdef TestCachedPath < matlab.unittest.TestCase
             fileRoot = fullfile(pwd, 'stubFileDir');
             expected = testCase.writeFile(fileRoot, uid, 'abc');
 
-            db = did.test.helper.NoQueryDatabase({fileRoot});
+            db = did.test.helper.NoQueryDatabaseWithRoots({fileRoot});
             [tf, p] = db.cachedPathForFile(doc, 'filename1.ext');
 
             testCase.verifyTrue(tf);
@@ -159,7 +160,7 @@ classdef TestCachedPath < matlab.unittest.TestCase
             doc = did.document('demoFile', 'demoFile.value', 1);
             doc = doc.add_file('filename1.ext', local);
 
-            db = did.test.helper.NoQueryDatabase({fullfile(pwd, 'emptyDir')});
+            db = did.test.helper.NoQueryDatabaseWithRoots({fullfile(pwd, 'emptyDir')});
             [tf, p] = db.cachedPathForFile(doc, 'filename1.ext');
 
             testCase.verifyFalse(tf);
@@ -172,6 +173,46 @@ classdef TestCachedPath < matlab.unittest.TestCase
 
             [tf, p] = db.cachedPathForFile(doc, 'nosuchfile.ext');
 
+            testCase.verifyFalse(tf);
+            testCase.verifyEmpty(p);
+        end
+
+        function testBaseClassDefaultSearchesTheGlobalCacheOnly(testCase)
+            % did.database's do_cachedPathRoots default is what lets an
+            % implementation with no uid-named file root of its own -- sqldb,
+            % matlabdumbjsondb -- keep working unchanged. Both sqlitedb and
+            % NoQueryDatabaseWithRoots override it, so without this test the
+            % default is never executed and that claim is unproven.
+            local = testCase.writeFile(pwd, 'filename1.ext', 'abc');
+            doc = did.document('demoFile', 'demoFile.value', 1);
+            doc = doc.add_file('filename1.ext', local);
+            uid = doc.document_properties.files.file_info(1).locations(1).uid;
+
+            db = did.test.helper.NoQueryDatabase();
+
+            % Not found while the file sits somewhere the default does not search
+            testCase.writeFile(fullfile(pwd, 'notSearched'), uid, 'abc');
+            testCase.verifyFalse(db.cachedPathForFile(doc, 'filename1.ext'), ...
+                'the default must not search an arbitrary directory');
+
+            % Found once it is in the global file cache
+            expected = testCase.writeFile( ...
+                did.common.PathConstants.filecachepath, uid, 'abc');
+            [tf, p] = db.cachedPathForFile(doc, 'filename1.ext');
+            testCase.verifyTrue(tf);
+            testCase.verifyEqual(p, expected);
+        end
+
+        function testDocumentWithNoFilesBlockHasNoUids(testCase)
+            % demoA declares no files at all, so document_properties has no
+            % 'files' field. Asking for a file's uids is a legitimate question
+            % with the answer "none", not an error.
+            doc = did.document('demoA');
+
+            testCase.verifyEmpty(doc.fileUids('anything.ext'));
+
+            db = did.test.helper.NoQueryDatabase();
+            [tf, p] = db.cachedPathForFile(doc, 'anything.ext');
             testCase.verifyFalse(tf);
             testCase.verifyEmpty(p);
         end

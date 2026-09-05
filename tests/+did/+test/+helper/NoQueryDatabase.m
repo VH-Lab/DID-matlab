@@ -13,26 +13,20 @@ classdef NoQueryDatabase < did.database
     % SQLite connection belongs to the thread that opened it, so a resolution
     % that reaches the database cannot run on a worker thread; one that does
     % not, can.
-
-    properties
-        pathRoots (1,:) cell = {} % returned by do_cachedPathRoots
-    end
+    %
+    % This stub deliberately does NOT override do_cachedPathRoots, so it
+    % exercises did.database's DEFAULT -- the empty list that lets an
+    % implementation keeping no uid-named file root of its own (sqldb,
+    % matlabdumbjsondb) work unchanged. Use NoQueryDatabaseWithRoots when a
+    % test needs additional roots.
 
     methods
-        function obj = NoQueryDatabase(pathRoots)
-            arguments
-                pathRoots (1,:) cell = {}
-            end
+        function obj = NoQueryDatabase()
             obj@did.database('');
-            obj.pathRoots = pathRoots;
         end
     end
 
     methods (Access=protected)
-
-        function roots = do_cachedPathRoots(obj)
-            roots = obj.pathRoots;
-        end
 
         function results = do_run_sql_query(obj, query_str, varargin) %#ok<STOUT,INUSD>
             did.test.helper.NoQueryDatabase.refuse('do_run_sql_query');
