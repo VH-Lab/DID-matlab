@@ -199,24 +199,58 @@ classdef fileCache < handle
                 error(['FileName has wrong number of characters (expected ' int2str(fileCacheObj.fileNameCharacters) ').']);
             end
 
-            % make sure file isn't already in there
+            % Hold the lock across the whole add so a concurrent
+            % addFile/removeFile cannot see the row without the bytes, and
+            % release it on every exit path (including errors) so hasLock
+            % does not get stuck true across the rest of the session.
             [lockfid,key] = fileCacheObj.binaryTable.getLock();
-            [row,~] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
-            if row
-                fileCacheObj.binaryTable.releaseLock(lockfid,key);
-                error(['There is already a file with name ' fileNameInCache ' in the cache.']);
-            end
+            try
+                fullFileInCache = fullfile(fileCacheObj.directoryName,fileNameInCache);
+                [row,~] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
+                if row
+                    if isfile(fullFileInCache)
+                        error(['There is already a file with name ' fileNameInCache ' in the cache.']);
+                    end
+                    % Stale index row: the row promises a file that is no
+                    % longer on disk (an interrupted eviction, a failed
+                    % move, a lock race). Retract the promise instead of
+                    % refusing the caller who has the bytes.
+                    fileCacheObj.dropRowNoLock(row);
+                end
 
-            finfo = dir(fullPathFileName);
-            sz = finfo.bytes;
-            fileCacheObj.resizeAndAdd(sz,fileNameInCache); % now it is in db
-            fullFileInCache = fullfile(fileCacheObj.directoryName,fileNameInCache);
-            if option.copy
-                copyfile(fullPathFileName,fullFileInCache);
-            else
-                movefile(fullPathFileName,fullFileInCache);
+                finfo = dir(fullPathFileName);
+                sz = finfo.bytes;
+                fileCacheObj.resizeAndAdd(sz,fileNameInCache); % row is in db
+                try
+                    if option.copy
+                        copyfile(fullPathFileName,fullFileInCache);
+                    else
+                        movefile(fullPathFileName,fullFileInCache);
+                    end
+                catch moveErr
+                    % Bytes did not land. Roll the row back so the next
+                    % addFile of the same name is not refused as a
+                    % "already in cache" that never was.
+                    [rollbackRow,~] = fileCacheObj.binaryTable.findRow(1,fileNameInCache);
+                    if rollbackRow
+                        fileCacheObj.dropRowNoLock(rollbackRow);
+                    end
+                    rethrow(moveErr);
+                end
+                fileCacheObj.binaryTable.releaseLock(lockfid,key);
+            catch addErr
+                % Ensure the lock is released on any error path -- both the
+                % on-disk file (if we hold it) and the in-memory hasLock
+                % flag. Otherwise the singleton's binaryTable is stuck in
+                % "already locked" and every subsequent getLock returns
+                % empty, silently disabling concurrency protection.
+                try
+                    fileCacheObj.binaryTable.releaseLock(lockfid,key);
+                catch
+                end
+                fileCacheObj.binaryTable.resetLockState();
+                rethrow(addErr);
             end
-            fileCacheObj.binaryTable.releaseLock(lockfid,key);
         end % addFile()
 
         function removeFile(fileCacheObj, fileNameInCache)
@@ -248,16 +282,31 @@ classdef fileCache < handle
             %
             % Clear all files in the cache. Use with caution!
             %
+            % clear() also resets the in-memory lock state at the end, so
+            % a caller who runs clear() to recover from a poisoned cache
+            % gets a genuinely clean binaryTable back -- otherwise a
+            % previously stuck hasLock would survive the on-disk wipe and
+            % continue to disable the singleton's concurrency protection.
             [lockfid,key] = fileCacheObj.binaryTable.getLock();
-            fn = fileCacheObj.fileList(false);
-            data = {};
-            fileCacheObj.binaryTable.writeTable(data);
-            fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,uint16(0));
-            fullnames = fullfile(fileCacheObj.directoryName,fn);
-            if ~isempty(fullnames)
-                delete(fullnames{:});
+            try
+                fn = fileCacheObj.fileList(false);
+                data = {};
+                fileCacheObj.binaryTable.writeTable(data);
+                fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,uint16(0));
+                fullnames = fullfile(fileCacheObj.directoryName,fn);
+                if ~isempty(fullnames)
+                    delete(fullnames{:});
+                end
+                fileCacheObj.binaryTable.releaseLock(lockfid,key);
+            catch clearErr
+                try
+                    fileCacheObj.binaryTable.releaseLock(lockfid,key);
+                catch
+                end
+                fileCacheObj.binaryTable.resetLockState();
+                rethrow(clearErr);
             end
-            fileCacheObj.binaryTable.releaseLock(lockfid,key);
+            fileCacheObj.binaryTable.resetLockState();
         end
 
         function b = isFile(fileCacheObj, fileNameInCache)
@@ -357,9 +406,15 @@ classdef fileCache < handle
                 cutoff = find(sum(newFileSize)+cumsum(sz(la_indexes))>fileCacheObj.reduceSize,1,'first');
                 DC = mat2cell(fn(la_indexes(cutoff:end),:),repmat(1,-cutoff+numel(la_indexes)+1,1),fileCacheObj.fileNameCharacters);
                 ffn = fullfile(fileCacheObj.directoryName, DC);
-                delete(ffn{:});
 
-                % now re-organize
+                % Rewrite the index BEFORE deleting the files. An interrupt
+                % between the two used to leave rows without files -- a
+                % permanently poisoned uid, since addFile would then refuse
+                % as "already in cache" without the bytes ever existing.
+                % Doing the delete second means an interrupt leaves
+                % orphan files with no index row instead, which are
+                % harmless (recovered by check(...,'RemoveOrphans',true)
+                % or overwritten by the next add of the same name).
 
                 newfn = mat2cell(fn(la_indexes(1:cutoff-1),:),repmat(1,cutoff-1,1),size(fn,2));
                 sz = sz(la_indexes(1:cutoff-1));
@@ -376,6 +431,7 @@ classdef fileCache < handle
                 end
                 fileCacheObj.binaryTable.writeTable(tabledata);
                 fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,sum(sz));
+                delete(ffn{:});
             else
                 %disp(['Not full, total size is ' int2str(newTotalSize) ' and maxSize is ' int2str(fileCacheObj.maxSize) '.']);
                 for i=1:numel(newFileName)
@@ -394,6 +450,91 @@ classdef fileCache < handle
             end
             fileCacheObj.binaryTable.releaseLock(lockfid,key);
         end % resize
+
+        function report = check(fileCacheObj, options)
+            % CHECK - report and optionally repair index/disk divergences
+            %
+            % REPORT = CHECK(FILECACHEOBJ)
+            % REPORT = CHECK(FILECACHEOBJ, 'Repair', true)
+            % REPORT = CHECK(FILECACHEOBJ, 'Repair', true, 'RemoveOrphans', true)
+            %
+            % Scans the fileCache and reports any divergence between the
+            % binaryTable index and the files on disk. There are two
+            % kinds:
+            %
+            %   staleRows    -- rows the index carries whose file is
+            %                   missing on disk. These are what poison a
+            %                   uid: addFile refuses because the index
+            %                   says "already there", but the bytes are
+            %                   not, and the file is never re-cacheable
+            %                   until the row is dropped.
+            %   orphanFiles  -- files on disk with no matching index row.
+            %                   Harmless (they simply do not count
+            %                   against currentSize), but they occupy
+            %                   space.
+            %
+            % With 'Repair', true, stale rows are dropped and
+            % currentSize is corrected. With 'RemoveOrphans', true, the
+            % orphan files are also deleted. Both writes happen under
+            % the binaryTable's lock, same as addFile/removeFile.
+            %
+            % The returned REPORT struct describes what was found and
+            % what was repaired.
+            arguments
+                fileCacheObj (1,1)
+                options.Repair (1,1) logical = false
+                options.RemoveOrphans (1,1) logical = false
+            end
+
+            [lockfid,key] = fileCacheObj.binaryTable.getLock();
+            try
+                indexNames = fileCacheObj.fileList(true);
+                indexList = fileCacheObj.rowNamesToCellstr(indexNames);
+                diskList = fileCacheObj.fileList(false);
+                diskList = diskList(:);
+
+                staleMask = ~cellfun(@(n) isfile(fullfile(fileCacheObj.directoryName,n)), indexList);
+                staleRows = indexList(staleMask);
+                orphanFiles = setdiff(diskList, indexList);
+
+                report = struct( ...
+                    'directoryName', fileCacheObj.directoryName, ...
+                    'checkedAt', now, ...
+                    'staleRows', {staleRows}, ...
+                    'orphanFiles', {orphanFiles}, ...
+                    'consistent', numel(indexList) - numel(staleRows), ...
+                    'repaired', struct('rowsDropped', 0, 'filesDeleted', 0));
+
+                if options.Repair && ~isempty(staleRows)
+                    for k = 1:numel(staleRows)
+                        [rowIdx,~] = fileCacheObj.binaryTable.findRow(1, staleRows{k});
+                        if rowIdx
+                            fileCacheObj.dropRowNoLock(rowIdx);
+                            report.repaired.rowsDropped = report.repaired.rowsDropped + 1;
+                        end
+                    end
+                end
+
+                if options.RemoveOrphans && ~isempty(orphanFiles)
+                    fullOrphans = fullfile(fileCacheObj.directoryName, orphanFiles);
+                    for k = 1:numel(fullOrphans)
+                        if isfile(fullOrphans{k})
+                            delete(fullOrphans{k});
+                            report.repaired.filesDeleted = report.repaired.filesDeleted + 1;
+                        end
+                    end
+                end
+
+                fileCacheObj.binaryTable.releaseLock(lockfid,key);
+            catch checkErr
+                try
+                    fileCacheObj.binaryTable.releaseLock(lockfid,key);
+                catch
+                end
+                fileCacheObj.binaryTable.resetLockState();
+                rethrow(checkErr);
+            end
+        end % check()
 
         function b = touch(fileCacheObj, fileName)
             % TOUCH - mark a file as accessed right now
@@ -434,6 +575,46 @@ classdef fileCache < handle
             %
             iFileName = fullfile(fileCacheObj.directoryName,did.file.fileCache.cacheInfoFileName);
         end % infoFileName()
+
+        function dropRowNoLock(fileCacheObj, row)
+            % DROPROWNOLOCK - remove one index row and decrement currentSize
+            %
+            % Internal helper used by addFile's stale-row reconciliation
+            % and rollback paths, and by check(...,'Repair',true). The
+            % caller MUST already hold the binaryTable lock. Unlike
+            % removeFile, this does not touch any file on disk -- the
+            % point is precisely that the file is not there.
+            szHere = fileCacheObj.binaryTable.readRow(row,3);
+            p = fileCacheObj.getProperties();
+            newSize = p.currentSize;
+            if szHere <= newSize
+                newSize = newSize - szHere;
+            else
+                newSize = uint64(0);
+            end
+            fileCacheObj.setProperties(fileCacheObj.maxSize,fileCacheObj.reduceSize,newSize);
+            fileCacheObj.binaryTable.deleteRow(row);
+        end % dropRowNoLock()
+
+        function names = rowNamesToCellstr(~, rowNames)
+            % ROWNAMESTOCELLSTR - fixed-width name matrix to cellstr
+            %
+            % fileList(true) returns names as a fixed-width char matrix
+            % (one row per file). Callers that want to fullfile() or
+            % compare against directory listings need one cell per row.
+            % The names themselves are preserved verbatim (no strtrim),
+            % so that findRow -- which does an exact byte match on the
+            % column -- can look them up by the same value.
+            if isempty(rowNames)
+                names = cell(0,1);
+                return
+            end
+            n = size(rowNames,1);
+            names = cell(n,1);
+            for k = 1:n
+                names{k} = rowNames(k,:);
+            end
+        end % rowNamesToCellstr()
 
     end
 
