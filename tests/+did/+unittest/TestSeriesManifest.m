@@ -59,6 +59,32 @@ classdef TestSeriesManifest < matlab.unittest.TestCase
             testCase.verifyEqual(m.sourceNames, names);
         end
 
+        function testEmptySourceNamesAtEveryPosition(testCase)
+            % An empty name is equal offsets, and the first version of the
+            % reader compared them AFTER converting to a one-based index,
+            % which made every empty name look like a decreasing offset.
+            % The middle case caught it; first, last and all-empty are
+            % where the remaining off-by-ones would hide.
+            uids = {did.ido.unique_id(), did.ido.unique_id(), ...
+                    did.ido.unique_id(), did.ido.unique_id()};
+            p = testCase.manifestPath();
+
+            cases = { {'', '0/a', '0/b', '0/c'}, ...   % empty first
+                      {'0/a', '0/b', '0/c', ''}, ...   % empty last
+                      {'', '', '', ''}, ...            % all empty
+                      {'0/a', '', '', '0/d'} };        % empty run in the middle
+
+            for k = 1:numel(cases)
+                names = cases{k};
+                did.file.writeSeriesManifest(p, uids, 'sourceNames', names);
+                m = did.file.readSeriesManifest(p);
+                testCase.verifyEqual(m.sourceNames, names, ...
+                    sprintf('source name case %d did not round-trip', k));
+                testCase.verifyEqual(m.uids, uids, ...
+                    sprintf('uids disturbed in source name case %d', k));
+            end
+        end
+
         function testSourceNamesSurviveNonAscii(testCase)
             % Names are written as UTF-8 bytes, so a non-ASCII path must
             % come back unchanged rather than mangled one byte per char.

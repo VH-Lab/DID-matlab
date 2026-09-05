@@ -101,16 +101,21 @@ if hasSourceNames
     end
     sourceNames = cell(1, count);
     for i = 1:count
-        first = nameOffset(i) + 1;          % zero-based on disk
-        last  = nameOffset(i+1);
-        if last < first
+        % Compare the ZERO-BASED offsets directly. Converting to a
+        % one-based index first and comparing after is what makes an empty
+        % name (equal offsets) look like a decreasing one: it lands on
+        % last == first-1, which also satisfies last < first.
+        firstOffset = nameOffset(i);      % inclusive
+        lastOffset  = nameOffset(i+1);    % exclusive
+        if lastOffset < firstOffset
             error('DID:FileSeries:readSeriesManifest:badOffsets', ...
                 ['''%s'' has a decreasing name offset at member %d; ' ...
                  'offsets must be non-decreasing.'], filename, i-1);
-        elseif last == first - 1
-            sourceNames{i} = '';
+        elseif lastOffset == firstOffset
+            sourceNames{i} = '';          % member with no recorded name
         else
-            sourceNames{i} = native2unicode(nameBytes(first:last), 'UTF-8');
+            sourceNames{i} = native2unicode( ...
+                nameBytes(firstOffset+1 : lastOffset), 'UTF-8');
         end
     end
 end
