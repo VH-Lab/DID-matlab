@@ -51,11 +51,16 @@ end
 uidBlock = zeros(options.uidWidth, n, 'uint8');
 for i = 1:n
     thisUid = uids{i};
-    if isempty(thisUid)
-        continue    % absent member: leave the slot all-NUL
-    end
+    % Convert BEFORE testing emptiness. isempty("") is FALSE -- a string
+    % scalar holding no characters is still 1-by-1 -- so checking first
+    % would send an empty string down the non-absent path, where it only
+    % happens to work because a zero-length write leaves the slot all-NUL.
+    % The source-name loop below already converts first; these must agree.
     if isstring(thisUid) && isscalar(thisUid)
         thisUid = char(thisUid);
+    end
+    if isempty(thisUid)
+        continue    % absent member: leave the slot all-NUL
     end
     if ~ischar(thisUid)
         error('DID:FileSeries:writeSeriesManifest:badUid', ...

@@ -93,6 +93,20 @@ if hasSourceNames
             filename, numel(nameOffset), count+1);
     end
     nameOffset = double(nameOffset);
+
+    % Validate the whole table before it is used to index anything. A
+    % decreasing table makes some earlier member's range run past
+    % nameOffset(end) -- the number of name bytes the file claims -- so
+    % without this the failure surfaces as an out-of-bounds index on the
+    % byte array, which says nothing about the real problem and leaves the
+    % badOffsets error unreachable.
+    firstBad = find(diff(nameOffset) < 0, 1);
+    if ~isempty(firstBad)
+        error('DID:FileSeries:readSeriesManifest:badOffsets', ...
+            ['''%s'' has a decreasing name offset at member %d; ' ...
+             'offsets must be non-decreasing.'], filename, firstBad-1);
+    end
+
     nameBytes = fread(fid, nameOffset(end), '*uint8')';
     if numel(nameBytes) < nameOffset(end)
         error('DID:FileSeries:readSeriesManifest:truncated', ...
@@ -102,16 +116,13 @@ if hasSourceNames
     sourceNames = cell(1, count);
     for i = 1:count
         % Compare the ZERO-BASED offsets directly. Converting to a
-        % one-based index first and comparing after is what makes an empty
+        % one-based index first and comparing after is what made an empty
         % name (equal offsets) look like a decreasing one: it lands on
-        % last == first-1, which also satisfies last < first.
+        % last == first-1, which also satisfies last < first. The table is
+        % already known non-decreasing, so equal means empty.
         firstOffset = nameOffset(i);      % inclusive
         lastOffset  = nameOffset(i+1);    % exclusive
-        if lastOffset < firstOffset
-            error('DID:FileSeries:readSeriesManifest:badOffsets', ...
-                ['''%s'' has a decreasing name offset at member %d; ' ...
-                 'offsets must be non-decreasing.'], filename, i-1);
-        elseif lastOffset == firstOffset
+        if lastOffset == firstOffset
             sourceNames{i} = '';          % member with no recorded name
         else
             sourceNames{i} = native2unicode( ...

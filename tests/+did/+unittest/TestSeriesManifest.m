@@ -13,6 +13,17 @@ classdef TestSeriesManifest < matlab.unittest.TestCase
         function p = manifestPath(~)
             p = fullfile(pwd, 'series.manifest');
         end
+
+        function writeHeader(~, fid, flags, count, uidWidth, version)
+            % Hand-build a header so the corruption cases can be produced
+            % without going through the writer, which would refuse them.
+            fwrite(fid, uint8('DIDFSER1'), 'uint8');
+            fwrite(fid, uint32(version), 'uint32');
+            fwrite(fid, uint32(flags), 'uint32');
+            fwrite(fid, uint32(count), 'uint32');
+            fwrite(fid, uint32(uidWidth), 'uint32');
+            fwrite(fid, zeros(1,2,'uint32'), 'uint32');
+        end
     end
 
     methods (Test)
@@ -165,6 +176,77 @@ classdef TestSeriesManifest < matlab.unittest.TestCase
 
             testCase.verifyError(@() did.file.readSeriesManifest(p), ...
                 'DID:FileSeries:readSeriesManifest:truncated');
+        end
+
+        function testShortFileIsRejected(testCase)
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w'); fwrite(fid, uint8('DID'), 'uint8'); fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifest(p), ...
+                'DID:FileSeries:readSeriesManifest:badMagic');
+        end
+
+        function testUnsupportedVersionIsRejected(testCase)
+            % A future writer must not have its file read as if it were
+            % version 1 and silently misinterpreted.
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            testCase.writeHeader(fid, 0, 0, 33, 2);
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifest(p), ...
+                'DID:FileSeries:readSeriesManifest:badVersion');
+        end
+
+        function testZeroUidWidthIsRejected(testCase)
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            testCase.writeHeader(fid, 0, 1, 0, 1);
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifest(p), ...
+                'DID:FileSeries:readSeriesManifest:badUidWidth');
+        end
+
+        function testDecreasingNameOffsetIsRejected(testCase)
+            % The error path guarding the comparison that the empty-name bug
+            % lived in. Only its happy side was exercised, so a comparison
+            % wrong in the OTHER direction would have gone unnoticed.
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            testCase.writeHeader(fid, 1, 2, 4, 1);            % flags bit 0 set
+            fwrite(fid, uint8([abs('ab') 0 0]), 'uint8');     % member 0 uid
+            fwrite(fid, uint8([abs('cd') 0 0]), 'uint8');     % member 1 uid
+            fwrite(fid, uint32([0 2 1]), 'uint32');           % decreasing at member 1
+            fwrite(fid, uint8(abs('x')), 'uint8');
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifest(p), ...
+                'DID:FileSeries:readSeriesManifest:badOffsets');
+        end
+
+        function testTruncatedNameSectionIsRejected(testCase)
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            testCase.writeHeader(fid, 1, 1, 4, 1);
+            fwrite(fid, uint8([abs('ab') 0 0]), 'uint8');
+            fwrite(fid, uint32([0 8]), 'uint32');   % claims 8 name bytes
+            fwrite(fid, uint8(abs('xy')), 'uint8'); % holds 2
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifest(p), ...
+                'DID:FileSeries:readSeriesManifest:truncated');
+        end
+
+        function testStringUidsAndNamesAreAccepted(testCase)
+            % Callers mix char and string; both must write identically.
+            p = testCase.manifestPath();
+            did.file.writeSeriesManifest(p, {"abc", ""}, ...
+                'sourceNames', {"0/a", ""}, 'uidWidth', 8);
+            m = did.file.readSeriesManifest(p);
+
+            testCase.verifyEqual(m.uids, {'abc', ''});
+            testCase.verifyEqual(m.sourceNames, {'0/a', ''});
         end
 
         function testOnDiskLayoutMatchesTheSpec(testCase)
