@@ -428,18 +428,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 try preadd_series = doc_props.files.series_info; catch, preadd_series = []; end
                 for asIdx = 1 : numel(preadd_series)
                     thisSeries = preadd_series(asIdx);
-                    nPresent = 0;
-                    try nPresent = thisSeries.n_present; catch, end
-                    if isempty(nPresent) || nPresent <= 0
+                    if ~isfield(thisSeries,'n_present') || ...
+                            isempty(thisSeries.n_present) || thisSeries.n_present <= 0
                         continue
                     end
-                    haveLocations = false;
-                    try haveLocations = ~isempty(thisSeries.ingest_locations); catch, end
-                    if haveLocations
+                    if isfield(thisSeries,'ingest_locations') && ...
+                            ~isempty(thisSeries.ingest_locations)
                         continue
                     end
+                    nPresent = thisSeries.n_present;
                     thisName = sprintf('#%d', asIdx);
-                    try thisName = char(thisSeries.name); catch, end
+                    if isfield(thisSeries,'name')
+                        thisName = char(thisSeries.name);
+                    end
                     error('DID:SQLITEDB:FileSeries:MembersNotLocatable', ...
                         ['Refusing to add document %s: its file series "%s" declares ' ...
                          '%d present members but records no location for any of them. ' ...

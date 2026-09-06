@@ -685,6 +685,29 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
                 'and should be marked as a partial download');
         end
 
+        function testAFetchThatLosesTheRaceUsesTheWinnersBytes(testCase)
+            % The other half of single-flight: a peer that never took the lock
+            % can still finish first. Simulated by having the handler place
+            % the same uid in the cache while this fetch is still in flight,
+            % so addFile refuses the name we were about to store under.
+            %
+            % Those are the same bytes, so losing must be silent and the
+            % winner's copy used. Before, addFile's error escaped and turned a
+            % redundant download into a failed open.
+            [db, doc, ~, manifestCopy] = testCase.remoteManifestSeries();
+            uids = doc.fileUids('chunkdata.bin');
+
+            handler = @(destPath, sourcePath) ...
+                localCopyAndPreempt(destPath, manifestCopy, uids{1});
+
+            f = db.open_doc(doc.id(), 'chunkdata.bin', 'customFileHandler', handler);
+            fopen(f);
+            closer = onCleanup(@() fclose(f)); %#ok<NASGU>
+
+            testCase.verifyEqual(char(fread(f, 8, 'uint8')'), 'DIDFSER1', ...
+                'the manifest should still open, from whichever copy won');
+        end
+
         % ---- series accessors -------------------------------------------
         %
         % seriesCount answers from the document; WHICH slots are filled is
@@ -901,4 +924,14 @@ function localCopyAndRecord(destPath, sourceFile, recordFile)
         fclose(fid);
     end
     copyfile(sourceFile, destPath);
+end
+
+function localCopyAndPreempt(destPath, sourceFile, uid)
+    % A customFileHandler that writes what it was asked for and then also
+    % places the same bytes in the cache under UID -- what a peer process
+    % would have done just before this fetch finished.
+    copyfile(sourceFile, destPath);
+    rival = [destPath '.rival'];
+    copyfile(sourceFile, rival);
+    did.common.getCache().addFile(rival, uid);
 end
