@@ -753,6 +753,123 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
         end % cachedPathForFile()
 
+        function tf = seriesHas(database_obj, document_obj, name, index)
+            % SERIESHAS - does a file series have a member at INDEX?
+            %
+            % TF = seriesHas(DATABASE_OBJ, DOCUMENT_OBJ, NAME, INDEX)
+            %
+            % Returns whether the series NAME of DOCUMENT_OBJ records a member
+            % at the one-based INDEX. A series is sparse -- a zarr level never
+            % writes an all-fill chunk -- so "no member here" is an ordinary
+            % answer, not a failure.
+            %
+            % THIS ANSWERS ABOUT THE MANIFEST, NOT THE DISK. True means the
+            % series records a member at INDEX; it does not promise the bytes
+            % are on this machine. Use CACHEDPATHFORFILE or EXIST_DOC for
+            % that. The two questions are deliberately separate: a caller
+            % deciding what to fetch needs to know what SHOULD be there.
+            %
+            % WHY THIS IS ON THE DATABASE AND SERIESCOUNT IS ON THE DOCUMENT.
+            % A count is recorded on the document when the series is added, so
+            % did.document/seriesCount answers from memory. WHICH slots are
+            % filled is recorded only in the manifest -- that is the whole
+            % point of the format -- so answering needs the manifest, and
+            % finding the manifest needs to know where this database keeps
+            % files. It still runs no query and touches no network, and reads
+            % one slot rather than the whole uid block.
+            %
+            % Returns false when the manifest is not on this machine, which is
+            % the same "not here" CACHEDPATHFORFILE gives; nothing is fetched
+            % to answer.
+            %
+            % See also: did.document/seriesCount, SERIESMEMBERS,
+            %   CACHEDPATHFORFILE, did.file.readSeriesManifestUid
+            arguments
+                database_obj
+                document_obj (1,1) did.document
+                name (1,:) char
+                index (1,1) double {mustBePositive, mustBeInteger}
+            end
+
+            tf = false;
+
+            manifestPath = localSeriesManifestPath(document_obj, name, ...
+                database_obj.do_cachedPathRoots());
+            if isempty(manifestPath), return; end
+
+            try
+                uid = did.file.readSeriesManifestUid(manifestPath, index);
+            catch
+                % A manifest that cannot be read cannot say what the series
+                % holds. open_doc reports that where it can be acted on.
+                return;
+            end
+
+            tf = ~isempty(uid);
+
+        end % seriesHas()
+
+        function [indices, uids] = seriesMembers(database_obj, document_obj, name)
+            % SERIESMEMBERS - the members a file series actually has
+            %
+            % [INDICES, UIDS] = seriesMembers(DATABASE_OBJ, DOCUMENT_OBJ, NAME)
+            %
+            % Returns the one-based INDICES of the slots the series NAME
+            % actually fills, and the UIDS recorded for them, in slot order.
+            % Absent slots are skipped, so a sparse series gives back only
+            % what it holds. Both are empty when the series has no members or
+            % its manifest is not on this machine.
+            %
+            % THIS IS THE ITERATOR. MATLAB has no generator idiom worth
+            % imposing here, and the list IS the manifest's own content -- for
+            % 28,000 members that is the ~924 KB the format was sized to make
+            % cheap, read ONCE. Asking SERIESHAS in a loop instead would
+            % re-open the manifest per member; this is the call to use when
+            % walking a whole pyramid level.
+            %
+            % The uids come back so a caller can resolve each member with
+            % did.file.cachedPathForUid, which is a pure function of the uid:
+            % no query, no network, callable from any thread and any process.
+            % One manifest read then N independent resolutions is the shape
+            % this whole feature exists to allow (VH-Lab/DID-matlab#173).
+            %
+            % Example:
+            %   [idx, uids] = db.seriesMembers(doc, 'chunk.bin');
+            %   roots = {db.FileDir};
+            %   for i = 1:numel(idx)
+            %       p = did.file.cachedPathForUid(uids{i}, 'additionalRoots', roots);
+            %   end
+            %
+            % See also: SERIESHAS, did.document/seriesCount,
+            %   did.file.cachedPathForUid, did.file.readSeriesManifest
+            arguments
+                database_obj
+                document_obj (1,1) did.document
+                name (1,:) char
+            end
+
+            indices = [];
+            uids = {};
+
+            manifestPath = localSeriesManifestPath(document_obj, name, ...
+                database_obj.do_cachedPathRoots());
+            if isempty(manifestPath), return; end
+
+            try
+                manifest = did.file.readSeriesManifest(manifestPath);
+            catch
+                return;
+            end
+
+            % Slot i of manifest.uids is member i, one-based, which is the
+            % numbering NAME_<i> uses. The conversion to the file's own
+            % zero-based numbering happens in the reader and nowhere else.
+            present = find(~cellfun('isempty', manifest.uids));
+            indices = present;
+            uids = manifest.uids(present);
+
+        end % seriesMembers()
+
         function [tf, file_path] = exist_doc(database_obj, document_id, filename, options)
             % EXIST_DOC - Check if a did.document exists as a file
             %
@@ -1999,6 +2116,34 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
     end % Static methods
 end % database classdef
 
+function manifestPath = localSeriesManifestPath(document_obj, name, additionalRoots)
+    % Where a series' manifest is on disk, or '' if it is not on this machine.
+    %
+    % The manifest is an ordinary file of the document, so its uid is in
+    % file_info and finding it needs nothing but the document and the
+    % filesystem -- which is what lets every series accessor keep
+    % cachedPathForFile's promise of no SQL and no network.
+    %
+    % Shared by the member lookup and the series accessors so that all of
+    % them agree on which copy of the manifest is authoritative: the global
+    % file cache first, then the database's own roots, the same order
+    % do_open_doc uses.
+
+    manifestPath = '';
+
+    if ~document_obj.isFileSeries(name), return; end
+
+    manifestUids = document_obj.fileUids(name);
+    for i = 1:numel(manifestUids)
+        thisPath = did.file.cachedPathForUid(manifestUids{i}, ...
+            'additionalRoots', additionalRoots);
+        if ~isempty(thisPath)
+            manifestPath = thisPath;
+            return;
+        end
+    end
+end
+
 function [tf, filePath] = localSeriesMemberPath(document_obj, filename, additionalRoots)
     % Where a file series member is on disk, from the document and the
     % filesystem alone.
@@ -2023,13 +2168,7 @@ function [tf, filePath] = localSeriesMemberPath(document_obj, filename, addition
     if isempty(stem), return; end
     if ~isscalar(index) || index < 1 || index ~= round(index), return; end
 
-    manifestPath = '';
-    manifestUids = document_obj.fileUids(stem);
-    for i = 1:numel(manifestUids)
-        manifestPath = did.file.cachedPathForUid(manifestUids{i}, ...
-            'additionalRoots', additionalRoots);
-        if ~isempty(manifestPath), break; end
-    end
+    manifestPath = localSeriesManifestPath(document_obj, stem, additionalRoots);
     if isempty(manifestPath), return; end
 
     try

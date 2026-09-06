@@ -952,6 +952,17 @@ classdef document
             %   deleteOriginal (NaN) - should ingestion delete each member's
             %       original file? NaN follows add_file's per-type default: 1
             %       for a local file, 0 for a URL. Pass 0 to keep the sources.
+            %   ingest (NaN)      - should ingestion COPY each member in? NaN
+            %       follows add_file's per-type default: 1 for a local file, 0
+            %       for a URL, which is a reference rather than bytes to take.
+            %       Pass 1 with remote members to ingest a series whose bytes
+            %       live in a remote store: the database then retrieves each
+            %       one through the customFileHandler given to add_docs,
+            %       exactly as add_file('...', URL, 'ingest', 1) does for a
+            %       single file. Applies to the whole call, as deleteOriginal
+            %       does; a series is added in one go and its members share a
+            %       home. delete_original is unaffected -- a remote location
+            %       still defaults to 0, and is never deleted regardless.
             %
             % INDICES ARE ONE-BASED, matching the live NAME_# convention set by
             % ingested epoch data (ndi.daq.reader.mfdaq writes _seg.nbf_1
@@ -969,6 +980,7 @@ classdef document
                 options.recordSourceNames (1,1) logical = true
                 options.uidWidth (1,1) {mustBePositive, mustBeInteger} = 33
                 options.deleteOriginal (1,1) double = NaN
+                options.ingest (1,1) double = NaN
             end
 
             if ~did_document_obj.isFileSeries(name)
@@ -1066,7 +1078,7 @@ classdef document
             % (FileDir/<uid>), the source, and the files-table filename
             % (NAME_<index>). The manifest stays a download-side artifact.
             ingestLocations = localIngestLocations(locations, indices, uids, ...
-                options.deleteOriginal);
+                options.deleteOriginal, options.ingest);
 
             entry = struct('name', name, 'count', n, ...
                 'n_present', numel(locations), 'source_root', root, ...
@@ -1389,7 +1401,7 @@ function stem = localSeriesMemberStem(did_document_obj, name)
     stem = did_document_obj.seriesMemberOf(name);
 end
 
-function entries = localIngestLocations(locations, indices, uids, deleteOriginal)
+function entries = localIngestLocations(locations, indices, uids, deleteOriginal, ingestOption)
     % Build the transient uid -> source-path record for a series' members.
     %
     % Shaped like a file_info location so the ingestion loop can treat the two
@@ -1398,7 +1410,13 @@ function entries = localIngestLocations(locations, indices, uids, deleteOriginal
     %
     % Defaults follow add_file: a URL is not ingested and its original is not
     % deleted; a local file is ingested and, unless the caller says otherwise,
-    % its original is deleted. DELETEORIGINAL of NaN means "use that default".
+    % its original is deleted. DELETEORIGINAL and INGESTOPTION of NaN each
+    % mean "use that default"; a number overrides it for every member.
+    %
+    % Overriding INGEST is what lets a series whose bytes live in a remote
+    % store be ingested at all: the database's member loop hands any location
+    % that is not a plain file to the caller's customFileHandler, the same way
+    % the file_info loop does, and without this it would never be asked to.
 
     entries = did.datastructures.emptystruct('index','uid','location', ...
         'location_type','ingest','delete_original','parameters');
@@ -1423,6 +1441,10 @@ function entries = localIngestLocations(locations, indices, uids, deleteOriginal
             thisDelete = defaultDelete;
         else
             thisDelete = deleteOriginal;
+        end
+
+        if ~isnan(ingestOption)
+            ingest = ingestOption;
         end
 
         entries(end+1) = struct('index', indices(i), ...

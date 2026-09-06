@@ -400,6 +400,57 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             if isempty(data)
+                % REFUSE A SERIES WHOSE MEMBERS CANNOT BE LOCATED (#173).
+                %
+                % A series records how many members it has (n_present) apart
+                % from where they are (ingest_locations), and the second is
+                % stripped when a document is stored. So a document that has
+                % been through a database and comes back says "27,412 members"
+                % while carrying no way to find one. Storing that produces a
+                % manifest full of uids whose bytes will never arrive, and the
+                % member loop below -- which iterates ingest_locations -- would
+                % do it in complete silence, since an empty list is simply
+                % zero passes.
+                %
+                % This runs only for a document NEW to this database, and
+                % before the first write. Re-adding a document that is already
+                % here (to a second branch, say) is exempt and must be: its
+                % members were ingested when it first arrived, so an empty
+                % ingest_locations is expected and correct. What that leaves
+                % is the case worth refusing -- a stored document carried to a
+                % database that has never seen it, whose bytes are still in
+                % the database it came from.
+                %
+                % Deliberately no manifest read: knowing the count is enough
+                % to know something is wrong, and parsing the manifest during
+                % add_docs is exactly what carrying uid and index in
+                % ingest_locations exists to avoid.
+                try preadd_series = doc_props.files.series_info; catch, preadd_series = []; end
+                for asIdx = 1 : numel(preadd_series)
+                    thisSeries = preadd_series(asIdx);
+                    if ~isfield(thisSeries,'n_present') || ...
+                            isempty(thisSeries.n_present) || thisSeries.n_present <= 0
+                        continue
+                    end
+                    if isfield(thisSeries,'ingest_locations') && ...
+                            ~isempty(thisSeries.ingest_locations)
+                        continue
+                    end
+                    nPresent = thisSeries.n_present;
+                    thisName = sprintf('#%d', asIdx);
+                    if isfield(thisSeries,'name')
+                        thisName = char(thisSeries.name);
+                    end
+                    error('DID:SQLITEDB:FileSeries:MembersNotLocatable', ...
+                        ['Refusing to add document %s: its file series "%s" declares ' ...
+                         '%d present members but records no location for any of them. ' ...
+                         'A document read back from a database has had these stripped, ' ...
+                         'so it can be added to another branch of the database it came ' ...
+                         'from but not to a database that has never held it. Add the ' ...
+                         'document that authored the series, or re-author it with ' ...
+                         'addFileSeries.'], doc_id, thisName, nPresent);
+                end
+
                 % Get the JSON code that parses all the document's properties.
                 %
                 % A file series' member paths are stripped on the way in. They
@@ -555,11 +606,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % uid -> <FileDir>/<uid> -- which is the whole reason the manifest
             % exists. A level of a lightsheet pyramid is ~28,000 members; a row
             % each would put back exactly the per-member record that
-            % stripSeriesIngestLocations, the binary manifest and
-            % current_file_list's refusal to expand a series were all built to
+            % stripSeriesIngestLocations, the binary manifest format and
+            % is_in_file_list's empty fI_index for a member were all built to
             % avoid, and it would be paid in the files table on every ingest
-            % and every removal. See do_open_doc and check_exist_doc for the
-            % read side, and VH-Lab/DID-matlab#173 for the reasoning.
+            % and every removal. (NDI's current_file_list must not expand a
+            % series either, for the same reason; that one is NDI's to keep,
+            % and is named in the issue rather than implemented here.) See
+            % do_open_doc and check_exist_doc for the read side, and
+            % VH-Lab/DID-matlab#173 for the reasoning.
             %
             % What a member does get is its bytes at <FileDir>/<uid>, under
             % the uid the manifest already records for its slot. The copying
@@ -910,7 +964,79 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 destDir =  did.common.PathConstants.temppath;
                 %destDir = this_obj.FileDir;  % SDV this should be changed to file cache
                 %destDir = this_obj.get_preference('cache_folder');
-                destPath = fullfile(destDir, this_file_struct.uid);
+
+                % SINGLE-FLIGHT PER UID (VH-Lab/DID-matlab#173). Two MATLAB
+                % processes sharing one file cache is an ordinary lab setup,
+                % and PathConstants.temppath is tempdir/didtemp -- per USER,
+                % not per process -- so both land in the same place. Before
+                % this, both retrieved the same uid at once and:
+                %
+                %   * both wrote to temppath/<uid>, one fixed name per uid, so
+                %     each could see the other's half-written download;
+                %   * whichever finished second then failed outright, because
+                %     addFile refuses a name the winner already put in the
+                %     cache -- turning a redundant download into an error.
+                %
+                % The lock makes the second process wait and then find the
+                % file already there, which is the point: one fetch per uid,
+                % not one per caller. It is deliberately NOT inside the cache
+                % directory -- that directory is swept for orphan files and
+                % sized by listing it, so a stray lock there would be counted
+                % or collected. DID-python will need this same path to
+                % serialize against MATLAB; today it takes the cache's
+                % '<file>-lock' but knows nothing of this one.
+                uid = this_file_struct.uid;
+                cacheFile = fullfile(didCache.directoryName, uid);
+                lockFile = fullfile(destDir, [uid '-fetch-lock']);
+                % did.file.checkout_lock_file is the same primitive
+                % did.file.binaryTable/getLock takes for the cache catalog;
+                % this is a second, narrower lock over the DOWNLOAD, which
+                % ends before addFile and so is never held at the same time.
+                %
+                % Two arguments differ from binaryTable's, both because this
+                % lock is advisory where that one is required:
+                %
+                %   throwerror 0 -- a lock we cannot get must not fail a read.
+                %       Correctness here does not rest on the lock at all (the
+                %       unique temp name below and the addFile fallback carry
+                %       it), so a stuck peer costs a redundant download, never
+                %       an error the caller sees.
+                %   expiration 300 -- NOT the 3600 default. A holder that dies
+                %       mid-fetch leaves the file behind, and until it expires
+                %       every later fetch of that uid pays the full 30-second
+                %       wait before giving up and proceeding. Expiring EARLY
+                %       costs one redundant download; expiring late poisons a
+                %       uid for an hour. Five minutes is long enough for an
+                %       ordinary file and short enough that a crash is cheap.
+                %       binaryTable uses 20s for the same reason, over an
+                %       operation that is far quicker than a download.
+                [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0, 300);
+                if lockfid > 0
+                    lockCleanup = onCleanup(@() did.file.release_lock_file(lockFile, lockkey)); %#ok<NASGU>
+                else
+                    % Could not take the lock within the wait. Carrying on is
+                    % safe -- the temp name below is unique per fetch, and a
+                    % lost race is handled where addFile is called -- so a
+                    % stuck or slow peer costs a redundant download, never
+                    % correctness.
+                    lockCleanup = []; %#ok<NASGU>
+                end
+
+                % Whoever waited on the lock usually finds the work already
+                % done. Re-check before spending a download.
+                if isfile(cacheFile)
+                    didCache.touch(uid);
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
+                    return
+                end
+
+                % A unique temp name per fetch. The uid names the file's home
+                % in the cache, not the scratch copy on the way there, and
+                % using it for both is what let two fetches collide. Built
+                % from did.ido.unique_id rather than tempname so the name is
+                % unique per FETCH even within one process, and still says
+                % which uid it belongs to if one is ever left behind.
+                destPath = fullfile(destDir, [uid '.' did.ido.unique_id() '.part']);
                 try
                     if strcmpi(file_type,'file')
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
@@ -931,12 +1057,34 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         end
                     end
                     % now we have the temporary file for the file cache
-                    didCache.addFile(destPath, this_file_struct.uid);
-                    cacheFile = fullfile(didCache.directoryName,this_file_struct.uid);
+                    try
+                        didCache.addFile(destPath, uid);
+                    catch addErr
+                        % Losing the race is not a failure. Another process
+                        % may have placed this uid while the fetch was in
+                        % flight (the lock narrows this window but a peer that
+                        % never got the lock can still do it); its bytes are
+                        % the same bytes. Keep ours only if the cache really
+                        % has nothing.
+                        if ~isfile(cacheFile)
+                            rethrow(addErr);
+                        end
+                        if isfile(destPath)
+                            delete(destPath);
+                        end
+                    end
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
                     return
                 catch err
+                    % Clean up the partial download. The name is unique per
+                    % fetch now, so unlike the old fixed temppath/<uid> it
+                    % will never be overwritten by the next attempt -- every
+                    % failed fetch would otherwise leak one .part file into
+                    % temppath forever.
+                    if isfile(destPath)
+                        try delete(destPath); catch, end
+                    end
                     errMsg = strtrim(err.message); if ~isempty(errMsg), errMsg=[': ' errMsg]; end %#ok<AGROW>
                     warning('DID:SQLITEDB:open','Cannot access the %s "%s" in document "%s"%s',file_type,sourcePath,document_id,errMsg);
                 end

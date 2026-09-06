@@ -124,6 +124,35 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
             p = files.file_info(k(1)).locations(1).location;
         end
 
+        function p = localPathOf(~, db, doc, name)
+            % The on-disk path of a document's own file, by uid.
+            uids = doc.fileUids(name);
+            p = did.file.cachedPathForUid(uids{1}, ...
+                'additionalRoots', {db.FileDir});
+        end
+
+        function [doc, fileRoot] = seriesOnDiskOnly(testCase)
+            % A one-member series whose manifest and member sit in a plain
+            % directory, with no database anywhere. What the no-query
+            % accessors have to work from.
+            root = fullfile(pwd, 'store');
+            locs = {testCase.writeMember(root, 'a.bin', uint8(1:10))};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+
+            fileRoot = fullfile(pwd, 'stubFileDir');
+            if ~isfolder(fileRoot), mkdir(fileRoot); end
+
+            files = doc.document_properties.files;
+            k = find(strcmpi('chunkdata.bin', {files.file_info.name}));
+            copyfile(files.file_info(k(1)).locations(1).location, ...
+                fullfile(fileRoot, files.file_info(k(1)).locations(1).uid));
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            copyfile(e(1).location, fullfile(fileRoot, e(1).uid));
+        end
+
         function bytes = readMember(testCase, db, doc_id, name)
             % Open a member through the database and read all of it.
             f = db.open_doc(doc_id, name);
@@ -551,5 +580,406 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
             testCase.verifyFalse(db.exist_doc(doc.id(), 'filename1.ext_1'));
         end
 
+        % ---- refusing a series that cannot be ingested --------------------
+
+        function testStoredDocumentCannotBeAddedToAFreshDatabase(testCase)
+            % #173's addendum: add_docs must refuse a document whose series
+            % has members it cannot locate, rather than storing something
+            % broken. A document read back has had its ingest_locations
+            % stripped, so a database that has never held it has no way to
+            % fill the manifest's uids -- and the member loop would skip them
+            % in silence, since an empty list is simply zero passes.
+            [db, doc] = testCase.ingestedSeries();
+            stored = db.get_docs(doc.id());
+
+            other = did.implementations.sqlitedb('otherdb.sqlite');
+            other.add_branch('a');
+
+            testCase.verifyError(@() other.add_docs(stored), ...
+                'DID:SQLITEDB:FileSeries:MembersNotLocatable');
+        end
+
+        function testRefusalHappensBeforeAnythingIsWritten(testCase)
+            % Refusing after the docs row went in would leave the broken
+            % document half-stored, which is the state the guard exists to
+            % prevent.
+            [db, doc] = testCase.ingestedSeries();
+            stored = db.get_docs(doc.id());
+
+            other = did.implementations.sqlitedb('otherdb.sqlite');
+            other.add_branch('a');
+            try
+                other.add_docs(stored);
+            catch
+                % expected; the point is what is left behind
+            end
+
+            rows = other.run_sql_query( ...
+                ['SELECT doc_id FROM docs WHERE doc_id="' stored.id() '"'], true);
+            testCase.verifyEmpty(rows, ...
+                'nothing about the refused document should have been written');
+        end
+
+        function testTheGuardExemptsADocumentTheDatabaseAlreadyHolds(testCase)
+            % The exemption that keeps the guard honest. Re-adding a document
+            % this database already holds is ordinary -- its members were
+            % ingested when it first arrived, so an empty ingest_locations is
+            % expected there, not a fault.
+            %
+            % Reaching the DUPLICATE_DOC check is the proof: had the guard
+            % fired it would have raised MembersNotLocatable first, since it
+            % sits above that check and above every write.
+            [db, doc] = testCase.ingestedSeries();
+            stored = db.get_docs(doc.id());
+
+            testCase.verifyError(@() db.add_docs(stored), ...
+                'DID:SQLITEDB:DUPLICATE_DOC');
+        end
+
+        function testADeclaredButEmptySeriesIsNotRefused(testCase)
+            % A series that was never populated has nothing to locate, so
+            % there is nothing to complain about.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            db.add_docs(doc);
+
+            testCase.verifyNumElements( ...
+                db.search(did.query('', 'isa', 'demoSeries', '')), 1);
+        end
+
+        % ---- one fetch per uid --------------------------------------------
+
+        function testRetrievalUsesAUniqueTempNamePerFetch(testCase)
+            % The cross-process defect from #173: every fetch wrote to
+            % temppath/<uid>, one fixed name per uid. PathConstants.temppath
+            % is tempdir/didtemp -- per USER, not per process -- so two MATLAB
+            % processes sharing it could see each other's half-written
+            % download, and the loser's addFile then failed outright.
+            %
+            % The handler records where it was told to write, which is the
+            % only place that path is observable.
+            [db, doc, ~, manifestCopy] = testCase.remoteManifestSeries();
+
+            recordFile = fullfile(pwd, 'fetches.txt');
+            handler = @(destPath, sourcePath) ...
+                localCopyAndRecord(destPath, manifestCopy, recordFile);
+
+            db.open_doc(doc.id(), 'chunkdata.bin', 'customFileHandler', handler);
+
+            testCase.assertTrue(isfile(recordFile), ...
+                'precondition: the handler should have been asked to fetch');
+            lines = strtrim(strsplit(fileread(recordFile), newline));
+            lines = lines(~cellfun('isempty', lines));
+            testCase.assertNumElements(lines, 1);
+
+            uids = doc.fileUids('chunkdata.bin');
+            [~, base, ext] = fileparts(lines{1});
+
+            testCase.verifyNotEqual([base ext], uids{1}, ...
+                'the scratch copy must not be named for the uid alone');
+            testCase.verifySubstring(lines{1}, uids{1}, ...
+                'but it should still say which uid it belongs to');
+            testCase.verifyEqual(ext, '.part', ...
+                'and should be marked as a partial download');
+        end
+
+        function testAFetchThatLosesTheRaceUsesTheWinnersBytes(testCase)
+            % The other half of single-flight: a peer that never took the lock
+            % can still finish first. Simulated by having the handler place
+            % the same uid in the cache while this fetch is still in flight,
+            % so addFile refuses the name we were about to store under.
+            %
+            % Those are the same bytes, so losing must be silent and the
+            % winner's copy used. Before, addFile's error escaped and turned a
+            % redundant download into a failed open.
+            [db, doc, ~, manifestCopy] = testCase.remoteManifestSeries();
+            uids = doc.fileUids('chunkdata.bin');
+
+            handler = @(destPath, sourcePath) ...
+                localCopyAndPreempt(destPath, manifestCopy, uids{1});
+
+            f = db.open_doc(doc.id(), 'chunkdata.bin', 'customFileHandler', handler);
+            fopen(f);
+            closer = onCleanup(@() fclose(f)); %#ok<NASGU>
+
+            testCase.verifyEqual(char(fread(f, 8, 'uint8')'), 'DIDFSER1', ...
+                'the manifest should still open, from whichever copy won');
+        end
+
+        function testAFailedFetchLeavesNoPartialBehind(testCase)
+            % The leak a unique temp name introduces. The old fixed
+            % temppath/<uid> was at least overwritten by the next attempt; a
+            % uniquely named .part that nobody deletes stays forever, one per
+            % failed fetch.
+            %
+            % It is not only litter. NDI's customFileHandler short-circuits on
+            % isfile(destPath) and reports success without downloading, so a
+            % leftover partial could be taken for a finished download and
+            % moved into the cache under that uid -- silently wrong bytes for
+            % every later read. See VH-Lab/DID-matlab#173.
+            [db, doc] = testCase.remoteManifestSeries();
+
+            recordFile = fullfile(pwd, 'failed-fetches.txt');
+            handler = @(destPath, sourcePath) ...
+                localWriteThenFail(destPath, recordFile);
+
+            testCase.verifyError(@() db.open_doc(doc.id(), 'chunkdata.bin', ...
+                'customFileHandler', handler), 'DID:SQLITEDB:open');
+
+            testCase.assertTrue(isfile(recordFile), ...
+                'precondition: the handler should have been asked to fetch');
+            lines = strtrim(strsplit(fileread(recordFile), newline));
+            lines = lines(~cellfun('isempty', lines));
+            testCase.assertNotEmpty(lines);
+
+            for i = 1:numel(lines)
+                testCase.verifyFalse(isfile(lines{i}), ...
+                    'a failed fetch must not leave its partial download behind');
+            end
+        end
+
+        % ---- series accessors -------------------------------------------
+        %
+        % seriesCount answers from the document; WHICH slots are filled is
+        % recorded only in the manifest, so seriesHas and seriesMembers read
+        % it. Both still run no query and touch no network.
+
+        function testSeriesHasAnswersPerSlot(testCase)
+            [db, doc] = testCase.ingestedSeries();
+
+            for i = 1:3
+                testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', i), ...
+                    sprintf('member %d was added', i));
+            end
+            testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', 4), ...
+                'the series has three slots');
+        end
+
+        function testSeriesHasFollowsTheGapsOfASparseSeries(testCase)
+            % The case a NAME_# entry cannot express, asked directly.
+            [db, doc] = testCase.ingestedSeries([2 5 6]);
+
+            for i = [2 5 6]
+                testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', i), ...
+                    sprintf('member %d is present', i));
+            end
+            for i = [1 3 4 99]
+                testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', i), ...
+                    sprintf('member %d is not', i));
+            end
+        end
+
+        function testSeriesMembersListsOnlyTheFilledSlots(testCase)
+            [db, doc] = testCase.ingestedSeries([2 5 6]);
+
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+
+            testCase.verifyEqual(indices, [2 5 6], ...
+                'the gaps are skipped, not returned as empties');
+            testCase.verifyNumElements(uids, 3);
+
+            m = did.file.readSeriesManifest( ...
+                testCase.localPathOf(db, doc, 'chunkdata.bin'));
+            for k = 1:numel(indices)
+                testCase.verifyEqual(uids{k}, m.uids{indices(k)}, ...
+                    'each uid must be the one the manifest gives that slot');
+            end
+        end
+
+        function testSeriesMembersUidsResolveToTheMemberBytes(testCase)
+            % The shape the accessor exists for: one manifest read, then N
+            % resolutions that are pure functions of a uid -- no query, no
+            % network, callable from any thread.
+            [db, doc, ~, contents] = testCase.ingestedSeries();
+
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.assertEqual(indices, [1 2 3]);
+
+            for k = 1:numel(uids)
+                p = did.file.cachedPathForUid(uids{k}, ...
+                    'additionalRoots', {db.FileDir});
+                testCase.assertNotEmpty(p, 'the member should be on disk');
+                fid = fopen(p, 'r');
+                theseBytes = uint8(fread(fid, Inf, 'uint8')');
+                fclose(fid);
+                testCase.verifyEqual(theseBytes, contents{k});
+            end
+        end
+
+        function testSeriesHasIsAboutTheManifestNotTheDisk(testCase)
+            % The two questions are deliberately separate: a caller deciding
+            % what to fetch needs to know what SHOULD be there. Deleting the
+            % bytes changes exist_doc's answer and must not change this one.
+            [db, doc] = testCase.ingestedSeries();
+
+            [~, memberPath] = db.exist_doc(doc.id(), 'chunkdata.bin_2');
+            testCase.assertNotEmpty(memberPath);
+            delete(memberPath);
+
+            testCase.verifyFalse(db.exist_doc(doc.id(), 'chunkdata.bin_2'), ...
+                'the bytes are gone');
+            testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', 2), ...
+                'but the series still records the member');
+        end
+
+        function testSeriesAccessorsAreEmptyWithoutALocalManifest(testCase)
+            % Nothing is fetched to answer, so a manifest that is only remote
+            % gives the same "not here" cachedPathForFile gives.
+            [db, doc] = testCase.remoteManifestSeries();
+
+            testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', 1));
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.verifyEmpty(indices);
+            testCase.verifyEmpty(uids);
+        end
+
+        function testSeriesAccessorsRefuseAnUndeclaredName(testCase)
+            [db, doc] = testCase.ingestedSeries();
+
+            testCase.verifyFalse(db.seriesHas(doc, 'plainfile.ext', 1), ...
+                'an ordinary file is not a series');
+            testCase.verifyEmpty(db.seriesMembers(doc, 'plainfile.ext'));
+            testCase.verifyFalse(db.seriesHas(doc, 'nosuch.bin', 1));
+        end
+
+        function testSeriesAccessorsSurviveACorruptManifest(testCase)
+            % An accessor is what a caller walks a level with, so a damaged
+            % manifest must come back as "nothing here" rather than throwing
+            % part way through the walk. It is also SILENT here: open_doc is
+            % where the corruption is reported, once, where it can be acted
+            % on -- warning per accessor call would mean thousands of them.
+            [db, doc] = testCase.ingestedSeries();
+
+            manifestPath = testCase.localPathOf(db, doc, 'chunkdata.bin');
+            fid = fopen(manifestPath, 'w');
+            fwrite(fid, uint8('NOTAMANIFESTATALL'), 'uint8');
+            fclose(fid);
+
+            testCase.verifyWarningFree(@() db.seriesHas(doc, 'chunkdata.bin', 1));
+            testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', 1));
+
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.verifyEmpty(indices);
+            testCase.verifyEmpty(uids);
+        end
+
+        function testSeriesAccessorsReachNoDatabase(testCase)
+            % Same promise cachedPathForFile makes, and for the same reason:
+            % a viewer walking a level cannot hold a session per worker.
+            [doc, fileRoot] = testCase.seriesOnDiskOnly();
+
+            db = did.test.helper.NoQueryDatabaseWithRoots({fileRoot});
+
+            testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', 1));
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.verifyEqual(indices, 1);
+            testCase.verifyNumElements(uids, 1);
+        end
+
+        % ---- ingesting a series whose bytes are remote --------------------
+
+        function testIngestOptionLetsARemoteSeriesBeIngested(testCase)
+            % Without 'ingest', addFileSeries marks a URL member a reference
+            % and nothing copies it -- so a series stored remotely could never
+            % be taken in at all. With it, each member is retrieved through
+            % the same customFileHandler a single file uses.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+
+            payload = testCase.writeMember(fullfile(pwd,'src'), 'payload.bin', uint8(1:10));
+            locs = {'https://nosuchserver.invalid/a.bin', ...
+                    'https://nosuchserver.invalid/b.bin'};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'ingest', 1);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual([e.ingest], [1 1], ...
+                'the option must reach every member');
+            testCase.verifyEqual([e.delete_original], [0 0], ...
+                'a remote original is still never ours to delete');
+
+            handler = @(destPath, sourcePath) copyfile(payload, destPath);
+            testCase.verifyWarningFree( ...
+                @() db.add_docs(doc, 'customFileHandler', handler));
+
+            for i = 1:2
+                name = sprintf('chunkdata.bin_%d', i);
+                testCase.verifyTrue(db.exist_doc(doc.id(), name), name);
+                testCase.verifyEqual(testCase.readMember(db, doc.id(), name), ...
+                    uint8(1:10), name);
+            end
+        end
+
+        function testIngestOptionDefaultsAreUnchanged(testCase)
+            % The default stays add_file's per-type rule, so every existing
+            % caller behaves exactly as before.
+            root = fullfile(pwd, 'store');
+            locs = {testCase.writeMember(root, 'a.bin', uint8(1:10)), ...
+                    'https://nosuchserver.invalid/b.bin'};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual([e.ingest], [1 0], ...
+                'a local file is taken in, a URL is a reference');
+        end
+
+        function testIngestOptionCanAlsoDeclineALocalMember(testCase)
+            % The override runs both ways: a local member left in place, with
+            % the document recording where it is rather than copying it.
+            root = fullfile(pwd, 'store');
+            locs = {testCase.writeMember(root, 'a.bin', uint8(1:10))};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'ingest', 0);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(e.ingest, 0);
+            testCase.verifyEqual(e.location_type, 'file', ...
+                'declining ingestion must not change what the location IS');
+        end
+
     end
+end
+
+function localCopyAndRecord(destPath, sourceFile, recordFile)
+    % A customFileHandler that notes the path it was handed before doing the
+    % copy. A local function rather than a nested one so the handle can be
+    % built with a plain anonymous wrapper.
+    fid = fopen(recordFile, 'a');
+    if fid > 0
+        fprintf(fid, '%s\n', destPath);
+        fclose(fid);
+    end
+    copyfile(sourceFile, destPath);
+end
+
+function localCopyAndPreempt(destPath, sourceFile, uid)
+    % A customFileHandler that writes what it was asked for and then also
+    % places the same bytes in the cache under UID -- what a peer process
+    % would have done just before this fetch finished.
+    copyfile(sourceFile, destPath);
+    rival = [destPath '.rival'];
+    copyfile(sourceFile, rival);
+    did.common.getCache().addFile(rival, uid);
+end
+
+function localWriteThenFail(destPath, recordFile)
+    % A customFileHandler that gets part way and then dies, the way an
+    % interrupted transfer does: bytes on disk at destPath, and an error.
+    fid = fopen(recordFile, 'a');
+    if fid > 0
+        fprintf(fid, '%s\n', destPath);
+        fclose(fid);
+    end
+    fid = fopen(destPath, 'w');
+    if fid > 0
+        fwrite(fid, uint8(1:4), 'uint8');
+        fclose(fid);
+    end
+    error('DID:Test:SimulatedTransferFailure', 'interrupted mid-transfer');
 end
