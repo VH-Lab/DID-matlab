@@ -906,7 +906,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % else reaches here with a name that resolves, so trying the
                 % series rule only now costs a genuine miss one parse.
                 [tfSeries, seriesPath, seriesStem] = this_obj.seriesMemberPath(document_id, filename, ...
-                    'customFileHandler', customFileHandler, 'retrieveManifest', true);
+                    'customFileHandler', customFileHandler, 'mayRetrieve', true);
                 if tfSeries
                     file_obj = did.file.readonly_fileobj('fullpathfilename',seriesPath,varargin_to_pass{:});
                     return
@@ -919,9 +919,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     error('DID:SQLITEDB:open', ...
                         ['The file "%s" in document "%s" cannot be accessed. It is a ' ...
                          'member of the file series "%s", which records it, but its ' ...
-                         'bytes are not on this machine. A series member is resolved ' ...
-                         'through the manifest and carries no location of its own to ' ...
-                         'retrieve from.'], filename, document_id, seriesStem);
+                         'bytes are not on this machine and could not be retrieved. ' ...
+                         'A member carries no location of its own; it is fetched, if ' ...
+                         'at all, through a customFileHandler given the series ' ...
+                         'manifest''s location and the member''s uid.'], ...
+                        filename, document_id, seriesStem);
                 end
                 if isempty(filename)
                     error('DID:SQLITEDB:open','Document id "%s" does not include any readable file',document_id);
@@ -1268,29 +1270,30 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %      and check_exist_doc use for every other file.
             %
             % Optional Name-Value Arguments:
-            %   customFileHandler ([]) - passed to do_open_doc when the
-            %       manifest has to be retrieved.
-            %   retrieveManifest (false) - may the manifest be FETCHED if it
-            %       is not already on this machine? do_open_doc says yes: it
-            %       retrieves what it is asked for, and without the manifest
-            %       there is nothing to resolve against. check_exist_doc says
-            %       no: it reports what is here, and must not go to the
-            %       network to answer a question about local state.
+            %   customFileHandler ([]) - used to retrieve the manifest, and
+            %       the member itself, when either is not already here.
+            %   mayRetrieve (false) - may anything missing be FETCHED?
+            %       do_open_doc says yes: it retrieves what it is asked for,
+            %       and without the manifest there is nothing to resolve
+            %       against. check_exist_doc says no: it reports what is here,
+            %       and must not go to the network to answer a question about
+            %       local state.
             %
-            % A MEMBER'S OWN BYTES ARE NEVER RETRIEVED HERE. They have no
-            % orig_location to retrieve them from -- that is the record a
-            % series deliberately does not keep per member -- so a member that
-            % has not been ingested locally resolves to false. Fetching a
-            % member from a remote store is step 3 of issue #173, the batch
-            % presign endpoint, and belongs with the code that owns the
-            % transport.
+            % A MEMBER'S OWN BYTES can now be retrieved, through the caller's
+            % handler (issue #188). A member still has no orig_location of its
+            % own -- that is the per-member record a series deliberately does
+            % not keep -- so the SERIES MANIFEST's location is what the handler
+            % is given, with the member's uid in the context. See
+            % fetchSeriesMemberBytes. Without a handler, or when retrieval
+            % fails, a member that is not here still resolves to false, which
+            % is what it did before.
 
             arguments
                 this_obj
                 document_id
                 filename
                 options.customFileHandler = []
-                options.retrieveManifest (1,1) logical = false
+                options.mayRetrieve (1,1) logical = false
             end
 
             tf = false;
@@ -1321,7 +1324,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     'additionalRoots', {this_obj.FileDir});
                 if ~isempty(manifestPath), break, end
             end
-            if isempty(manifestPath) && options.retrieveManifest
+            if isempty(manifestPath) && options.mayRetrieve
                 try
                     if isempty(options.customFileHandler)
                         manifestObj = this_obj.do_open_doc(document_id, stem);
@@ -1359,15 +1362,210 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % a missing member, and the caller is told which.
             memberOf = stem;
 
-            % Step 4: the bytes.
+            % Step 4: the bytes. Absent locally, they may still be
+            % retrievable through the caller's handler (issue #188).
             thisPath = did.file.cachedPathForUid(memberUid, ...
                 'additionalRoots', {this_obj.FileDir});
+            if isempty(thisPath) && options.mayRetrieve
+                thisPath = this_obj.fetchSeriesMemberBytes(document_id, ...
+                    filename, stem, memberUid, manifestPath, options.customFileHandler);
+            end
             if isempty(thisPath), return, end
 
             tf = true;
             filePath = thisPath;
 
         end % seriesMemberPath()
+
+        function thisPath = fetchSeriesMemberBytes(this_obj, document_id, ...
+                filename, seriesStem, memberUid, manifestPath, customFileHandler)
+            % fetchSeriesMemberBytes - retrieve one series member's bytes
+            %
+            % THISPATH = fetchSeriesMemberBytes(THIS_OBJ, DOCUMENT_ID, FILENAME,
+            %     SERIESSTEM, MEMBERUID, MANIFESTPATH, CUSTOMFILEHANDLER)
+            %
+            % Asks CUSTOMFILEHANDLER for the bytes of the series member
+            % MEMBERUID, places them in the file cache under that uid, and
+            % returns the local path. Returns '' if the member cannot be
+            % fetched, for any reason at all.
+            %
+            % IT NEVER RAISES. seriesMemberPath is called speculatively -- by
+            % check_exist_doc for every name that has no files-table row, and
+            % by do_open_doc before it decides which error to report -- and
+            % both of those need a plain miss. A handler that cannot reach
+            % the member leaves exactly the behaviour of DID before #188:
+            % do_open_doc reports the member as absent, in its own words.
+            %
+            % WHAT THE HANDLER IS GIVEN. A member has no orig_location: that
+            % is the per-member record a series deliberately does not keep,
+            % and the reason 28,000 members cost 28,000 manifest slots rather
+            % than 28,000 files-table rows. So the SERIES MANIFEST's row
+            % supplies the location, and the member's own uid travels in the
+            % handler context. A handler that can reach the store the
+            % manifest came from can reach a sibling object in it given that
+            % uid -- for NDI, 'ndic://<datasetId>/<uid>', whose dataset id is
+            % right there in the manifest's location. DID composes no URL and
+            % learns no scheme; see VH-Lab/DID-matlab#188.
+            %
+            % TWO WAYS THAT WOULD BE SILENT WRONG BYTES, both refused here.
+            % Both matter more than an ordinary failure because the result is
+            % cached under the member's uid, where no later read can tell it
+            % from the real thing:
+            %
+            %   * a manifest whose own location is an ordinary local file is
+            %     never offered, since a handler handed a local path may
+            %     simply copy it;
+            %   * a handler that resolves what to fetch from SOURCEPATH
+            %     rather than from the context returns the manifest itself,
+            %     which is compared for and refused.
+            %
+            % A deliberately focused helper rather than an extraction of
+            % do_open_doc's retrieval block: that block is the most delicate
+            % code in this file and sharing it would be the better factoring,
+            % but not at the price of moving it. What is shared is its
+            % primitives, in the same order and with the same arguments --
+            % see do_open_doc for the reasoning behind every one of them,
+            % which is deliberately not restated here so the two cannot drift
+            % apart in the retelling.
+
+            thisPath = '';
+
+            if isempty(customFileHandler), return, end
+            if ~did.implementations.sqlitedb.isSafeUid(memberUid), return, end
+            % A pre-#186 two-argument handler is told nothing but the
+            % manifest's location, so it has no way to learn which member it
+            % is being asked for -- anything it produced would be the wrong
+            % bytes under this uid. It is not asked at all.
+            if ~did.implementations.sqlitedb.handlerTakesContext(customFileHandler)
+                return
+            end
+            memberUid = char(memberUid);
+
+            % The manifest's row, for its location and type. One query, and
+            % only on the path where the member is already known to be
+            % missing -- a series read straight through never reaches here.
+            query_str = ['SELECT orig_location,type ' ...
+                         '  FROM docs,files ' ...
+                         ' WHERE docs.doc_id="' this_obj.escapeSqlLiteral(document_id) '" ' ...
+                         '   AND files.doc_idx=docs.doc_idx' ...
+                         '   AND files.filename="' this_obj.escapeSqlLiteral(seriesStem) '"'];
+            try
+                data = this_obj.run_sql_query(query_str, true);  %structArray=true
+            catch
+                return
+            end
+            if isempty(data), return, end
+
+            % Which of the manifest's locations may be offered. A 'file'
+            % location is a path on this machine: handing it over risks a
+            % handler copying the MANIFEST's bytes into the member's cache
+            % slot, and a manifest that is local is also a database with no
+            % remote store to fetch a member from, so there is nothing to
+            % gain by trying. Every other type is the caller's to resolve,
+            % the same rule do_open_doc dispatches by.
+            isEligible = false(1, numel(data));
+            for idx = 1 : numel(data)
+                thisType = lower(strtrim(char(data(idx).type)));
+                isEligible(idx) = ~strcmp(thisType, 'file');
+            end
+            if ~any(isEligible), return, end
+
+            didCache  = did.common.getCache();
+            cacheFile = fullfile(didCache.directoryName, memberUid);
+            destDir   = did.common.PathConstants.temppath;
+
+            % Single-flight per uid, as do_open_doc does it: the same lock
+            % file naming, the same advisory 30/0/300 arguments, the same
+            % unique '.part' name, the same addFile race fallback.
+            lockFile = fullfile(destDir, [memberUid '-fetch-lock']);
+            [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0, 300);
+            if lockfid > 0
+                lockCleanup = onCleanup(@() did.file.release_lock_file(lockFile, lockkey)); %#ok<NASGU>
+            else
+                lockCleanup = []; %#ok<NASGU>
+            end
+
+            % Whoever waited on the lock usually finds the work already done.
+            thisPath = did.file.cachedPathForUid(memberUid, ...
+                'additionalRoots', {this_obj.FileDir});
+            if ~isempty(thisPath)
+                if strcmp(thisPath, cacheFile)
+                    didCache.touch(memberUid);
+                end
+                return
+            end
+
+            destPath = fullfile(destDir, [memberUid '.' did.ido.unique_id() '.part']);
+            for idx = 1 : numel(data)
+                if ~isEligible(idx), continue, end
+                sourcePath = data(idx).orig_location;
+                ctx = struct( ...
+                    'documentId', document_id, ...
+                    'filename',   filename, ...
+                    'seriesName', seriesStem, ...
+                    'uid',        memberUid, ...
+                    'mode',       'open');
+                try
+                    did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                        customFileHandler, destPath, sourcePath, ctx);
+                    if ~isfile(destPath), continue, end
+
+                    if did.implementations.sqlitedb.filesAreIdentical(destPath, manifestPath)
+                        % The handler resolved SOURCEPATH instead of the
+                        % context, and fetched the manifest a second time.
+                        % Caching that under the member's uid would make
+                        % every later read of this member return the
+                        % manifest, quietly and forever. A member that
+                        % genuinely holds a byte-for-byte copy of its own
+                        % manifest loses one fetch here; that is the cheaper
+                        % mistake by a wide margin.
+                        warning('DID:SQLITEDB:FileSeries:HandlerReturnedManifest', ...
+                            ['The customFileHandler returned the series manifest''s own ' ...
+                             'bytes when asked for member "%s" of document "%s". A series ' ...
+                             'member is named by the uid in the handler context, not by ' ...
+                             'the manifest location passed as sourcePath. Refusing the ' ...
+                             'result rather than caching it under the member''s uid.'], ...
+                            filename, document_id);
+                        discardPartial();
+                        continue
+                    end
+
+                    try
+                        % The member's uid names its home in the cache. A
+                        % manifest written with a non-default uidWidth gives
+                        % a uid the cache will not accept, which lands in the
+                        % catch below as an ordinary miss.
+                        didCache.addFile(destPath, memberUid);
+                    catch addErr
+                        % Losing the race is not a failure; another process
+                        % may have placed this uid while the fetch was in
+                        % flight, and its bytes are the same bytes.
+                        if ~isfile(cacheFile)
+                            rethrow(addErr);
+                        end
+                        discardPartial();
+                    end
+                    thisPath = cacheFile;
+                    return
+                catch
+                    % Deliberately silent. do_open_doc warns about a file it
+                    % was asked for and could not get, and then errors; this
+                    % is a speculative resolution whose caller reports the
+                    % miss in its own words a moment later, so a warning here
+                    % would be a second voice for one event.
+                    discardPartial();
+                end
+            end
+
+            function discardPartial()
+                % The name is unique per fetch, so an abandoned '.part' is
+                % never overwritten by the next attempt and would leak into
+                % temppath forever.
+                if isfile(destPath)
+                    try delete(destPath); catch, end
+                end
+            end
+        end % fetchSeriesMemberBytes()
 
         function [hCleanup, filename] = open_db(this_obj)
             % open_db - Open/create a DID SQLite database file
@@ -1834,7 +2032,8 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %   context.filename    -- char, the file name being retrieved
             %                          (for a series member, 'NAME_<i>')
             %   context.seriesName  -- char, '' unless this file is a
-            %                          series member being ingested
+            %                          series member: being ingested, or
+            %                          being fetched at open time (#188)
             %   context.uid         -- char, the file's uid
             %   context.mode        -- 'add' | 'open'
             %
@@ -1842,6 +2041,36 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % calling the cloud batch presign endpoint scoped to one document
             % (or fileSeries) instead of one API round trip per uid. See
             % DID-matlab issue #186 and NDI-matlab issue #952.
+            %
+            % FOR A SERIES MEMBER THE CONTEXT IS NOT OPTIONAL DETAIL. The
+            % member has no location of its own, so SOURCEPATH is the series
+            % MANIFEST's; the file actually being asked for is the one named
+            % by context.uid. A handler that resolves SOURCEPATH and ignores
+            % the uid fetches the manifest again. See
+            % did.implementations.sqlitedb/fetchSeriesMemberBytes, which does
+            % not call a handler that cannot receive the context at all, and
+            % refuses a result that turns out to be the manifest.
+            if did.implementations.sqlitedb.handlerTakesContext(handler)
+                handler(destPath, sourcePath, context);
+            else
+                handler(destPath, sourcePath);
+            end
+        end
+
+        function tf = handlerTakesContext(handler)
+            % handlerTakesContext - will this handler be given the context?
+            %
+            % TF = handlerTakesContext(HANDLER)
+            %
+            % True when HANDLER declares three or more positional inputs, or
+            % takes varargin (nargin(HANDLER) is negative). A handler
+            % declared with exactly two gets the pre-#186 two-argument call
+            % and never sees a context.
+            %
+            % The rule dispatchCustomFileHandler dispatches by, named once so
+            % that a caller with nothing useful to say to a two-argument
+            % handler -- fetchSeriesMemberBytes, whose whole message to the
+            % handler is in the context -- can ask rather than re-derive it.
             try
                 n = nargin(handler);
             catch
@@ -1850,13 +2079,47 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % old contract.
                 n = 2;
             end
-            if n == 2
-                handler(destPath, sourcePath);
-            else
-                % n >= 3 -- three or more declared positional inputs -- or
-                % n < 0 -- varargin. Both opt in.
-                handler(destPath, sourcePath, context);
+            tf = (n ~= 2);
+        end
+
+        function tf = filesAreIdentical(pathA, pathB)
+            % filesAreIdentical - do two files hold exactly the same bytes?
+            %
+            % TF = filesAreIdentical(PATHA, PATHB)
+            %
+            % False if either path is missing or unreadable: this answers a
+            % question about two files that are both here, and every caller
+            % treats "cannot tell" as "not the same".
+            %
+            % Sizes are compared first, which answers it for free in almost
+            % every call the case this exists for makes -- a series member
+            % against its own manifest -- and leaves the byte comparison to
+            % the few that happen to be the same length.
+            tf = false;
+            if isempty(pathA) || isempty(pathB), return, end
+            if ~isfile(pathA) || ~isfile(pathB), return, end
+
+            dA = dir(pathA);
+            dB = dir(pathB);
+            if isempty(dA) || isempty(dB), return, end
+            if dA(1).bytes ~= dB(1).bytes, return, end
+
+            fidA = fopen(pathA, 'r');
+            if fidA < 0, return, end
+            closeA = onCleanup(@() fclose(fidA)); %#ok<NASGU>
+            fidB = fopen(pathB, 'r');
+            if fidB < 0, return, end
+            closeB = onCleanup(@() fclose(fidB)); %#ok<NASGU>
+
+            chunkBytes = 1048576;
+            while true
+                a = fread(fidA, chunkBytes, '*uint8');
+                b = fread(fidB, chunkBytes, '*uint8');
+                if numel(a) ~= numel(b), return, end
+                if isempty(a), break, end
+                if ~isequal(a, b), return, end
             end
+            tf = true;
         end
 
         function tf = isSafeUid(uid)
