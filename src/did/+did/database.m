@@ -436,11 +436,18 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             %   - 'customFileHandler' - a function handle used to retrieve a
             %       file whose location is not a local path (e.g. 'ndicloud').
             %       It is called as HANDLER(DESTPATH, SOURCEPATH) and must
-            %       produce a local file at DESTPATH. DID retrieves no remote
-            %       file itself; a downstream package supplies retrieval
-            %       through this handler. Only locations marked for ingestion
-            %       are retrieved here, which for remote locations is rare --
-            %       ingest defaults to 0 for 'url' and 'ndicloud'.
+            %       produce a local file at DESTPATH. A handler declared with
+            %       three or more inputs (or with varargin) is instead called
+            %       as HANDLER(DESTPATH, SOURCEPATH, CONTEXT), receiving a
+            %       scalar struct with per-call document context
+            %       (documentId, filename, seriesName, uid, mode) so it can
+            %       batch across a document. See DID-matlab issue #186 and
+            %       did.implementations.sqlitedb.dispatchCustomFileHandler.
+            %       DID retrieves no remote file itself; a downstream package
+            %       supplies retrieval through this handler. Only locations
+            %       marked for ingestion are retrieved here, which for remote
+            %       locations is rare -- ingest defaults to 0 for 'url' and
+            %       'ndicloud'.
             %
             % See also: DID.DATABASE/OPEN_DOC, which takes the same handler.
             arguments
