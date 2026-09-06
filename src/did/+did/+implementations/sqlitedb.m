@@ -1077,6 +1077,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
                     return
                 catch err
+                    % Clean up the partial download. The name is unique per
+                    % fetch now, so unlike the old fixed temppath/<uid> it
+                    % will never be overwritten by the next attempt -- every
+                    % failed fetch would otherwise leak one .part file into
+                    % temppath forever.
+                    if isfile(destPath)
+                        try delete(destPath); catch, end
+                    end
                     errMsg = strtrim(err.message); if ~isempty(errMsg), errMsg=[': ' errMsg]; end %#ok<AGROW>
                     warning('DID:SQLITEDB:open','Cannot access the %s "%s" in document "%s"%s',file_type,sourcePath,document_id,errMsg);
                 end
