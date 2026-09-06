@@ -304,5 +304,116 @@ classdef TestSeriesManifest < matlab.unittest.TestCase
             testCase.verifyEqual(fread(fid, 4, '*uint8')', uint8([0 0 0 0]));
         end
 
+        % ---- single-slot reads ---------------------------------------
+        %
+        % did.file.readSeriesManifestUid is how a member is resolved on the
+        % read path: one seek instead of the whole uid block. It must agree
+        % with readSeriesManifest slot for slot, or NAME_<i> would resolve to
+        % a different file depending on which reader asked.
+
+        function testSingleSlotAgreesWithTheWholeManifest(testCase)
+            uids = {did.ido.unique_id(), '', did.ido.unique_id(), ...
+                    did.ido.unique_id(), ''};
+            p = testCase.manifestPath();
+            did.file.writeSeriesManifest(p, uids);
+
+            m = did.file.readSeriesManifest(p);
+            for i = 1:numel(uids)
+                [oneUid, count] = did.file.readSeriesManifestUid(p, i);
+                testCase.verifyEqual(oneUid, m.uids{i}, ...
+                    sprintf('slot %d must match the whole-manifest read', i));
+                testCase.verifyEqual(count, m.count);
+            end
+        end
+
+        function testSingleSlotSkipsTheSourceNameSection(testCase)
+            % The name section is unbounded in size and is provenance, not
+            % resolution. Reading one uid must not depend on it at all --
+            % including when it is present.
+            uids  = {did.ido.unique_id(), did.ido.unique_id()};
+            names = {'level0/0.0.0', 'level0/0.0.1'};
+            p = testCase.manifestPath();
+            did.file.writeSeriesManifest(p, uids, 'sourceNames', names);
+
+            testCase.verifyEqual(did.file.readSeriesManifestUid(p, 2), uids{2});
+        end
+
+        function testSlotBeyondTheCountIsEmptyNotAnError(testCase)
+            % A sparse series is asked about slots it does not have, and the
+            % caller acts on "no such member" -- so it is an answer.
+            uids = {did.ido.unique_id()};
+            p = testCase.manifestPath();
+            did.file.writeSeriesManifest(p, uids);
+
+            [oneUid, count] = did.file.readSeriesManifestUid(p, 99);
+            testCase.verifyEmpty(oneUid);
+            testCase.verifyEqual(count, 1, ...
+                'the count is reported whether or not the slot exists');
+        end
+
+        function testAbsentSlotIsEmpty(testCase)
+            uids = {did.ido.unique_id(), '', did.ido.unique_id()};
+            p = testCase.manifestPath();
+            did.file.writeSeriesManifest(p, uids);
+
+            testCase.verifyEmpty(did.file.readSeriesManifestUid(p, 2));
+        end
+
+        function testSingleSlotHonoursACustomUidWidth(testCase)
+            % The offset of slot i is 32 + (i-1)*uid_width, so a reader that
+            % assumed 33 would return the wrong bytes for every slot but the
+            % first -- and would return something, not nothing.
+            uids = {'aaa', 'bbb', 'ccc'};
+            p = testCase.manifestPath();
+            did.file.writeSeriesManifest(p, uids, 'uidWidth', 4);
+
+            testCase.verifyEqual(did.file.readSeriesManifestUid(p, 1), 'aaa');
+            testCase.verifyEqual(did.file.readSeriesManifestUid(p, 2), 'bbb');
+            testCase.verifyEqual(did.file.readSeriesManifestUid(p, 3), 'ccc');
+        end
+
+        function testSingleSlotRejectsANonManifest(testCase)
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w'); fwrite(fid, uint8('NOTAMANIFEST'), 'uint8'); fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifestUid(p, 1), ...
+                'DID:FileSeries:readSeriesManifestUid:badMagic');
+        end
+
+        function testSingleSlotRejectsAnUnsupportedVersion(testCase)
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            testCase.writeHeader(fid, 0, 1, 33, 2);
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifestUid(p, 1), ...
+                'DID:FileSeries:readSeriesManifestUid:badVersion');
+        end
+
+        function testSingleSlotRejectsAZeroUidWidth(testCase)
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            testCase.writeHeader(fid, 0, 1, 0, 1);
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifestUid(p, 1), ...
+                'DID:FileSeries:readSeriesManifestUid:badUidWidth');
+        end
+
+        function testSingleSlotRejectsATruncatedFile(testCase)
+            % The header promises three members; the file holds one. Reading
+            % slot 3 must say so rather than returning '' , which the caller
+            % would read as "that member was never written".
+            uids = {did.ido.unique_id(), did.ido.unique_id(), did.ido.unique_id()};
+            p = testCase.manifestPath();
+            did.file.writeSeriesManifest(p, uids);
+
+            fid = fopen(p, 'r'); raw = fread(fid, Inf, '*uint8'); fclose(fid);
+            fid = fopen(p, 'w'); fwrite(fid, raw(1:65), 'uint8'); fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifestUid(p, 3), ...
+                'DID:FileSeries:readSeriesManifestUid:truncated');
+        end
+
     end
 end

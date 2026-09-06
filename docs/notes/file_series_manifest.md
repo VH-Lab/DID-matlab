@@ -61,6 +61,48 @@ no real uid can collide with the sentinel. Absent members are the reason the uid
 array is dense-with-sentinel rather than a list of pairs: for a chunk grid where
 most members exist, dense is both smaller and O(1) to index.
 
+## Resolving a member
+
+A member is resolved **through the manifest**, and gets no `file_info` entry and
+no `files`-table row of its own. That is the choice the whole format exists to
+make: rows would make every existing read path work untouched, and would put
+back the ~28,000 per-member records the manifest was built to remove.
+
+Given `NAME_<i>` on a document that declares the series `NAME`:
+
+1. `did.document/seriesMemberOf` parses `NAME_<i>` and confirms `NAME` is a
+   declared series. This is the same rule `is_in_file_list` uses to accept the
+   name in the first place, asked once and in one place.
+2. `NAME` is an ordinary file of the document, so its manifest is found the
+   ordinary way — by the uid recorded for it, at `<cache>/<uid>` or
+   `<FileDir>/<uid>`.
+3. `did.file.readSeriesManifestUid` reads **slot `i` only**: one seek and
+   `uid_width` bytes, never the whole uid block and never the name section.
+4. The member's bytes are at `<cache>/<uid>` or `<FileDir>/<uid>` — the same
+   two candidates, in the same order, that every other file uses.
+
+`did.implementations.sqlitedb/do_open_doc` and `check_exist_doc` take this path
+when the files-table query returns nothing, which is exactly what a member looks
+like. `did.database/cachedPathForFile` takes the same path without any query at
+all, since the manifest's uid is in the document the caller already holds.
+
+**What this costs.** A member read is two path resolutions and a small manifest
+read instead of one path resolution, and `check_exist_doc` answers `false` for a
+member whose *manifest* is not local yet, since it will not fetch to answer.
+A member also has no `orig_location`, so nothing can retrieve one member's bytes
+from a remote store; that is step 3 of VH-Lab/DID-matlab#173, the batch presign
+endpoint, and belongs with the code that owns the transport.
+
+## Ingesting members
+
+`did.document/addFileSeries` records where each member's bytes currently are, in
+`files.series_info(k).ingest_locations`, paired with the uid the manifest gives
+that member's slot. `sqlitedb/do_add_doc` copies each one to `<FileDir>/<uid>`
+using the same machinery as a `file_info` location — the same `copyfile`, the
+same `customFileHandler` for a non-`file` location, the same `delete_original` —
+and inserts no row. The record is then stripped from the document's stored JSON
+(`did.document.stripSeriesIngestLocations`), so member paths never persist.
+
 ## Source names, and what is deliberately not stored
 
 The optional name section holds each member's source path **relative to the

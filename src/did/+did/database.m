@@ -727,12 +727,19 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             tf = false;
             filePath = '';
 
+            additionalRoots = database_obj.do_cachedPathRoots();
+
             uids = document_obj.fileUids(filename);
             if isempty(uids)
+                % A file series member has no file_info entry of its own --
+                % membership is the manifest's to answer -- so the miss above
+                % is what a member looks like, not a "no such file". Resolving
+                % it still touches nothing but the document and the disk: the
+                % manifest's uid comes from the document, and one seek into
+                % the manifest gives the member's.
+                [tf, filePath] = localSeriesMemberPath(document_obj, filename, additionalRoots);
                 return;
             end
-
-            additionalRoots = database_obj.do_cachedPathRoots();
 
             for i=1:numel(uids)
                 thisPath = did.file.cachedPathForUid(uids{i}, ...
@@ -1991,6 +1998,57 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
         end % canfindonefile
     end % Static methods
 end % database classdef
+
+function [tf, filePath] = localSeriesMemberPath(document_obj, filename, additionalRoots)
+    % Where a file series member is on disk, from the document and the
+    % filesystem alone.
+    %
+    % Local helper for did.database/cachedPathForFile. It keeps that method's
+    % promise -- no SQL, no network, safe from any thread and any process --
+    % which is why it takes the roots as an argument rather than asking the
+    % database for them: everything it needs is already in hand.
+    %
+    % A member's uid lives in the series' manifest rather than in file_info,
+    % so this is two resolutions instead of one: the manifest by its own uid,
+    % then the member by the uid at slot INDEX. The second is a single seek,
+    % not a read of the whole manifest (did.file.readSeriesManifestUid), so
+    % walking a pyramid level costs one small read per member.
+    %
+    % See also: did.database/cachedPathForFile, did.document/seriesMemberOf
+
+    tf = false;
+    filePath = '';
+
+    [stem, index] = document_obj.seriesMemberOf(filename);
+    if isempty(stem), return; end
+    if ~isscalar(index) || index < 1 || index ~= round(index), return; end
+
+    manifestPath = '';
+    manifestUids = document_obj.fileUids(stem);
+    for i = 1:numel(manifestUids)
+        manifestPath = did.file.cachedPathForUid(manifestUids{i}, ...
+            'additionalRoots', additionalRoots);
+        if ~isempty(manifestPath), break; end
+    end
+    if isempty(manifestPath), return; end
+
+    try
+        memberUid = did.file.readSeriesManifestUid(manifestPath, index);
+    catch
+        % "Not on this machine" is this function's whole vocabulary; a
+        % corrupt manifest is reported where it can be acted on, by
+        % open_doc.
+        return;
+    end
+    if isempty(memberUid), return; end
+
+    thisPath = did.file.cachedPathForUid(memberUid, ...
+        'additionalRoots', additionalRoots);
+    if isempty(thisPath), return; end
+
+    tf = true;
+    filePath = thisPath;
+end
 
 function restoreJournalMode(database_obj)
     % restoreJournalMode - restore the SQLite rollback journal.

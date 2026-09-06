@@ -370,6 +370,34 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 end
             end
 
+            % A file series' members go through the same guard. They are
+            % copied to <FileDir>/<uid> exactly as a file_info location is,
+            % so a uid that would escape FileDir escapes it just as far --
+            % and a series is where a bad uid would be least noticed, since
+            % no member has a row in the files table to inspect.
+            try preflight_series = doc_props.files.series_info; catch, preflight_series = []; end
+            for psIdx = 1 : numel(preflight_series)
+                try
+                    psName = char(preflight_series(psIdx).name);
+                catch
+                    psName = sprintf('#%d', psIdx);
+                end
+                try
+                    psLocations = preflight_series(psIdx).ingest_locations;
+                catch
+                    continue
+                end
+                for psLocIdx = 1 : numel(psLocations)
+                    memberName = sprintf('%s_#%d', psName, psLocIdx);
+                    try
+                        memberName = sprintf('%s_%d', psName, psLocations(psLocIdx).index);
+                    catch
+                        % keep the positional label
+                    end
+                    this_obj.validateIngestFileEntry(memberName, psLocations(psLocIdx));
+                end
+            end
+
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             if isempty(data)
                 % Get the JSON code that parses all the document's properties.
@@ -517,6 +545,74 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
+                end
+            end
+
+            % Now the same for a file series' members.
+            %
+            % THEY GET NO FILES-TABLE ROW, DELIBERATELY. A member is resolved
+            % through the series' manifest -- NAME_<i> -> manifest slot i ->
+            % uid -> <FileDir>/<uid> -- which is the whole reason the manifest
+            % exists. A level of a lightsheet pyramid is ~28,000 members; a row
+            % each would put back exactly the per-member record that
+            % stripSeriesIngestLocations, the binary manifest and
+            % current_file_list's refusal to expand a series were all built to
+            % avoid, and it would be paid in the files table on every ingest
+            % and every removal. See do_open_doc and check_exist_doc for the
+            % read side, and VH-Lab/DID-matlab#173 for the reasoning.
+            %
+            % What a member does get is its bytes at <FileDir>/<uid>, under
+            % the uid the manifest already records for its slot. The copying
+            % is the file loop's, unchanged: same destination rule, same
+            % customFileHandler for a non-'file' location, same
+            % delete_original.
+            try seriesInfo = doc_props.files.series_info; catch, seriesInfo = []; end
+            for sIdx = 1 : numel(seriesInfo)
+                try
+                    seriesName = sprintf('#%d', sIdx);  % used in catch, if the line below fails
+                    seriesName = char(seriesInfo(sIdx).name);
+                    memberLocations = seriesInfo(sIdx).ingest_locations;
+                    for mIdx = 1 : numel(memberLocations)
+                        thisMember = memberLocations(mIdx);
+                        if ~thisMember.ingest
+                            % A member that is a reference rather than bytes
+                            % to copy -- a URL, say. add_file treats these the
+                            % same way, and the manifest still names it.
+                            continue
+                        end
+                        memberName = sprintf('%s_%d', seriesName, thisMember.index);
+                        sourcePath = thisMember.location;
+                        destPath = fullfile(this_obj.FileDir, thisMember.uid);
+                        try
+                            errMsg = '';
+                            file_type = lower(strtrim(thisMember.location_type));
+                            if strcmpi(file_type, 'file')
+                                [status,errMsg] = copyfile(sourcePath, destPath, 'f');
+                            elseif ~isempty(options.customFileHandler)
+                                options.customFileHandler(destPath, sourcePath);
+                                status = isfile(destPath);
+                                if ~status
+                                    errMsg = sprintf('customFileHandler did not produce a file at "%s"', destPath);
+                                end
+                            else
+                                status = false;
+                                errMsg = sprintf('file type "%s" needs a customFileHandler and none was supplied', file_type);
+                            end
+                        catch err
+                            status = false;
+                            errMsg = err.message;
+                        end
+                        if ~status
+                            warning('DID:SQLiteDB:add_doc','Failed to cache "%s" %s referenced in document object: %s',memberName,file_type,errMsg);
+                        else
+                            if thisMember.delete_original && ~contains(sourcePath,'://')
+                                delete(sourcePath);
+                            end
+                            numCachedFiles = numCachedFiles + 1;
+                        end
+                    end
+                catch
+                    warning('DID:SQLiteDB:add_doc','Bad definition of file series %s in document object',seriesName);
                 end
             end
             %{
@@ -726,6 +822,17 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
             data = this_obj.run_sql_query(query_str, true);  %structArray=true
             if isempty(data)
+                % No files-table row. That is exactly what a file series
+                % MEMBER looks like: members carry no row of their own, and
+                % are resolved through the series' manifest instead. Nothing
+                % else reaches here with a name that resolves, so trying the
+                % series rule only now costs a genuine miss one parse.
+                [tfSeries, seriesPath] = this_obj.seriesMemberPath(document_id, filename, ...
+                    'customFileHandler', customFileHandler, 'retrieveManifest', true);
+                if tfSeries
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',seriesPath,varargin_to_pass{:});
+                    return
+                end
                 if isempty(filename)
                     error('DID:SQLITEDB:open','Document id "%s" does not include any readable file',document_id);
                 else
@@ -889,7 +996,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
             data = this_obj.run_sql_query(query_str, true);  %structArray=true
             tf = false;
-            if ~isempty(data)
+            if isempty(data)
+                % A file series member has no files-table row; it is resolved
+                % through the manifest. Nothing is RETRIEVED to answer this:
+                % check_exist_doc reports what is on this machine, and a
+                % manifest that is not here yet makes the answer "no", the
+                % same answer it already gives for a file whose row exists but
+                % whose bytes have never been fetched.
+                [tf, file_path] = this_obj.seriesMemberPath(document_id, filename);
+            else
                 % A row in the files table does NOT guarantee a file on disk:
                 % do_add_doc inserts a files row even when caching failed and
                 % destPath = ''. So verify existence with isfile rather than
@@ -926,6 +1041,130 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
     % Internal methods used by this class
     methods (Access=protected)
+        function [tf, filePath] = seriesMemberPath(this_obj, document_id, filename, options)
+            % seriesMemberPath - resolve NAME_<i> of a file series to a local path
+            %
+            % [TF, FILEPATH] = seriesMemberPath(THIS_OBJ, DOCUMENT_ID, FILENAME)
+            %
+            % Returns whether FILENAME is a member of a file series declared
+            % by DOCUMENT_ID and, if so, whether that member's bytes are on
+            % this machine, and where. TF is false and FILEPATH is '' for
+            % anything that is not a resolvable member; that is an answer, not
+            % an error, since both callers have their own way of reporting a
+            % miss.
+            %
+            % THE RESOLUTION RULE. A series member has NO files-table row and
+            % no file_info entry: the manifest is what records its uid, and
+            % that is the point of the whole feature (VH-Lab/DID-matlab#173).
+            % So resolving NAME_<i> is four steps:
+            %
+            %   1. NAME_<i> parses as a member of the declared series NAME
+            %      (did.document/seriesMemberOf, the same rule that makes the
+            %      name valid in is_in_file_list);
+            %   2. NAME is an ordinary file of the document, so its manifest
+            %      is found the ordinary way, by uid;
+            %   3. slot i of that manifest gives the member's uid, in one seek
+            %      (did.file.readSeriesManifestUid);
+            %   4. the member's bytes are at <cache>/<uid> or <FileDir>/<uid>,
+            %      the same two candidates in the same order that do_open_doc
+            %      and check_exist_doc use for every other file.
+            %
+            % Optional Name-Value Arguments:
+            %   customFileHandler ([]) - passed to do_open_doc when the
+            %       manifest has to be retrieved.
+            %   retrieveManifest (false) - may the manifest be FETCHED if it
+            %       is not already on this machine? do_open_doc says yes: it
+            %       retrieves what it is asked for, and without the manifest
+            %       there is nothing to resolve against. check_exist_doc says
+            %       no: it reports what is here, and must not go to the
+            %       network to answer a question about local state.
+            %
+            % A MEMBER'S OWN BYTES ARE NEVER RETRIEVED HERE. They have no
+            % orig_location to retrieve them from -- that is the record a
+            % series deliberately does not keep per member -- so a member that
+            % has not been ingested locally resolves to false. Fetching a
+            % member from a remote store is step 3 of issue #173, the batch
+            % presign endpoint, and belongs with the code that owns the
+            % transport.
+
+            arguments
+                this_obj
+                document_id
+                filename
+                options.customFileHandler = []
+                options.retrieveManifest (1,1) logical = false
+            end
+
+            tf = false;
+            filePath = '';
+
+            if isstring(filename) && isscalar(filename), filename = char(filename); end
+            if ~ischar(filename) || isempty(filename), return, end
+
+            % Cheap syntactic gate before anything is fetched: a name with no
+            % '_' cannot be a member, and every ordinary miss takes this exit.
+            if ~any(filename=='_'), return, end
+
+            document_obj = this_obj.do_get_doc(document_id, 'OnMissing', 'ignore');
+            if isempty(document_obj), return, end
+
+            [stem, index] = document_obj.seriesMemberOf(filename);
+            if isempty(stem), return, end
+            if ~isscalar(index) || index < 1 || index ~= round(index), return, end
+
+            % Step 2: the manifest. Its uid comes from the document in hand,
+            % so the common case -- the manifest already ingested -- costs no
+            % further query.
+            manifestPath = '';
+            manifestUids = document_obj.fileUids(stem);
+            for i = 1 : numel(manifestUids)
+                manifestPath = did.file.cachedPathForUid(manifestUids{i}, ...
+                    'additionalRoots', {this_obj.FileDir});
+                if ~isempty(manifestPath), break, end
+            end
+            if isempty(manifestPath) && options.retrieveManifest
+                try
+                    if isempty(options.customFileHandler)
+                        manifestObj = this_obj.do_open_doc(document_id, stem);
+                    else
+                        manifestObj = this_obj.do_open_doc(document_id, stem, ...
+                            'customFileHandler', options.customFileHandler);
+                    end
+                    manifestPath = manifestObj.fullpathfilename;
+                catch
+                    % The manifest cannot be reached, so neither can the
+                    % member. do_open_doc's own error names the member the
+                    % caller actually asked for, which is the more useful one.
+                    return
+                end
+            end
+            if isempty(manifestPath) || ~isfile(manifestPath), return, end
+
+            % Step 3: the member's uid.
+            try
+                memberUid = did.file.readSeriesManifestUid(manifestPath, index);
+            catch err
+                % A file that is not a readable manifest is a corrupt series,
+                % not a missing file. Say so once rather than reporting the
+                % member as merely absent, which would send the caller looking
+                % in the wrong place.
+                warning('DID:SQLITEDB:FileSeries:BadManifest', ...
+                    'Cannot read the manifest for series "%s" of document "%s": %s', ...
+                    stem, document_id, err.message);
+                return
+            end
+            if isempty(memberUid), return, end
+
+            % Step 4: the bytes.
+            thisPath = did.file.cachedPathForUid(memberUid, ...
+                'additionalRoots', {this_obj.FileDir});
+            if isempty(thisPath), return, end
+
+            tf = true;
+            filePath = thisPath;
+
+        end % seriesMemberPath()
+
         function [hCleanup, filename] = open_db(this_obj)
             % open_db - Open/create a DID SQLite database file
             %
