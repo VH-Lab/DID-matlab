@@ -827,11 +827,23 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 % are resolved through the series' manifest instead. Nothing
                 % else reaches here with a name that resolves, so trying the
                 % series rule only now costs a genuine miss one parse.
-                [tfSeries, seriesPath] = this_obj.seriesMemberPath(document_id, filename, ...
+                [tfSeries, seriesPath, seriesStem] = this_obj.seriesMemberPath(document_id, filename, ...
                     'customFileHandler', customFileHandler, 'retrieveManifest', true);
                 if tfSeries
                     file_obj = did.file.readonly_fileobj('fullpathfilename',seriesPath,varargin_to_pass{:});
                     return
+                end
+                if ~isempty(seriesStem)
+                    % The manifest records this member, so "no such file" would
+                    % send the caller after a naming problem they do not have.
+                    % Say what is actually wrong: the bytes are not here, and a
+                    % member has no location of its own to fetch them from.
+                    error('DID:SQLITEDB:open', ...
+                        ['The file "%s" in document "%s" cannot be accessed. It is a ' ...
+                         'member of the file series "%s", which records it, but its ' ...
+                         'bytes are not on this machine. A series member is resolved ' ...
+                         'through the manifest and carries no location of its own to ' ...
+                         'retrieve from.'], filename, document_id, seriesStem);
                 end
                 if isempty(filename)
                     error('DID:SQLITEDB:open','Document id "%s" does not include any readable file',document_id);
@@ -1041,10 +1053,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
     % Internal methods used by this class
     methods (Access=protected)
-        function [tf, filePath] = seriesMemberPath(this_obj, document_id, filename, options)
+        function [tf, filePath, memberOf] = seriesMemberPath(this_obj, document_id, filename, options)
             % seriesMemberPath - resolve NAME_<i> of a file series to a local path
             %
-            % [TF, FILEPATH] = seriesMemberPath(THIS_OBJ, DOCUMENT_ID, FILENAME)
+            % [TF, FILEPATH, MEMBEROF] = seriesMemberPath(THIS_OBJ, DOCUMENT_ID, FILENAME)
             %
             % Returns whether FILENAME is a member of a file series declared
             % by DOCUMENT_ID and, if so, whether that member's bytes are on
@@ -1052,6 +1064,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % anything that is not a resolvable member; that is an answer, not
             % an error, since both callers have their own way of reporting a
             % miss.
+            %
+            % MEMBEROF names the series when the manifest DOES record a uid
+            % for this member and only its bytes are missing, and is ''
+            % otherwise. It exists so that a caller can tell "the series has
+            % no such member" from "that member is not on this machine yet",
+            % which are the same TF but very different problems: the first is
+            % a name to go and check, the second is a file to go and fetch.
             %
             % THE RESOLUTION RULE. A series member has NO files-table row and
             % no file_info entry: the manifest is what records its uid, and
@@ -1097,6 +1116,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             tf = false;
             filePath = '';
+            memberOf = '';
 
             if isstring(filename) && isscalar(filename), filename = char(filename); end
             if ~ischar(filename) || isempty(filename), return, end
@@ -1154,6 +1174,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 return
             end
             if isempty(memberUid), return, end
+
+            % From here the member EXISTS -- the manifest gives it a uid --
+            % so anything that goes wrong below is a missing file rather than
+            % a missing member, and the caller is told which.
+            memberOf = stem;
 
             % Step 4: the bytes.
             thisPath = did.file.cachedPathForUid(memberUid, ...

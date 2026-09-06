@@ -62,6 +62,68 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
             db.add_docs(doc);
         end
 
+        function [db, doc, contents, manifestCopy] = remoteManifestSeries(testCase)
+            % A series whose members are ingested normally but whose MANIFEST
+            % is only available remotely -- the shape a downloaded dataset
+            % has, and the one that makes open_doc fetch the manifest before
+            % it can resolve anything.
+            %
+            % Built by re-pointing the manifest's location after addFileSeries
+            % rather than by faking a download: the manifest is an ordinary
+            % file of the document, so remove_file and add_file are all it
+            % takes, and MANIFESTCOPY is what a handler will serve.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+
+            root = fullfile(pwd, 'store');
+            contents = {uint8(1:10), uint8(11:20), uint8(21:30)};
+            locs = cell(1, numel(contents));
+            for i = 1:numel(contents)
+                locs{i} = testCase.writeMember(root, sprintf('member%d.bin', i), contents{i});
+            end
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+
+            manifestCopy = fullfile(pwd, 'kept.manifest');
+            copyfile(testCase.manifestLocation(doc), manifestCopy);
+
+            doc = doc.remove_file('chunkdata.bin');
+            doc = doc.add_file('chunkdata.bin', ...
+                'https://nosuchserver.invalid/chunkdata.bin.manifest');
+
+            db.add_docs(doc);
+        end
+
+        function doc = remoteMemberDoc(testCase)
+            % A one-member series whose member is a remote location marked for
+            % ingestion. document_properties is SetAccess=protected, so the
+            % edit is made on a copy and a new document built from it -- the
+            % same route a document read from JSON takes.
+            root = fullfile(pwd, 'store');
+            locs = {testCase.writeMember(root, 'placeholder.bin', uint8(1:10))};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+
+            props = doc.document_properties;
+            props.files.series_info(1).ingest_locations(1).location = ...
+                'https://nosuchserver.invalid/member1.bin';
+            props.files.series_info(1).ingest_locations(1).location_type = 'url';
+            props.files.series_info(1).ingest_locations(1).ingest = 1;
+            props.files.series_info(1).ingest_locations(1).delete_original = 0;
+            doc = did.document(props);
+        end
+
+        function p = manifestLocation(testCase, doc)
+            % Where addFileSeries left the manifest. add_file records the
+            % location and does not move it until add_docs runs.
+            files = doc.document_properties.files;
+            k = find(strcmpi('chunkdata.bin', {files.file_info.name}));
+            testCase.assertNotEmpty(k, 'the manifest was not added as a file');
+            p = files.file_info(k(1)).locations(1).location;
+        end
+
         function bytes = readMember(testCase, db, doc_id, name)
             % Open a member through the database and read all of it.
             f = db.open_doc(doc_id, name);
@@ -284,7 +346,141 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
             testCase.verifyEqual(p, fullfile(fileRoot, e(1).uid));
         end
 
+        % ---- when a member cannot be reached ----------------------------
+
+        function testAbsentBytesForARecordedMemberSayWhichProblemItIs(testCase)
+            % "does not include a file named chunkdata.bin_2" would send the
+            % caller after a naming problem they do not have. The manifest
+            % records this member; only its bytes are gone. The two are the
+            % same false from exist_doc and must not be the same message from
+            % open_doc.
+            [db, doc] = testCase.ingestedSeries();
+
+            [~, memberPath] = db.exist_doc(doc.id(), 'chunkdata.bin_2');
+            testCase.assertNotEmpty(memberPath, 'precondition: the member was ingested');
+            delete(memberPath);
+
+            testCase.verifyFalse(db.exist_doc(doc.id(), 'chunkdata.bin_2'));
+            testCase.verifyError(@() db.open_doc(doc.id(), 'chunkdata.bin_2'), ...
+                'DID:SQLITEDB:open');
+
+            % The distinction is in the message, so check it rather than the
+            % identifier the "no such member" case shares with it.
+            try
+                db.open_doc(doc.id(), 'chunkdata.bin_2');
+                testCase.verifyFail('open_doc should have errored');
+            catch err
+                testCase.verifySubstring(err.message, 'chunkdata.bin', ...
+                    'the message must name the series the member belongs to');
+                testCase.verifySubstring(err.message, 'not on this machine');
+            end
+        end
+
+        function testCorruptManifestIsReportedRatherThanReadAsAnAbsentMember(testCase)
+            % A file that is not a readable manifest is a broken series, not a
+            % missing member. Reporting it as merely absent would send the
+            % caller looking for a file that was never the problem.
+            [db, doc] = testCase.ingestedSeries();
+
+            [~, manifestPath] = db.exist_doc(doc.id(), 'chunkdata.bin');
+            testCase.assertNotEmpty(manifestPath);
+            fid = fopen(manifestPath, 'w');
+            fwrite(fid, uint8('NOTAMANIFESTATALL'), 'uint8');
+            fclose(fid);
+
+            testCase.verifyWarning( ...
+                @() db.exist_doc(doc.id(), 'chunkdata.bin_1'), ...
+                'DID:SQLITEDB:FileSeries:BadManifest');
+
+            % The no-query path has no way to report it, so it answers "not
+            % here" rather than throwing at a caller iterating a level.
+            [tf, p] = db.cachedPathForFile(doc, 'chunkdata.bin_1');
+            testCase.verifyFalse(tf);
+            testCase.verifyEmpty(p);
+        end
+
+        % ---- the cloud shape: a manifest that is not local yet -----------
+
+        function testRemoteManifestIsRetrievedThroughTheHandler(testCase)
+            % The case the feature is for. The members are here, the manifest
+            % is not, and nothing can be resolved until it is fetched -- so
+            % open_doc fetches it, through the same customFileHandler contract
+            % every other non-local file uses.
+            [db, doc, contents, manifestCopy] = testCase.remoteManifestSeries();
+
+            handler = @(destPath, sourcePath) copyfile(manifestCopy, destPath);
+            f = db.open_doc(doc.id(), 'chunkdata.bin_2', 'customFileHandler', handler);
+            fopen(f);
+            closer = onCleanup(@() fclose(f)); %#ok<NASGU>
+
+            testCase.verifyEqual(uint8(fread(f, Inf, 'uint8')'), contents{2});
+        end
+
+        function testRemoteManifestWithoutAHandlerCannotResolve(testCase)
+            % No handler and no local manifest: DID retrieves nothing itself,
+            % so there is nothing to resolve the member against.
+            [db, doc] = testCase.remoteManifestSeries();
+
+            testCase.verifyError(@() db.open_doc(doc.id(), 'chunkdata.bin_2'), ...
+                'DID:SQLITEDB:open');
+        end
+
+        function testExistDocDoesNotFetchTheManifest(testCase)
+            % check_exist_doc reports what is on this machine. Answering it
+            % must not go to the network, so a member whose manifest is only
+            % remote is false -- the same answer it already gives for a file
+            % whose row exists but whose bytes were never fetched.
+            [db, doc] = testCase.remoteManifestSeries();
+
+            testCase.verifyFalse(db.exist_doc(doc.id(), 'chunkdata.bin_2'));
+        end
+
         % ---- ingest behaviour -------------------------------------------
+
+        function testRemoteMemberIsIngestedThroughTheHandler(testCase)
+            % A member whose bytes are not a local path is retrieved by the
+            % caller's handler, exactly as a file_info location is.
+            %
+            % The document is built by hand because addFileSeries does not
+            % currently mint an ingestable remote member -- it marks a URL
+            % ingest 0, following add_file's default. The shape is still a
+            % legitimate one for a document to carry (DID-python writes these
+            % too), and the ingest loop treats it the same way the file loop
+            % does, so it is covered here rather than left to be discovered
+            % the first time such a document arrives.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+
+            payload = testCase.writeMember(fullfile(pwd,'src'), 'payload.bin', uint8(1:10));
+            doc = testCase.remoteMemberDoc();
+
+            handler = @(destPath, sourcePath) copyfile(payload, destPath);
+            testCase.verifyWarningFree( ...
+                @() db.add_docs(doc, 'customFileHandler', handler));
+
+            testCase.verifyTrue(db.exist_doc(doc.id(), 'chunkdata.bin_1'));
+            f = db.open_doc(doc.id(), 'chunkdata.bin_1');
+            fopen(f);
+            closer = onCleanup(@() fclose(f)); %#ok<NASGU>
+            testCase.verifyEqual(uint8(fread(f, Inf, 'uint8')'), uint8(1:10));
+        end
+
+        function testRemoteMemberWithoutAHandlerWarnsButStillAdds(testCase)
+            % Nothing can retrieve it, which warns rather than failing the
+            % add -- the non-fatal behaviour ingestion has always had.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+
+            doc = testCase.remoteMemberDoc();
+
+            testCase.verifyWarning(@() db.add_docs(doc), 'DID:SQLiteDB:add_doc');
+            testCase.verifyFalse(db.exist_doc(doc.id(), 'chunkdata.bin_1'), ...
+                'nothing was retrieved, so nothing is there');
+            testCase.verifyNumElements( ...
+                db.search(did.query('', 'isa', 'demoSeries', '')), 1, ...
+                'the document should still have been added');
+        end
+
 
         function testDeleteOriginalRemovesTheMemberSources(testCase)
             % A series follows add_file: a local file's original is deleted on
