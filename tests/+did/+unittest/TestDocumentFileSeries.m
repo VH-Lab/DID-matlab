@@ -180,6 +180,42 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
             testCase.verifyFalse(m.hasSourceNames);
         end
 
+        function testMembersWithNoCommonRootRecordNoSourceNames(testCase)
+            % Nothing in common but the filesystem root, so there is no root
+            % worth recording and the alternative -- absolute paths -- is the
+            % disclosure the relative form exists to avoid. Record none.
+            %
+            % The paths are fictional on purpose: addFileSeries never opens a
+            % member, it only writes the manifest, so root derivation is pure
+            % string work and needs no filesystem to exercise.
+            locs = {'/aaa/one/x', '/bbb/two/y'};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+
+            testCase.verifyEmpty(doc.seriesSourceRoot('chunkdata.bin'));
+            testCase.verifyEqual(doc.seriesCount('chunkdata.bin'), 2, ...
+                'membership is still recorded; only the names are dropped');
+
+            m = did.file.readSeriesManifest(testCase.manifestLocation(doc,'chunkdata.bin'));
+            testCase.verifyFalse(m.hasSourceNames);
+            testCase.verifyNotEmpty(m.uids{1});
+            testCase.verifyNotEmpty(m.uids{2});
+        end
+
+        function testUrlMembersAreGivenNoRoot(testCase)
+            % A URL carries no home directory to leak and is stored whole, so
+            % it gets no root and no relative name.
+            locs = {'https://example.org/store/a', 'https://example.org/store/b'};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+
+            testCase.verifyEmpty(doc.seriesSourceRoot('chunkdata.bin'));
+            m = did.file.readSeriesManifest(testCase.manifestLocation(doc,'chunkdata.bin'));
+            testCase.verifyFalse(m.hasSourceNames);
+        end
+
         function testMembersInDifferentSubtreesAreStillRecorded(testCase)
             % Deliberately NOT claiming "no common root": the working-folder
             % fixture puts pwd under tempdir, so two paths under it always
