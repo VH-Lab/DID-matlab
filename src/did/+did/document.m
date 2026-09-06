@@ -772,6 +772,63 @@ classdef document
 
         end % isFileSeries()
 
+        function [stem, index] = seriesMemberOf(did_document_obj, name)
+            % SERIESMEMBEROF - is NAME a member of one of this document's series?
+            %
+            % [STEM, INDEX] = SERIESMEMBEROF(DID_DOCUMENT_OBJ, NAME)
+            %
+            % If NAME parses as STEM_<number> and STEM is declared as a file
+            % series by this document, returns the declared STEM and the
+            % member's INDEX. Otherwise returns '' and [].
+            %
+            % INDEX is ONE-BASED, the number as written in the name: the
+            % member NAME_1 is index 1. It addresses the manifest's slots
+            % directly -- see did.file.readSeriesManifestUid -- and is
+            % converted to the manifest's own zero-based numbering only
+            % inside the reader.
+            %
+            % WHY THIS IS PUBLIC. A series member carries no file_info entry
+            % and no files-table row of its own; membership is the manifest's
+            % to answer. So everything that resolves a filename has to be able
+            % to ask "is this a member, and of what?" before it can look
+            % anywhere: is_in_file_list to accept the name at all, and a
+            % database implementation to find the bytes. One parse, asked in
+            % one place, is what keeps those two agreeing.
+            %
+            % The number is parsed exactly as is_in_file_list parses the
+            % NAME_# convention, so a name is a member here on precisely the
+            % terms that make it a valid file name there.
+            %
+            % See also: did.document/isFileSeries, did.document/is_in_file_list,
+            %           did.file.readSeriesManifestUid
+
+            stem = '';
+            index = [];
+
+            % Deliberately no arguments block. is_in_file_list and add_file
+            % both reach here with whatever name a caller handed them,
+            % including '' and a string scalar, and a name this method cannot
+            % parse is a "no" rather than an error.
+            if isstring(name) && isscalar(name), name = char(name); end
+            if ~ischar(name) || isempty(name), return; end
+
+            underscores = find(name=='_');
+            if isempty(underscores), return; end
+            n = str2num(name(underscores(end)+1:end)); %#ok<ST2NM>
+            if isempty(n), return; end
+            candidate = name(1:underscores(end)-1);
+            if ~did_document_obj.isFileSeries(candidate), return; end
+
+            % Return the DECLARED spelling rather than the caller's. Matching
+            % is case-insensitive, and everything downstream looks the stem up
+            % again -- in file_info, in the files table -- where the declared
+            % spelling is the one that is stored.
+            declared = did_document_obj.seriesNames();
+            stem = declared{find(strcmpi(candidate, declared), 1)};
+            index = n;
+
+        end % seriesMemberOf()
+
         function [n, nPresent] = seriesCount(did_document_obj, name)
             % SERIESCOUNT - how many members a series has, WITHOUT reading anything
             %
@@ -1324,15 +1381,12 @@ function stem = localSeriesMemberStem(did_document_obj, name)
     % STEM; otherwise ''. This is the second resolution rule a series adds:
     % is_in_file_list already maps NAME_12 to NAME_#, and this maps it to the
     % series NAME when that lookup misses.
-    stem = '';
-    underscores = find(name=='_');
-    if isempty(underscores), return; end
-    n = str2num(name(underscores(end)+1:end)); %#ok<ST2NM>
-    if isempty(n), return; end
-    candidate = name(1:underscores(end)-1);
-    if did_document_obj.isFileSeries(candidate)
-        stem = candidate;
-    end
+    %
+    % The parse itself lives in did.document/seriesMemberOf, which is the
+    % public form of the same rule; keeping one implementation is what stops
+    % the name a document accepts and the name a database resolves from
+    % drifting apart.
+    stem = did_document_obj.seriesMemberOf(name);
 end
 
 function entries = localIngestLocations(locations, indices, uids, deleteOriginal)

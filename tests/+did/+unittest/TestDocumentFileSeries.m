@@ -594,6 +594,62 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
             testCase.verifyEqual(doc.is_in_file_list('nosuch.bin_5'), 0);
         end
 
+        % ---- membership, as a question anyone can ask -------------------
+        %
+        % seriesMemberOf is the public form of the rule is_in_file_list uses
+        % internally. A database has to ask it too -- a member has no
+        % files-table row, so resolving one starts by deciding whether the
+        % name is a member at all -- and the two must not drift apart.
+
+        function testSeriesMemberOfNamesTheSeriesAndTheSlot(testCase)
+            doc = did.document('demoSeries');
+
+            [stem, index] = doc.seriesMemberOf('chunkdata.bin_7');
+            testCase.verifyEqual(stem, 'chunkdata.bin');
+            testCase.verifyEqual(index, 7, ...
+                'indices are one-based, as written in the name');
+        end
+
+        function testSeriesMemberOfReturnsTheDeclaredSpelling(testCase)
+            % Matching is case-insensitive, but everything downstream looks
+            % the stem up again -- in file_info, in the files table -- where
+            % the declared spelling is what is stored.
+            doc = did.document('demoSeries');
+
+            testCase.verifyEqual(doc.seriesMemberOf('CHUNKDATA.BIN_2'), ...
+                'chunkdata.bin');
+        end
+
+        function testSeriesMemberOfSaysNoRatherThanErroring(testCase)
+            doc = did.document('demoSeries');
+
+            names = {'chunkdata.bin', 'plainfile.ext_1', 'nosuch.bin_5', ...
+                     'nounderscore', 'chunkdata.bin_', ''};
+            for i = 1:numel(names)
+                [stem, index] = doc.seriesMemberOf(names{i});
+                testCase.verifyEmpty(stem, names{i});
+                testCase.verifyEmpty(index, names{i});
+            end
+        end
+
+        function testSeriesMemberOfAgreesWithIsInFileList(testCase)
+            % The two rules are one rule. A name that is a member must be a
+            % valid file name, and the enumerated NAME_# convention must keep
+            % resolving without being mistaken for a series.
+            doc = did.document('demoSeries');
+
+            testCase.verifyNotEmpty(doc.seriesMemberOf('chunkdata.bin_5'));
+            testCase.verifyEqual(doc.is_in_file_list('chunkdata.bin_5'), 1);
+
+            testCase.verifyEmpty(doc.seriesMemberOf('nosuch.bin_5'));
+            testCase.verifyEqual(doc.is_in_file_list('nosuch.bin_5'), 0);
+        end
+
+        function testSeriesMemberOfIsEmptyForAClassWithNoSeries(testCase)
+            doc = did.document('demoFile','demoFile.value',1);
+            testCase.verifyEmpty(doc.seriesMemberOf('filename1.ext_1'));
+        end
+
         % ---- removal ---------------------------------------------------
 
         function testRemoveClearsTheRecordAndAllowsReAdding(testCase)
