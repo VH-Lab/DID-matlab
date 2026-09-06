@@ -4,18 +4,10 @@ function codecheckToolbox(varargin)
     %
     %   The check-code action adds tools/ to the path and calls the bare
     %   name, e.g. codecheckToolbox("FoldersToCheck","src"). This wrapper
-    %   must therefore:
-    %     (a) live at the bare name so the action's
-    %         exist("codecheckToolbox","file") branch resolves to it
-    %         (rather than falling through to matbox with CreateBadge=true),
-    %     (b) accept and forward those name-value args, and
-    %     (c) force CreateBadge=false. Badge generation goes through
-    %         matbox.utility.createBadgeSvg, which needs a CPython install
-    %         the CI runner does not have ("Python commands require a
-    %         supported version of CPython").
-    %
-    %   Earlier this was a zero-arg wrapper, which broke once the action
-    %   began passing "FoldersToCheck"/"src" ("Too many input arguments").
+    %   lives at the bare name so the action's
+    %   exist("codecheckToolbox","file") branch resolves to it, and it
+    %   forwards the action's name-value args to
+    %   matbox.tasks.codecheckToolbox.
     projectRootDirectory = didtools.projectdir();
-    matbox.tasks.codecheckToolbox(projectRootDirectory, "CreateBadge", false, varargin{:});
+    matbox.tasks.codecheckToolbox(projectRootDirectory, "CreateBadge", true, varargin{:});
 end
