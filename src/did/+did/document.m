@@ -131,10 +131,12 @@ classdef document
             % DID_DOCUMENT_OBJ_OUT = PLUS(DID_DOCUMENT_OBJ_A, DID_DOCUMENT_OBJ_B)
             %
             % Merges the DID_DOCUMENT objects A and B. First, the 'document_class'
-            % superclasses are merged. Then, the fields that are in B but are not in A
-            % are added to A. The result is returned in DID_DOCUMENT_OBJ_OUT.
-            % Note that any fields that A has that are also in B will be preserved; no elements of
-            % those fields of B will be combined with A.
+            % superclasses are merged. Then the fields of B are merged into A.
+            % Where both documents have the same field, B's value is taken --
+            % did.datastructures.structmerge, which does the merging in step 4,
+            % is documented as "when S1 and S2 share the same fieldname, the
+            % value of S2 is taken". Dependencies follow the same rule: a
+            % 'depends_on' entry whose name is in both is taken from B.
 
             did_document_obj_out = did_document_obj_a;
             % Step 1): Merge superclasses
@@ -152,10 +154,9 @@ classdef document
                 % duplicate was invisible to a lookup but real in the stored
                 % document, and a second one could never be reached.
                 %
-                % A wins a name collision. That is what concatenation already
-                % gave every caller that goes through dependency_value, since
-                % A's entries came first, and it is what this function's
-                % summary above promises for fields generally.
+                % B wins a name collision, which is what structmerge does for
+                % every other field in step 4, and what ndi.document's plus
+                % has always done for dependencies.
                 aDepends = did_document_obj_out.document_properties.depends_on;
                 bDepends = did_document_obj_b.document_properties.depends_on;
                 if isempty(aDepends)
@@ -166,9 +167,12 @@ classdef document
                     merged = aDepends(:);
                     mergedNames = {merged.name};
                     for k=1:numel(bDepends)
-                        if ~any(strcmpi(bDepends(k).name, mergedNames))
+                        match = find(strcmpi(bDepends(k).name, mergedNames));
+                        if isempty(match)
                             merged(end+1) = bDepends(k); %#ok<AGROW>
                             mergedNames{end+1} = bDepends(k).name; %#ok<AGROW>
+                        else
+                            merged(match(1)) = bDepends(k);
                         end
                     end
                 end

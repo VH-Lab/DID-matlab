@@ -47,14 +47,48 @@ classdef TestDocumentMergeAndProperties < matlab.unittest.TestCase
                 'depends_on should not carry the same name twice');
         end
 
-        function testTheLeftDocumentWinsANameCollision(testCase)
+        function testTheRightDocumentWinsANameCollision(testCase)
+            % B wins, matching did.datastructures.structmerge -- "when S1 and
+            % S2 share the same fieldname, the value of S2 is taken" -- which
+            % is what step 4 of plus uses for every other field, and matching
+            % ndi.document's plus.
             docA = did.document('demoC');
             docA = docA.set_dependency_value('item1', 'from_A');
             docB = did.document('demoC');
             docB = docB.set_dependency_value('item1', 'from_B');
 
             merged = docA + docB;
-            testCase.verifyEqual(merged.dependency_value('item1'), 'from_A');
+            testCase.verifyEqual(merged.dependency_value('item1'), 'from_B');
+        end
+
+        function testDependenciesFollowTheSameRuleAsOtherFields(testCase)
+            % The point of B-wins: a dependency should not be the one field in
+            % the document that merges backwards. Assert both in one place, so
+            % anyone changing either rule has to notice the other.
+            docA = did.document('demoC');
+            docA = docA.set_dependency_value('item1', 'dep_from_A');
+            docA = docA.setproperties('demoC.value', 'field_from_A');
+            docB = did.document('demoC');
+            docB = docB.set_dependency_value('item1', 'dep_from_B');
+            docB = docB.setproperties('demoC.value', 'field_from_B');
+
+            merged = docA + docB;
+            testCase.verifyEqual(merged.document_properties.demoC.value, 'field_from_B', ...
+                'ordinary fields take B, via structmerge');
+            testCase.verifyEqual(merged.dependency_value('item1'), 'dep_from_B', ...
+                'dependencies must take B for the same reason');
+        end
+
+        function testAnEmptyValueFromBStillWins(testCase)
+            % There is no way to tell "B did not set this" from "B set it to
+            % empty", so B's empty value is B's value and it wins. Pinned
+            % because it is the case that most tempts a value-inspecting rule.
+            docA = did.document('demoC');
+            docA = docA.set_dependency_value('item1', 'from_A');
+            docB = did.document('demoC');
+
+            merged = docA + docB;
+            testCase.verifyEmpty(merged.dependency_value('item1'));
         end
 
         function testDisjointDependencyNamesAreAllKept(testCase)
