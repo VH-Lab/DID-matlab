@@ -18,6 +18,16 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
             fid = fopen(p,'w'); fwrite(fid, uint8(1:10), 'uint8'); fclose(fid);
         end
 
+        function props = declaration(~, fileList, fileSeries)
+            % A minimal document_properties struct carrying just the file
+            % declarations, for exercising the constructor's validation
+            % without a class definition.
+            props = struct();
+            props.base = struct('id', did.ido.unique_id(), 'name', 'test');
+            props.files = struct('file_list', {fileList}, ...
+                'file_series', {fileSeries});
+        end
+
         function p = manifestLocation(testCase, doc, name)
             % Where addFileSeries left the manifest. add_file records the
             % location and does not move it until add_docs runs, so the file
@@ -156,6 +166,74 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
         end
 
         % ---- refusals -------------------------------------------------
+
+        % ---- declaration-level exclusivity ---------------------------
+        %
+        % These four run in the did.document constructor rather than in
+        % addFileSeries, so they are reached by building the properties
+        % struct directly. Using did.document(STRUCT) keeps deliberately
+        % malformed declarations out of the example schema, where a future
+        % reader would have to work out whether they were broken on purpose.
+
+        function testValidDeclarationConstructs(testCase)
+            % Positive control: without this, a validator that rejected
+            % everything would pass all four refusal tests below.
+            doc = did.document(testCase.declaration(...
+                {'plainfile.ext','chunkdata.bin'}, {'chunkdata.bin'}));
+            testCase.verifyEqual(doc.seriesNames(), {'chunkdata.bin'});
+        end
+
+        function testSeriesMustAlsoBeInFileList(testCase)
+            % The series name IS its manifest, and a manifest is an ordinary
+            % file, so it has to be declared as one.
+            testCase.verifyError(...
+                @() did.document(testCase.declaration(...
+                    {'plainfile.ext'}, {'chunkdata.bin'})), ...
+                'DID:Document:fileDeclarations:seriesNotInFileList');
+        end
+
+        function testSeriesBesideNumberedEntryIsRefused(testCase)
+            % "chunkdata.bin_12" would match both mechanisms, and they would
+            % disagree: the probe path stops at the first gap, which is the
+            % case series exist to serve.
+            testCase.verifyError(...
+                @() did.document(testCase.declaration(...
+                    {'chunkdata.bin','chunkdata.bin_#'}, {'chunkdata.bin'})), ...
+                'DID:Document:fileDeclarations:seriesAndNumberedEntry');
+        end
+
+        function testLiteralEntryShadowedBySeriesIsRefused(testCase)
+            % is_in_file_list resolves the trailing integer first, so this
+            % literal entry could never be reached.
+            testCase.verifyError(...
+                @() did.document(testCase.declaration(...
+                    {'chunkdata.bin','chunkdata.bin_3'}, {'chunkdata.bin'})), ...
+                'DID:Document:fileDeclarations:shadowedBySeries');
+        end
+
+        function testShadowingIsCaughtForNamesStr2numEvaluates(testCase)
+            % str2num EVALUATES its argument, so "_pi" and "_i" parse as
+            % numbers and reach the series path too. Pinned because the
+            % obvious rewrite to str2double would silently stop catching them.
+            for suffix = {'_pi','_i'}
+                testCase.verifyError(...
+                    @() did.document(testCase.declaration(...
+                        {'chunkdata.bin',['chunkdata.bin' suffix{1}]}, ...
+                        {'chunkdata.bin'})), ...
+                    'DID:Document:fileDeclarations:shadowedBySeries', ...
+                    sprintf('suffix %s should be caught', suffix{1}));
+            end
+        end
+
+        function testDuplicateSeriesNameIsRefused(testCase)
+            % Case-insensitive, because is_in_file_list matches with strcmpi
+            % and a difference it cannot see is not a difference.
+            testCase.verifyError(...
+                @() did.document(testCase.declaration(...
+                    {'chunkdata.bin'}, {'chunkdata.bin','CHUNKDATA.BIN'})), ...
+                'DID:Document:fileDeclarations:duplicateSeries');
+        end
+
 
         function testUndeclaredSeriesIsRefused(testCase)
             doc = did.document('demoSeries');
