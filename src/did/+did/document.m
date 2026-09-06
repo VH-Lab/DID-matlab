@@ -1062,22 +1062,29 @@ classdef document
     methods (Static)
 
         function props = stripSeriesIngestLocations(props)
-            % STRIPSERIESINGESTLOCATIONS - drop transient member paths from properties
+            % STRIPSERIESINGESTLOCATIONS - clear transient member paths from properties
             %
             % PROPS = did.document.STRIPSERIESINGESTLOCATIONS(PROPS)
             %
-            % Returns PROPS with files.series_info(:).ingest_locations removed.
-            % Call this on the way to storing or shipping a document's JSON.
+            % Returns PROPS with every files.series_info(:).ingest_locations
+            % emptied. Call this on the way to storing or shipping a
+            % document's JSON.
             %
-            % A series' member paths are recorded so that ingestion can find
-            % the bytes; they are of no use afterwards, and a level of a
-            % lightsheet pyramid has tens of thousands of them. Since the
-            % stored JSON is preserved and returned whole, anything left in it
-            % is paid for on every fetch of that document -- so the paths are
-            % dropped here rather than allowed to persist.
+            % A series' member paths are recorded so ingestion can find the
+            % bytes; they are of no use afterwards, and a level of a lightsheet
+            % pyramid has tens of thousands of them. The stored JSON is
+            % preserved and returned whole, so anything left in it is paid for
+            % on every fetch of that document.
             %
-            % Leaves PROPS untouched if it declares no series. Safe to call on
-            % properties that have already been stripped.
+            % The field is EMPTIED rather than removed, deliberately. rmfield
+            % would leave a stored document's series_info with one fewer field
+            % than a fresh one, and adding a series to such a document would
+            % then fail: addFileSeries assigns a full entry into the array, and
+            % MATLAB refuses assignment between dissimilar structures. Keeping
+            % the field costs an "ingest_locations": [] per series -- bytes,
+            % and per series rather than per member.
+            %
+            % A document with no series is untouched. Safe to call twice.
             %
             % See also: did.document/seriesIngestLocations
 
@@ -1085,10 +1092,17 @@ classdef document
             if ~isfield(props,'files'), return; end
             if ~isstruct(props.files), return; end
             if ~isfield(props.files,'series_info'), return; end
-            if ~isfield(props.files.series_info,'ingest_locations'), return; end
 
-            props.files.series_info = rmfield(props.files.series_info, ...
-                'ingest_locations');
+            si = props.files.series_info;
+            if ~isstruct(si), return; end
+            if ~isfield(si,'ingest_locations'), return; end
+
+            emptyLocations = did.datastructures.emptystruct('index','uid', ...
+                'location','location_type','ingest','delete_original','parameters');
+            for i = 1:numel(si)
+                si(i).ingest_locations = emptyLocations;
+            end
+            props.files.series_info = si;
 
         end % stripSeriesIngestLocations()
         function s = readblankdefinition(jsonfilelocationstring, s)

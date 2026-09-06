@@ -373,7 +373,10 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
 
             props = did.document.stripSeriesIngestLocations(doc.document_properties);
             si = props.files.series_info;
-            testCase.verifyFalse(isfield(si,'ingest_locations'));
+            testCase.verifyTrue(isfield(si,'ingest_locations'), ...
+                'the field stays, so a stored document keeps a fresh one''s shape');
+            testCase.verifyEmpty(si.ingest_locations, ...
+                'but carries nothing');
             testCase.verifyEqual(si.name, 'chunkdata.bin');
             testCase.verifyEqual(si.count, 1);
             testCase.verifyEqual(si.n_present, 1);
@@ -407,11 +410,39 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
             twice = did.document.stripSeriesIngestLocations(once);
             testCase.verifyEqual(twice, once);
 
+            % A document with no series still HAS a series_info -- an empty
+            % struct array carrying the field names -- so this pins that
+            % stripping leaves that field set alone. Removing the field
+            % instead would leave a stored document one field short of a
+            % fresh one, and adding a series to it would then fail.
             plain = did.document('demoFile','demoFile.value',1);
             testCase.verifyEqual(...
                 did.document.stripSeriesIngestLocations(plain.document_properties), ...
                 plain.document_properties, ...
                 'a document with no series is untouched');
+        end
+
+        function testASeriesCanBeAddedToAStoredDocument(testCase)
+            % The latent bug the test above guards against. A document that
+            % has been stored comes back stripped; adding a series to it must
+            % still work, which it cannot if stripping changed series_info's
+            % field set.
+            root = fullfile(pwd,'store');
+            first = {testCase.writeMember(root,'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', first);
+
+            stored = did.document(...
+                did.document.stripSeriesIngestLocations(doc.document_properties));
+            stored = stored.removeFileSeries('chunkdata.bin');
+
+            second = {testCase.writeMember(root,'b')};
+            stored = stored.addFileSeries('chunkdata.bin', second);
+
+            e = stored.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(numel(e), 1);
+            testCase.verifyEqual(e.location, second{1});
         end
 
         function testAccessorIsEmptyOnAStoredDocument(testCase)
