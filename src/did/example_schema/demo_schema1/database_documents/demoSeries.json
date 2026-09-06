@@ -1,0 +1,24 @@
+{
+	"document_class": {
+		"definition":						"$DIDDOCUMENT_EX1\/demoSeries.json",
+		"validation":						"$DIDSCHEMA_EX1\/demoSeries.schema.json",
+		"class_name":						"demoSeries",
+		"property_list_name":					"demoSeries",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":					"$DIDDOCUMENT_EX1\/base.json" }
+		]
+        },
+	"demoSeries": {
+		"value":						""
+	},
+	"files": {
+		"file_list": [
+			"plainfile.ext",
+			"chunkdata.bin"
+		],
+		"file_series": [
+			"chunkdata.bin"
+		]
+	}
+}
