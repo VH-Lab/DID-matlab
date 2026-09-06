@@ -46,7 +46,8 @@ classdef document
 
                 for i=1:2:numel(options) % assign variable arguments
                     try
-                        eval(['document_properties.' options{i} '= options{i+1};']);
+                        document_properties = did.datastructures.assignPropertyPath( ...
+                            document_properties, options{i}, options{i+1});
                     catch
                         error(['Could not assign document_properties.' options{i} '.']);
                     end
@@ -114,7 +115,8 @@ classdef document
             newproperties = did_document_obj.document_properties;
             for i=1:2:numel(options)
                 try
-                    eval(['newproperties.' options{i} '=options{i+1};']);
+                    newproperties = did.datastructures.assignPropertyPath( ...
+                        newproperties, options{i}, options{i+1});
                 catch
                     error(['Error in assigning ' options{i} '.']);
                 end
@@ -129,10 +131,12 @@ classdef document
             % DID_DOCUMENT_OBJ_OUT = PLUS(DID_DOCUMENT_OBJ_A, DID_DOCUMENT_OBJ_B)
             %
             % Merges the DID_DOCUMENT objects A and B. First, the 'document_class'
-            % superclasses are merged. Then, the fields that are in B but are not in A
-            % are added to A. The result is returned in DID_DOCUMENT_OBJ_OUT.
-            % Note that any fields that A has that are also in B will be preserved; no elements of
-            % those fields of B will be combined with A.
+            % superclasses are merged. Then the fields of B are merged into A.
+            % Where both documents have the same field, B's value is taken --
+            % did.datastructures.structmerge, which does the merging in step 4,
+            % is documented as "when S1 and S2 share the same fieldname, the
+            % value of S2 is taken". Dependencies follow the same rule: a
+            % 'depends_on' entry whose name is in both is taken from B.
 
             did_document_obj_out = did_document_obj_a;
             % Step 1): Merge superclasses
@@ -144,10 +148,35 @@ classdef document
             % Step 2): Merge dependencies if we have to
             if isfield(did_document_obj_out.document_properties,'depends_on') && ...
                isfield(did_document_obj_b.document_properties,'depends_on')
-                % we need to merge dependencies
-                did_document_obj_out.document_properties.depends_on = cat(1,...
-                    did_document_obj_out.document_properties.depends_on(:),...
-                    did_document_obj_b.document_properties.depends_on(:));
+                % Merge by name. Concatenating produced a depends_on holding
+                % the same name twice whenever both documents declared it,
+                % which every reader here resolves with matches(1) -- so the
+                % duplicate was invisible to a lookup but real in the stored
+                % document, and a second one could never be reached.
+                %
+                % B wins a name collision, which is what structmerge does for
+                % every other field in step 4, and what ndi.document's plus
+                % has always done for dependencies.
+                aDepends = did_document_obj_out.document_properties.depends_on;
+                bDepends = did_document_obj_b.document_properties.depends_on;
+                if isempty(aDepends)
+                    merged = bDepends(:);
+                elseif isempty(bDepends)
+                    merged = aDepends(:);
+                else
+                    merged = aDepends(:);
+                    mergedNames = {merged.name};
+                    for k=1:numel(bDepends)
+                        match = find(strcmpi(bDepends(k).name, mergedNames));
+                        if isempty(match)
+                            merged(end+1) = bDepends(k); %#ok<AGROW>
+                            mergedNames{end+1} = bDepends(k).name; %#ok<AGROW>
+                        else
+                            merged(match(1)) = bDepends(k);
+                        end
+                    end
+                end
+                did_document_obj_out.document_properties.depends_on = merged;
                 otherproperties = rmfield(otherproperties,'depends_on');
             end
 
@@ -200,6 +229,11 @@ classdef document
             notfound = 1;
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
+            if hasdependencies
+                % As in dependency_value_n and set_dependency_value: an empty
+                % depends_on has no .name to index.
+                hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
+            end
 
             if hasdependencies
                 matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
@@ -239,6 +273,12 @@ classdef document
             notfound = 1;
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
+            if hasdependencies
+                % As in dependency_value_n: an empty depends_on has no .name
+                % to index, so the branch below would throw rather than fall
+                % through to creating the list.
+                hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
+            end
             d_struct = struct('name',dependency_name,'value',value);
 
             if hasdependencies
@@ -248,9 +288,11 @@ classdef document
                     did_document_obj.document_properties.depends_on(matches(1)).value = value;
                 elseif ~options.ErrorIfNotFound % add it
                     did_document_obj.document_properties.depends_on(end+1) = d_struct;
+                    notfound = 0;
                 end
             elseif ~options.ErrorIfNotFound
                 did_document_obj.document_properties.depends_on = d_struct;
+                notfound = 0;
             end
 
             if notfound && options.ErrorIfNotFound
@@ -284,12 +326,32 @@ classdef document
             notfound = 1;
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
+            if hasdependencies
+                % A declaration of "depends_on": [ ] decodes to an empty
+                % array, which has no .name to index. Treat it as no
+                % dependencies rather than reaching for a field of a double.
+                hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
+            end
 
             if hasdependencies
                 finished = 0;
                 i = 1;
                 while ~finished
                     matches = find(strcmpi([dependency_name '_' int2str(i)],{did_document_obj.document_properties.depends_on.name}));
+                    if isempty(matches) && i == 1
+                        % No 'name_1', so accept a plain 'name'. A document
+                        % that carries a single dependency unnumbered is the
+                        % same thing as one numbered _1, and callers should
+                        % not have to know which form a definition used.
+                        matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
+                        if ~isempty(matches)
+                            % An empty value is the placeholder a blank
+                            % definition carries, not an entry in the list.
+                            if isempty(did_document_obj.document_properties.depends_on(matches(1)).value)
+                                matches = [];
+                            end
+                        end
+                    end
                     if numel(matches)>0
                         notfound = 0;
                         d{i} = getfield(did_document_obj.document_properties.depends_on(matches(1)),'value');
