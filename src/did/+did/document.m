@@ -686,11 +686,10 @@ classdef document
             %
             % B = EQ(DID_DOCUMENT_OBJ1, DID_DOCUMENT_OBJ2)
             %
-            % Returns 1 if and only if the objects have identical document_properties.did_document.id
-            % fields.
+            % Returns 1 if and only if the objects have identical document
+            % identifiers, as returned by ID().
 
-            b = strcmp(did_document_obj1.document_properties.did_document.id,...
-                did_document_obj2.document_properties.did_document.id);
+            b = strcmp(did_document_obj1.id(), did_document_obj2.id());
         end % eq()
 
     end % methods
