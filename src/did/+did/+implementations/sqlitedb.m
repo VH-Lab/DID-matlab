@@ -555,11 +555,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % uid -> <FileDir>/<uid> -- which is the whole reason the manifest
             % exists. A level of a lightsheet pyramid is ~28,000 members; a row
             % each would put back exactly the per-member record that
-            % stripSeriesIngestLocations, the binary manifest and
-            % current_file_list's refusal to expand a series were all built to
+            % stripSeriesIngestLocations, the binary manifest format and
+            % is_in_file_list's empty fI_index for a member were all built to
             % avoid, and it would be paid in the files table on every ingest
-            % and every removal. See do_open_doc and check_exist_doc for the
-            % read side, and VH-Lab/DID-matlab#173 for the reasoning.
+            % and every removal. (NDI's current_file_list must not expand a
+            % series either, for the same reason; that one is NDI's to keep,
+            % and is named in the issue rather than implemented here.) See
+            % do_open_doc and check_exist_doc for the read side, and
+            % VH-Lab/DID-matlab#173 for the reasoning.
             %
             % What a member does get is its bytes at <FileDir>/<uid>, under
             % the uid the manifest already records for its slot. The copying

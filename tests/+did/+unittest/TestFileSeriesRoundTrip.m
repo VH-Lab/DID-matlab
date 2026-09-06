@@ -124,6 +124,35 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
             p = files.file_info(k(1)).locations(1).location;
         end
 
+        function p = localPathOf(~, db, doc, name)
+            % The on-disk path of a document's own file, by uid.
+            uids = doc.fileUids(name);
+            p = did.file.cachedPathForUid(uids{1}, ...
+                'additionalRoots', {db.FileDir});
+        end
+
+        function [doc, fileRoot] = seriesOnDiskOnly(testCase)
+            % A one-member series whose manifest and member sit in a plain
+            % directory, with no database anywhere. What the no-query
+            % accessors have to work from.
+            root = fullfile(pwd, 'store');
+            locs = {testCase.writeMember(root, 'a.bin', uint8(1:10))};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+
+            fileRoot = fullfile(pwd, 'stubFileDir');
+            if ~isfolder(fileRoot), mkdir(fileRoot); end
+
+            files = doc.document_properties.files;
+            k = find(strcmpi('chunkdata.bin', {files.file_info.name}));
+            copyfile(files.file_info(k(1)).locations(1).location, ...
+                fullfile(fileRoot, files.file_info(k(1)).locations(1).uid));
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            copyfile(e(1).location, fullfile(fileRoot, e(1).uid));
+        end
+
         function bytes = readMember(testCase, db, doc_id, name)
             % Open a member through the database and read all of it.
             f = db.open_doc(doc_id, name);
@@ -549,6 +578,188 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
 
             testCase.verifyTrue(db.exist_doc(doc.id(), 'filename1.ext'));
             testCase.verifyFalse(db.exist_doc(doc.id(), 'filename1.ext_1'));
+        end
+
+        % ---- series accessors -------------------------------------------
+        %
+        % seriesCount answers from the document; WHICH slots are filled is
+        % recorded only in the manifest, so seriesHas and seriesMembers read
+        % it. Both still run no query and touch no network.
+
+        function testSeriesHasAnswersPerSlot(testCase)
+            [db, doc] = testCase.ingestedSeries();
+
+            for i = 1:3
+                testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', i), ...
+                    sprintf('member %d was added', i));
+            end
+            testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', 4), ...
+                'the series has three slots');
+        end
+
+        function testSeriesHasFollowsTheGapsOfASparseSeries(testCase)
+            % The case a NAME_# entry cannot express, asked directly.
+            [db, doc] = testCase.ingestedSeries([2 5 6]);
+
+            for i = [2 5 6]
+                testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', i), ...
+                    sprintf('member %d is present', i));
+            end
+            for i = [1 3 4 99]
+                testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', i), ...
+                    sprintf('member %d is not', i));
+            end
+        end
+
+        function testSeriesMembersListsOnlyTheFilledSlots(testCase)
+            [db, doc] = testCase.ingestedSeries([2 5 6]);
+
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+
+            testCase.verifyEqual(indices, [2 5 6], ...
+                'the gaps are skipped, not returned as empties');
+            testCase.verifyNumElements(uids, 3);
+
+            m = did.file.readSeriesManifest( ...
+                testCase.localPathOf(db, doc, 'chunkdata.bin'));
+            for k = 1:numel(indices)
+                testCase.verifyEqual(uids{k}, m.uids{indices(k)}, ...
+                    'each uid must be the one the manifest gives that slot');
+            end
+        end
+
+        function testSeriesMembersUidsResolveToTheMemberBytes(testCase)
+            % The shape the accessor exists for: one manifest read, then N
+            % resolutions that are pure functions of a uid -- no query, no
+            % network, callable from any thread.
+            [db, doc, ~, contents] = testCase.ingestedSeries();
+
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.assertEqual(indices, [1 2 3]);
+
+            for k = 1:numel(uids)
+                p = did.file.cachedPathForUid(uids{k}, ...
+                    'additionalRoots', {db.FileDir});
+                testCase.assertNotEmpty(p, 'the member should be on disk');
+                fid = fopen(p, 'r');
+                theseBytes = uint8(fread(fid, Inf, 'uint8')');
+                fclose(fid);
+                testCase.verifyEqual(theseBytes, contents{k});
+            end
+        end
+
+        function testSeriesHasIsAboutTheManifestNotTheDisk(testCase)
+            % The two questions are deliberately separate: a caller deciding
+            % what to fetch needs to know what SHOULD be there. Deleting the
+            % bytes changes exist_doc's answer and must not change this one.
+            [db, doc] = testCase.ingestedSeries();
+
+            [~, memberPath] = db.exist_doc(doc.id(), 'chunkdata.bin_2');
+            testCase.assertNotEmpty(memberPath);
+            delete(memberPath);
+
+            testCase.verifyFalse(db.exist_doc(doc.id(), 'chunkdata.bin_2'), ...
+                'the bytes are gone');
+            testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', 2), ...
+                'but the series still records the member');
+        end
+
+        function testSeriesAccessorsAreEmptyWithoutALocalManifest(testCase)
+            % Nothing is fetched to answer, so a manifest that is only remote
+            % gives the same "not here" cachedPathForFile gives.
+            [db, doc] = testCase.remoteManifestSeries();
+
+            testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', 1));
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.verifyEmpty(indices);
+            testCase.verifyEmpty(uids);
+        end
+
+        function testSeriesAccessorsRefuseAnUndeclaredName(testCase)
+            [db, doc] = testCase.ingestedSeries();
+
+            testCase.verifyFalse(db.seriesHas(doc, 'plainfile.ext', 1), ...
+                'an ordinary file is not a series');
+            testCase.verifyEmpty(db.seriesMembers(doc, 'plainfile.ext'));
+            testCase.verifyFalse(db.seriesHas(doc, 'nosuch.bin', 1));
+        end
+
+        function testSeriesAccessorsReachNoDatabase(testCase)
+            % Same promise cachedPathForFile makes, and for the same reason:
+            % a viewer walking a level cannot hold a session per worker.
+            [doc, fileRoot] = testCase.seriesOnDiskOnly();
+
+            db = did.test.helper.NoQueryDatabaseWithRoots({fileRoot});
+
+            testCase.verifyTrue(db.seriesHas(doc, 'chunkdata.bin', 1));
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.verifyEqual(indices, 1);
+            testCase.verifyNumElements(uids, 1);
+        end
+
+        % ---- ingesting a series whose bytes are remote --------------------
+
+        function testIngestOptionLetsARemoteSeriesBeIngested(testCase)
+            % Without 'ingest', addFileSeries marks a URL member a reference
+            % and nothing copies it -- so a series stored remotely could never
+            % be taken in at all. With it, each member is retrieved through
+            % the same customFileHandler a single file uses.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+
+            payload = testCase.writeMember(fullfile(pwd,'src'), 'payload.bin', uint8(1:10));
+            locs = {'https://nosuchserver.invalid/a.bin', ...
+                    'https://nosuchserver.invalid/b.bin'};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'ingest', 1);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual([e.ingest], [1 1], ...
+                'the option must reach every member');
+            testCase.verifyEqual([e.delete_original], [0 0], ...
+                'a remote original is still never ours to delete');
+
+            handler = @(destPath, sourcePath) copyfile(payload, destPath);
+            testCase.verifyWarningFree( ...
+                @() db.add_docs(doc, 'customFileHandler', handler));
+
+            for i = 1:2
+                name = sprintf('chunkdata.bin_%d', i);
+                testCase.verifyTrue(db.exist_doc(doc.id(), name), name);
+                testCase.verifyEqual(testCase.readMember(db, doc.id(), name), ...
+                    uint8(1:10), name);
+            end
+        end
+
+        function testIngestOptionDefaultsAreUnchanged(testCase)
+            % The default stays add_file's per-type rule, so every existing
+            % caller behaves exactly as before.
+            root = fullfile(pwd, 'store');
+            locs = {testCase.writeMember(root, 'a.bin', uint8(1:10)), ...
+                    'https://nosuchserver.invalid/b.bin'};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual([e.ingest], [1 0], ...
+                'a local file is taken in, a URL is a reference');
+        end
+
+        function testIngestOptionCanAlsoDeclineALocalMember(testCase)
+            % The override runs both ways: a local member left in place, with
+            % the document recording where it is rather than copying it.
+            root = fullfile(pwd, 'store');
+            locs = {testCase.writeMember(root, 'a.bin', uint8(1:10))};
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'ingest', 0);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(e.ingest, 0);
+            testCase.verifyEqual(e.location_type, 'file', ...
+                'declining ingestion must not change what the location IS');
         end
 
     end
