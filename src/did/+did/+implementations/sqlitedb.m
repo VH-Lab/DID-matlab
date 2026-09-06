@@ -988,7 +988,29 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 uid = this_file_struct.uid;
                 cacheFile = fullfile(didCache.directoryName, uid);
                 lockFile = fullfile(destDir, [uid '-fetch-lock']);
-                [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0);
+                % did.file.checkout_lock_file is the same primitive
+                % did.file.binaryTable/getLock takes for the cache catalog;
+                % this is a second, narrower lock over the DOWNLOAD, which
+                % ends before addFile and so is never held at the same time.
+                %
+                % Two arguments differ from binaryTable's, both because this
+                % lock is advisory where that one is required:
+                %
+                %   throwerror 0 -- a lock we cannot get must not fail a read.
+                %       Correctness here does not rest on the lock at all (the
+                %       unique temp name below and the addFile fallback carry
+                %       it), so a stuck peer costs a redundant download, never
+                %       an error the caller sees.
+                %   expiration 300 -- NOT the 3600 default. A holder that dies
+                %       mid-fetch leaves the file behind, and until it expires
+                %       every later fetch of that uid pays the full 30-second
+                %       wait before giving up and proceeding. Expiring EARLY
+                %       costs one redundant download; expiring late poisons a
+                %       uid for an hour. Five minutes is long enough for an
+                %       ordinary file and short enough that a crash is cheap.
+                %       binaryTable uses 20s for the same reason, over an
+                %       operation that is far quicker than a download.
+                [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0, 300);
                 if lockfid > 0
                     lockCleanup = onCleanup(@() did.file.release_lock_file(lockFile, lockkey)); %#ok<NASGU>
                 else
