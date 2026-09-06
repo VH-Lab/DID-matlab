@@ -684,6 +684,27 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
             testCase.verifyFalse(db.seriesHas(doc, 'nosuch.bin', 1));
         end
 
+        function testSeriesAccessorsSurviveACorruptManifest(testCase)
+            % An accessor is what a caller walks a level with, so a damaged
+            % manifest must come back as "nothing here" rather than throwing
+            % part way through the walk. It is also SILENT here: open_doc is
+            % where the corruption is reported, once, where it can be acted
+            % on -- warning per accessor call would mean thousands of them.
+            [db, doc] = testCase.ingestedSeries();
+
+            manifestPath = testCase.localPathOf(db, doc, 'chunkdata.bin');
+            fid = fopen(manifestPath, 'w');
+            fwrite(fid, uint8('NOTAMANIFESTATALL'), 'uint8');
+            fclose(fid);
+
+            testCase.verifyWarningFree(@() db.seriesHas(doc, 'chunkdata.bin', 1));
+            testCase.verifyFalse(db.seriesHas(doc, 'chunkdata.bin', 1));
+
+            [indices, uids] = db.seriesMembers(doc, 'chunkdata.bin');
+            testCase.verifyEmpty(indices);
+            testCase.verifyEmpty(uids);
+        end
+
         function testSeriesAccessorsReachNoDatabase(testCase)
             % Same promise cachedPathForFile makes, and for the same reason:
             % a viewer walking a level cannot hold a session per worker.
