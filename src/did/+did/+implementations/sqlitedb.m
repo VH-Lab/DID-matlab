@@ -311,8 +311,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % followed by parameter value. The following parameters are possible:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
             %   - 'customFileHandler' - a function handle called as
-            %       HANDLER(DESTPATH, SOURCEPATH) to retrieve a file whose
-            %       location is not a local path. See DID.DATABASE/ADD_DOCS.
+            %       HANDLER(DESTPATH, SOURCEPATH) or, when the handler
+            %       declares three or more inputs (or takes varargin),
+            %       HANDLER(DESTPATH, SOURCEPATH, CONTEXT), to retrieve
+            %       a file whose location is not a local path. CONTEXT
+            %       carries per-call document context that lets a
+            %       handler batch across a document (see DID-matlab
+            %       issue #186 and did.implementations.sqlitedb.dispatchCustomFileHandler).
+            %       See DID.DATABASE/ADD_DOCS.
             arguments
                 this_obj
                 document_obj
@@ -553,7 +559,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                                     % this previously called
                                     % ndi.cloud.api.files.getFile, which made
                                     % this package depend on NDI.
-                                    options.customFileHandler(destPath, sourcePath);
+                                    ctx = struct( ...
+                                        'documentId', doc_id, ...
+                                        'filename',   filename, ...
+                                        'seriesName', '', ...
+                                        'uid',        thisLocation.uid, ...
+                                        'mode',       'add');
+                                    did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                                        options.customFileHandler, destPath, sourcePath, ctx);
                                     status = isfile(destPath);
                                     if ~status
                                         errMsg = sprintf('customFileHandler did not produce a file at "%s"', destPath);
@@ -643,7 +656,14 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             if strcmpi(file_type, 'file')
                                 [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                             elseif ~isempty(options.customFileHandler)
-                                options.customFileHandler(destPath, sourcePath);
+                                ctx = struct( ...
+                                    'documentId', doc_id, ...
+                                    'filename',   memberName, ...
+                                    'seriesName', seriesName, ...
+                                    'uid',        thisMember.uid, ...
+                                    'mode',       'add');
+                                did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                                    options.customFileHandler, destPath, sourcePath, ctx);
                                 status = isfile(destPath);
                                 if ~status
                                     errMsg = sprintf('customFileHandler did not produce a file at "%s"', destPath);
@@ -839,7 +859,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %    'customFileHandler' — a function handle used to resolve file types
             %    not handled by default (e.g., non-'file' or 'url' types). It should
             %    accept (destPath, sourcePath) as inputs and produce a local file at
-            %    destPath.
+            %    destPath. A handler that declares three or more inputs (or takes
+            %    varargin) is called as HANDLER(destPath, sourcePath, context)
+            %    instead, receiving per-call document context so it can batch across
+            %    a document. See did.implementations.sqlitedb.dispatchCustomFileHandler
+            %    and DID-matlab issue #186.
             %
             % Only the first matching file that is found is returned.
             %
@@ -1050,7 +1074,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         % lower-level package reaching for a higher-level one.
                         % NDI already supplies retrieval through this hook.
                         if ~isempty(customFileHandler)
-                            tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
+                            ctx = struct( ...
+                                'documentId', document_id, ...
+                                'filename',   filename, ...
+                                'seriesName', '', ...
+                                'uid',        this_file_struct.uid, ...
+                                'mode',       'open');
+                            tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type, ctx)
                         else
                             error('DID:SQLITEDB:FileRetrieval:UnsupportedType', ...
                                 'File type "%s" is not supported and no custom handler is defined.', file_type);
@@ -1097,9 +1127,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 error('DID:SQLITEDB:open','The file "%s" in document "%s" cannot be accessed',filename,document_id);
             end
 
-            function tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
+            function tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type, ctx)
                 try
-                    customFileHandler(destPath, sourcePath);
+                    did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                        customFileHandler, destPath, sourcePath, ctx);
                     if ~isfile(destPath)
                         error('DID:SQLITEDB:FileRetrieval:CustomHandlerMissing', ...
                             'customFileHandler did not produce a file at "%s"', destPath);
@@ -1783,6 +1814,51 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
     end
 
     methods (Static, Access=public)
+        function dispatchCustomFileHandler(handler, destPath, sourcePath, context)
+            % dispatchCustomFileHandler - Arity-aware call of a customFileHandler
+            %
+            % Two arities are supported so a widened contract can coexist
+            % with every handler written against the two-argument one:
+            %
+            %   HANDLER(destPath, sourcePath)          -- today's contract
+            %   HANDLER(destPath, sourcePath, context) -- opt-in extension
+            %
+            % A handler declared with exactly two positional inputs is called
+            % with two, so pre-#186 handlers keep working unchanged. A
+            % handler that declares three or more positional inputs, or that
+            % takes varargin (`nargin(handler)` is negative), is called with
+            % three and gets `context` -- a scalar struct the caller fills in
+            % from the site:
+            %
+            %   context.documentId  -- char, the document's id
+            %   context.filename    -- char, the file name being retrieved
+            %                          (for a series member, 'NAME_<i>')
+            %   context.seriesName  -- char, '' unless this file is a
+            %                          series member being ingested
+            %   context.uid         -- char, the file's uid
+            %   context.mode        -- 'add' | 'open'
+            %
+            % The context lets a handler batch across a document -- e.g. NDI
+            % calling the cloud batch presign endpoint scoped to one document
+            % (or fileSeries) instead of one API round trip per uid. See
+            % DID-matlab issue #186 and NDI-matlab issue #952.
+            try
+                n = nargin(handler);
+            catch
+                % Something unusual (a class without a nargin implementation,
+                % say). Do not surprise the handler; the safe default is the
+                % old contract.
+                n = 2;
+            end
+            if n == 2
+                handler(destPath, sourcePath);
+            else
+                % n >= 3 -- three or more declared positional inputs -- or
+                % n < 0 -- varargin. Both opt in.
+                handler(destPath, sourcePath, context);
+            end
+        end
+
         function tf = isSafeUid(uid)
             % isSafeUid - Is uid safe to use as a filename under FileDir?
             %
