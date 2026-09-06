@@ -136,6 +136,38 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
                 'relative, and separated with / on every platform');
         end
 
+        function testExplicitSourceRootOverridesTheDerivedOne(testCase)
+            % Deriving would give the member's own directory (.../level0),
+            % so the recorded name would be just 'a'. Passing the root
+            % explicitly is what makes it 'level0/a', which is how a caller
+            % says where the tree starts rather than where the file sits.
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(fullfile(root,'level0'),'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'sourceRoot', root);
+
+            testCase.verifyEqual(doc.seriesSourceRoot('chunkdata.bin'), root);
+
+            m = did.file.readSeriesManifest(testCase.manifestLocation(doc,'chunkdata.bin'));
+            testCase.verifyEqual(m.sourceNames, {'level0/a'}, ...
+                'relative to the root that was given, not to a derived one');
+        end
+
+        function testLocationOutsideAnExplicitRootIsRefused(testCase)
+            % Recording it would put an absolute path in the manifest, which
+            % is the directory-layout disclosure relative names exist to
+            % prevent -- so this refuses rather than falling back.
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a'), ...
+                    testCase.writeMember(fullfile(pwd,'elsewhere'),'b')};
+
+            doc = did.document('demoSeries');
+            testCase.verifyError(...
+                @() doc.addFileSeries('chunkdata.bin', locs, 'sourceRoot', root), ...
+                'DID:Document:addFileSeries:notUnderRoot');
+        end
+
         function testSourceNamesCanBeDeclined(testCase)
             root = fullfile(pwd,'store');
             locs = {testCase.writeMember(root,'a')};
