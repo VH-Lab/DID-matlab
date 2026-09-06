@@ -781,6 +781,45 @@ classdef document
 
         end % seriesSourceRoot()
 
+        function entries = seriesIngestLocations(did_document_obj, name)
+            % SERIESINGESTLOCATIONS - where a series' members are, pending ingestion
+            %
+            % ENTRIES = SERIESINGESTLOCATIONS(DID_DOCUMENT_OBJ, NAME)
+            %
+            % Returns a struct array with one entry per PRESENT member, with
+            % fields index, uid, location, location_type, ingest,
+            % delete_original and parameters. Empty if the series has not been
+            % added, or if the document has already been ingested.
+            %
+            % This record is TRANSIENT. It is what lets the database copy each
+            % member from where it currently sits into FileDir/<uid>, and
+            % did.document.stripSeriesIngestLocations removes it before a
+            % document's JSON is stored, so member paths never persist and
+            % never travel to the cloud.
+            %
+            % Contrast files.file_info(i).locations, which survives ingestion.
+            %
+            % See also: did.document/addFileSeries,
+            %           did.document.stripSeriesIngestLocations
+
+            arguments
+                did_document_obj
+                name (1,:) char
+            end
+
+            entries = did.datastructures.emptystruct('index','uid','location', ...
+                'location_type','ingest','delete_original','parameters');
+
+            index = localSeriesInfoIndex(did_document_obj, name);
+            if isempty(index), return; end
+
+            si = did_document_obj.document_properties.files.series_info(index);
+            if ~isfield(si,'ingest_locations'), return; end
+            if isempty(si.ingest_locations), return; end
+            entries = si.ingest_locations;
+
+        end % seriesIngestLocations()
+
         function did_document_obj = addFileSeries(did_document_obj, name, locations, options)
             % ADDFILESERIES - add a whole file series to a did.document at once
             %
@@ -805,9 +844,15 @@ classdef document
             %       '' derives the longest common directory prefix. Pass a root
             %       to override, or set recordSourceNames false to record none.
             %   recordSourceNames (true) - record each member's path relative to
-            %       the root. Absolute paths are never recorded: a full path
-            %       exposes a directory layout the moment a document is shared.
+            %       the root, as permanent provenance in the manifest. Absolute
+            %       paths never PERSIST: a full path exposes a directory layout
+            %       the moment a document is shared. Setting this false costs
+            %       only the provenance -- ingestion locates members from the
+            %       transient ingest_locations record, not from these names.
             %   uidWidth (33)     - passed through to did.file.writeSeriesManifest
+            %   deleteOriginal (NaN) - should ingestion delete each member's
+            %       original file? NaN follows add_file's per-type default: 1
+            %       for a local file, 0 for a URL. Pass 0 to keep the sources.
             %
             % INDICES ARE ONE-BASED, matching the live NAME_# convention set by
             % ingested epoch data (ndi.daq.reader.mfdaq writes _seg.nbf_1
@@ -824,6 +869,7 @@ classdef document
                 options.sourceRoot (1,:) char = ''
                 options.recordSourceNames (1,1) logical = true
                 options.uidWidth (1,1) {mustBePositive, mustBeInteger} = 33
+                options.deleteOriginal (1,1) double = NaN
             end
 
             if ~did_document_obj.isFileSeries(name)
@@ -869,8 +915,10 @@ classdef document
                     sourceNames = localRelativeNames(locations, root);
                 else
                     % No meaningful common root: the members are scattered, and
-                    % recording absolute paths would be both a disclosure and
-                    % the bloat the manifest exists to avoid. Record none.
+                    % putting absolute paths in the MANIFEST would be both a
+                    % disclosure and the bloat it exists to avoid. Record none.
+                    % Locatability does not depend on this -- ingest_locations
+                    % below carries the paths, and is stripped before storage.
                     sourceNames = {};
                 end
             else
@@ -904,11 +952,30 @@ classdef document
             % every path that already carries a document's files carries it too.
             did_document_obj = did_document_obj.add_file(name, manifestPath);
 
+            % Where each member's bytes are RIGHT NOW, so that ingestion can
+            % find them. This is transient: did.document.stripSeriesIngestLocations
+            % removes it before a document's JSON is stored, so absolute paths
+            % exist only between authoring and ingestion and never travel.
+            %
+            % It is deliberately not called 'locations'. file_info.locations
+            % survives ingestion; this does not, and giving two fields with
+            % opposite lifetimes the same name reads fine today and misleads
+            % whoever later assumes they behave alike.
+            %
+            % Carrying the uid and the index here is what lets ingestion work
+            % without opening the manifest at all: it has the destination
+            % (FileDir/<uid>), the source, and the files-table filename
+            % (NAME_<index>). The manifest stays a download-side artifact.
+            ingestLocations = localIngestLocations(locations, indices, uids, ...
+                options.deleteOriginal);
+
             entry = struct('name', name, 'count', n, ...
-                'n_present', numel(locations), 'source_root', root);
+                'n_present', numel(locations), 'source_root', root, ...
+                'ingest_locations', {ingestLocations});
             if ~isfield(did_document_obj.document_properties.files,'series_info')
                 did_document_obj.document_properties.files.series_info = ...
-                    did.datastructures.emptystruct('name','count','n_present','source_root');
+                    did.datastructures.emptystruct('name','count','n_present', ...
+                        'source_root','ingest_locations');
             end
             k = numel(did_document_obj.document_properties.files.series_info)+1;
             did_document_obj.document_properties.files.series_info(k) = entry;
@@ -973,7 +1040,8 @@ classdef document
             % left alone: it says which names are series, which is a property
             % of the class and not of this instance.
             did_document_obj.document_properties.files.series_info = ...
-                did.datastructures.emptystruct('name','count','n_present','source_root');
+                did.datastructures.emptystruct('name','count','n_present', ...
+                    'source_root','ingest_locations');
 
         end % reset_file_info()
 
@@ -992,6 +1060,37 @@ classdef document
     end % methods
 
     methods (Static)
+
+        function props = stripSeriesIngestLocations(props)
+            % STRIPSERIESINGESTLOCATIONS - drop transient member paths from properties
+            %
+            % PROPS = did.document.STRIPSERIESINGESTLOCATIONS(PROPS)
+            %
+            % Returns PROPS with files.series_info(:).ingest_locations removed.
+            % Call this on the way to storing or shipping a document's JSON.
+            %
+            % A series' member paths are recorded so that ingestion can find
+            % the bytes; they are of no use afterwards, and a level of a
+            % lightsheet pyramid has tens of thousands of them. Since the
+            % stored JSON is preserved and returned whole, anything left in it
+            % is paid for on every fetch of that document -- so the paths are
+            % dropped here rather than allowed to persist.
+            %
+            % Leaves PROPS untouched if it declares no series. Safe to call on
+            % properties that have already been stripped.
+            %
+            % See also: did.document/seriesIngestLocations
+
+            if ~isstruct(props), return; end
+            if ~isfield(props,'files'), return; end
+            if ~isstruct(props.files), return; end
+            if ~isfield(props.files,'series_info'), return; end
+            if ~isfield(props.files.series_info,'ingest_locations'), return; end
+
+            props.files.series_info = rmfield(props.files.series_info, ...
+                'ingest_locations');
+
+        end % stripSeriesIngestLocations()
         function s = readblankdefinition(jsonfilelocationstring, s)
             % READBLANKDEFINITION - read a blank JSON class definitions from a file location string
             %
@@ -1178,6 +1277,52 @@ function stem = localSeriesMemberStem(did_document_obj, name)
     candidate = name(1:underscores(end)-1);
     if did_document_obj.isFileSeries(candidate)
         stem = candidate;
+    end
+end
+
+function entries = localIngestLocations(locations, indices, uids, deleteOriginal)
+    % Build the transient uid -> source-path record for a series' members.
+    %
+    % Shaped like a file_info location so the ingestion loop can treat the two
+    % the same way, plus 'index' so the member's files-table filename
+    % (NAME_<index>) is known without consulting the manifest.
+    %
+    % Defaults follow add_file: a URL is not ingested and its original is not
+    % deleted; a local file is ingested and, unless the caller says otherwise,
+    % its original is deleted. DELETEORIGINAL of NaN means "use that default".
+
+    entries = did.datastructures.emptystruct('index','uid','location', ...
+        'location_type','ingest','delete_original','parameters');
+
+    for i = 1:numel(locations)
+        L = locations{i};
+        if isstring(L) && isscalar(L), L = char(L); end
+        L = strip(L);
+
+        if startsWith(L,'https://','IgnoreCase',true) || ...
+                startsWith(L,'http://','IgnoreCase',true)
+            locationType = 'url';
+            ingest = 0;
+            defaultDelete = 0;
+        else
+            locationType = 'file';
+            ingest = 1;
+            defaultDelete = 1;
+        end
+
+        if isnan(deleteOriginal)
+            thisDelete = defaultDelete;
+        else
+            thisDelete = deleteOriginal;
+        end
+
+        entries(end+1) = struct('index', indices(i), ...
+            'uid', uids{indices(i)}, ...
+            'location', L, ...
+            'location_type', locationType, ...
+            'ingest', ingest, ...
+            'delete_original', thisDelete, ...
+            'parameters', ''); %#ok<AGROW>
     end
 end
 

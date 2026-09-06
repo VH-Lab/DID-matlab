@@ -372,8 +372,17 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             if isempty(data)
-                % Get the JSON code that parses all the document's properties
-                json_code = did.datastructures.jsonencodenan(doc_props);
+                % Get the JSON code that parses all the document's properties.
+                %
+                % A file series' member paths are stripped on the way in. They
+                % exist so ingestion can find the bytes; the stored JSON is
+                % preserved and returned whole, so leaving tens of thousands of
+                % absolute paths in it would be paid for on every fetch of the
+                % document, and would ship a directory layout to the cloud.
+                % doc_props itself keeps them, since the file loop below still
+                % needs them.
+                json_code = did.datastructures.jsonencodenan(...
+                    did.document.stripSeriesIngestLocations(doc_props));
 
                 % Add the new document to docs table
                 this_obj.insert_into_table('docs', 'doc_id,json_code,timestamp', doc_id, json_code, now); %, document_obj);

@@ -250,6 +250,191 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
             testCase.verifyNotEmpty(m.uids{2});
         end
 
+        % ---- ingest locations -----------------------------------------
+        %
+        % Transient: they record where each member's bytes currently sit so
+        % that ingestion can copy them, and are stripped before the document's
+        % JSON is stored. See VH-Lab/DID-matlab#173.
+
+        function testIngestLocationsRecordEveryPresentMember(testCase)
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a'), testCase.writeMember(root,'b')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(numel(e), 2);
+            testCase.verifyEqual([e.index], [1 2]);
+            testCase.verifyEqual({e.location}, locs);
+            testCase.verifyEqual({e.location_type}, {'file','file'});
+            testCase.verifyEqual([e.ingest], [1 1]);
+        end
+
+        function testIngestLocationUidsMatchTheManifestSlots(testCase)
+            % The pairing is the whole point: ingestion copies location -> uid,
+            % and the manifest is what later resolves NAME_i -> uid. If the two
+            % disagreed, a member would be stored under a uid nothing looks up.
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a'), testCase.writeMember(root,'b')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'indices', [2 5]);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            m = did.file.readSeriesManifest(testCase.manifestLocation(doc,'chunkdata.bin'));
+
+            testCase.verifyEqual([e.index], [2 5]);
+            for j = 1:numel(e)
+                testCase.verifyEqual(e(j).uid, m.uids{e(j).index}, ...
+                    'the ingest uid must be the uid the manifest gives that slot');
+            end
+        end
+
+        function testSparseSeriesRecordsOnlyPresentMembers(testCase)
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'indices', 4);
+
+            [n, nPresent] = doc.seriesCount('chunkdata.bin');
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(n, 4);
+            testCase.verifyEqual(nPresent, 1);
+            testCase.verifyEqual(numel(e), 1, ...
+                'absent slots have no bytes to ingest');
+            testCase.verifyEqual(e.index, 4);
+        end
+
+        function testLocationsSurviveWhenSourceNamesAreDeclined(testCase)
+            % The regression this record exists for. recordSourceNames false
+            % used to leave no root and no names, so nothing recorded where the
+            % members were and the series could never be ingested.
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'recordSourceNames', false);
+
+            testCase.verifyEmpty(doc.seriesSourceRoot('chunkdata.bin'), ...
+                'no provenance is recorded, as asked');
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(numel(e), 1);
+            testCase.verifyEqual(e.location, locs{1}, ...
+                'but ingestion still knows where the member is');
+        end
+
+        function testUrlMembersAreNotIngestedAndKeepTheirOriginal(testCase)
+            % Mirrors add_file: a URL is a reference, not something to copy in
+            % and then delete.
+            locs = {'https://example.org/store/a'};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(e.location_type, 'url');
+            testCase.verifyEqual(e.ingest, 0);
+            testCase.verifyEqual(e.delete_original, 0);
+        end
+
+        function testDeleteOriginalDefaultsPerTypeAndCanBeOverridden(testCase)
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(e.delete_original, 1, ...
+                'a local file follows add_file, which deletes the original');
+
+            doc2 = did.document('demoSeries');
+            doc2 = doc2.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+            e2 = doc2.seriesIngestLocations('chunkdata.bin');
+            testCase.verifyEqual(e2.delete_original, 0, ...
+                'and a caller with 28,000 members can say no');
+        end
+
+        function testIngestLocationsAreEmptyBeforeTheSeriesIsAdded(testCase)
+            doc = did.document('demoSeries');
+            testCase.verifyEmpty(doc.seriesIngestLocations('chunkdata.bin'));
+            testCase.verifyEmpty(doc.seriesIngestLocations('nosuch.bin'));
+        end
+
+        % ---- stripping -------------------------------------------------
+
+        function testStripRemovesLocationsAndKeepsTheRest(testCase)
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+
+            props = did.document.stripSeriesIngestLocations(doc.document_properties);
+            si = props.files.series_info;
+            testCase.verifyFalse(isfield(si,'ingest_locations'));
+            testCase.verifyEqual(si.name, 'chunkdata.bin');
+            testCase.verifyEqual(si.count, 1);
+            testCase.verifyEqual(si.n_present, 1);
+            testCase.verifyEqual(si.source_root, root, ...
+                'provenance is kept; only the pending paths go');
+        end
+
+        function testStrippedPropertiesCarryNoMemberPaths(testCase)
+            % What the database stores must not contain a member path at all.
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a'), testCase.writeMember(root,'b')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+
+            props = did.document.stripSeriesIngestLocations(doc.document_properties);
+            json = did.datastructures.jsonencodenan(props);
+            testCase.verifyEmpty(strfind(json, locs{1}), ...
+                'a member path must not reach the stored JSON');
+            testCase.verifyEmpty(strfind(json, locs{2}));
+        end
+
+        function testStripIsIdempotentAndSafeWithoutSeries(testCase)
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+
+            once = did.document.stripSeriesIngestLocations(doc.document_properties);
+            twice = did.document.stripSeriesIngestLocations(once);
+            testCase.verifyEqual(twice, once);
+
+            plain = did.document('demoFile','demoFile.value',1);
+            testCase.verifyEqual(...
+                did.document.stripSeriesIngestLocations(plain.document_properties), ...
+                plain.document_properties, ...
+                'a document with no series is untouched');
+        end
+
+        function testAccessorIsEmptyOnAStoredDocument(testCase)
+            % The round trip a reader takes: the database stores the stripped
+            % properties and hands them back, and did.document(STRUCT) rebuilds
+            % from them. document_properties is SetAccess=protected, so this is
+            % also the only way to get a stripped document -- which is right,
+            % since stripping belongs to storage, not to callers.
+            root = fullfile(pwd,'store');
+            locs = {testCase.writeMember(root,'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs);
+
+            stored = did.document(...
+                did.document.stripSeriesIngestLocations(doc.document_properties));
+
+            testCase.verifyEmpty(stored.seriesIngestLocations('chunkdata.bin'), ...
+                'a stored document no longer says where its members came from');
+            testCase.verifyEqual(stored.seriesCount('chunkdata.bin'), 1, ...
+                'but it still knows the series and its size');
+        end
+
         % ---- refusals -------------------------------------------------
 
         % ---- declaration-level exclusivity ---------------------------
