@@ -400,6 +400,56 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             if isempty(data)
+                % REFUSE A SERIES WHOSE MEMBERS CANNOT BE LOCATED (#173).
+                %
+                % A series records how many members it has (n_present) apart
+                % from where they are (ingest_locations), and the second is
+                % stripped when a document is stored. So a document that has
+                % been through a database and comes back says "27,412 members"
+                % while carrying no way to find one. Storing that produces a
+                % manifest full of uids whose bytes will never arrive, and the
+                % member loop below -- which iterates ingest_locations -- would
+                % do it in complete silence, since an empty list is simply
+                % zero passes.
+                %
+                % This runs only for a document NEW to this database, and
+                % before the first write. Re-adding a document that is already
+                % here (to a second branch, say) is exempt and must be: its
+                % members were ingested when it first arrived, so an empty
+                % ingest_locations is expected and correct. What that leaves
+                % is the case worth refusing -- a stored document carried to a
+                % database that has never seen it, whose bytes are still in
+                % the database it came from.
+                %
+                % Deliberately no manifest read: knowing the count is enough
+                % to know something is wrong, and parsing the manifest during
+                % add_docs is exactly what carrying uid and index in
+                % ingest_locations exists to avoid.
+                try preadd_series = doc_props.files.series_info; catch, preadd_series = []; end
+                for asIdx = 1 : numel(preadd_series)
+                    thisSeries = preadd_series(asIdx);
+                    nPresent = 0;
+                    try nPresent = thisSeries.n_present; catch, end
+                    if isempty(nPresent) || nPresent <= 0
+                        continue
+                    end
+                    haveLocations = false;
+                    try haveLocations = ~isempty(thisSeries.ingest_locations); catch, end
+                    if haveLocations
+                        continue
+                    end
+                    thisName = sprintf('#%d', asIdx);
+                    try thisName = char(thisSeries.name); catch, end
+                    error('DID:SQLITEDB:FileSeries:MembersNotLocatable', ...
+                        ['Refusing to add document %s: its file series "%s" declares ' ...
+                         '%d present members but records no location for any of them. ' ...
+                         'A document read back from a database has had these stripped, ' ...
+                         'so it can be added to another branch of the database it came ' ...
+                         'from but not to a database that has never held it. Add the ' ...
+                         'document that authored the series, or re-author it with ' ...
+                         'addFileSeries.'], doc_id, thisName, nPresent);
+                end
+
                 % Get the JSON code that parses all the document's properties.
                 %
                 % A file series' member paths are stripped on the way in. They
@@ -913,7 +963,57 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 destDir =  did.common.PathConstants.temppath;
                 %destDir = this_obj.FileDir;  % SDV this should be changed to file cache
                 %destDir = this_obj.get_preference('cache_folder');
-                destPath = fullfile(destDir, this_file_struct.uid);
+
+                % SINGLE-FLIGHT PER UID (VH-Lab/DID-matlab#173). Two MATLAB
+                % processes sharing one file cache is an ordinary lab setup,
+                % and PathConstants.temppath is tempdir/didtemp -- per USER,
+                % not per process -- so both land in the same place. Before
+                % this, both retrieved the same uid at once and:
+                %
+                %   * both wrote to temppath/<uid>, one fixed name per uid, so
+                %     each could see the other's half-written download;
+                %   * whichever finished second then failed outright, because
+                %     addFile refuses a name the winner already put in the
+                %     cache -- turning a redundant download into an error.
+                %
+                % The lock makes the second process wait and then find the
+                % file already there, which is the point: one fetch per uid,
+                % not one per caller. It is deliberately NOT inside the cache
+                % directory -- that directory is swept for orphan files and
+                % sized by listing it, so a stray lock there would be counted
+                % or collected. DID-python will need this same path to
+                % serialize against MATLAB; today it takes the cache's
+                % '<file>-lock' but knows nothing of this one.
+                uid = this_file_struct.uid;
+                cacheFile = fullfile(didCache.directoryName, uid);
+                lockFile = fullfile(destDir, [uid '-fetch-lock']);
+                [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0);
+                if lockfid > 0
+                    lockCleanup = onCleanup(@() did.file.release_lock_file(lockFile, lockkey)); %#ok<NASGU>
+                else
+                    % Could not take the lock within the wait. Carrying on is
+                    % safe -- the temp name below is unique per fetch, and a
+                    % lost race is handled where addFile is called -- so a
+                    % stuck or slow peer costs a redundant download, never
+                    % correctness.
+                    lockCleanup = []; %#ok<NASGU>
+                end
+
+                % Whoever waited on the lock usually finds the work already
+                % done. Re-check before spending a download.
+                if isfile(cacheFile)
+                    didCache.touch(uid);
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
+                    return
+                end
+
+                % A unique temp name per fetch. The uid names the file's home
+                % in the cache, not the scratch copy on the way there, and
+                % using it for both is what let two fetches collide. Built
+                % from did.ido.unique_id rather than tempname so the name is
+                % unique per FETCH even within one process, and still says
+                % which uid it belongs to if one is ever left behind.
+                destPath = fullfile(destDir, [uid '.' did.ido.unique_id() '.part']);
                 try
                     if strcmpi(file_type,'file')
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
@@ -934,8 +1034,22 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                         end
                     end
                     % now we have the temporary file for the file cache
-                    didCache.addFile(destPath, this_file_struct.uid);
-                    cacheFile = fullfile(didCache.directoryName,this_file_struct.uid);
+                    try
+                        didCache.addFile(destPath, uid);
+                    catch addErr
+                        % Losing the race is not a failure. Another process
+                        % may have placed this uid while the fetch was in
+                        % flight (the lock narrows this window but a peer that
+                        % never got the lock can still do it); its bytes are
+                        % the same bytes. Keep ours only if the cache really
+                        % has nothing.
+                        if ~isfile(cacheFile)
+                            rethrow(addErr);
+                        end
+                        if isfile(destPath)
+                            delete(destPath);
+                        end
+                    end
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
                     return

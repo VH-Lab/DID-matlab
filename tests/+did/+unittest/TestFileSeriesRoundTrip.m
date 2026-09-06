@@ -580,6 +580,111 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
             testCase.verifyFalse(db.exist_doc(doc.id(), 'filename1.ext_1'));
         end
 
+        % ---- refusing a series that cannot be ingested --------------------
+
+        function testStoredDocumentCannotBeAddedToAFreshDatabase(testCase)
+            % #173's addendum: add_docs must refuse a document whose series
+            % has members it cannot locate, rather than storing something
+            % broken. A document read back has had its ingest_locations
+            % stripped, so a database that has never held it has no way to
+            % fill the manifest's uids -- and the member loop would skip them
+            % in silence, since an empty list is simply zero passes.
+            [db, doc] = testCase.ingestedSeries();
+            stored = db.get_docs(doc.id());
+
+            other = did.implementations.sqlitedb('otherdb.sqlite');
+            other.add_branch('a');
+
+            testCase.verifyError(@() other.add_docs(stored), ...
+                'DID:SQLITEDB:FileSeries:MembersNotLocatable');
+        end
+
+        function testRefusalHappensBeforeAnythingIsWritten(testCase)
+            % Refusing after the docs row went in would leave the broken
+            % document half-stored, which is the state the guard exists to
+            % prevent.
+            [db, doc] = testCase.ingestedSeries();
+            stored = db.get_docs(doc.id());
+
+            other = did.implementations.sqlitedb('otherdb.sqlite');
+            other.add_branch('a');
+            try
+                other.add_docs(stored);
+            catch
+                % expected; the point is what is left behind
+            end
+
+            rows = other.run_sql_query( ...
+                ['SELECT doc_id FROM docs WHERE doc_id="' stored.id() '"'], true);
+            testCase.verifyEmpty(rows, ...
+                'nothing about the refused document should have been written');
+        end
+
+        function testTheGuardExemptsADocumentTheDatabaseAlreadyHolds(testCase)
+            % The exemption that keeps the guard honest. Re-adding a document
+            % this database already holds is ordinary -- its members were
+            % ingested when it first arrived, so an empty ingest_locations is
+            % expected there, not a fault.
+            %
+            % Reaching the DUPLICATE_DOC check is the proof: had the guard
+            % fired it would have raised MembersNotLocatable first, since it
+            % sits above that check and above every write.
+            [db, doc] = testCase.ingestedSeries();
+            stored = db.get_docs(doc.id());
+
+            testCase.verifyError(@() db.add_docs(stored), ...
+                'DID:SQLITEDB:DUPLICATE_DOC');
+        end
+
+        function testADeclaredButEmptySeriesIsNotRefused(testCase)
+            % A series that was never populated has nothing to locate, so
+            % there is nothing to complain about.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            db.add_docs(doc);
+
+            testCase.verifyNumElements( ...
+                db.search(did.query('', 'isa', 'demoSeries', '')), 1);
+        end
+
+        % ---- one fetch per uid --------------------------------------------
+
+        function testRetrievalUsesAUniqueTempNamePerFetch(testCase)
+            % The cross-process defect from #173: every fetch wrote to
+            % temppath/<uid>, one fixed name per uid. PathConstants.temppath
+            % is tempdir/didtemp -- per USER, not per process -- so two MATLAB
+            % processes sharing it could see each other's half-written
+            % download, and the loser's addFile then failed outright.
+            %
+            % The handler records where it was told to write, which is the
+            % only place that path is observable.
+            [db, doc, ~, manifestCopy] = testCase.remoteManifestSeries();
+
+            recordFile = fullfile(pwd, 'fetches.txt');
+            handler = @(destPath, sourcePath) ...
+                localCopyAndRecord(destPath, manifestCopy, recordFile);
+
+            db.open_doc(doc.id(), 'chunkdata.bin', 'customFileHandler', handler);
+
+            testCase.assertTrue(isfile(recordFile), ...
+                'precondition: the handler should have been asked to fetch');
+            lines = strtrim(strsplit(fileread(recordFile), newline));
+            lines = lines(~cellfun('isempty', lines));
+            testCase.assertNumElements(lines, 1);
+
+            uids = doc.fileUids('chunkdata.bin');
+            [~, base, ext] = fileparts(lines{1});
+
+            testCase.verifyNotEqual([base ext], uids{1}, ...
+                'the scratch copy must not be named for the uid alone');
+            testCase.verifySubstring(lines{1}, uids{1}, ...
+                'but it should still say which uid it belongs to');
+            testCase.verifyEqual(ext, '.part', ...
+                'and should be marked as a partial download');
+        end
+
         % ---- series accessors -------------------------------------------
         %
         % seriesCount answers from the document; WHICH slots are filled is
@@ -784,4 +889,16 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
         end
 
     end
+end
+
+function localCopyAndRecord(destPath, sourceFile, recordFile)
+    % A customFileHandler that notes the path it was handed before doing the
+    % copy. A local function rather than a nested one so the handle can be
+    % built with a plain anonymous wrapper.
+    fid = fopen(recordFile, 'a');
+    if fid > 0
+        fprintf(fid, '%s\n', destPath);
+        fclose(fid);
+    end
+    copyfile(sourceFile, destPath);
 end
