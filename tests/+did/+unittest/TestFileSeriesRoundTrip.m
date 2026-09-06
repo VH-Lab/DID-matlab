@@ -708,6 +708,38 @@ classdef TestFileSeriesRoundTrip < matlab.unittest.TestCase
                 'the manifest should still open, from whichever copy won');
         end
 
+        function testAFailedFetchLeavesNoPartialBehind(testCase)
+            % The leak a unique temp name introduces. The old fixed
+            % temppath/<uid> was at least overwritten by the next attempt; a
+            % uniquely named .part that nobody deletes stays forever, one per
+            % failed fetch.
+            %
+            % It is not only litter. NDI's customFileHandler short-circuits on
+            % isfile(destPath) and reports success without downloading, so a
+            % leftover partial could be taken for a finished download and
+            % moved into the cache under that uid -- silently wrong bytes for
+            % every later read. See VH-Lab/DID-matlab#173.
+            [db, doc] = testCase.remoteManifestSeries();
+
+            recordFile = fullfile(pwd, 'failed-fetches.txt');
+            handler = @(destPath, sourcePath) ...
+                localWriteThenFail(destPath, recordFile);
+
+            testCase.verifyError(@() db.open_doc(doc.id(), 'chunkdata.bin', ...
+                'customFileHandler', handler), 'DID:SQLITEDB:open');
+
+            testCase.assertTrue(isfile(recordFile), ...
+                'precondition: the handler should have been asked to fetch');
+            lines = strtrim(strsplit(fileread(recordFile), newline));
+            lines = lines(~cellfun('isempty', lines));
+            testCase.assertNotEmpty(lines);
+
+            for i = 1:numel(lines)
+                testCase.verifyFalse(isfile(lines{i}), ...
+                    'a failed fetch must not leave its partial download behind');
+            end
+        end
+
         % ---- series accessors -------------------------------------------
         %
         % seriesCount answers from the document; WHICH slots are filled is
@@ -934,4 +966,20 @@ function localCopyAndPreempt(destPath, sourceFile, uid)
     rival = [destPath '.rival'];
     copyfile(sourceFile, rival);
     did.common.getCache().addFile(rival, uid);
+end
+
+function localWriteThenFail(destPath, recordFile)
+    % A customFileHandler that gets part way and then dies, the way an
+    % interrupted transfer does: bytes on disk at destPath, and an error.
+    fid = fopen(recordFile, 'a');
+    if fid > 0
+        fprintf(fid, '%s\n', destPath);
+        fclose(fid);
+    end
+    fid = fopen(destPath, 'w');
+    if fid > 0
+        fwrite(fid, uint8(1:4), 'uint8');
+        fclose(fid);
+    end
+    error('DID:Test:SimulatedTransferFailure', 'interrupted mid-transfer');
 end
