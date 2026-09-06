@@ -367,35 +367,60 @@ classdef TestSeriesMemberFetch < matlab.unittest.TestCase
 
         % ---- the two ways this would be silent wrong bytes ---------------
 
-        function testALocalFileManifestIsNeverHandedToAHandler(testCase)
-            % A manifest whose own location is an ordinary local file gives a
-            % handler a LOCAL path as sourcePath. A handler that copies what
-            % it is given would put the MANIFEST's bytes into the member's
-            % cache slot -- wrong bytes under a uid, which no later read can
-            % detect. So the fetch is only attempted when the manifest's
-            % location is not a plain file.
+        function testALocalFileManifestIsAlsoHandedToAHandler(testCase)
+            % A manifest whose own location is an ordinary local file IS
+            % offered, and this is the case that matters most in practice.
+            %
+            % It was refused at first, reasoning that a handler handed a
+            % local path might simply copy it, putting the MANIFEST's bytes
+            % into the member's cache slot. That is a real mistake and it is
+            % still caught -- by the byte comparison in
+            % testAHandlerThatReturnsTheManifestIsRefused, which does not
+            % care whether the path it was given was local.
+            %
+            % What the refusal also assumed was that a local manifest means a
+            % database with no remote store to fetch from. That is false, and
+            % false for the shape this whole mechanism exists to serve: a
+            % dataset synced from a remote store brings its document files
+            % down to local paths and leaves the series MEMBERS behind, so
+            % the manifest is an ordinary file on disk while every member it
+            % names is still remote. Under the old rule the handler was never
+            % asked and every member of such a series read as absent. See
+            % VH-Lab/NDI-matlab#966, where it made the feature inert for its
+            % main caller.
             db = did.implementations.sqlitedb(testCase.db_filename);
             db.add_branch('a');
 
             root = fullfile(pwd, 'store');
-            locs = {testCase.writeMember(root, 'a.bin', uint8(1:10)), ...
-                    testCase.writeMember(root, 'b.bin', uint8(11:20))};
+            contents = {uint8(1:10), uint8(11:20)};
+            locs = {testCase.writeMember(root, 'a.bin', contents{1}), ...
+                    testCase.writeMember(root, 'b.bin', contents{2})};
             doc = did.document('demoSeries', 'demoSeries.value', 1);
             doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
             db.add_docs(doc);
 
+            % The manifest stays exactly where add_docs put it: a local file.
             testCase.takeMembersOffTheMachine(db, doc);
 
-            called = false;
-            function serve(~, ~, ~)
-                called = true;
+            srcByUid = containers.Map('KeyType', 'char', 'ValueType', 'char');
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            for i = 1:numel(e)
+                srcByUid(e(i).uid) = locs{e(i).index};
             end
 
-            testCase.verifyError( ...
-                @() db.open_doc(doc.id(), 'chunkdata.bin_2', 'customFileHandler', @serve), ...
-                'DID:SQLITEDB:open');
-            testCase.verifyFalse(called, ...
-                'a local-file manifest location must never be dispatched');
+            called = false;
+            function serve(destPath, ~, ctx)
+                called = true;
+                if isKey(srcByUid, ctx.uid)
+                    copyfile(srcByUid(ctx.uid), destPath);
+                end
+            end
+
+            f = db.open_doc(doc.id(), 'chunkdata.bin_2', 'customFileHandler', @serve);
+            testCase.verifyTrue(called, ...
+                'a local-file manifest location must still be dispatched');
+            testCase.verifyEqual(testCase.readAll(f), contents{2}, ...
+                'the member fetched from a local-manifest series has wrong bytes');
         end
 
         function testAHandlerThatReturnsTheManifestIsRefused(testCase)
