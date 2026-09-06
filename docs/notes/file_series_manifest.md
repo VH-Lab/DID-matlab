@@ -91,7 +91,11 @@ read instead of one path resolution, and `check_exist_doc` answers `false` for a
 member whose *manifest* is not local yet, since it will not fetch to answer.
 A member also has no `orig_location`, so nothing can retrieve one member's bytes
 from a remote store; that is step 3 of VH-Lab/DID-matlab#173, the batch presign
-endpoint, and belongs with the code that owns the transport.
+endpoint, and belongs with the code that owns the transport. `open_doc`
+distinguishes the two ways a member can fail to resolve: a name the manifest has
+no uid for is "no such file", while a member the manifest *does* record whose
+bytes are simply not here says so, and says which series it belongs to — the
+first is a name to check, the second a file to fetch.
 
 ## Ingesting members
 

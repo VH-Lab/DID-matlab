@@ -400,6 +400,45 @@ classdef TestSeriesManifest < matlab.unittest.TestCase
                 'DID:FileSeries:readSeriesManifestUid:badUidWidth');
         end
 
+        function testSingleSlotRejectsAHeaderCutShort(testCase)
+            % Magic and nothing else. The header fields come back empty, and
+            % an empty version must not compare equal to 1 and fall through
+            % into the uid block.
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w'); fwrite(fid, uint8('DIDFSER1'), 'uint8'); fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifestUid(p, 1), ...
+                'DID:FileSeries:readSeriesManifestUid:truncated');
+        end
+
+        function testSingleSlotRejectsAPartialHeader(testCase)
+            % Magic, version and flags, but no count or uid_width. The two
+            % fields the seek arithmetic is built from are missing.
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            fwrite(fid, uint8('DIDFSER1'), 'uint8');
+            fwrite(fid, uint32([1 0]), 'uint32');
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifestUid(p, 1), ...
+                'DID:FileSeries:readSeriesManifestUid:truncated');
+        end
+
+        function testSingleSlotRejectsAShortUidRecord(testCase)
+            % The seek lands inside the file but the record runs off the end.
+            % Returning the short read as a uid would resolve the member to
+            % the wrong file; returning '' would call it absent. Neither is
+            % true, so this errors.
+            p = testCase.manifestPath();
+            fid = fopen(p, 'w', 'ieee-le');
+            testCase.writeHeader(fid, 0, 1, 33, 1);
+            fwrite(fid, uint8('abc'), 'uint8');   % 3 bytes of a 33-byte record
+            fclose(fid);
+
+            testCase.verifyError(@() did.file.readSeriesManifestUid(p, 1), ...
+                'DID:FileSeries:readSeriesManifestUid:truncated');
+        end
+
         function testSingleSlotRejectsATruncatedFile(testCase)
             % The header promises three members; the file holds one. Reading
             % slot 3 must say so rather than returning '' , which the caller
