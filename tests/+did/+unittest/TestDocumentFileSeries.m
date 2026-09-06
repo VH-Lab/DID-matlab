@@ -168,6 +168,23 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
                 'DID:Document:addFileSeries:notUnderRoot');
         end
 
+        function testUidWidthReachesTheManifest(testCase)
+            % The last documented option without a test. It is a pass-through
+            % to did.file.writeSeriesManifest, but a dropped one would write a
+            % header whose stride disagrees with the reader's, so pin that it
+            % arrives. A did.ido uid is 33 characters, and the writer refuses a
+            % width that cannot hold one, so this widens rather than narrows.
+            locs = {testCase.writeMember(fullfile(pwd,'store'),'a')};
+
+            doc = did.document('demoSeries');
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'uidWidth', 40);
+
+            m = did.file.readSeriesManifest(testCase.manifestLocation(doc,'chunkdata.bin'));
+            testCase.verifyEqual(m.uidWidth, 40);
+            testCase.verifyEqual(numel(m.uids{1}), 33, ...
+                'the uid itself is unchanged; only the slot is wider');
+        end
+
         function testSourceNamesCanBeDeclined(testCase)
             root = fullfile(pwd,'store');
             locs = {testCase.writeMember(root,'a')};
