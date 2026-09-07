@@ -14,13 +14,16 @@ classdef TestSeriesMemberFetch < matlab.unittest.TestCase
     % can reach a sibling object in it. DID composes no URL and learns no
     % scheme; the handler does all of that.
     %
-    % Two things are pinned here beyond "the bytes come back", because
-    % getting either wrong is silent WRONG BYTES rather than a failure:
+    % One thing is pinned here beyond "the bytes come back", because getting
+    % it wrong is silent WRONG BYTES rather than a failure: a handler that
+    % resolves the uid out of SOURCEPATH -- which is the manifest's -- rather
+    % than out of the context is caught and refused.
     %
-    %   * a manifest whose own location is a local file is never handed to a
-    %     handler at all, and
-    %   * a handler that resolves the uid out of SOURCEPATH -- which is the
-    %     manifest's -- rather than out of the context is caught and refused.
+    % That guard is also what lets a manifest whose own location is a local
+    % file be offered to a handler at all. It was excluded at first, which
+    % made the feature inert for a lazily synced dataset -- local manifest,
+    % remote members -- so testALocalFileManifestIsAlsoHandedToAHandler now
+    % pins the opposite. See VH-Lab/DID-matlab#191.
     %
     % See VH-Lab/DID-matlab#188.
 
