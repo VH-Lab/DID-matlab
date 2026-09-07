@@ -89,13 +89,45 @@ all, since the manifest's uid is in the document the caller already holds.
 **What this costs.** A member read is two path resolutions and a small manifest
 read instead of one path resolution, and `check_exist_doc` answers `false` for a
 member whose *manifest* is not local yet, since it will not fetch to answer.
-A member also has no `orig_location`, so nothing can retrieve one member's bytes
-from a remote store; that is step 3 of VH-Lab/DID-matlab#173, the batch presign
-endpoint, and belongs with the code that owns the transport. `open_doc`
-distinguishes the two ways a member can fail to resolve: a name the manifest has
-no uid for is "no such file", while a member the manifest *does* record whose
-bytes are simply not here says so, and says which series it belongs to — the
-first is a name to check, the second a file to fetch.
+`open_doc` distinguishes the two ways a member can fail to resolve: a name the
+manifest has no uid for is "no such file", while a member the manifest *does*
+record whose bytes are simply not here says so, and says which series it belongs
+to — the first is a name to check, the second a file to fetch.
+
+## Retrieving a member that is not here
+
+A member has no `orig_location` — that is the per-member record a series
+deliberately does not keep. It does not follow that a member is unfetchable: the
+**series manifest** has a location, and a handler that can reach the store the
+manifest came from can reach a sibling object in it given the member's uid. So
+`sqlitedb/fetchSeriesMemberBytes` hands the handler the *manifest's* location as
+`sourcePath` and the *member's* uid in the context, alongside `seriesName` and
+`mode` `'open'`. DID composes no URL and learns no scheme; the handler does all
+of that. See VH-Lab/DID-matlab#188.
+
+Retrieval sits behind `seriesMemberPath`'s `mayRetrieve` gate: `open_doc` sets
+it, `check_exist_doc` does not, because it answers a question about local state
+and must not go to the network to do it. Without a handler, or when one fails,
+an absent member is still absent and `open_doc` still says so — the fetch adds a
+way to succeed, never a new way to fail.
+
+**Two mistakes here would be silent wrong bytes**, not failures, because the
+result is cached under the member's uid where no later read can tell it from the
+real thing. Both are refused:
+
+- A manifest whose own location is an ordinary local `file` is never offered to
+  a handler, which might simply copy what it is given. A local manifest also
+  means there is no remote store to fetch a member from, so nothing is lost.
+- `sourcePath` names the *manifest*, so a handler that resolves it instead of
+  reading `context.uid` returns the manifest's own bytes for every member. The
+  fetched file is compared against the manifest already in hand and refused with
+  `DID:SQLITEDB:FileSeries:HandlerReturnedManifest`. Sizes are compared first,
+  so the check costs nothing in practice. A handler declared with only two
+  inputs receives no context at all and so is never asked for a member.
+
+Asking a remote store for *many* members in one round trip is a separate change.
+The context carries `documentId` and `seriesName` precisely so a handler can
+batch on its own side without DID growing a bulk request.
 
 ## Ingesting members
 
