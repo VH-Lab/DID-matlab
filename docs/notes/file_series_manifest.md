@@ -111,19 +111,26 @@ and must not go to the network to do it. Without a handler, or when one fails,
 an absent member is still absent and `open_doc` still says so — the fetch adds a
 way to succeed, never a new way to fail.
 
-**Two mistakes here would be silent wrong bytes**, not failures, because the
+**The mistake here would be silent wrong bytes**, not a failure, because the
 result is cached under the member's uid where no later read can tell it from the
-real thing. Both are refused:
+real thing. `sourcePath` names the *manifest*, so a handler that resolves it
+instead of reading `context.uid` returns the manifest's own bytes for every
+member. The fetched file is compared against the manifest already in hand and
+refused with `DID:SQLITEDB:FileSeries:HandlerReturnedManifest`. Sizes are
+compared first, so the check costs nothing in practice. A handler declared with
+only two inputs receives no context at all and so is never asked for a member.
 
-- A manifest whose own location is an ordinary local `file` is never offered to
-  a handler, which might simply copy what it is given. A local manifest also
-  means there is no remote store to fetch a member from, so nothing is lost.
-- `sourcePath` names the *manifest*, so a handler that resolves it instead of
-  reading `context.uid` returns the manifest's own bytes for every member. The
-  fetched file is compared against the manifest already in hand and refused with
-  `DID:SQLITEDB:FileSeries:HandlerReturnedManifest`. Sizes are compared first,
-  so the check costs nothing in practice. A handler declared with only two
-  inputs receives no context at all and so is never asked for a member.
+That guard is what lets **every** location be offered, including a manifest
+whose own location is an ordinary local `file`. Excluding local paths looked
+like a second layer of safety and was not: `ndi.cloud.downloadDataset` syncs a
+dataset's document files to local paths and deliberately leaves the series
+*members* on the cloud, so that a 28,000-member series does not arrive with the
+dataset. The manifest is then an ordinary file on disk while every member it
+names is remote — the shape this mechanism exists to serve, and the one the
+exclusion made unreadable (VH-Lab/DID-matlab#191). Remote locations are offered
+first all the same: a handler that can answer from a remote store should not be
+handed a local path it might merely copy, which the guard makes harmless rather
+than free.
 
 Asking a remote store for *many* members in one round trip is a separate change.
 The context carries `documentId` and `seriesName` precisely so a handler can
