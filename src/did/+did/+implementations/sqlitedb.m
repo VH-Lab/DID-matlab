@@ -1407,17 +1407,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % right there in the manifest's location. DID composes no URL and
             % learns no scheme; see VH-Lab/DID-matlab#188.
             %
-            % TWO WAYS THAT WOULD BE SILENT WRONG BYTES, both refused here.
-            % Both matter more than an ordinary failure because the result is
+            % THE WAY THIS WOULD BE SILENT WRONG BYTES, refused here. It
+            % matters more than an ordinary failure because the result is
             % cached under the member's uid, where no later read can tell it
-            % from the real thing:
+            % from the real thing: a handler that resolves what to fetch from
+            % SOURCEPATH rather than from the context returns the MANIFEST's
+            % bytes for every member. What comes back is compared against the
+            % manifest and refused when it matches.
             %
-            %   * a manifest whose own location is an ordinary local file is
-            %     never offered, since a handler handed a local path may
-            %     simply copy it;
-            %   * a handler that resolves what to fetch from SOURCEPATH
-            %     rather than from the context returns the manifest itself,
-            %     which is compared for and refused.
+            % That guard is why a manifest whose own location is an ordinary
+            % local file is offered too, which it was not at first. See the
+            % dispatch loop below: the reasoning that excluded local paths
+            % also excluded the case the mechanism exists for, a dataset
+            % synced from a remote store with its members left behind.
             %
             % A deliberately focused helper rather than an extraction of
             % do_open_doc's retrieval block: that block is the most delicate
@@ -1456,19 +1458,38 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
             if isempty(data), return, end
 
-            % Which of the manifest's locations may be offered. A 'file'
-            % location is a path on this machine: handing it over risks a
-            % handler copying the MANIFEST's bytes into the member's cache
-            % slot, and a manifest that is local is also a database with no
-            % remote store to fetch a member from, so there is nothing to
-            % gain by trying. Every other type is the caller's to resolve,
-            % the same rule do_open_doc dispatches by.
-            isEligible = false(1, numel(data));
+            % Every location the manifest has is offered, LOCAL PATHS
+            % INCLUDED, remote ones first.
+            %
+            % A 'file' location was refused here at first, for two reasons.
+            % One was that handing a handler a local path risks it copying
+            % the MANIFEST's bytes into the member's cache slot -- which is
+            % now caught below, byte for byte, and refused. That guard is
+            % the general defence against a handler that resolves sourcePath
+            % instead of reading ctx.uid, and it does not care whether the
+            % path it was given was local.
+            %
+            % The other was that a manifest which is local implies a
+            % database with no remote store to fetch a member from. That is
+            % false, and false for the case this whole mechanism exists to
+            % serve: ndi.cloud.downloadDataset syncs a dataset's document
+            % files to local paths while deliberately leaving the series
+            % MEMBERS on the cloud, so the manifest is an ordinary local
+            % file and every member it names is remote. Refusing it meant
+            % the handler was never asked at all and every member of a
+            % downloaded series read as absent -- the whole feature inert
+            % for its main caller. See VH-Lab/NDI-matlab#966.
+            %
+            % Remote first, so a handler that can answer from a remote
+            % location is not handed a local path it might merely copy. The
+            % guard below makes that mistake harmless, not free: it costs a
+            % fetch and a byte comparison.
+            isRemote = false(1, numel(data));
             for idx = 1 : numel(data)
                 thisType = lower(strtrim(char(data(idx).type)));
-                isEligible(idx) = ~strcmp(thisType, 'file');
+                isRemote(idx) = ~strcmp(thisType, 'file');
             end
-            if ~any(isEligible), return, end
+            tryOrder = [find(isRemote) find(~isRemote)];
 
             didCache  = did.common.getCache();
             cacheFile = fullfile(didCache.directoryName, memberUid);
@@ -1496,8 +1517,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
 
             destPath = fullfile(destDir, [memberUid '.' did.ido.unique_id() '.part']);
-            for idx = 1 : numel(data)
-                if ~isEligible(idx), continue, end
+            for idx = tryOrder
                 sourcePath = data(idx).orig_location;
                 ctx = struct( ...
                     'documentId', document_id, ...
