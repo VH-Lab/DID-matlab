@@ -17,21 +17,17 @@ classdef seriesMemberNames < matlab.unittest.TestCase
     % being written out, so this file cannot claim something MATLAB does not
     % do.
     %
-    % THE PART A PORT SHOULD NOT COPY. MATLAB parses the index with str2num,
-    % which EVALUATES its argument: 'chunkdata.bin_1+1' would parse as member
-    % 2, and a name ending in something like 'pi' can parse as a number. That
-    % is an artifact of the implementation, not a decision, so those inputs
-    % are deliberately absent from the vectors -- pinning them would oblige
-    % DID-python to reproduce an eval it should not want. A port should use a
-    % strict integer parse; the vectors here are all inputs where a strict
-    % parse and str2num agree.
+    % THE PARSE. Both languages now use a strict all-digits check on the
+    % trailing part after the last underscore -- matching DID-python's
+    % str.isdigit(). MATLAB used to parse with str2num, which EVALUATES its
+    % argument ('_pi', '_i', '_1+1', '_-1' all came back as numbers there);
+    % tightened in DID-matlab#199 / DID-python#69 so the two languages
+    % agree at the parse rather than at a downstream check.
     %
     % WHERE VALIDATION LIVES. seriesMemberOf PARSES; it does not validate.
-    % 'chunkdata.bin_0' and 'chunkdata.bin_-1' both parse, and it is
-    % sqlitedb/seriesMemberPath that rejects an index below 1 or non-integer.
-    % The split matters: a port that rejects them in the parser answers the
-    % same in the end but disagrees here, and this table says which side the
-    % line falls on.
+    % 'chunkdata.bin_0' still parses (0 is a valid digit string), and it is
+    % sqlitedb/seriesMemberPath that rejects an index below 1. A leading
+    % minus like 'chunkdata.bin_-1' now fails the parse itself.
 
     properties (Constant)
         documentClass = 'demoSeries'
@@ -83,8 +79,9 @@ classdef seriesMemberNames < matlab.unittest.TestCase
                      'what is stored']
                 'chunkdata.bin_0',    'chunkdata.bin',  0, ...
                     'parses; seriesMemberPath is what rejects an index below 1'
-                'chunkdata.bin_-1',   'chunkdata.bin', -1, ...
-                    'likewise parses, and is likewise rejected downstream'
+                'chunkdata.bin_-1',   '',              [], ...
+                    ['fails the parse itself: str2num used to accept the ' ...
+                     'leading minus, but the all-digits check does not']
                 'chunkdata.bin_1_2',  '',              [], ...
                     ['the LAST underscore splits, so the candidate stem is ' ...
                      '"chunkdata.bin_1", which is not declared. A first-' ...
