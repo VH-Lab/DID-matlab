@@ -512,17 +512,19 @@ classdef TestDocumentFileSeries < matlab.unittest.TestCase
                 'DID:Document:fileDeclarations:shadowedBySeries');
         end
 
-        function testShadowingIsCaughtForNamesStr2numEvaluates(testCase)
-            % str2num EVALUATES its argument, so "_pi" and "_i" parse as
-            % numbers and reach the series path too. Pinned because the
-            % obvious rewrite to str2double would silently stop catching them.
+        function testShadowingIgnoresNonDigitTrailingParts(testCase)
+            % The trailing-part parse is a strict all-digits check as of
+            % DID-matlab#199 / DID-python#69. It used to be str2num, which
+            % EVALUATES, so "_pi" and "_i" parsed as numbers and reached
+            % the series path -- and the shadowing check refused these
+            % declarations. Both languages now treat those names as
+            % literals, so the declarations construct.
             for suffix = {'_pi','_i'}
-                testCase.verifyError(...
-                    @() did.document(testCase.declaration(...
-                        {'chunkdata.bin',['chunkdata.bin' suffix{1}]}, ...
-                        {'chunkdata.bin'})), ...
-                    'DID:Document:fileDeclarations:shadowedBySeries', ...
-                    sprintf('suffix %s should be caught', suffix{1}));
+                doc = did.document(testCase.declaration(...
+                    {'chunkdata.bin',['chunkdata.bin' suffix{1}]}, ...
+                    {'chunkdata.bin'}));
+                testCase.verifyEqual(doc.seriesNames(), {'chunkdata.bin'}, ...
+                    sprintf('suffix %s should NOT be caught by shadowing', suffix{1}));
             end
         end
 

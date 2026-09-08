@@ -645,12 +645,17 @@ classdef document
             %   or be a proper numbered file if files.file_list{i} has has the form 'filename.ext_#'.
 
             % Step 2a: see if name ends in '_#', where # is a non-negative integer.
+            % Strict all-digits parse (not str2num, which EVALUATES: 'pi' and
+            % 'i' would come back as numbers there and reach the '#' branch).
+            % Matches did.document/seriesMemberOf, whose parse is the one
+            % downstream callers use, and matches DID-python's isdigit-based
+            % check. See DID-matlab#199 / DID-python#69.
 
             search_name = name;
             underscores = find(name=='_');
             if ~isempty(underscores)
-                n = str2num(name(underscores(end)+1:end));
-                if ~isempty(n) % we have a number
+                tail = name(underscores(end)+1:end);
+                if ~isempty(tail) && all(isstrprop(tail, 'digit'))
                     search_name = [name(1:underscores(end)) '#'];
                 end
             end
@@ -814,8 +819,13 @@ classdef document
 
             underscores = find(name=='_');
             if isempty(underscores), return; end
-            n = str2num(name(underscores(end)+1:end)); %#ok<ST2NM>
-            if isempty(n), return; end
+            tail = name(underscores(end)+1:end);
+            % Strict all-digits parse (not str2num, which EVALUATES: '_pi'
+            % and '_-1' would come back as numbers there). Matches
+            % is_in_file_list above and DID-python's series_member_of.
+            % See DID-matlab#199 / DID-python#69.
+            if isempty(tail) || ~all(isstrprop(tail, 'digit')), return; end
+            n = str2double(tail);
             candidate = name(1:underscores(end)-1);
             if ~did_document_obj.isFileSeries(candidate), return; end
 
@@ -1576,15 +1586,18 @@ function localValidateFileDeclarations(did_document_obj)
     end
 
     % Collision 2 (and 4): a literal entry that a series would shadow.
-    % is_in_file_list resolves the trailing integer first, so such an entry is
-    % unreachable. Note str2num EVALUATES, so a name ending _pi or _i parses
-    % as a number too and is caught here as well.
+    % is_in_file_list resolves the trailing integer first, so such an entry
+    % is unreachable. The trailing-part parse is a strict all-digits check
+    % (not str2num, which EVALUATES), matching is_in_file_list above and
+    % did.document/seriesMemberOf; DID-python's series_member_of uses the
+    % same rule. See DID-matlab#199 / DID-python#69.
     for i = 1:numel(fileList)
         thisName = fileList{i};
         if isempty(thisName) || thisName(end) == '#', continue; end
         underscores = find(thisName == '_');
         if isempty(underscores), continue; end
-        if isempty(str2num(thisName(underscores(end)+1:end))) %#ok<ST2NM>
+        tail = thisName(underscores(end)+1:end);
+        if isempty(tail) || ~all(isstrprop(tail, 'digit'))
             continue;
         end
         stem = thisName(1:underscores(end)-1);
@@ -1592,7 +1605,7 @@ function localValidateFileDeclarations(did_document_obj)
             error('DID:Document:fileDeclarations:shadowedBySeries', ...
                 ['file_list entry "%s" is unreachable: it parses as member ' ...
                  '%s of the file series "%s", so the series answers for it.'], ...
-                thisName, thisName(underscores(end)+1:end), stem);
+                thisName, tail, stem);
         end
     end
 end

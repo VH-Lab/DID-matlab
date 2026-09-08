@@ -42,21 +42,12 @@ classdef seriesMemberNames < matlab.unittest.TestCase
         function d = deviations()
             % {name, this language's stem, this language's index, why}
             %
-            % The one place the two parsers disagree. MATLAB parses the index
-            % with str2num, which EVALUATES, so '-1' is a number here and
-            % seriesMemberOf returns ('chunkdata.bin', -1); the index is then
-            % rejected downstream by seriesMemberPath. DID-python parses with
-            % str.isdigit(), so the name is not a member there at all and the
-            % read fails as an ordinary missing file.
-            %
-            % Both languages REFUSE the name. They differ only in which layer
-            % refuses, and slots are one-based so nothing can mint it. See
-            % VH-Lab/DID-python#69 and #80.
-            d = { ...
-                'chunkdata.bin_-1', 'chunkdata.bin', -1, ...
-                    ['str2num parses a leading minus; Python''s isdigit() ' ...
-                     'does not. Both refuse the name, at different layers.'] ...
-                };
+            % Empty as of DID-matlab#199 / DID-python#69: MATLAB's parse was
+            % tightened from str2num (which EVALUATES) to a strict
+            % all-digits check, matching DID-python's isdigit-based parse.
+            % The '_-1' vector that used to be a MATLAB-only member is now
+            % refused at the parse in both languages.
+            d = cell(0, 4);
         end
     end
 
