@@ -1654,15 +1654,48 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         end
 
                     case 'file'
-                        % Compare the defined vs. actual file names
-                        try
-                            actual_files_here = docProps.files.file_info;
-                            actualFileNames = {actual_files_here.name};
-                            file_list = docProps.files.file_list;
-                        catch
-                            actual_files_here= [];
-                            actualFileNames = {};
-                            file_list = {};
+                        % Compare the defined vs. actual file names.
+                        %
+                        % READ file_list AND file_info INDEPENDENTLY. These
+                        % used to be three statements under one try/catch with
+                        % file_list read last. Dot-indexing an empty file_info
+                        % throws -- [] is what a document that binds nothing
+                        % carries -- so the throw happened BEFORE file_list was
+                        % assigned, and the catch replaced a file_list that was
+                        % sitting there, readable and correct, with {}.
+                        % checkfiles then reported every required name as
+                        % missing "from the file_list in document X", naming the
+                        % one field that was right and sending the reader away
+                        % from the actual absence, which is the bound file. See
+                        % issue #199.
+                        %
+                        % A document with no files section at all is legitimate
+                        % and common -- that is what the try/catch was for --
+                        % and it is still handled here, by asking whether the
+                        % field is there rather than by letting an error stand
+                        % in for the answer.
+                        file_list = {};
+                        actual_files_here = [];
+                        actualFileNames = {};
+                        if isfield(docProps,'files') && isstruct(docProps.files) && ~isempty(docProps.files)
+                            filesProp = docProps.files;
+                            if isfield(filesProp,'file_list') && ~isempty(filesProp.file_list)
+                                file_list = filesProp.file_list;
+                                if ischar(file_list) || isstring(file_list)
+                                    file_list = cellstr(file_list);
+                                end
+                            end
+                            % "Nothing is bound" reaches us in two shapes: []
+                            % (a document read back as a struct) and a 0x0
+                            % struct array (did.document/reset_file_info, where
+                            % {s.name} yields {} without throwing). Both mean
+                            % the same thing, so both are treated alike rather
+                            % than the answer depending on which shape the
+                            % caller happened to produce.
+                            if isfield(filesProp,'file_info') && isstruct(filesProp.file_info) && ~isempty(filesProp.file_info)
+                                actual_files_here = filesProp.file_info;
+                                actualFileNames = {actual_files_here.name};
+                            end
                         end
                         if isempty(expected) && (isSuperClass || isempty(actualFileNames))
                             continue
@@ -2001,6 +2034,15 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             %  2 - that every entry of the actual document's file_list is valid (it might differ from
             %      the literal expected file_list if there are enumerated files that end in _##)
             %  3 - that every file that is required to be present is in fact present
+            %
+            % 1 and 3 are DIFFERENT ABSENCES and are reported differently. A
+            % name the schema requires can be missing from the document's
+            % file_list (1), or it can be there in the file_list -- declared,
+            % correctly -- with nothing bound to it in file_info (3). The
+            % second is the common one, and it used to arrive here disguised as
+            % the first: the caller lost the document's file_list to an
+            % exception and passed {}, so every declared name looked absent
+            % from a list that in fact held it. See issue #199.
 
             % check that each expectedName has a match in the actualFileNames
             expectedNamesList = unique(expectedNames);
@@ -2042,12 +2084,30 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 return;
             end
 
-            % Loop over all files and ensure they exist
+            % Step 3: loop over all required files and ensure they exist
             for idx = 1 : numel(mustHaveValue)
                 expectedValue = mustHaveValue{idx};
                 if ~isempty(expectedValue) && expectedValue
                     item_name = expectedNames{idx};
                     idx2 = did.database.findfilematch(item_name,actualFileNames);
+                    if isempty(idx2)
+                        % The name IS in the document's file_list -- step 1
+                        % above established that -- but nothing is bound to it
+                        % in files.file_info, so there is no file to look for.
+                        % Say that, and say it about file_info: the file_list
+                        % is correct here, and blaming it is what cost the
+                        % debugging time in issue #199.
+                        %
+                        % Falling out of an empty loop and reaching isvalid = 1
+                        % below is the same fail-open PR #182 closed for step 1:
+                        % a required file was absent and the document was
+                        % committed anyway.
+                        errmsg = sprintf(['Required file "%s" is declared in the file_list of %s ' ...
+                            'but no file is bound to that name (files.file_info has no entry for it)'], ...
+                            item_name, doc_name);
+                        isvalid = 0;
+                        return;
+                    end
                     for k=1:numel(idx2)
                         locations = files(idx2(k)).locations;
                         found = did.database.canfindonefile(locations);

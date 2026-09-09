@@ -242,8 +242,14 @@ classdef TestCachedPath < matlab.unittest.TestCase
             db.add_branch('a');
 
             local = testCase.writeFile(pwd, 'filename1.ext', 'abcdefghij');
+            % demoFile declares both files mustbenotempty, so both are bound.
+            % Binding only the first used to be accepted -- a required file
+            % with no file_info entry fell out of checkfiles' empty match loop
+            % and reached isvalid = 1 -- and is refused since issue #199.
+            local2 = testCase.writeFile(pwd, 'filename2.ext', 'klmnopqrst');
             doc = did.document('demoFile', 'demoFile.value', 1);
             doc = doc.add_file('filename1.ext', local);
+            doc = doc.add_file('filename2.ext', local2);
             db.add_docs(doc);
 
             [tfExist, pExist] = db.exist_doc(doc.id(), 'filename1.ext');
