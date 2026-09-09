@@ -1680,10 +1680,11 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                         if isfield(docProps,'files') && isstruct(docProps.files) && ~isempty(docProps.files)
                             filesProp = docProps.files;
                             if isfield(filesProp,'file_list') && ~isempty(filesProp.file_list)
+                                % Passed on as stored, exactly as before: the
+                                % setdiff in checkfiles reads a char list the
+                                % same as the cell form, so normalizing here
+                                % would be a conversion nothing asks for.
                                 file_list = filesProp.file_list;
-                                if ischar(file_list) || isstring(file_list)
-                                    file_list = cellstr(file_list);
-                                end
                             end
                             % "Nothing is bound" reaches us in two shapes: []
                             % (a document read back as a struct) and a 0x0
