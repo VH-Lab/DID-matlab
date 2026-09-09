@@ -35,6 +35,79 @@ classdef TestFileValidation < matlab.unittest.TestCase
                 'checkfiles must report an error message for the missing file');
         end
 
+        function testUnboundRequiredFileIsNotBlamedOnTheFileList(testCase)
+            % The file IS in the document's file_list; what is absent is the
+            % entry bound to it in file_info. checkfiles used to be handed a
+            % {} file_list (the caller lost it to an exception) and so reported
+            % this as a file_list problem; with the real file_list it used to
+            % report nothing at all, because a required name with no match fell
+            % out of an empty loop and reached isvalid = 1. See issue #199.
+            expectedNames    = {'generic_file.ext'};
+            mustHaveValue    = {true};
+            actualFileNames  = {};              % nothing bound
+            doc_name         = 'generic_file doc 123';
+            files            = [];              % what a stored doc carries
+            actual_file_list = {'generic_file.ext'};   % declared, and correct
+
+            [isvalid, errmsg] = did.database.checkfiles( ...
+                expectedNames, mustHaveValue, actualFileNames, ...
+                doc_name, files, actual_file_list);
+
+            testCase.verifyEqual(isvalid, 0, ...
+                'a required file with nothing bound to it must be rejected');
+            testCase.verifySubstring(errmsg, 'generic_file.ext', ...
+                'the message must name the file that is not bound');
+            testCase.verifySubstring(errmsg, 'file_info', ...
+                'the message must name the field that is actually empty');
+            testCase.verifyFalse(contains(errmsg, 'from the file_list'), ...
+                ['the file_list holds the name and is correct: ' errmsg]);
+        end
+
+        function testUnboundRequiredFileWithAnEmptyStructFileInfo(testCase)
+            % The same condition reached with the OTHER empty: a 0x0 struct
+            % array, which did.document/reset_file_info produces and which
+            % yields {} from {s.name} without throwing. Same answer.
+            expectedNames    = {'generic_file.ext'};
+            mustHaveValue    = {true};
+            actualFileNames  = {};
+            doc_name         = 'generic_file doc 123';
+            files            = did.datastructures.emptystruct('name','locations');
+            actual_file_list = {'generic_file.ext'};
+
+            [isvalid, errmsg] = did.database.checkfiles( ...
+                expectedNames, mustHaveValue, actualFileNames, ...
+                doc_name, files, actual_file_list);
+
+            testCase.verifyEqual(isvalid, 0, ...
+                'the two empties mean the same thing and must be treated alike');
+            testCase.verifySubstring(errmsg, 'generic_file.ext');
+            testCase.verifySubstring(errmsg, 'file_info');
+            testCase.verifyFalse(contains(errmsg, 'from the file_list'), ...
+                ['the file_list holds the name and is correct: ' errmsg]);
+        end
+
+        function testDeclaredOptionalFileNeedNotBeBound(testCase)
+            % mustbenotempty = 0 means the file need not be there. Reporting
+            % the unbound required file above must not start refusing these.
+            [isvalid, errmsg] = did.database.checkfiles( ...
+                {'optional.bin'}, {false}, {}, 'mydoc', [], {'optional.bin'});
+
+            testCase.verifyEqual(isvalid, 1, ...
+                'an optional file that is not bound is not an error');
+            testCase.verifyEmpty(errmsg);
+        end
+
+        function testMissingFromFileListKeepsItsOwnMessage(testCase)
+            % The other absence: the name is not in the document's file_list at
+            % all. That IS a file_list problem, and keeps saying so.
+            [isvalid, errmsg] = did.database.checkfiles( ...
+                {'required.bin'}, {true}, {}, 'mydoc', [], {'other.bin'});
+
+            testCase.verifyEqual(isvalid, 0);
+            testCase.verifySubstring(errmsg, 'file_list');
+            testCase.verifySubstring(errmsg, 'required.bin');
+        end
+
         function testCanfindonefileFindsExistingLocalFile(testCase)
             testCase.applyFixture(matlab.unittest.fixtures.WorkingFolderFixture);
             f = fullfile(pwd, 'exists.bin');
