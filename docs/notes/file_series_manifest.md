@@ -136,6 +136,22 @@ Asking a remote store for *many* members in one round trip is a separate change.
 The context carries `documentId` and `seriesName` precisely so a handler can
 batch on its own side without DID growing a bulk request.
 
+## Retrieving a manifest that is not here
+
+A series downloaded from a store that keeps bytes remote — `SyncFiles=false` on
+NDI Cloud — arrives with the manifest's `file_info` entry naming its cloud
+address (`ndic://…`, `location_type='ndicloud'`) and nothing on this machine.
+`sqlitedb/fetchSeriesManifestBytes` reads the manifest's `file_info` straight
+from the document, offers every non-`file` location to the same
+`customFileHandler` used elsewhere, and lands the bytes at
+`<cache>/<manifestUid>`. The next `did.file.cachedPathForUid` is a hit, so a
+second member open on the same series pays no network for the manifest again —
+whether the next call is this member, another member of the same series, or a
+different member entirely in a later session. When the handler cannot service
+the location, `open_doc` reports the member as *not on this machine* through
+the same `DID:SQLITEDB:open` shape callers already match on. See
+VH-Lab/DID-matlab#201.
+
 ## Ingesting members
 
 `did.document/addFileSeries` records where each member's bytes currently are, in

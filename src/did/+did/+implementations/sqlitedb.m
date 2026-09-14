@@ -1246,12 +1246,17 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % an error, since both callers have their own way of reporting a
             % miss.
             %
-            % MEMBEROF names the series when the manifest DOES record a uid
-            % for this member and only its bytes are missing, and is ''
-            % otherwise. It exists so that a caller can tell "the series has
-            % no such member" from "that member is not on this machine yet",
-            % which are the same TF but very different problems: the first is
-            % a name to go and check, the second is a file to go and fetch.
+            % MEMBEROF names the series when the filename is a member of a
+            % declared series and the resolution failed for a reason OTHER
+            % than "no such slot" -- either the manifest is unreachable
+            % (so we cannot rule the member out) or the manifest records
+            % the member but its bytes are missing. It is '' when the
+            % manifest could be read and said no such slot, and when the
+            % filename is not a declared member name at all. That is what
+            % lets a caller tell "the series has no such member" from
+            % "that member is not on this machine yet", which are the same
+            % TF but very different problems: the first is a name to go and
+            % check, the second is a file (or a manifest) to go and fetch.
             %
             % THE RESOLUTION RULE. A series member has NO files-table row and
             % no file_info entry: the manifest is what records its uid, and
@@ -1316,7 +1321,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Step 2: the manifest. Its uid comes from the document in hand,
             % so the common case -- the manifest already ingested -- costs no
-            % further query.
+            % further query. On a local miss the handler is offered every
+            % location the manifest's file_info entry names, one level up from
+            % the member fetch below and against the same handler.
             manifestPath = '';
             manifestUids = document_obj.fileUids(stem);
             for i = 1 : numel(manifestUids)
@@ -1325,22 +1332,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 if ~isempty(manifestPath), break, end
             end
             if isempty(manifestPath) && options.mayRetrieve
-                try
-                    if isempty(options.customFileHandler)
-                        manifestObj = this_obj.do_open_doc(document_id, stem);
-                    else
-                        manifestObj = this_obj.do_open_doc(document_id, stem, ...
-                            'customFileHandler', options.customFileHandler);
-                    end
-                    manifestPath = manifestObj.fullpathfilename;
-                catch
-                    % The manifest cannot be reached, so neither can the
-                    % member. do_open_doc's own error names the member the
-                    % caller actually asked for, which is the more useful one.
-                    return
-                end
+                manifestPath = this_obj.fetchSeriesManifestBytes(document_id, ...
+                    document_obj, stem, options.customFileHandler);
             end
-            if isempty(manifestPath) || ~isfile(manifestPath), return, end
+            if isempty(manifestPath) || ~isfile(manifestPath)
+                % The filename parses as a member of a declared series and
+                % the manifest cannot be read to say otherwise, so this is
+                % not "no such file" -- it is "not on this machine, and its
+                % manifest is the reason". Naming the series lets do_open_doc
+                % raise the message callers pattern-match on, rather than
+                % sending them after a name that was never wrong.
+                memberOf = stem;
+                return
+            end
 
             % Step 3: the member's uid.
             try
@@ -1376,6 +1380,143 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             filePath = thisPath;
 
         end % seriesMemberPath()
+
+        function manifestPath = fetchSeriesManifestBytes(this_obj, ...
+                document_id, document_obj, seriesName, customFileHandler)
+            % fetchSeriesManifestBytes - retrieve a series' manifest bytes
+            %
+            % MANIFESTPATH = fetchSeriesManifestBytes(THIS_OBJ, DOCUMENT_ID,
+            %     DOCUMENT_OBJ, SERIESNAME, CUSTOMFILEHANDLER)
+            %
+            % Asks CUSTOMFILEHANDLER for the bytes of the file series
+            % SERIESNAME's manifest, places them in the file cache under the
+            % manifest's uid, and returns the local path. Returns '' if the
+            % manifest cannot be fetched, for any reason at all -- so the
+            % caller (seriesMemberPath) can report an ordinary "not on this
+            % machine" miss rather than a raised exception.
+            %
+            % ONE LEVEL UP from fetchSeriesMemberBytes: the manifest is an
+            % ordinary file of the document, so its file_info entry names its
+            % location(s) directly -- no SQL, no recursion into do_open_doc.
+            % Every non-'file' location is offered to the handler with the
+            % manifest's own uid in the context and mode='open', in the same
+            % call shape do_open_doc uses for a non-'file' file_info location
+            % on the read path. Success puts the bytes at filecachepath/<uid>
+            % so the next cachedPathForUid is a hit, whether the next call is
+            % this member or another, in this session or a later one.
+            %
+            % WHY THIS LIVES HERE INSTEAD OF IN did.database. Its no-network
+            % siblings, localSeriesManifestPath and cachedPathForFile, must
+            % stay callable from any thread and any process (a viewer resolves
+            % many files in parallel without a session per worker), so
+            % teaching them to fetch would break that. The lazy-fetch path is
+            % on the sqlite implementation, where the handler already lives,
+            % and the local-first fast path in seriesMemberPath keeps the
+            % second open of a series one cachedPathForUid hit.
+
+            manifestPath = '';
+
+            if isempty(customFileHandler), return, end
+            if isempty(document_obj), return, end
+
+            % file_info for the manifest, straight from the document. Cheap
+            % because the document is already in hand, and enough on its own
+            % to tell every location's uid, address and type.
+            try
+                fileInfo = document_obj.document_properties.files.file_info;
+            catch
+                return
+            end
+            if isempty(fileInfo), return, end
+            k = find(strcmpi(seriesName, {fileInfo.name}), 1);
+            if isempty(k), return, end
+            try
+                locations = fileInfo(k).locations;
+            catch
+                return
+            end
+            if isempty(locations), return, end
+
+            % Every non-'file' location the manifest has is offered. A 'file'
+            % type is skipped: cachedPathForUid has already checked
+            % filecachepath/<uid> and FileDir/<uid>, and a manifest orig_location
+            % that points elsewhere is not a resolution rule DID promises.
+            didCache = did.common.getCache();
+            destDir  = did.common.PathConstants.temppath;
+
+            for locIdx = 1 : numel(locations)
+                thisLoc = locations(locIdx);
+                thisUid = '';
+                try, thisUid = thisLoc.uid; catch, end
+                if ~did.implementations.sqlitedb.isSafeUid(thisUid), continue, end
+                thisUid = char(thisUid);
+
+                file_type = '';
+                try, file_type = lower(strtrim(char(thisLoc.location_type))); catch, end
+                if strcmp(file_type, 'file'), continue, end
+
+                sourcePath = '';
+                try, sourcePath = thisLoc.location; catch, end
+
+                cacheFile = fullfile(didCache.directoryName, thisUid);
+
+                % Single-flight per uid, the same way do_open_doc holds it: a
+                % second reader that arrives during the fetch waits on the
+                % lock and then finds the manifest already cached.
+                lockFile = fullfile(destDir, [thisUid '-fetch-lock']);
+                [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0, 300);
+                if lockfid > 0
+                    lockCleanup = onCleanup(@() did.file.release_lock_file(lockFile, lockkey)); %#ok<NASGU>
+                else
+                    lockCleanup = []; %#ok<NASGU>
+                end
+
+                thisPath = did.file.cachedPathForUid(thisUid, ...
+                    'additionalRoots', {this_obj.FileDir});
+                if ~isempty(thisPath)
+                    if strcmp(thisPath, cacheFile)
+                        didCache.touch(thisUid);
+                    end
+                    manifestPath = thisPath;
+                    return
+                end
+
+                destPath = fullfile(destDir, [thisUid '.' did.ido.unique_id() '.part']);
+                ctx = struct( ...
+                    'documentId', document_id, ...
+                    'filename',   char(seriesName), ...
+                    'seriesName', '', ...
+                    'uid',        thisUid, ...
+                    'mode',       'open');
+                try
+                    did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                        customFileHandler, destPath, sourcePath, ctx);
+                    if ~isfile(destPath), continue, end
+
+                    try
+                        didCache.addFile(destPath, thisUid);
+                    catch addErr
+                        % Losing the race is not a failure; the winner placed
+                        % the same bytes under the same uid.
+                        if ~isfile(cacheFile)
+                            rethrow(addErr);
+                        end
+                        if isfile(destPath)
+                            try delete(destPath); catch, end
+                        end
+                    end
+                    manifestPath = cacheFile;
+                    return
+                catch
+                    % Speculative retrieval. do_open_doc's own error names the
+                    % member the caller actually asked for, so a warning here
+                    % would be a second voice for one event.
+                    if isfile(destPath)
+                        try delete(destPath); catch, end
+                    end
+                end
+            end
+        end % fetchSeriesManifestBytes()
 
         function thisPath = fetchSeriesMemberBytes(this_obj, document_id, ...
                 filename, seriesStem, memberUid, manifestPath, customFileHandler)

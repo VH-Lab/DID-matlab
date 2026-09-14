@@ -99,6 +99,46 @@ classdef TestSeriesMemberFetch < matlab.unittest.TestCase
             end
         end
 
+        function [db, doc, contents, srcByUid, manifestCopy] = ndicloudManifestSeries(testCase)
+            % Same shape as remoteManifestSeries, but the manifest is
+            % re-pointed with an explicit ndicloud location_type and an
+            % ndic:// address -- the shape a document takes after a
+            % SyncFiles=false round trip through NDI Cloud, and the case
+            % VH-Lab/DID-matlab#201 is filed for. Members are ingested
+            % normally, so the interesting miss is the manifest.
+            db = did.implementations.sqlitedb(testCase.db_filename);
+            db.add_branch('a');
+
+            root = fullfile(pwd, 'store');
+            contents = {uint8(1:10), uint8(11:20), uint8(21:30)};
+            locs = cell(1, numel(contents));
+            for i = 1:numel(contents)
+                locs{i} = testCase.writeMember(root, sprintf('member%d.bin', i), contents{i});
+            end
+
+            doc = did.document('demoSeries', 'demoSeries.value', 1);
+            doc = doc.addFileSeries('chunkdata.bin', locs, 'deleteOriginal', 0);
+
+            manifestCopy = fullfile(pwd, 'kept.manifest');
+            copyfile(testCase.manifestLocation(doc), manifestCopy);
+            preRepointUid = testCase.manifestUidOf(doc);
+
+            doc = doc.remove_file('chunkdata.bin');
+            doc = doc.add_file('chunkdata.bin', ...
+                'ndic://demo-dataset/chunkdata.bin.manifest', ...
+                'location_type', 'ndicloud', 'ingest', 0);
+
+            db.add_docs(doc);
+
+            srcByUid = containers.Map('KeyType', 'char', 'ValueType', 'char');
+            srcByUid(testCase.manifestUidOf(doc)) = manifestCopy;
+            srcByUid(preRepointUid) = manifestCopy;
+            e = doc.seriesIngestLocations('chunkdata.bin');
+            for i = 1:numel(e)
+                srcByUid(e(i).uid) = locs{e(i).index};
+            end
+        end
+
         function uid = manifestUidOf(testCase, doc)
             uids = doc.fileUids('chunkdata.bin');
             testCase.assertNotEmpty(uids, 'the manifest has no uid');
@@ -481,6 +521,104 @@ classdef TestSeriesMemberFetch < matlab.unittest.TestCase
                 'DID:SQLITEDB:open');
             testCase.verifyEqual(calls, 1, ...
                 'the manifest, and only the manifest, is asked of a 2-arg handler');
+        end
+
+        % ---- the cloud-only manifest case (VH-Lab/DID-matlab#201) --------
+
+        function testNdicloudManifestIsRetrievedThroughTheHandler(testCase)
+            % A series arrived from a SyncFiles=false cloud round trip. The
+            % manifest's file_info entry is location_type='ndicloud' with an
+            % ndic:// address, and its bytes are not on this machine at all.
+            % Opening a member must offer the manifest's location to the
+            % handler with the manifest's own uid in the context, and land
+            % the bytes at filecachepath/<manifestUid> so nothing else has
+            % to fetch it again.
+            [db, doc, contents, srcByUid] = testCase.ndicloudManifestSeries();
+            manifestUid = testCase.manifestUidOf(doc);
+
+            ctxs = {}; srcs = {};
+            function serve(destPath, sourcePath, ctx)
+                ctxs{end+1} = ctx; srcs{end+1} = sourcePath;
+                if isKey(srcByUid, ctx.uid)
+                    copyfile(srcByUid(ctx.uid), destPath);
+                end
+            end
+
+            f = db.open_doc(doc.id(), 'chunkdata.bin_2', 'customFileHandler', @serve);
+            testCase.verifyEqual(testCase.readAll(f), contents{2}, ...
+                'the fetched member did not read back byte for byte');
+
+            testCase.assertNotEmpty(ctxs, 'the handler was never asked');
+            manifestCtx = ctxs{1};
+            testCase.verifyEqual(manifestCtx.uid, manifestUid, ...
+                'the ctx uid on the manifest fetch must be the manifest''s');
+            testCase.verifyEqual(manifestCtx.seriesName, '', ...
+                'the manifest is an ordinary file, not a member');
+            testCase.verifyEqual(manifestCtx.mode, 'open');
+            testCase.verifyEqual(srcs{1}, ...
+                'ndic://demo-dataset/chunkdata.bin.manifest', ...
+                'sourcePath is the manifest''s ndic:// location, verbatim');
+
+            testCase.verifyTrue( ...
+                isfile(fullfile(did.common.PathConstants.filecachepath, manifestUid)), ...
+                'the manifest must land at filecachepath/<manifestUid>');
+        end
+
+        function testDifferentMembersShareOneManifestFetch(testCase)
+            % The manifest is fetched once per session, not once per member
+            % open: the acceptance rule that keeps a 28,000-member level
+            % from turning into 28,000 manifest downloads. Assert the
+            % handler is called for the manifest exactly once across two
+            % opens of different members.
+            [db, doc, contents, srcByUid] = testCase.ndicloudManifestSeries();
+            manifestUid = testCase.manifestUidOf(doc);
+
+            manifestCalls = 0;
+            function serve(destPath, ~, ctx)
+                if strcmp(ctx.uid, manifestUid)
+                    manifestCalls = manifestCalls + 1;
+                end
+                if isKey(srcByUid, ctx.uid)
+                    copyfile(srcByUid(ctx.uid), destPath);
+                end
+            end
+
+            f1 = db.open_doc(doc.id(), 'chunkdata.bin_1', 'customFileHandler', @serve);
+            testCase.verifyEqual(testCase.readAll(f1), contents{1});
+            f2 = db.open_doc(doc.id(), 'chunkdata.bin_2', 'customFileHandler', @serve);
+            testCase.verifyEqual(testCase.readAll(f2), contents{2});
+
+            testCase.verifyEqual(manifestCalls, 1, ...
+                'the manifest fetch must be shared across member opens');
+        end
+
+        function testManifestFetchThatWritesNothingRaisesTheStandardMiss(testCase)
+            % Handler-refused case for the manifest: when the handler cannot
+            % service the manifest's location, resolution reports "not on
+            % this machine" through DID:SQLITEDB:open -- the same shape and
+            % message a caller could match on before this change, so an
+            % out-of-band failure stays visible without changing the API.
+            [db, doc] = testCase.ndicloudManifestSeries();
+
+            function serveNothingForManifest(destPath, ~, ~) %#ok<INUSD>
+                % write nothing at all
+            end
+
+            testCase.verifyError( ...
+                @() db.open_doc(doc.id(), 'chunkdata.bin_2', ...
+                    'customFileHandler', @serveNothingForManifest), ...
+                'DID:SQLITEDB:open');
+
+            try
+                db.open_doc(doc.id(), 'chunkdata.bin_2', ...
+                    'customFileHandler', @serveNothingForManifest);
+                testCase.verifyFail('open_doc should have errored');
+            catch err
+                testCase.verifySubstring(err.message, 'chunkdata.bin', ...
+                    'the message must name the series');
+                testCase.verifySubstring(err.message, 'not on this machine', ...
+                    'the current miss message is what callers pattern-match on');
+            end
         end
     end
 end

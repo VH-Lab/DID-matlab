@@ -2196,6 +2196,15 @@ function manifestPath = localSeriesManifestPath(document_obj, name, additionalRo
     % them agree on which copy of the manifest is authoritative: the global
     % file cache first, then the database's own roots, the same order
     % do_open_doc uses.
+    %
+    % REMOTE-ONLY MANIFESTS. This helper is deliberately no-network: a
+    % manifest whose bytes live only in the cloud resolves to '' here, and
+    % it is up to the retrieval-authorized caller to fetch. That path is
+    % did.implementations.sqlitedb/fetchSeriesManifestBytes, which offers
+    % the manifest's file_info location to the customFileHandler and lands
+    % the bytes at filecachepath/<manifestUid> -- so the next call to this
+    % function is a cachedPathForUid hit, with no network again. See
+    % VH-Lab/DID-matlab#201.
 
     manifestPath = '';
 
