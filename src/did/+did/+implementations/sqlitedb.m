@@ -1246,12 +1246,17 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % an error, since both callers have their own way of reporting a
             % miss.
             %
-            % MEMBEROF names the series when the manifest DOES record a uid
-            % for this member and only its bytes are missing, and is ''
-            % otherwise. It exists so that a caller can tell "the series has
-            % no such member" from "that member is not on this machine yet",
-            % which are the same TF but very different problems: the first is
-            % a name to go and check, the second is a file to go and fetch.
+            % MEMBEROF names the series when the filename is a member of a
+            % declared series and the resolution failed for a reason OTHER
+            % than "no such slot" -- either the manifest is unreachable
+            % (so we cannot rule the member out) or the manifest records
+            % the member but its bytes are missing. It is '' when the
+            % manifest could be read and said no such slot, and when the
+            % filename is not a declared member name at all. That is what
+            % lets a caller tell "the series has no such member" from
+            % "that member is not on this machine yet", which are the same
+            % TF but very different problems: the first is a name to go and
+            % check, the second is a file (or a manifest) to go and fetch.
             %
             % THE RESOLUTION RULE. A series member has NO files-table row and
             % no file_info entry: the manifest is what records its uid, and
@@ -1330,7 +1335,16 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 manifestPath = this_obj.fetchSeriesManifestBytes(document_id, ...
                     document_obj, stem, options.customFileHandler);
             end
-            if isempty(manifestPath) || ~isfile(manifestPath), return, end
+            if isempty(manifestPath) || ~isfile(manifestPath)
+                % The filename parses as a member of a declared series and
+                % the manifest cannot be read to say otherwise, so this is
+                % not "no such file" -- it is "not on this machine, and its
+                % manifest is the reason". Naming the series lets do_open_doc
+                % raise the message callers pattern-match on, rather than
+                % sending them after a name that was never wrong.
+                memberOf = stem;
+                return
+            end
 
             % Step 3: the member's uid.
             try
