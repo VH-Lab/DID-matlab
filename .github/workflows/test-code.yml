@@ -44,12 +44,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          # Track the matching did-schema V_zeta (Brainstorm-I) branch: the
-          # subject_interaction spine, shape-typed observation leaves,
-          # generic_manipulation, etc. live on this branch (did-schema PR #63)
-          # and are not yet on did-schema main. Revert to `main` once that
-          # merges. Falls back to main off-PR (e.g. direct pushes to V2).
-          ref: ${{ github.head_ref || 'main' }}
+          # V_zeta content is on did-schema main. If a topic branch on
+          # both repos needs to co-develop, wire that up per-PR rather
+          # than relying on github.head_ref (which resolves to branches
+          # like V2_Update that don't exist on did-schema).
+          ref: main
           path: did-schema
 
       - name: Assemble V_zeta schema set (stable + draft)
