@@ -9,13 +9,17 @@ on:
 
   workflow_dispatch:
 
+  workflow_dispatch:
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  reuse-workflow-run-codespell:
-    name: Run Codespell
-    uses: ehennestad/matbox/.github/workflows/reusable_run_codespell.yml@v0.9
-    with:
-      config_file: tools/.codespellrc
+  codespell:
+    name: Check for spelling errors
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run Codespell action
+        uses: codespell-project/actions-codespell@v2

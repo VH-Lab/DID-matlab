@@ -1,0 +1,178 @@
+# File series manifest, format version 1
+
+A **file series** is a `name_#` entry in a document's `file_list` whose members
+are indexed by a manifest rather than by one `file_info` struct each. The
+manifest is a single binary file belonging to the document.
+
+See VH-Lab/DID-matlab#173 for why this exists. In short: a tiled image pyramid
+level is ~28,000 files, and one `file_info` struct per member is ~8-11 MB of
+JSON in a document blob that is returned whole on every read.
+
+## Layout
+
+All integers are **little-endian**. Offsets and member indices are
+**zero-based**.
+
+| offset | field | type | count | notes |
+|---|---|---|---|---|
+| 0 | `magic` | char | 8 | `DIDFSER1` |
+| 8 | `format_version` | uint32 | 1 | 1 |
+| 12 | `flags` | uint32 | 1 | bit 0: source names present |
+| 16 | `count` | uint32 | 1 | number of member slots, `N` |
+| 20 | `uid_width` | uint32 | 1 | bytes per uid record |
+| 24 | `reserved` | uint32 | 2 | zero |
+| 32 | `uids` | char | `N * uid_width` | member `i` at `32 + i*uid_width` |
+
+Then, **only when `flags` bit 0 is set**:
+
+| field | type | count | notes |
+|---|---|---|---|
+| `name_offset` | uint32 | `N + 1` | zero-based, into `name_bytes` |
+| `name_bytes` | uint8 | `name_offset(N)` | UTF-8, concatenated, unterminated |
+
+The source name of member `i` is `name_bytes(name_offset(i) : name_offset(i+1))`
+in zero-based half-open terms. An empty range means that member has no recorded
+name.
+
+## Why uids are fixed-width text, not packed
+
+`did.ido.unique_id` returns `num2hex(serialDate) '_' num2hex(rand)` — exactly 33
+characters, which would pack losslessly into 16 bytes. **That packing is not
+safe in general.** A uid is only *minted* by `unique_id`; a document read from
+JSON written elsewhere may carry any string `did.file.isSafeUid` accepts, and
+16-byte packing would silently corrupt it.
+
+So uids are stored as fixed-width text at the width the header declares, and a
+uid wider than `uid_width` is an **error at write time** rather than a silent
+truncation. Current uids give `uid_width = 33`, so 28,000 members cost 924 KB —
+against ~8-11 MB of JSON for the same members, and read only on demand.
+
+`uid_width` being a header field rather than a constant is deliberate, following
+the `data_type_*` discipline of the spatial gene pyramid: a packed encoding can
+be added later as a new `flags` bit without a format-version bump.
+
+## Absent members
+
+A series is sparse: not every index exists. A zarr level never writes a chunk
+that is entirely fill value, and the pyramid is built to match.
+
+An absent member's uid record is **all NUL bytes**. `isSafeUid` rejects NUL, so
+no real uid can collide with the sentinel. Absent members are the reason the uid
+array is dense-with-sentinel rather than a list of pairs: for a chunk grid where
+most members exist, dense is both smaller and O(1) to index.
+
+## Resolving a member
+
+A member is resolved **through the manifest**, and gets no `file_info` entry and
+no `files`-table row of its own. That is the choice the whole format exists to
+make: rows would make every existing read path work untouched, and would put
+back the ~28,000 per-member records the manifest was built to remove.
+
+Given `NAME_<i>` on a document that declares the series `NAME`:
+
+1. `did.document/seriesMemberOf` parses `NAME_<i>` and confirms `NAME` is a
+   declared series. This is the same rule `is_in_file_list` uses to accept the
+   name in the first place, asked once and in one place.
+2. `NAME` is an ordinary file of the document, so its manifest is found the
+   ordinary way — by the uid recorded for it, at `<cache>/<uid>` or
+   `<FileDir>/<uid>`.
+3. `did.file.readSeriesManifestUid` reads **slot `i` only**: one seek and
+   `uid_width` bytes, never the whole uid block and never the name section.
+4. The member's bytes are at `<cache>/<uid>` or `<FileDir>/<uid>` — the same
+   two candidates, in the same order, that every other file uses.
+
+`did.implementations.sqlitedb/do_open_doc` and `check_exist_doc` take this path
+when the files-table query returns nothing, which is exactly what a member looks
+like. `did.database/cachedPathForFile` takes the same path without any query at
+all, since the manifest's uid is in the document the caller already holds.
+
+**What this costs.** A member read is two path resolutions and a small manifest
+read instead of one path resolution, and `check_exist_doc` answers `false` for a
+member whose *manifest* is not local yet, since it will not fetch to answer.
+`open_doc` distinguishes the two ways a member can fail to resolve: a name the
+manifest has no uid for is "no such file", while a member the manifest *does*
+record whose bytes are simply not here says so, and says which series it belongs
+to — the first is a name to check, the second a file to fetch.
+
+## Retrieving a member that is not here
+
+A member has no `orig_location` — that is the per-member record a series
+deliberately does not keep. It does not follow that a member is unfetchable: the
+**series manifest** has a location, and a handler that can reach the store the
+manifest came from can reach a sibling object in it given the member's uid. So
+`sqlitedb/fetchSeriesMemberBytes` hands the handler the *manifest's* location as
+`sourcePath` and the *member's* uid in the context, alongside `seriesName` and
+`mode` `'open'`. DID composes no URL and learns no scheme; the handler does all
+of that. See VH-Lab/DID-matlab#188.
+
+Retrieval sits behind `seriesMemberPath`'s `mayRetrieve` gate: `open_doc` sets
+it, `check_exist_doc` does not, because it answers a question about local state
+and must not go to the network to do it. Without a handler, or when one fails,
+an absent member is still absent and `open_doc` still says so — the fetch adds a
+way to succeed, never a new way to fail.
+
+**The mistake here would be silent wrong bytes**, not a failure, because the
+result is cached under the member's uid where no later read can tell it from the
+real thing. `sourcePath` names the *manifest*, so a handler that resolves it
+instead of reading `context.uid` returns the manifest's own bytes for every
+member. The fetched file is compared against the manifest already in hand and
+refused with `DID:SQLITEDB:FileSeries:HandlerReturnedManifest`. Sizes are
+compared first, so the check costs nothing in practice. A handler declared with
+only two inputs receives no context at all and so is never asked for a member.
+
+That guard is what lets **every** location be offered, including a manifest
+whose own location is an ordinary local `file`. Excluding local paths looked
+like a second layer of safety and was not: `ndi.cloud.downloadDataset` syncs a
+dataset's document files to local paths and deliberately leaves the series
+*members* on the cloud, so that a 28,000-member series does not arrive with the
+dataset. The manifest is then an ordinary file on disk while every member it
+names is remote — the shape this mechanism exists to serve, and the one the
+exclusion made unreadable (VH-Lab/DID-matlab#191). Remote locations are offered
+first all the same: a handler that can answer from a remote store should not be
+handed a local path it might merely copy, which the guard makes harmless rather
+than free.
+
+Asking a remote store for *many* members in one round trip is a separate change.
+The context carries `documentId` and `seriesName` precisely so a handler can
+batch on its own side without DID growing a bulk request.
+
+## Retrieving a manifest that is not here
+
+A series downloaded from a store that keeps bytes remote — `SyncFiles=false` on
+NDI Cloud — arrives with the manifest's `file_info` entry naming its cloud
+address (`ndic://…`, `location_type='ndicloud'`) and nothing on this machine.
+`sqlitedb/fetchSeriesManifestBytes` reads the manifest's `file_info` straight
+from the document, offers every non-`file` location to the same
+`customFileHandler` used elsewhere, and lands the bytes at
+`<cache>/<manifestUid>`. The next `did.file.cachedPathForUid` is a hit, so a
+second member open on the same series pays no network for the manifest again —
+whether the next call is this member, another member of the same series, or a
+different member entirely in a later session. When the handler cannot service
+the location, `open_doc` reports the member as *not on this machine* through
+the same `DID:SQLITEDB:open` shape callers already match on. See
+VH-Lab/DID-matlab#201.
+
+## Ingesting members
+
+`did.document/addFileSeries` records where each member's bytes currently are, in
+`files.series_info(k).ingest_locations`, paired with the uid the manifest gives
+that member's slot. `sqlitedb/do_add_doc` copies each one to `<FileDir>/<uid>`
+using the same machinery as a `file_info` location — the same `copyfile`, the
+same `customFileHandler` for a non-`file` location, the same `delete_original` —
+and inserts no row. The record is then stripped from the document's stored JSON
+(`did.document.stripSeriesIngestLocations`), so member paths never persist.
+
+## Source names, and what is deliberately not stored
+
+The optional name section holds each member's source path **relative to the
+series' `source_root`**, which lives on the document, not here.
+
+Absolute paths are not stored. A full path leaks an individual's directory
+layout as soon as a document is shared, and 28,000 embedded copies of a home
+directory is the worst shape for that; keeping the root in one document field
+means a sharer redacts one string instead of scrubbing the manifest. It is also
+smaller — relative names cost roughly a sixth of absolute ones.
+
+A bare basename would not do either: a zarr chunk lives at `<store>/0/0.1.2.3`,
+so the name alone loses which level it came from. Relative names keep the
+subfolder structure that makes them meaningful.

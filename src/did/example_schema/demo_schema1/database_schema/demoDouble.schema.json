@@ -1,0 +1,16 @@
+{
+	"classname":	"demoDouble",
+	"superclasses": [ "base" ],
+	"depends_on": [ ],
+	"file": [ ],
+	"demoDouble": [
+		{
+			"name": "value",
+			"type": "double",
+			"default_value": 0,
+			"parameters": [-100000,100000,0],
+			"queryable": 1,
+			"documentation": "A double-precision value field for the demoDouble class. Unlike demoA/demoB/demoC, whose 'value' is an integer, this field accepts fractional doubles so that full-precision numeric round-tripping can be tested."
+		}
+	]
+}
