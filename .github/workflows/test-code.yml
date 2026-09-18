@@ -6,12 +6,10 @@ on:
     paths-ignore:
       - '*.md'
       - '.github/**'
-
   pull_request:
     branches: [main, V2]
     paths-ignore:
       - '*.md'
-      - '.github/**'
 
   workflow_dispatch:
 
@@ -19,6 +17,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Badges are copied to the dedicated `badges` branch under `<source-ref>/`
+# rather than committed onto the working branch; see
+# .github/actions/push-badges-to-branch.
 jobs:
   test-code:
     # Flat workflow modeled on NDI-matlab/.github/workflows/run-tests.yml.
@@ -31,6 +32,10 @@ jobs:
     # static analysis does not.
     name: Analyse and test code
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      SHOULD_CREATE_BADGES: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+      SHOULD_PUSH_BADGES: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -39,12 +44,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          # Track the matching did-schema V_zeta (Brainstorm-I) branch: the
-          # subject_interaction spine, shape-typed observation leaves,
-          # generic_manipulation, etc. live on this branch (did-schema PR #63)
-          # and are not yet on did-schema main. Revert to `main` once that
-          # merges. Falls back to main off-PR (e.g. direct pushes to V2).
-          ref: ${{ github.head_ref || 'main' }}
+          # V_zeta content is on did-schema main. If a topic branch on
+          # both repos needs to co-develop, wire that up per-PR rather
+          # than relying on github.head_ref (which resolves to branches
+          # like V2_Update that don't exist on did-schema).
+          ref: main
           path: did-schema
 
       - name: Assemble V_zeta schema set (stable + draft)
@@ -78,6 +82,7 @@ jobs:
         uses: ehennestad/matbox-actions/check-code@v1
         with:
           source_directory: 'src'
+          create_badge: ${{ env.SHOULD_CREATE_BADGES }}
 
       - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
         uses: matlab-actions/run-command@v2
@@ -109,6 +114,13 @@ jobs:
             nFailed = sum([results.Failed]);
             assert(nFailed == 0, sprintf("%d test(s) failed", nFailed));
 
+      - name: Push SVG badges to badges branch
+        if: always() && env.SHOULD_PUSH_BADGES == 'true'
+        uses: ./.github/actions/push-badges-to-branch
+        with:
+          source-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload corpus discovery reports
         # Discovery-mode corpus tests (e.g., testCorpus20211116) write
         # JSON summaries into corpus-reports/. Upload them as a CI
@@ -120,3 +132,10 @@ jobs:
           name: corpus-discovery-reports
           path: corpus-reports/
           if-no-files-found: ignore
+
+      - name: Upload code coverage report to Codecov
+        uses: codecov/codecov-action@v4
+        if: ${{ env.CODECOV_TOKEN != '' }}
+        with:
+          token: ${{ env.CODECOV_TOKEN }}
+          files: docs/reports/codecoverage.xml

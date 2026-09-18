@@ -24,10 +24,21 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
     %  calls CHECKOUT_LOCK_FILE is able to create the file (that is, FID>0),
     %  then it should call RELEASE_LOCK_FILE to remove the lock file.
     %
-    %  IMPORTANT: FILE CLOSURE: If 2 output arguments are given (that is, KEY is
-    %  examined), then the lock file is closed before CHECKOUT_LOCK_FILE exits.
-    %  If KEY is not requested in output, then the FID is left open for
-    %  backwards compatibility.
+    %  IMPORTANT: FILE CLOSURE: this depends on the number of INPUTS.
+    %
+    %  If FILENAME is the only input, the lock file is left OPEN and FID is a
+    %  valid identifier the caller is expected to FCLOSE itself. This is the
+    %  legacy form, kept for backwards compatibility.
+    %
+    %  If any further input is given, the lock file is closed before
+    %  CHECKOUT_LOCK_FILE exits, and the returned FID names a file that is
+    %  already closed -- test it with FID>0 to see whether the lock was
+    %  obtained, but do not read or write it.
+    %
+    %  Earlier versions of this help said the number of OUTPUTS decided this.
+    %  They were wrong: the code has always branched on NARGIN. New code
+    %  should pass CHECKLOOPS and take both outputs, which is the closed-FID
+    %  form.
     %
     %  Deprecated release instructions (new code should not use):
     %  1) close the file with fclose(FID) and 2) delete the file
@@ -109,14 +120,15 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
             C = did.file.readlines(filename);
 
             if ~isempty(C)
-                try
-                    expiration_time_of_file = datetime(strtrim(C{1}),'TimeZone','UTCLeapSeconds');
-                end
+                % Both formats, and never silently: the bare try/end this
+                % replaces swallowed a parse failure, so an expiry it could
+                % not read looked exactly like a lock that never expires.
+                expiration_time_of_file = did.file.lock_expiration_time(C{1});
             end
         end
 
         if ~isinf(expiration_time_of_file)
-            isexpired = expiration_time_of_file < datetime('now','TimeZone','UTCLeapSeconds');
+            isexpired = expiration_time_of_file < datetime('now','TimeZone','UTC');
         end
 
         if ~isexpired
@@ -135,10 +147,49 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
 
     if loop<loops % we made it
         fid = fopen(filename,'wt','ieee-le');
-        t1 = datetime('now','TimeZone','UTCLeapSeconds');
+        % 'UTC', not 'UTCLeapSeconds': a UTCLeapSeconds datetime accepts
+        % only a Z-suffixed display format, and DID-python writes no Z --
+        % datetime.fromisoformat rejects one before Python 3.11. The two
+        % differ by the leap seconds, which is nothing against a one-hour
+        % expiry, and plain UTC is what DID-python records.
+        t1 = datetime('now','TimeZone','UTC');
         t2 = t1 + seconds(expiration_time);
-        exp_str = char(datetime(t2,'TimeZone','UTCLeapSeconds'));
+        % ISO 8601 explicitly. char(datetime(...)) uses the ambient
+        % locale's month names, so a lock written by a French-locale MATLAB
+        % could not be read by an English one -- let alone by DID-python,
+        % whose datetime.fromisoformat cannot parse that form at all.
+        t2.Format = 'uuuu-MM-dd''T''HH:mm:ss.SSSSSS';
+        exp_str = char(t2);
         fprintf(fid,'%s\n%s\n',exp_str,key);
+        fclose(fid);
+
+        % Confirm the key that survived is ours. FOPEN(...,'wt') does not
+        % fail if another process created the file between the ISFILE test
+        % in the loop above and this open, so two processes can both write
+        % here. The records are a fixed length, so the loser reads a
+        % well-formed file holding someone else's key rather than a mangled
+        % one, and stands down. Without this check both would believe they
+        % held the lock and would go on to write to whatever it guards.
+        %
+        % The window is a few statements wide and contenders are spread by
+        % the PAUSE(1) above, so this is rare -- but the consequence is
+        % silent, which is what makes it worth the two lines.
+        %
+        % It does NOT resolve a race with DID-python, whose
+        % checkout_lock_file creates the file atomically with open(...,'x'):
+        % 'wt' truncates whatever that created and the read-back then
+        % legitimately finds our own key. Closing that needs create-exclusive
+        % semantics, which MATLAB's FOPEN does not offer; the alternatives
+        % are a Java dependency or an on-disk protocol change, and neither
+        % is worth it for a window this narrow.
+        if ~strcmp(did.file.lock_file_key(filename), key)
+            fid = -1;  % another process got there first
+        elseif nargin<=1
+            % Legacy contract: called with a single input, the caller is
+            % handed an open fid. Reopen to append rather than 'wt', which
+            % would truncate the lock just written.
+            fid = fopen(filename,'a','ieee-le');
+        end
     else
         fid = -1;
     end
@@ -148,9 +199,5 @@ function [fid,key] = checkout_lock_file(filename, checkloops, throwerror, expira
             error(['Unable to obtain lock with file ' filename ...
                 '.  If you believe a program that has crashed ' ...
                 'created this file then you should manually delete it.']);
-        end
-    else
-        if nargin>1 % if we are getting the key, we should close the lock file
-            fclose(fid);
         end
     end

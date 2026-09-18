@@ -433,12 +433,30 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % followed by parameter value. The following parameters are accepted:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
             %   - 'Validate' - followed by false or true (default)
+            %   - 'customFileHandler' - a function handle used to retrieve a
+            %       file whose location is not a local path (e.g. 'ndicloud').
+            %       It is called as HANDLER(DESTPATH, SOURCEPATH) and must
+            %       produce a local file at DESTPATH. A handler declared with
+            %       three or more inputs (or with varargin) is instead called
+            %       as HANDLER(DESTPATH, SOURCEPATH, CONTEXT), receiving a
+            %       scalar struct with per-call document context
+            %       (documentId, filename, seriesName, uid, mode) so it can
+            %       batch across a document. See DID-matlab issue #186 and
+            %       did.implementations.sqlitedb.dispatchCustomFileHandler.
+            %       DID retrieves no remote file itself; a downstream package
+            %       supplies retrieval through this handler. Only locations
+            %       marked for ingestion are retrieved here, which for remote
+            %       locations is rare -- ingest defaults to 0 for 'url' and
+            %       'ndicloud'.
+            %
+            % See also: DID.DATABASE/OPEN_DOC, which takes the same handler.
             arguments
                 database_obj
                 document_objs
                 branch_id = ''
                 options.OnDuplicate {mustBeMember(options.OnDuplicate,{'ignore','warn','error'})} = 'error'
                 options.Validate {mustBeNumericOrLogical} = true
+                options.customFileHandler = []
             end
 
             % Ensure we got a valid input doc object
@@ -468,7 +486,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
             % Disable database journalling if no validation requested
             if ~doValidation
-                try database_obj.run_sql_query('pragma journal_mode=OFF'); catch, end
+                try
+                    database_obj.run_sql_query('pragma journal_mode=OFF');
+                    % Restore journalling on ANY exit, including a throw in the
+                    % document loop below (e.g. an OnDuplicate UNIQUE-constraint
+                    % error). Previously the restore lived only on the normal
+                    % exit path, so a throw left journal_mode=OFF - and hence no
+                    % rollback protection - for the rest of the connection's life.
+                    restoreJournalCleanup = onCleanup(@() restoreJournalMode(database_obj)); %#ok<NASGU>
+                catch
+                end
             end
 
             % Ensure branch IDs validity (unless requested not to)
@@ -480,6 +507,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
 
             downstream_options.OnDuplicate = options.OnDuplicate;
+            downstream_options.customFileHandler = options.customFileHandler;
             varargin_to_pass = namedargs2cell(downstream_options);
 
             % Call the database's addition method separately for each doc
@@ -503,10 +531,8 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 database_obj.do_add_doc(doc, branch_id, varargin_to_pass{:});
             end
 
-            % Restore journaling if no validation requested
-            if ~doValidation
-                try database_obj.run_sql_query('pragma journal_mode=DELETE'); catch, end
-            end
+            % Journalling (if it was disabled above) is restored by the
+            % restoreJournalCleanup onCleanup object when this method returns.
         end % add_doc()
 
         function document_objs = get_docs(database_obj, document_ids, options)
@@ -611,12 +637,13 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 % Replace did.document object reference with its unique doc id
                 doc_id = database_obj.validate_doc_id(documents{i}, false);
 
-                % Call the specific database's removal method
-                try % failure is not an error
-                    database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
-                catch
-                    % ignore errors
-                end
+                % Call the specific database's removal method. do_remove_doc
+                % already honours OnMissing (ignore/warn return quietly, error
+                % raises DID:SQLITEDB:NO_SUCH_DOC), so it is called directly:
+                % the previous bare try/catch with an empty handler nullified
+                % every failure - read-only file, lock, and even the requested
+                % OnMissing='error' - so removal always reported success.
+                database_obj.do_remove_doc(doc_id, branch_id, varargin{:});
 
                 % TODO also delete all documents that depend on the deleted doc
             end
@@ -656,6 +683,199 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % Open the document
             file_obj = database_obj.do_open_doc(document_id, filename, options{:});
         end % open_doc()
+
+        function [tf, filePath] = cachedPathForFile(database_obj, document_obj, filename)
+            % CACHEDPATHFORFILE - where a document's file is on disk, with NO query
+            %
+            % [TF, FILEPATH] = cachedPathForFile(DATABASE_OBJ, DOCUMENT_OBJ, FILENAME)
+            %
+            % Returns whether FILENAME of DOCUMENT_OBJ is present on this
+            % machine, and its full path if so ('' if not). DOCUMENT_OBJ must
+            % be a did.document OBJECT, not a document id -- the uid is taken
+            % from the object in memory, which is the whole point.
+            %
+            % HOW THIS DIFFERS FROM EXIST_DOC. exist_doc takes a document id,
+            % queries the docs/files tables for the uid, and then builds the
+            % same candidate paths this does. That query is unavoidable when
+            % all you have is an id; it is pure overhead when you already hold
+            % the document. Two consequences follow:
+            %
+            %   Speed. Resolving N files costs N queries through exist_doc and
+            %   none through this. For a caller walking the files of one
+            %   document -- a tiled image pyramid, say, whose level can be
+            %   tens of thousands of files -- that is the difference between
+            %   a query per file and none at all.
+            %
+            %   Threads. A SQLite connection belongs to the thread that opened
+            %   it, so exist_doc must run on the thread that owns the session.
+            %   This function touches no database, so it may be called from
+            %   any thread and from any process. That is what lets a viewer
+            %   resolve files in parallel without a session per worker.
+            %
+            % It is otherwise the same answer: the same candidate roots, in
+            % the same order (global file cache first, then this database's
+            % own file root), behind the same did.file.isSafeUid guard.
+            %
+            % TF IS FALSE FOR A FILE THAT EXISTS ONLY REMOTELY. Nothing here
+            % retrieves anything. A false answer means "not on this machine
+            % yet", not "no such file"; use OPEN_DOC to retrieve it.
+            %
+            % It also answers about THE DOCUMENT YOU HOLD rather than the
+            % document in the database -- see did.document/fileUids.
+            %
+            % See also: EXIST_DOC, OPEN_DOC, did.file.cachedPathForUid,
+            %   did.document/fileUids
+            arguments
+                database_obj
+                document_obj (1,1) did.document
+                filename (1,:) char
+            end
+
+            tf = false;
+            filePath = '';
+
+            additionalRoots = database_obj.do_cachedPathRoots();
+
+            uids = document_obj.fileUids(filename);
+            if isempty(uids)
+                % A file series member has no file_info entry of its own --
+                % membership is the manifest's to answer -- so the miss above
+                % is what a member looks like, not a "no such file". Resolving
+                % it still touches nothing but the document and the disk: the
+                % manifest's uid comes from the document, and one seek into
+                % the manifest gives the member's.
+                [tf, filePath] = localSeriesMemberPath(document_obj, filename, additionalRoots);
+                return;
+            end
+
+            for i=1:numel(uids)
+                thisPath = did.file.cachedPathForUid(uids{i}, ...
+                    'additionalRoots', additionalRoots);
+                if ~isempty(thisPath)
+                    tf = true;
+                    filePath = thisPath;
+                    return;
+                end
+            end
+
+        end % cachedPathForFile()
+
+        function tf = seriesHas(database_obj, document_obj, name, index)
+            % SERIESHAS - does a file series have a member at INDEX?
+            %
+            % TF = seriesHas(DATABASE_OBJ, DOCUMENT_OBJ, NAME, INDEX)
+            %
+            % Returns whether the series NAME of DOCUMENT_OBJ records a member
+            % at the one-based INDEX. A series is sparse -- a zarr level never
+            % writes an all-fill chunk -- so "no member here" is an ordinary
+            % answer, not a failure.
+            %
+            % THIS ANSWERS ABOUT THE MANIFEST, NOT THE DISK. True means the
+            % series records a member at INDEX; it does not promise the bytes
+            % are on this machine. Use CACHEDPATHFORFILE or EXIST_DOC for
+            % that. The two questions are deliberately separate: a caller
+            % deciding what to fetch needs to know what SHOULD be there.
+            %
+            % WHY THIS IS ON THE DATABASE AND SERIESCOUNT IS ON THE DOCUMENT.
+            % A count is recorded on the document when the series is added, so
+            % did.document/seriesCount answers from memory. WHICH slots are
+            % filled is recorded only in the manifest -- that is the whole
+            % point of the format -- so answering needs the manifest, and
+            % finding the manifest needs to know where this database keeps
+            % files. It still runs no query and touches no network, and reads
+            % one slot rather than the whole uid block.
+            %
+            % Returns false when the manifest is not on this machine, which is
+            % the same "not here" CACHEDPATHFORFILE gives; nothing is fetched
+            % to answer.
+            %
+            % See also: did.document/seriesCount, SERIESMEMBERS,
+            %   CACHEDPATHFORFILE, did.file.readSeriesManifestUid
+            arguments
+                database_obj
+                document_obj (1,1) did.document
+                name (1,:) char
+                index (1,1) double {mustBePositive, mustBeInteger}
+            end
+
+            tf = false;
+
+            manifestPath = localSeriesManifestPath(document_obj, name, ...
+                database_obj.do_cachedPathRoots());
+            if isempty(manifestPath), return; end
+
+            try
+                uid = did.file.readSeriesManifestUid(manifestPath, index);
+            catch
+                % A manifest that cannot be read cannot say what the series
+                % holds. open_doc reports that where it can be acted on.
+                return;
+            end
+
+            tf = ~isempty(uid);
+
+        end % seriesHas()
+
+        function [indices, uids] = seriesMembers(database_obj, document_obj, name)
+            % SERIESMEMBERS - the members a file series actually has
+            %
+            % [INDICES, UIDS] = seriesMembers(DATABASE_OBJ, DOCUMENT_OBJ, NAME)
+            %
+            % Returns the one-based INDICES of the slots the series NAME
+            % actually fills, and the UIDS recorded for them, in slot order.
+            % Absent slots are skipped, so a sparse series gives back only
+            % what it holds. Both are empty when the series has no members or
+            % its manifest is not on this machine.
+            %
+            % THIS IS THE ITERATOR. MATLAB has no generator idiom worth
+            % imposing here, and the list IS the manifest's own content -- for
+            % 28,000 members that is the ~924 KB the format was sized to make
+            % cheap, read ONCE. Asking SERIESHAS in a loop instead would
+            % re-open the manifest per member; this is the call to use when
+            % walking a whole pyramid level.
+            %
+            % The uids come back so a caller can resolve each member with
+            % did.file.cachedPathForUid, which is a pure function of the uid:
+            % no query, no network, callable from any thread and any process.
+            % One manifest read then N independent resolutions is the shape
+            % this whole feature exists to allow (VH-Lab/DID-matlab#173).
+            %
+            % Example:
+            %   [idx, uids] = db.seriesMembers(doc, 'chunk.bin');
+            %   roots = {db.FileDir};
+            %   for i = 1:numel(idx)
+            %       p = did.file.cachedPathForUid(uids{i}, 'additionalRoots', roots);
+            %   end
+            %
+            % See also: SERIESHAS, did.document/seriesCount,
+            %   did.file.cachedPathForUid, did.file.readSeriesManifest
+            arguments
+                database_obj
+                document_obj (1,1) did.document
+                name (1,:) char
+            end
+
+            indices = [];
+            uids = {};
+
+            manifestPath = localSeriesManifestPath(document_obj, name, ...
+                database_obj.do_cachedPathRoots());
+            if isempty(manifestPath), return; end
+
+            try
+                manifest = did.file.readSeriesManifest(manifestPath);
+            catch
+                return;
+            end
+
+            % Slot i of manifest.uids is member i, one-based, which is the
+            % numbering NAME_<i> uses. The conversion to the file's own
+            % zero-based numbering happens in the reader and nowhere else.
+            present = find(~cellfun('isempty', manifest.uids));
+            indices = present;
+            uids = manifest.uids(present);
+
+        end % seriesMembers()
 
         function [tf, file_path] = exist_doc(database_obj, document_id, filename, options)
             % EXIST_DOC - Check if a did.document exists as a file
@@ -780,19 +1000,45 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
     end
 
     methods (Access=protected)
+        function roots = do_cachedPathRoots(database_obj) %#ok<MANU>
+            % DO_CACHEDPATHROOTS - directories, besides the global file cache,
+            % where this database stores files under their uid
+            %
+            % ROOTS = do_cachedPathRoots(DATABASE_OBJ)
+            %
+            % Returns a cell array of directories searched by
+            % CACHEDPATHFORFILE after the global file cache, in order.
+            %
+            % The default is {} -- the global file cache only -- so an
+            % implementation that keeps no uid-named file root of its own
+            % needs no override and keeps working unchanged. An
+            % implementation that does keep one (see
+            % did.implementations.sqlitedb) returns it here.
+
+            roots = {};
+        end % do_cachedPathRoots()
+
         function sql_str = query_struct_to_sql_str(sqlitedb_obj, query_struct)
             % Convert a single did.query object/struct into SQL query string
             sql_str = ''; %#ok<NASGU>
-            field  = query_struct.field;
+            % Charset-restrict the field name (interpolated into SQL below) and
+            % escape every user-supplied literal to prevent SQL injection - the
+            % search path does not use mksqlite bind parameters, so values must
+            % be neutralized here (see sqlEscapeLiteral / validateSqlFieldName).
+            field  = did.database.validateSqlFieldName(query_struct.field);
             param1 = query_struct.param1;
             param2 = query_struct.param2;
             param1Str = num2str(param1);
+            param1StrEsc = did.database.sqlEscapeLiteral(param1Str);   % for double-quoted literals
+            param1RegexEsc = regexptranslate('escape', param1Str);      % literal inside a regex() pattern
             if numel(param1)>=1
-                param1Val = num2str(param1(1));
+                param1Val = sprintf('%.17g', param1(1));  % full double precision (was num2str, ~5 sig digits)
             else
                 param1Val = [];
             end
-            param1Like = regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'});
+            param1Like = did.database.sqlEscapeLiteral( ...
+                regexprep(num2str(param1),{'\\','\*','_'},{'\\\\','%','\\_'}));
+            param2Esc = did.database.sqlEscapeLiteral(num2str(param2));
             field_check = ['fields.field_name="' field '"'];
             op = strtrim(lower(query_struct.operation));
             isNot = op(1)=='~';
@@ -807,9 +1053,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     sql_str = [query_struct_to_sql_str(sqlitedb_obj, param1) ' OR ' ...
                         query_struct_to_sql_str(sqlitedb_obj, param2)];
                 case 'exact_string'
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1Str '"'];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value = "' param1StrEsc '"'];
                 case 'exact_string_anycase'
-                    sql_str = [field_check ' AND ' notStr 'LOWER(doc_data.value) = "' lower(param1Str) '"'];
+                    sql_str = [field_check ' AND ' notStr 'LOWER(doc_data.value) = "' lower(param1StrEsc) '"'];
                 case 'contains_string'
                     sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\"'];
                 case 'exact_number'
@@ -832,16 +1078,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     field_check = ['(' field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\")'];
                     %value_check= ['(doc_data.value like "%' param1 ',%"' ...
-                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' param1Str '\s*(,.*)*$") NOT NULL' ...
-                        ' OR doc_data.value='  param1Str ...
-                        ' OR doc_data.value="' param1Str '")'];
+                    value_check = ['(regex(doc_data.value,"^(.*,\s*)*' did.database.sqlEscapeLiteral(param1RegexEsc) '\s*(,.*)*$") NOT NULL' ...
+                        ' OR doc_data.value='  param1StrEsc ...
+                        ' OR doc_data.value="' param1StrEsc '")'];
                     sql_str = [field_check ' AND ' notStr value_check];
                 case 'hasfield'
                     fieldNameLike = regexprep(field,{'\\','\*','_'},{'\\\\','%','\\_'});
                     sql_str = [field_check ' OR fields.field_name like "' fieldNameLike '.%" ESCAPE "\"'];
                 case 'depends_on'
                     field_check = 'fields.field_name="meta.depends_on"';
-                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like ',' param2 ';%" ESCAPE "\"'];
+                    sql_str = [field_check ' AND ' notStr 'doc_data.value like "%' param1Like ',' param2Esc ';%" ESCAPE "\"'];
                 case 'partial_struct'  %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'hasanysubfield_contains_string'  %TODO
@@ -849,12 +1095,17 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 case 'hasanysubfield_exact_string'     %TODO
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
                 case 'regexp'
-                    sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,"' param1Str '") NOT NULL'];
+                    % 'regexp' intentionally accepts a user-supplied regex, so
+                    % do NOT regex-escape param1; only SQL-escape the literal.
+                    sql_str = [field_check ' AND ' notStr 'regex(doc_data.value,"' param1StrEsc '") NOT NULL'];
                 case 'isa'
                     %sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
                     %    '(fields.field_name="meta.superclass" AND ' notStr 'doc_data.value like "%' param1Like '%" ESCAPE "\")'];
-                    param1regExp = ['(^|, )' param1Str '(,|$)'];
-                    sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1Str '") OR ' ...
+                    % param1 is a class name matched literally within the
+                    % comma-separated superclass list, so regex-escape it (so
+                    % metacharacters are literal) then SQL-escape the pattern.
+                    param1regExp = did.database.sqlEscapeLiteral(['(^|, )' param1RegexEsc '(,|$)']);
+                    sql_str = ['(fields.field_name="meta.class"      AND ' notStr 'doc_data.value = "' param1StrEsc '") OR ' ...
                         '(fields.field_name="meta.superclass" AND ' notStr 'regex(doc_data.value,"' param1regExp '") NOT NULL)'];
                 otherwise
                     error('DID:Database:SQL','Query operation "%s" is not yet implemented',op);
@@ -868,7 +1119,7 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 'FROM   docs, branch_docs, doc_data, fields ' ...
                 'WHERE  docs.doc_idx = doc_data.doc_idx ' ...
                 '  AND  docs.doc_idx = branch_docs.doc_idx ' ...
-                '  AND  branch_docs.branch_id = "' branch_id '" ' ...
+                '  AND  branch_docs.branch_id = "' did.database.sqlEscapeLiteral(branch_id) '" ' ...
                 '  AND  fields.field_idx = doc_data.field_idx'];
             %((fields.field_name = "meta.class" AND doc_data.value = "ndi_document") OR (fields.field_name = "meta.superclass" AND doc_data.value like "%ndi_document%"))')';
             for i = 1 : numel(query_structs)
@@ -980,7 +1231,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
 
         % Document-related methods
         doc_ids = do_get_doc_ids(database_obj, branch_id, varargin)
-        do_add_doc(database_obj, document_obj, branch_id, varargin)
+        % do_add_doc takes name-value arguments through a trailing `options`
+        % argument, declared with an arguments block in the implementation.
+        % An abstract declaration is a signature only and cannot carry an
+        % arguments block itself, so naming the argument `options` rather than
+        % `varargin` is what states the contract here.
+        do_add_doc(database_obj, document_obj, branch_id, options)
         document_obj = do_get_doc(database_obj, document_id, varargin)
         do_remove_doc(database_obj, document_id, branch_id, varargin)
         file_obj = do_open_doc(database_obj, document_id, filename, varargin)
@@ -1058,6 +1314,16 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             end
         end
 
+    end % methods (Access=protected)
+
+    methods
+        % validate_docs is public so a caller can validate documents it did
+        % not create -- the cross-language symmetry suite validates the
+        % documents the OTHER language wrote (DID-matlab#155 /
+        % DID-python#28), which is impossible from outside a protected
+        % method. DID-python's Database.validate_docs has been public since
+        % DID-python#27; this makes the two agree. add_docs still calls it
+        % on the Validate path exactly as before.
         function validate_docs(database_obj, document_objs)
 
             % Get the superset of all doc IDs in the database and the input docs
@@ -1110,6 +1376,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 assert(~isempty(value),'Doc %s %s field is empty!',doc_id,fieldName);
             end
         end
+    end % methods
+
+    methods (Access=protected)
 
         function schemaStruct = get_document_schema(database_obj, schema_filename) %#ok<INUSL>
             % Get the path location of path placeholders
@@ -1290,7 +1559,47 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             expectedNames = {};
                             mustHaveValue = {};
                         end
-                        areSame = all(ismember(lower(unique(expectedNames)), lower(unique(docNames_alt))));
+                        % Only dependencies that the schema marks as
+                        % mustbenotempty are required to be present. Optional
+                        % dependencies (mustbenotempty false/empty) may be
+                        % omitted from the document without being an error.
+                        isRequired = false(1, numel(mustHaveValue));
+                        for mv = 1:numel(mustHaveValue)
+                            thisValue = mustHaveValue{mv};
+                            isRequired(mv) = ~isempty(thisValue) && thisValue;
+                        end
+                        requiredNames = expectedNames(isRequired);
+                        areSame = all(ismember(lower(unique(requiredNames)), lower(unique(docNames_alt))));
+                        % Warn when an optional dependency is defined in the
+                        % schema but missing from the document. This is not an
+                        % error, but we report it so we can gauge how often it
+                        % happens in practice.
+                        optionalNames = expectedNames(~isRequired);
+                        missingOptional = optionalNames(~ismember(lower(optionalNames), lower(docNames_alt)));
+                        % Report missing optional dependencies. This is OFF by
+                        % default so it does not surface in normal releases;
+                        % enable it by setting the environment variable
+                        % DID_FORCE_VALIDATION_WARNINGS to a non-zero value. When
+                        % enabled, the warning is forced through even if a caller
+                        % has globally disabled warnings (e.g. NDI's
+                        % ndi.dataset.dir wraps bulk adds in warning('off')): a
+                        % per-identifier 'on' state overrides the global 'off',
+                        % and the prior warning state is restored afterward.
+                        if ~isempty(missingOptional)
+                            forceWarn = false;
+                            envVal = strtrim(getenv('DID_FORCE_VALIDATION_WARNINGS'));
+                            if ~isempty(envVal)
+                                numVal = str2double(envVal);
+                                forceWarn = isnan(numVal) || numVal ~= 0;
+                            end
+                            if forceWarn
+                                priorWarnState = warning('on', 'DID:Database:MissingOptionalDependency');
+                                warning('DID:Database:MissingOptionalDependency', ...
+                                    'Optional dependency(ies) {%s} missing from document of class "%s"', ...
+                                    strjoin(string(missingOptional), ', '), class_name);
+                                warning(priorWarnState);
+                            end
+                        end
                         if ~areSame
                             errorMsgFormat = ['Dissimilar dependencies defined/found for %s.\n\n' ...
                                 'Expected dependencies: {%s}\n' ...
@@ -1300,47 +1609,120 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                             assert(areSame,'DID:Database:ValidationDependsOn', ...
                                 errorMsgFormat, doc_name, expectedStr, foundStr);
                         end
-                        % Loop over all dependencies and ensure they exist
+                        % Loop over all dependencies and ensure they exist.
+                        %
+                        % Match on docNames_alt, the enumeration-stripped
+                        % names, not on docNames. A document holds
+                        % 'syncrule_id_1' where the schema declares
+                        % 'syncrule_id', so matching the raw names never found
+                        % the entry: value stayed empty and BOTH checks below
+                        % were skipped. An enumerated dependency could name a
+                        % document that exists nowhere -- not in the database,
+                        % not in the batch -- and still validate.
+                        %
+                        % An enumerated dependency may legitimately have
+                        % several entries (syncrule_id_1, syncrule_id_2), which
+                        % is exactly the assumption the old one-match lookup
+                        % broke, so check every entry sharing the stem.
                         for idx = 1 : numel(mustHaveValue)
                             item_name = expectedNames{idx};
-                            idx2 = find(strcmpi(item_name,docNames),1);
-                            if isempty(idx2)
-                                value = [];
-                            else
-                                value = did.document.i_readDependencyTarget(depends(idx2));
-                            end
-                            % If dependency is marked as MustBeNotEmpty, ensure it's not empty
+                            matchIdx = find(strcmpi(item_name,docNames_alt));
                             expectedValue = mustHaveValue{idx};
-                            if ~isempty(expectedValue) && expectedValue
-                                assert(~isempty(value), ...
+                            isRequiredHere = ~isempty(expectedValue) && expectedValue;
+
+                            if isempty(matchIdx)
+                                % Nothing in the document under this name. Only
+                                % a required dependency is an error here; the
+                                % presence check above has already passed for
+                                % the optional case.
+                                assert(~isRequiredHere, ...
                                     'DID:Database:ValidationDependEmpty', ...
                                     'Empty dependency found for "%s" in %s', ...
                                     item_name, doc_name)
+                                continue
                             end
 
-                            % Ensure the dependent ID exists in database or input docs
-                            if ~isempty(value)
-                                assert(ischar(value),'DID:Database:ValidationDependNotACharacterArray',...
-                                    'Non-character dependency value entered for "%s" in %s',...
-                                    item_name,doc_name);
-                                % compare the dependent value to all doc IDs
-                                isOk = ismember(lower(value), all_ids);
-                                assert(isOk,'DID:Database:ValidationDependency', ...
-                                    'Dependent doc ID "%s" (%s) of %s not found in the database or input docs', ...
-                                    value, item_name, doc_name)
+                            for m = 1 : numel(matchIdx)
+                                % Read via the depends_on shape helper:
+                                % accepts document_id (V_delta/V_zeta),
+                                % value (V_delta draft), and id (V_alpha),
+                                % precedence document_id > value > id. A
+                                % direct .value read would return empty on
+                                % any doc constructed via V2's
+                                % did.document, which canonicalizes the
+                                % depends_on key to document_id.
+                                value = did.document.i_readDependencyTarget(depends(matchIdx(m)));
+                                % Report the document's own name for the entry
+                                % ('syncrule_id_2'), which says which of
+                                % several enumerated entries is at fault.
+                                thisName = docNames{matchIdx(m)};
+
+                                % If dependency is marked as MustBeNotEmpty, ensure it's not empty
+                                if isRequiredHere
+                                    assert(~isempty(value), ...
+                                        'DID:Database:ValidationDependEmpty', ...
+                                        'Empty dependency found for "%s" in %s', ...
+                                        thisName, doc_name)
+                                end
+
+                                % Ensure the dependent ID exists in database or input docs
+                                if ~isempty(value)
+                                    assert(ischar(value),'DID:Database:ValidationDependNotACharacterArray',...
+                                        'Non-character dependency value entered for "%s" in %s',...
+                                        thisName,doc_name);
+                                    % compare the dependent value to all doc IDs
+                                    isOk = ismember(lower(value), all_ids);
+                                    assert(isOk,'DID:Database:ValidationDependency', ...
+                                        'Dependent doc ID "%s" (%s) of %s not found in the database or input docs', ...
+                                        value, thisName, doc_name)
+                                end
                             end
                         end
 
                     case 'file'
-                        % Compare the defined vs. actual file names
-                        try
-                            actual_files_here = docProps.files.file_info;
-                            actualFileNames = {actual_files_here.name};
-                            file_list = docProps.files.file_list;
-                        catch
-                            actual_files_here= [];
-                            actualFileNames = {};
-                            file_list = {};
+                        % Compare the defined vs. actual file names.
+                        %
+                        % READ file_list AND file_info INDEPENDENTLY. These
+                        % used to be three statements under one try/catch with
+                        % file_list read last. Dot-indexing an empty file_info
+                        % throws -- [] is what a document that binds nothing
+                        % carries -- so the throw happened BEFORE file_list was
+                        % assigned, and the catch replaced a file_list that was
+                        % sitting there, readable and correct, with {}.
+                        % checkfiles then reported every required name as
+                        % missing "from the file_list in document X", naming the
+                        % one field that was right and sending the reader away
+                        % from the actual absence, which is the bound file. See
+                        % issue #199.
+                        %
+                        % A document with no files section at all is legitimate
+                        % and common -- that is what the try/catch was for --
+                        % and it is still handled here, by asking whether the
+                        % field is there rather than by letting an error stand
+                        % in for the answer.
+                        file_list = {};
+                        actual_files_here = [];
+                        actualFileNames = {};
+                        if isfield(docProps,'files') && isstruct(docProps.files) && ~isempty(docProps.files)
+                            filesProp = docProps.files;
+                            if isfield(filesProp,'file_list') && ~isempty(filesProp.file_list)
+                                % Passed on as stored, exactly as before: the
+                                % setdiff in checkfiles reads a char list the
+                                % same as the cell form, so normalizing here
+                                % would be a conversion nothing asks for.
+                                file_list = filesProp.file_list;
+                            end
+                            % "Nothing is bound" reaches us in two shapes: []
+                            % (a document read back as a struct) and a 0x0
+                            % struct array (did.document/reset_file_info, where
+                            % {s.name} yields {} without throwing). Both mean
+                            % the same thing, so both are treated alike rather
+                            % than the answer depending on which shape the
+                            % caller happened to produce.
+                            if isfield(filesProp,'file_info') && isstruct(filesProp.file_info) && ~isempty(filesProp.file_info)
+                                actual_files_here = filesProp.file_info;
+                                actualFileNames = {actual_files_here.name};
+                            end
                         end
                         if isempty(expected) && (isSuperClass || isempty(actualFileNames))
                             continue
@@ -1589,6 +1971,45 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 document_ids = num2cell(document_ids);
             end
         end
+
+        function s = sqlEscapeLiteral(s)
+            % sqlEscapeLiteral - escape a value for a double-quoted SQL literal
+            %
+            % S = sqlEscapeLiteral(S)
+            %
+            % The search query builder (query_struct_to_sql_str /
+            % get_sql_query_str) interpolates user-supplied did.query values,
+            % branch ids and field names into SQL string literals delimited by
+            % double quotes, e.g. ['... doc_data.value = "' value '"']. Those
+            % values are NOT passed to mksqlite as bind parameters
+            % (run_sql_query does not forward varargin for search), so they must
+            % be escaped to prevent SQL injection from a crafted query value.
+            % Inside a double-quoted token SQLite treats "" as an escaped ", so
+            % doubling the double quotes neutralizes any attempt to break out of
+            % the literal. This mirrors sqlitedb.escapeSqlLiteral and the
+            % DID-python _sql_escape primitive.
+            s = strrep(char(s), '"', '""');
+        end % sqlEscapeLiteral()
+
+        function fld = validateSqlFieldName(fld)
+            % validateSqlFieldName - charset-restrict a query field name
+            %
+            % FLD = validateSqlFieldName(FLD)
+            %
+            % Field names are interpolated into the SQL search string. A did.
+            % field name is a dotted path of identifier segments, so restrict it
+            % to [A-Za-z0-9_.] and ERROR on any other character. Unlike
+            % DID-python (which falls back to a brute-force scan on a rejected
+            % field name), the MATLAB sql layer has no fallback, so an invalid
+            % field name is a hard error. An empty field name is permitted
+            % (some operations - e.g. depends_on/isa - do not use it).
+            fld = char(fld);
+            if ~isempty(fld) && isempty(regexp(fld, '^[A-Za-z0-9_.]+$', 'once'))
+                error('DID:Database:InvalidFieldName', ...
+                    ['did.query field name "%s" contains characters outside ' ...
+                     'the allowed set [A-Za-z0-9_.]'], fld);
+            end
+        end % validateSqlFieldName()
     end
 
     % Preferences management
@@ -1669,6 +2090,15 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             %  2 - that every entry of the actual document's file_list is valid (it might differ from
             %      the literal expected file_list if there are enumerated files that end in _##)
             %  3 - that every file that is required to be present is in fact present
+            %
+            % 1 and 3 are DIFFERENT ABSENCES and are reported differently. A
+            % name the schema requires can be missing from the document's
+            % file_list (1), or it can be there in the file_list -- declared,
+            % correctly -- with nothing bound to it in file_info (3). The
+            % second is the common one, and it used to arrive here disguised as
+            % the first: the caller lost the document's file_list to an
+            % exception and passed {}, so every declared name looked absent
+            % from a list that in fact held it. See issue #199.
 
             % check that each expectedName has a match in the actualFileNames
             expectedNamesList = unique(expectedNames);
@@ -1678,6 +2108,12 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             missing_files = setdiff(expectedNamesList,actual_file_list);
             if ~isempty(missing_files)
                 errmsg = sprintf('Some required files are missing (including %s) from the file_list in document %s', missing_files{1}, doc_name);
+                % A required file_list entry is absent - reject the document.
+                % Execution used to fall through to isvalid = 1 below, so
+                % add_docs committed a document that was missing a required
+                % file: schema validation failed open.
+                isvalid = 0;
+                return;
             end
 
             % Step 2: are all files in the actual document's file_list valid?
@@ -1704,12 +2140,30 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 return;
             end
 
-            % Loop over all files and ensure they exist
+            % Step 3: loop over all required files and ensure they exist
             for idx = 1 : numel(mustHaveValue)
                 expectedValue = mustHaveValue{idx};
                 if ~isempty(expectedValue) && expectedValue
                     item_name = expectedNames{idx};
                     idx2 = did.database.findfilematch(item_name,actualFileNames);
+                    if isempty(idx2)
+                        % The name IS in the document's file_list -- step 1
+                        % above established that -- but nothing is bound to it
+                        % in files.file_info, so there is no file to look for.
+                        % Say that, and say it about file_info: the file_list
+                        % is correct here, and blaming it is what cost the
+                        % debugging time in issue #199.
+                        %
+                        % Falling out of an empty loop and reaching isvalid = 1
+                        % below is the same fail-open PR #182 closed for step 1:
+                        % a required file was absent and the document was
+                        % committed anyway.
+                        errmsg = sprintf(['Required file "%s" is declared in the file_list of %s ' ...
+                            'but no file is bound to that name (files.file_info has no entry for it)'], ...
+                            item_name, doc_name);
+                        isvalid = 0;
+                        return;
+                    end
                     for k=1:numel(idx2)
                         locations = files(idx2(k)).locations;
                         found = did.database.canfindonefile(locations);
@@ -1772,23 +2226,110 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 if isfile(fileLocation)
                     found = true;
                     break
-                elseif startsWith(fileLocation, 'http')
-                    try
-                        req = matlab.net.http.RequestMessage('HEAD');
-                        response = req.send(url);
-                        if strcmp( response.StatusCode, 'OK' )
-                            found = true;
-                        end
-                    catch
-                        % ignore this location
-                    end
                 else
-                    % If it is neither a local file nor an HTTP URL,
-                    % existence will not be pre-checked, but will be 
-                    % evaluated when attempting to read or download the file.
+                    % If it is not a local file, existence is not pre-checked
+                    % here; it is evaluated when attempting to read or download
+                    % the file. This includes http(s) URLs: validation does no
+                    % network I/O, so an unreachable URL is reported when the
+                    % file is read rather than when the document is added.
                     found = true;
                 end
             end
         end % canfindonefile
     end % Static methods
 end % database classdef
+
+function manifestPath = localSeriesManifestPath(document_obj, name, additionalRoots)
+    % Where a series' manifest is on disk, or '' if it is not on this machine.
+    %
+    % The manifest is an ordinary file of the document, so its uid is in
+    % file_info and finding it needs nothing but the document and the
+    % filesystem -- which is what lets every series accessor keep
+    % cachedPathForFile's promise of no SQL and no network.
+    %
+    % Shared by the member lookup and the series accessors so that all of
+    % them agree on which copy of the manifest is authoritative: the global
+    % file cache first, then the database's own roots, the same order
+    % do_open_doc uses.
+    %
+    % REMOTE-ONLY MANIFESTS. This helper is deliberately no-network: a
+    % manifest whose bytes live only in the cloud resolves to '' here, and
+    % it is up to the retrieval-authorized caller to fetch. That path is
+    % did.implementations.sqlitedb/fetchSeriesManifestBytes, which offers
+    % the manifest's file_info location to the customFileHandler and lands
+    % the bytes at filecachepath/<manifestUid> -- so the next call to this
+    % function is a cachedPathForUid hit, with no network again. See
+    % VH-Lab/DID-matlab#201.
+
+    manifestPath = '';
+
+    if ~document_obj.isFileSeries(name), return; end
+
+    manifestUids = document_obj.fileUids(name);
+    for i = 1:numel(manifestUids)
+        thisPath = did.file.cachedPathForUid(manifestUids{i}, ...
+            'additionalRoots', additionalRoots);
+        if ~isempty(thisPath)
+            manifestPath = thisPath;
+            return;
+        end
+    end
+end
+
+function [tf, filePath] = localSeriesMemberPath(document_obj, filename, additionalRoots)
+    % Where a file series member is on disk, from the document and the
+    % filesystem alone.
+    %
+    % Local helper for did.database/cachedPathForFile. It keeps that method's
+    % promise -- no SQL, no network, safe from any thread and any process --
+    % which is why it takes the roots as an argument rather than asking the
+    % database for them: everything it needs is already in hand.
+    %
+    % A member's uid lives in the series' manifest rather than in file_info,
+    % so this is two resolutions instead of one: the manifest by its own uid,
+    % then the member by the uid at slot INDEX. The second is a single seek,
+    % not a read of the whole manifest (did.file.readSeriesManifestUid), so
+    % walking a pyramid level costs one small read per member.
+    %
+    % See also: did.database/cachedPathForFile, did.document/seriesMemberOf
+
+    tf = false;
+    filePath = '';
+
+    [stem, index] = document_obj.seriesMemberOf(filename);
+    if isempty(stem), return; end
+    if ~isscalar(index) || index < 1 || index ~= round(index), return; end
+
+    manifestPath = localSeriesManifestPath(document_obj, stem, additionalRoots);
+    if isempty(manifestPath), return; end
+
+    try
+        memberUid = did.file.readSeriesManifestUid(manifestPath, index);
+    catch
+        % "Not on this machine" is this function's whole vocabulary; a
+        % corrupt manifest is reported where it can be acted on, by
+        % open_doc.
+        return;
+    end
+    if isempty(memberUid), return; end
+
+    thisPath = did.file.cachedPathForUid(memberUid, ...
+        'additionalRoots', additionalRoots);
+    if isempty(thisPath), return; end
+
+    tf = true;
+    filePath = thisPath;
+end
+
+function restoreJournalMode(database_obj)
+    % restoreJournalMode - restore the SQLite rollback journal.
+    %
+    % Local helper used by add_docs' onCleanup so that journal_mode is
+    % restored to DELETE even if the document insertion loop throws. Failures
+    % to restore are best-effort and ignored (mirrors the original guarded call).
+    try
+        database_obj.run_sql_query('pragma journal_mode=DELETE');
+    catch
+        % best-effort restore; ignore failures
+    end
+end

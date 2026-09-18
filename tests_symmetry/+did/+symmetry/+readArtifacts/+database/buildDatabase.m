@@ -93,6 +93,7 @@ classdef buildDatabase < matlab.unittest.TestCase
                     savedDocs = tmp;
                 end
 
+                liveDocs = {};
                 for j = 1:numel(savedDocs)
                     if iscell(savedDocs)
                         savedDoc = savedDocs{j};
@@ -107,11 +108,39 @@ classdef buildDatabase < matlab.unittest.TestCase
                         ' not found in database branch ' branchName]);
 
                     if ~isempty(doc)
+                        if iscell(doc), doc = doc{1}; end
+                        liveDocs{end+1} = doc; %#ok<AGROW>
                         actualProps = doc.document_properties;
                         testCase.verifyEqual(actualProps.document_class.class_name, ...
                             savedDoc.className, ...
                             ['Class name mismatch for doc ' expectedId ...
                             ' in branch ' branchName ' from ' SourceType]);
+                    end
+                end
+
+                % Step 5: run OUR schema validator over documents the other
+                % language wrote.
+                %
+                % Without this the suite only ever proved each language can
+                % READ the other's database. Validation lives in add_docs, and
+                % each language calls add_docs only on documents it created
+                % itself during makeArtifacts -- so a document one language
+                % writes could be schema-invalid under the other's validator
+                % with the suite staying green. That is not hypothetical:
+                % every Python document id was once a UUID4 where
+                % base.schema.json types base.id as did_uid, so this repo's
+                % add_docs would have rejected all of them, and the suite
+                % noticed nothing until someone read the code. See
+                % DID-matlab#155 / DID-python#28.
+                if ~isempty(liveDocs)
+                    try
+                        db.validate_docs(liveDocs);
+                    catch validationError
+                        testCase.verifyFail(sprintf([ ...
+                            'Documents written by %s do not pass this ' ...
+                            'language''s schema validator, in branch %s: ' ...
+                            '[%s] %s'], SourceType, branchName, ...
+                            validationError.identifier, validationError.message));
                     end
                 end
             end

@@ -46,7 +46,8 @@ classdef document
 
                 for i=1:2:numel(options) % assign variable arguments
                     try
-                        eval(['document_properties.' options{i} '= options{i+1};']);
+                        document_properties = did.datastructures.assignPropertyPath( ...
+                            document_properties, options{i}, options{i+1});
                     catch
                         error(['Could not assign document_properties.' options{i} '.']);
                     end
@@ -67,27 +68,13 @@ classdef document
                 did_document_obj = did_document_obj.reset_file_info();
             end
 
-        end % document() creator
+            % A name must be served by exactly one mechanism. Checking here
+            % catches a malformed class definition the first time anyone
+            % constructs one, rather than at the point where two mechanisms
+            % disagree about membership.
+            localValidateFileDeclarations(did_document_obj);
 
-        function [b, e] = validate(did_document_obj, did_database)
-            % VALIDATE - 0/1 evaluate whether DID_DOCUMENT object is valid by its schema
-            %
-            % B = VALIDATE(DID_DOCUMENT_OBJ)
-            %
-            % Checks the fields of the DID_DOCUMENT object against the schema in
-            % DID_DOCUMENT_OBJ.did_core_properties.validation_schema and returns 1
-            % if the object is valid and 0 otherwise.
-            try
-                validator = did.validate(did_document_obj);
-            catch
-                if nargin == 1
-                    error('You must pass in an instance of did.database')
-                end
-                validator = did.validate(did_document_obj, did_database);
-            end
-            b = validator.is_valid;
-            e = validator.errormsg;
-        end % validate()
+        end % document() creator
 
         function uid = id(did_document_obj)
             % ID - return the document unique identifier for an DID_DOCUMENT
@@ -122,7 +109,8 @@ classdef document
             newproperties = did_document_obj.document_properties;
             for i=1:2:numel(options)
                 try
-                    eval(['newproperties.' options{i} '=options{i+1};']);
+                    newproperties = did.datastructures.assignPropertyPath( ...
+                        newproperties, options{i}, options{i+1});
                 catch
                     error(['Error in assigning ' options{i} '.']);
                 end
@@ -137,10 +125,12 @@ classdef document
             % DID_DOCUMENT_OBJ_OUT = PLUS(DID_DOCUMENT_OBJ_A, DID_DOCUMENT_OBJ_B)
             %
             % Merges the DID_DOCUMENT objects A and B. First, the 'document_class'
-            % superclasses are merged. Then, the fields that are in B but are not in A
-            % are added to A. The result is returned in DID_DOCUMENT_OBJ_OUT.
-            % Note that any fields that A has that are also in B will be preserved; no elements of
-            % those fields of B will be combined with A.
+            % superclasses are merged. Then the fields of B are merged into A.
+            % Where both documents have the same field, B's value is taken --
+            % did.datastructures.structmerge, which does the merging in step 4,
+            % is documented as "when S1 and S2 share the same fieldname, the
+            % value of S2 is taken". Dependencies follow the same rule: a
+            % 'depends_on' entry whose name is in both is taken from B.
 
             did_document_obj_out = did_document_obj_a;
             % Step 1): Merge superclasses
@@ -152,10 +142,35 @@ classdef document
             % Step 2): Merge dependencies if we have to
             if isfield(did_document_obj_out.document_properties,'depends_on') && ...
                isfield(did_document_obj_b.document_properties,'depends_on')
-                % we need to merge dependencies
-                did_document_obj_out.document_properties.depends_on = cat(1,...
-                    did_document_obj_out.document_properties.depends_on(:),...
-                    did_document_obj_b.document_properties.depends_on(:));
+                % Merge by name. Concatenating produced a depends_on holding
+                % the same name twice whenever both documents declared it,
+                % which every reader here resolves with matches(1) -- so the
+                % duplicate was invisible to a lookup but real in the stored
+                % document, and a second one could never be reached.
+                %
+                % B wins a name collision, which is what structmerge does for
+                % every other field in step 4, and what ndi.document's plus
+                % has always done for dependencies.
+                aDepends = did_document_obj_out.document_properties.depends_on;
+                bDepends = did_document_obj_b.document_properties.depends_on;
+                if isempty(aDepends)
+                    merged = bDepends(:);
+                elseif isempty(bDepends)
+                    merged = aDepends(:);
+                else
+                    merged = aDepends(:);
+                    mergedNames = {merged.name};
+                    for k=1:numel(bDepends)
+                        match = find(strcmpi(bDepends(k).name, mergedNames));
+                        if isempty(match)
+                            merged(end+1) = bDepends(k); %#ok<AGROW>
+                            mergedNames{end+1} = bDepends(k).name; %#ok<AGROW>
+                        else
+                            merged(match(1)) = bDepends(k);
+                        end
+                    end
+                end
+                did_document_obj_out.document_properties.depends_on = merged;
                 otherproperties = rmfield(otherproperties,'depends_on');
             end
 
@@ -208,6 +223,11 @@ classdef document
             notfound = 1;
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
+            if hasdependencies
+                % As in dependency_value_n and set_dependency_value: an empty
+                % depends_on has no .name to index.
+                hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
+            end
 
             if hasdependencies
                 matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
@@ -248,6 +268,12 @@ classdef document
             notfound = 1;
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
+            if hasdependencies
+                % As in dependency_value_n: an empty depends_on has no .name
+                % to index, so the branch below would throw rather than fall
+                % through to creating the list.
+                hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
+            end
             % The constructor's i_normalizeDependsOn pass guarantees
             % depends_on entries use the V_delta canonical key
             % `document_id`. Build d_struct with the same key so
@@ -261,9 +287,11 @@ classdef document
                     did_document_obj.document_properties.depends_on(matches(1)).document_id = value;
                 elseif ~options.ErrorIfNotFound % add it
                     did_document_obj.document_properties.depends_on(end+1) = d_struct;
+                    notfound = 0;
                 end
             elseif ~options.ErrorIfNotFound
                 did_document_obj.document_properties.depends_on = d_struct;
+                notfound = 0;
             end
 
             if notfound && options.ErrorIfNotFound
@@ -297,12 +325,32 @@ classdef document
             notfound = 1;
 
             hasdependencies = isfield(did_document_obj.document_properties,'depends_on');
+            if hasdependencies
+                % A declaration of "depends_on": [ ] decodes to an empty
+                % array, which has no .name to index. Treat it as no
+                % dependencies rather than reaching for a field of a double.
+                hasdependencies = numel(did_document_obj.document_properties.depends_on)>=1;
+            end
 
             if hasdependencies
                 finished = 0;
                 i = 1;
                 while ~finished
                     matches = find(strcmpi([dependency_name '_' int2str(i)],{did_document_obj.document_properties.depends_on.name}));
+                    if isempty(matches) && i == 1
+                        % No 'name_1', so accept a plain 'name'. A document
+                        % that carries a single dependency unnumbered is the
+                        % same thing as one numbered _1, and callers should
+                        % not have to know which form a definition used.
+                        matches = find(strcmpi(dependency_name,{did_document_obj.document_properties.depends_on.name}));
+                        if ~isempty(matches)
+                            % An empty value is the placeholder a blank
+                            % definition carries, not an entry in the list.
+                            if isempty(did_document_obj.document_properties.depends_on(matches(1)).value)
+                                matches = [];
+                            end
+                        end
+                    end
                     if numel(matches)>0
                         notfound = 0;
                         d{i} = did.document.i_readDependencyTarget( ...
@@ -454,6 +502,17 @@ classdef document
                 error(msg);
             end
 
+            % A series member must not gain an inline file_info entry: the
+            % manifest would not know about it, and the two mechanisms would
+            % then disagree about what the series contains.
+            seriesStem = localSeriesMemberStem(did_document_obj, name);
+            if ~isempty(seriesStem)
+                error('DID:Document:add_file:isSeriesMember', ...
+                    ['"%s" is a member of the file series "%s". Members are ' ...
+                     'added together by addFileSeries, which records them in ' ...
+                     'the series manifest.'], name, seriesStem);
+            end
+
             % Step 2: detect the default property values, if necessary, and build the structure
             detected_location_type = 'file'; % default
             location = strip(location);  % remove whitespace
@@ -600,12 +659,17 @@ classdef document
             %   or be a proper numbered file if files.file_list{i} has has the form 'filename.ext_#'.
 
             % Step 2a: see if name ends in '_#', where # is a non-negative integer.
+            % Strict all-digits parse (not str2num, which EVALUATES: 'pi' and
+            % 'i' would come back as numbers there and reach the '#' branch).
+            % Matches did.document/seriesMemberOf, whose parse is the one
+            % downstream callers use, and matches DID-python's isdigit-based
+            % check. See DID-matlab#199 / DID-python#69.
 
             search_name = name;
             underscores = find(name=='_');
             if ~isempty(underscores)
-                n = str2num(name(underscores(end)+1:end));
-                if ~isempty(n) % we have a number
+                tail = name(underscores(end)+1:end);
+                if ~isempty(tail) && all(isstrprop(tail, 'digit'))
                     search_name = [name(1:underscores(end)) '#'];
                 end
             end
@@ -614,6 +678,15 @@ classdef document
 
             I = find(strcmpi(search_name,did_document_obj.document_properties.files.file_list));
             if isempty(I)
+                % Second resolution rule, added by file series. The lookup
+                % above maps NAME_12 to NAME_#; this maps it to the series
+                % NAME when that misses. A member carries no file_info entry
+                % of its own -- membership is the manifest's to answer -- so
+                % fI_index stays empty while the NAME is still valid.
+                if ~isempty(localSeriesMemberStem(did_document_obj, name))
+                    fI_index = [];
+                    return;
+                end
                 b = 0;
                 msg = ['No such file ' name ' in file_list of did.document; file must match an expected name.'];
                 return;
@@ -624,6 +697,461 @@ classdef document
             fI_index = find(strcmpi(name,{did_document_obj.document_properties.files.file_info.name}));
 
         end % is_in_file_list()
+
+        function uids = fileUids(did_document_obj, name)
+            % FILEUIDS - the uids recorded for a named file, from memory alone
+            %
+            % UIDS = FILEUIDS(DID_DOCUMENT_OBJ, NAME)
+            %
+            % Returns a cell array of the uid strings recorded for the file
+            % NAME in this document, in the order the locations were added by
+            % ADD_FILE. Returns {} if this document has no such file.
+            %
+            % This reads only the in-memory document; it runs no query. It is
+            % the first half of resolving a file without touching the
+            % database, the second half being did.file.cachedPathForUid, and
+            % did.database/cachedPathForFile is the two together.
+            %
+            % IMPORTANT: this answers about THE DOCUMENT YOU HOLD, which is
+            % not necessarily the document in the database. A file added to a
+            % stored copy after this object was read is not visible here. For
+            % iterating the files a document declares -- the case this exists
+            % for -- that is exactly right; when you need what the database
+            % currently holds, use did.database/exist_doc instead.
+            %
+            % See also: did.database/cachedPathForFile, did.file.cachedPathForUid
+
+            uids = {};
+
+            if ~isfield(did_document_obj.document_properties,'files')
+                return;
+            end
+            files = did_document_obj.document_properties.files;
+            if ~isfield(files,'file_info') || isempty(files.file_info)
+                return;
+            end
+
+            index = find(strcmpi(name,{files.file_info.name}));
+            if isempty(index)
+                return;
+            end
+
+            locations = files.file_info(index(1)).locations;
+            uids = cell(1,numel(locations));
+            for i=1:numel(locations)
+                if isfield(locations(i),'uid')
+                    uids{i} = locations(i).uid;
+                else
+                    uids{i} = '';
+                end
+            end
+            uids = uids(~cellfun('isempty',uids));
+
+        end % fileUids()
+
+        function names = seriesNames(did_document_obj)
+            % SERIESNAMES - the file series this document's class declares
+            %
+            % NAMES = SERIESNAMES(DID_DOCUMENT_OBJ)
+            %
+            % Returns a cell array of the names declared in
+            % document_properties.files.file_series, or {} if this class
+            % declares none.
+            %
+            % A declared name IS the series' manifest: it is an ordinary file
+            % in file_list, and its members are NAME_1 ... NAME_N. Declaring
+            % the manifest rather than a separate NAME_# entry is what lets
+            % code that knows nothing about series still carry the manifest
+            % correctly, and skip the members visibly rather than enumerate
+            % them wrongly.
+
+            names = {};
+            if ~isfield(did_document_obj.document_properties,'files')
+                return;
+            end
+            files = did_document_obj.document_properties.files;
+            if ~isfield(files,'file_series') || isempty(files.file_series)
+                return;
+            end
+            names = files.file_series;
+            if ~iscell(names)
+                names = {names};
+            end
+
+        end % seriesNames()
+
+        function tf = isFileSeries(did_document_obj, name)
+            % ISFILESERIES - is NAME declared as a file series by this document?
+            %
+            % TF = ISFILESERIES(DID_DOCUMENT_OBJ, NAME)
+            %
+            % Case-insensitive, matching did.document/is_in_file_list.
+
+            tf = any(strcmpi(name, did_document_obj.seriesNames()));
+
+        end % isFileSeries()
+
+        function [stem, index] = seriesMemberOf(did_document_obj, name)
+            % SERIESMEMBEROF - is NAME a member of one of this document's series?
+            %
+            % [STEM, INDEX] = SERIESMEMBEROF(DID_DOCUMENT_OBJ, NAME)
+            %
+            % If NAME parses as STEM_<number> and STEM is declared as a file
+            % series by this document, returns the declared STEM and the
+            % member's INDEX. Otherwise returns '' and [].
+            %
+            % INDEX is ONE-BASED, the number as written in the name: the
+            % member NAME_1 is index 1. It addresses the manifest's slots
+            % directly -- see did.file.readSeriesManifestUid -- and is
+            % converted to the manifest's own zero-based numbering only
+            % inside the reader.
+            %
+            % WHY THIS IS PUBLIC. A series member carries no file_info entry
+            % and no files-table row of its own; membership is the manifest's
+            % to answer. So everything that resolves a filename has to be able
+            % to ask "is this a member, and of what?" before it can look
+            % anywhere: is_in_file_list to accept the name at all, and a
+            % database implementation to find the bytes. One parse, asked in
+            % one place, is what keeps those two agreeing.
+            %
+            % The number is parsed exactly as is_in_file_list parses the
+            % NAME_# convention, so a name is a member here on precisely the
+            % terms that make it a valid file name there.
+            %
+            % See also: did.document/isFileSeries, did.document/is_in_file_list,
+            %           did.file.readSeriesManifestUid
+
+            stem = '';
+            index = [];
+
+            % Deliberately no arguments block. is_in_file_list and add_file
+            % both reach here with whatever name a caller handed them,
+            % including '' and a string scalar, and a name this method cannot
+            % parse is a "no" rather than an error.
+            if isstring(name) && isscalar(name), name = char(name); end
+            if ~ischar(name) || isempty(name), return; end
+
+            underscores = find(name=='_');
+            if isempty(underscores), return; end
+            tail = name(underscores(end)+1:end);
+            % Strict all-digits parse (not str2num, which EVALUATES: '_pi'
+            % and '_-1' would come back as numbers there). Matches
+            % is_in_file_list above and DID-python's series_member_of.
+            % See DID-matlab#199 / DID-python#69.
+            if isempty(tail) || ~all(isstrprop(tail, 'digit')), return; end
+            n = str2double(tail);
+            candidate = name(1:underscores(end)-1);
+            if ~did_document_obj.isFileSeries(candidate), return; end
+
+            % Return the DECLARED spelling rather than the caller's. Matching
+            % is case-insensitive, and everything downstream looks the stem up
+            % again -- in file_info, in the files table -- where the declared
+            % spelling is the one that is stored.
+            declared = did_document_obj.seriesNames();
+            stem = declared{find(strcmpi(candidate, declared), 1)};
+            index = n;
+
+        end % seriesMemberOf()
+
+        function [n, nPresent] = seriesCount(did_document_obj, name)
+            % SERIESCOUNT - how many members a series has, WITHOUT reading anything
+            %
+            % [N, NPRESENT] = SERIESCOUNT(DID_DOCUMENT_OBJ, NAME)
+            %
+            % N is the number of member SLOTS -- the series runs NAME_1 to
+            % NAME_N. NPRESENT is how many of those actually exist; a sparse
+            % series has fewer, because a member with nothing to store is not
+            % written. Both are 0 for a declared series that has not been
+            % populated.
+            %
+            % WHY THIS LIVES ON THE DOCUMENT. Without it, answering "how many
+            % members?" would mean either paging a cloud listFiles or fetching
+            % the manifest -- which for a large series is most of a megabyte,
+            % possibly over the network. A count is a few bytes and is wanted
+            % constantly: sizing an upload, reporting progress, deciding
+            % whether a dataset is complete. So it is recorded per series when
+            % the series is added, next to the name rather than per member.
+
+            n = 0; nPresent = 0;
+
+            index = localSeriesInfoIndex(did_document_obj, name);
+            if isempty(index)
+                return;
+            end
+            si = did_document_obj.document_properties.files.series_info(index);
+            n = si.count;
+            nPresent = si.n_present;
+
+        end % seriesCount()
+
+        function root = seriesSourceRoot(did_document_obj, name)
+            % SERIESSOURCEROOT - the directory a series' members came from
+            %
+            % ROOT = SERIESSOURCEROOT(DID_DOCUMENT_OBJ, NAME)
+            %
+            % Returns '' when no root was recorded.
+            %
+            % Members record their source path RELATIVE to this root, in the
+            % manifest. The root is kept here, as ONE string, so that a
+            % document shared with someone else exposes one directory name to
+            % review or clear rather than one copy of it per member.
+
+            root = '';
+            index = localSeriesInfoIndex(did_document_obj, name);
+            if ~isempty(index)
+                root = did_document_obj.document_properties.files.series_info(index).source_root;
+            end
+
+        end % seriesSourceRoot()
+
+        function entries = seriesIngestLocations(did_document_obj, name)
+            % SERIESINGESTLOCATIONS - where a series' members are, pending ingestion
+            %
+            % ENTRIES = SERIESINGESTLOCATIONS(DID_DOCUMENT_OBJ, NAME)
+            %
+            % Returns a struct array with one entry per PRESENT member, with
+            % fields index, uid, location, location_type, ingest,
+            % delete_original and parameters. Empty if the series has not been
+            % added, or if the document has already been ingested.
+            %
+            % This record is TRANSIENT. It is what lets the database copy each
+            % member from where it currently sits into FileDir/<uid>, and
+            % did.document.stripSeriesIngestLocations removes it before a
+            % document's JSON is stored, so member paths never persist and
+            % never travel to the cloud.
+            %
+            % Contrast files.file_info(i).locations, which survives ingestion.
+            %
+            % See also: did.document/addFileSeries,
+            %           did.document.stripSeriesIngestLocations
+
+            arguments
+                did_document_obj
+                name (1,:) char
+            end
+
+            entries = did.datastructures.emptystruct('index','uid','location', ...
+                'location_type','ingest','delete_original','parameters');
+
+            index = localSeriesInfoIndex(did_document_obj, name);
+            if isempty(index), return; end
+
+            si = did_document_obj.document_properties.files.series_info(index);
+            if ~isfield(si,'ingest_locations'), return; end
+            if isempty(si.ingest_locations), return; end
+            entries = si.ingest_locations;
+
+        end % seriesIngestLocations()
+
+        function did_document_obj = addFileSeries(did_document_obj, name, locations, options)
+            % ADDFILESERIES - add a whole file series to a did.document at once
+            %
+            % DOC = ADDFILESERIES(DOC, NAME, LOCATIONS)
+            % DOC = ADDFILESERIES(DOC, NAME, LOCATIONS, 'indices', IDX, ...)
+            %
+            % NAME must be declared in this class's files.file_series. The
+            % members become NAME_1 ... NAME_N; NAME itself is the manifest
+            % that records them, and is added as an ordinary file.
+            %
+            % Inputs:
+            %   LOCATIONS - cellstr of source paths, one per member being added
+            %
+            % Optional Name-Value Arguments:
+            %   indices ([])      - ONE-BASED member numbers, one per entry of
+            %       LOCATIONS. Default 1:numel(LOCATIONS), i.e. dense. Pass
+            %       them explicitly for a SPARSE series -- a chunk grid whose
+            %       empty regions were never written -- which is the case the
+            %       series mechanism exists for and which a NAME_# entry
+            %       cannot express.
+            %   sourceRoot ('')   - the directory the members came from. Default
+            %       '' derives the longest common directory prefix. Pass a root
+            %       to override, or set recordSourceNames false to record none.
+            %   recordSourceNames (true) - record each member's path relative to
+            %       the root, as permanent provenance in the manifest. Absolute
+            %       paths never PERSIST: a full path exposes a directory layout
+            %       the moment a document is shared. Setting this false costs
+            %       only the provenance -- ingestion locates members from the
+            %       transient ingest_locations record, not from these names.
+            %   uidWidth (33)     - passed through to did.file.writeSeriesManifest
+            %   deleteOriginal (NaN) - should ingestion delete each member's
+            %       original file? NaN follows add_file's per-type default: 1
+            %       for a local file, 0 for a URL. Pass 0 to keep the sources.
+            %   ingest (NaN)      - should ingestion COPY each member in? NaN
+            %       follows add_file's per-type default: 1 for a local file, 0
+            %       for a URL, which is a reference rather than bytes to take.
+            %       Pass 1 with remote members to ingest a series whose bytes
+            %       live in a remote store: the database then retrieves each
+            %       one through the customFileHandler given to add_docs,
+            %       exactly as add_file('...', URL, 'ingest', 1) does for a
+            %       single file. Applies to the whole call, as deleteOriginal
+            %       does; a series is added in one go and its members share a
+            %       home. delete_original is unaffected -- a remote location
+            %       still defaults to 0, and is never deleted regardless.
+            %
+            % INDICES ARE ONE-BASED, matching the live NAME_# convention set by
+            % ingested epoch data (ndi.daq.reader.mfdaq writes _seg.nbf_1
+            % upward). The manifest's own array is zero-based; the conversion
+            % happens here and nowhere else.
+            %
+            % See also: did.document/seriesCount, did.file.writeSeriesManifest
+
+            arguments
+                did_document_obj
+                name (1,:) char
+                locations cell
+                options.indices double = []
+                options.sourceRoot (1,:) char = ''
+                options.recordSourceNames (1,1) logical = true
+                options.uidWidth (1,1) {mustBePositive, mustBeInteger} = 33
+                options.deleteOriginal (1,1) double = NaN
+                options.ingest (1,1) double = NaN
+            end
+
+            if ~did_document_obj.isFileSeries(name)
+                error('DID:Document:addFileSeries:notDeclared', ...
+                    ['"%s" is not declared as a file series by this document ' ...
+                     'class. Add it to files.file_series in the class definition.'], name);
+            end
+
+            if ~isempty(localSeriesInfoIndex(did_document_obj, name))
+                error('DID:Document:addFileSeries:alreadyAdded', ...
+                    ['The series "%s" has already been added to this document. ' ...
+                     'Use removeFileSeries first to replace it.'], name);
+            end
+
+            indices = options.indices;
+            if isempty(indices)
+                indices = 1:numel(locations);
+            end
+            if numel(indices) ~= numel(locations)
+                error('DID:Document:addFileSeries:lengthMismatch', ...
+                    'indices has %d entries but locations has %d.', ...
+                    numel(indices), numel(locations));
+            end
+            if ~isempty(indices)
+                if any(indices < 1) || any(indices ~= round(indices))
+                    error('DID:Document:addFileSeries:badIndex', ...
+                        'Member indices must be positive integers (one-based).');
+                end
+                if numel(unique(indices)) ~= numel(indices)
+                    error('DID:Document:addFileSeries:duplicateIndex', ...
+                        'Member indices must be unique.');
+                end
+            end
+
+            % Derive the root and the relative names, unless told not to.
+            sourceNames = {};
+            root = options.sourceRoot;
+            if options.recordSourceNames
+                if isempty(root)
+                    root = localCommonRoot(locations);
+                end
+                if ~isempty(root)
+                    sourceNames = localRelativeNames(locations, root);
+                else
+                    % No meaningful common root: the members are scattered, and
+                    % putting absolute paths in the MANIFEST would be both a
+                    % disclosure and the bloat it exists to avoid. Record none.
+                    % Locatability does not depend on this -- ingest_locations
+                    % below carries the paths, and is stripped before storage.
+                    sourceNames = {};
+                end
+            else
+                root = '';
+            end
+
+            n = 0;
+            if ~isempty(indices), n = max(indices); end
+
+            % Slot i of these arrays is member i (one-based); the manifest
+            % writes them zero-based, which is the only place the two differ.
+            uids = repmat({''}, 1, n);
+            relnames = repmat({''}, 1, n);
+            for i = 1:numel(locations)
+                uids{indices(i)} = did.ido.unique_id();
+                if ~isempty(sourceNames)
+                    relnames{indices(i)} = sourceNames{i};
+                end
+            end
+
+            manifestPath = [tempname '.manifest'];
+            if isempty(sourceNames)
+                did.file.writeSeriesManifest(manifestPath, uids, ...
+                    'uidWidth', options.uidWidth);
+            else
+                did.file.writeSeriesManifest(manifestPath, uids, ...
+                    'sourceNames', relnames, 'uidWidth', options.uidWidth);
+            end
+
+            % The manifest is an ORDINARY file under the series' own name, so
+            % every path that already carries a document's files carries it too.
+            did_document_obj = did_document_obj.add_file(name, manifestPath);
+
+            % Where each member's bytes are RIGHT NOW, so that ingestion can
+            % find them. This is transient: did.document.stripSeriesIngestLocations
+            % removes it before a document's JSON is stored, so absolute paths
+            % exist only between authoring and ingestion and never travel.
+            %
+            % It is deliberately not called 'locations'. file_info.locations
+            % survives ingestion; this does not, and giving two fields with
+            % opposite lifetimes the same name reads fine today and misleads
+            % whoever later assumes they behave alike.
+            %
+            % Carrying the uid and the index here is what lets ingestion work
+            % without opening the manifest at all: it has the destination
+            % (FileDir/<uid>), the source, and the files-table filename
+            % (NAME_<index>). The manifest stays a download-side artifact.
+            ingestLocations = localIngestLocations(locations, indices, uids, ...
+                options.deleteOriginal, options.ingest);
+
+            entry = struct('name', name, 'count', n, ...
+                'n_present', numel(locations), 'source_root', root, ...
+                'ingest_locations', {ingestLocations});
+            if ~isfield(did_document_obj.document_properties.files,'series_info')
+                did_document_obj.document_properties.files.series_info = ...
+                    did.datastructures.emptystruct('name','count','n_present', ...
+                        'source_root','ingest_locations');
+            end
+            k = numel(did_document_obj.document_properties.files.series_info)+1;
+            did_document_obj.document_properties.files.series_info(k) = entry;
+
+        end % addFileSeries()
+
+        function did_document_obj = removeFileSeries(did_document_obj, name)
+            % REMOVEFILESERIES - drop a file series' record from a did.document
+            %
+            % DOC = REMOVEFILESERIES(DOC, NAME)
+            %
+            % Removes the series' record and its manifest file entry. The
+            % DECLARATION in files.file_series is untouched -- that belongs to
+            % the class, not to this document -- so the series may be added again.
+
+            arguments
+                did_document_obj
+                name (1,:) char
+            end
+
+            index = localSeriesInfoIndex(did_document_obj, name);
+            if isempty(index)
+                error('DID:Document:removeFileSeries:notAdded', ...
+                    'The series "%s" has not been added to this document.', name);
+            end
+
+            si = did_document_obj.document_properties.files.series_info;
+            si(index) = [];
+            did_document_obj.document_properties.files.series_info = si;
+
+            % Drop the manifest's file entry too, if one was recorded.
+            files = did_document_obj.document_properties.files;
+            if isfield(files,'file_info') && ~isempty(files.file_info)
+                fI = find(strcmpi(name,{files.file_info.name}));
+                if ~isempty(fI)
+                    files.file_info(fI) = [];
+                    did_document_obj.document_properties.files = files;
+                end
+            end
+
+        end % removeFileSeries()
 
         function did_document_obj = reset_file_info(did_document_obj)
             % RESET_FILE_INFO - reset the file information parameters for a new did.document
@@ -642,6 +1170,14 @@ classdef document
             % Now, clear it out:
             did_document_obj.document_properties.files.file_info = did.datastructures.emptystruct('name','locations');
 
+            % A series' per-instance record is reset with the rest. The
+            % DECLARATION (files.file_series, from the class definition) is
+            % left alone: it says which names are series, which is a property
+            % of the class and not of this instance.
+            did_document_obj.document_properties.files.series_info = ...
+                did.datastructures.emptystruct('name','count','n_present', ...
+                    'source_root','ingest_locations');
+
         end % reset_file_info()
 
         function b = eq(did_document_obj1, did_document_obj2)
@@ -649,11 +1185,10 @@ classdef document
             %
             % B = EQ(DID_DOCUMENT_OBJ1, DID_DOCUMENT_OBJ2)
             %
-            % Returns 1 if and only if the objects have identical document_properties.did_document.id
-            % fields.
+            % Returns 1 if and only if the objects have identical document
+            % identifiers, as returned by ID().
 
-            b = strcmp(did_document_obj1.document_properties.did_document.id,...
-                did_document_obj2.document_properties.did_document.id);
+            b = strcmp(did_document_obj1.id(), did_document_obj2.id());
         end % eq()
 
     end % methods
@@ -828,6 +1363,51 @@ classdef document
     end % methods (Static, Hidden)
 
     methods (Static)
+
+        function props = stripSeriesIngestLocations(props)
+            % STRIPSERIESINGESTLOCATIONS - clear transient member paths from properties
+            %
+            % PROPS = did.document.STRIPSERIESINGESTLOCATIONS(PROPS)
+            %
+            % Returns PROPS with every files.series_info(:).ingest_locations
+            % emptied. Call this on the way to storing or shipping a
+            % document's JSON.
+            %
+            % A series' member paths are recorded so ingestion can find the
+            % bytes; they are of no use afterwards, and a level of a lightsheet
+            % pyramid has tens of thousands of them. The stored JSON is
+            % preserved and returned whole, so anything left in it is paid for
+            % on every fetch of that document.
+            %
+            % The field is EMPTIED rather than removed, deliberately. rmfield
+            % would leave a stored document's series_info with one fewer field
+            % than a fresh one, and adding a series to such a document would
+            % then fail: addFileSeries assigns a full entry into the array, and
+            % MATLAB refuses assignment between dissimilar structures. Keeping
+            % the field costs an "ingest_locations": [] per series -- bytes,
+            % and per series rather than per member.
+            %
+            % A document with no series is untouched. Safe to call twice.
+            %
+            % See also: did.document/seriesIngestLocations
+
+            if ~isstruct(props), return; end
+            if ~isfield(props,'files'), return; end
+            if ~isstruct(props.files), return; end
+            if ~isfield(props.files,'series_info'), return; end
+
+            si = props.files.series_info;
+            if ~isstruct(si), return; end
+            if ~isfield(si,'ingest_locations'), return; end
+
+            emptyLocations = did.datastructures.emptystruct('index','uid', ...
+                'location','location_type','ingest','delete_original','parameters');
+            for i = 1:numel(si)
+                si(i).ingest_locations = emptyLocations;
+            end
+            props.files.series_info = si;
+
+        end % stripSeriesIngestLocations()
         function s = readblankdefinition(jsonfilelocationstring, s)
             % READBLANKDEFINITION - read a blank JSON class definitions from a file location string
             %
@@ -988,4 +1568,227 @@ function text = fileread_(filename)
     fid = fopen(filename,'r');
     text = fread(fid,'*char')';
     fclose(fid);
+end
+
+function index = localSeriesInfoIndex(did_document_obj, name)
+    % Index of NAME's entry in files.series_info, or [] if absent.
+    % Case-insensitive, matching is_in_file_list.
+    index = [];
+    if ~isfield(did_document_obj.document_properties,'files'), return; end
+    files = did_document_obj.document_properties.files;
+    if ~isfield(files,'series_info') || isempty(files.series_info), return; end
+    index = find(strcmpi(name,{files.series_info.name}));
+    if ~isempty(index), index = index(1); end
+end
+
+function stem = localSeriesMemberStem(did_document_obj, name)
+    % If NAME parses as STEM_<number> and STEM is a declared series, return
+    % STEM; otherwise ''. This is the second resolution rule a series adds:
+    % is_in_file_list already maps NAME_12 to NAME_#, and this maps it to the
+    % series NAME when that lookup misses.
+    %
+    % The parse itself lives in did.document/seriesMemberOf, which is the
+    % public form of the same rule; keeping one implementation is what stops
+    % the name a document accepts and the name a database resolves from
+    % drifting apart.
+    stem = did_document_obj.seriesMemberOf(name);
+end
+
+function entries = localIngestLocations(locations, indices, uids, deleteOriginal, ingestOption)
+    % Build the transient uid -> source-path record for a series' members.
+    %
+    % Shaped like a file_info location so the ingestion loop can treat the two
+    % the same way, plus 'index' so the member's files-table filename
+    % (NAME_<index>) is known without consulting the manifest.
+    %
+    % Defaults follow add_file: a URL is not ingested and its original is not
+    % deleted; a local file is ingested and, unless the caller says otherwise,
+    % its original is deleted. DELETEORIGINAL and INGESTOPTION of NaN each
+    % mean "use that default"; a number overrides it for every member.
+    %
+    % Overriding INGEST is what lets a series whose bytes live in a remote
+    % store be ingested at all: the database's member loop hands any location
+    % that is not a plain file to the caller's customFileHandler, the same way
+    % the file_info loop does, and without this it would never be asked to.
+
+    entries = did.datastructures.emptystruct('index','uid','location', ...
+        'location_type','ingest','delete_original','parameters');
+
+    for i = 1:numel(locations)
+        L = locations{i};
+        if isstring(L) && isscalar(L), L = char(L); end
+        L = strip(L);
+
+        if startsWith(L,'https://','IgnoreCase',true) || ...
+                startsWith(L,'http://','IgnoreCase',true)
+            locationType = 'url';
+            ingest = 0;
+            defaultDelete = 0;
+        else
+            locationType = 'file';
+            ingest = 1;
+            defaultDelete = 1;
+        end
+
+        if isnan(deleteOriginal)
+            thisDelete = defaultDelete;
+        else
+            thisDelete = deleteOriginal;
+        end
+
+        if ~isnan(ingestOption)
+            ingest = ingestOption;
+        end
+
+        entries(end+1) = struct('index', indices(i), ...
+            'uid', uids{indices(i)}, ...
+            'location', L, ...
+            'location_type', locationType, ...
+            'ingest', ingest, ...
+            'delete_original', thisDelete, ...
+            'parameters', ''); %#ok<AGROW>
+    end
+end
+
+function root = localCommonRoot(locations)
+    % The longest common DIRECTORY prefix of LOCATIONS, or '' when there is
+    % none worth recording.
+    %
+    % '' is returned for a trivial result -- the filesystem root, or paths
+    % with nothing in common -- because the alternative is recording absolute
+    % paths, which discloses a directory layout and is the bloat the manifest
+    % exists to avoid. A URL is likewise given no root: it carries no home
+    % directory to leak, and is stored whole.
+    root = '';
+    if isempty(locations), return; end
+    parents = cell(1,numel(locations));
+    for i = 1:numel(locations)
+        L = locations{i};
+        if isstring(L) && isscalar(L), L = char(L); end
+        if ~ischar(L) || isempty(L), return; end
+        if contains(L,'://'), return; end
+        parents{i} = fileparts(L);
+    end
+    common = parents{1};
+    for i = 2:numel(parents)
+        common = localCommonPrefixDir(common, parents{i});
+        if isempty(common), return; end
+    end
+    if isempty(common) || strcmp(common, filesep) || strcmp(common,'.')
+        return;
+    end
+    root = common;
+end
+
+function c = localCommonPrefixDir(a, b)
+    % Common leading path components of A and B, joined. Splits on either
+    % separator so a path written on one platform is handled on the other.
+    pa = regexp(a,'[\\/]','split');
+    pb = regexp(b,'[\\/]','split');
+    n = min(numel(pa),numel(pb));
+    k = 0;
+    for i = 1:n
+        if strcmp(pa{i},pb{i}), k = i; else, break; end
+    end
+    if k == 0, c = ''; return; end
+    c = strjoin(pa(1:k), filesep);
+end
+
+function rel = localRelativeNames(locations, root)
+    % Each location's path RELATIVE to ROOT, using '/' as the separator so a
+    % manifest written on one platform reads the same on another.
+    rootParts = regexp(root,'[\\/]','split');
+    rel = cell(1,numel(locations));
+    for i = 1:numel(locations)
+        L = locations{i};
+        if isstring(L) && isscalar(L), L = char(L); end
+        parts = regexp(L,'[\\/]','split');
+        if numel(parts) <= numel(rootParts) || ...
+                ~isequal(parts(1:numel(rootParts)), rootParts)
+            error('DID:Document:addFileSeries:notUnderRoot', ...
+                ['Location "%s" is not under the series source root "%s". ' ...
+                 'Recording it would store an absolute path, which is the ' ...
+                 'disclosure relative names exist to prevent.'], L, root);
+        end
+        rel{i} = strjoin(parts(numel(rootParts)+1:end), '/');
+    end
+end
+
+function localValidateFileDeclarations(did_document_obj)
+    % Enforce that a file name is served by ONE mechanism, not two.
+    %
+    % If a name were reachable through both the file-entry path (file_list
+    % plus file_info, with NAME_# members found by probing) and the series
+    % path (a manifest that states membership), the two would give different
+    % answers for it -- and the file-entry path's answer stops at the first
+    % gap, which is exactly the case series exist to serve. So this is not
+    % hygiene; it is what makes the two mechanisms safe to coexist.
+    %
+    % Comparisons are case-insensitive, because is_in_file_list matches with
+    % strcmpi and a difference it cannot see is not a difference.
+
+    if ~isfield(did_document_obj.document_properties,'files'), return; end
+    files = did_document_obj.document_properties.files;
+    if ~isfield(files,'file_series') || isempty(files.file_series), return; end
+
+    seriesNames = files.file_series;
+    if ~iscell(seriesNames), seriesNames = {seriesNames}; end
+
+    fileList = {};
+    if isfield(files,'file_list') && ~isempty(files.file_list)
+        fileList = files.file_list;
+        if ~iscell(fileList), fileList = {fileList}; end
+    end
+
+    for i = 1:numel(seriesNames)
+        thisSeries = seriesNames{i};
+
+        % Duplicated series name (possibly differing only in case).
+        if sum(strcmpi(thisSeries, seriesNames)) > 1
+            error('DID:Document:fileDeclarations:duplicateSeries', ...
+                ['The file series "%s" is declared more than once (matching ' ...
+                 'is case-insensitive).'], thisSeries);
+        end
+
+        % The series name IS its manifest, so it must be an ordinary file.
+        if ~any(strcmpi(thisSeries, fileList))
+            error('DID:Document:fileDeclarations:seriesNotInFileList', ...
+                ['The file series "%s" is not in file_list. A series name is ' ...
+                 'its manifest, which is an ordinary file, so it must be ' ...
+                 'declared there too.'], thisSeries);
+        end
+
+        % Collision 1: the same family declared both ways.
+        if any(strcmpi([thisSeries '_#'], fileList))
+            error('DID:Document:fileDeclarations:seriesAndNumberedEntry', ...
+                ['"%s" is declared as a file series and "%s_#" is also in ' ...
+                 'file_list. "%s_12" would match both, and the two mechanisms ' ...
+                 'would disagree about membership.'], ...
+                thisSeries, thisSeries, thisSeries);
+        end
+    end
+
+    % Collision 2 (and 4): a literal entry that a series would shadow.
+    % is_in_file_list resolves the trailing integer first, so such an entry
+    % is unreachable. The trailing-part parse is a strict all-digits check
+    % (not str2num, which EVALUATES), matching is_in_file_list above and
+    % did.document/seriesMemberOf; DID-python's series_member_of uses the
+    % same rule. See DID-matlab#199 / DID-python#69.
+    for i = 1:numel(fileList)
+        thisName = fileList{i};
+        if isempty(thisName) || thisName(end) == '#', continue; end
+        underscores = find(thisName == '_');
+        if isempty(underscores), continue; end
+        tail = thisName(underscores(end)+1:end);
+        if isempty(tail) || ~all(isstrprop(tail, 'digit'))
+            continue;
+        end
+        stem = thisName(1:underscores(end)-1);
+        if any(strcmpi(stem, seriesNames))
+            error('DID:Document:fileDeclarations:shadowedBySeries', ...
+                ['file_list entry "%s" is unreachable: it parses as member ' ...
+                 '%s of the file series "%s", so the series answers for it.'], ...
+                thisName, tail, stem);
+        end
+    end
 end
