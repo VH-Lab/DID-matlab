@@ -1877,6 +1877,7 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             if this_obj.isRetryableSqlError(err)
                 backoffs = [0.1 0.2 0.5 1 2 4];  % seconds to wait between attempts
                 for attempt = 1 : numel(backoffs)
+                    reopenFirst = this_obj.isReadonlyError(err);
                     if this_obj.debug
                         fprintf(2, ['DID:SQLITEDB retryable SQL error ' ...
                             '(attempt %d/%d, %g s backoff): %s\n%s\n'], ...
@@ -1884,11 +1885,40 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             strtrim(err.message), this_obj.collectReadonlyDiagnostics());
                     end
                     pause(backoffs(attempt));
+
+                    % A persistent READONLY on a file and directory that are
+                    % both writable is a poisoned connection, not a busy one:
+                    % SQLITE_READONLY_DBMOVED, i.e. SQLite believes the file
+                    % moved out from under the open handle and refuses to
+                    % write. On external / network volumes with unstable inode
+                    % numbers this can even be a false positive. Waiting never
+                    % clears it - reopening does, because it re-establishes a
+                    % valid handle to the file currently at the path. The
+                    % failed statement is atomic (nothing was applied), so
+                    % reopening and retrying is safe even for an INSERT. A
+                    % plain BUSY / locked error needs only the wait above, so
+                    % it does not trigger a reopen.
+                    if reopenFirst
+                        try
+                            if this_obj.debug
+                                fprintf(2, ['DID:SQLITEDB reopening connection ' ...
+                                    'before retry (readonly - likely DBMOVED)\n']);
+                            end
+                            this_obj.close_db();
+                            this_obj.dbid = [];  % force a real reopen even if close failed
+                            this_obj.open_db();
+                        catch
+                            % reopen failed; fall through and let the retry
+                            % (and, if it also fails, the final report) run
+                        end
+                    end
+
                     try
                         data = mksqlite(this_obj.dbid, query_str, varargin{:});
                         if this_obj.debug
                             fprintf(2, ['DID:SQLITEDB query succeeded on retry ' ...
-                                'attempt %d/%d\n'], attempt, numel(backoffs));
+                                'attempt %d/%d%s\n'], attempt, numel(backoffs), ...
+                                repmat(' (after reopen)', 1, reopenFirst));
                         end
                         return
                     catch err
@@ -1945,6 +1975,24 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                  contains(msg,'database is locked') || ...
                  contains(msg,'database is busy') || ...
                  contains(msg,'database table is locked');
+        end
+
+        function tf = isReadonlyError(~, err)
+            % isReadonlyError - Is this the SQLITE_READONLY family specifically?
+            %
+            % Distinguished from a plain BUSY / locked error because a
+            % READONLY on a writable file/directory means the open connection
+            % is poisoned (typically SQLITE_READONLY_DBMOVED) and must be
+            % reopened - not merely waited out. See run_sql_noOpen.
+            try
+                msg = lower(strtrim(err.message));
+            catch
+                tf = false;
+                return
+            end
+            tf = contains(msg,'readonly') || ...
+                 contains(msg,'read-only') || ...
+                 contains(msg,'read only');
         end
 
         function diagStr = collectReadonlyDiagnostics(this_obj)
