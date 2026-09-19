@@ -1,0 +1,32 @@
+{
+    "document_class": {
+        "class_name": "demoPlaceConcrete",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base"
+            },
+            {
+                "class_name": "demoAbstractPlacement"
+            }
+        ],
+        "maturity_level": "stable"
+    },
+    "depends_on": [],
+    "file": [],
+    "fields": [
+        {
+            "name": "own_field",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "documentation": "Own field declared by the concrete demoPlaceConcrete class; shares its block with the inherited shared_field routed in by demoAbstractPlacement's placement=concrete_class declaration.",
+            "constraints": {}
+        }
+    ]
+}

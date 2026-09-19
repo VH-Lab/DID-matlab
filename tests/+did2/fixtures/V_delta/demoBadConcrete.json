@@ -1,0 +1,30 @@
+{
+    "document_class": {
+        "class_name": "demoBadConcrete",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base"
+            }
+        ],
+        "maturity_level": "stable"
+    },
+    "depends_on": [],
+    "file": [],
+    "fields": [
+        {
+            "name": "wrong_placement_field",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "placement": "concrete_class",
+            "documentation": "Concrete class declaring placement=concrete_class. This is invalid; resolvePlacement must raise placementOnConcreteClass.",
+            "constraints": {}
+        }
+    ]
+}

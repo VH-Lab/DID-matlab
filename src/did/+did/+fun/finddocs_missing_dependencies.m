@@ -41,9 +41,9 @@ function d = finddocs_missing_dependencies(DB, names)
                 match = 1;
             end
             if match
-                id_here = d{i}.document_properties.depends_on(j).value;
+                id_here = did.document.i_readDependencyTarget(d{i}.document_properties.depends_on(j));
                 if ~isempty(id_here)
-                    if any(strcmpi(d{i}.document_properties.depends_on(j).value,documents_observed))
+                    if any(strcmpi(id_here,documents_observed))
                         % we've got it already
                     else   % we need to look more
                         dhere = DB.database_search(ndi_query('ndi_document.id','exact_string',id_here,''));

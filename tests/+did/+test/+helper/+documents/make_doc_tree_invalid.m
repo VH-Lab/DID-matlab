@@ -260,12 +260,12 @@ function id = modifyid(method,id)
 function struct = modifydependency(method,struct)
     switch method
         case 'invalid id'
-            struct.document_properties.depends_on(1).value = 'abcdefg';
+            struct.document_properties.depends_on(1).document_id = 'abcdefg';
         case 'invalid name'
             struct.document_properties.depends_on(1).name = 'abcdefg';
         case 'add dependency'
             struct.document_properties.depends_on(4).name = 'item4';
-            struct.document_properties.depends_on(4).value = struct.document_properties.depends_on(1).value; %set the 4th dependency to the same value as the first
+            struct.document_properties.depends_on(4).document_id = struct.document_properties.depends_on(1).document_id; %set the 4th dependency to the same value as the first
         case 'sham'
         otherwise
             error(['Unknown method ' method '.']);
@@ -330,9 +330,9 @@ function struct = remove(method,struct)
             if isfield(struct.document_properties,'depends_on')
                 struct.document_properties = rmfield(struct.document_properties.depends_on,'name');
             end
-        case 'depends_on.value' %for demoC docs only
+        case 'depends_on.document_id' %for demoC docs only
             if isfield(struct.document_properties,'depends_on')
-                struct.document_properties = rmfield(struct.document_properties.depends_on,'value');
+                struct.document_properties = rmfield(struct.document_properties.depends_on,'document_id');
             end
         case 'item1' %for demoC docs only
             if isfield(struct.document_properties,'depends_on')

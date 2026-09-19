@@ -1,0 +1,181 @@
+function v2Body = treatment_drug(preBody)
+%TREATMENT_DRUG Brainstorm-I migrator: did_v1 treatment_drug -> injection (drug).
+%
+%   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_zeta'.
+%   Per V_zeta_SPEC.md, treatment_drug is deprecated and folds into injection
+%   (kind: "drug"): the administered substance(s) become the
+%   pharmacological_manipulation.mixture, the primary drug becomes the spine
+%   `variable`, and the body location becomes the spine `target_structure`.
+%   1 -> 2: the injection plus the shared session_relative_reference anchor
+%   (subject_interaction requires a time_reference).
+%
+%   Field resolution here is a HEURISTIC seed (the legacy mixture_table
+%   format varies); the authoritative mapping is finalised in discovery mode.
+
+arguments
+    preBody (1,1) struct
+end
+
+if ~isfield(preBody, 'treatment_drug') || ~isstruct(preBody.treatment_drug)
+    error('did2:convert:missingBlock', ...
+        'treatment_drug body is missing the treatment_drug property block.');
+end
+block = preBody.treatment_drug;
+
+targetStructure = ontologyArray( ...
+    getCharField(block, 'location_ontologyNode'), ...
+    getCharField(block, 'location_name'));
+mixture = parseMixtureTable(block);
+variable = primaryChemical(mixture);   % the drug is the spine identity
+
+inj = startInteraction(preBody, 'injection', {'pharmacological_manipulation'}, ...
+    variable, targetStructure, '');
+inj.pharmacological_manipulation = struct('mixture', mixture);
+inj.injection = struct( ...
+    'kind', 'drug', ...
+    'volume', blankVolume(), ...
+    'route', ontologyTerm('', ''));
+
+anchor = makeSessionAnchor(preBody, 'during');
+inj.depends_on(end+1) = struct('name', 'time_reference_1', ...
+    'value', anchor.base.id);
+v2Body = {inj, anchor};
+end
+
+% ===================== shared helpers ==================================
+
+function body = startInteraction(preBody, className, extraSupers, variable, targetStructure, notesText)
+chain = [{'manipulation'}, extraSupers];
+supers = struct('class_name', {}, 'class_version', {});
+for k = 1:numel(chain)
+    supers(end+1) = struct('class_name', chain{k}, 'class_version', '1.0.0'); %#ok<AGROW>
+end
+body = struct();
+body.document_class = struct( ...
+    'class_name', className, 'class_version', '1.0.0', ...
+    'superclasses', supers, 'schema_version', 'V_zeta');
+body.depends_on = carrySubject(preBody);
+if isfield(preBody, 'base')
+    body.base = preBody.base;
+end
+body.subject_interaction = struct( ...
+    'method', struct('node', '', 'name', ''), ...
+    'variable', variable, ...
+    'target_structure', {targetStructure});
+body.manipulation = struct('notes', notesText);
+end
+
+function variable = primaryChemical(mixture)
+%PRIMARYCHEMICAL The spine identity is the first (primary) mixture chemical;
+%   blank if the mixture parsed to nothing.
+variable = ontologyTerm('', '');
+if ~isempty(mixture) && isfield(mixture, 'chemical')
+    variable = mixture(1).chemical;
+end
+end
+
+function deps = carrySubject(preBody)
+deps = struct('name', {}, 'value', {});
+subjectVal = '';
+if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
+    for k = 1:numel(preBody.depends_on)
+        d = preBody.depends_on(k);
+        if isfield(d, 'name') && strcmp(d.name, 'subject_id')
+            subjectVal = depValue(d);
+        end
+    end
+end
+deps(end+1) = struct('name', 'subject_id', 'value', subjectVal);
+end
+
+function anchor = makeSessionAnchor(preBody, relation)
+sessionId = '';
+ds = '2024-01-01T00:00:00.000Z';
+if isfield(preBody, 'base') && isstruct(preBody.base)
+    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
+    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
+        ds = preBody.base.datestamp;
+    end
+end
+anchor = struct();
+anchor.document_class = struct('class_name', 'session_relative_reference', ...
+    'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
+    'schema_version', 'V_zeta');
+% Session identity rides on base.session_id; no redundant session_id edge
+% (it only produced discovery-mode orphans). See V_zeta
+% session_relative_reference (depends_on now empty).
+anchor.depends_on = struct('name', {}, 'value', {});
+anchor.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
+    'name', 'migrated_session_anchor', 'datestamp', ds);
+anchor.time_reference = struct('is_approximate', true);
+anchor.session_relative_reference = struct('relation', relation);
+end
+
+function mixture = parseMixtureTable(block)
+%PARSEMIXTURETABLE Best-effort parse of the legacy CSV mixture_table into the
+%   {chemical, amount} records pharmacological_manipulation.mixture wants.
+%   Always returns >= 1 record (a blank one if nothing parses) so the
+%   document validates; the blank is the curator's signal.
+mixture = struct('chemical', {}, 'amount', {});
+raw = '';
+if isfield(block, 'mixture_table')
+    v = block.mixture_table;
+    if ischar(v); raw = v; elseif isstring(v) && isscalar(v); raw = char(v); end
+end
+if ~isempty(raw)
+    lines = strsplit(raw, newline);
+    for i = 1:numel(lines)
+        cols = strsplit(strtrim(lines{i}), ',', 'CollapseDelimiters', false);
+        if numel(cols) < 2 || isempty(strtrim(cols{1}))
+            continue;
+        end
+        chemical = ontologyTerm(strtrim(cols{1}), strtrim(cols{2}));
+        amount = blankConcentration();
+        if numel(cols) >= 3 && ~isempty(strtrim(cols{3}))
+            amount.source_value = str2double(strtrim(cols{3}));
+        end
+        mixture(end+1) = struct('chemical', chemical, 'amount', amount); %#ok<AGROW>
+    end
+end
+if isempty(mixture)
+    mixture(end+1) = struct('chemical', ontologyTerm('', ''), ...
+        'amount', blankConcentration());
+end
+end
+
+function v = depValue(d)
+v = '';
+if isfield(d, 'value'); v = d.value;
+elseif isfield(d, 'document_id'); v = d.document_id; end
+end
+
+function t = ontologyTerm(node, name)
+t = struct('node', char(node), 'name', char(name));
+end
+
+function arr = ontologyArray(node, name)
+if isempty(node) && isempty(name)
+    arr = struct('node', {}, 'name', {});
+else
+    arr = struct('node', char(node), 'name', char(name));
+end
+end
+
+function c = blankConcentration()
+c = struct('source_unit', '', 'source_value', 0.0, 'approximate', false);
+end
+
+function v = blankVolume()
+v = struct('liters', 0.0, 'source_unit', '', 'source_value', 0.0, ...
+    'approximate', false);
+end
+
+function s = getCharField(block, name)
+s = '';
+if isfield(block, name)
+    v = block.(name);
+    if ischar(v); s = v;
+    elseif isstring(v) && isscalar(v); s = char(v); end
+end
+end

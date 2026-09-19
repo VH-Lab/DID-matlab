@@ -1,0 +1,31 @@
+{
+    "document_class": {
+        "class_name": "demoCollideAbstract",
+        "class_version": "1.0.0",
+        "superclasses": [
+            {
+                "class_name": "base"
+            }
+        ],
+        "maturity_level": "stable",
+        "abstract": true
+    },
+    "depends_on": [],
+    "file": [],
+    "fields": [
+        {
+            "name": "collidingName",
+            "type": "char",
+            "blank_value": "",
+            "default_value": "",
+            "mustBeNonEmpty": false,
+            "mustBeScalar": true,
+            "mustNotHaveNaN": false,
+            "queryable": false,
+            "ontology": null,
+            "placement": "concrete_class",
+            "documentation": "Abstract field placed on concrete subclass; used by tests to verify subclass-redeclaration collisions are caught.",
+            "constraints": {}
+        }
+    ]
+}
