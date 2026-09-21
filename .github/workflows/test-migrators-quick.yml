@@ -29,11 +29,36 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Resolve the did-schema ref
+        id: schema-ref
+        # This PR (VH-Lab/DID-matlab veta-migrators-restructure) implements the
+        # Waltham-Data-Science/DID-schema#68 restructure, whose head branch is
+        # `claude/calculator-restructure-2026-09-21`. When THIS branch does not
+        # exist in DID-schema (which is normal: names don't line up across
+        # repos), fall back to that PR's head so the migrator emits validate
+        # against the V_eta shape they were retargeted for; only if that too
+        # is missing (PR merged into main), fall back to main.
+        run: |
+          want="${{ github.head_ref || github.ref_name }}"
+          schema_pr68="claude/calculator-restructure-2026-09-21"
+          if git ls-remote --exit-code --heads \
+               https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then
+            echo "did-schema HAS branch '$want' -- using it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads \
+               https://github.com/Waltham-Data-Science/did-schema.git "$schema_pr68" >/dev/null 2>&1; then
+            echo "did-schema HAS PR #68 branch '$schema_pr68' -- using it (this DID-matlab PR implements it)."
+            echo "ref=$schema_pr68" >> "$GITHUB_OUTPUT"
+          else
+            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check out did-schema (sibling, for V_eta validation)
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ steps.schema-ref.outputs.ref }}
           path: did-schema
 
       - name: Resolve the NDI-matlab ref (falls back to main)
