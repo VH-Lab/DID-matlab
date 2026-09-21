@@ -246,9 +246,13 @@ verifyFalse(testCase, isfield(leaf.toStruct(), 'app'));
 end
 
 function testCalculatorWithNoAppBlockMintsNoSoftware(testCase)
-% No identity -> no entity and NO edge, rather than a software document named ''
-% with an edge pointing at it. Same rule as the navigator with no implementation
-% class: an empty edge is invisible, an absent one is honest.
+% Was: "no identity -> no entity and no edge". PR #68's calculator schema
+% declares `software_id` REQUIRED with min_count 1, so a calc doc with no
+% app block would quarantine under `RequiredDependencies` if the fold
+% skipped the mint. jCalculation therefore FALLS BACK to a software entity
+% keyed on the calc's methodName -- honest defect for a source that never
+% named its producer, versus stranding the doc. The kept-as-was navigator
+% rule is unchanged; only the calculator side has to always emit.
 v1 = struct();
 v1.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
@@ -262,9 +266,10 @@ v1.orientation_direction_tuning = struct('vector', struct('orientation_preferenc
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'software')));
-leaf = out.migrated{find(~strcmp(names, 'session_relative_reference'), 1)};
-verifyEqual(testCase, depValue(leaf.toStruct(), 'software_id'), '');
+verifyTrue(testCase, any(strcmp(names, 'software')));
+leaf = out.migrated{find(~strcmp(names, 'session_relative_reference') ...
+    & ~strcmp(names, 'software') & ~strcmp(names, 'runtime_environment'), 1)};
+verifyNotEmpty(testCase, depValue(leaf.toStruct(), 'software_id'));
 end
 
 function testSoftwareIsNotDedupedInPassOne(testCase)
