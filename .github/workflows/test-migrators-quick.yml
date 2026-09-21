@@ -318,21 +318,3 @@ jobs:
             assert(verdict.n_failed == 0, ...
                 sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
                     verdict.n_failed));
-
-      - name: Show quarantine diagnostic (if any)
-        # TEMPORARY (PR #209): testFixtureCorpus writes its full quarantine list
-        # to $GITHUB_WORKSPACE/quarantine-diagnostic.txt when result.quarantine
-        # is non-empty. The MATLAB TestRunner's per-test diagnostic output ends
-        # up above the visible log tail, so cat the file here (with if: always()
-        # so it runs even after the MATLAB step failed).
-        if: always()
-        run: |
-          f="${GITHUB_WORKSPACE}/quarantine-diagnostic.txt"
-          if [ -s "$f" ]; then
-            echo "===== quarantine-diagnostic.txt ====="
-            cat "$f"
-            echo ""
-            echo "===== end quarantine-diagnostic.txt ====="
-          else
-            echo "no quarantine-diagnostic.txt produced (file missing or empty)"
-          fi
