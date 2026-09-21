@@ -552,25 +552,15 @@
 %         inherited input_parameters stripped -> method_parameters); app kept; the raw
 %         responses (stimulus_response_scalar_id) -> derived_from_1.
 %     contrast_tuning
-%         Brainstorm-J migrator: did_v1 contrast_tuning -> the subject_calculation
-%         LEAF `tuning_curve_calculation` + the `tuning_curve` result composite, with
-%         the id preserved, + a session anchor. R2/R3 TUNING COLLAPSE: the v1
-%         `contrast_tuning` result block is RESHAPED into the one tuning_curve value
-%         (a model_fit ARRAY + typed significance / interpolated_values sub-blocks) by
-%         private/jTuningCurveValue -- it is NOT carried verbatim; the fold is 1 -> 1
-%         with base.id + depends_on preserved (so downstream calc references resolve)
-%         and the input document(s) consumed -> derived_from_#. See
-%         did2.convert.migrators_j.private.jCalculation.
+%         Brainstorm-J migrator: did_v1 contrast_tuning (raw NDIcalc-vis result class)
+%         -> the CONCRETE V_eta leaf `contrasttuning_calc` (⊂
+%         [tuning_curve_calculation, contrast_tuning]) + a session anchor + minted
+%         `software` and `runtime_environment` entities.
 %     contrast_tuning_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.contrast calculator OUTPUT document
-%         -> the subject_calculation LEAF `tuning_curve_calculation` + the
-%         `tuning_curve` result composite, with the id preserved, + a session anchor.
-%         R2/R3 TUNING COLLAPSE: the v1 `contrast_tuning` result block is RESHAPED
-%         into the one tuning_curve value (a model_fit ARRAY + typed significance /
-%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
-%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
-%         downstream calc references resolve) and the input document(s) consumed ->
-%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%         -> the CONCRETE V_eta leaf `contrasttuning_calc` (⊂
+%         [tuning_curve_calculation, contrast_tuning]) + a session anchor + minted
+%         `software` and `runtime_environment` entities.
 %     control_stimulus_ids
 %         Brainstorm-J migrator: did_v1 control_stimulus_ids -> `control_designation`
 %         (V_eta_stimulus_model_plan.md, TEAM-SIGN-OFF [stimulus] 2026-08-08). A
@@ -738,24 +728,14 @@
 %         Brainstorm-J migrator: did_v1 openminds_subject -> term_assertion.
 %     oridirtuning_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.oridir calculator OUTPUT document ->
-%         the subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
-%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
-%         COLLAPSE: the v1 `orientation_direction_tuning` result block is RESHAPED
-%         into the one tuning_curve value (a model_fit ARRAY + typed significance /
-%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
-%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
-%         downstream calc references resolve) and the input document(s) consumed ->
-%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%         the CONCRETE V_eta leaf `oridirtuning_calc` (⊂ [tuning_curve_calculation,
+%         orientation_direction_tuning]) + a session anchor + minted `software` and
+%         `runtime_environment` entities.
 %     orientation_direction_tuning
-%         Brainstorm-J migrator: did_v1 orientation_direction_tuning -> the
-%         subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
-%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
-%         COLLAPSE: the v1 `orientation_direction_tuning` result block is RESHAPED
-%         into the one tuning_curve value (a model_fit ARRAY + typed significance /
-%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
-%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
-%         downstream calc references resolve) and the input document(s) consumed ->
-%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%         Brainstorm-J migrator: did_v1 orientation_direction_tuning (raw NDI-matlab
+%         result class) -> the CONCRETE V_eta leaf `oridirtuning_calc` (⊂
+%         [tuning_curve_calculation, orientation_direction_tuning]) + a session anchor
+%         + minted `software` and `runtime_environment` entities.
 %     position_metadata
 %         Brainstorm-J migrator: did_v1 position_metadata -> term_observation (WHAT
 %         kind of position was recorded) about the element-subject + a session anchor.
@@ -787,46 +767,25 @@
 %         Brainstorm-J migrator: did_v1 sorting_parameters -> ONE `method_parameters`
 %         document (+ the `software` entity its v1 `app` block names).
 %     spatial_frequency_tuning
-%         Brainstorm-J migrator: did_v1 spatial_frequency_tuning -> the
-%         subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
-%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
-%         COLLAPSE: the v1 `spatial_frequency_tuning` result block is RESHAPED into
-%         the one tuning_curve value (a model_fit ARRAY + typed significance /
-%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
-%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
-%         downstream calc references resolve) and the input document(s) consumed ->
-%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%         Brainstorm-J migrator: did_v1 spatial_frequency_tuning (raw NDIcalc-vis
+%         result class) -> the CONCRETE V_eta leaf `spatial_frequency_tuning_calc` (⊂
+%         [tuning_curve_calculation, spatial_frequency_tuning]) + a session anchor +
+%         minted `software` and `runtime_environment` entities.
 %     spatial_frequency_tuning_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.spatialfrequency calculator OUTPUT
-%         document -> the subject_calculation LEAF `tuning_curve_calculation` + the
-%         `tuning_curve` result composite, with the id preserved, + a session anchor.
-%         R2/R3 TUNING COLLAPSE: the v1 `spatial_frequency_tuning` result block is
-%         RESHAPED into the one tuning_curve value (a model_fit ARRAY + typed
-%         significance / interpolated_values sub-blocks) by private/jTuningCurveValue
-%         -- it is NOT carried verbatim; the fold is 1 -> 1 with base.id + depends_on
-%         preserved (so downstream calc references resolve) and the input document(s)
-%         consumed -> derived_from_#. See
-%         did2.convert.migrators_j.private.jCalculation.
+%         document -> the CONCRETE V_eta leaf `spatial_frequency_tuning_calc` (⊂
+%         [tuning_curve_calculation, spatial_frequency_tuning]) + a session anchor +
+%         minted `software` and `runtime_environment` entities.
 %     speed_tuning
-%         Brainstorm-J migrator: did_v1 speed_tuning -> the subject_calculation LEAF
-%         `tuning_curve_calculation` + the `tuning_curve` result composite, with the
-%         id preserved, + a session anchor. R2/R3 TUNING COLLAPSE: the v1
-%         `speed_tuning` result block is RESHAPED into the one tuning_curve value (a
-%         model_fit ARRAY + typed significance / interpolated_values sub-blocks) by
-%         private/jTuningCurveValue -- it is NOT carried verbatim; the fold is 1 -> 1
-%         with base.id + depends_on preserved (so downstream calc references resolve)
-%         and the input document(s) consumed -> derived_from_#. See
-%         did2.convert.migrators_j.private.jCalculation.
+%         Brainstorm-J migrator: did_v1 speed_tuning (raw NDIcalc-vis result class) ->
+%         the CONCRETE V_eta leaf `speedtuning_calc` (⊂ [tuning_curve_calculation,
+%         speed_tuning]) + a session anchor + minted `software` and
+%         `runtime_environment` entities.
 %     speed_tuning_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.speed calculator OUTPUT document ->
-%         the subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
-%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
-%         COLLAPSE: the v1 `speed_tuning` result block is RESHAPED into the one
-%         tuning_curve value (a model_fit ARRAY + typed significance /
-%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
-%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
-%         downstream calc references resolve) and the input document(s) consumed ->
-%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%         the CONCRETE V_eta leaf `speedtuning_calc` (⊂ [tuning_curve_calculation,
+%         speed_tuning]) + a session anchor + minted `software` and
+%         `runtime_environment` entities.
 %     spike_clusters
 %         Brainstorm-J migrator: did_v1 spike_clusters -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
@@ -855,10 +814,12 @@
 %         DEFERRED to the NDI second pass; pass 1 is a GUARDED PASSTHROUGH that
 %         carries the document intact.
 %     stimulus_response_scalar
-%         Brainstorm-J migrator: did_v1 stimulus_response_scalar -> the
-%         subject_calculation LEAF `harmonic_component_calculation` (id PRESERVED) +
-%         the shared session anchor. Routed from did2.convert.v1_to_v2 only when
-%         TargetVersion == 'V_eta'.
+%         Brainstorm-J migrator: did_v1 stimulus_response_scalar -- CONVERTED TO A
+%         GUARDED PASSTHROUGH in PR #68 (Waltham-Data-Science/ DID-schema/pull/68).
+%         The previous target class `harmonic_component_calculation` was DELETED from
+%         V_eta under the calculator restructure -- see issue #67 decision 10 -- so
+%         there is no destination for the fold. The document is passed through
+%         UNCHANGED for the NDI second pass.
 %     stimulus_response_scalar_parameters_basic
 %         Brainstorm-J migrator: DEFERRED guarded passthrough. The signed model folds
 %         this class INLINE into `subject_interaction.method_parameters` on the
@@ -867,15 +828,10 @@
 %         'V_eta'.
 %     stimulus_tuningcurve
 %         Brainstorm-J migrator: a raw ndi.app.stimulus.tuning_response tuning curve
-%         (the pre-calculator-framework stimulus_tuningcurve document) -> the
-%         subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
-%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
-%         COLLAPSE: the v1 `stimulus_tuningcurve` result block is RESHAPED into the
-%         one tuning_curve value (a model_fit ARRAY + typed significance /
-%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
-%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
-%         downstream calc references resolve) and the input document(s) consumed ->
-%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%         (the pre-calculator-framework stimulus_tuningcurve document) -> the CONCRETE
+%         V_eta leaf `tuningcurve_calc` (⊂ [tuning_curve_calculation, tuning_curve];
+%         the raw case per issue #67) + a session anchor + minted `software` and
+%         `runtime_environment` entities.
 %     subject
 %         Brainstorm-J carry-forward for a v1 subject: guarantee a non-empty
 %         local_identifier. V_eta makes subject.local_identifier REQUIRED (a subject
@@ -899,26 +855,15 @@
 %     syncrule_mapping
 %         Brainstorm-J migrator: did_v1 `syncrule_mapping` -> `clock_alignment`.
 %     temporal_frequency_tuning
-%         Brainstorm-J migrator: did_v1 temporal_frequency_tuning -> the
-%         subject_calculation LEAF `tuning_curve_calculation` + the `tuning_curve`
-%         result composite, with the id preserved, + a session anchor. R2/R3 TUNING
-%         COLLAPSE: the v1 `temporal_frequency_tuning` result block is RESHAPED into
-%         the one tuning_curve value (a model_fit ARRAY + typed significance /
-%         interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT
-%         carried verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so
-%         downstream calc references resolve) and the input document(s) consumed ->
-%         derived_from_#. See did2.convert.migrators_j.private.jCalculation.
+%         Brainstorm-J migrator: did_v1 temporal_frequency_tuning (raw NDIcalc-vis
+%         result class) -> the CONCRETE V_eta leaf `temporal_frequency_tuning_calc` (⊂
+%         [tuning_curve_calculation, temporal_frequency_tuning]) + a session anchor +
+%         minted `software` and `runtime_environment` entities.
 %     temporal_frequency_tuning_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.temporalfrequency calculator OUTPUT
-%         document -> the subject_calculation LEAF `tuning_curve_calculation` + the
-%         `tuning_curve` result composite, with the id preserved, + a session anchor.
-%         R2/R3 TUNING COLLAPSE: the v1 `temporal_frequency_tuning` result block is
-%         RESHAPED into the one tuning_curve value (a model_fit ARRAY + typed
-%         significance / interpolated_values sub-blocks) by private/jTuningCurveValue
-%         -- it is NOT carried verbatim; the fold is 1 -> 1 with base.id + depends_on
-%         preserved (so downstream calc references resolve) and the input document(s)
-%         consumed -> derived_from_#. See
-%         did2.convert.migrators_j.private.jCalculation.
+%         document -> the CONCRETE V_eta leaf `temporal_frequency_tuning_calc` (⊂
+%         [tuning_curve_calculation, temporal_frequency_tuning]) + a session anchor +
+%         minted `software` and `runtime_environment` entities.
 %     treatment
 %         Brainstorm-J split migrator: did_v1 treatment -> a data-type-named
 %         subject_manipulation leaf (+ an optional site term_observation + the shared
@@ -930,15 +875,9 @@
 %         provenance directed_relation.
 %     tuningcurve_calc
 %         Brainstorm-J migrator: the ndi.calc.stimulus.tuningcurve calculator OUTPUT
-%         document -> the subject_calculation LEAF `tuning_curve_calculation` + the
-%         `tuning_curve` result composite, with the id preserved, + a session anchor.
-%         R2/R3 TUNING COLLAPSE: the v1 `stimulus_tuningcurve` result block is
-%         RESHAPED into the one tuning_curve value (a model_fit ARRAY + typed
-%         significance / interpolated_values sub-blocks) by private/jTuningCurveValue
-%         -- it is NOT carried verbatim; the fold is 1 -> 1 with base.id + depends_on
-%         preserved (so downstream calc references resolve) and the input document(s)
-%         consumed -> derived_from_#. See
-%         did2.convert.migrators_j.private.jCalculation.
+%         document -> the CONCRETE V_eta leaf `tuningcurve_calc` (⊂
+%         [tuning_curve_calculation, tuning_curve]; the raw case per issue #67) + a
+%         session anchor + minted `software` and `runtime_environment` entities.
 %     virus_injection
 %         Brainstorm-J migrator: did_v1 virus_injection -> dose_manipulation.
 %     vmneuralresponseresiduals

@@ -1,34 +1,26 @@
 function bodies = oridirtuning_calc(preBody)
-%ORIDIRTUNING_CALC Brainstorm-J migrator: the ndi.calc.vis.oridir calculator OUTPUT
-%   document -> the subject_calculation LEAF `tuning_curve_calculation` + the
-%   `tuning_curve` result composite, with the id preserved, + a session anchor. R2/R3
-%   TUNING COLLAPSE: the v1 `orientation_direction_tuning` result block is RESHAPED
-%   into the one tuning_curve value (a model_fit ARRAY + typed significance /
-%   interpolated_values sub-blocks) by private/jTuningCurveValue -- it is NOT carried
-%   verbatim; the fold is 1 -> 1 with base.id + depends_on preserved (so downstream
-%   calc references resolve) and the input document(s) consumed -> derived_from_#. See
-%   did2.convert.migrators_j.private.jCalculation.
+%ORIDIRTUNING_CALC Brainstorm-J migrator: the ndi.calc.vis.oridir calculator
+%   OUTPUT document -> the CONCRETE V_eta leaf `oridirtuning_calc`
+%   (⊂ [tuning_curve_calculation, orientation_direction_tuning]) + a session
+%   anchor + minted `software` and `runtime_environment` entities.
 %
-%   CORRECTED 2026-08-12 -- THE SUMMARY ABOVE NAMED A CLASS THAT DOES NOT EXIST. It
-%   read "the subject_calculation LEAF orientation_direction_tuning_calculation" (and,
-%   where it named a composite, the per-tuning result class). The R2/R3 tuning
-%   collapse folded the six per-tuning result classes and their leaves into ONE
-%   `tuning_curve` composite + ONE `tuning_curve_calculation` leaf, and this header
-%   never caught up. The BEHAVIOUR was never wrong -- only the description was, which
-%   is why the code below is untouched. Positive evidence, both halves:
+%   PR #68 (Waltham-Data-Science/DID-schema): the R2/R3 leaf collapse is
+%   reversed. This migrator no longer emits the abstract
+%   `tuning_curve_calculation` as the concrete class -- the concrete class is
+%   `oridirtuning_calc` (v1 spelling per Lepsky et al. 2026 Fig. 4). The
+%   composite value fields land on `tuning_curve.value`; the calc-family fields
+%   (significance, model_fit) land on `tuning_curve_calculation`; the marker
+%   `orientation_direction_tuning` has no new fields per its V_eta schema.
 %
-%       $ grep -n "jCalculation(preBody" oridirtuning_calc.m
-%         20:bodies = jCalculation(preBody, 'tuning_curve_calculation', 'tuning_curve', ...
-%       $ find DID-schema/schemas/V_eta -name 'orientation_direction_tuning_calculation.json'
-%         (no match)
-%       $ find DID-schema/schemas/V_eta -name 'tuning_curve_calculation.json'
-%         schemas/V_eta/draft/tuning_curve_calculation.json
-%
-%   See DID-schema schemas/V_eta_tuning_model_plan.md for the collapse itself.
+%   Fold is 1 -> 1 with base.id + depends_on preserved (downstream calc
+%   references resolve) and the input document(s) consumed -> derived_from_#.
+%   See did2.convert.migrators_j.private.jCalculation.
 arguments
     preBody (1,1) struct
 end
-bodies = jCalculation(preBody, 'tuning_curve_calculation', 'tuning_curve', ...
+bodies = jCalculation(preBody, 'oridirtuning_calc', ...
+    {'tuning_curve_calculation', 'orientation_direction_tuning'}, ...
+    'tuning_curve', ...
     'orientation/direction tuning', ...
     'ndi.calc.vis.oridir', 'orientation_direction_tuning');
 end

@@ -1,101 +1,110 @@
-function bodies = jCalculation(preBody, leafClass, composite, variableName, methodName, sourceBlock, valueOverride)
+function bodies = jCalculation(preBody, concreteClass, superclasses, valueTargetBlock, variableName, methodName, sourceBlock, valueOverride, familyLeafFields)
 %JCALCULATION Fold a calculator output document 1 -> 1 (id-preserved) into a V_eta
-%   subject_calculation LEAF, plus a session anchor. Shared by the calculator
-%   composite-leaf family (Lepsky et al., the calculator-motif paper): a calculator
-%   produces ONE output document type; in V_eta that is a leaf pairing the
-%   `subject_calculation` direction with a result composite `data_type` -- exactly as
-%   visual_grating_manipulation pairs subject_manipulation with visual_grating.
+%   concrete calc leaf, plus a session anchor + minted `software` and
+%   `runtime_environment` entities.
 %
-%   The migration is 1 -> 1 with base.id PRESERVED and depends_on carried, so
-%   downstream calc -> calc references resolve (un-defers calculators without the
-%   orphan explosion that dissolution caused). The structured result block is kept
-%   VERBATIM as the composite value; the calculator's input_parameters ->
-%   `subject_interaction.method_parameters`; the generating program -> a `software`
-%   ENTITY referenced by a `software_id` edge + the per-run `execution_environment`
-%   (superseding the v1 `app` mixin, Item-1 decision); and the input document(s) it
-%   consumed -> `derived_from_#` provenance. Emits {leaf, anchor[, software]}.
+%   PR #68 (Waltham-Data-Science/DID-schema): reverses R2/R3's leaf collapse.
+%   A calc doc no longer ends up on the abstract `tuning_curve_calculation` leaf
+%   with a raw `tuning_curve` composite value. It ends up on a CONCRETE per-family
+%   leaf whose class_name is the v1 spelling (e.g. `oridirtuning_calc`), inheriting
+%   from BOTH a calc-family abstract leaf (which carries significance + model_fit)
+%   AND a specific composite marker (which inherits value fields from
+%   `tuning_curve`). "Every concrete calc doc inherits from both a calc-family
+%   leaf and a specific composite. Emitted doc has one class-named property
+%   block per class in the inheritance chain." (Lepsky et al. 2026 Fig. 4.)
 %
-%   leafClass     the concrete leaf class (e.g. 'tuning_curve_calculation').
-%   composite     the result composite data_type = the leaf's other superclass and its
-%                 value block (e.g. 'tuning_curve'). Kept VERBATIM only when no
-%                 reshape applies; the two families below hand `value` to a reshaper.
-%   variableName  the subject_statement.variable label (what was computed).
-%   methodName    the algorithm identity for subject_interaction.method (the applet).
+%   Also: the `calculator` schema now declares REQUIRED edges `software_id` +
+%   `runtime_environment_id`. The per-run os / interpreter facts move OUT of an
+%   inline `subject_interaction.execution_environment` sub-block and INTO a
+%   standalone `runtime_environment` entity. This helper mints that entity from
+%   the same v1 `app` block jSoftwareFromApp already reads.
 %
-%   Emits {leaf, anchor}. Shared helper for the Brainstorm-J (+migrators_j) migrators.
+%   Arguments:
+%     concreteClass       the concrete emitted class name (v1 spelling per paper;
+%                         e.g. 'oridirtuning_calc', 'contrasttuning_calc',
+%                         'speedtuning_calc', 'tuningcurve_calc').
+%     superclasses        cellstr of direct superclasses on the emitted body's
+%                         document_class.superclasses list, in order. Typical
+%                         tuning shape: {'tuning_curve_calculation', <marker>}.
+%                         Contrast-sensitivity shape:
+%                         {'subject_calculation', 'contrast_sensitivity'}.
+%     valueTargetBlock    the block name where the reshaped value lands as
+%                         `.value` (e.g. 'tuning_curve' for the tuning family;
+%                         'contrast_sensitivity' for CSF). This is typically
+%                         either the marker's parent (e.g. tuning_curve is the
+%                         PARENT of the marker orientation_direction_tuning) or
+%                         the marker itself when it is not thin.
+%     variableName        the subject_statement.variable label (what was
+%                         computed).
+%     methodName          the algorithm identity for subject_interaction.method
+%                         (the applet name).
+%     sourceBlock         the v1 block holding result fields to reshape.
+%                         Defaults to a marker with the same name as
+%                         valueTargetBlock.
+%     valueOverride       optional pre-reshaped value struct; when non-empty,
+%                         becomes `body.(valueTargetBlock).value`. When empty,
+%                         the source block is used verbatim (with input_parameters
+%                         stripped).
+%     familyLeafFields    optional struct whose fields are merged into the first
+%                         superclass block that names a `_calculation` leaf
+%                         (typically 'tuning_curve_calculation'). Used to lift
+%                         `significance` and `model_fit` off the composite value
+%                         and onto the calc-family abstract leaf per V_eta's
+%                         schema split (see tuning_curve_calculation.json).
 %
-%   CORRECTED 2026-08-12. The two examples above read
-%   'orientation_direction_tuning_calculation' and 'orientation_direction_tuning'.
-%   NEITHER CLASS EXISTS: the R2/R3 tuning collapse folded the six per-tuning result
-%   classes and their leaves into ONE `tuning_curve` composite + ONE
-%   `tuning_curve_calculation` leaf, and no caller has passed the old names since.
-%   The example was the SOURCE of the same stale claim in twelve migrator headers.
-%
-%       $ find DID-schema/schemas/V_eta -name 'orientation_direction_tuning*.json'
-%         (no match)
-%       $ find DID-schema/schemas/V_eta -name 'tuning_curve*.json'
-%         schemas/V_eta/draft/tuning_curve.json
-%         schemas/V_eta/draft/tuning_curve_calculation.json
-%
-%   "kept verbatim" was stale in the same direction: the switch below hands every
-%   `tuning_curve` and `contrast_sensitivity` composite to a reshaper.
+%   Returns {leaf, anchor[, software][, runtime_environment]}. The leaf preserves
+%   base.id and depends_on so downstream calc references resolve.
+
 arguments
     preBody (1,1) struct
-    leafClass (1,:) char
-    composite (1,:) char
+    concreteClass (1,:) char
+    superclasses (1,:) cell
+    valueTargetBlock (1,:) char
     variableName (1,:) char
     methodName (1,:) char
-    % The source block holding the result fields. Defaults to the composite name (the
-    % result classes carry their own self-named block). A calc whose result fields sit
-    % on its concrete `*_calc` block instead (e.g. contrast_sensitivity_calc) passes
-    % that block name; input_parameters is stripped from it (-> method_parameters).
-    sourceBlock (1,:) char = composite
-    % Optional pre-reshaped composite VALUE. When non-empty, the composite block is
-    % written as struct('value', valueOverride) instead of carrying sourceBlock
-    % verbatim. Used by the tuning collapse (R2/R3): the 6 v1 tuning result blocks are
-    % reshaped into the one `tuning_curve` value (model_fit array + typed metric
-    % sub-blocks) by jTuningCurveValue before the fold.
+    sourceBlock (1,:) char = valueTargetBlock
     valueOverride = []
+    familyLeafFields (1,1) struct = struct()
 end
 TV = 'V_eta';
 
-% Composites whose v1 result block is a FLAT bag get reshaped into a `value` cell before
-% the fold. Both reshapes follow the same model -- a `model_fit` ARRAY plus typed
-% `significance` / `interpolated_values` sub-blocks -- so the two calc families stay
-% consistent with each other (and neither flattens queryable scalars into a bag, T13).
+% The result composites whose v1 result block is a FLAT bag get reshaped into a
+% (value, familyLeafFields) pair. Both reshapers name a `_calculation` leaf slot
+% (significance / model_fit) that lives on the family abstract per V_eta's split.
 if isempty(valueOverride)
     srcBlk = struct();
     if isfield(preBody, sourceBlock) && isstruct(preBody.(sourceBlock))
         srcBlk = preBody.(sourceBlock);
     end
-    switch composite
-        case 'tuning_curve'          % R2/R3: the 6 tuning families collapse to one
-            valueOverride = jTuningCurveValue(srcBlk);
-        case 'contrast_sensitivity'  % RB/RBN/RBNS are Naka-Rushton fit variants
+    switch valueTargetBlock
+        case 'tuning_curve'
+            [valueOverride, familyLeafFields] = jTuningCurveValue(srcBlk);
+        case 'contrast_sensitivity'
             valueOverride = jContrastSensitivityValue(srcBlk);
     end
 end
 
-% subject_interaction requires a time_reference; a computed result has no DAQ epoch,
-% so 'during' the session is the honest anchor (mirrors the observation migrators).
 anchor = jSessionAnchor(preBody, 'during');
 
 leaf = struct();
-leaf.document_class = struct('class_name', leafClass, 'class_version', '1.0.0', ...
-    'superclasses', [ ...
-        struct('class_name', 'subject_calculation', 'class_version', '1.0.0'), ...
-        struct('class_name', composite,             'class_version', '1.0.0')], ...
+scList = cell(1, numel(superclasses));
+for k = 1:numel(superclasses)
+    scList{k} = struct('class_name', superclasses{k}, 'class_version', '1.0.0');
+end
+leaf.document_class = struct('class_name', concreteClass, 'class_version', '1.0.0', ...
+    'superclasses', [scList{:}], ...
     'schema_version', TV);
 
-% Document-generation provenance: the v1 `app` block becomes a `software` ENTITY
-% (name + version + citation id) referenced by a typed `software_id` edge, plus the
-% per-run `execution_environment` on the interaction -- superseding the app mixin
-% (Item-1 decision, V_eta_tenet_audit.md R1). One software doc is emitted per calc; a
-% corpus-wide dedup by (name, version) is a follow-up second pass.
 [software, swId, execEnv] = jSoftwareFromApp(preBody);
 
-% subject_id (from the recording element) + the required time anchor + derived_from
-% the input document (the raw curve the calculator consumed) + the generating software.
+sessionId = '';
+datestamp = '';
+if isfield(preBody, 'base') && isstruct(preBody.base)
+    if isfield(preBody.base, 'session_id'); sessionId = char(preBody.base.session_id); end
+    if isfield(preBody.base, 'datestamp');  datestamp = char(preBody.base.datestamp);  end
+end
+[rtEnv, rtId] = jRuntimeEnvironment(execEnv, sessionId, datestamp);
+
 deps = jCarrySubject(preBody, {'element_id', 'subject_id'});
 deps(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
 srcId = firstDepValue(preBody, {'stimulus_tuningcurve_id', ...
@@ -106,6 +115,9 @@ end
 if ~isempty(swId)
     deps(end+1) = struct('name', 'software_id', 'value', swId);
 end
+if ~isempty(rtId)
+    deps(end+1) = struct('name', 'runtime_environment_id', 'value', rtId);
+end
 leaf.depends_on = deps;
 
 leaf.base = preBody.base;   % id preserved -> inbound references resolve to the leaf
@@ -114,31 +126,72 @@ leaf.subject_statement = struct('variable', jOntologyTerm('', variableName), ...
     'storage_mode', 'inline');
 leaf.subject_interaction = struct('method', jOntologyTerm('', methodName), ...
     'method_parameters', calcInputParameters(preBody), ...
-    'sample_time', struct('kind', 'point'), ...
-    'execution_environment', execEnv);
+    'sample_time', struct('kind', 'point'));
 
-% the composite value block: the calculator's structured result. Read from
-% sourceBlock (the composite's own block, or the concrete `*_calc` block); strip
-% input_parameters if it materialized there (it goes to method_parameters instead).
-leaf.(composite) = struct();
+% An empty concrete block reserves the class's own property slot for the
+% ensureClassBlocks pass, which walks the inheritance chain. Family-specific
+% scalars (oridir's `vector`, CSF's per-frequency arrays) belong here in a
+% follow-up; keeping it empty today matches the schema's own `"fields": []`.
+if ~isfield(leaf, concreteClass)
+    leaf.(concreteClass) = struct();
+end
+
+% The value block: the calculator's structured result. Read from sourceBlock (the
+% marker's own block, or the concrete `*_calc` block); strip input_parameters if
+% it materialised there (it goes to subject_interaction.method_parameters).
+leaf.(valueTargetBlock) = struct();
 if ~isempty(valueOverride)
-    % Reshaped value (e.g. the tuning collapse): the composite carries a `value` block.
-    leaf.(composite) = struct('value', valueOverride);
+    leaf.(valueTargetBlock) = struct('value', valueOverride);
 elseif isfield(preBody, sourceBlock) && isstruct(preBody.(sourceBlock))
     srcBlk = preBody.(sourceBlock);
     if isfield(srcBlk, 'input_parameters')
         srcBlk = rmfield(srcBlk, 'input_parameters');
     end
-    leaf.(composite) = srcBlk;
+    leaf.(valueTargetBlock) = srcBlk;
+end
+
+% Family-leaf fields (significance / model_fit) go onto the first *_calculation
+% superclass named in the chain. V_eta's tuning_curve_calculation declares them
+% as top-level fields, not under a `value` wrapper (tuning_curve_calculation.json).
+if ~isempty(fieldnames(familyLeafFields))
+    familyLeaf = pickCalculationSuper(superclasses);
+    if ~isempty(familyLeaf)
+        block = struct();
+        if isfield(leaf, familyLeaf) && isstruct(leaf.(familyLeaf))
+            block = leaf.(familyLeaf);
+        end
+        fns = fieldnames(familyLeafFields);
+        for i = 1:numel(fns)
+            block.(fns{i}) = familyLeafFields.(fns{i});
+        end
+        leaf.(familyLeaf) = block;
+    end
 end
 
 bodies = {leaf, anchor};
 if ~isempty(software)
     bodies{end+1} = software;
 end
+if ~isempty(rtEnv)
+    bodies{end+1} = rtEnv;
+end
 end
 
 % ===================== helpers =============================================
+
+function nm = pickCalculationSuper(superclasses)
+% First superclass whose name ends in '_calculation' -- the abstract calc-family
+% leaf per V_eta's naming rule (`_calculation` suffix reserved for calculator
+% outputs, issue #67 decision 13).
+nm = '';
+for k = 1:numel(superclasses)
+    s = superclasses{k};
+    if numel(s) > 12 && strcmp(s(end-11:end), '_calculation')
+        nm = s;
+        return;
+    end
+end
+end
 
 function v = firstDepValue(preBody, names)
 v = '';
@@ -157,11 +210,10 @@ end
 end
 
 function p = calcInputParameters(preBody)
-% The calculator's input_parameters (Fig 3E) materialize on the source's concrete
-% `*_calc` block (calculator.input_parameters, placement concrete_class -- the block
-% name is the abbreviated calc class, e.g. `oridirtuning_calc`). Scan every block for
-% the one that carries them; also accept a top-level `input_parameters`. Absent on a
-% bare result doc -> an empty struct (method_parameters is optional).
+% The calculator's input_parameters (Fig 3E) materialise on the source's concrete
+% `*_calc` block. Scan every block for the one that carries them; also accept a
+% top-level `input_parameters`. Absent on a bare result doc -> an empty struct
+% (method_parameters is optional).
 p = struct();
 fns = fieldnames(preBody);
 for i = 1:numel(fns)
@@ -175,11 +227,3 @@ if isfield(preBody, 'input_parameters') && isstruct(preBody.input_parameters)
     p = preBody.input_parameters;
 end
 end
-
-% NOTE: the `app` -> `software` fold used to live here as a LOCAL function, which
-% shadowed anything of the same name in private/. It read `app.name` / `app.version`
-% only -- names that universalRenames has already rewritten to `app_name` /
-% `app_version` by the time any migrator runs (universalRenames.m:145-164), so on the
-% real v1_to_v2 pipeline it minted NOTHING. It now lives in
-% private/jSoftwareFromApp.m, reads both spellings, and is shared with the
-% filenavigator fold. See that file's header for the full account.
