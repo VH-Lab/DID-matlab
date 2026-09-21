@@ -472,6 +472,32 @@ result = did2.convert.resolveClockAlignment(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 
 % GATE 1: nothing quarantined
+% DIAGNOSTIC (temporary, PR #209): print every quarantine entry with its
+% class_name, source identifier, and reason -- the runner's default TextOutput
+% prints only pass/fail rows, so this is how a corpus-wide test says which
+% fixture broke. Remove once the underlying quarantines are resolved.
+if ~isempty(result.quarantine)
+    fprintf(2, '\n===== QUARANTINE DIAGNOSTIC (%d entries) =====\n', numel(result.quarantine));
+    for qi = 1:numel(result.quarantine)
+        q = result.quarantine(qi);
+        cls = '<no class>';
+        if isfield(q, 'class_name'); cls = char(q.class_name); end
+        idn = '<no id>';
+        if isfield(q, 'identifier'); idn = char(q.identifier); end
+        rsn = '<no reason>';
+        if isfield(q, 'reason'); rsn = char(q.reason); end
+        fprintf(2, '  [%d] class=%s   id=%s\n       reason: %s\n', qi, cls, idn, rsn);
+        if isfield(q, 'error') && isstruct(q.error)
+            if isfield(q.error, 'identifier')
+                fprintf(2, '       error_id: %s\n', char(q.error.identifier));
+            end
+            if isfield(q.error, 'message')
+                fprintf(2, '       error_msg: %s\n', char(q.error.message));
+            end
+        end
+    end
+    fprintf(2, '===== END QUARANTINE DIAGNOSTIC =====\n\n');
+end
 verifyEmpty(testCase, result.quarantine, ...
     'fixture(s) quarantined under schema validation');
 verifyNotEmpty(testCase, result.migrated);
