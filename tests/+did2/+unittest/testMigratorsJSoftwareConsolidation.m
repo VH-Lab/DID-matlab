@@ -190,22 +190,24 @@ end
 % ============ family 3: the calculator path must be UNCHANGED ==============
 
 function testCalculatorNamelessAppStillYieldsAnExecutionEnvironment(testCase)
-% GUARDS THE ADDITIVE PROMISE. jSoftwareFromApp grew a 4th output and an option;
-% jCalculation asks for 3 and passes neither, so its behaviour must be
-% byte-identical to before. The sharp edge is the nameless app block: this
-% helper's header has always said EXECENV may still be populated from one ("the
-% os/interpreter of the run is a fact about the run, not about the software's
-% identity"), and a naive "nothing minted -> clear everything" would have
-% silently deleted it for every calculator.
+% The additive promise on the os/interpreter facts: even when the app block
+% carries no `name` (nothing for `software.name` to be identity from),
+% `subject_interaction.execution_environment` MUST still be populated from
+% the run's os/interpreter. PR #68 additionally makes `software_id` and
+% `runtime_environment_id` REQUIRED on `calculator`, so jCalculation now
+% ALSO mints minimal `software` (methodName-keyed) and `runtime_environment`
+% entities; the execution_environment inline block stays exactly as before.
 v1 = calcBody('', '');
 v1.app.os = 'Linux';
 v1.app.interpreter = 'MATLAB';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'software')));   % no name -> no entity
+% A minimal software is always minted now (methodName-keyed) so the required
+% edge always resolves.
+verifyTrue(testCase, any(strcmp(names, 'software')));
 leaf = out.migrated{find(~strcmp(names, 'session_relative_reference') ...
-    & ~strcmp(names, 'software'), 1)};
+    & ~strcmp(names, 'software') & ~strcmp(names, 'runtime_environment'), 1)};
 verifyEqual(testCase, ...
     leaf.get('subject_interaction.execution_environment.os'), 'Linux');
 verifyEqual(testCase, ...
