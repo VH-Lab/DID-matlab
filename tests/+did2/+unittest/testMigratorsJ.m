@@ -2970,7 +2970,7 @@ body.contrast_tuning = struct( ...
     'tuning_curve', struct('contrast', [0 0.25 0.5 1], 'mean', [2 5 9 12]));
 
 out = did2.convert.migrators_j.contrast_tuning(body);
-verifyEqual(testCase, numel(out), 2);
+verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'contrasttuning_calc')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
@@ -3008,7 +3008,7 @@ body.orientation_direction_tuning = struct( ...
     'fit', struct('hwhh', 22.0));
 
 out = did2.convert.migrators_j.orientation_direction_tuning(body);
-verifyEqual(testCase, numel(out), 2);
+verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'oridirtuning_calc')));
 verifyTrue(testCase, any(strcmp(names, 'session_relative_reference')));
@@ -3218,7 +3218,7 @@ body.stimulus_tuningcurve = struct( ...
     'response_mean', [10 2 9 3], 'response_units', 'Spikes/s');
 
 out = did2.convert.migrators_j.stimulus_tuningcurve(body);
-verifyEqual(testCase, numel(out), 2);
+verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'tuningcurve_calc')));
 leaf = out{find(strcmp(names, 'tuningcurve_calc'), 1)};
@@ -3228,12 +3228,14 @@ verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_rt');
 verifyEqual(testCase, leaf.subject_interaction.method.name, 'ndi.app.stimulus.tuning_response');
 % V_eta tuning_curve.value renames response_mean -> mean
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
-% no calculator provenance on a raw doc -> empty method_parameters, no software entity,
-% no software_id edge, no runtime_environment (the app block is absent, so nothing to mint)
+% no calculator provenance on a raw doc -> empty method_parameters; no
+% software entity (no app.name to name one); but PR #68's calculator schema
+% requires runtime_environment_id, so a minimal `runtime_environment` entity
+% is always minted -- empty fields when the source has none.
 verifyTrue(testCase, isempty(fieldnames(leaf.subject_interaction.method_parameters)));
-verifyEqual(testCase, numel(out), 2);   % leaf + anchor only; no software/runtime bodies
+verifyEqual(testCase, numel(out), 3);   % leaf + anchor + minimal runtime_environment
 verifyTrue(testCase, isempty(depValue(leaf, 'software_id')));
-verifyTrue(testCase, isempty(depValue(leaf, 'runtime_environment_id')));
+verifyNotEmpty(testCase, depValue(leaf, 'runtime_environment_id'));
 end
 
 function d = firstByVariable(migrated, varName)
@@ -3263,7 +3265,7 @@ body.speed_tuning = struct( ...
         'temporal_frequency', [2 4 4], 'mean', [5 8 6]));
 
 out = did2.convert.migrators_j.speed_tuning(body);
-verifyEqual(testCase, numel(out), 2);
+verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'speedtuning_calc')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
@@ -3857,7 +3859,7 @@ body.spatial_frequency_tuning = struct( ...
     'fit_dog', struct('r2', 0.95, 'pref', 0.13));
 
 out = did2.convert.migrators_j.spatial_frequency_tuning(body);
-verifyEqual(testCase, numel(out), 2);
+verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'spatial_frequency_tuning_calc')));
 verifyFalse(testCase, any(strcmp(names, 'score_observation')));
@@ -4013,13 +4015,15 @@ end
 function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
 % V_eta (PR #68): did_v1 temporal_frequency_tuning -> the CONCRETE
 % `temporal_frequency_tuning_calc` leaf (⊂ [tuning_curve_calculation,
-% temporal_frequency_tuning]) + a session anchor. The writer's template
-% declares `base` as its ONLY superclass (no app block), so no software /
-% runtime_environment entity is minted.
+% temporal_frequency_tuning]) + a session anchor + a minimal
+% runtime_environment (PR #68 makes runtime_environment_id REQUIRED on
+% calculator, so the entity is always minted). The writer's template
+% declares `base` as its ONLY superclass (no app block), so no software
+% entity is minted.
 out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
 
-assertEqual(testCase, numel(out), 2, ...
-    'expected exactly {leaf, session anchor} -- a third body means an app/software mint');
+assertEqual(testCase, numel(out), 3, ...
+    'expected {leaf, session anchor, minimal runtime_environment}');
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 assertTrue(testCase, any(strcmp(names, 'temporal_frequency_tuning_calc')), ...
     'no temporal_frequency_tuning_calc leaf was emitted');

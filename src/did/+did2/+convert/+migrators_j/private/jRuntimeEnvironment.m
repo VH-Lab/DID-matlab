@@ -23,25 +23,19 @@ arguments
     sessionId (1,:) char
     datestamp (1,:) char
 end
-rt = [];
-rtId = '';
-if isempty(execEnv) || isempty(fieldnames(execEnv))
-    return;
-end
-fields = {'os', 'os_version', 'interpreter', 'interpreter_version'};
-any_present = false;
-for i = 1:numel(fields)
-    if isfield(execEnv, fields{i}) && ~isempty(execEnv.(fields{i}))
-        any_present = true;
-        break;
-    end
-end
-if ~any_present
-    return;
-end
+% The calculator schema (V_eta) declares `runtime_environment_id` as REQUIRED
+% (min_count 1, mustBeNonEmpty true) on every calculator output, so this
+% helper ALWAYS mints an entity for the caller to reference. When the source
+% carries os/interpreter facts they land on the entity's fields; when it does
+% not, the entity is a minimal one -- the FOUR fields are all mustBeNonEmpty
+% false in runtime_environment.json, so absence is a legal "not stated".
+% Minting a minimal one is the honest defect for a source that never recorded
+% its runtime, not an invented fact; refusing to mint would strand every calc
+% doc without an app block.
 if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
 rtId = did.ido.unique_id();
 rtBlock = struct();
+fields = {'os', 'os_version', 'interpreter', 'interpreter_version'};
 for i = 1:numel(fields)
     nm = fields{i};
     if isfield(execEnv, nm) && ~isempty(execEnv.(nm))

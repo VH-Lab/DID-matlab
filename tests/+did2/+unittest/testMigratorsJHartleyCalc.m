@@ -72,17 +72,21 @@ end
 % ===================== the shape ===========================================
 
 function testTheFoldEmitsTheLeafTheTwoPlanesAndTheSpikeInput(testCase)
-% 1 -> 6: the leaf, the session anchor every calculator fold carries, the
-% `software` entity the app block becomes, TWO plane bodies and ONE input body.
+% 1 -> 7: the leaf, the session anchor every calculator fold carries, the
+% `software` entity the app block becomes, the `runtime_environment` entity
+% PR #68 makes REQUIRED on the calculator schema (was #67's decision 6:
+% shape-2 os/interpreter provenance as a standalone entity), TWO plane bodies
+% and ONE input body.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 6, ...
-    sprintf('expected 6 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyEqual(testCase, numel(out), 7, ...
+    sprintf('expected 7 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 3, ...
     'two planes plus the spike-time input body');
 verifyEqual(testCase, sum(strcmp(names, 'session_relative_reference')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'software')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'runtime_environment')), 1);
 end
 
 function testTheLeafIsTheSignedClassAndItsSuperclassPair(testCase)
@@ -403,8 +407,8 @@ v1 = hartleyCalcV1();
 v1.hartley_reverse_correlation.stimulus_properties.gamma = 2.2;
 verifyError(testCase, @() did2.convert.migrators_j.hartley_calc(v1), ...
     'did2:convert:hartleyStimulusPropertiesUnverifiable');
-verifyEqual(testCase, numel(did2.convert.migrators_j.hartley_calc(hartleyCalcV1())), 6, ...
-    'the same document without the extra key folds');
+verifyEqual(testCase, numel(did2.convert.migrators_j.hartley_calc(hartleyCalcV1())), 7, ...
+    'the same document without the extra key folds (leaf, anchor, software, runtime_environment, 2 plane bodies, spike-input body)');
 end
 
 function testAMissingNgridBlockIsREFUSED(testCase)
@@ -465,7 +469,7 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, ...
     sprintf('quarantined: %s', strjoin(arrayfun(@(q) ...
         sprintf('%s|%s', q.class_name, q.identifier), out.quarantine, ...
         'UniformOutput', false), '; ')));
-verifyEqual(testCase, out.summary.migrated_count, 6);
+verifyEqual(testCase, out.summary.migrated_count, 7);
 end
 
 % ===================== the census half of the stimulus check ===============
