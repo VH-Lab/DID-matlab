@@ -472,35 +472,56 @@ result = did2.convert.resolveClockAlignment(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 
 % GATE 1: nothing quarantined
-% DIAGNOSTIC (temporary, PR #209): the MATLAB test runner captures fprintf/
-% disp inside the Details struct where a text-tail log cannot see them, so
-% build a full diagnostic STRING and pass it as verifyEmpty's message --
-% MATLAB always prints an assertion's own diagnostic to the run's stdout on
-% failure. Remove once the underlying quarantines are resolved.
-qDiag = 'fixture(s) quarantined under schema validation';
+% DIAGNOSTIC (temporary, PR #209): write the quarantine table to a file the
+% workflow can `cat` after the runner, since the runner's own per-test
+% diagnostic ends up above the visible log tail. `error(...)` inside the
+% test would fail the test but its message string is ALSO buffered above
+% the tail, so the file is the reliable channel.
 if ~isempty(result.quarantine)
     lines = {sprintf('%d quarantine entr(y|ies):', numel(result.quarantine))};
+    fnames = fieldnames(result.quarantine(1));
+    lines{end+1} = sprintf('  quarantine fields: %s', strjoin(fnames, ', '));
     for qi = 1:numel(result.quarantine)
         q = result.quarantine(qi);
-        cls = '<no class>';
-        if isfield(q, 'class_name'); cls = char(q.class_name); end
-        idn = '<no id>';
-        if isfield(q, 'identifier'); idn = char(q.identifier); end
-        rsn = '<no reason>';
-        if isfield(q, 'reason'); rsn = char(q.reason); end
-        eid = '';
-        emsg = '';
-        if isfield(q, 'error') && isstruct(q.error)
-            if isfield(q.error, 'identifier'); eid = char(q.error.identifier); end
-            if isfield(q.error, 'message'); emsg = char(q.error.message); end
-        end
-        lines{end+1} = sprintf('  [%d] class=%s id=%s', qi, cls, idn); %#ok<AGROW>
-        lines{end+1} = sprintf('      reason: %s', rsn); %#ok<AGROW>
-        if ~isempty(eid) || ~isempty(emsg)
-            lines{end+1} = sprintf('      error: [%s] %s', eid, emsg); %#ok<AGROW>
+        lines{end+1} = sprintf('  [%d]', qi); %#ok<AGROW>
+        for fk = 1:numel(fnames)
+            fn = fnames{fk};
+            v = q.(fn);
+            if ischar(v)
+                lines{end+1} = sprintf('      %s: %s', fn, v); %#ok<AGROW>
+            elseif isstring(v) && isscalar(v)
+                lines{end+1} = sprintf('      %s: %s', fn, char(v)); %#ok<AGROW>
+            elseif isstruct(v)
+                sfnames = fieldnames(v);
+                for sk = 1:numel(sfnames)
+                    sv = v.(sfnames{sk});
+                    if ischar(sv)
+                        lines{end+1} = sprintf('      %s.%s: %s', fn, sfnames{sk}, sv); %#ok<AGROW>
+                    elseif isstring(sv) && isscalar(sv)
+                        lines{end+1} = sprintf('      %s.%s: %s', fn, sfnames{sk}, char(sv)); %#ok<AGROW>
+                    else
+                        lines{end+1} = sprintf('      %s.%s: <%s %s>', fn, sfnames{sk}, class(sv), mat2str(size(sv))); %#ok<AGROW>
+                    end
+                end
+            else
+                lines{end+1} = sprintf('      %s: <%s %s>', fn, class(v), mat2str(size(v))); %#ok<AGROW>
+            end
         end
     end
     qDiag = strjoin(lines, newline);
+    % Write to a well-known path the workflow can cat afterwards.
+    diagPath = fullfile(getenv('GITHUB_WORKSPACE'), 'quarantine-diagnostic.txt');
+    if isempty(diagPath); diagPath = fullfile(tempdir, 'quarantine-diagnostic.txt'); end
+    try
+        fid = fopen(diagPath, 'w');
+        if fid > 0
+            fwrite(fid, qDiag);
+            fclose(fid);
+        end
+    catch
+    end
+else
+    qDiag = 'fixture(s) quarantined under schema validation';
 end
 verifyEmpty(testCase, result.quarantine, qDiag);
 verifyNotEmpty(testCase, result.migrated);
