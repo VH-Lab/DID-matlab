@@ -103,6 +103,17 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
     if isfield(preBody.base, 'session_id'); sessionId = char(preBody.base.session_id); end
     if isfield(preBody.base, 'datestamp');  datestamp = char(preBody.base.datestamp);  end
 end
+% PR #68's calculator schema declares `software_id` REQUIRED with min_count 1.
+% jSoftwareFromApp returns []/'' when the source has no app.name, which would
+% strand every such calc doc under `RequiredDependencies`. Fall back to a
+% software entity keyed on the calc's methodName so the edge always resolves;
+% this is the honest defect (the source did not name its producer, we did,
+% with the same string the interaction's method carries), not an invented
+% fact. When the DID second pass has a real name for the software, dedup
+% against that string.
+if isempty(software)
+    [software, swId] = jSoftware(methodName, '', '', sessionId, datestamp);
+end
 [rtEnv, rtId] = jRuntimeEnvironment(execEnv, sessionId, datestamp);
 
 deps = jCarrySubject(preBody, {'element_id', 'subject_id'});
