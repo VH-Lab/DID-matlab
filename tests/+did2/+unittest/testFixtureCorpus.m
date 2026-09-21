@@ -472,12 +472,14 @@ result = did2.convert.resolveClockAlignment(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 
 % GATE 1: nothing quarantined
-% DIAGNOSTIC (temporary, PR #209): print every quarantine entry with its
-% class_name, source identifier, and reason -- the runner's default TextOutput
-% prints only pass/fail rows, so this is how a corpus-wide test says which
-% fixture broke. Remove once the underlying quarantines are resolved.
+% DIAGNOSTIC (temporary, PR #209): the MATLAB test runner captures fprintf/
+% disp inside the Details struct where a text-tail log cannot see them, so
+% build a full diagnostic STRING and pass it as verifyEmpty's message --
+% MATLAB always prints an assertion's own diagnostic to the run's stdout on
+% failure. Remove once the underlying quarantines are resolved.
+qDiag = 'fixture(s) quarantined under schema validation';
 if ~isempty(result.quarantine)
-    fprintf(2, '\n===== QUARANTINE DIAGNOSTIC (%d entries) =====\n', numel(result.quarantine));
+    lines = {sprintf('%d quarantine entr(y|ies):', numel(result.quarantine))};
     for qi = 1:numel(result.quarantine)
         q = result.quarantine(qi);
         cls = '<no class>';
@@ -486,20 +488,21 @@ if ~isempty(result.quarantine)
         if isfield(q, 'identifier'); idn = char(q.identifier); end
         rsn = '<no reason>';
         if isfield(q, 'reason'); rsn = char(q.reason); end
-        fprintf(2, '  [%d] class=%s   id=%s\n       reason: %s\n', qi, cls, idn, rsn);
+        eid = '';
+        emsg = '';
         if isfield(q, 'error') && isstruct(q.error)
-            if isfield(q.error, 'identifier')
-                fprintf(2, '       error_id: %s\n', char(q.error.identifier));
-            end
-            if isfield(q.error, 'message')
-                fprintf(2, '       error_msg: %s\n', char(q.error.message));
-            end
+            if isfield(q.error, 'identifier'); eid = char(q.error.identifier); end
+            if isfield(q.error, 'message'); emsg = char(q.error.message); end
+        end
+        lines{end+1} = sprintf('  [%d] class=%s id=%s', qi, cls, idn); %#ok<AGROW>
+        lines{end+1} = sprintf('      reason: %s', rsn); %#ok<AGROW>
+        if ~isempty(eid) || ~isempty(emsg)
+            lines{end+1} = sprintf('      error: [%s] %s', eid, emsg); %#ok<AGROW>
         end
     end
-    fprintf(2, '===== END QUARANTINE DIAGNOSTIC =====\n\n');
+    qDiag = strjoin(lines, newline);
 end
-verifyEmpty(testCase, result.quarantine, ...
-    'fixture(s) quarantined under schema validation');
+verifyEmpty(testCase, result.quarantine, qDiag);
 verifyNotEmpty(testCase, result.migrated);
 
 % GATE 2: no dangling references (self-contained fixtures -> 0 by construction)
