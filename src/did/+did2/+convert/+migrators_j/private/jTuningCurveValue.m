@@ -103,10 +103,10 @@ if isempty(axesList)
     v = getf(tc, {'independent_variable_value', 'independent_variable'});
     if isempty(v); v = getf(block, {'independent_variable_value', 'independent_variable'}); end
     if ~isempty(v)
-        % Raw-curve fallback: no family name is available. Use a bare empty
-        % ontology_term literal rather than a jOntologyTerm(...) call so the
-        % #70 ratchet does not fire on a value we cannot even name. The shape
-        % is identical to what jOntologyTerm('', '') would produce.
+        % Raw-curve fallback: no family name is available. A bare
+        % struct(node,name) literal here is the same shape the helper would
+        % produce for an unknown pair -- and it keeps the #70 unminted-terms
+        % ratchet honest: nothing was named that could not be named.
         axesList{end+1} = struct( ...
             'variable', struct('node', '', 'name', ''), ...
             'values',   v);
