@@ -1,0 +1,19 @@
+{
+	"classname":	"demoSeries",
+	"superclasses": [ "base" ],
+	"depends_on": [ ],
+	"file": [
+		{"name": "plainfile.ext", "mustbenotempty": 0},
+		{"name": "chunkdata.bin", "mustbenotempty": 0}
+	],
+	"demoSeries": [
+		{
+			"name": "value",
+			"type": "integer",
+			"default_value": 1,
+			"parameters": [-100000,100000,0],
+			"queryable": 1,
+			"documentation": "A value field for the demoSeries class."
+		}
+	]
+}

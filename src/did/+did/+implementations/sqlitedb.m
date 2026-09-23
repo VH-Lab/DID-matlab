@@ -189,17 +189,45 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %
             % Deletes the branch with the specified BRANCH_ID from the database.
             % An error is generated if BRANCH_ID is not a valid branch ID.
+            %
+            % Any document left referenced by no branch at all is removed from
+            % the database entirely, exactly as when the last branch holding it
+            % drops it via do_remove_doc - see reclaim_unreferenced_doc.
+
+            % Open the database for update, so that the branch's rows and the
+            % reclamation of whatever they last referenced happen on one
+            % connection rather than reopening per statement
+            hCleanup = this_obj.open_db(); %#ok<NASGU>
 
             % First remove all documents from the branch
             doc_ids = this_obj.do_get_doc_ids(branch_id); %this croaks if branch_id is invalid - good!
             if ~isempty(doc_ids)
+                % Note which documents this branch holds BEFORE dropping its
+                % rows: afterwards nothing leads from the branch back to them.
+                branch_doc_data = this_obj.run_sql_noOpen(...
+                    ['SELECT docs.doc_idx, docs.doc_id FROM docs,branch_docs ' ...
+                     ' WHERE docs.doc_idx = branch_docs.doc_idx ' ...
+                     '   AND branch_docs.branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+
                 % Remove all documents from the branch_docs table
-                % TODO: also delete records of unreferenced docs ???
-                this_obj.run_sql_query(['DELETE FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+                this_obj.run_sql_noOpen(['DELETE FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+
+                % Deleting a branch is the other way a document can come to be
+                % referenced by no branch at all, so it owes the same clean-up
+                % that do_remove_doc does (issue #55). The test is the same one
+                % too - no surviving branch_docs row anywhere - so a document
+                % that any other branch still holds is left completely alone.
+                for idx = 1 : numel(branch_doc_data)
+                    doc_idx = branch_doc_data(idx).doc_idx;
+                    remaining_ids = this_obj.run_sql_noOpen('SELECT branch_id FROM branch_docs WHERE doc_idx=?', doc_idx);
+                    if isempty(remaining_ids)
+                        this_obj.reclaim_unreferenced_doc(doc_idx, branch_doc_data(idx).doc_id);
+                    end
+                end
             end
 
             % Now delete the branch record
-            this_obj.run_sql_query(['DELETE FROM branches WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
+            this_obj.run_sql_noOpen(['DELETE FROM branches WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '"']);
         end % do_delete_branch()
 
         function parent_branch_id = do_get_branch_parent(this_obj, branch_id, varargin)
@@ -282,11 +310,21 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
             %   - 'OnDuplicate' - followed by 'ignore', 'warn', or 'error' (default)
+            %   - 'customFileHandler' - a function handle called as
+            %       HANDLER(DESTPATH, SOURCEPATH) or, when the handler
+            %       declares three or more inputs (or takes varargin),
+            %       HANDLER(DESTPATH, SOURCEPATH, CONTEXT), to retrieve
+            %       a file whose location is not a local path. CONTEXT
+            %       carries per-call document context that lets a
+            %       handler batch across a document (see DID-matlab
+            %       issue #186 and did.implementations.sqlitedb.dispatchCustomFileHandler).
+            %       See DID.DATABASE/ADD_DOCS.
             arguments
                 this_obj
                 document_obj
                 branch_id
                 options.OnDuplicate {mustBeMember(options.OnDuplicate,{'ignore','warn','error'})} = 'error'
+                options.customFileHandler = []
             end
 
             % Open the database for update
@@ -297,12 +335,139 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             meta_data_struct = cell2struct({meta_data.columns}',{meta_data.name}');
             doc_id = meta_data_struct.meta(1).value;
 
+            % A document id that was removed from its last branch is retired for
+            % good, and cannot be used again (issue #55). Re-using one used to
+            % produce a document that silently inherited the previous document's
+            % doc_data rows - stale field values that no part of the new document
+            % ever supplied. Reclaiming those rows on removal fixes that, and
+            % retiring the id as well means the case cannot come back through a
+            % database written before the reclamation existed.
+            if this_obj.is_deleted_doc_id(doc_id)
+                error('DID:SQLITEDB:DELETED_DOC', ...
+                    ['Cannot add document %s - a document with this id was ' ...
+                     'previously removed from every branch. Document ids are ' ...
+                     'never re-used; generate a new id for a new document.'], doc_id);
+            end
+
             % If the document was not already defined (for any branch)
             doc_props = document_obj.document_properties;
+
+            % Pre-flight security guard (DID-matlab issue #167).
+            % Refuse a document whose file_list[i].locations[j].uid or
+            % location would let ingest escape FileDir/db_dir. Do this
+            % BEFORE any writes -- the docs row, the branch_docs row, and
+            % the per-file try/catch further down all fire after this --
+            % so a corrupt document stays out of the DB rather than being
+            % partly written.
+            try preflight_files = doc_props.files.file_info; catch, preflight_files = []; end
+            for pfIdx = 1 : numel(preflight_files)
+                try
+                    pfName = char(preflight_files(pfIdx).name);
+                catch
+                    pfName = sprintf('#%d', pfIdx);
+                end
+                try
+                    pfLocations = preflight_files(pfIdx).locations;
+                catch
+                    continue
+                end
+                for pfLocIdx = 1 : numel(pfLocations)
+                    this_obj.validateIngestFileEntry(pfName, pfLocations(pfLocIdx));
+                end
+            end
+
+            % A file series' members go through the same guard. They are
+            % copied to <FileDir>/<uid> exactly as a file_info location is,
+            % so a uid that would escape FileDir escapes it just as far --
+            % and a series is where a bad uid would be least noticed, since
+            % no member has a row in the files table to inspect.
+            try preflight_series = doc_props.files.series_info; catch, preflight_series = []; end
+            for psIdx = 1 : numel(preflight_series)
+                try
+                    psName = char(preflight_series(psIdx).name);
+                catch
+                    psName = sprintf('#%d', psIdx);
+                end
+                try
+                    psLocations = preflight_series(psIdx).ingest_locations;
+                catch
+                    continue
+                end
+                for psLocIdx = 1 : numel(psLocations)
+                    memberName = sprintf('%s_#%d', psName, psLocIdx);
+                    try
+                        memberName = sprintf('%s_%d', psName, psLocations(psLocIdx).index);
+                    catch
+                        % keep the positional label
+                    end
+                    this_obj.validateIngestFileEntry(memberName, psLocations(psLocIdx));
+                end
+            end
+
             data = this_obj.run_sql_noOpen('SELECT doc_idx FROM docs WHERE doc_id=?', doc_id);
             if isempty(data)
-                % Get the JSON code that parses all the document's properties
-                json_code = did.datastructures.jsonencodenan(doc_props);
+                % REFUSE A SERIES WHOSE MEMBERS CANNOT BE LOCATED (#173).
+                %
+                % A series records how many members it has (n_present) apart
+                % from where they are (ingest_locations), and the second is
+                % stripped when a document is stored. So a document that has
+                % been through a database and comes back says "27,412 members"
+                % while carrying no way to find one. Storing that produces a
+                % manifest full of uids whose bytes will never arrive, and the
+                % member loop below -- which iterates ingest_locations -- would
+                % do it in complete silence, since an empty list is simply
+                % zero passes.
+                %
+                % This runs only for a document NEW to this database, and
+                % before the first write. Re-adding a document that is already
+                % here (to a second branch, say) is exempt and must be: its
+                % members were ingested when it first arrived, so an empty
+                % ingest_locations is expected and correct. What that leaves
+                % is the case worth refusing -- a stored document carried to a
+                % database that has never seen it, whose bytes are still in
+                % the database it came from.
+                %
+                % Deliberately no manifest read: knowing the count is enough
+                % to know something is wrong, and parsing the manifest during
+                % add_docs is exactly what carrying uid and index in
+                % ingest_locations exists to avoid.
+                try preadd_series = doc_props.files.series_info; catch, preadd_series = []; end
+                for asIdx = 1 : numel(preadd_series)
+                    thisSeries = preadd_series(asIdx);
+                    if ~isfield(thisSeries,'n_present') || ...
+                            isempty(thisSeries.n_present) || thisSeries.n_present <= 0
+                        continue
+                    end
+                    if isfield(thisSeries,'ingest_locations') && ...
+                            ~isempty(thisSeries.ingest_locations)
+                        continue
+                    end
+                    nPresent = thisSeries.n_present;
+                    thisName = sprintf('#%d', asIdx);
+                    if isfield(thisSeries,'name')
+                        thisName = char(thisSeries.name);
+                    end
+                    error('DID:SQLITEDB:FileSeries:MembersNotLocatable', ...
+                        ['Refusing to add document %s: its file series "%s" declares ' ...
+                         '%d present members but records no location for any of them. ' ...
+                         'A document read back from a database has had these stripped, ' ...
+                         'so it can be added to another branch of the database it came ' ...
+                         'from but not to a database that has never held it. Add the ' ...
+                         'document that authored the series, or re-author it with ' ...
+                         'addFileSeries.'], doc_id, thisName, nPresent);
+                end
+
+                % Get the JSON code that parses all the document's properties.
+                %
+                % A file series' member paths are stripped on the way in. They
+                % exist so ingestion can find the bytes; the stored JSON is
+                % preserved and returned whole, so leaving tens of thousands of
+                % absolute paths in it would be paid for on every fetch of the
+                % document, and would ship a directory layout to the cloud.
+                % doc_props itself keeps them, since the file loop below still
+                % needs them.
+                json_code = did.datastructures.jsonencodenan(...
+                    did.document.stripSeriesIngestLocations(doc_props));
 
                 % Add the new document to docs table
                 this_obj.insert_into_table('docs', 'doc_id,json_code,timestamp', doc_id, json_code, now); %, document_obj);
@@ -348,9 +513,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 doOnDuplicate = lower(options.OnDuplicate);
                 switch doOnDuplicate
                     case 'ignore'
-                        % do nothing
+                        % Document already in this branch: return early. Falling
+                        % through to the branch_docs INSERT below would violate
+                        % PRIMARY KEY(branch_id,doc_idx) and throw, and re-running
+                        % the file-caching loop would be duplicate work - so
+                        % 'ignore' must be a genuine no-op, not merely non-erroring.
+                        return
                     case 'warn'
                         warning('DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg);
+                        return
                     otherwise %case 'error'
                         error('DID:SQLITEDB:DUPLICATE_DOC','%s',errMsg);
                 end
@@ -377,12 +548,32 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                             destDir = this_obj.FileDir;
                             destPath = fullfile(destDir, thisLocation.uid);
                             try
+                                errMsg = '';
                                 file_type = lower(strtrim(thisLocation.location_type));
                                 if strcmpi(file_type, 'file')
                                     [status,errMsg] = copyfile(sourcePath, destPath, 'f');
-                                else  % url
-                                    [status] = ndi.cloud.api.files.getFile(sourcePath, destPath);
-                                    if ~status, errMsg = 'ndi.cloud.api.files.getFile failed'; end
+                                elseif ~isempty(options.customFileHandler)
+                                    % Retrieval of any non-'file' location is
+                                    % supplied by the caller, exactly as in
+                                    % do_open_doc. DID downloads nothing itself;
+                                    % this previously called
+                                    % ndi.cloud.api.files.getFile, which made
+                                    % this package depend on NDI.
+                                    ctx = struct( ...
+                                        'documentId', doc_id, ...
+                                        'filename',   filename, ...
+                                        'seriesName', '', ...
+                                        'uid',        thisLocation.uid, ...
+                                        'mode',       'add');
+                                    did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                                        options.customFileHandler, destPath, sourcePath, ctx);
+                                    status = isfile(destPath);
+                                    if ~status
+                                        errMsg = sprintf('customFileHandler did not produce a file at "%s"', destPath);
+                                    end
+                                else
+                                    status = false;
+                                    errMsg = sprintf('file type "%s" needs a customFileHandler and none was supplied', file_type);
                                 end
                             catch err
                                 status = false;
@@ -392,7 +583,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                                 warning('DID:SQLiteDB:add_doc','Failed to cache "%s" %s referenced in document object: %s',filename,file_type,errMsg);
                                 destPath = '';
                             else
-                                if thisLocation.delete_original
+                                % Only a local file can be deleted. A remote
+                                % location (anything carrying a '://' scheme)
+                                % is not ours to remove, and delete() on such a
+                                % string would either do nothing or, worse,
+                                % match something unintended on disk.
+                                if thisLocation.delete_original && ~contains(sourcePath,'://')
                                     delete(sourcePath);
                                 end
                                 %this_obj.insert_doc_data_field(doc_idx, 'files', 'cached_file_path', destPath);
@@ -413,6 +609,84 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     end
                 catch
                     warning('DID:SQLiteDB:add_doc','Bad definition of referenced file %s in document object',filename);
+                end
+            end
+
+            % Now the same for a file series' members.
+            %
+            % THEY GET NO FILES-TABLE ROW, DELIBERATELY. A member is resolved
+            % through the series' manifest -- NAME_<i> -> manifest slot i ->
+            % uid -> <FileDir>/<uid> -- which is the whole reason the manifest
+            % exists. A level of a lightsheet pyramid is ~28,000 members; a row
+            % each would put back exactly the per-member record that
+            % stripSeriesIngestLocations, the binary manifest format and
+            % is_in_file_list's empty fI_index for a member were all built to
+            % avoid, and it would be paid in the files table on every ingest
+            % and every removal. (NDI's current_file_list must not expand a
+            % series either, for the same reason; that one is NDI's to keep,
+            % and is named in the issue rather than implemented here.) See
+            % do_open_doc and check_exist_doc for the read side, and
+            % VH-Lab/DID-matlab#173 for the reasoning.
+            %
+            % What a member does get is its bytes at <FileDir>/<uid>, under
+            % the uid the manifest already records for its slot. The copying
+            % is the file loop's, unchanged: same destination rule, same
+            % customFileHandler for a non-'file' location, same
+            % delete_original.
+            try seriesInfo = doc_props.files.series_info; catch, seriesInfo = []; end
+            for sIdx = 1 : numel(seriesInfo)
+                try
+                    seriesName = sprintf('#%d', sIdx);  % used in catch, if the line below fails
+                    seriesName = char(seriesInfo(sIdx).name);
+                    memberLocations = seriesInfo(sIdx).ingest_locations;
+                    for mIdx = 1 : numel(memberLocations)
+                        thisMember = memberLocations(mIdx);
+                        if ~thisMember.ingest
+                            % A member that is a reference rather than bytes
+                            % to copy -- a URL, say. add_file treats these the
+                            % same way, and the manifest still names it.
+                            continue
+                        end
+                        memberName = sprintf('%s_%d', seriesName, thisMember.index);
+                        sourcePath = thisMember.location;
+                        destPath = fullfile(this_obj.FileDir, thisMember.uid);
+                        try
+                            errMsg = '';
+                            file_type = lower(strtrim(thisMember.location_type));
+                            if strcmpi(file_type, 'file')
+                                [status,errMsg] = copyfile(sourcePath, destPath, 'f');
+                            elseif ~isempty(options.customFileHandler)
+                                ctx = struct( ...
+                                    'documentId', doc_id, ...
+                                    'filename',   memberName, ...
+                                    'seriesName', seriesName, ...
+                                    'uid',        thisMember.uid, ...
+                                    'mode',       'add');
+                                did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                                    options.customFileHandler, destPath, sourcePath, ctx);
+                                status = isfile(destPath);
+                                if ~status
+                                    errMsg = sprintf('customFileHandler did not produce a file at "%s"', destPath);
+                                end
+                            else
+                                status = false;
+                                errMsg = sprintf('file type "%s" needs a customFileHandler and none was supplied', file_type);
+                            end
+                        catch err
+                            status = false;
+                            errMsg = err.message;
+                        end
+                        if ~status
+                            warning('DID:SQLiteDB:add_doc','Failed to cache "%s" %s referenced in document object: %s',memberName,file_type,errMsg);
+                        else
+                            if thisMember.delete_original && ~contains(sourcePath,'://')
+                                delete(sourcePath);
+                            end
+                            numCachedFiles = numCachedFiles + 1;
+                        end
+                    end
+                catch
+                    warning('DID:SQLiteDB:add_doc','Bad definition of file series %s in document object',seriesName);
                 end
             end
             %{
@@ -487,6 +761,12 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Returns the DID.DOCUMENT object with the specified by DOCUMENT_ID.
             % DOCUMENT_ID must be a scalar ID string, not an array of IDs.
             %
+            % Removing the document from its last remaining branch removes it
+            % from the database entirely: its cached files are deleted from
+            % disk and its doc_data, files and docs records are all dropped.
+            % Its id is retained in the deleted_docs table and can never be
+            % added to the database again.
+            %
             % Optional PARAMS may be specified as P-V pairs of a parameter name
             % followed by parameter value. The following parameters are possible:
             %   - 'OnMissing' - followed by 'ignore', 'warn', or 'error' (default)
@@ -542,17 +822,25 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % Remove the document from the branch_docs table
             this_obj.run_sql_noOpen(['DELETE FROM branch_docs WHERE branch_id="' this_obj.escapeSqlLiteral(branch_id) '" AND doc_idx=?'], doc_idx);
 
-            % TODO - remove all document records if no branch references remain?
-            %{
-            % If no more branches reference this document
-            remaining_ids = this_obj.run_sql_noOpen('SELECT branch_id FROM branch_docs WHERE doc_idx=?', doc_idx));
+            % If no branch references this document any more, it is gone for
+            % good, so nothing of it should be left behind (issue #55).
+            remaining_ids = this_obj.run_sql_noOpen('SELECT branch_id FROM branch_docs WHERE doc_idx=?', doc_idx);
             if isempty(remaining_ids)
-                % Remove all document records from docs, doc_data tables
-                this_obj.run_sql_noOpen('DELETE FROM docs     WHERE doc_idx=?', doc_idx)
-                this_obj.run_sql_noOpen('DELETE FROM doc_data WHERE doc_idx=?', doc_idx)
+                this_obj.reclaim_unreferenced_doc(doc_idx, doc_id);
             end
-            %}
         end % do_remove_doc()
+
+        function roots = do_cachedPathRoots(this_obj)
+            % do_cachedPathRoots - this database's own uid-named file root
+            %
+            % Returns FileDir, which do_open_doc and check_exist_doc already
+            % search as <FileDir>/<uid> after the global file cache. Keeping
+            % the list here means did.database/cachedPathForFile searches
+            % exactly what those two search, in the same order, without
+            % knowing anything about this implementation.
+
+            roots = {this_obj.FileDir};
+        end % do_cachedPathRoots()
 
         function file_obj = do_open_doc(this_obj, document_id, filename, varargin)
             % do_open_doc - Return a did.file.readonly_fileobj for the specified document ID
@@ -571,7 +859,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             %    'customFileHandler' — a function handle used to resolve file types
             %    not handled by default (e.g., non-'file' or 'url' types). It should
             %    accept (destPath, sourcePath) as inputs and produce a local file at
-            %    destPath.
+            %    destPath. A handler that declares three or more inputs (or takes
+            %    varargin) is called as HANDLER(destPath, sourcePath, context)
+            %    instead, receiving per-call document context so it can batch across
+            %    a document. See did.implementations.sqlitedb.dispatchCustomFileHandler
+            %    and DID-matlab issue #186.
             %
             % Only the first matching file that is found is returned.
             %
@@ -608,6 +900,31 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             end
             data = this_obj.run_sql_query(query_str, true);  %structArray=true
             if isempty(data)
+                % No files-table row. That is exactly what a file series
+                % MEMBER looks like: members carry no row of their own, and
+                % are resolved through the series' manifest instead. Nothing
+                % else reaches here with a name that resolves, so trying the
+                % series rule only now costs a genuine miss one parse.
+                [tfSeries, seriesPath, seriesStem] = this_obj.seriesMemberPath(document_id, filename, ...
+                    'customFileHandler', customFileHandler, 'mayRetrieve', true);
+                if tfSeries
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',seriesPath,varargin_to_pass{:});
+                    return
+                end
+                if ~isempty(seriesStem)
+                    % The manifest records this member, so "no such file" would
+                    % send the caller after a naming problem they do not have.
+                    % Say what is actually wrong: the bytes are not here, and a
+                    % member has no location of its own to fetch them from.
+                    error('DID:SQLITEDB:open', ...
+                        ['The file "%s" in document "%s" cannot be accessed. It is a ' ...
+                         'member of the file series "%s", which records it, but its ' ...
+                         'bytes are not on this machine and could not be retrieved. ' ...
+                         'A member carries no location of its own; it is fetched, if ' ...
+                         'at all, through a customFileHandler given the series ' ...
+                         'manifest''s location and the member''s uid.'], ...
+                        filename, document_id, seriesStem);
+                end
                 if isempty(filename)
                     error('DID:SQLITEDB:open','Document id "%s" does not include any readable file',document_id);
                 else
@@ -618,6 +935,15 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % First try to access the global cached file, if defined and if exists
             file_paths = {};
             for uids=1:numel(data)
+                % Cache and FileDir candidates both key off uid; an unsafe
+                % uid (one written by an unguarded DID before issue #167)
+                % would build a path outside filecachepath or outside
+                % FileDir, so skip those candidates. The row's orig_location
+                % is still tried through the read-time containment filter
+                % below.
+                if ~did.implementations.sqlitedb.isSafeUid(data(uids).uid)
+                    continue
+                end
                 file_paths{end+1} = [did.common.PathConstants.filecachepath filesep data(uids).uid ]; %#ok<AGROW>
                 file_paths{end+1} = [this_obj.FileDir filesep data(uids).uid]; %#ok<AGROW>
             end
@@ -631,7 +957,13 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     parent = fileparts(this_file);
                     if strcmp(parent,did.common.PathConstants.filecachepath) % fileCache,
-                        didCache.touch(this_file); % we used it so indicate that we did
+                        % touch() looks the name up in the cache catalog,
+                        % whose column is the name inside the cache -- the
+                        % uid. Passing the full path never matched, so a
+                        % cache hit never refreshed the access time and
+                        % eviction dropped exactly the files read most.
+                        [~,cacheName,cacheExt] = fileparts(this_file);
+                        didCache.touch([cacheName cacheExt]); % we used it so indicate that we did
                     end
                     file_obj = did.file.readonly_fileobj('fullpathfilename',this_file,varargin_to_pass{:});
                     return
@@ -642,34 +974,149 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             for idx = 1 : numel(data)  %data is a struct array
                 this_file_struct = data(idx);
                 sourcePath = this_file_struct.orig_location;
+                % Defense in depth (DID-matlab issue #167): a database
+                % written by an older DID may carry a `..`-crafted
+                % orig_location or an unsafe uid. Skip such rows so
+                % copyfile is not steered outside the database directory,
+                % and destPath cannot escape temppath.
+                if ~did.implementations.sqlitedb.isSafeUid(this_file_struct.uid)
+                    continue
+                end
+                file_type = lower(strtrim(this_file_struct.type));
+                if strcmpi(file_type,'file') && ...
+                        ~this_obj.isSafeLocalLocation(sourcePath, file_type)
+                    continue
+                end
                 destDir =  did.common.PathConstants.temppath;
                 %destDir = this_obj.FileDir;  % SDV this should be changed to file cache
                 %destDir = this_obj.get_preference('cache_folder');
-                destPath = fullfile(destDir, this_file_struct.uid);
+
+                % SINGLE-FLIGHT PER UID (VH-Lab/DID-matlab#173). Two MATLAB
+                % processes sharing one file cache is an ordinary lab setup,
+                % and PathConstants.temppath is tempdir/didtemp -- per USER,
+                % not per process -- so both land in the same place. Before
+                % this, both retrieved the same uid at once and:
+                %
+                %   * both wrote to temppath/<uid>, one fixed name per uid, so
+                %     each could see the other's half-written download;
+                %   * whichever finished second then failed outright, because
+                %     addFile refuses a name the winner already put in the
+                %     cache -- turning a redundant download into an error.
+                %
+                % The lock makes the second process wait and then find the
+                % file already there, which is the point: one fetch per uid,
+                % not one per caller. It is deliberately NOT inside the cache
+                % directory -- that directory is swept for orphan files and
+                % sized by listing it, so a stray lock there would be counted
+                % or collected. DID-python will need this same path to
+                % serialize against MATLAB; today it takes the cache's
+                % '<file>-lock' but knows nothing of this one.
+                uid = this_file_struct.uid;
+                cacheFile = fullfile(didCache.directoryName, uid);
+                lockFile = fullfile(destDir, [uid '-fetch-lock']);
+                % did.file.checkout_lock_file is the same primitive
+                % did.file.binaryTable/getLock takes for the cache catalog;
+                % this is a second, narrower lock over the DOWNLOAD, which
+                % ends before addFile and so is never held at the same time.
+                %
+                % Two arguments differ from binaryTable's, both because this
+                % lock is advisory where that one is required:
+                %
+                %   throwerror 0 -- a lock we cannot get must not fail a read.
+                %       Correctness here does not rest on the lock at all (the
+                %       unique temp name below and the addFile fallback carry
+                %       it), so a stuck peer costs a redundant download, never
+                %       an error the caller sees.
+                %   expiration 300 -- NOT the 3600 default. A holder that dies
+                %       mid-fetch leaves the file behind, and until it expires
+                %       every later fetch of that uid pays the full 30-second
+                %       wait before giving up and proceeding. Expiring EARLY
+                %       costs one redundant download; expiring late poisons a
+                %       uid for an hour. Five minutes is long enough for an
+                %       ordinary file and short enough that a crash is cheap.
+                %       binaryTable uses 20s for the same reason, over an
+                %       operation that is far quicker than a download.
+                [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0, 300);
+                if lockfid > 0
+                    lockCleanup = onCleanup(@() did.file.release_lock_file(lockFile, lockkey)); %#ok<NASGU>
+                else
+                    % Could not take the lock within the wait. Carrying on is
+                    % safe -- the temp name below is unique per fetch, and a
+                    % lost race is handled where addFile is called -- so a
+                    % stuck or slow peer costs a redundant download, never
+                    % correctness.
+                    lockCleanup = []; %#ok<NASGU>
+                end
+
+                % Whoever waited on the lock usually finds the work already
+                % done. Re-check before spending a download.
+                if isfile(cacheFile)
+                    didCache.touch(uid);
+                    file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
+                    return
+                end
+
+                % A unique temp name per fetch. The uid names the file's home
+                % in the cache, not the scratch copy on the way there, and
+                % using it for both is what let two fetches collide. Built
+                % from did.ido.unique_id rather than tempname so the name is
+                % unique per FETCH even within one process, and still says
+                % which uid it belongs to if one is ever left behind.
+                destPath = fullfile(destDir, [uid '.' did.ido.unique_id() '.part']);
                 try
-                    file_type = lower(strtrim(this_file_struct.type));
                     if strcmpi(file_type,'file')
                         [status,errMsg] = copyfile(sourcePath, destPath, 'f');
                         if ~status, error(errMsg); end
-                    elseif strcmpi(file_type,'url')
-                        % call ndi cloud API for reliable file downloads (esp. AWS)
-                        [dlStatus] = ndi.cloud.api.files.getFile(sourcePath, destPath);
-                        if ~dlStatus, error('ndi.cloud.api.files.getFile failed'); end
                     else
+                        % Every non-'file' type -- 'url', 'ndicloud', anything
+                        % else -- is retrieved by the caller's handler. DID
+                        % downloads nothing itself: it previously called
+                        % ndi.cloud.api.files.getFile for the 'url' type, which
+                        % made this package depend on NDI being on the path, a
+                        % lower-level package reaching for a higher-level one.
+                        % NDI already supplies retrieval through this hook.
                         if ~isempty(customFileHandler)
-                            tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
+                            ctx = struct( ...
+                                'documentId', document_id, ...
+                                'filename',   filename, ...
+                                'seriesName', '', ...
+                                'uid',        this_file_struct.uid, ...
+                                'mode',       'open');
+                            tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type, ctx)
                         else
                             error('DID:SQLITEDB:FileRetrieval:UnsupportedType', ...
                                 'File type "%s" is not supported and no custom handler is defined.', file_type);
                         end
                     end
                     % now we have the temporary file for the file cache
-                    didCache.addFile(destPath, this_file_struct.uid);
-                    cacheFile = fullfile(didCache.directoryName,this_file_struct.uid);
+                    try
+                        didCache.addFile(destPath, uid);
+                    catch addErr
+                        % Losing the race is not a failure. Another process
+                        % may have placed this uid while the fetch was in
+                        % flight (the lock narrows this window but a peer that
+                        % never got the lock can still do it); its bytes are
+                        % the same bytes. Keep ours only if the cache really
+                        % has nothing.
+                        if ~isfile(cacheFile)
+                            rethrow(addErr);
+                        end
+                        if isfile(destPath)
+                            delete(destPath);
+                        end
+                    end
                     % Return a did.file.readonly_fileobj wrapper obj for the cached file
                     file_obj = did.file.readonly_fileobj('fullpathfilename',cacheFile,varargin_to_pass{:});
                     return
                 catch err
+                    % Clean up the partial download. The name is unique per
+                    % fetch now, so unlike the old fixed temppath/<uid> it
+                    % will never be overwritten by the next attempt -- every
+                    % failed fetch would otherwise leak one .part file into
+                    % temppath forever.
+                    if isfile(destPath)
+                        try delete(destPath); catch, end
+                    end
                     errMsg = strtrim(err.message); if ~isempty(errMsg), errMsg=[': ' errMsg]; end %#ok<AGROW>
                     warning('DID:SQLITEDB:open','Cannot access the %s "%s" in document "%s"%s',file_type,sourcePath,document_id,errMsg);
                 end
@@ -682,9 +1129,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 error('DID:SQLITEDB:open','The file "%s" in document "%s" cannot be accessed',filename,document_id);
             end
 
-            function tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type)
+            function tryCustomFileHandler(customFileHandler, destPath, sourcePath, file_type, ctx)
                 try
-                    customFileHandler(destPath, sourcePath);
+                    did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                        customFileHandler, destPath, sourcePath, ctx);
                     if ~isfile(destPath)
                         error('DID:SQLITEDB:FileRetrieval:CustomHandlerMissing', ...
                             'customFileHandler did not produce a file at "%s"', destPath);
@@ -740,23 +1188,43 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 error('DID:SQLITEDB:open','The requested filename must be specified in check_exist_doc()');
             end
             data = this_obj.run_sql_query(query_str, true);  %structArray=true
+            tf = false;
             if isempty(data)
-                tf = false; % File does not exist
-            elseif numel(data) == 1
-                tf = true;
-                file_path = [this_obj.FileDir, filesep, data.uid];
+                % A file series member has no files-table row; it is resolved
+                % through the manifest. Nothing is RETRIEVED to answer this:
+                % check_exist_doc reports what is on this machine, and a
+                % manifest that is not here yet makes the answer "no", the
+                % same answer it already gives for a file whose row exists but
+                % whose bytes have never been fetched.
+                [tf, file_path] = this_obj.seriesMemberPath(document_id, filename);
             else
-                file_path = fullfile( this_obj.FileDir, {data.uid} );
-                tf = false( size( file_path) );
-                for i = numel(file_path)
-                    tf = ~isempty(file_path{i}) && isfile(file_path{i});
+                % A row in the files table does NOT guarantee a file on disk:
+                % do_add_doc inserts a files row even when caching failed and
+                % destPath = ''. So verify existence with isfile rather than
+                % trusting the row, and search the same candidate roots that
+                % do_open_doc searches (the global file cache and this
+                % database's FileDir). Return the path that actually exists.
+                fileCacheRoot = did.common.PathConstants.filecachepath;
+                for idx = 1 : numel(data)
+                    % Skip rows with an unsafe uid, so candidates cannot
+                    % escape filecachepath or FileDir. See DID-matlab
+                    % issue #167.
+                    if ~did.implementations.sqlitedb.isSafeUid(data(idx).uid)
+                        continue
+                    end
+                    candidates = { fullfile(fileCacheRoot, data(idx).uid), ...
+                                   fullfile(this_obj.FileDir, data(idx).uid) };
+                    for c = 1 : numel(candidates)
+                        if isfile(candidates{c})
+                            tf = true;
+                            file_path = candidates{c};
+                            break
+                        end
+                    end
+                    if tf
+                        break
+                    end
                 end
-                tf = any(tf);
-                file_path = file_path(tf);
-                if numel(file_path) > 1
-                    warning('Expected to find exactly one file matching filename.')
-                end
-                file_path = file_path{1};
             end
             if nargout < 2
                 clear file_path
@@ -766,6 +1234,500 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
     % Internal methods used by this class
     methods (Access=protected)
+        function [tf, filePath, memberOf] = seriesMemberPath(this_obj, document_id, filename, options)
+            % seriesMemberPath - resolve NAME_<i> of a file series to a local path
+            %
+            % [TF, FILEPATH, MEMBEROF] = seriesMemberPath(THIS_OBJ, DOCUMENT_ID, FILENAME)
+            %
+            % Returns whether FILENAME is a member of a file series declared
+            % by DOCUMENT_ID and, if so, whether that member's bytes are on
+            % this machine, and where. TF is false and FILEPATH is '' for
+            % anything that is not a resolvable member; that is an answer, not
+            % an error, since both callers have their own way of reporting a
+            % miss.
+            %
+            % MEMBEROF names the series when the filename is a member of a
+            % declared series and the resolution failed for a reason OTHER
+            % than "no such slot" -- either the manifest is unreachable
+            % (so we cannot rule the member out) or the manifest records
+            % the member but its bytes are missing. It is '' when the
+            % manifest could be read and said no such slot, and when the
+            % filename is not a declared member name at all. That is what
+            % lets a caller tell "the series has no such member" from
+            % "that member is not on this machine yet", which are the same
+            % TF but very different problems: the first is a name to go and
+            % check, the second is a file (or a manifest) to go and fetch.
+            %
+            % THE RESOLUTION RULE. A series member has NO files-table row and
+            % no file_info entry: the manifest is what records its uid, and
+            % that is the point of the whole feature (VH-Lab/DID-matlab#173).
+            % So resolving NAME_<i> is four steps:
+            %
+            %   1. NAME_<i> parses as a member of the declared series NAME
+            %      (did.document/seriesMemberOf, the same rule that makes the
+            %      name valid in is_in_file_list);
+            %   2. NAME is an ordinary file of the document, so its manifest
+            %      is found the ordinary way, by uid;
+            %   3. slot i of that manifest gives the member's uid, in one seek
+            %      (did.file.readSeriesManifestUid);
+            %   4. the member's bytes are at <cache>/<uid> or <FileDir>/<uid>,
+            %      the same two candidates in the same order that do_open_doc
+            %      and check_exist_doc use for every other file.
+            %
+            % Optional Name-Value Arguments:
+            %   customFileHandler ([]) - used to retrieve the manifest, and
+            %       the member itself, when either is not already here.
+            %   mayRetrieve (false) - may anything missing be FETCHED?
+            %       do_open_doc says yes: it retrieves what it is asked for,
+            %       and without the manifest there is nothing to resolve
+            %       against. check_exist_doc says no: it reports what is here,
+            %       and must not go to the network to answer a question about
+            %       local state.
+            %
+            % A MEMBER'S OWN BYTES can now be retrieved, through the caller's
+            % handler (issue #188). A member still has no orig_location of its
+            % own -- that is the per-member record a series deliberately does
+            % not keep -- so the SERIES MANIFEST's location is what the handler
+            % is given, with the member's uid in the context. See
+            % fetchSeriesMemberBytes. Without a handler, or when retrieval
+            % fails, a member that is not here still resolves to false, which
+            % is what it did before.
+
+            arguments
+                this_obj
+                document_id
+                filename
+                options.customFileHandler = []
+                options.mayRetrieve (1,1) logical = false
+            end
+
+            tf = false;
+            filePath = '';
+            memberOf = '';
+
+            if isstring(filename) && isscalar(filename), filename = char(filename); end
+            if ~ischar(filename) || isempty(filename), return, end
+
+            % Cheap syntactic gate before anything is fetched: a name with no
+            % '_' cannot be a member, and every ordinary miss takes this exit.
+            if ~any(filename=='_'), return, end
+
+            document_obj = this_obj.do_get_doc(document_id, 'OnMissing', 'ignore');
+            if isempty(document_obj), return, end
+
+            [stem, index] = document_obj.seriesMemberOf(filename);
+            if isempty(stem), return, end
+            if ~isscalar(index) || index < 1 || index ~= round(index), return, end
+
+            % Step 2: the manifest. Its uid comes from the document in hand,
+            % so the common case -- the manifest already ingested -- costs no
+            % further query. On a local miss the handler is offered every
+            % location the manifest's file_info entry names, one level up from
+            % the member fetch below and against the same handler.
+            manifestPath = '';
+            manifestUids = document_obj.fileUids(stem);
+            for i = 1 : numel(manifestUids)
+                manifestPath = did.file.cachedPathForUid(manifestUids{i}, ...
+                    'additionalRoots', {this_obj.FileDir});
+                if ~isempty(manifestPath), break, end
+            end
+            if isempty(manifestPath) && options.mayRetrieve
+                manifestPath = this_obj.fetchSeriesManifestBytes(document_id, ...
+                    document_obj, stem, options.customFileHandler);
+            end
+            if isempty(manifestPath) || ~isfile(manifestPath)
+                % The filename parses as a member of a declared series and
+                % the manifest cannot be read to say otherwise, so this is
+                % not "no such file" -- it is "not on this machine, and its
+                % manifest is the reason". Naming the series lets do_open_doc
+                % raise the message callers pattern-match on, rather than
+                % sending them after a name that was never wrong.
+                memberOf = stem;
+                return
+            end
+
+            % Step 3: the member's uid.
+            try
+                memberUid = did.file.readSeriesManifestUid(manifestPath, index);
+            catch err
+                % A file that is not a readable manifest is a corrupt series,
+                % not a missing file. Say so once rather than reporting the
+                % member as merely absent, which would send the caller looking
+                % in the wrong place.
+                warning('DID:SQLITEDB:FileSeries:BadManifest', ...
+                    'Cannot read the manifest for series "%s" of document "%s": %s', ...
+                    stem, document_id, err.message);
+                return
+            end
+            if isempty(memberUid), return, end
+
+            % From here the member EXISTS -- the manifest gives it a uid --
+            % so anything that goes wrong below is a missing file rather than
+            % a missing member, and the caller is told which.
+            memberOf = stem;
+
+            % Step 4: the bytes. Absent locally, they may still be
+            % retrievable through the caller's handler (issue #188).
+            thisPath = did.file.cachedPathForUid(memberUid, ...
+                'additionalRoots', {this_obj.FileDir});
+            if isempty(thisPath) && options.mayRetrieve
+                thisPath = this_obj.fetchSeriesMemberBytes(document_id, ...
+                    filename, stem, memberUid, manifestPath, options.customFileHandler);
+            end
+            if isempty(thisPath), return, end
+
+            tf = true;
+            filePath = thisPath;
+
+        end % seriesMemberPath()
+
+        function manifestPath = fetchSeriesManifestBytes(this_obj, ...
+                document_id, document_obj, seriesName, customFileHandler)
+            % fetchSeriesManifestBytes - retrieve a series' manifest bytes
+            %
+            % MANIFESTPATH = fetchSeriesManifestBytes(THIS_OBJ, DOCUMENT_ID,
+            %     DOCUMENT_OBJ, SERIESNAME, CUSTOMFILEHANDLER)
+            %
+            % Asks CUSTOMFILEHANDLER for the bytes of the file series
+            % SERIESNAME's manifest, places them in the file cache under the
+            % manifest's uid, and returns the local path. Returns '' if the
+            % manifest cannot be fetched, for any reason at all -- so the
+            % caller (seriesMemberPath) can report an ordinary "not on this
+            % machine" miss rather than a raised exception.
+            %
+            % ONE LEVEL UP from fetchSeriesMemberBytes: the manifest is an
+            % ordinary file of the document, so its file_info entry names its
+            % location(s) directly -- no SQL, no recursion into do_open_doc.
+            % Every non-'file' location is offered to the handler with the
+            % manifest's own uid in the context and mode='open', in the same
+            % call shape do_open_doc uses for a non-'file' file_info location
+            % on the read path. Success puts the bytes at filecachepath/<uid>
+            % so the next cachedPathForUid is a hit, whether the next call is
+            % this member or another, in this session or a later one.
+            %
+            % WHY THIS LIVES HERE INSTEAD OF IN did.database. Its no-network
+            % siblings, localSeriesManifestPath and cachedPathForFile, must
+            % stay callable from any thread and any process (a viewer resolves
+            % many files in parallel without a session per worker), so
+            % teaching them to fetch would break that. The lazy-fetch path is
+            % on the sqlite implementation, where the handler already lives,
+            % and the local-first fast path in seriesMemberPath keeps the
+            % second open of a series one cachedPathForUid hit.
+
+            manifestPath = '';
+
+            if isempty(customFileHandler), return, end
+            if isempty(document_obj), return, end
+
+            % file_info for the manifest, straight from the document. Cheap
+            % because the document is already in hand, and enough on its own
+            % to tell every location's uid, address and type.
+            try
+                fileInfo = document_obj.document_properties.files.file_info;
+            catch
+                return
+            end
+            if isempty(fileInfo), return, end
+            k = find(strcmpi(seriesName, {fileInfo.name}), 1);
+            if isempty(k), return, end
+            try
+                locations = fileInfo(k).locations;
+            catch
+                return
+            end
+            if isempty(locations), return, end
+
+            % Every non-'file' location the manifest has is offered. A 'file'
+            % type is skipped: cachedPathForUid has already checked
+            % filecachepath/<uid> and FileDir/<uid>, and a manifest orig_location
+            % that points elsewhere is not a resolution rule DID promises.
+            didCache = did.common.getCache();
+            destDir  = did.common.PathConstants.temppath;
+
+            for locIdx = 1 : numel(locations)
+                thisLoc = locations(locIdx);
+                thisUid = '';
+                try, thisUid = thisLoc.uid; catch, end
+                if ~did.implementations.sqlitedb.isSafeUid(thisUid), continue, end
+                thisUid = char(thisUid);
+
+                file_type = '';
+                try, file_type = lower(strtrim(char(thisLoc.location_type))); catch, end
+                if strcmp(file_type, 'file'), continue, end
+
+                sourcePath = '';
+                try, sourcePath = thisLoc.location; catch, end
+
+                cacheFile = fullfile(didCache.directoryName, thisUid);
+
+                % Single-flight per uid, the same way do_open_doc holds it: a
+                % second reader that arrives during the fetch waits on the
+                % lock and then finds the manifest already cached.
+                lockFile = fullfile(destDir, [thisUid '-fetch-lock']);
+                [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0, 300);
+                if lockfid > 0
+                    lockCleanup = onCleanup(@() did.file.release_lock_file(lockFile, lockkey)); %#ok<NASGU>
+                else
+                    lockCleanup = []; %#ok<NASGU>
+                end
+
+                thisPath = did.file.cachedPathForUid(thisUid, ...
+                    'additionalRoots', {this_obj.FileDir});
+                if ~isempty(thisPath)
+                    if strcmp(thisPath, cacheFile)
+                        didCache.touch(thisUid);
+                    end
+                    manifestPath = thisPath;
+                    return
+                end
+
+                destPath = fullfile(destDir, [thisUid '.' did.ido.unique_id() '.part']);
+                ctx = struct( ...
+                    'documentId', document_id, ...
+                    'filename',   char(seriesName), ...
+                    'seriesName', '', ...
+                    'uid',        thisUid, ...
+                    'mode',       'open');
+                try
+                    did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                        customFileHandler, destPath, sourcePath, ctx);
+                    if ~isfile(destPath), continue, end
+
+                    try
+                        didCache.addFile(destPath, thisUid);
+                    catch addErr
+                        % Losing the race is not a failure; the winner placed
+                        % the same bytes under the same uid.
+                        if ~isfile(cacheFile)
+                            rethrow(addErr);
+                        end
+                        if isfile(destPath)
+                            try delete(destPath); catch, end
+                        end
+                    end
+                    manifestPath = cacheFile;
+                    return
+                catch
+                    % Speculative retrieval. do_open_doc's own error names the
+                    % member the caller actually asked for, so a warning here
+                    % would be a second voice for one event.
+                    if isfile(destPath)
+                        try delete(destPath); catch, end
+                    end
+                end
+            end
+        end % fetchSeriesManifestBytes()
+
+        function thisPath = fetchSeriesMemberBytes(this_obj, document_id, ...
+                filename, seriesStem, memberUid, manifestPath, customFileHandler)
+            % fetchSeriesMemberBytes - retrieve one series member's bytes
+            %
+            % THISPATH = fetchSeriesMemberBytes(THIS_OBJ, DOCUMENT_ID, FILENAME,
+            %     SERIESSTEM, MEMBERUID, MANIFESTPATH, CUSTOMFILEHANDLER)
+            %
+            % Asks CUSTOMFILEHANDLER for the bytes of the series member
+            % MEMBERUID, places them in the file cache under that uid, and
+            % returns the local path. Returns '' if the member cannot be
+            % fetched, for any reason at all.
+            %
+            % IT NEVER RAISES. seriesMemberPath is called speculatively -- by
+            % check_exist_doc for every name that has no files-table row, and
+            % by do_open_doc before it decides which error to report -- and
+            % both of those need a plain miss. A handler that cannot reach
+            % the member leaves exactly the behaviour of DID before #188:
+            % do_open_doc reports the member as absent, in its own words.
+            %
+            % WHAT THE HANDLER IS GIVEN. A member has no orig_location: that
+            % is the per-member record a series deliberately does not keep,
+            % and the reason 28,000 members cost 28,000 manifest slots rather
+            % than 28,000 files-table rows. So the SERIES MANIFEST's row
+            % supplies the location, and the member's own uid travels in the
+            % handler context. A handler that can reach the store the
+            % manifest came from can reach a sibling object in it given that
+            % uid -- for NDI, 'ndic://<datasetId>/<uid>', whose dataset id is
+            % right there in the manifest's location. DID composes no URL and
+            % learns no scheme; see VH-Lab/DID-matlab#188.
+            %
+            % THE WAY THIS WOULD BE SILENT WRONG BYTES, refused here. It
+            % matters more than an ordinary failure because the result is
+            % cached under the member's uid, where no later read can tell it
+            % from the real thing: a handler that resolves what to fetch from
+            % SOURCEPATH rather than from the context returns the MANIFEST's
+            % bytes for every member. What comes back is compared against the
+            % manifest and refused when it matches.
+            %
+            % That guard is why a manifest whose own location is an ordinary
+            % local file is offered too, which it was not at first. See the
+            % dispatch loop below: the reasoning that excluded local paths
+            % also excluded the case the mechanism exists for, a dataset
+            % synced from a remote store with its members left behind.
+            %
+            % A deliberately focused helper rather than an extraction of
+            % do_open_doc's retrieval block: that block is the most delicate
+            % code in this file and sharing it would be the better factoring,
+            % but not at the price of moving it. What is shared is its
+            % primitives, in the same order and with the same arguments --
+            % see do_open_doc for the reasoning behind every one of them,
+            % which is deliberately not restated here so the two cannot drift
+            % apart in the retelling.
+
+            thisPath = '';
+
+            if isempty(customFileHandler), return, end
+            if ~did.implementations.sqlitedb.isSafeUid(memberUid), return, end
+            % A pre-#186 two-argument handler is told nothing but the
+            % manifest's location, so it has no way to learn which member it
+            % is being asked for -- anything it produced would be the wrong
+            % bytes under this uid. It is not asked at all.
+            if ~did.implementations.sqlitedb.handlerTakesContext(customFileHandler)
+                return
+            end
+            memberUid = char(memberUid);
+
+            % The manifest's row, for its location and type. One query, and
+            % only on the path where the member is already known to be
+            % missing -- a series read straight through never reaches here.
+            query_str = ['SELECT orig_location,type ' ...
+                         '  FROM docs,files ' ...
+                         ' WHERE docs.doc_id="' this_obj.escapeSqlLiteral(document_id) '" ' ...
+                         '   AND files.doc_idx=docs.doc_idx' ...
+                         '   AND files.filename="' this_obj.escapeSqlLiteral(seriesStem) '"'];
+            try
+                data = this_obj.run_sql_query(query_str, true);  %structArray=true
+            catch
+                return
+            end
+            if isempty(data), return, end
+
+            % Every location the manifest has is offered, LOCAL PATHS
+            % INCLUDED, remote ones first.
+            %
+            % A 'file' location was refused here at first, for two reasons.
+            % One was that handing a handler a local path risks it copying
+            % the MANIFEST's bytes into the member's cache slot -- which is
+            % now caught below, byte for byte, and refused. That guard is
+            % the general defence against a handler that resolves sourcePath
+            % instead of reading ctx.uid, and it does not care whether the
+            % path it was given was local.
+            %
+            % The other was that a manifest which is local implies a
+            % database with no remote store to fetch a member from. That is
+            % false, and false for the case this whole mechanism exists to
+            % serve: ndi.cloud.downloadDataset syncs a dataset's document
+            % files to local paths while deliberately leaving the series
+            % MEMBERS on the cloud, so the manifest is an ordinary local
+            % file and every member it names is remote. Refusing it meant
+            % the handler was never asked at all and every member of a
+            % downloaded series read as absent -- the whole feature inert
+            % for its main caller. See VH-Lab/NDI-matlab#966.
+            %
+            % Remote first, so a handler that can answer from a remote
+            % location is not handed a local path it might merely copy. The
+            % guard below makes that mistake harmless, not free: it costs a
+            % fetch and a byte comparison.
+            isRemote = false(1, numel(data));
+            for idx = 1 : numel(data)
+                thisType = lower(strtrim(char(data(idx).type)));
+                isRemote(idx) = ~strcmp(thisType, 'file');
+            end
+            tryOrder = [find(isRemote) find(~isRemote)];
+
+            didCache  = did.common.getCache();
+            cacheFile = fullfile(didCache.directoryName, memberUid);
+            destDir   = did.common.PathConstants.temppath;
+
+            % Single-flight per uid, as do_open_doc does it: the same lock
+            % file naming, the same advisory 30/0/300 arguments, the same
+            % unique '.part' name, the same addFile race fallback.
+            lockFile = fullfile(destDir, [memberUid '-fetch-lock']);
+            [lockfid, lockkey] = did.file.checkout_lock_file(lockFile, 30, 0, 300);
+            if lockfid > 0
+                lockCleanup = onCleanup(@() did.file.release_lock_file(lockFile, lockkey)); %#ok<NASGU>
+            else
+                lockCleanup = []; %#ok<NASGU>
+            end
+
+            % Whoever waited on the lock usually finds the work already done.
+            thisPath = did.file.cachedPathForUid(memberUid, ...
+                'additionalRoots', {this_obj.FileDir});
+            if ~isempty(thisPath)
+                if strcmp(thisPath, cacheFile)
+                    didCache.touch(memberUid);
+                end
+                return
+            end
+
+            destPath = fullfile(destDir, [memberUid '.' did.ido.unique_id() '.part']);
+            for idx = tryOrder
+                sourcePath = data(idx).orig_location;
+                ctx = struct( ...
+                    'documentId', document_id, ...
+                    'filename',   filename, ...
+                    'seriesName', seriesStem, ...
+                    'uid',        memberUid, ...
+                    'mode',       'open');
+                try
+                    did.implementations.sqlitedb.dispatchCustomFileHandler( ...
+                        customFileHandler, destPath, sourcePath, ctx);
+                    if ~isfile(destPath), continue, end
+
+                    if did.implementations.sqlitedb.filesAreIdentical(destPath, manifestPath)
+                        % The handler resolved SOURCEPATH instead of the
+                        % context, and fetched the manifest a second time.
+                        % Caching that under the member's uid would make
+                        % every later read of this member return the
+                        % manifest, quietly and forever. A member that
+                        % genuinely holds a byte-for-byte copy of its own
+                        % manifest loses one fetch here; that is the cheaper
+                        % mistake by a wide margin.
+                        warning('DID:SQLITEDB:FileSeries:HandlerReturnedManifest', ...
+                            ['The customFileHandler returned the series manifest''s own ' ...
+                             'bytes when asked for member "%s" of document "%s". A series ' ...
+                             'member is named by the uid in the handler context, not by ' ...
+                             'the manifest location passed as sourcePath. Refusing the ' ...
+                             'result rather than caching it under the member''s uid.'], ...
+                            filename, document_id);
+                        discardPartial();
+                        continue
+                    end
+
+                    try
+                        % The member's uid names its home in the cache. A
+                        % manifest written with a non-default uidWidth gives
+                        % a uid the cache will not accept, which lands in the
+                        % catch below as an ordinary miss.
+                        didCache.addFile(destPath, memberUid);
+                    catch addErr
+                        % Losing the race is not a failure; another process
+                        % may have placed this uid while the fetch was in
+                        % flight, and its bytes are the same bytes.
+                        if ~isfile(cacheFile)
+                            rethrow(addErr);
+                        end
+                        discardPartial();
+                    end
+                    thisPath = cacheFile;
+                    return
+                catch
+                    % Deliberately silent. do_open_doc warns about a file it
+                    % was asked for and could not get, and then errors; this
+                    % is a speculative resolution whose caller reports the
+                    % miss in its own words a moment later, so a warning here
+                    % would be a second voice for one event.
+                    discardPartial();
+                end
+            end
+
+            function discardPartial()
+                % The name is unique per fetch, so an abandoned '.part' is
+                % never overwritten by the next attempt and would leak into
+                % temppath forever.
+                if isfile(destPath)
+                    try delete(destPath); catch, end
+                end
+            end
+        end % fetchSeriesMemberBytes()
+
         function [hCleanup, filename] = open_db(this_obj)
             % open_db - Open/create a DID SQLite database file
             %
@@ -807,6 +1769,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % https://stackoverflow.com/questions/1711631/improve-insert-per-second-performance-of-sqlite
             mksqlite(this_obj.dbid,'pragma synchronous=OFF'); %default=DELETE
 
+            % Wait (rather than fail immediately) when the database is
+            % momentarily locked by another connection. On a slow, networked,
+            % or removable drive a lock can take a noticeable time to release,
+            % and without a busy timeout the very next write fails outright
+            % with SQLITE_BUSY ("database is locked"). See the slow-drive
+            % add_ingested_session failure investigated in DID-matlab.
+            % https://www.sqlite.org/pragma.html#pragma_busy_timeout
+            try
+                mksqlite(this_obj.dbid,'pragma busy_timeout=30000'); %30 s; default=0
+            catch
+                % older mksqlite/sqlite without busy_timeout - non-fatal
+            end
+
             % Set the max memory cache size to 1M pages = 4GB (performance)
             % https://www.sqlite.org/pragma.html#pragma_cache_size
             mksqlite(this_obj.dbid,'pragma cache_size=1000000'); %default=-2000=2MB
@@ -822,6 +1797,10 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 try
                     tables = this_obj.run_sql_noOpen('show tables');
                     tablenames = {tables.tablename};
+                    % "deleted_docs" is deliberately absent from this list:
+                    % it arrived with issue #55 and is created on demand, so a
+                    % database written by an earlier DID - or by DID-python,
+                    % which has no such table - is still perfectly valid.
                     mandatory_tables = {'branches','docs','branch_docs','fields','doc_data'};
                     for i = 1 : numel(mandatory_tables)
                         table_name = mandatory_tables{i};
@@ -878,6 +1857,78 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 end
             end
 
+            % Retry transient BUSY / READONLY failures with exponential backoff.
+            %
+            % This targets the intermittent "attempt to write a readonly
+            % database" (SQLITE_READONLY) that appears near the end of a long
+            % write on a slow, networked, or removable drive (e.g.
+            % ndi.dataset.add_ingested_session). On such drives a write can
+            % momentarily fail because a lock has not yet been released, or a
+            % hot rollback journal is still being cleared (SQLITE_READONLY_ROLLBACK)
+            % - both of which resolve on their own given a little time. A write
+            % that failed this way applied nothing (SQLite statements are
+            % atomic), so re-running it is safe even for INSERTs.
+            %
+            % A genuinely read-only file or a mount that has flipped to
+            % read-only (e.g. ext4 errors=remount-ro after a transient I/O
+            % error) will NOT recover: the retries are exhausted and the error
+            % is reported and rethrown exactly as before. The filesystem
+            % diagnostics gathered below distinguish the two cases.
+            if this_obj.isRetryableSqlError(err)
+                backoffs = [0.1 0.2 0.5 1 2 4];  % seconds to wait between attempts
+                for attempt = 1 : numel(backoffs)
+                    reopenFirst = this_obj.isReadonlyError(err);
+                    if this_obj.debug
+                        fprintf(2, ['DID:SQLITEDB retryable SQL error ' ...
+                            '(attempt %d/%d, %g s backoff): %s\n%s\n'], ...
+                            attempt, numel(backoffs), backoffs(attempt), ...
+                            strtrim(err.message), this_obj.collectReadonlyDiagnostics());
+                    end
+                    pause(backoffs(attempt));
+
+                    % A persistent READONLY on a file and directory that are
+                    % both writable is a poisoned connection, not a busy one:
+                    % SQLITE_READONLY_DBMOVED, i.e. SQLite believes the file
+                    % moved out from under the open handle and refuses to
+                    % write. On external / network volumes with unstable inode
+                    % numbers this can even be a false positive. Waiting never
+                    % clears it - reopening does, because it re-establishes a
+                    % valid handle to the file currently at the path. The
+                    % failed statement is atomic (nothing was applied), so
+                    % reopening and retrying is safe even for an INSERT. A
+                    % plain BUSY / locked error needs only the wait above, so
+                    % it does not trigger a reopen.
+                    if reopenFirst
+                        try
+                            if this_obj.debug
+                                fprintf(2, ['DID:SQLITEDB reopening connection ' ...
+                                    'before retry (readonly - likely DBMOVED)\n']);
+                            end
+                            this_obj.close_db();
+                            this_obj.dbid = [];  % force a real reopen even if close failed
+                            this_obj.open_db();
+                        catch
+                            % reopen failed; fall through and let the retry
+                            % (and, if it also fails, the final report) run
+                        end
+                    end
+
+                    try
+                        data = mksqlite(this_obj.dbid, query_str, varargin{:});
+                        if this_obj.debug
+                            fprintf(2, ['DID:SQLITEDB query succeeded on retry ' ...
+                                'attempt %d/%d%s\n'], attempt, numel(backoffs), ...
+                                repmat(' (after reopen)', 1, reopenFirst));
+                        end
+                        return
+                    catch err
+                    end
+                    if ~this_obj.isRetryableSqlError(err)
+                        break  % a different, non-transient error - stop retrying
+                    end
+                end
+            end
+
             % Report the error to the user
             query_str = regexprep(query_str, {' +',' = '}, {' ','='});
             if ~isempty(varargin)
@@ -892,7 +1943,126 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 query_str = [query_str newline 'Values: ' values_str];
             end
             fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\nError cause: %s\n',query_str,err.message)
+            % For a BUSY/READONLY failure that survived the retries above,
+            % print filesystem state so the underlying cause (hot journal,
+            % non-writable directory, read-only file/mount) can be identified.
+            if this_obj.isRetryableSqlError(err)
+                fprintf(2,'SQLite readonly/busy diagnostics:\n%s\n', ...
+                    this_obj.collectReadonlyDiagnostics());
+            end
             rethrow(err)
+        end
+
+        function tf = isRetryableSqlError(~, err)
+            % isRetryableSqlError - Is this a transient SQLite error worth retrying?
+            %
+            % True for SQLITE_BUSY / SQLITE_LOCKED ("database is locked",
+            % "database table is locked") and the SQLITE_READONLY family
+            % ("attempt to write a readonly database"). The READONLY family is
+            % included deliberately: on a slow drive its most common cause here
+            % is SQLITE_READONLY_ROLLBACK (a hot journal awaiting rollback) or a
+            % transient lock, both of which clear on their own. A permanently
+            % read-only file or mount simply exhausts the retries and rethrows.
+            try
+                msg = lower(strtrim(err.message));
+            catch
+                tf = false;
+                return
+            end
+            tf = contains(msg,'readonly') || ...
+                 contains(msg,'read-only') || ...
+                 contains(msg,'read only') || ...
+                 contains(msg,'database is locked') || ...
+                 contains(msg,'database is busy') || ...
+                 contains(msg,'database table is locked');
+        end
+
+        function tf = isReadonlyError(~, err)
+            % isReadonlyError - Is this the SQLITE_READONLY family specifically?
+            %
+            % Distinguished from a plain BUSY / locked error because a
+            % READONLY on a writable file/directory means the open connection
+            % is poisoned (typically SQLITE_READONLY_DBMOVED) and must be
+            % reopened - not merely waited out. See run_sql_noOpen.
+            try
+                msg = lower(strtrim(err.message));
+            catch
+                tf = false;
+                return
+            end
+            tf = contains(msg,'readonly') || ...
+                 contains(msg,'read-only') || ...
+                 contains(msg,'read only');
+        end
+
+        function diagStr = collectReadonlyDiagnostics(this_obj)
+            % collectReadonlyDiagnostics - Gather filesystem state behind a
+            % generic "attempt to write a readonly database" error.
+            %
+            % SQLITE_READONLY has several extended causes that need opposite
+            % fixes. This probe distinguishes them without depending on
+            % mksqlite exposing the extended result code:
+            %   - a hot rollback journal / WAL still present next to the DB
+            %     (points to SQLITE_READONLY_ROLLBACK / an interrupted write)
+            %   - the DB directory no longer being writable (points to a drive
+            %     that remounted read-only, or SQLITE_READONLY_DIRECTORY)
+            %   - the DB file itself being read-only (permissions / medium)
+            %
+            % Runs only on the error path, so it adds no normal-operation cost.
+            lines = {};
+            try
+                filename = this_obj.connection;
+            catch
+                filename = '';
+            end
+            lines{end+1} = sprintf('  db file: %s', filename);
+            try
+                lines{end+1} = sprintf('  time   : %s', datestr(now,'yyyy-mm-dd HH:MM:SS.FFF')); %#ok<TNOW1,DATST>
+            catch
+            end
+
+            % Hot journal / WAL siblings left next to the database
+            suffixes = {'-journal','-wal','-shm'};
+            for k = 1 : numel(suffixes)
+                p = [filename suffixes{k}];
+                try
+                    if isfile(p)
+                        d = dir(p);
+                        lines{end+1} = sprintf('  sibling %s present (%d bytes)', suffixes{k}, d.bytes); %#ok<AGROW>
+                    end
+                catch
+                end
+            end
+
+            % Is the DB file itself writable?
+            try
+                [ok,fa] = fileattrib(filename);
+                if ok && isstruct(fa)
+                    lines{end+1} = sprintf('  db file UserWrite=%d', fa.UserWrite); %#ok<AGROW>
+                end
+            catch
+            end
+
+            % Is the DB directory still writable? Probe by creating a temp file.
+            % This is the key discriminator for a drive that remounted read-only.
+            try
+                db_dir = fileparts(filename);
+                if isempty(db_dir), db_dir = pwd; end
+                probe = fullfile(db_dir, ...
+                    sprintf('.did_write_probe_%d', round(rem(now,1)*1e9))); %#ok<TNOW1>
+                fid = fopen(probe,'w');
+                if fid >= 0
+                    fclose(fid);
+                    delete(probe);
+                    lines{end+1} = '  db dir writable: yes'; %#ok<AGROW>
+                else
+                    lines{end+1} = '  db dir writable: NO (fopen failed)'; %#ok<AGROW>
+                end
+            catch probeErr
+                lines{end+1} = sprintf('  db dir writable: NO (%s)', probeErr.message); %#ok<AGROW>
+            end
+
+            diagStr = strjoin(lines, newline);
         end
 
         function close_db(this_obj)
@@ -971,6 +2141,11 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                     'FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx)', ...
                     'PRIMARY KEY(doc_idx,filename,uid)'});
 
+                %% Create "deleted_docs" table
+                % Ids of documents that were removed from their last branch.
+                % These are never re-used - see do_add_doc (issue #55).
+                this_obj.create_deleted_docs_table();
+
                 %% Add indexes (performance)
                 this_obj.run_sql_noOpen('CREATE INDEX "docs_doc_id"       ON "docs"     ("doc_id")');
                 this_obj.run_sql_noOpen('CREATE INDEX "doc_data_value"    ON "doc_data" ("value")');
@@ -982,6 +2157,95 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 try delete(filename); catch, end
                 error('DID:SQLITEDB:CREATE','Error creating %s as a new DID SQLite database: %s',filename,err.message);
             end
+        end
+
+        function reclaim_unreferenced_doc(this_obj, doc_idx, doc_id)
+            % reclaim_unreferenced_doc - Erase every trace of an unreferenced document
+            %
+            % reclaim_unreferenced_doc(this_obj, doc_idx, doc_id)
+            %
+            % Called by do_remove_doc once the last branch_docs row for DOC_IDX
+            % is gone. Deletes the document's cached files from disk, then its
+            % doc_data, files and docs records, and finally retires DOC_ID so
+            % that it can never be added again (issue #55).
+            %
+            % The order of the deletes matters. Both doc_data and files carry
+            % FOREIGN KEY(doc_idx) REFERENCES docs(doc_idx), so the docs row has
+            % to go last. SQLite only enforces that when foreign keys are turned
+            % on for the connection, which this class does not currently do -
+            % but DID-python does, and it runs these same three deletes in this
+            % same order (see _do_remove_doc there). Getting the order right here
+            % keeps enabling the pragma later a one-line change rather than a
+            % bug hunt.
+
+            % Delete this document's cached files from disk. A files row whose
+            % cached_location is empty was never ingested (do_add_doc still
+            % records the row), so there is no file to delete for it.
+            cache_data = this_obj.run_sql_noOpen('SELECT cached_location FROM files WHERE doc_idx=?', doc_idx);
+            if ~isempty(cache_data)
+                oldWarn = warning('off','MATLAB:DELETE:FileNotFound');
+                hRestoreWarn = onCleanup(@()warning(oldWarn)); %#ok<NASGU>
+                for idx = 1 : numel(cache_data)
+                    this_file = cache_data(idx).cached_location;
+                    if isempty(this_file) || ~ischar(this_file), continue, end
+                    if this_obj.debug
+                        fprintf('Deleting cached file %s\n', this_file);
+                    end
+                    % A file that is already gone is not a failure: the point is
+                    % that it must not be there afterwards.
+                    try delete(this_file); catch, end
+                end
+            end
+
+            % Remove the document's records - dependents before the docs row
+            this_obj.run_sql_noOpen('DELETE FROM doc_data WHERE doc_idx=?', doc_idx);
+            this_obj.run_sql_noOpen('DELETE FROM files    WHERE doc_idx=?', doc_idx);
+            this_obj.run_sql_noOpen('DELETE FROM docs     WHERE doc_idx=?', doc_idx);
+
+            % Retire the id
+            this_obj.record_deleted_doc_id(doc_id);
+        end % reclaim_unreferenced_doc()
+
+        function create_deleted_docs_table(this_obj)
+            % create_deleted_docs_table - Create the "deleted_docs" table (issue #55)
+            this_obj.create_table('deleted_docs', ...
+                {'doc_id    TEXT NOT NULL UNIQUE', ...
+                'timestamp NUMERIC', ...
+                'PRIMARY KEY(doc_id)'});
+        end
+
+        function tf = has_deleted_docs_table(this_obj)
+            % has_deleted_docs_table - Does this database carry a "deleted_docs" table?
+            %
+            % The table arrived with issue #55, and DID-python does not create it
+            % at all, so a database written by an earlier DID or by Python will
+            % not have one. That is not an error - it simply means no document
+            % has been permanently removed from it yet.
+            data = this_obj.run_sql_noOpen(...
+                'SELECT name FROM sqlite_master WHERE type=''table'' AND name=''deleted_docs''');
+            tf = ~isempty(data);
+        end
+
+        function tf = is_deleted_doc_id(this_obj, doc_id)
+            % is_deleted_doc_id - Was a document with this id permanently removed?
+            tf = false;
+            if ~this_obj.has_deleted_docs_table(), return, end
+            data = this_obj.run_sql_noOpen('SELECT doc_id FROM deleted_docs WHERE doc_id=?', doc_id);
+            tf = ~isempty(data);
+        end
+
+        function record_deleted_doc_id(this_obj, doc_id)
+            % record_deleted_doc_id - Retire a document id, so it is never re-used
+            %
+            % The table is created on demand rather than when the database is
+            % opened, so that merely reading a database written by an earlier
+            % DID or by DID-python never writes to it.
+            if ~this_obj.has_deleted_docs_table()
+                this_obj.create_deleted_docs_table();
+            end
+            % OR IGNORE: recording an id that is already retired is a no-op, not
+            % a UNIQUE-constraint failure.
+            this_obj.run_sql_noOpen('INSERT OR IGNORE INTO deleted_docs (doc_id,timestamp) VALUES (?,?)', doc_id, now);
         end
 
         function create_table(this_obj, table_name, columns, extra)
@@ -1048,6 +2312,269 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             % Insert a new row record to the doc_data table
             this_obj.insert_into_table('doc_data', 'doc_idx,field_idx,value', doc_idx, field_idx, value);
+        end
+
+        function tf = isSafeLocalLocation(this_obj, location, file_type)
+            % isSafeLocalLocation - Would this local location resolve inside db_dir?
+            %
+            % A location from an ingested document is attacker-reachable when
+            % the document itself was pulled from a cloud store. A `..`-crafted
+            % or absolute-outside path would otherwise reach copyfile at ingest
+            % time or fopen at open time. Remote locations (URI scheme, or
+            % location_type in {'url','ndicloud'}) are not filesystem paths and
+            % are left alone here. See DID-matlab issue #167.
+            if nargin < 3, file_type = ''; end
+            if isempty(location), tf = false; return, end
+            if isstring(location) && isscalar(location), location = char(location); end
+            if ~ischar(location), tf = false; return, end
+            if did.implementations.sqlitedb.isRemoteLocation(location, file_type)
+                tf = true;
+                return
+            end
+            if did.implementations.sqlitedb.containsTraversal(location)
+                tf = false;
+                return
+            end
+            db_dir = fileparts(this_obj.connection);
+            if isempty(db_dir), db_dir = pwd; end
+            if did.implementations.sqlitedb.isAbsolutePath(location)
+                tf = did.implementations.sqlitedb.isWithin(db_dir, location);
+            else
+                % No '..' segment: a relative path cannot escape db_dir once
+                % rebased against it, so the containment check would pass
+                % regardless.
+                tf = true;
+            end
+        end
+
+        function validateIngestFileEntry(this_obj, filename, thisLocation) %#ok<INUSD>
+            % validateIngestFileEntry - Refuse a corrupt file-entry at ingest.
+            %
+            % Called before any writes so a document whose uid would let
+            % ingest escape FileDir stays out of the DB rather than being
+            % partly written. Refuse, do not substitute. See DID-matlab
+            % issue #167.
+            %
+            % The destination <FileDir>/<uid> is fully constrained by the
+            % uid check below; the source location is caller-supplied
+            % ("add this file to my DB") and legitimately lives outside
+            % db_dir in normal ingest workflows, so no source containment
+            % check runs here. The read-side filter (isSafeLocalLocation
+            % applied when locations are pulled back out of the DB) still
+            % defends open_doc against a crafted stored location. See
+            % DID-matlab issue #169.
+            uid = '';
+            try, uid = thisLocation.uid; catch, end
+            if ~did.implementations.sqlitedb.isSafeUid(uid)
+                if isstring(uid) && isscalar(uid), uid = char(uid); end
+                if ~ischar(uid), uid = ''; end
+                error('DID:SQLITEDB:PathTraversal', ...
+                    ['Refusing to ingest "%s": uid "%s" is not a plain filename ', ...
+                     '(no path separators, no ''.'' or ''..'', no empty basename). ', ...
+                     'See DID-matlab issue #167.'], filename, uid);
+            end
+        end
+    end
+
+    methods (Static, Access=public)
+        function dispatchCustomFileHandler(handler, destPath, sourcePath, context)
+            % dispatchCustomFileHandler - Arity-aware call of a customFileHandler
+            %
+            % Two arities are supported so a widened contract can coexist
+            % with every handler written against the two-argument one:
+            %
+            %   HANDLER(destPath, sourcePath)          -- today's contract
+            %   HANDLER(destPath, sourcePath, context) -- opt-in extension
+            %
+            % A handler declared with exactly two positional inputs is called
+            % with two, so pre-#186 handlers keep working unchanged. A
+            % handler that declares three or more positional inputs, or that
+            % takes varargin (`nargin(handler)` is negative), is called with
+            % three and gets `context` -- a scalar struct the caller fills in
+            % from the site:
+            %
+            %   context.documentId  -- char, the document's id
+            %   context.filename    -- char, the file name being retrieved
+            %                          (for a series member, 'NAME_<i>')
+            %   context.seriesName  -- char, '' unless this file is a
+            %                          series member: being ingested, or
+            %                          being fetched at open time (#188)
+            %   context.uid         -- char, the file's uid
+            %   context.mode        -- 'add' | 'open'
+            %
+            % The context lets a handler batch across a document -- e.g. NDI
+            % calling the cloud batch presign endpoint scoped to one document
+            % (or fileSeries) instead of one API round trip per uid. See
+            % DID-matlab issue #186 and NDI-matlab issue #952.
+            %
+            % FOR A SERIES MEMBER THE CONTEXT IS NOT OPTIONAL DETAIL. The
+            % member has no location of its own, so SOURCEPATH is the series
+            % MANIFEST's; the file actually being asked for is the one named
+            % by context.uid. A handler that resolves SOURCEPATH and ignores
+            % the uid fetches the manifest again. See
+            % did.implementations.sqlitedb/fetchSeriesMemberBytes, which does
+            % not call a handler that cannot receive the context at all, and
+            % refuses a result that turns out to be the manifest.
+            if did.implementations.sqlitedb.handlerTakesContext(handler)
+                handler(destPath, sourcePath, context);
+            else
+                handler(destPath, sourcePath);
+            end
+        end
+
+        function tf = handlerTakesContext(handler)
+            % handlerTakesContext - will this handler be given the context?
+            %
+            % TF = handlerTakesContext(HANDLER)
+            %
+            % True when HANDLER declares three or more positional inputs, or
+            % takes varargin (nargin(HANDLER) is negative). A handler
+            % declared with exactly two gets the pre-#186 two-argument call
+            % and never sees a context.
+            %
+            % The rule dispatchCustomFileHandler dispatches by, named once so
+            % that a caller with nothing useful to say to a two-argument
+            % handler -- fetchSeriesMemberBytes, whose whole message to the
+            % handler is in the context -- can ask rather than re-derive it.
+            try
+                n = nargin(handler);
+            catch
+                % Something unusual (a class without a nargin implementation,
+                % say). Do not surprise the handler; the safe default is the
+                % old contract.
+                n = 2;
+            end
+            tf = (n ~= 2);
+        end
+
+        function tf = filesAreIdentical(pathA, pathB)
+            % filesAreIdentical - do two files hold exactly the same bytes?
+            %
+            % TF = filesAreIdentical(PATHA, PATHB)
+            %
+            % False if either path is missing or unreadable: this answers a
+            % question about two files that are both here, and every caller
+            % treats "cannot tell" as "not the same".
+            %
+            % Sizes are compared first, which answers it for free in almost
+            % every call the case this exists for makes -- a series member
+            % against its own manifest -- and leaves the byte comparison to
+            % the few that happen to be the same length.
+            tf = false;
+            if isempty(pathA) || isempty(pathB), return, end
+            if ~isfile(pathA) || ~isfile(pathB), return, end
+
+            dA = dir(pathA);
+            dB = dir(pathB);
+            if isempty(dA) || isempty(dB), return, end
+            if dA(1).bytes ~= dB(1).bytes, return, end
+
+            fidA = fopen(pathA, 'r');
+            if fidA < 0, return, end
+            closeA = onCleanup(@() fclose(fidA)); %#ok<NASGU>
+            fidB = fopen(pathB, 'r');
+            if fidB < 0, return, end
+            closeB = onCleanup(@() fclose(fidB)); %#ok<NASGU>
+
+            chunkBytes = 1048576;
+            while true
+                a = fread(fidA, chunkBytes, '*uint8');
+                b = fread(fidB, chunkBytes, '*uint8');
+                if numel(a) ~= numel(b), return, end
+                if isempty(a), break, end
+                if ~isequal(a, b), return, end
+            end
+            tf = true;
+        end
+
+        function tf = isSafeUid(uid)
+            % isSafeUid - Is uid safe to use as a filename under FileDir?
+            %
+            % A uid stands in for a file basename under
+            % <FileDir>/<uid>, so any value that would leave that
+            % directory once joined -- a path separator, a dot segment,
+            % a NUL, an empty or whitespace-padded string -- is refused.
+            % See DID-matlab issue #167.
+            %
+            % The implementation moved to did.file.isSafeUid so that code
+            % outside this implementation can apply the same guard without
+            % depending on a database implementation. This remains the
+            % public entry point that existing callers use.
+            tf = did.file.isSafeUid(uid);
+        end
+
+        function tf = containsTraversal(p)
+            % containsTraversal - Does p contain a '..' segment?
+            %
+            % A textual check across both separators, so it catches a
+            % traversal segment regardless of the base directory the
+            % path would later resolve against. See DID-matlab issue #167.
+            tf = false;
+            if isempty(p), return, end
+            if isstring(p) && isscalar(p), p = char(p); end
+            if ~ischar(p), return, end
+            parts = regexp(char(p), '[\\/]', 'split');
+            tf = any(strcmp(parts, '..'));
+        end
+
+        function tf = isAbsolutePath(p)
+            % isAbsolutePath - Is p an absolute filesystem path?
+            tf = false;
+            if isempty(p), return, end
+            if isstring(p) && isscalar(p), p = char(p); end
+            if ~ischar(p) || isempty(p), return, end
+            p = char(p);
+            if p(1) == '/' || p(1) == '\'
+                tf = true;
+                return
+            end
+            if ispc && numel(p) >= 2 && isletter(p(1)) && p(2) == ':'
+                tf = true;
+                return
+            end
+        end
+
+        function tf = isRemoteLocation(location, file_type)
+            % isRemoteLocation - Is location a URI-scheme / URL / ndicloud?
+            tf = false;
+            if nargin >= 2 && ~isempty(file_type)
+                if isstring(file_type) && isscalar(file_type), file_type = char(file_type); end
+                if ischar(file_type)
+                    ft = lower(strtrim(char(file_type)));
+                    if any(strcmp(ft, {'url','ndicloud'}))
+                        tf = true;
+                        return
+                    end
+                end
+            end
+            if isempty(location), return, end
+            if isstring(location) && isscalar(location), location = char(location); end
+            if ~ischar(location), return, end
+            tf = contains(char(location), '://');
+        end
+
+        function tf = isWithin(root, p)
+            % isWithin - Does p resolve inside root (or equal it)?
+            %
+            % Both are compared with symlinks resolved (java.io.File
+            % .getCanonicalPath) so a symlink under root that points
+            % outside cannot smuggle a read past the guard.
+            tf = false;
+            try
+                rootR = char(java.io.File(char(root)).getCanonicalPath());
+                pR    = char(java.io.File(char(p)).getCanonicalPath());
+            catch
+                return
+            end
+            if strcmp(rootR, pR)
+                tf = true;
+                return
+            end
+            sep = filesep;
+            if ~endsWith(rootR, sep)
+                rootR = [rootR sep];
+            end
+            tf = strncmp(pR, rootR, length(rootR));
         end
     end
 
