@@ -532,7 +532,7 @@
 %   gate diffs this block against the generator and a hand edit fails it. To
 %   change an entry, change that migrator's H1 and re-run with --write.
 %
-%   85 migrator(s).
+%   93 migrator(s).
 %
 %     binaryseries_parameters
 %         Brainstorm-J migrator: did_v1 binaryseries_parameters -- a GUARDED
@@ -540,6 +540,17 @@
 %     binnedspikeratevm
 %         Brainstorm-J migrator: did_v1 binnedspikeratevm -- DEFERRED to the NDI
 %         second pass; the document is passed through UNCHANGED.
+%     cell_type_labels
+%         Brainstorm-J migrator: did_v1 cellTypeLabels -> V_eta cell_type_labels, an
+%         id-preserving 1:1 passthrough. ⊂ base in V_eta; block fields (label,
+%         label_name, taxonomy_level, n_cells, n_categories, n_unlabeled,
+%         assignment_method, is_unsupervised) carry through verbatim --
+%         `is_unsupervised` is LOAD-BEARING per the class's own .md doc (a k-means
+%         clustering with no ground-truth reference is modelled the same as a
+%         supervised classifier's output; only this flag distinguishes them) and any
+%         coercion here would silently rewrite the distinction. depends_on
+%         (cells_document_id required; reference_document_id optional) is carried
+%         as-is. base.id is preserved.
 %     contrast_sensitivity_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.contrast_sensitivity calculator
 %         OUTPUT document -> the subject_calculation LEAF
@@ -654,12 +665,53 @@
 %         Brainstorm-J migrator: element_epoch -> acquisition_epoch.
 %     epochfiles_ingested
 %         Brainstorm-J migrator: DELIBERATE GUARDED PASSTHROUGH.
+%     file_reference
+%         Brainstorm-J migrator: did_v1 fileReference -> V_eta file_reference, an
+%         id-preserving 1:1 passthrough. ⊂ base in V_eta; NOT folded to `generic_file`
+%         -- the two classes coexist BY DESIGN per the file_reference .md doc:
+%         `generic_file` HOLDS bytes, while `file_reference` RECORDS the identity of
+%         an external file that lives somewhere else (original_path, format_ontology,
+%         date_created, date_updated, file_size, checksum, checksum_algorithm). This
+%         migrator is DELIBERATELY NOT routed through +did2.+convert.foldGenericFiles;
+%         universalRenames has already snake_cased the block field names that were
+%         camelCase in NDI (originalPath -> original_path, formatOntology ->
+%         format_ontology, dateCreated -> date_created, dateUpdated -> date_updated,
+%         fileSize -> file_size, checksumAlgorithm -> checksum_algorithm), which is
+%         exactly the V_eta schema's spelling. The optional `document_id` edge
+%         (pointing at the document this file is a reference to) carries through
+%         as-is. base.id is preserved.
 %     filenavigator
 %         Brainstorm-J migrator: did_v1 filenavigator -> epoch_file_pattern (+ the
 %         `software` entity for the implementation class). 1 -> 1 or 1 -> 2.
 %     fitcurve
 %         Brainstorm-J migrator: did_v1 fitcurve -> a fit-residual score_observation
 %         (+ the shared session anchor).
+%     gene_expression
+%         Brainstorm-J migrator: did_v1 geneExpression -> V_eta gene_expression, an
+%         id-preserving 1:1 passthrough. ⊂ base in V_eta; a SHAPE MIXIN, not itself an
+%         observation -- assay / count_type / count_units describe how counts were
+%         produced, not what they measure, and the observation-ness lives on the
+%         concrete pyramid class that binds `variable = NCIT:C16608 "gene expression"`
+%         (see spatial_gene_expression_pyramid.m). Block fields carry through
+%         verbatim; base.id is preserved.
+%     gene_list
+%         Brainstorm-J migrator: did_v1 geneList -> V_eta gene_list, an id-preserving
+%         1:1 passthrough. ⊂ base in V_eta; a reference table -- `genes.tsv` names the
+%         columns of a pyramid's count space, and the block fields (label, n_genes,
+%         genome_assembly, gene_id_namespace, gene_symbol_namespace,
+%         annotation_source, gene_name_completeness, n_duplicate_gene_names) are
+%         metadata about that table. All carry through verbatim; base.id is preserved
+%         so a pyramid's `gene_list_id` edge (mustBeNonEmpty: true) still resolves.
+%     gene_list_mapping
+%         Brainstorm-J migrator: did_v1 geneListMapping -> V_eta gene_list_mapping, an
+%         id-preserving 1:1 passthrough. ⊂ base in V_eta; the two gene_list_id_a /
+%         gene_list_id_b edges are both required and carry through, and the block
+%         fields (label, mapping_type, method, symmetric, n_pairs, n_genes_mapped_a,
+%         n_genes_mapped_b, has_score) carry through verbatim. `mapping_type` and
+%         `symmetric` are LOAD-BEARING per the class's own .md doc: alias-vs-ortholog
+%         is not collapsible to a bare `directed_relation` (the two answer different
+%         questions -- symbol drift vs. species mapping), and this migrator makes no
+%         attempt to normalise or infer either. base.id is preserved.
 %     hartley_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.hartley reverse-correlation OUTPUT
 %         document -> the subject_calculation LEAF `receptive_field_calculation` + the
@@ -776,6 +828,40 @@
 %         document -> the CONCRETE V_eta leaf `spatial_frequency_tuning_calc` (⊂
 %         [tuning_curve_calculation, spatial_frequency_tuning]) + a session anchor +
 %         minted `software` and `runtime_environment` entities.
+%     spatial_gene_expression_cells
+%         Brainstorm-J migrator: did_v1 spatialGeneExpressionCells -> V_eta
+%         spatial_gene_expression_cells, an id-preserving 1:1 passthrough. The class
+%         is ⊂ base in V_eta; the block fields (segmentation_method, contour geometry,
+%         data types, ...) and the depends_on edges
+%         (spatial_gene_expression_pyramid_id, subject_id, source_file_id) carry
+%         through as-is -- universalRenames has already snake_cased both the block key
+%         and its immediate fields, and ensureClassBlocks rebuilds
+%         document_class.superclasses from the V_eta chain. base.id is preserved so a
+%         dependent labeling row's cells_document_id edge (mustBeNonEmpty: true) still
+%         resolves.
+%     spatial_gene_expression_pyramid
+%         Brainstorm-J migrator: did_v1 spatialGeneExpressionPyramid -> V_eta
+%         spatial_gene_expression_pyramid (⊂ [base, gene_expression,
+%         subject_observation]) + the shared session anchor. Carries the observation
+%         direction: `variable` bound to NCIT:C16608 "gene expression" per the
+%         DID-schema binding registry; `subject_id` carried from v1 depends_on onto
+%         the inherited subject_statement slot; `time_reference_1` pointing at a
+%         session_relative_reference `during` anchor (the smallest legitimate anchor
+%         for a static spatial-transcriptomics section -- see the PROVISIONAL SHAPES
+%         block below); the pyramid's own block fields (chip_serial, pipeline_version,
+%         bin geometry, byte_order, ...) and the gene_expression mixin fields (assay,
+%         count_type, count_units) carry through verbatim. base.id is preserved so a
+%         Cells / Tiles / file_reference row's `spatial_gene_expression_pyramid_id`
+%         edge still resolves.
+%     spatial_gene_expression_tiles
+%         Brainstorm-J migrator: did_v1 spatialGeneExpressionTiles -> V_eta
+%         spatial_gene_expression_tiles, an id-preserving 1:1 passthrough. The class
+%         is ⊂ base in V_eta; block fields (bin_size, dimension_*, data_type_*, tile
+%         geometry) and the depends_on edges (spatial_gene_expression_pyramid_id
+%         required; subject_id optional -- the pyramid dep carries it; source_file_id
+%         optional) carry through as-is. universalRenames has snake_cased the block
+%         key and its immediate fields; ensureClassBlocks rebuilds the superclass
+%         chain. base.id is preserved.
 %     speed_tuning
 %         Brainstorm-J migrator: did_v1 speed_tuning (raw NDIcalc-vis result class) ->
 %         the CONCRETE V_eta leaf `speedtuning_calc` (⊂ [tuning_curve_calculation,
