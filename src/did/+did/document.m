@@ -33,7 +33,7 @@ classdef document
             else  % create blank from definitions
                 document_properties = did.document.readblankdefinition(document_type);
                 document_properties.base.id = did.ido.unique_id();
-                document_properties.base.datestamp = char(datetime('now','TimeZone','UTCLeapSeconds'));
+                document_properties.base.datestamp = did.fun.timestamp();
 
                 if numel(options)==1 % see if user put it all as one cell array
                     if iscell(options{1})

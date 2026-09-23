@@ -1769,6 +1769,19 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
             % https://stackoverflow.com/questions/1711631/improve-insert-per-second-performance-of-sqlite
             mksqlite(this_obj.dbid,'pragma synchronous=OFF'); %default=DELETE
 
+            % Wait (rather than fail immediately) when the database is
+            % momentarily locked by another connection. On a slow, networked,
+            % or removable drive a lock can take a noticeable time to release,
+            % and without a busy timeout the very next write fails outright
+            % with SQLITE_BUSY ("database is locked"). See the slow-drive
+            % add_ingested_session failure investigated in DID-matlab.
+            % https://www.sqlite.org/pragma.html#pragma_busy_timeout
+            try
+                mksqlite(this_obj.dbid,'pragma busy_timeout=30000'); %30 s; default=0
+            catch
+                % older mksqlite/sqlite without busy_timeout - non-fatal
+            end
+
             % Set the max memory cache size to 1M pages = 4GB (performance)
             % https://www.sqlite.org/pragma.html#pragma_cache_size
             mksqlite(this_obj.dbid,'pragma cache_size=1000000'); %default=-2000=2MB
@@ -1844,6 +1857,78 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 end
             end
 
+            % Retry transient BUSY / READONLY failures with exponential backoff.
+            %
+            % This targets the intermittent "attempt to write a readonly
+            % database" (SQLITE_READONLY) that appears near the end of a long
+            % write on a slow, networked, or removable drive (e.g.
+            % ndi.dataset.add_ingested_session). On such drives a write can
+            % momentarily fail because a lock has not yet been released, or a
+            % hot rollback journal is still being cleared (SQLITE_READONLY_ROLLBACK)
+            % - both of which resolve on their own given a little time. A write
+            % that failed this way applied nothing (SQLite statements are
+            % atomic), so re-running it is safe even for INSERTs.
+            %
+            % A genuinely read-only file or a mount that has flipped to
+            % read-only (e.g. ext4 errors=remount-ro after a transient I/O
+            % error) will NOT recover: the retries are exhausted and the error
+            % is reported and rethrown exactly as before. The filesystem
+            % diagnostics gathered below distinguish the two cases.
+            if this_obj.isRetryableSqlError(err)
+                backoffs = [0.1 0.2 0.5 1 2 4];  % seconds to wait between attempts
+                for attempt = 1 : numel(backoffs)
+                    reopenFirst = this_obj.isReadonlyError(err);
+                    if this_obj.debug
+                        fprintf(2, ['DID:SQLITEDB retryable SQL error ' ...
+                            '(attempt %d/%d, %g s backoff): %s\n%s\n'], ...
+                            attempt, numel(backoffs), backoffs(attempt), ...
+                            strtrim(err.message), this_obj.collectReadonlyDiagnostics());
+                    end
+                    pause(backoffs(attempt));
+
+                    % A persistent READONLY on a file and directory that are
+                    % both writable is a poisoned connection, not a busy one:
+                    % SQLITE_READONLY_DBMOVED, i.e. SQLite believes the file
+                    % moved out from under the open handle and refuses to
+                    % write. On external / network volumes with unstable inode
+                    % numbers this can even be a false positive. Waiting never
+                    % clears it - reopening does, because it re-establishes a
+                    % valid handle to the file currently at the path. The
+                    % failed statement is atomic (nothing was applied), so
+                    % reopening and retrying is safe even for an INSERT. A
+                    % plain BUSY / locked error needs only the wait above, so
+                    % it does not trigger a reopen.
+                    if reopenFirst
+                        try
+                            if this_obj.debug
+                                fprintf(2, ['DID:SQLITEDB reopening connection ' ...
+                                    'before retry (readonly - likely DBMOVED)\n']);
+                            end
+                            this_obj.close_db();
+                            this_obj.dbid = [];  % force a real reopen even if close failed
+                            this_obj.open_db();
+                        catch
+                            % reopen failed; fall through and let the retry
+                            % (and, if it also fails, the final report) run
+                        end
+                    end
+
+                    try
+                        data = mksqlite(this_obj.dbid, query_str, varargin{:});
+                        if this_obj.debug
+                            fprintf(2, ['DID:SQLITEDB query succeeded on retry ' ...
+                                'attempt %d/%d%s\n'], attempt, numel(backoffs), ...
+                                repmat(' (after reopen)', 1, reopenFirst));
+                        end
+                        return
+                    catch err
+                    end
+                    if ~this_obj.isRetryableSqlError(err)
+                        break  % a different, non-transient error - stop retrying
+                    end
+                end
+            end
+
             % Report the error to the user
             query_str = regexprep(query_str, {' +',' = '}, {' ','='});
             if ~isempty(varargin)
@@ -1858,7 +1943,126 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
                 query_str = [query_str newline 'Values: ' values_str];
             end
             fprintf(2,'Error running the following SQL query in SQLite DB:\n%s\nError cause: %s\n',query_str,err.message)
+            % For a BUSY/READONLY failure that survived the retries above,
+            % print filesystem state so the underlying cause (hot journal,
+            % non-writable directory, read-only file/mount) can be identified.
+            if this_obj.isRetryableSqlError(err)
+                fprintf(2,'SQLite readonly/busy diagnostics:\n%s\n', ...
+                    this_obj.collectReadonlyDiagnostics());
+            end
             rethrow(err)
+        end
+
+        function tf = isRetryableSqlError(~, err)
+            % isRetryableSqlError - Is this a transient SQLite error worth retrying?
+            %
+            % True for SQLITE_BUSY / SQLITE_LOCKED ("database is locked",
+            % "database table is locked") and the SQLITE_READONLY family
+            % ("attempt to write a readonly database"). The READONLY family is
+            % included deliberately: on a slow drive its most common cause here
+            % is SQLITE_READONLY_ROLLBACK (a hot journal awaiting rollback) or a
+            % transient lock, both of which clear on their own. A permanently
+            % read-only file or mount simply exhausts the retries and rethrows.
+            try
+                msg = lower(strtrim(err.message));
+            catch
+                tf = false;
+                return
+            end
+            tf = contains(msg,'readonly') || ...
+                 contains(msg,'read-only') || ...
+                 contains(msg,'read only') || ...
+                 contains(msg,'database is locked') || ...
+                 contains(msg,'database is busy') || ...
+                 contains(msg,'database table is locked');
+        end
+
+        function tf = isReadonlyError(~, err)
+            % isReadonlyError - Is this the SQLITE_READONLY family specifically?
+            %
+            % Distinguished from a plain BUSY / locked error because a
+            % READONLY on a writable file/directory means the open connection
+            % is poisoned (typically SQLITE_READONLY_DBMOVED) and must be
+            % reopened - not merely waited out. See run_sql_noOpen.
+            try
+                msg = lower(strtrim(err.message));
+            catch
+                tf = false;
+                return
+            end
+            tf = contains(msg,'readonly') || ...
+                 contains(msg,'read-only') || ...
+                 contains(msg,'read only');
+        end
+
+        function diagStr = collectReadonlyDiagnostics(this_obj)
+            % collectReadonlyDiagnostics - Gather filesystem state behind a
+            % generic "attempt to write a readonly database" error.
+            %
+            % SQLITE_READONLY has several extended causes that need opposite
+            % fixes. This probe distinguishes them without depending on
+            % mksqlite exposing the extended result code:
+            %   - a hot rollback journal / WAL still present next to the DB
+            %     (points to SQLITE_READONLY_ROLLBACK / an interrupted write)
+            %   - the DB directory no longer being writable (points to a drive
+            %     that remounted read-only, or SQLITE_READONLY_DIRECTORY)
+            %   - the DB file itself being read-only (permissions / medium)
+            %
+            % Runs only on the error path, so it adds no normal-operation cost.
+            lines = {};
+            try
+                filename = this_obj.connection;
+            catch
+                filename = '';
+            end
+            lines{end+1} = sprintf('  db file: %s', filename);
+            try
+                lines{end+1} = sprintf('  time   : %s', datestr(now,'yyyy-mm-dd HH:MM:SS.FFF')); %#ok<TNOW1,DATST>
+            catch
+            end
+
+            % Hot journal / WAL siblings left next to the database
+            suffixes = {'-journal','-wal','-shm'};
+            for k = 1 : numel(suffixes)
+                p = [filename suffixes{k}];
+                try
+                    if isfile(p)
+                        d = dir(p);
+                        lines{end+1} = sprintf('  sibling %s present (%d bytes)', suffixes{k}, d.bytes); %#ok<AGROW>
+                    end
+                catch
+                end
+            end
+
+            % Is the DB file itself writable?
+            try
+                [ok,fa] = fileattrib(filename);
+                if ok && isstruct(fa)
+                    lines{end+1} = sprintf('  db file UserWrite=%d', fa.UserWrite); %#ok<AGROW>
+                end
+            catch
+            end
+
+            % Is the DB directory still writable? Probe by creating a temp file.
+            % This is the key discriminator for a drive that remounted read-only.
+            try
+                db_dir = fileparts(filename);
+                if isempty(db_dir), db_dir = pwd; end
+                probe = fullfile(db_dir, ...
+                    sprintf('.did_write_probe_%d', round(rem(now,1)*1e9))); %#ok<TNOW1>
+                fid = fopen(probe,'w');
+                if fid >= 0
+                    fclose(fid);
+                    delete(probe);
+                    lines{end+1} = '  db dir writable: yes'; %#ok<AGROW>
+                else
+                    lines{end+1} = '  db dir writable: NO (fopen failed)'; %#ok<AGROW>
+                end
+            catch probeErr
+                lines{end+1} = sprintf('  db dir writable: NO (%s)', probeErr.message); %#ok<AGROW>
+            end
+
+            diagStr = strjoin(lines, newline);
         end
 
         function close_db(this_obj)
