@@ -4,12 +4,14 @@ name: Soph (Griswold) corpus discovery
 # single-corpus fixture (~446 MB, ~101k v1 documents), which test-code.yml
 # skips on every PR (testCorpusSoph is opt-in via DID_RUN_SOPH_TEST). This
 # workflow sets DID_RUN_SOPH_TEST=1 and runs ONLY testCorpusSoph so we can
-# verify the Griswold corpus converts to V_zeta with no orphan docs / no
+# verify the Griswold corpus converts to V_eta with no orphan docs / no
 # unexpected quarantine, without re-running the ~1h50m full corpus suite.
+# This is the orphan gate for the calculator un-deferral (a dissolved calc
+# once produced 11448 Soph orphans; the id-preserving subject_calculation fold
+# must keep it 0).
 #
 # Mirrors test-code.yml's environment (sibling did-schema checkout on the
-# matching V_zeta branch + assembled V_zeta schema set). Revert the
-# did-schema ref fallback to `main` once the V_zeta branch merges.
+# matching V_eta branch + assembled V_eta schema set).
 
 on:
   # workflow_dispatch is only exposed for workflows on the default branch, so
@@ -19,16 +21,27 @@ on:
   # branch, the workflow_dispatch entry below becomes the on-demand trigger and
   # the push block can be dropped.
   push:
-    branches: [claude/did-schema-v-zeta-johipc]
+    branches: [claude/v-eta-migration-plan-35jj1z]
     paths:
-      - 'src/did/+did2/+convert/**'
-      - 'tests/+did2/+unittest/testCorpusSoph.m'
-      - 'tests/+did2/+unittest/+helpers/**'
+      # NARROWED TO THIS FILE, 2026-08-10. It used to fire on
+      # `src/did/+did2/+convert/**`, `testCorpusSoph.m` and `+helpers/**` --
+      # i.e. on EVERY migrator change, for a corpus measured at 53 minutes.
+      # During a session that touched migrators dozens of times that is hours
+      # of runner time spent re-measuring one corpus.
+      #
+      # It also duplicates work: `test-corpus.yml`'s matrix ALREADY runs Soph,
+      # with the same helpers and the same 0-orphan/0-quarantine gate, and
+      # additionally writes the census report this one does not. So narrowing
+      # here removes a second run of the same corpus, not a source of coverage.
+      # Keep the file: its `did_schema_ref` input is a real capability the
+      # matrix does not offer -- pointing Soph at a different did-schema branch.
+      # To run Soph alone: bump the token below and push.
+      #   soph-run-token: 1
       - '.github/workflows/test-soph-corpus.yml'
   workflow_dispatch:
     inputs:
       did_schema_ref:
-        description: 'did-schema branch (V_zeta line)'
+        description: 'did-schema branch (V_eta line)'
         required: false
         default: ''
         type: string
@@ -48,22 +61,41 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check out did-schema (sibling, for V_zeta validation)
+      - name: Check out did-schema (sibling, for V_eta validation)
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
           ref: ${{ env.DID_SCHEMA_REF }}
           path: did-schema
 
-      - name: Assemble V_zeta schema set (stable + draft)
+      - name: Assemble V_eta schema set (stable + draft)
         run: |
-          mkdir -p "${GITHUB_WORKSPACE}/zeta-schemas"
-          cp did-schema/schemas/V_zeta/stable/*.json "${GITHUB_WORKSPACE}/zeta-schemas/"
-          cp did-schema/schemas/V_zeta/draft/*.json  "${GITHUB_WORKSPACE}/zeta-schemas/"
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
+          # of the go-forward MODEL. Those are two different questions and they
+          # were conflated here until 2026-08-10.
+          #
+          # `deprecated/` holds exactly the v1 shapes that DELIBERATELY pass
+          # through unmodelled -- projectvar, stimulus_parameter_table,
+          # image_stack(+_parameters). A passthrough's whole contract is that the
+          # document reaches the validator under its own class, so omitting the
+          # tier means every one of them QUARANTINES. The tier was doing nothing.
+          #
+          # It went unnoticed because three of the four have never appeared in a
+          # tested corpus. The fourth did: corpus run 31421715133 turned 4,563 JH
+          # `image_stack` documents into `No schema file for class "image_stack"`
+          # the moment the guard made them passthroughs instead of subject-less
+          # observations. Trading silent husks for loud quarantines was the point
+          # of the guard; losing them at validation was not.
+          #
+          # Safe to copy: no filename collides across tiers (checked, 245 files).
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
 
       - name: Export DID_SCHEMA_PATH
         run: |
-          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/zeta-schemas" >> "$GITHUB_ENV"
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" >> "$GITHUB_ENV"
 
       - name: Set up MATLAB
         uses: matlab-actions/setup-matlab@v2
@@ -73,9 +105,29 @@ jobs:
           products: Statistics_and_Machine_Learning_Toolbox
 
       - name: Install MatBox
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: ehennestad/matbox-actions/install-matbox@v1
 
       - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: matlab-actions/run-command@v2
         with:
           command: |
@@ -98,5 +150,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: soph-corpus-discovery-report
-          path: corpus-reports/
-          if-no-files-found: ignore
+          # BOTH ROOTS, and `warn` not `ignore`: MATLAB's pwd here is `tests/`,
+          # so a root-only path silently uploaded nothing.
+          path: |
+            corpus-reports/
+            tests/corpus-reports/
+          if-no-files-found: warn

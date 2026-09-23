@@ -114,8 +114,25 @@ classdef sqlitedb < handle
                 opts.Validate (1,1) logical = true
             end
             list = obj.normaliseDocList(docOrList);
-            for k = 1:numel(list)
-                obj.addOne(list{k}, opts.Validate);
+            if isempty(list)
+                return;
+            end
+            % BATCH THE WHOLE LIST IN ONE TRANSACTION. Previously this looped
+            % addOne, and each addOne committed on its own -- one fsync per
+            % document. That dominated large writes: a ~16k-document migration
+            % issued ~16k commits (measured ~450 s, ~393k mksqlite statements).
+            % One transaction issues a single commit. This makes a batch add
+            % all-or-nothing on error, which is the standard and safer semantics
+            % for a bulk insert (no partially-written set is left behind).
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                for k = 1:numel(list)
+                    obj.insertRows(list{k}, opts.Validate);
+                end
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
             end
         end
 
@@ -143,7 +160,11 @@ classdef sqlitedb < handle
                 error('did2:database:missingDocument', ...
                     'No document with id "%s".', id);
             end
-            doc = did2.document.fromJSON(row(1).body);
+            % SchemaCache: JSON cannot carry an empty struct array or a
+            % ragged one, so a document read back without rehydration is
+            % not the document that was written. See cache.rehydrate.
+            doc = did2.document.fromJSON(row(1).body, ...
+                'SchemaCache', obj.resolveSchemaCache());
         end
 
         function ids = allIds(obj)
@@ -729,6 +750,25 @@ classdef sqlitedb < handle
         end
 
         function addOne(obj, doc, doValidate)
+            % Single-document insert in its own transaction. Bulk inserts go
+            % through add(), which wraps the whole list in ONE transaction and
+            % calls insertRows directly, so this per-document commit is not on
+            % the batch write path.
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                obj.insertRows(doc, doValidate);
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
+        end
+
+        function insertRows(obj, doc, doValidate)
+            % The row-level inserts for one document, WITHOUT any transaction
+            % control -- the caller owns BEGIN/COMMIT (addOne for a single doc,
+            % add for a batch). All statements for one document still go in
+            % together, so a batch transaction stays consistent per document.
             if doValidate
                 doc.validate('SchemaCache', obj.resolveSchemaCache());
             end
@@ -737,40 +777,32 @@ classdef sqlitedb < handle
             classname = obj.requireDocumentClassField(s, 'class_name');
             classVersion = obj.requireDocumentClassField(s, 'class_version');
             sessionId = obj.optionalField(s, 'base', 'session_id');
-            datestamp = obj.requireField(s, 'base', 'datestamp');
+            datestamp = obj.requireCreationTimestamp(s);
             bodyText = doc.toJSON();
             bodyHash = did2.database.sqlitedb.computeHash(bodyText);
 
-            mksqlite(obj.dbid, 'BEGIN');
-            try
+            mksqlite(obj.dbid, ...
+                ['INSERT INTO documents(id, classname, class_version, ' ...
+                 'session_id, datestamp, body, body_hash) ' ...
+                 'VALUES(?, ?, ?, ?, ?, ?, ?)'], ...
+                id, classname, classVersion, sessionId, datestamp, ...
+                bodyText, bodyHash);
+
+            chain = obj.classChainFromStruct(s);
+            for k = 1:numel(chain)
                 mksqlite(obj.dbid, ...
-                    ['INSERT INTO documents(id, classname, class_version, ' ...
-                     'session_id, datestamp, body, body_hash) ' ...
-                     'VALUES(?, ?, ?, ?, ?, ?, ?)'], ...
-                    id, classname, classVersion, sessionId, datestamp, ...
-                    bodyText, bodyHash);
-
-                chain = obj.classChainFromStruct(s);
-                for k = 1:numel(chain)
-                    mksqlite(obj.dbid, ...
-                        'INSERT INTO superclasses(doc_id, classname) VALUES(?, ?)', ...
-                        id, chain{k});
-                end
-
-                deps = obj.dependsOnEntries(s);
-                for k = 1:numel(deps)
-                    mksqlite(obj.dbid, ...
-                        'INSERT INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
-                        id, deps{k}.name, deps{k}.document_id);
-                end
-
-                obj.insertSidecarRowsFromStruct(id, s);
-
-                mksqlite(obj.dbid, 'COMMIT');
-            catch err
-                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
-                rethrow(err);
+                    'INSERT INTO superclasses(doc_id, classname) VALUES(?, ?)', ...
+                    id, chain{k});
             end
+
+            deps = obj.dependsOnEntries(s);
+            for k = 1:numel(deps)
+                mksqlite(obj.dbid, ...
+                    'INSERT INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
+                    id, deps{k}.name, deps{k}.document_id);
+            end
+
+            obj.insertSidecarRowsFromStruct(id, s);
         end
 
         function cache = resolveSchemaCache(obj)
@@ -809,11 +841,21 @@ classdef sqlitedb < handle
             end
         end
 
-        function docs = rowsToDocs(~, rows, q)
+        function docs = rowsToDocs(obj, rows, q)
             n = numel(rows);
             docs = {};
+            % Resolved ONCE for the batch, not per row: `shared()` is cheap
+            % but this runs over every row of every query.
+            %
+            % NAMED `batchCache`, NOT `schemaCache`: that is the name of a
+            % private PROPERTY of this class, and a local shadowing it reads
+            % as `obj.schemaCache` to anyone skimming -- which is a
+            % different thing, because `resolveSchemaCache` falls back to
+            % the shared singleton when the property is empty.
+            batchCache = obj.resolveSchemaCache();
             for k = 1:n
-                d = did2.document.fromJSON(rows(k).body);
+                d = did2.document.fromJSON(rows(k).body, ...
+                    'SchemaCache', batchCache);
                 if q.matches(d)
                     docs{end+1} = d; %#ok<AGROW>
                 end
@@ -831,6 +873,50 @@ classdef sqlitedb < handle
                     out{k} = char(v);
                 end
             end
+        end
+
+        function value = requireCreationTimestamp(~, s)
+            %REQUIRECREATIONTIMESTAMP The document's creation time, EITHER VINTAGE.
+            %   V_eta renamed `base.datestamp` -> `base.creation_timestamp`
+            %   (did-schema, signed 2026-08-13). This method reads whichever
+            %   the document carries.
+            %
+            %   THE SQLITE COLUMN STAYS `datestamp` AND THAT IS DELIBERATE. It
+            %   is this database's own storage schema, not a document field:
+            %   an index, a migration path and `compileQuery`'s queryable
+            %   column list all name it, and renaming it would be a change to
+            %   the DATABASE FORMAT rather than to the document model. The two
+            %   names are unrelated things that happened to match until today.
+            %
+            %   WHY THIS EXISTS AT ALL -- a regression this repository's own
+            %   corpus gate structurally could not see. The outbound rename in
+            %   did2.convert.v1_to_v2/renameOutboundBaseFields strips
+            %   `base.datestamp` from every V_eta body, so after 2026-08-13
+            %   `requireField(s,'base','datestamp')` threw
+            %   `did2:database:missingField` on EVERY migrated document and
+            %   `ndi.migrate.local` could not write a single one. It was
+            %   invisible for a day because the DID-side corpus tests validate
+            %   IN MEMORY and never open a database -- only ndi.migrate.local
+            %   writes -- so testCorpusPRED stayed green while the real
+            %   migration path was broken end to end. It was caught on the
+            %   FIRST RUN of the NDI-side PRED end-to-end test, which exists to
+            %   run exactly the half the DID gate cannot reach.
+            %
+            %   BOTH NAMES IN THE ERROR. A document carrying neither is a real
+            %   fault, and naming only one spelling would send the next reader
+            %   looking for the wrong field.
+            for name = {'creation_timestamp', 'datestamp'}
+                f = name{1};
+                if isfield(s, 'base') && isstruct(s.base) ...
+                        && isfield(s.base, f) && ~isempty(s.base.(f))
+                    value = char(s.base.(f));
+                    return;
+                end
+            end
+            error('did2:database:missingField', ...
+                ['Document is missing its creation time: neither ' ...
+                 '"base.creation_timestamp" (V_eta) nor "base.datestamp" ' ...
+                 '(did_v1) is present and non-empty.']);
         end
 
         function value = requireField(~, s, blockName, fieldName)

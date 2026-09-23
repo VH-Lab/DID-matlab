@@ -7,7 +7,9 @@ function result = v1_to_v2(v1Bodies, options)
 %
 %     1. did2.convert.universalRenames    (cross-cutting renames)
 %     2. matching superclass migrators under
-%        +did2.+convert.+migrators.<superclass_name>
+%        +did2.+convert.+migrators.<superclass_name>, or, when
+%        TargetVersion is 'V_eta' and one exists,
+%        +did2.+convert.+migrators_j.+super.<superclass_name>
 %     3. concrete-class migrator under
 %        +did2.+convert.+migrators.<class_name>  (identity fallback)
 %     4. ensureClassBlocks: pad empty `struct()` property blocks for
@@ -81,9 +83,22 @@ function result = v1_to_v2(v1Bodies, options)
 %                      through that migrator, targeting the Brainstorm-I
 %                      classes (the subject_interaction spine with
 %                      method/variable/target_structure, shape-typed
-%                      observation leaves, and generic_manipulation). Any
-%                      non-'V_delta' target stamps
+%                      observation leaves, and generic_manipulation).
+%                      'V_eta' routes classes that have a Brainstorm-J
+%                      split/fold migrator under +did2.+convert.+migrators_j
+%                      through that migrator, targeting the Brainstorm-J
+%                      subject model (bare-identity subject, restored
+%                      subject_statement owning `variable`, subject_observation/
+%                      subject_manipulation, data-type-named leaves +
+%                      dose/formulation/chemical composites, term_manipulation,
+%                      and subject_relation documents; no injection/bath, no
+%                      escape hatch). Any non-'V_delta' target stamps
 %                      document_class.schema_version with the target name.
+%
+%   STATUS of the 2026-08-11 edit (`summary.legacy_ndi_document`, the
+%   accumulator and its printer): WRITTEN WITHOUT MATLAB OR OCTAVE AND NOT
+%   EXECUTED. Neither is available in the environment it was written in, so
+%   CI is the first run of this code.
 %
 %   See also: did2.convert.universalRenames, did2.convert.migrators,
 %   docs/v2/PLAN.md §9.6.
@@ -105,10 +120,66 @@ migrated = {};
 quarantine = struct( ...
     'original_body', {}, ...
     'class_name',    {}, ...
+    'identifier',    {}, ...
     'reason',        {}, ...
     'failed_at',     {});
+quarNames = {}; quarValues = [];
 classCountNames = {};
 classCountValues = [];
+% Phase 1 report-only: documents a migrator handed back UNCHANGED. See
+% countUnconverted below for why this is counted separately from `migrated`.
+unconvNames = {};
+unconvValues = [];
+% Phase 1 report-only: FRAGMENTS -- see countFragments below. The third failure
+% mode, and the only one no counter could see.
+fragNames = {};
+fragValues = [];
+% THE LEGACY IDENTITY BLOCK (`ndi_document` -> `base`). DENOMINATOR FIRST AND
+% UNCONDITIONALLY (Operating Rule 5): this struct is complete before the loop
+% starts and is attached to the summary whether or not any body carries the
+% block, so an all-zero block means "no body in this batch had one" and never
+% means "nothing looked".
+%
+% `bodies_reaching_universal_renames` is incremented AT THE CALL SITE, not
+% summed from the per-body reports, because a body that throws inside
+% universalRenames produces no report and would otherwise vanish from its own
+% denominator. `bodies_skipped_already_target` is the idempotency
+% short-circuit, which never calls the pass at all; the two plus
+% `bodies_unreached` account for `total` exactly.
+%
+% WHAT THE NUMBERS MEAN is in did2.convert.universalRenames's header, and the
+% one-line version is: `moved_wholesale_no_base` is the arm that renames the
+% container and does nothing to the contents, on the one path that exists
+% because the contents differ; the `moved_vintage_*` counters say WHICH of the
+% four `ndi_document` shapes the block was, which is what decides whether the
+% move was sound. The 2020-05-19 vintage (the longest-lived, nearly three years)
+% already spells `id`/`session_id` and moves CORRECTLY; the two 2019 shapes land
+% with no usable identity at all. A single arm count mixes them.
+legacy = struct( ...
+    'bodies_total',                        numel(bodies), ...
+    'bodies_reaching_universal_renames',   0, ...
+    'bodies_skipped_already_target',       0, ...
+    'bodies_unreached',                    0, ...
+    'ndi_document_block_seen',             0, ...
+    'moved_wholesale_no_base',             0, ...
+    'discarded_ndi_document_base_present', 0, ...
+    'moved_missing_id',                    0, ...
+    'moved_missing_session_id',            0, ...
+    'moved_with_any_undeclared_field',     0, ...
+    'moved_undeclared_field_instances',    0, ...
+    'moved_carrying_experiment_unique_reference', 0, ...
+    'moved_carrying_document_unique_reference',   0, ...
+    'moved_carrying_type',                 0, ...
+    'moved_carrying_database_version',     0, ...
+    'moved_vintage_bodies_classified',     0, ...
+    'moved_vintage_2019_05_unique_reference',       0, ...
+    'moved_vintage_2019_11_experiment_document_id', 0, ...
+    'moved_vintage_2019_12_experiment_id_and_id',   0, ...
+    'moved_vintage_2020_05_session_id_and_id',      0, ...
+    'moved_vintage_unknown',               0, ...
+    'moved_vintage_unreadable_block',      0);
+legacyMovedNames = {};   legacyMovedValues = [];
+legacyDiscNames  = {};   legacyDiscValues  = [];
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -116,6 +187,7 @@ for k = 1:numel(bodies)
     className = '<unknown>';
     try
         preBody = ensureStruct(rawBody);
+        refuseUnknownSchemaVersion(preBody);
         if isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already V_delta,
             % so skip universalRenames and the per-class migrators.
@@ -131,11 +203,28 @@ for k = 1:numel(bodies)
                 className = char(v2Body.document_class.class_name);
             end
             v2Bodies = {v2Body};
+            legacy.bodies_skipped_already_target = ...
+                legacy.bodies_skipped_already_target + 1;
         else
-            postUniversalBody = did2.convert.universalRenames(preBody, ...
-                'RenameClassNames', options.RenameClassNames);
+            % Incremented BEFORE the call: a body that throws inside the pass
+            % still reached it, and a denominator that quietly excluded the
+            % failures would be the "all-zero reads as clean" defect again.
+            legacy.bodies_reaching_universal_renames = ...
+                legacy.bodies_reaching_universal_renames + 1;
+            [postUniversalBody, legacyReport] = did2.convert.universalRenames( ...
+                preBody, 'RenameClassNames', options.RenameClassNames);
             className = char(postUniversalBody.document_class.class_name);
-            v2Body = applySuperclassMigrators(postUniversalBody, className);
+            legacy = accumulateLegacyReport(legacy, legacyReport);
+            if legacyReport.moved_wholesale_no_base
+                [legacyMovedNames, legacyMovedValues] = bumpClassCounter( ...
+                    legacyMovedNames, legacyMovedValues, className);
+            end
+            if legacyReport.discarded_ndi_document_base_present
+                [legacyDiscNames, legacyDiscValues] = bumpClassCounter( ...
+                    legacyDiscNames, legacyDiscValues, className);
+            end
+            v2Body = applySuperclassMigrators(postUniversalBody, className, ...
+                options.TargetVersion);
             % runConcreteMigrator returns a CELL of one-or-more bodies.
             % Default (TargetVersion 'V_delta') always returns a single
             % body via the existing per-class migrator, so behaviour is
@@ -145,6 +234,35 @@ for k = 1:numel(bodies)
             % bodies (1 -> N).
             v2Bodies = runConcreteMigrator(v2Body, className, ...
                 options.TargetVersion);
+            % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
+            % hand its input straight back? `bodies = {preBody}` is how a
+            % migrator says "nothing to do here". It is used BOTH deliberately
+            % (a class whose conversion needs the migrated-id graph, so pass 1
+            % leaves it for the NDI second pass) AND accidentally (the migrator
+            % looked for a field the source document does not have, found
+            % nothing, and fell through to its fallback). The two are
+            % indistinguishable downstream: an unconverted document is counted
+            % in `migrated_count` because nothing errored, so an accidental
+            % passthrough looks exactly like a successful migration.
+            %
+            % Counting it per class separates them by expectation rather than by
+            % code: a class that is SUPPOSED to convert but shows a high
+            % unconverted count is a bug, in one line, without reading anything.
+            % probe_geometry, electrode_offset_voltage, site2channelmap and
+            % spike_interface_sorting_outputs all fail exactly this way -- and
+            % did2.validate.silentLoss cannot see them, because the carried
+            % document is a perfectly valid v1-class document.
+            %
+            % Deliberately NOT computed on the idempotency short-circuit above:
+            % that path skips the migrators by design and is not a passthrough.
+            if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body)
+                [unconvNames, unconvValues] = bumpClassCounter( ...
+                    unconvNames, unconvValues, className);
+            elseif did2.validate.isFragment(v2Bodies, 'SchemaCache', options.SchemaCache)
+                % PHASE 1 REPORT-ONLY: the FRAGMENT mode. See countFragments.
+                [fragNames, fragValues] = bumpClassCounter( ...
+                    fragNames, fragValues, className);
+            end
         end
         % Collect every produced body. Each is padded, optionally
         % validated, and counted independently so a 1 -> N split lands
@@ -152,6 +270,7 @@ for k = 1:numel(bodies)
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
             outBody = ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+            outBody = renameOutboundBaseFields(outBody, options.TargetVersion);
             if ~strcmp(options.TargetVersion, 'V_delta') ...
                     && isfield(outBody, 'document_class') ...
                     && isstruct(outBody.document_class)
@@ -172,14 +291,56 @@ for k = 1:numel(bodies)
                 classCountNames, classCountValues, outName);
         end
     catch err
+        % `identifier` is carried alongside `reason` so the rollup can group
+        % by FAILURE KIND rather than by message text. Messages interpolate
+        % class and edge names, so every one of the 7,233 empty-required-edge
+        % quarantines has a slightly different string -- grouping on those
+        % would produce 7,233 groups of one and hide the shape completely.
         entry = struct( ...
             'original_body', originalJSON, ...
             'class_name',    className, ...
+            'identifier',    err.identifier, ...
             'reason',        err.message, ...
             'failed_at',     currentUTCTimestamp());
         quarantine(end+1) = entry; %#ok<AGROW>
+        [quarNames, quarValues] = bumpClassCounter(quarNames, quarValues, ...
+            sprintf('%s|%s', className, err.identifier));
     end
 end
+
+% `bodies_unreached` closes the denominator: every body either reached
+% universalRenames, took the idempotency short-circuit, or failed before
+% either (a non-struct input, undecodable JSON). Written as a subtraction so
+% the three sum to `total` by construction rather than by hope.
+legacy.bodies_unreached = legacy.bodies_total ...
+    - legacy.bodies_reaching_universal_renames ...
+    - legacy.bodies_skipped_already_target;
+% THE VINTAGE PARTITION, CHECKED RATHER THAN ASSUMED. Six buckets classify
+% every body that took the wholesale-move arm, and a body falling through all
+% six is exactly what the `unknown` bucket exists to catch -- so if the sum ever
+% stops matching, the counter has started losing bodies silently and must say
+% so here, at the batch, rather than render a plausible breakdown that does not
+% add up. Raised, not warned: a breakdown that does not partition its arm is a
+% wrong measurement, and this project's standing failure is measurements that
+% read clean while measuring nothing.
+vintageSum = legacy.moved_vintage_2019_05_unique_reference ...
+    + legacy.moved_vintage_2019_11_experiment_document_id ...
+    + legacy.moved_vintage_2019_12_experiment_id_and_id ...
+    + legacy.moved_vintage_2020_05_session_id_and_id ...
+    + legacy.moved_vintage_unknown ...
+    + legacy.moved_vintage_unreadable_block;
+if vintageSum ~= legacy.moved_vintage_bodies_classified ...
+        || legacy.moved_vintage_bodies_classified ~= legacy.moved_wholesale_no_base
+    error('did2:convert:legacyVintagePartitionBroken', ...
+        ['The legacy `ndi_document` vintage buckets do not partition the ' ...
+         'wholesale-move arm: %d bucket(s) summed, %d body(ies) classified, ' ...
+         '%d body(ies) took the arm. A body that reaches no bucket is the ' ...
+         'condition the `unknown` bucket exists to make visible.'], ...
+        vintageSum, legacy.moved_vintage_bodies_classified, ...
+        legacy.moved_wholesale_no_base);
+end
+legacy.moved_by_class = buildByClassTable(legacyMovedNames, legacyMovedValues);
+legacy.discarded_by_class = buildByClassTable(legacyDiscNames, legacyDiscValues);
 
 result = struct();
 result.migrated = migrated;
@@ -188,7 +349,73 @@ result.summary = struct( ...
     'total',            numel(bodies), ...
     'migrated_count',   numel(migrated), ...
     'quarantine_count', numel(quarantine), ...
-    'by_class',         buildByClassTable(classCountNames, classCountValues));
+    'quarantine_by_class', buildByClassTable(quarNames, quarValues), ...
+    'by_class',         buildByClassTable(classCountNames, classCountValues), ...
+    'unconverted_count', sum(unconvValues), ...
+    'unconverted_by_class', buildByClassTable(unconvNames, unconvValues), ...
+    'fragment_count',     sum(fragValues), ...
+    'fragment_by_class',  buildByClassTable(fragNames, fragValues), ...
+    'legacy_ndi_document', legacy);
+
+% PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
+% migrates away without a trace: required depends_on edges left empty, and
+% required fields whose value is present but vacuous (an all-blank struct).
+%
+% THE PARAGRAPH THAT WAS HERE IS NOW HISTORY, and the change of state matters
+% enough to say so rather than overwrite it. It read: "Neither is visible to
+% the existing gates ... This RAISES NOTHING and changes no outcome; it
+% produces the census that ranks the repair work. Enforcement lands only once
+% these counts reach zero."
+%
+% As of 2026-08-10 BOTH conditions ARE visible to the gates -- #38 and then
+% #37 were armed by default in did2.schema.cache.strictMode -- so a document
+% with an empty required edge now QUARANTINES here instead of migrating clean.
+% Enforcement did NOT wait for these counts to reach zero; the team armed #37
+% against a measured 7,233 on purpose, to see the issues rather than ship
+% hollow documents.
+%
+% This audit still RAISES NOTHING and still changes no outcome. Its job has
+% changed, though: it no longer decides WHEN to enforce, it PREDICTS what
+% enforcement costs, over the same batch, by the same rules. When the census
+% and the quarantine rollup disagree about a class, one of the two paired
+% implementations has drifted -- that is the signal, and it is why they are
+% locked together by test.
+try
+    result.silent_loss = did2.validate.silentLoss(migrated, ...
+        'SchemaCache', options.SchemaCache);
+catch auditErr
+    result.silent_loss = struct('audit_failed', auditErr.message);
+end
+
+% #64: the same shape one tier over -- a class declares payload FILES and the
+% document carries none, or carries bytes the class never declares. The schema
+% cache allows `file`/`files` as a top-level key and never looks inside, so
+% neither direction trips anything. REPORT ONLY, raises nothing.
+try
+    result.file_list_audit = did2.validate.fileList(migrated, ...
+        'SchemaCache', options.SchemaCache);
+catch fileErr
+    result.file_list_audit = struct('audit_failed', fileErr.message);
+end
+
+% #52 EVIDENCE, not a gate: how many time references does one statement carry,
+% and what shapes occur when it carries more than one. The team has to name (or
+% decline to name) the roles of `time_reference_1..N`, and the one thing it does
+% not have is the distribution and the shapes over real data. This produces
+% them. REPORT ONLY -- it raises nothing and changes no outcome, and it proposes
+% no role vocabulary.
+%
+% It is a SEPARATE INSTRUMENT from silentLoss's `family_uniqueness_violation`,
+% which asks whether the members of a family violate the signed uniqueness rule.
+% A batch can satisfy that rule perfectly and still be full of shapes nobody has
+% decided the meaning of: distinct clocks and distinct anchors are both
+% "unique", and they are not the same modelling situation.
+try
+    result.time_reference_families = did2.validate.timeReferenceFamilies( ...
+        migrated, 'SchemaCache', options.SchemaCache);
+catch trfErr
+    result.time_reference_families = struct('audit_failed', trfErr.message);
+end
 
 if options.CheckReferences
     if ~isempty(options.ReferenceDatabase)
@@ -241,17 +468,70 @@ else
 end
 end
 
+function refuseUnknownSchemaVersion(body)
+%REFUSEUNKNOWNSCHEMAVERSION Stop, rather than migrate a vintage we do not know.
+%   A body whose `document_class.schema_version` is present but NOT on the
+%   did_v1 -> V_eta line is one written by a did2 NEWER than this one. There are
+%   only two things to do with it and one of them is destructive:
+%
+%     convert it  -- run universalRenames and the v1-era per-class migrators
+%                    over a document from the future, reshaping fields whose
+%                    meaning this code does not know. SILENT, and lossy.
+%     refuse it   -- quarantine with a named reason and let the caller decide.
+%
+%   The first version of the ordering fix chose CONVERT, on the reasoning that
+%   an unrecognised name is "not at the target, so migrate it forward". That is
+%   backwards: forward from WHERE is precisely what is unknown. Corrected on the
+%   team's instruction, 2026-08-14 -- "an unrecognized version shouldn't
+%   convert".
+%
+%   A body with NO schema_version at all is did_v1 and is NOT refused: absence
+%   is the origin of the line (rank 0), not an unknown vintage. Collapsing those
+%   two would quarantine every real v1 document in existence.
+%
+%   Thrown rather than returned so the per-body catch quarantines it with an
+%   IDENTIFIER, which is what the rollup groups by -- message text interpolates
+%   the version name and would scatter one failure kind across many groups.
+if ~isstruct(body) || ~isscalar(body) ...
+        || ~isfield(body, 'document_class') ...
+        || ~isstruct(body.document_class) || ~isscalar(body.document_class) ...
+        || ~isfield(body.document_class, 'schema_version')
+    return;
+end
+sv = body.document_class.schema_version;
+if isstring(sv) && isscalar(sv)
+    sv = char(sv);
+end
+if ~ischar(sv) || isempty(sv)
+    return;      % absent or blank == did_v1, the origin of the line
+end
+[~, known] = did2.convert.schemaVersionRank(sv);
+if ~known
+    error('did2:convert:unknownSchemaVersion', ...
+        ['document_class.schema_version is ''%s'', which is not on the ' ...
+         'did_v1 -> V_eta line this did2 knows. Refusing to migrate it: ' ...
+         'this document was written by a NEWER did2, and running the v1-era ' ...
+         'migrators over it would reshape fields whose meaning is unknown ' ...
+         'here. Upgrade did2, or migrate this document with the version that ' ...
+         'wrote it.'], sv);
+end
+end
+
 function tf = isAlreadyTarget(body, targetVersion)
 % Return true when BODY is already a TARGETVERSION-shaped document so the
 % per-body migration loop can skip universalRenames and the per-class
 % migrators (it still gets ensureClassBlocks + validate). Both conditions
 % must hold so the short-circuit only fires when we have high confidence
 % the body is already at the target:
-%   (a) document_class.schema_version is the literal char TARGETVERSION
-%       (set by the last run of universalRenames, the writer, or -- for
-%       'V_epsilon' -- a context assembler such as
-%       ndi.migrate.internal.stimulusBathToBath that emits ready-made
-%       target bodies), AND
+%   (a) document_class.schema_version ranks AT OR BEYOND TARGETVERSION on the
+%       did_v1 -> V_eta line (did2.convert.schemaVersionRank), the version
+%       having been set by the last run of universalRenames, the writer, or --
+%       for 'V_epsilon' -- a context assembler such as
+%       ndi.migrate.internal.stimulusBathToBath that emits ready-made target
+%       bodies. This was an EQUALITY test until 2026-08-14, which made a body
+%       newer than the target indistinguishable from one older than it; an
+%       unrecognised version still falls through to conversion, deliberately,
+%       AND
 %   (b) the body carries no v1-only structural markers — underscore-
 %       prefixed top-level keys (e.g., legacy _classname,
 %       _class_version) that predate the document_class header and
@@ -275,7 +555,28 @@ sv = body.document_class.schema_version;
 if isstring(sv) && isscalar(sv)
     sv = char(sv);
 end
-if ~ischar(sv) || ~strcmp(sv, targetVersion)
+if ~ischar(sv)
+    return;
+end
+% AT OR BEYOND THE TARGET, not equal to it. `strcmp` here had no notion of
+% before and after, so a body NEWER than the target took the same branch as one
+% older than it -- and that branch runs the migrators. Converting an old body
+% forward is the point; running the same pipeline over a body that has already
+% passed the target is the opposite, and it was silent.
+%
+% Reached in production, not in theory: ndi.database.internal.
+% applyReadNormalization calls this converter on EVERY read without passing a
+% target, so it inherits the 'V_delta' default, and a V_eta document compared
+% unequal and was pushed through universalRenames plus the per-class migrators.
+%
+% An UNRECOGNISED version cannot reach here: refuseUnknownSchemaVersion runs
+% first and quarantines it. The `~svKnown` guard below is kept as a defence for
+% any other caller of this helper, and it returns FALSE only because a body
+% that got this far with an unknown version is already a contradiction -- the
+% refusal, not this line, is what decides that case.
+[svRank, svKnown] = did2.convert.schemaVersionRank(sv);
+[tgtRank, tgtKnown] = did2.convert.schemaVersionRank(targetVersion);
+if ~svKnown || ~tgtKnown || svRank < tgtRank
     return;
 end
 topKeys = fieldnames(body);
@@ -311,6 +612,8 @@ if strcmp(targetVersion, 'V_epsilon')
     splitPackage = 'did2.convert.migrators_e.';
 elseif strcmp(targetVersion, 'V_zeta')
     splitPackage = 'did2.convert.migrators_i.';
+elseif strcmp(targetVersion, 'V_eta')
+    splitPackage = 'did2.convert.migrators_j.';
 end
 if ~isempty(splitPackage)
     fqn = [splitPackage, className];
@@ -341,6 +644,61 @@ else
     error('did2:convert:badMigratorOutput', ...
         'A split migrator must return a struct or cell of bodies (got %s).', ...
         class(out));
+end
+end
+
+function body = renameOutboundBaseFields(body, targetVersion)
+%RENAMEOUTBOUNDBASEFIELDS did_v1 `base` field names -> their V_eta spellings.
+%
+%   ONE PLACE, ON THE WAY OUT, FOR EVERY BODY. This runs on each emitted body
+%   immediately after ensureClassBlocks and before validation, which is the
+%   only point in the pipeline that ALL documents pass through -- the ones a
+%   migrator constructed, the ones a 1->N split produced, and the passthroughs
+%   that no migrator touched at all.
+%
+%   ---------------------------------------------------------------------
+%   WHY NOT AT THE 65 CONSTRUCTION SITES, AND WHY NOT IN universalRenames
+%   ---------------------------------------------------------------------
+%   The obvious version of this change is to rename the field wherever a
+%   `base` block is built. That is 65+ sites, and it MISSES EVERY PASSTHROUGH:
+%   a document with no migrator still carries a `base` block, still validates
+%   against a V_eta tombstone, and would still be carrying the old field name.
+%
+%   The other obvious version is universalRenames, which every document also
+%   passes through -- but that runs INBOUND, before the migrators. Renaming
+%   there would break every migrator that reads `baseField(preBody,
+%   'datestamp')`, and it would break them SILENTLY: the read returns empty,
+%   the caller falls back to the sentinel, and the document validates carrying
+%   a fabricated creation time. Nothing counts that. Doing it outbound means
+%   migrators keep reading and writing did_v1 spelling internally and NOT ONE
+%   of them needed to change.
+%
+%   THE FAILURE MODE IS LOUD BY CONSTRUCTION. If this function ever fails to
+%   reach a body, that body keeps `base.datestamp` -- an undeclared field
+%   under V_eta -- and quarantines. The dangerous direction (a silently
+%   wrong timestamp) is not reachable from here.
+%
+%   V_delta IS UNTOUCHED. The rename is a V_eta spelling change; a V_delta run
+%   must keep emitting `datestamp` or its own schema rejects the document.
+%
+%   STATUS: NOT VERIFIED BY EXECUTION -- no MATLAB in the authoring
+%   environment.
+if ~strcmp(targetVersion, 'V_eta')
+    return;
+end
+if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base)
+    return;
+end
+% `datestamp` -> `creation_timestamp`. `<noun>_<kind>` is the measured house
+% style (13 `_name`, 11 `_time`, 10 `_type`, 5 `_id`; 0 bare participles in
+% 472 field names), and the kind word is `_timestamp` rather than `_time`
+% because all 22 existing `_time`/`_times` fields are NUMERIC -- offsets and
+% durations in seconds, never wall-clock instants.
+if isfield(body.base, 'datestamp')
+    if ~isfield(body.base, 'creation_timestamp')
+        body.base.creation_timestamp = body.base.datestamp;
+    end
+    body.base = rmfield(body.base, 'datestamp');
 end
 end
 
@@ -422,13 +780,49 @@ end
 body.document_class.superclasses = sc;
 end
 
-function body = applySuperclassMigrators(body, concreteClassName)
+function body = applySuperclassMigrators(body, concreteClassName, targetVersion)
 % Walk document_class.superclasses (as normalised by universalRenames)
 % and run any matching +migrators/<superclass>.m before the
 % concrete-class migrator runs. Skips entries whose name matches the
 % concrete class or is empty, and skips entries that have no
 % registered migrator (silent no-op, same convention as the identity
 % fallback).
+%
+% ---------------------------------------------------------------------
+% TARGET-VERSION OVERRIDE  (added for #46: ngrid.coordinates)
+% ---------------------------------------------------------------------
+% This step was NOT bypassed by the migrators_j split, and that was a
+% silent data loss rather than a design: runConcreteMigrator routes a
+% class to +migrators_j INSTEAD of +migrators, but the SUPERCLASS pass
+% above it kept running the V_delta migrators unconditionally. So under
+% TargetVersion 'V_eta', +migrators/ngrid.m -- whose whole job is the
+% V_delta reshape (data_dim -> dim_sizes, derive ndims, rmfield
+% coordinates, rmfield data_size) -- was deleting `coordinates` on every
+% ontologyImage and every hartley_calc document before the J migrator
+% ever saw the body. testMigratorsJ records the symptom in its own
+% comment ("in the real pipeline the ngrid SUPERCLASS migrator runs
+% first and deletes it").
+%
+% A target-version override fixes it the same way runConcreteMigrator
+% does. THE OVERRIDE LIVES IN A DEDICATED SUBPACKAGE
+% (+migrators_j/+super/), NOT in +migrators_j itself, and that is
+% load-bearing: +migrators_j is full of CONCRETE-class migrators whose
+% names are also superclass names somewhere in the v1 zoo (element,
+% subject, image, measurement, filenavigator, pyraview, ...), and those
+% return a CELL OF BODIES (1 -> N). Picking one up here would hand a
+% cell to a step contracted to return a single struct. A separate
+% namespace makes that collision impossible by construction rather than
+% by an allow-list somebody has to maintain.
+%
+% A superclass override must return exactly one body: it reshapes a
+% property block, it does not split documents.
+if nargin < 3 || isempty(targetVersion)
+    targetVersion = 'V_delta';
+end
+superPackage = '';
+if strcmp(targetVersion, 'V_eta')
+    superPackage = 'did2.convert.migrators_j.super.';
+end
 if ~isfield(body, 'document_class') ...
         || ~isfield(body.document_class, 'superclasses') ...
         || ~isstruct(body.document_class.superclasses) ...
@@ -447,9 +841,29 @@ for k = 1:numel(sc)
         continue;
     end
     seen{end+1} = name; %#ok<AGROW>
-    fqn = ['did2.convert.migrators.', name];
-    if ~isempty(which(fqn))
-        body = feval(fqn, body);
+    fqn = '';
+    if ~isempty(superPackage) && ~isempty(which([superPackage, name]))
+        fqn = [superPackage, name];
+    elseif ~isempty(which(['did2.convert.migrators.', name]))
+        fqn = ['did2.convert.migrators.', name];
+    end
+    if ~isempty(fqn)
+        % feval IS NECESSARY HERE. GitHub code scanning alert 173 says
+        % "calling functions using 'feval' is usually not necessary; call the
+        % function directly instead" -- a FALSE POSITIVE. `fqn` is COMPUTED
+        % four lines above from the superclass name plus whichever package
+        % `which()` resolves, so there is no name to write literally: dynamic
+        % dispatch by class name is the entire mechanism of the superclass
+        % migrator chain. "Call it directly" is not an available option.
+        out = feval(fqn, body);
+        if ~isstruct(out) || ~isscalar(out)
+            error('did2:convert:badSuperclassMigratorOutput', ...
+                ['Superclass migrator %s returned %s; a superclass ' ...
+                 'migrator reshapes ONE body and must return a scalar ' ...
+                 'struct (splitting is the concrete migrator''s job).'], ...
+                fqn, class(out));
+        end
+        body = out;
     end
 end
 end
@@ -476,10 +890,37 @@ end
 function [names, counts] = bumpClassCounter(names, counts, name)
 idx = find(strcmp(names, name), 1);
 if isempty(idx)
-    names{end+1} = name; %#ok<AGROW>
-    counts(end+1) = 1; %#ok<AGROW>
+    names{end+1} = name;
+    counts(end+1) = 1;
 else
     counts(idx) = counts(idx) + 1;
+end
+end
+
+function acc = accumulateLegacyReport(acc, rep)
+%ACCUMULATELEGACYREPORT Sum one universalRenames per-body legacy report.
+%
+%   Every counter universalRenames reports is summed by NAME into the batch
+%   accumulator. A field the pass reports and this accumulator does not
+%   declare is an ERROR rather than a silent drop -- a counter that reached
+%   the pass and stopped here would be exactly the write-only condition the
+%   census work exists to remove. `bodies_inspected` is deliberately NOT
+%   summed: the batch denominator is kept at the call site (see the header on
+%   `legacy` above), because a body that throws inside the pass returns no
+%   report at all.
+names = fieldnames(rep);
+for k = 1:numel(names)
+    fn = names{k};
+    if strcmp(fn, 'bodies_inspected')
+        continue;
+    end
+    if ~isfield(acc, fn)
+        error('did2:convert:legacyCounterUnaccumulated', ...
+            ['did2.convert.universalRenames reports `%s` and ' ...
+             'did2.convert.v1_to_v2 does not accumulate it; the count ' ...
+             'would reach no report.'], fn);
+    end
+    acc.(fn) = acc.(fn) + rep.(fn);
 end
 end
 
@@ -496,11 +937,197 @@ fprintf('did2.convert.v1_to_v2 summary:\n');
 fprintf('  total:            %d\n', result.summary.total);
 fprintf('  migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
-if ~isempty(result.quarantine)
-    fprintf('  quarantine reasons:\n');
-    for k = 1:numel(result.quarantine)
-        fprintf('    [%s] %s\n', result.quarantine(k).class_name, ...
-            result.quarantine(k).reason);
+printUnconverted(result);
+printFragments(result);
+printLegacyNdiDocument(result);
+printSilentLoss(result);
+printQuarantine(result);
+end
+
+function printLegacyNdiDocument(result)
+%PRINTLEGACYNDIDOCUMENT The legacy identity block, denominator first.
+%
+%   PRINTED UNCONDITIONALLY, including when every counter is zero. Zero here
+%   means "no body in this batch carried an `ndi_document` block", which is
+%   the expected reading for every corpus we hold -- corpus run 31464483119
+%   inspected 633,432 documents across 6 corpora and quarantined 0, so no
+%   pre-`base` document is in any of them. That is a fact about the SAMPLE and
+%   NOT evidence none exist: a 2019-era NDI database is precisely what this
+%   migration is for. An absent line and a zero line would be the same output,
+%   which is the failure this project keeps paying for.
+if ~isfield(result.summary, 'legacy_ndi_document'); return; end
+L = result.summary.legacy_ndi_document;
+fprintf(['  legacy ndi_document: %d body(ies) reached universalRenames ' ...
+    '(of %d; %d already at target, %d never reached it)\n'], ...
+    L.bodies_reaching_universal_renames, L.bodies_total, ...
+    L.bodies_skipped_already_target, L.bodies_unreached);
+fprintf('      %8d  carried an `ndi_document` block\n', ...
+    L.ndi_document_block_seen);
+fprintf('      %8d  MOVED WHOLESALE into `base` (no `base` present)\n', ...
+    L.moved_wholesale_no_base);
+fprintf('      %8d  discarded (`base` present and wins)\n', ...
+    L.discarded_ndi_document_base_present);
+if L.moved_wholesale_no_base == 0; return; end
+fprintf('      of the moved: %d missing required `id`, %d missing `session_id`\n', ...
+    L.moved_missing_id, L.moved_missing_session_id);
+fprintf('                    %d carrying %d field(s) `base` does not declare\n', ...
+    L.moved_with_any_undeclared_field, L.moved_undeclared_field_instances);
+fprintf(['                    field names present: %d experiment_unique_reference, ' ...
+    '%d document_unique_reference, %d type, %d database_version\n'], ...
+    L.moved_carrying_experiment_unique_reference, ...
+    L.moved_carrying_document_unique_reference, ...
+    L.moved_carrying_type, L.moved_carrying_database_version);
+% THE VINTAGE BREAKDOWN, denominator first. `moved_wholesale_no_base` on its own
+% says nothing about whether anything broke: the 2020-05-19 vintage moves
+% SOUNDLY and it is the longest-lived of the four.
+fprintf('      vintage of the %d moved block(s), classified on the FIELD SET:\n', ...
+    L.moved_vintage_bodies_classified);
+fprintf('          %8d  2019-05 experiment_unique_reference/document_unique_reference  NO identity survives\n', ...
+    L.moved_vintage_2019_05_unique_reference);
+fprintf('          %8d  2019-11 experiment_id/document_id                              NO identity survives\n', ...
+    L.moved_vintage_2019_11_experiment_document_id);
+fprintf('          %8d  2019-12 experiment_id/id                                       `id` survives, session_id does NOT\n', ...
+    L.moved_vintage_2019_12_experiment_id_and_id);
+fprintf('          %8d  2020-05 session_id/id  (SOUND -- both identity fields land)\n', ...
+    L.moved_vintage_2020_05_session_id_and_id);
+fprintf('          %8d  UNKNOWN field set -- NOT rounded to the nearest vintage\n', ...
+    L.moved_vintage_unknown);
+fprintf('          %8d  UNREADABLE block (not a scalar struct; no field set to read)\n', ...
+    L.moved_vintage_unreadable_block);
+end
+
+function printQuarantine(result)
+%PRINTQUARANTINE Quarantines PER CLASS AND REASON, denominator first.
+%
+%   WHY THIS IS A ROLLUP AND NOT A LIST. Arming #37 (2026-08-10) is expected
+%   to quarantine ~7,233 documents in two known rows --
+%   stimulus_presentation.element_id 2,670 and image_observation.subject_id
+%   4,563. The previous version printed ONE LINE PER DOCUMENT, so that is
+%   7,233 near-identical lines; the summary line above it prints ONE NUMBER,
+%   7,233. Both are unreadable in the same way, from opposite ends: neither
+%   lets you see a THIRD row appear.
+%
+%   A gate that is going to sit red for a while has exactly one job -- make a
+%   NEW offender distinguishable from the known ones on the day it shows up.
+%   So: group by (class, error identifier), largest first, denominator
+%   printed FIRST and UNCONDITIONALLY per the standing rule, and keep a
+%   bounded sample of full messages for the detail a count cannot carry.
+%
+%   Grouping is on the IDENTIFIER, not the message: messages interpolate
+%   class and edge names, so grouping on text yields N groups of one.
+%
+%   The labels are rebuilt from the RAW entries rather than read off
+%   summary.quarantine_by_class, deliberately. That table runs its keys
+%   through matlab.lang.makeValidName so they can be struct fieldnames, which
+%   rewrites both the '|' separator and the ':' inside every error identifier
+%   into underscores -- 'a|did2:validation:x' renders as
+%   'a_did2_validation_x', where the class/reason boundary is no longer
+%   recoverable. The table stays for programmatic callers, matching the
+%   existing by_class convention; the human-readable rollup is computed here
+%   from strings that were never mangled.
+if isempty(result.quarantine)
+    return;
+end
+labels = {};
+counts = [];
+for k = 1:numel(result.quarantine)
+    ident = result.quarantine(k).identifier;
+    if isempty(ident); ident = '(no identifier)'; end
+    label = sprintf('%s | %s', result.quarantine(k).class_name, ident);
+    idx = find(strcmp(labels, label), 1);
+    if isempty(idx)
+        labels{end+1} = label; %#ok<AGROW>
+        counts(end+1) = 1;     %#ok<AGROW>
+    else
+        counts(idx) = counts(idx) + 1;
     end
+end
+[counts, order] = sort(counts, 'descend');
+names = labels(order);
+
+% DENOMINATOR FIRST: how many documents were quarantined, out of how many
+% inspected, across how many distinct (class, reason) rows. A count without
+% its denominator is not evidence.
+fprintf(['  quarantine: %d of %d document(s), in %d (class, reason) ' ...
+    'row(s):\n'], numel(result.quarantine), result.summary.total, ...
+    numel(names));
+for k = 1:numel(names)
+    fprintf('    %8d  %s\n', counts(k), names{k});
+end
+
+% A bounded sample of real messages. The counts say WHICH rows exist; a
+% message says what one actually looked like. Capped so a red corpus run
+% stays readable -- and the cap ANNOUNCES ITSELF rather than truncating
+% silently, because a silent truncation is how a report starts lying.
+sampleCap = 10;
+shown = min(sampleCap, numel(result.quarantine));
+fprintf('  quarantine sample (%d of %d shown):\n', shown, ...
+    numel(result.quarantine));
+for k = 1:shown
+    fprintf('    [%s] %s\n', result.quarantine(k).class_name, ...
+        result.quarantine(k).reason);
+end
+end
+
+
+function printSilentLoss(result)
+%PRINTSILENTLOSS Report-only census of data that migrates away unseen.
+if ~isfield(result, 'silent_loss'); return; end
+sl = result.silent_loss;
+if isfield(sl, 'audit_failed')
+    fprintf('  silent-loss audit: FAILED (%s)\n', sl.audit_failed);
+    return;
+end
+if sl.empty_dependency_count == 0 && sl.vacuous_field_count == 0
+    return;
+end
+fprintf(['  silent-loss audit (REPORT ONLY -- not a failure): %d empty required ' ...
+         'edge(s), %d vacuous required field(s)\n'], ...
+    sl.empty_dependency_count, sl.vacuous_field_count);
+for k = 1:min(numel(sl.empty_required_dependency), 15)
+    e = sl.empty_required_dependency(k);
+    fprintf('    %6d  empty edge   %s.%s\n', e.count, e.class_name, e.edge_name);
+end
+for k = 1:min(numel(sl.vacuous_required_field), 15)
+    f = sl.vacuous_required_field(k);
+    fprintf('    %6d  blank value  %s / %s.%s\n', f.count, f.class_name, ...
+        f.block, f.field_name);
+end
+end
+
+
+function printFragments(result)
+%PRINTFRAGMENTS Report-only: migrations that produced ONLY scaffolding.
+%   The third failure mode, and the one nothing could see before. See
+%   countFragments (below) for what it means and why it matters.
+if ~isfield(result.summary, 'fragment_count'); return; end
+if result.summary.fragment_count == 0; return; end
+fprintf(['  FRAGMENTS (REPORT ONLY -- migrator emitted only scaffolding, ' ...
+         'payload dropped): %d\n'], result.summary.fragment_count);
+tbl = result.summary.fragment_by_class;
+names = fieldnames(tbl);
+counts = zeros(1, numel(names));
+for k = 1:numel(names); counts(k) = tbl.(names{k}); end
+[counts, order] = sort(counts, 'descend');
+for k = 1:min(numel(names), 20)
+    fprintf('    %6d  %s\n', counts(k), names{order(k)});
+end
+end
+
+function printUnconverted(result)
+%PRINTUNCONVERTED Report-only: documents a migrator handed back unchanged.
+%   Not a failure. A high count on a class that is meant to convert is the
+%   signal; a class deferred to the NDI second pass is expected to be here.
+if ~isfield(result.summary, 'unconverted_count'); return; end
+if result.summary.unconverted_count == 0; return; end
+fprintf(['  unconverted (REPORT ONLY -- migrator returned its input ' ...
+         'unchanged): %d\n'], result.summary.unconverted_count);
+tbl = result.summary.unconverted_by_class;
+names = fieldnames(tbl);
+counts = zeros(1, numel(names));
+for k = 1:numel(names); counts(k) = tbl.(names{k}); end
+[counts, order] = sort(counts, 'descend');
+for k = 1:min(numel(names), 20)
+    fprintf('    %6d  %s\n', counts(k), names{order(k)});
 end
 end

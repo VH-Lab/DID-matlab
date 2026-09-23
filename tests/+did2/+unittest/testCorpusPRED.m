@@ -23,6 +23,10 @@ function tests = testCorpusPRED
 %   cached in tempdir across runs so re-runs in the same session
 %   skip the fetch.
 %
+%   STATUS of the 2026-08-10 batch-post-pass wiring edit: WRITTEN WITHOUT
+%   MATLAB. The guarded epochMint call, the new resolveSessionAnchors call and
+%   the post-pass failure assertions have NOT been executed here.
+%
 %   Run with:
 %       results = runtests('did2.unittest.testCorpusPRED');
 
@@ -74,10 +78,326 @@ for k = 1:numel(files)
     bodies{k} = fileread(fullfile(files(k).folder, files(k).name));
 end
 
-result = did2.convert.v1_to_v2(bodies, 'Validate', true);
+% Migrate to V_eta (the branch's target and the schema DID_SCHEMA_PATH points
+% at), then run the same DID-side post-passes as the other corpus tests
+% (runCorpusDiscovery): resolve deferred stimulus_baths and finalize the dataset
+% entity layer. Previously this called v1_to_v2 with no TargetVersion, defaulting
+% to V_delta -- but validation is against the V_eta schema, so a V_delta-shaped
+% output (e.g. pyraview still carrying the retired epochclocktimes block) fails
+% with an "undeclared block" error. Targeting V_eta runs the strict-J migrators
+% (migrators_j) so the corpus migrates cleanly under the schema it is checked
+% against.
+result = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'V_eta');
+% GUARDED 2026-08-11, in step with runCorpusDiscovery. This pass runs FIRST and
+% moves documents from `quarantine` into `migrated`; its per-bath failures were
+% swallowed by a bare `catch` with a two-line comment for a body until it
+% acquired the `deferred_bath_resolution` report, so "resolved every deferred
+% bath" and "resolved none" were the same reading of every corpus run. It runs
+% before writeCorpusReport, and PRED has been invisible to the census once
+% already. In the FATAL list below: the guard saves the artifact, the assertion
+% keeps the gate red.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveDeferredBaths', 'deferred_bath_resolution', ...
+    @(r) did2.convert.resolveDeferredBaths(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+% TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
+% graph into the entity tier -- the same six classes metadata_editor emits,
+% from the independent openMINDS store. ADDITIVE: neither store dominates and
+% 0 of 6 corpora carry both, so this does not replace or weaken that path.
+%
+% ORDER: BEFORE resolveDatasetEntities, which keeps the RICHEST `dataset`
+% entity per id. The entity minted here is keyed on the same dataset id as the
+% bare stubs and carries the real names, so it wins that ranking -- but only if
+% it exists when the ranking runs.
+%
+% GUARDED, same rule as epochMint below: this file writes a corpus report ~20
+% lines further on, and PRED has been invisible to the census once already. A
+% throw here would make it invisible again. The guard keeps the artifact; the
+% assertion after the report write keeps the gate red.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveOpenmindsCitations', 'openminds_citations', ...
+    @(r) did2.convert.resolveOpenmindsCitations(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+% GUARDED 2026-08-11: THIS PASS DELETES DOCUMENTS -- the poorer of duplicate
+% `dataset` entities, and every `migrated_session_membership` edge whose child
+% is absent from the batch -- and counted neither until it acquired the
+% `dataset_entity_resolution` report. The two reasons are kept apart there,
+% because a dedup loses nothing and a discarded membership edge loses a
+% statement. In the FATAL list below.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveDatasetEntities', 'dataset_entity_resolution', ...
+    @(r) did2.convert.resolveDatasetEntities(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+% #60: mint the `epoch` entities, keyed on the (base.session_id, epoch-id
+% string) PAIR. Kept in step with runCorpusDiscovery deliberately -- this file
+% exists to run the same post-passes on a HARD gate, and a post-pass that runs
+% only on the discovery corpora is a post-pass nothing gates.
+%
+% GUARDED (2026-08-10), same rule as runCorpusDiscovery: the report write is
+% ~20 lines below, and PRED has been invisible to the census once already (run
+% #3's upload found no files). A throw here would make it invisible again, and
+% this time silently, because the failure would look like an ordinary red test.
+% The guard keeps the artifact; the assertion added AFTER the report write
+% keeps the gate red.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.epochMint', 'epoch_mint', ...
+    @(r) did2.convert.epochMint(r, 'Validate', true, 'TargetVersion', 'V_eta'));
 
-% Build a readable diagnostic so a failure tells us *which* doc and
-% *why*, not just the bare count mismatch.
+% #65: fold session_relative_reference + session_bounded_reference into
+% `relative_reference`, base.id PRESERVED. Runs AFTER epochMint, matching
+% runCorpusDiscovery and ndi.migrate.local exactly. The two passes commute on
+% today's code (neither writes what the other reads, and no post-pass removes a
+% `session` document); the order is fixed so the three call sites cannot
+% diverge, NOT because a dependency forces it. See runCorpusDiscovery.m for the
+% full ordering note.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveSessionAnchors', 'session_anchor_fold', ...
+    @(r) did2.convert.resolveSessionAnchors(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
+% #66 INCREMENT 1: decompose each ingested epoch's `epochprobemap` into
+% epoch-scoped `<modality>_observation`s, retiring #30's coarse session-scoped
+% observation per probe. Same post-pass set and the SAME ORDER as
+% runCorpusDiscovery and testFixtureCorpus -- after epochMint (it anchors to the
+% minted `epoch` documents) and after resolveSessionAnchors.
+%
+% PRED holds `pyraview` and `daqreader_ndr` but its ingested epochs are the real
+% test here; whether it carries `epochfiles_ingested` documents is not predicted
+% in this comment -- the pass prints its own denominator, read that. It can only
+% APPEND observations/anchors and REMOVE #30 observations it replaced, so on a
+% corpus with no ingested epochs it cannot move PRED's zero-quarantine gate.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveEpochProbemap', 'epoch_probemap_fold', ...
+    @(r) did2.convert.resolveEpochProbemap(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
+% #61, the RESOLVER half of the signed stimulus-response fold: the five run
+% knobs move from `stimulus_response_scalar_parameters_basic` INLINE onto the
+% `harmonic_component_calculation` leaf and the `method_parameters_id` edge goes
+% (the schema's rule is the inline field OR the edge, never both). Kept in step
+% with runCorpusDiscovery and testFixtureCorpus, in the SAME ORDER, for the same
+% reason as the two passes above: a post-pass wired into some call sites and not
+% others makes the corpus green while another path does something else.
+%
+% WHAT THIS PASS WILL REPORT ON PRED IS NOT PREDICTED HERE. PRED's document
+% count is small (31 in the last cross-corpus rollup, run 31415147934), and it
+% would be easy to write "so every counter will be 0" -- but whether PRED holds
+% any stimulus-response document has not been measured, and a guess in a comment
+% becomes a fact the next reader quotes. The pass prints its own denominator;
+% read that. Wired here regardless: a hard gate that skips a pass is a pass one
+% hard gate does not cover.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveResponseParameters', 'response_parameters_fold', ...
+    @(r) did2.convert.resolveResponseParameters(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
+% TEAM DECISION 2026-08-11: the E. coli lawns and plates are subjects in two
+% tiers joined by `member_of`, minted only where a tier has measurements, and a
+% patch subject's `local_identifier` is the (experiment, plate, patch) triple.
+% Kept in step with runCorpusDiscovery and testFixtureCorpus, in the SAME ORDER,
+% for the same reason as the three passes above: a post-pass wired into some
+% call sites and not others makes the corpus green while another path does
+% something else.
+%
+% WHAT IT WILL REPORT ON PRED IS NOT PREDICTED HERE. Whether PRED holds any
+% ontologyTableRow at all has not been measured, and a guess written in a
+% comment becomes a fact the next reader quotes. The pass prints its own
+% denominator; read that. It is wired here regardless -- a hard gate that skips
+% a pass is a pass one hard gate does not cover -- and it can only APPEND, so on
+% a corpus with no such tables it cannot move PRED's zero-quarantine gate.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveLawnPlateSubjects', 'lawn_plate_subjects', ...
+    @(r) did2.convert.resolveLawnPlateSubjects(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
+% TEAM DECISION 2026-08-11: the `generic_file` -> opaque_body + statement fold.
+% WHAT IT WILL REPORT ON PRED IS NOT PREDICTED HERE beyond one measured fact:
+% run 31327383671 found ZERO `generic_file` documents in any of the six
+% corpora, PRED included, so the expected line is `generic_files_seen 0` and
+% that is a statement about the SAMPLE, not about the fold. It is wired here
+% regardless -- a hard gate that skips a pass is a pass no hard gate covers --
+% and on a corpus with no such documents it cannot move PRED's zero-quarantine
+% gate, because with nothing to fold it returns before minting anything.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.foldGenericFiles', 'generic_file_fold', ...
+    @(r) did2.convert.foldGenericFiles(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
+% TEAM DECISION 2026-08-11: `valid_interval` becomes a boolean-valued
+% `subject_statement`. Wired here for the same reason as the four above, in the
+% SAME ORDER -- a post-pass wired into some call sites and not others makes one
+% path green while another does something else.
+%
+% ORDER: after epochMint, and that dependence is REAL rather than conventional
+% -- it anchors to the `epoch` documents epochMint appends, and run before them
+% it would refuse every interval and change nothing.
+%
+% DORMANT BY TEAM DECISION 2026-08-12 -- it runs as a CENSUS and emits nothing
+% (the array-with-a-time-axis model waits on `axes[]`). It cannot move PRED's
+% zero-quarantine gate at all now: there is no code path from the dormant
+% branch that appends a document.
+%
+% WHAT IT WILL REPORT ON PRED, with the one measured fact and no guess beyond
+% it: run 31327383671 found ZERO `valid_interval` documents in any of the six
+% corpora, PRED included, so the expected line is `sources_seen 0` -- a
+% statement about the SAMPLE, not about the pass.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveValidIntervals', 'valid_interval_decompose', ...
+    @(r) did2.convert.resolveValidIntervals(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
+% #57 syncgraph half. Un-gate `syncgraph` -> `clock_alignment_policy` by
+% supplying the session-document id a single-doc migrator cannot resolve. PRED
+% holds ONE syncgraph and ONE session document, so the expected reading is
+% `syncgraphs_seen 1`, `policies_folded 1`, `refused_total 0`.
+result = did2.unittest.helpers.runBatchPass(result, ...
+    'did2.convert.resolveClockAlignment', 'clock_alignment_fold', ...
+    @(r) did2.convert.resolveClockAlignment(r, 'Validate', true, ...
+        'TargetVersion', 'V_eta'));
+
+% WRITE THE CENSUS REPORT, before the assertions so a red gate still reports.
+%
+% PRED is a HARD gate (zero quarantine), not a discovery run, so it does not
+% go through runCorpusDiscovery -- and as a side effect it has been invisible
+% to the census that four open items depend on. Run #3 (31315510527) is the
+% evidence: six corpus jobs ran, five artifacts were produced, and PRED's
+% upload step said
+%
+%   ##[warning]No files were found with the provided path: corpus-reports/
+%   tests/corpus-reports/. No artifacts will be uploaded.
+%
+% A corpus we gate on but never measure is a denominator missing from every
+% census number we quote. The assertions below are unchanged; this only stops
+% the corpus being uncounted.
+try
+    result.source_census = did2.validate.sourceCensus(bodies);
+catch censusErr
+    result.source_census = struct('audit_failed', censusErr.message);
+end
+% Epoch-string retention, for the reason the paragraph above gives: a corpus we
+% gate on but never measure is a denominator missing from every figure we quote,
+% and PRED is the corpus that had to be told twice. Sited AFTER every batch
+% post-pass above, exactly as in runCorpusDiscovery -- `retained_as_epoch_document`
+% only means anything once `epochMint` has run, and a pass-1 reading would be
+% structurally 0 (the silentLoss tautology, v1_to_v2.m:382 / 203c1f7).
+%
+% REPORT-ONLY. PRED is a HARD 0-quarantine gate and this instrument is
+% deliberately not part of it: nothing has measured the drop yet, so there is no
+% number to gate on. PRED is also 31-37 documents, so expect
+% `v1_pairs` to be small or 0 -- and 0 there is "this corpus carried no epoch
+% string", NOT "nothing was dropped".
+try
+    result.epoch_string_retention = did2.validate.epochStringRetention( ...
+        bodies, result.migrated);
+catch retentionErr
+    result.epoch_string_retention = struct('audit_failed', retentionErr.message);
+end
+
+% THE POST-MINT EPOCH CHAIN (#60, #86a). Mirrors the block in
+% runCorpusDiscovery, which carries the full reasoning; the short version is
+% that silentLoss runs INSIDE pass 1 (v1_to_v2.m:384) while epochMint appends
+% `epoch` documents afterwards, so the `REACH AN EPOCH` headline in
+% `silent_loss.epoch_association` is 0 BY CONSTRUCTION and says nothing about
+% the corpus. This second call reads the same walk over the SHIPPED batch.
+%
+% IT IS ADDED HERE AND NOT ONLY IN runCorpusDiscovery FOR THE REASON PRED HAS
+% ALREADY COST US ONCE: PRED is a hard 0-quarantine gate rather than a
+% discovery run, so it does not go through runCorpusDiscovery, and an
+% instrument added only there leaves this corpus unmeasured while looking
+% complete. That is exactly how `testCorpusPRED` contributed nothing to the
+% census for months, and how its missing `orphan_count` was later read as a
+% FAILURE by the corpus-proven rung.
+%
+% REPORT-ONLY, like the retention block above it. Nothing here gates.
+try
+    predPostMint = did2.validate.silentLoss(result.migrated);
+    if isfield(predPostMint, 'epoch_association')
+        result.epoch_association_post_pass = predPostMint.epoch_association;
+    else
+        result.epoch_association_post_pass = struct( ...
+            'audit_failed', 'silentLoss returned no epoch_association block');
+    end
+catch predPostMintErr
+    result.epoch_association_post_pass = struct( ...
+        'audit_failed', predPostMintErr.message);
+end
+% REFERENCE INTEGRITY -- THE OTHER HALF OF THE GATE, ADDED 2026-08-13.
+%
+% The corpus gate is stated everywhere in this project as "0 quarantine AND 0
+% ORPHANS". This file asserted the first half only: it never called
+% did2.validate.references at any point, so the corpus we treat as the HARD
+% gate was the one corpus with no orphan check at all. runCorpusDiscovery has
+% swept for orphans on the other five since it was written; PRED was left out
+% by omission rather than by decision, and the omission was invisible because
+% a green PRED reads identically whether the sweep ran or not.
+%
+% IT IS NOT ACADEMIC ON THIS CORPUS, WHICH IS WHY IT IS WORTH THE LINES. PRED
+% is where today's new cross-document edges land: pyraview's `time_reference_2`
+% pointing at the epoch reference, element's `instrument_id` on the
+% voltage_observation, and the daqreader_ndr fold's preserved id, which two
+% `daqsystem` documents name through `daqreader_id`. Every one of those is an
+% edge that did not exist last week, and a dangling one would have passed this
+% gate.
+%
+% THE SOURCE GRAPH IS CLEAN, so a non-zero here is OURS, not the corpus's --
+% measured 2026-08-13 by reading the zip directly:
+%
+%   DENOMINATOR: 14 document(s), 14 distinct base.id, 1 distinct session_id
+%     edges examined 13, empty 4, DANGLING 0
+%   The 4 empty edges are the two `element.underlying_element_id` (neither
+%   element is derived) and the two `daqsystem.daqmetadatareader_id` bare slots
+%   that NDI's add_dependency_value_n leaves empty beside `_id_1`. All four are
+%   optional on their V_eta targets, so none can trip #37.
+%
+% SITED BEFORE writeCorpusReport, deliberately and for the reason this file
+% already gives three times: the report must reach the artifact even when the
+% gate goes red, and a red orphan gate is exactly the run whose report you
+% need. The assertion is BELOW the write, with the other fatal checks.
+refRep = [];
+refErrMsg = '';
+try
+    refRep = did2.validate.references(result.migrated);
+catch refReportErr
+    % A FAILED SWEEP AND A CORPUS THAT NEVER SWEPT MUST NOT RENDER ALIKE.
+    % Carried as `audit_failed` with no counts, never as a zero.
+    refErrMsg = refReportErr.message;
+    fprintf('PRED reference report skipped: %s\n', refErrMsg);
+end
+result.reference_integrity = ...
+    did2.unittest.helpers.referenceIntegrityBlock(refRep, refErrMsg);
+
+reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
+did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
+
+% THE REPORT IS ON DISK -- now make a guarded post-pass failure FATAL. PRED is
+% the hard gate, so this is where a batch pass that threw must turn the build
+% red. Doing it here rather than letting the pass throw above is the whole
+% point of the guard: the artifact lands AND the gate fires, instead of one at
+% the cost of the other.
+% NOTE, not a change: `response_parameters_fold`, `lawn_plate_subjects` and
+% `openminds_citations` are wired above but are NOT in this list, so a throw in
+% any of them is recorded in the report and does not turn PRED red. That is
+% someone else's call to make; it is written down here rather than silently
+% fixed, because a hard gate that covers three of six passes reads exactly like
+% one that covers six. `openminds_citations` is here for the same reason as the
+% other two -- it has never been executed, and red-gating everyone on an
+% unexecuted pass's first run is the judgement resolveSessionAnchors's author
+% made and was right about.
+% `deferred_bath_resolution` and `dataset_entity_resolution` ARE in the list,
+% for the opposite reason to the three above: both ran BARE here for months,
+% where a throw was already fatal. Guarding them 2026-08-11 protects the
+% artifact; omitting them from this list would have silently downgraded two
+% hard failures to log lines.
+for passField = {'deferred_bath_resolution', 'dataset_entity_resolution', ...
+                 'epoch_mint', 'session_anchor_fold', 'generic_file_fold'}
+    failMsg = did2.unittest.helpers.batchPassFailure(result, passField{1});
+    verifyEmpty(testCase, failMsg, sprintf( ...
+        ['PRED: batch post-pass `%s` FAILED; its documents are in pass-1 ' ...
+         'form and the corpus report records this under %s.pass_failed: %s'], ...
+        passField{1}, passField{1}, failMsg));
+end
+
+% Build a readable diagnostic so a failure tells us *which* doc and *why*.
 if result.summary.quarantine_count > 0
     lines = cell(1, numel(result.quarantine));
     for k = 1:numel(result.quarantine)
@@ -93,9 +413,56 @@ else
     diag = '';
 end
 
-verifyEqual(testCase, result.summary.migrated_count, ...
-    result.summary.total, diag);
+% The gate is zero quarantine: every source document migrates cleanly under the
+% V_eta schema. (The old migrated_count == total check assumed 1 -> 1 migration;
+% under V_eta the strict-J migrators fan out 1 -> N, so migrated_count > total.)
 verifyEqual(testCase, result.summary.quarantine_count, 0, diag);
+verifyGreaterThanOrEqual(testCase, result.summary.migrated_count, ...
+    result.summary.total, diag);
+
+% ...AND ZERO ORPHANS. The report is already on disk, so this can be fatal
+% without costing the run its census -- the same order every other assertion
+% in this file follows.
+%
+% A MISSING SWEEP IS ITS OWN FAILURE, NOT A PASS. If did2.validate.references
+% threw, `reference_integrity` carries `audit_failed` and NO counts, and the
+% branch below fails on that rather than skipping -- because "no orphans" and
+% "nobody looked" printing the same green is the exact defect this project
+% has paid for repeatedly.
+%
+% AND THE DENOMINATOR IS ASSERTED ALONGSIDE THE COUNT. `orphan_count == 0`
+% with `edges_examined == 0` means the sweep read nothing; PRED's source
+% carries 13 non-empty-or-empty edges and its migration adds more, so a zero
+% denominator here would be an instrument fault wearing a clean result.
+ri = result.reference_integrity;
+sweepFailure = '';
+if ~isstruct(ri) || ~isscalar(ri)
+    sweepFailure = 'no reference_integrity block was written at all';
+elseif isfield(ri, 'audit_failed')
+    sweepFailure = ri.audit_failed;
+elseif ~isfield(ri, 'orphan_count') || ~isfield(ri, 'edges_examined')
+    sweepFailure = 'the block carries no counts';
+end
+assertEmpty(testCase, sweepFailure, sprintf( ...
+    ['PRED: the reference-integrity sweep did not run (%s). A corpus with no ' ...
+     'orphan check is not a corpus with no orphans.'], sweepFailure));
+verifyGreaterThan(testCase, ri.edges_examined, 0, ...
+    ['PRED: the orphan sweep examined 0 edges, so its 0 orphans is a ' ...
+     'statement about the sweep and not about the corpus.']);
+if ri.orphan_count > 0
+    rowLines = cell(1, numel(ri.orphan_rows));
+    for k = 1:numel(ri.orphan_rows)
+        rowLines{k} = sprintf('  %s x%d', ...
+            ri.orphan_rows(k).key, ri.orphan_rows(k).count);
+    end
+    orphanDiag = sprintf( ...
+        'PRED: %d orphan edge(s) of %d examined across %d document(s):\n%s', ...
+        ri.orphan_count, ri.edges_examined, ri.total_docs, ...
+        strjoin(rowLines, sprintf('\n')));
+else
+    orphanDiag = '';
+end
+verifyEqual(testCase, ri.orphan_count, 0, orphanDiag);
 end
 
 % --- helpers ---

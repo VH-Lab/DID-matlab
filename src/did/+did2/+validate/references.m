@@ -88,6 +88,23 @@ for k = 1:numel(list)
     for j = 1:numel(deps)
         documentId = char(deps{j}.document_id);
         if isempty(documentId)
+            % THE LINE #37 IS ABOUT -- AND IT STAYS. It was read for a
+            % long time as the reason `mustBeNonEmpty` on a depends_on
+            % was decorative. It is only half the reason, and it is the
+            % half that is CORRECT: an edge with no id names no
+            % document, so it cannot dangle, and this function is the
+            % ORPHAN check. It is also handed no schema, so it cannot
+            % know which edges were declared required -- skipping here
+            % is not a policy, it is the limit of what is knowable from
+            % this function's inputs.
+            %
+            % The actual hole was that did2.schema.cache/validateDocument
+            % never looked at depends_on AT ALL. That is where the check
+            % now lives, behind
+            % did2.schema.cache.strictMode('RequiredDependencies'), and
+            % where the schema is in scope to say which edges are
+            % required. did2.validate.silentLoss counts the same
+            % condition, report-only.
             continue;
         end
         edgesExamined = edgesExamined + 1;

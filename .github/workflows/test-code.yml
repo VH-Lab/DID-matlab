@@ -40,32 +40,127 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check out did-schema (sibling, for V_zeta validation)
+      - name: Check out did-schema (sibling, for V_eta validation)
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          # V_zeta content is on did-schema main. If a topic branch on
-          # both repos needs to co-develop, wire that up per-PR rather
-          # than relying on github.head_ref (which resolves to branches
-          # like V2_Update that don't exist on did-schema).
+          # did-schema #64 merged the V_eta (Brainstorm-J) tree into did-schema
+          # `main` on 2026-09-23 and deleted the shared topic branch, so the
+          # full V_eta schema tree (schemas/V_eta/, tools/bar2_gap.py, the plan
+          # docs) now lives on main. Validate against main.
           ref: main
           path: did-schema
 
-      - name: Assemble V_zeta schema set (stable + draft)
-        # V_zeta (Brainstorm I) replaces V_epsilon as the migration/validation
-        # target. The schema cache loads a single flat dir of *.json; the
-        # Brainstorm-I migration classes live in V_zeta/stable and the
-        # genomics/dataseries data-format families in V_zeta/draft (class
-        # names are disjoint across tiers), so combine both tiers into one
-        # directory for DID_SCHEMA_PATH.
+      # ---------------------------------------------------------------
+      # MIRRORED FROM test-migrators-quick.yml, DELIBERATELY NOT SHARED.
+      # This workflow runs the SAME `did2.unittest` package, so it runs
+      # testBatchPassWiring too -- and without NDI-matlab that test's
+      # cross-repo half SKIPS. A skip inside a MATLAB log reads as a pass,
+      # so the full suite was quietly measuring less than the fast gate.
+      # GitHub Actions has no include for step lists; a composite action
+      # would be the DRY fix and is a bigger change than closing the hole.
+      # If you edit one copy, edit both -- the confirm step below prints
+      # PRESENT/ABSENT either way, so a divergence is visible in the log.
+      # ---------------------------------------------------------------
+      - name: Resolve the NDI-matlab ref (falls back to main)
+        id: ndi-ref
+        # did2.unittest.testBatchPassWiring asserts that every batch post-pass
+        # diverging between the corpus gate and PRODUCTION
+        # (ndi.migrate.local, in NDI-matlab) is named in a checked-in table
+        # with a reason. It cannot do that without the file, and when the file
+        # is missing it SKIPS -- loudly, but it skips.
+        #
+        # THE REF FALLS BACK RATHER THAN FAILING THE JOB. Most DID-side
+        # branches have no NDI-side twin, and a fast gate that goes red
+        # because a sibling repository does not carry the same branch name is
+        # a gate people delete. The chosen ref is PRINTED either way, so a run
+        # that fell back to main says so instead of looking like a run that
+        # matched -- "we compared against production" and "we compared against
+        # main" are different claims and must not print the same.
         run: |
-          mkdir -p "${GITHUB_WORKSPACE}/zeta-schemas"
-          cp did-schema/schemas/V_zeta/stable/*.json "${GITHUB_WORKSPACE}/zeta-schemas/"
-          cp did-schema/schemas/V_zeta/draft/*.json  "${GITHUB_WORKSPACE}/zeta-schemas/"
+          want="${{ github.head_ref || github.ref_name }}"
+          if git ls-remote --exit-code --heads \
+               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
+            echo "NDI-matlab HAS branch '$want' -- comparing against it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out NDI-matlab (sibling, for the cross-repo wiring gate)
+        uses: actions/checkout@v4
+        # SHALLOW AND SPARSE ON PURPOSE. The test reads local.m as TEXT; NDI is
+        # never put on the MATLAB path and nothing here executes it, so the
+        # whole ~1 GB history and tree would buy nothing. fetch-depth 1 (the
+        # default, stated rather than assumed) plus a cone-mode sparse checkout
+        # of the one package brings down the +migrate directory and little else.
+        #
+        # continue-on-error, deliberately: a repository-access change must
+        # degrade this to the SKIP the test already handles, not turn the ~2
+        # minute gate red for every branch at once. The step below says which
+        # of the two happened.
+        continue-on-error: true
+        with:
+          repository: VH-Lab/NDI-matlab
+          ref: ${{ steps.ndi-ref.outputs.ref }}
+          path: NDI-matlab
+          fetch-depth: 1
+          sparse-checkout: src/ndi/+ndi/+migrate
+          sparse-checkout-cone-mode: true
+
+      - name: Confirm the cross-repo gate has something to read
+        # NOT a gate -- a DENOMINATOR, printed early where a log tail can find
+        # it. testBatchPassWiring SKIPS when local.m is absent, and a skip
+        # inside a MATLAB test log is exactly the kind of thing that reads as a
+        # pass. Say here, before MATLAB starts, whether the fourth call site is
+        # present, how big it is, and what the checkout actually cost.
+        run: |
+          f="${GITHUB_WORKSPACE}/NDI-matlab/src/ndi/+ndi/+migrate/local.m"
+          if [ -f "$f" ]; then
+            echo "PRESENT: $f"
+            echo "  ref checked out: ${{ steps.ndi-ref.outputs.ref }}"
+            echo "  lines: $(wc -l < "$f")"
+            echo "  sparse checkout on disk: $(du -sh "${GITHUB_WORKSPACE}/NDI-matlab" | cut -f1)"
+          else
+            echo "ABSENT: $f"
+            echo "  did2.unittest.testBatchPassWiring will SKIP its cross-repo"
+            echo "  gate. That is 'did not look', NOT 'wired correctly'."
+          fi
+
+      - name: Assemble V_eta schema set (stable + draft)
+        # V_eta (Brainstorm J) is the migration/validation target. The schema
+        # cache loads a single flat dir of *.json; the Brainstorm-J classes live
+        # in V_eta/stable and the genomics/dataseries data-format families in
+        # V_eta/draft (class names are disjoint across tiers), so combine both
+        # tiers into one directory for DID_SCHEMA_PATH.
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
+          # of the go-forward MODEL. Those are two different questions and they
+          # were conflated here until 2026-08-10.
+          #
+          # `deprecated/` holds exactly the v1 shapes that DELIBERATELY pass
+          # through unmodelled -- projectvar, stimulus_parameter_table,
+          # image_stack(+_parameters). A passthrough's whole contract is that the
+          # document reaches the validator under its own class, so omitting the
+          # tier means every one of them QUARANTINES. The tier was doing nothing.
+          #
+          # It went unnoticed because three of the four have never appeared in a
+          # tested corpus. The fourth did: corpus run 31421715133 turned 4,563 JH
+          # `image_stack` documents into `No schema file for class "image_stack"`
+          # the moment the guard made them passthroughs instead of subject-less
+          # observations. Trading silent husks for loud quarantines was the point
+          # of the guard; losing them at validation was not.
+          #
+          # Safe to copy: no filename collides across tiers (checked, 245 files).
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
 
       - name: Export DID_SCHEMA_PATH
         run: |
-          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/zeta-schemas" \
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" \
             >> "$GITHUB_ENV"
 
       - name: Set up MATLAB
@@ -76,6 +171,16 @@ jobs:
           products: Statistics_and_Machine_Learning_Toolbox
 
       - name: Install MatBox
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: ehennestad/matbox-actions/install-matbox@v1
 
       - name: Check code
@@ -85,6 +190,16 @@ jobs:
           create_badge: ${{ env.SHOULD_CREATE_BADGES }}
 
       - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: matlab-actions/run-command@v2
         if: always()
         with:
@@ -96,6 +211,11 @@ jobs:
       - name: Run tests
         uses: matlab-actions/run-command@v2
         if: always()
+        env:
+          # Opt in to the ~446 MB Soph corpus (the largest fixture, ~101k v1
+          # docs). It is skipped by default to keep PR runs cheap; the full
+          # test-code run validates the entire corpus at V_eta, so include it.
+          DID_RUN_SOPH_TEST: '1'
         with:
           command: |
             addpath(genpath("src"));
@@ -111,8 +231,95 @@ jobs:
             suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
             results = runner.run(suite);
             disp(table(results));
-            nFailed = sum([results.Failed]);
-            assert(nFailed == 0, sprintf("%d test(s) failed", nFailed));
+            % The verdict block prints LAST so a red run is readable from a log
+            % tail: the failing test's NAME, not just a count. Guarded, because a
+            % helper that fails to resolve must not turn every gate red -- the
+            % fallback recomputes the same two numbers and says loudly that it did.
+            verdict = struct('n_run', numel(results), ...
+                'n_failed', sum([results.Failed]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(results, "full test suite");
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_run > 0, ...
+                "the suite selected NO tests -- that is a broken filter, not a pass");
+            assert(verdict.n_failed == 0, ...
+                sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
+                    verdict.n_failed));
+
+      - name: Corpus census digest (END OF LOG -- reachable by a log tail)
+        # The corpus tests already print every number below, but they run FIRST
+        # in a ~1700-line, 2.5-hour log, so the census is unreachable by a log
+        # tail and effectively write-only: reading it meant downloading the
+        # artifact. This step re-prints the same figures from the saved JSON at
+        # the very END, where `get_job_logs --tail` lands.
+        #
+        # This is not decoration. The silent-loss census is the evidence that
+        # gates Phase 1: `mustBeNonEmpty` on depends_on and the all-blank
+        # composite check cannot be flipped to enforcing until these counts are
+        # known, because flipping blind would light up an unknown number of
+        # quarantines and block the 0-quarantine gate.
+        #
+        # BOTH ROOTS. MATLAB's pwd during these corpora is `tests/`, so the
+        # reports land in `tests/corpus-reports/` and this step -- which named
+        # only the repo-root path -- has been printing NO REPORTS FOUND while
+        # exiting 0. The digest now fails loudly when it aggregates nothing.
+        if: always()
+        run: python3 tools/census_digest.py corpus-reports tests/corpus-reports
+
+      - name: V_eta CORPUS-PROVEN rung (feed the did-schema coverage ladder)
+        # THE ONLY RUNG THAT CAN HONESTLY SAY A CLASS IS DONE, and until this
+        # step it read `0 yes / 0 no / 102 NOT MEASURED` for one reason: the
+        # reports that answer it are written HERE, by the corpus tests above,
+        # and the tool that reads them lives in did-schema. Both halves were
+        # already written. Nothing carried the evidence across.
+        #
+        # THE TWO THINGS IT NEEDS ARE IN THIS JOB, WHICH IS WHY THE STEP IS
+        # HERE AND NOT IN test-corpus.yml. `test-code` is a SINGLE job: the
+        # did-schema checkout is made at the top of it (`path: did-schema`) and
+        # the corpus reports are on disk by the time the digest above runs.
+        # test-corpus.yml is two jobs -- `corpus` checks out did-schema, and
+        # `census` downloads the reports -- so over there the reports and the
+        # tool never coexist and this step could not run as written.
+        #
+        # IT INVOKES, IT DOES NOT REIMPLEMENT. The verdict is coverage.py's
+        # `corpus_verdict()`; this step finds the reports, hands them over,
+        # cross-checks the rung it gets back against the census it fed in, and
+        # makes the attribution limit visible. Two implementations of "is this
+        # class proven" that disagree would be worse than the one that was
+        # missing.
+        #
+        # NOTE coverage.py REGENERATES `did-schema/schemas/V_eta_coverage_*`
+        # in that checkout. It is a throwaway sibling clone here, which is the
+        # only reason that is acceptable; `--check` is not an alternative,
+        # because it exits before stage 5's input is ever read.
+        #
+        # REPORT-ONLY on a migration defect, FATAL on an instrument fault. A
+        # class whose rung comes back `no` prints in full and does NOT fail
+        # this step: the step exists to carry evidence, and a corpus failure is
+        # exactly when that evidence must reach the artifact. Zero reports
+        # found, a report with no readable v1 source census, an absent
+        # coverage.py and a rung that contradicts its own census all DO fail --
+        # run #3 printed `NO CORPUS REPORTS FOUND` after an hour of green
+        # corpora and exited 0, and that must not be expressible here.
+        if: always()
+        run: |
+          python3 tools/corpus_proven.py --schema-repo did-schema \
+              corpus-reports tests/corpus-reports
+
+      - name: Per-corpus Bar-2 gap (report-only)
+        # BAR-1 (corpus_proven / the corpus tests) says the documents migrate and
+        # validate. This says, per corpus, how many of its classes are at their
+        # DECIDED FINAL shape -- the husks/bridges/superseded emissions a green
+        # run hides. REPORT-ONLY: Bar-2 is the work in progress, so not reaching
+        # it is expected and must not fail CI (no --gate). did-schema's tool
+        # reads its own coverage ledger; we only hand it the corpus reports.
+        if: always()
+        run: |
+          python3 did-schema/tools/bar2_gap.py \
+              corpus-reports tests/corpus-reports || true
 
       - name: Push SVG badges to badges branch
         if: always() && env.SHOULD_PUSH_BADGES == 'true'
@@ -126,12 +333,23 @@ jobs:
         # JSON summaries into corpus-reports/. Upload them as a CI
         # artifact regardless of test outcome so the migrated/quarantine
         # signal survives the run.
+        #
+        # `corpus-proven/` is the rung step's output: the rendered rung, the
+        # per-class JSON, coverage.py's own log and the regenerated
+        # V_eta_coverage_ledger.json, so the ladder's top rung can be read back
+        # in did-schema without re-running a 2.5-hour corpus. It is a THIRD
+        # repo-root path and does NOT move the artifact root: the least common
+        # ancestor of the first two is already the repo root, which is the
+        # promotion that made run #3's reports unfindable.
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: corpus-discovery-reports
-          path: corpus-reports/
-          if-no-files-found: ignore
+          path: |
+            corpus-reports/
+            tests/corpus-reports/
+            corpus-proven/
+          if-no-files-found: warn
 
       - name: Upload code coverage report to Codecov
         uses: codecov/codecov-action@v4

@@ -10,6 +10,11 @@ function tests = testConvertV1ToV2
 %
 %   Run with:
 %       results = runtests('did2.unittest.testConvertV1ToV2');
+%
+%   STATUS of the 2026-08-11 additions (the "legacy identity block" section at
+%   the end of this file): WRITTEN WITHOUT MATLAB OR OCTAVE AND NOT EXECUTED.
+%   Neither is available in the environment they were written in, so CI is
+%   their first run.
 
 tests = functiontests(localfunctions);
 end
@@ -509,3 +514,666 @@ verifyFalse(testCase, isfield(dependsOn, 'value'));
 verifyFalse(testCase, isfield(dependsOn, 'version'));
 end
 
+
+% ===================== the legacy identity block ===========================
+%
+% THE COUNTER, NOT THE REPAIR. did2.convert.universalRenames handles a
+% pre-`base` v1 document by MOVING THE `ndi_document` BLOCK WHOLESALE into
+% `base` -- renaming the container and doing nothing to the contents, on the
+% one code path that exists precisely because the contents differ. The tests
+% below PIN THAT BEHAVIOUR RATHER THAN FIX IT: the fix changes migrated
+% identity and is a team decision (V_eta_OPEN_WORK.md, "a pre-`base` v1
+% document cannot migrate"). What is new is that the arm is now COUNTED.
+%
+% The shapes, read from NDI origin/main history rather than described:
+%   ndi_document.json, block `ndi_document`, added 4f1a2b801 (2019-05-05):
+%     experiment_unique_reference, document_unique_reference,
+%     name, type, datestamp, database_version                        SIX
+%   base.json, block `base`, added 9783809c2 (2023-04-13), unchanged since:
+%     id, session_id, name, datestamp                                FOUR
+
+function v1 = make2019Body()
+% The 2019 block, verbatim from ndi_document.json as added 4f1a2b801, with
+% real values in place of the template's blanks.
+v1 = struct();
+v1.document_class = struct('class_name', 'projectvar');
+v1.projectvar = struct('description', 'a legacy variable', 'data', 5);
+v1.ndi_document = struct( ...
+    'experiment_unique_reference', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'document_unique_reference',   'aabb1122ccdd3344_1122334455667788', ...
+    'name',                        'legacy-doc', ...
+    'type',                        'ndi_element', ...
+    'datestamp',                   '2019-06-01T12:00:00.000Z', ...
+    'database_version',            1);
+end
+
+function testLegacyReportIsReturnedWithItsDenominatorForEveryBody(testCase)
+% DENOMINATOR FIRST AND UNCONDITIONALLY (Operating Rule 5). A body with no
+% legacy block reports 1 inspected beside zeros -- never nothing at all.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct();
+[~, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.bodies_inspected, 1);
+verifyEqual(testCase, report.ndi_document_block_seen, 0);
+verifyEqual(testCase, report.moved_wholesale_no_base, 0);
+verifyEqual(testCase, report.discarded_ndi_document_base_present, 0);
+end
+
+function testLegacyReportCountsTheWholesaleMoveArm(testCase)
+v1 = make2019Body();
+[out, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.ndi_document_block_seen, 1);
+verifyEqual(testCase, report.moved_wholesale_no_base, 1);
+verifyEqual(testCase, report.discarded_ndi_document_base_present, 0);
+% The block moved. Behaviour UNCHANGED and pinned here on purpose.
+verifyFalse(testCase, isfield(out, 'ndi_document'));
+verifyTrue(testCase, isfield(out, 'base'));
+end
+
+function testLegacyReportCountsTheDiscardArmSeparately(testCase)
+% The two arms are different facts and are never summed: this one drops a
+% stale block beside a good `base`, and loses no identity.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct();
+v1.ndi_document = struct('name', 'jrclust.prm');
+[out, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.ndi_document_block_seen, 1);
+verifyEqual(testCase, report.discarded_ndi_document_base_present, 1);
+verifyEqual(testCase, report.moved_wholesale_no_base, 0);
+verifyEqual(testCase, out.base.id, 'aabb1122ccdd3344_1122334455667788');
+end
+
+function testLegacyReportMeasuresBothRequiredIdentityFieldsMissing(testCase)
+% THE DEFECT, MEASURED. The 2019 block has neither `id` nor `session_id`, so
+% the document it produces carries NO IDENTITY -- and would quarantine on
+% `undeclaredField` before anyone noticed that.
+v1 = make2019Body();
+[out, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.moved_missing_id, 1);
+verifyEqual(testCase, report.moved_missing_session_id, 1);
+verifyFalse(testCase, isfield(out.base, 'id'));
+verifyFalse(testCase, isfield(out.base, 'session_id'));
+end
+
+function testLegacyReportCountsTheFourUndeclaredFields(testCase)
+% experiment_unique_reference, document_unique_reference, type,
+% database_version -- four fields `base` does not declare, on one body.
+v1 = make2019Body();
+[~, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.moved_with_any_undeclared_field, 1);
+verifyEqual(testCase, report.moved_undeclared_field_instances, 4);
+end
+
+function testLegacyReportDiscriminatesThe2019VintageFromThe2020One(testCase)
+% An arm count alone cannot say whether anything is broken. NDI renamed the
+% fields in stages -- experiment_unique_reference -> experiment_id
+% (5d0b66d8f, 2019-11-04) -> session_id (e8c02831d, 2020-05-19), and
+% document_unique_reference -> id, in the TEMPLATE, at f4f9d9450 (2019-12-16)
+% -- so a 2020-vintage `ndi_document` block already spells `id`/`session_id`
+% and the wholesale move is SOUND for it. Only the 2019 names mark the broken
+% shape.
+%
+% THE COMMIT CITED HERE WAS 9dc6bfe15 (2019-12-20) AND THAT IS THE WRONG FILE.
+% Positive evidence, not absence -- 9dc6bfe15 touches the MATLAB class and not
+% the template:
+%   $ git show 9dc6bfe15 --stat --format= --name-only | grep -i ndi_document
+%   database/ndi_document.m
+%   $ git log --all --follow -- ndi_common/database_documents/ndi_document.json
+%   ... f4f9d9450 2019-12-16 ...     <- the revision that introduced `id`
+% The field-set claim the test makes is unaffected; only the citation moved.
+%
+% THIS TEST IS NOW THE WEAK FORM. It reads FOUR single fields, and two of the
+% four vintages differ from their neighbour by ONE field name, so no reading of
+% these counters can name a vintage. The vintage classifier below supersedes it
+% for that purpose; this stays because each single-field count is still a fact.
+v1 = make2019Body();
+[~, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.moved_carrying_experiment_unique_reference, 1);
+verifyEqual(testCase, report.moved_carrying_document_unique_reference, 1);
+verifyEqual(testCase, report.moved_carrying_type, 1);
+verifyEqual(testCase, report.moved_carrying_database_version, 1);
+
+v2020 = struct();
+v2020.document_class = struct('class_name', 'treatment');
+v2020.treatment = struct();
+v2020.ndi_document = struct( ...
+    'id',               'aabb1122ccdd3344_1122334455667788', ...
+    'session_id',       'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name',             'legacy-doc', ...
+    'type',             '', ...
+    'datestamp',        '2021-06-01T12:00:00.000Z', ...
+    'database_version', 1);
+[~, r2020] = did2.convert.universalRenames(v2020);
+verifyEqual(testCase, r2020.moved_wholesale_no_base, 1);
+verifyEqual(testCase, r2020.moved_missing_id, 0);
+verifyEqual(testCase, r2020.moved_missing_session_id, 0);
+verifyEqual(testCase, r2020.moved_carrying_experiment_unique_reference, 0);
+verifyEqual(testCase, r2020.moved_carrying_document_unique_reference, 0);
+% Still two fields with no home in `base`, and the counter says so.
+verifyEqual(testCase, r2020.moved_undeclared_field_instances, 2);
+end
+
+function testLegacyDeclaredBaseFieldListMatchesTheSchema(testCase)
+% countMovedBlock names `base`'s four declared fields inline because it runs
+% with no schema cache in hand. This test is what keeps that list honest:
+% it reads the SCHEMA and asserts the same four, so a field added to `base`
+% fails here rather than silently inflating `moved_undeclared_field_instances`
+% on every future run.
+thisDir = fileparts(mfilename('fullpath'));
+schemaFile = fullfile(fileparts(thisDir), 'fixtures', 'V_delta', 'base.json');
+verifyTrue(testCase, isfile(schemaFile), ...
+    sprintf('base schema fixture not found at %s', schemaFile));
+schema = jsondecode(fileread(schemaFile));
+declared = sort({schema.fields.name});
+verifyEqual(testCase, declared, ...
+    sort({'datestamp', 'id', 'name', 'session_id'}));
+end
+
+function testLegacyCountersReachTheBatchSummaryWithItsDenominator(testCase)
+% The counter is useless if it stops at the per-body report. v1_to_v2 sums it
+% into summary.legacy_ndi_document, which writeCorpusReport persists and
+% tools/census_digest.py renders.
+v1 = make2019Body();
+clean = makeV1Skeleton('treatment');
+clean.treatment = struct();
+result = did2.convert.v1_to_v2({v1, clean}, 'Validate', false);
+L = result.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_total, 2);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 2);
+verifyEqual(testCase, L.bodies_skipped_already_target, 0);
+verifyEqual(testCase, L.bodies_unreached, 0);
+verifyEqual(testCase, L.ndi_document_block_seen, 1);
+verifyEqual(testCase, L.moved_wholesale_no_base, 1);
+verifyEqual(testCase, L.discarded_ndi_document_base_present, 0);
+verifyEqual(testCase, L.moved_undeclared_field_instances, 4);
+verifyEqual(testCase, L.moved_by_class.projectvar, 1);
+end
+
+function testLegacySummaryIsPresentAndZeroWhenNoBodyCarriesTheBlock(testCase)
+% ALL-ZERO IS THE EXPECTED READING on every corpus we hold, and it has to be
+% a PRINTED zero. Corpus run 31464483119 inspected 633,432 documents across 6
+% corpora and quarantined 0, so no pre-`base` document is in the sample --
+% a fact about the SAMPLE, not evidence none exist.
+clean = makeV1Skeleton('treatment');
+clean.treatment = struct();
+result = did2.convert.v1_to_v2(clean, 'Validate', false);
+L = result.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_total, 1);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 1);
+verifyEqual(testCase, L.ndi_document_block_seen, 0);
+verifyEqual(testCase, L.moved_wholesale_no_base, 0);
+end
+
+function testLegacyDenominatorSeparatesTheIdempotencyShortCircuit(testCase)
+% A body already at the target skips universalRenames entirely, so it must
+% NOT be counted as inspected. Without this, a re-run over migrated bodies
+% would report every arm at 0 having looked at nothing.
+already = makeV1Skeleton('treatment');
+already.treatment = struct();
+already.document_class.schema_version = 'V_delta';
+result = did2.convert.v1_to_v2(already, 'Validate', false);
+L = result.summary.legacy_ndi_document;
+verifyEqual(testCase, L.bodies_total, 1);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 0);
+verifyEqual(testCase, L.bodies_skipped_already_target, 1);
+verifyEqual(testCase, L.bodies_unreached, 0);
+end
+
+
+% ============== the vintage classifier on the wholesale-move arm ============
+%
+% WHY A CLASSIFIER AND NOT MORE SINGLE-FIELD COUNTERS. The `ndi_document` block
+% did not have one shape and then another. It had FOUR, and two consecutive
+% pairs of them differ by ONE FIELD NAME EACH -- `experiment_id` vs
+% `session_id`, and `document_id` vs `id`. So no reading of any single field can
+% name a vintage, and the vintages need DIFFERENT REPAIRS:
+%
+%   4f1a2b801  2019-05-05  experiment_unique_reference, document_unique_reference
+%                          + name, type, datestamp, database_version
+%                          -> moves with NO usable identity at all
+%   5d0b66d8f  2019-11-04  experiment_id, document_id + the same four
+%                          -> moves with NO usable identity at all
+%   f4f9d9450  2019-12-16  experiment_id, id + the same four
+%                          -> `id` lands, `session_id` does NOT
+%   e8c02831d  2020-05-19  session_id, id + the same four
+%                          -> BOTH LAND. THE MOVE IS SOUND.
+%   6529ce7bf  2020-12-01  the SAME SIX NAMES, `id` and `session_id` swapped
+%                          in the JSON -- a key reorder, NOT a fifth vintage
+%   9783809c2  2023-04-13  ndi_document.json DELETED, base.json ADDED
+%
+% The 2020-05-19 vintage ran until 2023-04-13 -- nearly three years, the
+% longest-lived of the four -- so the arm's most likely occupant migrates
+% CORRECTLY, and only `type` and `database_version` arrive undeclared. A single
+% `moved_wholesale_no_base` count mixes that with a document that loses its
+% identity outright.
+%
+% THE FIXTURES ARE NDI's OWN BYTES. Every block below is loaded from
+% tests/+did2/fixtures/ndi_document_vintages/<commit>.json, which is
+% `git show <commit>:ndi_common/database_documents/ndi_document.json` verbatim
+% (see that directory's README for the extraction commands). Nothing here is a
+% hand-written plausible struct and nothing here is derived from a DID-side
+% schema -- that is the distance_metadata failure, where a migrator written
+% against an assumed nested shape passed a unit test built from the same
+% assumption and quarantined ~2078 real documents.
+
+function block = loadVintageBlock(testCase, commit)
+% The `ndi_document` block as NDI shipped it at COMMIT, read from the bytes.
+thisDir = fileparts(mfilename('fullpath'));
+f = fullfile(fileparts(thisDir), 'fixtures', 'ndi_document_vintages', ...
+    [commit '.json']);
+verifyTrue(testCase, isfile(f), ...
+    sprintf('vintage template fixture not found at %s', f));
+tpl = jsondecode(fileread(f));
+verifyTrue(testCase, isfield(tpl, 'ndi_document'), ...
+    sprintf('%s carries no `ndi_document` block', f));
+block = tpl.ndi_document;
+end
+
+function v1 = makeVintageBody(block)
+% A minimal pre-`base` v1 body carrying BLOCK as its only identity. No `base`,
+% which is what puts it on the wholesale-move arm.
+v1 = struct();
+v1.document_class = struct('class_name', 'projectvar');
+v1.projectvar = struct('description', 'a legacy variable');
+v1.ndi_document = block;
+end
+
+function names = vintageCounterNames()
+names = { ...
+    'moved_vintage_2019_05_unique_reference', ...
+    'moved_vintage_2019_11_experiment_document_id', ...
+    'moved_vintage_2019_12_experiment_id_and_id', ...
+    'moved_vintage_2020_05_session_id_and_id', ...
+    'moved_vintage_unknown', ...
+    'moved_vintage_unreadable_block'};
+end
+
+function verifyExactlyOneBucket(testCase, report, expected)
+% Every vintage bucket is checked, not only the expected one. Asserting the
+% expected counter alone would pass a classifier that sets two.
+names = vintageCounterNames();
+verifyTrue(testCase, any(strcmp(expected, names)), ...
+    sprintf('%s is not a vintage bucket', expected));
+for k = 1:numel(names)
+    want = double(strcmp(names{k}, expected));
+    verifyEqual(testCase, report.(names{k}), want, ...
+        sprintf('bucket %s: expected %d', names{k}, want));
+end
+verifyEqual(testCase, report.moved_vintage_bodies_classified, 1);
+end
+
+function testTheCheckedInTemplatesShowFourFieldSetsNotFive(testCase)
+% A STRUCTURAL CLAIM ABOUT NDI's HISTORY, READ FROM THE BYTES rather than from
+% the table the classifier uses -- so this cannot pass by agreeing with the
+% code it is testing. Two facts:
+%   (1) the four vintages are PAIRWISE DISTINCT as field sets, so the
+%       classifier's first-match loop cannot be order-dependent;
+%   (2) 6529ce7bf is the SAME SET as e8c02831d in a DIFFERENT ORDER, which is
+%       why it is not a fifth vintage and why classifying on field ORDER would
+%       split one vintage in two.
+commits = {'4f1a2b801', '5d0b66d8f', 'f4f9d9450', 'e8c02831d'};
+sets = cell(1, numel(commits));
+for k = 1:numel(commits)
+    sets{k} = sort(fieldnames(loadVintageBlock(testCase, commits{k}))');
+    verifyEqual(testCase, numel(sets{k}), 6, ...
+        sprintf('%s: expected a six-field block', commits{k}));
+end
+for a = 1:numel(sets)
+    for b = (a+1):numel(sets)
+        verifyFalse(testCase, isequal(sets{a}, sets{b}), ...
+            sprintf('%s and %s have the same field set', ...
+                commits{a}, commits{b}));
+    end
+end
+
+% 6529ce7bf: the SAME SET in a DIFFERENT ORDER.
+verifyEqual(testCase, sort(fieldnames(loadVintageBlock(testCase, '6529ce7bf'))'), ...
+    sort(fieldnames(loadVintageBlock(testCase, 'e8c02831d'))'));
+
+% The ORDER half is read from the BYTES, not from jsondecode's struct. Whether
+% jsondecode preserves key order is a property of MATLAB, and this assertion is
+% about a property of NDI's file -- reading it off the decoder would let a
+% decoder change fail a test that is not about the decoder.
+thisDir = fileparts(mfilename('fullpath'));
+dirPath = fullfile(fileparts(thisDir), 'fixtures', 'ndi_document_vintages');
+posn = @(commit, key) min(strfind(fileread( ...
+    fullfile(dirPath, [commit '.json'])), key));
+verifyTrue(testCase, posn('e8c02831d', '"session_id"') < posn('e8c02831d', '"id"'), ...
+    'e8c02831d should spell session_id BEFORE id');
+verifyTrue(testCase, posn('6529ce7bf', '"id"') < posn('6529ce7bf', '"session_id"'), ...
+    ['6529ce7bf is checked in to prove field ORDER differs while the SET ' ...
+     'does not; if it now spells session_id first, the fixture is wrong']);
+end
+
+function testTheFieldSetComparisonIsOrientationNormalised(testCase)
+% A SILENT TOTAL FAILURE, GIVEN ITS OWN TEST BECAUSE THE PARTITION CANNOT SEE
+% IT. countMovedBlock compares a block's sorted field set against
+% legacyVintageTable's entries with `isequal`. `isequal` on cell arrays compares
+% SIZE as well as contents, and `fieldnames` returns a COLUMN while a field list
+% is naturally written as a ROW literal. If either side stops normalising with
+% `(:)`, every vintage misses, EVERY body lands in `moved_vintage_unknown` --
+% and the six buckets still sum to the arm, so
+% testTheVintageBucketsPartitionTheArmAcrossABatch stays GREEN while the
+% classifier has stopped classifying.
+%
+% (This is what GitHub code scanning alert 195 pointed at: the earlier
+% `sort(names(:)')` was flagged as an unnecessary transpose. It was not
+% unnecessary. Both sides are columns now, so there is no transpose to delete,
+% but the normalisation is still the thing holding this together.)
+%
+% Two assertions, and the first pins the MATLAB behaviour the second depends on
+% so a failure says WHICH assumption broke.
+row = {'b', 'a'};
+col = {'b'; 'a'};
+verifyFalse(testCase, isequal(row, col), ...
+    ['isequal is expected to be SIZE-sensitive on cell arrays; if a row and ' ...
+     'a column now compare equal, the orientation hazard below is moot and ' ...
+     'this test should be re-derived rather than deleted']);
+
+block = loadVintageBlock(testCase, 'e8c02831d');
+verifyEqual(testCase, size(fieldnames(block), 2), 1, ...
+    'fieldnames is expected to return a COLUMN cell');
+[~, report] = did2.convert.universalRenames(makeVintageBody(block));
+verifyEqual(testCase, report.moved_vintage_2020_05_session_id_and_id, 1, ...
+    ['a real vintage did not reach its bucket -- the most likely cause is ' ...
+     'that one side of the field-set comparison stopped normalising ' ...
+     'orientation with (:)']);
+verifyEqual(testCase, report.moved_vintage_unknown, 0, ...
+    'a KNOWN vintage was classified as unknown');
+end
+
+function testEachVintageLandsInItsOwnBucket(testCase)
+cases = { ...
+    '4f1a2b801', 'moved_vintage_2019_05_unique_reference'; ...
+    '5d0b66d8f', 'moved_vintage_2019_11_experiment_document_id'; ...
+    'f4f9d9450', 'moved_vintage_2019_12_experiment_id_and_id'; ...
+    'e8c02831d', 'moved_vintage_2020_05_session_id_and_id'};
+for k = 1:size(cases, 1)
+    block = loadVintageBlock(testCase, cases{k, 1});
+    [~, report] = did2.convert.universalRenames(makeVintageBody(block));
+    verifyEqual(testCase, report.moved_wholesale_no_base, 1, ...
+        sprintf('%s did not take the wholesale-move arm', cases{k, 1}));
+    verifyExactlyOneBucket(testCase, report, cases{k, 2});
+end
+end
+
+function testTheKeyReorderRevisionIsNotAFifthVintage(testCase)
+% 6529ce7bf swaps `id` and `session_id` in the JSON and renames nothing. It IS
+% the 2020-05-19 vintage, and a classifier reading field ORDER would report a
+% shape NDI never introduced.
+block = loadVintageBlock(testCase, '6529ce7bf');
+[~, report] = did2.convert.universalRenames(makeVintageBody(block));
+verifyExactlyOneBucket(testCase, report, ...
+    'moved_vintage_2020_05_session_id_and_id');
+end
+
+function testTheVintageDecidesWhetherIdentitySurvivesTheMove(testCase)
+% THE WHOLE POINT, and the reason a single arm count is not a measurement. Read
+% together with the buckets: two vintages lose everything, one loses half, one
+% loses nothing. Same arm, same count, three different repairs.
+expect = { ...
+    '4f1a2b801', 1, 1; ...   % missing id, missing session_id
+    '5d0b66d8f', 1, 1; ...
+    'f4f9d9450', 0, 1; ...   % `id` survives; `session_id` does not
+    'e8c02831d', 0, 0};      % SOUND
+for k = 1:size(expect, 1)
+    block = loadVintageBlock(testCase, expect{k, 1});
+    [out, report] = did2.convert.universalRenames(makeVintageBody(block));
+    verifyEqual(testCase, report.moved_missing_id, expect{k, 2}, ...
+        sprintf('%s: moved_missing_id', expect{k, 1}));
+    verifyEqual(testCase, report.moved_missing_session_id, expect{k, 3}, ...
+        sprintf('%s: moved_missing_session_id', expect{k, 1}));
+    % Behaviour PINNED, NOT CHANGED: the block still moves wholesale.
+    verifyFalse(testCase, isfield(out, 'ndi_document'));
+    verifyTrue(testCase, isfield(out, 'base'));
+end
+
+% Even the sound vintage arrives with two fields `base` does not declare --
+% base.json (9783809c2) is id/session_id/name/datestamp, with no `type` and no
+% `database_version`.
+block = loadVintageBlock(testCase, 'e8c02831d');
+[~, sound] = did2.convert.universalRenames(makeVintageBody(block));
+verifyEqual(testCase, sound.moved_undeclared_field_instances, 2);
+end
+
+function testAnUnrecognisedFieldSetIsNeverRoundedToTheNearestVintage(testCase)
+% REAL CORPORA HOLD SHAPES THIS TABLE DOES NOT PREDICT -- hand edits, partial
+% writes, mixtures. Naming the nearest known vintage for one of those is the
+% assumed-shape error that produced the distance_metadata quarantines, so the
+% bucket is EXPLICIT.
+%
+% Case 1: the 2020 set plus one extra field. The extra is not invented -- it is
+% `hasbinaryfile`, which the 2018 `nsd_document` block really carried
+% (f45bcc82c). A nearest-neighbour classifier would call this 2020-05.
+block = loadVintageBlock(testCase, 'e8c02831d');
+block.hasbinaryfile = 0;
+[~, r1] = did2.convert.universalRenames(makeVintageBody(block));
+verifyEqual(testCase, r1.moved_wholesale_no_base, 1);
+verifyExactlyOneBucket(testCase, r1, 'moved_vintage_unknown');
+
+% Case 2: the 2019-05 set with one field REMOVED. A subset test would call this
+% 2019-05; set equality does not.
+short = rmfield(loadVintageBlock(testCase, '4f1a2b801'), 'database_version');
+[~, r2] = did2.convert.universalRenames(makeVintageBody(short));
+verifyExactlyOneBucket(testCase, r2, 'moved_vintage_unknown');
+
+% Case 3: a MIXTURE -- 2019-11's `experiment_id` beside 2020-05's `id`... which
+% IS the 2019-12 vintage, so mix the other way: `session_id` beside
+% `document_id`, a pairing NDI never shipped.
+mixed = loadVintageBlock(testCase, 'e8c02831d');
+mixed = rmfield(mixed, 'id');
+mixed.document_id = '';
+[~, r3] = did2.convert.universalRenames(makeVintageBody(mixed));
+verifyExactlyOneBucket(testCase, r3, 'moved_vintage_unknown');
+
+% Case 4: an EMPTY block. It has a field set -- the empty one -- and no vintage
+% has that, so it is unknown rather than silently uncounted.
+[~, r4] = did2.convert.universalRenames(makeVintageBody(struct()));
+verifyExactlyOneBucket(testCase, r4, 'moved_vintage_unknown');
+end
+
+function testAnUnreadableBlockIsCountedRatherThanSkipped(testCase)
+% A block that is not a scalar struct HAS no field set, so it cannot be
+% classified -- but it DID reach the classifier, and skipping it would break the
+% partition and read downstream as "nothing unusual here". That is the
+% fold-a-refusal-into-silence failure this repository has now paid for twice.
+v1 = struct();
+v1.document_class = struct('class_name', 'projectvar');
+v1.projectvar = struct('description', 'a legacy variable');
+v1.ndi_document = struct('name', {'a', 'b'});   % 1x2, not scalar
+[~, report] = did2.convert.universalRenames(v1);
+verifyEqual(testCase, report.moved_wholesale_no_base, 1);
+verifyExactlyOneBucket(testCase, report, 'moved_vintage_unreadable_block');
+end
+
+function testTheClassifierReportsItsOwnDenominatorAndItIsZeroOffTheArm(testCase)
+% Rule 5. The denominator is how many bodies REACHED THE CLASSIFIER -- not the
+% batch, and not the bodies carrying a block. A body on the DISCARD arm carries
+% an `ndi_document` block and is never classified, and the two must not be
+% confused.
+clean = makeV1Skeleton('treatment');
+clean.treatment = struct();
+[~, r0] = did2.convert.universalRenames(clean);
+verifyEqual(testCase, r0.moved_vintage_bodies_classified, 0);
+
+discard = makeV1Skeleton('treatment');
+discard.treatment = struct();
+discard.ndi_document = loadVintageBlock(testCase, '4f1a2b801');
+[~, rd] = did2.convert.universalRenames(discard);
+verifyEqual(testCase, rd.ndi_document_block_seen, 1);
+verifyEqual(testCase, rd.discarded_ndi_document_base_present, 1);
+verifyEqual(testCase, rd.moved_wholesale_no_base, 0);
+verifyEqual(testCase, rd.moved_vintage_bodies_classified, 0, ...
+    'a discarded block was never classified and must not inflate the denominator');
+names = vintageCounterNames();
+for k = 1:numel(names)
+    verifyEqual(testCase, rd.(names{k}), 0);
+end
+end
+
+function testTheVintageBucketsPartitionTheArmAcrossABatch(testCase)
+% THE PARTITION, ASSERTED. A body that falls through every bucket is exactly
+% what this counter exists to catch, so the six buckets must sum to the number
+% classified, which must equal the arm. Held here over a batch mixing all four
+% vintages, the key-reorder revision, an unknown shape, an unreadable block, a
+% body on the DISCARD arm and a body with no legacy block at all.
+%
+% v1_to_v2 raises did2:convert:legacyVintagePartitionBroken if the identity
+% fails; this test also checks it by arithmetic so a failure names the numbers
+% rather than only the error.
+bodies = {};
+for c = {'4f1a2b801', '5d0b66d8f', 'f4f9d9450', 'e8c02831d', '6529ce7bf'}
+    bodies{end+1} = makeVintageBody(loadVintageBlock(testCase, c{1})); %#ok<AGROW>
+end
+odd = loadVintageBlock(testCase, 'e8c02831d');
+odd.hasbinaryfile = 0;
+bodies{end+1} = makeVintageBody(odd);
+
+unreadable = makeVintageBody(struct());
+unreadable.ndi_document = struct('name', {'a', 'b'});
+bodies{end+1} = unreadable;
+
+discard = makeV1Skeleton('treatment');
+discard.treatment = struct();
+discard.ndi_document = loadVintageBlock(testCase, '4f1a2b801');
+bodies{end+1} = discard;
+
+clean = makeV1Skeleton('treatment');
+clean.treatment = struct();
+bodies{end+1} = clean;
+
+result = did2.convert.v1_to_v2(bodies, 'Validate', false);
+L = result.summary.legacy_ndi_document;
+
+verifyEqual(testCase, L.bodies_total, 9);
+verifyEqual(testCase, L.bodies_reaching_universal_renames, 9);
+verifyEqual(testCase, L.ndi_document_block_seen, 8);
+verifyEqual(testCase, L.moved_wholesale_no_base, 7);
+verifyEqual(testCase, L.discarded_ndi_document_base_present, 1);
+
+names = vintageCounterNames();
+total = 0;
+for k = 1:numel(names)
+    total = total + L.(names{k});
+end
+verifyEqual(testCase, total, L.moved_vintage_bodies_classified, ...
+    'the vintage buckets do not sum to the bodies classified');
+verifyEqual(testCase, L.moved_vintage_bodies_classified, ...
+    L.moved_wholesale_no_base, ...
+    'a body took the wholesale-move arm and never reached the classifier');
+verifyEqual(testCase, total, 7);
+
+% The composition, named. Five checked-in templates, four vintages: the
+% key-reorder revision joins the 2020 bucket, which is why that one is 2.
+verifyEqual(testCase, L.moved_vintage_2019_05_unique_reference, 1);
+verifyEqual(testCase, L.moved_vintage_2019_11_experiment_document_id, 1);
+verifyEqual(testCase, L.moved_vintage_2019_12_experiment_id_and_id, 1);
+verifyEqual(testCase, L.moved_vintage_2020_05_session_id_and_id, 2);
+verifyEqual(testCase, L.moved_vintage_unknown, 1);
+verifyEqual(testCase, L.moved_vintage_unreadable_block, 1);
+
+% ...and the identity outcome across those seven, which is the fact a single
+% arm count destroys. Counted by hand from the fixture bytes:
+%
+%   4f1a2b801   no `id`, no `session_id`
+%   5d0b66d8f   no `id`, no `session_id`
+%   f4f9d9450   `id` lands, no `session_id`
+%   e8c02831d   both land
+%   6529ce7bf   both land
+%   2020+hasbinaryfile (the `unknown` shape)   both land -- UNKNOWN IS NOT
+%               THE SAME AS BROKEN, which is the second reason the bucket is
+%               explicit rather than merged into a defect count
+%   unreadable  neither counter fires
+%
+% THE UNREADABLE BLOCK CONTRIBUTES TO NEITHER, and that is deliberate and
+% PRE-EXISTING: countMovedBlock returns before the identity checks when the
+% block is not a scalar struct, because it cannot read a field set to say what
+% is absent. It is not evidence the block HAS an id -- that is what the
+% `moved_vintage_unreadable_block` bucket is for, and reading these two
+% counters without it would understate the damage.
+verifyEqual(testCase, L.moved_missing_id, 2);
+verifyEqual(testCase, L.moved_missing_session_id, 3);
+end
+
+% ===========================================================================
+% VERSION ORDERING AND THE REFUSAL
+% ===========================================================================
+% `isAlreadyTarget` compared schema_version to the target with strcmp, so a
+% document NEWER than the target was indistinguishable from one OLDER, and both
+% took the branch that runs the migrators. These pin the ordering and the
+% refusal that replaced it.
+
+function testABodyBeyondTheTargetIsNotConverted(testCase)
+% THE BUG. A V_eta body normalised at TargetVersion V_delta -- which is what
+% ndi.database.internal.applyReadNormalization does on EVERY read -- was pushed
+% through universalRenames and the per-class migrators aimed at a version it
+% had already passed.
+v1 = makeV1Skeleton('treatment');
+v1.document_class.schema_version = 'V_eta';
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
+    'numeric_value', 2.0, 'string_value', '2 percent');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+verifyEmpty(testCase, r.quarantine, ...
+    'a body beyond the target must not quarantine');
+verifyNotEmpty(testCase, r.migrated, 'the body was dropped entirely');
+verifyEqual(testCase, ...
+    r.migrated{1}.toStruct().document_class.schema_version, 'V_eta', ...
+    ['the body was converted BACKWARDS -- its version was rewritten to the ' ...
+     'target it had already passed']);
+end
+
+function testABodyBelowTheTargetStillConverts(testCase)
+% The counterpart, so the ordering fix cannot pass by refusing everything.
+v1 = makeV1Skeleton('treatment');
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
+    'numeric_value', 2.0, 'string_value', '2 percent');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+verifyNotEmpty(testCase, r.migrated);
+verifyEqual(testCase, ...
+    r.migrated{1}.toStruct().document_class.schema_version, 'V_delta');
+end
+
+function testAnUnknownSchemaVersionIsREFUSEDNotConverted(testCase)
+% Team, 2026-08-14: "an unrecognized version shouldn't convert". A name this
+% did2 does not know belongs to a document written by a NEWER one, and running
+% the v1-era migrators over it would reshape fields whose meaning is unknown
+% here. It quarantines with a named identifier instead.
+v1 = makeV1Skeleton('treatment');
+v1.document_class.schema_version = 'V_omega';
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
+    'numeric_value', 2.0, 'string_value', '2 percent');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+verifyEmpty(testCase, r.migrated, ...
+    'an unknown vintage was converted -- it must be refused');
+verifyNotEmpty(testCase, r.quarantine, ...
+    'an unknown vintage vanished silently instead of quarantining');
+verifyEqual(testCase, r.quarantine(1).identifier, ...
+    'did2:convert:unknownSchemaVersion');
+end
+
+function testAMissingSchemaVersionIsDidV1AndIsNotRefused(testCase)
+% The distinction the refusal turns on. ABSENT is the ORIGIN of the line, not
+% an unknown vintage -- collapsing the two would quarantine every real did_v1
+% document in existence.
+v1 = makeV1Skeleton('treatment');
+verifyFalse(testCase, isfield(v1.document_class, 'schema_version'), ...
+    'the fixture already declares a version; this test would prove nothing');
+v1.treatment = struct('ontology_name', 'chebi:6015', 'name', 'isoflurane', ...
+    'numeric_value', 2.0, 'string_value', '2 percent');
+r = did2.convert.v1_to_v2({v1}, 'Validate', false, 'TargetVersion', 'V_delta');
+verifyEmpty(testCase, r.quarantine, 'a did_v1 body was refused');
+verifyNotEmpty(testCase, r.migrated);
+end
+
+function testTheVersionRankOrdersTheLineAndFlagsTheUnknown(testCase)
+[r0, k0] = did2.convert.schemaVersionRank('');
+[rd, kd] = did2.convert.schemaVersionRank('V_delta');
+[re, ke] = did2.convert.schemaVersionRank('V_eta');
+[rx, kx] = did2.convert.schemaVersionRank('V_omega');
+verifyTrue(testCase, k0 && kd && ke);
+verifyEqual(testCase, r0, 0, 'did_v1 is the origin of the line');
+verifyTrue(testCase, rd < re, 'V_delta must rank before V_eta');
+verifyFalse(testCase, kx, 'an unknown name must not be reported as known');
+verifyTrue(testCase, isnan(rx), ...
+    'an unknown name must not get rank 0 -- that is did_v1, "convert this"');
+end

@@ -1,0 +1,320 @@
+name: Quick migrator tests
+
+# Fast feedback for migrator work: runs the did2.unittest suite EXCEPT the
+# testCorpus* discovery tests, which download and validate all six corpora and
+# take ~110 minutes. The migrator transform tests (testMigrators / _E / _I / _J,
+# testConvertV1ToV2, testValidateReferences, ...) run in seconds, so this job
+# finishes in ~2-3 minutes. The full corpus suite still runs in test-code.yml.
+
+on:
+  push:
+    branches: ['claude/**']
+    paths-ignore:
+      - '*.md'
+  pull_request:
+    branches: [main, V2]
+    paths-ignore:
+      - '*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: quick-migrators-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick-migrators:
+    name: Migrator transform tests (no corpora)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve the did-schema ref
+        id: schema-ref
+        # This PR (VH-Lab/DID-matlab veta-migrators-restructure) implements the
+        # Waltham-Data-Science/DID-schema#68 restructure, whose head branch is
+        # `claude/calculator-restructure-2026-09-21`. When THIS branch does not
+        # exist in DID-schema (which is normal: names don't line up across
+        # repos), fall back to that PR's head so the migrator emits validate
+        # against the V_eta shape they were retargeted for; only if that too
+        # is missing (PR merged into main), fall back to main.
+        run: |
+          want="${{ github.head_ref || github.ref_name }}"
+          schema_pr68="claude/calculator-restructure-2026-09-21"
+          if git ls-remote --exit-code --heads \
+               https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then
+            echo "did-schema HAS branch '$want' -- using it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads \
+               https://github.com/Waltham-Data-Science/did-schema.git "$schema_pr68" >/dev/null 2>&1; then
+            echo "did-schema HAS PR #68 branch '$schema_pr68' -- using it (this DID-matlab PR implements it)."
+            echo "ref=$schema_pr68" >> "$GITHUB_OUTPUT"
+          else
+            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out did-schema (sibling, for V_eta validation)
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: ${{ steps.schema-ref.outputs.ref }}
+          path: did-schema
+
+      - name: Resolve the NDI-matlab ref (falls back to main)
+        id: ndi-ref
+        # did2.unittest.testBatchPassWiring asserts that every batch post-pass
+        # diverging between the corpus gate and PRODUCTION
+        # (ndi.migrate.local, in NDI-matlab) is named in a checked-in table
+        # with a reason. It cannot do that without the file, and when the file
+        # is missing it SKIPS -- loudly, but it skips.
+        #
+        # THE REF FALLS BACK RATHER THAN FAILING THE JOB. Most DID-side
+        # branches have no NDI-side twin, and a fast gate that goes red
+        # because a sibling repository does not carry the same branch name is
+        # a gate people delete. The chosen ref is PRINTED either way, so a run
+        # that fell back to main says so instead of looking like a run that
+        # matched -- "we compared against production" and "we compared against
+        # main" are different claims and must not print the same.
+        run: |
+          want="${{ github.head_ref || github.ref_name }}"
+          if git ls-remote --exit-code --heads \
+               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
+            echo "NDI-matlab HAS branch '$want' -- comparing against it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out NDI-matlab (sibling, for the cross-repo wiring gate)
+        uses: actions/checkout@v4
+        # SHALLOW AND SPARSE ON PURPOSE. The test reads local.m as TEXT; NDI is
+        # never put on the MATLAB path and nothing here executes it, so the
+        # whole ~1 GB history and tree would buy nothing. fetch-depth 1 (the
+        # default, stated rather than assumed) plus a cone-mode sparse checkout
+        # of the one package brings down the +migrate directory and little else.
+        #
+        # continue-on-error, deliberately: a repository-access change must
+        # degrade this to the SKIP the test already handles, not turn the ~2
+        # minute gate red for every branch at once. The step below says which
+        # of the two happened.
+        continue-on-error: true
+        with:
+          repository: VH-Lab/NDI-matlab
+          ref: ${{ steps.ndi-ref.outputs.ref }}
+          path: NDI-matlab
+          fetch-depth: 1
+          sparse-checkout: src/ndi/+ndi/+migrate
+          sparse-checkout-cone-mode: true
+
+      - name: Confirm the cross-repo gate has something to read
+        # NOT a gate -- a DENOMINATOR, printed early where a log tail can find
+        # it. testBatchPassWiring SKIPS when local.m is absent, and a skip
+        # inside a MATLAB test log is exactly the kind of thing that reads as a
+        # pass. Say here, before MATLAB starts, whether the fourth call site is
+        # present, how big it is, and what the checkout actually cost.
+        run: |
+          f="${GITHUB_WORKSPACE}/NDI-matlab/src/ndi/+ndi/+migrate/local.m"
+          if [ -f "$f" ]; then
+            echo "PRESENT: $f"
+            echo "  ref checked out: ${{ steps.ndi-ref.outputs.ref }}"
+            echo "  lines: $(wc -l < "$f")"
+            echo "  sparse checkout on disk: $(du -sh "${GITHUB_WORKSPACE}/NDI-matlab" | cut -f1)"
+          else
+            echo "ABSENT: $f"
+            echo "  did2.unittest.testBatchPassWiring will SKIP its cross-repo"
+            echo "  gate. That is 'did not look', NOT 'wired correctly'."
+          fi
+
+      - name: Assemble V_eta schema set (stable + draft)
+        # The suite migrates fixtures to V_eta WITH validation on
+        # (testFixtureCorpus/testFixturesMigrateCleanUnderValidation), so the schema
+        # cache must be the V_eta set, not V_zeta -- otherwise the V_eta-only classes
+        # (the subject_calculation leaves, data_body, ...) are absent and validation
+        # fails. Mirrors test-fixtures.yml / test-code.yml (both on V_eta now).
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
+          # of the go-forward MODEL. Those are two different questions and they
+          # were conflated here until 2026-08-10.
+          #
+          # `deprecated/` holds exactly the v1 shapes that DELIBERATELY pass
+          # through unmodelled -- projectvar, stimulus_parameter_table,
+          # image_stack(+_parameters). A passthrough's whole contract is that the
+          # document reaches the validator under its own class, so omitting the
+          # tier means every one of them QUARANTINES. The tier was doing nothing.
+          #
+          # It went unnoticed because three of the four have never appeared in a
+          # tested corpus. The fourth did: corpus run 31421715133 turned 4,563 JH
+          # `image_stack` documents into `No schema file for class "image_stack"`
+          # the moment the guard made them passthroughs instead of subject-less
+          # observations. Trading silent husks for loud quarantines was the point
+          # of the guard; losing them at validation was not.
+          #
+          # Safe to copy: no filename collides across tiers (checked, 245 files).
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+
+      - name: Export DID_SCHEMA_PATH
+        run: |
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" \
+            >> "$GITHUB_ENV"
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+          products: Statistics_and_Machine_Learning_Toolbox
+
+      - name: Install MatBox
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: ehennestad/matbox-actions/install-matbox@v1
+
+      - name: Check code
+        uses: ehennestad/matbox-actions/check-code@v1
+        with:
+          source_directory: 'src'
+
+      - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: matlab-actions/run-command@v2
+        if: always()
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+
+      - name: Census digest tests (python, <1s)
+        # The digest that renders the corpus census shipped broken TWICE, and
+        # both times the only thing that could have caught it was a ~3-hour
+        # corpus run -- because the code lived in a YAML heredoc. It is a module
+        # now, so its tests belong on the fast gate where they cost nothing.
+        run: python3 tools/test_census_digest.py
+
+      - name: Census digest -- #52 family-uniqueness rows (python, <1s)
+        # Separate file, separate step: #52's rows are the ones where an empty
+        # table is AMBIGUOUS (the rule may have found nothing, or may have been
+        # unable to fire), so the tests are about the DENOMINATORS printing at
+        # all -- not about a count. A silent zero here is the failure mode.
+        run: python3 tools/test_census_digest_uniqueness.py
+
+      - name: Corpus-proven rung tests (python, <1s)
+        # `tools/corpus_proven.py` runs only at the end of a ~2.5-hour
+        # test-code run, so every defect in it costs a full corpus pass to
+        # find. Its failure modes are the ones this project has already paid
+        # for -- zero reports read as a clean zero, a one-level search against
+        # a path the artifact upload moved, absence rendered as a pass -- and
+        # each is a fixture, not a corpus.
+        run: python3 tools/test_corpus_proven.py
+
+      - name: Batch post-passes must be called, persisted and printed (python, <1s)
+        # tests/+did2/+unittest/testBatchPassWiring.m gates the CALLED leg from
+        # inside the harness, and is the better place for it -- but it needs
+        # MATLAB, so it cannot run while the work is being done, and it checks
+        # CALLED only.
+        #
+        # This step adds the two legs that come after. `did2.convert.epochMint`
+        # was wired into every call site, persisted into every corpus report,
+        # and rendered nowhere -- so its numbers existed and nobody could see
+        # them. A pass that is called but invisible is the same defect as a pass
+        # that is never called, arriving one layer later.
+        #
+        # It also names #61's resolver explicitly, because a scan over what
+        # EXISTS cannot notice something that stopped existing.
+        run: python3 tools/test_batch_pass_wiring.py
+
+      - name: Every migrator is in Contents.m and has a test (python, <1s)
+        # +migrators_j/Contents.m is consulted as FACT about which classes
+        # deliberately have NO migrator -- DID-schema/CLAUDE.md cites its
+        # `projectvar` clause for exactly that. On 2026-08-12 it named 43 of the
+        # 81 migrators in the package, so silence there was reading as a
+        # deliberate absence for 38 files that have one. A hand-maintained index
+        # consulted as fact, drifting in the direction that UNDERSTATES what
+        # exists: it never produced a wrong build, only work redone and wrong
+        # answers to "what is left".
+        #
+        # TWO STEPS, deliberately, because they fail for different reasons and
+        # one of them is a ratchet whose zero is not the point. This one is the
+        # repo-state gate: a missing roster entry, a hand-edited roster block, or
+        # a migrator with no test that is not on the pinned baseline.
+        run: python3 tools/check_migrator_roster.py
+
+      - name: The roster gate's own tests, including its mutations (python, <1s)
+        # The gate is a staleness detector, and the intolerable defect in one of
+        # those is reading CLEAN while measuring nothing or measuring the wrong
+        # thing. These tests are what stop that: the scan pointed at an empty
+        # directory must FAIL rather than print a tidy zero, the matching rule is
+        # proved against a fixture where a naive substring test would PASS, and
+        # the twelve stale `*_calculation` headers found while writing it cannot
+        # come back. It runs beside the gate rather than inside it so a broken
+        # detector and a broken repo are distinguishable from the job list alone.
+        run: python3 tools/test_check_migrator_roster.py
+
+      - name: Unminted ontology terms must not increase (#70)
+        # Staging a term as {node: '', name: '...'} is the accepted practice --
+        # a migration can go green and the CURIEs be minted after. The hazard is
+        # that an empty node is indistinguishable from "we looked and no term
+        # exists", so the backlog is invisible and never shrinks.
+        #
+        # This ratchet makes it visible: the count may FALL freely, and any
+        # INCREASE fails. Minting is always allowed; adding a new unminted term
+        # is a deliberate act that has to move the baseline.
+        #
+        # It runs HERE rather than in did-schema CI because the migrators live
+        # in this repo -- this is where an edit that adds one would break it.
+        run: python3 did-schema/tools/check_empty_ontology_nodes.py --did . --enforce
+
+      - name: Run migrator tests (excluding corpora)
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            runner = TestRunner.withTextOutput;
+            suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
+            % Drop the heavy corpus-discovery tests; keep every transform test.
+            names = string({suite.Name});
+            suite = suite(~contains(names, "testCorpus"));
+            results = runner.run(suite);
+            disp(table(results));
+            % The verdict block prints LAST so a red run is readable from a log
+            % tail: the failing test's NAME, not just a count. Guarded, because a
+            % helper that fails to resolve must not turn every gate red -- the
+            % fallback recomputes the same two numbers and says loudly that it did.
+            verdict = struct('n_run', numel(results), ...
+                'n_failed', sum([results.Failed]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(results, "quick migrator tests");
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_run > 0, ...
+                "the suite selected NO tests -- that is a broken filter, not a pass");
+            assert(verdict.n_failed == 0, ...
+                sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
+                    verdict.n_failed));

@@ -1,0 +1,503 @@
+name: Corpus (parallel)
+
+# WHY THIS EXISTS
+#
+# test-code.yml runs every corpus SERIALLY inside one MATLAB process. Run #256
+# took 2h49m, and a bug in its final reporting step cost the two largest corpora
+# their output -- so recovering a REPORTING defect required re-running 2h49m of
+# migration. A feedback loop that long is the primary brake on this project.
+#
+# Each corpus downloads its own fixture from S3 and is an independent test file,
+# so there is no reason to run them one after another. This workflow fans them
+# out: wall-clock becomes the slowest SINGLE corpus (Soph, ~446 MB / ~101k docs)
+# instead of the sum of all six, and a failure in one corpus no longer hides the
+# other five.
+#
+# The census digest is its own job that runs after the fan-out with `if:
+# always()`, so it reports on whatever corpora finished even when one fails.
+#
+# Deliberately a SEPARATE workflow file from test-code.yml: a shared
+# `concurrency` group keyed on the workflow name would make dispatching this one
+# cancel an in-flight test-code run.
+
+on:
+  # DISPATCH WORKS. USE IT. This block said "workflow_dispatch cannot reach a
+  # workflow that does not yet exist on the DEFAULT branch -- the API 404s",
+  # and sent the reader to the push lever instead. CORRECTED 2026-08-15.
+  #
+  # The PREMISE is still true and the CONCLUSION is not, which is why the whole
+  # sentence had to go rather than be softened:
+  #
+  #   $ git ls-tree origin/main .github/workflows/ | awk '{print $4}'
+  #   prepare-release.yml  run-codespell.yml  test-code.yml  test-symmetry.yml
+  #                                          <- test-corpus.yml still absent
+  #   $ gh api -X POST .../actions/workflows/test-corpus.yml/dispatches \
+  #         -f ref=claude/... -f inputs[corpora]=20211116
+  #   204 No Content        <- run 31888644708, event=workflow_dispatch
+  #
+  # And run 31866857585 (2026-08-15T05:24Z) was ALSO event=workflow_dispatch, so
+  # this is not a one-off. Two dispatched runs on record.
+  #
+  # THE COST OF THE STALE LINE IS SIX RUNNERS. Following it means editing this
+  # file, and the push trigger below fires with an EMPTY `inputs.corpora`, which
+  # the `select` job expands to ALL SIX corpora -- ~70 minutes and six MATLAB
+  # runners. A dispatch naming one corpus costs seconds. A note that routes a
+  # reader from the cheap lever to the expensive one is worse than no note.
+  #
+  # THE PUSH TRIGGER IS GONE, REMOVED 2026-08-15 IN THE COMMIT AFTER THE ONE
+  # THAT CORRECTED THE NOTE ABOVE -- and the gap between those two commits is
+  # the part worth keeping.
+  #
+  # Its ONLY stated justification was the sentence corrected above: "Until this
+  # merges, a push trigger scoped to this file is the only way to exercise it."
+  # The dispatch works, so that justification expired. The previous commit
+  # nonetheless KEPT the trigger, on a rationale invented in that same commit --
+  # "it is the right lever when the workflow ITSELF changes, which is exactly
+  # when all six should run." That reason had never been given for it before.
+  #
+  # Preserving a mechanism by manufacturing a new reason for it, in the same
+  # edit that retires its real one, is the phantom-work shape one level up: not
+  # a task carried after a signature killed it, but a TRIGGER carried after its
+  # premise died. It cost six MATLAB runners immediately -- the commit that
+  # corrected the note fired the all-six run (31888793256), which had to be
+  # cancelled by hand.
+  #
+  # WHAT REPLACES IT: nothing, because two levers already cover both cases.
+  #   one corpus   gh workflow run test-corpus.yml --ref <branch> -f corpora=20211116
+  #   all six      gh workflow run test-corpus.yml --ref <branch>
+  #                (empty input; `select` expands to all six) -- or wait for the
+  #                nightly schedule below, which is the real gate and is
+  #                UNTOUCHED by this change.
+  #
+  # Removing the trigger in THIS commit means this commit does not fire it:
+  # a push event is evaluated against the workflow file at the pushed commit.
+  #
+  # The history the trigger's `paths:` block carried is kept, because it records
+  # a real failure: `tools/census_digest.py` was listed there until 2026-08-10,
+  # and while an agent iterated on that pure-Python renderer each edit fired a
+  # fresh six-runner corpus while `cancel-in-progress` killed the one before it.
+  # Four consecutive runs died that way and Soph and JH were never measured
+  # once. Narrowing the paths fixed the symptom; deleting the trigger removes
+  # the mechanism.
+  workflow_dispatch:
+    inputs:
+      corpora:
+        description: >-
+          Space- or comma-separated corpus names to run, e.g. "PRED" or
+          "PRED Dab". Empty runs all six.
+        required: false
+        default: ''
+        type: string
+  schedule:
+    # 07:00 UTC daily. The full corpus is the slow, thorough gate; PRs are
+    # served by test-migrators-quick.yml (~2 min). Measured 2026-08-10 on the
+    # last run that completed all six (31415147934): 70m wall clock, 142
+    # runner-minutes, and JH alone is 70m of it.
+    - cron: "0 7 * * *"
+
+concurrency:
+  group: corpus-${{ github.ref }}
+  # FALSE, changed 2026-08-10. With `true`, a second trigger killed a run that
+  # was 45 minutes into JH, so the expensive corpora were the ones that never
+  # reported -- the cheap four always finished inside the window between
+  # pushes. Queuing costs runner minutes, which are free on this public repo;
+  # cancelling costs the measurement, which is the entire point of the job.
+  cancel-in-progress: false
+
+jobs:
+  # WHICH CORPORA TO RUN. Added 2026-08-13 because iterating on ONE corpus was
+  # costing six MATLAB runners. PRED is 14 documents and finishes in seconds;
+  # JH alone is ~70 minutes of the 70-minute wall clock, and a 6-wide matrix
+  # queued 85 MINUTES for runners on 2026-08-13 while single-job workflows on
+  # the same account got one in seconds. So the cost of "just re-run the
+  # corpus" was two hours to learn something about 14 documents.
+  #
+  # THE DEFAULT IS STILL ALL SIX. An empty input runs the full set, so the
+  # schedule, the push trigger and a bare dispatch are unchanged -- the subset
+  # is opt-in and cannot silently narrow the nightly gate. That matters more
+  # than the convenience: a corpus gate that quietly stopped covering five
+  # corpora would read exactly like one that passed.
+  select:
+    name: "select corpora"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          set -euo pipefail
+          ALL='["20211116","B","Dab","JH","PRED","Soph"]'
+          RAW='${{ inputs.corpora }}'
+          if [ -z "$(echo "$RAW" | tr -d '[:space:],')" ]; then
+            echo "DENOMINATOR: no selection given -- running all 6 corpora"
+            echo "matrix=$ALL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # NO HEREDOC. The first draft piped an indented python heredoc, and
+          # `<<'EOF'` preserves leading whitespace -- the interpreter would have
+          # hit an IndentationError on the runner and nowhere else. Pure bash
+          # has no such trap and this validation is a membership test.
+          picked=""
+          for want in $(echo "$RAW" | tr ',' ' '); do
+            case "$want" in
+              20211116|B|Dab|JH|PRED|Soph) ;;
+              *) echo "::error::unknown corpus '$want'; known: 20211116 B Dab JH PRED Soph"
+                 exit 1 ;;
+            esac
+            # A TYPO MUST FAIL, NOT SILENTLY RUN NOTHING. An empty matrix is a
+            # green job that measured zero documents -- the all-zero census this
+            # repository has shipped before.
+            case ",$picked," in
+              *",\"$want\","*) ;;                      # already selected
+              *) picked="$picked${picked:+,}\"$want\"" ;;
+            esac
+          done
+          echo "DENOMINATOR: selection '$RAW' -> [$picked]"
+          echo "matrix=[$picked]" >> "$GITHUB_OUTPUT"
+
+  corpus:
+    needs: select
+    name: "corpus: ${{ matrix.corpus }}"
+    runs-on: ubuntu-latest
+    strategy:
+      # One corpus failing must not cancel the others -- the whole point is to
+      # see every corpus's numbers in one pass.
+      fail-fast: false
+      matrix:
+        corpus: ${{ fromJSON(needs.select.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out did-schema (sibling, for V_eta validation)
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: ${{ github.head_ref || github.ref_name }}
+          path: did-schema
+
+      - name: Assemble V_eta schema set (stable + draft)
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
+          # of the go-forward MODEL. Those are two different questions and they
+          # were conflated here until 2026-08-10.
+          #
+          # `deprecated/` holds exactly the v1 shapes that DELIBERATELY pass
+          # through unmodelled -- projectvar, stimulus_parameter_table,
+          # image_stack(+_parameters). A passthrough's whole contract is that the
+          # document reaches the validator under its own class, so omitting the
+          # tier means every one of them QUARANTINES. The tier was doing nothing.
+          #
+          # It went unnoticed because three of the four have never appeared in a
+          # tested corpus. The fourth did: corpus run 31421715133 turned 4,563 JH
+          # `image_stack` documents into `No schema file for class "image_stack"`
+          # the moment the guard made them passthroughs instead of subject-less
+          # observations. Trading silent husks for loud quarantines was the point
+          # of the guard; losing them at validation was not.
+          #
+          # Safe to copy: no filename collides across tiers (checked, 245 files).
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+
+      - name: Export DID_SCHEMA_PATH
+        run: |
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" >> "$GITHUB_ENV"
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+          products: Statistics_and_Machine_Learning_Toolbox
+
+      - name: Install MatBox
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: ehennestad/matbox-actions/install-matbox@v1
+
+      - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        env:
+          # MatBox resolves mksqlite and vhlab-toolbox-matlab through the GitHub
+          # API. UNAUTHENTICATED that is 60 requests/hour PER RUNNER IP, shared
+          # across every job in flight -- so on a busy branch the gates start
+          # failing on `GitHub API rate limit exceeded` in a step that has
+          # nothing to do with the change under test. The error is indistinguishable
+          # at a glance from a real dependency break, which is the expensive part.
+          # secrets.GITHUB_TOKEN is minted per run by Actions, needs no setup, and
+          # raises the limit to 1000/hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+
+      - name: "Run corpus ${{ matrix.corpus }}"
+        uses: matlab-actions/run-command@v2
+        env:
+          # Soph is opt-in behind this flag. Harmless for the other corpora.
+          DID_RUN_SOPH_TEST: "1"
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            runner = TestRunner.withTextOutput;
+            suite = TestSuite.fromFile( ...
+                fullfile("tests","+did2","+unittest","testCorpus${{ matrix.corpus }}.m"));
+            results = runner.run(suite);
+            disp(table(results));
+            % The verdict block prints LAST so a red run is readable from a log
+            % tail: the failing test's NAME, not just a count. Guarded, because a
+            % helper that fails to resolve must not turn every gate red -- the
+            % fallback recomputes the same two numbers and says loudly that it did.
+            verdict = struct('n_run', numel(results), ...
+                'n_failed', sum([results.Failed]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(results, "corpus ${{ matrix.corpus }}");
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_run > 0, ...
+                "the suite selected NO tests -- that is a broken filter, not a pass");
+            assert(verdict.n_failed == 0, ...
+                sprintf("%d test(s) failed -- names are in the VERDICT block above", ...
+                    verdict.n_failed));
+
+      - name: "Upload ${{ matrix.corpus }} report"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-report-${{ matrix.corpus }}
+          # BOTH PATHS, and `warn` not `ignore`. The reports are written to
+          # `pwd/corpus-reports/`, and MATLAB's pwd during these runs is the
+          # REPO ROOT for some entry points and `tests/` for others -- the log
+          # says `.../DID-matlab/tests/corpus-reports/Soph-summary.json`. The
+          # upload looked only at the root, found nothing, and said so quietly:
+          #
+          #   No files were found with the provided path: corpus-reports/.
+          #   ...
+          #   Census digest: Found 0 artifact(s) -- NO CORPUS REPORTS FOUND
+          #
+          # Six corpora ran for over an hour, every job went green, and the
+          # digest that four open items depend on aggregated NOTHING. The
+          # numbers survived only in stdout. `ignore` is what made it quiet;
+          # `warn` annotates the run instead.
+          path: |
+            corpus-reports/
+            tests/corpus-reports/
+          if-no-files-found: warn
+
+  census:
+    name: Census digest
+    needs: corpus
+    # Report on whatever finished. A corpus that failed still tells us
+    # something, and one red corpus must not suppress the other five.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out did-schema (sibling, for the per-class rung)
+        # WITHOUT THIS THE REPORTS AND THE TOOL NEVER COEXIST IN THIS JOB.
+        # `corpus_proven.py` invokes did-schema's `tools/coverage.py
+        # --corpus-reports` rather than reimplementing the verdict, so it needs
+        # the sibling checked out. `test-code.yml` is a SINGLE job and already
+        # had one; this workflow is two (`corpus` builds the reports, `census`
+        # digests them), and only `corpus` checked out did-schema -- so the one
+        # job holding the reports was the one job that could not read them.
+        #
+        # Same ref expression as test-code.yml:39-51, deliberately: the three
+        # repos share a branch name, and off-PR runs (push / workflow_dispatch,
+        # where head_ref is empty) fall back to ref_name.
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: ${{ github.head_ref || github.ref_name }}
+          path: did-schema
+
+      - name: Resolve the NDI-matlab ref
+        id: ndi-ref
+        # Same fallback as test-code.yml:78-88, and the reason is the same: most
+        # DID-side branches have no NDI-side twin, and the chosen ref is PRINTED
+        # either way -- "we read production" and "we read main" are different
+        # claims and must not look alike in a log.
+        run: |
+          want="${{ github.head_ref || github.ref_name }}"
+          if git ls-remote --exit-code --heads \
+               https://github.com/VH-Lab/NDI-matlab.git "$want" >/dev/null 2>&1; then
+            echo "NDI-matlab HAS branch '$want' -- reading it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          else
+            echo "NDI-matlab has NO branch '$want' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out NDI-matlab (sibling, required by coverage.py)
+        # WITHOUT THIS THE RUNG MEASURES NOTHING, and run 31572667236 proved it:
+        # every job green, and `coverage.py` printed `ledger: SKIPPED
+        # (NDI-matlab sibling not found)` then exited 0, so the rung read back
+        # an untouched ledger and reported all 102 rows NOT MEASURED. A correct
+        # answer from an unfed instrument.
+        #
+        # FULL AND NON-SPARSE, UNLIKE test-code.yml's checkout of the same
+        # repository, and the difference is load-bearing rather than incidental.
+        # That one reads `local.m` as TEXT and takes `sparse-checkout:
+        # src/ndi/+ndi/+migrate` with `fetch-depth: 1`. `coverage.py` reads NDI
+        # templates from `origin/main` VIA GIT -- CLAUDE.md records that a
+        # shallow clone here DOES NOT ERROR: the ref lookup falls through and
+        # the tool reports a SMALLER UNIVERSE. Copying the sparse pattern would
+        # have produced a plausible, wrong number instead of a missing one,
+        # which is worse.
+        #
+        # NOT continue-on-error. There it degrades to a SKIP the test handles;
+        # here the sibling is the input, and a rung computed without it is the
+        # silent zero this step exists to stop.
+        uses: actions/checkout@v4
+        with:
+          repository: VH-Lab/NDI-matlab
+          ref: ${{ steps.ndi-ref.outputs.ref }}
+          path: NDI-matlab
+          fetch-depth: 0
+
+      - name: Download every corpus report
+        uses: actions/download-artifact@v4
+        with:
+          pattern: corpus-report-*
+          merge-multiple: true
+          path: corpus-reports
+        continue-on-error: true
+
+      - name: Corpus census digest
+        # The digest searches RECURSIVELY and exits non-zero when it finds
+        # nothing. Both properties are load-bearing: `upload-artifact` given
+        # two search paths roots the zip at their least common ancestor (the
+        # repo root), so the download lands the reports at
+        # `corpus-reports/tests/corpus-reports/` -- one level below where the
+        # old one-level glob looked. Run #3 downloaded 5 artifacts, wrote 10
+        # files, printed "NO CORPUS REPORTS FOUND" and went GREEN.
+        run: python3 tools/census_digest.py corpus-reports tests/corpus-reports
+
+      - name: Per-class corpus proof (the CORPUS-PROVEN rung)
+        # The only rung that can say a v1 class is DONE. It reads each report's
+        # `source_census.by_class` -- keyed by the v1 SOURCE class -- and hands
+        # the roots to did-schema's `coverage.py --corpus-reports`.
+        #
+        # A CORPUS-LEVEL ZERO IS A SOUND UPPER BOUND, and that is what makes
+        # this computable at all: failure counters are keyed by the EMITTED
+        # V_eta class, and 25 of 85 targets are reachable from more than one
+        # source (48 sources have no unshared target), so a failure often
+        # cannot be attributed. When the run is globally clean there is nothing
+        # to attribute and every class present is proven; when it is not, the
+        # tool names the AMBIGUOUS BY CONSTRUCTION classes instead of guessing.
+        #
+        # `if: always()` for the same reason the digest above has it: a corpus
+        # failure is exactly when this evidence matters most.
+        if: always()
+        env:
+          # DO NOT DELETE THESE AS REDUNDANT. They are the only thing that makes
+          # `coverage.py` see this repository, and run 31587869672 is what they
+          # cost: every job green, the ledger rewritten, and the rung rendered
+          # over 91 v1 classes instead of 102 -- `rung 1 a migrator CONSUMES it
+          # 10 yes / 81 no` where the committed ledger says 86 yes / 16 no.
+          #
+          # THE TRAP IS THE SHAPE OF THE PATHS, NOT A MISSING CHECKOUT.
+          # `coverage.py`'s `find_repo(name, env)` -- cited by SEARCHABLE
+          # CONTENT (`grep -n "def find_repo" did-schema/tools/coverage.py`)
+          # rather than a line number, because that file is under active edit
+          # and this repo's citation audit measured hours as a realistic
+          # half-life for a line number into it -- tries, in order,
+          # `$ENV`, `/home/user/<name>`, and `<dirname of the did-schema
+          # root>/<name>`. On a runner `/home/user` does not exist and
+          # did-schema is checked out at `$GITHUB_WORKSPACE/did-schema`, so the
+          # third candidate is `$GITHUB_WORKSPACE/DID-matlab` -- which does NOT
+          # exist, because the workspace directory IS the DID-matlab checkout.
+          # So DID_MATLAB resolved to None, `migrator_files()` returned an empty
+          # set, the whole migrator scan was skipped and the 11 vhlab
+          # app/calculator classes with no NDI template were dropped. 102 - 91.
+          #
+          # NDI_MATLAB currently resolves WITHOUT this var, and that is an
+          # ACCIDENT, not a design: NDI-matlab happens to be checked out at
+          # `$GITHUB_WORKSPACE/NDI-matlab`, which is the one path shape the
+          # third candidate does match. Move either checkout and it goes the
+          # same way DID-matlab did, silently. It is named here so it does not
+          # have to be rediscovered. DID-schema's own `tests.yml` exports both
+          # for this reason; `find_repo` treats the environment as
+          # authoritative, and that is the only candidate a workflow controls.
+          DID_MATLAB: ${{ github.workspace }}
+          NDI_MATLAB: ${{ github.workspace }}/NDI-matlab
+        run: |
+          python3 tools/corpus_proven.py --schema-repo did-schema \
+              corpus-reports tests/corpus-reports
+
+      - name: Per-corpus Bar-2 gap (report-only)
+        # Per corpus, how many of its classes are at their DECIDED FINAL shape --
+        # the husks/bridges/superseded emissions Bar-1 hides. REPORT-ONLY (no
+        # --gate): Bar-2 is in progress, so not reaching it is expected.
+        if: always()
+        run: |
+          python3 did-schema/tools/bar2_gap.py \
+              corpus-reports tests/corpus-reports || true
+
+      - name: Carry the proof out of CI as a committable snapshot
+        # THE NUMBER THIS RUN PRODUCES OTHERWISE SURVIVES NOWHERE. The rung is
+        # printed to a log that scrolls and written to an artifact that
+        # EXPIRES, while the committed ledger reads `not measured` for every
+        # row -- correctly, because coverage.py is generated without corpus
+        # reports on a developer machine and rung 4 refuses to guess. So the
+        # repository's own record says nothing has ever been proven while the
+        # strongest evidence we have says otherwise.
+        #
+        # did-schema's snapshot tool renders the verdicts, WITH the run id and
+        # sha that produced them, into `schemas/V_eta_corpus_proof.{json,md}`
+        # inside the did-schema checkout. Nothing is pushed from here: the file
+        # rides out in the artifact below, and committing it stays a deliberate
+        # human act. Its own anti-clobber rule refuses to overwrite a real
+        # measurement with an empty one, so a run that measured nothing cannot
+        # erase the last one that did.
+        #
+        # `continue-on-error` because this is EVIDENCE CARRIAGE, not a gate --
+        # a corpus run must never go red over the bookkeeping of its own proof.
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f corpus-proven/v_eta_corpus_proven.json ]; then
+            python3 did-schema/tools/corpus_proof_snapshot.py \
+                --from corpus-proven/v_eta_corpus_proven.json \
+                --run "${{ github.run_id }}" --sha "${{ github.sha }}"
+            mkdir -p corpus-proven/snapshot
+            cp did-schema/schemas/V_eta_corpus_proof.json \
+               did-schema/schemas/V_eta_corpus_proof.md corpus-proven/snapshot/ || true
+          else
+            echo "no v_eta_corpus_proven.json -- the rung step produced none;"
+            echo "NOT writing a snapshot, so the last real one is preserved."
+          fi
+
+      - name: Upload combined reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-discovery-reports
+          # `corpus-proven/` is the rung step's output -- the rendered rung,
+          # the machine-readable verdicts, coverage.py's stdout and the
+          # regenerated ledger. Named explicitly so the evidence survives the
+          # run even when a corpus is red.
+          path: |
+            corpus-reports/
+            corpus-proven/
+          if-no-files-found: ignore
