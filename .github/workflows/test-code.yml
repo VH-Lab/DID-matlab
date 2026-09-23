@@ -44,15 +44,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          # Track the matching did-schema V_eta (Brainstorm-J) branch: the
-          # bare-identity subject, subject_statement `parameters` (D10),
-          # session_bounded_reference + directed_relation time_reference (D10
-          # multi-party binding), the strict-J leaf tier, etc. live on this
-          # branch and are not yet on did-schema main. The three repos share the
-          # branch name, so off-PR (push / workflow_dispatch, where head_ref is
-          # empty) track the same-named did-schema branch via ref_name; that
-          # resolves to `main` for base-branch runs.
-          ref: ${{ github.head_ref || github.ref_name }}
+          # did-schema #64 merged the V_eta (Brainstorm-J) tree into did-schema
+          # `main` on 2026-09-23 and deleted the shared topic branch, so the
+          # full V_eta schema tree (schemas/V_eta/, tools/bar2_gap.py, the plan
+          # docs) now lives on main. Validate against main.
+          ref: main
           path: did-schema
 
       # ---------------------------------------------------------------

@@ -33,7 +33,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: ${{ github.head_ref || github.ref_name }}
+          # V_eta lives on did-schema `main` since #64 merged (2026-09-23) and
+          # the shared topic branch was deleted. Validate against main.
+          ref: main
           path: did-schema
 
       - name: Assemble V_eta schema set (stable + draft)
