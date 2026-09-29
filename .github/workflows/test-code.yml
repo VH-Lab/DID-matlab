@@ -48,7 +48,10 @@ jobs:
           # `main` on 2026-09-23 and deleted the shared topic branch, so the
           # full V_eta schema tree (schemas/V_eta/, tools/bar2_gap.py, the plan
           # docs) now lives on main. Validate against main.
-          ref: main
+          # PINNED to did-schema tag `v_eta-pre73` (= main before DID-schema PR #76) so main can take
+          # the #73 schema while these migrators still emit the old shape. Move the pin forward
+          # as each migrator PR catches up; remove it when DID-matlab emits the #73 shape.
+          ref: v_eta-pre73
           path: did-schema
 
       # ---------------------------------------------------------------
