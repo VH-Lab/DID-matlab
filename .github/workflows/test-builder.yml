@@ -1,0 +1,129 @@
+name: did2.build tests (V_eta #73 schema)
+
+# The builder library (src/did/+did2/+build) targets the #73 V_eta schema --
+# did-schema `main` after PR #76. Every other workflow here is PINNED to the
+# pre-#73 tag `v_eta-pre73` until the migrators catch up (see test-code.yml),
+# and under that schema tests/+did2/+unittest/testBuild.m FILTERS itself with
+# an assumeFail message rather than passing.
+#
+# This job is where those tests really run. It checks out did-schema `main`
+# (or a same-named did-schema branch when one exists, for a schema change and
+# a builder change made together) and FAILS when any builder test is filtered:
+# a filtered test here means the schema this job loaded is not the one the
+# builder targets, and a green run over zero checks is not a pass.
+
+on:
+  push:
+    branches: ['claude/**']
+    paths:
+      - 'src/did/+did2/+build/**'
+      - 'src/did/+did2/+schema/**'
+      - 'tests/+did2/+unittest/testBuild*.m'
+      - '.github/workflows/test-builder.yml'
+  pull_request:
+    branches: [main, V2]
+    paths:
+      - 'src/did/+did2/+build/**'
+      - 'src/did/+did2/+schema/**'
+      - 'tests/+did2/+unittest/testBuild*.m'
+      - '.github/workflows/test-builder.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: test-builder-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  builder:
+    name: did2.build against did-schema main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve the did-schema ref
+        id: schema-ref
+        run: |
+          want="${{ github.head_ref || github.ref_name }}"
+          if git ls-remote --exit-code --heads \
+               https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then
+            echo "did-schema HAS branch '$want' -- using it."
+            echo "ref=$want" >> "$GITHUB_OUTPUT"
+          else
+            echo "did-schema has no branch '$want' -- using main (the #73 schema)."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out did-schema
+        uses: actions/checkout@v4
+        with:
+          repository: Waltham-Data-Science/did-schema
+          ref: ${{ steps.schema-ref.outputs.ref }}
+          path: did-schema
+
+      - name: Assemble V_eta schema set (stable + draft + deprecated)
+        # Same assembly as test-migrators-quick.yml: deprecated/ is part of the
+        # validation set (passthrough tombstones), and no filename collides
+        # across tiers.
+        run: |
+          mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
+          cp did-schema/schemas/V_eta/stable/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/draft/*.json  "${GITHUB_WORKSPACE}/eta-schemas/"
+          cp did-schema/schemas/V_eta/deprecated/*.json "${GITHUB_WORKSPACE}/eta-schemas/"
+          echo "DENOMINATOR: $(ls "${GITHUB_WORKSPACE}/eta-schemas" | wc -l) schema file(s) assembled from did-schema@$(git -C did-schema rev-parse --short HEAD)"
+          echo "DID_SCHEMA_PATH=${GITHUB_WORKSPACE}/eta-schemas" >> "$GITHUB_ENV"
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@v2
+        with:
+          release: latest
+          cache: true
+
+      - name: Install MatBox
+        env:
+          # Authenticated MatBox: unauthenticated GitHub API calls are 60/hour
+          # per runner IP (see test-migrators-quick.yml).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: ehennestad/matbox-actions/install-matbox@v1
+
+      - name: Install repo dependencies (mksqlite, vhlab-toolbox-matlab)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tools"));
+            matbox.installRequirements(didtools.projectdir());
+
+      - name: Run the builder tests
+        uses: matlab-actions/run-command@v2
+        with:
+          command: |
+            addpath(genpath("src"));
+            addpath(genpath("tests"));
+            import matlab.unittest.TestRunner;
+            import matlab.unittest.TestSuite;
+            runner = TestRunner.withTextOutput;
+            suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
+            names = string({suite.Name});
+            suite = suite(startsWith(names, "did2.unittest.testBuild"));
+            results = runner.run(suite);
+            disp(table(results));
+            verdict = struct('n_run', numel(results), ...
+                'n_failed', sum([results.Failed]), ...
+                'n_incomplete', sum([results.Incomplete]));
+            try
+                verdict = did2.unittest.helpers.reportVerdict(results, "did2.build tests");
+            catch verdictErr
+                fprintf(2, "reportVerdict itself failed (%s) -- falling back to counts only\n", ...
+                    verdictErr.message);
+            end
+            assert(verdict.n_run > 0, ...
+                "the suite selected NO builder tests -- that is a broken filter, not a pass");
+            assert(verdict.n_failed == 0, ...
+                sprintf("%d builder test(s) failed -- names are in the VERDICT block above", ...
+                    verdict.n_failed));
+            assert(verdict.n_incomplete == 0, ...
+                sprintf("%d builder test(s) were FILTERED -- the loaded schema is not " + ...
+                    "the #73 V_eta schema the builder targets", verdict.n_incomplete));
