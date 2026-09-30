@@ -239,15 +239,15 @@ r = did2.validate.sourceCensus(bodies);
 % disjoint by construction -- and the ZERO is the finding, not the absence of one
 verifyEqual(testCase, r.approach_presentation_shared_epochs, 0);
 
-ap = prefixRow(r.approach_epoch_prefixes, 'epoch_');
+ap = prefixTallyRow(r.approach_epoch_prefixes, 'epoch_');
 verifyEqual(testCase, ap.n_distinct, 2);
 verifyEqual(testCase, ap.n_docs, 2);
-verifyEqual(testCase, prefixRow(r.approach_epoch_prefixes, 'other').n_docs, 0);
+verifyEqual(testCase, prefixTallyRow(r.approach_epoch_prefixes, 'other').n_docs, 0);
 
-pr = prefixRow(r.presentation_epoch_prefixes, 'other');
+pr = prefixTallyRow(r.presentation_epoch_prefixes, 'other');
 verifyEqual(testCase, pr.n_distinct, 2);
 verifyEqual(testCase, pr.n_docs, 2);
-verifyEqual(testCase, prefixRow(r.presentation_epoch_prefixes, 'epoch_').n_docs, 0);
+verifyEqual(testCase, prefixTallyRow(r.presentation_epoch_prefixes, 'epoch_').n_docs, 0);
 end
 
 function testSharedEpochsAreCountedWhenTheyDoOverlap(testCase)
@@ -277,7 +277,10 @@ verifyTrue(testCase, isfield(r, 'presentation_epoch_prefixes'));
 verifyEqual(testCase, r.approach_presentation_shared_epochs, 0);
 end
 
-function row = prefixRow(tally, name)
+function row = prefixTallyRow(tally, name)
+% Not `prefixRow`: that name is taken above by the report-level helper, and
+% two local functions with one name made MATLAB EXCLUDE this whole file from
+% every suite from 0f77cc2 (2026-08-15) on, with only a warning in the log.
 row = tally(strcmp({tally.prefix}, name));
 end
 
