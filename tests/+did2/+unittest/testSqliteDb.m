@@ -247,6 +247,46 @@ verifyEqual(testCase, numel(hits), 1);
 verifyEmpty(testCase, db.search(did2.query('', 'depends_on', 'parent', 'no-such-id')));
 end
 
+function testARepeatedEdgeNameIsStored(testCase)
+% A V2 edge declared `multiple` (e.g. time_reference_id) repeats ONE name;
+% the depends_on key used to be (doc_id, name) and refused the second row.
+db = testCase.TestData.db;
+d = makeDemoA('a', 'x');
+d = d.set('depends_on', struct('name', {'time_reference_id', 'time_reference_id'}, ...
+    'document_id', {'ref-1', 'ref-2'}));
+db.add(d, 'Validate', false);
+verifyEqual(testCase, numel(db.search(did2.query('', 'depends_on', 'time_reference_id', 'ref-1'))), 1);
+verifyEqual(testCase, numel(db.search(did2.query('', 'depends_on', 'time_reference_id', 'ref-2'))), 1);
+end
+
+function testAnOldDatabaseIsRekeyedOnOpen(testCase)
+% A database written before the key was widened: rebuild depends_on with the
+% old (doc_id, name) key, reopen, and the repeated edge now goes in.
+db = testCase.TestData.db;
+d1 = makeDemoA('a', 'x');
+d1 = d1.set('depends_on', struct('name', 'parent', 'document_id', 'id-1'));
+db.add(d1, 'Validate', false);
+db.close();
+id = mksqlite(0, 'open', testCase.TestData.tmpFile);
+mksqlite(id, 'ALTER TABLE depends_on RENAME TO t');
+mksqlite(id, 'DROP INDEX IF EXISTS depends_on_name_document_id');
+mksqlite(id, ['CREATE TABLE depends_on (doc_id TEXT NOT NULL REFERENCES documents(id) ' ...
+    'ON DELETE CASCADE, name TEXT NOT NULL, document_id TEXT NOT NULL, ' ...
+    'PRIMARY KEY (doc_id, name))']);
+mksqlite(id, 'INSERT INTO depends_on SELECT doc_id, name, document_id FROM t');
+mksqlite(id, 'DROP TABLE t');
+mksqlite(id, 'close');
+
+db = did2.database.sqlitedb(testCase.TestData.tmpFile);
+testCase.TestData.db = db;
+verifyEqual(testCase, numel(db.search(did2.query('', 'depends_on', 'parent', 'id-1'))), 1, ...
+    'the old rows survive the rebuild');
+d2 = makeDemoA('b', 'y');
+d2 = d2.set('depends_on', struct('name', {'parent', 'parent'}, 'document_id', {'id-1', 'id-2'}));
+db.add(d2, 'Validate', false);
+verifyEqual(testCase, numel(db.search(did2.query('', 'depends_on', 'parent', 'id-2'))), 1);
+end
+
 % ---- composition ----
 
 function testSearchAnd(testCase)

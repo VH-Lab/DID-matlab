@@ -306,7 +306,7 @@ classdef sqlitedb < handle
                     'doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,' ...
                     'name TEXT NOT NULL,' ...
                     'document_id TEXT NOT NULL,' ...
-                    'PRIMARY KEY (doc_id, name))']);
+                    'PRIMARY KEY (doc_id, name, document_id))']);
                 mksqlite(obj.dbid, ...
                     'CREATE INDEX depends_on_name_document_id ON depends_on(name, document_id)');
 
@@ -697,6 +697,46 @@ classdef sqlitedb < handle
                     '%s is not a V_delta database.', obj.filename);
             end
             obj.migrateDependsOnValueToDocumentId();
+            obj.migrateDependsOnKeyForRepeatedEdges();
+        end
+
+        function migrateDependsOnKeyForRepeatedEdges(obj)
+            % migrateDependsOnKeyForRepeatedEdges - widen the depends_on
+            % key from (doc_id, name) to (doc_id, name, document_id).
+            %
+            % A V2 edge may be declared `multiple` (repeated under ONE
+            % name, e.g. `time_reference_id` on a statement or an epoch),
+            % so one document can carry several depends_on rows with the
+            % same name. The old key allowed one, and the second insert
+            % failed "UNIQUE constraint failed: depends_on.doc_id,
+            % depends_on.name". A database created before this change is
+            % rebuilt in place, once: the rows it holds already satisfy
+            % the wider key. Idempotent.
+            row = mksqlite(obj.dbid, ...
+                'SELECT sql FROM sqlite_master WHERE type = ''table'' AND name = ''depends_on''');
+            if isempty(row) || contains(row(1).sql, 'PRIMARY KEY (doc_id, name, document_id)')
+                return;
+            end
+            mksqlite(obj.dbid, 'BEGIN');
+            try
+                mksqlite(obj.dbid, 'ALTER TABLE depends_on RENAME TO depends_on_old');
+                mksqlite(obj.dbid, 'DROP INDEX IF EXISTS depends_on_name_document_id');
+                mksqlite(obj.dbid, [ ...
+                    'CREATE TABLE depends_on (' ...
+                    'doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,' ...
+                    'name TEXT NOT NULL,' ...
+                    'document_id TEXT NOT NULL,' ...
+                    'PRIMARY KEY (doc_id, name, document_id))']);
+                mksqlite(obj.dbid, ['INSERT INTO depends_on(doc_id, name, document_id) ' ...
+                    'SELECT doc_id, name, document_id FROM depends_on_old']);
+                mksqlite(obj.dbid, 'DROP TABLE depends_on_old');
+                mksqlite(obj.dbid, ...
+                    'CREATE INDEX depends_on_name_document_id ON depends_on(name, document_id)');
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                mksqlite(obj.dbid, 'ROLLBACK');
+                rethrow(err);
+            end
         end
 
         function migrateDependsOnValueToDocumentId(obj)
@@ -798,7 +838,7 @@ classdef sqlitedb < handle
             deps = obj.dependsOnEntries(s);
             for k = 1:numel(deps)
                 mksqlite(obj.dbid, ...
-                    'INSERT INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
+                    'INSERT OR IGNORE INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
                     id, deps{k}.name, deps{k}.document_id);
             end
 
