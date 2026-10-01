@@ -50,8 +50,8 @@ jobs:
             echo "did-schema HAS PR #68 branch '$schema_pr68' -- using it (this DID-matlab PR implements it)."
             echo "ref=$schema_pr68" >> "$GITHUB_OUTPUT"
           else
-            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- FALLING BACK to v_eta-pre73 (the pre-#73 schema; see test-code.yml)."
-            echo "ref=v_eta-pre73" >> "$GITHUB_OUTPUT"
+            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- using main (the #73 schema). This branch retargets the migrators to it."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check out did-schema (sibling, for V_eta validation)
