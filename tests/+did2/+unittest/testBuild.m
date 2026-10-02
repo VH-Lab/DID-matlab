@@ -482,6 +482,34 @@ verifyError(testCase, @() did2.build.absoluteTimeReference('2024-03-01T09:00:00.
     'End', 'tomorrow', 'SessionId', sid), 'did2:build:typeMismatch');
 end
 
+function testTolerance(testCase)
+% CHANGE 7: a value may state a bound [minus plus] in its canonical unit --
+% asymmetric (a transfer read off the video after it: 300 s earlier, 0 later).
+sid = testCase.TestData.sid;
+ref = did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', ...
+    'Tolerance', [300 0], 'End', '2024-03-01T10:00:00.000Z', 'EndTolerance', [0 0], ...
+    'SessionId', sid);
+v = ref.absolute_time_reference.value;
+verifyEqual(testCase, v.start.tolerance, struct('minus', 300, 'plus', 0));
+verifyTrue(testCase, v.start.approximate, 'a non-zero bound sets approximate');
+verifyEqual(testCase, v.end.tolerance, struct('minus', 0, 'plus', 0));
+verifyFalse(testCase, isfield(v.end, 'approximate'), '[0 0] states exact; not approximate');
+rel = did2.build.relativeTimeReference(newId(), 'Clock', 'dev_local_time', ...
+    'Start', 10, 'StartTolerance', [60 60], 'StartApproximate', false, 'SessionId', sid);
+s = rel.relative_time_reference.value.start;
+verifyEqual(testCase, s.tolerance, struct('minus', 60, 'plus', 60));
+verifyFalse(testCase, s.approximate, 'an explicit Approximate is kept');
+c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1]);
+verifyEqual(testCase, c(2).tolerance, struct('minus', 0, 'plus', 0.1), 'one row per cell');
+verifyFalse(testCase, isfield(rel.relative_time_reference.value, 'duration'));
+verifyError(testCase, @() did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', ...
+    'Tolerance', [-1 0], 'SessionId', sid), 'did2:build:badTolerance');
+verifyError(testCase, @() did2.build.relativeTimeReference(newId(), 'Clock', 'utc', ...
+    'Start', 1, 'DurationTolerance', [1 1], 'SessionId', sid), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.valueCell('count', 3, 'Tolerance', [1 1]), ...
+    'did2:build:unknownField');
+end
+
 % ===================== relations ===========================================
 
 function testDirectedRelation(testCase)
