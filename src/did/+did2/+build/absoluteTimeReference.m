@@ -13,8 +13,14 @@ function doc = absoluteTimeReference(utc, options)
 %     'Approximate'      logical: the start is uncertain
 %     'Duration'         seconds, canonical ('DurationSourceValue',
 %                        'DurationSourceUnit', 'DurationApproximate')
-%     'SourceEnd'        the END instant verbatim, when the source gave the
-%                        interval as two instants (not a duration)
+%     'End'              the END: an ISO-8601 UTC instant like the start
+%                        ('EndSourceValue', 'EndSourceTimezone',
+%                        'EndSourceUtcOffset', 'EndApproximate'). Its own
+%                        fact with its own precision: an approximate start
+%                        with an exact end is expressible. With 'Duration'
+%                        too, the two must agree (rule end_consistent).
+%     'SourceEnd'        the end exactly as the source wrote it (kept for
+%                        callers: it fills `end.source_value`)
 %     'ClockTolerance'   seconds: the stated precision of the timeline
 %     'Fields', 'Edges', 'SessionId' (required), 'Id', 'CreationTimestamp',
 %     'Validate', 'SchemaCache' -- as did2.build.document.
@@ -31,6 +37,11 @@ arguments
     options.DurationSourceValue = []
     options.DurationSourceUnit = ''
     options.DurationApproximate = []
+    options.End = ''
+    options.EndSourceValue = ''
+    options.EndSourceTimezone = ''
+    options.EndSourceUtcOffset = ''
+    options.EndApproximate = []
     options.SourceEnd = ''
     options.ClockTolerance = []
     options.Fields (1,1) struct = struct()
@@ -60,7 +71,22 @@ if ~isempty(options.Duration)
     if ~isempty(options.DurationApproximate); d.approximate = options.DurationApproximate; end
     value.duration = d;
 end
-if ~isempty(options.SourceEnd); value.source_end = options.SourceEnd; end
+stop = struct();
+if ~isempty(options.End)
+    e = char(options.End);
+    if isempty(regexp(e, '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$', 'once'))
+        error('did2:build:typeMismatch', ...
+            'End must be an ISO-8601 UTC instant like 2024-03-01T10:00:00.000Z; got "%s".', e);
+    end
+    stop.utc = e;
+end
+endSource = options.EndSourceValue;
+if isempty(endSource); endSource = options.SourceEnd; end
+if ~isempty(endSource);                  stop.source_value = endSource;                     end
+if ~isempty(options.EndSourceTimezone);  stop.source_timezone = options.EndSourceTimezone;  end
+if ~isempty(options.EndSourceUtcOffset); stop.source_utc_offset = options.EndSourceUtcOffset; end
+if ~isempty(options.EndApproximate);     stop.approximate = options.EndApproximate;         end
+if ~isempty(fieldnames(stop)); value.end = stop; end
 fields = struct('value', value);
 if ~isempty(options.ClockTolerance)
     fields.clock_tolerance = struct('seconds', options.ClockTolerance);

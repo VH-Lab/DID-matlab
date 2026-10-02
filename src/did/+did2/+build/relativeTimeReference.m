@@ -23,6 +23,10 @@ function doc = relativeTimeReference(referentId, options)
 %     'StartSourceValue', 'StartSourceUnit', 'StartApproximate'
 %     'Duration'        seconds, canonical
 %     'DurationSourceValue', 'DurationSourceUnit', 'DurationApproximate'
+%     'End'             seconds, canonical: the end's offset from the referent
+%                       ('EndSourceValue', 'EndSourceUnit', 'EndApproximate').
+%                       Its own fact with its own precision; with 'Duration'
+%                       too, the two must agree (rule end_consistent)
 %     'ClockTolerance'  seconds: the stated precision of the TIMELINE (e.g. 5
 %                       for NDI's approx_ clocks), not of one value
 %     'Fields', 'Edges', 'SessionId' (required), 'Id', 'CreationTimestamp',
@@ -46,6 +50,10 @@ arguments
     options.DurationSourceValue = []
     options.DurationSourceUnit = ''
     options.DurationApproximate = []
+    options.End = []
+    options.EndSourceValue = []
+    options.EndSourceUnit = ''
+    options.EndApproximate = []
     options.ClockTolerance = []
     options.Fields (1,1) struct = struct()
     options.Edges = struct()
@@ -56,8 +64,8 @@ arguments
     options.SchemaCache = []
 end
 
-if isempty(options.Start) && ~isempty(options.Duration)
-    error('did2:build:ruleViolated', '''Duration'' is measured from ''Start''; give both.');
+if isempty(options.Start) && (~isempty(options.Duration) || ~isempty(options.End))
+    error('did2:build:ruleViolated', '''Duration'' and ''End'' need a ''Start''; give it too.');
 end
 if isempty(options.Start) && isempty(options.Relation)
     error('did2:build:missingField', ...
@@ -74,6 +82,10 @@ end
 if ~isempty(options.Duration)
     value.duration = timeCell(options.Duration, options.DurationSourceValue, ...
         options.DurationSourceUnit, options.DurationApproximate);
+end
+if ~isempty(options.End)
+    value.end = timeCell(options.End, options.EndSourceValue, ...
+        options.EndSourceUnit, options.EndApproximate);
 end
 fields = struct('value', value);
 if ~isempty(options.ClockTolerance)

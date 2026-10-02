@@ -447,6 +447,41 @@ verifyError(testCase, @() did2.build.absoluteTimeReference('1 March 2024', 'Sess
     'did2:build:typeMismatch');
 end
 
+function testTimeReferenceEnd(testCase)
+% An end is its own fact with its own precision (did-schema: `value.end` on
+% both time references): an approximate start with an exact end.
+sid = testCase.TestData.sid;
+ref = did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', 'Approximate', true, ...
+    'End', '2024-03-01T10:00:00.000Z', 'Duration', 3600, 'DurationApproximate', true, ...
+    'SessionId', sid);
+v = ref.absolute_time_reference.value;
+verifyTrue(testCase, v.start.approximate);
+verifyEqual(testCase, v.end.utc, '2024-03-01T10:00:00.000Z');
+verifyFalse(testCase, isfield(v.end, 'approximate'), 'the end is exact');
+old = did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', ...
+    'SourceEnd', '1 Mar 2024 11:00', 'SessionId', sid);
+verifyEqual(testCase, old.absolute_time_reference.value.end.source_value, '1 Mar 2024 11:00', ...
+    '''SourceEnd'' keeps working: it fills end.source_value');
+rel = did2.build.relativeTimeReference(newId(), 'Clock', 'dev_local_time', ...
+    'Start', 10, 'StartApproximate', true, 'End', 70, 'SessionId', sid);
+verifyEqual(testCase, rel.relative_time_reference.value.end.seconds, 70);
+end
+
+function testTimeReferenceEndRules(testCase)
+% end_consistent: not before the start, and agreeing with a duration
+sid = testCase.TestData.sid;
+verifyError(testCase, @() did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', ...
+    'End', '2024-03-01T08:00:00.000Z', 'SessionId', sid), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', ...
+    'End', '2024-03-01T10:00:00.000Z', 'Duration', 60, 'SessionId', sid), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.relativeTimeReference(newId(), 'Clock', 'utc', ...
+    'Start', 10, 'End', 5, 'SessionId', sid), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.relativeTimeReference(newId(), 'Clock', 'utc', ...
+    'End', 5, 'SessionId', sid), 'did2:build:ruleViolated');           % end without start
+verifyError(testCase, @() did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', ...
+    'End', 'tomorrow', 'SessionId', sid), 'did2:build:typeMismatch');
+end
+
 % ===================== relations ===========================================
 
 function testDirectedRelation(testCase)
