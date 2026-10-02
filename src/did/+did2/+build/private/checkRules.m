@@ -68,12 +68,17 @@ for c = 1:numel(chain)
                         '`data_body` is true, so `datum_type` must be given.');
                 end
             case 'clock_with_start'
+                % an offset -- a start or an end -- means nothing until its
+                % clock is named
                 v = findField(doc, blocks, 'value');
-                if isstruct(v) && isfield(v, 'start') && ~isAbsent(v.start) ...
-                        && (~isfield(v, 'clock') || isAbsent(v.clock))
+                hasOffset = isstruct(v) && ((isfield(v, 'start') && ~isAbsent(v.start)) ...
+                    || (isfield(v, 'end') && ~isAbsent(v.end)));
+                if hasOffset && (~isfield(v, 'clock') || isAbsent(v.clock))
                     violated(ruleName, className, ...
-                        '`value.start` is given, so `value.clock` must be too.');
+                        '`value.start` or `value.end` is given, so `value.clock` must be too.');
                 end
+            case 'end_consistent'
+                endConsistent(findField(doc, blocks, 'value'), ruleName, className);
             case 'ingredients_or_product'
                 v = findField(doc, blocks, 'value');
                 hasIngredients = isstruct(v) && isfield(v, 'ingredients') && ~isAbsent(v.ingredients);
@@ -179,6 +184,60 @@ end
 end
 
 % -------------------------------------------------------------------------
+
+function endConsistent(v, ruleName, className)
+% `value.end` needs `value.start`, is not before it, and agrees with
+% `value.duration` when both are given (end = start + duration, to 1 ms).
+% Works for both time-reference forms: an offset cell {seconds} or a
+% wall-clock cell {utc}.
+if ~isstruct(v) || ~isfield(v, 'end') || isAbsent(v.end)
+    return;
+end
+if ~isfield(v, 'start') || isAbsent(v.start)
+    violated(ruleName, className, '`value.end` is given without `value.start`.');
+end
+t0 = timeOf(v.start);
+t1 = timeOf(v.end);
+if isnan(t0) || isnan(t1)
+    return;   % a source value with no canonical time: nothing to compare
+end
+if t1 < t0
+    violated(ruleName, className, sprintf( ...
+        '`value.end` is %.3f s before `value.start`.', t0 - t1));
+end
+if isfield(v, 'duration') && ~isAbsent(v.duration) && isfield(v.duration, 'seconds') ...
+        && ~isAbsent(v.duration.seconds)
+    d = double(v.duration.seconds);
+    if abs((t1 - t0) - d) > 1e-3
+        violated(ruleName, className, sprintf( ...
+            ['`value.duration` (%.3f s) and `value.end` - `value.start` (%.3f s) ' ...
+             'disagree; when both are given, end = start + duration.'], d, t1 - t0));
+    end
+end
+end
+
+function t = timeOf(cell)
+% seconds: an offset cell's `seconds`, or a wall-clock cell's `utc` as
+% seconds since 1970 (NaN when neither can be read)
+t = NaN;
+if ~isstruct(cell)
+    return;
+end
+if isfield(cell, 'seconds') && ~isAbsent(cell.seconds)
+    t = double(cell.seconds);
+elseif isfield(cell, 'utc') && ~isAbsent(cell.utc)
+    u = char(cell.utc);
+    for fmt = {'yyyy-MM-dd''T''HH:mm:ss.SSS''Z''', 'yyyy-MM-dd''T''HH:mm:ss''Z''', ...
+            'yyyy-MM-dd''T''HH:mm''Z'''}
+        try
+            d = datetime(u, 'InputFormat', fmt{1}, 'TimeZone', 'UTC');
+            t = posixtime(d);
+            return;
+        catch
+        end
+    end
+end
+end
 
 function v = findField(doc, blocks, name)
 v = [];
