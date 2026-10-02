@@ -506,8 +506,10 @@ verifyError(testCase, @() did2.build.absoluteTimeReference('2024-03-01T09:00:00.
     'Tolerance', [-1 0], 'SessionId', sid), 'did2:build:badTolerance');
 verifyError(testCase, @() did2.build.relativeTimeReference(newId(), 'Clock', 'utc', ...
     'Start', 1, 'DurationTolerance', [1 1], 'SessionId', sid), 'did2:build:ruleViolated');
-verifyError(testCase, @() did2.build.valueCell('count', 3, 'Tolerance', [1 1]), ...
-    'did2:build:unknownField');
+% CHANGE 7 amendment 1: counts, scores and dates take a bound too, in their own unit
+n = did2.build.valueCell('count', 50, 'Tolerance', [5 5]);
+verifyEqual(testCase, n.tolerance, struct('minus', 5, 'plus', 5), 'about 50, give or take 5');
+verifyTrue(testCase, n.approximate);
 end
 
 % ===================== relations ===========================================
