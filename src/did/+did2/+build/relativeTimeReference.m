@@ -27,6 +27,11 @@ function doc = relativeTimeReference(referentId, options)
 %                       ('EndSourceValue', 'EndSourceUnit', 'EndApproximate').
 %                       Its own fact with its own precision; with 'Duration'
 %                       too, the two must agree (rule end_consistent)
+%     'StartTolerance', 'DurationTolerance', 'EndTolerance'
+%                       [minus plus] seconds: that value's bound -- the true
+%                       value lies in [value - minus, value + plus]; minus is
+%                       EARLIER, plus LATER (CHANGE 7). Sets that value's
+%                       approximate true unless given or both are 0
 %     'ClockTolerance'  seconds: the stated precision of the TIMELINE (e.g. 5
 %                       for NDI's approx_ clocks), not of one value
 %     'Fields', 'Edges', 'SessionId' (required), 'Id', 'CreationTimestamp',
@@ -46,14 +51,17 @@ arguments
     options.StartSourceValue = []
     options.StartSourceUnit = ''
     options.StartApproximate = []
+    options.StartTolerance = []
     options.Duration = []
     options.DurationSourceValue = []
     options.DurationSourceUnit = ''
     options.DurationApproximate = []
+    options.DurationTolerance = []
     options.End = []
     options.EndSourceValue = []
     options.EndSourceUnit = ''
     options.EndApproximate = []
+    options.EndTolerance = []
     options.ClockTolerance = []
     options.Fields (1,1) struct = struct()
     options.Edges = struct()
@@ -72,33 +80,39 @@ if isempty(options.Start) && isempty(options.Relation)
         ['A relative time needs a ''Start'' (an offset) or a ''Relation''. ' ...
          'With no time at all there is no reference to build.']);
 end
+for nm = {'Start', 'Duration', 'End'}
+    if isempty(options.(nm{1})) && ~isempty(options.([nm{1} 'Tolerance']))
+        error('did2:build:ruleViolated', '''%sTolerance'' needs a ''%s''.', nm{1}, nm{1});
+    end
+end
 value = struct();
 if ~isempty(options.Relation); value.relation = options.Relation; end
 if ~isempty(options.Clock);    value.clock = options.Clock;       end
 if ~isempty(options.Start)
     value.start = timeCell(options.Start, options.StartSourceValue, ...
-        options.StartSourceUnit, options.StartApproximate);
+        options.StartSourceUnit, options.StartApproximate, options.StartTolerance, 'StartTolerance');
 end
 if ~isempty(options.Duration)
     value.duration = timeCell(options.Duration, options.DurationSourceValue, ...
-        options.DurationSourceUnit, options.DurationApproximate);
+        options.DurationSourceUnit, options.DurationApproximate, options.DurationTolerance, 'DurationTolerance');
 end
 if ~isempty(options.End)
     value.end = timeCell(options.End, options.EndSourceValue, ...
-        options.EndSourceUnit, options.EndApproximate);
+        options.EndSourceUnit, options.EndApproximate, options.EndTolerance, 'EndTolerance');
 end
 fields = struct('value', value);
 if ~isempty(options.ClockTolerance)
-    fields.clock_tolerance = timeCell(options.ClockTolerance, [], '', []);
+    fields.clock_tolerance = timeCell(options.ClockTolerance, [], '', [], [], 'ClockTolerance');
 end
 options.Files = {};
 doc = forward('relative_time_reference', fields, ...
     struct('referent_id', referentId), options);
 end
 
-function c = timeCell(seconds, sourceValue, sourceUnit, approximate)
+function c = timeCell(seconds, sourceValue, sourceUnit, approximate, tol, optName)
 c = struct('seconds', seconds);
 if ~isempty(sourceUnit);  c.source_unit = sourceUnit;   end
 if ~isempty(sourceValue); c.source_value = sourceValue; end
+[c, approximate] = toleranceCell(c, tol, approximate, optName);
 if ~isempty(approximate); c.approximate = approximate;  end
 end

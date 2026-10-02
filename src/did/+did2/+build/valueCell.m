@@ -26,6 +26,11 @@ function cells = valueCell(typeName, canonical, options)
 %                    cellstr when the type's source_value is text).
 %     'SourceUnit'   the source's unit: one char for all cells, or a cellstr.
 %     'Approximate'  logical, scalar (all cells) or one per cell.
+%     'Tolerance'    [minus plus] in the canonical unit: the cell's bound (the
+%                    true value lies in [value - minus, value + plus]); one
+%                    row for all cells or one row per cell (CHANGE 7). Sets
+%                    'Approximate' true for a cell with a non-zero bound
+%                    unless 'Approximate' is given.
 %     'Fields'       any other declared fields: a scalar struct applied to
 %                    every cell, or a struct array with one element per cell
 %                    (e.g. struct('precision','day') for a date,
@@ -48,6 +53,7 @@ arguments
     options.SourceValue = []
     options.SourceUnit = ''
     options.Approximate = []
+    options.Tolerance = []
     options.Fields = struct([])
     options.SchemaCache = []
 end
@@ -92,6 +98,17 @@ end
 requireDeclared('SourceValue', 'source_value', source, names, typeName);
 requireDeclared('SourceUnit', 'source_unit', unit, names, typeName);
 requireDeclared('Approximate', 'approximate', approx, names, typeName);
+tol = options.Tolerance;
+if ~isempty(tol)
+    if isvector(tol) && numel(tol) == 2; tol = reshape(tol, 1, 2); end
+    if size(tol, 2) ~= 2 || ~(size(tol, 1) == 1 || size(tol, 1) == n)
+        error('did2:build:sizeMismatch', ...
+            'valueCell: ''Tolerance'' must be [minus plus], one row for all %d cells or one per cell.', n);
+    end
+    if ~any(strcmp('tolerance', names))
+        error('did2:build:unknownField', '"%s.value" declares no tolerance.', typeName);
+    end
+end
 
 elems = cell(1, n);
 for k = 1:n
@@ -106,7 +123,12 @@ for k = 1:n
     s.(canonName) = canon{k};
     if ~isempty(source); s.source_value = pick(source, k); end
     if ~isempty(unit);   s.source_unit  = pick(unit, k);   end
-    if ~isempty(approx); s.approximate  = pick(approx, k); end
+    a = [];
+    if ~isempty(approx); a = pick(approx, k); end
+    if ~isempty(tol)
+        [s, a] = toleranceCell(s, tol(min(k, size(tol, 1)), :), a, 'Tolerance');
+    end
+    if ~isempty(a); s.approximate = a; end
     elems{k} = s;
 end
 cells = fillField(def, elems, [typeName '.value']);
