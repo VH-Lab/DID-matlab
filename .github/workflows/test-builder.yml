@@ -19,6 +19,8 @@ on:
       - 'src/did/+did2/+build/**'
       - 'src/did/+did2/+schema/**'
       - 'tests/+did2/+unittest/testBuild*.m'
+      - 'src/did/+did2/+database/**'
+      - 'tests/+did2/+unittest/testSqliteDb*.m'
       - '.github/workflows/test-builder.yml'
   pull_request:
     branches: [main, V2]
@@ -26,6 +28,8 @@ on:
       - 'src/did/+did2/+build/**'
       - 'src/did/+did2/+schema/**'
       - 'tests/+did2/+unittest/testBuild*.m'
+      - 'src/did/+did2/+database/**'
+      - 'tests/+did2/+unittest/testSqliteDb*.m'
       - '.github/workflows/test-builder.yml'
   workflow_dispatch:
 
@@ -107,7 +111,11 @@ jobs:
             runner = TestRunner.withTextOutput;
             suite = TestSuite.fromPackage("did2.unittest", "IncludingSubpackages", true);
             names = string({suite.Name});
-            suite = suite(startsWith(names, "did2.unittest.testBuild"));
+            % + the V2 database's tests (its file store is what the V2
+            % imports write through; testSqliteDb* load their own fixture
+            % schema, so the checked-out did-schema does not matter to them)
+            suite = suite(startsWith(names, "did2.unittest.testBuild") | ...
+                startsWith(names, "did2.unittest.testSqliteDb"));
             results = runner.run(suite);
             disp(table(results));
             verdict = struct('n_run', numel(results), ...

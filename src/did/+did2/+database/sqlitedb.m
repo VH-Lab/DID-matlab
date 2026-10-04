@@ -32,12 +32,36 @@ classdef sqlitedb < handle
     %       count        - number of documents in the database.
     %       search       - return documents matching a did2.query.
     %       searchIds    - return the ids of documents matching a query.
+    %       hasFile      - is a document's named file on this computer? (and where)
+    %       filePath     - the path to a document's named file, or an error
+    %       fileNames    - the file names a document records
+    %
+    %   FILES. A document records its files in `files.file_info`: each entry
+    %   has a `name` and one or more `locations` (`location`, `uid`,
+    %   `location_type`, `ingest`, `delete_original`). On add, every location
+    %   with `ingest` true is COPIED into this database's file store,
+    %   <folder of the database file>/files/<uid> -- the same layout as the
+    %   legacy did.implementations.sqlitedb, so NDI's file_directory is the
+    %   same folder for both -- and `delete_original` then removes the source.
+    %   A location with `ingest` false is recorded and read where it is (a
+    %   raw recording too large to copy). Every location gets a row in the
+    %   `files` table, which is how hasFile / filePath find the bytes.
+    %
+    %   Ingestion REFUSES rather than warns (the legacy backend warned and
+    %   stored the document anyway, so a failed copy left a document whose
+    %   file was silently missing): an unsafe uid, a missing source, a
+    %   location type other than 'file', or a uid already stored with
+    %   different bytes is an error, and nothing of the batch is written --
+    %   files copied for it are deleted again. Removing a document deletes
+    %   the bytes it ingested, unless another document still records the
+    %   same uid.
     %
     %   See also: did2.query, did2.database.compileQuery, did2.document,
     %             docs/v2/PLAN.md.
 
     properties (SetAccess = private)
         filename (1,:) char = ''
+        fileDir (1,:) char = ''     % where ingested files are stored: <db folder>/files
     end
 
     properties (Access = private)
@@ -67,6 +91,9 @@ classdef sqlitedb < handle
                      'Install https://github.com/a-ma72/mksqlite and put it on the path.']);
             end
             obj.filename = filename;
+            folder = fileparts(filename);
+            if isempty(folder), folder = pwd; end
+            obj.fileDir = fullfile(folder, 'files');
             obj.schemaCache = opts.SchemaCache;
             obj.bootstrapQueryableColumns();
             isNew = ~isfile(filename);
@@ -79,6 +106,7 @@ classdef sqlitedb < handle
                 obj.reconcileQueryableColumns();
                 obj.reconcileQueryableArrayPaths();
             end
+            obj.ensureFilesTable();
         end
 
         function delete(obj)
@@ -117,6 +145,10 @@ classdef sqlitedb < handle
             if isempty(list)
                 return;
             end
+            % Files first, and all of them checked before anything is copied
+            % or written: a refused file leaves the database untouched.
+            plan = obj.ingestPlan(list);
+            newlyCopied = obj.copyIngested(plan);
             % BATCH THE WHOLE LIST IN ONE TRANSACTION. Previously this looped
             % addOne, and each addOne committed on its own -- one fsync per
             % document. That dominated large writes: a ~16k-document migration
@@ -129,18 +161,100 @@ classdef sqlitedb < handle
                 for k = 1:numel(list)
                     obj.insertRows(list{k}, opts.Validate);
                 end
+                obj.insertFileRows(plan);
                 mksqlite(obj.dbid, 'COMMIT');
             catch err
                 try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                obj.deleteFiles(newlyCopied);
                 rethrow(err);
+            end
+            % Only once the documents are stored: delete_original.
+            for k = 1:numel(plan)
+                if plan(k).ingest && plan(k).deleteOriginal && isfile(plan(k).location)
+                    delete(plan(k).location);
+                end
             end
         end
 
         function remove(obj, target)
             % remove - delete a document by id or by did2.document.
             id = obj.coerceId(target);
-            % ON DELETE CASCADE handles superclasses / depends_on rows.
+            stored = mksqlite(obj.dbid, ...
+                'SELECT DISTINCT uid FROM files WHERE doc_id = ? AND ingested = 1', id);
+            % ON DELETE CASCADE handles superclasses / depends_on / files rows.
             mksqlite(obj.dbid, 'DELETE FROM documents WHERE id = ?', id);
+            % The bytes this document ingested go with it, unless another
+            % document still records the same uid.
+            for k = 1:numel(stored)
+                still = mksqlite(obj.dbid, ...
+                    'SELECT 1 AS hit FROM files WHERE uid = ? AND ingested = 1 LIMIT 1', ...
+                    stored(k).uid);
+                if isempty(still)
+                    obj.deleteFiles({fullfile(obj.fileDir, stored(k).uid)});
+                end
+            end
+        end
+
+        function [tf, path] = hasFile(obj, idOrDoc, name)
+            % hasFile - is the document's file NAME on this computer?
+            %
+            %   [TF, PATH] = db.hasFile(ID, NAME): TF true when a location the
+            %   document records for NAME holds the bytes here -- its ingested
+            %   copy in fileDir, else a location it records without ingesting.
+            %   PATH is that file ('' when TF is false).
+            id = obj.coerceId(idOrDoc);
+            rows = mksqlite(obj.dbid, ...
+                ['SELECT uid, location, location_type, ingested FROM files ' ...
+                 'WHERE doc_id = ? AND filename = ? ORDER BY rowid ASC'], id, char(name));
+            tf = false;
+            path = '';
+            for k = 1:numel(rows)
+                if rows(k).ingested
+                    if ~did.file.isSafeUid(rows(k).uid), continue; end
+                    p = fullfile(obj.fileDir, rows(k).uid);
+                elseif strcmpi(rows(k).location_type, 'file')
+                    p = rows(k).location;
+                else
+                    continue;
+                end
+                if isfile(p)
+                    tf = true;
+                    path = p;
+                    return;
+                end
+            end
+        end
+
+        function path = filePath(obj, idOrDoc, name)
+            % filePath - the path to the document's file NAME; an error when
+            % it is not here (never an empty path).
+            [tf, path] = obj.hasFile(idOrDoc, name);
+            if tf
+                return;
+            end
+            id = obj.coerceId(idOrDoc);
+            if ~obj.has(id)
+                error('did2:database:missingDocument', 'No document with id "%s".', id);
+            end
+            n = mksqlite(obj.dbid, ...
+                'SELECT COUNT(*) AS n FROM files WHERE doc_id = ? AND filename = ?', id, char(name));
+            if double(n(1).n) == 0
+                error('did2:database:noSuchFile', ...
+                    'Document "%s" records no file named "%s".', id, char(name));
+            end
+            error('did2:database:fileNotHere', ...
+                ['Document "%s" records file "%s", but none of its %d location(s) ' ...
+                 'holds the bytes on this computer.'], id, char(name), double(n(1).n));
+        end
+
+        function names = fileNames(obj, idOrDoc)
+            % fileNames - the file names the document records (cellstr, in
+            % the order they were added).
+            id = obj.coerceId(idOrDoc);
+            rows = mksqlite(obj.dbid, ...
+                ['SELECT filename FROM files WHERE doc_id = ? ' ...
+                 'GROUP BY filename ORDER BY MIN(rowid) ASC'], id);
+            names = obj.rowsToCellstr(rows, 'filename');
         end
 
         function tf = has(obj, idOrDoc)
@@ -794,14 +908,8 @@ classdef sqlitedb < handle
             % through add(), which wraps the whole list in ONE transaction and
             % calls insertRows directly, so this per-document commit is not on
             % the batch write path.
-            mksqlite(obj.dbid, 'BEGIN');
-            try
-                obj.insertRows(doc, doValidate);
-                mksqlite(obj.dbid, 'COMMIT');
-            catch err
-                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
-                rethrow(err);
-            end
+            % Through add, so a single document's files are ingested the same way.
+            obj.add(doc, 'Validate', doValidate);
         end
 
         function insertRows(obj, doc, doValidate)
@@ -843,6 +951,131 @@ classdef sqlitedb < handle
             end
 
             obj.insertSidecarRowsFromStruct(id, s);
+        end
+
+        function ensureFilesTable(obj)
+            % The file store's index. Created on open as well as on create,
+            % so a database written before ingestion existed gains it.
+            mksqlite(obj.dbid, [ ...
+                'CREATE TABLE IF NOT EXISTS files (' ...
+                'doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,' ...
+                'filename TEXT NOT NULL,' ...
+                'uid TEXT NOT NULL,' ...
+                'location TEXT NOT NULL,' ...
+                'location_type TEXT NOT NULL,' ...
+                'ingested INTEGER NOT NULL,' ...
+                'PRIMARY KEY (doc_id, filename, uid))']);
+            mksqlite(obj.dbid, ...
+                'CREATE INDEX IF NOT EXISTS files_uid ON files(uid)');
+        end
+
+        function plan = ingestPlan(obj, list)
+            % One entry per file location of every document in LIST, checked:
+            % nothing is copied or written until every entry passes.
+            plan = struct('docId', {}, 'name', {}, 'uid', {}, 'location', {}, ...
+                'type', {}, 'ingest', {}, 'deleteOriginal', {});
+            for k = 1:numel(list)
+                s = list{k}.toStruct();
+                if ~isfield(s, 'files') || ~isstruct(s.files) || ~isfield(s.files, 'file_info')
+                    continue;
+                end
+                id = obj.requireField(s, 'base', 'id');
+                infos = did2.database.sqlitedb.asList(s.files.file_info);
+                for i = 1:numel(infos)
+                    fi = infos{i};
+                    name = char(did2.database.sqlitedb.fieldOr(fi, 'name', ''));
+                    locs = did2.database.sqlitedb.asList( ...
+                        did2.database.sqlitedb.fieldOr(fi, 'locations', {}));
+                    for j = 1:numel(locs)
+                        L = locs{j};
+                        e = struct('docId', id, 'name', name, ...
+                            'uid', char(did2.database.sqlitedb.fieldOr(L, 'uid', '')), ...
+                            'location', char(did2.database.sqlitedb.fieldOr(L, 'location', '')), ...
+                            'type', lower(strtrim(char(did2.database.sqlitedb.fieldOr(L, 'location_type', 'file')))), ...
+                            'ingest', logical(did2.database.sqlitedb.fieldOr(L, 'ingest', false)), ...
+                            'deleteOriginal', logical(did2.database.sqlitedb.fieldOr(L, 'delete_original', false)));
+                        if isempty(e.type), e.type = 'file'; end
+                        if isempty(e.name)
+                            error('did2:database:badFileEntry', ...
+                                'Document "%s" records a file with no name.', id);
+                        end
+                        if e.ingest
+                            if ~did.file.isSafeUid(e.uid)
+                                error('did2:database:unsafeFileUid', ...
+                                    ['Refusing to ingest "%s" of document "%s": uid "%s" is not a ' ...
+                                     'plain file name.'], e.name, id, e.uid);
+                            end
+                            if ~strcmp(e.type, 'file')
+                                error('did2:database:ingestUnsupportedLocation', ...
+                                    ['Refusing to ingest "%s" of document "%s": only a ''file'' ' ...
+                                     'location can be ingested, not ''%s''.'], e.name, id, e.type);
+                            end
+                            if ~isfile(e.location)
+                                error('did2:database:ingestSourceMissing', ...
+                                    'Cannot ingest "%s" of document "%s": no file at "%s".', ...
+                                    e.name, id, e.location);
+                            end
+                        end
+                        plan(end+1) = e; %#ok<AGROW>
+                    end
+                end
+            end
+        end
+
+        function newlyCopied = copyIngested(obj, plan)
+            % Copy every ingested source to fileDir/<uid>. A uid already
+            % stored with the same bytes is not copied again; one stored with
+            % DIFFERENT bytes is refused. On any failure the files copied
+            % here are deleted again and the error is rethrown.
+            newlyCopied = {};
+            todo = plan([plan.ingest]);
+            if isempty(todo)
+                return;
+            end
+            if ~isfolder(obj.fileDir)
+                mkdir(obj.fileDir);
+            end
+            try
+                for k = 1:numel(todo)
+                    dest = fullfile(obj.fileDir, todo(k).uid);
+                    if isfile(dest)
+                        if did.implementations.sqlitedb.filesAreIdentical(todo(k).location, dest)
+                            continue;
+                        end
+                        error('did2:database:ingestUidCollision', ...
+                            ['Cannot ingest "%s" of document "%s": uid "%s" is already stored ' ...
+                             'with different bytes.'], todo(k).name, todo(k).docId, todo(k).uid);
+                    end
+                    [ok, msg] = copyfile(todo(k).location, dest, 'f');
+                    if ~ok
+                        error('did2:database:ingestCopyFailed', ...
+                            'Could not copy "%s" of document "%s" into %s: %s', ...
+                            todo(k).name, todo(k).docId, obj.fileDir, msg);
+                    end
+                    newlyCopied{end+1} = dest; %#ok<AGROW>
+                end
+            catch err
+                obj.deleteFiles(newlyCopied);
+                rethrow(err);
+            end
+        end
+
+        function insertFileRows(obj, plan)
+            for k = 1:numel(plan)
+                mksqlite(obj.dbid, ...
+                    ['INSERT OR IGNORE INTO files(doc_id, filename, uid, location, ' ...
+                     'location_type, ingested) VALUES(?, ?, ?, ?, ?, ?)'], ...
+                    plan(k).docId, plan(k).name, plan(k).uid, plan(k).location, ...
+                    plan(k).type, double(plan(k).ingest));
+            end
+        end
+
+        function deleteFiles(~, paths)
+            for k = 1:numel(paths)
+                if isfile(paths{k})
+                    try delete(paths{k}); catch, end
+                end
+            end
         end
 
         function cache = resolveSchemaCache(obj)
@@ -1053,6 +1286,25 @@ classdef sqlitedb < handle
     end
 
     methods (Static, Access = private)
+        function list = asList(x)
+            % a struct array or a cell array -> a cell array of structs
+            if isempty(x)
+                list = {};
+            elseif iscell(x)
+                list = reshape(x, 1, []);
+            else
+                list = num2cell(reshape(x, 1, []));
+            end
+        end
+
+        function v = fieldOr(s, name, default)
+            if isstruct(s) && isfield(s, name) && ~isempty(s.(name))
+                v = s.(name);
+            else
+                v = default;
+            end
+        end
+
         function out = serialisePathSet(paths)
             % Encode a cellstr path set as a newline-delimited string.
             % Newline-joining sidesteps the jsondecode-shape variability
