@@ -24,7 +24,8 @@ function doc = sampledBody(ownerId, keys, options)
 %     'Fields'        any other declared field, as a struct
 %   Options (edges):
 %     'FilterId'      the frequency filter these samples passed through
-%     'KeyLabelsIds'  cellstr: documents naming key positions (`labels_from`)
+%     'KeyIds'        cellstr: data_type documents a key takes its positions
+%                     from (a key's `positions_from` indexes them)
 %     'Edges'         any other declared edge
 %   Options (document):
 %     'Chunks' (default 1), 'Files', 'SessionId' (required), 'Id',
@@ -54,7 +55,7 @@ arguments
     options.Description = ''
     options.Fields (1,1) struct = struct()
     options.FilterId = ''
-    options.KeyLabelsIds = {}
+    options.KeyIds = {}
     options.Edges = struct()
     options.Chunks (1,1) double {mustBeInteger, mustBePositive} = 1
     options.Files = {}
@@ -73,7 +74,7 @@ fields = struct('keys', {keys}, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);
 edges = struct('owner_id', ownerId, 'filter_id', options.FilterId, ...
-    'key_labels_id', {options.KeyLabelsIds});
+    'key_id', {options.KeyIds});
 options.Files = bodyFiles(options.Files, options.Chunks);
 doc = forward('sampled_body', fields, edges, options);
 end

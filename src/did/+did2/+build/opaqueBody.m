@@ -17,7 +17,7 @@ function doc = opaqueBody(ownerId, format, options)
 %     'HashAlgorithm' ('MD5','SHA-1','SHA-256','SHA-512'), 'Description'
 %     'Fields'        any other declared field, as a struct
 %   Options (edges):
-%     'KeyLabelsIds', 'Edges'
+%     'KeyIds', 'Edges'
 %   Options (document):
 %     'Chunks' (default 1), 'Files', 'SessionId' (required), 'Id',
 %     'CreationTimestamp', 'Validate', 'SchemaCache'.
@@ -35,7 +35,7 @@ arguments
     options.HashAlgorithm = ''
     options.Description = ''
     options.Fields (1,1) struct = struct()
-    options.KeyLabelsIds = {}
+    options.KeyIds = {}
     options.Edges = struct()
     options.Chunks (1,1) double {mustBeInteger, mustBePositive} = 1
     options.Files = {}
@@ -56,7 +56,7 @@ fields = struct('format', format, 'keys', {options.Keys}, ...
     'compression', options.Compression, 'content_hash', options.ContentHash, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);
-edges = struct('owner_id', ownerId, 'key_labels_id', {options.KeyLabelsIds});
+edges = struct('owner_id', ownerId, 'key_id', {options.KeyIds});
 options.Files = bodyFiles(options.Files, options.Chunks);
 doc = forward('opaque_body', fields, edges, options);
 end

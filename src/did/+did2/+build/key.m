@@ -10,10 +10,12 @@ function k = key(variable, n, options)
 %     regular        'Origin' and 'Spacing'  (both, and nothing else)
 %     enumerated     'Values'                numeric positions, N of them
 %     categorical    'Labels'                N terms (or names)
-%     by reference   'LabelsFrom'            the index, among the document's
-%                                            `key_labels_id` edges, of the
-%                                            document whose rows name the
-%                                            positions (item 12)
+%     by reference   'PositionsFrom'         the 0-based index, among the
+%                                            document's `key_id` edges, of the
+%                                            data_type document whose value
+%                                            entries are (and name) the
+%                                            positions (`labels_from` until
+%                                            did-schema 2026-10-05)
 %
 %   Options:
 %     'Unit'           canonical unit of origin/spacing/values: a term, or a
@@ -25,7 +27,7 @@ function k = key(variable, n, options)
 %     'Values'         numeric array of N positions (canonical)
 %     'SourceValues'   the same positions as the source wrote them
 %     'Labels'         N terms (struct array), or a cellstr of names
-%     'LabelsFrom'     integer
+%     'PositionsFrom'  integer
 %     'Cyclic'         logical: the dimension wraps (e.g. direction)
 %     'Chunk'          positions per stored chunk -- ONLY on a sampled_body's
 %                      keys (rule key_chunk_sampled_only, checked when the
@@ -56,7 +58,7 @@ arguments
     options.Values = []
     options.SourceValues = []
     options.Labels = []
-    options.LabelsFrom = []
+    options.PositionsFrom = []
     options.Cyclic = []
     options.Chunk = []
     options.SchemaCache = []
@@ -71,16 +73,16 @@ if ~regular && (~isempty(options.SourceOrigin) || ~isempty(options.SourceSpacing
     error('did2:build:ruleViolated', ...
         'key_regular_origin_spacing: ''SourceOrigin''/''SourceSpacing'' need ''Origin'' and ''Spacing''.');
 end
-forms = {'Values', 'Labels', 'LabelsFrom'};
+forms = {'Values', 'Labels', 'PositionsFrom'};
 given = forms(cellfun(@(f) ~isempty(options.(f)), forms));
 if regular && ~isempty(given)
     error('did2:build:ruleViolated', ...
-        'key_positions_one_form: a regular key carries none of Values/Labels/LabelsFrom; got %s.', ...
+        'key_positions_one_form: a regular key carries none of Values/Labels/PositionsFrom; got %s.', ...
         strjoin(given, ', '));
 elseif ~regular && numel(given) ~= 1
     error('did2:build:ruleViolated', ...
         ['key_positions_one_form: give the positions ONE way -- ''Origin''+''Spacing'', ' ...
-         '''Values'', ''Labels'' or ''LabelsFrom''; got %d.'], numel(given));
+         '''Values'', ''Labels'' or ''PositionsFrom''; got %d.'], numel(given));
 end
 if isempty(options.Values) && ~isempty(options.SourceValues)
     error('did2:build:ruleViolated', '''SourceValues'' needs ''Values''.');
@@ -119,7 +121,7 @@ if ~isempty(options.Values)
     end
 end
 if ~isempty(labels);             s.labels = labels;                 end
-if ~isempty(options.LabelsFrom); s.labels_from = options.LabelsFrom; end
+if ~isempty(options.PositionsFrom); s.positions_from = options.PositionsFrom; end
 if ~isempty(options.Cyclic);     s.cyclic = options.Cyclic;         end
 if ~isempty(options.Chunk);      s.chunk = options.Chunk;           end
 

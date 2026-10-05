@@ -263,6 +263,28 @@ verifyFalse(testCase, k.regular);
 verifyEqual(testCase, {k.labels.name}, {'A1', 'A2'});
 end
 
+function testKeyPositionsFromAnotherDocument(testCase)
+% did-schema 2026-10-05: a key takes its positions from a data_type document
+% through `key_id`, chosen by the key's `positions_from` (was key_labels_id /
+% labels_from). Position k is entry k of that document's value.
+k = did2.build.key('encounter', 3, 'PositionsFrom', 0);
+verifyFalse(testCase, k.regular);
+verifyEqual(testCase, k.positions_from, 0);
+verifyError(testCase, @() did2.build.key('encounter', 3, 'PositionsFrom', 0, ...
+    'Values', [1 2 3]), 'did2:build:ruleViolated');
+cache = did2.schema.cache.shared();
+data = jsondecode(fileread(fullfile(cache.schemaPath, 'data.json')));
+assumeTrue(testCase, any(strcmp({data.depends_on.name}, 'key_id')), ...
+    'the loaded schema predates key_id (did-schema 2026-10-05)');
+list = newId();
+doc = did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', [0.01 0.02 0.03]), 'Keys', k, ...
+    'KeyIds', {list}, 'TimeReferenceIds', {newId()}, ...
+    'SessionId', testCase.TestData.sid);
+hit = doc.depends_on(strcmp({doc.depends_on.name}, 'key_id'));
+verifyEqual(testCase, {hit.document_id}, {list});
+end
+
 function testListMergesRaggedEntries(testCase)
 keys = did2.build.list( ...
     did2.build.key('time', 10, 'Origin', 0, 'Spacing', 1, 'Unit', 'second'), ...

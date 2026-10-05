@@ -34,6 +34,8 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %     'AcquisitionChannelsId'
 %     'ValueId'           a standalone data_type document holding the value
 %     'InputIds'          cellstr: a calculation's inputs (ordered)
+%     'KeyIds'            cellstr: data_type documents a key takes its
+%                         positions from (a key's `positions_from` indexes them)
 %     'InterpreterId', 'OperatingSystemId'   a calculation's run environment
 %     'Edges'             any other declared edge (see did2.build.document)
 %   Document:
@@ -69,6 +71,7 @@ arguments
     options.AcquisitionChannelsId = ''
     options.ValueId = ''
     options.InputIds = {}
+    options.KeyIds = {}
     options.InterpreterId = ''
     options.OperatingSystemId = ''
     options.Edges = struct()
@@ -102,6 +105,7 @@ edges = struct( ...
     'acquisition_channels_id', options.AcquisitionChannelsId, ...
     'value_id', options.ValueId, ...
     'input_id', {options.InputIds}, ...
+    'key_id', {options.KeyIds}, ...
     'interpreter_id', options.InterpreterId, ...
     'operating_system_id', options.OperatingSystemId);
 

@@ -272,14 +272,14 @@ end
 
 function keyPositionsOneForm(key, k)
 regular = isfield(key, 'regular') && isTrue(key.regular);
-forms = {'values', 'labels', 'labels_from'};
+forms = {'values', 'labels', 'positions_from'};
 given = forms(cellfun(@(f) isfield(key, f) && ~isAbsent(key.(f)), forms));
 if regular && ~isempty(given)
     violated('key_positions_one_form', sprintf('key %d', k), ...
-        sprintf('a regular key carries none of values/labels/labels_from; got %s.', strjoin(given, ', ')));
+        sprintf('a regular key carries none of values/labels/positions_from; got %s.', strjoin(given, ', ')));
 elseif ~regular && numel(given) ~= 1
     violated('key_positions_one_form', sprintf('key %d', k), ...
-        sprintf('a key that is not regular carries exactly one of values, labels, labels_from; got %d.', numel(given)));
+        sprintf('a key that is not regular carries exactly one of values, labels, positions_from; got %d.', numel(given)));
 end
 end
 
