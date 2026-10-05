@@ -16,20 +16,20 @@ on:
   push:
     branches: ['claude/**']
     paths:
-      - 'src/did/+did2/+build/**'
-      - 'src/did/+did2/+schema/**'
-      - 'tests/+did2/+unittest/testBuild*.m'
-      - 'src/did/+did2/+database/**'
-      - 'tests/+did2/+unittest/testSqliteDb*.m'
+      - 'src/did/\+did2/\+build/**'
+      - 'src/did/\+did2/\+schema/**'
+      - 'tests/\+did2/\+unittest/testBuild*.m'
+      - 'src/did/\+did2/\+database/**'
+      - 'tests/\+did2/\+unittest/testSqliteDb*.m'
       - '.github/workflows/test-builder.yml'
   pull_request:
     branches: [main, V2]
     paths:
-      - 'src/did/+did2/+build/**'
-      - 'src/did/+did2/+schema/**'
-      - 'tests/+did2/+unittest/testBuild*.m'
-      - 'src/did/+did2/+database/**'
-      - 'tests/+did2/+unittest/testSqliteDb*.m'
+      - 'src/did/\+did2/\+build/**'
+      - 'src/did/\+did2/\+schema/**'
+      - 'tests/\+did2/\+unittest/testBuild*.m'
+      - 'src/did/\+did2/\+database/**'
+      - 'tests/\+did2/\+unittest/testSqliteDb*.m'
       - '.github/workflows/test-builder.yml'
   workflow_dispatch:
 
