@@ -68,6 +68,18 @@ function result = v1_to_v2(v1Bodies, options)
 %                      identifiers in the legacy (camelCase) form so
 %                      the body stays schema-compatible while still
 %                      gaining the V_delta shape transformations.
+%     Audits           (1,1 logical, default true) - run the report-only
+%                      census instruments over the batch (silentLoss,
+%                      fileList, timeReferenceFamilies) into
+%                      result.silent_loss / .file_list_audit /
+%                      .time_reference_families. They raise nothing and
+%                      change no outcome. Pass false on a READ path that
+%                      discards them: on one-document reads they cost more
+%                      than the conversion itself (NDI reading the 10,536
+%                      Haley V2 subjects: 23.5 s of 51 s profiled). When false,
+%                      each of the three fields is struct('audit_skipped',
+%                      true) -- never an empty census, which would read as
+%                      clean.
 %     TargetVersion    (1,:) char, default 'V_delta') - migration target.
 %                      'V_delta' (default) preserves the historical
 %                      class-preserving 1->1 behaviour. 'V_epsilon' routes
@@ -112,6 +124,7 @@ arguments
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
     options.TargetVersion (1,:) char = 'V_delta'
+    options.Audits (1,1) logical = true
 end
 
 bodies = normaliseInput(v1Bodies);
@@ -380,41 +393,48 @@ result.summary = struct( ...
 % and the quarantine rollup disagree about a class, one of the two paired
 % implementations has drifted -- that is the signal, and it is why they are
 % locked together by test.
-try
-    result.silent_loss = did2.validate.silentLoss(migrated, ...
-        'SchemaCache', options.SchemaCache);
-catch auditErr
-    result.silent_loss = struct('audit_failed', auditErr.message);
-end
+if options.Audits
+    try
+        result.silent_loss = did2.validate.silentLoss(migrated, ...
+            'SchemaCache', options.SchemaCache);
+    catch auditErr
+        result.silent_loss = struct('audit_failed', auditErr.message);
+    end
 
-% #64: the same shape one tier over -- a class declares payload FILES and the
-% document carries none, or carries bytes the class never declares. The schema
-% cache allows `file`/`files` as a top-level key and never looks inside, so
-% neither direction trips anything. REPORT ONLY, raises nothing.
-try
-    result.file_list_audit = did2.validate.fileList(migrated, ...
-        'SchemaCache', options.SchemaCache);
-catch fileErr
-    result.file_list_audit = struct('audit_failed', fileErr.message);
-end
+    % #64: the same shape one tier over -- a class declares payload FILES and the
+    % document carries none, or carries bytes the class never declares. The schema
+    % cache allows `file`/`files` as a top-level key and never looks inside, so
+    % neither direction trips anything. REPORT ONLY, raises nothing.
+    try
+        result.file_list_audit = did2.validate.fileList(migrated, ...
+            'SchemaCache', options.SchemaCache);
+    catch fileErr
+        result.file_list_audit = struct('audit_failed', fileErr.message);
+    end
 
-% #52 EVIDENCE, not a gate: how many time references does one statement carry,
-% and what shapes occur when it carries more than one. The team has to name (or
-% decline to name) the roles of `time_reference_1..N`, and the one thing it does
-% not have is the distribution and the shapes over real data. This produces
-% them. REPORT ONLY -- it raises nothing and changes no outcome, and it proposes
-% no role vocabulary.
-%
-% It is a SEPARATE INSTRUMENT from silentLoss's `family_uniqueness_violation`,
-% which asks whether the members of a family violate the signed uniqueness rule.
-% A batch can satisfy that rule perfectly and still be full of shapes nobody has
-% decided the meaning of: distinct clocks and distinct anchors are both
-% "unique", and they are not the same modelling situation.
-try
-    result.time_reference_families = did2.validate.timeReferenceFamilies( ...
-        migrated, 'SchemaCache', options.SchemaCache);
-catch trfErr
-    result.time_reference_families = struct('audit_failed', trfErr.message);
+    % #52 EVIDENCE, not a gate: how many time references does one statement carry,
+    % and what shapes occur when it carries more than one. The team has to name (or
+    % decline to name) the roles of `time_reference_1..N`, and the one thing it does
+    % not have is the distribution and the shapes over real data. This produces
+    % them. REPORT ONLY -- it raises nothing and changes no outcome, and it proposes
+    % no role vocabulary.
+    %
+    % It is a SEPARATE INSTRUMENT from silentLoss's `family_uniqueness_violation`,
+    % which asks whether the members of a family violate the signed uniqueness rule.
+    % A batch can satisfy that rule perfectly and still be full of shapes nobody has
+    % decided the meaning of: distinct clocks and distinct anchors are both
+    % "unique", and they are not the same modelling situation.
+    try
+        result.time_reference_families = did2.validate.timeReferenceFamilies( ...
+            migrated, 'SchemaCache', options.SchemaCache);
+    catch trfErr
+        result.time_reference_families = struct('audit_failed', trfErr.message);
+    end
+else
+    skipped = struct('audit_skipped', true);
+    result.silent_loss = skipped;
+    result.file_list_audit = skipped;
+    result.time_reference_families = skipped;
 end
 
 if options.CheckReferences
