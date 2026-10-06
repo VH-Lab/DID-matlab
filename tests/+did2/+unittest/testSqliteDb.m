@@ -564,6 +564,49 @@ sizeValues = [sizeRows.value_num];
 verifyEqual(testCase, sizeValues(:)', [10 20 5]);
 end
 
+function testManyRowsCrossTheStatementChunks(testCase)
+% Rows are written several to a statement, chunked under SQLite's
+% bound-variable limit (999: 199 sidecar rows, 333 links per statement).
+% A document with more than that must store every row, in order.
+db = testCase.TestData.db;
+n = 450;
+axes = struct('name', repmat({'a'}, 1, n), 'unit', arrayfun(@(k) sprintf('u%d', k), 1:n, ...
+    'UniformOutput', false), 'size', num2cell(1:n));
+doc = makeDemoArray('many', axes);
+db.add(doc);
+id = doc.get('base.id');
+rows = mksqlite(db.testHookDbId(), ['SELECT elem_index, value_num FROM queryable_array_elem ' ...
+    'WHERE doc_id = ? AND path = ? ORDER BY rowid'], id, 'demoArray.axes[*].size');
+verifyEqual(testCase, [rows.elem_index], 1:n, 'every element, in order');
+verifyEqual(testCase, [rows.value_num], 1:n);
+rows = mksqlite(db.testHookDbId(), ['SELECT value_text FROM queryable_array_elem ' ...
+    'WHERE doc_id = ? AND path = ? ORDER BY rowid'], id, 'demoArray.axes[*].unit');
+verifyEqual(testCase, cellfun(@char, {rows.value_text}, 'UniformOutput', false), ...
+    arrayfun(@(k) sprintf('u%d', k), 1:n, 'UniformOutput', false));
+
+m = 700;
+d = makeDemoA('links', 'x');
+d = d.set('depends_on', struct('name', repmat({'parent'}, 1, m), ...
+    'document_id', arrayfun(@(k) sprintf('id-%d', k), 1:m, 'UniformOutput', false)));
+db.add(d, 'Validate', false);
+links = mksqlite(db.testHookDbId(), ...
+    'SELECT document_id FROM depends_on WHERE doc_id = ? ORDER BY rowid', d.get('base.id'));
+verifyEqual(testCase, cellfun(@char, {links.document_id}, 'UniformOutput', false), ...
+    arrayfun(@(k) sprintf('id-%d', k), 1:m, 'UniformOutput', false));
+sc = mksqlite(db.testHookDbId(), ...
+    'SELECT classname FROM superclasses WHERE doc_id = ? ORDER BY rowid', d.get('base.id'));
+verifyEqual(testCase, sort(cellfun(@char, {sc.classname}, 'UniformOutput', false)), sort({'base', 'demoA'}));
+end
+
+function testADocumentWithoutArrayBlocksWritesNoSidecarRows(testCase)
+db = testCase.TestData.db;
+d = makeDemoA('plain', 'x');
+db.add(d);
+n = mksqlite(db.testHookDbId(), ...
+    'SELECT COUNT(*) AS n FROM queryable_array_elem WHERE doc_id = ?', d.get('base.id'));
+verifyEqual(testCase, double(n.n), 0);
+end
+
 function testSidecarRoutesIndexedStarSearch(testCase)
 % A search on the indexed array path should hit the sidecar and return
 % the same docs as the in-memory evaluator.

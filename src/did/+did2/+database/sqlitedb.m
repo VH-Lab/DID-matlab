@@ -73,6 +73,8 @@ classdef sqlitedb < handle
         queryableScalarColumns = []  % struct array from did2.schema.cache.queryablePaths
         queryableScalarPaths = {}    % cellstr mirror, passed to compileQuery
         queryableArrayPathDefs = []  % struct array; one per [*]-bearing sub-field
+        arrayDefParts = {}           % per def: its parentPath split on '.', once
+        arrayDefsByBlock = []        % containers.Map: top-level block -> def indices
         queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
         queryableBootstrapOk (1,1) logical = false
     end
@@ -460,6 +462,7 @@ classdef sqlitedb < handle
             obj.queryableScalarPaths = {};
             obj.queryableArrayPathDefs = obj.emptyArrayPathStruct();
             obj.queryableArrayPaths = {};
+            obj.indexArrayDefs();
             obj.queryableBootstrapOk = false;
             try
                 cache = obj.resolveSchemaCache();
@@ -488,6 +491,7 @@ classdef sqlitedb < handle
                 arrayDefs = arrayDefs(order);
                 obj.queryableArrayPathDefs = arrayDefs;
                 obj.queryableArrayPaths = {arrayDefs.path};
+                obj.indexArrayDefs();
             end
             obj.queryableBootstrapOk = true;
         end
@@ -803,11 +807,30 @@ classdef sqlitedb < handle
         end
 
         function insertSidecarRowsFromStruct(obj, docId, s)
-            % Walk every configured queryable array path and INSERT one
-            % row per array element into queryable_array_elem.
-            for k = 1:numel(obj.queryableArrayPathDefs)
+            % One queryable_array_elem row per indexed array element. Only
+            % the defs whose top-level block the document HAS are looked
+            % at (arrayDefsByBlock), with their paths split once
+            % (arrayDefParts): every def was tried on every document,
+            % splitting its path each time -- 910,420 tries for 4,975
+            % documents of the Haley V2 import, nearly all finding no
+            % block. Defs are visited in their sorted order and the rows
+            % go in with one statement per chunk (insertMany), so the
+            % table holds the same rows in the same order as before.
+            if isempty(obj.arrayDefsByBlock) || ~isstruct(s) || ~isscalar(s)
+                return;
+            end
+            blocks = fieldnames(s);
+            defIdx = [];
+            for b = 1:numel(blocks)
+                if isKey(obj.arrayDefsByBlock, blocks{b})
+                    defIdx = [defIdx, obj.arrayDefsByBlock(blocks{b})]; %#ok<AGROW>
+                end
+            end
+            defIdx = sort(defIdx);
+            rows = cell(0, 5);
+            for k = defIdx
                 def = obj.queryableArrayPathDefs(k);
-                elems = obj.resolveParentArray(s, def.parentPath);
+                elems = obj.resolveParentArray(s, obj.arrayDefParts{k});
                 for idx = 1:numel(elems)
                     elem = obj.elementAt(elems, idx);
                     if ~isstruct(elem) || ~isfield(elem, def.subField)
@@ -818,24 +841,65 @@ classdef sqlitedb < handle
                         continue;
                     end
                     [textValue, numValue] = obj.coerceLeafValue(value, def.affinity);
-                    mksqlite(obj.dbid, ...
-                        ['INSERT INTO queryable_array_elem' ...
-                         '(doc_id, path, elem_index, value_text, value_num) ' ...
-                         'VALUES(?, ?, ?, ?, ?)'], ...
-                        docId, def.path, idx, textValue, numValue);
+                    rows(end+1, :) = {docId, def.path, idx, textValue, numValue}; %#ok<AGROW>
+                end
+            end
+            obj.insertMany(['INSERT INTO queryable_array_elem' ...
+                '(doc_id, path, elem_index, value_text, value_num) VALUES'], rows);
+        end
+
+        function indexArrayDefs(obj)
+            % Split each array def's parentPath once and group the defs by
+            % the top-level block their path starts with (a def with no
+            % parent path never yields a row, so it is left out).
+            n = numel(obj.queryableArrayPathDefs);
+            obj.arrayDefParts = cell(1, n);
+            obj.arrayDefsByBlock = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            for k = 1:n
+                pp = obj.queryableArrayPathDefs(k).parentPath;
+                if isempty(pp)
+                    continue;
+                end
+                parts = strsplit(char(pp), '.');
+                obj.arrayDefParts{k} = parts;
+                if isKey(obj.arrayDefsByBlock, parts{1})
+                    obj.arrayDefsByBlock(parts{1}) = [obj.arrayDefsByBlock(parts{1}), k];
+                else
+                    obj.arrayDefsByBlock(parts{1}) = k;
                 end
             end
         end
 
-        function elems = resolveParentArray(~, s, parentPath)
-            % Navigate a dot-path with no [*] segments down to the value
-            % stored at parentPath. Returns a struct array, cell array
-            % of structs, or [] if the path is unresolvable.
-            elems = [];
-            if isempty(parentPath)
+        function insertMany(obj, sqlHead, rows)
+            % insertMany - INSERT the rows of the cell array ROWS (one row
+            % per row of ROWS, one column per placeholder) with as few
+            % statements as SQLite's bound-variable limit allows. SQLHEAD
+            % ends with VALUES. One statement per row was one mksqlite
+            % call per row: ~20 per document (99,800 for 4,975 documents
+            % of the Haley V2 import, 35 s).
+            if isempty(rows)
                 return;
             end
-            parts = strsplit(parentPath, '.');
+            nCols = size(rows, 2);
+            % 999 is SQLite's oldest default limit on bound variables;
+            % staying under it keeps this correct on any SQLite build.
+            perStatement = max(1, floor(999 / nCols));
+            one = ['(' strjoin(repmat({'?'}, 1, nCols), ', ') ')'];
+            for first = 1:perStatement:size(rows, 1)
+                last = min(first + perStatement - 1, size(rows, 1));
+                chunk = rows(first:last, :)';
+                sql = [sqlHead ' ' strjoin(repmat({one}, 1, last - first + 1), ', ')];
+                mksqlite(obj.dbid, sql, chunk{:});
+            end
+        end
+
+        function elems = resolveParentArray(~, s, parts)
+            % The value at the path PARTS (a parentPath already split on
+            % '.') in S, or [] when any step is missing.
+            elems = [];
+            if isempty(parts)
+                return;
+            end
             cursor = s;
             for k = 1:numel(parts)
                 if ~isstruct(cursor) || ~isscalar(cursor) ...
@@ -1033,19 +1097,20 @@ classdef sqlitedb < handle
                 id, classname, classVersion, sessionId, datestamp, ...
                 bodyText, bodyHash);
 
+            % One statement per table, not per row (insertMany).
             chain = obj.classChainFromStruct(s);
+            rows = cell(numel(chain), 2);
             for k = 1:numel(chain)
-                mksqlite(obj.dbid, ...
-                    'INSERT INTO superclasses(doc_id, classname) VALUES(?, ?)', ...
-                    id, chain{k});
+                rows(k, :) = {id, chain{k}};
             end
+            obj.insertMany('INSERT INTO superclasses(doc_id, classname) VALUES', rows);
 
             deps = obj.dependsOnEntries(s);
+            rows = cell(numel(deps), 3);
             for k = 1:numel(deps)
-                mksqlite(obj.dbid, ...
-                    'INSERT OR IGNORE INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
-                    id, deps{k}.name, deps{k}.document_id);
+                rows(k, :) = {id, deps{k}.name, deps{k}.document_id};
             end
+            obj.insertMany('INSERT OR IGNORE INTO depends_on(doc_id, name, document_id) VALUES', rows);
 
             obj.insertSidecarRowsFromStruct(id, s);
         end
