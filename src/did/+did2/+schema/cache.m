@@ -142,6 +142,18 @@ classdef cache < handle
         curieRegistry struct = struct()
     end
 
+    properties (Access = private)
+        % Per-class results of superclasses() and resolvePlacement(),
+        % computed once per class for the life of this instance. Both are
+        % pure functions of the loaded schemas, which only ever grow here
+        % (getClass caches every file it reads; a new schema path makes a
+        % new instance), so a remembered answer cannot go stale. Every
+        % document read used to recompute them: listing the 10,536 Haley V2
+        % subjects called getClass 900,580 times.
+        superclassMemo
+        placementMemo
+    end
+
     methods (Access = private)
         function obj = cache(schemaPath)
             % Private constructor — use did2.schema.cache.shared().
@@ -150,6 +162,8 @@ classdef cache < handle
             end
             obj.schemaPath = schemaPath;
             obj.loadedClasses = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.superclassMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.placementMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.loadRegistry();
         end
     end
@@ -192,6 +206,10 @@ classdef cache < handle
                 obj
                 className (1,:) char
             end
+            if isKey(obj.superclassMemo, className)
+                names = obj.superclassMemo(className);
+                return;
+            end
             names = {};
             visited = containers.Map('KeyType', 'char', 'ValueType', 'logical');
             visited(className) = true;
@@ -221,6 +239,7 @@ classdef cache < handle
                     queue{end+1} = parentName; %#ok<AGROW>
                 end
             end
+            obj.superclassMemo(className) = names;
         end
 
         function chain = classChain(obj, className)
@@ -298,8 +317,10 @@ classdef cache < handle
             %      outcome while no writer is known to do it, and the
             %      wrong one the moment one does.
             %
-            %   2. COST. `resolvePlacement` is recomputed per document and
-            %      is not memoised, so this roughly doubles the schema
+            %   2. COST. [RESOLVED 2026-10-06: resolvePlacement and
+            %      superclasses are now memoised per class; see
+            %      placementMemo.] `resolvePlacement` was recomputed per
+            %      document and was not memoised, so this roughly doubles the schema
             %      walking a read already pays for (validateDocument makes
             %      the same call). Measured at nothing so far: the sessions
             %      this was found on hold tens of documents, and no corpus
@@ -528,9 +549,18 @@ classdef cache < handle
             %                               both place into the concrete-class
             %                               block, or any class redeclares a
             %                               name an ancestor has placed).
+            %   Computed once per class and remembered (see placementMemo).
+            %   INFO.fieldsByBlock is a containers.Map, a handle: the same
+            %   map is handed to every caller, so callers must read it and
+            %   never modify it. None does (checked 2026-10-06: cache.m,
+            %   v1_to_v2.m ensureClassBlocks, did2.build.document).
             arguments
                 obj
                 className (1,:) char
+            end
+            if isKey(obj.placementMemo, className)
+                info = obj.placementMemo(className);
+                return;
             end
 
             chain = obj.classChain(className);
@@ -624,6 +654,7 @@ classdef cache < handle
             info.blocksContributed = blocksContributed;
             info.fieldsByBlock     = entriesByBlock;
             info.chain             = chain;
+            obj.placementMemo(className) = info;
         end
 
         function loadAllSchemas(obj)
