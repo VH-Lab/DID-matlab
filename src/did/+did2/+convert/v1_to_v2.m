@@ -201,7 +201,7 @@ for k = 1:numel(bodies)
     try
         preBody = ensureStruct(rawBody);
         refuseUnknownSchemaVersion(preBody);
-        if isAlreadyTarget(preBody, options.TargetVersion)
+        if did2.convert.isAlreadyTarget(preBody, options.TargetVersion)
             % Idempotency short-circuit: the body is already V_delta,
             % so skip universalRenames and the per-class migrators.
             % ensureClassBlocks still runs (it rebuilds the V_delta
@@ -282,7 +282,7 @@ for k = 1:numel(bodies)
         % N documents in `migrated` (or quarantines the whole source
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
-            outBody = ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
+            outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
             outBody = renameOutboundBaseFields(outBody, options.TargetVersion);
             if ~strcmp(options.TargetVersion, 'V_delta') ...
                     && isfield(outBody, 'document_class') ...
@@ -537,78 +537,6 @@ if ~known
 end
 end
 
-function tf = isAlreadyTarget(body, targetVersion)
-% Return true when BODY is already a TARGETVERSION-shaped document so the
-% per-body migration loop can skip universalRenames and the per-class
-% migrators (it still gets ensureClassBlocks + validate). Both conditions
-% must hold so the short-circuit only fires when we have high confidence
-% the body is already at the target:
-%   (a) document_class.schema_version ranks AT OR BEYOND TARGETVERSION on the
-%       did_v1 -> V_eta line (did2.convert.schemaVersionRank), the version
-%       having been set by the last run of universalRenames, the writer, or --
-%       for 'V_epsilon' -- a context assembler such as
-%       ndi.migrate.internal.stimulusBathToBath that emits ready-made target
-%       bodies. This was an EQUALITY test until 2026-08-14, which made a body
-%       newer than the target indistinguishable from one older than it; an
-%       unrecognised version still falls through to conversion, deliberately,
-%       AND
-%   (b) the body carries no v1-only structural markers — underscore-
-%       prefixed top-level keys (e.g., legacy _classname,
-%       _class_version) that predate the document_class header and
-%       could not survive a real V_delta build.
-%
-% (a) alone would misclassify a body that was tagged V_delta out-of-
-% band but still carries legacy field shapes; (b) alone would skip
-% the bulk of v1 corpora, which do not happen to use the underscore
-% markers but still need every other v1->V_delta rewrite.
-tf = false;
-if ~isstruct(body) || ~isscalar(body)
-    return;
-end
-if ~isfield(body, 'document_class') ...
-        || ~isstruct(body.document_class) ...
-        || ~isscalar(body.document_class) ...
-        || ~isfield(body.document_class, 'schema_version')
-    return;
-end
-sv = body.document_class.schema_version;
-if isstring(sv) && isscalar(sv)
-    sv = char(sv);
-end
-if ~ischar(sv)
-    return;
-end
-% AT OR BEYOND THE TARGET, not equal to it. `strcmp` here had no notion of
-% before and after, so a body NEWER than the target took the same branch as one
-% older than it -- and that branch runs the migrators. Converting an old body
-% forward is the point; running the same pipeline over a body that has already
-% passed the target is the opposite, and it was silent.
-%
-% Reached in production, not in theory: ndi.database.internal.
-% applyReadNormalization calls this converter on EVERY read without passing a
-% target, so it inherits the 'V_delta' default, and a V_eta document compared
-% unequal and was pushed through universalRenames plus the per-class migrators.
-%
-% An UNRECOGNISED version cannot reach here: refuseUnknownSchemaVersion runs
-% first and quarantines it. The `~svKnown` guard below is kept as a defence for
-% any other caller of this helper, and it returns FALSE only because a body
-% that got this far with an unknown version is already a contradiction -- the
-% refusal, not this line, is what decides that case.
-[svRank, svKnown] = did2.convert.schemaVersionRank(sv);
-[tgtRank, tgtKnown] = did2.convert.schemaVersionRank(targetVersion);
-if ~svKnown || ~tgtKnown || svRank < tgtRank
-    return;
-end
-topKeys = fieldnames(body);
-for k = 1:numel(topKeys)
-    name = topKeys{k};
-    if ~isempty(name) && name(1) == '_'
-        return;
-    end
-end
-tf = true;
-end
-
 function fcn = lookupMigrator(className)
 fqn = ['did2.convert.migrators.', className];
 if ~isempty(which(fqn))
@@ -720,84 +648,6 @@ if isfield(body.base, 'datestamp')
     end
     body.base = rmfield(body.base, 'datestamp');
 end
-end
-
-function body = ensureClassBlocks(body, schemaCacheOverride)
-% Make sure every class in the V_delta schema chain for the body's
-% concrete class has a property block in the document, manufacturing
-% empty `struct()` blocks for any chain entry that the v1 source did
-% not provide. Also rebuilds document_class.superclasses from the
-% V_delta schema chain so the snapshot matches the spec (same set,
-% same order, class-name-by-class-name) even when V_delta has
-% reordered or extended the chain relative to v1. V_delta's
-% validator rejects documents whose chain blocks are missing or
-% whose superclasses snapshot drifts from the schema, so this
-% padding lets the per-class migrators stay focused on real field
-% moves rather than placeholder bookkeeping.
-%
-% Silent no-op if the schema cache cannot resolve the class chain
-% (e.g., the class is unknown to the cache, or the cache itself is
-% not configured). In that case validation will catch the underlying
-% issue downstream; this function does not raise.
-if ~isfield(body, 'document_class') ...
-        || ~isstruct(body.document_class) ...
-        || ~isfield(body.document_class, 'class_name')
-    return;
-end
-className = char(body.document_class.class_name);
-cache = schemaCacheOverride;
-if isempty(cache)
-    try
-        cache = did2.schema.cache.shared();
-    catch
-        return;
-    end
-end
-if isempty(cache)
-    return;
-end
-try
-    placementInfo = cache.resolvePlacement(className);
-    ancestors = cache.superclasses(className);
-catch
-    return;
-end
-% Placement-aware: only classes that contribute a body block (per
-% V_gamma_SPEC.md "Field placement") get an empty struct manufactured
-% for them. An abstract class whose declared fields are all
-% `placement: "concrete_class"` (e.g., `calculator`) does NOT
-% materialize on the instance body.
-for k = 1:numel(placementInfo.blocksContributed)
-    cls = placementInfo.blocksContributed{k};
-    if ~isfield(body, cls)
-        body.(cls) = struct();
-    end
-end
-% Drop stray EMPTY blocks left by v1 for chain classes that the target
-% schema does NOT host on the instance. v1 documents carried a property
-% block for every class in their hierarchy, including parents that became
-% abstract / fieldless in V_delta/V_epsilon (abstract classes are new
-% here). Those arrive as empty structs and would trip the strict
-% undeclared-top-level-block check. Only EMPTY such blocks are removed --
-% a non-empty one signals real data a migrator must place, so it is left
-% to fail loudly rather than be silently dropped.
-chainClasses = [reshape(ancestors, 1, []), {className}];
-nonContributing = setdiff(chainClasses, placementInfo.blocksContributed);
-for k = 1:numel(nonContributing)
-    cls = nonContributing{k};
-    if isfield(body, cls) && isstruct(body.(cls)) ...
-            && (numel(body.(cls)) == 0 || isempty(fieldnames(body.(cls))))
-        body = rmfield(body, cls);
-    end
-end
-sc = struct('class_name', {}, 'class_version', {});
-for k = 1:numel(ancestors)
-    ancDC = cache.getClass(ancestors{k}).document_class;
-    sc(end+1) = struct( ...
-        'class_name',    char(ancDC.class_name), ...
-        'class_version', char(ancDC.class_version)); %#ok<AGROW>
-end
-body.document_class.superclasses = sc;
 end
 
 function body = applySuperclassMigrators(body, concreteClassName, targetVersion)

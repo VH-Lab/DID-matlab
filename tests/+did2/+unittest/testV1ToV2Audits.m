@@ -49,6 +49,39 @@ end
 verifyEqual(testCase, numel(b.quarantine), numel(a.quarantine));
 end
 
+function testTheReadShortcutEqualsTheFullPass(testCase)
+% A read path may skip v1_to_v2 for a body already at its target and apply
+% did2.convert.ensureClassBlocks alone (NDI's applyReadNormalization). That
+% is sound only if the two give the same document -- including when the
+% body is missing a block or carries a stale superclass list.
+bodies = {makeBody(), makeBodyOf('demoB')};
+b = makeBodyOf('demoB');  b = rmfield(b, 'demoA');           bodies{end+1} = b;
+b = makeBody();  b.document_class.superclasses = b.document_class.superclasses([]);
+bodies{end+1} = b;
+for k = 1:numel(bodies)
+    verifyTrue(testCase, did2.convert.isAlreadyTarget(bodies{k}, 'V_delta'), ...
+        sprintf('body %d is at the target, so the shortcut applies', k));
+    full = did2.convert.v1_to_v2(bodies(k), 'Validate', false, ...
+        'RenameClassNames', false, 'TargetVersion', 'V_delta', 'Audits', false);
+    verifyNumElements(testCase, full.migrated, 1);
+    verifyEqual(testCase, did2.convert.ensureClassBlocks(bodies{k}, []), ...
+        full.migrated{1}.toStruct(), sprintf('body %d', k));
+end
+end
+
+function testAV1BodyIsNotAtTheTarget(testCase)
+b = makeBody();
+b.document_class = rmfield(b.document_class, 'schema_version');
+verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'V_delta'));
+end
+
+function body = makeBodyOf(className)
+doc = did2.document.blank(className);
+doc = doc.set('base.session_id', 'session-audits');
+doc = doc.set('base.name', 'audits');
+body = doc.toStruct();
+end
+
 function body = makeBody()
 doc = did2.document.blank('demoA');
 doc = doc.set('base.session_id', 'session-audits');
