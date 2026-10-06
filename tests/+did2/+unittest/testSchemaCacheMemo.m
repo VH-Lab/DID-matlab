@@ -41,8 +41,10 @@ end
 
 function testAnErrorIsNotRemembered(testCase)
 % fixtures built to violate the placement rules raise every time
+% (demoCollideAbstract is the valid abstract parent; only its concrete
+% child collides)
 c = did2.schema.cache.shared();
-bad = {'demoBadConcrete', 'demoCollideAbstract', 'demoCollideConcrete'};
+bad = {'demoBadConcrete', 'demoCollideConcrete'};
 bad = bad(ismember(bad, testCase.TestData.classes));
 verifyNotEmpty(testCase, bad);
 for k = 1:numel(bad)
