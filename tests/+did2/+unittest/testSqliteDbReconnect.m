@@ -113,6 +113,16 @@ verifyError(testCase, @() db.count(), 'did2:database:closed');
 db.close();     % idempotent
 end
 
+function testExplainReportsAPlanAndWritesNothing(testCase)
+db = newDb(testCase);
+db.add(makeDemoA('alice', 'a1'));
+r = db.testHookExplain(did2.query('base.name', 'exact_string', 'alice'));
+verifySubstring(testCase, r.sql, 'SELECT id, body FROM documents WHERE');
+verifyNotEmpty(testCase, r.plan);
+verifyTrue(testCase, isfield(r.plan, 'detail'));
+verifyEqual(testCase, db.count(), 1);
+end
+
 % ---- helpers ----
 
 function db = newDb(testCase)

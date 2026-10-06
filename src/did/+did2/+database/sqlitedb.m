@@ -358,6 +358,27 @@ classdef sqlitedb < handle
             id = obj.dbid;
         end
 
+        function r = testHookExplain(obj, q)
+            % testHookExplain - the SQL a query compiles to, and SQLite's plan for it
+            %
+            %   R = db.testHookExplain(Q) returns a struct: sql (the full
+            %   statement search() runs), params (its bound values) and plan
+            %   (the rows of EXPLAIN QUERY PLAN: id, parent, detail). It runs
+            %   nothing but EXPLAIN and writes nothing. For diagnosing slow
+            %   searches; not part of the API.
+            arguments
+                obj
+                q (1,1) did2.query
+            end
+            obj.ensureConnection();
+            [whereSQL, params] = did2.database.compileQuery(q, ...
+                'QueryablePaths', obj.queryableScalarPaths, ...
+                'QueryableArrayPaths', obj.queryableArrayPathDefs);
+            sql = ['SELECT id, body FROM documents WHERE ' whereSQL ' ORDER BY rowid ASC'];
+            plan = mksqlite(obj.dbid, ['EXPLAIN QUERY PLAN ' sql], params{:});
+            r = struct('sql', sql, 'params', {params}, 'plan', plan);
+        end
+
         function n = testHookReconnects(obj)
             % testHookReconnects - how many times the connection was reopened
             % because it had been closed (or its dbid reused) by someone else.
