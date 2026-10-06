@@ -247,6 +247,35 @@ verifyEqual(testCase, numel(hits), 1);
 verifyEmpty(testCase, db.search(did2.query('', 'depends_on', 'parent', 'no-such-id')));
 end
 
+function testSearchDependsOnCombinations(testCase)
+% A named depends_on compiles to `documents.id IN (...)` (so SQLite can
+% start from the edge index); the answers must be the ones the correlated
+% EXISTS gave, alone, negated, ANDed with isa and inside an or.
+db = testCase.TestData.db;
+withEdge = @(d, id) d.set('depends_on', struct('name', {'parent'}, 'document_id', {id}));
+d1 = withEdge(makeDemoA('a1', 'x'), 'id-1');      db.add(d1, 'Validate', false);
+d2 = withEdge(makeDemoB('b1', 'y', 'q'), 'id-1'); db.add(d2, 'Validate', false);
+d3 = withEdge(makeDemoA('a2', 'z'), 'id-2');      db.add(d3, 'Validate', false);
+d4 = makeDemoA('a3', 'w');                        db.add(d4);
+names = @(q) sort(cellfun(@(h) char(h.get('base.name')), db.search(q), 'UniformOutput', false));
+edge1 = did2.query('', 'depends_on', 'parent', 'id-1');
+verifyEqual(testCase, names(edge1), {'a1', 'b1'});
+verifyEqual(testCase, names(did2.query('', 'isa', 'demoB') & edge1), {'b1'});
+verifyEqual(testCase, names(did2.query('', '~depends_on', 'parent', 'id-1')), {'a2', 'a3'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'parent', 'id-2') | ...
+    did2.query('', 'isa', 'demoB')), {'a2', 'b1'});
+verifyEqual(testCase, names(edge1 & did2.query('base.name', 'exact_string', 'a1')), {'a1'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', '*', 'id-2')), {'a2'});
+
+% and the plan starts from the edge: documents is not scanned
+r = db.testHookExplain(did2.query('', 'isa', 'demoA') & edge1);
+details = {r.plan.detail};
+verifyFalse(testCase, any(~cellfun(@isempty, regexp(details, '^SCAN (TABLE )?documents\>', 'once'))), ...
+    sprintf('plan: %s', strjoin(details, ' | ')));
+verifyTrue(testCase, any(contains(details, 'depends_on_name_document_id')), ...
+    sprintf('plan: %s', strjoin(details, ' | ')));
+end
+
 function testARepeatedEdgeNameIsStored(testCase)
 % A V2 edge declared `multiple` (e.g. time_reference_id) repeats ONE name;
 % the depends_on key used to be (doc_id, name) and refused the second row.

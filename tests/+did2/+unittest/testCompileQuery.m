@@ -136,6 +136,17 @@ verifySubstring(testCase, sql, 'FROM depends_on d');
 verifySubstring(testCase, sql, 'd.name = ?');
 verifySubstring(testCase, sql, 'd.document_id = ?');
 verifyEqual(testCase, params, {'parent', 'id-1'});
+% a named edge is an uncorrelated IN, so SQLite can start from the
+% depends_on(name, document_id) index instead of scanning documents
+verifySubstring(testCase, sql, 'documents.id IN (SELECT d.doc_id FROM depends_on d');
+verifyEmpty(testCase, strfind(sql, 'd.doc_id = documents.id'), 'not correlated');
+end
+
+function testDependsOnNegatedIsNotIn(testCase)
+q = did2.query('', '~depends_on', 'parent', 'id-1');
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, '(documents.id NOT IN (SELECT d.doc_id FROM depends_on d');
+verifyEqual(testCase, params, {'parent', 'id-1'});
 end
 
 function testDependsOnWildcard(testCase)

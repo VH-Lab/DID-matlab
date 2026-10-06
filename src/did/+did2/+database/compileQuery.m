@@ -20,7 +20,8 @@ function [whereSQL, params] = compileQuery(q, opts)
 %   This is the "JSON1 fallback" compiler called for in PLAN.md §9 step 3.
 %   It uses sqlite3 json_extract / json_each / json_type for every
 %   document-body predicate, EXISTS over the sidecar tables for `isa`
-%   and `depends_on`, and emits a conservative `1=1` for predicates that
+%   and a wildcard `depends_on`, `documents.id IN (...)` for a named
+%   `depends_on` (so SQLite can start from its index), and emits a conservative `1=1` for predicates that
 %   sqlite cannot express natively (e.g. `regexp`). did2.database.sqlitedb
 %   always runs the in-memory evaluator over the SQL result set as a
 %   correctness backstop, so the SQL clause is only required to be an
@@ -180,21 +181,41 @@ end
 function [sql, params] = compileDependsOn(name, value, isNeg)
 % `depends_on` consults the `depends_on` sidecar table; `*` for `name` is
 % the wildcard documented in did_query_model.md.
+%
+% A NAMED edge compiles to `documents.id IN (SELECT ... FROM depends_on
+% ...)`, not to a correlated `EXISTS`. The two mean the same, but SQLite
+% can only START from an uncorrelated IN: it reads the edge's rows through
+% the depends_on(name, document_id) index and looks each document up by
+% id. A correlated EXISTS is evaluated once per document, so the planner
+% has to walk the documents table first, and a query with nothing else to
+% narrow it (an isa plus an edge, as ndi.dataset sends) SCANNED every
+% document. Measured on the Haley V2 dataset (187,673 documents, a worm's
+% 22 statements): 0.708 s as EXISTS, 0.0007 s starting from the edge
+% (EXPLAIN QUERY PLAN via sqlitedb.testHookExplain). doc_id is NOT NULL,
+% so the negated NOT IN has no NULL trap.
+%
+% The WILDCARD stays a correlated EXISTS: no index has document_id first,
+% so an IN would scan the whole depends_on table (several rows per
+% document) instead of the documents table.
 name  = char(name);
 value = char(value);
 if strcmp(name, '*')
     existsSQL = ['EXISTS (SELECT 1 FROM depends_on d ' ...
         'WHERE d.doc_id = documents.id AND d.document_id = ?)'];
     params = {value};
-else
-    existsSQL = ['EXISTS (SELECT 1 FROM depends_on d ' ...
-        'WHERE d.doc_id = documents.id AND d.name = ? AND d.document_id = ?)'];
-    params = {name, value};
+    if isNeg
+        sql = ['(NOT ' existsSQL ')'];
+    else
+        sql = existsSQL;
+    end
+    return;
 end
+inSQL = '(SELECT d.doc_id FROM depends_on d WHERE d.name = ? AND d.document_id = ?)';
+params = {name, value};
 if isNeg
-    sql = ['(NOT ' existsSQL ')'];
+    sql = ['(documents.id NOT IN ' inSQL ')'];
 else
-    sql = existsSQL;
+    sql = ['documents.id IN ' inSQL];
 end
 end
 
