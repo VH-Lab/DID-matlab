@@ -672,8 +672,12 @@ classdef sqlitedb < handle
 
         function n = legacyQueryableColumnCount(obj)
             % How many q_* generated columns the documents table still has
-            % (the layout before queryable_scalar_elem).
-            row = mksqlite(obj.dbid, ['SELECT COUNT(*) AS n FROM pragma_table_info(''documents'') ' ...
+            % (the layout before queryable_scalar_elem). table_XINFO, not
+            % table_info: generated columns are hidden columns, and
+            % table_info leaves them out -- it reported 0 on an old-layout
+            % database, so the conversion never ran (caught by
+            % testAnOldLayoutDatabaseIsConvertedOnOpen).
+            row = mksqlite(obj.dbid, ['SELECT COUNT(*) AS n FROM pragma_table_xinfo(''documents'') ' ...
                 'WHERE name LIKE ''q\_%'' ESCAPE ''\''']);
             n = double(row(1).n);
         end

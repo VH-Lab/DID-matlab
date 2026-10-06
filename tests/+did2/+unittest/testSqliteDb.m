@@ -465,7 +465,7 @@ function testScalarSidecarAtCreateAndNoGeneratedColumns(testCase)
 db = testCase.TestData.db;
 paths = db.testHookQueryableScalarPaths();
 verifyTrue(testCase, all(ismember({'base.name', 'base.id', 'demoA.value'}, paths)));
-n = mksqlite(db.testHookDbId(), ['SELECT COUNT(*) AS n FROM pragma_table_info(''documents'') ' ...
+n = mksqlite(db.testHookDbId(), ['SELECT COUNT(*) AS n FROM pragma_table_xinfo(''documents'') ' ...
     'WHERE name LIKE ''q\_%'' ESCAPE ''\''']);
 verifyEqual(testCase, double(n.n), 0, 'no generated columns on documents');
 mksqlite(db.testHookDbId(), 'SELECT doc_id, path, value_text, value_num, value_raw FROM queryable_scalar_elem LIMIT 0');
@@ -523,7 +523,7 @@ db.close();
 db2 = did2.database.sqlitedb(testCase.TestData.tmpFile);
 cleanup = onCleanup(@() db2.close()); %#ok<NASGU>
 id2 = db2.testHookDbId();
-n = mksqlite(id2, ['SELECT COUNT(*) AS n FROM pragma_table_info(''documents'') ' ...
+n = mksqlite(id2, ['SELECT COUNT(*) AS n FROM pragma_table_xinfo(''documents'') ' ...
     'WHERE name LIKE ''q\_%'' ESCAPE ''\''']);
 verifyEqual(testCase, double(n.n), 0, 'the generated column is gone');
 n = mksqlite(id2, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ''documents_q_base_name''');
