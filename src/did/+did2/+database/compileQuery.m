@@ -9,13 +9,15 @@ function [whereSQL, params] = compileQuery(q, opts)
 %   `depends_on(doc_id, name, document_id)` sidecar tables).
 %
 %   [WHERESQL, PARAMS] = did2.database.compileQuery(Q, 'QueryablePaths',
-%   PATHS) tells the compiler that the dot-paths listed in the cellstr
-%   PATHS are surfaced as `q_<flat>` STORED generated columns on the
-%   documents table (PLAN.md §3.2). Scalar predicates against those
-%   paths compile to a direct comparison against the column instead of
-%   `json_extract(body, '$.<path>')`, which lets sqlite use the column's
-%   index. Predicates against paths not in the set fall back to
-%   json_extract.
+%   PATHS) tells the compiler that the values of the dot-paths in PATHS
+%   are kept in the `queryable_scalar_elem` side table (one row per value
+%   a document has; they were `q_<flat>` generated columns until
+%   2026-10-06). PATHS is a struct array with `path` and `affinity` (as
+%   did2.database.sqlitedb passes it) or a cellstr of paths. Scalar
+%   predicates against those paths compile to `documents.id IN (SELECT
+%   ... FROM queryable_scalar_elem ...)`, which SQLite answers from the
+%   (path, value) index. Predicates against paths not in the set fall back
+%   to json_extract.
 %
 %   This is the "JSON1 fallback" compiler called for in PLAN.md §9 step 3.
 %   It uses sqlite3 json_extract / json_each / json_type for every
@@ -32,7 +34,7 @@ function [whereSQL, params] = compileQuery(q, opts)
 
 arguments
     q (1,1) did2.query
-    opts.QueryablePaths cell = {}
+    opts.QueryablePaths = {}
     opts.QueryableArrayPaths = []
 end
 
@@ -43,14 +45,30 @@ ctx = struct( ...
 end
 
 function set = asPathSet(paths)
-% Normalise a cellstr of paths into a containers.Map for O(1) lookup.
-set = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+% Normalise the queryable scalar paths into a path -> affinity map. PATHS
+% is a struct array with `path` and `affinity` (what did2.database.sqlitedb
+% passes, so each value is compared in the column it was stored in), or a
+% cellstr of bare paths, whose affinity is then UNKNOWN and the value is
+% compared across all three value columns.
+set = containers.Map('KeyType', 'char', 'ValueType', 'char');
+if isstruct(paths)
+    for k = 1:numel(paths)
+        p = char(paths(k).path);
+        if isempty(p), continue; end
+        a = '';
+        if isfield(paths(k), 'affinity') && ~isempty(paths(k).affinity)
+            a = upper(char(paths(k).affinity));
+        end
+        set(p) = a;
+    end
+    return;
+end
 for k = 1:numel(paths)
     p = char(paths{k});
     if isempty(p)
         continue;
     end
-    set(p) = true;
+    set(p) = 'UNKNOWN';
 end
 end
 
@@ -308,6 +326,10 @@ function [sql, params] = compileScalar(op, fieldPath, target, isNeg, ctx)
 [stars, prefix, leaf] = splitPathOnStar(fieldPath);
 
 if isempty(stars)
+    if scalarPathIsIndexed(prefix, ctx)
+        [sql, params] = compileScalarFromScalarSidecar(op, prefix, target, isNeg, ctx);
+        return;
+    end
     valueExpr = scalarValueExpression(prefix, ctx);
     [predicate, params] = scalarPredicate(op, valueExpr, target);
     if isNeg
@@ -462,19 +484,42 @@ end
 % path utilities
 % -----------------------------------------------------------------------
 
-function expr = scalarValueExpression(dotPath, ctx)
-% scalarValueExpression - the SQL value expression for a (no-[*]) scalar
-%   path. Routes to the `q_<flat>` generated column when the path is
-%   declared queryable; otherwise falls back to `json_extract(body, ...)`.
-if ~isempty(dotPath) && isfield(ctx, 'queryablePaths') ...
-        && isa(ctx.queryablePaths, 'containers.Map') ...
-        && ctx.queryablePaths.isKey(dotPath)
-    % Match did2.schema.cache.columnNameFor: always lowercase so the
-    % SQL identifier matches the column name SQLite ended up storing.
-    expr = ['q_' lower(strrep(dotPath, '.', '_'))];
-else
-    expr = sprintf('json_extract(body, ''%s'')', jsonPath(dotPath));
+function tf = scalarPathIsIndexed(dotPath, ctx)
+tf = ~isempty(dotPath) && isfield(ctx, 'queryablePaths') ...
+    && isa(ctx.queryablePaths, 'containers.Map') && ctx.queryablePaths.isKey(dotPath);
 end
+
+function [sql, params] = compileScalarFromScalarSidecar(op, dotPath, target, isNeg, ctx)
+% A queryable scalar path is answered from queryable_scalar_elem, which has
+% one row per value a document HAS. An uncorrelated IN, so SQLite starts
+% from the (path, value) index. Negated, NOT IN: a document without the
+% value matches, as `(column IS NULL OR NOT ...)` did for the generated
+% column this replaces (a document has at most one row per scalar path).
+switch ctx.queryablePaths(dotPath)
+    case 'TEXT'
+        valueExpr = 'qse.value_text';
+    case {'INTEGER', 'REAL'}
+        valueExpr = 'qse.value_num';
+    case 'UNKNOWN'
+        valueExpr = 'COALESCE(qse.value_text, qse.value_num, qse.value_raw)';
+    otherwise
+        valueExpr = 'qse.value_raw';
+end
+[predicate, params] = scalarPredicate(op, valueExpr, target);
+inner = sprintf(['(SELECT qse.doc_id FROM queryable_scalar_elem qse ' ...
+    'WHERE qse.path = ? AND %s)'], predicate);
+params = [{dotPath}, params];
+if isNeg
+    sql = ['(documents.id NOT IN ' inner ')'];
+else
+    sql = ['documents.id IN ' inner];
+end
+end
+
+function expr = scalarValueExpression(dotPath, ~)
+% scalarValueExpression - the SQL value expression for a (no-[*]) scalar
+% path that is NOT queryable: read from the body.
+expr = sprintf('json_extract(body, ''%s'')', jsonPath(dotPath));
 end
 
 function out = jsonPath(dotPath)

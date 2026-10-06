@@ -453,90 +453,87 @@ doc = doc.set('base.name', name);
 doc = doc.set('demoArray.axes', axes);
 end
 
-% ---- step 4: generated columns + rebuild-on-mismatch ----
+% ---- step 4: queryable scalar values in queryable_scalar_elem ----
+%
+% Until 2026-10-06 each queryable scalar path was a q_<flat> STORED
+% generated column on `documents`, with its own index: 675 of them for the
+% V_eta schema, which every insert had to maintain. The values now live in
+% queryable_scalar_elem, one row per value a document has. These tests
+% replace the generated-column ones.
 
-function testGeneratedColumnsExistAtCreate(testCase)
-% A freshly-created DB should already have the q_* columns and their
-% indexes derived from the loaded schemas.
+function testScalarSidecarAtCreateAndNoGeneratedColumns(testCase)
 db = testCase.TestData.db;
-cols = generatedColumns(db, 'documents');
-verifyTrue(testCase, ismember('q_base_name', cols));
-verifyTrue(testCase, ismember('q_base_id', cols));
-verifyTrue(testCase, ismember('q_demoa_value', cols));
+paths = db.testHookQueryableScalarPaths();
+verifyTrue(testCase, all(ismember({'base.name', 'base.id', 'demoA.value'}, paths)));
+n = mksqlite(db.testHookDbId(), ['SELECT COUNT(*) AS n FROM pragma_table_info(''documents'') ' ...
+    'WHERE name LIKE ''q\_%'' ESCAPE ''\''']);
+verifyEqual(testCase, double(n.n), 0, 'no generated columns on documents');
+mksqlite(db.testHookDbId(), 'SELECT doc_id, path, value_text, value_num, value_raw FROM queryable_scalar_elem LIMIT 0');
 end
 
 function testIndexedScalarMatchesFallback(testCase)
-% Searching by base.name should hit the generated column and return
-% the same docs as the JSON1 fallback would.
+% Searching by base.name goes through the side table and returns the
+% same documents as the in-memory evaluator.
 db = testCase.TestData.db;
 d1 = makeDemoA('alice', 'a1'); db.add(d1);
 d2 = makeDemoA('bob',   'a2'); db.add(d2);
 hits = db.search(did2.query('base.name', 'exact_string', 'alice'));
 verifyEqual(testCase, numel(hits), 1);
 verifyEqual(testCase, hits{1}.get('base.id'), d1.get('base.id'));
+hits = db.search(did2.query('base.name', '~exact_string', 'alice'));
+verifyEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, hits{1}.get('base.id'), d2.get('base.id'));
+r = db.testHookExplain(did2.query('base.name', 'exact_string', 'alice'));
+verifyTrue(testCase, any(contains({r.plan.detail}, 'qse_path_text')), ...
+    sprintf('plan: %s', strjoin({r.plan.detail}, ' | ')));
 end
 
-function testGeneratedColumnPopulatesFromBody(testCase)
-% Direct query against the generated column should reflect the
-% just-inserted body — confirms the STORED column expression fires.
+function testScalarValuesStoredAtInsert(testCase)
 db = testCase.TestData.db;
 doc = makeDemoA('carol', 'cv');
 db.add(doc);
 rows = mksqlite(db.testHookDbId(), ...
-    'SELECT q_base_name, q_demoa_value FROM documents WHERE id = ?', ...
+    'SELECT path, value_text FROM queryable_scalar_elem WHERE doc_id = ? ORDER BY path', ...
     doc.get('base.id'));
-verifyEqual(testCase, char(rows(1).q_base_name), 'carol');
-verifyEqual(testCase, char(rows(1).q_demoa_value), 'cv');
+got = containers.Map({rows.path}, cellfun(@char, {rows.value_text}, 'UniformOutput', false));
+verifyEqual(testCase, got('base.name'), 'carol');
+verifyEqual(testCase, got('demoA.value'), 'cv');
+db.remove(doc.get('base.id'));
+n = mksqlite(db.testHookDbId(), 'SELECT COUNT(*) AS n FROM queryable_scalar_elem WHERE doc_id = ?', ...
+    doc.get('base.id'));
+verifyEqual(testCase, double(n.n), 0, 'removed with the document');
 end
 
-function testRebuildPreservesDataOnSchemaMismatch(testCase)
-% Manually drop a generated column from the table (simulating an
-% older queryable-paths set), then reopen. The constructor should
-% rebuild the table to match the current schema while preserving
-% every body verbatim.
+function testAnOldLayoutDatabaseIsConvertedOnOpen(testCase)
+% A database written before queryable_scalar_elem: a q_ generated column
+% with its documents_q_ index, and no side-table rows. Opening it drops
+% the column and the index, fills the side table from the bodies, and
+% keeps every document.
 db = testCase.TestData.db;
 d1 = makeDemoA('alice', 'a1'); db.add(d1);
 d2 = makeDemoB('bob', 'a2', 'b2'); db.add(d2);
-
-% SQLite 3.35+ supports DROP COLUMN. The CI MATLAB ships with mksqlite
-% bound to a >=3.35 sqlite, but skip the test gracefully on older.
-ok = tryDropColumn(db.testHookDbId(), 'documents', 'q_demoa_value');
-if ~ok
-    assumeFail(testCase, 'sqlite DROP COLUMN unavailable on this build');
-end
+id = db.testHookDbId();
+mksqlite(id, ['ALTER TABLE documents ADD COLUMN q_base_name TEXT ' ...
+    'GENERATED ALWAYS AS (json_extract(body, ''$.base.name'')) VIRTUAL']);
+mksqlite(id, 'CREATE INDEX documents_q_base_name ON documents(q_base_name)');
+mksqlite(id, 'DELETE FROM queryable_scalar_elem');
+mksqlite(id, 'DELETE FROM meta WHERE key = ?', 'queryable_scalar_paths');
 db.close();
 
 db2 = did2.database.sqlitedb(testCase.TestData.tmpFile);
 cleanup = onCleanup(@() db2.close()); %#ok<NASGU>
-cols = generatedColumns(db2, 'documents');
-verifyTrue(testCase, ismember('q_demoa_value', cols), ...
-    'rebuild should restore the missing generated column');
+id2 = db2.testHookDbId();
+n = mksqlite(id2, ['SELECT COUNT(*) AS n FROM pragma_table_info(''documents'') ' ...
+    'WHERE name LIKE ''q\_%'' ESCAPE ''\''']);
+verifyEqual(testCase, double(n.n), 0, 'the generated column is gone');
+n = mksqlite(id2, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ''documents_q_base_name''');
+verifyEqual(testCase, double(n.n), 0, 'and its index');
 verifyEqual(testCase, db2.count(), 2);
-verifyTrue(testCase, db2.has(d1.get('base.id')));
-verifyTrue(testCase, db2.has(d2.get('base.id')));
-end
-
-% ---- helpers (step 4) ----
-
-function cols = generatedColumns(db, tableName)
-% Probe each generated column the sqlitedb instance expects to find on
-% the table with a zero-row SELECT, and return the subset that
-% succeeds. We previously walked `pragma_table_info`, but on the CI's
-% mksqlite + sqlite combination the .name field of those rows didn't
-% round-trip through ismember the way the test assumed even when the
-% column itself was healthy. Probing each candidate directly avoids
-% that path entirely.
-candidates = db.testHookQueryableColumns();
-cols = {};
-for k = 1:numel(candidates)
-    sql = sprintf('SELECT %s FROM %s LIMIT 0', candidates{k}, tableName);
-    try
-        mksqlite(db.testHookDbId(), sql);
-        cols{end+1} = candidates{k}; %#ok<AGROW>
-    catch
-        % column does not exist on this table.
-    end
-end
+hits = db2.search(did2.query('base.name', 'exact_string', 'bob'));
+verifyEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, hits{1}.get('base.id'), d2.get('base.id'));
+n = mksqlite(id2, 'SELECT COUNT(*) AS n FROM queryable_scalar_elem WHERE path = ''base.name''');
+verifyEqual(testCase, double(n.n), 2, 'the side table is filled from the bodies');
 end
 
 % ---- step 5: queryable_array_elem sidecar ----
