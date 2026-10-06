@@ -66,6 +66,9 @@ classdef sqlitedb < handle
 
     properties (Access = private)
         dbid = []
+        connFile = ''                % the file SQLite reports for dbid, read when it was opened
+        closedByOwner (1,1) logical = false
+        reconnects = 0
         schemaCache = []
         queryableScalarColumns = []  % struct array from did2.schema.cache.queryablePaths
         queryableScalarPaths = {}    % cellstr mirror, passed to compileQuery
@@ -97,8 +100,7 @@ classdef sqlitedb < handle
             obj.schemaCache = opts.SchemaCache;
             obj.bootstrapQueryableColumns();
             isNew = ~isfile(filename);
-            obj.dbid = mksqlite(0, 'open', filename);
-            mksqlite(obj.dbid, 'pragma foreign_keys = ON');
+            obj.openConnection();
             if isNew
                 obj.createSchema();
             else
@@ -115,18 +117,29 @@ classdef sqlitedb < handle
 
         function close(obj)
             % close - close the underlying mksqlite connection. Idempotent.
-            if ~isempty(obj.dbid)
+            %
+            % Closes the connection only while it is still this database's:
+            % if someone else closed it and its dbid now belongs to another
+            % database, that database is left alone. After close, the
+            % database stays closed; an operation on it is an error
+            % (did2:database:closed) rather than a silent reopen.
+            if obj.ownsConnection()
                 try
                     mksqlite(obj.dbid, 'close');
                 catch
                 end
-                obj.dbid = [];
             end
+            obj.dbid = [];
+            obj.closedByOwner = true;
         end
 
         function tf = isOpen(obj)
-            % isOpen - true if this instance has an open connection.
-            tf = ~isempty(obj.dbid);
+            % isOpen - true unless this instance was closed with close().
+            %
+            % A connection closed by someone else (mksqlite(0, 'close'),
+            % mksqlite('close') on its dbid) still counts as open: it is
+            % reopened at the next operation (see ensureConnection).
+            tf = ~obj.closedByOwner;
         end
 
         function add(obj, docOrList, opts)
@@ -141,6 +154,7 @@ classdef sqlitedb < handle
                 docOrList
                 opts.Validate (1,1) logical = true
             end
+            obj.ensureConnection();
             list = obj.normaliseDocList(docOrList);
             if isempty(list)
                 return;
@@ -179,6 +193,7 @@ classdef sqlitedb < handle
         function remove(obj, target)
             % remove - delete a document by id or by did2.document.
             id = obj.coerceId(target);
+            obj.ensureConnection();
             stored = mksqlite(obj.dbid, ...
                 'SELECT DISTINCT uid FROM files WHERE doc_id = ? AND ingested = 1', id);
             % ON DELETE CASCADE handles superclasses / depends_on / files rows.
@@ -203,6 +218,7 @@ classdef sqlitedb < handle
             %   copy in fileDir, else a location it records without ingesting.
             %   PATH is that file ('' when TF is false).
             id = obj.coerceId(idOrDoc);
+            obj.ensureConnection();
             rows = mksqlite(obj.dbid, ...
                 ['SELECT uid, location, location_type, ingested FROM files ' ...
                  'WHERE doc_id = ? AND filename = ? ORDER BY rowid ASC'], id, char(name));
@@ -236,6 +252,7 @@ classdef sqlitedb < handle
             if ~obj.has(id)
                 error('did2:database:missingDocument', 'No document with id "%s".', id);
             end
+            obj.ensureConnection();
             n = mksqlite(obj.dbid, ...
                 'SELECT COUNT(*) AS n FROM files WHERE doc_id = ? AND filename = ?', id, char(name));
             if double(n(1).n) == 0
@@ -251,6 +268,7 @@ classdef sqlitedb < handle
             % fileNames - the file names the document records (cellstr, in
             % the order they were added).
             id = obj.coerceId(idOrDoc);
+            obj.ensureConnection();
             rows = mksqlite(obj.dbid, ...
                 ['SELECT filename FROM files WHERE doc_id = ? ' ...
                  'GROUP BY filename ORDER BY MIN(rowid) ASC'], id);
@@ -260,6 +278,7 @@ classdef sqlitedb < handle
         function tf = has(obj, idOrDoc)
             % has - does a document with this id exist?
             id = obj.coerceId(idOrDoc);
+            obj.ensureConnection();
             row = mksqlite(obj.dbid, ...
                 'SELECT 1 AS hit FROM documents WHERE id = ?', id);
             tf = ~isempty(row);
@@ -268,6 +287,7 @@ classdef sqlitedb < handle
         function doc = get(obj, idOrDoc)
             % get - fetch a did2.document for the given id.
             id = obj.coerceId(idOrDoc);
+            obj.ensureConnection();
             row = mksqlite(obj.dbid, ...
                 'SELECT body FROM documents WHERE id = ?', id);
             if isempty(row)
@@ -283,6 +303,7 @@ classdef sqlitedb < handle
 
         function ids = allIds(obj)
             % allIds - every document id, in insertion order.
+            obj.ensureConnection();
             rows = mksqlite(obj.dbid, ...
                 'SELECT id FROM documents ORDER BY rowid ASC');
             ids = obj.rowsToCellstr(rows, 'id');
@@ -290,6 +311,7 @@ classdef sqlitedb < handle
 
         function n = count(obj)
             % count - number of documents.
+            obj.ensureConnection();
             row = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM documents');
             n = double(row(1).n);
         end
@@ -305,6 +327,7 @@ classdef sqlitedb < handle
                 'QueryableArrayPaths', obj.queryableArrayPathDefs);
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
+            obj.ensureConnection();
             rows = mksqlite(obj.dbid, sql, params{:});
             docs = obj.rowsToDocs(rows, q);
         end
@@ -331,7 +354,14 @@ classdef sqlitedb < handle
             %   inspect generated columns and table schema directly
             %   without round-tripping through public methods. Not part
             %   of the public API.
+            obj.ensureConnection();
             id = obj.dbid;
+        end
+
+        function n = testHookReconnects(obj)
+            % testHookReconnects - how many times the connection was reopened
+            % because it had been closed (or its dbid reused) by someone else.
+            n = obj.reconnects;
         end
 
         function cols = testHookQueryableColumns(obj)
@@ -351,6 +381,52 @@ classdef sqlitedb < handle
 
     % ---- schema bootstrap ----
     methods (Access = private)
+        function openConnection(obj)
+            % openConnection - open FILENAME on the next free dbid
+            obj.dbid = mksqlite(0, 'open', obj.filename);
+            mksqlite(obj.dbid, 'pragma foreign_keys = ON');
+            obj.connFile = did2.database.sqlitedb.mainFile(obj.dbid);
+        end
+
+        function tf = ownsConnection(obj)
+            % ownsConnection - true when dbid is open AND is still this file
+            %
+            % mksqlite numbers connections, and code outside this class
+            % closes them by number: mksqlite(0, 'close') closes them all
+            % (ndi.session.dir before deleting a session), mksqlite('close')
+            % closes dbid 1 (ndi.dataset, after opening a session). Both
+            % are the legacy backend's contract -- a connection may be
+            % closed under its owner, which reopens it on next use. A
+            % closed number is reused by the next open, so "is dbid open"
+            % is not enough: it must still be THIS file, or every query
+            % would go silently to another database.
+            tf = false;
+            if isempty(obj.dbid), return; end
+            try
+                tf = strcmp(did2.database.sqlitedb.mainFile(obj.dbid), obj.connFile);
+            catch
+                tf = false;
+            end
+        end
+
+        function ensureConnection(obj)
+            % ensureConnection - reopen when the connection was closed under us
+            %
+            % Called at the start of every public operation. Costs one
+            % `PRAGMA database_list` when the connection is fine. The old
+            % dbid is NOT closed when it no longer belongs to this file:
+            % it is someone else's connection now.
+            if obj.closedByOwner
+                error('did2:database:closed', ...
+                    'The database %s was closed with close(); make a new did2.database.sqlitedb to use it again.', ...
+                    obj.filename);
+            end
+            if ~obj.ownsConnection()
+                obj.openConnection();
+                obj.reconnects = obj.reconnects + 1;
+            end
+        end
+
         function bootstrapQueryableColumns(obj)
             % Resolve the schema cache and snapshot the queryable scalar
             % and array-iteration paths once per instance. Failures
@@ -1286,6 +1362,20 @@ classdef sqlitedb < handle
     end
 
     methods (Static, Access = private)
+        function f = mainFile(dbid)
+            % mainFile - the file SQLite reports for dbid's main database
+            %
+            % Errors when dbid is not open (mksqlite: "database not open").
+            rows = mksqlite(dbid, 'PRAGMA database_list');
+            f = '';
+            for k = 1:numel(rows)
+                if strcmp(rows(k).name, 'main')
+                    f = char(rows(k).file);
+                    return;
+                end
+            end
+        end
+
         function list = asList(x)
             % a struct array or a cell array -> a cell array of structs
             if isempty(x)
