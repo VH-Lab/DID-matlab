@@ -49,6 +49,7 @@ classdef query
     %       q = did2.query('base.name', 'regexp', '^subject_');
     %       q = did2.query('', 'isa', 'demoA');
     %       q = did2.query('axes[*].unit', 'exact_string', 'micrometer');
+    %       q = did2.query('base.name', 'wildcard', 'subject_*');   % any case
     %       q = did2.query('', 'depends_on', 'subject_id', {id1, id2});  % any of
     %       q = did2.query('', 'depends_on', 'ingredient_id', ...       % its target
     %               did2.query('chemical.value.substance.name', ...      % matches a
@@ -208,6 +209,33 @@ classdef query
                 'param2', {param2});
         end
 
+        function re = wildcardToRegexp(pattern)
+            % wildcardToRegexp - a `wildcard` pattern as an anchored regexp
+            %
+            %   '*' matches any run of characters (none included); '\*' is a
+            %   literal star; everything else is literal.
+            parts = regexp(char(pattern), '(?<!\\)\*', 'split');
+            parts = cellfun(@(x) regexptranslate('escape', strrep(x, '\*', '*')), parts, ...
+                'UniformOutput', false);
+            re = ['^' strjoin(parts, '.*') '$'];
+        end
+
+        function like = wildcardToLike(pattern)
+            % wildcardToLike - a `wildcard` pattern as a SQL LIKE pattern
+            %
+            %   For `LIKE ? ESCAPE '\'`: '*' becomes '%', a literal '%', '_'
+            %   or '\' is escaped, '\*' becomes a literal star.
+            parts = regexp(char(pattern), '(?<!\\)\*', 'split');
+            for k = 1:numel(parts)
+                x = strrep(parts{k}, '\*', char(0));
+                x = strrep(x, '\', '\\');
+                x = strrep(x, '%', '\%');
+                x = strrep(x, '_', '\_');
+                parts{k} = strrep(x, char(0), '*');
+            end
+            like = strjoin(parts, '%');
+        end
+
         function tf = evaluate(ss, docStruct)
             % evaluate - low-level evaluator over a single search struct
             %   or a search-struct array (AND-ed).
@@ -297,7 +325,7 @@ classdef query
                     tf = ~isempty(did2.query.walkPath(doc, ss.field));
                 case 'hasmember'
                     tf = did2.query.opHasMember(doc, ss.field, ss.param1);
-                case {'exact_string', 'exact_string_anycase', ...
+                case {'exact_string', 'exact_string_anycase', 'wildcard', ...
                       'contains_string', 'regexp', ...
                       'exact_number', 'lessthan', 'lessthaneq', ...
                       'greaterthan', 'greaterthaneq'}
@@ -544,6 +572,13 @@ classdef query
                     else
                         tf = false;
                     end
+                case 'wildcard'
+                    % '*' any run of characters, '\*' a literal star; the
+                    % whole value must match, ignoring case (as SQL LIKE)
+                    tf = (ischar(value) || (isstring(value) && isscalar(value))) ...
+                        && (ischar(target) || isstring(target)) ...
+                        && ~isempty(regexp(char(value), ...
+                            did2.query.wildcardToRegexp(target), 'once', 'ignorecase'));
                 case 'regexp'
                     if (ischar(value) || isstring(value)) ...
                             && (ischar(target) || isstring(target))
@@ -650,7 +685,7 @@ classdef query
                 'hasfield', 'hasmember', ...
                 'hasanysubfield_contains_string', ...
                 'hasanysubfield_exact_string', ...
-                'exact_string', 'exact_string_anycase', 'contains_string', ...
+                'exact_string', 'exact_string_anycase', 'contains_string', 'wildcard', ...
                 'regexp', 'exact_number', ...
                 'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'};
             negAllowed = cellfun(@(x) ['~', x], allowed, 'UniformOutput', false);

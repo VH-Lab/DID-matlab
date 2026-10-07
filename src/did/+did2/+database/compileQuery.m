@@ -168,7 +168,7 @@ switch op
         [sql, params] = compileHasAnySubfieldExact(ss.field, ...
             ss.param1, ss.param2, isNeg);
         return;
-    case {'exact_string', 'exact_string_anycase', 'contains_string', ...
+    case {'exact_string', 'exact_string_anycase', 'contains_string', 'wildcard', ...
           'regexp', 'exact_number', ...
           'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'}
         [sql, params] = compileScalar(op, ss.field, ss.param1, isNeg, ctx);
@@ -478,6 +478,19 @@ switch op
     case 'contains_string'
         predicate = sprintf('%s LIKE ?', valueExpr);
         params = {['%' char(target) '%']};
+    case 'wildcard'
+        % SQLite's LIKE ignores case for ASCII letters only; the in-memory
+        % recheck ignores it for all, so a non-ASCII letter in another case
+        % is not found in SQL. The recheck cannot add back what SQL drops,
+        % so a pattern with non-ASCII characters compiles to the
+        % conservative 1=1 and is matched in memory alone.
+        if any(char(target) > 127)
+            predicate = '1=1';
+            params = {};
+        else
+            predicate = [valueExpr ' LIKE ? ESCAPE ''\'''];   % not sprintf: it reads \ as an escape
+            params = {did2.query.wildcardToLike(target)};
+        end
     case 'regexp'
         % SQLite REGEXP requires a UDF that mksqlite does not register by
         % default. Emit a permissive pre-filter and rely on the in-memory

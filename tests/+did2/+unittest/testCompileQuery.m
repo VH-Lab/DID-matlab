@@ -182,6 +182,29 @@ verifyEqual(testCase, sql, '1=1');
 verifyEqual(testCase, params, {});
 end
 
+function testWildcardIsLikeWithEscapes(testCase)
+q = did2.query('base.name', 'wildcard', 'CB*');
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, 'LIKE ? ESCAPE ''\''');
+verifyEqual(testCase, params, {'CB%'});
+% SQL's own wildcards are literal in a pattern; '\*' is a literal star
+verifyEqual(testCase, did2.query.wildcardToLike('a_b%c*d\*e'), 'a\_b\%c%d*e');
+verifyEqual(testCase, did2.query.wildcardToLike('*elegans*'), '%elegans%');
+verifyEqual(testCase, did2.query.wildcardToRegexp('N2*'), '^N2.*$');
+verifyEqual(testCase, did2.query.wildcardToRegexp('a.b\*'), '^a\.b\*$');
+end
+
+function testWildcardMatchesInMemory(testCase)
+d = struct('base', struct('name', 'Caenorhabditis elegans'));
+m = @(p) matches(did2.query('base.name', 'wildcard', p), d);
+verifyTrue(testCase, m('*elegans'));
+verifyTrue(testCase, m('caenorhabditis*'), 'case is ignored');
+verifyTrue(testCase, m('*'));
+verifyFalse(testCase, m('elegans'), 'the whole value must match');
+verifyFalse(testCase, m('*elegans\*'), 'a literal star');
+verifyTrue(testCase, matches(did2.query('base.name', '~wildcard', 'N*'), d));
+end
+
 % ---- hasmember & friends ----
 
 function testHasmemberUsesJsonEach(testCase)

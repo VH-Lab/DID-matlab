@@ -334,6 +334,23 @@ r = db.testHookExplain(withPep);
 verifySubstring(testCase, r.sql, 'd.document_id = ?');
 end
 
+function testSearchWildcard(testCase)
+% '*' any run of characters, ignoring case, in SQL (LIKE) and in the recheck
+db = testCase.TestData.db;
+for n = {'N2', 'N2-GFP', 'CB4856', 'cb_1', '100%', 'a*b'}
+    db.add(makeDemoA(n{1}, 'x'));
+end
+names = @(p) sort(cellfun(@(h) char(h.get('base.name')), ...
+    db.search(did2.query('base.name', 'wildcard', p)), 'UniformOutput', false));
+verifyEqual(testCase, names('N2'), {'N2'}, 'no star: the whole value');
+verifyEqual(testCase, names('N2*'), {'N2', 'N2-GFP'});
+verifyEqual(testCase, names('cb*'), {'CB4856', 'cb_1'}, 'case is ignored');
+verifyEqual(testCase, names('*_*'), {'cb_1'}, '_ is literal, not SQL''s any-character');
+verifyEqual(testCase, names('*%'), {'100%'}, '% is literal');
+verifyEqual(testCase, names('a\*b'), {'a*b'}, '\* is a literal star');
+verifyEqual(testCase, numel(db.search(did2.query('base.name', '~wildcard', 'N2*'))), 4);
+end
+
 function testARepeatedEdgeNameIsStored(testCase)
 % A V2 edge declared `multiple` (e.g. time_reference_id) repeats ONE name;
 % the depends_on key used to be (doc_id, name) and refused the second row.
