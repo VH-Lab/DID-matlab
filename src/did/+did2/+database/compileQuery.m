@@ -151,7 +151,7 @@ switch op
         [sql, params] = compileIsa(ss.param1, isNeg);
         return;
     case 'depends_on'
-        [sql, params] = compileDependsOn(ss.param1, ss.param2, isNeg);
+        [sql, params] = compileDependsOn(ss.param1, ss.param2, isNeg, ctx);
         return;
     case 'hasfield'
         [sql, params] = compileHasField(ss.field, isNeg);
@@ -196,7 +196,7 @@ end
 params = {className};
 end
 
-function [sql, params] = compileDependsOn(name, value, isNeg)
+function [sql, params] = compileDependsOn(name, value, isNeg, ctx)
 % `depends_on` consults the `depends_on` sidecar table; `*` for `name` is
 % the wildcard documented in did_query_model.md.
 %
@@ -215,12 +215,50 @@ function [sql, params] = compileDependsOn(name, value, isNeg)
 % The WILDCARD stays a correlated EXISTS: no index has document_id first,
 % so an IN would scan the whole depends_on table (several rows per
 % document) instead of the documents table.
-name  = char(name);
-value = char(value);
+%
+% VALUE, the edge's target, is one of three things:
+%   an id            d.document_id = ?
+%   a list of ids    d.document_id IN (SELECT value FROM json_each(?)):
+%                    any of them, bound as ONE JSON array, so a list of
+%                    any length stays under SQLite's 999-variable limit
+%   a did2.query     d.document_id IN (SELECT id FROM documents WHERE
+%                    <that query>): a document the target matches. Its SQL
+%                    is an over-approximation like any other (the
+%                    evaluator rechecks), which is sound inside a positive
+%                    term and NOT inside a negated one -- NOT IN a superset
+%                    drops true matches the recheck never sees -- so the
+%                    negated form compiles to the conservative 1=1.
+%                    did2.database.sqlitedb never sends this form: it
+%                    resolves the target to its ids first (the recheck
+%                    needs them), and sends the list.
+name = char(name);
+if isa(value, 'did2.query')
+    if isNeg
+        sql = '1=1';
+        params = {};
+        return;
+    end
+    [innerSQL, innerParams] = compileSearchstructArray(value.searchstructure, ctx);
+    target = ['d.document_id IN (SELECT id FROM documents WHERE ' innerSQL ')'];
+    targetParams = innerParams;
+elseif iscell(value) || (isstring(value) && ~isscalar(value))
+    ids = cellstr(value);
+    target = 'd.document_id IN (SELECT value FROM json_each(?))';
+    targetParams = {jsonencode(reshape(ids, 1, []))};
+    if isscalar(ids)
+        target = 'd.document_id = ?';
+        targetParams = ids;
+    elseif isempty(ids)
+        targetParams = {'[]'};
+    end
+else
+    target = 'd.document_id = ?';
+    targetParams = {char(value)};
+end
 if strcmp(name, '*')
     existsSQL = ['EXISTS (SELECT 1 FROM depends_on d ' ...
-        'WHERE d.doc_id = documents.id AND d.document_id = ?)'];
-    params = {value};
+        'WHERE d.doc_id = documents.id AND ' target ')'];
+    params = targetParams;
     if isNeg
         sql = ['(NOT ' existsSQL ')'];
     else
@@ -228,8 +266,8 @@ if strcmp(name, '*')
     end
     return;
 end
-inSQL = '(SELECT d.doc_id FROM depends_on d WHERE d.name = ? AND d.document_id = ?)';
-params = {name, value};
+inSQL = ['(SELECT d.doc_id FROM depends_on d WHERE d.name = ? AND ' target ')'];
+params = [{name}, targetParams];
 if isNeg
     sql = ['(documents.id NOT IN ' inSQL ')'];
 else

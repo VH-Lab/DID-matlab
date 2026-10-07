@@ -158,6 +158,30 @@ verifyEmpty(testCase, regexp(sql, 'd\.name\s*=\s*\?', 'once'));
 verifyEqual(testCase, params, {'id-1'});
 end
 
+function testDependsOnAListIsOneJsonParameter(testCase)
+q = did2.query('', 'depends_on', 'parent', {'id-1', 'id-2', 'id-3'});
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, 'd.document_id IN (SELECT value FROM json_each(?))');
+verifyEqual(testCase, params, {'parent', '["id-1","id-2","id-3"]'}, ...
+    'one bound value whatever the length (SQLite allows 999)');
+[sql, params] = did2.database.compileQuery(did2.query('', 'depends_on', 'parent', {'id-1'}));
+verifySubstring(testCase, sql, 'd.document_id = ?');
+verifyEqual(testCase, params, {'parent', 'id-1'});
+end
+
+function testDependsOnAQueryIsASubquery(testCase)
+inner = did2.query('base.name', 'exact_string', 'peptone');
+q = did2.query('', 'depends_on', 'ingredient', inner);
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, 'd.document_id IN (SELECT id FROM documents WHERE ');
+verifySubstring(testCase, sql, 'json_extract(body, ''$.base.name'')');
+verifyEqual(testCase, params, {'ingredient', 'peptone'});
+% negated, an over-approximate target would drop true matches: 1=1
+[sql, params] = did2.database.compileQuery(did2.query('', '~depends_on', 'ingredient', inner));
+verifyEqual(testCase, sql, '1=1');
+verifyEqual(testCase, params, {});
+end
+
 % ---- hasmember & friends ----
 
 function testHasmemberUsesJsonEach(testCase)

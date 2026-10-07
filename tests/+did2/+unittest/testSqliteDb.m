@@ -276,6 +276,60 @@ verifyTrue(testCase, any(contains(details, 'depends_on_name_document_id')), ...
     sprintf('plan: %s', strjoin(details, ' | ')));
 end
 
+function testSearchDependsOnAQueryOrAList(testCase)
+% A depends_on whose target is a query: "formulations with peptone as an
+% ingredient" without first looking peptone's id up by hand. The target
+% may itself nest (plates poured from such a formulation), sit in an or,
+% be negated, or be the wildcard edge; a list of ids means any of them.
+db = testCase.TestData.db;
+idOf = @(d) char(d.get('base.id'));
+edges = @(d, name, ids) d.set('depends_on', struct('name', repmat({name}, 1, numel(ids)), ...
+    'document_id', ids));
+pep = makeDemoA('peptone', 'x'); db.add(pep);
+agar = makeDemoA('agar', 'y');   db.add(agar);
+salt = makeDemoA('salt', 'z');   db.add(salt);
+ngm = edges(makeDemoB('ngm', 'f', 'q'), 'ingredient', {idOf(agar), idOf(pep), idOf(salt)});
+db.add(ngm, 'Validate', false);
+nop = edges(makeDemoB('ngm_np', 'f', 'q'), 'ingredient', {idOf(agar), idOf(salt)});
+db.add(nop, 'Validate', false);
+lb = edges(makeDemoB('lb', 'f', 'q'), 'ingredient', {idOf(salt)});
+db.add(lb, 'Validate', false);
+p1 = edges(makeDemoA('plate1', 'p'), 'formulation', {idOf(ngm)}); db.add(p1, 'Validate', false);
+p2 = edges(makeDemoA('plate2', 'p'), 'formulation', {idOf(nop)}); db.add(p2, 'Validate', false);
+
+names = @(q) sort(cellfun(@(h) char(h.get('base.name')), db.search(q), 'UniformOutput', false));
+named = @(n) did2.query('base.name', 'exact_string', n);
+withPep = did2.query('', 'depends_on', 'ingredient', named('peptone'));
+isB = did2.query('', 'isa', 'demoB');
+
+verifyTrue(testCase, withPep.hasNested());
+verifyEqual(testCase, names(withPep), {'ngm'});
+verifyEqual(testCase, names(isB & did2.query('', '~depends_on', 'ingredient', named('peptone'))), ...
+    {'lb', 'ngm_np'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'formulation', withPep)), {'plate1'}, ...
+    'two levels: plates poured from a formulation with peptone');
+verifyEqual(testCase, names(did2.query('', 'depends_on', '*', named('peptone'))), {'ngm'});
+verifyEqual(testCase, names(withPep | named('lb')), {'lb', 'ngm'});
+verifyEqual(testCase, names(isB & did2.query('', 'depends_on', 'ingredient', ...
+    named('agar') | named('peptone'))), {'ngm', 'ngm_np'}, 'an or inside the target');
+verifyEmpty(testCase, db.search(did2.query('', 'depends_on', 'ingredient', named('nothing'))));
+verifyEqual(testCase, names(isB & did2.query('', '~depends_on', 'ingredient', named('nothing'))), ...
+    {'lb', 'ngm', 'ngm_np'});
+
+% a list of ids: any of them
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'ingredient', {idOf(agar), idOf(pep)})), ...
+    {'ngm', 'ngm_np'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'ingredient', {idOf(pep)})), {'ngm'});
+verifyEmpty(testCase, db.search(did2.query('', 'depends_on', 'ingredient', {})));
+verifyEqual(testCase, names(isB & did2.query('', '~depends_on', 'ingredient', {idOf(pep), 'x'})), ...
+    {'lb', 'ngm_np'});
+
+% one document alone cannot answer a nested target; a database can
+verifyError(testCase, @() withPep.matches(ngm), 'did2:query:nestedNeedsDatabase');
+r = db.testHookExplain(withPep);
+verifySubstring(testCase, r.sql, 'json_each');
+end
+
 function testARepeatedEdgeNameIsStored(testCase)
 % A V2 edge declared `multiple` (e.g. time_reference_id) repeats ONE name;
 % the depends_on key used to be (doc_id, name) and refused the second row.

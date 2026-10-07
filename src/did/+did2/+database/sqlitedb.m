@@ -323,10 +323,17 @@ classdef sqlitedb < handle
 
         function docs = search(obj, q)
             % search - return the documents matching a did2.query.
+            %
+            %   A depends_on whose target is itself a query (see
+            %   did2.query/hasNested) is answered in two steps: the target
+            %   query is searched first (deeper nesting the same way), and
+            %   the edge is then matched against the ids it found, both in
+            %   the SQL and in the in-memory recheck, which needs the ids.
             arguments
                 obj
                 q (1,1) did2.query
             end
+            q = obj.resolveNested(q);
             [whereSQL, params] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.queryableScalarColumns, ...
                 'QueryableArrayPaths', obj.queryableArrayPathDefs);
@@ -376,6 +383,7 @@ classdef sqlitedb < handle
                 q (1,1) did2.query
             end
             obj.ensureConnection();
+            q = obj.resolveNested(q);       % as search() does
             [whereSQL, params] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.queryableScalarColumns, ...
                 'QueryableArrayPaths', obj.queryableArrayPathDefs);
@@ -1384,6 +1392,13 @@ classdef sqlitedb < handle
                 error('did2:database:badInput', ...
                     'Expected a document id (char) or a did2.document; got %s.', ...
                     class(target));
+            end
+        end
+
+        function q = resolveNested(obj, q)
+            % resolveNested - each nested depends_on target replaced by the ids it matches here
+            if q.hasNested()
+                q = q.resolveNested(@(inner) obj.searchIds(inner));
             end
         end
 
