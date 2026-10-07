@@ -326,8 +326,12 @@ verifyEqual(testCase, names(isB & did2.query('', '~depends_on', 'ingredient', {i
 
 % one document alone cannot answer a nested target; a database can
 verifyError(testCase, @() withPep.matches(ngm), 'did2:query:nestedNeedsDatabase');
-r = db.testHookExplain(withPep);
+% the SQL a search runs: the target resolved to its ids, one bound list
+% when it matched several, a plain = ? when it matched one
+r = db.testHookExplain(did2.query('', 'depends_on', 'ingredient', named('agar') | named('peptone')));
 verifySubstring(testCase, r.sql, 'json_each');
+r = db.testHookExplain(withPep);
+verifySubstring(testCase, r.sql, 'd.document_id = ?');
 end
 
 function testARepeatedEdgeNameIsStored(testCase)
