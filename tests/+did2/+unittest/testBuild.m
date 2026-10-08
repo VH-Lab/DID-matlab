@@ -462,6 +462,11 @@ verifyError(testCase, @() c.validateDocument(bad), 'did2:validation:badValueKind
 % the kind's own block must be there
 bad = rmfield(doc, 'temperature');
 verifyError(testCase, @() c.validateDocument(bad), 'did2:validation:missingClassBlock');
+% a read path that re-stamps the chain (ensureClassBlocks) keeps the kind
+again = did2.convert.ensureClassBlocks(doc, []);
+verifyEqual(testCase, {again.document_class.superclasses.class_name}, ...
+    {doc.document_class.superclasses.class_name});
+verifyTrue(testCase, isfield(again, 'temperature'));
 % a named calculator carries its kind in its own chain, so it takes none
 verifyEqual(testCase, c.documentAncestors('tuning_curve_calculation', ''), ...
     c.superclasses('tuning_curve_calculation'));

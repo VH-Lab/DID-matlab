@@ -11,6 +11,7 @@ function body = ensureClassBlocks(body, schemaCacheOverride)
 % concrete class has a property block in the document, manufacturing
 % empty `struct()` blocks for any chain entry that the v1 source did
 % not provide. Also rebuilds document_class.superclasses from the
+% schema chain plus the value kind the document names, if any; the
 % V_delta schema chain so the snapshot matches the spec (same set,
 % same order, class-name-by-class-name) even when V_delta has
 % reordered or extended the chain relative to v1. V_delta's
@@ -40,9 +41,37 @@ end
 if isempty(cache)
     return;
 end
+% A statement whose value kind is a mixin (did-schema
+% V_eta_entity_composition_plan.md sec. 1, 2026-10-08) lists the kind after
+% its class's own chain; that is part of what the document IS, so it is kept,
+% with the kind's blocks. A kind that is missing or not a value is left for
+% the validator to report.
+kind = '';
+if ismethod(cache, 'documentValueKind') && isfield(body.document_class, 'superclasses')
+    declared = body.document_class.superclasses;
+    if isstruct(declared), declared = num2cell(declared); end
+    names = cell(1, numel(declared));
+    for k = 1:numel(declared)
+        if isstruct(declared{k}) && isfield(declared{k}, 'class_name')
+            names{k} = char(declared{k}.class_name);
+        else
+            names{k} = char(declared{k});
+        end
+    end
+    try
+        kind = cache.documentValueKind(className, names);
+    catch
+        kind = '';
+    end
+end
 try
-    placementInfo = cache.resolvePlacement(className);
-    ancestors = cache.superclasses(className);
+    if isempty(kind)
+        placementInfo = cache.resolvePlacement(className);
+        ancestors = cache.superclasses(className);
+    else
+        placementInfo = cache.resolvePlacementFor(className, kind);
+        ancestors = cache.documentAncestors(className, kind);
+    end
 catch
     return;
 end
