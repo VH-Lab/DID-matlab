@@ -62,9 +62,9 @@ for i = 1:numel(out)
     if ~isfield(b, 'depends_on') || ~isstruct(b.depends_on); continue; end
     for k = 1:numel(b.depends_on)
         d = b.depends_on(k);
-        if isfield(d, 'name') && strcmp(d.name, 'entity_id')
+        if isfield(d, 'name') && strcmp(d.name, 'subject_id')
             verifyNotEmpty(testCase, d.value, sprintf( ...
-                ['%s was emitted with an EMPTY entity_id -- an observation ' ...
+                ['%s was emitted with an EMPTY subject_id -- an observation ' ...
                  'of nothing. This is the 76,766-document defect returning.'], ...
                 b.document_class.class_name));
         end
@@ -96,7 +96,7 @@ for i = 1:numel(out)
     b = out{i};
     if ~isfield(b, 'depends_on') || ~isstruct(b.depends_on); continue; end
     for k = 1:numel(b.depends_on)
-        if strcmp(b.depends_on(k).name, 'entity_id')
+        if strcmp(b.depends_on(k).name, 'subject_id')
             verifyEqual(testCase, b.depends_on(k).value, 'subj-9');
             sawSubject = true;
         end

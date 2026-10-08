@@ -1,6 +1,6 @@
 function bodies = ontology_table_row(preBody)
 %ONTOLOGY_TABLE_ROW Brainstorm-J split migrator: did_v1 ontology_table_row
-%   -> the statement tier (1 -> N).
+%   -> the subject_statement tier (1 -> N).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Each column of the legacy open key/value table becomes its own statement,
@@ -8,10 +8,10 @@ function bodies = ontology_table_row(preBody)
 %   did-schema/schemas/V_eta_migration_plan.md Part D and
 %   V_eta_discovery_notes.md):
 %
-%     timeless fact  -> a assertion leaf
+%     timeless fact  -> a subject_assertion leaf
 %                         species/sex/strain/genotype -> term_assertion
 %                         date of birth / a timestamp -> date_assertion
-%     timed measure  -> a observation leaf, class by value SHAPE:
+%     timed measure  -> a subject_observation leaf, class by value SHAPE:
 %                         numeric -> a data-type leaf (<dim>_observation), the
 %                                    dimension chosen from the property term;
 %                                    unrecognised a.u. -> intensity_observation
@@ -22,8 +22,8 @@ function bodies = ontology_table_row(preBody)
 %                         the subject, not a measurement)
 %
 %   Brainstorm J puts identity on the spine `variable` (owned by
-%   statement), the verb on interaction.method, and the
-%   per-sample cadence in interaction.sample_time (D1).
+%   subject_statement), the verb on subject_interaction.method, and the
+%   per-sample cadence in subject_interaction.sample_time (D1).
 %
 %   PER-TABLE MAP DISPATCH (D10/D11). A table whose column SIGNATURE is
 %   recognised is migrated by its map instead of the per-column seed: the map
@@ -246,16 +246,16 @@ end
 function body = makeEncObs(preBody, leafClass, shapeClass, variable, num, wormId, trefId)
 body = struct();
 body.document_class = struct('class_name', leafClass, 'class_version', '1.0.0', ...
-    'superclasses', supersOf({'observation', shapeClass}), ...
+    'superclasses', supersOf({'subject_observation', shapeClass}), ...
     'schema_version', 'V_eta');
 body.depends_on = [ ...
-    struct('name', 'entity_id',       'value', wormId), ...
+    struct('name', 'subject_id',       'value', wormId), ...
     struct('name', 'time_reference_1', 'value', trefId)];
 body.base = freshBase(preBody, 'migrated_encounter_measure');
-body.statement  = struct('variable', variable, 'storage_mode', 'inline');
-body.interaction = struct('method', struct('node', '', 'name', ''), ...
+body.subject_statement  = struct('variable', variable, 'storage_mode', 'inline');
+body.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
     'sample_time', struct('kind', 'point'));
-body.observation = struct();
+body.subject_observation = struct();
 if strcmp(shapeClass, 'score')
     body.score = struct('value', struct('value', num, ...
         'scale', struct('node', '', 'name', ''), ...
@@ -733,29 +733,29 @@ end
 % ===================== destination builders ============================
 
 function body = makeNumericObservation(preBody, leafClass, shapeClass, variable, valueStruct, subjectId)
-body = startStatement(preBody, leafClass, {'observation', shapeClass}, ...
+body = startStatement(preBody, leafClass, {'subject_observation', shapeClass}, ...
     variable, subjectId);
-body.interaction = interactionBlock();
-body.observation = struct();
+body.subject_interaction = interactionBlock();
+body.subject_observation = struct();
 body.(shapeClass) = struct('value', valueStruct);
 end
 
 function body = makeTermObservation(preBody, variable, valueT, subjectId)
-body = startStatement(preBody, 'term_observation', {'observation'}, ...
+body = startStatement(preBody, 'term_observation', {'subject_observation'}, ...
     variable, subjectId);
-body.interaction = interactionBlock();
-body.observation = struct();
+body.subject_interaction = interactionBlock();
+body.subject_observation = struct();
 body.term = struct('value', valueT);
 end
 
 function body = makeTermAssertion(preBody, variable, valueT, subjectId)
-body = startStatement(preBody, 'term_assertion', {'assertion'}, ...
+body = startStatement(preBody, 'term_assertion', {'subject_assertion'}, ...
     variable, subjectId);
 body.term = struct('value', valueT);
 end
 
 function body = makeDateAssertion(preBody, variable, row, subjectId)
-body = startStatement(preBody, 'date_assertion', {'assertion'}, ...
+body = startStatement(preBody, 'date_assertion', {'subject_assertion'}, ...
     variable, subjectId);
 raw = getCharField(row, 'value');
 body.date = struct('value', ...
@@ -766,8 +766,8 @@ end
 
 function body = startStatement(preBody, className, supersChain, variable, subjectId)
 %STARTSTATEMENT Seed a V_eta statement body: document_class header, a fresh
-%   base id, the subject_id edge, and the statement block (variable
-%   + storage_mode). The caller adds the interaction block (for
+%   base id, the subject_id edge, and the subject_statement block (variable
+%   + storage_mode). The caller adds the subject_interaction block (for
 %   interactions) and the leaf value block.
 %
 %   SUBJECTID (optional, may be '') names the subject explicitly -- used by a
@@ -785,14 +785,14 @@ body.document_class = struct('class_name', className, 'class_version', '1.0.0', 
 if isempty(subjectId)
     body.depends_on = carrySubject(preBody);
 else
-    body.depends_on = struct('name', 'entity_id', 'value', char(subjectId));
+    body.depends_on = struct('name', 'subject_id', 'value', char(subjectId));
 end
 if isfield(preBody, 'base') && isstruct(preBody.base)
     base = preBody.base;
     base.id = did.ido.unique_id();   % each column becomes its own document
     body.base = base;
 end
-body.statement = struct('variable', variable, 'storage_mode', 'inline');
+body.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
 end
 
 function blk = interactionBlock()
@@ -855,7 +855,7 @@ if isempty(subjectVal)
          'so the caller must guard on resolvedSubject() and pass the ' ...
          'document through for the second pass instead.']);
 end
-deps(end+1) = struct('name', 'entity_id', 'value', subjectVal);
+deps(end+1) = struct('name', 'subject_id', 'value', subjectVal);
 end
 
 function anchor = makeSessionAnchor(preBody, relation)

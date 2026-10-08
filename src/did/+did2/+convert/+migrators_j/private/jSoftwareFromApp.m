@@ -5,7 +5,7 @@ function [software, swId, execEnv, appLeftover] = jSoftwareFromApp(preBody, opts
 %   [SOFTWARE, SWID, EXECENV] = jSoftwareFromApp(PREBODY) reads PREBODY's `app`
 %   block and returns the `software` entity body to emit alongside the caller's
 %   document, its base.id (for a `software_id` edge on the statement), and the
-%   `execution_environment` struct to place on `interaction`.
+%   `execution_environment` struct to place on `subject_interaction`.
 %
 %   Returns [] / '' / struct() when the app block carries no software name: no
 %   identity means no entity and no edge. EXECENV may still be populated from a
@@ -160,7 +160,7 @@ end
 % That is not a stylistic nargout trick, it is the difference between the two
 % callers, and both behaviours are pre-existing and deliberate:
 %   - jCalculation asks for 3. Its class HAS a typed home for the environment
-%     (interaction.execution_environment), so a nameless app block must
+%     (subject_interaction.execution_environment), so a nameless app block must
 %     still yield one -- this function's header has always said so ("the os/
 %     interpreter of the run is a fact about the run, not about the software's
 %     identity").

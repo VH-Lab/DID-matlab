@@ -1,7 +1,7 @@
 function bodies = stimulus_response_scalar_parameters_basic(preBody)
 %STIMULUS_RESPONSE_SCALAR_PARAMETERS_BASIC Brainstorm-J migrator: DEFERRED
 %   guarded passthrough. The signed model folds this class INLINE into
-%   `interaction.method_parameters` on the response leaf; pass 1 cannot,
+%   `subject_interaction.method_parameters` on the response leaf; pass 1 cannot,
 %   and must not delete the documents in the meantime. Routed from
 %   did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -36,7 +36,7 @@ function bodies = stimulus_response_scalar_parameters_basic(preBody)
 %
 %   -- the second half of #61, and the half this file defers to. It reads the
 %   referenced parameters document out of the migrated batch, writes the five
-%   run knobs INLINE onto the leaf's `interaction.method_parameters`,
+%   run knobs INLINE onto the leaf's `subject_interaction.method_parameters`,
 %   and REMOVES `method_parameters_id`. It is wired into BOTH corpus harnesses
 %   (+unittest/+helpers/runCorpusDiscovery.m and +unittest/testCorpusPRED.m) and
 %   covered by +unittest/testResponseParametersFold.m.
@@ -75,7 +75,7 @@ function bodies = stimulus_response_scalar_parameters_basic(preBody)
 %   ---------------------------------------------------
 %   migrators_j.stimulus_response_scalar re-homes the v1
 %   `stimulus_response_scalar_parameters_id` edge onto the leaf's
-%   `interaction.method_parameters_id`, so the reference is preserved
+%   `subject_interaction.method_parameters_id`, so the reference is preserved
 %   until the resolver inlines it. If this migrator dropped or dissolved the
 %   parameters documents, every one of those edges would dangle and the corpus
 %   0-orphan gate would go red. Passing through keeps the reference resolvable

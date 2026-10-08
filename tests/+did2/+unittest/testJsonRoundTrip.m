@@ -56,7 +56,7 @@ verifyFalse(testCase, isstruct(roundTripped), ...
 end
 
 function testARaggedObjectArrayDecodesAsACell(testCase)
-% THE ONE THAT HAS NOT BITTEN YET. `statement.conditions` holds
+% THE ONE THAT HAS NOT BITTEN YET. `subject_statement.conditions` holds
 % entries carrying `count` OR `quantity`, never both -- so as soon as the
 % data_body tier starts writing them, this is the shape that comes back.
 % Pinned now, while it is cheap.

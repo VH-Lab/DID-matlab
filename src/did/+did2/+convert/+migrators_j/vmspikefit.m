@@ -62,8 +62,8 @@ function bodies = vmspikefit(preBody)
 %
 %   R1 (TEAM-SIGN-OFF [software], V_eta_tenet_audit.md): a `software` ENTITY +
 %   `software_id` + `execution_environment`. `score_observation` reaches both
-%   through observation -> interaction (checked in
-%   did-schema/schemas/V_eta/stable/interaction.json), and the
+%   through subject_observation -> subject_interaction (checked in
+%   did-schema/schemas/V_eta/stable/subject_interaction.json), and the
 %   session_relative_reference anchor reaches neither.
 %
 %   THE OBSERVATION IS CONDITIONAL -- it exists only when `fit_sse` is a numeric
@@ -96,19 +96,19 @@ bodies = {anchor};
 
 if isnumeric(sse) && isscalar(sse)
     obs = struct();
-    obs.document_class = classBlock('score_observation', {'observation', 'score'});
+    obs.document_class = classBlock('score_observation', {'subject_observation', 'score'});
     obs.depends_on = [ ...
-        struct('name', 'entity_id',       'value', subjectId), ...
+        struct('name', 'subject_id',       'value', subjectId), ...
         struct('name', 'time_reference_1', 'value', anchor.base.id)];
     obs.base = struct('id', did.ido.unique_id(), ...
         'session_id', baseField(preBody, 'session_id', ''), ...
         'name', 'migrated_vmspikefit', ...
         'datestamp', baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z'));
-    obs.statement = struct('variable', otTerm('', 'residual sum of squares'), ...
+    obs.subject_statement = struct('variable', otTerm('', 'residual sum of squares'), ...
         'storage_mode', 'inline');
-    obs.interaction = struct('method', otTerm('', firstNonEmpty(fitEq, '')), ...
+    obs.subject_interaction = struct('method', otTerm('', firstNonEmpty(fitEq, '')), ...
         'sample_time', struct('kind', 'point'));
-    obs.observation = struct();
+    obs.subject_observation = struct();
     % scale_min/scale_max deliberately OMITTED (both optional): SSE is unbounded,
     % so declaring 0..1 would be false. `scale` names a rubric; SSE has none.
     obs.score = struct('value', struct('value', double(sse), ...
@@ -117,7 +117,7 @@ if isnumeric(sse) && isscalar(sse)
         obs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
     end
     if ~isempty(fieldnames(execEnv))
-        obs.interaction.execution_environment = execEnv;
+        obs.subject_interaction.execution_environment = execEnv;
     end
     bodies = {obs, anchor};
     if ~isempty(software)

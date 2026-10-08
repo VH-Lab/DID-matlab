@@ -235,7 +235,7 @@ v1.depends_on = struct( ...
 out = did2.convert.universalRenames(v1);
 verifyTrue(testCase, isfield(out, 'document_class'));
 verifyTrue(testCase, isfield(out, 'depends_on'));
-verifyEqual(testCase, out.depends_on(1).name, 'entity_id');
+verifyEqual(testCase, out.depends_on(1).name, 'subject_id');
 end
 
 function testUniversalRenamesDerivesSuperclassNamesFromDefinition(testCase)

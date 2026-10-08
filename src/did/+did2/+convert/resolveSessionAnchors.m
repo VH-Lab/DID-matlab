@@ -183,7 +183,7 @@ function [result, report] = resolveSessionAnchors(result, options)
 %   ---------------------------------------------------------------------
 %   WHY THE ID IS PRESERVED
 %   ---------------------------------------------------------------------
-%   Every migrated `interaction` / `directed_relation` points at its
+%   Every migrated `subject_interaction` / `directed_relation` points at its
 %   anchor by id through `time_reference_#`. Minting a replacement document
 %   would dangle every one of those edges -- the 11,448-orphan dissolution
 %   failure, at ten times the size. So this is the id-preserving 1 -> 1 fold the

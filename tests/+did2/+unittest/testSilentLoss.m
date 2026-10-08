@@ -100,7 +100,7 @@ function testCountsAnEmptyRequiredDependency(testCase)
 % gate: validate/references skips empty edges and the schema cache never checks
 % dependency non-emptiness at all. This is the ~7,007-empty-subject_id case.
 body = bodyStruct('term_observation', 'obs_1');
-body.depends_on = struct('name', 'entity_id', 'value', '');
+body.depends_on = struct('name', 'subject_id', 'value', '');
 rep = did2.validate.silentLoss({did2.document(body)});
 verifyEqual(testCase, rep.total_docs, 1);
 verifyTrue(testCase, rep.empty_dependency_count >= 0, ...
@@ -120,7 +120,7 @@ function testNumberedFamilyCountIsMeasured(testCase)
 % declared REQUIRED and verified by nothing. What is checkable is the instance
 % COUNT, which the schema now declares as min_count/max_count.
 %
-% A interaction leaf declares time_reference_# min_count 1. A document
+% A subject_interaction leaf declares time_reference_# min_count 1. A document
 % carrying none must be reported. REPORT ONLY: this raises nothing, because the
 % counts have never been measured on real data and enforcing a minimum before
 % knowing them is how a gate turns red on a corpus.
@@ -272,7 +272,7 @@ end
 
 function testAPopulatedFamilyReachingAnEpochIsCountedEndToEnd(testCase)
 % The chain the decision rests on, assembled in full:
-%   interaction --time_reference_1--> relative_reference
+%   subject_interaction --time_reference_1--> relative_reference
 %                       --relative_to-------> epoch
 obs = bodyStruct('voltage_observation', 'obs_1');
 obs.depends_on = struct('name', {'time_reference_1'}, 'value', {'ref_1'});

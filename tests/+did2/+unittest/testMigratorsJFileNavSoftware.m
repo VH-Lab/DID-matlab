@@ -237,9 +237,9 @@ verifyEqual(testCase, depValue(leaf.toStruct(), 'software_id'), sw.get('base.id'
 % run-specific details go to execution_environment on the interaction, NOT onto
 % the software entity (the software's identity is name+version; the os it
 % happened to run on is a fact about this run).
-verifyEqual(testCase, leaf.get('interaction.execution_environment.interpreter'), ...
+verifyEqual(testCase, leaf.get('subject_interaction.execution_environment.interpreter'), ...
     'MATLAB');
-verifyEqual(testCase, leaf.get('interaction.execution_environment.os'), 'Linux');
+verifyEqual(testCase, leaf.get('subject_interaction.execution_environment.os'), 'Linux');
 % "The class name stops being copied into every calculator output": no app block
 % survives on the migrated document.
 verifyFalse(testCase, isfield(leaf.toStruct(), 'app'));

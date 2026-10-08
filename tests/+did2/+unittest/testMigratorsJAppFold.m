@@ -54,13 +54,13 @@ function tests = testMigratorsJAppFold
 %   WHERE THE EDGE IS ALLOWED TO GO -- CHECKED, NOT ASSUMED
 %   ---------------------------------------------------------------------
 %   `software_id` is declared ONCE in the statement tier, on
-%   `interaction` (did-schema schemas/V_eta/stable/interaction.json,
+%   `subject_interaction` (did-schema schemas/V_eta/stable/subject_interaction.json,
 %   must_refer_to_document_class `software`), alongside the
 %   `execution_environment` field. So a body may carry the edge only if
-%   interaction is in its chain:
+%   subject_interaction is in its chain:
 %
-%       count_observation  -> observation -> interaction   YES
-%       score_observation  -> observation -> interaction   YES
+%       count_observation  -> subject_observation -> subject_interaction   YES
+%       score_observation  -> subject_observation -> subject_interaction   YES
 %       sampled_body / opaque_body -> data_body -> data -> base            NO
 %       session_relative_reference -> time_reference -> base                NO
 %       subject -> entity -> base                                          NO
@@ -271,33 +271,33 @@ end
 
 function testSoftwareIdIsDeclaredWhereWeHangIt(testCase)
 % THE ANTI-INVENTION GUARD. Read from the built schema at run time, so this
-% cannot drift out of step with a comment. The edge lives on interaction
+% cannot drift out of step with a comment. The edge lives on subject_interaction
 % and nowhere else in these chains -- adding it to a body whose chain does not
-% include interaction is the invented-empty-edge pattern.
+% include subject_interaction is the invented-empty-edge pattern.
 cache = did2.schema.cache.shared();
 for c = {'count_observation', 'score_observation'}
     chain = [c, cache.superclasses(c{1})];
-    verifyTrue(testCase, any(strcmp(chain, 'interaction')), ...
-        sprintf('%s must reach interaction to carry software_id', c{1}));
+    verifyTrue(testCase, any(strcmp(chain, 'subject_interaction')), ...
+        sprintf('%s must reach subject_interaction to carry software_id', c{1}));
 end
 for c = {'sampled_body', 'opaque_body', 'session_relative_reference', ...
          'subject', 'directed_relation'}
     chain = [c, cache.superclasses(c{1})];
-    verifyFalse(testCase, any(strcmp(chain, 'interaction')), ...
+    verifyFalse(testCase, any(strcmp(chain, 'subject_interaction')), ...
         sprintf('%s does NOT declare software_id; nothing may hang it there', c{1}));
 end
 % jsondecode returns a CELL of structs when the depends_on entries do not all
-% carry the same keys (interaction's do not -- only `time_reference_#`
+% carry the same keys (subject_interaction's do not -- only `time_reference_#`
 % has `multiple`/`min_count`), and a STRUCT ARRAY when they do. Handle both, or
 % this guard breaks the next time a key is added and reads as a schema failure.
-si = cache.getClass('interaction');
+si = cache.getClass('subject_interaction');
 deps = si.depends_on;
 if ~iscell(deps); deps = num2cell(deps); end
 found = false;
 for k = 1:numel(deps)
     if strcmp(char(deps{k}.name), 'software_id'); found = true; end
 end
-verifyTrue(testCase, found, 'interaction must declare software_id');
+verifyTrue(testCase, found, 'subject_interaction must declare software_id');
 end
 
 % ===================== kilosort / kiasort (via jSorterOutput) ==============
@@ -319,20 +319,20 @@ verifyEqual(testCase, sw.get('base.session_id'), 'sess_09');
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'srt_1');            % id still preserved
-verifyEqual(testCase, depValue(obs, 'entity_id'), 'rec_sub_1');
+verifyEqual(testCase, depValue(obs, 'subject_id'), 'rec_sub_1');
 end
 
 function testKilosortExecutionEnvironmentIsCarried(testCase)
 % The per-run os/interpreter is provenance of THIS EXECUTION, distinct from the
-% software's identity, and it has its own typed slot on interaction.
+% software's identity, and it has its own typed slot on subject_interaction.
 % These four field names are already snake_case, so universalRenames leaves them
 % alone -- which is why the old fold populated them while minting no entity.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 obs = onlyClass(testCase, out, 'count_observation');
-verifyEqual(testCase, obs.get('interaction.execution_environment.os'), 'GLNXA64');
-verifyEqual(testCase, obs.get('interaction.execution_environment.os_version'), '5.15.0');
-verifyEqual(testCase, obs.get('interaction.execution_environment.interpreter'), 'MATLAB');
-verifyEqual(testCase, obs.get('interaction.execution_environment.interpreter_version'), '9.13');
+verifyEqual(testCase, obs.get('subject_interaction.execution_environment.os'), 'GLNXA64');
+verifyEqual(testCase, obs.get('subject_interaction.execution_environment.os_version'), '5.15.0');
+verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter'), 'MATLAB');
+verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter_version'), '9.13');
 end
 
 function testKilosortUrlRidesOnTheEntityGlobalIdentifier(testCase)
@@ -355,7 +355,7 @@ verifyEmpty(testCase, out.quarantine);
 sw  = onlyClass(testCase, out, 'software');
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
-verifyEqual(testCase, obs.get('interaction.method.name'), 'kiasort');
+verifyEqual(testCase, obs.get('subject_interaction.method.name'), 'kiasort');
 end
 
 function testSorterWithoutAnAppBlockIsUnchanged(testCase)
@@ -368,7 +368,7 @@ verifyEqual(testCase, numel(out.migrated), 3);
 verifyFalse(testCase, hasClass(out, 'software'));
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEmpty(testCase, depValue(obs, 'software_id'));
-verifyFalse(testCase, isfield(obs.get('interaction'), 'execution_environment'));
+verifyFalse(testCase, isfield(obs.get('subject_interaction'), 'execution_environment'));
 end
 
 function testNoSessionMintsNoSoftware(testCase)
@@ -405,7 +405,7 @@ sw  = onlyClass(testCase, out, 'software');
 obs = onlyClass(testCase, out, 'count_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'jc_1');             % id still preserved
-verifyEqual(testCase, obs.get('interaction.execution_environment.interpreter'), ...
+verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter'), ...
     'MATLAB');
 end
 
@@ -419,9 +419,9 @@ end
 
 function testNeuronExtracellularHangsSoftwareOnTheQualityObservation(testCase)
 % Of the bodies this migrator emits, only the observations reach
-% interaction, so that is where the edge goes. The derived subject, the
+% subject_interaction, so that is where the edge goes. The derived subject, the
 % derived_from relation and the cluster-index ASSERTION get NOTHING --
-% deliberately: `assertion` does not pass through interaction,
+% deliberately: `subject_assertion` does not pass through subject_interaction,
 % so `count_assertion` declares no `software_id` either.
 %
 % ARITY WAS 5 UNTIL 2026-08-17; the sixth body is the `count_assertion` carrying
@@ -435,7 +435,7 @@ verifyEqual(testCase, numel(out.migrated), 6);
 sw   = onlyClass(testCase, out, 'software');
 qobs = onlyClass(testCase, out, 'score_observation');
 verifyEqual(testCase, depValue(qobs, 'software_id'), sw.get('base.id'));
-verifyEqual(testCase, qobs.get('interaction.execution_environment.os'), 'GLNXA64');
+verifyEqual(testCase, qobs.get('subject_interaction.execution_environment.os'), 'GLNXA64');
 
 neuron = onlyClass(testCase, out, 'subject');
 verifyEmpty(testCase, depValue(neuron, 'software_id'));
@@ -456,7 +456,7 @@ function testNeuronExtracellularWithoutQualityStillHasNowhereToPutItsSoftware(te
 %
 % THE FIXTURE NOW HAS TO WITHHOLD TWO THINGS, NOT ONE, and that is the point:
 % since 2026-08-17 the mean-waveform fold emits a voltage_observation, which
-% DOES reach interaction, so a document with a waveform and no quality
+% DOES reach subject_interaction, so a document with a waveform and no quality
 % number no longer loses its software. testTheWaveformObservationCarriesTheAppBlock
 % in testMigratorsJNeuronExtracellular.m asserts that half.
 out = runJ(neuronBody(true, false));
@@ -482,8 +482,8 @@ sw  = onlyClass(testCase, out, 'software');
 obs = onlyClass(testCase, out, 'score_observation');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('score.value.value'), 3.25, 'AbsTol', 1e-9);
-verifyEqual(testCase, obs.get('interaction.method.name'), 'exp2');
-verifyEqual(testCase, obs.get('interaction.execution_environment.interpreter_version'), ...
+verifyEqual(testCase, obs.get('subject_interaction.method.name'), 'exp2');
+verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter_version'), ...
     '9.13');
 end
 

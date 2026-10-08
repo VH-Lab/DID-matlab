@@ -337,7 +337,7 @@ function report = silentLoss(docs, opts)
 %   The team settled (2026-08-10) that a statement reaches its epoch through a
 %   REFERENCE CHAIN and not a direct edge:
 %
-%       interaction --time_reference_#--> relative_reference
+%       subject_interaction --time_reference_#--> relative_reference
 %                           --relative_to-------> epoch
 %
 %   `V_eta_epoch_plan.md` asks for this in as many words: *the first corpus run
@@ -346,7 +346,7 @@ function report = silentLoss(docs, opts)
 %   THE HOLE, read off the built schema (245 schema files, 13 numbered edge
 %   families, 4 `epoch_id` edges):
 %
-%       interaction  time_reference_#  mustBeNonEmpty=false  min_count 1
+%       subject_interaction  time_reference_#  mustBeNonEmpty=false  min_count 1
 %       directed_relation    epoch_id          mustBeNonEmpty=false
 %
 %   `min_count: 1` guarantees the family EXISTS; `relative_reference.relative_to`
@@ -825,7 +825,7 @@ for k = 1:numel(bodies)
         % (1) the time_reference family: does it reach anything at all?
         % A family qualifies by what the SCHEMA says it refers to -- a class
         % whose chain contains `time_reference` -- not by being spelled
-        % "time_reference_#". Three families qualify today (interaction,
+        % "time_reference_#". Three families qualify today (subject_interaction,
         % directed_relation, epoch) and a fourth would qualify by being
         % declared, not by being added to a list here.
         for f = 1:numel(families)
@@ -1958,7 +1958,7 @@ end
 %
 % Measured from the built schema on 2026-08-10, 245 schema files:
 %   * 13 numbered edge families; 3 of them refer to a `time_reference` class
-%     (interaction, directed_relation -> time_reference; epoch ->
+%     (subject_interaction, directed_relation -> time_reference; epoch ->
 %     relative_reference, a subclass).
 %   * `relative_to` is declared by relative_reference alone, mustBeNonEmpty
 %     true, must_refer_to_document_class `base`.

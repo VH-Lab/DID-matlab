@@ -8,7 +8,7 @@ function extra = jDecomposeScalars(preBody, sourceId, anchorId, specs)
 %   block    the (already-resolved) source struct holding the scalar.
 %   field    the scalar field name within `block`.
 %   dim      the data-type leaf: 'angle' | 'frequency' | 'score'.
-%   variable the spine label (statement.variable name).
+%   variable the spine label (subject_statement.variable name).
 %   method   the algorithm ontology term name (marks the value COMPUTED).
 %   unit     source_unit for angle/frequency (ignored for score).
 %

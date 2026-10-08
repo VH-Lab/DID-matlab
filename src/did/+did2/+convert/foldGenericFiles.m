@@ -58,7 +58,7 @@ function [result, report] = foldGenericFiles(result, options)
 %
 %   THE DECISION THIS BUILDS. Team, 2026-08-11, verbatim (recorded in
 %   did-schema/schemas/V_eta_OPEN_WORK.md, "generic_file folds to opaque_body +
-%   a statement"): *"opaque_body + a statement whose variable
+%   a subject_statement"): *"opaque_body + a subject_statement whose variable
 %   comes from that sibling label -- 'subject S has a plasmid map, here are the
 %   bytes.' Is the correct way"*. Option (b) -- bytes hung directly off the
 %   subject with `format_ontology` as its own descriptor -- is REJECTED.
@@ -107,7 +107,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   The `variable` lives in a DIFFERENT DOCUMENT. No per-document migrator can
 %   reach the sibling ontologyLabel, so `migrators_j.generic_file` could only
 %   ever emit a statement with a guessed or blank `variable` -- and
-%   `statement.variable` is mustBeNonEmpty, so a blank one quarantines.
+%   `subject_statement.variable` is mustBeNonEmpty, so a blank one quarantines.
 %   Everything the fold needs (the file, its label, the referent) is already in
 %   the migrated batch and none of it needs a session, a database or the file
 %   BYTES, which is the standing criterion that put `epochMint` and
@@ -176,7 +176,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   ---------------------------------------------------------------------
 %   THE LEAF CLASS IS THE ONE THING THIS BUILD HAD TO CHOOSE, SO IT IS STATED
 %   ---------------------------------------------------------------------
-%   The team said `statement`. `statement` is ABSTRACT --
+%   The team said `subject_statement`. `subject_statement` is ABSTRACT --
 %   `did2:validation:abstractInstantiation`, +did2/+schema/cache.m:670-674 --
 %   and every concrete statement in V_eta is direction x data_type (T3), so a
 %   `data_type` composite has to be named. NO `data_type` composite carries an
@@ -184,8 +184,8 @@ function [result, report] = foldGenericFiles(result, options)
 %   typed `value` (term, image, date, tuning_curve, ...) or names a physical
 %   quantity the bytes of a plasmid map do not have.
 %
-%   CHOSEN: `term_observation` (observation + term), with
-%   `statement.variable` = the label's node, verbatim per the team, and
+%   CHOSEN: `term_observation` (subject_observation + term), with
+%   `subject_statement.variable` = the label's node, verbatim per the team, and
 %   `term.value` = THE SAME NODE. That restatement is the cost, and it is
 %   deliberate: `term.value` is mustBeNonEmpty, the label's node is the only
 %   term this document carries, and a statement whose value slot repeats its
@@ -489,15 +489,15 @@ term = struct('node', char(node), 'name', '');
 body = struct();
 body.document_class = struct('class_name', 'term_observation', ...
     'class_version', '1.0.0', ...
-    'superclasses', supersOf({'observation', 'term'}), ...
+    'superclasses', supersOf({'subject_observation', 'term'}), ...
     'schema_version', 'V_eta');
-body.depends_on = struct('name', 'entity_id', 'value', char(subjectId));
+body.depends_on = struct('name', 'subject_id', 'value', char(subjectId));
 if isfield(src, 'base') && isstruct(src.base)
     body.base = src.base;               % THE ID IS NOT TOUCHED.
 end
-body.statement   = struct('variable', term, 'storage_mode', 'body');
-body.interaction = struct('method', struct('node', '', 'name', ''));
-body.observation = struct();
+body.subject_statement   = struct('variable', term, 'storage_mode', 'body');
+body.subject_interaction = struct('method', struct('node', '', 'name', ''));
+body.subject_observation = struct();
 body.term = struct('value', term);
 % NOTHING from the source `generic_file` block reaches the statement: filename,
 % format_ontology and checksum all belong to the BYTES and land on the

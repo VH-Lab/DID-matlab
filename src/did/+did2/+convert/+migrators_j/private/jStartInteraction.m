@@ -1,22 +1,22 @@
 function body = jStartInteraction(preBody, className, directionClass, mixinSupers, variable, subjectSrc, freshId)
-%JSTARTINTERACTION Seed a V_eta interaction leaf (observation or
+%JSTARTINTERACTION Seed a V_eta subject_interaction leaf (observation or
 %   manipulation) with the Brainstorm-J spine:
 %
 %     document_class    header (schema_version 'V_eta'); superclasses are the
 %                       DIRECT ones -- the direction class plus any shape mixin
-%                       (e.g. dose_manipulation -> {manipulation, dose}).
+%                       (e.g. dose_manipulation -> {subject_manipulation, dose}).
 %     depends_on        the carried subject_id (time_reference added by caller).
 %     base              the source base; a fresh id is minted when freshId=true
 %                       (a secondary sibling) and kept otherwise (the primary
 %                       body of the split).
-%     statement variable (the queryable "what") + storage_mode='inline'.
-%     interaction  method (blank -- the leaf class already names the act)
+%     subject_statement variable (the queryable "what") + storage_mode='inline'.
+%     subject_interaction  method (blank -- the leaf class already names the act)
 %                       + a single-point sample_time cadence (D1).
-%     <direction>       an empty observation / manipulation block
+%     <direction>       an empty subject_observation / subject_manipulation block
 %                       (manipulation carries `notes`, filled by the caller).
 %
 %   className      the leaf class (e.g. 'dose_manipulation', 'term_observation').
-%   directionClass 'observation' or 'manipulation'.
+%   directionClass 'subject_observation' or 'subject_manipulation'.
 %   mixinSupers    extra direct superclasses (shape mixin), e.g. {'dose'} or {}.
 %   variable       the spine identity ontology_term.
 %   subjectSrc     cell of candidate did_v1 depends_on names for the subject.
@@ -42,11 +42,11 @@ if isfield(preBody, 'base') && isstruct(preBody.base)
         body.base.id = did.ido.unique_id();
     end
 end
-body.statement = struct('variable', variable, 'storage_mode', 'inline');
-body.interaction = struct('method', jOntologyTerm('', ''), ...
+body.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
+body.subject_interaction = struct('method', jOntologyTerm('', ''), ...
     'sample_time', struct('kind', 'point'));
 body.(directionClass) = struct();
-if strcmp(directionClass, 'manipulation')
-    body.manipulation = struct('notes', '');
+if strcmp(directionClass, 'subject_manipulation')
+    body.subject_manipulation = struct('notes', '');
 end
 end

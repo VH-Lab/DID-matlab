@@ -2,7 +2,7 @@ function [rt, rtId] = jRuntimeEnvironment(execEnv, sessionId, datestamp)
 %JRUNTIMEENVIRONMENT Mint a `runtime_environment` entity from an execEnv struct.
 %
 %   PR #68 makes `runtime_environment_id` a REQUIRED edge on `calculator`, and
-%   the per-run os / interpreter facts move OUT of interaction.
+%   the per-run os / interpreter facts move OUT of subject_interaction.
 %   execution_environment (which previously carried them inline) and INTO a
 %   standalone `runtime_environment` entity referenced by that edge. This helper
 %   builds the entity body and returns its id for the caller's edge list.

@@ -1,6 +1,6 @@
 function bodies = hartley_calc(preBody)
 %HARTLEY_CALC Brainstorm-J migrator: the ndi.calc.vis.hartley reverse-correlation
-%   OUTPUT document -> the calculation LEAF `receptive_field_calculation`
+%   OUTPUT document -> the subject_calculation LEAF `receptive_field_calculation`
 %   + the `receptive_field` result composite, id- and depends_on-PRESERVED, plus
 %   the response volume in TWO `sampled_body` documents (one per plane) and the
 %   windowed spike train as a THIRD, input-side body.
@@ -22,7 +22,7 @@ function bodies = hartley_calc(preBody)
 %   this file implements:
 %
 %     "A `hartley_calc` document migrates 1->1, id- and deps-PRESERVED, into a
-%      `receptive_field_calculation` leaf (= `calculation` +
+%      `receptive_field_calculation` leaf (= `subject_calculation` +
 %      `receptive_field`), with the payload in TWO `sampled_body` documents --
 %      one for the STA plane, one for the p-value plane, because the writer
 %      itself gives the length-2 dimension no coordinates (436 coordinate
@@ -114,7 +114,7 @@ function bodies = hartley_calc(preBody)
 %     ngrid.data_dim            -> one axis entry per dimension, per PLANE
 %     ngrid.coordinates         -> axes[].values (the lag axis) / dropped as
 %                                  redundant (the two index axes)
-%     ngrid.data_type 'double'  -> statement.datum_type 'float64'
+%     ngrid.data_type 'double'  -> subject_statement.datum_type 'float64'
 %                                  + source_datum_type 'double' (jDatumType)
 %     ngrid.data_size 8         -> DROPPED. Bytes-per-element restates the
 %                                  dtype; it is derivable, unlike coordinates.
@@ -126,7 +126,7 @@ function bodies = hartley_calc(preBody)
 %                               -> DROPPED. Empty in 210 of 210, and the
 %                                  signature names it droppable.
 %     hartley_calc.input_parameters {T, X_sample, Y_sample}
-%                               -> interaction.method_parameters, via
+%                               -> subject_interaction.method_parameters, via
 %                                  jCalculation's shared reader.
 %     hartley_reverse_correlation.reconstruction_properties.{T,X,Y}_coords
 %                               -> the axis segmentation (above). They are the
@@ -229,7 +229,7 @@ function bodies = hartley_calc(preBody)
 %   stimulus model (#31), which is out of this signature's scope.
 %
 %   THEY ARE THEREFORE CARRIED, NOT DROPPED, in
-%   `interaction.method_parameters.stimulus_sequence`. That field is
+%   `subject_interaction.method_parameters.stimulus_sequence`. That field is
 %   declared free-form and its documentation is "the calculator input_parameters
 %   that produced it [...] Retaining it keeps the computation reproducible" --
 %   and these two blocks ARE the reverse-correlation's regressors, i.e. exactly
@@ -294,7 +294,7 @@ checkStimulusPropertiesAreDroppable(preBody, hrc, presentationId, ...
 % RESHAPED rather than carried verbatim; the RF value is descriptors only,
 % because the payload is body-backed.
 bodies = jCalculation(preBody, 'receptive_field_calculation', ...
-    {'calculation', 'receptive_field'}, 'receptive_field', ...
+    {'subject_calculation', 'receptive_field'}, 'receptive_field', ...
     'receptive field', 'ndi.calc.vis.hartley', 'hartley_calc', ...
     receptiveFieldValue(rc));
 
@@ -303,29 +303,29 @@ leaf = bodies{1};
 % The payload is body-backed, and the statement says so. jCalculation seeds
 % 'inline', which is right for the twelve calculators whose result is a small
 % matrix and wrong here: a plane is 200x200x36 doubles.
-leaf.statement.storage_mode = 'body';
+leaf.subject_statement.storage_mode = 'body';
 
 % The volume's encoding belongs to the STATEMENT (signed sec.5). jNgridBody
 % reads it off `ngrid.data_type` and hands it back rather than writing it,
 % because it mints bodies and the caller owns the statement.
 [planeBodies, datumType, sourceDatumType] = planeSampledBodies(preBody, ...
     leaf.base.id, planeDim, axisCoords, axisLabels);
-leaf.statement.datum_type = datumType;
-leaf.statement.source_datum_type = sourceDatumType;
+leaf.subject_statement.datum_type = datumType;
+leaf.subject_statement.source_datum_type = sourceDatumType;
 
 % The stimulus sequence the reverse correlation regressed against. PARKED, not
 % modelled -- see the header. Appended to the parameters jCalculation already
 % read off `hartley_calc.input_parameters`.
 sequence = stimulusSequence(hrc);
 if ~isempty(fieldnames(sequence))
-    if ~isfield(leaf, 'interaction') || ~isstruct(leaf.interaction)
-        leaf.interaction = struct();
+    if ~isfield(leaf, 'subject_interaction') || ~isstruct(leaf.subject_interaction)
+        leaf.subject_interaction = struct();
     end
-    if ~isfield(leaf.interaction, 'method_parameters') ...
-            || ~isstruct(leaf.interaction.method_parameters)
-        leaf.interaction.method_parameters = struct();
+    if ~isfield(leaf.subject_interaction, 'method_parameters') ...
+            || ~isstruct(leaf.subject_interaction.method_parameters)
+        leaf.subject_interaction.method_parameters = struct();
     end
-    leaf.interaction.method_parameters.stimulus_sequence = sequence;
+    leaf.subject_interaction.method_parameters.stimulus_sequence = sequence;
 end
 
 % The presentation the field was computed against: provenance, not a subject.

@@ -93,15 +93,15 @@ function result = v1_to_v2(v1Bodies, options)
 %                      ontology_table_row, subject_group, treatment_drug,
 %                      virus_injection, treatment_transfer, stimulus_bath)
 %                      through that migrator, targeting the Brainstorm-I
-%                      classes (the interaction spine with
+%                      classes (the subject_interaction spine with
 %                      method/variable/target_structure, shape-typed
 %                      observation leaves, and generic_manipulation).
 %                      'V_eta' routes classes that have a Brainstorm-J
 %                      split/fold migrator under +did2.+convert.+migrators_j
 %                      through that migrator, targeting the Brainstorm-J
 %                      subject model (bare-identity subject, restored
-%                      statement owning `variable`, observation/
-%                      manipulation, data-type-named leaves +
+%                      subject_statement owning `variable`, subject_observation/
+%                      subject_manipulation, data-type-named leaves +
 %                      dose/formulation/chemical composites, term_manipulation,
 %                      and subject_relation documents; no injection/bath, no
 %                      escape hatch). Any non-'V_delta' target stamps

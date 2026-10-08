@@ -5,7 +5,7 @@ function ref = jAbsoluteReference(preBody, instant)
 %   nothing -- NO TIMES => NO REFERENCE (V_eta_time_reference_model_plan.md: a
 %   NaN/blank reference is a hollow document, the exact thing silentLoss and
 %   isFragment exist to catch). The caller falls back to `jSessionAnchor` when
-%   this returns [], because `interaction` requires at least one
+%   this returns [], because `subject_interaction` requires at least one
 %   time_reference (min_count 1).
 %
 %   STATUS: NOT EXECUTED. Rewritten 2026-08-10 for #65 increment 2 in an

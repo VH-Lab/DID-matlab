@@ -5,9 +5,9 @@ function obs = jComputedScalar(preBody, anchorId, sourceId, leaf, mixin, variabl
 %
 %     <leaf>  a <mixin>_observation on the same subject as its source; subject_id
 %             carried from element_id, time_reference_1 -> the shared anchor.
-%     interaction.method = the algorithm ontology term -- this is what
+%     subject_interaction.method = the algorithm ontology term -- this is what
 %             MARKS the value computed rather than directly measured.
-%     depends_on derived_from_1 -> sourceId: the statement leaf this value
+%     depends_on derived_from_1 -> sourceId: the subject_statement leaf this value
 %             was computed from (the raw tuning-curve observation). Statement ->
 %             statement provenance (the inverse of directed_relation's entity ->
 %             entity), per the derived_from_# schema slot.
@@ -17,9 +17,9 @@ function obs = jComputedScalar(preBody, anchorId, sourceId, leaf, mixin, variabl
 %   No new subject and no directed_relation are minted (grain A): a tuning result
 %   is a property of the neuron, not a new entity. Shared helper for the
 %   Brainstorm-J (+migrators_j) analysis-tier decomposition migrators.
-obs = jStartInteraction(preBody, leaf, 'observation', {mixin}, ...
+obs = jStartInteraction(preBody, leaf, 'subject_observation', {mixin}, ...
     jOntologyTerm('', variableName), {'element_id', 'subject_id'}, true);
-obs.interaction.method = jOntologyTerm('', methodName);   % marks it computed
+obs.subject_interaction.method = jOntologyTerm('', methodName);   % marks it computed
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
 obs.depends_on(end+1) = struct('name', 'derived_from_1', 'value', sourceId);
 obs.(mixin) = struct('value', valueBlock);

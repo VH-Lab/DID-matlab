@@ -13,7 +13,7 @@ function tests = testMigratorsI
 %   conversions/from_did_v1/*.md.
 %
 %   The Brainstorm-I differences from the E tests: identity is OFF the class
-%   -- it lands on the spine `interaction.variable`, not on a family
+%   -- it lands on the spine `subject_interaction.variable`, not on a family
 %   `applied_property`/`procedure`/`factor` block; observation leaves are named
 %   by DATA-TYPE (scalar_mass_observation, not body_weight_observation) with a
 %   single concrete categorical_observation; and the pure-identity
@@ -71,7 +71,7 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference')
 val = doc.get('scalar_temperature.value');
 verifyEqual(testCase, val.celsius, 12.0);
 % Brainstorm I: identity is on the spine `variable`, NOT scalar_manipulation.
-variable = doc.get('interaction.variable');
+variable = doc.get('subject_interaction.variable');
 verifyEqual(testCase, variable.name, 'focal cortical cooling');
 anchor = out.migrated{2};
 verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
@@ -95,7 +95,7 @@ v1 = wrap('treatment', 'treatment', struct( ...
 out = runI(v1);
 verifyTrue(testCase, isfield(out.summary.by_class, 'generic_manipulation'));
 doc = out.migrated{1};
-variable = doc.get('interaction.variable');
+variable = doc.get('subject_interaction.variable');
 verifyEqual(testCase, variable.name, 'dark rearing');
 verifyEqual(testCase, doc.get('manipulation.notes'), 'reared in darkness');
 end
@@ -108,7 +108,7 @@ v1 = wrap('treatment', 'treatment', struct( ...
 out = runI(v1);
 verifyTrue(testCase, isfield(out.summary.by_class, 'generic_manipulation'));
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('interaction.variable').name, 'craniotomy');
+verifyEqual(testCase, doc.get('subject_interaction.variable').name, 'craniotomy');
 end
 
 function testDabTargetLocationRoutesStringValueToSpineTargetStructure(testCase)
@@ -122,7 +122,7 @@ v1 = wrap('treatment', 'treatment', struct( ...
 out = runI(v1);
 verifyTrue(testCase, isfield(out.summary.by_class, 'generic_manipulation'));
 doc = out.migrated{1};
-ts = doc.get('interaction.target_structure');
+ts = doc.get('subject_interaction.target_structure');
 verifyFalse(testCase, isempty(ts));
 end
 
@@ -162,7 +162,7 @@ doc = out.migrated{1};
 val = doc.get('scalar_mass.value');
 verifyEqual(testCase, val.source_value, 22.5);
 % property identity is the spine variable, not the class name
-verifyEqual(testCase, doc.get('interaction.variable').name, 'weight');
+verifyEqual(testCase, doc.get('subject_interaction.variable').name, 'weight');
 end
 
 function testTableRowCategoricalValueOnOwnBlock(testCase)
@@ -172,7 +172,7 @@ v1 = wrap('ontology_table_row', 'ontology_table_row', struct('rows', {rows}));
 out = runI(v1);
 doc = out.migrated{1};
 verifyEqual(testCase, doc.get('categorical_observation.value').node, 'fbdv:00005336');
-verifyEqual(testCase, doc.get('interaction.variable').name, 'life cycle stage');
+verifyEqual(testCase, doc.get('subject_interaction.variable').name, 'life cycle stage');
 end
 
 function testTableRowGeneratesUniqueIdsPerRow(testCase)
@@ -246,7 +246,7 @@ verifyEqual(testCase, doc.get('injection.kind'), 'drug');
 mix = doc.get('pharmacological_manipulation.mixture');
 verifyEqual(testCase, mix(1).chemical.name, 'muscimol');
 % the primary drug is also the spine identity
-verifyEqual(testCase, doc.get('interaction.variable').name, 'muscimol');
+verifyEqual(testCase, doc.get('subject_interaction.variable').name, 'muscimol');
 end
 
 function testVirusInjectionBecomesVirusInjection(testCase)
@@ -262,7 +262,7 @@ verifyEqual(testCase, doc.get('injection.kind'), 'virus');
 mix = doc.get('pharmacological_manipulation.mixture');
 verifyEqual(testCase, mix(1).chemical.name, 'AAV9-CaMKII-GCaMP');
 verifyEqual(testCase, mix(1).amount.source_value, 0.5);
-verifyEqual(testCase, doc.get('interaction.variable').name, 'AAV9-CaMKII-GCaMP');
+verifyEqual(testCase, doc.get('subject_interaction.variable').name, 'AAV9-CaMKII-GCaMP');
 end
 
 function testTreatmentTransferBecomesBiologicalTransfer(testCase)
@@ -287,7 +287,7 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'biological_transfer'));
 doc = out.migrated{1};
 % Brainstorm I: the transferred material is the spine variable (no
 % biological_transfer.entity); kind carries the coarse bucket.
-verifyEqual(testCase, doc.get('interaction.variable').name, 'donor retina');
+verifyEqual(testCase, doc.get('subject_interaction.variable').name, 'donor retina');
 verifyEqual(testCase, doc.get('biological_transfer.kind'), 'transplant');
 % recipient -> subject_id; donor carried as donor_id
 verifyEqual(testCase, depVal(doc, 'subject_id'), 'aabb1122ccdd3344_1111111111111111');
@@ -368,7 +368,7 @@ bathDoc = findMigratedByClass(out, 'bath');
 verifyNotEmpty(testCase, bathDoc);
 verifyEqual(testCase, depVal(bathDoc, 'subject_id'), subjId);
 verifyNotEmpty(testCase, depVal(bathDoc, 'time_reference_1'));
-verifyEqual(testCase, bathDoc.get('interaction.variable').name, 'muscimol');
+verifyEqual(testCase, bathDoc.get('subject_interaction.variable').name, 'muscimol');
 % the anchor is an ordinal session_relative_reference
 anchor = findMigratedByClass(out, 'session_relative_reference');
 verifyNotEmpty(testCase, anchor);

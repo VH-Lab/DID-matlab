@@ -14,7 +14,7 @@ function tests = testEnforceNonVacuousFields
 %   FIELDNAMES. An ontology_term of {node:'', name:''} has two fieldnames, so
 %   it satisfies `mustBeNonEmpty` while recording nothing at all. That is not
 %   a hypothetical shape: it is the literal `blank_value` of
-%   statement.variable, the key the whole V_eta model pivots on. A
+%   subject_statement.variable, the key the whole V_eta model pivots on. A
 %   migrator that read a source field no real document has emitted exactly
 %   this and passed every gate.
 %
@@ -303,7 +303,7 @@ function dirPath = vacuousFixtureDir(fixtureDir)
 %
 % NOTE the blank_value of demoTerm.term: {"node":"","name":""}. That is not
 % invented for the test. It is verbatim the blank_value of
-% statement.variable in V_eta, which is the field this whole item is
+% subject_statement.variable in V_eta, which is the field this whole item is
 % about.
 dirPath = tempname;
 mkdir(dirPath);

@@ -72,7 +72,8 @@ switch given{1}
         end
         s.quantity = struct('value', q);
 end
-c = did2.build.composite('statement', 'conditions', s, ...
+statementClass = vetaNames(options.SchemaCache);   % `subject_statement` before 2026-10-08
+c = did2.build.composite(statementClass, 'conditions', s, ...
     'SchemaCache', options.SchemaCache);
 end
 

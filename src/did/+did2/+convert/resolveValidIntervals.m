@@ -12,7 +12,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   that model, and the team declined to ship it as an interim step. So the
 %   emission path is guarded OFF and this pass runs as a CENSUS.
 %
-%   WHAT UNBLOCKS IT: `axes[]` on `statement` -- DID-schema
+%   WHAT UNBLOCKS IT: `axes[]` on `subject_statement` -- DID-schema
 %   `V_eta_data_body_model_plan.md`, OPEN_WORK #45, itself blocked on #32.
 %   Until that lands there is nowhere to put a time axis, and a boolean array
 %   with no axis cannot say WHICH stretch each element of it is about.
@@ -71,7 +71,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   deferred family uses.
 %
 %   WHEN `axes[]` LANDS, the class this emits is `logical_observation`
-%   (over {observation, logical}) and NOT `validity_observation` -- see
+%   (over {subject_observation, logical}) and NOT `validity_observation` -- see
 %   THE CLASS NAMING below. The dormant emission path already names it, so the
 %   rename does not have to be rediscovered later.
 %
@@ -84,7 +84,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   (`command -v matlab octave octave-cli` returns nothing). NOTHING IN THIS
 %   FILE HAS BEEN RUN. test-migrators-quick.yml is the first thing that will
 %   have an opinion about it. Read it as a specification, not as a passing pass.
-%   AMENDED 2026-08-11 to populate `interaction.method` (see "THE VERB"
+%   AMENDED 2026-08-11 to populate `subject_interaction.method` (see "THE VERB"
 %   below), in the same container, under the same condition: `command -v matlab
 %   octave octave-cli` still returns nothing, so that amendment has not been run
 %   either. CI is its first execution.
@@ -114,7 +114,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %   `logical_observation`. The 32 `*_observation` data_types name a KIND OF
 %   VALUE (length, intensity, count, score, term, image); `validity` was the
 %   only one naming a SEMANTIC -- what the measurement is ABOUT -- and the
-%   semantic belongs in `statement.variable`. That is not a proposal:
+%   semantic belongs in `subject_statement.variable`. That is not a proposal:
 %   `resolveLawnPlateSubjects.m:1106-1113` already sends six distinct
 %   fluorescence semantics to ONE `intensity_observation`, told apart only by
 %   `variable` (`:689 variableTerm(c{1})` -> `:1317`). It is also the error
@@ -279,7 +279,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %       nothing else, so a re-deriving answer still has the exact v1 graph --
 %       `migrators_j/element.m:131` already emits the
 %       `child --derived_from--> parent` relation it would walk;
-%     * `observation.derived_from_#` exists, is OPTIONAL, and is left
+%     * `subject_observation.derived_from_#` exists, is OPTIONAL, and is left
 %       EMPTY here, so a materialising answer needs no schema change and pass 1
 %       has invented no edge it would have to undo;
 %     * there is no per-statement ordinal to reconcile across a merged set --
@@ -303,7 +303,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %                               own, emit a copy with a fresh id,
 %                               `derived_from_#` pointing at the original, and
 %                               (per T6's cache rule) an `is_cache`-style marker
-%                               -- which `observation` does NOT declare
+%                               -- which `subject_observation` does NOT declare
 %                               today, so the schema half would need it, or the
 %                               copies would be indistinguishable from primary
 %                               curation.
@@ -380,13 +380,13 @@ function [result, report] = resolveValidIntervals(result, options)
 %   directions are assertion / observation / manipulation / calculation and none
 %   of them is "a human judged this", which the team raised as an objection to
 %   this family. The resolution does not add a fifth direction: T2's declared
-%   slot for THE VERB -- how was this known -- is `interaction.method`,
+%   slot for THE VERB -- how was this known -- is `subject_interaction.method`,
 %   and that is where the epistemic stance is stated.
 %
 %   THIS FIELD USED TO BE EMITTED EMPTY (`{node: '', name: ''}`), which made a
 %   curation judgement INDISTINGUISHABLE FROM AN INSTRUMENT READING. Nothing
 %   would ever have caught it: `method` is `mustBeNonEmpty: false`, so a blank
-%   term validates, and interaction.json's own documentation says the
+%   term validates, and subject_interaction.json's own documentation says the
 %   observation verb "is nearly always 'measurement'" -- so a blank reads as the
 %   default, and the default is the one thing this statement is not.
 %
@@ -399,7 +399,7 @@ function [result, report] = resolveValidIntervals(result, options)
 %                                         device/method subtype in a name). The
 %                                         tool is PROVENANCE -- it belongs on
 %                                         the `app` block / `software_id`, which
-%                                         interaction.json says in its
+%                                         subject_interaction.json says in its
 %                                         own words supersedes the v1 `app`.
 %     manual curation / expert annotation /
 %     visual inspection                   each adds a claim the source never
@@ -992,8 +992,8 @@ function body = makeLogicalObservation(src, elementId, isValid, refIds, methodTe
 %
 %   THE STATEMENT CARRIES NO FIELDS OF ITS OWN. `logical_observation` declares
 %   none (`sequence` went with HAZARD 2), so everything here is inherited:
-%   `subject_id` + `variable` from statement, `method` +
-%   `time_reference_#` from interaction, the boolean from `logical`.
+%   `subject_id` + `variable` from subject_statement, `method` +
+%   `time_reference_#` from subject_interaction, the boolean from `logical`.
 %   THE SEMANTIC IS IN `variable`, NOT IN THE CLASS NAME -- `data validity` --
 %   which is the whole reason the class is `logical` and not `validity`.
 %
@@ -1017,20 +1017,20 @@ function body = makeLogicalObservation(src, elementId, isValid, refIds, methodTe
 body = struct();
 body.document_class = struct('class_name', 'logical_observation', ...
     'class_version', '1.0.0', ...
-    'superclasses', supersOf({'observation', 'logical'}), ...
+    'superclasses', supersOf({'subject_observation', 'logical'}), ...
     'schema_version', 'V_eta');
-deps = struct('name', {'entity_id'}, 'value', {elementId});
+deps = struct('name', {'subject_id'}, 'value', {elementId});
 for r = 1:numel(refIds)
     deps(end+1) = struct('name', sprintf('time_reference_%d', r), ...
         'value', refIds{r}); %#ok<AGROW>
 end
 body.depends_on = deps;
 body.base = freshBase(src, 'migrated_valid_interval');
-body.statement = struct( ...
+body.subject_statement = struct( ...
     'variable', struct('node', '', 'name', 'data validity'), ...
     'storage_mode', 'inline');
-body.interaction = struct('method', methodTerm);
-body.observation = struct();
+body.subject_interaction = struct('method', methodTerm);
+body.subject_observation = struct();
 % NO NESTED CELL: `logical.value` is a bare `boolean` array. The old
 % `validity` shape wrapped it in a one-field struct -- `value.value`, a wrapper
 % around nothing -- and the composites that DO nest are the ones carrying

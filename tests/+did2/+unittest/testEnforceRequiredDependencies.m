@@ -273,7 +273,7 @@ verifyEqual(testCase, names, {'anchor_id'}, ...
 end
 
 function testRequiredEdgesAreInheritedThroughTheChain(testCase)
-% A leaf inherits its ancestors' required edges. statement declares
+% A leaf inherits its ancestors' required edges. subject_statement declares
 % subject_id once and 77 concrete V_eta classes carry it, so a check that
 % read only the leaf's own declarations would see almost none of them.
 dirPath = familyFixtureDir(testCase.TestData.fixtureDir);

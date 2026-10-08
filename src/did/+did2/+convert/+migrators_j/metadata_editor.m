@@ -45,7 +45,7 @@ function v2Body = metadata_editor(preBody)
 %   Bucket 2 -- PER-SUBJECT PROJECTIONS -> not persisted on migration. Subjects
 %     (SpeciesList / StrainList / BiologicalSexList), DataType, TechniquesEmployed,
 %     and ExperimentalApproach are summaries derivable from the dataset's subject
-%     `term_assertion`s / `statement`s (D-D "drop-fully-with-projection"):
+%     `term_assertion`s / `subject_statement`s (D-D "drop-fully-with-projection"):
 %     storing them here would duplicate the per-subject truth and drift from it, so
 %     they are recomputed as a query-time projection. (The dataset schema keeps an
 %     experimental_approach field, but only openMINDS IMPORT populates it -- a

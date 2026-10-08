@@ -1,10 +1,9 @@
 function deps = jCarrySubject(preBody, srcNames)
-%JCARRYSUBJECT Carry a source dependency forward as the V_eta `entity_id`.
+%JCARRYSUBJECT Carry a source dependency forward as the V_eta `subject_id`.
 %   srcNames is a cell of candidate did_v1 depends_on names, tried in order;
-%   the first present one supplies the value. Defaults to {'subject_id'}, the
-%   did_v1 edge. The V_eta edge is `entity_id` (`subject_id` until
-%   2026-10-08). The time_reference edge is attached separately by the
-%   caller. In strict J the referent here is a `subject` (device,
+%   the first present one supplies the subject_id value. Defaults to
+%   {'subject_id'}. The time_reference edge is attached separately by the
+%   caller. In strict J the referent of `subject_id` is a `subject` (device,
 %   organism, sample, ...); the element concept is dissolved (D2) and any
 %   reconciliation of element/probe referents is the NDI second pass's job.
 %
@@ -28,5 +27,5 @@ if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
         if ~isempty(subjectVal); break; end
     end
 end
-deps = struct('name', 'entity_id', 'value', subjectVal);
+deps = struct('name', 'subject_id', 'value', subjectVal);
 end

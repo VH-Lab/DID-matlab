@@ -1606,12 +1606,12 @@ def render_metadata_tier(r, out):
 # The team settled (2026-08-10) that a statement reaches its epoch through a
 # REFERENCE CHAIN, not a direct edge:
 #
-#     interaction --time_reference_#--> relative_reference
+#     subject_interaction --time_reference_#--> relative_reference
 #                         --relative_to-------> epoch
 #
 # `min_count: 1` guarantees the family EXISTS and `relative_reference.
 # relative_to` is REQUIRED, so a POPULATED reference resolves. But
-# `interaction.time_reference_#` is `mustBeNonEmpty: false`, so
+# `subject_interaction.time_reference_#` is `mustBeNonEmpty: false`, so
 # `time_reference_1 = ''` SATISFIES the family and reaches nothing -- and the
 # armed RequiredDependencies gate keys on `mustBeNonEmpty`, so it does not fire.
 # Between them the two existing silent-loss checks step over exactly that

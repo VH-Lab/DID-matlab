@@ -232,8 +232,7 @@ for k = 1:n
             end
     end
     if isRecording30Observation(b)
-        subj  = depValueOf(b, 'entity_id');       % `subject_id` before 2026-10-08
-        if isempty(subj); subj = depValueOf(b, 'subject_id'); end
+        subj  = depValueOf(b, 'subject_id');
         instr = depValueOf(b, 'instrument_id');
         if ~isempty(subj) && ~isempty(instr)
             tk = obs30TripleKey(subj, instr, classOf{k});
@@ -644,8 +643,8 @@ function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
 if nargin < 7; acqSystemId = ''; end
 if nargin < 8; channels = emptyChannels(); end
 obs = struct();
-obs.document_class = classBlock(entry.class, {'observation', entry.mixin});
-obs.depends_on = struct('name', 'entity_id', 'value', subjectId);
+obs.document_class = classBlock(entry.class, {'subject_observation', entry.mixin});
+obs.depends_on = struct('name', 'subject_id', 'value', subjectId);
 if ~isempty(instrumentId)
     obs.depends_on(end+1) = struct('name', 'instrument_id', 'value', instrumentId); % T7
 end
@@ -656,15 +655,15 @@ end
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
 obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', 'migrated_probemap_observation', 'datestamp', datestamp);
-obs.statement = struct( ...
+obs.subject_statement = struct( ...
     'variable', mkOntologyTerm('', entry.variable), ...
     'storage_mode', 'reference');
-obs.interaction = struct('method', mkOntologyTerm('', ''));
+obs.subject_interaction = struct('method', mkOntologyTerm('', ''));
 if ~isempty(channels)
-    % channel half of the devicestring. HOISTED to interaction (#66
+    % channel half of the devicestring. HOISTED to subject_interaction (#66
     % increment 3, 2026-08-21) so a stimulator manipulation carries it too;
-    % was observation.channels.
-    obs.interaction.channels = channels;
+    % was subject_observation.channels.
+    obs.subject_interaction.channels = channels;
 end
 obs = attachQuantityBlock(obs, entry.mixin);
 end
@@ -674,11 +673,11 @@ function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
 %MKMANIPULATION One `term_manipulation` for a stimulator probemap row -- #66
 %   increment 3, TEAM-SIGNED 2026-08-21. The manipulation-side mirror of
 %   mkObservation: a stimulator ACTS ON the specimen (T3), so it is NOT an
-%   observation. A `term_manipulation` (manipulation + term) whose
+%   observation. A `term_manipulation` (subject_manipulation + term) whose
 %   `variable` and `term.value` are the stimulator TYPE, subject_id the specimen,
 %   instrument_id the stimulator element-subject (T7), carrying the SAME device
 %   wiring as a recording observation (acquisition_system_id + channels, both on
-%   interaction as of increment 3). The stimulus CONTENT is NOT here -- it
+%   subject_interaction as of increment 3). The stimulus CONTENT is NOT here -- it
 %   lives in `timed_sequence_manipulation` from the stimulus model (#31); this is
 %   the probemap-level "this stimulator, wired thus, acted on this subject in this
 %   epoch" record the serialized `epochprobemap` string used to be the only home
@@ -689,13 +688,13 @@ if nargin < 8; channels = emptyChannels(); end
 typeTerm = mkOntologyTerm('', stimType);
 % Field-for-field the shape the PROVEN term_manipulation emitter builds --
 % +migrators_j/treatment.m makeTermManipulation via private/jStartInteraction:
-% superclasses are the DIRECTION class ONLY ({manipulation}); the `term`
+% superclasses are the DIRECTION class ONLY ({subject_manipulation}); the `term`
 % data_type is carried by the block, not the declared superclass list. method
 % blank ("the leaf class already names the act"), single-point sample_time,
-% manipulation block present, term.value = the variable.
+% subject_manipulation block present, term.value = the variable.
 m = struct();
-m.document_class = classBlock('term_manipulation', {'manipulation'});
-m.depends_on = struct('name', 'entity_id', 'value', subjectId);
+m.document_class = classBlock('term_manipulation', {'subject_manipulation'});
+m.depends_on = struct('name', 'subject_id', 'value', subjectId);
 if ~isempty(instrumentId)
     m.depends_on(end+1) = struct('name', 'instrument_id', 'value', instrumentId); % T7
 end
@@ -706,13 +705,13 @@ end
 m.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
 m.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', 'migrated_probemap_manipulation', 'datestamp', datestamp);
-m.statement = struct('variable', typeTerm, 'storage_mode', 'inline');
-m.interaction = struct('method', mkOntologyTerm('', ''), ...
+m.subject_statement = struct('variable', typeTerm, 'storage_mode', 'inline');
+m.subject_interaction = struct('method', mkOntologyTerm('', ''), ...
     'sample_time', struct('kind', 'point'));
 if ~isempty(channels)
-    m.interaction.channels = channels;  % channel half (hoisted, increment 3)
+    m.subject_interaction.channels = channels;  % channel half (hoisted, increment 3)
 end
-m.manipulation = struct('notes', '');
+m.subject_manipulation = struct('notes', '');
 m.term = struct('value', typeTerm);
 end
 
@@ -828,7 +827,7 @@ end
 function ch = emptyChannels()
 %EMPTYCHANNELS A 0x0 struct array of the channels shape, so `isempty` is true and
 %   the observation OMITS the field (absent-is-valid) when no device string
-%   parsed. Fields match observation.channels ({type, numbers}).
+%   parsed. Fields match subject_observation.channels ({type, numbers}).
 ch = struct('type', {}, 'numbers', {});
 end
 

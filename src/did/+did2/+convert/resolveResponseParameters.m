@@ -20,9 +20,9 @@ function [result, report] = resolveResponseParameters(result, options)
 %
 %   `inline` IS NOT A SOFTER `document`, AND THE DISTINCTION IS THE THIRD OF
 %   THE THREE EMISSION SHAPES row 107 names. The destination is the
-%   `interaction.method_parameters` BLOCK, written at :328 onto the
+%   `subject_interaction.method_parameters` BLOCK, written at :328 onto the
 %   response document, with the `method_parameters_id` edge dropped at :329 --
-%   no document is minted, and none may be, because interaction.json
+%   no document is minted, and none may be, because subject_interaction.json
 %   says a statement carries the inline field OR the edge, NEVER BOTH. The
 %   class `method_parameters` nonetheless EXISTS in the built set
 %   (schemas/V_eta/stable/method_parameters.json), which is what makes it the
@@ -57,10 +57,10 @@ function [result, report] = resolveResponseParameters(result, options)
 %   against the migrated batch with no live session. Same shape here."*
 %
 %   The migrator half is +migrators_j/stimulus_response_scalar.m, which re-homes
-%   the v1 edge onto `interaction.method_parameters_id` and leaves the
+%   the v1 edge onto `subject_interaction.method_parameters_id` and leaves the
 %   inline field empty. THIS pass reads the referenced document out of the
 %   migrated batch, writes the five run knobs INLINE, and REMOVES the edge --
-%   because interaction.json says, in the schema's own words, "A
+%   because subject_interaction.json says, in the schema's own words, "A
 %   statement carries the inline `method_parameters` field OR this edge, NEVER
 %   BOTH (team, 2026-08-09)".
 %
@@ -316,7 +316,7 @@ for k = 1:n
     % fires if something else has already written it -- in which case the edge
     % and the field disagree about which is authoritative and this pass must not
     % pick.
-    inlineNow = blockField(b, 'interaction', 'method_parameters');
+    inlineNow = blockField(b, 'subject_interaction', 'method_parameters');
     if isstruct(inlineNow) && ~isempty(fieldnames(inlineNow))
         report.refused_inline_present = report.refused_inline_present + 1;
         continue;
@@ -358,7 +358,7 @@ for k = 1:n
         continue;
     end
 
-    b.interaction.method_parameters = params;
+    b.subject_interaction.method_parameters = params;
     b.depends_on = dropDep(b.depends_on, 'method_parameters_id');
 
     rebuilt{end+1} = b;          %#ok<AGROW>

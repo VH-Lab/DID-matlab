@@ -82,7 +82,7 @@ function bodies = control_stimulus_ids(preBody)
 %   3. `derived_from_1` is the DOCUMENT naming an instance of the `derived_from_#`
 %      FAMILY the schema declares (revision 3 of the signed plan). Its cardinality
 %      is unexpressed until #63. The schema types the family
-%      `must_refer_to_document_class: interaction` while the antecedent
+%      `must_refer_to_document_class: subject_interaction` while the antecedent
 %      here is the presentation body; must_refer is DECLARATIVE (existence-only),
 %      so this validates, but the typing is worth revisiting with #63.
 %

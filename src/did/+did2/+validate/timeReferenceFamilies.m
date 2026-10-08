@@ -68,7 +68,7 @@ function report = timeReferenceFamilies(docs, opts)
 %   Read from did-schema V_eta at the time of writing, 245 schema files scanned,
 %   14 numbered families found, of which THREE refer to a time reference:
 %
-%       interaction.time_reference_#  -> time_reference       min 1
+%       subject_interaction.time_reference_#  -> time_reference       min 1
 %       directed_relation.time_reference_#    -> time_reference       min 0
 %       epoch.time_reference_#                -> relative_reference   min 0
 %

@@ -107,7 +107,7 @@ function bodies = neuron_extracellular(preBody)
 %   choice:
 %
 %     V_eta_data_body_model_plan.md sec.3, and it is a CHECKED rule, not a style:
-%       "storage_mode: inline -> statement.axes[] populated; no bodies
+%       "storage_mode: inline -> subject_statement.axes[] populated; no bodies
 %        storage_mode: body   -> each sampled_body.axes[] populated; statement EMPTY"
 %     sec.7:  "Axes live with the thing whose extent they describe."
 %
@@ -243,17 +243,17 @@ function bodies = neuron_extracellular(preBody)
 %   `software` ENTITY + a `software_id` edge + `execution_environment`. WHICH
 %   EMITTED BODIES CAN CARRY THAT EDGE -- checked against the built schemas, not
 %   assumed. `software_id` is declared once in the statement tier, on
-%   `interaction`:
+%   `subject_interaction`:
 %
 %       subject                     -> entity -> base            NO software_id
 %       directed_relation           -> relation -> base          NO software_id
 %       session_relative_reference  -> time_reference -> base    NO software_id
-%       count_assertion             -> assertion
-%                                   -> statement         NO software_id
-%       voltage_observation         -> observation
-%                                   -> interaction       YES (+ exec env)
-%       score_observation           -> observation
-%                                   -> interaction       YES (+ exec env)
+%       count_assertion             -> subject_assertion
+%                                   -> subject_statement         NO software_id
+%       voltage_observation         -> subject_observation
+%                                   -> subject_interaction       YES (+ exec env)
+%       score_observation           -> subject_observation
+%                                   -> subject_interaction       YES (+ exec env)
 %
 %   THE RESIDUAL IS SMALLER THAN IT WAS AND IS NOT CLOSED. Before the waveform
 %   fold the only carrier was the score_observation, which is emitted only when
@@ -366,11 +366,11 @@ bodies = {neuron, rel, anchor};
 % ---- the sorter's cluster index (see "CLUSTER_INDEX" in the header) ---------
 if isnumeric(clusterIndex) && isscalar(clusterIndex) && isfinite(clusterIndex)
     cidx = struct();
-    cidx.document_class = classBlock('count_assertion', {'assertion', 'count'});
-    cidx.depends_on = struct('name', {'entity_id'}, 'value', {neuronId});
+    cidx.document_class = classBlock('count_assertion', {'subject_assertion', 'count'});
+    cidx.depends_on = struct('name', {'subject_id'}, 'value', {neuronId});
     cidx.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
         'name', 'migrated_sorter_cluster_index', 'datestamp', datestamp);
-    cidx.statement = struct( ...
+    cidx.subject_statement = struct( ...
         'variable', jOntologyTerm('', 'spike sorter cluster index'), ...
         'storage_mode', 'inline');
     % Assigned in its own statement rather than inside struct(...): the value of
@@ -402,7 +402,7 @@ if ~isempty(wobs)
         softwareIsReferenced = true;
     end
     if ~isempty(fieldnames(execEnv))
-        wobs.interaction.execution_environment = execEnv;
+        wobs.subject_interaction.execution_environment = execEnv;
     end
     bodies{end+1} = wobs;
 end
@@ -411,17 +411,17 @@ end
 quality = getField(blk, 'quality_number');
 if isnumeric(quality) && isscalar(quality)
     qobs = struct();
-    qobs.document_class = classBlock('score_observation', {'observation', 'score'});
+    qobs.document_class = classBlock('score_observation', {'subject_observation', 'score'});
     qobs.depends_on = [ ...
-        struct('name', 'entity_id',       'value', neuronId), ...
+        struct('name', 'subject_id',       'value', neuronId), ...
         struct('name', 'time_reference_1', 'value', anchorId)];
     qobs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
         'name', 'migrated_sort_quality', 'datestamp', datestamp);
-    qobs.statement = struct('variable', otTerm('', 'spike sort quality'), ...
+    qobs.subject_statement = struct('variable', otTerm('', 'spike sort quality'), ...
         'storage_mode', 'inline');
-    qobs.interaction = struct('method', otTerm('', ''), ...
+    qobs.subject_interaction = struct('method', otTerm('', ''), ...
         'sample_time', struct('kind', 'point'));
-    qobs.observation = struct();
+    qobs.subject_observation = struct();
     qobs.score = struct('value', struct('value', double(quality), ...
         'scale', otTerm('', ''), 'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false));
     if ~isempty(swId)
@@ -429,7 +429,7 @@ if isnumeric(quality) && isscalar(quality)
         softwareIsReferenced = true;
     end
     if ~isempty(fieldnames(execEnv))
-        qobs.interaction.execution_environment = execEnv;
+        qobs.subject_interaction.execution_environment = execEnv;
     end
     bodies{end+1} = qobs;
 end
@@ -524,14 +524,14 @@ channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
 
 obs = struct();
 obs.document_class = classBlock('voltage_observation', ...
-    {'observation', 'voltage'});
+    {'subject_observation', 'voltage'});
 obs.depends_on = [ ...
-    struct('name', 'entity_id',       'value', neuronId), ...
+    struct('name', 'subject_id',       'value', neuronId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
 obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
     'name', 'migrated_mean_spike_waveform', 'datestamp', datestamp);
 
-obs.statement = struct( ...
+obs.subject_statement = struct( ...
     'variable', jOntologyTerm('', 'mean spike waveform'), ...
     'storage_mode', 'inline');
 % Assigned separately, NOT inside struct(...): `axes` is a 1x2 struct array and
@@ -542,16 +542,16 @@ obs.statement = struct( ...
 % BOTH AXES OR NEITHER. axes[k] IS array dimension k, so a one-entry list does
 % not mean "here is one of the dimensions", it ASSERTS that dimension 1 is that
 % axis. Both extents are known here, so both are stated.
-obs.statement.axes = [timeAxis, channelAxis];
+obs.subject_statement.axes = [timeAxis, channelAxis];
 % The encoding of the values belongs to the STATEMENT (signed sec.5). Read off
 % the array's own class rather than defaulted -- image_stack.m's
 % `firstNonEmpty(dataType, 'uint16')` is the defect not repeated.
 [datumType, sourceDatumType] = jDatumType(class(w));
 if ~isempty(datumType)
-    obs.statement.datum_type = datumType;
+    obs.subject_statement.datum_type = datumType;
 end
 if ~isempty(sourceDatumType)
-    obs.statement.source_datum_type = sourceDatumType;
+    obs.subject_statement.source_datum_type = sourceDatumType;
 end
 
 % `sample_time` IS DELIBERATELY ABSENT. Time is an ordinary axis now (signed
@@ -559,8 +559,8 @@ end
 % store one fact twice, which is the #69 shape the axis exists to remove. The
 % score_observation above still carries `kind: 'point'` because a scalar quality
 % has no axis at all -- that is a different statement, not an inconsistency.
-obs.interaction = struct('method', otTerm('', ''));
-obs.observation = struct();
+obs.subject_interaction = struct('method', otTerm('', ''));
+obs.subject_observation = struct();
 
 % The values. COLUMN-MAJOR -- `w(:)` is MATLAB's own linearisation and matches
 % the axis order emitted above, so reshape(values, [nTime nChannels]) inverts it.

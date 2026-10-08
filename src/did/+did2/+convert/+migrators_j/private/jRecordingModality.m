@@ -11,12 +11,12 @@ function [entries, disposition] = jRecordingModality(elementType)
 %                   records, with fields:
 %                     class         the V_eta observation leaf ('voltage_observation')
 %                     mixin         its data_type superclass ('voltage')
-%                     variable      the statement.variable label
+%                     variable      the subject_statement.variable label
 %                     multichannel  true when the type is a MULTI-SITE instrument
 %                                   (the body gets a channel axis; see below)
 %     'stimulator'  ELEMENTTYPE names an instrument that ACTS ON the specimen.
 %                   ENTRIES is empty. NO observation is emitted -- a stimulus
-%                   delivery is a manipulation (T3 direction), and the
+%                   delivery is a subject_manipulation (T3 direction), and the
 %                   stimulus model (#31/#43, timed_sequence_manipulation) is the
 %                   thing that gives these their `instrument_id` edge. Until it
 %                   lands the loose `observes` relation is KEPT for them, so
@@ -224,7 +224,7 @@ switch key
     % --- the one DERIVED type with a signed shape ---------------------------
     % TEAM-SIGN-OFF [spike train leaf], V_eta_ensemble_plan.md:218,
     % 2026-08-17: "a per-neuron spike train is a `time_observation` [...] with
-    % `statement.variable` = spike. The SPIKE TIMES ARE THE VALUE".
+    % `subject_statement.variable` = spike. The SPIKE TIMES ARE THE VALUE".
     %
     % `spikes` IS NOT A PROBE TYPE, so it is outside the 24-row denominator
     % this map's header enumerates, and that is why it sits in its own case

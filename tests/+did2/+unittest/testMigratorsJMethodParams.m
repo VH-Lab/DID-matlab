@@ -419,7 +419,7 @@ function testExtractionHasNoScopeEdgesAtAll(testCase)
 d = onlyClass(testCase, runJ(extractionBody('sep_11', 'default', 'sess_A')), ...
     'method_parameters');
 names = edgeNames(d);
-verifyFalse(testCase, any(strcmp(names, 'entity_id')));
+verifyFalse(testCase, any(strcmp(names, 'subject_id')));
 verifyFalse(testCase, any(strcmp(names, 'epoch_id')));
 verifyFalse(testCase, any(strcmp(names, 'derived_from_id')));
 end
@@ -445,7 +445,7 @@ end
 function testExtractionParksTheEnvironmentFieldsRatherThanDroppingThem(testCase)
 % os / os_version / interpreter / interpreter_version have NO typed home:
 % `software` does not declare them and `execution_environment` lives on
-% interaction, which method_parameters is not. Parked whole in the bag
+% subject_interaction, which method_parameters is not. Parked whole in the bag
 % rather than dropped -- an open question, not a solved one.
 d = onlyClass(testCase, runJ(extractionBody('sep_13', 'default', 'sess_A')), ...
     'method_parameters');
@@ -485,7 +485,7 @@ d = onlyClass(testCase, out, 'method_parameters');
 verifyEqual(testCase, d.get('base.id'), 'sepm_1');
 verifyEqual(testCase, d.get('method_parameters.name'), 'default');
 verifyEqual(testCase, depValue(d, 'derived_from_id'), 'sep_1');
-verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
+verifyEqual(testCase, depValue(d, 'subject_id'), 'elem_9');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'waveform window start', ...
     'waveform window duration', 'standard-deviation threshold'}));
@@ -516,7 +516,7 @@ function testModificationOmitsLineageWhenTheSourceEdgeIsEmpty(testCase)
 v1 = modificationBody('sepm_3', 'default', 'sess_A', '', 'elem_9', 't00042');
 d = onlyClass(testCase, runJ(v1), 'method_parameters');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'derived_from_id')));
-verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
+verifyEqual(testCase, depValue(d, 'subject_id'), 'elem_9');
 end
 
 % ===================== sorting_parameters ==================================
@@ -548,7 +548,7 @@ d = onlyClass(testCase, runJ(sortingBody('sp_2', 'default', 'sess_A')), ...
 verifyEqual(testCase, d.get('base.id'), 'sp_2');
 verifyEqual(testCase, d.get('base.name'), 'default');
 verifyEqual(testCase, d.get('method_parameters.name'), 'default');
-verifyFalse(testCase, any(strcmp(edgeNames(d), 'entity_id')));
+verifyFalse(testCase, any(strcmp(edgeNames(d), 'subject_id')));
 end
 
 % ===================== vmspikefilteringparameters ==========================
@@ -559,7 +559,7 @@ out = runJ(vmspikeBody('vm_1', 'sess_A', 'elem_1', 't00001', ''));
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method_parameters');
 verifyEqual(testCase, d.get('base.id'), 'vm_1');
-verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_1');
+verifyEqual(testCase, depValue(d, 'subject_id'), 'elem_1');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'absolute voltage threshold'}));
 end

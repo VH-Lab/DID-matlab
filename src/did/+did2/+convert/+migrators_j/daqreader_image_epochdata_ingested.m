@@ -44,7 +44,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %      origin/main -- '*.m'` returns two files, this writer and
 %      +ndi/+database/+fun/find_ingested_docs.m, which READS.
 %
-%      `image_observation` inherits `subject_id` from `statement`, where
+%      `image_observation` inherits `subject_id` from `subject_statement`, where
 %      it is REQUIRED. Emitting it empty is not caught by anything --
 %      `+did2/+validate/references.m:90` skips empty edges -- so it would produce
 %      observations about nobody that pass every gate. That is not hypothetical:
@@ -166,7 +166,7 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %
 %         leaf field `datum_type` : 0 declarations
 %         `axes` declared by      : 4 classes -- sampled_body, acquisition_epoch,
-%                                   image, zarr -- and NOT statement,
+%                                   image, zarr -- and NOT subject_statement,
 %                                   which is where revision 2 puts the statement
 %                                   half
 %         a per-sample `values` slot on any axes shape : NONE
@@ -196,9 +196,9 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %         DENOMINATOR: 247 json file(s) under did-schema schemas/V_eta/,
 %                      241 carrying a document_class, 1021 declared field
 %                      paths walked including nested ones
-%         `datum_type` : 1 declaration  -- statement.datum_type
+%         `datum_type` : 1 declaration  -- subject_statement.datum_type
 %                        (blocker 4 measured 0)
-%         `axes`       : declared BY statement, which is exactly where
+%         `axes`       : declared BY subject_statement, which is exactly where
 %                        revision 2 puts the statement half and which blocker 4
 %                        recorded as NOT declaring it
 %         a per-sample `values` slot   : sampled_body.axes[].values.values +
@@ -237,8 +237,8 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %       reads `~did2.schema.cache.envFlagIsOff('DID_ENFORCE_REQUIRED_-
 %       DEPENDENCIES')`, ON unless explicitly disabled. `image_observation`
 %       requires exactly one edge, `subject_id`, inherited from
-%       statement; `sampled_body` requires `statement` ->
-%       statement, so BOTH of the two unemitted targets hang off the
+%       subject_statement; `sampled_body` requires `statement` ->
+%       subject_statement, so BOTH of the two unemitted targets hang off the
 %       same missing fact. Emitting either today no longer produces a quiet
 %       husk -- it produces a QUARANTINE.
 %

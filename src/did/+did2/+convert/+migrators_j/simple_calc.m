@@ -33,7 +33,7 @@ function bodies = simple_calc(preBody)
 %        edge, which needs the migrated-id graph a single-document migrator cannot
 %        see. Emitting an observation anyway would produce a statement about
 %        nobody -- exactly the hollow document this whole effort exists to stop
-%        (statement.subject_id is declared mustBeNonEmpty and nothing
+%        (subject_statement.subject_id is declared mustBeNonEmpty and nothing
 %        enforces it, so it would have passed every gate).
 %
 %   Because the read failed on BOTH fields, the isnumeric guard never passed and

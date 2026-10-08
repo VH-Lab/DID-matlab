@@ -105,7 +105,8 @@ verifyError(testCase, @() did2.build.document('subject', struct(), 'SessionId', 
     'did2:build:missingField');
 verifyError(testCase, @() did2.build.document('subject', ...
     struct('local_identifier', 'm1')), 'did2:build:missingField');
-verifyError(testCase, @() did2.build.document('statement', struct(), ...
+[stmt, ~] = vetaNamesOf();
+verifyError(testCase, @() did2.build.document(stmt, struct(), ...
     'SessionId', sid), 'did2:build:abstractClass');
 end
 
@@ -113,22 +114,23 @@ function testEdgesAreCheckedAgainstTheChain(testCase)
 sid = testCase.TestData.sid;
 v = did2.build.valueCell('voltage', 0.01);
 fields = struct('variable', 'voltage', 'value', v);
-% subject_id is required by statement
+[~, ent] = vetaNamesOf();   % entity_id (subject_id before 2026-10-08)
+% the statement's entity edge is required
 verifyError(testCase, @() did2.build.document('voltage_observation', fields, ...
     'SessionId', sid, 'Edges', struct('time_reference_id', newId())), ...
     'did2:build:missingEdge');
 % an edge no class in the chain declares
 verifyError(testCase, @() did2.build.document('voltage_observation', fields, ...
-    'SessionId', sid, 'Edges', struct('entity_id', newId(), ...
+    'SessionId', sid, 'Edges', struct(ent, newId(), ...
     'time_reference_id', newId(), 'probe_id', newId())), 'did2:build:unknownEdge');
-% subject_id is not `multiple`
+% the entity edge is not `multiple`
 verifyError(testCase, @() did2.build.document('voltage_observation', fields, ...
-    'SessionId', sid, 'Edges', struct('entity_id', {{newId(), newId()}}, ...
+    'SessionId', sid, 'Edges', struct(ent, {{newId(), newId()}}, ...
     'time_reference_id', newId())), 'did2:build:repeatedEdge');
 % time_reference_id IS multiple (T15): repeated names, in order
 t1 = newId(); t2 = newId();
 doc = did2.build.document('voltage_observation', fields, 'SessionId', sid, ...
-    'Edges', {'entity_id', newId(); 'time_reference_id', {t1, t2}});
+    'Edges', {ent, newId(); 'time_reference_id', {t1, t2}});
 names = {doc.depends_on.name};
 verifyEqual(testCase, sum(strcmp(names, 'time_reference_id')), 2);
 ids = {doc.depends_on(strcmp(names, 'time_reference_id')).document_id};
@@ -357,12 +359,13 @@ doc = did2.build.statement('voltage_observation', newId(), 'voltage', ...
     'TimeReferenceIds', {newId()}, 'InstrumentId', newId(), 'SessionId', sid);
 verifyEqual(testCase, doc.document_class.class_name, 'voltage_observation');
 verifyEqual(testCase, [doc.voltage.value.volts], [0.01 0.02 0.03]);
-verifyEqual(testCase, doc.statement.variable.name, 'voltage');
+[stmt, ~] = vetaNamesOf();
+verifyEqual(testCase, doc.(stmt).variable.name, 'voltage');
 verifyTrue(testCase, any(strcmp({doc.depends_on.name}, 'instrument_id')));
 end
 
 function testStatementNeedsATimeReference(testCase)
-% interaction declares time_reference_id with min_count 1
+% subject_interaction declares time_reference_id with min_count 1
 verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
     did2.build.valueCell('voltage', 0.01), 'SessionId', testCase.TestData.sid), ...
     'did2:build:missingEdge');
@@ -555,4 +558,15 @@ rel = did2.build.undirectedRelation({newId(), newId()}, did2.build.term('', 'sam
 verifyEqual(testCase, sum(strcmp({rel.depends_on.name}, 'entity_id')), 2);
 verifyError(testCase, @() did2.build.undirectedRelation({newId()}, ...
     did2.build.term('', 'same_as'), 'SessionId', sid), 'did2:build:missingEdge');
+end
+
+function [stmt, ent] = vetaNamesOf()
+% the statement class and its entity edge as the schema in use spells them
+% ('statement'/'entity_id' since 2026-10-08, did-schema V_eta_tenets.md T2;
+% 'subject_statement'/'subject_id' before)
+if did2.schema.cache.shared().hasClass('statement')
+    stmt = 'statement'; ent = 'entity_id';
+else
+    stmt = 'subject_statement'; ent = 'subject_id';
+end
 end

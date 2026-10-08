@@ -27,9 +27,9 @@ function [body, datumType, sourceDatumType] = jNgridBody(preBody, statementId, n
 %   THE CALLER ALSO OWNS THE SUBJECT. This helper mints a body and nothing else;
 %   it never mints a statement and never reads a subject edge. That is deliberate:
 %   the team's decision is "an ngrid document becomes a sampled_body, and the
-%   sampled_body needs a corresponding statement", and WHICH statement
+%   sampled_body needs a corresponding subject_statement", and WHICH statement
 %   differs per consumer (an image_observation for ontologyImage; a
-%   calculation leaf for the RF family). A helper that guessed would be
+%   subject_calculation leaf for the RF family). A helper that guessed would be
 %   making a model decision at the wrong altitude.
 %
 %   STATUS 2026-08-11: written in a container with neither MATLAB nor Octave, so
@@ -265,7 +265,7 @@ end
 % raw-numeric observation with no dimensioned meaning is valued by a bare
 % self-describing sampled_body"). data_size is NOT carried.
 % `datum` IS GONE (signed sec.5). What it carried:
-%   dtype -> RETURNED to the caller for statement.datum_type
+%   dtype -> RETURNED to the caller for subject_statement.datum_type
 %   kind  -> the axis COUNT, which axes[] states directly
 %   shape -> [axes.n] in array order
 %   unit  -> the value's unit comes from `variable`

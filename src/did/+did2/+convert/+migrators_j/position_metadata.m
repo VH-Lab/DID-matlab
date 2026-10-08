@@ -58,7 +58,7 @@ end
 measurement = jOntologyTerm(node, '');       % name resolved in NDI 2nd pass
 variable = jOntologyTerm('', 'position');    % the kind of measurement (spine "what")
 
-obs = jStartInteraction(preBody, 'term_observation', 'observation', ...
+obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
     {}, variable, {'element_id', 'subject_id'});
 obs.term = struct('value', measurement);
 

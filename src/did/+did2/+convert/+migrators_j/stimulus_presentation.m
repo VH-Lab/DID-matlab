@@ -17,7 +17,7 @@ function bodies = stimulus_presentation(preBody)
 %        depends_on presented_id -> data_type   BROAD, MULTIPLE, one per DISTINCT
 %                                               stimulus (visual_grating, image, ...)
 %        per-trial timing             -> sampled_body, irregular time axis (rev 2)
-%     timed_sequence_manipulation     (4) leaf = manipulation + timed_sequence
+%     timed_sequence_manipulation     (4) leaf = subject_manipulation + timed_sequence
 %        depends_on subject_id     -> subject             who was shown the sequence
 %                   instrument_id  -> entity              THE STIMULATOR (T7) --
 %                                                         this is where v1's
@@ -36,7 +36,7 @@ function bodies = stimulus_presentation(preBody)
 %   WHY PASS 1 CANNOT BUILD ANY OF IT -- four independent blockers
 %   ---------------------------------------------------------------------
 %   1. NO SUBJECT IS KNOWABLE FROM THIS DOCUMENT. `timed_sequence_manipulation`
-%      is a manipulation, so `subject_id` is required by tier. The v1
+%      is a subject_manipulation, so `subject_id` is required by tier. The v1
 %      document names a STIMULATOR, not a subject: NDI's only dependency on this
 %      class is `stimulus_element_id`, set from `ndi_element_stim.id()`
 %      (+ndi/+app/+stimulus/decoder.m:138) and from the mock's

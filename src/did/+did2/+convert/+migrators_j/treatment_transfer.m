@@ -14,8 +14,8 @@ function v2Body = treatment_transfer(preBody)
 %                            +  session_relative_reference   (the shared anchor)
 %
 %   1 -> 3. The spine restructures per J: `variable` lives on the
-%   statement block, `method`/`sample_time` on interaction,
-%   and `notes` on manipulation. subject_id (the recipient) is the
+%   subject_statement block, `method`/`sample_time` on subject_interaction,
+%   and `notes` on subject_manipulation. subject_id (the recipient) is the
 %   patient; the donor is captured by the relation, not a dependency.
 %
 %   NOTE: a precise model would mint a "transferred material" part-subject and
@@ -48,14 +48,14 @@ if isempty(methodName); methodName = 'transfer'; end
 act = struct();
 act.document_class = struct( ...
     'class_name', 'term_manipulation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'manipulation', 'class_version', '1.0.0'), ...
+    'superclasses', struct('class_name', 'subject_manipulation', 'class_version', '1.0.0'), ...
     'schema_version', 'V_eta');
-act.depends_on = struct('name', 'entity_id', 'value', recipientId);
+act.depends_on = struct('name', 'subject_id', 'value', recipientId);
 if isfield(preBody, 'base'); act.base = preBody.base; end
-act.statement  = struct('variable', material, 'storage_mode', 'inline');
-act.interaction = struct('method', ontologyTerm('', methodName), ...
+act.subject_statement  = struct('variable', material, 'storage_mode', 'inline');
+act.subject_interaction = struct('method', ontologyTerm('', methodName), ...
     'sample_time', struct('kind', 'point'));
-act.manipulation = struct('notes', '');
+act.subject_manipulation = struct('notes', '');
 act.term = struct('value', material);   % the imposed material term
 
 % ---- 2. the provenance relation: recipient material derived_from donor ----

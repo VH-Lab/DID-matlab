@@ -1,11 +1,11 @@
 function bodies = spatial_gene_expression_pyramid(preBody)
 %SPATIAL_GENE_EXPRESSION_PYRAMID Brainstorm-J migrator: did_v1
 %   spatialGeneExpressionPyramid -> V_eta spatial_gene_expression_pyramid
-%   (⊂ [base, gene_expression, observation]) + the shared session
+%   (⊂ [base, gene_expression, subject_observation]) + the shared session
 %   anchor. Carries the observation direction: `variable` bound to
 %   NCIT:C16608 "gene expression" per the DID-schema binding registry;
 %   `subject_id` carried from v1 depends_on onto the inherited
-%   statement slot; `time_reference_1` pointing at a
+%   subject_statement slot; `time_reference_1` pointing at a
 %   session_relative_reference `during` anchor (the smallest legitimate
 %   anchor for a static spatial-transcriptomics section -- see the
 %   PROVISIONAL SHAPES block below); the pyramid's own block fields
@@ -22,10 +22,10 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %   TEAM-SIGN-OFF [spatial_transcriptomics_family], Steve Van Hooser
 %   2026-09-22 (did-schema/schemas/V_eta_go_forward_class_audit.md):
 %   Corrected Option C from Waltham-Data-Science/DID-schema#70. Structural:
-%   the pyramid becomes ⊂ [base, gene_expression, observation]
+%   the pyramid becomes ⊂ [base, gene_expression, subject_observation]
 %   (was ⊂ [base, geneExpression]), picking up variable /
 %   method_parameters / sample_time / time_reference_# from the
-%   observation direction; the existing subject_id required-ness
+%   subject_observation direction; the existing subject_id required-ness
 %   moves from the class's own declaration to the inherited slot. The
 %   `variable` binding was landed by the same DID-schema commit
 %   (71298fd, schemas/V_eta/stable/binding_registry_meta.json) --
@@ -44,9 +44,9 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %
 %     1. `time_reference_1` / `sample_time`. A static spatial-transcriptomics
 %        section has no per-sample cadence (`sample_time.kind = 'point'`) and
-%        no real-time acquisition timestamps. The interaction schema
+%        no real-time acquisition timestamps. The subject_interaction schema
 %        requires at least one `time_reference_#` (min_count 1,
-%        did-schema/schemas/V_eta/stable/interaction.json). The
+%        did-schema/schemas/V_eta/stable/subject_interaction.json). The
 %        smallest legitimate anchor is a `session_relative_reference` with
 %        `relation: during` and no metric -- the same handle
 %        jSessionAnchor already mints for treatment / location / label rows,
@@ -57,11 +57,11 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %     2. `method` / `method_parameters`. The geneExpression mixin's assay /
 %        count_type / count_units are semantically the assay method, but the
 %        schema declares them as scalar char fields on the mixin, NOT as a
-%        interaction.method ontology_term. Whether to ALSO write a
+%        subject_interaction.method ontology_term. Whether to ALSO write a
 %        `method` term (and if so, what CURIE -- OBI, EFO, NCIT?) is a
 %        follow-up modelling call. Default here: pass the mixin fields
-%        through unchanged, leave `interaction.method` empty and
-%        `interaction.method_parameters` an empty struct.
+%        through unchanged, leave `subject_interaction.method` empty and
+%        `subject_interaction.method_parameters` an empty struct.
 %
 %   Both flagged as OPEN_WORK #126 candidates (T8 binding follow-ons for
 %   the family); the write-up is on the DID-matlab PR body for the team
@@ -72,12 +72,12 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %   ---------------------------------------------------------------------
 %   The brief flagged a possible `jGeneExpressionObservation` helper
 %   analogous to jCalculation. Held off for now: only ONE class in this
-%   family carries the observation direction (the pyramid), so
-%   there is no duplication to extract. If a second observation
+%   family carries the subject_observation direction (the pyramid), so
+%   there is no duplication to extract. If a second subject_observation
 %   -shaped source lands (a bulk RNA-seq class, say), the shape below
 %   promotes cleanly to a helper by copying the three lines that set
-%   statement.variable / interaction.sample_time /
-%   interaction.method_parameters and the anchor wiring; nothing
+%   subject_statement.variable / subject_interaction.sample_time /
+%   subject_interaction.method_parameters and the anchor wiring; nothing
 %   here would resist that extraction.
 
 arguments
@@ -107,12 +107,12 @@ if ~isfield(pyramid, 'depends_on') || ~isstruct(pyramid.depends_on)
 end
 
 % Make sure subject_id is present -- required-via-inheritance on
-% statement (mustBeNonEmpty: true). If the v1 source carried it
+% subject_statement (mustBeNonEmpty: true). If the v1 source carried it
 % under a different edge name, jCarrySubject will hand its value back;
 % otherwise the emitted `subject_id` entry stays empty (which is what
 % RequiredDependencies quarantines on -- a loud failure, not a silent
 % husk). Deliberately not invented.
-if ~hasDep(pyramid, 'entity_id')
+if ~hasDep(pyramid, 'subject_id')
     subjDep = jCarrySubject(preBody, {'subject_id'});
     pyramid = appendDep(pyramid, subjDep.name, subjDep.value);
 end
@@ -139,17 +139,17 @@ pyramid.document_class.schema_version = TV;
 % Own block: pyramid.spatial_gene_expression_pyramid already carries
 % every property field via the preBody copy; no reshape needed.
 
-% statement (inherited): variable is REQUIRED and BOUND. This is
+% subject_statement (inherited): variable is REQUIRED and BOUND. This is
 % the one place the migrator states a fact the source did not carry --
 % but the fact is the class's identity (this document is a spatial gene
 % expression pyramid), not a value invented for it, and the binding
 % registry entry that made it callable was signed on the same commit
 % that landed the schemas.
-pyramid.statement = struct( ...
+pyramid.subject_statement = struct( ...
     'variable',     jOntologyTerm('NCIT:C16608', 'gene expression'), ...
     'storage_mode', 'inline');
 
-% interaction (inherited): time_reference_# is carried on the
+% subject_interaction (inherited): time_reference_# is carried on the
 % depends_on above; the fields here are what remain on the block itself.
 % `method` is OMITTED (not written empty) by design -- an empty
 % ontology_term would trip did-schema's unminted-term ratchet (#70), and
@@ -159,15 +159,15 @@ pyramid.statement = struct( ...
 % method_parameters stays an empty struct; sample_time.kind = 'point' --
 % the pyramid describes a single fixed moment (a captured section), not
 % a cadence.
-pyramid.interaction = struct( ...
+pyramid.subject_interaction = struct( ...
     'method_parameters', struct(), ...
     'sample_time',       struct('kind', 'point'));
 
-% observation (inherited): derived_from_# stays empty -- the
+% subject_observation (inherited): derived_from_# stays empty -- the
 % pyramid is primary data, not a computation over another statement.
 % Left as an empty struct so ensureClassBlocks does not re-add it under a
 % wrong shape (it manufactures a bare struct(), which is what we want).
-pyramid.observation = struct();
+pyramid.subject_observation = struct();
 
 bodies = {pyramid, anchor};
 end

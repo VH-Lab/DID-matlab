@@ -65,7 +65,7 @@ function bodies = jMethodParameters(preBody, entries, other, opts)
 %     - name + version + url  -> the `software` entity (R1, app -> software).
 %     - os / os_version / interpreter / interpreter_version -> parked in
 %       `other.execution_environment`. `execution_environment` is a
-%       interaction field and method_parameters is not a statement, so
+%       subject_interaction field and method_parameters is not a statement, so
 %       these four have NO TYPED HOME on this class. Parked, not dropped, and
 %       reported as an open question.
 %   When the app block names no software, or base.session_id is empty (a minted

@@ -7,11 +7,11 @@ function bodies = image_stack(preBody)
 %   document (a file-backed pixel blob + geometry bundle tied to a subject). It
 %   is the main did_v1 class exercising J's new storage model (§C.4; 7,007 docs
 %   in the JH corpus). Strict J has NO imageseries_observation class (§A.9): the
-%   discoverable subject-side view is a plain `observation` data-type
+%   discoverable subject-side view is a plain `subject_observation` data-type
 %   leaf whose value is body-backed --
 %
 %       image_observation   the spine handle: subject_id, a shared time anchor, a
-%                           placeholder `statement.variable` (the observed
+%                           placeholder `subject_statement.variable` (the observed
 %                           quantity is the linked ontology label, set by a
 %                           second-pass join -- see V_eta_discovery_notes.md; NOT
 %                           the file format), the inline image geometry on the
@@ -111,13 +111,13 @@ function bodies = image_stack(preBody)
 %   orphan gate says nothing about it either way.
 %
 %   WHY WAS THE EDGE STILL DROPPED AFTER THAT? BECAUSE THERE WAS NOWHERE TO PUT
-%   IT. `image_observation` and its seven ancestors -- observation,
-%   interaction, statement, base, image, data_type, data --
+%   IT. `image_observation` and its seven ancestors -- subject_observation,
+%   subject_interaction, subject_statement, base, image, data_type, data --
 %   declared SIX `depends_on` slots between them: subject_id, time_reference_#,
 %   instrument_id, software_id, method_parameters_id, derived_from_#. Not one
 %   of them means "the metadata row that gives this image its data context".
 %   `derived_from_#` is the near miss and it is wrong twice over: it is typed
-%   to `statement` (the row migrates to an `ontology_table_row`), and
+%   to `subject_statement` (the row migrates to an `ontology_table_row`), and
 %   it asserts COMPUTATION, which this is not.
 %
 %   THE SLOT LANDED (did-schema 6cf31f2, 2026-08-11), so the carry is built:
@@ -285,14 +285,14 @@ anchor.session_relative_reference = struct('relation', 'during');
 
 % ---- the discoverable, body-backed image_observation ------------------------
 obs = struct();
-obs.document_class = classBlock('image_observation', {'observation', 'image'}, TV);
+obs.document_class = classBlock('image_observation', {'subject_observation', 'image'}, TV);
 % THE EDGE SET IS REBUILT FROM SCRATCH HERE, so every edge the source carried
 % has to be carried DELIBERATELY -- that rebuild is what silently lost the
 % source `document_id` between 2026-07-10 and today. These two are
 % unconditional: the guard above guarantees a subject, and the anchor is minted
 % a few lines up.
 obs.depends_on = [ ...
-    struct('name', 'entity_id',       'value', subjectId), ...
+    struct('name', 'subject_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
 
 % ---- the source `document_id` -> `ontology_table_row_id` --------------------
@@ -317,7 +317,7 @@ end
 % The source `label` is NOT carried: it is a templated prose *definition* of the
 % image type (e.g. "A video recording capturing the behavior of C. elegans...")
 % -- i.e. the definition of the modality ontology term that already rides on
-% statement.variable (from format_ontology). Storing it per-document
+% subject_statement.variable (from format_ontology). Storing it per-document
 % would duplicate the ontology term's definition; it is reconstructable as a
 % projection. base.name is a short generic name.
 obs.base = struct('id', stackId, 'session_id', sessionId, ...
@@ -336,12 +336,12 @@ obs.base = struct('id', stackId, 'session_id', sessionId, ...
 % least the SOURCE spelling reaches the document so the corpus can be queried
 % for how often the default fired.
 [datumType, sourceDatumType] = jDatumType(dataType);
-obs.statement = struct('variable', struct('node', '', 'name', 'image'), ...
+obs.subject_statement = struct('variable', struct('node', '', 'name', 'image'), ...
     'datum_type', datumType, ...
     'source_datum_type', sourceDatumType, ...
     'storage_mode', 'body');
-obs.interaction = struct('method', otTerm(''));
-obs.observation = struct();
+obs.subject_interaction = struct('method', otTerm(''));
+obs.subject_observation = struct();
 % The raster CELL: one `value` slot holding the pixels plus the descriptors needed to
 % interpret them (image now matches the single-`value` convention every other data_type
 % follows -- the descriptors ride inside the cell, as `source_unit` does beside

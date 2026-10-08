@@ -224,7 +224,7 @@ result = did2.unittest.helpers.runBatchPass(result, ...
         'TargetVersion', 'V_eta'));
 
 % TEAM DECISION 2026-08-11: `valid_interval` becomes a boolean-valued
-% `statement`. Wired here for the same reason as the four above, in the
+% `subject_statement`. Wired here for the same reason as the four above, in the
 % SAME ORDER -- a post-pass wired into some call sites and not others makes one
 % path green while another does something else.
 %

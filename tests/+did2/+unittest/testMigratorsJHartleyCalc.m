@@ -98,7 +98,7 @@ function testTheLeafIsTheSignedClassAndItsSuperclassPair(testCase)
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = pick(out, 'receptive_field_calculation');
 supers = {leaf.document_class.superclasses.class_name};
-verifyTrue(testCase, ismember('calculation', supers));
+verifyTrue(testCase, ismember('subject_calculation', supers));
 verifyTrue(testCase, ismember('receptive_field', supers));
 names = cellfun(@(b) b.document_class.class_name, out, 'UniformOutput', false);
 verifyFalse(testCase, any(contains(names, 'hartley')), ...
@@ -128,10 +128,10 @@ end
 function testElementIdBecomesSubjectIdAndThePresentationBecomesDerivedFrom(testCase)
 % `element_id` IS a subject edge -- +migrators_j/element.m promotes elements to
 % subjects with their ids PRESERVED. The presentation is provenance, not a
-% subject, so it takes the `derived_from_1` slot calculation declares.
+% subject, so it takes the `derived_from_1` slot subject_calculation declares.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = pick(out, 'receptive_field_calculation');
-verifyEqual(testCase, depValueOf(leaf, 'entity_id'), 'elem_7');
+verifyEqual(testCase, depValueOf(leaf, 'subject_id'), 'elem_7');
 verifyEqual(testCase, depValueOf(leaf, 'derived_from_1'), 'pres_3');
 verifyNotEmpty(testCase, depValueOf(leaf, 'time_reference_1'));
 verifyNotEmpty(testCase, depValueOf(leaf, 'software_id'));
@@ -157,7 +157,7 @@ for k = 1:numel(out)
 end
 verifyGreaterThanOrEqual(testCase, edges, 7, ...
     ['DENOMINATOR: the sweep must actually see edges -- 4 on the leaf ' ...
-     '(entity_id, time_reference_1, derived_from_1, software_id) and 1 ' ...
+     '(subject_id, time_reference_1, derived_from_1, software_id) and 1 ' ...
      'statement edge on each of the 3 bodies, plus derived_from_1 on the ' ...
      'spike body']);
 end
@@ -174,7 +174,7 @@ v1.depends_on = struct('name', {'element_id', 'stimulus_presentation_id'}, ...
     'document_id', {'elem_7', 'pres_3'});
 out = did2.convert.migrators_j.hartley_calc(v1);
 verifyEqual(testCase, ...
-    depValueOf(pick(out, 'receptive_field_calculation'), 'entity_id'), 'elem_7');
+    depValueOf(pick(out, 'receptive_field_calculation'), 'subject_id'), 'elem_7');
 end
 
 % ===================== the composite value =================================
@@ -200,7 +200,7 @@ function testTheStatementSaysTheValueIsBodyBackedAndCarriesTheEncoding(testCase)
 % here (a plane is 200x200x36 doubles). And `ngrid.data_type` is real source
 % data, so it lands on the STATEMENT with its source spelling beside it.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-st = pick(out, 'receptive_field_calculation').statement;
+st = pick(out, 'receptive_field_calculation').subject_statement;
 verifyEqual(testCase, st.storage_mode, 'body');
 verifyEqual(testCase, st.datum_type, 'float64');
 verifyEqual(testCase, st.source_datum_type, 'double');
@@ -358,7 +358,7 @@ function testTheStimulusSequenceIsCARRIEDRatherThanDropped(testCase)
 % THIS TEST IS ALSO THE CAMELCASE FALLBACK'S ONLY WITNESS: universalRenames
 % snake_cases `frameTimes` to `frame_times`, and both spellings are read.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-mp = pick(out, 'receptive_field_calculation').interaction.method_parameters;
+mp = pick(out, 'receptive_field_calculation').subject_interaction.method_parameters;
 verifyEqual(testCase, mp.T, realLagVector()', 'input_parameters still land here');
 verifyEqual(testCase, numel(mp.stimulus_sequence.frame_times), 3360);
 verifyEqual(testCase, numel(mp.stimulus_sequence.hartley_numbers.KXV), 3360);
@@ -368,7 +368,7 @@ ft = v1.hartley_reverse_correlation.frame_times;
 v1.hartley_reverse_correlation = rmfield(v1.hartley_reverse_correlation, 'frame_times');
 v1.hartley_reverse_correlation.frameTimes = ft;
 out2 = did2.convert.migrators_j.hartley_calc(v1);
-mp2 = pick(out2, 'receptive_field_calculation').interaction.method_parameters;
+mp2 = pick(out2, 'receptive_field_calculation').subject_interaction.method_parameters;
 verifyEqual(testCase, numel(mp2.stimulus_sequence.frame_times), 3360, ...
     'the camelCase spelling must be read too');
 end
@@ -381,7 +381,7 @@ function testStimulusPropertiesAreDroppedWhenTheReferentHoldsThem(testCase)
 % cannot follow the edge.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = pick(out, 'receptive_field_calculation');
-verifyFalse(testCase, isfield(leaf.interaction.method_parameters, ...
+verifyFalse(testCase, isfield(leaf.subject_interaction.method_parameters, ...
     'stimulus_properties'));
 end
 

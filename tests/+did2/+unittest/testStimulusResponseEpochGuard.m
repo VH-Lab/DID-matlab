@@ -269,7 +269,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % Opening the gate must not quietly change anything else about the fold.
 out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
 b    = findClass(testCase, out, 'harmonic_component_calculation').toStruct();
-verifyEqual(testCase, depValue(b, 'entity_id'),           'elem_9c027e');
+verifyEqual(testCase, depValue(b, 'subject_id'),           'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
 verifyEqual(testCase, depValue(b, 'derived_from_1'),       'pres_b671ff');
 verifyEqual(testCase, depValue(b, 'derived_from_2'),       'ctrl_20e84c');

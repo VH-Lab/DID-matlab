@@ -252,7 +252,7 @@ end
 
 function b = pointerBody(docId, sessionId, anchorId)
 %POINTERBODY A minimal already-V_eta document holding a `time_reference_1` edge,
-%   standing in for every migrated interaction / directed_relation. Its
+%   standing in for every migrated subject_interaction / directed_relation. Its
 %   only job is to make the ORPHAN question askable: after the fold, does this
 %   edge still resolve?
 b = struct();

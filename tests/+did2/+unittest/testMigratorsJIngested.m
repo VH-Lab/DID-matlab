@@ -588,7 +588,7 @@ function testImageIngestedEmitsNoSubjectlessObservation(testCase)
 % THE GUARD THAT IS THE POINT OF THIS CLASS. The writer sets exactly one
 % dependency, daqreader_id (+ndi/+daq/+reader/image.m:220) -- no subject_id, no
 % element_id, and there is no other construction site. image_observation
-% requires subject_id (inherited from statement), and an empty required
+% requires subject_id (inherited from subject_statement), and an empty required
 % edge validates clean because +did2/+validate/references.m:90 skips it. That is
 % the image_stack husk, 4,563 JH documents, guarded three days ago at 5e53f79;
 % this asserts the same shape is not rebuilt one class over.
@@ -652,7 +652,7 @@ assertEqual(testCase, numel(deps), 1, ...
 verifyEqual(testCase, char(deps(1).name), 'daqreader_id');
 verifyEqual(testCase, depVal(doc, 'daqreader_id'), 'dr_img');
 % stated separately from the count so a failure says WHICH edge appeared
-verifyEmpty(testCase, depVal(doc, 'entity_id'));
+verifyEmpty(testCase, depVal(doc, 'subject_id'));
 verifyEmpty(testCase, depVal(doc, 'element_id'));
 end
 
@@ -666,7 +666,7 @@ function testImageIngestedPassthroughKeepsEveryHeaderFieldWithNoDestination(test
 % `datum_type` ON THE STATEMENT, frametimes to the time axis's `values`.
 %
 % THIS COMMENT USED TO SAY THOSE DESTINATIONS DID NOT EXIST -- "`datum_type` has
-% 0 declarations; `axes` [...] NOT by statement; [...] NO axes shape
+% 0 declarations; `axes` [...] NOT by subject_statement; [...] NO axes shape
 % declares a per-sample `values` slot". Measured over 245 json files on
 % 2026-08-12; ALL THREE ARE FALSE AS OF THE SIGNED data_body BUILD, and the
 % wording is corrected rather than dropped because it read as schema work
@@ -750,8 +750,8 @@ end
 % stated as a set membership rather than a count: the assertion is about
 % subject_id specifically, and a count would pass on the wrong edge.
 obsRequired = cache.requiredDependencies('image_observation');
-verifyTrue(testCase, any(strcmp(obsRequired, 'entity_id')), ...
-    ['image_observation no longer requires entity_id; blocker 1 in ' ...
+verifyTrue(testCase, any(strcmp(obsRequired, 'subject_id')), ...
+    ['image_observation no longer requires subject_id; blocker 1 in ' ...
      '+migrators_j/daqreader_image_epochdata_ingested.m is the thing to re-read']);
 bodyRequired = cache.requiredDependencies('sampled_body');
 verifyTrue(testCase, any(strcmp(bodyRequired, 'statement')), ...
@@ -759,11 +759,11 @@ verifyTrue(testCase, any(strcmp(bodyRequired, 'statement')), ...
      'hung off that one edge, which is why the fold was one fact away']);
 
 % -- and the destinations the header would land in DO exist ---------------
-stmtFields = fieldNamesOf(cache, 'statement');
+stmtFields = fieldNamesOf(cache, 'subject_statement');
 verifyTrue(testCase, ismember('datum_type', stmtFields), ...
-    'statement.datum_type is where revision 2 puts `data_type`');
+    'subject_statement.datum_type is where revision 2 puts `data_type`');
 verifyTrue(testCase, ismember('axes', stmtFields), ...
-    'statement.axes is the statement half of the axis entry');
+    'subject_statement.axes is the statement half of the axis entry');
 
 % the IRREGULAR case specifically -- `frametimes` is one time per frame
 % (+ndi/+daq/+reader/image.m:180, :196-202), so origin/spacing cannot hold it

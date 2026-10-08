@@ -15,7 +15,7 @@ function bodies = jCalculation(preBody, concreteClass, superclasses, valueTarget
 %
 %   Also: the `calculator` schema now declares REQUIRED edges `software_id` +
 %   `runtime_environment_id`. The per-run os / interpreter facts move OUT of an
-%   inline `interaction.execution_environment` sub-block and INTO a
+%   inline `subject_interaction.execution_environment` sub-block and INTO a
 %   standalone `runtime_environment` entity. This helper mints that entity from
 %   the same v1 `app` block jSoftwareFromApp already reads.
 %
@@ -27,16 +27,16 @@ function bodies = jCalculation(preBody, concreteClass, superclasses, valueTarget
 %                         document_class.superclasses list, in order. Typical
 %                         tuning shape: {'tuning_curve_calculation', <marker>}.
 %                         Contrast-sensitivity shape:
-%                         {'calculation', 'contrast_sensitivity'}.
+%                         {'subject_calculation', 'contrast_sensitivity'}.
 %     valueTargetBlock    the block name where the reshaped value lands as
 %                         `.value` (e.g. 'tuning_curve' for the tuning family;
 %                         'contrast_sensitivity' for CSF). This is typically
 %                         either the marker's parent (e.g. tuning_curve is the
 %                         PARENT of the marker orientation_direction_tuning) or
 %                         the marker itself when it is not thin.
-%     variableName        the statement.variable label (what was
+%     variableName        the subject_statement.variable label (what was
 %                         computed).
-%     methodName          the algorithm identity for interaction.method
+%     methodName          the algorithm identity for subject_interaction.method
 %                         (the applet name).
 %     sourceBlock         the v1 block holding result fields to reshape.
 %                         Defaults to a marker with the same name as
@@ -133,9 +133,9 @@ leaf.depends_on = deps;
 
 leaf.base = preBody.base;   % id preserved -> inbound references resolve to the leaf
 
-leaf.statement = struct('variable', jOntologyTerm('', variableName), ...
+leaf.subject_statement = struct('variable', jOntologyTerm('', variableName), ...
     'storage_mode', 'inline');
-leaf.interaction = struct('method', jOntologyTerm('', methodName), ...
+leaf.subject_interaction = struct('method', jOntologyTerm('', methodName), ...
     'method_parameters', calcInputParameters(preBody), ...
     'sample_time', struct('kind', 'point'), ...
     'execution_environment', execEnv);
@@ -150,7 +150,7 @@ end
 
 % The value block: the calculator's structured result. Read from sourceBlock (the
 % marker's own block, or the concrete `*_calc` block); strip input_parameters if
-% it materialised there (it goes to interaction.method_parameters).
+% it materialised there (it goes to subject_interaction.method_parameters).
 leaf.(valueTargetBlock) = struct();
 if ~isempty(valueOverride)
     leaf.(valueTargetBlock) = struct('value', valueOverride);
