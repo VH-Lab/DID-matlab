@@ -68,25 +68,26 @@ end
 
 function testDocumentBuildsASubject(testCase)
 sid = testCase.TestData.sid;
-doc = did2.build.document('subject', struct('local_identifier', 'mouse 7'), ...
-    'SessionId', sid);
-verifyEqual(testCase, doc.document_class.class_name, 'subject');
+[cls, fields, supers] = subjectSpec('mouse 7');
+doc = did2.build.document(cls, fields, 'SessionId', sid);
+verifyEqual(testCase, doc.document_class.class_name, cls);
 verifyEqual(testCase, doc.document_class.schema_version, 'V_eta');
-verifyEqual(testCase, {doc.document_class.superclasses.class_name}, {'entity', 'base'});
+verifyEqual(testCase, {doc.document_class.superclasses.class_name}, supers);
 verifyEqual(testCase, doc.base.session_id, sid);
 verifyNotEmpty(testCase, doc.base.id);
 verifyFalse(testCase, isfield(doc.base, 'name'), ...
     'base.name is did_v1 only (#73 item 54); a V_eta document never writes it');
 verifyMatches(testCase, doc.base.creation_timestamp, ...
     '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$');
-verifyEqual(testCase, doc.subject.local_identifier, 'mouse 7');
-verifyFalse(testCase, isfield(doc.subject, 'description'), ...
+verifyEqual(testCase, doc.(cls).local_identifier, 'mouse 7');
+verifyFalse(testCase, isfield(doc.(cls), 'description'), ...
     'an optional field that was not given is left out, not blank-filled');
 end
 
 function testDocumentKeepsAGivenIdAndTimestamp(testCase)
 id = newId();
-doc = did2.build.document('subject', struct('local_identifier', 'm1'), ...
+[cls, fields] = subjectSpec('m1');
+doc = did2.build.document(cls, fields, ...
     'SessionId', testCase.TestData.sid, 'Id', id, ...
     'CreationTimestamp', '2024-03-01T09:00:00.000Z');
 verifyEqual(testCase, doc.base.id, id);
@@ -95,16 +96,19 @@ end
 
 function testDocumentRefusesWhatTheSchemaDoesNotDeclare(testCase)
 sid = testCase.TestData.sid;
-verifyError(testCase, @() did2.build.document('subject', ...
-    struct('local_identifier', 'm1', 'species', 'mouse'), 'SessionId', sid), ...
+[cls, fields] = subjectSpec('m1');
+withSpecies = fields;
+withSpecies.species = 'mouse';
+verifyError(testCase, @() did2.build.document(cls, withSpecies, 'SessionId', sid), ...
     'did2:build:unknownField');
-verifyError(testCase, @() did2.build.document('subject', ...
-    struct('local_identifier', 'm1', 'base', struct('name', 'x')), 'SessionId', sid), ...
+withBase = fields;
+withBase.base = struct('name', 'x');
+verifyError(testCase, @() did2.build.document(cls, withBase, 'SessionId', sid), ...
     'did2:build:unknownField');
-verifyError(testCase, @() did2.build.document('subject', struct(), 'SessionId', sid), ...
+% the required field: `subject.local_identifier`, or `entity.type` since 2026-10-08
+verifyError(testCase, @() did2.build.document(cls, struct(), 'SessionId', sid), ...
     'did2:build:missingField');
-verifyError(testCase, @() did2.build.document('subject', ...
-    struct('local_identifier', 'm1')), 'did2:build:missingField');
+verifyError(testCase, @() did2.build.document(cls, fields), 'did2:build:missingField');
 [stmt, ~] = vetaNamesOf();
 verifyError(testCase, @() did2.build.document(stmt, struct(), ...
     'SessionId', sid), 'did2:build:abstractClass');
@@ -145,7 +149,8 @@ tmp = tempname;
 mkdir(tmp);
 copyfile(fullfile(src, '*.json'), tmp);
 testCase.addTeardown(@() rmdir(tmp, 's'));
-subjectFile = fullfile(tmp, 'subject.json');
+[cls, fields] = subjectSpec('m1');
+subjectFile = fullfile(tmp, [cls '.json']);
 % Insert the rule as TEXT: a jsondecode/jsonencode round trip would turn every
 % one-element array in the schema into an object and change what is tested.
 jsonText = fileread(subjectFile);
@@ -158,9 +163,8 @@ fwrite(fid, jsonText);
 fclose(fid);
 did2.schema.cache.setSchemaPath(tmp);
 testCase.addTeardown(@() did2.schema.cache.setSchemaPath(src));
-verifyError(testCase, @() did2.build.document('subject', ...
-    struct('local_identifier', 'm1'), 'SessionId', testCase.TestData.sid), ...
-    'did2:build:unknownRule');
+verifyError(testCase, @() did2.build.document(cls, fields, ...
+    'SessionId', testCase.TestData.sid), 'did2:build:unknownRule');
 end
 
 % ===================== term / label / datumType ============================
@@ -357,7 +361,10 @@ doc = did2.build.statement('voltage_observation', newId(), 'voltage', ...
     'Conditions', did2.build.condition('temperature', 'Quantity', 22, 'Unit', 'celsius'), ...
     'MethodParameters', did2.build.parameter('gain', 'Value', 100), ...
     'TimeReferenceIds', {newId()}, 'InstrumentId', newId(), 'SessionId', sid);
-verifyEqual(testCase, doc.document_class.class_name, 'voltage_observation');
+% `voltage_observation` is an `observation` listing `voltage` since 2026-10-08
+[cls, supers] = leafSpec('voltage_observation');
+verifyEqual(testCase, doc.document_class.class_name, cls);
+verifyEqual(testCase, {doc.document_class.superclasses.class_name}, supers);
 verifyEqual(testCase, [doc.voltage.value.volts], [0.01 0.02 0.03]);
 [stmt, ~] = vetaNamesOf();
 verifyEqual(testCase, doc.(stmt).variable.name, 'voltage');
@@ -395,6 +402,69 @@ verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), '
 % data_body true needs a datum_type
 verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
     [], 'DataBody', true, common{:}), 'did2:build:ruleViolated');
+end
+
+% ===================== value kinds (2026-10-08) ===============================
+
+function testAValueKindIsListedAfterTheDirection(testCase)
+% did-schema V_eta_entity_composition_plan.md sec. 1: a temperature reading is an
+% `observation` whose superclasses list `temperature`'s chain after its own
+if ~composes()
+    return;   % a schema built before the composition has the join leaves
+end
+sid = testCase.TestData.sid;
+v = did2.build.valueCell('temperature', 21.6);
+c = did2.schema.cache.shared();
+ent = 'entity_id';
+a = did2.build.statement('temperature_observation', newId(), 'ambient temperature', v, ...
+    'TimeReferenceIds', {newId()}, 'SessionId', sid);
+b = did2.build.document('observation', ...
+    struct('variable', did2.build.term('', 'ambient temperature'), 'value', v), ...
+    'ValueKind', 'temperature', 'SessionId', sid, ...
+    'Edges', struct(ent, newId(), 'time_reference_id', newId()));
+for doc = {a, b}
+    d = doc{1};
+    verifyEqual(testCase, d.document_class.class_name, 'observation');
+    verifyEqual(testCase, {d.document_class.superclasses.class_name}, ...
+        c.documentAncestors('observation', 'temperature'));
+    verifyTrue(testCase, isfield(d, 'temperature'));
+    verifyEqual(testCase, d.temperature.value.celsius, 21.6);
+end
+% a direction given no kind, or a kind on a class that takes none
+verifyError(testCase, @() did2.build.document('observation', ...
+    struct('variable', 'x'), 'SessionId', sid, ...
+    'Edges', struct(ent, newId(), 'time_reference_id', newId())), ...
+    'did2:build:missingValueKind');
+[cls, fields] = subjectSpec('m1');
+verifyError(testCase, @() did2.build.document(cls, fields, 'SessionId', sid, ...
+    'ValueKind', 'temperature'), 'did2:build:missingValueKind');
+end
+
+function testTheValidatorChecksTheValueKind(testCase)
+if ~composes()
+    return;
+end
+sid = testCase.TestData.sid;
+c = did2.schema.cache.shared();
+doc = did2.build.statement('temperature_observation', newId(), 'ambient temperature', ...
+    did2.build.valueCell('temperature', 21.6), 'TimeReferenceIds', {newId()}, ...
+    'SessionId', sid);
+c.validateDocument(doc);   % the built document is valid
+% no kind listed
+bad = doc;
+own = c.superclasses('observation');
+bad.document_class.superclasses = bad.document_class.superclasses(1:numel(own));
+verifyError(testCase, @() c.validateDocument(bad), 'did2:validation:missingValueKind');
+% a listed name that is not a value
+bad = doc;
+bad.document_class.superclasses(numel(own) + 1).class_name = 'session_in_a_dataset';
+verifyError(testCase, @() c.validateDocument(bad), 'did2:validation:badValueKind');
+% the kind's own block must be there
+bad = rmfield(doc, 'temperature');
+verifyError(testCase, @() c.validateDocument(bad), 'did2:validation:missingClassBlock');
+% a named calculator carries its kind in its own chain, so it takes none
+verifyEqual(testCase, c.documentAncestors('tuning_curve_calculation', ''), ...
+    c.superclasses('tuning_curve_calculation'));
 end
 
 % ===================== bodies ==============================================
@@ -558,6 +628,41 @@ rel = did2.build.undirectedRelation({newId(), newId()}, did2.build.term('', 'sam
 verifyEqual(testCase, sum(strcmp({rel.depends_on.name}, 'entity_id')), 2);
 verifyError(testCase, @() did2.build.undirectedRelation({newId()}, ...
     did2.build.term('', 'same_as'), 'SessionId', sid), 'did2:build:missingEdge');
+end
+
+function [cls, fields, supers] = subjectSpec(localId)
+% a subject as the schema in use builds one: `subject`, or since 2026-10-08
+% (did-schema V_eta_entity_composition_plan.md sec. 4) an `entity` of type
+% organism, whose `type` is required
+if did2.schema.cache.shared().hasClass('subject')
+    cls = 'subject';
+    fields = struct('local_identifier', localId);
+    supers = {'entity', 'base'};
+else
+    cls = 'entity';
+    fields = struct('type', did2.build.term('', 'organism'), 'local_identifier', localId);
+    supers = {'base'};
+end
+end
+
+function [cls, supers] = leafSpec(leaf)
+% the class and superclasses a statement leaf name builds: the leaf itself, or
+% since 2026-10-08 its direction listing its value kind
+c = did2.schema.cache.shared();
+if c.hasClass(leaf)
+    cls = leaf;
+    supers = c.superclasses(leaf);
+else
+    parts = regexp(leaf, '^(.*)_([a-z]+)$', 'tokens', 'once');
+    cls = parts{2};
+    supers = c.documentAncestors(cls, parts{1});
+end
+end
+
+function tf = composes()
+% true on a schema whose statement directions take a value kind (2026-10-08)
+c = did2.schema.cache.shared();
+tf = c.hasClass('observation') && ~isempty(c.valueKindRule('observation'));
 end
 
 function [stmt, ent] = vetaNamesOf()
