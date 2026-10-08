@@ -45,9 +45,21 @@ function doc = document(className, fields, options)
 %     'Validate'           default true: run did2.schema.cache.validateDocument
 %                          on the result as the last step.
 %     'SchemaCache'        a did2.schema.cache; default the shared one.
+%     'ValueKind'          the value kind of a statement direction that takes
+%                          one ('temperature' for an `observation`); its chain
+%                          is listed after the class's own and its blocks,
+%                          fields and edges are the document's too.
+%
+%   VALUE KINDS. On a schema where a direction declares `value_kind`
+%   (did-schema V_eta_entity_composition_plan.md sec. 1, 2026-10-08), the
+%   join leaves are gone: a temperature observation is an `observation`
+%   listing `temperature`. A CLASSNAME the schema lacks of the form
+%   <kind>_<direction> ('temperature_observation') is read that way, so a
+%   caller written for either schema builds the right document on both.
 %
 %   Errors, all raised BEFORE any document is returned:
 %     did2:build:abstractClass    CLASSNAME is abstract
+%     did2:build:missingValueKind a direction that takes a value kind, given none
 %     did2:build:unknownField     a name no block declares (also nested)
 %     did2:build:ambiguousField   a name two blocks declare, not qualified
 %     did2:build:missingField     a required field (or nested field) not given
@@ -66,7 +78,7 @@ function doc = document(className, fields, options)
 %     v = did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, 'SourceUnit', 'mV');
 %     doc = did2.build.document('voltage_observation', ...
 %         struct('variable', did2.build.term('ncit:C25613', 'Voltage'), 'value', v), ...
-%         'SessionId', sessionId, 'Edges', struct('subject_id', subjectId));
+%         'SessionId', sessionId, 'Edges', struct('entity_id', subjectId));
 %
 %   See also did2.build.statement, did2.build.composite, did2.schema.cache.
 
@@ -80,9 +92,11 @@ arguments
     options.CreationTimestamp (1,:) char = ''
     options.Validate (1,1) logical = true
     options.SchemaCache = []
+    options.ValueKind (1,:) char = ''
 end
 
 cache = schemaCache(options.SchemaCache);
+[className, kind] = resolveLeaf(cache, className, options.ValueKind);
 classSchema = cache.getClass(className);
 dc = classSchema.document_class;
 if isfield(dc, 'abstract') && isequal(dc.abstract, true)
@@ -94,8 +108,20 @@ if isempty(options.SessionId)
         '''SessionId'' is required: every document belongs to a session (base.session_id).');
 end
 
+rule = cache.valueKindRule(className);
+if isempty(kind) && ~isempty(rule) && ~any(strcmp(cache.superclasses(className), char(rule.root)))
+    error('did2:build:missingValueKind', ...
+        ['Class "%s" takes a value kind (a concrete descendant of "%s"); name it ' ...
+         'with ''ValueKind'', or build "<kind>_%s".'], className, char(rule.root), className);
+end
+if ~isempty(kind) && isempty(rule)
+    error('did2:build:missingValueKind', ...
+        'Class "%s" takes no value kind, so ''ValueKind'' "%s" cannot be given.', className, kind);
+end
+chain = cache.documentChain(className, kind);
+
 % ---- document_class --------------------------------------------------------
-ancestors = cache.superclasses(className);
+ancestors = cache.documentAncestors(className, kind);
 sc = struct('class_name', {}, 'class_version', {});
 for k = 1:numel(ancestors)
     ancDC = cache.getClass(ancestors{k}).document_class;
@@ -110,10 +136,10 @@ doc.document_class = struct( ...
     'schema_version', 'V_eta');
 
 % ---- depends_on --------------------------------------------------------------
-doc.depends_on = buildEdges(cache, className, options.Edges);
+doc.depends_on = buildEdges(cache, className, options.Edges, chain);
 
 % ---- blocks ------------------------------------------------------------------
-info = cache.resolvePlacement(className);
+info = cache.resolvePlacementFor(className, kind);
 givenByBlock = routeFields(info, fields, className);
 for k = 1:numel(info.blocksContributed)
     blockName = info.blocksContributed{k};
@@ -126,10 +152,10 @@ end
 
 % ---- files -------------------------------------------------------------------
 if ~isempty(options.Files)
-    doc.files = struct('file_list', {checkFiles(cache, className, options.Files)});
+    doc.files = struct('file_list', {checkFiles(cache, className, options.Files, chain)});
 end
 
-checkRules(cache, className, doc);
+checkRules(cache, className, doc, chain);
 if options.Validate
     cache.validateDocument(doc);
 end
@@ -257,11 +283,10 @@ if ~isempty(missing)
 end
 end
 
-function edges = buildEdges(cache, className, given)
+function edges = buildEdges(cache, className, given, chain)
 % Check the given edges against every depends_on the chain declares.
 declared = containers.Map();
 order = {};
-chain = cache.classChain(className);
 for c = 1:numel(chain)
     s = cache.getClass(chain{c});
     if ~isfield(s, 'depends_on')
@@ -378,7 +403,7 @@ if ~isempty(tok) && isKey(declared, [tok{1} '_#'])
 end
 end
 
-function list = checkFiles(cache, className, files)
+function list = checkFiles(cache, className, files, chain)
 if ischar(files) || isstring(files)
     files = cellstr(files);
 end
@@ -387,7 +412,6 @@ if ~iscellstr(files)
 end
 names = {};
 series = false(1, 0);
-chain = cache.classChain(className);
 for c = 1:numel(chain)
     s = cache.getClass(chain{c});
     if ~isfield(s, 'file')

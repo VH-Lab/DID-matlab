@@ -1,0 +1,91 @@
+function tests = testV1ToV2Audits
+% testV1ToV2Audits - did2.convert.v1_to_v2's `Audits` option.
+%
+%   The report-only census instruments (silentLoss, fileList,
+%   timeReferenceFamilies) run by default, so migration runs and their
+%   census are unchanged. 'Audits', false skips them for read paths that
+%   discard them (NDI's applyReadNormalization), where they cost more than
+%   the conversion. Skipping must not change the documents, and must not
+%   look like an empty -- clean -- census.
+
+tests = functiontests(localfunctions);
+end
+
+function setupOnce(testCase)
+thisDir = fileparts(mfilename('fullpath'));
+did2.schema.cache.setSchemaPath(fullfile(fileparts(thisDir), 'fixtures', 'V_delta'));
+testCase.TestData.body = makeBody();
+end
+
+function teardownOnce(~)
+did2.schema.cache.resetSingleton();
+end
+
+function testAuditsRunByDefault(testCase)
+out = did2.convert.v1_to_v2({testCase.TestData.body}, 'Validate', false);
+for f = {'silent_loss', 'file_list_audit', 'time_reference_families'}
+    verifyTrue(testCase, isfield(out, f{1}), f{1});
+    verifyFalse(testCase, isfield(out.(f{1}), 'audit_skipped'), ...
+        sprintf('%s ran by default', f{1}));
+end
+end
+
+function testAuditsOffSkipsThemVisibly(testCase)
+out = did2.convert.v1_to_v2({testCase.TestData.body}, 'Validate', false, 'Audits', false);
+for f = {'silent_loss', 'file_list_audit', 'time_reference_families'}
+    verifyEqual(testCase, out.(f{1}), struct('audit_skipped', true), ...
+        sprintf('%s says it was skipped, not that it found nothing', f{1}));
+end
+end
+
+function testAuditsOffChangesNoDocument(testCase)
+a = did2.convert.v1_to_v2({testCase.TestData.body}, 'Validate', false);
+b = did2.convert.v1_to_v2({testCase.TestData.body}, 'Validate', false, 'Audits', false);
+verifyEqual(testCase, numel(b.migrated), numel(a.migrated));
+verifyNotEmpty(testCase, b.migrated);
+for k = 1:numel(a.migrated)
+    verifyEqual(testCase, b.migrated{k}.toStruct(), a.migrated{k}.toStruct());
+end
+verifyEqual(testCase, numel(b.quarantine), numel(a.quarantine));
+end
+
+function testTheReadShortcutEqualsTheFullPass(testCase)
+% A read path may skip v1_to_v2 for a body already at its target and apply
+% did2.convert.ensureClassBlocks alone (NDI's applyReadNormalization). That
+% is sound only if the two give the same document -- including when the
+% body is missing a block or carries a stale superclass list.
+bodies = {makeBody(), makeBodyOf('demoB')};
+b = makeBodyOf('demoB');  b = rmfield(b, 'demoA');           bodies{end+1} = b;
+b = makeBody();  b.document_class.superclasses = b.document_class.superclasses([]);
+bodies{end+1} = b;
+for k = 1:numel(bodies)
+    verifyTrue(testCase, did2.convert.isAlreadyTarget(bodies{k}, 'V_delta'), ...
+        sprintf('body %d is at the target, so the shortcut applies', k));
+    full = did2.convert.v1_to_v2(bodies(k), 'Validate', false, ...
+        'RenameClassNames', false, 'TargetVersion', 'V_delta', 'Audits', false);
+    verifyNumElements(testCase, full.migrated, 1);
+    verifyEqual(testCase, did2.convert.ensureClassBlocks(bodies{k}, []), ...
+        full.migrated{1}.toStruct(), sprintf('body %d', k));
+end
+end
+
+function testAV1BodyIsNotAtTheTarget(testCase)
+b = makeBody();
+b.document_class = rmfield(b.document_class, 'schema_version');
+verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'V_delta'));
+end
+
+function body = makeBodyOf(className)
+doc = did2.document.blank(className);
+doc = doc.set('base.session_id', 'session-audits');
+doc = doc.set('base.name', 'audits');
+body = doc.toStruct();
+end
+
+function body = makeBody()
+doc = did2.document.blank('demoA');
+doc = doc.set('base.session_id', 'session-audits');
+doc = doc.set('base.name', 'audits');
+doc = doc.set('demoA.value', 'a1');
+body = doc.toStruct();
+end

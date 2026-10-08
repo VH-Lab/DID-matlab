@@ -66,10 +66,17 @@ classdef sqlitedb < handle
 
     properties (Access = private)
         dbid = []
+        connFile = ''                % the file SQLite reports for dbid, read when it was opened
+        closedByOwner (1,1) logical = false
+        reconnects = 0
         schemaCache = []
         queryableScalarColumns = []  % struct array from did2.schema.cache.queryablePaths
         queryableScalarPaths = {}    % cellstr mirror, passed to compileQuery
         queryableArrayPathDefs = []  % struct array; one per [*]-bearing sub-field
+        arrayDefParts = {}           % per def: its parentPath split on '.', once
+        arrayDefsByBlock = []        % containers.Map: top-level block -> def indices
+        scalarDefParts = {}          % per queryable scalar: its path split on '.', once
+        scalarDefsByBlock = []       % containers.Map: top-level block -> scalar indices
         queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
         queryableBootstrapOk (1,1) logical = false
     end
@@ -97,13 +104,13 @@ classdef sqlitedb < handle
             obj.schemaCache = opts.SchemaCache;
             obj.bootstrapQueryableColumns();
             isNew = ~isfile(filename);
-            obj.dbid = mksqlite(0, 'open', filename);
-            mksqlite(obj.dbid, 'pragma foreign_keys = ON');
+            obj.openConnection();
             if isNew
                 obj.createSchema();
             else
                 obj.assertSchema();
                 obj.reconcileQueryableColumns();
+                obj.reconcileQueryableScalarPaths();
                 obj.reconcileQueryableArrayPaths();
             end
             obj.ensureFilesTable();
@@ -115,18 +122,29 @@ classdef sqlitedb < handle
 
         function close(obj)
             % close - close the underlying mksqlite connection. Idempotent.
-            if ~isempty(obj.dbid)
+            %
+            % Closes the connection only while it is still this database's:
+            % if someone else closed it and its dbid now belongs to another
+            % database, that database is left alone. After close, the
+            % database stays closed; an operation on it is an error
+            % (did2:database:closed) rather than a silent reopen.
+            if obj.ownsConnection()
                 try
                     mksqlite(obj.dbid, 'close');
                 catch
                 end
-                obj.dbid = [];
             end
+            obj.dbid = [];
+            obj.closedByOwner = true;
         end
 
         function tf = isOpen(obj)
-            % isOpen - true if this instance has an open connection.
-            tf = ~isempty(obj.dbid);
+            % isOpen - true unless this instance was closed with close().
+            %
+            % A connection closed by someone else (mksqlite(0, 'close'),
+            % mksqlite('close') on its dbid) still counts as open: it is
+            % reopened at the next operation (see ensureConnection).
+            tf = ~obj.closedByOwner;
         end
 
         function add(obj, docOrList, opts)
@@ -141,6 +159,7 @@ classdef sqlitedb < handle
                 docOrList
                 opts.Validate (1,1) logical = true
             end
+            obj.ensureConnection();
             list = obj.normaliseDocList(docOrList);
             if isempty(list)
                 return;
@@ -179,6 +198,7 @@ classdef sqlitedb < handle
         function remove(obj, target)
             % remove - delete a document by id or by did2.document.
             id = obj.coerceId(target);
+            obj.ensureConnection();
             stored = mksqlite(obj.dbid, ...
                 'SELECT DISTINCT uid FROM files WHERE doc_id = ? AND ingested = 1', id);
             % ON DELETE CASCADE handles superclasses / depends_on / files rows.
@@ -203,6 +223,7 @@ classdef sqlitedb < handle
             %   copy in fileDir, else a location it records without ingesting.
             %   PATH is that file ('' when TF is false).
             id = obj.coerceId(idOrDoc);
+            obj.ensureConnection();
             rows = mksqlite(obj.dbid, ...
                 ['SELECT uid, location, location_type, ingested FROM files ' ...
                  'WHERE doc_id = ? AND filename = ? ORDER BY rowid ASC'], id, char(name));
@@ -236,6 +257,7 @@ classdef sqlitedb < handle
             if ~obj.has(id)
                 error('did2:database:missingDocument', 'No document with id "%s".', id);
             end
+            obj.ensureConnection();
             n = mksqlite(obj.dbid, ...
                 'SELECT COUNT(*) AS n FROM files WHERE doc_id = ? AND filename = ?', id, char(name));
             if double(n(1).n) == 0
@@ -251,6 +273,7 @@ classdef sqlitedb < handle
             % fileNames - the file names the document records (cellstr, in
             % the order they were added).
             id = obj.coerceId(idOrDoc);
+            obj.ensureConnection();
             rows = mksqlite(obj.dbid, ...
                 ['SELECT filename FROM files WHERE doc_id = ? ' ...
                  'GROUP BY filename ORDER BY MIN(rowid) ASC'], id);
@@ -260,6 +283,7 @@ classdef sqlitedb < handle
         function tf = has(obj, idOrDoc)
             % has - does a document with this id exist?
             id = obj.coerceId(idOrDoc);
+            obj.ensureConnection();
             row = mksqlite(obj.dbid, ...
                 'SELECT 1 AS hit FROM documents WHERE id = ?', id);
             tf = ~isempty(row);
@@ -268,6 +292,7 @@ classdef sqlitedb < handle
         function doc = get(obj, idOrDoc)
             % get - fetch a did2.document for the given id.
             id = obj.coerceId(idOrDoc);
+            obj.ensureConnection();
             row = mksqlite(obj.dbid, ...
                 'SELECT body FROM documents WHERE id = ?', id);
             if isempty(row)
@@ -283,6 +308,7 @@ classdef sqlitedb < handle
 
         function ids = allIds(obj)
             % allIds - every document id, in insertion order.
+            obj.ensureConnection();
             rows = mksqlite(obj.dbid, ...
                 'SELECT id FROM documents ORDER BY rowid ASC');
             ids = obj.rowsToCellstr(rows, 'id');
@@ -290,21 +316,30 @@ classdef sqlitedb < handle
 
         function n = count(obj)
             % count - number of documents.
+            obj.ensureConnection();
             row = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM documents');
             n = double(row(1).n);
         end
 
         function docs = search(obj, q)
             % search - return the documents matching a did2.query.
+            %
+            %   A depends_on whose target is itself a query (see
+            %   did2.query/hasNested) is answered in two steps: the target
+            %   query is searched first (deeper nesting the same way), and
+            %   the edge is then matched against the ids it found, both in
+            %   the SQL and in the in-memory recheck, which needs the ids.
             arguments
                 obj
                 q (1,1) did2.query
             end
+            q = obj.resolveNested(q);
             [whereSQL, params] = did2.database.compileQuery(q, ...
-                'QueryablePaths', obj.queryableScalarPaths, ...
+                'QueryablePaths', obj.queryableScalarColumns, ...
                 'QueryableArrayPaths', obj.queryableArrayPathDefs);
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
+            obj.ensureConnection();
             rows = mksqlite(obj.dbid, sql, params{:});
             docs = obj.rowsToDocs(rows, q);
         end
@@ -331,14 +366,43 @@ classdef sqlitedb < handle
             %   inspect generated columns and table schema directly
             %   without round-tripping through public methods. Not part
             %   of the public API.
+            obj.ensureConnection();
             id = obj.dbid;
         end
 
-        function cols = testHookQueryableColumns(obj)
-            % testHookQueryableColumns - cellstr of the q_<flat>
-            %   generated-column names this instance expects on the
-            %   documents table. Hidden helper for unit tests.
-            cols = {obj.queryableScalarColumns.column};
+        function r = testHookExplain(obj, q)
+            % testHookExplain - the SQL a query compiles to, and SQLite's plan for it
+            %
+            %   R = db.testHookExplain(Q) returns a struct: sql (the full
+            %   statement search() runs), params (its bound values) and plan
+            %   (the rows of EXPLAIN QUERY PLAN: id, parent, detail). It runs
+            %   nothing but EXPLAIN and writes nothing. For diagnosing slow
+            %   searches; not part of the API.
+            arguments
+                obj
+                q (1,1) did2.query
+            end
+            obj.ensureConnection();
+            q = obj.resolveNested(q);       % as search() does
+            [whereSQL, params] = did2.database.compileQuery(q, ...
+                'QueryablePaths', obj.queryableScalarColumns, ...
+                'QueryableArrayPaths', obj.queryableArrayPathDefs);
+            sql = ['SELECT id, body FROM documents WHERE ' whereSQL ' ORDER BY rowid ASC'];
+            plan = mksqlite(obj.dbid, ['EXPLAIN QUERY PLAN ' sql], params{:});
+            r = struct('sql', sql, 'params', {params}, 'plan', plan);
+        end
+
+        function n = testHookReconnects(obj)
+            % testHookReconnects - how many times the connection was reopened
+            % because it had been closed (or its dbid reused) by someone else.
+            n = obj.reconnects;
+        end
+
+        function paths = testHookQueryableScalarPaths(obj)
+            % testHookQueryableScalarPaths - cellstr of the scalar paths
+            %   whose values this instance keeps in queryable_scalar_elem.
+            %   Hidden helper for unit tests.
+            paths = obj.queryableScalarPaths;
         end
 
         function paths = testHookQueryableArrayPaths(obj)
@@ -351,6 +415,52 @@ classdef sqlitedb < handle
 
     % ---- schema bootstrap ----
     methods (Access = private)
+        function openConnection(obj)
+            % openConnection - open FILENAME on the next free dbid
+            obj.dbid = mksqlite(0, 'open', obj.filename);
+            mksqlite(obj.dbid, 'pragma foreign_keys = ON');
+            obj.connFile = did2.database.sqlitedb.mainFile(obj.dbid);
+        end
+
+        function tf = ownsConnection(obj)
+            % ownsConnection - true when dbid is open AND is still this file
+            %
+            % mksqlite numbers connections, and code outside this class
+            % closes them by number: mksqlite(0, 'close') closes them all
+            % (ndi.session.dir before deleting a session), mksqlite('close')
+            % closes dbid 1 (ndi.dataset, after opening a session). Both
+            % are the legacy backend's contract -- a connection may be
+            % closed under its owner, which reopens it on next use. A
+            % closed number is reused by the next open, so "is dbid open"
+            % is not enough: it must still be THIS file, or every query
+            % would go silently to another database.
+            tf = false;
+            if isempty(obj.dbid), return; end
+            try
+                tf = strcmp(did2.database.sqlitedb.mainFile(obj.dbid), obj.connFile);
+            catch
+                tf = false;
+            end
+        end
+
+        function ensureConnection(obj)
+            % ensureConnection - reopen when the connection was closed under us
+            %
+            % Called at the start of every public operation. Costs one
+            % `PRAGMA database_list` when the connection is fine. The old
+            % dbid is NOT closed when it no longer belongs to this file:
+            % it is someone else's connection now.
+            if obj.closedByOwner
+                error('did2:database:closed', ...
+                    'The database %s was closed with close(); make a new did2.database.sqlitedb to use it again.', ...
+                    obj.filename);
+            end
+            if ~obj.ownsConnection()
+                obj.openConnection();
+                obj.reconnects = obj.reconnects + 1;
+            end
+        end
+
         function bootstrapQueryableColumns(obj)
             % Resolve the schema cache and snapshot the queryable scalar
             % and array-iteration paths once per instance. Failures
@@ -363,6 +473,8 @@ classdef sqlitedb < handle
             obj.queryableScalarPaths = {};
             obj.queryableArrayPathDefs = obj.emptyArrayPathStruct();
             obj.queryableArrayPaths = {};
+            obj.indexArrayDefs();
+            obj.indexScalarDefs();
             obj.queryableBootstrapOk = false;
             try
                 cache = obj.resolveSchemaCache();
@@ -384,6 +496,7 @@ classdef sqlitedb < handle
                 scalar = scalar(order);
                 obj.queryableScalarColumns = scalar;
                 obj.queryableScalarPaths = {scalar.path};
+                obj.indexScalarDefs();
             end
             if isfield(info, 'array') && ~isempty(info.array)
                 arrayDefs = info.array;
@@ -391,6 +504,7 @@ classdef sqlitedb < handle
                 arrayDefs = arrayDefs(order);
                 obj.queryableArrayPathDefs = arrayDefs;
                 obj.queryableArrayPaths = {arrayDefs.path};
+                obj.indexArrayDefs();
             end
             obj.queryableBootstrapOk = true;
         end
@@ -405,7 +519,7 @@ classdef sqlitedb < handle
                     'CREATE INDEX documents_session_id ON documents(session_id)');
                 mksqlite(obj.dbid, ...
                     'CREATE INDEX documents_datestamp ON documents(datestamp)');
-                obj.createQueryableColumnIndexes();
+                obj.ensureScalarSidecarTable();
 
                 mksqlite(obj.dbid, [ ...
                     'CREATE TABLE superclasses (' ...
@@ -451,6 +565,10 @@ classdef sqlitedb < handle
                     'INSERT INTO meta(key, value) VALUES(?, ?)', ...
                     'queryable_array_paths', ...
                     did2.database.sqlitedb.serialisePathSet(obj.queryableArrayPaths));
+                mksqlite(obj.dbid, ...
+                    'INSERT INTO meta(key, value) VALUES(?, ?)', ...
+                    'queryable_scalar_paths', ...
+                    did2.database.sqlitedb.serialisePathSet(obj.queryableScalarPaths));
 
                 mksqlite(obj.dbid, 'COMMIT');
             catch err
@@ -461,42 +579,17 @@ classdef sqlitedb < handle
         end
 
         function reconcileQueryableColumns(obj)
-            % Compare the currently-installed `q_*` columns on documents
-            % to the desired set. If they differ, rebuild the documents
-            % table by table-swap. Bodies are preserved verbatim; the
-            % generated columns repopulate themselves from json_extract.
-            % Skipped when bootstrap degraded — see bootstrapQueryableColumns.
-            if ~obj.queryableBootstrapOk
-                return;
-            end
-            desired = sort({obj.queryableScalarColumns.column});
-            current = obj.currentQueryableColumns();
-            if isequal(sort(current(:)'), desired(:)')
+            % A database in the old layout (q_* generated columns on the
+            % documents table) is rebuilt without them, once; its values
+            % are then filled into queryable_scalar_elem by
+            % reconcileQueryableScalarPaths, which finds no stored path set.
+            if obj.legacyQueryableColumnCount() == 0
                 return;
             end
             obj.rebuildDocumentsTable();
-        end
-
-        function names = currentQueryableColumns(obj)
-            % Probe each expected generated column with a zero-row SELECT
-            % and collect the ones that succeed. We previously walked
-            % `pragma_table_info('documents')` but the mksqlite + sqlite
-            % combo on CI was returning rows whose `.name` field didn't
-            % round-trip cleanly through ismember even though
-            % `SELECT q_base_name FROM documents` (and the column itself)
-            % worked fine. Probing the columns directly avoids that
-            % layer entirely. Returns the subset of the expected columns
-            % that currently exist on the table.
-            names = {};
-            for k = 1:numel(obj.queryableScalarColumns)
-                col = obj.queryableScalarColumns(k);
-                sql = sprintf('SELECT %s FROM documents LIMIT 0', col.column);
-                try
-                    mksqlite(obj.dbid, sql);
-                    names{end+1} = col.column; %#ok<AGROW>
-                catch
-                    % column does not exist on this table.
-                end
+            try
+                mksqlite(obj.dbid, 'DELETE FROM meta WHERE key = ?', 'queryable_scalar_paths');
+            catch
             end
         end
 
@@ -543,7 +636,6 @@ classdef sqlitedb < handle
                     'CREATE INDEX documents_session_id ON documents(session_id)');
                 mksqlite(obj.dbid, ...
                     'CREATE INDEX documents_datestamp ON documents(datestamp)');
-                obj.createQueryableColumnIndexes();
 
                 mksqlite(obj.dbid, 'COMMIT');
             catch err
@@ -555,50 +647,47 @@ classdef sqlitedb < handle
             mksqlite(obj.dbid, 'PRAGMA foreign_keys = ON');
         end
 
-        function sql = documentsTableSQL(obj)
-            % Compose the CREATE TABLE documents (...) statement,
-            % appending one `q_<flat> <affinity> GENERATED ALWAYS AS
-            % (json_extract(body, '$.<path>')) STORED` clause per
-            % queryable scalar path.
-            base = ['CREATE TABLE documents (' ...
+        function sql = documentsTableSQL(~)
+            % The documents table holds each document once, with its fixed
+            % columns. Queryable values are NOT generated columns any more:
+            % they live in queryable_scalar_elem, one row per value a
+            % document has. The V_eta schema declares 675 queryable scalar
+            % paths, and a generated column plus an index for each made
+            % every insert maintain 675 indexes, almost all for empty
+            % values: 3.9 ms per document against 0.26 ms with the side
+            % table (measured 2026-10-06 over 2,158 documents shaped like
+            % the Haley V2 import, SQLite 3.45).
+            sql = ['CREATE TABLE documents (' ...
                 'id TEXT PRIMARY KEY,' ...
                 'classname TEXT NOT NULL,' ...
                 'class_version TEXT NOT NULL,' ...
                 'session_id TEXT,' ...
                 'datestamp TEXT NOT NULL,' ...
                 'body TEXT NOT NULL,' ...
-                'body_hash TEXT NOT NULL'];
-            for k = 1:numel(obj.queryableScalarColumns)
-                col = obj.queryableScalarColumns(k);
-                affinity = col.affinity;
-                if isempty(affinity)
-                    affinityClause = '';
-                else
-                    affinityClause = [' ' affinity];
-                end
-                base = [base sprintf( ...
-                    [',%s%s GENERATED ALWAYS AS ' ...
-                     '(json_extract(body, ''$.%s'')) STORED'], ...
-                    col.column, affinityClause, col.path)]; %#ok<AGROW>
-            end
-            sql = [base ')'];
-        end
-
-        function createQueryableColumnIndexes(obj)
-            for k = 1:numel(obj.queryableScalarColumns)
-                col = obj.queryableScalarColumns(k);
-                mksqlite(obj.dbid, sprintf( ...
-                    'CREATE INDEX documents_%s ON documents(%s)', ...
-                    col.column, col.column));
-            end
+                'body_hash TEXT NOT NULL)'];
         end
 
         function dropQueryableColumnIndexes(obj)
-            for k = 1:numel(obj.queryableScalarColumns)
-                col = obj.queryableScalarColumns(k);
-                mksqlite(obj.dbid, sprintf( ...
-                    'DROP INDEX IF EXISTS documents_%s', col.column));
+            % Drop the per-column indexes of the old layout (documents_q_*),
+            % whatever columns they were on: a database written before the
+            % side table may have been built from a different schema.
+            rows = mksqlite(obj.dbid, ['SELECT name FROM sqlite_master WHERE type = ''index'' ' ...
+                'AND tbl_name = ''documents'' AND name LIKE ''documents\_q\_%'' ESCAPE ''\''']);
+            for k = 1:numel(rows)
+                mksqlite(obj.dbid, sprintf('DROP INDEX IF EXISTS "%s"', rows(k).name));
             end
+        end
+
+        function n = legacyQueryableColumnCount(obj)
+            % How many q_* generated columns the documents table still has
+            % (the layout before queryable_scalar_elem). table_XINFO, not
+            % table_info: generated columns are hidden columns, and
+            % table_info leaves them out -- it reported 0 on an old-layout
+            % database, so the conversion never ran (caught by
+            % testAnOldLayoutDatabaseIsConvertedOnOpen).
+            row = mksqlite(obj.dbid, ['SELECT COUNT(*) AS n FROM pragma_table_xinfo(''documents'') ' ...
+                'WHERE name LIKE ''q\_%'' ESCAPE ''\''']);
+            n = double(row(1).n);
         end
 
         function s = emptyColumnStruct(~)
@@ -611,6 +700,69 @@ classdef sqlitedb < handle
             s = struct('path', {}, 'declaringClass', {}, ...
                 'parentField', {}, 'parentPath', {}, ...
                 'subField', {}, 'type', {}, 'affinity', {});
+        end
+
+        function reconcileQueryableScalarPaths(obj)
+            % Fill queryable_scalar_elem from the stored bodies when the
+            % schema's queryable scalar paths differ from the ones the
+            % table was filled for, or it was never filled (a database in
+            % the old layout, or from before this table existed).
+            if ~obj.queryableBootstrapOk
+                return;
+            end
+            obj.ensureScalarSidecarTable();
+            stored = obj.readMeta('queryable_scalar_paths');
+            desired = obj.queryableScalarPaths;
+            if ~isempty(stored) && isequal(sort(did2.database.sqlitedb.deserialisePathSet(stored)), sort(desired))
+                return;
+            end
+            mksqlite(obj.dbid, 'BEGIN IMMEDIATE');
+            try
+                mksqlite(obj.dbid, 'DELETE FROM queryable_scalar_elem');
+                rows = mksqlite(obj.dbid, 'SELECT id, body FROM documents ORDER BY rowid ASC');
+                for k = 1:numel(rows)
+                    obj.insertScalarRowsFromStruct(rows(k).id, jsondecode(rows(k).body));
+                end
+                mksqlite(obj.dbid, 'INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)', ...
+                    'queryable_scalar_paths', did2.database.sqlitedb.serialisePathSet(desired));
+                mksqlite(obj.dbid, 'COMMIT');
+            catch err
+                try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
+                rethrow(err);
+            end
+        end
+
+        function ensureScalarSidecarTable(obj)
+            % One row per queryable scalar value a document has. The value
+            % goes in the column of its declared affinity -- TEXT, a number
+            % (INTEGER or REAL), or none -- so SQLite converts it exactly
+            % as it converted the old generated column of that affinity.
+            try
+                mksqlite(obj.dbid, 'SELECT 1 FROM queryable_scalar_elem LIMIT 0');
+                return;
+            catch
+            end
+            mksqlite(obj.dbid, [ ...
+                'CREATE TABLE queryable_scalar_elem (' ...
+                'doc_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,' ...
+                'path TEXT NOT NULL,' ...
+                'value_text TEXT,' ...
+                'value_num REAL,' ...
+                'value_raw)']);
+            mksqlite(obj.dbid, 'CREATE INDEX qse_path_text ON queryable_scalar_elem(path, value_text)');
+            mksqlite(obj.dbid, 'CREATE INDEX qse_path_num ON queryable_scalar_elem(path, value_num)');
+            mksqlite(obj.dbid, 'CREATE INDEX qse_path_raw ON queryable_scalar_elem(path, value_raw)');
+            mksqlite(obj.dbid, 'CREATE INDEX qse_doc_id ON queryable_scalar_elem(doc_id)');
+        end
+
+        function v = readMeta(obj, key)
+            v = '';
+            try
+                row = mksqlite(obj.dbid, 'SELECT value FROM meta WHERE key = ?', key);
+            catch
+                return;
+            end
+            if ~isempty(row), v = row(1).value; end
         end
 
         function reconcileQueryableArrayPaths(obj)
@@ -706,11 +858,30 @@ classdef sqlitedb < handle
         end
 
         function insertSidecarRowsFromStruct(obj, docId, s)
-            % Walk every configured queryable array path and INSERT one
-            % row per array element into queryable_array_elem.
-            for k = 1:numel(obj.queryableArrayPathDefs)
+            % One queryable_array_elem row per indexed array element. Only
+            % the defs whose top-level block the document HAS are looked
+            % at (arrayDefsByBlock), with their paths split once
+            % (arrayDefParts): every def was tried on every document,
+            % splitting its path each time -- 910,420 tries for 4,975
+            % documents of the Haley V2 import, nearly all finding no
+            % block. Defs are visited in their sorted order and the rows
+            % go in with one statement per chunk (insertMany), so the
+            % table holds the same rows in the same order as before.
+            if isempty(obj.arrayDefsByBlock) || ~isstruct(s) || ~isscalar(s)
+                return;
+            end
+            blocks = fieldnames(s);
+            defIdx = [];
+            for b = 1:numel(blocks)
+                if isKey(obj.arrayDefsByBlock, blocks{b})
+                    defIdx = [defIdx, obj.arrayDefsByBlock(blocks{b})]; %#ok<AGROW>
+                end
+            end
+            defIdx = sort(defIdx);
+            rows = cell(0, 5);
+            for k = defIdx
                 def = obj.queryableArrayPathDefs(k);
-                elems = obj.resolveParentArray(s, def.parentPath);
+                elems = obj.resolveParentArray(s, obj.arrayDefParts{k});
                 for idx = 1:numel(elems)
                     elem = obj.elementAt(elems, idx);
                     if ~isstruct(elem) || ~isfield(elem, def.subField)
@@ -721,24 +892,132 @@ classdef sqlitedb < handle
                         continue;
                     end
                     [textValue, numValue] = obj.coerceLeafValue(value, def.affinity);
-                    mksqlite(obj.dbid, ...
-                        ['INSERT INTO queryable_array_elem' ...
-                         '(doc_id, path, elem_index, value_text, value_num) ' ...
-                         'VALUES(?, ?, ?, ?, ?)'], ...
-                        docId, def.path, idx, textValue, numValue);
+                    rows(end+1, :) = {docId, def.path, idx, textValue, numValue}; %#ok<AGROW>
+                end
+            end
+            obj.insertMany(['INSERT INTO queryable_array_elem' ...
+                '(doc_id, path, elem_index, value_text, value_num) VALUES'], rows);
+        end
+
+        function insertScalarRowsFromStruct(obj, docId, s)
+            % One queryable_scalar_elem row per queryable scalar path the
+            % document has, holding what json_extract(body, path) gave the
+            % old generated column: text as text, a number or logical as a
+            % number, anything else (an array, a struct, empty) as its JSON.
+            % A non-finite number is JSON null, so it has no row.
+            if isempty(obj.scalarDefsByBlock) || ~isstruct(s) || ~isscalar(s)
+                return;
+            end
+            blocks = fieldnames(s);
+            idx = [];
+            for b = 1:numel(blocks)
+                if isKey(obj.scalarDefsByBlock, blocks{b})
+                    idx = [idx, obj.scalarDefsByBlock(blocks{b})]; %#ok<AGROW>
+                end
+            end
+            idx = sort(idx);
+            rows = cell(0, 5);
+            for k = idx
+                parts = obj.scalarDefParts{k};
+                cursor = s;
+                found = true;
+                for p = 1:numel(parts)
+                    if ~isstruct(cursor) || ~isscalar(cursor) || ~isfield(cursor, parts{p})
+                        found = false;
+                        break;
+                    end
+                    cursor = cursor.(parts{p});
+                end
+                if ~found
+                    continue;
+                end
+                [value, isNull] = did2.database.sqlitedb.jsonExtractValue(cursor);
+                if isNull
+                    continue;          % JSON null: json_extract gave NULL, so no row
+                end
+                row = {docId, obj.queryableScalarColumns(k).path, [], [], []};
+                switch upper(char(obj.queryableScalarColumns(k).affinity))
+                    case 'TEXT'
+                        row{3} = value;
+                    case {'INTEGER', 'REAL'}
+                        row{4} = value;
+                    otherwise
+                        row{5} = value;
+                end
+                rows(end+1, :) = row; %#ok<AGROW>
+            end
+            obj.insertMany(['INSERT INTO queryable_scalar_elem' ...
+                '(doc_id, path, value_text, value_num, value_raw) VALUES'], rows);
+        end
+
+        function indexScalarDefs(obj)
+            % Split each queryable scalar path once and group by block.
+            n = numel(obj.queryableScalarColumns);
+            obj.scalarDefParts = cell(1, n);
+            obj.scalarDefsByBlock = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            for k = 1:n
+                parts = strsplit(char(obj.queryableScalarColumns(k).path), '.');
+                obj.scalarDefParts{k} = parts;
+                if isKey(obj.scalarDefsByBlock, parts{1})
+                    obj.scalarDefsByBlock(parts{1}) = [obj.scalarDefsByBlock(parts{1}), k];
+                else
+                    obj.scalarDefsByBlock(parts{1}) = k;
                 end
             end
         end
 
-        function elems = resolveParentArray(~, s, parentPath)
-            % Navigate a dot-path with no [*] segments down to the value
-            % stored at parentPath. Returns a struct array, cell array
-            % of structs, or [] if the path is unresolvable.
-            elems = [];
-            if isempty(parentPath)
+        function indexArrayDefs(obj)
+            % Split each array def's parentPath once and group the defs by
+            % the top-level block their path starts with (a def with no
+            % parent path never yields a row, so it is left out).
+            n = numel(obj.queryableArrayPathDefs);
+            obj.arrayDefParts = cell(1, n);
+            obj.arrayDefsByBlock = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            for k = 1:n
+                pp = obj.queryableArrayPathDefs(k).parentPath;
+                if isempty(pp)
+                    continue;
+                end
+                parts = strsplit(char(pp), '.');
+                obj.arrayDefParts{k} = parts;
+                if isKey(obj.arrayDefsByBlock, parts{1})
+                    obj.arrayDefsByBlock(parts{1}) = [obj.arrayDefsByBlock(parts{1}), k];
+                else
+                    obj.arrayDefsByBlock(parts{1}) = k;
+                end
+            end
+        end
+
+        function insertMany(obj, sqlHead, rows)
+            % insertMany - INSERT the rows of the cell array ROWS (one row
+            % per row of ROWS, one column per placeholder) with as few
+            % statements as SQLite's bound-variable limit allows. SQLHEAD
+            % ends with VALUES. One statement per row was one mksqlite
+            % call per row: ~20 per document (99,800 for 4,975 documents
+            % of the Haley V2 import, 35 s).
+            if isempty(rows)
                 return;
             end
-            parts = strsplit(parentPath, '.');
+            nCols = size(rows, 2);
+            % 999 is SQLite's oldest default limit on bound variables;
+            % staying under it keeps this correct on any SQLite build.
+            perStatement = max(1, floor(999 / nCols));
+            one = ['(' strjoin(repmat({'?'}, 1, nCols), ', ') ')'];
+            for first = 1:perStatement:size(rows, 1)
+                last = min(first + perStatement - 1, size(rows, 1));
+                chunk = rows(first:last, :)';
+                sql = [sqlHead ' ' strjoin(repmat({one}, 1, last - first + 1), ', ')];
+                mksqlite(obj.dbid, sql, chunk{:});
+            end
+        end
+
+        function elems = resolveParentArray(~, s, parts)
+            % The value at the path PARTS (a parentPath already split on
+            % '.') in S, or [] when any step is missing.
+            elems = [];
+            if isempty(parts)
+                return;
+            end
             cursor = s;
             for k = 1:numel(parts)
                 if ~isstruct(cursor) || ~isscalar(cursor) ...
@@ -936,20 +1215,22 @@ classdef sqlitedb < handle
                 id, classname, classVersion, sessionId, datestamp, ...
                 bodyText, bodyHash);
 
+            % One statement per table, not per row (insertMany).
             chain = obj.classChainFromStruct(s);
+            rows = cell(numel(chain), 2);
             for k = 1:numel(chain)
-                mksqlite(obj.dbid, ...
-                    'INSERT INTO superclasses(doc_id, classname) VALUES(?, ?)', ...
-                    id, chain{k});
+                rows(k, :) = {id, chain{k}};
             end
+            obj.insertMany('INSERT INTO superclasses(doc_id, classname) VALUES', rows);
 
             deps = obj.dependsOnEntries(s);
+            rows = cell(numel(deps), 3);
             for k = 1:numel(deps)
-                mksqlite(obj.dbid, ...
-                    'INSERT OR IGNORE INTO depends_on(doc_id, name, document_id) VALUES(?, ?, ?)', ...
-                    id, deps{k}.name, deps{k}.document_id);
+                rows(k, :) = {id, deps{k}.name, deps{k}.document_id};
             end
+            obj.insertMany('INSERT OR IGNORE INTO depends_on(doc_id, name, document_id) VALUES', rows);
 
+            obj.insertScalarRowsFromStruct(id, s);
             obj.insertSidecarRowsFromStruct(id, s);
         end
 
@@ -1111,6 +1392,13 @@ classdef sqlitedb < handle
                 error('did2:database:badInput', ...
                     'Expected a document id (char) or a did2.document; got %s.', ...
                     class(target));
+            end
+        end
+
+        function q = resolveNested(obj, q)
+            % resolveNested - each nested depends_on target replaced by the ids it matches here
+            if q.hasNested()
+                q = q.resolveNested(@(inner) obj.searchIds(inner));
             end
         end
 
@@ -1286,6 +1574,38 @@ classdef sqlitedb < handle
     end
 
     methods (Static, Access = private)
+        function [v, isNull] = jsonExtractValue(x)
+            % What json_extract(body, '$.path') returns for a field whose
+            % MATLAB value is X, in the body as jsonencode writes it:
+            % text, a number (a logical as 1/0), or the JSON of anything
+            % else. A non-finite number is written as null: ISNULL.
+            isNull = false;
+            if ischar(x)
+                v = x;
+            elseif isstring(x) && isscalar(x)
+                v = char(x);
+            elseif (isnumeric(x) || islogical(x)) && isscalar(x)
+                v = double(x);
+                isNull = ~isfinite(v);
+            else
+                v = jsonencode(x);
+            end
+        end
+
+        function f = mainFile(dbid)
+            % mainFile - the file SQLite reports for dbid's main database
+            %
+            % Errors when dbid is not open (mksqlite: "database not open").
+            rows = mksqlite(dbid, 'PRAGMA database_list');
+            f = '';
+            for k = 1:numel(rows)
+                if strcmp(rows(k).name, 'main')
+                    f = char(rows(k).file);
+                    return;
+                end
+            end
+        end
+
         function list = asList(x)
             % a struct array or a cell array -> a cell array of structs
             if isempty(x)

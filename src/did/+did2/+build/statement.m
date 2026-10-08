@@ -4,8 +4,11 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %   DOC = did2.build.statement(LEAFCLASS, SUBJECTID, VARIABLE, VALUE, ...)
 %   builds a concrete statement leaf -- an observation, assertion, manipulation
 %   or calculation ('voltage_observation', 'term_assertion',
-%   'dose_manipulation', 'tuning_curve_calculation', ...) -- about the subject
-%   SUBJECTID. VARIABLE is a term or a name; VALUE is the leaf's `value`, e.g.
+%   'dose_manipulation', 'tuning_curve_calculation', ...) -- about the entity
+%   (on a schema where the value kind is a mixin, 'voltage_observation' names
+%   an `observation` listing `voltage`; see did2.build.document)
+%   SUBJECTID (its `entity_id` edge; usually a subject, any entity may be
+%   described). VARIABLE is a term or a name; VALUE is the leaf's `value`, e.g.
 %   from did2.build.valueCell or did2.build.term. VALUE may be [] when the
 %   value lives elsewhere: in a body ('DataBody', true, then build the body
 %   with did2.build.sampledBody/opaqueBody, owner = this document), or in a
@@ -20,7 +23,8 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %     'Method'            a term (or a name)
 %     'MethodParameters'  inline settings (did2.build.parameter / list) --
 %                         OR 'MethodParametersId', never both
-%     'DatumType'         data_type.datum_type (did2.build.datumType)
+%     'DatumType'         value.data_type (value.datum_type before 2026-10-08;
+%                         did2.build.datumType)
 %     'SourceDatumType'   the source's own type name
 %     'DataBody'          logical: the value is stored in a body
 %     'Notes'             char
@@ -90,14 +94,15 @@ fields.keys = options.Keys;
 fields.conditions = options.Conditions;
 fields.method = options.Method;
 fields.method_parameters = options.MethodParameters;
-fields.datum_type = options.DatumType;
-fields.source_datum_type = options.SourceDatumType;
+[~, entityEdge, dataTypeField] = vetaNames(options.SchemaCache);   % `subject_id` / `datum_type` before 2026-10-08
+fields.(dataTypeField) = options.DatumType;
+fields.(['source_' dataTypeField]) = options.SourceDatumType;
 fields.data_body = options.DataBody;
 fields.notes = options.Notes;
 fields = dropAbsent(fields);
 
 edges = struct( ...
-    'subject_id', subjectId, ...
+    entityEdge, subjectId, ...
     'time_reference_id', {options.TimeReferenceIds}, ...
     'instrument_id', options.InstrumentId, ...
     'software_id', options.SoftwareId, ...

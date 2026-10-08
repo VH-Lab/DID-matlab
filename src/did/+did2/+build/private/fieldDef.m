@@ -4,15 +4,23 @@ function def = fieldDef(cache, className, fieldPath)
 %   DEF = fieldDef(CACHE, CLASSNAME, FIELDPATH) looks FIELDPATH up in the
 %   fields CLASSNAME declares or inherits. FIELDPATH is dot-separated, e.g.
 %   'keys', 'value', 'value.start'. The first segment may instead name a class
-%   in the chain ('subject_interaction.method_parameters') when the same field
+%   in the chain ('interaction.method_parameters') when the same field
 %   name is declared by two classes of the chain.
 %
 %   Errors did2:build:unknownField when nothing matches and
 %   did2:build:ambiguousField when the first segment matches more than once.
 
 parts = strsplit(fieldPath, '.');
-tagged = cache.fieldsFor(className);
-chain = cache.classChain(className);
+% a leaf the schema spells as a direction plus a value kind (2026-10-08) has
+% the fields of both chains
+[cls, kind] = resolveLeaf(cache, className, '');
+tagged = cache.fieldsFor(cls);
+chain = cache.documentChain(cls, kind);
+if ~isempty(kind)
+    extra = cache.fieldsFor(kind);
+    have = unique({tagged.declaringClass});
+    tagged = [tagged, extra(~ismember({extra.declaringClass}, have))];
+end
 
 owner = '';
 if numel(parts) > 1 && any(strcmp(parts{1}, chain))

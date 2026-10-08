@@ -142,6 +142,18 @@ classdef cache < handle
         curieRegistry struct = struct()
     end
 
+    properties (Access = private)
+        % Per-class results of superclasses() and resolvePlacement(),
+        % computed once per class for the life of this instance. Both are
+        % pure functions of the loaded schemas, which only ever grow here
+        % (getClass caches every file it reads; a new schema path makes a
+        % new instance), so a remembered answer cannot go stale. Every
+        % document read used to recompute them: listing the 10,536 Haley V2
+        % subjects called getClass 900,580 times.
+        superclassMemo
+        placementMemo
+    end
+
     methods (Access = private)
         function obj = cache(schemaPath)
             % Private constructor — use did2.schema.cache.shared().
@@ -150,6 +162,8 @@ classdef cache < handle
             end
             obj.schemaPath = schemaPath;
             obj.loadedClasses = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.superclassMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.placementMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.loadRegistry();
         end
     end
@@ -192,6 +206,10 @@ classdef cache < handle
                 obj
                 className (1,:) char
             end
+            if isKey(obj.superclassMemo, className)
+                names = obj.superclassMemo(className);
+                return;
+            end
             names = {};
             visited = containers.Map('KeyType', 'char', 'ValueType', 'logical');
             visited(className) = true;
@@ -221,6 +239,7 @@ classdef cache < handle
                     queue{end+1} = parentName; %#ok<AGROW>
                 end
             end
+            obj.superclassMemo(className) = names;
         end
 
         function chain = classChain(obj, className)
@@ -231,6 +250,159 @@ classdef cache < handle
                 className (1,:) char
             end
             chain = [fliplr(obj.superclasses(className)), {className}];
+        end
+
+        function rule = valueKindRule(obj, className)
+            % valueKindRule - the `value_kind` composition rule CLASSNAME
+            %   declares or inherits, or [] when none does.
+            %
+            %   A statement direction (observation, assertion, ...) declares
+            %   `document_class.value_kind = {root, count}`: a document of it
+            %   lists, after its own chain, the chain of `count` concrete
+            %   descendants of `root` (its value kind). did-schema
+            %   V_eta_entity_composition_plan.md sec. 1 (2026-10-08, a
+            %   proposal built ahead of signature).
+            arguments
+                obj
+                className (1,:) char
+            end
+            rule = [];
+            chain = obj.classChain(className);
+            for k = numel(chain):-1:1
+                s = obj.getClass(chain{k});
+                if isstruct(s) && isfield(s, 'document_class') ...
+                        && isfield(s.document_class, 'value_kind') ...
+                        && ~isempty(s.document_class.value_kind)
+                    rule = s.document_class.value_kind;
+                    return;
+                end
+            end
+        end
+
+        function kind = documentValueKind(obj, className, declaredAncestors)
+            % documentValueKind - the value kind a document of CLASSNAME
+            %   names in its superclasses, or '' when its class takes none.
+            %
+            %   A class takes a kind when it carries a `value_kind` rule and
+            %   its own chain does not already hold a descendant of the
+            %   rule's root (a named calculator such as
+            %   tuning_curve_calculation does). The kind is the first name
+            %   after the class's own ancestors in DECLAREDANCESTORS.
+            %   Raises did2:validation:missingValueKind when a kind is
+            %   needed and none is listed, and did2:validation:badValueKind
+            %   when the listed name is not a concrete descendant of root.
+            arguments
+                obj
+                className (1,:) char
+                declaredAncestors cell
+            end
+            kind = '';
+            rule = obj.valueKindRule(className);
+            if isempty(rule)
+                return;
+            end
+            root = char(rule.root);
+            own = obj.superclasses(className);
+            if any(strcmp(own, root))
+                return;
+            end
+            if numel(declaredAncestors) <= numel(own)
+                error('did2:validation:missingValueKind', ...
+                    ['Class "%s" takes exactly one value kind (a concrete ' ...
+                     'descendant of "%s") in its superclasses, after its own ' ...
+                     'chain {%s}; the document lists none.'], ...
+                    className, root, strjoin(own, ', '));
+            end
+            kind = char(declaredAncestors{numel(own) + 1});
+            if ~obj.hasClass(kind) || ~any(strcmp(obj.superclasses(kind), root))
+                error('did2:validation:badValueKind', ...
+                    '"%s" is not a value kind: it does not descend from "%s".', ...
+                    kind, root);
+            end
+            ks = obj.getClass(kind);
+            if isfield(ks.document_class, 'abstract') && isequal(ks.document_class.abstract, true)
+                error('did2:validation:badValueKind', ...
+                    'Value kind "%s" is abstract; name a concrete one.', kind);
+            end
+        end
+
+        function names = documentAncestors(obj, className, kind)
+            % documentAncestors - the superclasses a document of CLASSNAME
+            %   with value kind KIND lists: the class's own, then KIND and
+            %   its ancestors that the class's chain does not already hold.
+            %   KIND '' gives superclasses(CLASSNAME).
+            arguments
+                obj
+                className (1,:) char
+                kind (1,:) char = ''
+            end
+            names = obj.superclasses(className);
+            if isempty(kind)
+                return;
+            end
+            extra = [{kind}, obj.superclasses(kind)];
+            for j = 1:numel(extra)
+                if ~any(strcmp(names, extra{j}))
+                    names{end+1} = extra{j}; %#ok<AGROW>
+                end
+            end
+        end
+
+        function chain = documentChain(obj, className, kind)
+            % documentChain - root-first chain of a document of CLASSNAME
+            %   with value kind KIND: classChain(CLASSNAME), then the kind's
+            %   own chain without the classes already in it.
+            arguments
+                obj
+                className (1,:) char
+                kind (1,:) char = ''
+            end
+            chain = obj.classChain(className);
+            if isempty(kind)
+                return;
+            end
+            extra = obj.classChain(kind);
+            for j = 1:numel(extra)
+                if ~any(strcmp(chain, extra{j}))
+                    chain{end+1} = extra{j}; %#ok<AGROW>
+                end
+            end
+        end
+
+        function info = resolvePlacementFor(obj, className, kind)
+            % resolvePlacementFor - resolvePlacement(CLASSNAME), plus the
+            %   blocks and fields of value kind KIND when one is named. The
+            %   two memoised maps are COPIED, never modified.
+            arguments
+                obj
+                className (1,:) char
+                kind (1,:) char = ''
+            end
+            info = obj.resolvePlacement(className);
+            if isempty(kind)
+                return;
+            end
+            ik = obj.resolvePlacement(kind);
+            merged = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            sources = {info.fieldsByBlock, ik.fieldsByBlock};
+            for m = 1:numel(sources)
+                src = sources{m};
+                ks = keys(src);
+                for j = 1:numel(ks)
+                    if ~isKey(merged, ks{j})
+                        merged(ks{j}) = src(ks{j});
+                    end
+                end
+            end
+            blocks = info.blocksContributed;
+            for j = 1:numel(ik.blocksContributed)
+                if ~any(strcmp(blocks, ik.blocksContributed{j}))
+                    blocks{end+1} = ik.blocksContributed{j}; %#ok<AGROW>
+                end
+            end
+            info.blocksContributed = blocks;
+            info.fieldsByBlock = merged;
+            info.chain = obj.documentChain(className, kind);
         end
 
         function s = rehydrate(obj, s)
@@ -298,8 +470,10 @@ classdef cache < handle
             %      outcome while no writer is known to do it, and the
             %      wrong one the moment one does.
             %
-            %   2. COST. `resolvePlacement` is recomputed per document and
-            %      is not memoised, so this roughly doubles the schema
+            %   2. COST. [RESOLVED 2026-10-06: resolvePlacement and
+            %      superclasses are now memoised per class; see
+            %      placementMemo.] `resolvePlacement` was recomputed per
+            %      document and was not memoised, so this roughly doubles the schema
             %      walking a read already pays for (validateDocument makes
             %      the same call). Measured at nothing so far: the sessions
             %      this was found on hold tens of documents, and no corpus
@@ -326,7 +500,16 @@ classdef cache < handle
                     s.depends_on, {'name', 'value'});
             end
 
-            info = obj.resolvePlacement(className);
+            kind = '';
+            if isfield(s, 'document_class') && isfield(s.document_class, 'superclasses')
+                try
+                    kind = obj.documentValueKind(className, ...
+                        obj.superclassClassNames(s.document_class.superclasses));
+                catch
+                    kind = '';   % validateDocument reports a bad kind; rehydrate only reshapes
+                end
+            end
+            info = obj.resolvePlacementFor(className, kind);
             for k = 1:numel(info.blocksContributed)
                 blockName = info.blocksContributed{k};
                 if ~isfield(s, blockName) || ~isstruct(s.(blockName))
@@ -528,9 +711,18 @@ classdef cache < handle
             %                               both place into the concrete-class
             %                               block, or any class redeclares a
             %                               name an ancestor has placed).
+            %   Computed once per class and remembered (see placementMemo).
+            %   INFO.fieldsByBlock is a containers.Map, a handle: the same
+            %   map is handed to every caller, so callers must read it and
+            %   never modify it. None does (checked 2026-10-06: cache.m,
+            %   v1_to_v2.m ensureClassBlocks, did2.build.document).
             arguments
                 obj
                 className (1,:) char
+            end
+            if isKey(obj.placementMemo, className)
+                info = obj.placementMemo(className);
+                return;
             end
 
             chain = obj.classChain(className);
@@ -624,6 +816,7 @@ classdef cache < handle
             info.blocksContributed = blocksContributed;
             info.fieldsByBlock     = entriesByBlock;
             info.chain             = chain;
+            obj.placementMemo(className) = info;
         end
 
         function loadAllSchemas(obj)
@@ -733,19 +926,22 @@ classdef cache < handle
             paths = struct('scalar', {scalar}, 'array', {arrayPaths});
         end
 
-        function doc = buildBlankDocument(obj, className)
+        function doc = buildBlankDocument(obj, className, kind)
             % buildBlankDocument - blank V_delta document in the
             %   class-scoped wire shape. Mints a fresh did_uid for
             %   base.id and the current UTC timestamp for base.datestamp.
+            %   KIND names the value kind of a statement direction that
+            %   takes one (see documentValueKind); default none.
             arguments
                 obj
                 className (1,:) char
+                kind (1,:) char = ''
             end
             doc = struct();
             schema = obj.getClass(className);
             schemaDC = schema.document_class;
 
-            ancestors = obj.superclasses(className);
+            ancestors = obj.documentAncestors(className, kind);
             sc = struct('class_name', {}, 'class_version', {});
             for k = 1:numel(ancestors)
                 ancDC = obj.getClass(ancestors{k}).document_class;
@@ -766,7 +962,7 @@ classdef cache < handle
             % to it (the class's own declaring-class fields plus any
             % concrete-class-placed fields from abstract ancestors when
             % this is the leaf).
-            info = obj.resolvePlacement(className);
+            info = obj.resolvePlacementFor(className, kind);
             for k = 1:numel(info.blocksContributed)
                 blockClass = info.blocksContributed{k};
                 doc.(blockClass) = obj.buildBlockFromEntries( ...
@@ -825,8 +1021,12 @@ classdef cache < handle
                      '[] for base). Class "%s" expects %d entries.'], ...
                     className, numel(obj.superclasses(className)));
             end
-            expectedAncestors = obj.superclasses(className);
             declaredAncestors = obj.superclassClassNames(dc.superclasses);
+            % Composition (did-schema V_eta_entity_composition_plan.md
+            % sec. 1): a statement direction lists its value kind's chain
+            % after its own, so the expected snapshot depends on which kind.
+            kind = obj.documentValueKind(className, declaredAncestors);
+            expectedAncestors = obj.documentAncestors(className, kind);
             if numel(declaredAncestors) ~= numel(expectedAncestors) ...
                     || ~all(cellfun(@strcmp, declaredAncestors, expectedAncestors))
                 error('did2:validation:superclassesChainMismatch', ...
@@ -843,7 +1043,7 @@ classdef cache < handle
             % contribute a body block. Inherited fields routed onto the
             % concrete leaf's block are validated there against their
             % declaring class's field definition.
-            info = obj.resolvePlacement(className);
+            info = obj.resolvePlacementFor(className, kind);
             for k = 1:numel(info.blocksContributed)
                 blockClass = info.blocksContributed{k};
                 if ~isfield(s, blockClass)
@@ -923,6 +1123,10 @@ classdef cache < handle
             % PER CLASS out of v1_to_v2/printSummary, and repair against that.
             if did2.schema.cache.strictMode('RequiredDependencies')
                 missingDeps = obj.unpopulatedRequiredDependencies(s, className);
+                if ~isempty(kind)
+                    missingDeps = unique([missingDeps, ...
+                        obj.unpopulatedRequiredDependencies(s, kind)], 'stable');
+                end
                 if ~isempty(missingDeps)
                     error('did2:validation:emptyRequiredDependency', ...
                         ['Class "%s" declares depends_on %s as ' ...
