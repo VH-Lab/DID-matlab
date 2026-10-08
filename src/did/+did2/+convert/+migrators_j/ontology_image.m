@@ -2,7 +2,7 @@ function v2Body = ontology_image(preBody)
 %ONTOLOGY_IMAGE Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE.
 %   The current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the
 %   `ngrid` raster) is a GUARDED PASSTHROUGH deferred to the NDI second pass: a table
-%   row is not a subject, so pass 1 cannot fill `subject_statement.subject_id` without
+%   row is not a subject, so pass 1 cannot fill `statement.subject_id` without
 %   minting the husk the image_stack guard exists to stop. The legacy
 %   `ontology_name` + `ontology_region` shape (which the correction below shows has
 %   never existed in NDI) would migrate 1 -> 2 to a term_observation about the
@@ -90,7 +90,7 @@ function v2Body = ontology_image(preBody)
 %     VINTAGE B -> DEFERRED TO THE NDI SECOND PASS; passed through UNCHANGED.
 %                  The terms are resolvable here, but the SUBJECT is not: the
 %                  document's only edge is `ontologyTableRow_id`, and a table
-%                  row is not a subject (subject_statement.subject_id declares
+%                  row is not a subject (statement.subject_id declares
 %                  must_refer_to_document_class: subject). The subject is
 %                  reachable only THROUGH the table row, which requires the
 %                  migrated-id graph that a single-document migrator cannot
@@ -115,7 +115,7 @@ function v2Body = ontology_image(preBody)
 %   The R6 home is confirmed and it is a SECOND-PASS target, not a pass-1 one:
 %   an `image_observation` (+ a data_body) beside the term observations. It
 %   cannot be minted here for the same reason the term observation cannot --
-%   `subject_statement.subject_id` declares `must_refer_to_document_class:
+%   `statement.subject_id` declares `must_refer_to_document_class:
 %   subject`, and this document's only edge is a table row. Emitting one would
 %   reproduce, exactly, the 4,563-document `image_observation.subject_id` husk
 %   that the image_stack guard was just added to stop.
@@ -157,7 +157,7 @@ function v2Body = ontology_image(preBody)
 %   ---------------------------------------------------------------------
 %   TEAM DECISION (jess, in session, 2026-08-11): "The ngrid documents should be
 %   migrated into sampled_bodys. However, the sampled_body needs a corresponding
-%   subject_statement. For ontology_image, that's most likely an
+%   statement. For ontology_image, that's most likely an
 %   image_observation." That SUPERSEDES the older sign-off in
 %   V_eta_image_model_plan.md, which reads "ngrid is DISSOLVED (deleted, not
 %   migrated)"; the direction now confirmed is that document's own R4 section,
@@ -254,7 +254,7 @@ end
 node = jGetChar(block, 'ontology_name');
 regionName = jGetChar(block, 'ontology_region');
 
-obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
+obs = jStartInteraction(preBody, 'term_observation', 'observation', ...
     {}, jOntologyTerm('', 'imaged region'), {'element_id', 'subject_id'});
 obs.term = struct('value', jOntologyTerm(node, regionName));
 
@@ -298,7 +298,7 @@ function [imgObs, imgBody] = rasterBodies(preBody, subjectId, depicted, anchorId
 %   than inline, so `image.value.pixels` is deliberately left empty. The
 %   descriptors stay explicit on the composite (R6 decision 4: dtype is NOT
 %   recoverable from an inline matrix) -- dtype from the v1 `ngrid.data_type`.
-imgObs = jStartInteraction(preBody, 'image_observation', 'subject_observation', ...
+imgObs = jStartInteraction(preBody, 'image_observation', 'observation', ...
     {'image'}, depicted, {'element_id', 'subject_id'}, true);
 
 % ---------------------------------------------------------------------
@@ -325,9 +325,9 @@ imgObs = jStartInteraction(preBody, 'image_observation', 'subject_observation', 
 % The slot is located BY NAME, not by index. jStartInteraction happens to put
 % `subject_id` first today; an index would silently overwrite whatever moved
 % into position 1 if that ever changed.
-slot = find(strcmp({imgObs.depends_on.name}, 'subject_id'), 1);
+slot = find(strcmp({imgObs.depends_on.name}, 'entity_id'), 1);
 if isempty(slot)
-    imgObs.depends_on(end+1) = struct('name', 'subject_id', 'value', char(subjectId));
+    imgObs.depends_on(end+1) = struct('name', 'entity_id', 'value', char(subjectId));
     slot = numel(imgObs.depends_on);
 else
     imgObs.depends_on(slot).value = char(subjectId);
@@ -347,12 +347,12 @@ if isempty(imgObs.depends_on(slot).value)
         sourceId(preBody));
 end
 
-imgObs.subject_statement.storage_mode = 'body';
+imgObs.statement.storage_mode = 'body';
 % storage_mode 'body' means the BODY owns the cadence, so the statement carries
 % no sample_time (D1: one home for a body-backed value). jStartInteraction seeds
 % a single-point cadence for the inline case, which is the wrong half here.
-if isfield(imgObs.subject_interaction, 'sample_time')
-    imgObs.subject_interaction = rmfield(imgObs.subject_interaction, 'sample_time');
+if isfield(imgObs.interaction, 'sample_time')
+    imgObs.interaction = rmfield(imgObs.interaction, 'sample_time');
 end
 imgObs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
 imgObs.base.name = 'migrated_ontology_image';
@@ -376,7 +376,7 @@ end
 %     does not exist rather than one awaiting a CURIE.
 %   - Both sub-fields are mustBeNonEmpty false, so omission validates.
 %   - `value.axes` belongs to the BODY when storage_mode is 'body'
-%     (V_eta_data_body_model_plan.md: the axis entry mounts on subject_statement
+%     (V_eta_data_body_model_plan.md: the axis entry mounts on statement
 %     for inline pixels, on sampled_body for body-backed), and jNgridBody puts
 %     it there. Declaring it twice is the drift T14 exists to prevent.
 % `dtype` stays explicit because R6 decision 4 turns on it specifically: a dtype
@@ -392,8 +392,8 @@ imgObs.image.value = struct( ...
 % that reads it mints the BODY -- so it hands the value back and the statement
 % is set here. `ngrid.data_type` is real source data ('ubit1' for a logical
 % mask), so dropping it with `datum` would have been a silent loss.
-imgObs.subject_statement.datum_type = rasterDatumType;
-imgObs.subject_statement.source_datum_type = rasterSourceDatumType;
+imgObs.statement.datum_type = rasterDatumType;
+imgObs.statement.source_datum_type = rasterSourceDatumType;
 % The raster bytes move WITH the grid. The file name is NDI's own
 % (`ontologyImage.ngrid`): universalRenames.m:308 skips the structural keys
 % outright, so file/files arrive verbatim and must be carried verbatim -- the
@@ -412,7 +412,7 @@ function v = subjectOf(preBody)
 %   this repo and it is recorded here so a reader does not re-derive it wrongly.
 %
 %   `ontology_table_row_id` is DELIBERATELY NOT in this list. A table row is not
-%   a subject (subject_statement.subject_id declares must_refer_to_document_class
+%   a subject (statement.subject_id declares must_refer_to_document_class
 %   'subject'), and the row does not carry one either -- see the #47 block in the
 %   header for the writer evidence. Accepting it here would mint observations
 %   attributed to a metadata row.

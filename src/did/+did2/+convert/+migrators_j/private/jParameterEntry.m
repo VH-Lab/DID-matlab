@@ -3,7 +3,7 @@ function e = jParameterEntry(variableName, canonicalValue, sourceUnit, sourceVal
 %
 %   The entry shape is declared on schemas/V_eta/stable/method_parameters.json
 %   (field `method_parameters`, an array of structs) and is mounted under the
-%   SAME field name in both places it appears -- inline on subject_interaction
+%   SAME field name in both places it appears -- inline on interaction
 %   and in the method_parameters document:
 %
 %       variable   ontology_term   REQUIRED, bound, unique within the list

@@ -36,8 +36,8 @@ function bodies = openminds_stimulus(preBody)
 %                                     stimulator_id, 'epochid.epochid', epoch_id)
 %        +setup/+stimulus/+vhlab/add_stimulus_approach.m:59-65   the same, on probe_id
 %
-%      `subject_assertion` declares no fields and no edges, and `time_reference_#`
-%      lives on `subject_interaction` -- the OTHER branch of the statement tier. So
+%      `assertion` declares no fields and no edges, and `time_reference_#`
+%      lives on `interaction` -- the OTHER branch of the statement tier. So
 %      an assertion cannot carry an epoch. The old migrator dropped it outright,
 %      and asserted, timelessly, that the STIMULATOR is-a spatial-frequency-tuning.
 %      The same stimulator serves a different approach in the next epoch, which is

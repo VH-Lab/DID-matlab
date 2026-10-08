@@ -1,5 +1,5 @@
 function bodies = jMeasurementFold(preBody, variable, hay, numValue, strValue, anchor, wordBoundary)
-%JMEASUREMENTFOLD The shared did_v1 measurement -> typed subject_observation fold.
+%JMEASUREMENTFOLD The shared did_v1 measurement -> typed observation fold.
 %
 %   BODIES = jMeasurementFold(PREBODY, VARIABLE, HAY, NUMVALUE, STRVALUE, ANCHOR)
 %   returns {OBSERVATION, ANCHOR} when the measurement can be typed honestly, and
@@ -42,7 +42,7 @@ function bodies = jMeasurementFold(preBody, variable, hay, numValue, strValue, a
 %   so an absent canonical value validates; a wrong one would not be detectable.
 %
 %   preBody       the post-universalRenames source body.
-%   variable      the subject_statement.variable ontology_term.
+%   variable      the statement.variable ontology_term.
 %   hay           lowercased haystack for the leaf lookup.
 %   numValue      the numeric value ([] when the source has none).
 %   strValue      the string value ('' when the source has none).
@@ -64,7 +64,7 @@ end
 
 if isempty(leaf) && looksLikeCURIE(strValue)
     % the value IS an ontology term (the consumer's nested-CURIE branch)
-    obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
+    obs = jStartInteraction(preBody, 'term_observation', 'observation', ...
         {}, variable, {'subject_id'});
     obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
     obs.term = struct('value', jOntologyTerm(strValue, ''));
@@ -79,10 +79,10 @@ if isempty(leaf)
     return;
 end
 
-obs = jStartInteraction(preBody, [leaf '_observation'], 'subject_observation', ...
+obs = jStartInteraction(preBody, [leaf '_observation'], 'observation', ...
     {leaf}, variable, {'subject_id'});
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-obs.subject_statement.storage_mode = 'inline';
+obs.statement.storage_mode = 'inline';
 % unit deliberately unstated -- see the header.
 obs.(leaf) = struct('value', struct('source_unit', '', ...
     'source_value', double(numValue(1)), 'approximate', false));

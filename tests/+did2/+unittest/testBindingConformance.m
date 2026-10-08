@@ -218,7 +218,7 @@ end
 
 function testAPreferredBindingNeverRejects(testCase)
 % THE SECOND BRAKE, and the one that keeps V_eta's three pivot fields
-% (subject_statement.variable, subject_interaction.method,
+% (statement.variable, interaction.method,
 % interaction_purpose.purpose) harmless even with the switch armed. They are
 % bound `preferred`. If `preferred` rejected, the word would mean nothing and
 % arming the switch on a discovery run would quarantine most of the corpus

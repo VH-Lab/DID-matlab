@@ -148,12 +148,12 @@ ref = docOfClass(testCase, out, 'absolute_reference');
 
 % subject_id CARRIES OVER, and the source id is PRESERVED (dissolving a
 % referenced document without keeping its id is the 11,448-orphan mistake).
-verifyEqual(testCase, depValue(obs.toStruct(), 'subject_id'), 'sub_42');
+verifyEqual(testCase, depValue(obs.toStruct(), 'entity_id'), 'sub_42');
 verifyEqual(testCase, obs.get('base.id'), 'sm_1');
 
 % `measurement` becomes the statement's variable. Free text, so no CURIE.
-verifyEqual(testCase, obs.get('subject_statement.variable.name'), 'age');
-verifyEqual(testCase, obs.get('subject_statement.variable.node'), '');
+verifyEqual(testCase, obs.get('statement.variable.name'), 'age');
+verifyEqual(testCase, obs.get('statement.variable.node'), '');
 
 % `value` becomes the value. NO UNIT is asserted -- the class carries none.
 % THE BLOCK NAME IS THE LEAF STEM, so [time dtype] moved it too: the class is
@@ -215,7 +215,7 @@ verifyFalse(testCase, isfield(s, 'subjectmeasurement'));
 end
 
 function testMissingDatestampFallsBackToSessionAnchor(testCase)
-% NO TIMES => NO absolute_reference. But `subject_interaction` requires at least
+% NO TIMES => NO absolute_reference. But `interaction` requires at least
 % one time_reference (min_count 1), so the fold falls back to the ordinal
 % session anchor every other J migrator uses -- the honest weaker claim, not a
 % fabricated instant and not a missing edge.
@@ -371,7 +371,7 @@ out = runJ(v1);
 obs = docOfClass(testCase, out, 'mass_observation');
 verifyEqual(testCase, obs.get('mass.value.source_value'), 22.5);
 verifyEqual(testCase, obs.get('mass.value.source_unit'), '');
-verifyEqual(testCase, obs.get('subject_statement.variable.node'), 'PATO:0000128');
+verifyEqual(testCase, obs.get('statement.variable.node'), 'PATO:0000128');
 % `measurement` keeps the ORDINAL session anchor -- only subjectmeasurement has
 % an instant to anchor to.
 verifyTrue(testCase, any(strcmp(classNames(out), 'session_relative_reference')));

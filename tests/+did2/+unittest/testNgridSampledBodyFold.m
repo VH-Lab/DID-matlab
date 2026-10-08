@@ -10,7 +10,7 @@ function tests = testNgridSampledBodyFold
 %   ---------------------------------------------------------------------
 %   TEAM DECISION (jess, in session, 2026-08-11): "The ngrid documents should be
 %   migrated into sampled_bodys. However, the sampled_body needs a corresponding
-%   subject_statement. For ontology_image, that's most likely an
+%   statement. For ontology_image, that's most likely an
 %   image_observation."
 %
 %   Built as a third arm on +migrators_j/ontology_image.m, keyed on the SUBJECT
@@ -177,14 +177,14 @@ out = did2.convert.migrators_j.ontology_image(v1);
 body = pick(out, 'sampled_body');
 % UPDATED 2026-08-14: `datum` collapsed (signed sec.5). Every property below is
 % the SAME property in its new home, which is why the values are unchanged:
-%   dtype -> subject_statement.datum_type, normalised, source spelling kept
+%   dtype -> statement.datum_type, normalised, source spelling kept
 %   kind  -> the axis COUNT (two entries), asserted above
 %   shape -> [axes.n] in array order, asserted above as [4 4]
 % NOT A WEAKENING: 'ubit1' still reaches the document, now as the SOURCE
 % spelling beside its canonical 'bool', which is more than the old block said.
 obs = pick(out, 'image_observation');
-verifyEqual(testCase, obs.subject_statement.datum_type, 'bool');
-verifyEqual(testCase, obs.subject_statement.source_datum_type, 'ubit1');
+verifyEqual(testCase, obs.statement.datum_type, 'bool');
+verifyEqual(testCase, obs.statement.source_datum_type, 'ubit1');
 verifyFalse(testCase, isfield(body.sampled_body, 'data_size'));
 verifyFalse(testCase, isfield(body.sampled_body, 'datum'));
 % and the dtype is ALSO explicit on the composite -- R6 decision 4, because a
@@ -235,9 +235,9 @@ function testStorageModeIsBodyAndTheStatementCarriesNoCadence(testCase)
 % the wrong half here).
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
 imgObs = pick(out, 'image_observation');
-verifyEqual(testCase, imgObs.subject_statement.storage_mode, 'body');
+verifyEqual(testCase, imgObs.statement.storage_mode, 'body');
 verifyEmpty(testCase, imgObs.image.value.pixels);
-verifyFalse(testCase, isfield(imgObs.subject_interaction, 'sample_time'));
+verifyFalse(testCase, isfield(imgObs.interaction, 'sample_time'));
 end
 
 function testTheDepictedTermIsTheVariableRatherThanAPlaceholder(testCase)
@@ -246,7 +246,7 @@ function testTheDepictedTermIsTheVariableRatherThanAPlaceholder(testCase)
 % ontology label lives on ANOTHER document. Here the term is on the document
 % being migrated, so there is nothing to defer.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-v = pick(out, 'image_observation').subject_statement.variable;
+v = pick(out, 'image_observation').statement.variable;
 verifyEqual(testCase, v.node, 'uberon:0002436');
 verifyEqual(testCase, v.name, 'primary visual cortex');
 end
@@ -271,7 +271,7 @@ v1 = foldableOntologyImage();
 v1.depends_on = struct('name', {'element_id'}, 'id', {'elem_9'});
 out = did2.convert.migrators_j.ontology_image(v1);
 imgObs = pick(out, 'image_observation');
-verifyEqual(testCase, depValueOf(imgObs, 'subject_id'), 'elem_9', ...
+verifyEqual(testCase, depValueOf(imgObs, 'entity_id'), 'elem_9', ...
     ['the fold guarded on a subject it then failed to write -- an ' ...
      'image_observation with an empty required edge validates clean']);
 end
@@ -284,15 +284,15 @@ function testEveryEmittedStatementCarriesANonEmptySubject(testCase)
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
 statements = {};
 for k = 1:numel(out)
-    if isfield(out{k}, 'subject_statement')
+    if isfield(out{k}, 'statement')
         statements{end+1} = out{k}; %#ok<AGROW>
     end
 end
 verifyEqual(testCase, numel(statements), 2, ...
     'expected the term_observation and the image_observation to be statements');
 for k = 1:numel(statements)
-    verifyNotEmpty(testCase, depValueOf(statements{k}, 'subject_id'), ...
-        sprintf('%s carries an empty subject_id', ...
+    verifyNotEmpty(testCase, depValueOf(statements{k}, 'entity_id'), ...
+        sprintf('%s carries an empty entity_id', ...
                 statements{k}.document_class.class_name));
 end
 end
@@ -302,7 +302,7 @@ function testTheImageObservationIsAboutTheElementSubject(testCase)
 % +migrators_j/element.m promotes elements to subjects with ids PRESERVED. This
 % is a recurring trap in this repo, so it is asserted rather than remembered.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-verifyEqual(testCase, depValueOf(pick(out, 'image_observation'), 'subject_id'), ...
+verifyEqual(testCase, depValueOf(pick(out, 'image_observation'), 'entity_id'), ...
     'elem_9');
 end
 

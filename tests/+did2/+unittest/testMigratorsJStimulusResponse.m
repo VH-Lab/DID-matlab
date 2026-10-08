@@ -189,7 +189,7 @@ out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 b    = leaf.toStruct();
 
-verifyEqual(testCase, depValue(b, 'subject_id'),           'elem_9c027e');
+verifyEqual(testCase, depValue(b, 'entity_id'),           'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
 verifyEqual(testCase, depValue(b, 'derived_from_1'),       'pres_b671ff');
 verifyEqual(testCase, depValue(b, 'derived_from_2'),       'ctrl_20e84c');
@@ -248,14 +248,14 @@ function testStatementIsAnInlineCalculationWithTheAppAsMethod(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
-verifyEqual(testCase, leaf.get('subject_statement.storage_mode'), 'inline');
-verifyEqual(testCase, leaf.get('subject_interaction.method.name'), ...
+verifyEqual(testCase, leaf.get('statement.storage_mode'), 'inline');
+verifyEqual(testCase, leaf.get('interaction.method.name'), ...
     'ndi.app.stimulus.tuning_response');
 % OPEN 1/OPEN 2 of the plan are not closed: the quantity actually measured is not
 % recorded anywhere in this family, so `variable` is the v1-level label and the
 % resolver must refine it from the migrated element. Pinned so a change is
 % deliberate rather than incidental.
-verifyEqual(testCase, leaf.get('subject_statement.variable.name'), 'stimulus response');
+verifyEqual(testCase, leaf.get('statement.variable.name'), 'stimulus response');
 end
 
 function testInlineMethodParametersStaysEmptyBesideTheEdge(testCase)
@@ -266,7 +266,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 % fields and drops the edge.
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
-verifyEmpty(testCase, fieldnames(leaf.get('subject_interaction.method_parameters')));
+verifyEmpty(testCase, fieldnames(leaf.get('interaction.method_parameters')));
 verifyEqual(testCase, depValue(leaf.toStruct(), 'method_parameters_id'), 'param_77c19b');
 end
 
@@ -274,7 +274,7 @@ function testStimidIsDeferredRatherThanWrittenIntoConditions(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % DELIBERATE DEFERRAL, PINNED. Revision 1 of the signed plan moves `stimid` to an
 % `axes[]` entry and states that `conditions` is explicitly NOT an axis. V_eta's
-% subject_statement has no `axes` field yet (it declares variable / conditions /
+% statement has no `axes` field yet (it declares variable / conditions /
 % storage_mode), so pass 1 carries neither: emitting `axes` would quarantine on
 % undeclaredField, and emitting `conditions` would write the shape the signed
 % revision rejects into every migrated document.
@@ -287,9 +287,9 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 s    = leaf.toStruct();
-verifyFalse(testCase, isfield(s.subject_statement, 'axes'));
-if isfield(s.subject_statement, 'conditions')
-    verifyEmpty(testCase, s.subject_statement.conditions);
+verifyFalse(testCase, isfield(s.statement, 'axes'));
+if isfield(s.statement, 'conditions')
+    verifyEmpty(testCase, s.statement.conditions);
 end
 % the recovery path must be present, or the deferral argument is not true
 verifyEqual(testCase, depValue(s, 'derived_from_1'), 'pres_b671ff');
@@ -299,7 +299,7 @@ end
 
 function testNoElementIdPassesThroughInsteadOfEmittingASubjectlessLeaf(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
-% subject_statement.subject_id is mustBeNonEmpty, and references.m skips empty
+% statement.subject_id is mustBeNonEmpty, and references.m skips empty
 % edges, so a subject-less leaf would validate clean and be invisible -- the
 % image_stack husk (4,563 documents) and the fitcurve husk both worked exactly
 % that way. Pass the document through instead.
@@ -556,7 +556,7 @@ if isfield(out, 'silent_loss') && isfield(out.silent_loss, 'total_docs')
     verifyEqual(testCase, out.silent_loss.skipped_docs, 0);
     verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
     verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
-    % time_reference_# declares min_count 1 on subject_interaction; the leaf
+    % time_reference_# declares min_count 1 on interaction; the leaf
     % carries exactly one, and derived_from_# has no maximum.
     verifyEqual(testCase, out.silent_loss.family_violation_count, 0);
 end

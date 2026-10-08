@@ -55,7 +55,7 @@ function report = sourceCensus(v1Bodies)
 %   3. DOES ONE STIMULATION APPROACH COVER SEVERAL INTERACTIONS?
 %      (V_eta_go_forward_class_audit.md misc-singletons sign-off.) Decides
 %      whether `interaction_purpose` earns its `interaction_id_#` family or
-%      collapses to a plain field on `subject_interaction`. The measurement,
+%      collapses to a plain field on `interaction`. The measurement,
 %      quoted from the item: for every `openminds_stimulus` document take its
 %      epoch id, then count the DISTINCT SUBJECTS among the
 %      `stimulus_presentation` documents sharing that epoch.

@@ -7,12 +7,12 @@ function bodies = stimulus_response_scalar(preBody)
 %   passed through UNCHANGED for the NDI second pass.
 %
 %   THE OLD FOLD, FOR REFERENCE ONLY (superseded by PR #68):
-%     stimulus_response_scalar -> the subject_calculation LEAF
+%     stimulus_response_scalar -> the calculation LEAF
 %     harmonic_component_calculation (id PRESERVED) + a time anchor. The full
 %     mapping and its evidence -- element_id -> subject_id, stimulator_id ->
 %     instrument_id (recovered), stimulus_control_id -> derived_from_2
 %     (recovered), the epoch-gate three-branch, the parameters-id re-home to
-%     `subject_interaction.method_parameters_id`, the stimid deferral, ... --
+%     `interaction.method_parameters_id`, the stimid deferral, ... --
 %     lived here through 2026-08-10 and is preserved in git history if a
 %     replacement leaf is minted. Do NOT re-attach any of it without a new
 %     signed target class; a fold to a class that does not exist quarantines

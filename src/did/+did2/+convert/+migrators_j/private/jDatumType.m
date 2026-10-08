@@ -4,7 +4,7 @@ function [datumType, sourceDatumType] = jDatumType(raw)
 %   [T, SRC] = jDatumType(RAW) maps the source's own spelling RAW onto the
 %   bound `datum_type` enum, and returns the source spelling in SRC when it
 %   differs. SRC is '' when RAW is already canonical, which is what
-%   `subject_statement.source_datum_type` documents as "OMITTED when identical".
+%   `statement.source_datum_type` documents as "OMITTED when identical".
 %
 %   THE MAP IS THE SIGNED PLAN'S, verbatim (V_eta_data_body_model_plan.md, "The
 %   datum_type normalisation map"), read from NDI's own writer:

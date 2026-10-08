@@ -20,7 +20,7 @@ function tests = testTimeReferenceFamilies
 %
 %     logicalObservation()    +did2/+convert/resolveValidIntervals.m
 %                             (makeLogicalObservation) -- class
-%                             `logical_observation` over {subject_observation,
+%                             `logical_observation` over {observation,
 %                             logical}, deps `subject_id` +
 %                             `time_reference_1..N` numbered in the order given,
 %                             base.name `migrated_valid_interval`. NOTE the
@@ -434,12 +434,12 @@ end
 
 function testANonTimeFamilyContributesNothingNotEvenADenominator(testCase)
 % `derived_from_#` is N different inputs and is not a time reference. A
-% `subject_calculation` DOES declare `time_reference_#` (it is a
-% subject_interaction), so the class is in scope -- but its derived_from members
+% `calculation` DOES declare `time_reference_#` (it is a
+% interaction), so the class is in scope -- but its derived_from members
 % must not enter any counter. Asserting only "0 shapes" would pass even if they
 % had been examined, which is the vacuous half of the assertion.
-b = bodyOf('subject_calculation', 'calc_1');
-b.document_class.superclasses = struct('class_name', {'subject_interaction'}, ...
+b = bodyOf('calculation', 'calc_1');
+b.document_class.superclasses = struct('class_name', {'interaction'}, ...
     'class_version', {'1.0.0'});
 b.depends_on = struct('name', {'derived_from_1', 'derived_from_2'}, ...
     'value', {'src_1', 'src_2'});
@@ -448,7 +448,7 @@ src2 = bodyOf('subject', 'src_2');
 rep = did2.validate.timeReferenceFamilies({did2.document(b), ...
     did2.document(src1), did2.document(src2)});
 verifyEqual(testCase, rep.docs_declaring_family, 1, ...
-    'subject_calculation is a subject_interaction and declares the time family');
+    'calculation is a interaction and declares the time family');
 verifyEqual(testCase, rep.slots_examined, 1, 'exactly ONE slot -- the time family');
 verifyEqual(testCase, rep.members_examined, 0, ...
     'derived_from_# members must not be counted as time references');
@@ -460,9 +460,9 @@ function testTheDiscriminatorLabelIsReadFromTheSchema(testCase)
 % declared `referent_unique_by`, not a word typed into the instrument. Read the
 % declaration out of the same cache the instrument uses and assert the key
 % follows it, so a schema rename cannot leave a stale label behind.
-uniqueBy = declaredUniqueBy('subject_interaction');
+uniqueBy = declaredUniqueBy('interaction');
 assumeNotEmpty(testCase, uniqueBy, ...
-    'subject_interaction declares no referent_unique_by in this schema set');
+    'interaction declares no referent_unique_by in this schema set');
 parts = strsplit(uniqueBy, '.');
 expected = [parts{end} '='];
 docs = statementWithReferences('vo_split', splitAnchorPair());
@@ -510,20 +510,20 @@ function b = logicalObservation(stmtId, refs)
 %LOGICALOBSERVATION resolveValidIntervals.m (makeLogicalObservation).
 b = bodyOf('logical_observation', stmtId);
 b.document_class.superclasses = struct( ...
-    'class_name',    {'subject_observation', 'logical'}, ...
+    'class_name',    {'observation', 'logical'}, ...
     'class_version', {'1.0.0', '1.0.0'});
 b.base.name = 'migrated_valid_interval';
-deps = struct('name', {'subject_id'}, 'value', {'element_sub_1'});
+deps = struct('name', {'entity_id'}, 'value', {'element_sub_1'});
 for k = 1:numel(refs)
     deps(end+1) = struct('name', sprintf('time_reference_%d', k), ...
         'value', refs{k}.base.id); %#ok<AGROW>
 end
 b.depends_on = deps;
-b.subject_statement = struct( ...
+b.statement = struct( ...
     'variable', struct('node', '', 'name', 'data validity'), ...
     'storage_mode', 'inline');
-b.subject_interaction = struct('method', struct('node', '', 'name', 'curation'));
-b.subject_observation = struct();
+b.interaction = struct('method', struct('node', '', 'name', 'curation'));
+b.observation = struct();
 % NO NESTED CELL and NO LEAF BLOCK: `logical.value` is a bare boolean array,
 % and `logical_observation` declares no fields at all (`sequence` was deleted
 % with HAZARD 2 -- v1's array order is invisible to its only consumer).

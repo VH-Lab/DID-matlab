@@ -22,7 +22,7 @@ function tests = testMigratorsJNeuronExtracellular
 %   statement, and -- the rule these tests turn on -- axes live with the thing
 %   whose extent they describe:
 %
-%       storage_mode inline -> subject_statement.axes populated, NO bodies
+%       storage_mode inline -> statement.axes populated, NO bodies
 %       storage_mode body   -> each sampled_body.axes populated, statement EMPTY
 %
 %   The team's investigation note (V_eta_go_forward_class_audit.md,
@@ -133,8 +133,8 @@ function testTheWaveformIsAnObservationOfTheUNITNotOfTheRecording(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 neuron = pick(out, 'subject');
 wobs   = pick(out, 'voltage_observation');
-verifyEqual(testCase, depValueOf(wobs, 'subject_id'), neuron.base.id);
-verifyNotEqual(testCase, depValueOf(wobs, 'subject_id'), 'rec_sub_1');
+verifyEqual(testCase, depValueOf(wobs, 'entity_id'), neuron.base.id);
+verifyNotEqual(testCase, depValueOf(wobs, 'entity_id'), 'rec_sub_1');
 verifyEqual(testCase, depValueOf(wobs, 'time_reference_1'), ...
     pick(out, 'session_relative_reference').base.id, ...
     'the waveform shares the one session anchor, it does not mint a second');
@@ -163,7 +163,7 @@ function testTheAxesAreBothPresentAndInSourceDimensionOrder(testCase)
 % and kilosort/probe.m:546-547 writes the two counts from size(...,1)/size(...,2)
 % in that order.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = pick(out, 'voltage_observation').statement.axes;
 verifyEqual(testCase, numel(ax), 2);
 verifyEqual(testCase, [ax.n], [21 32]);
 verifyEqual(testCase, arrayfun(@(a) a.variable.name, ax, 'UniformOutput', false), ...
@@ -182,7 +182,7 @@ function testTheTimeAxisIsRegularWithTheMeasuredOriginAndSpacing(testCase)
 % Leaving the bound term blank is the pyraview.m:414 precedent and stages no
 % ontology term.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = pick(out, 'voltage_observation').statement.axes;
 verifyTrue(testCase, ax(1).regular);
 verifyEqual(testCase, ax(1).origin.value,         -0.00025, 'AbsTol', 1e-18);
 verifyEqual(testCase, ax(1).origin.source_value,  -0.00025, 'AbsTol', 1e-18);
@@ -205,7 +205,7 @@ v1 = neuronExtracellularV1();
 jitter = [0; 0; 0.0004; zeros(18, 1)];       % one sample displaced
 v1.neuron_extracellular.waveform_sample_times = realTimebase() + jitter;
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = pick(out, 'voltage_observation').statement.axes;
 verifyFalse(testCase, ax(1).regular);
 verifyEqual(testCase, ax(1).values.values,        realTimebase() + jitter);
 verifyEqual(testCase, ax(1).values.source_values, realTimebase() + jitter);
@@ -220,7 +220,7 @@ function testTheChannelAxisIsAnIndexAxisWithNoUnit(testCase)
 % convention (origin 1, spacing 1, no unit) is pyraview.m:370's and jNgridBody's.
 % Naming these channels would be a guess recorded as a fact in a queryable field.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = pick(out, 'voltage_observation').statement.axes;
 verifyEqual(testCase, ax(2).n, 32);
 verifyTrue(testCase, ax(2).regular);
 verifyEqual(testCase, ax(2).origin.value, 1);
@@ -249,7 +249,7 @@ verifyEqual(testCase, [value.source_value], 1:672, ...
 % and the axis extents multiply out to exactly what the value holds (the signed
 % "axis.n == the extent of the value it indexes" check, asserted here because
 % nothing in pass 1 enforces it).
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = pick(out, 'voltage_observation').statement.axes;
 verifyEqual(testCase, prod([ax.n]), numel(value));
 end
 
@@ -279,7 +279,7 @@ function testTheStatementIsInlineAndCarriesTheEncoding(testCase)
 % `firstNonEmpty(dataType,'uint16')` is the defect not repeated), and the source
 % spelling rides along because the map is not invertible.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-st = pick(out, 'voltage_observation').subject_statement;
+st = pick(out, 'voltage_observation').statement;
 verifyEqual(testCase, st.storage_mode, 'inline');
 verifyEqual(testCase, st.datum_type, 'float64');
 verifyEqual(testCase, st.source_datum_type, 'double');
@@ -296,9 +296,9 @@ function testTheWaveformStatementHasNoSampleTimeBlock(testCase)
 % difference is deliberate rather than accidental.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 verifyFalse(testCase, ...
-    isfield(pick(out, 'voltage_observation').subject_interaction, 'sample_time'));
+    isfield(pick(out, 'voltage_observation').interaction, 'sample_time'));
 verifyEqual(testCase, ...
-    pick(out, 'score_observation').subject_interaction.sample_time.kind, 'point');
+    pick(out, 'score_observation').interaction.sample_time.kind, 'point');
 end
 
 % ===================== the guards ==========================================
@@ -341,7 +341,7 @@ v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'number_of_channels', 'number_of_samples_per_channel'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'voltage_observation').subject_statement.axes;
+ax = pick(out, 'voltage_observation').statement.axes;
 verifyEqual(testCase, [ax.n], [21 32]);
 end
 
@@ -374,13 +374,13 @@ function testTheClusterIndexGetsAQueryableHomeAndNotOnlyAName(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 cidx = pick(out, 'count_assertion');
 neuron = pick(out, 'subject');
-verifyEqual(testCase, depValueOf(cidx, 'subject_id'), neuron.base.id);
+verifyEqual(testCase, depValueOf(cidx, 'entity_id'), neuron.base.id);
 verifyEqual(testCase, cidx.count.value.value, 7);
 verifyEmpty(testCase, cidx.count.value.unit.name, ...
     'a label counts nothing -- an invented unit here would read as a cardinality');
-verifyEqual(testCase, cidx.subject_statement.variable.name, ...
+verifyEqual(testCase, cidx.statement.variable.name, ...
     'spike sorter cluster index');
-verifyEqual(testCase, cidx.subject_statement.storage_mode, 'inline');
+verifyEqual(testCase, cidx.statement.storage_mode, 'inline');
 % the name is still there too -- the assertion is an addition, not a move
 verifyEqual(testCase, neuron.subject.local_identifier, 'unit_7');
 end
@@ -420,12 +420,12 @@ end
 verifyGreaterThanOrEqual(testCase, edges, 8, ...
     ['DENOMINATOR: 2 on the relation (child, parent), 1 on the ' ...
      'count_assertion, and 3 on each of the two observations ' ...
-     '(subject_id, time_reference_1, software_id)']);
+     '(entity_id, time_reference_1, software_id)']);
 end
 
 function testTheWaveformObservationCarriesTheAppBlock(testCase)
 % THE RESIDUAL THIS FOLD SHRINKS. `software_id` is declared once in the
-% statement tier, on `subject_interaction`. Before the waveform fold the only
+% statement tier, on `interaction`. Before the waveform fold the only
 % carrier was the score_observation, so a unit with no `quality_number` had
 % nowhere typed to put its software. The waveform observation is a second
 % carrier, and this fixture withholds the quality number to prove it alone.
@@ -442,9 +442,9 @@ verifyFalse(testCase, any(strcmp(names, 'score_observation')));
 sw   = pick(out, 'software');
 wobs = pick(out, 'voltage_observation');
 verifyEqual(testCase, depValueOf(wobs, 'software_id'), sw.base.id);
-verifyEqual(testCase, wobs.subject_interaction.execution_environment.os, 'MACA64');
+verifyEqual(testCase, wobs.interaction.execution_environment.os, 'MACA64');
 verifyEqual(testCase, ...
-    wobs.subject_interaction.execution_environment.interpreter_version, '24.2');
+    wobs.interaction.execution_environment.interpreter_version, '24.2');
 end
 
 function testNoSoftwareEntityIsEmittedWhenNothingCanReferenceIt(testCase)

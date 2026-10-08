@@ -180,7 +180,7 @@ function testAFamilyWithNoRuleIsNotChecked(testCase)
 % been decided for them. The check is driven by the SCHEMA key
 % `referent_unique_by`, not by the word "time_reference", so a family that does
 % not declare the rule must contribute nothing -- not even a denominator.
-b = bodyOf('subject_calculation', 'calc_1');
+b = bodyOf('calculation', 'calc_1');
 b.depends_on = struct( ...
     'name',  {'derived_from_1', 'derived_from_2'}, ...
     'value', {'src_1', 'src_1'});          % the SAME target twice

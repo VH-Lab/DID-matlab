@@ -13,19 +13,19 @@ function checkRules(cache, className, doc)
 %
 %   2. BUILDER CHECKS that the schema states only in a field's documentation
 %      (not as a machine-readable rule). Each cites where it is stated:
-%        conditions_one_value     subject_statement.conditions: "carries
+%        conditions_one_value     statement.conditions: "carries
 %                                 exactly one value form ... Cardinality
 %                                 exactly 1"
-%        variable_once            subject_statement.conditions: "a variable
+%        variable_once            statement.conditions: "a variable
 %                                 appears at most once across a statement's
 %                                 keys and conditions"; data.keys: variable
 %                                 "UNIQUE within the list"
-%        parameter_one_form       subject_interaction.method_parameters:
+%        parameter_one_form       interaction.method_parameters:
 %                                 numeric `value`, categorical `term` or
 %                                 free-string `text` -- one of them
 %        parameter_variable_once  method_parameters: variable "UNIQUE within
 %                                 the list"
-%        parameters_not_both      subject_interaction.method_parameters: "the
+%        parameters_not_both      interaction.method_parameters: "the
 %                                 statement points at a method_parameters
 %                                 document by method_parameters_id. Never both."
 %        key_n_matches            data.keys: n is the length of the dimension,

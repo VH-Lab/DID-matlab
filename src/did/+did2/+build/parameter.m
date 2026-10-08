@@ -8,7 +8,7 @@ function p = parameter(variable, options)
 %   VARIABLE says WHAT knob this is: a term, or a name when the knob has no
 %   ontology term (a label, item 33). Exactly one value form is given. The
 %   shape is the same whether the list sits inline on a statement
-%   (`subject_interaction.method_parameters`, #73 item 22) or on a standalone
+%   (`interaction.method_parameters`, #73 item 22) or on a standalone
 %   `method_parameters` document, so the one builder serves both.
 %
 %   Options:

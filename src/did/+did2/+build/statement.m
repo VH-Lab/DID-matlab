@@ -4,8 +4,9 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %   DOC = did2.build.statement(LEAFCLASS, SUBJECTID, VARIABLE, VALUE, ...)
 %   builds a concrete statement leaf -- an observation, assertion, manipulation
 %   or calculation ('voltage_observation', 'term_assertion',
-%   'dose_manipulation', 'tuning_curve_calculation', ...) -- about the subject
-%   SUBJECTID. VARIABLE is a term or a name; VALUE is the leaf's `value`, e.g.
+%   'dose_manipulation', 'tuning_curve_calculation', ...) -- about the entity
+%   SUBJECTID (its `entity_id` edge; usually a subject, any entity may be
+%   described). VARIABLE is a term or a name; VALUE is the leaf's `value`, e.g.
 %   from did2.build.valueCell or did2.build.term. VALUE may be [] when the
 %   value lives elsewhere: in a body ('DataBody', true, then build the body
 %   with did2.build.sampledBody/opaqueBody, owner = this document), or in a
@@ -97,7 +98,7 @@ fields.notes = options.Notes;
 fields = dropAbsent(fields);
 
 edges = struct( ...
-    'subject_id', subjectId, ...
+    'entity_id', subjectId, ...
     'time_reference_id', {options.TimeReferenceIds}, ...
     'instrument_id', options.InstrumentId, ...
     'software_id', options.SoftwareId, ...

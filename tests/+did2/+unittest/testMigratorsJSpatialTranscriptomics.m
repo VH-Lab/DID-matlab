@@ -45,8 +45,8 @@ end
 % ===================== the pyramid =========================================
 
 function testPyramidEmitsPyramidAndAnchor(testCase)
-% 1 -> 2. The subject_observation direction on the pyramid REQUIRES a
-% time_reference_# edge (min_count 1 on subject_interaction). The smallest
+% 1 -> 2. The observation direction on the pyramid REQUIRES a
+% time_reference_# edge (min_count 1 on interaction). The smallest
 % legitimate anchor is a session_relative_reference with relation `during`
 % -- see the migrator header, open team question 1.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
@@ -68,12 +68,12 @@ verifyEqual(testCase, pyr.base.id, v1.base.id);
 end
 
 function testPyramidCarriesSubjectIdFromV1DependsOn(testCase)
-% subject_id required-ness lives on the INHERITED subject_statement slot
+% subject_id required-ness lives on the INHERITED statement slot
 % (per the Corrected Option C sign-off). The v1 body already carries a
 % subject_id dep; the migrator must NOT drop it and must NOT invent it.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-verifyEqual(testCase, depValue(pyr, 'subject_id'), 'subj_stereoseq_1');
+verifyEqual(testCase, depValue(pyr, 'entity_id'), 'subj_stereoseq_1');
 end
 
 function testPyramidBindsVariableToGeneExpression(testCase)
@@ -83,12 +83,12 @@ function testPyramidBindsVariableToGeneExpression(testCase)
 % `variable.name: gene expression`). The migrator writes exactly that.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-verifyEqual(testCase, pyr.subject_statement.variable.node, 'NCIT:C16608');
-verifyEqual(testCase, pyr.subject_statement.variable.name, 'gene expression');
+verifyEqual(testCase, pyr.statement.variable.node, 'NCIT:C16608');
+verifyEqual(testCase, pyr.statement.variable.name, 'gene expression');
 end
 
 function testPyramidCarriesTimeReferenceEdgeAtTheAnchor(testCase)
-% time_reference_1 REQUIRED (subject_interaction min_count 1) -- the edge
+% time_reference_1 REQUIRED (interaction min_count 1) -- the edge
 % must point at the anchor body we emit alongside.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
@@ -142,15 +142,15 @@ function testPyramidMethodOmittedNotEmittedEmpty(testCase)
 % ontology_term. Default is to OMIT the field, NOT emit an empty term --
 % did-schema's unminted-term ratchet (#70) counts empty ontology_terms
 % and an emitted `{node: '', name: ''}` would push the migrator baseline
-% up by one. Absence is legal here (subject_interaction.method's
+% up by one. Absence is legal here (interaction.method's
 % mustBeNonEmpty is false) and honest: the pyramid's method question is
 % still open. ASSERTED so a future flip is deliberate rather than silent.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-verifyFalse(testCase, isfield(pyr.subject_interaction, 'method'), ...
-    ['subject_interaction.method must be OMITTED, not emitted empty -- ' ...
+verifyFalse(testCase, isfield(pyr.interaction, 'method'), ...
+    ['interaction.method must be OMITTED, not emitted empty -- ' ...
      'an empty {node,name} term ticks the did-schema #70 ratchet']);
-verifyTrue(testCase, isempty(fieldnames(pyr.subject_interaction.method_parameters)));
+verifyTrue(testCase, isempty(fieldnames(pyr.interaction.method_parameters)));
 end
 
 % ===================== the id-inheritance chain =============================
@@ -165,7 +165,7 @@ verifyEqual(testCase, numel(out), 1);
 verifyEqual(testCase, out{1}.base.id, v1.base.id);
 verifyEqual(testCase, ...
     depValue(out{1}, 'spatial_gene_expression_pyramid_id'), 'pyr_1');
-verifyEqual(testCase, depValue(out{1}, 'subject_id'), 'subj_stereoseq_1');
+verifyEqual(testCase, depValue(out{1}, 'entity_id'), 'subj_stereoseq_1');
 end
 
 function testTilesCarryPyramidIdEdgeAndDoNotInventASubjectId(testCase)
@@ -178,7 +178,7 @@ verifyEqual(testCase, out{1}.base.id, v1.base.id);
 verifyEqual(testCase, ...
     depValue(out{1}, 'spatial_gene_expression_pyramid_id'), 'pyr_1');
 % subject_id was not on the v1 source; must not appear on the emitted body.
-verifyEqual(testCase, depValue(out{1}, 'subject_id'), '');
+verifyEqual(testCase, depValue(out{1}, 'entity_id'), '');
 end
 
 function testCellTypeLabelsPreservesIsUnsupervised(testCase)
@@ -309,7 +309,7 @@ v1.spatial_gene_expression_pyramid = struct( ...
     'origin_corner',      'upper-left', ...
     'byte_order',         'little');
 % The gene_expression mixin fields are inherited (the pyramid ⊂ [base,
-% gene_expression, subject_observation]), so a v1 pyramid document already
+% gene_expression, observation]), so a v1 pyramid document already
 % carried them.
 v1.gene_expression = struct( ...
     'assay',       'Stereo-seq', ...

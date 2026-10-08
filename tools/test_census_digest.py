@@ -201,14 +201,14 @@ class TestDigest(DigestCase):
                 "family_violation_count": 4,
                 # single row arrives as a bare object, not a list
                 "family_count_violation": {
-                    "count": 4, "class_name": "subject_interaction",
+                    "count": 4, "class_name": "interaction",
                     "edge_name": "time_reference_#",
                     "declared": "min 1", "found": 0},
             },
         })
         text, _ = self.run_digest()
         self.assertIn("4 edge-family cardinality violation(s)", text)
-        self.assertIn("subject_interaction.time_reference_#", text)
+        self.assertIn("interaction.time_reference_#", text)
         self.assertIn("declared min 1, found 0", text)
 
     def test_several_roots_are_searched_and_one_missing_is_not_fatal(self):
@@ -1110,7 +1110,7 @@ class TestEpochAssociation(DigestCase):
     WHAT IT MEASURES AND WHY NOTHING SAW IT. A statement reaches its epoch
     through a REFERENCE CHAIN, not a direct edge:
 
-        subject_interaction --time_reference_#--> relative_reference
+        interaction --time_reference_#--> relative_reference
                             --relative_to-------> epoch
 
     `min_count: 1` guarantees the family exists and `relative_to` is REQUIRED,
@@ -3267,7 +3267,7 @@ class TestTimeReferenceFamilies(DigestCase):
             "shape": [
                 {"shape_key": self.SPLIT, "statements": 3, "members": 2,
                  "example_document_id": "abc123",
-                 "example_class_name": "subject_interaction",
+                 "example_class_name": "interaction",
                  "family": "time_reference_#"},
                 {"shape_key": TRF_NOT_SHAPEABLE, "statements": 1, "members": 2,
                  "example_document_id": "def456",
@@ -3281,7 +3281,7 @@ class TestTimeReferenceFamilies(DigestCase):
                                   "multi_members_unresolved": 1},
             "emitter": [
                 {"shape_key": self.SPLIT,
-                 "statement_class": "subject_interaction",
+                 "statement_class": "interaction",
                  "statement_name": "migrated_valid_interval",
                  "anchor_names": "migrated_valid_interval_anchor",
                  "statements": 3},
@@ -3617,7 +3617,7 @@ class TestTimeReferenceFamilies(DigestCase):
         b2 = self._block(
             shape=[{"shape_key": self.SPLIT, "statements": 5, "members": 2,
                     "example_document_id": "zzz",
-                    "example_class_name": "subject_interaction",
+                    "example_class_name": "interaction",
                     "family": "time_reference_#"},
                    {"shape_key": self.NCLOCK, "statements": 2, "members": 2,
                     "example_document_id": "yyy",
@@ -3633,7 +3633,7 @@ class TestTimeReferenceFamilies(DigestCase):
                                "multi_members_resolved": 14,
                                "multi_members_unresolved": 0},
             emitter=[{"shape_key": self.SPLIT,
-                      "statement_class": "subject_interaction",
+                      "statement_class": "interaction",
                       "statement_name": "migrated_valid_interval",
                       "anchor_names": "migrated_valid_interval_anchor",
                       "statements": 5},
@@ -3762,10 +3762,10 @@ class TestTimeReferenceFamilies(DigestCase):
             count_distribution={"members": 2, "statements": 4},
             shape={"shape_key": self.SPLIT, "statements": 4, "members": 2,
                    "example_document_id": "abc123",
-                   "example_class_name": "subject_interaction",
+                   "example_class_name": "interaction",
                    "family": "time_reference_#"},
             emitter={"shape_key": self.SPLIT,
-                     "statement_class": "subject_interaction",
+                     "statement_class": "interaction",
                      "statement_name": "migrated_valid_interval",
                      "anchor_names": "migrated_valid_interval_anchor",
                      "statements": 4},

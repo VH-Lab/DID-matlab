@@ -47,9 +47,9 @@ function bodies = jrclust_clusters(preBody)
 %   what it becomes: a `software` ENTITY referenced by `software_id`, with the
 %   per-run os/interpreter in `execution_environment`. BOTH SLOTS ARE DECLARED
 %   ON THE TARGET -- checked in did-schema/schemas/V_eta/stable/
-%   subject_interaction.json (depends_on `software_id`, must_refer_to_document_class
+%   interaction.json (depends_on `software_id`, must_refer_to_document_class
 %   `software`; field `execution_environment`), which count_observation reaches
-%   via subject_observation -> subject_interaction. Nothing is invented.
+%   via observation -> interaction. Nothing is invented.
 %
 %   RequireSession is TRUE: base.session_id is mustBeNonEmpty and v1_to_v2
 %   quarantines the SOURCE when a body it produced fails. It removes nothing --
@@ -91,17 +91,17 @@ anchor.session_relative_reference = struct('relation', 'during');
 
 % ---- the body-backed count_observation (cluster labels) ---------------------
 obs = struct();
-obs.document_class = classBlock('count_observation', {'subject_observation', 'count'}, TV);
+obs.document_class = classBlock('count_observation', {'observation', 'count'}, TV);
 obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
+    struct('name', 'entity_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
 obs.base = struct('id', obsId, 'session_id', sessionId, ...
     'name', 'migrated_jrclust_clusters', 'datestamp', datestamp);
-obs.subject_statement = struct( ...
+obs.statement = struct( ...
     'variable', struct('node', '', 'name', 'spike cluster assignment'), ...
     'storage_mode', 'body');
-obs.subject_interaction = struct('method', otTerm(''));
-obs.subject_observation = struct();
+obs.interaction = struct('method', otTerm(''));
+obs.observation = struct();
 obs.count = struct();   % value is body-backed
 
 % ---- the v1 `app` block -> a software entity + software_id + exec env -------
@@ -113,7 +113,7 @@ if ~isempty(swId)
     obs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
 end
 if ~isempty(fieldnames(execEnv))
-    obs.subject_interaction.execution_environment = execEnv;
+    obs.interaction.execution_environment = execEnv;
 end
 
 % ---- the sampled_body: one cluster index per spike --------------------------

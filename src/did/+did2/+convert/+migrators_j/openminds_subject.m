@@ -42,16 +42,16 @@ node = firstNonEmpty( ...
     jGetChar(flds, 'alternateIdentifier'));
 valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 
-% term_assertion: a timeless subject_assertion leaf (no method/interaction).
+% term_assertion: a timeless assertion leaf (no method/interaction).
 body = struct();
 body.document_class = struct('class_name', 'term_assertion', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'subject_assertion', 'class_version', '1.0.0'), ...
+    'superclasses', struct('class_name', 'assertion', 'class_version', '1.0.0'), ...
     'schema_version', 'V_eta');
 body.depends_on = jCarrySubject(preBody, {'subject_id'});
 if isfield(preBody, 'base') && isstruct(preBody.base)
     body.base = preBody.base;
 end
-body.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
+body.statement = struct('variable', variable, 'storage_mode', 'inline');
 body.term = struct('value', valueTerm);
 v2Body = body;
 end

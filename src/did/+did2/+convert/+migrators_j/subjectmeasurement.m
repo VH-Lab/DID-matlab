@@ -1,6 +1,6 @@
 function bodies = subjectmeasurement(preBody)
 %SUBJECTMEASUREMENT Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed
-%   subject_observation leaf + an `absolute_reference` carrying the measurement
+%   observation leaf + an `absolute_reference` carrying the measurement
 %   instant. Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
 %   TEAM-SIGN-OFF (jess, 2026-08-06, V_eta_go_forward_class_audit.md §4):
@@ -81,7 +81,7 @@ function bodies = subjectmeasurement(preBody)
 %                              edges, so a subject-less observation clears the
 %                              reference gate AND the quarantine gate, and only
 %                              the empty-required-edge census can see it.
-%     2. no `measurement`   -> `subject_statement.variable` is mustBeNonEmpty.
+%     2. no `measurement`   -> `statement.variable` is mustBeNonEmpty.
 %     3. value not a finite scalar -> the quantity composites carry ONE number.
 %                              A vector `value` (the template's [NaN,NaN]
 %                              parameters permit one) has no scalar cell.
@@ -138,7 +138,7 @@ end
 % ---- the time anchor -------------------------------------------------------
 % The measurement instant is the anchor when the source gives one. When it does
 % not, fall back to the ordinal session anchor every other J fold uses --
-% `subject_interaction` requires at least one time_reference, so "no anchor at
+% `interaction` requires at least one time_reference, so "no anchor at
 % all" is not an option, and "during the session" is the honest weaker claim.
 % `datestamp` is read WITHOUT numeric stringification: a bare number is not an
 % instant this migration can read, so it takes the session-anchor path.

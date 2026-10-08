@@ -298,7 +298,7 @@ classdef cache < handle
             %   was observed; the second is what would have been observed
             %   next. `jsondecode` returns a CELL ARRAY of structs, not a
             %   struct array, whenever the objects in a JSON array carry
-            %   DIFFERENT keys -- which is exactly `subject_statement.conditions`
+            %   DIFFERENT keys -- which is exactly `statement.conditions`
             %   (one entry with `count`, another with `quantity`) and is
             %   about to be written everywhere by the data_body tier.
             %

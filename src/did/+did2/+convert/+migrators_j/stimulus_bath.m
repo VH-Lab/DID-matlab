@@ -6,7 +6,7 @@ function v2Body = stimulus_bath(~)
 %   disposition as the Brainstorm-E/I paths, retargeted for strict J (D8, which
 %   retired the `bath`/`pharmacological_manipulation` family): the legacy
 %   stimulus_bath is a delivered substance -> a `dose_manipulation`
-%   subject_manipulation leaf. Assembling it needs two things the per-document
+%   manipulation leaf. Assembling it needs two things the per-document
 %   converter cannot see -- both obtained by following stimulus_element_id to the
 %   stimulator ELEMENT and its session/epoch graph:
 %

@@ -17,7 +17,7 @@ function v2Body = openminds_element(preBody)
 %   referent is a `subject` (device-as-subject). Each therefore becomes ONE
 %   `term_assertion` on that element-subject. The openMINDS entity `type` names
 %   the asserted `variable`; the ontology id + label are the term `value`. It is
-%   a timeless subject_assertion (no interaction, no session anchor). 1 -> 1.
+%   a timeless assertion (no interaction, no session anchor). 1 -> 1.
 %
 %   If no openMINDS block is present the document is carried unchanged.
 
@@ -47,17 +47,17 @@ node = firstNonEmpty( ...
     jGetChar(flds, 'alternateIdentifier'));
 valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 
-% term_assertion: a timeless subject_assertion leaf (no method/interaction).
+% term_assertion: a timeless assertion leaf (no method/interaction).
 body = struct();
 body.document_class = struct('class_name', 'term_assertion', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'subject_assertion', 'class_version', '1.0.0'), ...
+    'superclasses', struct('class_name', 'assertion', 'class_version', '1.0.0'), ...
     'schema_version', 'V_eta');
 % referent is the ELEMENT-subject: element_id first, subject_id as fallback.
 body.depends_on = jCarrySubject(preBody, {'element_id', 'subject_id'});
 if isfield(preBody, 'base') && isstruct(preBody.base)
     body.base = preBody.base;
 end
-body.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
+body.statement = struct('variable', variable, 'storage_mode', 'inline');
 body.term = struct('value', valueTerm);
 v2Body = {body};
 end

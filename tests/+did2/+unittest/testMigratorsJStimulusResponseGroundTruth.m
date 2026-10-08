@@ -220,11 +220,11 @@ s    = leaf.toStruct();
 % The leaf itself still carries no epoch STRING, under any spelling -- the fold
 % moves the fact onto the anchor rather than parking a string on the statement.
 verifyFalse(testCase, isfield(s, 'stimulus_response'));
-verifyFalse(testCase, isfield(s.subject_statement, 'element_epochid'));
-verifyFalse(testCase, isfield(s.subject_interaction, 'element_epochid'));
+verifyFalse(testCase, isfield(s.statement, 'element_epochid'));
+verifyFalse(testCase, isfield(s.interaction, 'element_epochid'));
 % not smuggled into the parameters block either -- that block is reserved for
 % the resolver and must stay empty beside the edge
-verifyEmpty(testCase, fieldnames(s.subject_interaction.method_parameters));
+verifyEmpty(testCase, fieldnames(s.interaction.method_parameters));
 
 % ...and the fact is on the ANCHOR, as an edge to the epoch document. The old
 % assertion here was that the anchor is ordinal ('during' the session) and so NOT

@@ -33,7 +33,7 @@ function bodies = electrode_offset_voltage(preBody)
 %
 %   TEMPERATURE IS A CONDITION, NOT A SECOND OBSERVATION. The offset was measured
 %   AT a temperature; the two are one statement, not two. It therefore rides on
-%   `subject_statement.conditions` (the D10 qualifier slot, same idiom as
+%   `statement.conditions` (the D10 qualifier slot, same idiom as
 %   jTuningFold) rather than becoming an independent temperature_observation
 %   about the probe. The writer treats it as optional and skips it when NaN, so
 %   the condition is emitted only when the value is finite.
@@ -77,7 +77,7 @@ if isempty(offset)
 end
 
 anchor = jSessionAnchor(preBody, 'during');
-obs = jStartInteraction(preBody, 'voltage_observation', 'subject_observation', ...
+obs = jStartInteraction(preBody, 'voltage_observation', 'observation', ...
     {'voltage'}, jOntologyTerm('', 'electrode offset voltage'), ...
     {'probe_id', 'element_id', 'subject_id'});
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
@@ -87,7 +87,7 @@ temperature = finiteScalar(blk, 'temperature');
 if ~isempty(temperature)
     % the offset was measured AT this temperature -- a qualifier on the same
     % statement, not a separate observation. Unit deliberately left unstated.
-    obs.subject_statement.conditions = struct( ...
+    obs.statement.conditions = struct( ...
         'variable', jOntologyTerm('', 'temperature'), ...
         'quantity', struct('value', jMeasureArray(temperature, '')));
 end

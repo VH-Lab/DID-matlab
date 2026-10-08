@@ -393,7 +393,7 @@ function testAnEdgeWhoseTailIsNotDigitsIsNotIndexed(testCase)
 % `subject_id` must not fold to a family called `subject`. The fold is on a
 % trailing `_<digits>` run and nothing else.
 b = bodyStruct('term_observation', 'obs_1');
-b.depends_on = struct('name', {'subject_id', 'instrument_id'}, ...
+b.depends_on = struct('name', {'entity_id', 'instrument_id'}, ...
                       'value', {'sub_1', 'inst_1'});
 rep = did2.validate.silentLoss({b});
 verifyEqual(testCase, rep.edge_arity.indexed_edges_examined, 0);

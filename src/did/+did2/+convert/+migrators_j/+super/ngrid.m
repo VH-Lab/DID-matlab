@@ -86,7 +86,7 @@ function v2Body = ngrid(preBody)
 %   ---------------------------------------------------------------------
 %   DECIDED (V_eta_image_model_plan.md, signed 2026-08-08):
 %
-%       ngrid.data_type   -> subject_statement.datum_type
+%       ngrid.data_type   -> statement.datum_type
 %       ngrid.data_dim    -> one axis entry per dimension (`n` each)
 %       ngrid.coordinates -> split by data_dim, one slice per axis,
 %                            into axes[k].values

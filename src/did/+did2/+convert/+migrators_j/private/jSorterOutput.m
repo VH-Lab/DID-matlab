@@ -6,7 +6,7 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %
 %     count_observation           the id-preserved discoverable handle on the
 %                                 recording subject (variable 'spike cluster
-%                                 assignment', subject_interaction.method = the
+%                                 assignment', interaction.method = the
 %                                 sorter algorithm, storage_mode 'body'). Its id
 %                                 IS the source doc id, so any inbound reference
 %                                 to the sorter-output doc resolves to it.
@@ -22,7 +22,7 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %   an EXTERNAL directory -> an opaque_body. The MD5 is a regenerable file hash,
 %   kept as a body note rather than re-expressed as data.
 %
-%   sorterName   the algorithm name for subject_interaction.method (e.g. 'kilosort').
+%   sorterName   the algorithm name for interaction.method (e.g. 'kilosort').
 %   dirField     the block field holding the output directory path (e.g.
 %                'kilosort_directory').
 %
@@ -53,11 +53,11 @@ function bodies = jSorterOutput(preBody, sorterName, dirField)
 %   `software_id`, with the per-run os/interpreter in `execution_environment`.
 %   Both slots are DECLARED on the target -- checked, not assumed:
 %
-%     did-schema/schemas/V_eta/stable/subject_interaction.json
+%     did-schema/schemas/V_eta/stable/interaction.json
 %         depends_on: software_id  (must_refer_to_document_class: software)
 %         fields:     execution_environment {os, os_version, interpreter,
 %                                            interpreter_version}
-%     count_observation -> subject_observation -> subject_interaction
+%     count_observation -> observation -> interaction
 %
 %   RequireSession IS TRUE HERE. `base.session_id` is mustBeNonEmpty and
 %   v1_to_v2 quarantines the SOURCE when a body it produced fails, so an
@@ -83,11 +83,11 @@ directory = jGetChar(blk, dirField);
 md5 = jGetCharAny(blk, {'curated_output_md5_checksum', 'curated_output_MD5_checksum'});
 
 % ---- the id-preserved count_observation handle (the run) --------------------
-obs = jStartInteraction(preBody, 'count_observation', 'subject_observation', ...
+obs = jStartInteraction(preBody, 'count_observation', 'observation', ...
     {'count'}, jOntologyTerm('', 'spike cluster assignment'), ...
     {'element_id', 'subject_id'}, false);
-obs.subject_statement.storage_mode = 'body';
-obs.subject_interaction.method = jOntologyTerm('', sorterName);   % method = algorithm
+obs.statement.storage_mode = 'body';
+obs.interaction.method = jOntologyTerm('', sorterName);   % method = algorithm
 obs.count = struct();   % value is body-backed (the opaque sorter output)
 obsId = obs.base.id;
 
@@ -108,7 +108,7 @@ end
 if ~isempty(fieldnames(execEnv))
     % Set only when populated: absence is how V_eta spells "unset", and an
     % empty struct here would add a field to every app-less document.
-    obs.subject_interaction.execution_environment = execEnv;
+    obs.interaction.execution_environment = execEnv;
 end
 
 % ---- the opaque_body: the external sorter output directory -------------------

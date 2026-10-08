@@ -26,7 +26,7 @@ function tests = testMigratorsJRecordingObservation
 %     TEAM-SIGN-OFF [spike train leaf]  jess, 2026-08-17
 %       (did-schema schemas/V_eta_ensemble_plan.md:218)
 %       "a per-neuron spike train is a `time_observation` [...] with
-%        `subject_statement.variable` = spike. The SPIKE TIMES ARE THE VALUE."
+%        `statement.variable` = spike. The SPIKE TIMES ARE THE VALUE."
 %
 %   It is here rather than in a file of its own because it is the same
 %   assembler with the two id ROLES exchanged -- the neuron is the subject and
@@ -48,8 +48,8 @@ function tests = testMigratorsJRecordingObservation
 %   ---------------------------------------------------------------------
 %   1. GUARD A IS ONLY HALF-BUILDABLE TODAY. Its signed form needs a CONCRETE,
 %      UNDIMENSIONED observation leaf and a `modality_unresolved` field. Neither
-%      exists: `subject_observation` is declared abstract
-%      (schemas/V_eta/stable/subject_observation.json) and
+%      exists: `observation` is declared abstract
+%      (schemas/V_eta/stable/observation.json) and
 %      +did2/+schema/cache.m:507-511 raises
 %      `did2:validation:abstractInstantiation` for any document naming an
 %      abstract class, while every concrete `*_observation` leaf mixes in a
@@ -97,15 +97,15 @@ out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, '
 
 obs = firstOfClass(out, 'voltage_observation');
 verifyNotEmpty(testCase, obs, 'no voltage_observation was emitted for an n-trode');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'specimen_1');   % the SPECIMEN
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'specimen_1');   % the SPECIMEN
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');      % the electrode (T7)
-verifyEqual(testCase, obs.get('subject_statement.variable').name, 'voltage');
+verifyEqual(testCase, obs.get('statement.variable').name, 'voltage');
 % INVERTED 2026-08-14, not updated. This asserted 'body', matching the code,
 % and both were written from the same premise -- so the test could never have
 % caught it. `element` declares NO files (15 of 91 v1 templates do; element is
 % not one), so a body minted here is empty by construction in every session,
 % ingested or not. Team: "a body means bytes".
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
+verifyEqual(testCase, obs.get('statement.storage_mode'), 'reference');
 % timing: the shared session 'during' anchor (the epoch join is the second pass)
 verifyNotEmpty(testCase, depValue(obs, 'time_reference_1'));
 anchor = firstOfClass(out, 'session_relative_reference');
@@ -185,7 +185,7 @@ out = runJ(elementDoc('ctx', 'extracellular_electrode-4', 'ndi.probe.timeseries.
 % no longer emitted; resolution is what this test is for.
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
 obs = firstOfClass(out, 'voltage_observation');
-verifyEqual(testCase, obs.get('subject_statement.variable').name, 'voltage');
+verifyEqual(testCase, obs.get('statement.variable').name, 'voltage');
 end
 
 function testSingleChannelPipetteCarriesNoChannelAxis(testCase)
@@ -234,7 +234,7 @@ function testDerivedSpikesBecomesATimeObservationOfTheNeuronItself(testCase)
 % THE SIGNED SHAPE, and the ROLES ARE THE MIRROR of the direct case above --
 % which is the whole reason this needs its own test rather than a line added to
 % the n-trode one. TEAM-SIGN-OFF [spike train leaf]: "a per-neuron spike train
-% is a `time_observation` [...] with `subject_statement.variable` = spike."
+% is a `time_observation` [...] with `statement.variable` = spike."
 %
 % The neuron IS the element: `migrators_j/element.m` mints a `subject` for every
 % element with `base.id` PRESERVED, so the subject of this observation is
@@ -245,14 +245,14 @@ out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1
 
 obs = firstOfClass(out, 'time_observation');
 verifyNotEmpty(testCase, obs, 'no time_observation was emitted for a spikes element');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'el_1', ...
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'el_1', ...
     'the spike train is an observation OF THE NEURON, whose id the element keeps');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'probe_1', ...
     'the instrument is the probe underneath the unit, not the unit itself');
-verifyEqual(testCase, obs.get('subject_statement.variable').name, 'spike');
+verifyEqual(testCase, obs.get('statement.variable').name, 'spike');
 % `reference`, not `body`: the times are in the sorter's .vhsb, which the
 % element document does not carry -- the same reason the voltage case says so.
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
+verifyEqual(testCase, obs.get('statement.storage_mode'), 'reference');
 % and it is anchored, like every other observation this assembler emits
 anchor = firstOfClass(out, 'session_relative_reference');
 verifyNotEmpty(testCase, anchor);
@@ -267,7 +267,7 @@ function testASpikesElementWithNoUnderlyingProbeOmitsTheInstrumentEdge(testCase)
 % `instrument_id` would be the invented-empty-edge defect (7,233 documents, and
 % `references.m:90` skips empty edges so it validates clean); dropping the
 % observation would lose a real spike train because we do not know which probe
-% recorded it. `instrument_id` is optional on `subject_interaction`
+% recorded it. `instrument_id` is optional on `interaction`
 % (mustBeNonEmpty false), so saying nothing is expressible.
 %
 % NOT REACHABLE FROM 20211116 -- all 21 of its `spikes` elements carry an
@@ -277,7 +277,7 @@ out = runJ(elementDoc('orphan_unit', 'spikes', 'ndi.neuron', 0, 'specimen_1', ''
 obs = firstOfClass(out, 'time_observation');
 verifyNotEmpty(testCase, obs, ...
     'a spikes element with no underlying probe emitted no observation at all');
-verifyEqual(testCase, depValue(obs, 'subject_id'), 'el_1');
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'el_1');
 verifyEmpty(testCase, depValue(obs, 'instrument_id'), ...
     'an instrument_id edge was emitted naming nothing');
 end
@@ -298,14 +298,14 @@ verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 % both are OF the specimen and WITH the same instrument, and share one anchor
 volt = firstOfClass(out, 'voltage_observation');
 curr = firstOfClass(out, 'current_observation');
-verifyEqual(testCase, depValue(volt, 'subject_id'), 'specimen_1');
-verifyEqual(testCase, depValue(curr, 'subject_id'), 'specimen_1');
+verifyEqual(testCase, depValue(volt, 'entity_id'), 'specimen_1');
+verifyEqual(testCase, depValue(curr, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(volt, 'instrument_id'), 'el_1');
 verifyEqual(testCase, depValue(curr, 'instrument_id'), 'el_1');
 verifyEqual(testCase, depValue(volt, 'time_reference_1'), depValue(curr, 'time_reference_1'));
 verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);
-verifyEqual(testCase, volt.get('subject_statement.variable').name, 'voltage');
-verifyEqual(testCase, curr.get('subject_statement.variable').name, 'current');
+verifyEqual(testCase, volt.get('statement.variable').name, 'voltage');
+verifyEqual(testCase, curr.get('statement.variable').name, 'current');
 end
 
 function testCurrentPipetteIsNotLabelledVoltage(testCase)
@@ -325,7 +325,7 @@ function testImagingProbeBecomesImageObservation(testCase)
 out = runJ(elementDoc('camera', 'wide-field-imaging', 'ndi.probe.image', 1, 'specimen_1', ''));
 obs = firstOfClass(out, 'image_observation');
 verifyNotEmpty(testCase, obs);
-verifyEqual(testCase, obs.get('subject_statement.variable').name, 'image');
+verifyEqual(testCase, obs.get('statement.variable').name, 'image');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
 % `image` declares `value` mustBeNonEmpty, so the raster cell has to be present
 % even though the pixels are not. This said "draft/image.json is the ONLY
@@ -356,7 +356,7 @@ out = runJ(elementDoc('spout', 'lick-spout', 'ndi.probe.timeseries.mfdaq', 1, 's
 flag = assertionWithVariable(out, 'modality unresolved');
 verifyNotEmpty(testCase, flag, 'an unmapped element type produced no queryable flag');
 verifyEqual(testCase, flag.get('term.value').name, 'lick-spout');
-verifyEqual(testCase, depValue(flag, 'subject_id'), 'el_1');
+verifyEqual(testCase, depValue(flag, 'entity_id'), 'el_1');
 % nothing was invented, and nothing was lost
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
@@ -420,7 +420,7 @@ end
 % ===================== no specimen => no observation =======================
 
 function testNoSpecimenMeansNoObservationAndNoEmptyRequiredEdge(testCase)
-% subject_statement.subject_id is REQUIRED, and an empty required edge validates
+% statement.subject_id is REQUIRED, and an empty required edge validates
 % clean because +did2/+validate/references.m:90 skips empty edges -- the
 % invented-empty-edge pattern that put 7,233 documents into the census. So a
 % direct element with no subject_id emits nothing rather than an observation
@@ -548,13 +548,13 @@ end
 end
 
 function d = assertionWithVariable(out, variableName)
-%ASSERTIONWITHVARIABLE The term_assertion whose subject_statement.variable is
+%ASSERTIONWITHVARIABLE The term_assertion whose statement.variable is
 %   VARIABLENAME -- the query shape the Guard A worklist is meant to be found by.
 d = [];
 for k = 1:numel(out.migrated)
     doc = out.migrated{k};
     if ~strcmp(doc.get('document_class.class_name'), 'term_assertion'); continue; end
-    v = doc.get('subject_statement.variable');
+    v = doc.get('statement.variable');
     if strcmp(v.name, variableName); d = doc; return; end
 end
 end

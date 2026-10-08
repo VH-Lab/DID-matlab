@@ -38,7 +38,7 @@ body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
 % that omits it validates against the OLD schema as happily as the new one.
 % Additions and moves have to go schema-first; removals go writer-first.
 % `datum` IS GONE FROM THE BODY (signed sec.5). Its `dtype` is now
-% `subject_statement.datum_type` -- the statement says what the values ARE, the
+% `statement.datum_type` -- the statement says what the values ARE, the
 % body says how the bytes lay out -- and `unit` / `shape` / `kind` were dropped:
 % unit was EMPTY at 4 of 4 writers, shape was read two different ways by its own
 % writers, and kind (scalar vs array) is the axis COUNT restated.

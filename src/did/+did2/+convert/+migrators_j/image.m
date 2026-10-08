@@ -115,7 +115,7 @@ function bodies = image(preBody)
 %   THIS IS NOT THE MODEL DECISION. What a subject-less did_v1 `image` SHOULD
 %   become is a team call and is stated, not taken: an `image` with no subject is
 %   a raster belonging to nobody, and V_eta has no home for one (`image_observation`
-%   and `image_manipulation` both inherit `subject_statement.subject_id`,
+%   and `image_manipulation` both inherit `statement.subject_id`,
 %   mustBeNonEmpty TRUE). The options are the same three the E. coli lawn plates
 %   got: mint a subject for whatever the image is of, restore a v1-shaped
 %   tombstone under a DIFFERENT class name, or accept the refusal. Until then a

@@ -27,7 +27,7 @@ function bodies = pyraview(preBody)
 %   image_stack fold:
 %
 %       voltage_observation the discoverable spine handle: subject_id, a shared
-%                           time anchor, a placeholder subject_statement.variable
+%                           time anchor, a placeholder statement.variable
 %                           (the signal `label`), and storage_mode 'body' (the
 %                           cadence lives in the body, D1).
 %       sampled_body        the NATIVE-resolution signal: datum (kind/dtype/shape)
@@ -235,9 +235,9 @@ end
 % on the doc; voltage is the dominant NDI case (ephys), but a non-voltage pyraview
 % would need per-signal quantity typing (a discovery/second-pass refinement).
 obs = struct();
-obs.document_class = classBlock('voltage_observation', {'subject_observation', 'voltage'}, TV);
+obs.document_class = classBlock('voltage_observation', {'observation', 'voltage'}, TV);
 obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
+    struct('name', 'entity_id',       'value', subjectId), ...
     struct('name', 'time_reference_1', 'value', anchorId)];
 % AND time_reference_2 -> THE EPOCH, when there is one. Without this edge the
 % epoch reference emitted above is UNREACHABLE from the observation: the epoch
@@ -246,7 +246,7 @@ obs.depends_on = [ ...
 % document nothing points at reads as finished work and is not.
 %
 % THE FAMILY IS LEGAL BY CONSTRUCTION, not by luck. The uniqueness rule
-% (`referent_unique_by`, subject_interaction: time_reference_# discriminated by
+% (`referent_unique_by`, interaction: time_reference_# discriminated by
 % `value.clock`) says members of one family must differ by clock -- and these
 % two do: the session anchor names no clock at all, the epoch reference names
 % `dev_local_time`. Two members, two distinct clocks.
@@ -262,12 +262,12 @@ obs.depends_on = [ ...
 % (DID-schema `V_eta_epoch_plan.md:869`), verbatim:
 %
 %   "a document reaches its epoch through the TIME_REFERENCE CHAIN
-%    (subject_interaction -> time_reference_# -> relative_reference ->
+%    (interaction -> time_reference_# -> relative_reference ->
 %    relative_to -> epoch) -- a direct `epoch_id` edge is added ONLY where the
 %    epoch is the document's own content (`directed_relation`, per the ensemble
-%    sign-off), NOT on subject_interaction"
+%    sign-off), NOT on interaction"
 %
-% `voltage_observation` is UNDER `subject_interaction`, and the four classes that
+% `voltage_observation` is UNDER `interaction`, and the four classes that
 % DO declare `epoch_id` are exactly the four that are not:
 %
 %   DENOMINATOR: 245 json file(s) under DID-schema schemas/V_eta/ read;
@@ -276,12 +276,12 @@ obs.depends_on = [ ...
 %     directed_relation          <- relation <- base         optional
 %     ingestion_manifest         <- base                     required
 %     method_parameters          <- base                     optional
-%     voltage_observation        <- subject_observation
-%                                <- subject_interaction ...  <- THE EXCLUSION
+%     voltage_observation        <- observation
+%                                <- interaction ...  <- THE EXCLUSION
 %
 % So the `time_reference_2` edge below IS the epoch link the model specifies and
 % nothing further is owed by this migrator. A reader who acted on the old
-% sentence would have added `epoch_id` to a subject_interaction descendant --
+% sentence would have added `epoch_id` to a interaction descendant --
 % the phantom-work shape CLAUDE.md records for #52, where a note left standing
 % instructs the one build a signature rules out.
 if ~isempty(epochRefId)
@@ -297,13 +297,13 @@ obs.base = struct('id', obsId, 'session_id', sessionId, ...
 % jDatumType, which keeps the source spelling when the two differ because the
 % map is not invertible ('bool' came from 'logical' OR 'ubit1').
 [datumType, sourceDatumType] = jDatumType(dataType);
-obs.subject_statement = struct( ...
+obs.statement = struct( ...
     'variable', struct('node', '', 'name', firstNonEmpty(label, 'signal')), ...
     'datum_type', datumType, ...
     'source_datum_type', sourceDatumType, ...
     'storage_mode', 'body');
-obs.subject_interaction = struct('method', otTerm(''));
-obs.subject_observation = struct();
+obs.interaction = struct('method', otTerm(''));
+obs.observation = struct();
 obs.voltage = struct();   % value is body-backed
 
 % ---- one sampled_body per stored resolution level ---------------------------

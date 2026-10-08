@@ -5,8 +5,8 @@ function v2Body = treatment_drug(preBody)
 %   Strict J has no `injection` class (D8): a drug administration is a
 %   dose_manipulation -- the administered substance(s) become the
 %   `dose.value.formulation.chemicals`, the primary drug is the spine
-%   `subject_statement.variable`, and the delivery route (when the source names
-%   one) would ride on `subject_interaction.method`. The site is Path S -- a
+%   `statement.variable`, and the delivery route (when the source names
+%   one) would ride on `interaction.method`. The site is Path S -- a
 %   merely-located site becomes a `term_observation` here (D3), an attributed
 %   site is promoted by the NDI second pass. 1 -> 2 (dose_manipulation + anchor),
 %   or 1 -> 3 when the row carries a location.
@@ -28,7 +28,7 @@ chemicals = parseMixtureTable(block);
 variable  = chemicals(1).substance;   % the primary drug is the spine identity
 
 dose = jStartInteraction(preBody, 'dose_manipulation', ...
-    'subject_manipulation', {'dose'}, variable);
+    'manipulation', {'dose'}, variable);
 dose.dose = struct('value', jDoseValue(chemicals));
 
 anchor = jSessionAnchor(preBody, 'during');
@@ -41,7 +41,7 @@ siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'location_ontology_node', 'location_ontologyNode'}), ...
     jGetCharAny(block, {'location_name'}));
 if ~isempty(siteTerm.node) || ~isempty(siteTerm.name)
-    obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
+    obs = jStartInteraction(preBody, 'term_observation', 'observation', ...
         {}, jOntologyTerm('', 'anatomical location'), {'subject_id'}, true);
     obs.term = struct('value', siteTerm);
     obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);

@@ -4,7 +4,7 @@ function def = fieldDef(cache, className, fieldPath)
 %   DEF = fieldDef(CACHE, CLASSNAME, FIELDPATH) looks FIELDPATH up in the
 %   fields CLASSNAME declares or inherits. FIELDPATH is dot-separated, e.g.
 %   'keys', 'value', 'value.start'. The first segment may instead name a class
-%   in the chain ('subject_interaction.method_parameters') when the same field
+%   in the chain ('interaction.method_parameters') when the same field
 %   name is declared by two classes of the chain.
 %
 %   Errors did2:build:unknownField when nothing matches and

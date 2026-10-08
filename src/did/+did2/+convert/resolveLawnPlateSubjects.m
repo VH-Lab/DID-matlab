@@ -411,7 +411,7 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %       is a second edge whose resolvability nobody has verified, the shape that
 %       turned `distance_metadata` from a quiet passthrough into a GATING orphan
 %       failure. Out of scope by the decision's own constraint 4.
-%     * NO TIME REFERENCE. `time_reference_#` is OPTIONAL on subject_interaction
+%     * NO TIME REFERENCE. `time_reference_#` is OPTIONAL on interaction
 %       and these are static properties with no per-reading time, so no anchor
 %       is minted. This DIVERGES from `applyPatchGeometryMap`, which mints a
 %       `session_relative_reference` carrying `relation:'during'` and no times.
@@ -1328,17 +1328,17 @@ function body = makeObservation(srcBody, leafClass, shapeClass, variable, num, s
 %MAKEOBSERVATION One typed observation of one subject.
 %   The value shapes mirror makeEncObs in +migrators_j/ontology_table_row.m,
 %   which is corpus-proven. NO `time_reference_1` edge: it is optional on
-%   subject_interaction and there is no time to put in one -- see the header.
+%   interaction and there is no time to put in one -- see the header.
 body = struct();
 body.document_class = struct('class_name', leafClass, 'class_version', '1.0.0', ...
-    'superclasses', supersOf({'subject_observation', shapeClass}), ...
+    'superclasses', supersOf({'observation', shapeClass}), ...
     'schema_version', 'V_eta');
-body.depends_on = struct('name', 'subject_id', 'value', subjectId);
+body.depends_on = struct('name', 'entity_id', 'value', subjectId);
 body.base = freshBase(srcBody, 'migrated_lawn_plate_measure');
-body.subject_statement   = struct('variable', variable, 'storage_mode', 'inline');
-body.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
+body.statement   = struct('variable', variable, 'storage_mode', 'inline');
+body.interaction = struct('method', struct('node', '', 'name', ''), ...
     'sample_time', struct('kind', 'point'));
-body.subject_observation = struct();
+body.observation = struct();
 if strcmp(shapeClass, 'score')
     body.score = struct('value', struct('value', double(num), ...
         'scale', struct('node', '', 'name', ''), ...

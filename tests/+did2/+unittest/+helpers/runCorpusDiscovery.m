@@ -237,7 +237,7 @@ if strcmp(options.TargetVersion, 'V_eta')
 
     % #61, the RESOLVER half of the signed stimulus-response fold: inline the
     % five run knobs from `stimulus_response_scalar_parameters_basic` onto the
-    % `harmonic_component_calculation` leaf's `subject_interaction.
+    % `harmonic_component_calculation` leaf's `interaction.
     % method_parameters` and drop the `method_parameters_id` edge (the schema's
     % own rule: the inline field OR the edge, NEVER BOTH). A pass-1 migrator
     % cannot do it -- the six values live on a DIFFERENT document and a

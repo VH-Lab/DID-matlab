@@ -114,7 +114,7 @@ withInstrument = 0;
 for i = 1:numel(obs)
     b = obs{i};
     verifyEqual(testCase, char(b.document_class.class_name), 'voltage_observation');
-    verifyEqual(testCase, depVal(b, 'subject_id'), 'specimen_1');
+    verifyEqual(testCase, depVal(b, 'entity_id'), 'specimen_1');
     tr = depVal(b, 'time_reference_1');
     verifyNotEmpty(testCase, tr);
     anchorIds{end+1} = tr; %#ok<AGROW>
@@ -152,7 +152,7 @@ verifyEqual(testCase, numel(recObs), 0);   % el_1 was the only direct element
 % --- each observation carries the parsed channels, no acquisition_system edge
 for i = 1:numel(obs)
     verifyEmpty(testCase, depVal(obs{i}, 'acquisition_system_id')); % unresolved
-    ch = obs{i}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
+    ch = obs{i}.interaction.channels;   % hoisted from observation (inc 3)
     verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
     verifyEqual(testCase, char(ch(1).type.name), 'ai');
     verifyEqual(testCase, double(ch(1).numbers), [11 12 13 14]);
@@ -225,7 +225,7 @@ verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
 % spike-train observation (subject el_neuron, instrument el_probe) SURVIVES.
 recObs = bodiesNamed(out, 'migrated_recording_observation');
 verifyEqual(testCase, numel(recObs), 1);
-verifyEqual(testCase, depVal(recObs{1}, 'subject_id'), 'el_neuron');
+verifyEqual(testCase, depVal(recObs{1}, 'entity_id'), 'el_neuron');
 verifyEqual(testCase, depVal(recObs{1}, 'instrument_id'), 'el_probe');
 end
 
@@ -353,7 +353,7 @@ function testStimManipulationClassSubjectAnchor(testCase)
 assertNotEmpty(testCase, manips);
 m = manips{1};
 verifyEqual(testCase, char(m.document_class.class_name), 'term_manipulation');
-verifyEqual(testCase, depVal(m, 'subject_id'), 'spec_s');
+verifyEqual(testCase, depVal(m, 'entity_id'), 'spec_s');
 verifyNotEmpty(testCase, depVal(m, 'time_reference_1'));
 end
 
@@ -361,8 +361,8 @@ function testStimManipulationCarriesTheStimulatorType(testCase)
 [~, ~, manips] = stimDecompose();
 assertNotEmpty(testCase, manips);
 m = manips{1};
-verifyEqual(testCase, char(m.subject_statement.variable.name), 'stimulator');
-verifyEqual(testCase, char(m.subject_statement.storage_mode), 'inline');
+verifyEqual(testCase, char(m.statement.variable.name), 'stimulator');
+verifyEqual(testCase, char(m.statement.storage_mode), 'inline');
 verifyEqual(testCase, char(m.term.value.name), 'stimulator');
 end
 
@@ -386,7 +386,7 @@ verifyEqual(testCase, rep.device_channels_unparsable, 0);
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 1);
 verifyEqual(testCase, depVal(obs{1}, 'acquisition_system_id'), 'acqsys_d');
-ch = obs{1}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
+ch = obs{1}.interaction.channels;   % hoisted from observation (inc 3)
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).type.name), 'ai');
 verifyEqual(testCase, double(ch(1).numbers), [27 28 45]);

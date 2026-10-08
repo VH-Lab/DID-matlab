@@ -66,7 +66,7 @@ function doc = document(className, fields, options)
 %     v = did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, 'SourceUnit', 'mV');
 %     doc = did2.build.document('voltage_observation', ...
 %         struct('variable', did2.build.term('ncit:C25613', 'Voltage'), 'value', v), ...
-%         'SessionId', sessionId, 'Edges', struct('subject_id', subjectId));
+%         'SessionId', sessionId, 'Edges', struct('entity_id', subjectId));
 %
 %   See also did2.build.statement, did2.build.composite, did2.schema.cache.
 

@@ -111,9 +111,9 @@ function testTheFiveRunKnobsLandInlineOnTheLeaf(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % THE CENTRAL ASSERTION. All five, by value, in the plan's own mapping:
 %   temporalfreqfunc, prestimulus_time, prestimulus_normalization,
-%   isspike, spiketrain_dt  ->  subject_interaction.method_parameters
+%   isspike, spiketrain_dt  ->  interaction.method_parameters
 [~, leaf, rep] = foldPair(testCase, 'F1');
-mp = leaf.subject_interaction.method_parameters;
+mp = leaf.interaction.method_parameters;
 verifyEqual(testCase, mp.temporalfreqfunc, 'ndi.fun.stimulustemporalfrequency');
 verifyEqual(testCase, mp.isspike, 1);
 verifyEqual(testCase, mp.spiketrain_dt, 0.001, 'AbsTol', 1e-12);
@@ -131,13 +131,13 @@ end
 
 function testTheEdgeIsDroppedBecauseTheSchemaSaysNeverBoth(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
-% subject_interaction.json, in the schema's own words: "A statement carries the
+% interaction.json, in the schema's own words: "A statement carries the
 % inline `method_parameters` field OR this edge, NEVER BOTH (team, 2026-08-09)".
 % Both halves are asserted -- an inline field beside a surviving edge would
 % satisfy a test that only checked the field.
 [~, leaf] = foldPair(testCase, 'F1');
 verifyEmpty(testCase, depValue(leaf, 'method_parameters_id'));
-verifyNotEmpty(testCase, fieldnames(leaf.subject_interaction.method_parameters));
+verifyNotEmpty(testCase, fieldnames(leaf.interaction.method_parameters));
 end
 
 function testFreqResponseIsNotCopiedBecauseTheHarmonicAlreadyHasIt(testCase)
@@ -147,7 +147,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % which the writer derives from it two lines earlier). Copying it here as well is
 % the drift surface the plan's own OPEN 3 records.
 [~, leaf] = foldPair(testCase, 'F1');
-mp = leaf.subject_interaction.method_parameters;
+mp = leaf.interaction.method_parameters;
 verifyFalse(testCase, isfield(mp, 'freq_response'));
 % ...and the fact itself is NOT lost -- it is on the composite.
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 1);
@@ -160,7 +160,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % control), plus subject_id -- must survive it, or the resolver has undone the
 % repair the migrator exists for.
 [~, leaf] = foldPair(testCase, 'F1');
-verifyEqual(testCase, depValue(leaf, 'subject_id'),     'elem_9c027e');
+verifyEqual(testCase, depValue(leaf, 'entity_id'),     'elem_9c027e');
 verifyEqual(testCase, depValue(leaf, 'instrument_id'),  'stim_5daa03');
 verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'pres_b671ff');
 verifyEqual(testCase, depValue(leaf, 'derived_from_2'), 'ctrl_20e84c');
@@ -217,7 +217,7 @@ verifyEqual(testCase, rep.refused_total, 1);
 verifyEqual(testCase, rep.inlined, 0);
 leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
 verifyEqual(testCase, depValue(leaf, 'method_parameters_id'), 'param_77c19b');
-verifyEmpty(testCase, fieldnames(leaf.subject_interaction.method_parameters));
+verifyEmpty(testCase, fieldnames(leaf.interaction.method_parameters));
 end
 
 function testADisagreeingHarmonicIsRefusedRatherThanReconciled(testCase)
@@ -235,7 +235,7 @@ verifyEqual(testCase, rep.refused_total, 1);
 verifyEqual(testCase, rep.inlined, 0);
 leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
 verifyEqual(testCase, depValue(leaf, 'method_parameters_id'), 'param_77c19b');
-verifyEmpty(testCase, fieldnames(leaf.subject_interaction.method_parameters));
+verifyEmpty(testCase, fieldnames(leaf.interaction.method_parameters));
 end
 
 function testAnAgreeingHarmonicIsCountedAsCheckedNotMerelyNotRefused(testCase)
@@ -371,7 +371,7 @@ verifyEqual(testCase, rep.inlined, 1);
 verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
 leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
-verifyEqual(testCase, leaf.subject_interaction.method_parameters.spiketrain_dt, ...
+verifyEqual(testCase, leaf.interaction.method_parameters.spiketrain_dt, ...
     0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 2);
 % The id is untouched, so every inbound `stimulus_response_scalar_id` reference

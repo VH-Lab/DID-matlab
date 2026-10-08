@@ -16,7 +16,7 @@ function bodies = binaryseries_parameters(preBody)
 %   2026-08-09) retires `binaryseries_parameters` INTO THE data_body MODEL:
 %
 %     time_type                 -> the time axis's `datum_type`
-%     data_type                 -> subject_statement.datum_type
+%     data_type                 -> statement.datum_type
 %     data_dim                  -> the axis count
 %     samples_regular_intervals -> the axis `regular` flag
 %     time_size / data_size     -> implied by their datum_type
@@ -34,13 +34,13 @@ function bodies = binaryseries_parameters(preBody)
 %   (every field declaration walked, nested ones included):
 %
 %     DENOMINATOR: 247 json file(s) under did-schema schemas/V_eta/ read
-%       leaf field `axes`        : 4  subject_statement.axes  <- NEW MOUNT
+%       leaf field `axes`        : 4  statement.axes  <- NEW MOUNT
 %                                     sampled_body.axes
 %                                     acquisition_epoch.axes, image.value.axes
-%       leaf field `datum_type`  : 1  subject_statement.datum_type
+%       leaf field `datum_type`  : 1  statement.datum_type
 %                                     char, enum of 14 (uint8..bool)
 %       leaf field `datum`       : 0  <- collapsed, as the plan decided
-%       leaf field `sample_time` : 1  subject_interaction.sample_time
+%       leaf field `sample_time` : 1  interaction.sample_time
 %                                     (sampled_body.sample_time is GONE)
 %       axis subfields, IDENTICAL on both mounts (10):
 %         variable unit source_unit approximate n regular origin spacing
@@ -48,7 +48,7 @@ function bodies = binaryseries_parameters(preBody)
 %
 %   So, against the four mappings the signature names:
 %
-%     data_type                 -> subject_statement.datum_type    EXISTS
+%     data_type                 -> statement.datum_type    EXISTS
 %     data_dim                  -> the axis count (numel(axes))    EXISTS
 %     samples_regular_intervals -> the axis `regular` flag         EXISTS
 %                                  (a BOOLEAN now, not the old char
@@ -80,7 +80,7 @@ function bodies = binaryseries_parameters(preBody)
 %   only thing in the way -- so that the fold became a straightforward build
 %   the day #45 landed. #45 HAS NOW LANDED AND THE FOLD IS STILL UNBUILDABLE,
 %   which is exactly what that prediction was for. The signed targets are
-%   `subject_statement` +
+%   `statement` +
 %   `sampled_body` (did-schema V_eta_coverage_ledger.json, `decided_targets`),
 %   and both require something this class has never carried.
 %
@@ -105,17 +105,17 @@ function bodies = binaryseries_parameters(preBody)
 %   WHAT THE TARGETS DEMAND, re-read off the built schemas 2026-08-17 rather
 %   than recalled:
 %
-%     subject_statement.subject_id   mustBeNonEmpty TRUE   -> subject
-%     subject_statement.variable     mustBeNonEmpty TRUE   (ontology_term)
-%     sampled_body.statement         mustBeNonEmpty TRUE   -> subject_statement
+%     statement.subject_id   mustBeNonEmpty TRUE   -> subject
+%     statement.variable     mustBeNonEmpty TRUE   (ontology_term)
+%     sampled_body.statement         mustBeNonEmpty TRUE   -> statement
 %                                    (inherited: the edge is declared on the
 %                                     abstract parent data_body, and sampled_body
 %                                     itself now declares only `filter_id`)
 %
 %   AND A THIRD FACT, WHICH NOTHING HAD RECORDED AND WHICH BITES BEFORE EITHER
-%   OF THOSE: `subject_statement` IS ABSTRACT, so it cannot be minted at all.
+%   OF THOSE: `statement` IS ABSTRACT, so it cannot be minted at all.
 %
-%     did-schema schemas/V_eta/stable/subject_statement.json
+%     did-schema schemas/V_eta/stable/statement.json
 %         "document_class": { ..., "abstract": true }
 %     +did2/+schema/cache.m:794-796   validateDocument raises
 %         did2:validation:abstractInstantiation for any document naming a class
@@ -123,8 +123,8 @@ function bodies = binaryseries_parameters(preBody)
 %
 %   So the target the ledger records by name is not instantiable even GIVEN a
 %   subject and a `variable`. Something concrete has to be chosen from the 83
-%   classes whose chain reaches `subject_statement` -- 5 of them abstract
-%   (subject_assertion / _calculation / _interaction / _manipulation /
+%   classes whose chain reaches `statement` -- 5 of them abstract
+%   (assertion / _calculation / _interaction / _manipulation /
 %   _observation) and 78 concrete, every one of which is a NAMED QUANTITY
 %   (`voltage_observation`, `count_observation`, ...). Choosing among 78
 %   quantities for a document that measures nothing is the same question as
@@ -175,7 +175,7 @@ function bodies = binaryseries_parameters(preBody)
 %
 %   THE LEDGER'S RUNG 3 IS THEREFORE CORRECT, AND DELIBERATE. Its row reads
 %   stage 2, `blocked_by: 3, state: no`, "the decided target(s)
-%   `subject_statement`, `sampled_body` are not all among what the migrator
+%   `statement`, `sampled_body` are not all among what the migrator
 %   emits today". That is this migrator behaving as designed, not a gap to
 %   close. It is recorded here so the next reader of that row does not read a
 %   red rung as an instruction to build.

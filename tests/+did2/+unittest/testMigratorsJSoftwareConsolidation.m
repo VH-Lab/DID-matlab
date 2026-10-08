@@ -143,7 +143,7 @@ verifyTrue(testCase, any(strcmp(names, 'software')), ...
 end
 
 function testSettingsExecutionEnvironmentIsParkedNotDropped(testCase)
-% `execution_environment` is a subject_interaction field and method_parameters
+% `execution_environment` is a interaction field and method_parameters
 % is NOT a statement, so the four per-run facts have no typed home on this
 % class. They are PARKED in `other.execution_environment` rather than dropped.
 % (Unchanged by the consolidation; pinned because the parking now happens on the
@@ -192,7 +192,7 @@ end
 function testCalculatorNamelessAppStillYieldsAnExecutionEnvironment(testCase)
 % The additive promise on the os/interpreter facts: even when the app block
 % carries no `name` (nothing for `software.name` to be identity from),
-% `subject_interaction.execution_environment` MUST still be populated from
+% `interaction.execution_environment` MUST still be populated from
 % the run's os/interpreter. PR #68 additionally makes `software_id` and
 % `runtime_environment_id` REQUIRED on `calculator`, so jCalculation now
 % ALSO mints minimal `software` (methodName-keyed) and `runtime_environment`
@@ -209,9 +209,9 @@ verifyTrue(testCase, any(strcmp(names, 'software')));
 leaf = out.migrated{find(~strcmp(names, 'session_relative_reference') ...
     & ~strcmp(names, 'software') & ~strcmp(names, 'runtime_environment'), 1)};
 verifyEqual(testCase, ...
-    leaf.get('subject_interaction.execution_environment.os'), 'Linux');
+    leaf.get('interaction.execution_environment.os'), 'Linux');
 verifyEqual(testCase, ...
-    leaf.get('subject_interaction.execution_environment.interpreter'), 'MATLAB');
+    leaf.get('interaction.execution_environment.interpreter'), 'MATLAB');
 end
 
 % ===================== fixtures ============================================

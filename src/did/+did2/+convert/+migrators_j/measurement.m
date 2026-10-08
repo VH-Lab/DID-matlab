@@ -1,6 +1,6 @@
 function bodies = measurement(preBody)
 %MEASUREMENT Brainstorm-J migrator: did_v1 measurement -> a typed
-%   subject_observation leaf (+ the shared session anchor), for the rows that can
+%   observation leaf (+ the shared session anchor), for the rows that can
 %   be typed honestly; everything else is carried through for the second pass.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
@@ -25,7 +25,7 @@ function bodies = measurement(preBody)
 %
 %   THE BINDING IS GENUINE. `ontologyName` is always a resolved CURIE: the writer
 %   (+ndi/+setup/+NDIMaker/treatmentMaker.m) gets it from `ndi.ontology.lookup`
-%   and ERRORS if lookup fails. So `subject_statement.variable` arrives properly
+%   and ERRORS if lookup fails. So `statement.variable` arrives properly
 %   bound, unlike its `subjectmeasurement` sibling whose field is free text.
 %
 %   ---------------------------------------------------------------------

@@ -169,9 +169,9 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   Both halves of that need V_eta classes/fields that DO NOT EXIST, verified
 %   rather than assumed:
 %
-%     1. AN UNDIMENSIONED CONCRETE OBSERVATION LEAF. `subject_observation`
+%     1. AN UNDIMENSIONED CONCRETE OBSERVATION LEAF. `observation`
 %        carries "abstract": true in
-%        schemas/V_eta/stable/subject_observation.json, and
+%        schemas/V_eta/stable/observation.json, and
 %        +did2/+schema/cache.m:507-511 raises
 %        `did2:validation:abstractInstantiation` for any document naming an
 %        abstract class. Every concrete leaf under it
@@ -195,7 +195,7 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   UNRESOLVEDLABEL, which migrators_j.element records as a `term_assertion` on
 %   the element-subject:
 %
-%       subject_statement.variable.name = 'modality unresolved'
+%       statement.variable.name = 'modality unresolved'
 %       term.value.name                 = the element type (or the best-known label)
 %
 %   That is built entirely from DECLARED, queryable fields, on the class
@@ -226,9 +226,9 @@ bodies = {};
 retireObserves = false;
 unresolvedLabel = '';
 
-% NO SUBJECT => NO OBSERVATION. `subject_statement.subject_id` is the ONE
-% required edge on this chain (measured: subject_observation declares only
-% `derived_from_#`, subject_interaction only optional edges), and an empty
+% NO SUBJECT => NO OBSERVATION. `statement.subject_id` is the ONE
+% required edge on this chain (measured: observation declares only
+% `derived_from_#`, interaction only optional edges), and an empty
 % required edge validates clean because +did2/+validate/references.m:90 skips
 % empty edges -- the invented-empty-edge pattern, 7,233 documents and counting.
 if isempty(subjectId)
@@ -242,7 +242,7 @@ end
 % empty `instrument_id` is the invented-empty-edge defect, and dropping the
 % observation entirely would lose a real spike train because we do not know
 % which probe recorded it. `instrument_id` is optional in the schema
-% (subject_interaction, mustBeNonEmpty false), so saying nothing is expressible
+% (interaction, mustBeNonEmpty false), so saying nothing is expressible
 % and is what the source actually says.
 hasInstrument = ~isempty(instrumentId);
 
@@ -272,8 +272,8 @@ for k = 1:numel(entries)
     obsId = did.ido.unique_id();
 
     obs = struct();
-    obs.document_class = classBlock(e.class, {'subject_observation', e.mixin});
-    obs.depends_on = struct('name', 'subject_id', 'value', subjectId);
+    obs.document_class = classBlock(e.class, {'observation', e.mixin});
+    obs.depends_on = struct('name', 'entity_id', 'value', subjectId);
     if hasInstrument
         obs.depends_on(end+1) = ...
             struct('name', 'instrument_id', 'value', instrumentId);   % T7
@@ -283,14 +283,14 @@ for k = 1:numel(entries)
         'name', 'migrated_recording_observation', 'datestamp', datestamp);
     % 'reference', not 'body': see the header. The samples live in the
     % acquisition files, reached the way v1 reaches them.
-    obs.subject_statement = struct( ...
+    obs.statement = struct( ...
         'variable', jOntologyTerm('', e.variable), ...
         'storage_mode', 'reference');
     % `method` is left blank: the leaf class already names the act (the
     % jStartInteraction convention), and no algorithm produced this value.
     % No `sample_time` on the statement -- the body owns the cadence (D1).
-    obs.subject_interaction = struct('method', jOntologyTerm('', ''));
-    obs.subject_observation = struct();
+    obs.interaction = struct('method', jOntologyTerm('', ''));
+    obs.observation = struct();
     obs = attachQuantityBlock(obs, e.mixin);
 
     % NO BODY. The element document carries no files -- see the header -- so a

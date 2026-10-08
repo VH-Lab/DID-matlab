@@ -2215,7 +2215,8 @@ for k = 1:n
         % DOCUMENT -- neither is epoch-scoped.
         recSession = recSession + 1;
     end
-    subjId = depValueOf(bodies{k}, 'subject_id');
+    subjId = depValueOf(bodies{k}, 'entity_id');      % `subject_id` before 2026-10-08
+    if isempty(subjId); subjId = depValueOf(bodies{k}, 'subject_id'); end
     if isempty(subjId) || ~isKey(subjectLocalById, subjId); continue; end
     coveredSubjectSession(pairKey(rows(k).session_id, ...
         subjectLocalById(subjId))) = true;

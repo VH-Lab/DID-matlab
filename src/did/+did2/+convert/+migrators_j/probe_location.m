@@ -4,7 +4,7 @@ function v2Body = probe_location(preBody)
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Per D5, an element/probe location is not its own class in J: the probe IS a
 %   `subject` (device-as-subject, D2) and the location is a `term_observation`
-%   about it -- `subject_statement.variable` = a spatial relation, the leaf
+%   about it -- `statement.variable` = a spatial relation, the leaf
 %   `value` = the atlas term. did_v1 carried the atlas term as a coordinated
 %   (ontology_name, name) char pair; here they compose the ontology_term value.
 %   1 -> 2 (the observation + the shared session anchor).
@@ -26,7 +26,7 @@ block = preBody.probe_location;
 
 locTerm = jOntologyTerm(jGetChar(block, 'ontology_name'), jGetChar(block, 'name'));
 
-obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
+obs = jStartInteraction(preBody, 'term_observation', 'observation', ...
     {}, jOntologyTerm('', 'anatomical location'), {'probe_id', 'element_id', 'subject_id'});
 obs.term = struct('value', locTerm);
 
