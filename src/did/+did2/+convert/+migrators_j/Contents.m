@@ -553,15 +553,15 @@
 %         as-is. base.id is preserved.
 %     contrast_sensitivity_calc
 %         Brainstorm-J migrator: the ndi.calc.vis.contrast_sensitivity calculator
-%         OUTPUT document -> the calculation LEAF
-%         contrast_sensitivity_calculation (id-preserved) + a session anchor.
-%         Un-defers the aggregate contrast-sensitivity calculation. This doc HAS
-%         element_id (like every vision calculator, tuningcurve_calc included), so the
-%         fold is single-doc: element_id -> subject_id; the result fields (sensitivity
-%         / gain / c50 / p-value matrices) sit on the concrete
-%         contrast_sensitivity_calc block, so it is passed as the sourceBlock (its
-%         inherited input_parameters stripped -> method_parameters); app kept; the raw
-%         responses (stimulus_response_scalar_id) -> derived_from_1.
+%         OUTPUT document -> the calculation LEAF contrast_sensitivity_calculation
+%         (id-preserved) + a session anchor. Un-defers the aggregate
+%         contrast-sensitivity calculation. This doc HAS element_id (like every vision
+%         calculator, tuningcurve_calc included), so the fold is single-doc:
+%         element_id -> subject_id; the result fields (sensitivity / gain / c50 /
+%         p-value matrices) sit on the concrete contrast_sensitivity_calc block, so it
+%         is passed as the sourceBlock (its inherited input_parameters stripped ->
+%         method_parameters); app kept; the raw responses
+%         (stimulus_response_scalar_id) -> derived_from_1.
 %     contrast_tuning
 %         Brainstorm-J migrator: did_v1 contrast_tuning (raw NDIcalc-vis result class)
 %         -> the CONCRETE V_eta leaf `contrasttuning_calc` (⊂
@@ -734,9 +734,9 @@
 %         Brainstorm-J migrator: did_v1 kilosort_clusters -> the D-C analysis-tier
 %         shape (count_observation + opaque_body + session anchor).
 %     measurement
-%         Brainstorm-J migrator: did_v1 measurement -> a typed observation
-%         leaf (+ the shared session anchor), for the rows that can be typed honestly;
-%         everything else is carried through for the second pass.
+%         Brainstorm-J migrator: did_v1 measurement -> a typed observation leaf (+ the
+%         shared session anchor), for the rows that can be typed honestly; everything
+%         else is carried through for the second pass.
 %     metadata_editor
 %         Brainstorm-J migrator: did_v1 metadata_editor -> a structured `dataset`
 %         entity + the person / organization / funding / publication / web_resource
@@ -756,19 +756,19 @@
 %         Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE. The
 %         current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the
 %         `ngrid` raster) is a GUARDED PASSTHROUGH deferred to the NDI second pass: a
-%         table row is not a subject, so pass 1 cannot fill
-%         `statement.subject_id` without minting the husk the image_stack
-%         guard exists to stop. The legacy `ontology_name` + `ontology_region` shape
-%         (which the correction below shows has never existed in NDI) would migrate 1
-%         -> 2 to a term_observation about the element-subject + a session anchor. Any
-%         third shape ERRORS rather than emitting. The raster and the provenance edge
-%         are deferred with the passthrough (#47).
+%         table row is not a subject, so pass 1 cannot fill `statement.subject_id`
+%         without minting the husk the image_stack guard exists to stop. The legacy
+%         `ontology_name` + `ontology_region` shape (which the correction below shows
+%         has never existed in NDI) would migrate 1 -> 2 to a term_observation about
+%         the element-subject + a session anchor. Any third shape ERRORS rather than
+%         emitting. The raster and the provenance edge are deferred with the
+%         passthrough (#47).
 %     ontology_label
 %         Brainstorm-J migrator: did_v1 ontology_label -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
 %     ontology_table_row
-%         Brainstorm-J split migrator: did_v1 ontology_table_row -> the
-%         statement tier (1 -> N).
+%         Brainstorm-J split migrator: did_v1 ontology_table_row -> the statement tier
+%         (1 -> N).
 %     openminds
 %         Brainstorm-J migrator: did_v1 `openminds` -- a GUARDED PASSTHROUGH.
 %     openminds_element
@@ -841,18 +841,17 @@
 %         resolves.
 %     spatial_gene_expression_pyramid
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionPyramid -> V_eta
-%         spatial_gene_expression_pyramid (⊂ [base, gene_expression,
-%         observation]) + the shared session anchor. Carries the observation
-%         direction: `variable` bound to NCIT:C16608 "gene expression" per the
-%         DID-schema binding registry; `subject_id` carried from v1 depends_on onto
-%         the inherited statement slot; `time_reference_1` pointing at a
-%         session_relative_reference `during` anchor (the smallest legitimate anchor
-%         for a static spatial-transcriptomics section -- see the PROVISIONAL SHAPES
-%         block below); the pyramid's own block fields (chip_serial, pipeline_version,
-%         bin geometry, byte_order, ...) and the gene_expression mixin fields (assay,
-%         count_type, count_units) carry through verbatim. base.id is preserved so a
-%         Cells / Tiles / file_reference row's `spatial_gene_expression_pyramid_id`
-%         edge still resolves.
+%         spatial_gene_expression_pyramid (⊂ [base, gene_expression, observation]) +
+%         the shared session anchor. Carries the observation direction: `variable`
+%         bound to NCIT:C16608 "gene expression" per the DID-schema binding registry;
+%         `subject_id` carried from v1 depends_on onto the inherited statement slot;
+%         `time_reference_1` pointing at a session_relative_reference `during` anchor
+%         (the smallest legitimate anchor for a static spatial-transcriptomics section
+%         -- see the PROVISIONAL SHAPES block below); the pyramid's own block fields
+%         (chip_serial, pipeline_version, bin geometry, byte_order, ...) and the
+%         gene_expression mixin fields (assay, count_type, count_units) carry through
+%         verbatim. base.id is preserved so a Cells / Tiles / file_reference row's
+%         `spatial_gene_expression_pyramid_id` edge still resolves.
 %     spatial_gene_expression_tiles
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionTiles -> V_eta
 %         spatial_gene_expression_tiles, an id-preserving 1:1 passthrough. The class
@@ -908,10 +907,9 @@
 %         UNCHANGED for the NDI second pass.
 %     stimulus_response_scalar_parameters_basic
 %         Brainstorm-J migrator: DEFERRED guarded passthrough. The signed model folds
-%         this class INLINE into `interaction.method_parameters` on the
-%         response leaf; pass 1 cannot, and must not delete the documents in the
-%         meantime. Routed from did2.convert.v1_to_v2 only when TargetVersion ==
-%         'V_eta'.
+%         this class INLINE into `interaction.method_parameters` on the response leaf;
+%         pass 1 cannot, and must not delete the documents in the meantime. Routed
+%         from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %     stimulus_tuningcurve
 %         Brainstorm-J migrator: a raw ndi.app.stimulus.tuning_response tuning curve
 %         (the pre-calculator-framework stimulus_tuningcurve document) -> the CONCRETE
@@ -930,10 +928,9 @@
 %         Brainstorm-J migrator: did_v1 subject_group -> bare subject (+ member_of
 %         relations).
 %     subjectmeasurement
-%         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed
-%         observation leaf + an `absolute_reference` carrying the measurement
-%         instant. Routed from did2.convert.v1_to_v2 only when TargetVersion ==
-%         'V_eta'.
+%         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed observation leaf
+%         + an `absolute_reference` carrying the measurement instant. Routed from
+%         did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %     syncgraph
 %         Brainstorm-J migrator: did_v1 `syncgraph` -> `clock_alignment_policy`.
 %     syncrule
@@ -952,8 +949,8 @@
 %         minted `software` and `runtime_environment` entities.
 %     treatment
 %         Brainstorm-J split migrator: did_v1 treatment -> a data-type-named
-%         manipulation leaf (+ an optional site term_observation + the shared
-%         session anchor).
+%         manipulation leaf (+ an optional site term_observation + the shared session
+%         anchor).
 %     treatment_drug
 %         Brainstorm-J migrator: did_v1 treatment_drug -> dose_manipulation.
 %     treatment_transfer
