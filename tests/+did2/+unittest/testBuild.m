@@ -617,7 +617,9 @@ names = {rel.depends_on.name};
 verifyEqual(testCase, rel.depends_on(strcmp(names, 'child_id')).document_id, child);
 verifyEqual(testCase, rel.depends_on(strcmp(names, 'parent_id')).document_id, parent);
 verifyEqual(testCase, rel.directed_relation.sequence, 2);
-verifyEqual(testCase, rel.directed_relation.relation.node, 'BFO:0000050', ...
+% prefixes match case-insensitively (CURIE_lookups_meta.json); the schema writes
+% them lowercase since 2026-10-08, `BFO:` before
+verifyEqual(testCase, lower(rel.directed_relation.relation.node), 'bfo:0000050', ...
     'part_of is completed from the bound relation value set');
 end
 
