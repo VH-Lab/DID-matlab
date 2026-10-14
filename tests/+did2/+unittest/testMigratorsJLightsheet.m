@@ -339,8 +339,8 @@ verifyEqual(testCase, eDoc.seriesMemberBase(), 0, 'the migrated body is a V_eta 
 verifyEqual(testCase, vStem, 'chunk.bin');
 verifyEqual(testCase, eStem, 'body_data');
 verifyEqual(testCase, eIndex, vIndex, 'body_data_0 is the slot chunk.bin_1 named');
-verifyEmpty(testCase, eDoc.seriesMemberOf('body_data_4'), ...
-    'four members are body_data_0..3; the manifest is unchanged');
+verifyEmpty(testCase, vDoc.seriesMemberOf('chunk.bin_0'), ...
+    'the v1 level has no member 0');
 % the manifest that resolves both is the same stored file
 verifyEqual(testCase, b.files.file_info(1).locations, v1.files.file_info(1).locations);
 
