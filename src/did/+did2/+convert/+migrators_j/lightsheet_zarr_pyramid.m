@@ -108,9 +108,15 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %     body's `description` text (carried here in `notes`, moved by the pass);
 %     `byte_order` (always 'little', and repeated on every level) is carried
 %     by the levels' sampled_bodies, not here.
-%   * The observation's `variable` is the name 'fluorescence' (DID-schema
-%     review/73/veta_term_worksheet_73.csv row 41, a PROPOSED name with no
-%     CURIE). The keys' variables and units are likewise names with no node.
+%   * TERMS -- DECIDED (Jess 2026-10-14, lightsheet point 10, option C;
+%     nodes checked on OLS): the observation's `variable` is NCIT:C184706
+%     'Fluorescence Intensity' (it was the bare name 'fluorescence'); the
+%     keys' canonical units carry UO nodes (second UO:0000010, meter
+%     UO:0000008), an unrecognised unit stays name-only; the levels'
+%     `summary statistic` values carry NCIT nodes (Maximum NCIT:C25564,
+%     Arithmetic Mean NCIT:C53319). The axis names (time, channel, z, y, x)
+%     and the variable 'summary statistic' stay names with no node (term
+%     worksheet).
 %
 %   STATUS: NEVER RUN LOCALLY. There is no MATLAB in the authoring container;
 %   tests/+did2/+unittest/testMigratorsJLightsheet.m is the evidence, in CI.
@@ -169,7 +175,10 @@ end
 % and the edge is removed straight after. Nothing else about the document
 % depends on it.
 standIn = 'lightsheet_no_time_reference';
-obs = did2.build.statement('intensity_observation', subjectId, 'fluorescence', [], ...
+% Point 10 (Jess 2026-10-14, checked on OLS): the variable is NCIT's
+% 'Fluorescence Intensity', replacing the bare name 'fluorescence'.
+FLUORESCENCE_INTENSITY = struct('node', 'NCIT:C184706', 'name', 'Fluorescence Intensity');
+obs = did2.build.statement('intensity_observation', subjectId, FLUORESCENCE_INTENSITY, [], ...
     'DataBody', true, ...
     'DatumType', dataType, ...
     'SourceDatumType', sourceDataType, ...

@@ -761,6 +761,8 @@ POST_PASSES = [
         ("level_unit_disagreements", "  z/y/x unit DISAGREEMENTS with the pyramid (not overwritten)"),
         ("level_bodies_without_pyramid", "level sampled_bodies whose pyramid is not in the batch"),
         ("level_completion_quarantined", "QUARANTINED by the level completion"),
+        # Point 10: units with no UO mapping stay name-only, counted.
+        ("pyramid_key_units_name_only", "pyramid key units left NAME-ONLY (no UO mapping)"),
     ]),
     # DORMANT BY TEAM DECISION 2026-08-12. The pass RUNS and EMITS NOTHING.
     # The agreed model is ONE statement per source document holding an ARRAY of

@@ -187,14 +187,18 @@ end
 
 % ===================== helpers =============================================
 
-function name = statisticName(reduction)
-% The writer's reduction labels -> the condition's term name (L1: "summary
-% statistic: mean|maximum"). A label the writer does not use is carried as
-% given rather than guessed at.
+function t = statisticName(reduction)
+% The writer's reduction labels -> the `summary statistic` condition's term
+% (L1: "summary statistic: mean|maximum"), with its NCIT node (point 10, Jess
+% 2026-10-14, checked on OLS): max -> NCIT:C25564 'Maximum', mean ->
+% NCIT:C53319 'Arithmetic Mean'. Any other label stays NAME-ONLY, as given,
+% rather than guessed at. The variable 'summary statistic' itself is a name
+% with no node (term worksheet).
 switch reduction
-    case 'max';  name = 'maximum';
-    case 'min';  name = 'minimum';
-    otherwise;   name = reduction;
+    case 'max';  t = struct('node', 'NCIT:C25564', 'name', 'Maximum');
+    case 'mean'; t = struct('node', 'NCIT:C53319', 'name', 'Arithmetic Mean');
+    case 'min';  t = struct('node', '', 'name', 'minimum');
+    otherwise;   t = struct('node', '', 'name', reduction);
 end
 end
 

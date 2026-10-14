@@ -417,6 +417,7 @@ report = struct( ...
     'level_unit_disagreements',      0, ...
     'level_bodies_without_pyramid',  0, ...
     'level_completion_quarantined',  0, ...
+    'pyramid_key_units_name_only',   0, ...
     'ran',                           false);
 result.generic_file_fold = report;
 
@@ -678,6 +679,15 @@ strip = unique([carriers, find(keyCarrier)]);
 pyramidKeys = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = find(keyCarrier)
     pyramidKeys(docIds{k}) = blockFieldOf(bodies{k}, 'keys');
+    % Point 10: a unit with no unambiguous UO mapping stays name-only; COUNT it.
+    pk = keyCells(pyramidKeys(docIds{k}));
+    for i = 1:numel(pk)
+        if isfield(pk{i}, 'unit') && isstruct(pk{i}.unit) ...
+                && (~isfield(pk{i}.unit, 'node') || isempty(pk{i}.unit.node)) ...
+                && isfield(pk{i}.unit, 'name') && ~isempty(pk{i}.unit.name)
+            report.pyramid_key_units_name_only = report.pyramid_key_units_name_only + 1;
+        end
+    end
 end
 levelIdx = [];
 for k = 1:n

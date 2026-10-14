@@ -30,9 +30,12 @@ function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, cha
 %   UNITS ARE CONVERTED TO V_eta's CANONICAL ONES (`meter`, `second`) when the
 %   source unit is one of the UDUNITS-2 names OME-NGFF allows for a space or
 %   time axis; origin/spacing then carry the canonical numbers and
-%   source_origin/source_spacing/source_unit the source's own. An axis whose
-%   unit is empty or unrecognised keeps its numbers with NO unit -- the
-%   honest "not stated" -- rather than borrowing one. (The SmartSPIM path
+%   source_origin/source_spacing/source_unit the source's own. The canonical
+%   unit carries its UO node (point 10, Jess 2026-10-14: second UO:0000010;
+%   meter UO:0000008). An axis whose unit is unrecognised keeps its numbers
+%   and the unit NAME-ONLY, as the source spelled it (point 10); an axis with
+%   no unit keeps its numbers with NO unit -- the honest "not stated" --
+%   rather than borrowing one. (The SmartSPIM path
 %   writes `t` and `c` with empty units: fromSPIM.m axesDesc.)
 %
 %   A space/time axis with no scale has no spacing to state, so its positions
@@ -106,12 +109,18 @@ for k = 1:nAx
         opts = {'Values', 0:(n - 1)};
     else
         [factor, canonical] = canonicalUnit(units{k}, kind);
-        if isempty(canonical)
+        if isempty(canonical) && ~isempty(strtrim(char(units{k})))
+            % Point 10: a unit with no unambiguous UO mapping stays NAME-ONLY,
+            % as the source spelled it, with the source's own numbers. The
+            % store-record pass counts these (pyramid_key_units_name_only).
+            opts = {'Unit', struct('node', '', 'name', strtrim(char(units{k}))), ...
+                'Origin', translation(k), 'Spacing', scale(k)};
+        elseif isempty(canonical)
             opts = {'Origin', translation(k), 'Spacing', scale(k)};
         elseif factor == 1 && strcmp(units{k}, canonical)
-            opts = {'Unit', canonical, 'Origin', translation(k), 'Spacing', scale(k)};
+            opts = {'Unit', unitTerm(canonical), 'Origin', translation(k), 'Spacing', scale(k)};
         else
-            opts = {'Unit', canonical, 'SourceUnit', units{k}, ...
+            opts = {'Unit', unitTerm(canonical), 'SourceUnit', units{k}, ...
                 'Origin', translation(k) * factor, 'Spacing', scale(k) * factor, ...
                 'SourceOrigin', translation(k), 'SourceSpacing', scale(k)};
         end
@@ -122,6 +131,20 @@ for k = 1:nAx
     entries{k} = did2.build.key(variable, n, opts{:});
 end
 keys = did2.build.list(entries{:});
+end
+
+function t = unitTerm(name)
+%UNITTERM A canonical unit name as its UO term (point 10, Jess 2026-10-14).
+%   second UO:0000010 and micrometer UO:0000017 were checked on OLS by Jess;
+%   meter UO:0000008 is UO's metre (the canonical length every space axis is
+%   converted to). A name not in this table stays name-only.
+table = {'second', 'UO:0000010'; 'micrometer', 'UO:0000017'; 'meter', 'UO:0000008'};
+k = find(strcmp(table(:, 1), name), 1);
+if isempty(k)
+    t = struct('node', '', 'name', name);
+else
+    t = struct('node', table{k, 2}, 'name', name);
+end
 end
 
 function [factor, canonical] = canonicalUnit(unit, kind)

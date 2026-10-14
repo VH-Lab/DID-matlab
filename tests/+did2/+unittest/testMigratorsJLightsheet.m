@@ -252,6 +252,10 @@ keys = keyList(b.data.keys);
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 t = keys{strcmp(names, 'time')};
 verifyEqual(testCase, t.unit.name, 'second');
+verifyEqual(testCase, t.unit.node, 'UO:0000010', 'point 10');
+z = keys{strcmp(names, 'z')};
+verifyEqual(testCase, z.unit.node, 'UO:0000008');
+verifyEqual(testCase, rep.pyramid_key_units_name_only, 0);
 c = keys{strcmp(names, 'channel')};
 verifyEqual(testCase, labelNames(c.labels), {'GCaMP6s', 'tdTomato'});
 verifyFalse(testCase, isfield(c, 'values') && ~isempty(c.values), ...
@@ -286,6 +290,28 @@ keys = keyList(b.data.keys);
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 t = keys{strcmp(names, 'time')};
 verifyFalse(testCase, isfield(t, 'unit') && ~isempty(t.unit), 'nothing to complete it from');
+end
+
+function testTheObservationsVariableIsFluorescenceIntensity(testCase)
+% Point 10 (Jess 2026-10-14, option C): NCIT:C184706 replaces the bare name.
+assumeCompositionSchema(testCase);
+out = runJ(pyramidV1());
+obs = pickById(out, 'pyr_ls_1');
+v = blockField(obs, 'variable');
+if iscell(v); v = v{1}; end
+verifyEqual(testCase, v.node, 'NCIT:C184706');
+verifyEqual(testCase, v.name, 'Fluorescence Intensity');
+end
+
+function testAnUnmappedUnitStaysNameOnlyAndIsCounted(testCase)
+% Point 10: a unit with no unambiguous UO mapping keeps its name and no node,
+% and the pass counts it.
+assumeCompositionSchema(testCase);
+p = pyramidV1();
+p.lightsheetZarrPyramid.axes_units = 'second,,micrometer,micrometer,furlong';
+[out, rep] = runWithPass({p});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.pyramid_key_units_name_only, 1);
 end
 
 function testAFileReferenceNamedByNoPyramidStaysAPassthrough(testCase)
@@ -475,13 +501,17 @@ cond = b.data_body.conditions;
 if iscell(cond); cond = cond{1}; end
 verifyEqual(testCase, numel(cond), 1);
 verifyEqual(testCase, cond(1).variable.name, 'summary statistic');
-verifyEqual(testCase, termName(cond(1).term.value), 'maximum');
+verifyEqual(testCase, termName(cond(1).term.value), 'Maximum');
+verifyEqual(testCase, termNode(cond(1).term.value), 'NCIT:C25564', 'point 10');
+verifyTrue(testCase, ~isfield(cond(1).variable, 'node') || isempty(cond(1).variable.node), ...
+    'the variable ''summary statistic'' stays name-only (term worksheet)');
 
 out = runJ(levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest'));
 b = onlyBody(testCase, out);
 cond = b.data_body.conditions;
 if iscell(cond); cond = cond{1}; end
-verifyEqual(testCase, termName(cond(1).term.value), 'mean');
+verifyEqual(testCase, termName(cond(1).term.value), 'Arithmetic Mean');
+verifyEqual(testCase, termNode(cond(1).term.value), 'NCIT:C53319', 'point 10');
 end
 
 function testLevelZeroOfASingleReductionStoreIsStillTheMeasurement(testCase)
@@ -681,6 +711,12 @@ function names = labelNames(labels)
 if isstruct(labels); labels = num2cell(labels); end
 names = cellfun(@(l) char(l.name), labels, 'UniformOutput', false);
 names = reshape(names, 1, []);
+end
+
+function n = termNode(v)
+if iscell(v); v = v{1}; end
+n = '';
+if isstruct(v) && isfield(v, 'node'); n = char(v(1).node); end
 end
 
 function n = termName(v)
