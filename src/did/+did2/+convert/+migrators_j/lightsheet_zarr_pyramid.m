@@ -73,12 +73,16 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %                       and removes it).
 %        data.keys      the full-resolution array's keys (axes / shape /
 %                       voxel size / translation / units / channel names
-%                       from this document), which only this document has --
-%                       OME-Zarr ONLY (below).
+%                       from this document), which only this document has.
+%                       Carried for EVERY pyramid (point 8, Jess 2026-10-14):
+%                       the pass copies the `t` unit and the channel names
+%                       onto each level's sampled_body keys, and checks the
+%                       z/y/x units. They become the store body's keys only
+%                       for an OME-Zarr source.
 %        statement.notes  for the body's description: label, NGFF
 %                       multiscales name and type.
 %      The edge and the notes are carried whenever the pyramid names a source.
-%      The KEYS only when its dtype is an NGFF typestring -- the
+%      The keys reach the STORE BODY only when its dtype is an NGFF typestring -- the
 %      writer-grounded sign that the source IS an OME-Zarr store. A SmartSPIM
 %      pyramid's source is a folder of raw TIFF slices; point 4 (Jess
 %      2026-10-14) makes it an unheld opaque_body of the observation too, in
@@ -137,21 +141,26 @@ if ~isempty(pipelineVersion)
 end
 
 % ---- what the store-record pass needs (header, item 3) -------------------
-rawDtype = char(field(blk, 'dtype', ''));
-isNGFF = ~isempty(regexp(rawDtype, '^[<>|][uifcb]\d+$', 'once'));
 carryStore = ~isempty(sourceId);
 carried = {};
 if carryStore
     carried = {'Notes', storeDescription(blk)};
 end
-if carryStore && isNGFF
-    axesOrder = char(field(blk, 'axes_order', ''));
+% The full-resolution keys are carried for EVERY pyramid (point 8): they hold
+% the per-axis units (the `t` unit among them) and the channel names, which no
+% level document has, and the batch pass copies them onto each level's keys.
+% They reach the store body only for an OME-Zarr source (point 4). A pyramid
+% whose axes, shape and voxel size do not agree carries none rather than
+% failing: the keys are a convenience for the pass, not the observation.
+axesOrder = char(field(blk, 'axes_order', ''));
+try
     units = splitList(field(blk, 'axes_units', ''), numel(axesOrder));
     units = defaultSpaceUnits(units, axesOrder, char(field(blk, 'voxel_size_units', '')));
     keys = jLightsheetKeys(axesOrder, field(blk, 'shape_level0', []), ...
         field(blk, 'voxel_size_level0', []), field(blk, 'translation_level0', []), ...
         units, splitList(field(blk, 'channel_names', ''), 0), []);
     carried = [carried, {'Keys', keys}];
+catch
 end
 
 % ---- the observation -------------------------------------------------------

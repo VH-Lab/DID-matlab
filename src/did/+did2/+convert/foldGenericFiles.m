@@ -341,6 +341,25 @@ function [result, report] = foldGenericFiles(result, options)
 %     store_refused_shared                two carriers name one record (one
 %                                         body cannot have two owners)
 %     store_refused_no_original_path      the record has no location to keep
+%   ---------------------------------------------------------------------
+%   THE LEVELS -- the pyramid's units and channel names (point 8)
+%   ---------------------------------------------------------------------
+%   Jess, 2026-10-14. A v1 level carries only `voxel_size_units`; the per-axis
+%   `axes_units` (a `t` unit among them) and the `channel_names` exist only on
+%   the pyramid. The pyramid migrator carries them on its observation as the
+%   full-resolution keys (for EVERY pyramid, OME-Zarr or SmartSPIM, with or
+%   without a source). For every `sampled_body` whose owner_id is such an
+%   observation this pass copies the `t` unit onto the level's `t` key
+%   (scaling the level's raw origin/spacing by the same factor the pyramid's
+%   were), names the `c` positions by channel when the counts agree, and
+%   CHECKS z/y/x units: a disagreement is counted, never overwritten. The
+%   observation's carried keys are then removed, as the store fields are. A
+%   level body whose owner is not in the batch keeps its keys and is counted.
+%   Counters: level_bodies_seen / _completed / _without_pyramid,
+%   level_unit_disagreements, level_completion_quarantined. This touches only
+%   documents +migrators_j/lightsheet_zarr_level already emitted, so it adds
+%   no BATCH-PASS line: the class is credited to that migrator.
+%
 %   A `file_reference` NO carrier names is left exactly as it is (a
 %   passthrough; the `.gef` sources are a separate build) and counted in
 %   `store_records_left_passthrough`.
@@ -393,6 +412,11 @@ report = struct( ...
     'store_records_left_passthrough', 0, ...
     'store_checksums_to_description', 0, ...
     'store_sizes_unrecorded',        0, ...
+    'level_bodies_seen',             0, ...
+    'level_bodies_completed',        0, ...
+    'level_unit_disagreements',      0, ...
+    'level_bodies_without_pyramid',  0, ...
+    'level_completion_quarantined',  0, ...
     'ran',                           false);
 result.generic_file_fold = report;
 
@@ -591,8 +615,10 @@ end
 
 function [result, report] = foldStoreRecords(result, report, options)
 %FOLDSTORERECORDS fileReference -> an UNHELD opaque_body of the observation
-%   whose transient `source_file_id` edge names it. See the header, "THE STORE
-%   RECORDS". Every counter is a `store_*` field of REPORT.
+%   whose transient `source_file_id` edge names it, and (point 8) the pyramid's
+%   per-axis units and channel names onto the keys of each of its levels'
+%   sampled_bodies. See the header, "THE STORE RECORDS" and "THE LEVELS".
+%   Every counter is a `store_*` or `level_*` field of REPORT.
 docs = result.migrated;
 n = numel(docs);
 bodies  = cell(1, n);
@@ -616,14 +642,23 @@ end
 isRecord = strcmp(classes, 'file_reference');
 report.store_records_seen = sum(isRecord);
 
-% --- the carriers, and how many name each record ---------------------------
+% --- the carriers: what the pyramid migrator left on its observation --------
+% A STORE carrier names a record through `source_file_id`; a KEY carrier holds
+% the full-resolution keys (point 8: they carry the pyramid's axes_units and
+% channel_names to its levels). Only lightsheet_zarr_pyramid writes an
+% observation with `data_body` true AND keys, so the rule cannot reach another
+% class's documents.
 carriers = [];
+keyCarrier = false(1, n);
 named = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
     c = classes{k};
     if ~(strcmp(c, 'observation') || endsWith(c, '_observation')); continue; end
     target = depValueOf(bodies{k}, 'source_file_id');
-    if isempty(target); continue; end
+    keyCarrier(k) = carriesKeys(bodies{k});
+    if isempty(target)
+        continue;
+    end
     carriers(end+1) = k; %#ok<AGROW>
     if isKey(named, target)
         named(target) = named(target) + 1;
@@ -637,20 +672,43 @@ for k = find(isRecord)
         report.store_records_left_passthrough = report.store_records_left_passthrough + 1;
     end
 end
-if isempty(carriers)
+strip = unique([carriers, find(keyCarrier)]);
+
+% --- THE LEVELS (point 8): every sampled_body owned by a key carrier ---------
+pyramidKeys = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = find(keyCarrier)
+    pyramidKeys(docIds{k}) = blockFieldOf(bodies{k}, 'keys');
+end
+levelIdx = [];
+for k = 1:n
+    if ~strcmp(classes{k}, 'sampled_body'); continue; end
+    owner = depValueOf(bodies{k}, 'owner_id');
+    if isempty(owner); continue; end
+    if isKey(pyramidKeys, owner)
+        levelIdx(end+1) = k; %#ok<AGROW>
+    elseif ~isKey(idIdx, owner) && isLightsheetLevelBody(bodies{k})
+        % its pyramid is not in this batch: the level keeps its own keys
+        report.level_bodies_without_pyramid = report.level_bodies_without_pyramid + 1;
+    end
+end
+report.level_bodies_seen = numel(levelIdx);
+
+if isempty(strip) && isempty(levelIdx)
     return;
 end
 
 % --- build the replacements -----------------------------------------------
 rebuilt = {};
 plan = struct('obsIdx', {}, 'recIdx', {}, 'obsId', {}, 'recId', {}, 'omeZarr', {});
-for c = 1:numel(carriers)
-    k = carriers(c);
+for c = 1:numel(strip)
+    k = strip(c);
     obs = bodies{k};
     target = depValueOf(obs, 'source_file_id');
     [obsStripped, keys, notes] = stripCarrier(obs);
     recIdx = 0;
-    if ~isKey(idIdx, target)
+    if isempty(target)
+        % a key carrier only: nothing to fold, its transient keys go
+    elseif ~isKey(idIdx, target)
         report.store_refused_not_in_batch = report.store_refused_not_in_batch + 1;
     elseif ~strcmp(classes{idIdx(target)}, 'file_reference')
         report.store_refused_not_a_file_reference = ...
@@ -678,7 +736,7 @@ for c = 1:numel(carriers)
     rebuilt{end+1} = obsStripped; %#ok<AGROW>
     if recIdx > 0
         rebuilt{end+1} = body; %#ok<AGROW>
-    else
+    elseif ~isempty(target)
         report.store_carriers_stripped = report.store_carriers_stripped + 1;
     end
     plan(end+1) = struct('obsIdx', k, 'recIdx', recIdx, ...
@@ -689,6 +747,18 @@ report.store_refused_total = report.store_refused_not_in_batch ...
     + report.store_refused_not_a_file_reference ...
     + report.store_refused_shared ...
     + report.store_refused_no_original_path;
+
+levelPlan = struct('idx', {}, 'id', {});
+for j = 1:numel(levelIdx)
+    k = levelIdx(j);
+    lvl = bodies{k};
+    pk = pyramidKeys(depValueOf(lvl, 'owner_id'));
+    [lvl, changed, disagreements] = completeLevelKeys(lvl, pk);
+    report.level_unit_disagreements = report.level_unit_disagreements + disagreements;
+    if ~changed; continue; end
+    rebuilt{end+1} = lvl; %#ok<AGROW>
+    levelPlan(end+1) = struct('idx', k, 'id', docIds{k}); %#ok<AGROW>
+end
 
 % --- validate through the same door every other pass uses ------------------
 out = did2.convert.v1_to_v2(rebuilt, ...
@@ -721,6 +791,15 @@ for j = 1:numel(plan)
         end
     end
 end
+for j = 1:numel(levelPlan)
+    p = levelPlan(j);
+    if ~isKey(produced, p.id)
+        report.level_completion_quarantined = report.level_completion_quarantined + 1;
+        continue;
+    end
+    docs{p.idx} = produced(p.id);
+    report.level_bodies_completed = report.level_bodies_completed + 1;
+end
 if ~isempty(out.quarantine)
     if isfield(result, 'quarantine') && ~isempty(result.quarantine)
         result.quarantine = [result.quarantine, out.quarantine];
@@ -730,6 +809,186 @@ if ~isempty(out.quarantine)
 end
 result.migrated = docs;
 result.summary = recountSummary(result);
+end
+
+function tf = carriesKeys(obs)
+%CARRIESKEYS An observation holding its value in bodies (data_body true) that
+%   still carries keys: the pyramid migrator's transient carry (point 8).
+tf = false;
+v = blockFieldOf(obs, 'data_body');
+if ~(islogical(v) || isnumeric(v)) || isempty(v) || ~v(1); return; end
+k = blockFieldOf(obs, 'keys');
+tf = ~isempty(k);
+end
+
+function tf = isLightsheetLevelBody(b)
+%ISLIGHTSHEETLEVELBODY A level body's keys name t/c/z/y/x-style axes; used
+%   only to count levels whose pyramid is out of the batch (a sampled_body of
+%   another family is not a lightsheet level and is not counted).
+tf = false;
+keys = keyCells(blockFieldOf(b, 'keys'));
+if isempty(keys); return; end
+names = cellfun(@keyName, keys, 'UniformOutput', false);
+tf = all(ismember(names, {'time', 'channel', 'z', 'y', 'x'})) ...
+    && any(ismember(names, {'z', 'y', 'x'}));
+end
+
+function [lvl, changed, disagreements] = completeLevelKeys(lvl, pyramidKeys)
+%COMPLETELEVELKEYS Point 8 (Jess 2026-10-14): a v1 level carries only
+%   voxel_size_units, so its `t` key has no unit and its `c` key only index
+%   positions. The pyramid's keys have both. Copy the t unit (scaling the
+%   level's raw origin/spacing exactly as the pyramid's were scaled), name the
+%   c positions by channel when the counts agree, and CHECK z/y/x units --
+%   a disagreement is counted, never overwritten.
+changed = false;
+disagreements = 0;
+[blockName, raw] = blockWith(lvl, 'keys');
+lk = keyCells(raw);
+pk = keyCells(pyramidKeys);
+if isempty(lk) || isempty(pk); return; end
+pNames = cellfun(@keyName, pk, 'UniformOutput', false);
+for i = 1:numel(lk)
+    name = keyName(lk{i});
+    j = find(strcmp(pNames, name), 1);
+    if isempty(j); continue; end
+    P = pk{j};
+    L = lk{i};
+    switch name
+        case 'time'
+            if ~hasUnit(L) && hasUnit(P)
+                L.unit = P.unit;
+                factor = 1;
+                if isfield(P, 'source_unit') && ~isempty(P.source_unit)
+                    L.source_unit = P.source_unit;
+                    factor = scaleOf(P);
+                end
+                if isfield(L, 'origin') && isfield(L, 'spacing')
+                    if isfield(L, 'source_unit')
+                        L.origin = struct('value', L.origin.value * factor, ...
+                            'source_value', L.origin.value);
+                        L.spacing = struct('value', L.spacing.value * factor, ...
+                            'source_value', L.spacing.value);
+                    end
+                end
+                lk{i} = L;
+                changed = true;
+            end
+        case 'channel'
+            if isfield(P, 'labels') && ~isempty(P.labels) && ~isfield(L, 'labels') ...
+                    && numel(labelList(P.labels)) == double(L.n)
+                if isfield(L, 'values'); L = rmfield(L, 'values'); end
+                L.labels = P.labels;
+                lk{i} = L;
+                changed = true;
+            end
+        case {'z', 'y', 'x'}
+            % Same canonical unit AND the same source spelling: a level stamped
+            % 'micrometer' under a pyramid whose z is in 'millimeter' both read
+            % canonically as metres, and still disagree by a factor of 1000.
+            if hasUnit(L) && hasUnit(P) && (~strcmp(unitText(L.unit), unitText(P.unit)) ...
+                    || ~strcmpi(sourceUnitOf(L), sourceUnitOf(P)))
+                disagreements = disagreements + 1;
+            end
+    end
+end
+if changed
+    lvl.(blockName).keys = packKeys(lk);
+end
+end
+
+function f = scaleOf(P)
+%SCALEOF canonical / source, read off the pyramid key's own pair.
+f = 1;
+for name = {'spacing', 'origin'}
+    if isfield(P, name{1}) && isstruct(P.(name{1})) ...
+            && isfield(P.(name{1}), 'source_value')
+        sv = double(P.(name{1}).source_value);
+        v = double(P.(name{1}).value);
+        if ~isempty(sv) && sv ~= 0
+            f = v / sv;
+            return;
+        end
+    end
+end
+end
+
+function tf = hasUnit(K)
+tf = isfield(K, 'unit') && ~isempty(unitText(K.unit));
+end
+
+function t = sourceUnitOf(K)
+%SOURCEUNITOF The unit as the source spelled it: source_unit, else the unit's
+%   name (a key omits source_unit when the source was already canonical).
+t = '';
+if isfield(K, 'source_unit') && ~isempty(K.source_unit)
+    t = char(K.source_unit);
+elseif isfield(K, 'unit') && isstruct(K.unit) && isfield(K.unit, 'name')
+    t = char(K.unit.name);
+elseif isfield(K, 'unit') && (ischar(K.unit) || isstring(K.unit))
+    t = char(K.unit);
+end
+end
+
+function t = unitText(u)
+t = '';
+if isstruct(u)
+    if isfield(u, 'node') && ~isempty(u.node); t = char(u.node); end
+    if isfield(u, 'name') && ~isempty(u.name); t = [t '|' char(u.name)]; end
+elseif ischar(u) || isstring(u)
+    t = char(u);
+end
+end
+
+function n = keyName(K)
+n = '';
+if ~isstruct(K) || ~isfield(K, 'variable'); return; end
+v = K.variable;
+if iscell(v); v = v{1}; end
+if isstruct(v) && isfield(v, 'name'); n = char(v.name);
+elseif ischar(v) || isstring(v); n = char(v); end
+end
+
+function c = keyCells(k)
+c = {};
+if isempty(k); return; end
+if iscell(k)
+    c = reshape(k, 1, []);
+elseif isstruct(k)
+    c = reshape(num2cell(k), 1, []);
+end
+end
+
+function L = labelList(labels)
+if iscell(labels); L = labels; else; L = num2cell(labels); end
+end
+
+function k = packKeys(c)
+%PACKKEYS A struct array when every key has the same fields in the same
+%   order, else the cell array jsondecode itself produces for a ragged list.
+k = c;
+if isempty(c); return; end
+f1 = fieldnames(c{1});
+if all(cellfun(@(x) isequal(fieldnames(x), f1), c))
+    k = [c{:}];
+end
+end
+
+function [blockName, v] = blockWith(s, field)
+blockName = 'data'; v = [];
+fns = fieldnames(s);
+for k = 1:numel(fns)
+    b = s.(fns{k});
+    if isstruct(b) && isscalar(b) && isfield(b, field) ...
+            && ~any(strcmp(fns{k}, {'base', 'document_class', 'files', 'depends_on'}))
+        blockName = fns{k};
+        v = b.(field);
+        return;
+    end
+end
+end
+
+function v = blockFieldOf(s, field)
+[~, v] = blockWith(s, field);
 end
 
 function [obs, keys, notes] = stripCarrier(obs)

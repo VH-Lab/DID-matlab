@@ -232,6 +232,62 @@ ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_sco
 verifyEqual(testCase, ref.orphan_count, 0);
 end
 
+% ===================== point 8: the pyramid completes its levels ==========
+
+function testALevelGetsTheTUnitAndTheChannelNamesFromItsPyramid(testCase)
+% Point 8 (Jess 2026-10-14): a v1 level carries only voxel_size_units; the
+% pyramid's axes_units ('second' on t) and channel_names reach the level's keys
+% through the batch pass, and nothing transient stays on the observation.
+assumeCompositionSchema(testCase);
+[out, rep] = runWithPass({pyramidV1(), levelV1(0, 'none', 'raw', 4, 'manifest')});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+fprintf(['\n--- levels: %d seen, %d completed, %d unit disagreement(s), ' ...
+    '%d without pyramid ---\n'], rep.level_bodies_seen, rep.level_bodies_completed, ...
+    rep.level_unit_disagreements, rep.level_bodies_without_pyramid);
+verifyEqual(testCase, rep.level_bodies_seen, 1);
+verifyEqual(testCase, rep.level_bodies_completed, 1);
+verifyEqual(testCase, rep.level_unit_disagreements, 0);
+b = onlyBody(testCase, out);
+keys = keyList(b.data.keys);
+names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+t = keys{strcmp(names, 'time')};
+verifyEqual(testCase, t.unit.name, 'second');
+c = keys{strcmp(names, 'channel')};
+verifyEqual(testCase, labelNames(c.labels), {'GCaMP6s', 'tdTomato'});
+verifyFalse(testCase, isfield(c, 'values') && ~isempty(c.values), ...
+    'named positions replace the index positions');
+obs = pickById(out, 'pyr_ls_1');
+verifyTrue(testCase, isempty(blockField(obs, 'keys')), 'the carried keys are removed');
+end
+
+function testAZUnitMismatchBetweenLevelAndPyramidIsCountedNotOverwritten(testCase)
+assumeCompositionSchema(testCase);
+p = pyramidV1();
+p.lightsheetZarrPyramid.axes_units = 'second,,millimeter,micrometer,micrometer';
+[out, rep] = runWithPass({p, levelV1(0, 'none', 'raw', 4, 'manifest')});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.level_unit_disagreements, 1, ...
+    'z: the pyramid says millimeter, the level micrometer');
+b = onlyBody(testCase, out);
+keys = keyList(b.data.keys);
+names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+z = keys{strcmp(names, 'z')};
+verifyEqual(testCase, z.source_unit, 'micrometer', 'the level''s own unit is kept');
+end
+
+function testALevelWhosePyramidIsAbsentKeepsItsKeysAndIsCounted(testCase)
+assumeCompositionSchema(testCase);
+[out, rep] = runWithPass({levelV1(0, 'none', 'raw', 4, 'manifest')});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.level_bodies_seen, 0);
+verifyEqual(testCase, rep.level_bodies_without_pyramid, 1);
+b = onlyBody(testCase, out);
+keys = keyList(b.data.keys);
+names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+t = keys{strcmp(names, 'time')};
+verifyFalse(testCase, isfield(t, 'unit') && ~isempty(t.unit), 'nothing to complete it from');
+end
+
 function testAFileReferenceNamedByNoPyramidStaysAPassthrough(testCase)
 assumeCompositionSchema(testCase);
 assumeClass(testCase, 'file_reference');
@@ -272,8 +328,8 @@ verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0);
 obs = pickById(out, v1.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), 'fref_store_1', ...
     'point 4: a SmartSPIM source is joined too (its TIFF folder)');
-verifyTrue(testCase, isempty(blockField(obs, 'keys')), ...
-    'no keys for a TIFF folder: it is not an array the format lays out');
+verifyFalse(testCase, isempty(blockField(obs, 'keys')), ...
+    'point 8: the keys ride along (transient) so the pass can complete the levels');
 verifyEqual(testCase, obs.value.data_type, 'uint16');
 verifyFalse(testCase, isfield(obs.value, 'source_data_type') ...
     && ~isempty(obs.value.source_data_type), 'uint16 is canonical: no source spelling');

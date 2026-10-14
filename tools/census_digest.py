@@ -755,6 +755,12 @@ POST_PASSES = [
         ("store_records_left_passthrough", "file_reference named by no observation (passthrough)"),
         ("store_checksums_to_description", "  .zattrs checksums put in description, not content_hash"),
         ("store_sizes_unrecorded", "  folded with file_size 0 (unrecorded: size_bytes left out)"),
+        # Point 8: the pyramid's t unit and channel names onto its levels' keys.
+        ("level_bodies_seen", "level sampled_bodies owned by a pyramid observation"),
+        ("level_bodies_completed", "  completed from the pyramid (t unit / channel names)"),
+        ("level_unit_disagreements", "  z/y/x unit DISAGREEMENTS with the pyramid (not overwritten)"),
+        ("level_bodies_without_pyramid", "level sampled_bodies whose pyramid is not in the batch"),
+        ("level_completion_quarantined", "QUARANTINED by the level completion"),
     ]),
     # DORMANT BY TEAM DECISION 2026-08-12. The pass RUNS and EMITS NOTHING.
     # The agreed model is ONE statement per source document holding an ARRAY of

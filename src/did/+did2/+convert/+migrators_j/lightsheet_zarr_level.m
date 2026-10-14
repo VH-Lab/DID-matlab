@@ -79,10 +79,18 @@ function bodies = lightsheet_zarr_level(preBody)
 %     slot where it is. did.document/seriesMemberBase reads the base off the
 %     document's vintage, so seriesMemberOf resolves body_data_0 on this
 %     (V_eta) document to the bytes chunk.bin_1 named on the v1 one.
-%   * The level's `t` axis has no unit: the level document carries only
-%     `voxel_size_units` (hard-coded 'micrometer', a length, also stamped
-%     beside the t and c entries), and no per-axis units. `c` gets index
-%     positions: the level does not carry channel names.
+%   * THE t UNIT AND THE CHANNEL NAMES -- DECIDED (Jess 2026-10-14, lightsheet
+%     point 8). The level document carries only `voxel_size_units`
+%     (hard-coded 'micrometer'), so this migrator still writes the `t` key
+%     with no unit and the `c` key with index positions. The pyramid has the
+%     per-axis `axes_units` and the `channel_names`; lightsheet_zarr_pyramid
+%     carries them on its observation (as its full-resolution keys, transient)
+%     and did2.convert.foldGenericFiles copies them onto the keys of EVERY
+%     sampled_body this level's owner_id names: `t` gets its unit, `c`'s
+%     positions are named by channel, and z/y/x units are CHECKED against the
+%     pyramid's -- a disagreement is counted (`level_unit_disagreements`), not
+%     overwritten. A level whose pyramid is not in the batch keeps its keys and
+%     is counted (`level_bodies_without_pyramid`).
 %   * label, level (the index), chunk_grid, n_chunks_stored,
 %     chunk_index_origin are not carried: each is derivable (from the keys and
 %     the series) or was a write-time aid. subject_id and source_file_id are
