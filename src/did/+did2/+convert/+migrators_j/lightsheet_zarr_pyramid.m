@@ -1,9 +1,9 @@
 function bodies = lightsheet_zarr_pyramid(preBody)
 %LIGHTSHEET_ZARR_PYRAMID Brainstorm-J migrator: did_v1 lightsheetZarrPyramid ->
 %   an `observation` of intensity (the lightsheet volume) of its subject, id
-%   PRESERVED, plus a `software` entity for `pipeline_version`; for an
-%   OME-Zarr source it carries the `source_file_id` join a batch pass follows
-%   to make the store's fileReference the observation's unheld body.
+%   PRESERVED, plus a `software` entity for `pipeline_version`; it carries the
+%   `source_file_id` join a batch pass follows to make the source's
+%   fileReference (OME-Zarr store or TIFF folder) the observation's unheld body.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -73,14 +73,18 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %                       and removes it).
 %        data.keys      the full-resolution array's keys (axes / shape /
 %                       voxel size / translation / units / channel names
-%                       from this document), which only this document has.
-%        statement.notes  the store body's description (label, NGFF
-%                       multiscales name and type).
-%      All three are carried only when the pyramid names a source AND its
-%      dtype is an NGFF typestring -- the writer-grounded sign that the source
-%      IS an OME-Zarr store. A SmartSPIM pyramid's source is a directory of
-%      TIFF slices; calling it OME-Zarr would be a false claim, so its
-%      fileReference is not joined and stays a passthrough.
+%                       from this document), which only this document has --
+%                       OME-Zarr ONLY (below).
+%        statement.notes  for the body's description: label, NGFF
+%                       multiscales name and type.
+%      The edge and the notes are carried whenever the pyramid names a source.
+%      The KEYS only when its dtype is an NGFF typestring -- the
+%      writer-grounded sign that the source IS an OME-Zarr store. A SmartSPIM
+%      pyramid's source is a folder of raw TIFF slices; point 4 (Jess
+%      2026-10-14) makes it an unheld opaque_body of the observation too, in
+%      the same fold, with format TIFF (EDAM:format_3591), no keys and
+%      `redundant` false. The pass tells the two apart by the same NGFF rule,
+%      read off the observation's value.source_data_type.
 %      WITHOUT THE PASS (a bare v1_to_v2 call) the three stay on the
 %      observation. Every DID-side harness and ndi.migrate.local run the pass.
 %
@@ -135,16 +139,19 @@ end
 % ---- what the store-record pass needs (header, item 3) -------------------
 rawDtype = char(field(blk, 'dtype', ''));
 isNGFF = ~isempty(regexp(rawDtype, '^[<>|][uifcb]\d+$', 'once'));
-carryStore = ~isempty(sourceId) && isNGFF;
+carryStore = ~isempty(sourceId);
 carried = {};
 if carryStore
+    carried = {'Notes', storeDescription(blk)};
+end
+if carryStore && isNGFF
     axesOrder = char(field(blk, 'axes_order', ''));
     units = splitList(field(blk, 'axes_units', ''), numel(axesOrder));
     units = defaultSpaceUnits(units, axesOrder, char(field(blk, 'voxel_size_units', '')));
     keys = jLightsheetKeys(axesOrder, field(blk, 'shape_level0', []), ...
         field(blk, 'voxel_size_level0', []), field(blk, 'translation_level0', []), ...
         units, splitList(field(blk, 'channel_names', ''), 0), []);
-    carried = {'Keys', keys, 'Notes', storeDescription(blk)};
+    carried = [carried, {'Keys', keys}];
 end
 
 % ---- the observation -------------------------------------------------------
@@ -197,7 +204,9 @@ end
 end
 
 function d = storeDescription(blk)
-parts = {'OME-Zarr store, not held in the database'};
+% The pyramid's own words about its source; foldGenericFiles puts what the
+% source IS (OME-Zarr store / folder of raw TIFF slices) in front of them.
+parts = {};
 label = strtrim(char(field(blk, 'label', '')));
 name  = strtrim(char(field(blk, 'pyramid_name', '')));
 type  = strtrim(char(field(blk, 'pyramid_type', '')));

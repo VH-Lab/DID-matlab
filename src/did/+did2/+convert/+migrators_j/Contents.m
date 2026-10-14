@@ -740,9 +740,9 @@
 %     lightsheet_zarr_pyramid
 %         Brainstorm-J migrator: did_v1 lightsheetZarrPyramid -> an `observation` of
 %         intensity (the lightsheet volume) of its subject, id PRESERVED, plus a
-%         `software` entity for `pipeline_version`; for an OME-Zarr source it carries
-%         the `source_file_id` join a batch pass follows to make the store's
-%         fileReference the observation's unheld body.
+%         `software` entity for `pipeline_version`; it carries the `source_file_id`
+%         join a batch pass follows to make the source's fileReference (OME-Zarr store
+%         or TIFF folder) the observation's unheld body.
 %     measurement
 %         Brainstorm-J migrator: did_v1 measurement -> a typed subject_observation
 %         leaf (+ the shared session anchor), for the rows that can be typed honestly;

@@ -267,13 +267,20 @@ function [result, report] = foldGenericFiles(result, options)
 %   statement whose value it stores -- recorded by location, not ingested")
 %   and `file_reference.decided_targets = ["opaque_body"]`. The pyramid
 %   migrator makes no store body; the `fileReference` the pyramid names IS
-%   the store body.
+%   the store body. POINT 4 (Jess, 2026-10-14) extends it to a SmartSPIM
+%   pyramid: its fileReference (the folder of raw TIFF slices the levels were
+%   stitched from) becomes an unheld opaque_body of the observation the same
+%   way, with format TIFF, no keys and `redundant` false.
 %
 %   THE JOIN. +migrators_j/lightsheet_zarr_pyramid.m keeps the pyramid's id
 %   on its observation and CARRIES three things there, all TRANSIENT: the v1
 %   `source_file_id` edge verbatim, the full-resolution array's keys in
-%   `data.keys`, and the store's description in `statement.notes` -- only for
-%   an OME-Zarr pyramid (NGFF dtype), never a SmartSPIM one. A single-document
+%   `data.keys` (OME-Zarr only), and the pyramid's label / multiscales name /
+%   type in `statement.notes`. WHICH SOURCE it is (OME-Zarr store or SmartSPIM
+%   TIFF folder) is read here exactly as the migrator reads it, off the
+%   pyramid's dtype: the observation's `value.source_data_type` is an NGFF
+%   typestring ('<u2') for an OME-Zarr pyramid and absent for a SmartSPIM one
+%   (its 'uint16' is canonical, so no source spelling is kept). A single-document
 %   migrator cannot read the fileReference; this pass can, because both are in
 %   the migrated batch (the resolveResponseParameters pattern: the migrator
 %   re-homes the edge, the pass follows it and removes it). A CARRIER is an
@@ -288,8 +295,11 @@ function [result, report] = foldGenericFiles(result, options)
 %                       every inbound edge to the record still resolves),
 %                       owner_id = the observation; it REPLACES the
 %                       fileReference in the batch
-%       format          'application/x-ome-zarr' (the pyramid migrator's
-%                       choice; only NGFF pyramids carry)
+%       format          an ontology TERM since point 4 (data_body.format is
+%                       a bound ontology_term, did-schema 877bbde):
+%                       OME-Zarr EMPTY:0000259 (OME_ZARR_FORMAT below, the one
+%                       place it is spelled) or TIFF EDAM:format_3591
+%       redundant       false, stated, for a SmartSPIM folder (point 4)
 %       filename        <- filename
 %       files           member body_data_0 recorded BY LOCATION, not
 %                       ingested: file_info.locations = {location =
@@ -309,8 +319,9 @@ function [result, report] = foldGenericFiles(result, options)
 %                       zone; stamping 'Z' here would claim UTC on the
 %                       migrating machine's guess. 0 or NaN (makeSourceFile's
 %                       "could not read it") is unrecorded and left out.
-%       keys            moved from the observation, verbatim
-%       description     the carried notes, plus the checksum sentence below
+%       keys            moved from the observation, verbatim (OME-Zarr only)
+%       description     what the source is, the carried notes, and the
+%                       checksum sentence below
 %       content_hash    NEVER SET. Lightsheet L4 / L3(e): makeSourceFile
 %                       computes an OME-Zarr store's checksum over its
 %                       `.zattrs` file ONLY, so it is not a hash of the
@@ -370,6 +381,8 @@ report = struct( ...
     'store_records_seen',            0, ...
     'store_carriers_seen',           0, ...
     'stores_folded',                 0, ...
+    'stores_folded_ome_zarr',        0, ...
+    'stores_folded_tiff_folder',     0, ...
     'store_refused_total',           0, ...
     'store_refused_not_in_batch',    0, ...
     'store_refused_not_a_file_reference', 0, ...
@@ -630,7 +643,7 @@ end
 
 % --- build the replacements -----------------------------------------------
 rebuilt = {};
-plan = struct('obsIdx', {}, 'recIdx', {}, 'obsId', {}, 'recId', {});
+plan = struct('obsIdx', {}, 'recIdx', {}, 'obsId', {}, 'recId', {}, 'omeZarr', {});
 for c = 1:numel(carriers)
     k = carriers(c);
     obs = bodies{k};
@@ -653,8 +666,9 @@ for c = 1:numel(carriers)
                 report.store_refused_no_original_path + 1;
         else
             recIdx = idIdx(target);
+            isOmeZarr = isNgffSource(obs);
             [body, hadChecksum, sizeKnown] = makeStoreBody(rec, blk, location, ...
-                docIds{k}, keys, notes, options);
+                docIds{k}, keys, notes, isOmeZarr);
             report.store_checksums_to_description = ...
                 report.store_checksums_to_description + double(hadChecksum);
             report.store_sizes_unrecorded = ...
@@ -668,7 +682,8 @@ for c = 1:numel(carriers)
         report.store_carriers_stripped = report.store_carriers_stripped + 1;
     end
     plan(end+1) = struct('obsIdx', k, 'recIdx', recIdx, ...
-        'obsId', docIds{k}, 'recId', target); %#ok<AGROW>
+        'obsId', docIds{k}, 'recId', target, ...
+        'omeZarr', recIdx > 0 && isNgffSource(obs)); %#ok<AGROW>
 end
 report.store_refused_total = report.store_refused_not_in_batch ...
     + report.store_refused_not_a_file_reference ...
@@ -699,6 +714,11 @@ for j = 1:numel(plan)
         % The body takes the record's id AND its slot: no duplicate id, ever.
         docs{p.recIdx} = produced(p.recId);
         report.stores_folded = report.stores_folded + 1;
+        if p.omeZarr
+            report.stores_folded_ome_zarr = report.stores_folded_ome_zarr + 1;
+        else
+            report.stores_folded_tiff_folder = report.stores_folded_tiff_folder + 1;
+        end
     end
 end
 if ~isempty(out.quarantine)
@@ -750,8 +770,10 @@ end
 end
 
 function [body, hadChecksum, sizeKnown] = makeStoreBody(rec, blk, location, ...
-    ownerId, keys, notes, options) %#ok<INUSD>
+    ownerId, keys, notes, isOmeZarr)
 %MAKESTOREBODY The UNHELD opaque_body, with the fileReference's own id.
+%   ISOMEZARR: an OME-Zarr store (keys, OME-Zarr format) or a SmartSPIM folder
+%   of raw TIFF slices (no keys, TIFF, `redundant` false).
 recId = baseField(rec, 'id');
 sessionId = baseField(rec, 'session_id');
 created = creationTime(rec);
@@ -768,7 +790,15 @@ if ~isempty(c); fields.file_created = c; end
 m = datenumText(numField(blk, {'date_updated', 'dateUpdated'}));
 if ~isempty(m); fields.file_modified = m; end
 
-parts = {};
+if isOmeZarr
+    parts = {'OME-Zarr store, not held in the database'};
+    format = OME_ZARR_FORMAT();
+else
+    parts = {['the folder of raw TIFF slices the levels were stitched from, ' ...
+        'not held in the database']};
+    format = TIFF_FORMAT();
+    fields.redundant = false;
+end
 if ~isempty(strtrim(notes)); parts{end+1} = strtrim(notes); end
 parts{end+1} = 'recorded by location, not ingested';
 checksum = charField(blk, {'checksum'});
@@ -777,17 +807,17 @@ if hadChecksum
     alg = charField(blk, {'checksum_algorithm', 'checksumAlgorithm'});
     if isempty(alg); alg = 'unnamed algorithm'; end
     parts{end+1} = sprintf(['the source record''s checksum %s (%s) is of the ' ...
-        'store''s .zattrs file only (ndi.fun.doc.lightsheet.makeSourceFile), ' ...
+        'directory''s .zattrs file only (ndi.fun.doc.lightsheet.makeSourceFile), ' ...
         'not of its contents, so it is not a content_hash'], checksum, alg);
 end
 
-body = did2.build.opaqueBody(ownerId, 'application/x-ome-zarr', ...
+body = did2.build.opaqueBody(ownerId, format, ...
     'Description', strjoin(parts, '; '), ...
     'Fields', fields, ...
     'Files', {'body_data_0'}, ...
     'Id', recId, 'SessionId', sessionId, 'CreationTimestamp', created, ...
     'Validate', false);
-if ~isempty(keys)
+if isOmeZarr && ~isempty(keys)
     if ~isfield(body, 'data') || ~isstruct(body.data); body.data = struct(); end
     body.data.keys = keys;
 end
@@ -796,6 +826,37 @@ end
 body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
     'delete_original', 0, 'uid', did.ido.unique_id(), 'location', location, ...
     'parameters', '', 'location_type', 'file', 'ingest', 0));
+end
+
+function t = OME_ZARR_FORMAT()
+%OME_ZARR_FORMAT THE one spelling of the OME-Zarr format term (point 4): minted
+%   in EMPTY by Jess 2026-10-14 (Waltham-Data-Science/empty-ontology#22, not
+%   yet released), a kind of EDAM:format_3915 (Zarr).
+t = struct('node', 'EMPTY:0000259', 'name', 'OME-Zarr');
+end
+
+function t = TIFF_FORMAT()
+%TIFF_FORMAT EDAM's TIFF (checked on OLS by Jess, 2026-10-14).
+t = struct('node', 'EDAM:format_3591', 'name', 'TIFF');
+end
+
+function tf = isNgffSource(obs)
+%ISNGFFSOURCE True when the pyramid observation's source dtype is an NGFF
+%   typestring ('<u2'): an OME-Zarr pyramid. The migrator applies the same rule
+%   to the v1 dtype; the observation keeps it as value.source_data_type.
+tf = false;
+if ~isstruct(obs); return; end
+fns = fieldnames(obs);
+for k = 1:numel(fns)
+    b = obs.(fns{k});
+    if isstruct(b) && isscalar(b) && isfield(b, 'source_data_type')
+        v = b.source_data_type;
+        if (ischar(v) || isstring(v)) && ~isempty(regexp(char(v), '^[<>|][uifcb]\d+$', 'once'))
+            tf = true;
+            return;
+        end
+    end
+end
 end
 
 function v = numField(block, names)
@@ -856,7 +917,10 @@ end
 
 function body = makeOpaqueBody(src, blk, bodyId, statementId)
 %MAKEOPAQUEBODY The bytes. Fresh id; `statement` -> the observation.
-%   format       <- format_ontology  (the CURIE verbatim; NOT re-expressed as
+%   format       <- format_ontology  as the term's NODE, the CURIE verbatim,
+%                                     name '' (point 4: `format` is a bound
+%                                     ontology_term, did-schema 877bbde). Earlier
+%                                     text, kept for its reasoning: NOT re-expressed as
 %                                     an {node,name} pair -- `format` is a char
 %                                     and manufacturing a name half is the
 %                                     invention the tombstone refused too)
@@ -880,7 +944,7 @@ body.base = freshBase(src, bodyId, 'migrated_generic_file_bytes');
 % convenience: writing `opaque_body.format` after the hoist is an undeclared
 % field on a class that no longer has one.
 body.data_body = struct( ...
-    'format',       charField(blk, {'format_ontology', 'formatOntology'}), ...
+    'format',       struct('node', charField(blk, {'format_ontology', 'formatOntology'}), 'name', ''), ...
     'compression',  '', ...
     'filename',     charField(blk, {'filename'}), ...
     'content_hash', charField(blk, {'checksum'}), ...

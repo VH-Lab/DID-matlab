@@ -148,7 +148,10 @@ verifyEqual(testCase, numel(bodies), 1);
 b = bodies{1};
 verifyEqual(testCase, b.base.id, 'fref_store_1', 'the record''s id is kept');
 verifyEqual(testCase, edge(b, 'owner_id'), p.base.id);
-verifyEqual(testCase, b.data_body.format, 'application/x-ome-zarr');
+verifyEqual(testCase, b.data_body.format.node, 'EMPTY:0000259');
+verifyEqual(testCase, b.data_body.format.name, 'OME-Zarr');
+verifyEqual(testCase, rep.stores_folded_ome_zarr, 1);
+verifyEqual(testCase, rep.stores_folded_tiff_folder, 0);
 verifyEqual(testCase, b.data_body.filename, 'brain7.ome.zarr');
 verifyFalse(testCase, isfield(b.data_body, 'size_bytes') && ~isequal(b.data_body.size_bytes, 0), ...
     'file_size 0 means unrecorded: no size_bytes');
@@ -178,6 +181,53 @@ obs = pickById(out, p.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), '');
 verifyTrue(testCase, isempty(blockField(obs, 'keys')));
 verifyTrue(testCase, isempty(blockField(obs, 'notes')));
+ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+verifyEqual(testCase, ref.orphan_count, 0);
+end
+
+function testASmartSpimFolderBecomesTheObservationsUnheldTiffBody(testCase)
+% Point 4 (Jess 2026-10-14): a SmartSPIM pyramid's fileReference -- the folder
+% of raw TIFF slices the levels were stitched from -- becomes an unheld
+% opaque_body of the observation in the same fold: the record's id, format
+% TIFF, no keys, `redundant` false.
+assumeCompositionSchema(testCase);
+assumeClass(testCase, 'file_reference');
+p = smartSpimPyramidV1();
+fr = fileReferenceV1('fref_store_1');
+fr.fileReference.filename = 'brain7_tiles';
+fr.fileReference.originalPath = '/data/spim/brain7_tiles';
+fr.fileReference.checksum = '';
+fr.fileReference.checksumAlgorithm = '';
+lvl = levelV1(0, 'none', 'raw', 4, 'manifest');
+lvl.lightsheetZarrLevel.dtype = 'uint16';
+[out, rep] = runWithPass({p, fr, lvl});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.store_carriers_seen, 1);
+verifyEqual(testCase, rep.stores_folded, 1);
+verifyEqual(testCase, rep.stores_folded_tiff_folder, 1);
+verifyEqual(testCase, rep.stores_folded_ome_zarr, 0);
+verifyEqual(testCase, rep.store_checksums_to_description, 0);
+verifyEqual(testCase, numel(pickByClass(out, 'file_reference')), 0);
+bodies = pickByClass(out, 'opaque_body');
+verifyEqual(testCase, numel(bodies), 1);
+b = bodies{1};
+verifyEqual(testCase, b.base.id, 'fref_store_1');
+verifyEqual(testCase, edge(b, 'owner_id'), p.base.id);
+verifyEqual(testCase, b.data_body.format.node, 'EDAM:format_3591');
+verifyEqual(testCase, b.data_body.format.name, 'TIFF');
+verifyTrue(testCase, isfield(b.data_body, 'redundant') && isequal(b.data_body.redundant, false));
+verifyTrue(testCase, ~isfield(b, 'data') || ~isfield(b.data, 'keys') || isempty(b.data.keys), ...
+    'a TIFF folder body carries no keys');
+verifyTrue(testCase, contains(b.data_body.description, 'folder of raw TIFF slices'));
+info = b.files.file_info;
+if iscell(info); info = info{1}; end
+loc = info(1).locations;
+if iscell(loc); loc = loc{1}; end
+verifyEqual(testCase, loc(1).location, '/data/spim/brain7_tiles');
+verifyEqual(testCase, double(loc(1).ingest), 0);
+verifyEqual(testCase, numel(pickByClass(out, 'sampled_body')), 1, 'the level keeps its own body');
+obs = pickById(out, p.base.id);
+verifyEqual(testCase, edge(obs, 'source_file_id'), '');
 ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
 verifyEqual(testCase, ref.orphan_count, 0);
 end
@@ -220,8 +270,10 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0);
 obs = pickById(out, v1.base.id);
-verifyEqual(testCase, edge(obs, 'source_file_id'), '', ...
-    'a SmartSPIM source is not an OME-Zarr store: nothing is carried');
+verifyEqual(testCase, edge(obs, 'source_file_id'), 'fref_store_1', ...
+    'point 4: a SmartSPIM source is joined too (its TIFF folder)');
+verifyTrue(testCase, isempty(blockField(obs, 'keys')), ...
+    'no keys for a TIFF folder: it is not an array the format lays out');
 verifyEqual(testCase, obs.value.data_type, 'uint16');
 verifyFalse(testCase, isfield(obs.value, 'source_data_type') ...
     && ~isempty(obs.value.source_data_type), 'uint16 is canonical: no source spelling');
@@ -627,6 +679,14 @@ v1.lightsheetZarrPyramid = struct( ...
     'dtype', '<u2', ...
     'pipeline_version', 'lightsheet-pipeline 0.3.1', ...
     'byte_order', 'little');
+end
+
+function v1 = smartSpimPyramidV1()
+%SMARTSPIMPYRAMIDV1 A pyramid as fromSPIM makes one: dtype a MATLAB class name,
+%   axes_units with t and c unitless; its source_file_id names the folder.
+v1 = pyramidV1();
+v1.lightsheetZarrPyramid.dtype = 'uint16';
+v1.lightsheetZarrPyramid.axes_units = ',,micrometer,micrometer,micrometer';
 end
 
 function v1 = levelV1(level, reduction, codec, nStored, fileShape)

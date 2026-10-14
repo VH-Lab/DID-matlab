@@ -3,10 +3,12 @@ function doc = opaqueBody(ownerId, format, options)
 %
 %   DOC = did2.build.opaqueBody(OWNERID, FORMAT, 'SessionId', SID, ...) builds
 %   a body holding the value of OWNERID as bytes the database does not read
-%   into an array: a PDF, a TIFF stack, a lab binary. FORMAT is an IANA media
-%   type ('application/pdf', 'image/tiff'; 'application/x-...' for a lab format
-%   with no registration), NOT a file extension (data_body plan sec.2). An
-%   opaque_body requires it (require_inherited).
+%   into an array: a PDF, a TIFF stack, a lab binary. FORMAT is an ontology
+%   TERM (lightsheet point 4, Jess 2026-10-14; did-schema 877bbde): a
+%   {node, name} struct, or a bare CURIE whose name is filled in when known
+%   ('EDAM:format_3591' -> TIFF; see +did2/+build/private/formatTerm.m). It
+%   is no longer an IANA media type. An opaque_body requires it
+%   (require_inherited).
 %
 %   The bytes are the file series `body_data_0`, `body_data_1`, ...; the default
 %   is the single member `body_data_0`.
@@ -26,7 +28,7 @@ function doc = opaqueBody(ownerId, format, options)
 
 arguments
     ownerId (1,:) char
-    format {mustBeText}
+    format
     options.Keys = []
     options.Complete = []
     options.Conditions = []
@@ -46,10 +48,10 @@ arguments
     options.SchemaCache = []
 end
 
-format = char(format);
-if isempty(strtrim(format)) || size(format, 1) > 1
+format = formatTerm(format);
+if isempty(format) || (isempty(format.node) && isempty(format.name))
     error('did2:build:missingField', ...
-        'An opaque_body requires `format` (an IANA media type).');
+        'An opaque_body requires `format` (an ontology term: {node, name} or a CURIE).');
 end
 fields = struct('format', format, 'keys', {options.Keys}, ...
     'complete', options.Complete, 'conditions', {options.Conditions}, ...

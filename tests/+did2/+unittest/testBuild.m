@@ -502,9 +502,18 @@ verifyError(testCase, @() did2.build.sampledBody(newId(), twoKeys, 'DatumOrder',
 end
 
 function testOpaqueBody(testCase)
-body = did2.build.opaqueBody(newId(), 'application/pdf', 'HashAlgorithm', 'MD5', ...
+% `format` is an ontology term (lightsheet point 4, did-schema 877bbde): a bare
+% CURIE is the node, and a known one gets its name.
+body = did2.build.opaqueBody(newId(), 'EDAM:format_3591', 'HashAlgorithm', 'MD5', ...
     'ContentHash', 'd41d8cd98f00b204e9800998ecf8427e', 'SessionId', testCase.TestData.sid);
-verifyEqual(testCase, body.data_body.format, 'application/pdf');
+verifyEqual(testCase, body.data_body.format.node, 'EDAM:format_3591');
+verifyEqual(testCase, body.data_body.format.name, 'TIFF');
+body = did2.build.opaqueBody(newId(), struct('node', 'EDAM:format_3508', 'name', 'PDF'), ...
+    'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, body.data_body.format.node, 'EDAM:format_3508');
+verifyEqual(testCase, body.data_body.format.name, 'PDF');
+body = did2.build.opaqueBody(newId(), 'EDAM:format_9999', 'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, body.data_body.format.name, '', 'an unknown CURIE keeps no name');
 verifyEqual(testCase, body.files.file_list, {'body_data_0'});
 verifyError(testCase, @() did2.build.opaqueBody(newId(), '', 'SessionId', testCase.TestData.sid), ...
     'did2:build:missingField');

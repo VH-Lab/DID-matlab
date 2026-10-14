@@ -743,6 +743,8 @@ POST_PASSES = [
         ("store_records_seen", "file_reference documents"),
         ("store_carriers_seen", "observations carrying source_file_id"),
         ("stores_folded", "FOLDED to an unheld opaque_body (id kept)"),
+        ("stores_folded_ome_zarr", "  of those, an OME-Zarr store (format EMPTY:0000259)"),
+        ("stores_folded_tiff_folder", "  of those, a SmartSPIM TIFF folder (format EDAM:format_3591)"),
         ("store_refused_total", "store records REFUSED (total)"),
         ("store_refused_not_in_batch", "  named record not in this batch"),
         ("store_refused_not_a_file_reference", "  named document is not a file_reference"),

@@ -135,7 +135,11 @@ body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
 % 2026-08-14): the byte descriptors moved to the abstract parent and a property
 % block is keyed by the declaring class. `compression` is EMPTY and that is a
 % fact, not a placeholder -- an external sorter directory is stored as it lies.
-body.data_body = struct('format', 'directory', 'compression', '', ...
+% `format` is an ontology TERM since lightsheet point 4 (Jess 2026-10-14;
+% did-schema 877bbde). A directory is not a file format and no term for it has
+% been found or minted, so the term carries the NAME only: a term to find or
+% mint, reported, not invented here.
+body.data_body = struct('format', struct('node', '', 'name', 'directory'), 'compression', '', ...
     'filename', directory, 'description', descr);
 % carry any attached output bytes verbatim (the external directory is the usual
 % case, but a doc that ships files owns them on this body now).
