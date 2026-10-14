@@ -78,7 +78,9 @@ verifyEqual(testCase, edge(obs, 'instrument_id'), 'elem_scope_1');
 sw = pickByClass(out, 'entity');
 verifyEqual(testCase, numel(sw), 1);
 verifyEqual(testCase, edge(obs, 'software_id'), sw{1}.base.id);
-verifyEqual(testCase, sw{1}.entity.name, 'lightsheet-pipeline 0.3.1');
+verifyEqual(testCase, sw{1}.entity.name, ...
+    'NDI lightsheet pyramid builder (ndi.fun.doc.lightsheet.makePyramid)', ...
+    'point 5: named for the program, not for pipeline_version');
 verifyEqual(testCase, sw{1}.entity.type.name, 'software');
 % The pyramid carries no time; nothing may claim one (migrator header).
 verifyEqual(testCase, edge(obs, 'time_reference_id'), '');
@@ -406,17 +408,37 @@ verifyFalse(testCase, isfield(obs.value, 'source_data_type') ...
     && ~isempty(obs.value.source_data_type), 'uint16 is canonical: no source spelling');
 end
 
-function testNoPipelineVersionMeansNoSoftwareEntity(testCase)
+function testNoPipelineVersionStillNamesTheBuilderButAssertsNoVersion(testCase)
+% Point 5 (Jess 2026-10-14): the builder is known whether or not the document
+% records a pipeline_version, so the software entity and the observation's
+% software_id are always there; only the version assertion is not.
 assumeCompositionSchema(testCase);
 v1 = pyramidV1();
 v1.lightsheetZarrPyramid.pipeline_version = '';
 v1.depends_on = v1.depends_on(~strcmp({v1.depends_on.name}, 'element_id'));
 out = runJ(v1);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
-verifyEqual(testCase, numel(pickByClass(out, 'entity')), 0);
+sw = pickByClass(out, 'entity');
+verifyEqual(testCase, numel(sw), 1);
 obs = pickById(out, v1.base.id);
-verifyEqual(testCase, edge(obs, 'software_id'), '');
+verifyEqual(testCase, edge(obs, 'software_id'), sw{1}.base.id);
 verifyEqual(testCase, edge(obs, 'instrument_id'), '');
+verifyEmpty(testCase, versionAssertions(out), 'no version to assert');
+end
+
+function testPipelineVersionIsAVersionAssertionAboutTheBuilder(testCase)
+% Point 5: pipeline_version is the writer's tag for the pyramid
+% (makePyramid.m:28), recorded the way ndi.setup.V2.entityDocuments records a
+% software version: a text_assertion 'version' about the software entity.
+assumeCompositionSchema(testCase);
+out = runJ(pyramidV1());
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+sw = pickByClass(out, 'entity');
+va = versionAssertions(out);
+verifyNumElements(testCase, va, 1);
+verifyEqual(testCase, edge(va{1}, 'entity_id'), sw{1}.base.id);
+verifyTrue(testCase, contains(jsonencode(va{1}), 'lightsheet-pipeline 0.3.1'), ...
+    'the assertion carries the pipeline_version text');
 end
 
 function testAPyramidWithNoSubjectQuarantines(testCase)
@@ -757,6 +779,19 @@ for k = 1:numel(deps)
     if strcmp(deps{k}.name, name)
         if isfield(deps{k}, 'document_id'); v{end+1} = char(deps{k}.document_id); %#ok<AGROW>
         else; v{end+1} = char(deps{k}.value); end %#ok<AGROW>
+    end
+end
+end
+
+function c = versionAssertions(out)
+%VERSIONASSERTIONS The statements whose variable is 'version'.
+c = {};
+for k = 1:numel(out.migrated)
+    d = out.migrated{k}.toStruct();
+    v = blockField(d, 'variable');
+    if iscell(v) && ~isempty(v); v = v{1}; end
+    if isstruct(v) && isfield(v, 'name') && strcmp(v.name, 'version')
+        c{end+1} = d; %#ok<AGROW>
     end
 end
 end

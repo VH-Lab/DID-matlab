@@ -1,7 +1,7 @@
 function bodies = lightsheet_zarr_pyramid(preBody)
 %LIGHTSHEET_ZARR_PYRAMID Brainstorm-J migrator: did_v1 lightsheetZarrPyramid ->
 %   an `observation` of intensity (the lightsheet volume) of its subject, id
-%   PRESERVED, plus a `software` entity for `pipeline_version`; it carries the
+%   PRESERVED, plus the `software` entity that built it (and its version); it carries the
 %   `source_file_id` join a batch pass follows to make the source's
 %   fileReference (OME-Zarr store or TIFF folder) the observation's unheld body.
 %
@@ -53,9 +53,10 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %      The keys are NOT on the observation. did-schema `data.keys`: "with
 %      `data_body` true, each body carries the keys of its own array". They
 %      go on the store body here and on each level's sampled_body.
-%   2. THE SOFTWARE ENTITY, `entity` with type `software`, named by
-%      pipeline_version (the writer's only field for it). None when the field
-%      is empty.
+%   2. THE SOFTWARE ENTITY, `entity` with type `software`, named for the
+%      program that writes every v1 pyramid (point 5), always; plus a
+%      `text_assertion` 'version' about it carrying pipeline_version when that
+%      is non-empty.
 %   3. NO STORE BODY. The OME-Zarr store's body is the v1 `fileReference` the
 %      pyramid's `source_file_id` names, folded by a BATCH PASS
 %      (did2.convert.foldGenericFiles, its store-record half) into an UNHELD
@@ -92,7 +93,7 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %      WITHOUT THE PASS (a bare v1_to_v2 call) the three stay on the
 %      observation. Every DID-side harness and ndi.migrate.local run the pass.
 %
-%   Returns {observation, software?}.
+%   Returns {observation, software, versionAssertion?}.
 %
 %   ---------------------------------------------------------------------
 %   OPEN POINTS -- RECORDED, NOT RESOLVED (the design does not say)
@@ -108,6 +109,12 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %     a relative_time_reference 'intervalDuring' the session document and
 %     points the observation's time_reference_id at it. No session document in
 %     the batch: no reference, counted (observations_without_session).
+%   * SOFTWARE -- DECIDED (Jess 2026-10-14, lightsheet point 5): one
+%     `software` entity named 'NDI lightsheet pyramid builder
+%     (ndi.fun.doc.lightsheet.makePyramid)', always emitted, always the
+%     observation's software_id; pipeline_version (the writer's tag for the
+%     pyramid, makePyramid.m:28) is a text_assertion 'version' about it when
+%     non-empty.
 %   * `label`, `pyramid_name`, `pyramid_type` survive only as the store
 %     body's `description` text (carried here in `notes`, moved by the pass);
 %     `byte_order` (always 'little', and repeated on every level) is carried
@@ -138,16 +145,29 @@ sourceId  = depValue(preBody, 'source_file_id');
 
 [dataType, sourceDataType] = jDatumType(field(blk, 'dtype', ''));
 
-% ---- the software entity ---------------------------------------------------
+% ---- the software entity (point 5, Jess 2026-10-14) ------------------------
+% NAMED for the program that writes every v1 pyramid, always emitted: the
+% builder is known whether or not the document records a pipeline_version.
+% `pipeline_version` is the writer's "tag for the pyramid" (makePyramid.m:28),
+% NOT a program name, so it becomes a `text_assertion` (variable 'version')
+% about this entity, the way ndi.setup.V2.entityDocuments records a software
+% version -- only when it is non-empty. Software dedup across pyramids is
+% NDI's resolveSoftwareDedup's job, not this migrator's.
 bodies = {};
-softwareId = '';
+BUILDER = 'NDI lightsheet pyramid builder (ndi.fun.doc.lightsheet.makePyramid)';
+software = did2.build.document('entity', ...
+    struct('type', 'software', 'name', BUILDER), ...
+    'SessionId', sessionId, 'CreationTimestamp', created, 'Validate', false);
+softwareId = software.base.id;
 pipelineVersion = strtrim(char(field(blk, 'pipeline_version', '')));
-software = [];
+versionAssertion = [];
 if ~isempty(pipelineVersion)
-    software = did2.build.document('entity', ...
-        struct('type', 'software', 'name', pipelineVersion), ...
+    % No time reference: an assertion declares no time_reference_id
+    % (statement.json's depends_on is entity_id and value_id only), and
+    % ndi.setup.V2.entityDocuments passes none.
+    versionAssertion = did2.build.statement('text_assertion', softwareId, 'version', ...
+        did2.build.valueCell('text', {pipelineVersion}), ...
         'SessionId', sessionId, 'CreationTimestamp', created, 'Validate', false);
-    softwareId = software.base.id;
 end
 
 % ---- what the store-record pass needs (header, item 3) -------------------
@@ -208,8 +228,9 @@ end
 obs.depends_on(end+1) = edgeEntry(obs.depends_on, ...
     did2.convert.mintSessionDuring('marker'), obsId);
 bodies{end+1} = obs;
-if ~isempty(software)
-    bodies{end+1} = software;
+bodies{end+1} = software;
+if ~isempty(versionAssertion)
+    bodies{end+1} = versionAssertion;
 end
 end
 
