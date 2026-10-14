@@ -513,7 +513,9 @@ body = did2.build.opaqueBody(newId(), struct('node', 'EDAM:format_3508', 'name',
 verifyEqual(testCase, body.data_body.format.node, 'EDAM:format_3508');
 verifyEqual(testCase, body.data_body.format.name, 'PDF');
 body = did2.build.opaqueBody(newId(), 'EDAM:format_9999', 'SessionId', testCase.TestData.sid);
-verifyEqual(testCase, body.data_body.format.name, '', 'an unknown CURIE keeps no name');
+verifyEqual(testCase, body.data_body.format.node, 'EDAM:format_9999');
+verifyTrue(testCase, ~isfield(body.data_body.format, 'name') || isempty(body.data_body.format.name), ...
+    'an unknown CURIE keeps no name');
 verifyEqual(testCase, body.files.file_list, {'body_data_0'});
 verifyError(testCase, @() did2.build.opaqueBody(newId(), '', 'SessionId', testCase.TestData.sid), ...
     'did2:build:missingField');
