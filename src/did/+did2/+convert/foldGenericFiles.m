@@ -1107,6 +1107,14 @@ body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
     'parameters', '', 'location_type', 'file', 'ingest', 0));
 end
 
+function f = formatOf(curie)
+%FORMATOF generic_file's format_ontology CURIE as the body's format, in the
+%   form the loaded schema declares (did2.build.formatTerm: a {node, name} term
+%   on the current schema, the CURIE string on v_eta-pre73). '' when absent.
+f = did2.build.formatTerm(curie);
+if isempty(f); f = ''; end
+end
+
 function t = OME_ZARR_FORMAT()
 %OME_ZARR_FORMAT THE one spelling of the OME-Zarr format term (point 4): minted
 %   in EMPTY by Jess 2026-10-14 (Waltham-Data-Science/empty-ontology#22, not
@@ -1223,7 +1231,7 @@ body.base = freshBase(src, bodyId, 'migrated_generic_file_bytes');
 % convenience: writing `opaque_body.format` after the hoist is an undeclared
 % field on a class that no longer has one.
 body.data_body = struct( ...
-    'format',       struct('node', charField(blk, {'format_ontology', 'formatOntology'}), 'name', ''), ...
+    'format',       formatOf(charField(blk, {'format_ontology', 'formatOntology'})), ...
     'compression',  '', ...
     'filename',     charField(blk, {'filename'}), ...
     'content_hash', charField(blk, {'checksum'}), ...

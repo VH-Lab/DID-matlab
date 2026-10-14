@@ -139,7 +139,9 @@ body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
 % did-schema 877bbde). A directory is not a file format and no term for it has
 % been found or minted, so the term carries the NAME only: a term to find or
 % mint, reported, not invented here.
-body.data_body = struct('format', struct('node', '', 'name', 'directory'), 'compression', '', ...
+% did2.build.formatTerm writes it in the form the loaded schema declares: the
+% name-only term on the current schema, the string 'directory' on v_eta-pre73.
+body.data_body = struct('format', did2.build.formatTerm(struct('node', '', 'name', 'directory')), 'compression', '', ...
     'filename', directory, 'description', descr);
 % carry any attached output bytes verbatim (the external directory is the usual
 % case, but a doc that ships files owns them on this body now).

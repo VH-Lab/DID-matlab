@@ -564,8 +564,12 @@ if isscalar(bodyIdx)
     verifyEqual(testCase, char(ob.get('data_body.content_hash')), ...
         'd41d8cd98f00b204e9800998ecf8427e', ...
         'the MD5 was dropped -- the field opaque_body gained exists for it');
-    % format is an ontology TERM (lightsheet point 4): the CURIE is its node.
-    verifyEqual(testCase, char(ob.get('data_body.format.node')), 'EMPTY:0000253');
+    % format is an ontology TERM since lightsheet point 4 (the CURIE is its
+    % node); on v_eta-pre73, which test-fixtures.yml pins, it is the CURIE
+    % string (did2.build.formatTerm follows the loaded schema).
+    fmt = ob.get('data_body.format');
+    if isstruct(fmt); fmt = fmt.node; end
+    verifyEqual(testCase, char(fmt), 'EMPTY:0000253');
     verifyEqual(testCase, char(ob.get('data_body.filename')), ...
         'plasmids/pXY-12.gb');
 end

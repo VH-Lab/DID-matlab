@@ -6,7 +6,8 @@ function doc = opaqueBody(ownerId, format, options)
 %   into an array: a PDF, a TIFF stack, a lab binary. FORMAT is an ontology
 %   TERM (lightsheet point 4, Jess 2026-10-14; did-schema 877bbde): a
 %   {node, name} struct, or a bare CURIE whose name is filled in when known
-%   ('EDAM:format_3591' -> TIFF; see +did2/+build/private/formatTerm.m). It
+%   ('EDAM:format_3591' -> TIFF; see did2.build.formatTerm, which also writes the
+%   older schema's media-type string when the loaded schema types format as char). It
 %   is no longer an IANA media type. An opaque_body requires it
 %   (require_inherited).
 %
@@ -48,8 +49,8 @@ arguments
     options.SchemaCache = []
 end
 
-format = formatTerm(format);
-if isempty(format) || (isempty(format.node) && isempty(format.name))
+format = did2.build.formatTerm(format, options.SchemaCache);
+if isempty(format) || (isstruct(format) && isempty(format.node) && isempty(format.name))
     error('did2:build:missingField', ...
         'An opaque_body requires `format` (an ontology term: {node, name} or a CURIE).');
 end
