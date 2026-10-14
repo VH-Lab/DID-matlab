@@ -22,8 +22,11 @@ function doc = opaqueBody(ownerId, format, options)
 %   Options (edges):
 %     'KeyIds', 'Edges'
 %   Options (document):
-%     'Chunks' (default 1), 'Files', 'SessionId' (required), 'Id',
+%     'Chunks' (default 1), 'Files', 'SessionId' (required),
 %     'CreationTimestamp', 'Validate', 'SchemaCache'.
+%     'Id'            base.id to use, as did2.build.document's 'Id': e.g. the
+%                     id of the source document this body migrates from. ''
+%                     (the default) mints a new id.
 %
 %   See also did2.build.sampledBody.
 

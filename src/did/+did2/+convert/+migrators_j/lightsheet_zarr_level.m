@@ -63,11 +63,14 @@ function bodies = lightsheet_zarr_level(preBody)
 %                       chunk.bin_k -> body_data_{k-1} for a member named
 %                       outright; file_info / series_info renamed to match,
 %                       locations untouched
-%   A level holding NO bytes -> nothing (L3(c)). "After the migrator confirms
-%   no inbound edge": no NDI template on origin/main declares an edge to a
-%   level (`git grep lightsheetZarrLevel_id origin/main` matches nothing), and
-%   any edge a dataset nonetheless carries to a vanished level is an ORPHAN in
-%   the batch reference check, which gates.
+%     base.id        the v1 level document's own id, KEPT (lightsheet point
+%                       11, Jess 2026-10-14, option A): the body IS the level,
+%                       so it keeps the level's identity, as the pyramid's
+%                       observation keeps the pyramid's. Any edge a dataset
+%                       carries to the level resolves to its body.
+%   A level holding NO bytes -> nothing (L3(c)). Its id names no document after
+%   migration, so an edge a dataset carries to it is an ORPHAN in the batch
+%   reference check, which gates.
 %
 %   ---------------------------------------------------------------------
 %   OPEN POINTS -- RECORDED, NOT RESOLVED
@@ -164,7 +167,9 @@ isMeasurement = double(field(blk, 'level', 0)) == 0;
 opts = {'DatumOrder', char(field(blk, 'chunk_order', 'C')), ...
         'FillValue', fillLiteral(field(blk, 'fill_value', [])), ...
         'Complete', true, ...
-        'SessionId', sessionId, 'CreationTimestamp', created, 'Validate', false};
+        'SessionId', sessionId, 'CreationTimestamp', created, ...
+        'Id', baseId(preBody), ...   % the level's own id (point 11)
+        'Validate', false};
 if ~isempty(byteOrder)
     opts = [opts, {'ByteOrder', byteOrder}];
 end

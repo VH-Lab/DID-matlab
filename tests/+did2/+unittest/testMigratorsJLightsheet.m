@@ -495,6 +495,29 @@ verifyEqual(testCase, cellfun(@(k) double(k.chunk), keys), [1 1 64 256 256]);
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 400 2048 2048]);
 end
 
+function testALevelsBodyKeepsTheLevelsId(testCase)
+% Lightsheet point 11 (Jess 2026-10-14, option A): the body IS the level, so
+% it keeps the v1 level document's base.id, for every level that holds bytes,
+% through the batch pass too; and nothing in the batch dangles.
+assumeCompositionSchema(testCase);
+assumeClass(testCase, 'relative_time_reference');
+lvl0 = levelV1(0, 'none', 'raw', 4, 'manifest');
+lvl1 = levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest');
+out = runJ(lvl0);
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+b = onlyBody(testCase, out);
+verifyEqual(testCase, b.base.id, lvl0.base.id);
+
+[out, ~] = runWithPass({pyramidV1(), lvl0, lvl1, sessionEntity()});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+bodies = pickByClass(out, 'sampled_body');
+verifyEqual(testCase, numel(bodies), 2);
+ids = sort(cellfun(@(d) char(d.base.id), bodies, 'UniformOutput', false));
+verifyEqual(testCase, ids, sort({lvl0.base.id, lvl1.base.id}));
+ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+verifyEqual(testCase, ref.orphan_count, 0);
+end
+
 function testTheChunkSeriesIsRenamedAndItsLocationsKept(testCase)
 assumeCompositionSchema(testCase);
 v1 = levelV1(0, 'none', 'raw', 4, 'manifest');

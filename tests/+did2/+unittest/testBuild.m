@@ -521,6 +521,24 @@ verifyError(testCase, @() did2.build.opaqueBody(newId(), '', 'SessionId', testCa
     'did2:build:missingField');
 end
 
+function testBodiesKeepAGivenIdAndMintOneOtherwise(testCase)
+% Lightsheet point 11: a body can keep the id of the source document it
+% migrates from ('Id', as did2.build.document's); '' mints a new one.
+sid = testCase.TestData.sid;
+keys = did2.build.list(did2.build.key('time', 10, 'Unit', 'second', 'Origin', 0, 'Spacing', 1));
+id = newId();
+body = did2.build.sampledBody(newId(), keys, 'SessionId', sid, 'Id', id);
+verifyEqual(testCase, body.base.id, id);
+body = did2.build.opaqueBody(newId(), 'EDAM:format_3591', 'SessionId', sid, 'Id', id);
+verifyEqual(testCase, body.base.id, id);
+a = did2.build.sampledBody(newId(), keys, 'SessionId', sid);
+b = did2.build.opaqueBody(newId(), 'EDAM:format_3591', 'SessionId', sid);
+verifyNotEmpty(testCase, a.base.id);
+verifyNotEmpty(testCase, b.base.id);
+verifyNotEqual(testCase, a.base.id, id);
+verifyNotEqual(testCase, b.base.id, id);
+end
+
 % ===================== time references =====================================
 
 function testRelativeTimeReference(testCase)

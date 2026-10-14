@@ -29,8 +29,11 @@ function doc = sampledBody(ownerId, keys, options)
 %                     from (a key's `positions_from` indexes them)
 %     'Edges'         any other declared edge
 %   Options (document):
-%     'Chunks' (default 1), 'Files', 'SessionId' (required), 'Id',
+%     'Chunks' (default 1), 'Files', 'SessionId' (required),
 %     'CreationTimestamp', 'Validate', 'SchemaCache'.
+%     'Id'            base.id to use, as did2.build.document's 'Id': e.g. the
+%                     id of the source document this body migrates from. ''
+%                     (the default) mints a new id.
 %
 %   Example:
 %     body = did2.build.sampledBody(obsId, ...
