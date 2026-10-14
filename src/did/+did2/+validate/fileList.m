@@ -86,13 +86,14 @@ for k = 1:numel(bodies)
         end
         [declared, isSeries] = declaredFiles(cache, className);
         carried  = carriedFiles(body);
+        base = memberBase(body);
         if ~isempty(carried); report.docs_with_files = report.docs_with_files + 1; end
         if isempty(declared) && isempty(carried); continue; end
 
         for d = 1:numel(declared)
             present = any(strcmp(declared{d}, carried));
             if ~present && isSeries(d)
-                present = any(cellfun(@(c) isSeriesMember(c, declared{d}), carried));
+                present = any(cellfun(@(c) isSeriesMember(c, declared{d}, base), carried));
             end
             if ~present
                 [absKeys, absCounts] = bump(absKeys, absCounts, ...
@@ -102,7 +103,7 @@ for k = 1:numel(bodies)
         for c = 1:numel(carried)
             known = any(strcmp(carried{c}, declared));
             for d = find(isSeries)
-                known = known || isSeriesMember(carried{c}, declared{d});
+                known = known || isSeriesMember(carried{c}, declared{d}, base);
             end
             if ~known
                 [undKeys, undCounts] = bump(undKeys, undCounts, ...
@@ -122,14 +123,35 @@ end
 
 % ===================== helpers =============================================
 
-function tf = isSeriesMember(name, stem)
-%ISSERIESMEMBER True when NAME is a member `<stem>_<k>` of the series STEM.
-%   A file declared `series: true` (`body_data`, the v1 `chunk.bin`) is carried
-%   as numbered members, `body_data_0`, `body_data_1`, ..., and an exact
-%   strcmp against the declared name never matches one: every member was
-%   reported UNDECLARED and the declaration ABSENT, both wrong. This is the
-%   same rule did2.build's checkFiles applies (`^<stem>_\d+$`).
-tf = ~isempty(regexp(name, ['^' regexptranslate('escape', stem) '_\d+$'], 'once'));
+function tf = isSeriesMember(name, stem, base)
+%ISSERIESMEMBER True when NAME is a member `<stem>_<k>` of the series STEM,
+%   k >= BASE. A file declared `series: true` (`body_data`, the v1 `chunk.bin`)
+%   is carried as numbered members, and an exact strcmp against the declared
+%   name never matches one: every member was reported UNDECLARED and the
+%   declaration ABSENT, both wrong. This is the same rule did2.build's
+%   checkFiles applies (`^<stem>_\d+$`), plus the document's member BASE: a
+%   V_eta document numbers members from 0 (`body_data_0`, DID-schema #73 item
+%   17), a did_v1 document from 1 (`chunk.bin_1`), so `chunk.bin_0` on a v1
+%   document names no member (did.document/seriesMemberBase).
+tok = regexp(name, ['^' regexptranslate('escape', stem) '_(\d+)$'], 'tokens', 'once');
+tf = ~isempty(tok) && str2double(tok{1}) >= base;
+end
+
+function base = memberBase(body)
+%MEMBERBASE 0 for a V_eta document, 1 for a did_v1 one -- the rule
+%   did.document/seriesMemberBase applies, read off document_class.schema_version.
+base = 1;
+if ~isstruct(body) || ~isfield(body, 'document_class') || ~isstruct(body.document_class) ...
+        || ~isfield(body.document_class, 'schema_version')
+    return;
+end
+sv = body.document_class.schema_version;
+if isstring(sv) && isscalar(sv); sv = char(sv); end
+if ~ischar(sv) || isempty(sv); return; end
+[rank, known] = did2.convert.schemaVersionRank(sv);
+if known && rank >= did2.convert.schemaVersionRank('V_eta')
+    base = 0;
+end
 end
 
 function [names, isSeries] = declaredFiles(cache, className)

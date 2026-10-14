@@ -95,6 +95,26 @@ verifyFalse(testCase, any(strcmp(absent, stem)), ...
     sprintf('the series %s is present through its members', stem));
 end
 
+function testTheMemberBaseFollowsTheDocumentsVintage(testCase)
+% DID-schema #73 item 17 (kept by Jess 2026-10-14): a V_eta document numbers
+% series members from 0, a did_v1 document from 1. So `<stem>_0` is a member
+% on a V_eta document and an UNDECLARED file on a v1 one; `<stem>_1` is a
+% member on both. The vintage is document_class.schema_version.
+cache = did2.schema.cache.shared();
+[className, stem] = aClassDeclaringASeries(cache);
+assumeNotEmpty(testCase, className, 'no V_eta class declares a file series');
+v1 = bodyStruct(className, 'doc_series_v1');
+v1.document_class = rmfield(v1.document_class, 'schema_version');
+v1.files = struct('file_list', {{[stem '_0'], [stem '_1']}});
+rep = did2.validate.fileList({v1}, 'SchemaCache', cache);
+verifyEqual(testCase, rep.present_undeclared_count, 1);
+verifyEqual(testCase, rep.present_but_undeclared(1).file_name, [stem '_0']);
+eta = bodyStruct(className, 'doc_series_eta');
+eta.files = struct('file_list', {{[stem '_0'], [stem '_1']}});
+rep = did2.validate.fileList({eta}, 'SchemaCache', cache);
+verifyEqual(testCase, rep.present_undeclared_count, 0);
+end
+
 function testANonNumericSuffixIsNotASeriesMember(testCase)
 % The rule is `<stem>_<digits>`, not a prefix match: anything else is still an
 % undeclared file, so the audit cannot be fooled into silence by a near-name.

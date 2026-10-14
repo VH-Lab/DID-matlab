@@ -72,14 +72,13 @@ function bodies = lightsheet_zarr_level(preBody)
 %   ---------------------------------------------------------------------
 %   OPEN POINTS -- RECORDED, NOT RESOLVED
 %   ---------------------------------------------------------------------
-%   * MEMBER NUMBERING. V_eta numbers body_data members from 0 (item 17).
-%     DID's file series numbers NAME_i from 1, against manifest slot i-1
-%     (did.document/addFileSeries: "INDICES ARE ONE-BASED ... The manifest's
-%     own array is zero-based"). Renaming the manifest therefore keeps the
-%     BYTES where they are -- chunk.bin_k and body_data_{k-1} are both slot
-%     k-1 -- but did.document/seriesMemberOf would resolve the name
-%     `body_data_0` to slot -1. Which convention DID adopts for body_data is
-%     not a migrator's call.
+%   * MEMBER NUMBERING -- DECIDED (Jess 2026-10-14: keep DID-schema #73 item
+%     17). V_eta numbers body_data members from 0 and v1 file series from 1,
+%     both against the same zero-based manifest: chunk.bin_k and
+%     body_data_{k-1} are both slot k-1, so the rename above keeps every
+%     slot where it is. did.document/seriesMemberBase reads the base off the
+%     document's vintage, so seriesMemberOf resolves body_data_0 on this
+%     (V_eta) document to the bytes chunk.bin_1 named on the v1 one.
 %   * The level's `t` axis has no unit: the level document carries only
 %     `voxel_size_units` (hard-coded 'micrometer', a length, also stamped
 %     beside the t and c entries), and no per-axis units. `c` gets index
@@ -249,6 +248,16 @@ if isfield(files, 'series_info') && isstruct(files.series_info)
         if isChunk
             files.series_info(k).name = newName;
             nHeld = nHeld + 1;
+            % A not-yet-stripped ingest record names members by NUMBER
+            % (NAME_<index>): v1 counts from 1, V_eta from 0, same slots.
+            if isfield(files.series_info(k), 'ingest_locations') ...
+                    && isstruct(files.series_info(k).ingest_locations) ...
+                    && isfield(files.series_info(k).ingest_locations, 'index')
+                for j = 1:numel(files.series_info(k).ingest_locations)
+                    files.series_info(k).ingest_locations(j).index = ...
+                        double(files.series_info(k).ingest_locations(j).index) - 1;
+                end
+            end
         end
     end
 end

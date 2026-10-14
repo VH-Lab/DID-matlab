@@ -320,6 +320,42 @@ verifyEqual(testCase, rep.present_undeclared_count, 0, ...
     'body_data_0/1 are members of the declared series body_data');
 end
 
+function testTheFirstMigratedMemberIsBodyDataZeroAndTheSameSlot(testCase)
+% Point 6 (Jess 2026-10-14, keep DID-schema #73 item 17): V_eta numbers
+% body_data members from 0, v1 series from 1, against the same manifest. So
+% chunk.bin_1 on the v1 level and body_data_0 on the migrated body must name
+% the SAME manifest slot and the same stored bytes.
+assumeCompositionSchema(testCase);
+v1 = levelV1(0, 'none', 'raw', 4, 'manifest');
+out = runJ(v1);
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+b = onlyBody(testCase, out);
+vDoc = did.document(v1);
+eDoc = did.document(b);
+verifyEqual(testCase, vDoc.seriesMemberBase(), 1);
+verifyEqual(testCase, eDoc.seriesMemberBase(), 0, 'the migrated body is a V_eta document');
+[vStem, vIndex] = vDoc.seriesMemberOf('chunk.bin_1');
+[eStem, eIndex] = eDoc.seriesMemberOf('body_data_0');
+verifyEqual(testCase, vStem, 'chunk.bin');
+verifyEqual(testCase, eStem, 'body_data');
+verifyEqual(testCase, eIndex, vIndex, 'body_data_0 is the slot chunk.bin_1 named');
+verifyEmpty(testCase, eDoc.seriesMemberOf('body_data_4'), ...
+    'four members are body_data_0..3; the manifest is unchanged');
+% the manifest that resolves both is the same stored file
+verifyEqual(testCase, b.files.file_info(1).locations, v1.files.file_info(1).locations);
+
+% named members: chunk.bin_k -> body_data_{k-1}, the same stored bytes
+v1m = levelV1(0, 'none', 'raw', 2, 'members');
+outm = runJ(v1m);
+verifyEqual(testCase, numel(outm.quarantine), 0, reasonsOf(outm));
+bm = onlyBody(testCase, outm);
+k = find(strcmp({bm.files.file_info.name}, 'body_data_0'));
+verifyNumElements(testCase, k, 1);
+src = find(strcmp({v1m.files.file_info.name}, 'chunk.bin_1'));
+verifyEqual(testCase, bm.files.file_info(k).locations, v1m.files.file_info(src).locations, ...
+    'body_data_0 reads the bytes chunk.bin_1 named');
+end
+
 function testAReducedLevelIsRedundantWithItsSummaryStatistic(testCase)
 assumeCompositionSchema(testCase);
 out = runJ(levelV1(2, 'max', 'blosc-zstd', 4, 'manifest'));
