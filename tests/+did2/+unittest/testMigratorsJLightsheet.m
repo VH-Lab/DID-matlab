@@ -84,7 +84,10 @@ verifyEqual(testCase, sw{1}.entity.type.name, 'software');
 verifyEqual(testCase, edge(obs, 'time_reference_id'), '');
 % The edges every member of the batch names resolve inside it, given the two
 % entities the pyramid points at from outside (subject and microscope).
-ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+% `fref_store_1` is the fileReference the TRANSIENT `source_file_id` names;
+% it is outside this one-document batch (foldGenericFiles removes the edge).
+ref = did2.validate.references(out.migrated, 'KnownIds', ...
+    {'subj_ls_1', 'elem_scope_1', 'fref_store_1'});
 verifyEqual(testCase, ref.orphan_count, 0);
 end
 
@@ -98,37 +101,112 @@ verifyEqual(testCase, obs.value.source_data_type, '<u2');
 verifyTrue(testCase, isequal(obs.value.data_body, true));
 end
 
-function testTheStoreBecomesAnUnheldOpaqueBodyWithFullResolutionKeys(testCase)
+function testThePyramidMigratorMakesNoStoreBodyAndCarriesTheJoin(testCase)
+% Lightsheet point 3 (Jess, 2026-10-14): the migrator makes NO store body. It
+% carries the v1 `source_file_id` edge, the full-resolution keys and the store
+% description on the observation, TRANSIENTLY, for foldGenericFiles.
 assumeCompositionSchema(testCase);
 v1 = pyramidV1();
 out = runJ(v1);
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0, ...
+    'the pyramid migrator must not make a store body of its own');
+obs = pickById(out, v1.base.id);
+verifyEqual(testCase, edge(obs, 'source_file_id'), 'fref_store_1');
+verifyFalse(testCase, isempty(blockField(obs, 'keys')), 'the keys are carried');
+end
+
+function testTheStoreRecordBecomesTheObservationsUnheldBody(testCase)
+% The pyramid, its fileReference and a level, through v1_to_v2 and the batch
+% pass: ONE store body, the fileReference's id, owned by the observation,
+% recorded by location and not ingested, no content_hash, the checksum in
+% `description`; nothing transient left on the observation; no orphans.
+assumeCompositionSchema(testCase);
+assumeClass(testCase, 'file_reference');
+p = pyramidV1();
+batch = {p, fileReferenceV1('fref_store_1'), levelV1(0, 'none', 'raw', 4, 'manifest')};
+[out, rep] = runWithPass(batch);
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+fprintf(['\n--- store records: %d record(s), %d carrier(s), folded %d, ' ...
+    'refused %d, stripped %d, quarantined %d, left %d ---\n'], ...
+    rep.store_records_seen, rep.store_carriers_seen, rep.stores_folded, ...
+    rep.store_refused_total, rep.store_carriers_stripped, ...
+    rep.store_fold_quarantined, rep.store_records_left_passthrough);
+verifyEqual(testCase, rep.store_records_seen, 1);
+verifyEqual(testCase, rep.store_carriers_seen, 1);
+verifyEqual(testCase, rep.stores_folded, 1);
+verifyEqual(testCase, rep.store_refused_total, 0);
+verifyEqual(testCase, rep.store_records_left_passthrough, 0);
+verifyEqual(testCase, rep.store_checksums_to_description, 1);
+verifyEqual(testCase, rep.store_sizes_unrecorded, 1, ...
+    'makeSourceFile writes file_size 0 for a directory store');
+
+verifyEqual(testCase, numel(pickByClass(out, 'file_reference')), 0, ...
+    'the fileReference became the body; it must not also pass through');
 bodies = pickByClass(out, 'opaque_body');
 verifyEqual(testCase, numel(bodies), 1);
 b = bodies{1};
-verifyEqual(testCase, edge(b, 'owner_id'), v1.base.id);
+verifyEqual(testCase, b.base.id, 'fref_store_1', 'the record''s id is kept');
+verifyEqual(testCase, edge(b, 'owner_id'), p.base.id);
 verifyEqual(testCase, b.data_body.format, 'application/x-ome-zarr');
-verifyFalse(testCase, isfield(b, 'files') && ~isempty(b.files), ...
-    'the store is UNHELD: its body must claim no member');
-verifyFalse(testCase, isfield(b.data_body, 'content_hash'), ...
-    'the .zattrs MD5 is not a payload hash (L3(e))');
+verifyEqual(testCase, b.data_body.filename, 'brain7.ome.zarr');
+verifyFalse(testCase, isfield(b.data_body, 'size_bytes') && ~isequal(b.data_body.size_bytes, 0), ...
+    'file_size 0 means unrecorded: no size_bytes');
+verifyEqual(testCase, b.data_body.file_created, '2024-01-02T03:04:05.000');
+verifyEqual(testCase, b.data_body.file_modified, '2024-01-03T03:04:05.000');
+verifyFalse(testCase, isfield(b.data_body, 'content_hash') && ~isempty(b.data_body.content_hash), ...
+    'the .zattrs MD5 is not a payload hash (L3(e) / L4)');
+verifyTrue(testCase, contains(b.data_body.description, '0123456789abcdef0123456789abcdef'));
+verifyTrue(testCase, contains(b.data_body.description, '.zattrs'));
+verifyTrue(testCase, contains(b.data_body.description, 'label "brain 7 cleared"'));
+% recorded BY LOCATION, NOT INGESTED
+info = b.files.file_info;
+if iscell(info); info = info{1}; end
+verifyEqual(testCase, info(1).name, 'body_data_0');
+loc = info(1).locations;
+if iscell(loc); loc = loc{1}; end
+verifyEqual(testCase, loc(1).location, '/data/stores/brain7.ome.zarr');
+verifyEqual(testCase, double(loc(1).ingest), 0);
+% the full-resolution keys moved onto the body
 keys = keyList(b.data.keys);
 verifyEqual(testCase, cellfun(@(k) k.variable.name, keys, 'UniformOutput', false), ...
     {'time', 'channel', 'z', 'y', 'x'});
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 400 2048 2048]);
-z = keys{3};
-verifyEqual(testCase, z.unit.name, 'meter');
-verifyEqual(testCase, z.source_unit, 'micrometer');
-verifyEqual(testCase, double(z.spacing.value), 2e-6, 'AbsTol', 1e-15);
-verifyEqual(testCase, double(z.spacing.source_value), 2);
-verifyEqual(testCase, double(z.origin.value), 10e-6, 'AbsTol', 1e-15);
-t = keys{1};
-verifyEqual(testCase, t.unit.name, 'second');
-c = keys{2};
-verifyEqual(testCase, labelNames(c.labels), {'GCaMP6s', 'tdTomato'});
-for k = 1:numel(keys)
-    verifyFalse(testCase, isfield(keys{k}, 'chunk') && ~isempty(keys{k}.chunk), ...
-        'chunk is used ONLY on a sampled_body''s keys');
+verifyEqual(testCase, labelNames(keys{2}.labels), {'GCaMP6s', 'tdTomato'});
+% nothing transient left on the observation
+obs = pickById(out, p.base.id);
+verifyEqual(testCase, edge(obs, 'source_file_id'), '');
+verifyTrue(testCase, isempty(blockField(obs, 'keys')));
+verifyTrue(testCase, isempty(blockField(obs, 'notes')));
+ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+verifyEqual(testCase, ref.orphan_count, 0);
 end
+
+function testAFileReferenceNamedByNoPyramidStaysAPassthrough(testCase)
+assumeCompositionSchema(testCase);
+assumeClass(testCase, 'file_reference');
+[out, rep] = runWithPass({fileReferenceV1('fref_other_1')});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.store_records_seen, 1);
+verifyEqual(testCase, rep.store_carriers_seen, 0);
+verifyEqual(testCase, rep.stores_folded, 0);
+verifyEqual(testCase, rep.store_records_left_passthrough, 1);
+verifyEqual(testCase, numel(pickByClass(out, 'file_reference')), 1);
+verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0);
+end
+
+function testAPyramidWhoseRecordIsAbsentIsStrippedAndCounted(testCase)
+% Not in the batch: no body (there is no record to make it from), and the
+% transient edge must not survive as an orphan.
+assumeCompositionSchema(testCase);
+[out, rep] = runWithPass({pyramidV1()});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.store_refused_not_in_batch, 1);
+verifyEqual(testCase, rep.store_carriers_stripped, 1);
+verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0);
+obs = pickById(out, 'pyr_ls_1');
+verifyEqual(testCase, edge(obs, 'source_file_id'), '');
+verifyTrue(testCase, isempty(blockField(obs, 'keys')));
 end
 
 function testASmartSpimPyramidHasNoStoreBody(testCase)
@@ -142,6 +220,8 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, numel(pickByClass(out, 'opaque_body')), 0);
 obs = pickById(out, v1.base.id);
+verifyEqual(testCase, edge(obs, 'source_file_id'), '', ...
+    'a SmartSPIM source is not an OME-Zarr store: nothing is carried');
 verifyEqual(testCase, obs.value.data_type, 'uint16');
 verifyFalse(testCase, isfield(obs.value, 'source_data_type') ...
     && ~isempty(obs.value.source_data_type), 'uint16 is canonical: no source spelling');
@@ -279,7 +359,9 @@ out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, numel(pickByClass(out, 'sampled_body')), 2);
 verifyEqual(testCase, out.summary.emitted_nothing_count, 1);
-ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+% fref_store_1: the transient source_file_id (no batch pass ran here).
+ref = did2.validate.references(out.migrated, 'KnownIds', ...
+    {'subj_ls_1', 'elem_scope_1', 'fref_store_1'});
 verifyEqual(testCase, ref.orphan_count, 0, ...
     'every body''s owner_id must name the pyramid''s preserved id');
 end
@@ -339,6 +421,31 @@ end
 
 function out = runJ(v1)
 out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
+end
+
+function [out, rep] = runWithPass(batch)
+out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
+[out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'V_eta');
+end
+
+function assumeClass(testCase, className)
+cache = did2.schema.cache.shared();
+assumeTrue(testCase, cache.hasClass(className), ...
+    sprintf('DID_SCHEMA_PATH lacks %s.', className));
+end
+
+function v = blockField(d, name)
+%BLOCKFIELD The value of field NAME in whichever property block holds it.
+v = [];
+fns = fieldnames(d);
+for k = 1:numel(fns)
+    b = d.(fns{k});
+    if isstruct(b) && isscalar(b) && isfield(b, name) ...
+            && ~any(strcmp(fns{k}, {'base', 'document_class', 'files'}))
+        v = b.(name);
+        return;
+    end
+end
 end
 
 function assumeCompositionSchema(testCase)
@@ -552,4 +659,31 @@ switch fileShape
         v1.files = struct('file_list', {names}, 'file_series', {{'chunk.bin'}}, ...
             'file_info', info);
 end
+end
+
+function v1 = fileReferenceV1(id)
+%FILEREFERENCEV1 A fileReference as ndi.fun.doc.lightsheet.makeSourceFile
+%   describes an OME-Zarr store (a DIRECTORY): fileSize 0 (only a plain file
+%   is sized), checksum the MD5 of `.zattrs`, dates as datenums, formatOntology
+%   left empty. Field names as universalRenames leaves them (snake_case).
+v1 = struct();
+v1.document_class = struct( ...
+    'definition', '$NDIDOCUMENTPATH/fileReference.json', ...
+    'validation', '$NDISCHEMAPATH/fileReference_schema.json', ...
+    'class_name', 'fileReference', ...
+    'property_list_name', 'fileReference', ...
+    'class_version', 1, ...
+    'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+v1.depends_on = struct('name', {}, 'value', {});   % makeSourceFile: no documentID given
+v1.base = struct('id', id, 'session_id', 'sess_ls_1', 'name', '', ...
+    'datestamp', '2026-10-01T12:00:00.000Z');
+v1.fileReference = struct( ...
+    'filename', 'brain7.ome.zarr', ...
+    'originalPath', '/data/stores/brain7.ome.zarr', ...
+    'formatOntology', '', ...
+    'dateCreated', datenum(2024, 1, 2, 3, 4, 5), ...
+    'dateUpdated', datenum(2024, 1, 3, 3, 4, 5), ...
+    'fileSize', 0, ...
+    'checksum', '0123456789abcdef0123456789abcdef', ...
+    'checksumAlgorithm', 'MD5');
 end

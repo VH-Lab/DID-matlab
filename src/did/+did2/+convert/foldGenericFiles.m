@@ -17,6 +17,15 @@ function [result, report] = foldGenericFiles(result, options)
 %   1 -> 2. A document it cannot fold is LEFT EXACTLY AS IT IS, counted under
 %   the reason it was refused.
 %
+%   AND ITS SIBLING, THE UNHELD HALF: a did_v1 `fileReference` named by a
+%   lightsheet pyramid's `source_file_id` becomes that pyramid observation's
+%   UNHELD `opaque_body`, its id kept (see "THE STORE RECORDS" below). NDI's
+%   own writer makes the two classes one choice apart --
+%   ndi.fun.doc.lightsheet.makeSourceFile returns a `generic_file` when it
+%   ATTACHES the file and a `fileReference` when it only DESCRIBES it -- so
+%   both land in this one pass: the held record and the unheld record of an
+%   external file.
+%
 %   ---------------------------------------------------------------------
 %   BATCH-PASS DECLARATION (DID-schema V_eta_OPEN_WORK.md row 107)
 %   ---------------------------------------------------------------------
@@ -25,9 +34,10 @@ function [result, report] = foldGenericFiles(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set --
 %   the grammar is in the parser's docstring.
 %
-%   BATCH-PASS-CONSUMES: generic_file, ontology_label
+%   BATCH-PASS-CONSUMES: generic_file, ontology_label, file_reference
 %   BATCH-PASS-EMITS: generic_file -> document: term_observation, opaque_body
-%   BATCH-PASS-EMITS: ontology_label -> nothing: read at :332-341 for the
+%   BATCH-PASS-EMITS: file_reference -> document: opaque_body
+%   BATCH-PASS-EMITS: ontology_label -> nothing: read at :446-457 (the `ontology_label` loop) for the
 %       sibling label's `ontologyNode`, which becomes the observation's
 %       `variable`. The label document itself is left exactly where it is.
 %   ---------------------------------------------------------------------
@@ -247,6 +257,83 @@ function [result, report] = foldGenericFiles(result, options)
 %   Off-target (TargetVersion ~= 'V_eta') it returns its input untouched with
 %   `ran` false -- `opaque_body` and the statement tier exist only in V_eta.
 %
+%   ---------------------------------------------------------------------
+%   THE STORE RECORDS -- fileReference -> an UNHELD opaque_body
+%   ---------------------------------------------------------------------
+%   THE DECISION. Jess, 2026-10-14 (DID-schema review/73/OPEN_ITEMS.md,
+%   "Lightsheet migrator points", point 3; NO `TEAM-SIGN-OFF` line), under
+%   signed #73 review item 25 (schemas/V_eta_spatial_transcriptomics_plan.md:
+%   "An external file not held in the database ... is an UNHELD body of the
+%   statement whose value it stores -- recorded by location, not ingested")
+%   and `file_reference.decided_targets = ["opaque_body"]`. The pyramid
+%   migrator makes no store body; the `fileReference` the pyramid names IS
+%   the store body.
+%
+%   THE JOIN. +migrators_j/lightsheet_zarr_pyramid.m keeps the pyramid's id
+%   on its observation and CARRIES three things there, all TRANSIENT: the v1
+%   `source_file_id` edge verbatim, the full-resolution array's keys in
+%   `data.keys`, and the store's description in `statement.notes` -- only for
+%   an OME-Zarr pyramid (NGFF dtype), never a SmartSPIM one. A single-document
+%   migrator cannot read the fileReference; this pass can, because both are in
+%   the migrated batch (the resolveResponseParameters pattern: the migrator
+%   re-homes the edge, the pass follows it and removes it). A CARRIER is an
+%   observation (`observation` or `*_observation`) with a `source_file_id`
+%   edge; the spatial-transcriptomics classes that DECLARE that edge are not
+%   observations and are never touched.
+%
+%   THE FOLD, per carrier whose edge names exactly one `file_reference` in the
+%   batch that no other carrier names:
+%     the observation   loses the edge, the keys and the notes (id unchanged)
+%     the body          opaque_body, base.id = THE fileReference's id (so
+%                       every inbound edge to the record still resolves),
+%                       owner_id = the observation; it REPLACES the
+%                       fileReference in the batch
+%       format          'application/x-ome-zarr' (the pyramid migrator's
+%                       choice; only NGFF pyramids carry)
+%       filename        <- filename
+%       files           member body_data_0 recorded BY LOCATION, not
+%                       ingested: file_info.locations = {location =
+%                       original_path, location_type 'file', ingest 0,
+%                       delete_original 0} -- the record ndi.document/add_file
+%                       writes for a file it does not take in, and the one
+%                       NDI's Haley V2 import writes for a recording
+%                       (sessionDocuments.m). DID-matlab has no other "not
+%                       held" marker (#73 item 34 asks for one; not built).
+%       size_bytes      <- file_size, ONLY WHEN > 0: the fileReference schema
+%                       says 0 means "not recorded", and makeSourceFile writes
+%                       0 for every DIRECTORY -- which an OME-Zarr store is.
+%       file_created    <- date_created, file_modified <- date_updated: MATLAB
+%                       datenums, written 'yyyy-mm-ddTHH:MM:SS.FFF' with NO
+%                       zone. The writer converts a datetime in the WRITING
+%                       machine's local zone to a datenum, which drops the
+%                       zone; stamping 'Z' here would claim UTC on the
+%                       migrating machine's guess. 0 or NaN (makeSourceFile's
+%                       "could not read it") is unrecorded and left out.
+%       keys            moved from the observation, verbatim
+%       description     the carried notes, plus the checksum sentence below
+%       content_hash    NEVER SET. Lightsheet L4 / L3(e): makeSourceFile
+%                       computes an OME-Zarr store's checksum over its
+%                       `.zattrs` file ONLY, so it is not a hash of the
+%                       payload, which is what content_hash promises. The
+%                       value and its algorithm are put in `description`, with
+%                       that explanation; `hash_algorithm` stays empty because
+%                       it describes content_hash.
+%   Both halves are re-validated through v1_to_v2 and accepted ONLY TOGETHER;
+%   on a quarantine the originals stay.
+%
+%   REFUSALS, each counted, and each still STRIPS the carrier (the edge is
+%   undeclared and the keys belong on bodies -- DID-schema point 2 -- so
+%   nothing transient survives this pass; the keys and description are then
+%   lost and `store_carriers_stripped` says how often):
+%     store_refused_not_in_batch          the named id is not in the batch
+%     store_refused_not_a_file_reference  it names a document of another class
+%     store_refused_shared                two carriers name one record (one
+%                                         body cannot have two owners)
+%     store_refused_no_original_path      the record has no location to keep
+%   A `file_reference` NO carrier names is left exactly as it is (a
+%   passthrough; the `.gef` sources are a separate build) and counted in
+%   `store_records_left_passthrough`.
+%
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
 %   did2.convert.resolveLawnPlateSubjects,
 %   did2.unittest.testFoldGenericFiles, did2.unittest.testBatchPassWiring.
@@ -280,6 +367,19 @@ report = struct( ...
     'date_fields_dropped',           0, ...
     'labels_deleted',                0, ...
     'labels_modified',               0, ...
+    'store_records_seen',            0, ...
+    'store_carriers_seen',           0, ...
+    'stores_folded',                 0, ...
+    'store_refused_total',           0, ...
+    'store_refused_not_in_batch',    0, ...
+    'store_refused_not_a_file_reference', 0, ...
+    'store_refused_shared',          0, ...
+    'store_refused_no_original_path', 0, ...
+    'store_carriers_stripped',       0, ...
+    'store_fold_quarantined',        0, ...
+    'store_records_left_passthrough', 0, ...
+    'store_checksums_to_description', 0, ...
+    'store_sizes_unrecorded',        0, ...
     'ran',                           false);
 result.generic_file_fold = report;
 
@@ -423,6 +523,7 @@ report.refused_total = report.refused_no_label ...
     + report.refused_referent_not_in_batch;
 
 if isempty(changedIdx)
+    [result, report] = foldStoreRecords(result, report, options);
     result.generic_file_fold = report;
     return;
 end
@@ -469,7 +570,256 @@ end
 
 result.migrated = [docs, appended];
 result.summary = recountSummary(result);
+[result, report] = foldStoreRecords(result, report, options);
 result.generic_file_fold = report;
+end
+
+% ===================== the store records =================================
+
+function [result, report] = foldStoreRecords(result, report, options)
+%FOLDSTORERECORDS fileReference -> an UNHELD opaque_body of the observation
+%   whose transient `source_file_id` edge names it. See the header, "THE STORE
+%   RECORDS". Every counter is a `store_*` field of REPORT.
+docs = result.migrated;
+n = numel(docs);
+bodies  = cell(1, n);
+classes = repmat({''}, 1, n);
+docIds  = repmat({''}, 1, n);
+for k = 1:n
+    try
+        b = docs{k}.toStruct();
+        bodies{k}  = b;
+        classes{k} = classNameOf(b);
+        docIds{k}  = baseField(b, 'id');
+    catch
+        % already counted by the generic_file half's read of the same batch
+    end
+end
+
+idIdx = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for k = 1:n
+    if ~isempty(docIds{k}); idIdx(docIds{k}) = k; end
+end
+isRecord = strcmp(classes, 'file_reference');
+report.store_records_seen = sum(isRecord);
+
+% --- the carriers, and how many name each record ---------------------------
+carriers = [];
+named = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for k = 1:n
+    c = classes{k};
+    if ~(strcmp(c, 'observation') || endsWith(c, '_observation')); continue; end
+    target = depValueOf(bodies{k}, 'source_file_id');
+    if isempty(target); continue; end
+    carriers(end+1) = k; %#ok<AGROW>
+    if isKey(named, target)
+        named(target) = named(target) + 1;
+    else
+        named(target) = 1;
+    end
+end
+report.store_carriers_seen = numel(carriers);
+for k = find(isRecord)
+    if ~isKey(named, docIds{k})
+        report.store_records_left_passthrough = report.store_records_left_passthrough + 1;
+    end
+end
+if isempty(carriers)
+    return;
+end
+
+% --- build the replacements -----------------------------------------------
+rebuilt = {};
+plan = struct('obsIdx', {}, 'recIdx', {}, 'obsId', {}, 'recId', {});
+for c = 1:numel(carriers)
+    k = carriers(c);
+    obs = bodies{k};
+    target = depValueOf(obs, 'source_file_id');
+    [obsStripped, keys, notes] = stripCarrier(obs);
+    recIdx = 0;
+    if ~isKey(idIdx, target)
+        report.store_refused_not_in_batch = report.store_refused_not_in_batch + 1;
+    elseif ~strcmp(classes{idIdx(target)}, 'file_reference')
+        report.store_refused_not_a_file_reference = ...
+            report.store_refused_not_a_file_reference + 1;
+    elseif named(target) > 1
+        report.store_refused_shared = report.store_refused_shared + 1;
+    else
+        rec = bodies{idIdx(target)};
+        blk = recordBlock(rec);
+        location = charField(blk, {'original_path', 'originalPath'});
+        if isempty(location)
+            report.store_refused_no_original_path = ...
+                report.store_refused_no_original_path + 1;
+        else
+            recIdx = idIdx(target);
+            [body, hadChecksum, sizeKnown] = makeStoreBody(rec, blk, location, ...
+                docIds{k}, keys, notes, options);
+            report.store_checksums_to_description = ...
+                report.store_checksums_to_description + double(hadChecksum);
+            report.store_sizes_unrecorded = ...
+                report.store_sizes_unrecorded + double(~sizeKnown);
+        end
+    end
+    rebuilt{end+1} = obsStripped; %#ok<AGROW>
+    if recIdx > 0
+        rebuilt{end+1} = body; %#ok<AGROW>
+    else
+        report.store_carriers_stripped = report.store_carriers_stripped + 1;
+    end
+    plan(end+1) = struct('obsIdx', k, 'recIdx', recIdx, ...
+        'obsId', docIds{k}, 'recId', target); %#ok<AGROW>
+end
+report.store_refused_total = report.store_refused_not_in_batch ...
+    + report.store_refused_not_a_file_reference ...
+    + report.store_refused_shared ...
+    + report.store_refused_no_original_path;
+
+% --- validate through the same door every other pass uses ------------------
+out = did2.convert.v1_to_v2(rebuilt, ...
+    'Validate',      options.Validate, ...
+    'SchemaCache',   options.SchemaCache, ...
+    'TargetVersion', options.TargetVersion);
+produced = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:numel(out.migrated)
+    try
+        produced(char(out.migrated{k}.get('base.id'))) = out.migrated{k};
+    catch
+    end
+end
+for j = 1:numel(plan)
+    p = plan(j);
+    if ~isKey(produced, p.obsId) || (p.recIdx > 0 && ~isKey(produced, p.recId))
+        % Degrade to "not folded": the ORIGINALS stay, carrier included.
+        report.store_fold_quarantined = report.store_fold_quarantined + 1;
+        continue;
+    end
+    docs{p.obsIdx} = produced(p.obsId);
+    if p.recIdx > 0
+        % The body takes the record's id AND its slot: no duplicate id, ever.
+        docs{p.recIdx} = produced(p.recId);
+        report.stores_folded = report.stores_folded + 1;
+    end
+end
+if ~isempty(out.quarantine)
+    if isfield(result, 'quarantine') && ~isempty(result.quarantine)
+        result.quarantine = [result.quarantine, out.quarantine];
+    else
+        result.quarantine = out.quarantine;
+    end
+end
+result.migrated = docs;
+result.summary = recountSummary(result);
+end
+
+function [obs, keys, notes] = stripCarrier(obs)
+%STRIPCARRIER Remove the three transient things the pyramid migrator carried.
+keys = []; notes = '';
+if isfield(obs, 'depends_on') && ~isempty(obs.depends_on)
+    deps = obs.depends_on;
+    keep = true(1, numel(deps));
+    for k = 1:numel(deps)
+        keep(k) = ~(isfield(deps(k), 'name') && strcmp(deps(k).name, 'source_file_id'));
+    end
+    obs.depends_on = deps(keep);
+end
+names = fieldnames(obs);
+for k = 1:numel(names)
+    blk = obs.(names{k});
+    if ~isstruct(blk) || ~isscalar(blk) || any(strcmp(names{k}, {'base', 'document_class', 'files'}))
+        continue;
+    end
+    if isfield(blk, 'keys')
+        keys = blk.keys;
+        obs.(names{k}) = rmfield(blk, 'keys');
+        blk = obs.(names{k});
+    end
+    if isfield(blk, 'notes')
+        notes = blk.notes;
+        if ~ischar(notes); notes = char(string(notes)); end
+        obs.(names{k}) = rmfield(blk, 'notes');
+    end
+end
+end
+
+function blk = recordBlock(rec)
+blk = blockOf(rec, 'file_reference');
+if isempty(fieldnames(blk))
+    blk = blockOf(rec, 'fileReference');
+end
+end
+
+function [body, hadChecksum, sizeKnown] = makeStoreBody(rec, blk, location, ...
+    ownerId, keys, notes, options) %#ok<INUSD>
+%MAKESTOREBODY The UNHELD opaque_body, with the fileReference's own id.
+recId = baseField(rec, 'id');
+sessionId = baseField(rec, 'session_id');
+created = creationTime(rec);
+if ~ischar(created); created = ''; end
+
+fields = struct();
+fn = charField(blk, {'filename'});
+if ~isempty(fn); fields.filename = fn; end
+sizeBytes = numField(blk, {'file_size', 'fileSize'});
+sizeKnown = ~isempty(sizeBytes) && isfinite(sizeBytes) && sizeBytes > 0;
+if sizeKnown; fields.size_bytes = sizeBytes; end
+c = datenumText(numField(blk, {'date_created', 'dateCreated'}));
+if ~isempty(c); fields.file_created = c; end
+m = datenumText(numField(blk, {'date_updated', 'dateUpdated'}));
+if ~isempty(m); fields.file_modified = m; end
+
+parts = {};
+if ~isempty(strtrim(notes)); parts{end+1} = strtrim(notes); end
+parts{end+1} = 'recorded by location, not ingested';
+checksum = charField(blk, {'checksum'});
+hadChecksum = ~isempty(checksum);
+if hadChecksum
+    alg = charField(blk, {'checksum_algorithm', 'checksumAlgorithm'});
+    if isempty(alg); alg = 'unnamed algorithm'; end
+    parts{end+1} = sprintf(['the source record''s checksum %s (%s) is of the ' ...
+        'store''s .zattrs file only (ndi.fun.doc.lightsheet.makeSourceFile), ' ...
+        'not of its contents, so it is not a content_hash'], checksum, alg);
+end
+
+body = did2.build.opaqueBody(ownerId, 'application/x-ome-zarr', ...
+    'Description', strjoin(parts, '; '), ...
+    'Fields', fields, ...
+    'Files', {'body_data_0'}, ...
+    'Id', recId, 'SessionId', sessionId, 'CreationTimestamp', created, ...
+    'Validate', false);
+if ~isempty(keys)
+    if ~isfield(body, 'data') || ~isstruct(body.data); body.data = struct(); end
+    body.data.keys = keys;
+end
+% NOT HELD: the one member is recorded BY LOCATION, ingest 0, exactly as
+% ndi.document/add_file records a file it does not take in.
+body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
+    'delete_original', 0, 'uid', did.ido.unique_id(), 'location', location, ...
+    'parameters', '', 'location_type', 'file', 'ingest', 0));
+end
+
+function v = numField(block, names)
+v = [];
+if ~isstruct(block); return; end
+for i = 1:numel(names)
+    if isfield(block, names{i}) && isnumeric(block.(names{i})) ...
+            && isscalar(block.(names{i}))
+        v = double(block.(names{i}));
+        return;
+    end
+end
+end
+
+function t = datenumText(v)
+%DATENUMTEXT A MATLAB datenum as ISO-8601 local wall-clock time, NO zone
+%   (the datenum carries none). 0, NaN or absent -> '' (unrecorded).
+t = '';
+if isempty(v) || ~isfinite(v) || v <= 0
+    return;
+end
+dt = datetime(v, 'ConvertFrom', 'datenum');
+dt.Second = round(dt.Second * 1000) / 1000;   % datenum is a double: no 4.9999 s
+t = char(dt, 'yyyy-MM-dd''T''HH:mm:ss.SSS');
 end
 
 % ===================== the two bodies ==================================

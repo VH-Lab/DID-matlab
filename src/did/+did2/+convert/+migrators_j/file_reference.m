@@ -15,6 +15,15 @@ function bodies = file_reference(preBody)
 %   The optional `document_id` edge (pointing at the document this file
 %   is a reference to) carries through as-is. base.id is preserved.
 %
+%   ONE EXCEPTION, IN A BATCH PASS AND NOT HERE (Jess, 2026-10-14, lightsheet
+%   point 3, under signed #73 item 25): a fileReference that a lightsheet
+%   pyramid's `source_file_id` names IS the OME-Zarr store, and
+%   did2.convert.foldGenericFiles (its store-record half) replaces it with an
+%   UNHELD `opaque_body` of the pyramid's observation, this id kept. This
+%   migrator cannot tell -- the pyramid points at the record, not the other
+%   way round -- so it still passes every fileReference through; every other
+%   one (the `.gef` sources, a separate build) stays a passthrough.
+%
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
 %   TEAM-SIGN-OFF [spatial_transcriptomics_family], Steve Van Hooser

@@ -1,8 +1,9 @@
 function bodies = lightsheet_zarr_pyramid(preBody)
 %LIGHTSHEET_ZARR_PYRAMID Brainstorm-J migrator: did_v1 lightsheetZarrPyramid ->
 %   an `observation` of intensity (the lightsheet volume) of its subject, id
-%   PRESERVED, plus a `software` entity for `pipeline_version` and, for an
-%   OME-Zarr source, an unheld `opaque_body` standing for the store.
+%   PRESERVED, plus a `software` entity for `pipeline_version`; for an
+%   OME-Zarr source it carries the `source_file_id` join a batch pass follows
+%   to make the store's fileReference the observation's unheld body.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -55,19 +56,35 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %   2. THE SOFTWARE ENTITY, `entity` with type `software`, named by
 %      pipeline_version (the writer's only field for it). None when the field
 %      is empty.
-%   3. THE STORE BODY, an `opaque_body` owned by the observation, format
-%      'application/x-ome-zarr', keys for the full-resolution array (axes /
-%      shape / voxel size / translation / units / channel names from this
-%      document), and NO files: it is UNHELD (#73 L3(b)). Emitted only when
-%      the pyramid names a source (`source_file_id`) AND its dtype is an NGFF
-%      typestring -- the writer-grounded sign that the source IS an OME-Zarr
-%      store. A SmartSPIM pyramid's source is a directory of TIFF slices, and
-%      calling it OME-Zarr would be a false claim.
-%      The store checksum (MD5 of `.zattrs` only, makeSourceFile.m) is NOT
-%      put in content_hash, which promises a hash of the payload (L3(e)); it
-%      is not on this document anyway.
+%   3. NO STORE BODY. The OME-Zarr store's body is the v1 `fileReference` the
+%      pyramid's `source_file_id` names, folded by a BATCH PASS
+%      (did2.convert.foldGenericFiles, its store-record half) into an UNHELD
+%      `opaque_body` owned by this observation, with the fileReference's id
+%      KEPT and the store recorded BY LOCATION, not ingested (#73 item 25;
+%      Jess 2026-10-14, lightsheet point 3). A single-document migrator
+%      cannot read the fileReference, so it CARRIES what the pass needs on
+%      the observation, all three of them TRANSIENT -- the pass removes them
+%      from every observation it finds them on, whether it folds or not:
+%        depends_on `source_file_id`  the v1 edge, VERBATIM. No V_eta class
+%                       declares it on an observation; the validator lists
+%                       depends_on wholesale, so it validates, and it is the
+%                       join (the resolveResponseParameters pattern: the
+%                       migrator re-homes the v1 edge, the pass follows it
+%                       and removes it).
+%        data.keys      the full-resolution array's keys (axes / shape /
+%                       voxel size / translation / units / channel names
+%                       from this document), which only this document has.
+%        statement.notes  the store body's description (label, NGFF
+%                       multiscales name and type).
+%      All three are carried only when the pyramid names a source AND its
+%      dtype is an NGFF typestring -- the writer-grounded sign that the source
+%      IS an OME-Zarr store. A SmartSPIM pyramid's source is a directory of
+%      TIFF slices; calling it OME-Zarr would be a false claim, so its
+%      fileReference is not joined and stays a passthrough.
+%      WITHOUT THE PASS (a bare v1_to_v2 call) the three stay on the
+%      observation. Every DID-side harness and ndi.migrate.local run the pass.
 %
-%   Returns {observation, software?, storeBody?}.
+%   Returns {observation, software?}.
 %
 %   ---------------------------------------------------------------------
 %   OPEN POINTS -- RECORDED, NOT RESOLVED (the design does not say)
@@ -79,13 +96,10 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %     cache does not enforce min_count (only did2.build does), so the
 %     observation is built with a stand-in id and the edge is then REMOVED:
 %     the document says nothing about time, which is the truth.
-%   * THE store body's link to the fileReference. `source_file_id` names the
-%     `file_reference` document (which persists, file_reference.m) holding the
-%     store's path. No V_eta class on this side declares an edge to it, so
-%     the link is NOT carried, and the body records no location.
 %   * `label`, `pyramid_name`, `pyramid_type` survive only as the store
-%     body's `description` text; `byte_order` (always 'little', and repeated
-%     on every level) is carried by the levels' sampled_bodies, not here.
+%     body's `description` text (carried here in `notes`, moved by the pass);
+%     `byte_order` (always 'little', and repeated on every level) is carried
+%     by the levels' sampled_bodies, not here.
 %   * The observation's `variable` is the name 'fluorescence' (DID-schema
 %     review/73/veta_term_worksheet_73.csv row 41, a PROPOSED name with no
 %     CURIE). The keys' variables and units are likewise names with no node.
@@ -118,6 +132,21 @@ if ~isempty(pipelineVersion)
     softwareId = software.base.id;
 end
 
+% ---- what the store-record pass needs (header, item 3) -------------------
+rawDtype = char(field(blk, 'dtype', ''));
+isNGFF = ~isempty(regexp(rawDtype, '^[<>|][uifcb]\d+$', 'once'));
+carryStore = ~isempty(sourceId) && isNGFF;
+carried = {};
+if carryStore
+    axesOrder = char(field(blk, 'axes_order', ''));
+    units = splitList(field(blk, 'axes_units', ''), numel(axesOrder));
+    units = defaultSpaceUnits(units, axesOrder, char(field(blk, 'voxel_size_units', '')));
+    keys = jLightsheetKeys(axesOrder, field(blk, 'shape_level0', []), ...
+        field(blk, 'voxel_size_level0', []), field(blk, 'translation_level0', []), ...
+        units, splitList(field(blk, 'channel_names', ''), 0), []);
+    carried = {'Keys', keys, 'Notes', storeDescription(blk)};
+end
+
 % ---- the observation -------------------------------------------------------
 % did2.build insists on the schema's time_reference_id min_count; there is no
 % time to state (header, OPEN POINTS), so a stand-in id satisfies the builder
@@ -131,40 +160,41 @@ obs = did2.build.statement('intensity_observation', subjectId, 'fluorescence', [
     'TimeReferenceIds', {standIn}, ...
     'InstrumentId', elementId, ...
     'SoftwareId', softwareId, ...
+    carried{:}, ...
     'SessionId', sessionId, 'Id', obsId, 'CreationTimestamp', created, ...
     'Validate', false);
 keep = ~strcmp({obs.depends_on.name}, 'time_reference_id');
 obs.depends_on = obs.depends_on(keep);
+if carryStore
+    % The v1 edge, verbatim and TRANSIENT: did2.convert.foldGenericFiles
+    % follows it to the fileReference and removes it.
+    obs.depends_on(end+1) = edgeEntry(obs.depends_on, 'source_file_id', sourceId);
+end
 bodies{end+1} = obs;
 if ~isempty(software)
     bodies{end+1} = software;
 end
-
-% ---- the store body --------------------------------------------------------
-rawDtype = char(field(blk, 'dtype', ''));
-isNGFF = ~isempty(regexp(rawDtype, '^[<>|][uifcb]\d+$', 'once'));
-if ~isempty(sourceId) && isNGFF
-    axesOrder = char(field(blk, 'axes_order', ''));
-    units = splitList(field(blk, 'axes_units', ''), numel(axesOrder));
-    units = defaultSpaceUnits(units, axesOrder, char(field(blk, 'voxel_size_units', '')));
-    keys = jLightsheetKeys(axesOrder, field(blk, 'shape_level0', []), ...
-        field(blk, 'voxel_size_level0', []), field(blk, 'translation_level0', []), ...
-        units, splitList(field(blk, 'channel_names', ''), 0), []);
-    store = did2.build.opaqueBody(obsId, 'application/x-ome-zarr', ...
-        'Keys', keys, ...
-        'Description', storeDescription(blk), ...
-        'SessionId', sessionId, 'CreationTimestamp', created, 'Validate', false);
-    % UNHELD: no member of the store is in the database, and its location is
-    % on the file_reference (OPEN POINTS). opaqueBody names `body_data_0` by
-    % default; a body that held nothing must not claim a member.
-    if isfield(store, 'files')
-        store = rmfield(store, 'files');
-    end
-    bodies{end+1} = store;
-end
 end
 
 % ===================== helpers =============================================
+
+function e = edgeEntry(deps, name, value)
+% One depends_on entry shaped like the builder's own (its field names).
+e = struct();
+names = {'name', 'document_id'};
+if ~isempty(deps) && isstruct(deps)
+    names = fieldnames(deps).';
+end
+for k = 1:numel(names)
+    e.(names{k}) = '';
+end
+e.name = name;
+if isfield(e, 'document_id')
+    e.document_id = value;
+else
+    e.value = value;
+end
+end
 
 function d = storeDescription(blk)
 parts = {'OME-Zarr store, not held in the database'};
