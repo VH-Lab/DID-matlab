@@ -97,13 +97,17 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %   ---------------------------------------------------------------------
 %   OPEN POINTS -- RECORDED, NOT RESOLVED (the design does not say)
 %   ---------------------------------------------------------------------
-%   * NO TIME REFERENCE. `interaction` declares `time_reference_id` with
-%     min_count 1. The pyramid carries no time at all, and the referent a
-%     "during the session" relation needs is the session DOCUMENT's id, which
-%     a single-document migrator cannot know (see jSessionDocId). The schema
-%     cache does not enforce min_count (only did2.build does), so the
-%     observation is built with a stand-in id and the edge is then REMOVED:
-%     the document says nothing about time, which is the truth.
+%   * TIME REFERENCE -- DECIDED (Jess 2026-10-14, lightsheet point 1, option
+%     A). The pyramid carries no time, and the referent a "during the
+%     session" relation needs is the session DOCUMENT's id, which a
+%     single-document migrator cannot know. The observation is built without
+%     one (did2.build insists on time_reference_id's min_count, so a stand-in
+%     id satisfies the builder and is removed straight after) and carries the
+%     transient marker did2.convert.mintSessionDuring('marker');
+%     did2.convert.foldGenericFiles hands it to mintSessionDuring, which mints
+%     a relative_time_reference 'intervalDuring' the session document and
+%     points the observation's time_reference_id at it. No session document in
+%     the batch: no reference, counted (observations_without_session).
 %   * `label`, `pyramid_name`, `pyramid_type` survive only as the store
 %     body's `description` text (carried here in `notes`, moved by the pass);
 %     `byte_order` (always 'little', and repeated on every level) is carried
@@ -195,6 +199,14 @@ if carryStore
     % follows it to the fileReference and removes it.
     obs.depends_on(end+1) = edgeEntry(obs.depends_on, 'source_file_id', sourceId);
 end
+% POINT 1 (Jess 2026-10-14, option A): the pyramid carries no time, so the
+% observation is anchored "during the session" by the batch pass, which alone
+% can find the session DOCUMENT. The TRANSIENT marker it looks for is a
+% depends_on entry named did2.convert.mintSessionDuring('marker') whose value
+% is this document's own id (so it can never dangle); the pass removes it on
+% every path.
+obs.depends_on(end+1) = edgeEntry(obs.depends_on, ...
+    did2.convert.mintSessionDuring('marker'), obsId);
 bodies{end+1} = obs;
 if ~isempty(software)
     bodies{end+1} = software;

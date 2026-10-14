@@ -342,6 +342,19 @@ function [result, report] = foldGenericFiles(result, options)
 %                                         body cannot have two owners)
 %     store_refused_no_original_path      the record has no location to keep
 %   ---------------------------------------------------------------------
+%   THE SESSION TIME REFERENCES (point 1, Jess 2026-10-14, option A)
+%   ---------------------------------------------------------------------
+%   A document a migrator could not anchor in time carries a TRANSIENT marker
+%   edge (did2.convert.mintSessionDuring('marker'), valued with the document's
+%   own id). This pass hands every marked document to
+%   did2.convert.mintSessionDuring, which finds the batch's session document
+%   for its base.session_id (resolveSessionAnchors' lookup), mints a
+%   relative_time_reference 'intervalDuring' it, points the document's
+%   time_reference_id there and removes the marker on every path. No session
+%   document: no reference, counted (observations_without_session). The minted
+%   references are validated with the rest and appended to the batch.
+%
+%   ---------------------------------------------------------------------
 %   THE LEVELS -- the pyramid's units and channel names (point 8)
 %   ---------------------------------------------------------------------
 %   Jess, 2026-10-14. A v1 level carries only `voxel_size_units`; the per-axis
@@ -418,6 +431,11 @@ report = struct( ...
     'level_bodies_without_pyramid',  0, ...
     'level_completion_quarantined',  0, ...
     'pyramid_key_units_name_only',   0, ...
+    'session_references_marked',     0, ...
+    'session_references_minted',     0, ...
+    'observations_without_session',  0, ...
+    'session_references_ambiguous',  0, ...
+    'session_references_quarantined', 0, ...
     'ran',                           false);
 result.generic_file_fold = report;
 
@@ -643,6 +661,20 @@ end
 isRecord = strcmp(classes, 'file_reference');
 report.store_records_seen = sum(isRecord);
 
+% --- POINT 1: mint the session time references the migrators marked --------
+% Done first, on the structs, so every later step (stripping the store and key
+% carriers) works on documents that already carry their minted edge.
+MARKER = did2.convert.mintSessionDuring('marker');
+marked = [];
+for k = 1:n
+    if hasEdge(bodies{k}, MARKER); marked(end+1) = k; end %#ok<AGROW>
+end
+[bodies, sessionRefs, mintRep] = did2.convert.mintSessionDuring(bodies, classes, marked, ...
+    struct('SchemaCache', options.SchemaCache));
+for f = reshape(fieldnames(mintRep), 1, [])
+    report.(f{1}) = report.(f{1}) + mintRep.(f{1});
+end
+
 % --- the carriers: what the pyramid migrator left on its observation --------
 % A STORE carrier names a record through `source_file_id`; a KEY carrier holds
 % the full-resolution keys (point 8: they carry the pyramid's axes_units and
@@ -703,7 +735,7 @@ for k = 1:n
 end
 report.level_bodies_seen = numel(levelIdx);
 
-if isempty(strip) && isempty(levelIdx)
+if isempty(strip) && isempty(levelIdx) && isempty(marked)
     return;
 end
 
@@ -753,6 +785,20 @@ for c = 1:numel(strip)
         'obsId', docIds{k}, 'recId', target, ...
         'omeZarr', recIdx > 0 && isNgffSource(obs)); %#ok<AGROW>
 end
+for k = setdiff(marked, strip)
+    % a marked document that carries nothing else (the version assertion,
+    % or an observation already stripped of nothing): it changed, so it is
+    % rebuilt like every other
+    rebuilt{end+1} = bodies{k}; %#ok<AGROW>
+    plan(end+1) = struct('obsIdx', k, 'recIdx', 0, 'obsId', docIds{k}, ...
+        'recId', '', 'omeZarr', false); %#ok<AGROW>
+end
+refIds = cell(1, numel(sessionRefs));
+for r = 1:numel(sessionRefs)
+    rebuilt{end+1} = sessionRefs{r}; %#ok<AGROW>
+    refIds{r} = sessionRefs{r}.base.id;
+end
+
 report.store_refused_total = report.store_refused_not_in_batch ...
     + report.store_refused_not_a_file_reference ...
     + report.store_refused_shared ...
@@ -784,8 +830,12 @@ for k = 1:numel(out.migrated)
 end
 for j = 1:numel(plan)
     p = plan(j);
-    if ~isKey(produced, p.obsId) || (p.recIdx > 0 && ~isKey(produced, p.recId))
-        % Degrade to "not folded": the ORIGINALS stay, carrier included.
+    tr = depValueOf(bodies{p.obsIdx}, 'time_reference_id');
+    refLost = ~isempty(tr) && any(strcmp(tr, refIds)) && ~isKey(produced, tr);
+    if ~isKey(produced, p.obsId) || (p.recIdx > 0 && ~isKey(produced, p.recId)) || refLost
+        % Degrade to "not folded": the ORIGINALS stay, carrier included. A
+        % minted reference that did not validate takes its document with it,
+        % so no edge is left naming a reference that is not in the batch.
         report.store_fold_quarantined = report.store_fold_quarantined + 1;
         continue;
     end
@@ -817,8 +867,24 @@ if ~isempty(out.quarantine)
         result.quarantine = out.quarantine;
     end
 end
-result.migrated = docs;
+appendRefs = {};
+for r = 1:numel(refIds)
+    if isKey(produced, refIds{r})
+        appendRefs{end+1} = produced(refIds{r}); %#ok<AGROW>
+    else
+        report.session_references_quarantined = report.session_references_quarantined + 1;
+    end
+end
+result.migrated = [docs, appendRefs];
 result.summary = recountSummary(result);
+end
+
+function tf = hasEdge(b, name)
+tf = false;
+if ~isstruct(b) || ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
+deps = b.depends_on;
+if iscell(deps); deps = [deps{:}]; end
+tf = any(arrayfun(@(d) isfield(d, 'name') && strcmp(d.name, name), deps));
 end
 
 function tf = carriesKeys(obs)

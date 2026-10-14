@@ -763,6 +763,12 @@ POST_PASSES = [
         ("level_completion_quarantined", "QUARANTINED by the level completion"),
         # Point 10: units with no UO mapping stay name-only, counted.
         ("pyramid_key_units_name_only", "pyramid key units left NAME-ONLY (no UO mapping)"),
+        # Point 1: "during the session" references minted for marked documents.
+        ("session_references_marked", "documents marked for a session time reference"),
+        ("session_references_minted", "  minted (relative_time_reference intervalDuring)"),
+        ("observations_without_session", "  NO session document in the batch (left without one)"),
+        ("session_references_ambiguous", "  two session documents claim the session id (refused)"),
+        ("session_references_quarantined", "  minted but QUARANTINED"),
     ]),
     # DORMANT BY TEAM DECISION 2026-08-12. The pass RUNS and EMITS NOTHING.
     # The agreed model is ONE statement per source document holding an ARRAY of

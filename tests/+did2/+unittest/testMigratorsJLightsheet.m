@@ -314,6 +314,51 @@ verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, rep.pyramid_key_units_name_only, 1);
 end
 
+% ===================== point 1: the session time reference ================
+
+function testThePassAnchorsTheObservationDuringTheSession(testCase)
+% Point 1 (Jess 2026-10-14, option A): the batch pass finds the session
+% document for the observation's base.session_id and mints ONE
+% relative_time_reference 'intervalDuring' it; the marker is gone; no orphans.
+assumeCompositionSchema(testCase);
+assumeClass(testCase, 'relative_time_reference');
+sess = sessionEntity();
+[out, rep] = runWithPass({pyramidV1(), sess});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+fprintf(['\n--- session references: %d marked, %d minted, %d without session, ' ...
+    '%d ambiguous ---\n'], rep.session_references_marked, rep.session_references_minted, ...
+    rep.observations_without_session, rep.session_references_ambiguous);
+verifyEqual(testCase, rep.session_references_marked, 1);
+verifyEqual(testCase, rep.session_references_minted, 1);
+verifyEqual(testCase, rep.observations_without_session, 0);
+obs = pickById(out, 'pyr_ls_1');
+trs = edgeAll(obs, 'time_reference_id');
+verifyNumElements(testCase, trs, 1, 'exactly one time reference');
+ref = pickById(out, trs{1});
+verifyNotEmpty(testCase, ref, 'the time reference is in the batch');
+verifyEqual(testCase, ref.document_class.class_name, 'relative_time_reference');
+verifyEqual(testCase, edge(ref, 'referent_id'), sess.base.id, 'measured against the session document');
+verifyEqual(testCase, ref.relative_time_reference.value.relation.node, 'time:intervalDuring');
+verifyEqual(testCase, edge(obs, did2.convert.mintSessionDuring('marker')), '', ...
+    'the transient marker is removed');
+ref2 = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+verifyEqual(testCase, ref2.orphan_count, 0);
+end
+
+function testWithNoSessionDocumentTheObservationHasNoTimeReference(testCase)
+assumeCompositionSchema(testCase);
+[out, rep] = runWithPass({pyramidV1()});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.session_references_marked, 1);
+verifyEqual(testCase, rep.session_references_minted, 0);
+verifyEqual(testCase, rep.observations_without_session, 1);
+obs = pickById(out, 'pyr_ls_1');
+verifyEmpty(testCase, edgeAll(obs, 'time_reference_id'), 'no id is ever invented');
+verifyEqual(testCase, edge(obs, did2.convert.mintSessionDuring('marker')), '');
+ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+verifyEqual(testCase, ref.orphan_count, 0);
+end
+
 function testAFileReferenceNamedByNoPyramidStaysAPassthrough(testCase)
 assumeCompositionSchema(testCase);
 assumeClass(testCase, 'file_reference');
@@ -700,6 +745,28 @@ for k = 1:numel(deps)
         return;
     end
 end
+end
+
+function v = edgeAll(d, name)
+%EDGEALL Every value of the edge NAME (an edge family repeats its name).
+v = {};
+if ~isfield(d, 'depends_on') || isempty(d.depends_on); return; end
+deps = d.depends_on;
+if isstruct(deps); deps = num2cell(deps); end
+for k = 1:numel(deps)
+    if strcmp(deps{k}.name, name)
+        if isfield(deps{k}, 'document_id'); v{end+1} = char(deps{k}.document_id); %#ok<AGROW>
+        else; v{end+1} = char(deps{k}.value); end %#ok<AGROW>
+    end
+end
+end
+
+function s = sessionEntity()
+%SESSIONENTITY The session DOCUMENT, in the V_eta form
+%   ndi.setup.V2.entityDocuments writes: an `entity` of type session, its
+%   base.session_id the session's id.
+s = did2.build.document('entity', struct('type', 'session', 'local_identifier', 'brain 7 session'), ...
+    'SessionId', 'sess_ls_1', 'Validate', false);
 end
 
 function keys = keyList(k)
