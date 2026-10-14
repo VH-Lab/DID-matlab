@@ -857,13 +857,12 @@ for i = 1:numel(lk)
         case 'time'
             if ~hasUnit(L) && hasUnit(P)
                 L.unit = P.unit;
-                factor = 1;
-                if isfield(P, 'source_unit') && ~isempty(P.source_unit)
+                converted = isfield(P, 'source_unit') && ~isempty(P.source_unit);
+                if converted
                     L.source_unit = P.source_unit;
                     factor = scaleOf(P);
-                end
-                if isfield(L, 'origin') && isfield(L, 'spacing')
-                    if isfield(L, 'source_unit')
+                    if isfield(L, 'origin') && isstruct(L.origin) ...
+                            && isfield(L, 'spacing') && isstruct(L.spacing)
                         L.origin = struct('value', L.origin.value * factor, ...
                             'source_value', L.origin.value);
                         L.spacing = struct('value', L.spacing.value * factor, ...
@@ -874,9 +873,10 @@ for i = 1:numel(lk)
                 changed = true;
             end
         case 'channel'
-            if isfield(P, 'labels') && ~isempty(P.labels) && ~isfield(L, 'labels') ...
+            if isfield(P, 'labels') && ~isempty(P.labels) ...
+                    && (~isfield(L, 'labels') || isempty(L.labels)) ...
                     && numel(labelList(P.labels)) == double(L.n)
-                if isfield(L, 'values'); L = rmfield(L, 'values'); end
+                if isfield(L, 'values'); L.values = []; end
                 L.labels = P.labels;
                 lk{i} = L;
                 changed = true;
@@ -963,14 +963,24 @@ if iscell(labels); L = labels; else; L = num2cell(labels); end
 end
 
 function k = packKeys(c)
-%PACKKEYS A struct array when every key has the same fields in the same
-%   order, else the cell array jsondecode itself produces for a ragged list.
-k = c;
+%PACKKEYS One struct array, as the validator requires (`data.keys` must be a
+%   struct): the union of the keys' fields, a field a key lacks set to [] --
+%   exactly how did2.build's mergeRagged packs a ragged key list.
+k = struct([]);
 if isempty(c); return; end
-f1 = fieldnames(c{1});
-if all(cellfun(@(x) isequal(fieldnames(x), f1), c))
-    k = [c{:}];
+names = {};
+for i = 1:numel(c)
+    f = fieldnames(c{i});
+    names = [names, f(~ismember(f, names))']; %#ok<AGROW>
 end
+for i = 1:numel(c)
+    e = c{i};
+    for j = 1:numel(names)
+        if ~isfield(e, names{j}); e.(names{j}) = []; end
+    end
+    c{i} = orderfields(e, names);
+end
+k = [c{:}];
 end
 
 function [blockName, v] = blockWith(s, field)
