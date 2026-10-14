@@ -532,7 +532,7 @@
 %   gate diffs this block against the generator and a hand edit fails it. To
 %   change an entry, change that migrator's H1 and re-run with --write.
 %
-%   93 migrator(s).
+%   95 migrator(s).
 %
 %     binaryseries_parameters
 %         Brainstorm-J migrator: did_v1 binaryseries_parameters -- a GUARDED
@@ -733,6 +733,15 @@
 %     kilosort_clusters
 %         Brainstorm-J migrator: did_v1 kilosort_clusters -> the D-C analysis-tier
 %         shape (count_observation + opaque_body + session anchor).
+%     lightsheet_zarr_level
+%         Brainstorm-J migrator: did_v1 lightsheetZarrLevel -> a `sampled_body` of the
+%         pyramid's observation when the level HOLDS bytes, or NOTHING (an empty cell)
+%         when it does not.
+%     lightsheet_zarr_pyramid
+%         Brainstorm-J migrator: did_v1 lightsheetZarrPyramid -> an `observation` of
+%         intensity (the lightsheet volume) of its subject, id PRESERVED, plus a
+%         `software` entity for `pipeline_version` and, for an OME-Zarr source, an
+%         unheld `opaque_body` standing for the store.
 %     measurement
 %         Brainstorm-J migrator: did_v1 measurement -> a typed subject_observation
 %         leaf (+ the shared session anchor), for the rows that can be typed honestly;

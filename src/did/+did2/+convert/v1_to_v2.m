@@ -147,6 +147,12 @@ unconvValues = [];
 % mode, and the only one no counter could see.
 fragNames = {};
 fragValues = [];
+% Report-only: documents a migrator CONSUMED and EMITTED NOTHING for -- an empty
+% cell back from a split migrator (e.g. a metadata-only lightsheetZarrLevel,
+% #73 L3(c)). Without this the source would vanish from every count: it is not
+% migrated, not quarantined, not unconverted and not a fragment.
+emptyNames = {};
+emptyValues = [];
 % THE LEGACY IDENTITY BLOCK (`ndi_document` -> `base`). DENOMINATOR FIRST AND
 % UNCONDITIONALLY (Operating Rule 5): this struct is complete before the loop
 % starts and is attached to the summary whether or not any body carries the
@@ -268,7 +274,10 @@ for k = 1:numel(bodies)
             %
             % Deliberately NOT computed on the idempotency short-circuit above:
             % that path skips the migrators by design and is not a passthrough.
-            if isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body)
+            if isempty(v2Bodies)
+                [emptyNames, emptyValues] = bumpClassCounter( ...
+                    emptyNames, emptyValues, className);
+            elseif isscalar(v2Bodies) && isequaln(v2Bodies{1}, v2Body)
                 [unconvNames, unconvValues] = bumpClassCounter( ...
                     unconvNames, unconvValues, className);
             elseif did2.validate.isFragment(v2Bodies, 'SchemaCache', options.SchemaCache)
@@ -368,6 +377,8 @@ result.summary = struct( ...
     'unconverted_by_class', buildByClassTable(unconvNames, unconvValues), ...
     'fragment_count',     sum(fragValues), ...
     'fragment_by_class',  buildByClassTable(fragNames, fragValues), ...
+    'emitted_nothing_count',    sum(emptyValues), ...
+    'emitted_nothing_by_class', buildByClassTable(emptyNames, emptyValues), ...
     'legacy_ndi_document', legacy);
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
@@ -809,6 +820,7 @@ fprintf('  migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
 printUnconverted(result);
 printFragments(result);
+printEmittedNothing(result);
 printLegacyNdiDocument(result);
 printSilentLoss(result);
 printQuarantine(result);
@@ -981,6 +993,21 @@ for k = 1:numel(names); counts(k) = tbl.(names{k}); end
 [counts, order] = sort(counts, 'descend');
 for k = 1:min(numel(names), 20)
     fprintf('    %6d  %s\n', counts(k), names{order(k)});
+end
+end
+
+function printEmittedNothing(result)
+%PRINTEMITTEDNOTHING Report-only: sources a migrator consumed into nothing.
+%   Not a failure when the class is meant to fold away (a lightsheetZarrLevel
+%   that holds no bytes); a count on any other class is the signal.
+if ~isfield(result.summary, 'emitted_nothing_count'); return; end
+if result.summary.emitted_nothing_count == 0; return; end
+fprintf(['  emitted nothing (REPORT ONLY -- migrator consumed the source ' ...
+         'and returned no document): %d\n'], result.summary.emitted_nothing_count);
+tbl = result.summary.emitted_nothing_by_class;
+names = fieldnames(tbl);
+for k = 1:numel(names)
+    fprintf('    %6d  %s\n', tbl.(names{k}), names{k});
 end
 end
 
