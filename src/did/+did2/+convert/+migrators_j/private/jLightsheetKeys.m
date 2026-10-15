@@ -38,10 +38,14 @@ function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, cha
 %   rather than borrowing one. (The SmartSPIM path
 %   writes `t` and `c` with empty units: fromSPIM.m axesDesc.)
 %
-%   A space/time axis with no scale has no spacing to state, so its positions
-%   are the integer indices 0..n-1 (`values`, no unit). The `c` axis is
+%   A space/time axis with no scale has no physical spacing to state, so its
+%   positions are the integer indices 0..n-1, written in the REGULAR form:
+%   `regular` true, origin 0, spacing 1, NO unit (Jess 2026-10-15: the same
+%   positions as `values` 0..n-1, in the smaller form; the absent unit says
+%   they are indices, not a measured extent). The translation is not used
+%   there: with no scale it has no unit to be read in. The `c` axis is
 %   categorical: its names when the source gives one per channel, else the
-%   indices 0..n-1.
+%   indices 0..n-1 (`values`).
 %
 %   Shared helper for the lightsheet migrators (+migrators_j).
 
@@ -106,7 +110,8 @@ for k = 1:nAx
             opts = {'Values', 0:(n - 1)};
         end
     elseif isempty(scale)
-        opts = {'Values', 0:(n - 1)};
+        % index positions 0..n-1, regular and unit-less (Jess 2026-10-15)
+        opts = {'Origin', 0, 'Spacing', 1};
     else
         [factor, canonical] = canonicalUnit(units{k}, kind);
         if isempty(canonical) && ~isempty(strtrim(char(units{k})))

@@ -371,6 +371,47 @@ t = keys{strcmp(names, 'time')};
 verifyFalse(testCase, isfield(t, 'unit') && ~isempty(t.unit), 'nothing to complete it from');
 end
 
+function testAnAxisWithNoScaleIsRegularIndicesWithNoUnit(testCase)
+% Jess 2026-10-15: a space or time axis with no voxel size is regular, origin
+% 0, spacing 1, no unit -- the indices 0..n-1 in the smaller form -- not
+% `values`. The channel axis stays categorical. Through the batch pass too:
+% a level with no unit on z/y/x must not count as a unit disagreement.
+assumeCompositionSchema(testCase);
+p = pyramidV1();
+p.lightsheetZarrPyramid.voxel_size_level0 = [];
+p.lightsheetZarrPyramid.channel_names = '';
+out = runJ(p);
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+obs = pickById(out, 'pyr_ls_1');
+keys = keyList(blockField(obs, 'keys'));
+names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+verifyEqual(testCase, names, {'time', 'channel', 'z', 'y', 'x'});
+for i = [1 3 4 5]
+    k = keys{i};
+    verifyTrue(testCase, isequal(k.regular, true), [names{i} ': regular']);
+    verifyEqual(testCase, double(k.origin.value), 0, [names{i} ': origin 0']);
+    verifyEqual(testCase, double(k.spacing.value), 1, [names{i} ': spacing 1']);
+    verifyFalse(testCase, isfield(k, 'unit') && ~isempty(k.unit) ...
+        && ~(isstruct(k.unit) && isempty(k.unit.name)), [names{i} ': no unit']);
+    verifyFalse(testCase, isfield(k, 'values') && ~isempty(k.values), [names{i} ': no values']);
+end
+c = keys{2};
+verifyFalse(testCase, isfield(c, 'regular') && isequal(c.regular, true), 'channel stays categorical');
+verifyEqual(testCase, double(c.values(:).'), [0 1], 'two channels, no names: index positions');
+
+lvl = levelV1(0, 'none', 'raw', 4, 'manifest');
+lvl.lightsheetZarrLevel.voxel_size = [];
+[out, rep] = runWithPass({p, lvl});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.level_unit_disagreements, 0, ...
+    'unit-less regular axes must not trip the z/y/x unit check');
+b = onlyBody(testCase, out);
+lk = keyList(b.data.keys);
+z = lk{3};
+verifyTrue(testCase, isequal(z.regular, true));
+verifyEqual(testCase, double(z.spacing.value), 1);
+end
+
 function testTheObservationsVariableIsFluorescenceIntensity(testCase)
 % Point 10 (Jess 2026-10-14, option C): NCIT:C184706 replaces the bare name.
 assumeCompositionSchema(testCase);
