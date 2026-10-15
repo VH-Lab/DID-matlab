@@ -47,7 +47,14 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %        entity_id      <- subject_id
 %        instrument_id  <- element_id (the microscope, promoted to an entity
 %                          with its id preserved), when present
-%        software_id    <- the software entity below, when pipeline_version
+%        software_id    <- the software entity below (always)
+%        method         <- FBbi:00000369 'selective plane illumination
+%                          fluorescence microscopy' (light-sheet microscopy),
+%                          for EVERY pyramid, OME-Zarr and SmartSPIM alike
+%                          (Jess 2026-10-15; DECIDED below)
+%        notes          <- label, the pyramid's own name for itself, kept
+%                          PERMANENTLY on the observation (Jess 2026-10-15;
+%                          DECIDED below). Empty label: no notes.
 %        data_type      <- dtype (jDatumType), source_data_type its spelling
 %        data_body      true: the values are in bodies, never inline
 %      The keys are NOT on the observation. did-schema `data.keys`: "with
@@ -80,9 +87,16 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %                       onto each level's sampled_body keys, and checks the
 %                       z/y/x units. They become the store body's keys only
 %                       for an OME-Zarr source.
-%        statement.notes  for the body's description: label, NGFF
-%                       multiscales name and type.
-%      The edge and the notes are carried whenever the pyramid names a source.
+%        the TAIL of statement.notes  for the store body's description:
+%                       the NGFF multiscales name, appended to the label
+%                       after NOTES_SEPARATOR (a newline, then
+%                       '-- store body: '), as 'NGFF multiscales name
+%                       "..."'. The pass splits notes at the LAST separator,
+%                       leaves the label on the observation and moves the
+%                       tail into the description. The label part is NOT
+%                       transient; only the tail is.
+%      The edge and the notes tail are carried whenever the pyramid names a
+%      source (the tail only when pyramid_name is non-empty).
 %      The keys reach the STORE BODY only when its dtype is an NGFF typestring -- the
 %      writer-grounded sign that the source IS an OME-Zarr store. A SmartSPIM
 %      pyramid's source is a folder of raw TIFF slices; point 4 (Jess
@@ -91,7 +105,9 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %      `redundant` false. The pass tells the two apart by the same NGFF rule,
 %      read off the observation's value.source_data_type.
 %      WITHOUT THE PASS (a bare v1_to_v2 call) the three stay on the
-%      observation. Every DID-side harness and ndi.migrate.local run the pass.
+%      observation: the source_file_id edge, the keys, and notes reading
+%      '<label><newline>-- store body: NGFF multiscales name "<name>"'.
+%      Every DID-side harness and ndi.migrate.local run the pass.
 %
 %   Returns {observation, software, versionAssertion?}.
 %
@@ -115,10 +131,23 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %     observation's software_id; pipeline_version (the writer's tag for the
 %     pyramid, makePyramid.m:28) is a text_assertion 'version' about it when
 %     non-empty.
-%   * `label`, `pyramid_name`, `pyramid_type` survive only as the store
-%     body's `description` text (carried here in `notes`, moved by the pass);
-%     `byte_order` (always 'little', and repeated on every level) is carried
-%     by the levels' sampled_bodies, not here.
+%   * `label`, `pyramid_name`, `pyramid_type` -- DECIDED (Jess 2026-10-15):
+%     `label` is the observation's `notes`, permanently, with or without a
+%     source and with or without the pass. `pyramid_name` (the NGFF
+%     multiscales name) is the store body's `description`, as
+%     'NGFF multiscales name "..."' (carried on the notes tail, moved by the
+%     pass; a pyramid with no source has no store body, so it is not kept).
+%     `pyramid_type` is DROPPED: it repeats the levels' summary statistic,
+%     and the v1 docs say not to trust it (an earlier writer labelled mean
+%     pyramids `gaussian`). `byte_order` (always 'little', and repeated on
+%     every level) is carried by the levels' sampled_bodies, not here.
+%   * METHOD -- DECIDED (Jess 2026-10-15): every migrated pyramid's
+%     observation carries `method` FBbi:00000369 'selective plane
+%     illumination fluorescence microscopy' (checked on OLS), OME-Zarr and
+%     SmartSPIM alike: every v1 pyramid is a light-sheet volume. NDI
+%     (ndi.vintage.lightsheetPyramidDocs) finds migrated pyramids by this
+%     node, no longer by the software entity's name; the entity stays, as the
+%     record of what built the pyramid.
 %   * TERMS -- DECIDED (Jess 2026-10-14, lightsheet point 10, option C;
 %     nodes checked on OLS): the observation's `variable` is NCIT:C184706
 %     'Fluorescence Intensity' (it was the bare name 'fluorescence'); the
@@ -170,11 +199,19 @@ if ~isempty(pipelineVersion)
         'SessionId', sessionId, 'CreationTimestamp', created, 'Validate', false);
 end
 
-% ---- what the store-record pass needs (header, item 3) -------------------
+% ---- the label, and what the store-record pass needs (header, item 3) ---
+% The label stays on the observation's notes for good (Jess 2026-10-15). With
+% a source, the NGFF multiscales name rides after NOTES_SEPARATOR for the pass
+% to move into the store body's description. pyramid_type is dropped.
 carryStore = ~isempty(sourceId);
+notes = strtrim(char(field(blk, 'label', '')));
+pyramidName = strtrim(char(field(blk, 'pyramid_name', '')));
+if carryStore && ~isempty(pyramidName)
+    notes = [notes NOTES_SEPARATOR() sprintf('NGFF multiscales name "%s"', pyramidName)];
+end
 carried = {};
-if carryStore
-    carried = {'Notes', storeDescription(blk)};
+if ~isempty(notes)
+    carried = {'Notes', notes};
 end
 % The full-resolution keys are carried for EVERY pyramid (point 8): they hold
 % the per-axis units (the `t` unit among them) and the channel names, which no
@@ -202,7 +239,11 @@ standIn = 'lightsheet_no_time_reference';
 % Point 10 (Jess 2026-10-14, checked on OLS): the variable is NCIT's
 % 'Fluorescence Intensity', replacing the bare name 'fluorescence'.
 FLUORESCENCE_INTENSITY = struct('node', 'NCIT:C184706', 'name', 'Fluorescence Intensity');
+% Jess 2026-10-15: every v1 pyramid is a light-sheet volume.
+LIGHTSHEET_METHOD = struct('node', 'FBbi:00000369', ...
+    'name', 'selective plane illumination fluorescence microscopy');
 obs = did2.build.statement('intensity_observation', subjectId, FLUORESCENCE_INTENSITY, [], ...
+    'Method', LIGHTSHEET_METHOD, ...
     'DataBody', true, ...
     'DatumType', dataType, ...
     'SourceDatumType', sourceDataType, ...
@@ -254,17 +295,12 @@ else
 end
 end
 
-function d = storeDescription(blk)
-% The pyramid's own words about its source; foldGenericFiles puts what the
-% source IS (OME-Zarr store / folder of raw TIFF slices) in front of them.
-parts = {};
-label = strtrim(char(field(blk, 'label', '')));
-name  = strtrim(char(field(blk, 'pyramid_name', '')));
-type  = strtrim(char(field(blk, 'pyramid_type', '')));
-if ~isempty(label); parts{end+1} = sprintf('label "%s"', label); end
-if ~isempty(name);  parts{end+1} = sprintf('NGFF multiscales name "%s"', name); end
-if ~isempty(type);  parts{end+1} = sprintf('NGFF multiscales type "%s"', type); end
-d = strjoin(parts, '; ');
+function s = NOTES_SEPARATOR()
+% Between the label (kept on the observation) and the text the store-record
+% pass moves into the store body's description. The SAME literal is in
+% did2.convert.foldGenericFiles (its own NOTES_SEPARATOR) and in NDI-matlab
+% ndi.vintage.lightsheetPyramid; testMigratorsJLightsheet pins the round trip.
+s = sprintf('\n-- store body: ');
 end
 
 function units = defaultSpaceUnits(units, axesOrder, voxelUnits)

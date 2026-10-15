@@ -275,8 +275,11 @@ function [result, report] = foldGenericFiles(result, options)
 %   THE JOIN. +migrators_j/lightsheet_zarr_pyramid.m keeps the pyramid's id
 %   on its observation and CARRIES three things there, all TRANSIENT: the v1
 %   `source_file_id` edge verbatim, the full-resolution array's keys in
-%   `data.keys` (OME-Zarr only), and the pyramid's label / multiscales name /
-%   type in `statement.notes`. WHICH SOURCE it is (OME-Zarr store or SmartSPIM
+%   `data.keys` (OME-Zarr only), and the pyramid's NGFF multiscales name as
+%   the TAIL of `statement.notes`: notes is the pyramid's label (which STAYS
+%   on the observation, Jess 2026-10-15), then NOTES_SEPARATOR, then
+%   'NGFF multiscales name "..."'. pyramid_type is not carried (dropped, Jess
+%   2026-10-15). WHICH SOURCE it is (OME-Zarr store or SmartSPIM
 %   TIFF folder) is read here exactly as the migrator reads it, off the
 %   pyramid's dtype: the observation's `value.source_data_type` is an NGFF
 %   typestring ('<u2') for an OME-Zarr pyramid and absent for a SmartSPIM one
@@ -290,7 +293,11 @@ function [result, report] = foldGenericFiles(result, options)
 %
 %   THE FOLD, per carrier whose edge names exactly one `file_reference` in the
 %   batch that no other carrier names:
-%     the observation   loses the edge, the keys and the notes (id unchanged)
+%     the observation   loses the edge, the keys and the notes TAIL (id
+%                       unchanged): notes is split at the LAST
+%                       NOTES_SEPARATOR; the label before it stays as the
+%                       observation's notes (notes removed only when that
+%                       part is empty), the tail goes to the description
 %     the body          opaque_body, base.id = THE fileReference's id (so
 %                       every inbound edge to the record still resolves),
 %                       owner_id = the observation; it REPLACES the
@@ -320,8 +327,9 @@ function [result, report] = foldGenericFiles(result, options)
 %                       migrating machine's guess. 0 or NaN (makeSourceFile's
 %                       "could not read it") is unrecorded and left out.
 %       keys            moved from the observation, verbatim (OME-Zarr only)
-%       description     what the source is, the carried notes, and the
-%                       checksum sentence below
+%       description     what the source is, the carried notes tail (the
+%                       NGFF multiscales name), and the checksum sentence
+%                       below
 %       content_hash    NEVER SET. Lightsheet L4 / L3(e): makeSourceFile
 %                       computes an OME-Zarr store's checksum over its
 %                       `.zattrs` file ONLY, so it is not a hash of the
@@ -334,8 +342,8 @@ function [result, report] = foldGenericFiles(result, options)
 %
 %   REFUSALS, each counted, and each still STRIPS the carrier (the edge is
 %   undeclared and the keys belong on bodies -- DID-schema point 2 -- so
-%   nothing transient survives this pass; the keys and description are then
-%   lost and `store_carriers_stripped` says how often):
+%   nothing transient survives this pass; the keys and the notes tail are then
+%   lost, the label stays, and `store_carriers_stripped` says how often):
 %     store_refused_not_in_batch          the named id is not in the batch
 %     store_refused_not_a_file_reference  it names a document of another class
 %     store_refused_shared                two carriers name one record (one
@@ -1079,6 +1087,10 @@ end
 
 function [obs, keys, notes] = stripCarrier(obs)
 %STRIPCARRIER Remove the three transient things the pyramid migrator carried.
+%   NOTES is the transient TAIL of statement.notes (after the LAST
+%   NOTES_SEPARATOR); the label before it stays on the observation, and
+%   `notes` is removed only when that label is empty. Notes with no
+%   separator are all label: left exactly as they are, NOTES ''.
 keys = []; notes = '';
 if isfield(obs, 'depends_on') && ~isempty(obs.depends_on)
     deps = obs.depends_on;
@@ -1100,11 +1112,29 @@ for k = 1:numel(names)
         blk = obs.(names{k});
     end
     if isfield(blk, 'notes')
-        notes = blk.notes;
-        if ~ischar(notes); notes = char(string(notes)); end
-        obs.(names{k}) = rmfield(blk, 'notes');
+        allNotes = blk.notes;
+        if ~ischar(allNotes); allNotes = char(string(allNotes)); end
+        at = strfind(allNotes, NOTES_SEPARATOR());
+        if isempty(at); continue; end
+        label = allNotes(1:at(end) - 1);
+        notes = allNotes(at(end) + numel(NOTES_SEPARATOR()):end);
+        if isempty(strtrim(label))
+            obs.(names{k}) = rmfield(blk, 'notes');
+        else
+            blk.notes = label;
+            obs.(names{k}) = blk;
+        end
     end
 end
+end
+
+function s = NOTES_SEPARATOR()
+% Between a lightsheet pyramid's label (kept on its observation) and the text
+% this pass moves into the store body's description. The SAME literal is in
+% +migrators_j/lightsheet_zarr_pyramid.m (its own NOTES_SEPARATOR), which
+% writes it, and in NDI-matlab ndi.vintage.lightsheetPyramid;
+% testMigratorsJLightsheet pins the round trip.
+s = sprintf('\n-- store body: ');
 end
 
 function blk = recordBlock(rec)

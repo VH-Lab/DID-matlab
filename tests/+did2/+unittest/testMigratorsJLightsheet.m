@@ -105,8 +105,9 @@ end
 
 function testThePyramidMigratorMakesNoStoreBodyAndCarriesTheJoin(testCase)
 % Lightsheet point 3 (Jess, 2026-10-14): the migrator makes NO store body. It
-% carries the v1 `source_file_id` edge, the full-resolution keys and the store
-% description on the observation, TRANSIENTLY, for foldGenericFiles.
+% carries the v1 `source_file_id` edge, the full-resolution keys and (after the
+% label in `notes`) the NGFF multiscales name on the observation, TRANSIENTLY,
+% for foldGenericFiles.
 assumeCompositionSchema(testCase);
 v1 = pyramidV1();
 out = runJ(v1);
@@ -163,7 +164,15 @@ verifyFalse(testCase, isfield(b.data_body, 'content_hash') && ~isempty(b.data_bo
     'the .zattrs MD5 is not a payload hash (L3(e) / L4)');
 verifyTrue(testCase, contains(b.data_body.description, '0123456789abcdef0123456789abcdef'));
 verifyTrue(testCase, contains(b.data_body.description, '.zattrs'));
-verifyTrue(testCase, contains(b.data_body.description, 'label "brain 7 cleared"'));
+% Jess 2026-10-15: the NGFF multiscales name goes to the description; the
+% label stays on the observation; pyramid_type is dropped.
+verifyTrue(testCase, contains(b.data_body.description, 'NGFF multiscales name "mean"'));
+verifyFalse(testCase, contains(b.data_body.description, 'brain 7 cleared'), ...
+    'the label is the observation''s, not the store body''s');
+verifyFalse(testCase, contains(b.data_body.description, 'multiscales type'), ...
+    'pyramid_type is dropped');
+verifyFalse(testCase, contains(b.data_body.description, '-- store body:'), ...
+    'the separator is not copied into the description');
 % recorded BY LOCATION, NOT INGESTED
 info = b.files.file_info;
 if iscell(info); info = info{1}; end
@@ -178,11 +187,12 @@ verifyEqual(testCase, cellfun(@(k) k.variable.name, keys, 'UniformOutput', false
     {'time', 'channel', 'z', 'y', 'x'});
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 400 2048 2048]);
 verifyEqual(testCase, labelNames(keys{2}.labels), {'GCaMP6s', 'tdTomato'});
-% nothing transient left on the observation
+% nothing transient left on the observation; the label stays as its notes
 obs = pickById(out, p.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), '');
 verifyTrue(testCase, isempty(blockField(obs, 'keys')));
-verifyTrue(testCase, isempty(blockField(obs, 'notes')));
+verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared', ...
+    'Jess 2026-10-15: the label is the observation''s notes, permanently');
 ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
 verifyEqual(testCase, ref.orphan_count, 0);
 end
@@ -221,6 +231,7 @@ verifyTrue(testCase, isfield(b.data_body, 'redundant') && isequal(b.data_body.re
 verifyTrue(testCase, ~isfield(b, 'data') || ~isfield(b.data, 'keys') || isempty(b.data.keys), ...
     'a TIFF folder body carries no keys');
 verifyTrue(testCase, contains(b.data_body.description, 'folder of raw TIFF slices'));
+verifyTrue(testCase, contains(b.data_body.description, 'NGFF multiscales name "mean"'));
 info = b.files.file_info;
 if iscell(info); info = info{1}; end
 loc = info(1).locations;
@@ -230,8 +241,74 @@ verifyEqual(testCase, double(loc(1).ingest), 0);
 verifyEqual(testCase, numel(pickByClass(out, 'sampled_body')), 1, 'the level keeps its own body');
 obs = pickById(out, p.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), '');
+verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared', ...
+    'a SmartSPIM pyramid keeps its label too');
 ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
 verifyEqual(testCase, ref.orphan_count, 0);
+end
+
+% ===================== Jess 2026-10-15: method, label, pyramid_name =======
+
+function testEveryPyramidsMethodIsLightSheetMicroscopy(testCase)
+% Jess 2026-10-15: every migrated pyramid's observation carries `method`
+% FBbi:00000369, OME-Zarr and SmartSPIM alike, with or without a source, and
+% the batch pass leaves it alone. NDI finds migrated pyramids by this node.
+assumeCompositionSchema(testCase);
+noSource = pyramidV1();
+noSource.depends_on = noSource.depends_on(~strcmp({noSource.depends_on.name}, 'source_file_id'));
+cases = {pyramidV1(), smartSpimPyramidV1(), noSource};
+for c = 1:numel(cases)
+    out = runJ(cases{c});
+    verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+    obs = pickById(out, 'pyr_ls_1');
+    verifyLightSheetMethod(testCase, obs, sprintf('case %d, no pass', c));
+    [out, ~] = runWithPass(cases(c));
+    obs = pickById(out, 'pyr_ls_1');
+    verifyLightSheetMethod(testCase, obs, sprintf('case %d, after the pass', c));
+end
+end
+
+function testWithoutThePassTheNotesAreTheLabelThenTheSeparatedName(testCase)
+% A bare v1_to_v2 call: the notes hold the label, then the separator, then the
+% NGFF multiscales name the pass would move. This pins the separator literal
+% the migrator, foldGenericFiles and NDI's ndi.vintage.lightsheetPyramid share.
+assumeCompositionSchema(testCase);
+out = runJ(pyramidV1());
+obs = pickById(out, 'pyr_ls_1');
+verifyEqual(testCase, blockField(obs, 'notes'), ...
+    sprintf('brain 7 cleared\n-- store body: NGFF multiscales name "mean"'));
+verifyFalse(testCase, contains(jsonencode(obs), 'multiscales type'), 'pyramid_type is dropped');
+end
+
+function testAPyramidWithNoSourceKeepsJustItsLabel(testCase)
+% No source_file_id: no store body, so nothing to carry -- the notes are the
+% label alone, before and after the pass.
+assumeCompositionSchema(testCase);
+v1 = pyramidV1();
+v1.depends_on = v1.depends_on(~strcmp({v1.depends_on.name}, 'source_file_id'));
+out = runJ(v1);
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+obs = pickById(out, 'pyr_ls_1');
+verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared');
+[out, ~] = runWithPass({v1});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+obs = pickById(out, 'pyr_ls_1');
+verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared');
+end
+
+function testAnEmptyLabelLeavesNoNotesAfterThePass(testCase)
+% The label part is empty: once the pass moves the name out, `notes` goes.
+assumeCompositionSchema(testCase);
+assumeClass(testCase, 'file_reference');
+p = pyramidV1();
+p.lightsheetZarrPyramid.label = '';
+[out, rep] = runWithPass({p, fileReferenceV1('fref_store_1')});
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+verifyEqual(testCase, rep.stores_folded, 1);
+obs = pickById(out, 'pyr_ls_1');
+verifyTrue(testCase, isempty(blockField(obs, 'notes')));
+b = pickByClass(out, 'opaque_body');
+verifyTrue(testCase, contains(b{1}.data_body.description, 'NGFF multiscales name "mean"'));
 end
 
 % ===================== point 8: the pyramid completes its levels ==========
@@ -690,6 +767,17 @@ end
 function [out, rep] = runWithPass(batch)
 out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
 [out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'V_eta');
+end
+
+function verifyLightSheetMethod(testCase, obs, msg)
+m = blockField(obs, 'method');
+if iscell(m); m = m{1}; end
+verifyTrue(testCase, isstruct(m) && isfield(m, 'node'), [msg ': no method']);
+if ~(isstruct(m) && isfield(m, 'node')); return; end
+verifyEqual(testCase, m.node, 'FBbi:00000369', msg);
+verifyEqual(testCase, m.name, 'selective plane illumination fluorescence microscopy', msg);
+verifyTrue(testCase, isfield(obs, 'interaction') && isfield(obs.interaction, 'method'), ...
+    [msg ': method is declared by `interaction`, the path NDI queries']);
 end
 
 function assumeClass(testCase, className)
