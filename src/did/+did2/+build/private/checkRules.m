@@ -1,7 +1,7 @@
-function checkRules(cache, className, doc)
+function checkRules(cache, className, doc, chain)
 %CHECKRULES The cross-field checks a per-field check cannot make.
 %
-%   checkRules(CACHE, CLASSNAME, DOC) raises did2:build:ruleViolated when DOC
+%   checkRules(CACHE, CLASSNAME, DOC, CHAIN) raises did2:build:ruleViolated when DOC
 %   breaks one of them. Two kinds, both listed here so a reader has one place
 %   to look:
 %
@@ -13,19 +13,19 @@ function checkRules(cache, className, doc)
 %
 %   2. BUILDER CHECKS that the schema states only in a field's documentation
 %      (not as a machine-readable rule). Each cites where it is stated:
-%        conditions_one_value     subject_statement.conditions: "carries
+%        conditions_one_value     statement.conditions: "carries
 %                                 exactly one value form ... Cardinality
 %                                 exactly 1"
-%        variable_once            subject_statement.conditions: "a variable
+%        variable_once            statement.conditions: "a variable
 %                                 appears at most once across a statement's
 %                                 keys and conditions"; data.keys: variable
 %                                 "UNIQUE within the list"
-%        parameter_one_form       subject_interaction.method_parameters:
+%        parameter_one_form       interaction.method_parameters:
 %                                 numeric `value`, categorical `term` or
 %                                 free-string `text` -- one of them
 %        parameter_variable_once  method_parameters: variable "UNIQUE within
 %                                 the list"
-%        parameters_not_both      subject_interaction.method_parameters: "the
+%        parameters_not_both      interaction.method_parameters: "the
 %                                 statement points at a method_parameters
 %                                 document by method_parameters_id. Never both."
 %        key_n_matches            data.keys: n is the length of the dimension,
@@ -36,7 +36,9 @@ function checkRules(cache, className, doc)
 %                                 inherited optional field or edge the class
 %                                 makes required
 
-chain = cache.classChain(className);
+if nargin < 4 || isempty(chain)
+    chain = cache.classChain(className);
+end
 blocks = setdiff(fieldnames(doc), {'document_class', 'depends_on', 'files', 'file'}, 'stable');
 edgeNames = {};
 if isfield(doc, 'depends_on') && ~isempty(doc.depends_on)
@@ -61,11 +63,15 @@ for c = 1:numel(chain)
                 if ~any(strcmp(chain, 'sampled_body'))
                     forEachKey(doc, blocks, @keyNoChunk);
                 end
-            case 'datum_type_when_bytes'
+            case {'datum_type_when_bytes', 'data_type_when_bytes'}
+                % `data_type_when_bytes` since 2026-10-08 (the field renamed);
+                % the part a per-document check can see is the same: a value
+                % whose bytes are in a body must say how they are encoded.
+                f = strrep(ruleName, '_when_bytes', '');
                 if isTrue(findField(doc, blocks, 'data_body')) ...
-                        && isAbsent(findField(doc, blocks, 'datum_type'))
+                        && isAbsent(findField(doc, blocks, f))
                     violated(ruleName, className, ...
-                        '`data_body` is true, so `datum_type` must be given.');
+                        sprintf('`data_body` is true, so `%s` must be given.', f));
                 end
             case 'clock_with_start'
                 % an offset -- a start or an end -- means nothing until its

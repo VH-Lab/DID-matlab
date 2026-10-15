@@ -84,19 +84,28 @@ for k = 1:numel(bodies)
         if isempty(className)
             report.skipped_docs = report.skipped_docs + 1; continue;
         end
-        declared = declaredFiles(cache, className);
+        [declared, isSeries] = declaredFiles(cache, className);
         carried  = carriedFiles(body);
+        base = memberBase(body);
         if ~isempty(carried); report.docs_with_files = report.docs_with_files + 1; end
         if isempty(declared) && isempty(carried); continue; end
 
         for d = 1:numel(declared)
-            if ~any(strcmp(declared{d}, carried))
+            present = any(strcmp(declared{d}, carried));
+            if ~present && isSeries(d)
+                present = any(cellfun(@(c) isSeriesMember(c, declared{d}, base), carried));
+            end
+            if ~present
                 [absKeys, absCounts] = bump(absKeys, absCounts, ...
                     sprintf('%s|%s', className, declared{d}));
             end
         end
         for c = 1:numel(carried)
-            if ~any(strcmp(carried{c}, declared))
+            known = any(strcmp(carried{c}, declared));
+            for d = find(isSeries)
+                known = known || isSeriesMember(carried{c}, declared{d}, base);
+            end
+            if ~known
                 [undKeys, undCounts] = bump(undKeys, undCounts, ...
                     sprintf('%s|%s', className, carried{c}));
             end
@@ -114,9 +123,42 @@ end
 
 % ===================== helpers =============================================
 
-function names = declaredFiles(cache, className)
-%DECLAREDFILES Every file name declared anywhere in the class chain.
+function tf = isSeriesMember(name, stem, base)
+%ISSERIESMEMBER True when NAME is a member `<stem>_<k>` of the series STEM,
+%   k >= BASE. A file declared `series: true` (`body_data`, the v1 `chunk.bin`)
+%   is carried as numbered members, and an exact strcmp against the declared
+%   name never matches one: every member was reported UNDECLARED and the
+%   declaration ABSENT, both wrong. This is the same rule did2.build's
+%   checkFiles applies (`^<stem>_\d+$`), plus the document's member BASE: a
+%   V_eta document numbers members from 0 (`body_data_0`, DID-schema #73 item
+%   17), a did_v1 document from 1 (`chunk.bin_1`), so `chunk.bin_0` on a v1
+%   document names no member (did.document/seriesMemberBase).
+tok = regexp(name, ['^' regexptranslate('escape', stem) '_(\d+)$'], 'tokens', 'once');
+tf = ~isempty(tok) && str2double(tok{1}) >= base;
+end
+
+function base = memberBase(body)
+%MEMBERBASE 0 for a V_eta document, 1 for a did_v1 one -- the rule
+%   did.document/seriesMemberBase applies, read off document_class.schema_version.
+base = 1;
+if ~isstruct(body) || ~isfield(body, 'document_class') || ~isstruct(body.document_class) ...
+        || ~isfield(body.document_class, 'schema_version')
+    return;
+end
+sv = body.document_class.schema_version;
+if isstring(sv) && isscalar(sv); sv = char(sv); end
+if ~ischar(sv) || isempty(sv); return; end
+[rank, known] = did2.convert.schemaVersionRank(sv);
+if known && rank >= did2.convert.schemaVersionRank('V_eta')
+    base = 0;
+end
+end
+
+function [names, isSeries] = declaredFiles(cache, className)
+%DECLAREDFILES Every file name declared anywhere in the class chain, and
+%   whether each is declared a file SERIES (`series: true`).
 names = {};
+isSeries = false(1, 0);
 try
     chain = cache.classChain(className);
 catch
@@ -135,12 +177,15 @@ for i = 1:numel(chain)
         if iscell(entry); entry = entry{1}; end
         if isstruct(entry) && isfield(entry, 'name')
             names{end+1} = char(entry.name); %#ok<AGROW>
+            isSeries(end+1) = isfield(entry, 'series') && isequal(entry.series, true); %#ok<AGROW>
         elseif ischar(entry)
             names{end+1} = entry; %#ok<AGROW>
+            isSeries(end+1) = false; %#ok<AGROW>
         end
     end
 end
-names = unique(names);
+[names, first] = unique(names);
+isSeries = isSeries(first);
 end
 
 function names = carriedFiles(body)

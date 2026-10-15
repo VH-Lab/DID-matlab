@@ -471,7 +471,12 @@ result = did2.convert.resolveValidIntervals(result, ...
 result = did2.convert.resolveClockAlignment(result, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 
-% GATE 1: nothing quarantined
+% GATE 1: nothing quarantined. Each one is NAMED first (class, error id,
+% message), so a red gate is readable from the log rather than as a count.
+for q = 1:numel(result.quarantine)
+    e = result.quarantine(q);
+    fprintf('QUARANTINED %s [%s]: %s\n', e.class_name, e.identifier, e.reason);
+end
 verifyEmpty(testCase, result.quarantine, ...
     'fixture(s) quarantined under schema validation');
 verifyNotEmpty(testCase, result.migrated);
@@ -559,7 +564,12 @@ if isscalar(bodyIdx)
     verifyEqual(testCase, char(ob.get('data_body.content_hash')), ...
         'd41d8cd98f00b204e9800998ecf8427e', ...
         'the MD5 was dropped -- the field opaque_body gained exists for it');
-    verifyEqual(testCase, char(ob.get('data_body.format')), 'EMPTY:0000253');
+    % format is an ontology TERM since lightsheet point 4 (the CURIE is its
+    % node); on v_eta-pre73, which test-fixtures.yml pins, it is the CURIE
+    % string (did2.build.formatTerm follows the loaded schema).
+    fmt = ob.get('data_body.format');
+    if isstruct(fmt); fmt = fmt.node; end
+    verifyEqual(testCase, char(fmt), 'EMPTY:0000253');
     verifyEqual(testCase, char(ob.get('data_body.filename')), ...
         'plasmids/pXY-12.gb');
 end

@@ -8,7 +8,7 @@ function c = condition(variable, options)
 %
 %   VARIABLE is a term or a name (arm direction, OD600, trial type). Exactly ONE
 %   of 'Term', 'Count', 'Quantity' is given, and it is ONE value: "carries
-%   exactly one value form ... Cardinality exactly 1" (subject_statement.
+%   exactly one value form ... Cardinality exactly 1" (statement.
 %   conditions, data_body AMENDMENT 2, #73 item 23). A fact with several values
 %   is a key, not a condition.
 %
@@ -72,7 +72,8 @@ switch given{1}
         end
         s.quantity = struct('value', q);
 end
-c = did2.build.composite('subject_statement', 'conditions', s, ...
+statementClass = vetaNames(options.SchemaCache);   % `subject_statement` before 2026-10-08
+c = did2.build.composite(statementClass, 'conditions', s, ...
     'SchemaCache', options.SchemaCache);
 end
 

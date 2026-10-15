@@ -35,6 +35,7 @@ classdef query
     %       or       - disjunction.
     %       matches  - logical scalar; does this query match one document?
     %       filter   - subset (or logical mask) over a list of documents.
+    %       hasNested, resolveNested - depends_on whose target is a query
     %
     %   did2.query Static Methods:
     %       all    - match every document (`isa base`).
@@ -48,6 +49,11 @@ classdef query
     %       q = did2.query('base.name', 'regexp', '^subject_');
     %       q = did2.query('', 'isa', 'demoA');
     %       q = did2.query('axes[*].unit', 'exact_string', 'micrometer');
+    %       q = did2.query('base.name', 'wildcard', 'subject_*');   % any case
+    %       q = did2.query('', 'depends_on', 'subject_id', {id1, id2});  % any of
+    %       q = did2.query('', 'depends_on', 'ingredient_id', ...       % its target
+    %               did2.query('chemical.value.substance.name', ...      % matches a
+    %                          'exact_string', 'peptone'));              % query
     %       q = and(q1, q2);  q = or(q1, q2);
     %       tf = q.matches(doc);
     %       hits = q.filter(docList);
@@ -142,6 +148,39 @@ classdef query
             end
             out = docs(mask);
         end
+
+        function tf = hasNested(obj)
+            % hasNested - does any depends_on in this query target a query?
+            %
+            %   A `depends_on` term's param2 may be a did2.query: the edge
+            %   must point at a document that matches it,
+            %
+            %       q = did2.query('', 'depends_on', 'ingredient_id', ...
+            %               did2.query('chemical.value.substance.name', ...
+            %                          'exact_string', 'peptone'));
+            %
+            %   (any formulation with peptone as an ingredient). Such a
+            %   query needs a database to evaluate; see resolveNested.
+            tf = did2.query.anyNested(obj.searchstructure);
+        end
+
+        function q = resolveNested(obj, idsOf)
+            % resolveNested - replace each nested depends_on target by its ids
+            %
+            %   Q2 = q.resolveNested(IDSOF) returns the query with every
+            %   depends_on whose param2 is a did2.query replaced by the
+            %   cellstr IDSOF(thatQuery) -- the ids of the documents it
+            %   matches -- so Q2 can be evaluated on one document (an edge
+            %   to any of those ids matches). IDSOF is a function handle,
+            %   typically @(inner) db.searchIds(inner), which resolves
+            %   deeper nesting itself. Inside `or` branches too.
+            arguments
+                obj
+                idsOf (1,1) function_handle
+            end
+            q = obj;
+            q.searchstructure = did2.query.resolveArray(obj.searchstructure, idsOf);
+        end
     end
 
     methods (Static)
@@ -168,6 +207,33 @@ classdef query
                 'operation', operation, ...
                 'param1', {param1}, ...
                 'param2', {param2});
+        end
+
+        function re = wildcardToRegexp(pattern)
+            % wildcardToRegexp - a `wildcard` pattern as an anchored regexp
+            %
+            %   '*' matches any run of characters (none included); '\*' is a
+            %   literal star; everything else is literal.
+            parts = regexp(char(pattern), '(?<!\\)\*', 'split');
+            parts = cellfun(@(x) regexptranslate('escape', strrep(x, '\*', '*')), parts, ...
+                'UniformOutput', false);
+            re = ['^' strjoin(parts, '.*') '$'];
+        end
+
+        function like = wildcardToLike(pattern)
+            % wildcardToLike - a `wildcard` pattern as a SQL LIKE pattern
+            %
+            %   For `LIKE ? ESCAPE '\'`: '*' becomes '%', a literal '%', '_'
+            %   or '\' is escaped, '\*' becomes a literal star.
+            parts = regexp(char(pattern), '(?<!\\)\*', 'split');
+            for k = 1:numel(parts)
+                x = strrep(parts{k}, '\*', char(0));
+                x = strrep(x, '\', '\\');
+                x = strrep(x, '%', '\%');
+                x = strrep(x, '_', '\_');
+                parts{k} = strrep(x, char(0), '*');
+            end
+            like = strjoin(parts, '%');
         end
 
         function tf = evaluate(ss, docStruct)
@@ -259,7 +325,7 @@ classdef query
                     tf = ~isempty(did2.query.walkPath(doc, ss.field));
                 case 'hasmember'
                     tf = did2.query.opHasMember(doc, ss.field, ss.param1);
-                case {'exact_string', 'exact_string_anycase', ...
+                case {'exact_string', 'exact_string_anycase', 'wildcard', ...
                       'contains_string', 'regexp', ...
                       'exact_number', 'lessthan', 'lessthaneq', ...
                       'greaterthan', 'greaterthaneq'}
@@ -270,6 +336,32 @@ classdef query
             end
             if isNeg
                 tf = ~tf;
+            end
+        end
+
+        function tf = anyNested(ss)
+            tf = false;
+            for k = 1:numel(ss)
+                op = char(ss(k).operation);
+                if strcmp(op, 'or')
+                    tf = did2.query.anyNested(ss(k).param1) || did2.query.anyNested(ss(k).param2);
+                elseif any(strcmp(op, {'depends_on', '~depends_on'}))
+                    tf = isa(ss(k).param2, 'did2.query');
+                end
+                if tf, return; end
+            end
+        end
+
+        function ss = resolveArray(ss, idsOf)
+            for k = 1:numel(ss)
+                op = char(ss(k).operation);
+                if strcmp(op, 'or')
+                    ss(k).param1 = did2.query.resolveArray(ss(k).param1, idsOf);
+                    ss(k).param2 = did2.query.resolveArray(ss(k).param2, idsOf);
+                elseif any(strcmp(op, {'depends_on', '~depends_on'})) && isa(ss(k).param2, 'did2.query')
+                    ids = idsOf(ss(k).param2);
+                    ss(k).param2 = reshape(cellstr(ids), 1, []);
+                end
             end
         end
 
@@ -314,7 +406,19 @@ classdef query
             end
             entries = doc.depends_on;
             name = char(name);
-            value = char(value);
+            if isa(value, 'did2.query')
+                error('did2:query:nestedNeedsDatabase', ...
+                    ['A depends_on whose target is itself a query cannot be ' ...
+                     'evaluated on one document: what the target matches is ' ...
+                     'only known to a database. Search a database ' ...
+                     '(did2.database.sqlitedb resolves it), or resolve it ' ...
+                     'first with q.resolveNested(@(inner) <ids matching inner>).']);
+            end
+            if iscell(value) || (isstring(value) && ~isscalar(value))
+                value = cellstr(value);     % an id list: any one of them
+            else
+                value = {char(value)};
+            end
             for k = 1:numel(entries)
                 if isstruct(entries)
                     e = entries(k);
@@ -335,14 +439,16 @@ classdef query
                 % evaluator works on bodies at any stage of the
                 % migration pipeline.
                 if isfield(e, 'document_id')
-                    gotValue = did2.query.charEq(e.document_id, value);
+                    v = e.document_id;
                 elseif isfield(e, 'value')
-                    gotValue = did2.query.charEq(e.value, value);
+                    v = e.value;
                 elseif isfield(e, 'id')
-                    gotValue = did2.query.charEq(e.id, value);
+                    v = e.id;
                 else
-                    gotValue = false;
+                    v = [];
                 end
+                gotValue = (ischar(v) || (isstring(v) && isscalar(v))) ...
+                    && any(strcmp(char(v), value));
                 if gotName && gotValue
                     tf = true;
                     return;
@@ -466,6 +572,13 @@ classdef query
                     else
                         tf = false;
                     end
+                case 'wildcard'
+                    % '*' any run of characters, '\*' a literal star; the
+                    % whole value must match, ignoring case (as SQL LIKE)
+                    tf = (ischar(value) || (isstring(value) && isscalar(value))) ...
+                        && (ischar(target) || isstring(target)) ...
+                        && ~isempty(regexp(char(value), ...
+                            did2.query.wildcardToRegexp(target), 'once', 'ignorecase'));
                 case 'regexp'
                     if (ischar(value) || isstring(value)) ...
                             && (ischar(target) || isstring(target))
@@ -572,7 +685,7 @@ classdef query
                 'hasfield', 'hasmember', ...
                 'hasanysubfield_contains_string', ...
                 'hasanysubfield_exact_string', ...
-                'exact_string', 'exact_string_anycase', 'contains_string', ...
+                'exact_string', 'exact_string_anycase', 'contains_string', 'wildcard', ...
                 'regexp', 'exact_number', ...
                 'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'};
             negAllowed = cellfun(@(x) ['~', x], allowed, 'UniformOutput', false);

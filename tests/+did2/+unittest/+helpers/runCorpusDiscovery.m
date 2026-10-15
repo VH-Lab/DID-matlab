@@ -313,6 +313,13 @@ if strcmp(options.TargetVersion, 'V_eta')
     % `term_observation` (on the source's own id) plus a new `opaque_body`;
     % none of the five reads or writes either class.
     %
+    % ITS STORE-RECORD HALF (Jess 2026-10-14, lightsheet point 3) also reads
+    % `file_reference` documents and the observations that carry a transient
+    % `source_file_id` (only +migrators_j/lightsheet_zarr_pyramid makes them),
+    % strips that carry, and REPLACES each named `file_reference` with an
+    % unheld `opaque_body` of the same id. No pass above reads or writes a
+    % `file_reference` or a lightsheet observation, so the order still commutes.
+    %
     % READ ITS ZEROS WITH `generic_files_seen` BESIDE THEM. All six corpora
     % held ZERO `generic_file` documents at run 31327383671, so all-zero is the
     % EXPECTED reading here and says nothing about whether the fold works --

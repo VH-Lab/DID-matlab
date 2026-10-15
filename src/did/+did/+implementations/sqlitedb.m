@@ -1317,6 +1317,9 @@ classdef sqlitedb < did.database %#ok<*TNOW1>
 
             [stem, index] = document_obj.seriesMemberOf(filename);
             if isempty(stem), return, end
+            % INDEX is the one-based MANIFEST position, not the number in the
+            % name: seriesMemberOf has already applied the document's base
+            % (NAME_1 of a did_v1 document and NAME_0 of a V_eta one are both 1).
             if ~isscalar(index) || index < 1 || index ~= round(index), return, end
 
             % Step 2: the manifest. Its uid comes from the document in hand,

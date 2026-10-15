@@ -735,6 +735,40 @@ POST_PASSES = [
         # silent change to it would be ten times the size of the fold.
         ("labels_deleted", "ontology_label documents deleted"),
         ("labels_modified", "ontology_label documents modified"),
+        # THE UNHELD HALF (Jess, 2026-10-14, lightsheet point 3): a
+        # fileReference named by a lightsheet pyramid's carried
+        # `source_file_id` becomes that observation's unheld opaque_body.
+        # READ `store_carriers_seen` FIRST: no corpus in the gate holds a
+        # lightsheet pyramid, so all-zero here is the EXPECTED reading.
+        ("store_records_seen", "file_reference documents"),
+        ("store_carriers_seen", "observations carrying source_file_id"),
+        ("stores_folded", "FOLDED to an unheld opaque_body (id kept)"),
+        ("stores_folded_ome_zarr", "  of those, an OME-Zarr store (format EMPTY:0000259)"),
+        ("stores_folded_tiff_folder", "  of those, a SmartSPIM TIFF folder (format EDAM:format_3591)"),
+        ("store_refused_total", "store records REFUSED (total)"),
+        ("store_refused_not_in_batch", "  named record not in this batch"),
+        ("store_refused_not_a_file_reference", "  named document is not a file_reference"),
+        ("store_refused_shared", "  record named by two observations"),
+        ("store_refused_no_original_path", "  record has no original_path"),
+        ("store_carriers_stripped", "carriers stripped WITHOUT a fold (keys lost)"),
+        ("store_fold_quarantined", "QUARANTINED by the store fold"),
+        ("store_records_left_passthrough", "file_reference named by no observation (passthrough)"),
+        ("store_checksums_to_description", "  .zattrs checksums put in description, not content_hash"),
+        ("store_sizes_unrecorded", "  folded with file_size 0 (unrecorded: size_bytes left out)"),
+        # Point 8: the pyramid's t unit and channel names onto its levels' keys.
+        ("level_bodies_seen", "level sampled_bodies owned by a pyramid observation"),
+        ("level_bodies_completed", "  completed from the pyramid (t unit / channel names)"),
+        ("level_unit_disagreements", "  z/y/x unit DISAGREEMENTS with the pyramid (not overwritten)"),
+        ("level_bodies_without_pyramid", "level sampled_bodies whose pyramid is not in the batch"),
+        ("level_completion_quarantined", "QUARANTINED by the level completion"),
+        # Point 10: units with no UO mapping stay name-only, counted.
+        ("pyramid_key_units_name_only", "pyramid key units left NAME-ONLY (no UO mapping)"),
+        # Point 1: "during the session" references minted for marked documents.
+        ("session_references_marked", "documents marked for a session time reference"),
+        ("session_references_minted", "  minted (relative_time_reference intervalDuring)"),
+        ("observations_without_session", "  NO session document in the batch (left without one)"),
+        ("session_references_ambiguous", "  two session documents claim the session id (refused)"),
+        ("session_references_quarantined", "  minted but QUARANTINED"),
     ]),
     # DORMANT BY TEAM DECISION 2026-08-12. The pass RUNS and EMITS NOTHING.
     # The agreed model is ONE statement per source document holding an ARRAY of

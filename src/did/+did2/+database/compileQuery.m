@@ -9,18 +9,21 @@ function [whereSQL, params] = compileQuery(q, opts)
 %   `depends_on(doc_id, name, document_id)` sidecar tables).
 %
 %   [WHERESQL, PARAMS] = did2.database.compileQuery(Q, 'QueryablePaths',
-%   PATHS) tells the compiler that the dot-paths listed in the cellstr
-%   PATHS are surfaced as `q_<flat>` STORED generated columns on the
-%   documents table (PLAN.md §3.2). Scalar predicates against those
-%   paths compile to a direct comparison against the column instead of
-%   `json_extract(body, '$.<path>')`, which lets sqlite use the column's
-%   index. Predicates against paths not in the set fall back to
-%   json_extract.
+%   PATHS) tells the compiler that the values of the dot-paths in PATHS
+%   are kept in the `queryable_scalar_elem` side table (one row per value
+%   a document has; they were `q_<flat>` generated columns until
+%   2026-10-06). PATHS is a struct array with `path` and `affinity` (as
+%   did2.database.sqlitedb passes it) or a cellstr of paths. Scalar
+%   predicates against those paths compile to `documents.id IN (SELECT
+%   ... FROM queryable_scalar_elem ...)`, which SQLite answers from the
+%   (path, value) index. Predicates against paths not in the set fall back
+%   to json_extract.
 %
 %   This is the "JSON1 fallback" compiler called for in PLAN.md §9 step 3.
 %   It uses sqlite3 json_extract / json_each / json_type for every
 %   document-body predicate, EXISTS over the sidecar tables for `isa`
-%   and `depends_on`, and emits a conservative `1=1` for predicates that
+%   and a wildcard `depends_on`, `documents.id IN (...)` for a named
+%   `depends_on` (so SQLite can start from its index), and emits a conservative `1=1` for predicates that
 %   sqlite cannot express natively (e.g. `regexp`). did2.database.sqlitedb
 %   always runs the in-memory evaluator over the SQL result set as a
 %   correctness backstop, so the SQL clause is only required to be an
@@ -31,7 +34,7 @@ function [whereSQL, params] = compileQuery(q, opts)
 
 arguments
     q (1,1) did2.query
-    opts.QueryablePaths cell = {}
+    opts.QueryablePaths = {}
     opts.QueryableArrayPaths = []
 end
 
@@ -42,14 +45,30 @@ ctx = struct( ...
 end
 
 function set = asPathSet(paths)
-% Normalise a cellstr of paths into a containers.Map for O(1) lookup.
-set = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+% Normalise the queryable scalar paths into a path -> affinity map. PATHS
+% is a struct array with `path` and `affinity` (what did2.database.sqlitedb
+% passes, so each value is compared in the column it was stored in), or a
+% cellstr of bare paths, whose affinity is then UNKNOWN and the value is
+% compared across all three value columns.
+set = containers.Map('KeyType', 'char', 'ValueType', 'char');
+if isstruct(paths)
+    for k = 1:numel(paths)
+        p = char(paths(k).path);
+        if isempty(p), continue; end
+        a = '';
+        if isfield(paths(k), 'affinity') && ~isempty(paths(k).affinity)
+            a = upper(char(paths(k).affinity));
+        end
+        set(p) = a;
+    end
+    return;
+end
 for k = 1:numel(paths)
     p = char(paths{k});
     if isempty(p)
         continue;
     end
-    set(p) = true;
+    set(p) = 'UNKNOWN';
 end
 end
 
@@ -132,7 +151,7 @@ switch op
         [sql, params] = compileIsa(ss.param1, isNeg);
         return;
     case 'depends_on'
-        [sql, params] = compileDependsOn(ss.param1, ss.param2, isNeg);
+        [sql, params] = compileDependsOn(ss.param1, ss.param2, isNeg, ctx);
         return;
     case 'hasfield'
         [sql, params] = compileHasField(ss.field, isNeg);
@@ -149,7 +168,7 @@ switch op
         [sql, params] = compileHasAnySubfieldExact(ss.field, ...
             ss.param1, ss.param2, isNeg);
         return;
-    case {'exact_string', 'exact_string_anycase', 'contains_string', ...
+    case {'exact_string', 'exact_string_anycase', 'contains_string', 'wildcard', ...
           'regexp', 'exact_number', ...
           'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'}
         [sql, params] = compileScalar(op, ss.field, ss.param1, isNeg, ctx);
@@ -177,24 +196,82 @@ end
 params = {className};
 end
 
-function [sql, params] = compileDependsOn(name, value, isNeg)
+function [sql, params] = compileDependsOn(name, value, isNeg, ctx)
 % `depends_on` consults the `depends_on` sidecar table; `*` for `name` is
 % the wildcard documented in did_query_model.md.
-name  = char(name);
-value = char(value);
+%
+% A NAMED edge compiles to `documents.id IN (SELECT ... FROM depends_on
+% ...)`, not to a correlated `EXISTS`. The two mean the same, but SQLite
+% can only START from an uncorrelated IN: it reads the edge's rows through
+% the depends_on(name, document_id) index and looks each document up by
+% id. A correlated EXISTS is evaluated once per document, so the planner
+% has to walk the documents table first, and a query with nothing else to
+% narrow it (an isa plus an edge, as ndi.dataset sends) SCANNED every
+% document. Measured on the Haley V2 dataset (187,673 documents, a worm's
+% 22 statements): 0.708 s as EXISTS, 0.0007 s starting from the edge
+% (EXPLAIN QUERY PLAN via sqlitedb.testHookExplain). doc_id is NOT NULL,
+% so the negated NOT IN has no NULL trap.
+%
+% The WILDCARD stays a correlated EXISTS: no index has document_id first,
+% so an IN would scan the whole depends_on table (several rows per
+% document) instead of the documents table.
+%
+% VALUE, the edge's target, is one of three things:
+%   an id            d.document_id = ?
+%   a list of ids    d.document_id IN (SELECT value FROM json_each(?)):
+%                    any of them, bound as ONE JSON array, so a list of
+%                    any length stays under SQLite's 999-variable limit
+%   a did2.query     d.document_id IN (SELECT id FROM documents WHERE
+%                    <that query>): a document the target matches. Its SQL
+%                    is an over-approximation like any other (the
+%                    evaluator rechecks), which is sound inside a positive
+%                    term and NOT inside a negated one -- NOT IN a superset
+%                    drops true matches the recheck never sees -- so the
+%                    negated form compiles to the conservative 1=1.
+%                    did2.database.sqlitedb never sends this form: it
+%                    resolves the target to its ids first (the recheck
+%                    needs them), and sends the list.
+name = char(name);
+if isa(value, 'did2.query')
+    if isNeg
+        sql = '1=1';
+        params = {};
+        return;
+    end
+    [innerSQL, innerParams] = compileSearchstructArray(value.searchstructure, ctx);
+    target = ['d.document_id IN (SELECT id FROM documents WHERE ' innerSQL ')'];
+    targetParams = innerParams;
+elseif iscell(value) || (isstring(value) && ~isscalar(value))
+    ids = cellstr(value);
+    target = 'd.document_id IN (SELECT value FROM json_each(?))';
+    targetParams = {jsonencode(reshape(ids, 1, []))};
+    if isscalar(ids)
+        target = 'd.document_id = ?';
+        targetParams = ids;
+    elseif isempty(ids)
+        targetParams = {'[]'};
+    end
+else
+    target = 'd.document_id = ?';
+    targetParams = {char(value)};
+end
 if strcmp(name, '*')
     existsSQL = ['EXISTS (SELECT 1 FROM depends_on d ' ...
-        'WHERE d.doc_id = documents.id AND d.document_id = ?)'];
-    params = {value};
-else
-    existsSQL = ['EXISTS (SELECT 1 FROM depends_on d ' ...
-        'WHERE d.doc_id = documents.id AND d.name = ? AND d.document_id = ?)'];
-    params = {name, value};
+        'WHERE d.doc_id = documents.id AND ' target ')'];
+    params = targetParams;
+    if isNeg
+        sql = ['(NOT ' existsSQL ')'];
+    else
+        sql = existsSQL;
+    end
+    return;
 end
+inSQL = ['(SELECT d.doc_id FROM depends_on d WHERE d.name = ? AND ' target ')'];
+params = [{name}, targetParams];
 if isNeg
-    sql = ['(NOT ' existsSQL ')'];
+    sql = ['(documents.id NOT IN ' inSQL ')'];
 else
-    sql = existsSQL;
+    sql = ['documents.id IN ' inSQL];
 end
 end
 
@@ -287,6 +364,10 @@ function [sql, params] = compileScalar(op, fieldPath, target, isNeg, ctx)
 [stars, prefix, leaf] = splitPathOnStar(fieldPath);
 
 if isempty(stars)
+    if scalarPathIsIndexed(prefix, ctx)
+        [sql, params] = compileScalarFromScalarSidecar(op, prefix, target, isNeg, ctx);
+        return;
+    end
     valueExpr = scalarValueExpression(prefix, ctx);
     [predicate, params] = scalarPredicate(op, valueExpr, target);
     if isNeg
@@ -397,6 +478,19 @@ switch op
     case 'contains_string'
         predicate = sprintf('%s LIKE ?', valueExpr);
         params = {['%' char(target) '%']};
+    case 'wildcard'
+        % SQLite's LIKE ignores case for ASCII letters only; the in-memory
+        % recheck ignores it for all, so a non-ASCII letter in another case
+        % is not found in SQL. The recheck cannot add back what SQL drops,
+        % so a pattern with non-ASCII characters compiles to the
+        % conservative 1=1 and is matched in memory alone.
+        if any(char(target) > 127)
+            predicate = '1=1';
+            params = {};
+        else
+            predicate = [valueExpr ' LIKE ? ESCAPE ''\'''];   % not sprintf: it reads \ as an escape
+            params = {did2.query.wildcardToLike(target)};
+        end
     case 'regexp'
         % SQLite REGEXP requires a UDF that mksqlite does not register by
         % default. Emit a permissive pre-filter and rely on the in-memory
@@ -441,19 +535,42 @@ end
 % path utilities
 % -----------------------------------------------------------------------
 
-function expr = scalarValueExpression(dotPath, ctx)
-% scalarValueExpression - the SQL value expression for a (no-[*]) scalar
-%   path. Routes to the `q_<flat>` generated column when the path is
-%   declared queryable; otherwise falls back to `json_extract(body, ...)`.
-if ~isempty(dotPath) && isfield(ctx, 'queryablePaths') ...
-        && isa(ctx.queryablePaths, 'containers.Map') ...
-        && ctx.queryablePaths.isKey(dotPath)
-    % Match did2.schema.cache.columnNameFor: always lowercase so the
-    % SQL identifier matches the column name SQLite ended up storing.
-    expr = ['q_' lower(strrep(dotPath, '.', '_'))];
-else
-    expr = sprintf('json_extract(body, ''%s'')', jsonPath(dotPath));
+function tf = scalarPathIsIndexed(dotPath, ctx)
+tf = ~isempty(dotPath) && isfield(ctx, 'queryablePaths') ...
+    && isa(ctx.queryablePaths, 'containers.Map') && ctx.queryablePaths.isKey(dotPath);
 end
+
+function [sql, params] = compileScalarFromScalarSidecar(op, dotPath, target, isNeg, ctx)
+% A queryable scalar path is answered from queryable_scalar_elem, which has
+% one row per value a document HAS. An uncorrelated IN, so SQLite starts
+% from the (path, value) index. Negated, NOT IN: a document without the
+% value matches, as `(column IS NULL OR NOT ...)` did for the generated
+% column this replaces (a document has at most one row per scalar path).
+switch ctx.queryablePaths(dotPath)
+    case 'TEXT'
+        valueExpr = 'qse.value_text';
+    case {'INTEGER', 'REAL'}
+        valueExpr = 'qse.value_num';
+    case 'UNKNOWN'
+        valueExpr = 'COALESCE(qse.value_text, qse.value_num, qse.value_raw)';
+    otherwise
+        valueExpr = 'qse.value_raw';
+end
+[predicate, params] = scalarPredicate(op, valueExpr, target);
+inner = sprintf(['(SELECT qse.doc_id FROM queryable_scalar_elem qse ' ...
+    'WHERE qse.path = ? AND %s)'], predicate);
+params = [{dotPath}, params];
+if isNeg
+    sql = ['(documents.id NOT IN ' inner ')'];
+else
+    sql = ['documents.id IN ' inner];
+end
+end
+
+function expr = scalarValueExpression(dotPath, ~)
+% scalarValueExpression - the SQL value expression for a (no-[*]) scalar
+% path that is NOT queryable: read from the body.
+expr = sprintf('json_extract(body, ''%s'')', jsonPath(dotPath));
 end
 
 function out = jsonPath(dotPath)

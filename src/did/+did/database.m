@@ -766,7 +766,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             % TF = seriesHas(DATABASE_OBJ, DOCUMENT_OBJ, NAME, INDEX)
             %
             % Returns whether the series NAME of DOCUMENT_OBJ records a member
-            % at the one-based INDEX. A series is sparse -- a zarr level never
+            % numbered INDEX, counted from the document's base (1 for a did_v1
+            % document, 0 for a V_eta one: did.document/seriesMemberBase).
+            % A series is sparse -- a zarr level never
             % writes an all-fill chunk -- so "no member here" is an ordinary
             % answer, not a failure.
             %
@@ -795,17 +797,19 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 database_obj
                 document_obj (1,1) did.document
                 name (1,:) char
-                index (1,1) double {mustBePositive, mustBeInteger}
+                index (1,1) double {mustBeNonnegative, mustBeInteger}
             end
 
             tf = false;
+            slot = index - document_obj.seriesMemberBase() + 1;
+            if slot < 1, return; end
 
             manifestPath = localSeriesManifestPath(document_obj, name, ...
                 database_obj.do_cachedPathRoots());
             if isempty(manifestPath), return; end
 
             try
-                uid = did.file.readSeriesManifestUid(manifestPath, index);
+                uid = did.file.readSeriesManifestUid(manifestPath, slot);
             catch
                 % A manifest that cannot be read cannot say what the series
                 % holds. open_doc reports that where it can be acted on.
@@ -821,8 +825,9 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
             %
             % [INDICES, UIDS] = seriesMembers(DATABASE_OBJ, DOCUMENT_OBJ, NAME)
             %
-            % Returns the one-based INDICES of the slots the series NAME
-            % actually fills, and the UIDS recorded for them, in slot order.
+            % Returns the member NUMBERS (INDICES) of the slots the series NAME
+            % actually fills -- counted from the document's base, 1 for a
+            % did_v1 document and 0 for a V_eta one --  and the UIDS recorded for them, in slot order.
             % Absent slots are skipped, so a sparse series gives back only
             % what it holds. Both are empty when the series has no members or
             % its manifest is not on this machine.
@@ -868,11 +873,11 @@ classdef (Abstract) database < matlab.mixin.SetGet   %#ok<*AGROW>
                 return;
             end
 
-            % Slot i of manifest.uids is member i, one-based, which is the
-            % numbering NAME_<i> uses. The conversion to the file's own
-            % zero-based numbering happens in the reader and nowhere else.
+            % Position p of manifest.uids is manifest slot p-1, which is the
+            % member NAME_<p-1+base>: base 1 for a did_v1 document (NAME_p),
+            % 0 for a V_eta one (NAME_<p-1>).
             present = find(~cellfun('isempty', manifest.uids));
-            indices = present;
+            indices = present - 1 + document_obj.seriesMemberBase();
             uids = manifest.uids(present);
 
         end % seriesMembers()
@@ -2330,6 +2335,9 @@ function [tf, filePath] = localSeriesMemberPath(document_obj, filename, addition
 
     [stem, index] = document_obj.seriesMemberOf(filename);
     if isempty(stem), return; end
+    % INDEX is the one-based MANIFEST position, not the number in the
+    % name: seriesMemberOf has already applied the document's base
+    % (NAME_1 of a did_v1 document and NAME_0 of a V_eta one are both 1).
     if ~isscalar(index) || index < 1 || index ~= round(index), return; end
 
     manifestPath = localSeriesManifestPath(document_obj, stem, additionalRoots);

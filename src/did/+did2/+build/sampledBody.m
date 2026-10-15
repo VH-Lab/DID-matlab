@@ -20,7 +20,8 @@ function doc = sampledBody(ownerId, keys, options)
 %                     "-32768"): what a missing chunk holds when 'Complete' is true
 %     'Complete'      logical: dense (every position has a value)
 %     'Conditions'    one-value facts true of THIS body only
-%     'Format', 'Compression', 'ContentHash', 'HashAlgorithm', 'Description'
+%     'Format'        an ontology term: {node, name} or a CURIE (formatTerm)
+%     'Compression', 'ContentHash', 'HashAlgorithm', 'Description'
 %     'Fields'        any other declared field, as a struct
 %   Options (edges):
 %     'FilterId'      the frequency filter these samples passed through
@@ -28,8 +29,11 @@ function doc = sampledBody(ownerId, keys, options)
 %                     from (a key's `positions_from` indexes them)
 %     'Edges'         any other declared edge
 %   Options (document):
-%     'Chunks' (default 1), 'Files', 'SessionId' (required), 'Id',
+%     'Chunks' (default 1), 'Files', 'SessionId' (required),
 %     'CreationTimestamp', 'Validate', 'SchemaCache'.
+%     'Id'            base.id to use, as did2.build.document's 'Id': e.g. the
+%                     id of the source document this body migrates from. ''
+%                     (the default) mints a new id.
 %
 %   Example:
 %     body = did2.build.sampledBody(obsId, ...
@@ -69,7 +73,7 @@ end
 fields = struct('keys', {keys}, ...
     'datum_order', options.DatumOrder, 'byte_order', options.ByteOrder, ...
     'fill_value', options.FillValue, 'complete', options.Complete, ...
-    'conditions', {options.Conditions}, 'format', options.Format, ...
+    'conditions', {options.Conditions}, 'format', did2.build.formatTerm(options.Format, options.SchemaCache), ...
     'compression', options.Compression, 'content_hash', options.ContentHash, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);

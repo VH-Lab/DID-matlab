@@ -247,6 +247,110 @@ verifyEqual(testCase, numel(hits), 1);
 verifyEmpty(testCase, db.search(did2.query('', 'depends_on', 'parent', 'no-such-id')));
 end
 
+function testSearchDependsOnCombinations(testCase)
+% A named depends_on compiles to `documents.id IN (...)` (so SQLite can
+% start from the edge index); the answers must be the ones the correlated
+% EXISTS gave, alone, negated, ANDed with isa and inside an or.
+db = testCase.TestData.db;
+withEdge = @(d, id) d.set('depends_on', struct('name', {'parent'}, 'document_id', {id}));
+d1 = withEdge(makeDemoA('a1', 'x'), 'id-1');      db.add(d1, 'Validate', false);
+d2 = withEdge(makeDemoB('b1', 'y', 'q'), 'id-1'); db.add(d2, 'Validate', false);
+d3 = withEdge(makeDemoA('a2', 'z'), 'id-2');      db.add(d3, 'Validate', false);
+d4 = makeDemoA('a3', 'w');                        db.add(d4);
+names = @(q) sort(cellfun(@(h) char(h.get('base.name')), db.search(q), 'UniformOutput', false));
+edge1 = did2.query('', 'depends_on', 'parent', 'id-1');
+verifyEqual(testCase, names(edge1), {'a1', 'b1'});
+verifyEqual(testCase, names(did2.query('', 'isa', 'demoB') & edge1), {'b1'});
+verifyEqual(testCase, names(did2.query('', '~depends_on', 'parent', 'id-1')), {'a2', 'a3'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'parent', 'id-2') | ...
+    did2.query('', 'isa', 'demoB')), {'a2', 'b1'});
+verifyEqual(testCase, names(edge1 & did2.query('base.name', 'exact_string', 'a1')), {'a1'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', '*', 'id-2')), {'a2'});
+
+% and the plan starts from the edge: documents is not scanned
+r = db.testHookExplain(did2.query('', 'isa', 'demoA') & edge1);
+details = {r.plan.detail};
+verifyFalse(testCase, any(~cellfun(@isempty, regexp(details, '^SCAN (TABLE )?documents\>', 'once'))), ...
+    sprintf('plan: %s', strjoin(details, ' | ')));
+verifyTrue(testCase, any(contains(details, 'depends_on_name_document_id')), ...
+    sprintf('plan: %s', strjoin(details, ' | ')));
+end
+
+function testSearchDependsOnAQueryOrAList(testCase)
+% A depends_on whose target is a query: "formulations with peptone as an
+% ingredient" without first looking peptone's id up by hand. The target
+% may itself nest (plates poured from such a formulation), sit in an or,
+% be negated, or be the wildcard edge; a list of ids means any of them.
+db = testCase.TestData.db;
+idOf = @(d) char(d.get('base.id'));
+edges = @(d, name, ids) d.set('depends_on', struct('name', repmat({name}, 1, numel(ids)), ...
+    'document_id', ids));
+pep = makeDemoA('peptone', 'x'); db.add(pep);
+agar = makeDemoA('agar', 'y');   db.add(agar);
+salt = makeDemoA('salt', 'z');   db.add(salt);
+ngm = edges(makeDemoB('ngm', 'f', 'q'), 'ingredient', {idOf(agar), idOf(pep), idOf(salt)});
+db.add(ngm, 'Validate', false);
+nop = edges(makeDemoB('ngm_np', 'f', 'q'), 'ingredient', {idOf(agar), idOf(salt)});
+db.add(nop, 'Validate', false);
+lb = edges(makeDemoB('lb', 'f', 'q'), 'ingredient', {idOf(salt)});
+db.add(lb, 'Validate', false);
+p1 = edges(makeDemoA('plate1', 'p'), 'formulation', {idOf(ngm)}); db.add(p1, 'Validate', false);
+p2 = edges(makeDemoA('plate2', 'p'), 'formulation', {idOf(nop)}); db.add(p2, 'Validate', false);
+
+names = @(q) sort(cellfun(@(h) char(h.get('base.name')), db.search(q), 'UniformOutput', false));
+named = @(n) did2.query('base.name', 'exact_string', n);
+withPep = did2.query('', 'depends_on', 'ingredient', named('peptone'));
+isB = did2.query('', 'isa', 'demoB');
+
+verifyTrue(testCase, withPep.hasNested());
+verifyEqual(testCase, names(withPep), {'ngm'});
+verifyEqual(testCase, names(isB & did2.query('', '~depends_on', 'ingredient', named('peptone'))), ...
+    {'lb', 'ngm_np'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'formulation', withPep)), {'plate1'}, ...
+    'two levels: plates poured from a formulation with peptone');
+verifyEqual(testCase, names(did2.query('', 'depends_on', '*', named('peptone'))), {'ngm'});
+verifyEqual(testCase, names(withPep | named('lb')), {'lb', 'ngm'});
+verifyEqual(testCase, names(isB & did2.query('', 'depends_on', 'ingredient', ...
+    named('agar') | named('peptone'))), {'ngm', 'ngm_np'}, 'an or inside the target');
+verifyEmpty(testCase, db.search(did2.query('', 'depends_on', 'ingredient', named('nothing'))));
+verifyEqual(testCase, names(isB & did2.query('', '~depends_on', 'ingredient', named('nothing'))), ...
+    {'lb', 'ngm', 'ngm_np'});
+
+% a list of ids: any of them
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'ingredient', {idOf(agar), idOf(pep)})), ...
+    {'ngm', 'ngm_np'});
+verifyEqual(testCase, names(did2.query('', 'depends_on', 'ingredient', {idOf(pep)})), {'ngm'});
+verifyEmpty(testCase, db.search(did2.query('', 'depends_on', 'ingredient', {})));
+verifyEqual(testCase, names(isB & did2.query('', '~depends_on', 'ingredient', {idOf(pep), 'x'})), ...
+    {'lb', 'ngm_np'});
+
+% one document alone cannot answer a nested target; a database can
+verifyError(testCase, @() withPep.matches(ngm), 'did2:query:nestedNeedsDatabase');
+% the SQL a search runs: the target resolved to its ids, one bound list
+% when it matched several, a plain = ? when it matched one
+r = db.testHookExplain(did2.query('', 'depends_on', 'ingredient', named('agar') | named('peptone')));
+verifySubstring(testCase, r.sql, 'json_each');
+r = db.testHookExplain(withPep);
+verifySubstring(testCase, r.sql, 'd.document_id = ?');
+end
+
+function testSearchWildcard(testCase)
+% '*' any run of characters, ignoring case, in SQL (LIKE) and in the recheck
+db = testCase.TestData.db;
+for n = {'N2', 'N2-GFP', 'CB4856', 'cb_1', '100%', 'a*b'}
+    db.add(makeDemoA(n{1}, 'x'));
+end
+names = @(p) sort(cellfun(@(h) char(h.get('base.name')), ...
+    db.search(did2.query('base.name', 'wildcard', p)), 'UniformOutput', false));
+verifyEqual(testCase, names('N2'), {'N2'}, 'no star: the whole value');
+verifyEqual(testCase, names('N2*'), {'N2', 'N2-GFP'});
+verifyEqual(testCase, names('cb*'), {'CB4856', 'cb_1'}, 'case is ignored');
+verifyEqual(testCase, names('*_*'), {'cb_1'}, '_ is literal, not SQL''s any-character');
+verifyEqual(testCase, names('*%'), {'100%'}, '% is literal');
+verifyEqual(testCase, names('a\*b'), {'a*b'}, '\* is a literal star');
+verifyEqual(testCase, numel(db.search(did2.query('base.name', '~wildcard', 'N2*'))), 4);
+end
+
 function testARepeatedEdgeNameIsStored(testCase)
 % A V2 edge declared `multiple` (e.g. time_reference_id) repeats ONE name;
 % the depends_on key used to be (doc_id, name) and refused the second row.
@@ -424,90 +528,87 @@ doc = doc.set('base.name', name);
 doc = doc.set('demoArray.axes', axes);
 end
 
-% ---- step 4: generated columns + rebuild-on-mismatch ----
+% ---- step 4: queryable scalar values in queryable_scalar_elem ----
+%
+% Until 2026-10-06 each queryable scalar path was a q_<flat> STORED
+% generated column on `documents`, with its own index: 675 of them for the
+% V_eta schema, which every insert had to maintain. The values now live in
+% queryable_scalar_elem, one row per value a document has. These tests
+% replace the generated-column ones.
 
-function testGeneratedColumnsExistAtCreate(testCase)
-% A freshly-created DB should already have the q_* columns and their
-% indexes derived from the loaded schemas.
+function testScalarSidecarAtCreateAndNoGeneratedColumns(testCase)
 db = testCase.TestData.db;
-cols = generatedColumns(db, 'documents');
-verifyTrue(testCase, ismember('q_base_name', cols));
-verifyTrue(testCase, ismember('q_base_id', cols));
-verifyTrue(testCase, ismember('q_demoa_value', cols));
+paths = db.testHookQueryableScalarPaths();
+verifyTrue(testCase, all(ismember({'base.name', 'base.id', 'demoA.value'}, paths)));
+n = mksqlite(db.testHookDbId(), ['SELECT COUNT(*) AS n FROM pragma_table_xinfo(''documents'') ' ...
+    'WHERE name LIKE ''q\_%'' ESCAPE ''\''']);
+verifyEqual(testCase, double(n.n), 0, 'no generated columns on documents');
+mksqlite(db.testHookDbId(), 'SELECT doc_id, path, value_text, value_num, value_raw FROM queryable_scalar_elem LIMIT 0');
 end
 
 function testIndexedScalarMatchesFallback(testCase)
-% Searching by base.name should hit the generated column and return
-% the same docs as the JSON1 fallback would.
+% Searching by base.name goes through the side table and returns the
+% same documents as the in-memory evaluator.
 db = testCase.TestData.db;
 d1 = makeDemoA('alice', 'a1'); db.add(d1);
 d2 = makeDemoA('bob',   'a2'); db.add(d2);
 hits = db.search(did2.query('base.name', 'exact_string', 'alice'));
 verifyEqual(testCase, numel(hits), 1);
 verifyEqual(testCase, hits{1}.get('base.id'), d1.get('base.id'));
+hits = db.search(did2.query('base.name', '~exact_string', 'alice'));
+verifyEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, hits{1}.get('base.id'), d2.get('base.id'));
+r = db.testHookExplain(did2.query('base.name', 'exact_string', 'alice'));
+verifyTrue(testCase, any(contains({r.plan.detail}, 'qse_path_text')), ...
+    sprintf('plan: %s', strjoin({r.plan.detail}, ' | ')));
 end
 
-function testGeneratedColumnPopulatesFromBody(testCase)
-% Direct query against the generated column should reflect the
-% just-inserted body — confirms the STORED column expression fires.
+function testScalarValuesStoredAtInsert(testCase)
 db = testCase.TestData.db;
 doc = makeDemoA('carol', 'cv');
 db.add(doc);
 rows = mksqlite(db.testHookDbId(), ...
-    'SELECT q_base_name, q_demoa_value FROM documents WHERE id = ?', ...
+    'SELECT path, value_text FROM queryable_scalar_elem WHERE doc_id = ? ORDER BY path', ...
     doc.get('base.id'));
-verifyEqual(testCase, char(rows(1).q_base_name), 'carol');
-verifyEqual(testCase, char(rows(1).q_demoa_value), 'cv');
+got = containers.Map({rows.path}, cellfun(@char, {rows.value_text}, 'UniformOutput', false));
+verifyEqual(testCase, got('base.name'), 'carol');
+verifyEqual(testCase, got('demoA.value'), 'cv');
+db.remove(doc.get('base.id'));
+n = mksqlite(db.testHookDbId(), 'SELECT COUNT(*) AS n FROM queryable_scalar_elem WHERE doc_id = ?', ...
+    doc.get('base.id'));
+verifyEqual(testCase, double(n.n), 0, 'removed with the document');
 end
 
-function testRebuildPreservesDataOnSchemaMismatch(testCase)
-% Manually drop a generated column from the table (simulating an
-% older queryable-paths set), then reopen. The constructor should
-% rebuild the table to match the current schema while preserving
-% every body verbatim.
+function testAnOldLayoutDatabaseIsConvertedOnOpen(testCase)
+% A database written before queryable_scalar_elem: a q_ generated column
+% with its documents_q_ index, and no side-table rows. Opening it drops
+% the column and the index, fills the side table from the bodies, and
+% keeps every document.
 db = testCase.TestData.db;
 d1 = makeDemoA('alice', 'a1'); db.add(d1);
 d2 = makeDemoB('bob', 'a2', 'b2'); db.add(d2);
-
-% SQLite 3.35+ supports DROP COLUMN. The CI MATLAB ships with mksqlite
-% bound to a >=3.35 sqlite, but skip the test gracefully on older.
-ok = tryDropColumn(db.testHookDbId(), 'documents', 'q_demoa_value');
-if ~ok
-    assumeFail(testCase, 'sqlite DROP COLUMN unavailable on this build');
-end
+id = db.testHookDbId();
+mksqlite(id, ['ALTER TABLE documents ADD COLUMN q_base_name TEXT ' ...
+    'GENERATED ALWAYS AS (json_extract(body, ''$.base.name'')) VIRTUAL']);
+mksqlite(id, 'CREATE INDEX documents_q_base_name ON documents(q_base_name)');
+mksqlite(id, 'DELETE FROM queryable_scalar_elem');
+mksqlite(id, 'DELETE FROM meta WHERE key = ?', 'queryable_scalar_paths');
 db.close();
 
 db2 = did2.database.sqlitedb(testCase.TestData.tmpFile);
 cleanup = onCleanup(@() db2.close()); %#ok<NASGU>
-cols = generatedColumns(db2, 'documents');
-verifyTrue(testCase, ismember('q_demoa_value', cols), ...
-    'rebuild should restore the missing generated column');
+id2 = db2.testHookDbId();
+n = mksqlite(id2, ['SELECT COUNT(*) AS n FROM pragma_table_xinfo(''documents'') ' ...
+    'WHERE name LIKE ''q\_%'' ESCAPE ''\''']);
+verifyEqual(testCase, double(n.n), 0, 'the generated column is gone');
+n = mksqlite(id2, 'SELECT COUNT(*) AS n FROM sqlite_master WHERE name = ''documents_q_base_name''');
+verifyEqual(testCase, double(n.n), 0, 'and its index');
 verifyEqual(testCase, db2.count(), 2);
-verifyTrue(testCase, db2.has(d1.get('base.id')));
-verifyTrue(testCase, db2.has(d2.get('base.id')));
-end
-
-% ---- helpers (step 4) ----
-
-function cols = generatedColumns(db, tableName)
-% Probe each generated column the sqlitedb instance expects to find on
-% the table with a zero-row SELECT, and return the subset that
-% succeeds. We previously walked `pragma_table_info`, but on the CI's
-% mksqlite + sqlite combination the .name field of those rows didn't
-% round-trip through ismember the way the test assumed even when the
-% column itself was healthy. Probing each candidate directly avoids
-% that path entirely.
-candidates = db.testHookQueryableColumns();
-cols = {};
-for k = 1:numel(candidates)
-    sql = sprintf('SELECT %s FROM %s LIMIT 0', candidates{k}, tableName);
-    try
-        mksqlite(db.testHookDbId(), sql);
-        cols{end+1} = candidates{k}; %#ok<AGROW>
-    catch
-        % column does not exist on this table.
-    end
-end
+hits = db2.search(did2.query('base.name', 'exact_string', 'bob'));
+verifyEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, hits{1}.get('base.id'), d2.get('base.id'));
+n = mksqlite(id2, 'SELECT COUNT(*) AS n FROM queryable_scalar_elem WHERE path = ''base.name''');
+verifyEqual(testCase, double(n.n), 2, 'the side table is filled from the bodies');
 end
 
 % ---- step 5: queryable_array_elem sidecar ----
@@ -533,6 +634,49 @@ sizeMask = strcmp({rows.path}, 'demoArray.axes[*].size');
 sizeRows = rows(sizeMask);
 sizeValues = [sizeRows.value_num];
 verifyEqual(testCase, sizeValues(:)', [10 20 5]);
+end
+
+function testManyRowsCrossTheStatementChunks(testCase)
+% Rows are written several to a statement, chunked under SQLite's
+% bound-variable limit (999: 199 sidecar rows, 333 links per statement).
+% A document with more than that must store every row, in order.
+db = testCase.TestData.db;
+n = 450;
+axes = struct('name', repmat({'a'}, 1, n), 'unit', arrayfun(@(k) sprintf('u%d', k), 1:n, ...
+    'UniformOutput', false), 'size', num2cell(1:n));
+doc = makeDemoArray('many', axes);
+db.add(doc);
+id = doc.get('base.id');
+rows = mksqlite(db.testHookDbId(), ['SELECT elem_index, value_num FROM queryable_array_elem ' ...
+    'WHERE doc_id = ? AND path = ? ORDER BY rowid'], id, 'demoArray.axes[*].size');
+verifyEqual(testCase, [rows.elem_index], 1:n, 'every element, in order');
+verifyEqual(testCase, [rows.value_num], 1:n);
+rows = mksqlite(db.testHookDbId(), ['SELECT value_text FROM queryable_array_elem ' ...
+    'WHERE doc_id = ? AND path = ? ORDER BY rowid'], id, 'demoArray.axes[*].unit');
+verifyEqual(testCase, cellfun(@char, {rows.value_text}, 'UniformOutput', false), ...
+    arrayfun(@(k) sprintf('u%d', k), 1:n, 'UniformOutput', false));
+
+m = 700;
+d = makeDemoA('links', 'x');
+d = d.set('depends_on', struct('name', repmat({'parent'}, 1, m), ...
+    'document_id', arrayfun(@(k) sprintf('id-%d', k), 1:m, 'UniformOutput', false)));
+db.add(d, 'Validate', false);
+links = mksqlite(db.testHookDbId(), ...
+    'SELECT document_id FROM depends_on WHERE doc_id = ? ORDER BY rowid', d.get('base.id'));
+verifyEqual(testCase, cellfun(@char, {links.document_id}, 'UniformOutput', false), ...
+    arrayfun(@(k) sprintf('id-%d', k), 1:m, 'UniformOutput', false));
+sc = mksqlite(db.testHookDbId(), ...
+    'SELECT classname FROM superclasses WHERE doc_id = ? ORDER BY rowid', d.get('base.id'));
+verifyEqual(testCase, sort(cellfun(@char, {sc.classname}, 'UniformOutput', false)), sort({'base', 'demoA'}));
+end
+
+function testADocumentWithoutArrayBlocksWritesNoSidecarRows(testCase)
+db = testCase.TestData.db;
+d = makeDemoA('plain', 'x');
+db.add(d);
+n = mksqlite(db.testHookDbId(), ...
+    'SELECT COUNT(*) AS n FROM queryable_array_elem WHERE doc_id = ?', d.get('base.id'));
+verifyEqual(testCase, double(n.n), 0);
 end
 
 function testSidecarRoutesIndexedStarSearch(testCase)

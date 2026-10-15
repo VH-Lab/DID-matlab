@@ -73,6 +73,61 @@ verifyEqual(testCase, rep.present_undeclared_count, 0);
 verifyEqual(testCase, rep.docs_with_files, 0);
 end
 
+% ===================== file series =========================================
+
+function testSeriesMembersAreNeitherUndeclaredNorAbsent(testCase)
+% A class declaring a file SERIES (`series: true`: `body_data` on data_body)
+% is carried as numbered members, body_data_0, body_data_1, ... An exact strcmp
+% reported every member PRESENT-BUT-UNDECLARED and the series DECLARED-BUT-
+% ABSENT -- two false rows per document, found when the lightsheet level fold
+% (chunk.bin_k -> body_data_{k-1}) was written. did2.build's checkFiles already
+% accepted `^<stem>_\d+$`; the audit now applies the same rule.
+cache = did2.schema.cache.shared();
+[className, stem] = aClassDeclaringASeries(cache);
+assumeNotEmpty(testCase, className, 'no V_eta class declares a file series');
+b = bodyStruct(className, 'doc_series_members');
+b.files = struct('file_list', {{[stem '_0'], [stem '_1']}});
+rep = did2.validate.fileList({did2.document(b)}, 'SchemaCache', cache);
+verifyEqual(testCase, rep.present_undeclared_count, 0, ...
+    sprintf('%s_0 / %s_1 are members of the declared series %s', stem, stem, stem));
+absent = {rep.declared_but_absent.file_name};
+verifyFalse(testCase, any(strcmp(absent, stem)), ...
+    sprintf('the series %s is present through its members', stem));
+end
+
+function testTheMemberBaseFollowsTheDocumentsVintage(testCase)
+% DID-schema #73 item 17 (kept by Jess 2026-10-14): a V_eta document numbers
+% series members from 0, a did_v1 document from 1. So `<stem>_0` is a member
+% on a V_eta document and an UNDECLARED file on a v1 one; `<stem>_1` is a
+% member on both. The vintage is document_class.schema_version.
+cache = did2.schema.cache.shared();
+[className, stem] = aClassDeclaringASeries(cache);
+assumeNotEmpty(testCase, className, 'no V_eta class declares a file series');
+v1 = bodyStruct(className, 'doc_series_v1');
+v1.document_class = rmfield(v1.document_class, 'schema_version');
+v1.files = struct('file_list', {{[stem '_0'], [stem '_1']}});
+rep = did2.validate.fileList({v1}, 'SchemaCache', cache);
+verifyEqual(testCase, rep.present_undeclared_count, 1);
+verifyEqual(testCase, rep.present_but_undeclared(1).file_name, [stem '_0']);
+eta = bodyStruct(className, 'doc_series_eta');
+eta.files = struct('file_list', {{[stem '_0'], [stem '_1']}});
+rep = did2.validate.fileList({eta}, 'SchemaCache', cache);
+verifyEqual(testCase, rep.present_undeclared_count, 0);
+end
+
+function testANonNumericSuffixIsNotASeriesMember(testCase)
+% The rule is `<stem>_<digits>`, not a prefix match: anything else is still an
+% undeclared file, so the audit cannot be fooled into silence by a near-name.
+cache = did2.schema.cache.shared();
+[className, stem] = aClassDeclaringASeries(cache);
+assumeNotEmpty(testCase, className, 'no V_eta class declares a file series');
+b = bodyStruct(className, 'doc_series_near_name');
+b.files = struct('file_list', {{[stem '_x']}});
+rep = did2.validate.fileList({did2.document(b)}, 'SchemaCache', cache);
+verifyEqual(testCase, rep.present_undeclared_count, 1);
+verifyEqual(testCase, rep.present_but_undeclared(1).file_name, [stem '_x']);
+end
+
 function testNeverRaisesOnMalformedInput(testCase)
 % The audit must never be able to break a migration.
 verifyWarningFree(testCase, @() did2.validate.fileList({[]}));
@@ -104,6 +159,36 @@ for i = 1:numel(names)
         if iscell(entry); entry = entry{1}; end
         if isstruct(entry) && isfield(entry, 'name')
             className = names{i}; fileName = char(entry.name); return;
+        end
+    end
+end
+end
+
+function [className, stem] = aClassDeclaringASeries(cache)
+%ACLASSDECLARINGASERIES A V_eta class whose chain declares a `series: true`
+%   file, resolved from the schema (the bodies inherit `body_data` from
+%   data_body), or '' when the loaded schema has none.
+className = ''; stem = '';
+names = {'sampled_body', 'opaque_body'};
+for i = 1:numel(names)
+    try
+        chain = cache.classChain(names{i});
+    catch
+        continue;
+    end
+    for j = 1:numel(chain)
+        try
+            c = cache.getClass(chain{j});
+        catch
+            continue;
+        end
+        if ~isstruct(c) || ~isfield(c, 'file') || isempty(c.file); continue; end
+        for k = 1:numel(c.file)
+            entry = c.file(k);
+            if iscell(entry); entry = entry{1}; end
+            if isstruct(entry) && isfield(entry, 'series') && isequal(entry.series, true)
+                className = names{i}; stem = char(entry.name); return;
+            end
         end
     end
 end

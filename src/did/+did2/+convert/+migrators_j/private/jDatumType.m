@@ -1,10 +1,11 @@
-function [datumType, sourceDatumType] = jDatumType(raw)
+function [datumType, sourceDatumType, byteOrder] = jDatumType(raw)
 %JDATUMTYPE Normalise a MATLAB class name to the 14-value datum vocabulary.
 %
 %   [T, SRC] = jDatumType(RAW) maps the source's own spelling RAW onto the
 %   bound `datum_type` enum, and returns the source spelling in SRC when it
 %   differs. SRC is '' when RAW is already canonical, which is what
 %   `subject_statement.source_datum_type` documents as "OMITTED when identical".
+%   BYTEORDER is set only for an NGFF typestring (below); '' otherwise.
 %
 %   THE MAP IS THE SIGNED PLAN'S, verbatim (V_eta_data_body_model_plan.md, "The
 %   datum_type normalisation map"), read from NDI's own writer:
@@ -39,8 +40,45 @@ function [datumType, sourceDatumType] = jDatumType(raw)
 %   papered over here.
 datumType = '';
 sourceDatumType = '';
+byteOrder = '';
 raw = char(raw);
 if isempty(raw); return; end
+
+% NGFF / Zarr v2 TYPESTRINGS ('<u2', '>f4', '|u1'), added 2026-10-14 for the
+% lightsheet migrators. The OME-Zarr path of NDI's lightsheet writer stamps the
+% store's own `.zarray` dtype verbatim: ndi.fun.doc.lightsheet.fromOMEZarr ->
+% ndr.format.omezarr.listPyramids (readZArrayMeta: `dtype = char(meta.dtype)`)
+% -> makePyramid.m `'dtype', char(firstLevel.dtype)`. The SmartSPIM path
+% (fromSPIM.m: `dtype = char(spim.dtype)`) stamps a MATLAB class name instead,
+% which the map below already handles. A typestring is three facts -- byte
+% order, kind, element size -- and the canonical name carries two, so the
+% third comes back as BYTEORDER: 'little' for '<', 'big' for '>', '' for '|'
+% (byte order not applicable: one-byte types). The source spelling is kept in
+% SRC, as for every other non-canonical spelling. A typestring this map does
+% not know ('<M8[ns]', '|S12', '<u3') yields '' -- not mapped, not defaulted.
+tok = regexp(raw, '^([<>|])([uifcb])(\d+)$', 'tokens', 'once');
+if ~isempty(tok)
+    sourceDatumType = raw;
+    switch tok{1}
+        case '<'; byteOrder = 'little';
+        case '>'; byteOrder = 'big';
+        otherwise; byteOrder = '';
+    end
+    nbytes = str2double(tok{3});
+    switch tok{2}
+        case 'u'
+            if any(nbytes == [1 2 4 8]); datumType = sprintf('uint%d', 8 * nbytes); end
+        case 'i'
+            if any(nbytes == [1 2 4 8]); datumType = sprintf('int%d', 8 * nbytes); end
+        case 'f'
+            if any(nbytes == [2 4 8]); datumType = sprintf('float%d', 8 * nbytes); end
+        case 'c'
+            if any(nbytes == [8 16]); datumType = sprintf('complex%d', 8 * nbytes); end
+        case 'b'
+            if nbytes == 1; datumType = 'bool'; end
+    end
+    return;
+end
 
 canonical = { ...
     'int8', 'int16', 'int32', 'int64', ...

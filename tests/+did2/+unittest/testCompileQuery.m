@@ -136,6 +136,17 @@ verifySubstring(testCase, sql, 'FROM depends_on d');
 verifySubstring(testCase, sql, 'd.name = ?');
 verifySubstring(testCase, sql, 'd.document_id = ?');
 verifyEqual(testCase, params, {'parent', 'id-1'});
+% a named edge is an uncorrelated IN, so SQLite can start from the
+% depends_on(name, document_id) index instead of scanning documents
+verifySubstring(testCase, sql, 'documents.id IN (SELECT d.doc_id FROM depends_on d');
+verifyEmpty(testCase, strfind(sql, 'd.doc_id = documents.id'), 'not correlated');
+end
+
+function testDependsOnNegatedIsNotIn(testCase)
+q = did2.query('', '~depends_on', 'parent', 'id-1');
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, '(documents.id NOT IN (SELECT d.doc_id FROM depends_on d');
+verifyEqual(testCase, params, {'parent', 'id-1'});
 end
 
 function testDependsOnWildcard(testCase)
@@ -145,6 +156,53 @@ verifySubstring(testCase, sql, 'd.document_id = ?');
 % No `d.name = ?` clause when the wildcard is in effect.
 verifyEmpty(testCase, regexp(sql, 'd\.name\s*=\s*\?', 'once'));
 verifyEqual(testCase, params, {'id-1'});
+end
+
+function testDependsOnAListIsOneJsonParameter(testCase)
+q = did2.query('', 'depends_on', 'parent', {'id-1', 'id-2', 'id-3'});
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, 'd.document_id IN (SELECT value FROM json_each(?))');
+verifyEqual(testCase, params, {'parent', '["id-1","id-2","id-3"]'}, ...
+    'one bound value whatever the length (SQLite allows 999)');
+[sql, params] = did2.database.compileQuery(did2.query('', 'depends_on', 'parent', {'id-1'}));
+verifySubstring(testCase, sql, 'd.document_id = ?');
+verifyEqual(testCase, params, {'parent', 'id-1'});
+end
+
+function testDependsOnAQueryIsASubquery(testCase)
+inner = did2.query('base.name', 'exact_string', 'peptone');
+q = did2.query('', 'depends_on', 'ingredient', inner);
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, 'd.document_id IN (SELECT id FROM documents WHERE ');
+verifySubstring(testCase, sql, 'json_extract(body, ''$.base.name'')');
+verifyEqual(testCase, params, {'ingredient', 'peptone'});
+% negated, an over-approximate target would drop true matches: 1=1
+[sql, params] = did2.database.compileQuery(did2.query('', '~depends_on', 'ingredient', inner));
+verifyEqual(testCase, sql, '1=1');
+verifyEqual(testCase, params, {});
+end
+
+function testWildcardIsLikeWithEscapes(testCase)
+q = did2.query('base.name', 'wildcard', 'CB*');
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, 'LIKE ? ESCAPE ''\''');
+verifyEqual(testCase, params, {'CB%'});
+% SQL's own wildcards are literal in a pattern; '\*' is a literal star
+verifyEqual(testCase, did2.query.wildcardToLike('a_b%c*d\*e'), 'a\_b\%c%d*e');
+verifyEqual(testCase, did2.query.wildcardToLike('*elegans*'), '%elegans%');
+verifyEqual(testCase, did2.query.wildcardToRegexp('N2*'), '^N2.*$');
+verifyEqual(testCase, did2.query.wildcardToRegexp('a.b\*'), '^a\.b\*$');
+end
+
+function testWildcardMatchesInMemory(testCase)
+d = struct('base', struct('name', 'Caenorhabditis elegans'));
+m = @(p) matches(did2.query('base.name', 'wildcard', p), d);
+verifyTrue(testCase, m('*elegans'));
+verifyTrue(testCase, m('caenorhabditis*'), 'case is ignored');
+verifyTrue(testCase, m('*'));
+verifyFalse(testCase, m('elegans'), 'the whole value must match');
+verifyFalse(testCase, m('*elegans\*'), 'a literal star');
+verifyTrue(testCase, matches(did2.query('base.name', '~wildcard', 'N*'), d));
 end
 
 % ---- hasmember & friends ----
@@ -192,17 +250,27 @@ testCase.verifyTrue(contains(haystack, needle), ...
     sprintf('Expected "%s" to contain "%s".', haystack, needle));
 end
 
-% ---- step 4: routing to generated columns ----
+% ---- step 4: routing queryable scalars to queryable_scalar_elem ----
 
-function testScalarLeafRoutesToGeneratedColumn(testCase)
-% With base.name declared queryable, the compiler should emit a
-% comparison against q_base_name instead of json_extract.
+function testScalarLeafRoutesToScalarSidecar(testCase)
+% A queryable path is answered from queryable_scalar_elem, starting from
+% its (path, value) index; with the affinity known, in that column.
 q = did2.query('base.name', 'exact_string', 'alice');
 [sql, params] = did2.database.compileQuery(q, ...
-    'QueryablePaths', {'base.name'});
-verifySubstring(testCase, sql, 'q_base_name = ?');
+    'QueryablePaths', struct('path', {'base.name'}, 'affinity', {'TEXT'}));
+verifySubstring(testCase, sql, ...
+    'documents.id IN (SELECT qse.doc_id FROM queryable_scalar_elem qse WHERE qse.path = ? AND qse.value_text = ?)');
 testCase.verifyFalse(contains(sql, 'json_extract'));
-verifyEqual(testCase, params, {'alice'});
+verifyEqual(testCase, params, {'base.name', 'alice'});
+end
+
+function testScalarSidecarColumnFollowsAffinity(testCase)
+q = did2.query('demoA.size', 'greaterthan', 3);
+[sql, ~] = did2.database.compileQuery(q, ...
+    'QueryablePaths', struct('path', {'demoA.size'}, 'affinity', {'REAL'}));
+verifySubstring(testCase, sql, 'CAST(qse.value_num AS REAL) > ?');
+[sql, ~] = did2.database.compileQuery(q, 'QueryablePaths', {'demoA.size'});
+verifySubstring(testCase, sql, 'COALESCE(qse.value_text, qse.value_num, qse.value_raw)');
 end
 
 function testScalarLeafFallsBackForUnqueryablePath(testCase)
@@ -213,14 +281,13 @@ q = did2.query('demoA.value', 'exact_string', 'a1');
 verifySubstring(testCase, sql, 'json_extract(body, ''$.demoA.value'')');
 end
 
-function testNegationRoutesWithGuardOnGeneratedColumn(testCase)
-% Negation still needs the NULL guard so missing values flip to true
-% under `~`. The guard should target the generated column.
+function testNegationOfAQueryableScalarIsNotIn(testCase)
+% A document without the value must match the negation, as it did with
+% `(column IS NULL OR NOT ...)`: NOT IN over the rows that do match.
 q = did2.query('base.name', '~exact_string', 'alice');
 [sql, ~] = did2.database.compileQuery(q, ...
-    'QueryablePaths', {'base.name'});
-verifySubstring(testCase, sql, 'q_base_name IS NULL');
-verifySubstring(testCase, sql, 'NOT (');
+    'QueryablePaths', struct('path', {'base.name'}, 'affinity', {'TEXT'}));
+verifySubstring(testCase, sql, '(documents.id NOT IN (SELECT qse.doc_id FROM queryable_scalar_elem qse');
 end
 
 function testHasfieldNotAffectedByQueryablePaths(testCase)
