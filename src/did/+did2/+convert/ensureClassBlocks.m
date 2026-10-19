@@ -24,6 +24,11 @@ function body = ensureClassBlocks(body, schemaCacheOverride)
 % (e.g., the class is unknown to the cache, or the cache itself is
 % not configured). In that case validation will catch the underlying
 % issue downstream; this function does not raise.
+arguments
+    body struct
+    schemaCacheOverride % a did2.schema.cache, or [] for the shared one
+end
+
 if ~isfield(body, 'document_class') ...
         || ~isstruct(body.document_class) ...
         || ~isfield(body.document_class, 'class_name')

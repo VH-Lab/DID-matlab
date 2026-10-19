@@ -1000,6 +1000,10 @@ function printEmittedNothing(result)
 %PRINTEMITTEDNOTHING Report-only: sources a migrator consumed into nothing.
 %   Not a failure when the class is meant to fold away (a lightsheetZarrLevel
 %   that holds no bytes); a count on any other class is the signal.
+arguments
+    result (1,1) struct
+end
+
 if ~isfield(result.summary, 'emitted_nothing_count'); return; end
 if result.summary.emitted_nothing_count == 0; return; end
 fprintf(['  emitted nothing (REPORT ONLY -- migrator consumed the source ' ...

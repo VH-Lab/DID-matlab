@@ -46,12 +46,16 @@ function [bodies, refs, report] = mintSessionDuring(bodies, classes, marked, opt
 %     observations_without_session   no session document for its session_id
 %     session_references_ambiguous   two session documents claim it
 
+arguments
+    bodies % a cell of bodies, or the text 'marker'
+    classes {mustBeA(classes, 'cell')} = {}
+    marked {mustBeNumeric} = []
+    options (1,1) struct = struct()
+end
+
 if nargin == 1 && ischar(bodies) && strcmp(bodies, 'marker')
     bodies = 'session_time_reference_pending';
     return;
-end
-if nargin < 4
-    options = struct();
 end
 MARKER = did2.convert.mintSessionDuring('marker');
 
@@ -105,6 +109,11 @@ end
 % ===================== helpers =============================================
 
 function tf = isSessionDocument(b, cls)
+arguments
+    b % a body, or [] where it could not be read
+    cls {mustBeText}
+end
+
 tf = false;
 if strcmp(cls, 'session')
     tf = true;
@@ -124,6 +133,11 @@ end
 end
 
 function b = removeEdge(b, name)
+arguments
+    b struct
+    name {mustBeText}
+end
+
 if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
 deps = b.depends_on;
 if iscell(deps)
@@ -136,6 +150,12 @@ end
 
 function b = addEdge(b, name, value)
 % Shaped like the entries already there ({name, value} or {name, document_id}).
+arguments
+    b struct
+    name {mustBeText}
+    value {mustBeText}
+end
+
 if ~isfield(b, 'depends_on') || isempty(b.depends_on) || ~isstruct(b.depends_on)
     b.depends_on = struct('name', name, 'value', value);
     return;
@@ -149,6 +169,11 @@ b.depends_on(end+1) = e;
 end
 
 function v = baseField(b, name)
+arguments
+    b % a body; anything that is not a struct yields ''
+    name {mustBeText}
+end
+
 v = '';
 if isstruct(b) && isfield(b, 'base') && isstruct(b.base) && isfield(b.base, name) ...
         && ~isempty(b.base.(name))
@@ -157,6 +182,10 @@ end
 end
 
 function ts = creationOf(b)
+arguments
+    b % a body; anything that is not a struct yields ''
+end
+
 ts = '';
 for f = {'creation_timestamp', 'datestamp'}
     v = baseField(b, f{1});
@@ -165,6 +194,12 @@ end
 end
 
 function v = getOr(s, f, d)
+arguments
+    s % an options struct; anything that is not a struct yields D
+    f {mustBeText}
+    d
+end
+
 v = d;
 if isstruct(s) && isfield(s, f); v = s.(f); end
 end

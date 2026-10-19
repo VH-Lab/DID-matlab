@@ -29,6 +29,11 @@ function tf = isAlreadyTarget(body, targetVersion)
 % band but still carries legacy field shapes; (b) alone would skip
 % the bulk of v1 corpora, which do not happen to use the underscore
 % markers but still need every other v1->V_delta rewrite.
+arguments
+    body % anything; only a scalar struct can be a target document
+    targetVersion {mustBeText}
+end
+
 tf = false;
 if ~isstruct(body) || ~isscalar(body)
     return;
