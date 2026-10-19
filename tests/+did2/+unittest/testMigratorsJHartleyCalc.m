@@ -238,10 +238,10 @@ ax = planeBodies(out); ax = ax{1}.sampled_body.axes;
 verifyEqual(testCase, [ax.regular], [true true false]);
 verifyEqual(testCase, ax(1).origin.value, 1);
 verifyEqual(testCase, ax(1).spacing.value, 1);
-verifyEqual(testCase, ax(3).values.values, realLagVector());
-verifyEqual(testCase, ax(3).values.source_values, realLagVector());
+verifyEqual(testCase, ax(3).quantity.value, realLagVector());
+verifyEqual(testCase, ax(3).quantity.source_value, realLagVector());
 verifyEmpty(testCase, fieldnames(ax(3).origin), ...
-    'an irregular axis has no origin -- it has values');
+    'an irregular axis has no origin -- it has a quantity');
 end
 
 function testTheLagAxisIsNamedAndTheTwoSpatialAxesAreNotGuessed(testCase)
@@ -312,7 +312,7 @@ verifyEqual(testCase, numel(ax), 1);
 verifyEqual(testCase, ax.variable.name, 'time');
 verifyFalse(testCase, ax.regular);
 verifyEqual(testCase, ax.n, 5);
-verifyEqual(testCase, ax.values.values, [0.106; 0.31; 0.55; 0.9; 1.4]);
+verifyEqual(testCase, ax.quantity.value, [0.106; 0.31; 0.55; 0.9; 1.4]);
 verifyFalse(testCase, isfield(sb, 'files'), ...
     'the spike train has no attached bytes -- the times ARE the coordinates');
 end

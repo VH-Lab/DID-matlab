@@ -6,18 +6,24 @@ function e = jParameterEntry(variableName, canonicalValue, sourceUnit, sourceVal
 %   SAME field name in both places it appears -- inline on subject_interaction
 %   and in the method_parameters document:
 %
-%       variable   ontology_term   REQUIRED, bound, unique within the list
-%       value      { value, source_unit, source_value }   numeric knobs
-%       term       ontology_term                          categorical knobs
-%       text       char                                   free strings
+%       variable     ontology_term   REQUIRED, bound, unique within the list
+%       unit         ontology_term   canonical unit of a number
+%       source_unit  char            the unit as the source wrote it
+%       approximate  boolean
+%       quantity     { value, source_value }   numeric knobs
+%       term         ontology_term             categorical knobs
+%       count        integer                   integer knobs
+%       text         char                      free strings
 %
-%   This helper builds the NUMERIC form only (variable + value), because every
-%   bound knob in the spike-processing family is numeric. The other two slots
-%   are optional and are left off rather than emitted blank -- a blank
-%   {node:'',name:''} term on every row is noise the fragment/vacuous counters
-%   would have to learn to ignore.
+%   (data_body AMENDMENT 3: the same entry as a statement's `conditions`.)
 %
-%   THERE IS NO `unit` FIELD AND NO `data_type` FIELD, by decision: a
+%   This helper builds the NUMERIC form only (variable + source_unit +
+%   quantity), because every bound knob in the spike-processing family is
+%   numeric. The other slots are optional and are left off rather than emitted
+%   blank -- a blank {node:'',name:''} term on every row is noise the
+%   fragment/vacuous counters would have to learn to ignore.
+%
+%   THIS HELPER WRITES NO `unit` (and the entry has no `data_type`): a
 %   parameter's dimension comes from its bound `variable` via the registry, the
 %   same rule the `axis` entry follows. `source_unit` is not that -- it records
 %   WHAT THE SOURCE WROTE, and across all four v1 spike-parameter templates the
@@ -42,7 +48,7 @@ end
 
 e = struct();
 e.variable = jOntologyTerm('', variableName);
-e.value = struct('value', canonicalValue, ...
-    'source_unit', sourceUnit, ...
+e.source_unit = sourceUnit;
+e.quantity = struct('value', canonicalValue, ...
     'source_value', sourceValue);
 end

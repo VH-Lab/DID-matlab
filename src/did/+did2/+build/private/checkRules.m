@@ -13,23 +13,24 @@ function checkRules(cache, className, doc, chain)
 %
 %   2. BUILDER CHECKS that the schema states only in a field's documentation
 %      (not as a machine-readable rule). Each cites where it is stated:
-%        conditions_one_value     statement.conditions: "carries
-%                                 exactly one value form ... Cardinality
-%                                 exactly 1"
+%        conditions_one_value     statement.conditions: "{variable, unit,
+%                                 source_unit, approximate} plus exactly ONE
+%                                 value form", holding one value
 %        variable_once            statement.conditions: "a variable
 %                                 appears at most once across a statement's
 %                                 keys and conditions"; data.keys: variable
 %                                 "UNIQUE within the list"
-%        parameter_one_form       interaction.method_parameters:
-%                                 numeric `value`, categorical `term` or
-%                                 free-string `text` -- one of them
+%        parameter_one_form       interaction.method_parameters: the same
+%                                 entry -- exactly one of `term`, `quantity`,
+%                                 `count`, `text`
 %        parameter_variable_once  method_parameters: variable "UNIQUE within
 %                                 the list"
 %        parameters_not_both      interaction.method_parameters: "the
 %                                 statement points at a method_parameters
 %                                 document by method_parameters_id. Never both."
 %        key_n_matches            data.keys: n is the length of the dimension,
-%                                 so it equals the number of values/labels
+%                                 so it equals the number of positions in
+%                                 `quantity.value` or `term`
 %        datum_order_multikey     sampled_body.datum_order: "REQUIRED in
 %                                 practice whenever there is more than one key"
 %        require_inherited        a class's `require_inherited` list: an
@@ -121,14 +122,13 @@ if isstruct(keys)
 end
 if isstruct(conditions)
     for k = 1:numel(conditions)
-        forms = {'term', 'count', 'quantity'};
-        given = forms(cellfun(@(f) isfield(conditions(k), f) && ~isAbsent(conditions(k).(f)), forms));
+        given = valueForms(conditions(k));
         if numel(given) ~= 1
             violated('conditions_one_value', className, sprintf( ...
-                'condition %d carries %d value forms (%s); exactly one of term, count, quantity.', ...
+                'condition %d carries %d value forms (%s); exactly one of term, quantity, count, text.', ...
                 k, numel(given), strjoin(given, ', ')));
         end
-        n = numel(conditions(k).(given{1}).value);
+        n = valueCount(conditions(k), given{1});
         if n ~= 1
             violated('conditions_one_value', className, sprintf( ...
                 'condition %d carries %d values; a condition is ONE value true of the whole statement (use a key for more).', k, n));
@@ -150,12 +150,16 @@ for b = 1:numel(blocks)
     params = block.method_parameters;
     pseen = cell(1, numel(params));
     for k = 1:numel(params)
-        forms = {'value', 'term', 'text'};
-        given = forms(cellfun(@(f) isfield(params(k), f) && ~isAbsent(params(k).(f)), forms));
+        given = valueForms(params(k));
         if numel(given) ~= 1
             violated('parameter_one_form', className, sprintf( ...
-                'parameter %d carries %d value forms (%s); exactly one of value, term, text.', ...
+                'parameter %d carries %d value forms (%s); exactly one of term, quantity, count, text.', ...
                 k, numel(given), strjoin(given, ', ')));
+        end
+        if valueCount(params(k), given{1}) ~= 1
+            violated('parameter_one_form', className, sprintf( ...
+                'parameter %d carries %d values; a parameter is ONE value.', ...
+                k, valueCount(params(k), given{1})));
         end
         pseen{k} = termKey(params(k).variable);
     end
@@ -285,14 +289,14 @@ end
 
 function keyPositionsOneForm(key, k)
 regular = isfield(key, 'regular') && isTrue(key.regular);
-forms = {'values', 'labels', 'positions_from'};
+forms = {'quantity', 'term', 'positions_from'};
 given = forms(cellfun(@(f) isfield(key, f) && ~isAbsent(key.(f)), forms));
 if regular && ~isempty(given)
     violated('key_positions_one_form', sprintf('key %d', k), ...
-        sprintf('a regular key carries none of values/labels/positions_from; got %s.', strjoin(given, ', ')));
+        sprintf('a regular key carries none of quantity/term/positions_from; got %s.', strjoin(given, ', ')));
 elseif ~regular && numel(given) ~= 1
     violated('key_positions_one_form', sprintf('key %d', k), ...
-        sprintf('a key that is not regular carries exactly one of values, labels, positions_from; got %d.', numel(given)));
+        sprintf('a key that is not regular carries exactly one of quantity, term, positions_from; got %d.', numel(given)));
 end
 end
 
@@ -305,14 +309,53 @@ end
 
 function keyNMatches(key, k, className)
 n = key.n;
-if isfield(key, 'values') && ~isAbsent(key.values) && isfield(key.values, 'values') ...
-        && numel(key.values.values) ~= n
-    violated('key_n_matches', className, sprintf( ...
-        'key %d has n = %d but %d values.', k, n, numel(key.values.values)));
+if isfield(key, 'quantity') && ~isAbsent(key.quantity)
+    for f = {'value', 'source_value'}
+        if isfield(key.quantity, f{1}) && ~isAbsent(key.quantity.(f{1})) ...
+                && numel(key.quantity.(f{1})) ~= n
+            violated('key_n_matches', className, sprintf( ...
+                'key %d has n = %d but %d quantity.%s.', k, n, numel(key.quantity.(f{1})), f{1}));
+        end
+    end
 end
-if isfield(key, 'labels') && ~isAbsent(key.labels) && numel(key.labels) ~= n
+if isfield(key, 'term') && ~isAbsent(key.term) && numel(key.term) ~= n
     violated('key_n_matches', className, sprintf( ...
-        'key %d has n = %d but %d labels.', k, n, numel(key.labels)));
+        'key %d has n = %d but %d terms.', k, n, numel(key.term)));
+end
+end
+
+function given = valueForms(entry)
+%VALUEFORMS The value forms a condition or parameter entry carries.
+arguments
+    entry (1,1) struct
+end
+
+given = {};
+for f = {'term', 'quantity', 'count', 'text'}
+    if isfield(entry, f{1}) && ~isAbsent(entry.(f{1}))
+        given{end+1} = f{1}; %#ok<AGROW>
+    end
+end
+end
+
+function n = valueCount(entry, form)
+%VALUECOUNT How many values one value form of an entry holds.
+arguments
+    entry (1,1) struct
+    form (1,:) char
+end
+
+v = entry.(form);
+switch form
+    case 'quantity'
+        n = 0;
+        if isstruct(v) && isfield(v, 'value'); n = numel(v.value); end
+    case 'text'
+        n = double(~isAbsent(v));
+        if ischar(v) && size(v, 1) > 1; n = size(v, 1); end
+        if isstring(v); n = numel(v); end
+    otherwise   % term (a struct per value), count
+        n = numel(v);
 end
 end
 

@@ -9,7 +9,8 @@ function k = key(variable, n, options)
 %
 %     regular        'Origin' and 'Spacing'  (both, and nothing else)
 %     enumerated     'Values'                numeric positions, N of them
-%     categorical    'Labels'                N terms (or names)
+%                                            -> quantity {value, source_value}
+%     categorical    'Labels'                N terms (or names) -> term
 %     by reference   'PositionsFrom'         the 0-based index, among the
 %                                            document's `key_id` edges, of the
 %                                            data_type document whose value
@@ -24,9 +25,10 @@ function k = key(variable, n, options)
 %     'Approximate'    logical
 %     'Origin','Spacing'              canonical, in 'Unit'
 %     'SourceOrigin','SourceSpacing'  what the source wrote, in 'SourceUnit'
-%     'Values'         numeric array of N positions (canonical)
-%     'SourceValues'   the same positions as the source wrote them
-%     'Labels'         N terms (struct array), or a cellstr of names
+%     'Values'         numeric array of N positions (canonical) -> quantity.value
+%     'SourceValues'   the same positions as the source wrote them (numeric)
+%                      -> quantity.source_value
+%     'Labels'         N terms (struct array), or a cellstr of names -> term
 %     'PositionsFrom'  integer
 %     'Cyclic'         logical: the dimension wraps (e.g. direction)
 %     'Chunk'          positions per stored chunk -- ONLY on a sampled_body's
@@ -115,12 +117,12 @@ if regular
     s.spacing = pair(options.Spacing, options.SourceSpacing);
 end
 if ~isempty(options.Values)
-    s.values = struct('values', reshape(options.Values, 1, []));
+    s.quantity = struct('value', reshape(options.Values, 1, []));
     if ~isempty(options.SourceValues)
-        s.values.source_values = reshape(options.SourceValues, 1, []);
+        s.quantity.source_value = reshape(options.SourceValues, 1, []);
     end
 end
-if ~isempty(labels);             s.labels = labels;                 end
+if ~isempty(labels);             s.term = labels;                   end
 if ~isempty(options.PositionsFrom); s.positions_from = options.PositionsFrom; end
 if ~isempty(options.Cyclic);     s.cyclic = options.Cyclic;         end
 if ~isempty(options.Chunk);      s.chunk = options.Chunk;           end

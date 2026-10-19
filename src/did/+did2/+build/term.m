@@ -10,7 +10,7 @@ function t = term(node, name)
 %   on any required field (#38).
 %
 %   NODE and NAME may be string arrays / cellstrs of equal length, giving a
-%   1xN struct array (e.g. a key's `labels`).
+%   1xN struct array (e.g. a key's `term`).
 %
 %   See also did2.build.label.
 

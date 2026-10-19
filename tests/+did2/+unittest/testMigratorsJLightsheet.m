@@ -186,7 +186,7 @@ keys = keyList(b.data.keys);
 verifyEqual(testCase, cellfun(@(k) k.variable.name, keys, 'UniformOutput', false), ...
     {'time', 'channel', 'z', 'y', 'x'});
 verifyEqual(testCase, cellfun(@(k) double(k.n), keys), [1 2 400 2048 2048]);
-verifyEqual(testCase, labelNames(keys{2}.labels), {'GCaMP6s', 'tdTomato'});
+verifyEqual(testCase, labelNames(keys{2}.term), {'GCaMP6s', 'tdTomato'});
 % nothing transient left on the observation; the label stays as its notes
 obs = pickById(out, p.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), '');
@@ -336,8 +336,8 @@ z = keys{strcmp(names, 'z')};
 verifyEqual(testCase, z.unit.node, 'UO:0000008');
 verifyEqual(testCase, rep.pyramid_key_units_name_only, 0);
 c = keys{strcmp(names, 'channel')};
-verifyEqual(testCase, labelNames(c.labels), {'GCaMP6s', 'tdTomato'});
-verifyFalse(testCase, isfield(c, 'values') && ~isempty(c.values), ...
+verifyEqual(testCase, labelNames(c.term), {'GCaMP6s', 'tdTomato'});
+verifyFalse(testCase, isfield(c, 'quantity') && ~isempty(c.quantity), ...
     'named positions replace the index positions');
 obs = pickById(out, 'pyr_ls_1');
 verifyTrue(testCase, isempty(blockField(obs, 'keys')), 'the carried keys are removed');
@@ -374,7 +374,7 @@ end
 function testAnAxisWithNoScaleIsRegularIndicesWithNoUnit(testCase)
 % Jess 2026-10-15: a space or time axis with no voxel size is regular, origin
 % 0, spacing 1, no unit -- the indices 0..n-1 in the smaller form -- not
-% `values`. The channel axis stays categorical. Through the batch pass too:
+% `quantity`. The channel axis stays categorical. Through the batch pass too:
 % a level with no unit on z/y/x must not count as a unit disagreement.
 assumeCompositionSchema(testCase);
 p = pyramidV1();
@@ -393,11 +393,11 @@ for i = [1 3 4 5]
     verifyEqual(testCase, double(k.spacing.value), 1, [names{i} ': spacing 1']);
     verifyFalse(testCase, isfield(k, 'unit') && ~isempty(k.unit) ...
         && ~(isstruct(k.unit) && isempty(k.unit.name)), [names{i} ': no unit']);
-    verifyFalse(testCase, isfield(k, 'values') && ~isempty(k.values), [names{i} ': no values']);
+    verifyFalse(testCase, isfield(k, 'quantity') && ~isempty(k.quantity), [names{i} ': no quantity']);
 end
 c = keys{2};
 verifyFalse(testCase, isfield(c, 'regular') && isequal(c.regular, true), 'channel stays categorical');
-verifyEqual(testCase, double(c.values(:).'), [0 1], 'two channels, no names: index positions');
+verifyEqual(testCase, double(c.quantity.value(:).'), [0 1], 'two channels, no names: index positions');
 
 lvl = levelV1(0, 'none', 'raw', 4, 'manifest');
 lvl.lightsheetZarrLevel.voxel_size = [];
@@ -709,8 +709,8 @@ cond = b.data_body.conditions;
 if iscell(cond); cond = cond{1}; end
 verifyEqual(testCase, numel(cond), 1);
 verifyEqual(testCase, cond(1).variable.name, 'summary statistic');
-verifyEqual(testCase, termName(cond(1).term.value), 'Maximum');
-verifyEqual(testCase, termNode(cond(1).term.value), 'NCIT:C25564', 'point 10');
+verifyEqual(testCase, termName(cond(1).term), 'Maximum');
+verifyEqual(testCase, termNode(cond(1).term), 'NCIT:C25564', 'point 10');
 verifyTrue(testCase, ~isfield(cond(1).variable, 'node') || isempty(cond(1).variable.node), ...
     'the variable ''summary statistic'' stays name-only (term worksheet)');
 
@@ -718,8 +718,8 @@ out = runJ(levelV1(1, 'mean', 'blosc-zstd', 4, 'manifest'));
 b = onlyBody(testCase, out);
 cond = b.data_body.conditions;
 if iscell(cond); cond = cond{1}; end
-verifyEqual(testCase, termName(cond(1).term.value), 'Arithmetic Mean');
-verifyEqual(testCase, termNode(cond(1).term.value), 'NCIT:C53319', 'point 10');
+verifyEqual(testCase, termName(cond(1).term), 'Arithmetic Mean');
+verifyEqual(testCase, termNode(cond(1).term), 'NCIT:C53319', 'point 10');
 end
 
 function testLevelZeroOfASingleReductionStoreIsStillTheMeasurement(testCase)
@@ -1028,7 +1028,7 @@ end
 
 function names = labelNames(labels)
 arguments
-    labels % labels as a struct array or a cell of structs
+    labels % terms as a struct array or a cell of structs
 end
 
 if isstruct(labels); labels = num2cell(labels); end

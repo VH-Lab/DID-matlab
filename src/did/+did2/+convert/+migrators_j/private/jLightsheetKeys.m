@@ -17,7 +17,7 @@ function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, cha
 %                is the NGFF default for an absent translation -- the format's
 %                own rule, not a value invented here.
 %   UNITS        cellstr, one unit name per axis ('' when the source gives none).
-%   CHANNELNAMES cellstr of channel names; used as the `c` key's labels only
+%   CHANNELNAMES cellstr of channel names; used as the `c` key's `term` only
 %                when there is exactly one per channel.
 %   CHUNKS       per-axis chunk extent, or [] (a sampled_body's keys only:
 %                did-schema rule key_chunk_sampled_only).
@@ -41,11 +41,11 @@ function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, cha
 %   A space/time axis with no scale has no physical spacing to state, so its
 %   positions are the integer indices 0..n-1, written in the REGULAR form:
 %   `regular` true, origin 0, spacing 1, NO unit (Jess 2026-10-15: the same
-%   positions as `values` 0..n-1, in the smaller form; the absent unit says
+%   positions as `quantity` 0..n-1, in the smaller form; the absent unit says
 %   they are indices, not a measured extent). The translation is not used
 %   there: with no scale it has no unit to be read in. The `c` axis is
 %   categorical: its names when the source gives one per channel, else the
-%   indices 0..n-1 (`values`).
+%   indices 0..n-1 (`quantity`).
 %
 %   Shared helper for the lightsheet migrators (+migrators_j).
 

@@ -3435,10 +3435,12 @@ verifyEqual(testCase, vals(1).source_value, 0.5, 'AbsTol', 1e-9);
 verifyEqual(testCase, vals(1).source_unit, 'V');
 % temperature qualifies the SAME statement rather than becoming its own doc
 verifyEqual(testCase, o.subject_statement.conditions.variable.name, 'temperature');
-verifyEqual(testCase, o.subject_statement.conditions.quantity.value(1).source_value, 11, ...
-    'AbsTol', 1e-9);
+verifyEqual(testCase, o.subject_statement.conditions.quantity.value, 11, 'AbsTol', 1e-9);
+verifyEqual(testCase, o.subject_statement.conditions.quantity.source_value, '11', ...
+    'a condition''s source_value is text');
 % no unit is asserted for temperature -- the source states no scale
-verifyEqual(testCase, o.subject_statement.conditions.quantity.value(1).source_unit, '');
+verifyEqual(testCase, o.subject_statement.conditions.source_unit, '');
+verifyFalse(testCase, isfield(o.subject_statement.conditions, 'unit'));
 end
 
 function testElectrodeOffsetVoltageOmitsUnrecordedTemperature(testCase)

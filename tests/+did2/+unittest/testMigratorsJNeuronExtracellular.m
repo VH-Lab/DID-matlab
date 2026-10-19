@@ -191,7 +191,7 @@ verifyEqual(testCase, ax(1).spacing.source_value,  5e-05,   'AbsTol', 1e-18);
 verifyEqual(testCase, ax(1).source_unit, 's');
 verifyEmpty(testCase, ax(1).unit.node);
 verifyEmpty(testCase, ax(1).unit.name);
-verifyEmpty(testCase, fieldnames(ax(1).values), ...
+verifyEmpty(testCase, fieldnames(ax(1).quantity), ...
     'a regular axis stores no coordinates -- origin+spacing generate them');
 end
 
@@ -207,10 +207,10 @@ v1.neuron_extracellular.waveform_sample_times = realTimebase() + jitter;
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 ax = pick(out, 'voltage_observation').subject_statement.axes;
 verifyFalse(testCase, ax(1).regular);
-verifyEqual(testCase, ax(1).values.values,        realTimebase() + jitter);
-verifyEqual(testCase, ax(1).values.source_values, realTimebase() + jitter);
+verifyEqual(testCase, ax(1).quantity.value,        realTimebase() + jitter);
+verifyEqual(testCase, ax(1).quantity.source_value, realTimebase() + jitter);
 verifyEmpty(testCase, fieldnames(ax(1).origin), ...
-    'an irregular axis has no origin -- it has values');
+    'an irregular axis has no origin -- it has a quantity');
 verifyEmpty(testCase, fieldnames(ax(1).spacing));
 end
 

@@ -247,7 +247,7 @@ verifyTrue(testCase, k.regular);
 verifyEqual(testCase, k.origin.value, 0);
 verifyEqual(testCase, k.spacing.value, 0.001);
 verifyEqual(testCase, k.unit.name, 'second');
-verifyFalse(testCase, isfield(k, 'values') || isfield(k, 'labels'));
+verifyFalse(testCase, isfield(k, 'quantity') || isfield(k, 'term'));
 end
 
 function testKeyRules(testCase)
@@ -266,7 +266,7 @@ end
 function testKeyLabelsFromNames(testCase)
 k = did2.build.key('channel', 2, 'Labels', {'A1', 'A2'});
 verifyFalse(testCase, k.regular);
-verifyEqual(testCase, {k.labels.name}, {'A1', 'A2'});
+verifyEqual(testCase, {k.term.name}, {'A1', 'A2'});
 end
 
 function testKeyPositionsFromAnotherDocument(testCase)
@@ -297,8 +297,8 @@ keys = did2.build.list( ...
     did2.build.key('channel', 2, 'Values', [1 2]));
 verifyEqual(testCase, size(keys), [1 2]);
 verifyEmpty(testCase, keys(2).origin, 'absent fields are [] -- the schema cache''s absent marker');
-verifyEmpty(testCase, keys(1).values);
-verifyEqual(testCase, keys(2).values.values, [1 2]);
+verifyEmpty(testCase, keys(1).quantity);
+verifyEqual(testCase, keys(2).quantity.value, [1 2]);
 verifyEqual(testCase, size(did2.build.list()), [0 0]);
 end
 
@@ -306,9 +306,19 @@ end
 
 function testCondition(testCase)
 c = did2.build.condition('trial type', 'Term', 'catch');
-verifyEqual(testCase, c.term.value.name, 'catch');
-q = did2.build.condition('OD600', 'Quantity', 0.4, 'SourceValue', 0.4);
-verifyEqual(testCase, q.quantity.value.value, 0.4);
+verifyEqual(testCase, c.term.name, 'catch');
+q = did2.build.condition('OD600', 'Quantity', 0.4, 'SourceValue', '0.40');
+verifyEqual(testCase, q.quantity.value, 0.4);
+verifyEqual(testCase, q.quantity.source_value, '0.40', 'the source text is kept verbatim');
+v = did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', 0.4);
+verifyEqual(testCase, v.quantity.value, 0.4, '''Value'' is the same option as ''Quantity''');
+verifyEqual(testCase, v.quantity.source_value, '0.4', 'a numeric SourceValue is written as text');
+n = did2.build.condition('trial count', 'Count', 12);
+verifyEqual(testCase, n.count, 12);
+t = did2.build.condition('protocol', 'Text', 'free run');
+verifyEqual(testCase, t.text, 'free run');
+verifyError(testCase, @() did2.build.condition('x', 'Value', 1, 'Quantity', 2), ...
+    'did2:build:ruleViolated');
 verifyError(testCase, @() did2.build.condition('x', 'Count', 1, 'Quantity', 2), ...
     'did2:build:ruleViolated');
 verifyError(testCase, @() did2.build.condition('x', 'Count', [1 2]), 'did2:build:ruleViolated');
@@ -317,8 +327,14 @@ end
 
 function testParameter(testCase)
 p = did2.build.parameter('threshold', 'Value', 4.5, 'SourceValue', '4.5', 'Unit', 'volt');
-verifyEqual(testCase, p.value.value, 4.5);
-verifyEqual(testCase, p.value.source_value, '4.5');
+verifyEqual(testCase, p.quantity.value, 4.5);
+verifyEqual(testCase, p.quantity.source_value, '4.5');
+verifyFalse(testCase, isfield(p, 'value'));
+a = did2.build.parameter('threshold', 'Value', 4.5, 'Approximate', true);
+verifyTrue(testCase, a.approximate);
+n = did2.build.parameter('passes', 'Count', 3);
+verifyEqual(testCase, n.count, 3);
+verifyError(testCase, @() did2.build.parameter('x', 'Value', [1 2]), 'did2:build:ruleViolated');
 t = did2.build.parameter('detection method', 'Term', 'negative crossing');
 verifyEqual(testCase, t.term.name, 'negative crossing');
 verifyError(testCase, @() did2.build.parameter('x', 'Value', 1, 'Text', 'a'), ...

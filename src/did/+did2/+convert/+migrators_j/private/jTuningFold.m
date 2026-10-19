@@ -10,9 +10,9 @@ function bodies = jTuningFold(preBody, className, axisName, axisUnit, axisField,
 %                        intensity, J §7). storage_mode 'inline'; the response
 %                        curve (tuning_curve.mean) is the leaf's length-N `value`
 %                        (an array of measurement composites, one per reading).
-%                        The stimulus parameter is a D10 `parameters` qualifier
-%                        (parameters.quantity.value, one level per reading -- the
-%                        "axis" case, plan A.9).
+%                        The stimulus parameter is a D10 `conditions` qualifier
+%                        (conditions.quantity.value, one level per reading -- the
+%                        "axis" case, plan A.9; the axis unit as source_unit).
 %     directed_relation  derived_from (ro:0001000): the tuning obs (child) <- the
 %                        raw stimulus_tuningcurve (parent), when present.
 %     session_relative_reference   the 'during' anchor.
@@ -52,7 +52,9 @@ obs = jStartInteraction(preBody, leaf, 'subject_observation', {mixin}, ...
 obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
 obs.subject_statement.conditions = struct( ...
     'variable', jOntologyTerm('', axisName), ...
-    'quantity', struct('value', jMeasureArray(indep, axisUnit)));
+    'source_unit', char(axisUnit), ...
+    'approximate', false, ...
+    'quantity', struct('value', reshape(double(indep), 1, [])));
 obs.(mixin) = struct('value', jMeasureArray(response, respUnits));   % length-N inline value
 
 bodies = {obs, anchor};

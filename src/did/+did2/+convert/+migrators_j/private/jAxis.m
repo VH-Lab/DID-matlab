@@ -2,8 +2,10 @@ function ax = jAxis(variable, n, varargin)
 %JAXIS One signed axis entry, every field present, in a FIXED order.
 %   The shared constructor for `sampled_body.axes` (and any other mount of the
 %   signed axis entry). DID-schema TEAM-SIGN-OFF [data_body] 2026-08-14 +
-%   AMENDMENT 1; the ten sub-fields are `variable, unit, source_unit,
-%   approximate, n, regular, origin, spacing, values, labels`.
+%   AMENDMENT 1, named per AMENDMENT 3; the ten sub-fields are `variable,
+%   unit, source_unit, approximate, n, regular, origin, spacing, quantity,
+%   term` (`quantity` is {value, source_value}, two arrays of n; `term` is n
+%   terms).
 %
 %   ax = jAxis(variableTerm, n, 'name', value, ...)
 %
@@ -15,12 +17,12 @@ function ax = jAxis(variable, n, varargin)
 %   `[timeAxis, channelAxis]` throws whenever one entry happens to omit a field
 %   the other sets -- a failure that appears only on the multi-axis path, which
 %   is exactly the path that is hard to fixture. Unset fields carry the schema's
-%   declared BLANK (origin/spacing/values are `{}`; unit is a bare term), so a
+%   declared BLANK (origin/spacing/quantity are `{}`; unit is a bare term), so a
 %   present-but-blank field is indistinguishable from an absent one to the
 %   validator, and nothing is asserted that was not measured.
 %
 %   (2) FIELD ORDER IS ASSIGNMENT ORDER HERE, NOT `struct(...)` ORDER, and that
-%   is deliberate: `struct('labels', someTermArray)` DISTRIBUTES a non-scalar
+%   is deliberate: `struct('term', someTermArray)` DISTRIBUTES a non-scalar
 %   value into a struct ARRAY instead of setting one field. That trap has been
 %   hit twice in this package already (image_stack.m and jNgridBody.m both carry
 %   a comment about it). Plain assignment cannot distribute.
@@ -42,8 +44,8 @@ ax.n           = n;
 ax.regular     = false;
 ax.origin      = struct();
 ax.spacing     = struct();
-ax.values      = struct();
-ax.labels      = struct('node', '', 'name', '');
+ax.quantity    = struct();
+ax.term        = struct('node', '', 'name', '');
 
 if mod(numel(varargin), 2) ~= 0
     error('did2:migrators_j:jAxis:badOptions', ...

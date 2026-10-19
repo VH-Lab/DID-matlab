@@ -125,8 +125,8 @@ end
 % assert so the miss is reported as the miss, rather than as a field error on
 % the blank stand-in the caller would otherwise dereference.
 assertFail(testCase, sprintf('no parameter entry for variable "%s"', variableName));
-e = struct('variable', struct('node', '', 'name', ''), ...
-    'value', struct('value', NaN, 'source_unit', '', 'source_value', ''));
+e = struct('variable', struct('node', '', 'name', ''), 'source_unit', '', ...
+    'quantity', struct('value', NaN, 'source_value', ''));
 end
 
 function names = paramVariables(doc)
@@ -292,8 +292,8 @@ dVm = onlyClass(testCase, runJ(vmspikeBody('vm_3', 'sess_A', 'elem_1', 't00001',
     'method_parameters');
 a = paramEntry(testCase, dExtract, 'refractory period');
 b = paramEntry(testCase, dVm, 'refractory period');
-verifyEqual(testCase, a.value.value, 0.001, 'AbsTol', 1e-12);
-verifyEqual(testCase, b.value.value, 0.0025, 'AbsTol', 1e-12);
+verifyEqual(testCase, a.quantity.value, 0.001, 'AbsTol', 1e-12);
+verifyEqual(testCase, b.quantity.value, 0.0025, 'AbsTol', 1e-12);
 verifyEqual(testCase, a.variable.name, b.variable.name);
 end
 
@@ -306,14 +306,14 @@ d = onlyClass(testCase, runJ(extractionBody('sep_4', 'default', 'sess_A')), ...
     'method_parameters');
 st = paramEntry(testCase, d, 'waveform window start');
 du = paramEntry(testCase, d, 'waveform window duration');
-verifyEqual(testCase, st.value.value, -0.00045, 'AbsTol', 1e-12);
-verifyEqual(testCase, du.value.value, 0.00145, 'AbsTol', 1e-12);
-verifyEqual(testCase, st.value.value + du.value.value, 0.001, 'AbsTol', 1e-12);
+verifyEqual(testCase, st.quantity.value, -0.00045, 'AbsTol', 1e-12);
+verifyEqual(testCase, du.quantity.value, 0.00145, 'AbsTol', 1e-12);
+verifyEqual(testCase, st.quantity.value + du.quantity.value, 0.001, 'AbsTol', 1e-12);
 verifyFalse(testCase, any(strcmp(paramVariables(d), 'waveform window end')));
 % the source's own spelling is kept for the recorded number, and is EMPTY for
 % the computed one -- v1 recorded an end, not a duration.
-verifyEqual(testCase, st.value.source_value, '-0.00045');
-verifyEqual(testCase, du.value.source_value, '');
+verifyEqual(testCase, st.quantity.source_value, '-0.00045');
+verifyEqual(testCase, du.quantity.source_value, '');
 end
 
 function testExtractionSourceUnitIsEmptyBecauseV1RecordsNone(testCase)
@@ -326,8 +326,8 @@ d = onlyClass(testCase, runJ(extractionBody('sep_5', 'default', 'sess_A')), ...
     'method_parameters');
 r = paramEntry(testCase, d, 'refractory period');
 w = paramEntry(testCase, d, 'waveform window start');
-verifyEqual(testCase, r.value.source_unit, '');
-verifyEqual(testCase, w.value.source_unit, '');
+verifyEqual(testCase, r.source_unit, '');
+verifyEqual(testCase, w.source_unit, '');
 end
 
 function testExtractionThresholdSplitsByMethodStandardDeviation(testCase)
@@ -338,8 +338,8 @@ function testExtractionThresholdSplitsByMethodStandardDeviation(testCase)
 d = onlyClass(testCase, runJ(extractionBody('sep_6', 'default', 'sess_A')), ...
     'method_parameters');
 e = paramEntry(testCase, d, 'standard-deviation threshold');
-verifyEqual(testCase, e.value.value, -4, 'AbsTol', 1e-12);
-verifyEqual(testCase, e.value.source_value, '-4');
+verifyEqual(testCase, e.quantity.value, -4, 'AbsTol', 1e-12);
+verifyEqual(testCase, e.quantity.source_value, '-4');
 % consumed into the variable, so it must NOT also sit in the bag
 b = bag(d);
 verifyFalse(testCase, isfield(b, 'threshold_method'));
@@ -355,7 +355,7 @@ v1.spike_extraction_parameters.threshold_method = 'absolute';
 v1.spike_extraction_parameters.threshold_parameter = -0.05;
 d = onlyClass(testCase, runJ(v1), 'method_parameters');
 e = paramEntry(testCase, d, 'absolute voltage threshold');
-verifyEqual(testCase, e.value.value, -0.05, 'AbsTol', 1e-12);
+verifyEqual(testCase, e.quantity.value, -0.05, 'AbsTol', 1e-12);
 verifyFalse(testCase, any(strcmp(paramVariables(d), 'standard-deviation threshold')));
 end
 
@@ -566,15 +566,15 @@ end
 
 function testVmspikeThresholdKeepsItsVerbatimStringAndBecomesANumber(testCase)
 % v1 writes the threshold as the STRING "0.030" while its own schema_documents
-% pair declares it a number. Both are honoured: value.value is the number a
-% query can compare, value.source_value is the string the source wrote, kept
+% pair declares it a number. Both are honoured: quantity.value is the number a
+% query can compare, quantity.source_value is the string the source wrote, kept
 % whatever the registry later says.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_2', 'sess_A', 'elem_1', 't00001', '')), ...
     'method_parameters');
 e = paramEntry(testCase, d, 'absolute voltage threshold');
-verifyEqual(testCase, e.value.value, 0.030, 'AbsTol', 1e-12);
-verifyEqual(testCase, e.value.source_value, '0.030');
-verifyEqual(testCase, e.value.source_unit, '');
+verifyEqual(testCase, e.quantity.value, 0.030, 'AbsTol', 1e-12);
+verifyEqual(testCase, e.quantity.source_value, '0.030');
+verifyEqual(testCase, e.source_unit, '');
 end
 
 function testVmspikeGuardsNonEmptySpiketimesWithAPassthrough(testCase)

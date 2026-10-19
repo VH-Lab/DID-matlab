@@ -86,10 +86,14 @@ obs.voltage = struct('value', jMeasureArray(offset, 'V'));
 temperature = finiteScalar(blk, 'temperature');
 if ~isempty(temperature)
     % the offset was measured AT this temperature -- a qualifier on the same
-    % statement, not a separate observation. Unit deliberately left unstated.
+    % statement, not a separate observation. Unit deliberately left unstated;
+    % the number is kept as the source wrote it, as text.
     obs.subject_statement.conditions = struct( ...
         'variable', jOntologyTerm('', 'temperature'), ...
-        'quantity', struct('value', jMeasureArray(temperature, '')));
+        'source_unit', '', ...
+        'approximate', false, ...
+        'quantity', struct('value', temperature, ...
+            'source_value', mat2str(temperature)));
 end
 
 bodies = {obs, anchor};

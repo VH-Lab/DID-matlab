@@ -112,7 +112,7 @@ function bodies = hartley_calc(preBody)
 %   moves, per the standing rule in DID-schema CLAUDE.md.
 %
 %     ngrid.data_dim            -> one axis entry per dimension, per PLANE
-%     ngrid.coordinates         -> axes[].values (the lag axis) / dropped as
+%     ngrid.coordinates         -> axes[].quantity (the lag axis) / dropped as
 %                                  redundant (the two index axes)
 %     ngrid.data_type 'double'  -> subject_statement.datum_type 'float64'
 %                                  + source_datum_type 'double' (jDatumType)
@@ -582,7 +582,7 @@ body = jSampledBody(char(leaf.base.id), baseField(preBody, 'session_id', ''), ..
     'migrated_receptive_field_input_spiketimes');
 body.sampled_body.axes = jAxis(jOntologyTerm('', 'time'), numel(times), ...
     'regular', false, ...
-    'values', struct('values', times, 'source_values', times));
+    'quantity', struct('value', times, 'source_value', times));
 body.data_body = struct('description', ...
     ['the spike times the reverse correlation consumed, WINDOWED to one ' ...
      'stimulus presentation. Calculation input, not archival data: a ' ...

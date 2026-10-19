@@ -981,11 +981,11 @@ for i = 1:numel(lk)
                 changed = true;
             end
         case 'channel'
-            if isfield(P, 'labels') && ~isempty(P.labels) ...
-                    && (~isfield(L, 'labels') || isempty(L.labels)) ...
-                    && numel(labelList(P.labels)) == double(L.n)
-                if isfield(L, 'values'); L.values = []; end
-                L.labels = P.labels;
+            if isfield(P, 'term') && ~isempty(P.term) ...
+                    && (~isfield(L, 'term') || isempty(L.term)) ...
+                    && numel(labelList(P.term)) == double(L.n)
+                if isfield(L, 'quantity'); L.quantity = []; end
+                L.term = P.term;
                 lk{i} = L;
                 changed = true;
             end

@@ -25,7 +25,9 @@
 %     valueCell              a data_type's `value` cells (volts, seconds, count, ...)
 %     key                    one dimension of a value (`keys` entry)
 %     condition              one whole-statement qualifier (`conditions` entry)
-%     parameter              one algorithm setting (`method_parameters` entry)
+%     parameter              one algorithm setting (`method_parameters` entry);
+%                            the same entry as a condition: one `term`,
+%                            `quantity`, `count` or `text`
 %     fitEntry               one model fit (`model_fit` entry)
 %     term, label            an ontology term; a term known only by name
 %     list                   join separately built entries into one array
