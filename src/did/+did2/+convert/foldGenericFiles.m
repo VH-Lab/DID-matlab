@@ -646,6 +646,12 @@ function [result, report] = foldStoreRecords(result, report, options)
 %   per-axis units and channel names onto the keys of each of its levels'
 %   sampled_bodies. See the header, "THE STORE RECORDS" and "THE LEVELS".
 %   Every counter is a `store_*` or `level_*` field of REPORT.
+arguments
+    result (1,1) struct
+    report (1,1) struct
+    options (1,1) struct
+end
+
 docs = result.migrated;
 n = numel(docs);
 bodies  = cell(1, n);
@@ -888,6 +894,11 @@ result.summary = recountSummary(result);
 end
 
 function tf = hasEdge(b, name)
+arguments
+    b % a migrated body, or [] where it could not be read
+    name {mustBeText}
+end
+
 tf = false;
 if ~isstruct(b) || ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
 deps = b.depends_on;
@@ -898,6 +909,10 @@ end
 function tf = carriesKeys(obs)
 %CARRIESKEYS An observation holding its value in bodies (data_body true) that
 %   still carries keys: the pyramid migrator's transient carry (point 8).
+arguments
+    obs (1,1) struct
+end
+
 tf = false;
 v = blockFieldOf(obs, 'data_body');
 if ~(islogical(v) || isnumeric(v)) || isempty(v) || ~v(1); return; end
@@ -909,6 +924,10 @@ function tf = isLightsheetLevelBody(b)
 %ISLIGHTSHEETLEVELBODY A level body's keys name t/c/z/y/x-style axes; used
 %   only to count levels whose pyramid is out of the batch (a sampled_body of
 %   another family is not a lightsheet level and is not counted).
+arguments
+    b (1,1) struct
+end
+
 tf = false;
 keys = keyCells(blockFieldOf(b, 'keys'));
 if isempty(keys); return; end
@@ -924,6 +943,11 @@ function [lvl, changed, disagreements] = completeLevelKeys(lvl, pyramidKeys)
 %   level's raw origin/spacing exactly as the pyramid's were scaled), name the
 %   c positions by channel when the counts agree, and CHECK z/y/x units --
 %   a disagreement is counted, never overwritten.
+arguments
+    lvl (1,1) struct
+    pyramidKeys % the pyramid's keys: a struct array, a cell of structs, or empty
+end
+
 changed = false;
 disagreements = 0;
 [blockName, raw] = blockWith(lvl, 'keys');
@@ -982,6 +1006,10 @@ end
 
 function f = scaleOf(P)
 %SCALEOF canonical / source, read off the pyramid key's own pair.
+arguments
+    P struct
+end
+
 f = 1;
 for name = {'spacing', 'origin'}
     if isfield(P, name{1}) && isstruct(P.(name{1})) ...
@@ -997,12 +1025,20 @@ end
 end
 
 function tf = hasUnit(K)
+arguments
+    K struct
+end
+
 tf = isfield(K, 'unit') && ~isempty(unitText(K.unit));
 end
 
 function t = sourceUnitOf(K)
 %SOURCEUNITOF The unit as the source spelled it: source_unit, else the unit's
 %   name (a key omits source_unit when the source was already canonical).
+arguments
+    K struct
+end
+
 t = '';
 if isfield(K, 'source_unit') && ~isempty(K.source_unit)
     t = char(K.source_unit);
@@ -1014,6 +1050,10 @@ end
 end
 
 function t = unitText(u)
+arguments
+    u % a {node, name} struct, text, or anything else (read as '')
+end
+
 t = '';
 if isstruct(u)
     if isfield(u, 'node') && ~isempty(u.node); t = char(u.node); end
@@ -1024,6 +1064,10 @@ end
 end
 
 function n = keyName(K)
+arguments
+    K % a key; anything that is not a struct names nothing
+end
+
 n = '';
 if ~isstruct(K) || ~isfield(K, 'variable'); return; end
 v = K.variable;
@@ -1033,6 +1077,10 @@ elseif ischar(v) || isstring(v); n = char(v); end
 end
 
 function c = keyCells(k)
+arguments
+    k % keys as a struct array or a cell, or empty
+end
+
 c = {};
 if isempty(k); return; end
 if iscell(k)
@@ -1043,6 +1091,10 @@ end
 end
 
 function L = labelList(labels)
+arguments
+    labels % a cell, or an array num2cell can split
+end
+
 if iscell(labels); L = labels; else; L = num2cell(labels); end
 end
 
@@ -1050,6 +1102,10 @@ function k = packKeys(c)
 %PACKKEYS One struct array, as the validator requires (`data.keys` must be a
 %   struct): the union of the keys' fields, a field a key lacks set to [] --
 %   exactly how did2.build's mergeRagged packs a ragged key list.
+arguments
+    c {mustBeA(c, 'cell')}
+end
+
 k = struct([]);
 if isempty(c); return; end
 names = {};
@@ -1068,6 +1124,11 @@ k = [c{:}];
 end
 
 function [blockName, v] = blockWith(s, field)
+arguments
+    s (1,1) struct
+    field {mustBeText}
+end
+
 blockName = 'data'; v = [];
 fns = fieldnames(s);
 for k = 1:numel(fns)
@@ -1082,6 +1143,11 @@ end
 end
 
 function v = blockFieldOf(s, field)
+arguments
+    s (1,1) struct
+    field {mustBeText}
+end
+
 [~, v] = blockWith(s, field);
 end
 
@@ -1091,6 +1157,10 @@ function [obs, keys, notes] = stripCarrier(obs)
 %   NOTES_SEPARATOR); the label before it stays on the observation, and
 %   `notes` is removed only when that label is empty. Notes with no
 %   separator are all label: left exactly as they are, NOTES ''.
+arguments
+    obs (1,1) struct
+end
+
 keys = []; notes = '';
 if isfield(obs, 'depends_on') && ~isempty(obs.depends_on)
     deps = obs.depends_on;
@@ -1138,6 +1208,10 @@ s = sprintf('\n-- store body: ');
 end
 
 function blk = recordBlock(rec)
+arguments
+    rec (1,1) struct
+end
+
 blk = blockOf(rec, 'file_reference');
 if isempty(fieldnames(blk))
     blk = blockOf(rec, 'fileReference');
@@ -1149,6 +1223,16 @@ function [body, hadChecksum, sizeKnown] = makeStoreBody(rec, blk, location, ...
 %MAKESTOREBODY The UNHELD opaque_body, with the fileReference's own id.
 %   ISOMEZARR: an OME-Zarr store (keys, OME-Zarr format) or a SmartSPIM folder
 %   of raw TIFF slices (no keys, TIFF, `redundant` false).
+arguments
+    rec (1,1) struct
+    blk struct
+    location {mustBeText}
+    ownerId {mustBeText}
+    keys % the pyramid's keys, or [] when the carrier held none
+    notes {mustBeText}
+    isOmeZarr (1,1) logical
+end
+
 recId = baseField(rec, 'id');
 sessionId = baseField(rec, 'session_id');
 created = creationTime(rec);
@@ -1207,6 +1291,10 @@ function f = formatOf(curie)
 %FORMATOF generic_file's format_ontology CURIE as the body's format, in the
 %   form the loaded schema declares (did2.build.formatTerm: a {node, name} term
 %   on the current schema, the CURIE string on v_eta-pre73). '' when absent.
+arguments
+    curie {mustBeText}
+end
+
 f = did2.build.formatTerm(curie);
 if isempty(f); f = ''; end
 end
@@ -1227,6 +1315,10 @@ function tf = isNgffSource(obs)
 %ISNGFFSOURCE True when the pyramid observation's source dtype is an NGFF
 %   typestring ('<u2'): an OME-Zarr pyramid. The migrator applies the same rule
 %   to the v1 dtype; the observation keeps it as value.source_data_type.
+arguments
+    obs % a body; anything that is not a struct is not an NGFF source
+end
+
 tf = false;
 if ~isstruct(obs); return; end
 fns = fieldnames(obs);
@@ -1243,6 +1335,11 @@ end
 end
 
 function v = numField(block, names)
+arguments
+    block % a block; anything that is not a struct yields []
+    names {mustBeText}
+end
+
 v = [];
 if ~isstruct(block); return; end
 for i = 1:numel(names)
@@ -1257,6 +1354,10 @@ end
 function t = datenumText(v)
 %DATENUMTEXT A MATLAB datenum as ISO-8601 local wall-clock time, NO zone
 %   (the datenum carries none). 0, NaN or absent -> '' (unrecorded).
+arguments
+    v {mustBeNumeric}
+end
+
 t = '';
 if isempty(v) || ~isfinite(v) || v <= 0
     return;
