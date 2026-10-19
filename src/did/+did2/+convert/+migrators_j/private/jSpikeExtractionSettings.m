@@ -109,7 +109,7 @@ arguments
     blk (1,1) struct
 end
 
-entries = struct('variable', {}, 'value', {});
+entries = struct('variable', {}, 'source_unit', {}, 'quantity', {});
 other = blk;
 
 % --- refractory period -------------------------------------------------------

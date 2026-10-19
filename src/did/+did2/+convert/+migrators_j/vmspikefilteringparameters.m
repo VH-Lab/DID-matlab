@@ -164,7 +164,7 @@ if hasPayload(blk, 'spiketimes')
     return;
 end
 
-entries = struct('variable', {}, 'value', {});
+entries = struct('variable', {}, 'source_unit', {}, 'quantity', {});
 other = blk;
 
 % `spiketimes` is provably empty on this path (the guard above), so removing it
