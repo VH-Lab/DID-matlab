@@ -647,7 +647,7 @@ classdef sqlitedb < handle
             mksqlite(obj.dbid, 'PRAGMA foreign_keys = ON');
         end
 
-        function sql = documentsTableSQL(~)
+        function sql = documentsTableSQL(obj)
             % The documents table holds each document once, with its fixed
             % columns. Queryable values are NOT generated columns any more:
             % they live in queryable_scalar_elem, one row per value a
@@ -657,6 +657,10 @@ classdef sqlitedb < handle
             % values: 3.9 ms per document against 0.26 ms with the side
             % table (measured 2026-10-06 over 2,158 documents shaped like
             % the Haley V2 import, SQLite 3.45).
+            arguments
+                obj (1,1) did2.database.sqlitedb %#ok<INUSA> a method; the SQL does not depend on the instance
+            end
+
             sql = ['CREATE TABLE documents (' ...
                 'id TEXT PRIMARY KEY,' ...
                 'classname TEXT NOT NULL,' ...
@@ -756,6 +760,11 @@ classdef sqlitedb < handle
         end
 
         function v = readMeta(obj, key)
+            arguments
+                obj (1,1) did2.database.sqlitedb
+                key {mustBeText}
+            end
+
             v = '';
             try
                 row = mksqlite(obj.dbid, 'SELECT value FROM meta WHERE key = ?', key);
@@ -905,6 +914,12 @@ classdef sqlitedb < handle
             % old generated column: text as text, a number or logical as a
             % number, anything else (an array, a struct, empty) as its JSON.
             % A non-finite number is JSON null, so it has no row.
+            arguments
+                obj (1,1) did2.database.sqlitedb
+                docId {mustBeText}
+                s % the document body; anything but a scalar struct inserts nothing
+            end
+
             if isempty(obj.scalarDefsByBlock) || ~isstruct(s) || ~isscalar(s)
                 return;
             end
@@ -995,6 +1010,12 @@ classdef sqlitedb < handle
             % ends with VALUES. One statement per row was one mksqlite
             % call per row: ~20 per document (99,800 for 4,975 documents
             % of the Haley V2 import, 35 s).
+            arguments
+                obj (1,1) did2.database.sqlitedb
+                sqlHead {mustBeText}
+                rows {mustBeA(rows, 'cell')}
+            end
+
             if isempty(rows)
                 return;
             end
@@ -1011,9 +1032,15 @@ classdef sqlitedb < handle
             end
         end
 
-        function elems = resolveParentArray(~, s, parts)
+        function elems = resolveParentArray(obj, s, parts)
             % The value at the path PARTS (a parentPath already split on
             % '.') in S, or [] when any step is missing.
+            arguments
+                obj (1,1) did2.database.sqlitedb %#ok<INUSA> a method; the walk does not depend on the instance
+                s % the document body
+                parts % the parentPath split on '.', or [] when the def has none
+            end
+
             elems = [];
             if isempty(parts)
                 return;
@@ -1397,6 +1424,11 @@ classdef sqlitedb < handle
 
         function q = resolveNested(obj, q)
             % resolveNested - each nested depends_on target replaced by the ids it matches here
+            arguments
+                obj (1,1) did2.database.sqlitedb
+                q (1,1) did2.query
+            end
+
             if q.hasNested()
                 q = q.resolveNested(@(inner) obj.searchIds(inner));
             end
@@ -1579,6 +1611,10 @@ classdef sqlitedb < handle
             % MATLAB value is X, in the body as jsonencode writes it:
             % text, a number (a logical as 1/0), or the JSON of anything
             % else. A non-finite number is written as null: ISNULL.
+            arguments
+                x % any MATLAB value of a body field
+            end
+
             isNull = false;
             if ischar(x)
                 v = x;
@@ -1596,6 +1632,10 @@ classdef sqlitedb < handle
             % mainFile - the file SQLite reports for dbid's main database
             %
             % Errors when dbid is not open (mksqlite: "database not open").
+            arguments
+                dbid {mustBeNumeric}
+            end
+
             rows = mksqlite(dbid, 'PRAGMA database_list');
             f = '';
             for k = 1:numel(rows)

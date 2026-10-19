@@ -231,6 +231,13 @@ function [sql, params] = compileDependsOn(name, value, isNeg, ctx)
 %                    did2.database.sqlitedb never sends this form: it
 %                    resolves the target to its ids first (the recheck
 %                    needs them), and sends the list.
+arguments
+    name % the edge name (or '*'); char() below
+    value % an id, a list of ids, or a did2.query
+    isNeg (1,1) logical
+    ctx (1,1) struct
+end
+
 name = char(name);
 if isa(value, 'did2.query')
     if isNeg
@@ -536,6 +543,11 @@ end
 % -----------------------------------------------------------------------
 
 function tf = scalarPathIsIndexed(dotPath, ctx)
+arguments
+    dotPath {mustBeText}
+    ctx (1,1) struct
+end
+
 tf = ~isempty(dotPath) && isfield(ctx, 'queryablePaths') ...
     && isa(ctx.queryablePaths, 'containers.Map') && ctx.queryablePaths.isKey(dotPath);
 end
@@ -546,6 +558,14 @@ function [sql, params] = compileScalarFromScalarSidecar(op, dotPath, target, isN
 % from the (path, value) index. Negated, NOT IN: a document without the
 % value matches, as `(column IS NULL OR NOT ...)` did for the generated
 % column this replaces (a document has at most one row per scalar path).
+arguments
+    op {mustBeText}
+    dotPath {mustBeText}
+    target
+    isNeg (1,1) logical
+    ctx (1,1) struct
+end
+
 switch ctx.queryablePaths(dotPath)
     case 'TEXT'
         valueExpr = 'qse.value_text';
@@ -567,9 +587,14 @@ else
 end
 end
 
-function expr = scalarValueExpression(dotPath, ~)
+function expr = scalarValueExpression(dotPath, ctx)
 % scalarValueExpression - the SQL value expression for a (no-[*]) scalar
 % path that is NOT queryable: read from the body.
+arguments
+    dotPath {mustBeText}
+    ctx (1,1) struct %#ok<INUSA> unused: the signature matches the other value-expression builders
+end
+
 expr = sprintf('json_extract(body, ''%s'')', jsonPath(dotPath));
 end
 
