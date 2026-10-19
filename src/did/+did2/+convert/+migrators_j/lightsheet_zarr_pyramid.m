@@ -279,6 +279,12 @@ end
 
 function e = edgeEntry(deps, name, value)
 % One depends_on entry shaped like the builder's own (its field names).
+arguments
+    deps % the depends_on struct array so far (may be empty)
+    name {mustBeText}
+    value {mustBeText}
+end
+
 e = struct();
 names = {'name', 'document_id'};
 if ~isempty(deps) && isstruct(deps)
@@ -308,6 +314,12 @@ function units = defaultSpaceUnits(units, axesOrder, voxelUnits)
 % writer stamps as the unit of `voxel_size_level0` (makePyramid.m). Only space
 % axes: the same hard-coded 'micrometer' sits beside the t and c entries of
 % voxel_size_level0, where it cannot be a length.
+arguments
+    units {mustBeA(units, 'cell')}
+    axesOrder {mustBeText}
+    voxelUnits {mustBeText}
+end
+
 for k = 1:numel(axesOrder)
     if any(axesOrder(k) == 'zyx') && isempty(units{k})
         units{k} = voxelUnits;
@@ -318,6 +330,11 @@ end
 function c = splitList(s, n)
 % A writer's comma-joined list -> cellstr. N > 0 pads/keeps N entries (one per
 % axis, empty entries kept); N == 0 drops empties.
+arguments
+    s % a comma-separated list as the v1 document stores it; char() below
+    n (1,1) {mustBeNumeric}
+end
+
 s = char(s);
 if isempty(strtrim(s))
     c = repmat({''}, 1, n);
@@ -332,6 +349,11 @@ end
 end
 
 function b = block(body, name)
+arguments
+    body (1,1) struct
+    name {mustBeText}
+end
+
 b = struct();
 if isfield(body, name) && isstruct(body.(name)) && isscalar(body.(name))
     b = body.(name);
@@ -339,6 +361,12 @@ end
 end
 
 function v = field(s, name, default)
+arguments
+    s (1,1) struct
+    name {mustBeText}
+    default
+end
+
 v = default;
 if isfield(s, name) && ~isempty(s.(name))
     v = s.(name);
@@ -346,6 +374,10 @@ end
 end
 
 function [id, sessionId, created] = baseOf(body)
+arguments
+    body (1,1) struct
+end
+
 id = ''; sessionId = ''; created = '';
 if isfield(body, 'base') && isstruct(body.base)
     b = body.base;
@@ -360,6 +392,11 @@ end
 end
 
 function v = depValue(body, name)
+arguments
+    body (1,1) struct
+    name {mustBeText}
+end
+
 v = '';
 if ~isfield(body, 'depends_on') || ~isstruct(body.depends_on); return; end
 for k = 1:numel(body.depends_on)

@@ -38,6 +38,10 @@ function [datumType, sourceDatumType, byteOrder] = jDatumType(raw)
 %   NOTE `image_stack.m` carries `firstNonEmpty(dataType, 'uint16')`, so a
 %   silent default is not hypothetical there; that is its own defect and is not
 %   papered over here.
+arguments
+    raw % a dtype as text (or a MATLAB class name); char() below
+end
+
 datumType = '';
 sourceDatumType = '';
 byteOrder = '';

@@ -199,6 +199,10 @@ function t = statisticName(reduction)
 % NCIT:C53319 'Arithmetic Mean'. Any other label stays NAME-ONLY, as given,
 % rather than guessed at. The variable 'summary statistic' itself is a name
 % with no node (term worksheet).
+arguments
+    reduction {mustBeText}
+end
+
 switch reduction
     case 'max';  t = struct('node', 'NCIT:C25564', 'name', 'Maximum');
     case 'mean'; t = struct('node', 'NCIT:C53319', 'name', 'Arithmetic Mean');
@@ -208,6 +212,11 @@ end
 end
 
 function c = compressionOf(codec, id)
+arguments
+    codec {mustBeText}
+    id {mustBeText}
+end
+
 switch lower(strtrim(codec))
     case {'', 'raw'}
         c = '';
@@ -224,6 +233,10 @@ end
 function s = fillLiteral(v)
 % sampled_body.fill_value is "ONE value, written as a literal read according
 % to the owner's data_type". The writer stores a number (always 0).
+arguments
+    v % the v1 fill_value: empty, text or a number
+end
+
 s = '';
 if isempty(v); return; end
 if ischar(v) || isstring(v)
@@ -242,6 +255,10 @@ function [files, nHeld] = mapChunkFiles(body)
 %   for chunk.bin. The declared `file_list` / `file_series` are the CLASS's
 %   list (the template carries 'chunk.bin' whether or not anything was
 %   attached), so they are renamed but never counted.
+arguments
+    body (1,1) struct
+end
+
 files = struct();
 nHeld = 0;
 if ~isfield(body, 'files') || ~isstruct(body.files) || ~isscalar(body.files)
@@ -291,6 +308,10 @@ end
 end
 
 function [out, isChunk] = renameChunk(name)
+arguments
+    name % a file name as the v1 document stores it; char() below
+end
+
 name = char(name);
 out = name;
 isChunk = false;
@@ -312,6 +333,11 @@ end
 end
 
 function b = block(body, name)
+arguments
+    body (1,1) struct
+    name {mustBeText}
+end
+
 b = struct();
 if isfield(body, name) && isstruct(body.(name)) && isscalar(body.(name))
     b = body.(name);
@@ -319,6 +345,12 @@ end
 end
 
 function v = field(s, name, default)
+arguments
+    s (1,1) struct
+    name {mustBeText}
+    default
+end
+
 v = default;
 if isfield(s, name) && ~isempty(s.(name))
     v = s.(name);
@@ -326,6 +358,10 @@ end
 end
 
 function id = baseId(body)
+arguments
+    body (1,1) struct
+end
+
 id = '';
 if isfield(body, 'base') && isstruct(body.base) && isfield(body.base, 'id')
     id = char(body.base.id);
@@ -333,6 +369,10 @@ end
 end
 
 function [id, sessionId, created] = baseOf(body)
+arguments
+    body (1,1) struct
+end
+
 id = ''; sessionId = ''; created = '';
 if isfield(body, 'base') && isstruct(body.base)
     b = body.base;
@@ -347,6 +387,11 @@ end
 end
 
 function v = depValue(body, name)
+arguments
+    body (1,1) struct
+    name {mustBeText}
+end
+
 v = '';
 if ~isfield(body, 'depends_on') || ~isstruct(body.depends_on); return; end
 for k = 1:numel(body.depends_on)

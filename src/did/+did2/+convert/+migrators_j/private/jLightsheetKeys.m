@@ -49,6 +49,16 @@ function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, cha
 %
 %   Shared helper for the lightsheet migrators (+migrators_j).
 
+arguments
+    axesOrder {mustBeText}
+    shape {mustBeNumeric}
+    scale {mustBeNumeric}
+    translation {mustBeNumeric}
+    units {mustBeA(units, 'cell')}
+    channelNames {mustBeA(channelNames, 'cell')}
+    chunks {mustBeNumeric}
+end
+
 axesOrder = char(axesOrder);
 nAx = numel(axesOrder);
 shape = double(shape(:).');
@@ -143,6 +153,10 @@ function t = unitTerm(name)
 %   second UO:0000010 and micrometer UO:0000017 were checked on OLS by Jess;
 %   meter UO:0000008 is UO's metre (the canonical length every space axis is
 %   converted to). A name not in this table stays name-only.
+arguments
+    name {mustBeText}
+end
+
 table = {'second', 'UO:0000010'; 'micrometer', 'UO:0000017'; 'meter', 'UO:0000008'};
 k = find(strcmp(table(:, 1), name), 1);
 if isempty(k)
@@ -154,6 +168,11 @@ end
 
 function [factor, canonical] = canonicalUnit(unit, kind)
 %CANONICALUNIT UDUNITS-2 name (as OME-NGFF spells it) -> V_eta canonical.
+arguments
+    unit {mustBeText}
+    kind {mustBeText}
+end
+
 factor = 1;
 canonical = '';
 unit = lower(strtrim(char(unit)));
