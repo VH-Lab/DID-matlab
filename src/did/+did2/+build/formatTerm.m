@@ -56,6 +56,10 @@ end
 % ===================== helpers =============================================
 
 function t = asTerm(format)
+arguments
+    format % a {node, name} struct, a CURIE or name as text, or empty
+end
+
 t = [];
 if isempty(format)
     return;
@@ -83,6 +87,10 @@ end
 
 function tf = declaresCharFormat(schemaCache)
 %DECLARESCHARFORMAT True when the loaded schema types data_body.format as char.
+arguments
+    schemaCache % a did2.schema.cache, or [] for the shared one
+end
+
 tf = false;
 try
     if isempty(schemaCache)
@@ -111,6 +119,10 @@ end
 end
 
 function m = mediaType(t)
+arguments
+    t (1,1) struct
+end
+
 table = knownTable();
 k = find(strcmpi(table(:, 1), t.node), 1);
 if ~isempty(k)
@@ -123,6 +135,11 @@ end
 end
 
 function v = textOf(s, f)
+arguments
+    s struct
+    f {mustBeText}
+end
+
 v = '';
 if isfield(s, f) && ~isempty(s.(f))
     v = char(s.(f));
@@ -130,6 +147,10 @@ end
 end
 
 function name = knownName(curie)
+arguments
+    curie {mustBeText}
+end
+
 name = '';
 if isempty(curie); return; end
 table = knownTable();

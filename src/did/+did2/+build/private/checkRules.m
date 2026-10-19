@@ -36,7 +36,14 @@ function checkRules(cache, className, doc, chain)
 %                                 inherited optional field or edge the class
 %                                 makes required
 
-if nargin < 4 || isempty(chain)
+arguments
+    cache (1,1) did2.schema.cache
+    className {mustBeText}
+    doc (1,1) struct
+    chain = {}
+end
+
+if isempty(chain)
     chain = cache.classChain(className);
 end
 blocks = setdiff(fieldnames(doc), {'document_class', 'depends_on', 'files', 'file'}, 'stable');

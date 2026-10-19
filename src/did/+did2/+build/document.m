@@ -285,6 +285,13 @@ end
 
 function edges = buildEdges(cache, className, given, chain)
 % Check the given edges against every depends_on the chain declares.
+arguments
+    cache (1,1) did2.schema.cache
+    className {mustBeText}
+    given % a struct or name/value cell; edgePairs checks the shape
+    chain {mustBeA(chain, 'cell')}
+end
+
 declared = containers.Map();
 order = {};
 for c = 1:numel(chain)
@@ -404,6 +411,13 @@ end
 end
 
 function list = checkFiles(cache, className, files, chain)
+arguments
+    cache (1,1) did2.schema.cache
+    className {mustBeText}
+    files % char, string or cellstr; checked below
+    chain {mustBeA(chain, 'cell')}
+end
+
 if ischar(files) || isstring(files)
     files = cellstr(files);
 end

@@ -10,6 +10,12 @@ function [className, kind] = resolveLeaf(cache, leafClass, kind)
 %   right document on both. Anything else is returned unchanged, for the
 %   caller's own unknown-class error.
 
+arguments
+    cache (1,1) did2.schema.cache
+    leafClass {mustBeText}
+    kind {mustBeText}
+end
+
 className = leafClass;
 if ~isempty(kind) || cache.hasClass(leafClass)
     return;

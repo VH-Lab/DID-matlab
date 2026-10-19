@@ -14,6 +14,10 @@ function [statementClass, entityEdge, dataTypeField] = vetaNames(cache)
 %   renamed `datum_type` (V_eta_entity_composition_plan.md sec. 2, 2026-10-08),
 %   'datum_type' before.
 
+arguments
+    cache % a did2.schema.cache, or [] for the shared one
+end
+
 cache = schemaCache(cache);
 if cache.hasClass('statement')
     statementClass = 'statement';

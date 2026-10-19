@@ -827,10 +827,15 @@ classdef document
             % See also: did.document/isFileSeries, did.document/is_in_file_list,
             %           did.file.readSeriesManifestUid
 
+            arguments
+                did_document_obj (1,1) did.document
+                name % untyped on purpose: see the note below
+            end
+
             stem = '';
             index = [];
 
-            % Deliberately no arguments block. is_in_file_list and add_file
+            % Deliberately no validation on NAME. is_in_file_list and add_file
             % both reach here with whatever name a caller handed them,
             % including '' and a string scalar, and a name this method cannot
             % parse is a "no" rather than an error.
