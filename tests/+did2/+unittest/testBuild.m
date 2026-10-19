@@ -670,6 +670,10 @@ function [cls, fields, supers] = subjectSpec(localId)
 % a subject as the schema in use builds one: `subject`, or since 2026-10-08
 % (did-schema V_eta_entity_composition_plan.md sec. 4) an `entity` of type
 % organism, whose `type` is required
+arguments
+    localId {mustBeText}
+end
+
 if did2.schema.cache.shared().hasClass('subject')
     cls = 'subject';
     fields = struct('local_identifier', localId);
@@ -684,6 +688,10 @@ end
 function [cls, supers] = leafSpec(leaf)
 % the class and superclasses a statement leaf name builds: the leaf itself, or
 % since 2026-10-08 its direction listing its value kind
+arguments
+    leaf {mustBeText}
+end
+
 c = did2.schema.cache.shared();
 if c.hasClass(leaf)
     cls = leaf;

@@ -747,6 +747,10 @@ end
 function doc = veta(doc)
 %VETA The same document, stamped as a V_eta document (schema_version V_eta),
 %   which is how did.document/seriesMemberBase tells the vintages apart.
+arguments
+    doc (1,1) did.document
+end
+
 props = doc.document_properties;
 props.document_class.schema_version = 'V_eta';
 doc = did.document(props);

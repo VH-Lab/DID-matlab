@@ -168,6 +168,10 @@ function [className, stem] = aClassDeclaringASeries(cache)
 %ACLASSDECLARINGASERIES A V_eta class whose chain declares a `series: true`
 %   file, resolved from the schema (the bodies inherit `body_data` from
 %   data_body), or '' when the loaded schema has none.
+arguments
+    cache (1,1) did2.schema.cache
+end
+
 className = ''; stem = '';
 names = {'sampled_body', 'opaque_body'};
 for i = 1:numel(names)

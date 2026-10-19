@@ -17,7 +17,11 @@ did2.schema.cache.setSchemaPath(fullfile(fileparts(thisDir), 'fixtures', 'V_delt
 testCase.TestData.body = makeBody();
 end
 
-function teardownOnce(~)
+function teardownOnce(testCase)
+arguments
+    testCase (1,1) matlab.unittest.TestCase %#ok<INUSA> the fixture signature; only the singleton is reset
+end
+
 did2.schema.cache.resetSingleton();
 end
 
@@ -76,6 +80,10 @@ verifyFalse(testCase, did2.convert.isAlreadyTarget(b, 'V_delta'));
 end
 
 function body = makeBodyOf(className)
+arguments
+    className {mustBeText}
+end
+
 doc = did2.document.blank(className);
 doc = doc.set('base.session_id', 'session-audits');
 doc = doc.set('base.name', 'audits');

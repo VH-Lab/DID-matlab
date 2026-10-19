@@ -20,7 +20,11 @@ function setup(testCase)
 did2.schema.cache.setSchemaPath(testCase.TestData.fixtureDir);
 end
 
-function teardownOnce(~)
+function teardownOnce(testCase)
+arguments
+    testCase (1,1) matlab.unittest.TestCase %#ok<INUSA> the fixture signature; only the singleton is reset
+end
+
 did2.schema.cache.resetSingleton();
 end
 
@@ -73,6 +77,11 @@ end
 % ---- helpers ----
 
 function out = answers(c, classes)
+arguments
+    c (1,1) did2.schema.cache
+    classes {mustBeText}
+end
+
 out = cell(1, numel(classes));
 for k = 1:numel(classes)
     x = struct('superclasses', {{}}, 'placement', []);
@@ -95,6 +104,10 @@ end
 end
 
 function id = errorId(fn)
+arguments
+    fn (1,1) function_handle
+end
+
 id = '';
 try
     fn();

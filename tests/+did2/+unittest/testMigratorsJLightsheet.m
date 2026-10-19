@@ -802,15 +802,29 @@ end
 % ===================== harness =============================================
 
 function out = runJ(v1)
+arguments
+    v1 (1,1) struct
+end
+
 out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'V_eta');
 end
 
 function [out, rep] = runWithPass(batch)
+arguments
+    batch {mustBeA(batch, 'cell')}
+end
+
 out = did2.convert.v1_to_v2(batch, 'Validate', true, 'TargetVersion', 'V_eta');
 [out, rep] = did2.convert.foldGenericFiles(out, 'Validate', true, 'TargetVersion', 'V_eta');
 end
 
 function verifyLightSheetMethod(testCase, obs, msg)
+arguments
+    testCase (1,1) matlab.unittest.TestCase
+    obs struct
+    msg {mustBeText}
+end
+
 m = blockField(obs, 'method');
 if iscell(m); m = m{1}; end
 verifyTrue(testCase, isstruct(m) && isfield(m, 'node'), [msg ': no method']);
@@ -822,6 +836,11 @@ verifyTrue(testCase, isfield(obs, 'interaction') && isfield(obs.interaction, 'me
 end
 
 function assumeClass(testCase, className)
+arguments
+    testCase (1,1) matlab.unittest.TestCase
+    className {mustBeText}
+end
+
 cache = did2.schema.cache.shared();
 assumeTrue(testCase, cache.hasClass(className), ...
     sprintf('DID_SCHEMA_PATH lacks %s.', className));
@@ -829,6 +848,11 @@ end
 
 function v = blockField(d, name)
 %BLOCKFIELD The value of field NAME in whichever property block holds it.
+arguments
+    d struct
+    name {mustBeText}
+end
+
 v = [];
 fns = fieldnames(d);
 for k = 1:numel(fns)
@@ -863,6 +887,10 @@ assumeTrue(testCase, hasKind, ...
 end
 
 function msg = reasonsOf(out)
+arguments
+    out (1,1) struct
+end
+
 if isempty(out.quarantine)
     msg = 'no quarantined documents';
     return;
@@ -875,6 +903,11 @@ end
 end
 
 function s = pickById(out, id)
+arguments
+    out (1,1) struct
+    id {mustBeText}
+end
+
 s = [];
 for k = 1:numel(out.migrated)
     d = out.migrated{k}.toStruct();
@@ -886,6 +919,11 @@ end
 end
 
 function c = pickByClass(out, className)
+arguments
+    out (1,1) struct
+    className {mustBeText}
+end
+
 c = {};
 for k = 1:numel(out.migrated)
     d = out.migrated{k}.toStruct();
@@ -896,18 +934,32 @@ end
 end
 
 function b = onlyBody(testCase, out)
+arguments
+    testCase (1,1) matlab.unittest.TestCase
+    out (1,1) struct
+end
+
 c = pickByClass(out, 'sampled_body');
 assertEqual(testCase, numel(c), 1, reasonsOf(out));
 b = c{1};
 end
 
 function names = superNames(d)
+arguments
+    d struct
+end
+
 sc = d.document_class.superclasses;
 if isstruct(sc); sc = num2cell(sc); end
 names = cellfun(@(s) char(s.class_name), sc, 'UniformOutput', false);
 end
 
 function v = edge(d, name)
+arguments
+    d % a body, or [] when the test found none (then '')
+    name {mustBeText}
+end
+
 v = '';
 if ~isfield(d, 'depends_on') || isempty(d.depends_on); return; end
 deps = d.depends_on;
@@ -923,6 +975,11 @@ end
 
 function v = edgeAll(d, name)
 %EDGEALL Every value of the edge NAME (an edge family repeats its name).
+arguments
+    d % a body, or [] when the test found none (then {})
+    name {mustBeText}
+end
+
 v = {};
 if ~isfield(d, 'depends_on') || isempty(d.depends_on); return; end
 deps = d.depends_on;
@@ -937,6 +994,10 @@ end
 
 function c = versionAssertions(out)
 %VERSIONASSERTIONS The statements whose variable is 'version'.
+arguments
+    out (1,1) struct
+end
+
 c = {};
 for k = 1:numel(out.migrated)
     d = out.migrated{k}.toStruct();
@@ -957,28 +1018,48 @@ s = did2.build.document('entity', struct('type', 'session', 'local_identifier', 
 end
 
 function keys = keyList(k)
+arguments
+    k % keys as a struct array or a cell
+end
+
 if isstruct(k); keys = num2cell(k); else; keys = k; end
 keys = reshape(keys, 1, []);
 end
 
 function names = labelNames(labels)
+arguments
+    labels % labels as a struct array or a cell of structs
+end
+
 if isstruct(labels); labels = num2cell(labels); end
 names = cellfun(@(l) char(l.name), labels, 'UniformOutput', false);
 names = reshape(names, 1, []);
 end
 
 function n = termNode(v)
+arguments
+    v % a term, a cell holding one, or anything else (then '')
+end
+
 if iscell(v); v = v{1}; end
 n = '';
 if isstruct(v) && isfield(v, 'node'); n = char(v(1).node); end
 end
 
 function n = termName(v)
+arguments
+    v % a term, a cell holding one, or text
+end
+
 if iscell(v); v = v{1}; end
 if isstruct(v); n = char(v(1).name); else; n = char(v); end
 end
 
 function b = elementBytes(dtype)
+arguments
+    dtype {mustBeText}
+end
+
 tok = regexp(dtype, '^[<>|][uifcb](\d+)$', 'tokens', 'once');
 if ~isempty(tok)
     b = str2double(tok{1});
@@ -1042,6 +1123,14 @@ function v1 = levelV1(level, reduction, codec, nStored, fileShape)
 %               manifest under the bare name chunk.bin (file_info) plus its
 %               series_info record (ingest_locations stripped, as stored)
 %   'members'   members listed by name, chunk.bin_1 .. chunk.bin_NSTORED
+arguments
+    level (1,1) {mustBeNumeric}
+    reduction {mustBeText}
+    codec {mustBeText}
+    nStored (1,1) {mustBeNumeric}
+    fileShape {mustBeText}
+end
+
 f = 2 ^ level;
 shape = [1 2 ceil(400 / f) ceil(2048 / f) ceil(2048 / f)];
 chunks = [1 1 64 256 256];
@@ -1108,6 +1197,10 @@ function v1 = fileReferenceV1(id)
 %   describes an OME-Zarr store (a DIRECTORY): fileSize 0 (only a plain file
 %   is sized), checksum the MD5 of `.zattrs`, dates as datenums, formatOntology
 %   left empty. Field names as universalRenames leaves them (snake_case).
+arguments
+    id {mustBeText}
+end
+
 v1 = struct();
 v1.document_class = struct( ...
     'definition', '$NDIDOCUMENTPATH/fileReference.json', ...

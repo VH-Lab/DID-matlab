@@ -29,7 +29,11 @@ thisDir = fileparts(mfilename('fullpath'));
 did2.schema.cache.setSchemaPath(fullfile(fileparts(thisDir), 'fixtures', 'V_delta'));
 end
 
-function teardownOnce(~)
+function teardownOnce(testCase)
+arguments
+    testCase (1,1) matlab.unittest.TestCase %#ok<INUSA> the fixture signature; only the singleton is reset
+end
+
 did2.schema.cache.resetSingleton();
 end
 
@@ -133,6 +137,11 @@ testCase.addTeardown(@() db.close());
 end
 
 function doc = makeDemoA(name, value)
+arguments
+    name {mustBeText}
+    value {mustBeText}
+end
+
 doc = did2.document.blank('demoA');
 doc = doc.set('base.session_id', sprintf('session-%s', name));
 doc = doc.set('base.name', name);
