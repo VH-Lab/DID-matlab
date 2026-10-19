@@ -214,6 +214,10 @@ classdef query
             %
             %   '*' matches any run of characters (none included); '\*' is a
             %   literal star; everything else is literal.
+            arguments
+                pattern {mustBeText}
+            end
+
             parts = regexp(char(pattern), '(?<!\\)\*', 'split');
             parts = cellfun(@(x) regexptranslate('escape', strrep(x, '\*', '*')), parts, ...
                 'UniformOutput', false);
@@ -225,6 +229,10 @@ classdef query
             %
             %   For `LIKE ? ESCAPE '\'`: '*' becomes '%', a literal '%', '_'
             %   or '\' is escaped, '\*' becomes a literal star.
+            arguments
+                pattern % untyped: compileQuery passes a wildcard term's target unchecked; char() below
+            end
+
             parts = regexp(char(pattern), '(?<!\\)\*', 'split');
             for k = 1:numel(parts)
                 x = strrep(parts{k}, '\*', char(0));
@@ -340,6 +348,10 @@ classdef query
         end
 
         function tf = anyNested(ss)
+            arguments
+                ss struct
+            end
+
             tf = false;
             for k = 1:numel(ss)
                 op = char(ss(k).operation);
@@ -353,6 +365,11 @@ classdef query
         end
 
         function ss = resolveArray(ss, idsOf)
+            arguments
+                ss struct
+                idsOf (1,1) function_handle
+            end
+
             for k = 1:numel(ss)
                 op = char(ss(k).operation);
                 if strcmp(op, 'or')

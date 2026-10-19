@@ -133,6 +133,12 @@ function tf = isSeriesMember(name, stem, base)
 %   V_eta document numbers members from 0 (`body_data_0`, DID-schema #73 item
 %   17), a did_v1 document from 1 (`chunk.bin_1`), so `chunk.bin_0` on a v1
 %   document names no member (did.document/seriesMemberBase).
+arguments
+    name {mustBeText}
+    stem {mustBeText}
+    base (1,1) {mustBeNumeric}
+end
+
 tok = regexp(name, ['^' regexptranslate('escape', stem) '_(\d+)$'], 'tokens', 'once');
 tf = ~isempty(tok) && str2double(tok{1}) >= base;
 end
@@ -140,6 +146,10 @@ end
 function base = memberBase(body)
 %MEMBERBASE 0 for a V_eta document, 1 for a did_v1 one -- the rule
 %   did.document/seriesMemberBase applies, read off document_class.schema_version.
+arguments
+    body % a body; anything that is not a struct is a did_v1 one (base 1)
+end
+
 base = 1;
 if ~isstruct(body) || ~isfield(body, 'document_class') || ~isstruct(body.document_class) ...
         || ~isfield(body.document_class, 'schema_version')
@@ -157,6 +167,11 @@ end
 function [names, isSeries] = declaredFiles(cache, className)
 %DECLAREDFILES Every file name declared anywhere in the class chain, and
 %   whether each is declared a file SERIES (`series: true`).
+arguments
+    cache % the schema cache in use; every read of it is guarded below
+    className {mustBeText}
+end
+
 names = {};
 isSeries = false(1, 0);
 try
