@@ -1214,6 +1214,59 @@ classdef cache < handle
             did2.schema.cache.shared(schemaPath);
         end
 
+        function sid = sessionIdOf(body)
+            % sessionIdOf - the session id a document body carries, in
+            %   either shape: BODY's `base.session_id` field when it has a
+            %   non-empty one, else the id its `session_id` depends_on edge
+            %   names, else ''. BODY is a body struct or a did2.document.
+            %
+            %   TWO SHAPES, ONE ANSWER. did_v1 and V_eta before 2026-10-20
+            %   store the session id as the field; V_eta after did-schema
+            %   V_eta_relation_inheritance_plan.md stores it as the edge,
+            %   whose target is the session (or dataset) entity, and that
+            %   entity's base.id IS the session id -- so the two are the
+            %   same string. The FIELD is read first: a body on its way
+            %   through the migration still carries it, and it is the
+            %   authority until did2.convert.v1_to_v2 moves it onto the edge.
+            %   The edge's target is read under all three keys, as
+            %   edgeIsPopulated reads it. See also sessionIdIsEdge.
+            arguments
+                body   % a struct or a did2.document
+            end
+            sid = '';
+            if isa(body, 'did2.document')
+                body = body.toStruct();
+            end
+            if ~isstruct(body) || ~isscalar(body)
+                return;
+            end
+            if isfield(body, 'base') && isstruct(body.base) && isscalar(body.base) ...
+                    && isfield(body.base, 'session_id') && ~isempty(body.base.session_id)
+                sid = char(body.base.session_id);
+                return;
+            end
+            if ~isfield(body, 'depends_on') || isempty(body.depends_on)
+                return;
+            end
+            deps = body.depends_on;
+            for k = 1:numel(deps)
+                if iscell(deps)
+                    d = deps{k};
+                else
+                    d = deps(k);
+                end
+                if ~isstruct(d) || ~isfield(d, 'name') || ~strcmp(char(d.name), 'session_id')
+                    continue;
+                end
+                for key = {'document_id', 'value', 'id'}
+                    if isfield(d, key{1}) && ~isempty(d.(key{1}))
+                        sid = char(d.(key{1}));
+                        return;
+                    end
+                end
+            end
+        end
+
         function resetSingleton()
             % resetSingleton - drop the cached singleton.
             did2.schema.cache.shared('-reset');
@@ -1641,59 +1694,6 @@ classdef cache < handle
             %   stays on, because a disarmed gate is silent and a false
             %   quarantine is loud. So an unrecognised value leaves it armed.
             tf = any(strcmpi(strtrim(getenv(varName)), {'0', 'false', 'no', 'off'}));
-        end
-
-        function sid = sessionIdOf(body)
-            % sessionIdOf - the session id a document body carries, in
-            %   either shape: BODY's `base.session_id` field when it has a
-            %   non-empty one, else the id its `session_id` depends_on edge
-            %   names, else ''. BODY is a body struct or a did2.document.
-            %
-            %   TWO SHAPES, ONE ANSWER. did_v1 and V_eta before 2026-10-20
-            %   store the session id as the field; V_eta after did-schema
-            %   V_eta_relation_inheritance_plan.md stores it as the edge,
-            %   whose target is the session (or dataset) entity, and that
-            %   entity's base.id IS the session id -- so the two are the
-            %   same string. The FIELD is read first: a body on its way
-            %   through the migration still carries it, and it is the
-            %   authority until did2.convert.v1_to_v2 moves it onto the edge.
-            %   The edge's target is read under all three keys, as
-            %   edgeIsPopulated reads it. See also sessionIdIsEdge.
-            arguments
-                body   % a struct or a did2.document
-            end
-            sid = '';
-            if isa(body, 'did2.document')
-                body = body.toStruct();
-            end
-            if ~isstruct(body) || ~isscalar(body)
-                return;
-            end
-            if isfield(body, 'base') && isstruct(body.base) && isscalar(body.base) ...
-                    && isfield(body.base, 'session_id') && ~isempty(body.base.session_id)
-                sid = char(body.base.session_id);
-                return;
-            end
-            if ~isfield(body, 'depends_on') || isempty(body.depends_on)
-                return;
-            end
-            deps = body.depends_on;
-            for k = 1:numel(deps)
-                if iscell(deps)
-                    d = deps{k};
-                else
-                    d = deps(k);
-                end
-                if ~isstruct(d) || ~isfield(d, 'name') || ~strcmp(char(d.name), 'session_id')
-                    continue;
-                end
-                for key = {'document_id', 'value', 'id'}
-                    if isfield(d, key{1}) && ~isempty(d.(key{1}))
-                        sid = char(d.(key{1}));
-                        return;
-                    end
-                end
-            end
         end
 
         function tf = edgeIsPopulated(body, name)

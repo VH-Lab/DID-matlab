@@ -1,7 +1,7 @@
 function v2Body = session(preBody)
 %SESSION Brainstorm-J migrator: `reference` -> `local_identifier`, and drop the
-%   three V_zeta inventions. 1 -> 1, base.id PRESERVED -- except on a schema
-%   where `session_id` is an edge, where base.id BECOMES the session id (below).
+%   three V_zeta inventions. 1 -> 1, base.id PRESERVED, except where
+%   `session_id` is an edge: there base.id becomes the session id.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %

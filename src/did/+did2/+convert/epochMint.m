@@ -1078,7 +1078,7 @@ for k = 1:n
     % split migrator -- and not as one body that happens to be wrapped.
     migrator = armingMigratorFor(armingMigrators, ...
         'daqmetadatareader_epochdata_ingested');
-    offered = normaliseArmingOutput(migrator(b));
+    offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1246,7 +1246,7 @@ for k = 1:n
     report.response_scalar_edges_stamped = ...
         report.response_scalar_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'stimulus_response_scalar');
-    offered = normaliseArmingOutput(migrator(b));
+    offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1383,7 +1383,7 @@ for k = 1:n
     b = setDep(b, 'epoch_id_2', epochIdByKey(keyB));
     report.syncrule_edges_stamped = report.syncrule_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'syncrule_mapping');
-    offered = normaliseArmingOutput(migrator(b));
+    offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -2673,5 +2673,29 @@ for name = {'creation_timestamp', 'datestamp'}
         ts = body.base.(f);
         return;
     end
+end
+end
+
+function b = lendSessionIdField(b)
+%LENDSESSIONIDFIELD Put `base.session_id` back on a migrated body a migrator re-reads.
+%   This pass re-runs a per-document migrator on a body that has ALREADY been
+%   through did2.convert.v1_to_v2. On a schema where `session_id` is an edge
+%   (did-schema V_eta_relation_inheritance_plan.md, 2026-10-20) that body
+%   carries the edge and no field, while every migrator reads the did_v1 field
+%   -- so without this the bodies it emits would name no session and quarantine
+%   on the required edge. The field is lent from the edge; v1_to_v2's outbound
+%   pass moves it back onto the edge when the bodies are validated. A body that
+%   still has the field (the field shape) is returned unchanged.
+arguments
+    b (1,1) struct
+end
+
+if ~isfield(b, 'base') || ~isstruct(b.base) || ~isscalar(b.base) ...
+        || isfield(b.base, 'session_id')
+    return;
+end
+sid = did2.schema.cache.sessionIdOf(b);
+if ~isempty(sid)
+    b.base.session_id = sid;
 end
 end

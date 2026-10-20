@@ -813,7 +813,8 @@
 %         + a sampled_body (+ the shared session anchor).
 %     session
 %         Brainstorm-J migrator: `reference` -> `local_identifier`, and drop the three
-%         V_zeta inventions. 1 -> 1, base.id PRESERVED.
+%         V_zeta inventions. 1 -> 1, base.id PRESERVED, except where `session_id` is
+%         an edge: there base.id becomes the session id.
 %     session_in_a_dataset
 %         Brainstorm-J migrator: did_v1 session_in_a_dataset -> the session<->dataset
 %         membership as a first-class relation. Now that `session` is an `entity`, a
