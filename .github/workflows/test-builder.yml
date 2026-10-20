@@ -102,6 +102,12 @@ jobs:
 
       - name: Run the builder tests
         uses: matlab-actions/run-command@v2
+        env:
+          # The builder and migrator tests build documents from made-up terms
+          # to test the builder's mechanics; the term registry check (tenet
+          # T19, strictMode 'TermRegistry') is off here, and
+          # testBuildTermRegistry turns it on for the tests that are about it.
+          DID_ENFORCE_TERM_REGISTRY: '0'
         with:
           command: |
             addpath(genpath("src"));

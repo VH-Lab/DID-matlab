@@ -42,6 +42,10 @@
 %     unique across keys and conditions; parameters carry one form and are
 %     unique; inline parameters and method_parameters_id are never both given;
 %     key n matches its positions; a multi-key sampled_body names datum_order.
+%   And every ontology term in a vocabulary slot (a variable, method, unit,
+%   condition, parameter or key) must be in the schema's term registry (tenet
+%   T19; strictMode 'TermRegistry', armed): did2:build:unregisteredTerm.
+%   unregisteredTerms collects them instead, so one run can list them all.
 %
 %   Not checked here: the binding constraint (T8) -- that is
 %   did2.schema.cache's strictMode('BindingConformance'), off by default -- and

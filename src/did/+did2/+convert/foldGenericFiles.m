@@ -396,6 +396,12 @@ arguments
     options.TargetVersion (1,:) char = 'V_eta'
 end
 
+% a migrator transcribes the v1 source's own terms, which the term
+% registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
+% is for imports, so it is off while this runs and restored after
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 % DENOMINATOR FIRST AND UNCONDITIONALLY (Operating Rule 5). The report is
 % attached BEFORE a single document is read, so "the pass never ran" and "the
 % pass ran and found nothing" can never print the same. `ran` is the

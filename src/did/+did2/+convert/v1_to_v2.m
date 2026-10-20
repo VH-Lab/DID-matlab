@@ -127,6 +127,12 @@ arguments
     options.Audits (1,1) logical = true
 end
 
+% a migrator transcribes the v1 source's own terms, which the term
+% registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
+% is for imports, so it is off while this runs and restored after
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 bodies = normaliseInput(v1Bodies);
 
 migrated = {};

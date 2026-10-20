@@ -140,6 +140,7 @@ classdef cache < handle
         schemaPath (1,:) char = ''
         loadedClasses
         curieRegistry struct = struct()
+        termRegistry struct = struct()
     end
 
     properties (Access = private)
@@ -1191,6 +1192,11 @@ classdef cache < handle
             %     NonVacuousFields      #38. A required field whose every
             %                           leaf is blank rejects, raising
             %                           did2:validation:vacuousField.
+            %     TermRegistry          T19. did2.build refuses a term the
+            %                           schema's term registry does not
+            %                           hold, raising
+            %                           did2:build:unregisteredTerm. ARMED;
+            %                           DID_ENFORCE_TERM_REGISTRY=0 disarms.
             %
             %   BOTH ARE NOW ARMED (2026-08-10, team's call) -- and they were
             %   armed on OPPOSITE evidence, which must not be flattened out.
@@ -1366,7 +1372,19 @@ classdef cache < handle
                     ... reject today: the strength on the field and this switch
                     ... are two independent brakes.
                     'BindingConformance', ...
-                        did2.schema.cache.envFlag('DID_ENFORCE_BINDING_CONFORMANCE'));
+                        did2.schema.cache.envFlag('DID_ENFORCE_BINDING_CONFORMANCE'), ...
+                    ... Tenet T19 (DID-schema V_eta_term_registry_plan.md,
+                    ... Jess Haley 2026-10-20: "error until the term is
+                    ... registered"). ARMED BY DEFAULT: did2.build refuses an
+                    ... ontology term in a vocabulary slot (a variable, method,
+                    ... unit, condition, parameter or key) that the schema's
+                    ... term registry does not hold. Only did2.build reads it;
+                    ... did2.convert turns it off while it migrates, because a
+                    ... migrator transcribes the v1 source's own terms. A
+                    ... schema with no registry (did-schema main) checks
+                    ... nothing. DID_ENFORCE_TERM_REGISTRY=0 turns it off.
+                    'TermRegistry', ...
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_TERM_REGISTRY'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;
@@ -1948,6 +1966,12 @@ classdef cache < handle
             registryFile = fullfile(obj.schemaPath, 'CURIE_lookups_meta.json');
             if isfile(registryFile)
                 obj.curieRegistry = jsondecode(fileread(registryFile));
+            end
+            % the term registry (DID-schema V_eta_term_registry_plan.md,
+            % tenet T19); absent before it was built (did-schema main)
+            termFile = fullfile(obj.schemaPath, 'term_registry_meta.json');
+            if isfile(termFile)
+                obj.termRegistry = jsondecode(fileread(termFile));
             end
         end
 

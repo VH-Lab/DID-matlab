@@ -27,7 +27,8 @@ function out = fillField(def, value, path)
 %   through as given (it must still be a struct).
 %
 %   The binding constraint (T8) is NOT checked here; it is the schema cache's
-%   (strictMode 'BindingConformance').
+%   (strictMode 'BindingConformance'). An ontology_term IS checked against the
+%   term registry (checkTerm; strictMode 'TermRegistry', tenet T19).
 
 subDefs = asDefs(getOr(def, 'fields', []));
 fieldType = char(getOr(def, 'type', ''));
@@ -63,6 +64,7 @@ for k = 1:numel(elems)
     elems{k} = fillStruct(subDefs, names, elems{k}, fieldType, elemPath);
     if strcmp(fieldType, 'ontology_term')
         elems{k} = completeFromValueSet(def, elems{k});
+        checkTerm(def, elems{k}, elemPath);
     end
 end
 if isArray
