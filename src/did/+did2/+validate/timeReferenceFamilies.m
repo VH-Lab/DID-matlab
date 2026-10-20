@@ -560,7 +560,9 @@ function keys = trfTermKeys(refs, dottedPath)
 %TRFTERMKEYS The comparison key for each member, off the declared path.
 %   An ontology_term is keyed on the CURIE when it has one and on the LABEL when
 %   it does not -- the NDIC clocktype terms are unminted (#67), so every real key
-%   today is a label. Case-folded, because `NDIC:1` and `ndic:1` are one node.
+%   today is a label. Case-folded, because `NDIC:1` and `ndic:1` are one node,
+%   and the prefix read by key, spelling or synonym through did2.schema.curieKey
+%   (DID-schema V_eta_prefix_spelling_plan.md, signed 2026-10-19).
 keys = cell(1, numel(refs));
 for k = 1:numel(refs)
     keys{k} = '';
@@ -569,7 +571,7 @@ for k = 1:numel(refs)
     if isempty(v); continue; end
     if isstruct(v) && isscalar(v)
         if isfield(v, 'node') && ~isempty(v.node)
-            keys{k} = lower(trfChar(v.node));
+            keys{k} = lower(did2.schema.curieKey(trfChar(v.node)));
         elseif isfield(v, 'name') && ~isempty(v.name)
             keys{k} = lower(trfChar(v.name));
         end

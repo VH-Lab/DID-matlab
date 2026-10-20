@@ -116,6 +116,25 @@ doc.validate('SchemaCache', testCase.TestData.cache);
 verifyTrue(testCase, true, 'a member matched by node must pass');
 end
 
+function testANodeMemberMatchesWhateverCaseItsPrefixIsWrittenIn(testCase)
+% DID-schema V_eta_prefix_spelling_plan.md, signed 2026-10-19: "readers match
+% a prefix by key, spelling or synonym, ignoring case". `pato:0000384` and
+% `PATO:0000384` are one node, so the lowercase form is a member of a set
+% that lists the spelled one. (This fixture's registry is V_delta's, which
+% carries no spellings; did2.schema.curieKey then compares prefixes ignoring
+% case. Synonyms are covered by testCuriePrefixSpelling.)
+did2.schema.cache.strictMode('BindingConformance', true);
+doc = blankOf(testCase, 'demoBoundNodes');
+doc = doc.set('demoBoundNodes.term', struct('node', 'pato:0000384', 'name', ''));
+doc.validate('SchemaCache', testCase.TestData.cache);
+verifyTrue(testCase, true, 'a member matched by node in another prefix case must pass');
+
+bad = blankOf(testCase, 'demoBoundNodes');
+bad = bad.set('demoBoundNodes.term', struct('node', 'pato:0000999', 'name', ''));
+verifyError(testCase, @() bad.validate('SchemaCache', testCase.TestData.cache), ...
+    'did2:validation:bindingValueNotInSet');
+end
+
 function testBareStringMembersAreReadAsNames(testCase)
 % BOTH member shapes occur in V_eta: `epoch_clock` enumerates bare strings,
 % the two clock fields enumerate {node, name} NodeRefs.

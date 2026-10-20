@@ -1616,9 +1616,17 @@ classdef cache < handle
             end
         end
 
-        function checkBinding(value, binding, qualifiedName)
+        function checkBinding(value, binding, qualifiedName, registry)
             % checkBinding - #32 (T8). Enforce what a `constraints.binding`
             %   ACTUALLY STATES, and nothing more.
+            %
+            %   REGISTRY (optional; [] = the shared cache's) is the parsed
+            %   CURIE_lookups_meta.json. A member of an inline set is
+            %   matched on its node by did2.schema.curieKey, so a prefix
+            %   matches by key, spelling or synonym, ignoring case
+            %   (DID-schema V_eta_prefix_spelling_plan.md, signed
+            %   2026-10-19): `ncit:C175887` is a member of a set that lists
+            %   `NCIT:C175887`.
             %
             %   T8 wants controlled vocabularies hard-validated: a value
             %   resolved against an admissible set through the binding
@@ -1673,6 +1681,9 @@ classdef cache < handle
             %
             %   NEVER EXECUTED. There is no MATLAB in the environment this
             %   was written in. See testBindingConformance.m.
+            if nargin < 4
+                registry = [];
+            end
             if ~did2.schema.cache.strictMode('BindingConformance')
                 return;
             end
@@ -1719,9 +1730,15 @@ classdef cache < handle
 
             memberNodes = {};
             memberNames = {};
+            memberKeys = {};
             if hasSet
                 [memberNodes, memberNames] = ...
                     did2.schema.cache.bindingMembers(binding.values);
+                if any(~cellfun(@isempty, memberNodes))
+                    index = did2.schema.curiePrefixIndex(registry);
+                    memberKeys = cellfun(@(n) did2.schema.curieKey(n, index), ...
+                        memberNodes, 'UniformOutput', false);
+                end
             end
 
             for k = 1:numel(terms)
@@ -1742,6 +1759,10 @@ classdef cache < handle
                     inSet = false;
                     if ~isempty(node)
                         inSet = any(strcmp(node, memberNodes));
+                        if ~inSet && ~isempty(memberKeys)
+                            inSet = any(strcmp( ...
+                                did2.schema.curieKey(node, index), memberKeys));
+                        end
                     end
                     if ~inSet && ~isempty(name)
                         inSet = any(strcmp(name, memberNames));
@@ -2323,7 +2344,7 @@ classdef cache < handle
             end
         end
 
-        function validateConstraints(~, value, constraints, ~, qualifiedName)
+        function validateConstraints(obj, value, constraints, ~, qualifiedName)
             cnames = fieldnames(constraints);
             for k = 1:numel(cnames)
                 cname = cnames{k};
@@ -2367,7 +2388,8 @@ classdef cache < handle
                         % the added cost on a corpus run is one function
                         % call per bound field per document -- 14 bound
                         % fields exist in the whole of V_eta.
-                        did2.schema.cache.checkBinding(value, cval, qualifiedName);
+                        did2.schema.cache.checkBinding(value, cval, qualifiedName, ...
+                            obj.curieRegistry);
                     otherwise
                         % Unrecognised constraint keys are tolerated;
                         % `pattern` and similar can be added later.

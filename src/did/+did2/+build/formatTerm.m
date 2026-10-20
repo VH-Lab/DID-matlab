@@ -32,6 +32,12 @@ function f = formatTerm(format, schemaCache)
 %   CURIE, as generic_file's format_ontology always was) or, with no node, as
 %   its name (jSorterOutput's 'directory').
 %
+%   A CURIE is written as its registry entry's `spelling` (DID-schema
+%   V_eta_prefix_spelling_plan.md, signed 2026-10-19), so the old EDAM form
+%   'format:3591' is written 'EDAM:format_3591', and the table below is
+%   matched by did2.schema.curieKey (prefix by key, spelling or synonym,
+%   ignoring case).
+%
 %   SCHEMACACHE ([] = the shared one) is the cache whose `data_body` is read.
 %   If the declared type cannot be read, the term form is used: it is the
 %   current schema's.
@@ -42,12 +48,12 @@ arguments
 end
 
 f = [];
-t = asTerm(format);
+t = asTerm(format, prefixIndex(schemaCache));
 if isempty(t)
     return;
 end
 if declaresCharFormat(schemaCache)
-    f = mediaType(t);
+    f = mediaType(t, prefixIndex(schemaCache));
 else
     f = t;
 end
@@ -55,9 +61,10 @@ end
 
 % ===================== helpers =============================================
 
-function t = asTerm(format)
+function t = asTerm(format, index)
 arguments
     format % a {node, name} struct, a CURIE or name as text, or empty
+    index struct % a did2.schema.curiePrefixIndex
 end
 
 t = [];
@@ -65,8 +72,9 @@ if isempty(format)
     return;
 end
 if isstruct(format)
-    t = struct('node', textOf(format, 'node'), 'name', textOf(format, 'name'));
-    if isempty(t.name); t.name = knownName(t.node); end
+    t = struct('node', did2.schema.curieSpelling(textOf(format, 'node'), index), ...
+        'name', textOf(format, 'name'));
+    if isempty(t.name); t.name = knownName(t.node, index); end
     return;
 end
 if isstring(format) && isscalar(format), format = char(format); end
@@ -79,7 +87,8 @@ if isempty(format)
     return;
 end
 if ~isempty(regexp(format, '^[A-Za-z][A-Za-z0-9_.-]*:[^\s/]+$', 'once'))
-    t = struct('node', format, 'name', knownName(format));
+    node = did2.schema.curieSpelling(format, index);
+    t = struct('node', node, 'name', knownName(node, index));
 else
     t = struct('node', '', 'name', format);
 end
@@ -118,13 +127,14 @@ catch
 end
 end
 
-function m = mediaType(t)
+function m = mediaType(t, index)
 arguments
     t (1,1) struct
+    index struct % a did2.schema.curiePrefixIndex
 end
 
+k = knownRow(t.node, index);
 table = knownTable();
-k = find(strcmpi(table(:, 1), t.node), 1);
 if ~isempty(k)
     m = table{k, 3};
 elseif ~isempty(t.node)
@@ -146,17 +156,56 @@ if isfield(s, f) && ~isempty(s.(f))
 end
 end
 
-function name = knownName(curie)
+function name = knownName(curie, index)
 arguments
     curie {mustBeText}
+    index struct % a did2.schema.curiePrefixIndex
 end
 
 name = '';
 if isempty(curie); return; end
 table = knownTable();
-k = find(strcmpi(table(:, 1), curie), 1);
+k = knownRow(curie, index);
 if ~isempty(k)
     name = table{k, 2};
+end
+end
+
+function k = knownRow(curie, index)
+%KNOWNROW The row of knownTable naming CURIE, [] if none. Compared by
+%   did2.schema.curieKey, so a prefix matches by key, spelling or synonym.
+arguments
+    curie {mustBeText}
+    index struct % a did2.schema.curiePrefixIndex
+end
+
+k = [];
+if isempty(curie); return; end
+table = knownTable();
+want = did2.schema.curieKey(curie, index);
+for r = 1:size(table, 1)
+    if strcmpi(did2.schema.curieKey(table{r, 1}, index), want)
+        k = r;
+        return;
+    end
+end
+end
+
+function index = prefixIndex(schemaCache)
+%PREFIXINDEX The CURIE prefix index of SCHEMACACHE, or of the shared cache.
+arguments
+    schemaCache % a did2.schema.cache, or [] for the shared one
+end
+
+index = did2.schema.curiePrefixIndex(struct());
+try
+    if isempty(schemaCache)
+        index = did2.schema.curiePrefixIndex();
+    else
+        index = did2.schema.curiePrefixIndex(schemaCache.curieRegistry);
+    end
+catch
+    % no readable registry: prefixes are still compared ignoring case
 end
 end
 

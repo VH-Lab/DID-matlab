@@ -1235,7 +1235,10 @@ v = pathValue(referent, dottedPath);
 if isempty(v); return; end
 if isstruct(v) && isscalar(v)
     if isfield(v, 'node') && ischar(v.node) && ~isempty(strtrim(v.node))
-        key = ['node:' lower(strtrim(v.node))]; how = 'node'; return;
+        % the prefix is read by key, spelling or synonym (DID-schema
+        % V_eta_prefix_spelling_plan.md, signed 2026-10-19), so `PMID:1` and
+        % `pubmed:1` key alike; the whole key is still case-folded
+        key = ['node:' lower(did2.schema.curieKey(v.node))]; how = 'node'; return;
     end
     if isfield(v, 'name') && ischar(v.name) && ~isempty(strtrim(v.name))
         key = ['name:' lower(strtrim(v.name))]; how = 'name'; return;
