@@ -12,7 +12,8 @@ function ix = curiePrefixIndex(registry)
 %   IX is a struct of four containers.Map:
 %     names      lower(name) -> registry key, for the entry's key, its
 %                `spelling` and every one of its `synonyms`
-%     spelling   registry key -> the prefix as a document writes it
+%     spelling   registry key -> the prefix as a document writes it, for
+%                entries that carry a `spelling`
 %     legacy     lower(old prefix) -> {registry key, id prefix}, from the
 %                entry's `legacy_rewrite` (`WBStrain:00004246` is read as
 %                `WormBase:WBStrain00004246`, `format:1929` as
@@ -81,16 +82,19 @@ for i = 1:numel(keys)
     k = keys{i};
     e = registry.prefixes.(k);
     sp = textOf(e, 'spelling');
-    if isempty(sp)
-        sp = k;
+    if ~isempty(sp)
+        % an entry with no `spelling` (a registry written before the field)
+        % leaves the prefix as the writer gave it: its key is a lookup
+        % name, not a spelling, and lowercasing `EMPTY:` to `empty:` would
+        % invent one
+        ix.spelling(k) = sp;
     end
-    ix.spelling(k) = sp;
     names = [{k}, textList(e, 'synonyms')];
     if isfield(e, 'written_as') && isstruct(e.written_as)
         % spelled through another entry, so its spelling names that entry
         ix.writtenAs(k) = {matlab.lang.makeValidName(textOf(e.written_as, 'prefix')), ...
             textOf(e.written_as, 'id_prefix')};
-    else
+    elseif ~isempty(sp)
         names{end+1} = sp; %#ok<AGROW>
     end
     if isfield(e, 'legacy_rewrite') && isstruct(e.legacy_rewrite)

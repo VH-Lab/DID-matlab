@@ -55,6 +55,9 @@ ix = did2.schema.curiePrefixIndex(jsondecode( ...
     '{"prefixes": {"uberon": {"uri_base": "x"}}}'));
 verifyEqual(testCase, did2.schema.curieKey('UBERON:0000955', ix), 'uberon:0000955');
 verifyEqual(testCase, did2.schema.curieSpelling('uberon:0000955', ix), 'uberon:0000955');
+% an entry with no `spelling` leaves the writer's prefix alone: its key is
+% not a spelling (did-schema main wrote `EMPTY:0000253` as `empty:0000253`)
+verifyEqual(testCase, did2.schema.curieSpelling('UBERON:0000955', ix), 'UBERON:0000955');
 end
 
 % ===================== reading: curieKey ===================================
