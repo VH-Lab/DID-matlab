@@ -337,7 +337,10 @@ v1.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1
 out = runJ(v1);
 policy = findClass(testCase, out, 'clock_alignment_policy');
 verifyEqual(testCase, policy.get('base.id'), 'graph_0001');
-verifyEqual(testCase, depVal(policy, 'session_id'), 'sessdoc_1', ...
+% on the edge shape base's own `session_id` edge is this edge, and the session
+% DOCUMENT's id IS the session id, so the field is what it carries
+verifyEqual(testCase, depVal(policy, 'session_id'), ...
+    did2.unittest.helpers.sessionDocumentId('sessdoc_1', 'sess_0001'), ...
     'the edge must name the session DOCUMENT, never base.session_id');
 verifyEqual(testCase, depVal(policy, 'clock_alignment_configuration_1'), 'rule_a');
 verifyEqual(testCase, depVal(policy, 'clock_alignment_configuration_2'), 'rule_b');
@@ -359,7 +362,8 @@ out = runJ(v1);
 policy = findClass(testCase, out, 'clock_alignment_policy');
 deps = depsOf(policy);
 verifyFalse(testCase, any(startsWith({deps.name}, 'clock_alignment_configuration_')));
-verifyEqual(testCase, depVal(policy, 'session_id'), 'sessdoc_1');
+verifyEqual(testCase, depVal(policy, 'session_id'), ...
+    did2.unittest.helpers.sessionDocumentId('sessdoc_1', 'sess_0001'));
 end
 
 function testGraphWithTheEmptySessionSentinelPassesThrough(testCase)
@@ -586,7 +590,8 @@ out = did2.convert.v1_to_v2( ...
     'Validate', false, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine);
 report = did2.validate.references(out.migrated, 'KnownIds', ...
-    {'sess_0001', 'epochdoc_a', 'epochdoc_b'});
+    [{'sess_0001', 'epochdoc_a', 'epochdoc_b'}, ...
+     did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
 verifyGreaterThanOrEqual(testCase, report.edges_examined, 10);
 if report.orphan_count > 0

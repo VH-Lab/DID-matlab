@@ -89,7 +89,8 @@ verifyEqual(testCase, edge(obs, 'time_reference_id'), '');
 % `fref_store_1` is the fileReference the TRANSIENT `source_file_id` names;
 % it is outside this one-document batch (foldGenericFiles removes the edge).
 ref = did2.validate.references(out.migrated, 'KnownIds', ...
-    {'subj_ls_1', 'elem_scope_1', 'fref_store_1'});
+    [{'subj_ls_1', 'elem_scope_1', 'fref_store_1'}, ...
+     did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 verifyEqual(testCase, ref.orphan_count, 0);
 end
 
@@ -193,7 +194,8 @@ verifyEqual(testCase, edge(obs, 'source_file_id'), '');
 verifyTrue(testCase, isempty(blockField(obs, 'keys')));
 verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared', ...
     'Jess 2026-10-15: the label is the observation''s notes, permanently');
-ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+ref = did2.validate.references(out.migrated, 'KnownIds', [{'subj_ls_1', 'elem_scope_1'}, ...
+    did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 verifyEqual(testCase, ref.orphan_count, 0);
 end
 
@@ -243,7 +245,8 @@ obs = pickById(out, p.base.id);
 verifyEqual(testCase, edge(obs, 'source_file_id'), '');
 verifyEqual(testCase, blockField(obs, 'notes'), 'brain 7 cleared', ...
     'a SmartSPIM pyramid keeps its label too');
-ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+ref = did2.validate.references(out.migrated, 'KnownIds', [{'subj_ls_1', 'elem_scope_1'}, ...
+    did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 verifyEqual(testCase, ref.orphan_count, 0);
 end
 
@@ -461,7 +464,8 @@ verifyEqual(testCase, edge(ref, 'referent_id'), sess.base.id, 'measured against 
 verifyEqual(testCase, ref.relative_time_reference.value.relation.node, 'time:intervalDuring');
 verifyEqual(testCase, edge(obs, did2.convert.mintSessionDuring('marker')), '', ...
     'the transient marker is removed');
-ref2 = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+ref2 = did2.validate.references(out.migrated, 'KnownIds', [{'subj_ls_1', 'elem_scope_1'}, ...
+    did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 verifyEqual(testCase, ref2.orphan_count, 0);
 end
 
@@ -475,7 +479,8 @@ verifyEqual(testCase, rep.observations_without_session, 1);
 obs = pickById(out, 'pyr_ls_1');
 verifyEmpty(testCase, edgeAll(obs, 'time_reference_id'), 'no id is ever invented');
 verifyEqual(testCase, edge(obs, did2.convert.mintSessionDuring('marker')), '');
-ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+ref = did2.validate.references(out.migrated, 'KnownIds', [{'subj_ls_1', 'elem_scope_1'}, ...
+    did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 verifyEqual(testCase, ref.orphan_count, 0);
 end
 
@@ -632,7 +637,8 @@ bodies = pickByClass(out, 'sampled_body');
 verifyEqual(testCase, numel(bodies), 2);
 ids = sort(cellfun(@(d) char(d.base.id), bodies, 'UniformOutput', false));
 verifyEqual(testCase, ids, sort({lvl0.base.id, lvl1.base.id}));
-ref = did2.validate.references(out.migrated, 'KnownIds', {'subj_ls_1', 'elem_scope_1'});
+ref = did2.validate.references(out.migrated, 'KnownIds', [{'subj_ls_1', 'elem_scope_1'}, ...
+    did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 verifyEqual(testCase, ref.orphan_count, 0);
 end
 
@@ -743,7 +749,8 @@ verifyEqual(testCase, numel(pickByClass(out, 'sampled_body')), 2);
 verifyEqual(testCase, out.summary.emitted_nothing_count, 1);
 % fref_store_1: the transient source_file_id (no batch pass ran here).
 ref = did2.validate.references(out.migrated, 'KnownIds', ...
-    {'subj_ls_1', 'elem_scope_1', 'fref_store_1'});
+    [{'subj_ls_1', 'elem_scope_1', 'fref_store_1'}, ...
+     did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 verifyEqual(testCase, ref.orphan_count, 0, ...
     'every body''s owner_id must name the pyramid''s preserved id');
 end

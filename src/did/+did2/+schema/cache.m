@@ -1216,9 +1216,10 @@ classdef cache < handle
 
         function sid = sessionIdOf(body)
             % sessionIdOf - the session id a document body carries, in
-            %   either shape: BODY's `base.session_id` field when it has a
-            %   non-empty one, else the id its `session_id` depends_on edge
-            %   names, else ''. BODY is a body struct or a did2.document.
+            %   either shape: BODY's `base.session_id` field when it has one
+            %   (even blank), else -- when it has NO such field -- the id its
+            %   `session_id` depends_on edge names, else ''. BODY
+            %   is a body struct or a did2.document.
             %
             %   TWO SHAPES, ONE ANSWER. did_v1 and V_eta before 2026-10-20
             %   store the session id as the field; V_eta after did-schema
@@ -1241,7 +1242,10 @@ classdef cache < handle
                 return;
             end
             if isfield(body, 'base') && isstruct(body.base) && isscalar(body.base) ...
-                    && isfield(body.base, 'session_id') && ~isempty(body.base.session_id)
+                    && isfield(body.base, 'session_id')
+                % A body that HAS the field answers from it, even blank: on
+                % the field shape a `session_id` edge some classes declare
+                % (an epoch's) names the session DOCUMENT, a different id.
                 sid = char(body.base.session_id);
                 return;
             end

@@ -646,7 +646,7 @@ out = runJ(imageIngestedV1());
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the passthrough emitted no document; every assertion below would be vacuous');
 doc = out.migrated{1};
-deps = doc.get('depends_on');
+deps = did2.unittest.helpers.dropSessionEdge(doc.get('depends_on'));   % base's own edge is not the migrator's
 assertEqual(testCase, numel(deps), 1, ...
     'daqreader_image_epochdata_ingested acquired a second edge; see the migrator header');
 verifyEqual(testCase, char(deps(1).name), 'daqreader_id');

@@ -746,7 +746,7 @@ verifyEqual(testCase, doc.get('document_class.class_name'), 'ontology_label');
 % the load-bearing assertion: the referent id, after the rename step
 verifyEqual(testCase, depVal(doc, 'document_id'), 'imstack_9', ...
     'the document_id edge must survive universalRenames + the migrator');
-verifyEqual(testCase, numel(doc.get('depends_on')), 1);
+verifyEqual(testCase, numel(did2.unittest.helpers.dropSessionEdge(doc.get('depends_on'))), 1);
 % and the passthrough is counted as one -- a DELIBERATE one, per class, so an
 % accidental fall-through to a fallback would show up here as well
 verifyEqual(testCase, out.summary.unconverted_by_class.ontology_label, 1);
@@ -1335,7 +1335,7 @@ obs = out.migrated{1};
 verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
 
 % THE EDGE SET, as a set. DENOMINATOR: 3 edges on the observation.
-verifyEqual(testCase, sort(depNamesOf(obs)), ...
+verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), ...
     {'ontology_table_row_id', 'subject_id', 'time_reference_1'}, ...
     'the fold arm emits exactly subject_id + the anchor + the carried row');
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_7');
@@ -1438,7 +1438,8 @@ verifyTrue(testCase, any(strcmp(classes, 'ontology_table_row')), ...
 obs = out.migrated{find(strcmp(classes, 'image_observation'), 1)};
 verifyEqual(testCase, depVal(obs, 'ontology_table_row_id'), 'otr_plate_1');
 
-rep = did2.validate.references(out.migrated);
+rep = did2.validate.references(out.migrated, ...
+    'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
 verifyGreaterThan(testCase, rep.edges_examined, 0, ...
     'DENOMINATOR: references must have examined edges at all');
 verifyEqual(testCase, rep.orphan_count, 0, ...
@@ -1447,7 +1448,8 @@ verifyEqual(testCase, rep.orphan_count, 0, ...
 % CONTROL: the same instrument, the same image, the referent REMOVED. This is
 % both the discrimination check and the discovery-mode case.
 outNoRow = runJ({behaviourImageStack(), group});
-repMissing = did2.validate.references(outNoRow.migrated);
+repMissing = did2.validate.references(outNoRow.migrated, ...
+    'KnownIds', did2.unittest.helpers.sessionKnownIds(outNoRow.migrated));
 verifyEqual(testCase, repMissing.orphan_count, 1, ...
     'the control proves the check discriminates rather than passing everything');
 verifyEqual(testCase, repMissing.orphans(1).edge_document_id, 'otr_plate_1');
@@ -1481,7 +1483,7 @@ verifyNotEmpty(testCase, depVal(obs, 'time_reference_1'));
 
 % THE ASSERTION: the slot is ABSENT, not present-and-empty. Read by NAME --
 % depVal cannot tell those apart and would pass either way.
-verifyEqual(testCase, sort(depNamesOf(obs)), {'subject_id', 'time_reference_1'}, ...
+verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), {'subject_id', 'time_reference_1'}, ...
     'no document_id on the source means no ontology_table_row_id on the fold');
 for k = 1:numel(out.migrated)
     verifyFalse(testCase, any(strcmp(depNamesOf(out.migrated{k}), ...
@@ -1507,7 +1509,7 @@ out = runJ(v1);
 obs = out.migrated{1};
 verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_babu_3');
-verifyEqual(testCase, sort(depNamesOf(obs)), {'subject_id', 'time_reference_1'}, ...
+verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), {'subject_id', 'time_reference_1'}, ...
     'an empty source document_id must not become an empty V_eta edge');
 end
 

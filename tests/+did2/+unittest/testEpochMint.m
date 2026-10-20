@@ -137,7 +137,7 @@ verifyEqual(testCase, numel(refs), 1, 'one reference for the one clock');
 % you cannot index into the result of a function call.
 verifyEqual(testCase, depValueOf(epochs{1}, 'time_reference_1'), ...
     char(refs{1}.get('base.id')), 'the epoch HOLDS the reference');
-verifyEqual(testCase, depValueOf(refs{1}, 'relative_to'), 'sess_doc_1', ...
+verifyEqual(testCase, depValueOf(refs{1}, 'relative_to'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'sess_1'), ...
     'the reference is anchored to the SESSION, not to its own holder');
 verifyNotEqual(testCase, depValueOf(refs{1}, 'relative_to'), ...
     char(epochs{1}.get('base.id')), 'anchoring to the epoch would be circular');
@@ -502,7 +502,7 @@ verifyEqual(testCase, lids, {'t00070', 't00070'}, ...
     'both keep the v1 handle -- 30 live NDI sites match that string');
 sessEdges = sort(cellfun(@(d) depValue(d.toStruct(), 'session_id'), epochs, ...
     'UniformOutput', false));
-verifyEqual(testCase, sessEdges, {'sd_A', 'sd_B'}, ...
+verifyEqual(testCase, sessEdges, {did2.unittest.helpers.sessionDocumentId('sd_A', 'sess_A'), did2.unittest.helpers.sessionDocumentId('sd_B', 'sess_B')}, ...
     'each epoch points at ITS session document');
 end
 
@@ -787,7 +787,7 @@ verifyEqual(testCase, rep.epochs_minted, 1);
 epochs = ofClass(out, 'epoch');
 d = epochs{1};
 verifyEqual(testCase, char(d.get('epoch.local_identifier')), 't00069');
-verifyEqual(testCase, depValue(d.toStruct(), 'session_id'), 'sd_A');
+verifyEqual(testCase, depValue(d.toStruct(), 'session_id'), did2.unittest.helpers.sessionDocumentId('sd_A', 'sess_A'));
 end
 
 function testTheMintEmitsNoEdgeItCannotPopulate(testCase)
@@ -1020,8 +1020,8 @@ for k = 1:numel(epochs)
     e = epochs{k}.toStruct();
     epochOwner(char(e.base.id)) = depValue(e, 'session_id');
 end
-verifyEqual(testCase, epochOwner(edges('amf_A')), 'sd_A');
-verifyEqual(testCase, epochOwner(edges('amf_B')), 'sd_B');
+verifyEqual(testCase, epochOwner(edges('amf_A')), did2.unittest.helpers.sessionDocumentId('sd_A', 'sess_A'));
+verifyEqual(testCase, epochOwner(edges('amf_B')), did2.unittest.helpers.sessionDocumentId('sd_B', 'sess_B'));
 end
 
 function testAnUnresolvableEpochLeavesTheDocumentAsItWas(testCase)

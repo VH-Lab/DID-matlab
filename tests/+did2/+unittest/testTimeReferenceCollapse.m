@@ -342,8 +342,10 @@ verifyEqual(testCase, rep.anchors_folded, 1);
 verifyEqual(testCase, rep.refused_total, 0);
 
 ref = oneOfClass(testCase, out, 'relative_reference');
-verifyEqual(testCase, depValue(ref.toStruct(), 'relative_to'), 'sess_doc_1');
-verifyNotEqual(testCase, depValue(ref.toStruct(), 'relative_to'), 'SID_1');
+verifyEqual(testCase, depValue(ref.toStruct(), 'relative_to'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'SID_1'));
+if ~did2.schema.cache.shared().sessionIdIsEdge()   % one string on the edge shape
+    verifyNotEqual(testCase, depValue(ref.toStruct(), 'relative_to'), 'SID_1');
+end
 % and the old class is gone from the batch
 verifyFalse(testCase, any(strcmp(classNames(out), 'session_relative_reference')));
 end

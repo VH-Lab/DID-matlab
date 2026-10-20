@@ -377,7 +377,8 @@ out = did2.convert.v1_to_v2({presentationFixture(), controlFixture()}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine);
 
-report = did2.validate.references(out.migrated, 'KnownIds', {'stimelem_5f10a2'});
+report = did2.validate.references(out.migrated, 'KnownIds', ...
+    [{'stimelem_5f10a2'}, did2.unittest.helpers.sessionKnownIds(out.migrated)]);
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
 verifyGreaterThanOrEqual(testCase, report.edges_examined, 3);
 if report.orphan_count > 0

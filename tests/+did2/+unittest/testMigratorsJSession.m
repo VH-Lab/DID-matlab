@@ -254,5 +254,6 @@ v1 = sessionV1('ts_2024');
 v1 = rmfield(v1, 'session');
 out = runJ(v1);
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
-verifyEqual(testCase, out.migrated{1}.get('base.id'), 'sess_doc_1');
+verifyEqual(testCase, out.migrated{1}.get('base.id'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'sess_09'), ...
+    'the block is not rewritten; on the edge shape the session is still re-id');
 end

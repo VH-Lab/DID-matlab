@@ -226,6 +226,13 @@ end
 % which is exactly why it failed loudly rather than silently.
 body.base = struct('id', id, 'session_id', sessionId, 'name', '', ...
     'creation_timestamp', '2024-06-01T12:00:00.000Z');
+if did2.schema.cache.shared().sessionIdIsEdge()
+    % the same reason, one change later: `base.session_id` is the `session_id`
+    % edge on a schema built after 2026-10-20 (did-schema
+    % V_eta_relation_inheritance_plan.md), and only v1_to_v2 moves it
+    body.base = rmfield(body.base, 'session_id');
+    body.depends_on(end+1) = struct('name', 'session_id', 'document_id', sessionId);
+end
 body.interaction_purpose = struct( ...
     'purpose', struct('node', 'NDIC:00000012', ...
                       'name', 'Assessing spatial frequency tuning'), ...
@@ -367,7 +374,7 @@ for k = 1:numel(out.migrated)
     s = out.migrated{k}.toStruct();
     % The GENERAL claim first -- no edge of ANY name, which is the fact that
     % makes a subject unreachable however a future fold tries to reach one.
-    verifyTrue(testCase, ~isfield(s, 'depends_on') || isempty(s.depends_on), ...
+    verifyTrue(testCase, ~isfield(s, 'depends_on') || isempty(did2.unittest.helpers.dropSessionEdge(s.depends_on)), ...
         'binaryseries_parameters acquired a depends_on edge; see the migrator header');
     % Then the two names a fold would actually reach for, stated separately so a
     % failure says WHICH edge appeared rather than only that the count moved.

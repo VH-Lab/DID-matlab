@@ -43,8 +43,10 @@ verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), 1);
 policy = firstOf(out, 'clock_alignment_policy');
 % base.id PRESERVED -- syncrule_mapping's syncgraph_id edge still resolves.
 verifyEqual(testCase, policy.get('base.id'), 'graph_1');
-% session_id names the session DOCUMENT's base.id, not the base.session_id.
-verifyEqual(testCase, depValue(policy, 'session_id'), 'sessdoc_A');
+% session_id names the session DOCUMENT's base.id, not the base.session_id
+% (on the edge shape the two are one string: the session entity's id IS its
+% session id).
+verifyEqual(testCase, depValue(policy, 'session_id'), did2.unittest.helpers.sessionDocumentId('sessdoc_A', 'sess_A'));
 % the rule membership survives as a clock_alignment_configuration_# family.
 verifyEqual(testCase, depValue(policy, 'clock_alignment_configuration_1'), 'rule_1');
 end

@@ -53,6 +53,11 @@ function testSessionIdOfReadsTheFieldFirstThenTheEdge(testCase)
 both = struct('base', struct('id', 'd', 'session_id', 'from_field'), ...
     'depends_on', struct('name', 'session_id', 'document_id', 'from_edge'));
 verifyEqual(testCase, did2.schema.cache.sessionIdOf(both), 'from_field');
+% a body that HAS the field answers from it even blank: on the field shape an
+% epoch's own `session_id` edge names the session DOCUMENT, a different id
+blank = both;
+blank.base.session_id = '';
+verifyEqual(testCase, did2.schema.cache.sessionIdOf(blank), '');
 edgeOnly = struct('base', struct('id', 'd'), ...
     'depends_on', struct('name', {'other_id', 'session_id'}, 'document_id', {'o', 'e1'}));
 verifyEqual(testCase, did2.schema.cache.sessionIdOf(edgeOnly), 'e1');

@@ -883,8 +883,10 @@ verifyTrue(testCase, any(strcmp(ids, target)), ...
 % and what it now points at is the folded reference, on the session DOCUMENT
 ref = ofClass(out, 'relative_reference');
 verifyEqual(testCase, char(ref{1}.get('base.id')), target);
-verifyEqual(testCase, depValue(ref{1}.toStruct(), 'relative_to'), 'sess_doc_1');
-verifyNotEqual(testCase, depValue(ref{1}.toStruct(), 'relative_to'), 'SID_1');
+verifyEqual(testCase, depValue(ref{1}.toStruct(), 'relative_to'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'SID_1'));
+if ~did2.schema.cache.shared().sessionIdIsEdge()   % one string on the edge shape
+    verifyNotEqual(testCase, depValue(ref{1}.toStruct(), 'relative_to'), 'SID_1');
+end
 end
 
 function testAnEmitterAnchorWithNoSessionDocumentIsLeftIntactNotHollowed(testCase)
@@ -1140,8 +1142,10 @@ verifyFalse(testCase, any(strcmp(classNames(out), 'session_bounded_reference')),
 refs = ofClass(out, 'relative_reference');
 assertEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, char(refs{1}.get('base.id')), windowIds{1});
-verifyEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), 'sess_doc_1');
-verifyNotEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), 'SID_1');
+verifyEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'SID_1'));
+if ~did2.schema.cache.shared().sessionIdIsEdge()   % one string on the edge shape
+    verifyNotEqual(testCase, depValue(refs{1}.toStruct(), 'relative_to'), 'SID_1');
+end
 end
 
 function testEveryEncounterEdgeStillResolvesAfterTheBoundedFold(testCase)
