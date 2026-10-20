@@ -14,7 +14,11 @@ function checkTerm(def, t, path)
 %     - a field whose binding lists its own values (entity.type, a
 %       relation, a clock): that list already governs it;
 %     - a statement's own value (term.value, a chemical's substance): that is
-%       what the data says, not the vocabulary it is said in.
+%       what the data says, not the vocabulary it is said in;
+%     - a model fit's coefficient names (model_fit ... coefficients.variable):
+%       a coefficient is named by its symbol in the model's equation ('a',
+%       'b'), which tells the fit's own coefficients apart; its node still
+%       says what kind of coefficient it is.
 
 arguments
     def struct
@@ -28,7 +32,8 @@ if ~armed && ~collecting
     return;
 end
 if hasValueSet(def) || ~isempty(regexp(path, ...
-        '^(term\.value|chemical\.value\.substance)(\(\d+\))?$', 'once'))
+        '^(term\.value|chemical\.value\.substance)(\(\d+\))?$', 'once')) ...
+        || ~isempty(regexp(path, '\.coefficients(\(\d+\))?\.variable$', 'once'))
     return;
 end
 ix = did2.schema.termIndex();
