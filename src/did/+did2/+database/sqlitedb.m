@@ -1230,7 +1230,15 @@ classdef sqlitedb < handle
             id = obj.requireField(s, 'base', 'id');
             classname = obj.requireDocumentClassField(s, 'class_name');
             classVersion = obj.requireDocumentClassField(s, 'class_version');
-            sessionId = obj.optionalField(s, 'base', 'session_id');
+            % The `session_id` COLUMN stays, as an index for scoping a search
+            % to one session, and is filled in EITHER shape: from the
+            % `base.session_id` field (did_v1, V_eta before 2026-10-20), else
+            % from the `session_id` edge that replaced it (did-schema
+            % V_eta_relation_inheritance_plan.md; the edge's target, the
+            % session entity, has the session id as its base.id). A query on
+            % `base.session_id` is answered from this column
+            % (did2.database.compileQuery), so it finds both.
+            sessionId = did2.schema.cache.sessionIdOf(s);
             datestamp = obj.requireCreationTimestamp(s);
             bodyText = doc.toJSON();
             bodyHash = did2.database.sqlitedb.computeHash(bodyText);

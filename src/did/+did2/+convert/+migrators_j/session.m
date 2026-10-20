@@ -1,6 +1,7 @@
 function v2Body = session(preBody)
 %SESSION Brainstorm-J migrator: `reference` -> `local_identifier`, and drop the
-%   three V_zeta inventions. 1 -> 1, base.id PRESERVED.
+%   three V_zeta inventions. 1 -> 1, base.id PRESERVED -- except on a schema
+%   where `session_id` is an edge, where base.id BECOMES the session id (below).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -81,6 +82,19 @@ end
 
 v2Body = preBody;
 
+% THE SESSION ENTITY'S ID IS ITS SESSION ID, on a schema where `session_id` is
+% an edge (did-schema V_eta_relation_inheritance_plan.md, 2026-10-20, built
+% ahead of signature). Every document's `session_id` edge then points at this
+% document, and points at it by the v1 `base.session_id` string it already
+% carries -- so the session document takes that string as its base.id, and
+% its own edge points at itself. Nothing in v1 refers to a session document by
+% its old base.id (v1 joins on the session_id string), so the re-id strands
+% nothing. On the field shape base.id is PRESERVED, as before.
+if sessionIdIsEdge() && isfield(v2Body, 'base') && isstruct(v2Body.base) ...
+        && isfield(v2Body.base, 'session_id') && ~isempty(v2Body.base.session_id)
+    v2Body.base.id = char(v2Body.base.session_id);
+end
+
 if ~isfield(v2Body, 'session') || ~isstruct(v2Body.session) ...
         || ~isscalar(v2Body.session)
     return;     % nothing to rewrite; the body passes through as it arrived
@@ -103,4 +117,17 @@ for f = {'type', 'date', 'purpose'}
 end
 
 v2Body.session = blk;
+end
+
+function tf = sessionIdIsEdge()
+% Does the loaded schema store the session id as an EDGE (did-schema
+% V_eta_relation_inheritance_plan.md, 2026-10-20)? A migrator holds no cache
+% handle, so it asks the shared one -- the cache did2.convert.v1_to_v2 also
+% falls back to. False when no schema can be loaded: the historical field shape.
+tf = false;
+try
+    tf = did2.schema.cache.shared().sessionIdIsEdge();
+catch
+    % no schema to ask
+end
 end

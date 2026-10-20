@@ -113,7 +113,7 @@ for k = 1:n
         b = docs{k}.toStruct();
         bodies{k}    = b;
         classes{k}   = classNameOf(b);
-        sessionId{k} = baseField(b, 'session_id');
+        sessionId{k} = did2.schema.cache.sessionIdOf(b);
         docId{k}     = baseField(b, 'id');
     catch
         report.documents_unreadable = report.documents_unreadable + 1;

@@ -135,6 +135,15 @@ restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry',
 
 bodies = normaliseInput(v1Bodies);
 
+% Asked ONCE per call, of the schema the documents validate against: does
+% `base` declare `session_id` as an edge (did-schema
+% V_eta_relation_inheritance_plan.md, 2026-10-20) or as the field it always
+% was? See renameOutboundBaseFields.
+sessionEdge = false;
+if strcmp(options.TargetVersion, 'V_eta')
+    sessionEdge = outboundSchemaCache(options.SchemaCache).sessionIdIsEdge();
+end
+
 migrated = {};
 quarantine = struct( ...
     'original_body', {}, ...
@@ -298,7 +307,7 @@ for k = 1:numel(bodies)
         % body on the first failure, as before).
         for bi = 1:numel(v2Bodies)
             outBody = did2.convert.ensureClassBlocks(v2Bodies{bi}, options.SchemaCache);
-            outBody = renameOutboundBaseFields(outBody, options.TargetVersion);
+            outBody = renameOutboundBaseFields(outBody, options.TargetVersion, sessionEdge);
             if ~strcmp(options.TargetVersion, 'V_delta') ...
                     && isfield(outBody, 'document_class') ...
                     && isstruct(outBody.document_class)
@@ -612,7 +621,14 @@ else
 end
 end
 
-function body = renameOutboundBaseFields(body, targetVersion)
+function cache = outboundSchemaCache(cache)
+% The cache the batch validates against: the caller's, else the shared one.
+if isempty(cache)
+    cache = did2.schema.cache.shared();
+end
+end
+
+function body = renameOutboundBaseFields(body, targetVersion, sessionEdge)
 %RENAMEOUTBOUNDBASEFIELDS did_v1 `base` field names -> their V_eta spellings.
 %
 %   ONE PLACE, ON THE WAY OUT, FOR EVERY BODY. This runs on each emitted body
@@ -648,11 +664,29 @@ function body = renameOutboundBaseFields(body, targetVersion)
 %
 %   STATUS: NOT VERIFIED BY EXECUTION -- no MATLAB in the authoring
 %   environment.
+%
+%   `session_id` -> THE `session_id` EDGE, when SESSIONEDGE (the loaded `base`
+%   declares the edge: did-schema V_eta_relation_inheritance_plan.md,
+%   2026-10-20). The same argument as `datestamp`: every body, constructed or
+%   passed through, carries the v1 field until here, and every migrator keeps
+%   reading and writing it. The edge's target is the session (or dataset)
+%   entity, whose base.id IS the session id (migrators_j.session re-ids the
+%   session document to make that true), so the value moves unchanged. A body
+%   with no field (already moved, or built on the edge shape) is left as it is,
+%   so a batch pass may send its bodies back through here.
+arguments
+    body
+    targetVersion (1,:) char
+    sessionEdge (1,1) logical = false
+end
 if ~strcmp(targetVersion, 'V_eta')
     return;
 end
 if ~isfield(body, 'base') || ~isstruct(body.base) || ~isscalar(body.base)
     return;
+end
+if sessionEdge && isfield(body.base, 'session_id')
+    body = moveSessionIdToEdge(body);
 end
 % `datestamp` -> `creation_timestamp`. `<noun>_<kind>` is the measured house
 % style (13 `_name`, 11 `_time`, 10 `_type`, 5 `_id`; 0 bare participles in
@@ -665,6 +699,74 @@ if isfield(body.base, 'datestamp')
     end
     body.base = rmfield(body.base, 'datestamp');
 end
+end
+
+function body = moveSessionIdToEdge(body)
+%MOVESESSIONIDTOEDGE `base.session_id` -> the `session_id` depends_on edge.
+%   The field is the authority: a `session_id` edge already on the body is
+%   replaced by it, not kept beside it (base declares the edge once, and an
+%   epoch minted by did2.convert.epochMint carries one naming the session
+%   document, which on this shape is the same id). An empty field is removed
+%   and writes no edge -- the validator then reports the required edge as
+%   missing, which is the honest outcome for a document with no session.
+%
+%   The other edges are left exactly as they are, in order and with their key
+%   spelling; the new entry goes LAST and takes the spelling of the entries
+%   beside it (`value` on a raw
+%   migrator body, `document_id` after universalRenames), so a struct array
+%   stays one struct array.
+sid = char(body.base.session_id);
+body.base = rmfield(body.base, 'session_id');
+if ~isfield(body, 'depends_on') || isempty(body.depends_on)
+    deps = struct('name', {}, 'document_id', {});
+else
+    deps = body.depends_on;
+end
+if iscell(deps)
+    keep = true(1, numel(deps));
+    for k = 1:numel(deps)
+        keep(k) = ~(isstruct(deps{k}) && isfield(deps{k}, 'name') ...
+            && strcmp(char(deps{k}.name), 'session_id'));
+    end
+    deps = deps(keep);
+    if ~isempty(sid)
+        deps = [reshape(deps, 1, []), {struct('name', 'session_id', 'document_id', sid)}];
+    end
+    body.depends_on = deps;
+    return;
+end
+if isempty(deps)
+    if ~isempty(sid)
+        body.depends_on = struct('name', 'session_id', 'document_id', sid);
+    else
+        body.depends_on = struct('name', {}, 'document_id', {});
+    end
+    return;
+end
+names = fieldnames(deps);
+key = 'document_id';
+for candidate = {'document_id', 'value', 'id'}
+    if any(strcmp(names, candidate{1}))
+        key = candidate{1};
+        break;
+    end
+end
+for f = {'name', key}
+    if ~any(strcmp(names, f{1}))
+        [deps.(f{1})] = deal('');   % a shape with no such key gains it, empty
+        names{end+1} = f{1}; %#ok<AGROW>
+    end
+end
+deps = deps(~arrayfun(@(d) strcmp(char(d.name), 'session_id'), deps));
+if isempty(sid)
+    body.depends_on = deps;
+    return;
+end
+entry = cell2struct(repmat({''}, numel(names), 1), names, 1);
+entry = orderfields(entry, deps);
+entry.name = 'session_id';
+entry.(key) = sid;
+body.depends_on = [reshape(deps, 1, []), entry];
 end
 
 function body = applySuperclassMigrators(body, concreteClassName, targetVersion)

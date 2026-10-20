@@ -2424,8 +2424,20 @@ v1.session_in_a_dataset = struct('session_id', memberSession, ...
     'session_creator_input6', '');
 end
 
+function [name, node] = membershipRelation()
+% the record-membership relation as the schema in use spells it: `included_in`
+% (schema:isPartOf) where `session_id` is an edge -- the two arrived together
+% (did-schema V_eta_relation_inheritance_plan.md, 2026-10-20) -- else `part_of`
+if did2.schema.cache.shared().sessionIdIsEdge()
+    name = 'included_in'; node = 'schema:isPartOf';
+else
+    name = 'part_of'; node = '';
+end
+end
+
 function testSessionInADatasetMembership(testCase)
-% -> bare dataset (id = base.session_id) + session -part_of-> dataset.
+% -> bare dataset (id = base.session_id) + session -included_in-> dataset
+% (-part_of-> before the relation inheritance change).
 out = runJ(sessionInADatasetDoc('member_sess_9'));
 bc = out.summary.by_class;
 verifyEqual(testCase, bc.dataset, 1);
@@ -2433,7 +2445,9 @@ verifyEqual(testCase, bc.directed_relation, 1);
 ds = firstOfClassJ(out.migrated, 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'dsid_1');
 rel = firstOfClassJ(out.migrated, 'directed_relation');
-verifyEqual(testCase, rel.get('directed_relation.relation').name, 'part_of');
+[relName, relNode] = membershipRelation();
+verifyEqual(testCase, rel.get('directed_relation.relation').name, relName);
+verifyEqual(testCase, rel.get('directed_relation.relation').node, relNode);
 verifyEqual(testCase, depVal(rel, 'child'), 'member_sess_9');   % the member session
 verifyEqual(testCase, depVal(rel, 'parent'), 'dsid_1');          % the dataset
 % the edge is tagged so the post-pass can prune it if the session is absent
@@ -2456,10 +2470,11 @@ out = runJ(v1);
 verifyEqual(testCase, out.summary.by_class.dataset, 1);
 verifyEqual(testCase, out.summary.by_class.directed_relation, 2);   % two members
 children = {};
+relName = membershipRelation();
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation')
-        verifyEqual(testCase, d.get('directed_relation.relation').name, 'part_of');
+        verifyEqual(testCase, d.get('directed_relation.relation').name, relName);
         verifyEqual(testCase, depVal(d, 'parent'), 'dsid_1');
         children{end+1} = depVal(d, 'child'); %#ok<AGROW>
     end
@@ -2491,10 +2506,11 @@ verifyEqual(testCase, numel(datasets), 1);
 verifyEqual(testCase, datasets{1}.get('base.id'), 'dsid_1');
 verifyEqual(testCase, datasets{1}.get('dataset.full_name'), 'The Big Worm Dataset');
 % the unresolvable membership edge was pruned
+relName = membershipRelation();
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
-            && strcmp(d.get('directed_relation.relation').name, 'part_of')
+            && strcmp(d.get('directed_relation.relation').name, relName)
         verifyNotEqual(testCase, depVal(d, 'child'), 'absent_sess');
     end
 end

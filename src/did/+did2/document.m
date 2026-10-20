@@ -81,9 +81,26 @@ classdef document < handle
             %   v = doc.get('base.id') returns the id from the base
             %   property block. `[*]` array iteration is handled by
             %   `iterate(arrayPath)`, not by this method.
+            %   'base.session_id' is read from the `session_id` edge when
+            %   the document has no such field (see did2.schema.cache.sessionIdOf).
             arguments
                 obj
                 fieldPath (1,:) char
+            end
+            if strcmp(fieldPath, 'base.session_id')
+                % THE ONE ALIAS, the same one did2.query answers: on a V_eta
+                % schema where `base.session_id` became the required
+                % `session_id` edge (did-schema
+                % V_eta_relation_inheritance_plan.md, 2026-10-20), a document
+                % without the field reads its session id from the edge. Only
+                % READ: set() still writes the literal path.
+                p = obj.documentProperties;
+                if ~(isfield(p, 'base') && isstruct(p.base) && isfield(p.base, 'session_id'))
+                    value = did2.schema.cache.sessionIdOf(p);
+                    if ~isempty(value)
+                        return;
+                    end
+                end
             end
             value = did2.document.dotPathGet(obj.documentProperties, fieldPath);
         end

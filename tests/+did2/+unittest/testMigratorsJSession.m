@@ -166,9 +166,36 @@ assertEqual(testCase, numel(out.migrated), 1, ...
     'the session migrator emitted no document; every assertion below would be vacuous');
 doc = out.migrated{1};
 verifyEqual(testCase, doc.get('document_class.class_name'), 'session');
-verifyEqual(testCase, doc.get('base.id'), 'sess_doc_1');
+if did2.schema.cache.shared().sessionIdIsEdge()
+    % the session entity's id IS its session id (see the next test)
+    verifyEqual(testCase, doc.get('base.id'), 'sess_09');
+else
+    verifyEqual(testCase, doc.get('base.id'), 'sess_doc_1');
+end
 verifyEqual(testCase, doc.get('base.session_id'), 'sess_09');
 verifyEqual(testCase, doc.get('session.local_identifier'), 'ts_2024');
+end
+
+function testOnTheEdgeShapeTheSessionIsReIdToItsSessionId(testCase)
+% did-schema V_eta_relation_inheritance_plan.md (2026-10-20): `session_id` is
+% an edge to the session entity, whose base.id IS the session id -- so the
+% migrated session takes the v1 base.session_id as its id and its own edge
+% points at itself. On the field shape base.id is preserved, as before.
+out = runJ(sessionV1('ts_2024'));
+assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
+s = out.migrated{1}.toStruct();
+if did2.schema.cache.shared().sessionIdIsEdge()
+    verifyEqual(testCase, s.base.id, 'sess_09');
+    verifyFalse(testCase, isfield(s.base, 'session_id'), ...
+        'base.session_id survived beside the session_id edge');
+    edges = s.depends_on(strcmp({s.depends_on.name}, 'session_id'));
+    assertEqual(testCase, numel(edges), 1, 'expected exactly one session_id edge');
+    verifyEqual(testCase, did2.schema.cache.sessionIdOf(s), s.base.id, ...
+        'the session entity must point at itself');
+else
+    verifyEqual(testCase, s.base.id, 'sess_doc_1');
+    verifyEqual(testCase, s.base.session_id, 'sess_09');
+end
 end
 
 function testTheOldSpellingIsGoneNotMerelyShadowed(testCase)

@@ -561,7 +561,7 @@ for k = 1:n
     byKeyTotal = byKeyTotal + byKey;
     byNameTotal = byNameTotal + byName;
     colsOf{k}   = cols;
-    sessions{k} = baseField(b, 'session_id');
+    sessions{k} = did2.schema.cache.sessionIdOf(b);
     kinds(k)    = classifyTable(cols);
     hasExpSrc(k) = ~isempty(colByToken(cols, TOK_PLATE_ID())) ...
         && ~isempty(colByToken(cols, TOK_EXP_ID()));
@@ -874,7 +874,7 @@ for k = 1:n
             report.celegans_patch_subjects_unparseable_handle + 1;
         continue;
     end
-    sid = baseField(b, 'session_id');
+    sid = did2.schema.cache.sessionIdOf(b);
     key = joinKey(sid, plateId);
     if isKey(expAmbiguous, key)
         report.celegans_patch_subjects_refused_ambiguous_exp_id = ...
@@ -1384,7 +1384,7 @@ end
 function base = freshBase(srcBody, name)
 sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
 if isstruct(srcBody) && isfield(srcBody, 'base') && isstruct(srcBody.base)
-    if isfield(srcBody.base, 'session_id'); sessionId = srcBody.base.session_id; end
+    sessionId = did2.schema.cache.sessionIdOf(srcBody);
     ds0 = creationTime(srcBody);
     if ~isempty(ds0)
         ds = ds0;

@@ -384,7 +384,7 @@ for k = 1:n
         b = docs{k}.toStruct();
         bodies{k} = b;
         anchorClass{k} = classNameOf(b);
-        sessionIds{k} = baseField(b, 'session_id');
+        sessionIds{k} = did2.schema.cache.sessionIdOf(b);
         docIds{k} = baseField(b, 'id');
     catch
         report.documents_unreadable = report.documents_unreadable + 1;

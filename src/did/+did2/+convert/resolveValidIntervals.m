@@ -561,7 +561,7 @@ for k = 1:n
         b = docs{k}.toStruct();
         bodies{k} = b;
         classes{k} = classNameOf(b);
-        sessionIds{k} = baseField(b, 'session_id');
+        sessionIds{k} = did2.schema.cache.sessionIdOf(b);
         docIds{k} = baseField(b, 'id');
     catch
         report.documents_unreadable = report.documents_unreadable + 1;
@@ -1101,7 +1101,7 @@ end
 function base = freshBase(src, name)
 sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
 if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
-    if isfield(src.base, 'session_id'); sessionId = src.base.session_id; end
+    sessionId = did2.schema.cache.sessionIdOf(src);
     ds0 = creationTime(src);
     if ~isempty(ds0)
         ds = ds0;

@@ -1240,7 +1240,7 @@ arguments
 end
 
 recId = baseField(rec, 'id');
-sessionId = baseField(rec, 'session_id');
+sessionId = did2.schema.cache.sessionIdOf(rec);
 created = creationTime(rec);
 if ~ischar(created); created = ''; end
 
@@ -1457,7 +1457,7 @@ end
 function base = freshBase(src, id, name)
 sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
 if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
-    if isfield(src.base, 'session_id'); sessionId = src.base.session_id; end
+    sessionId = did2.schema.cache.sessionIdOf(src);
     ds0 = creationTime(src);
     if ~isempty(ds0)
         ds = ds0;

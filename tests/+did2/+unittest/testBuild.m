@@ -73,7 +73,7 @@ doc = did2.build.document(cls, fields, 'SessionId', sid);
 verifyEqual(testCase, doc.document_class.class_name, cls);
 verifyEqual(testCase, doc.document_class.schema_version, 'V_eta');
 verifyEqual(testCase, {doc.document_class.superclasses.class_name}, supers);
-verifyEqual(testCase, doc.base.session_id, sid);
+verifyEqual(testCase, sessionIdWritten(doc), sid);
 verifyNotEmpty(testCase, doc.base.id);
 verifyFalse(testCase, isfield(doc.base, 'name'), ...
     'base.name is did_v1 only (#73 item 54); a V_eta document never writes it');
@@ -92,6 +92,42 @@ doc = did2.build.document(cls, fields, ...
     'CreationTimestamp', '2024-03-01T09:00:00.000Z');
 verifyEqual(testCase, doc.base.id, id);
 verifyEqual(testCase, doc.base.creation_timestamp, '2024-03-01T09:00:00.000Z');
+end
+
+function testSessionIdIsWrittenWhereTheSchemaDeclaresIt(testCase)
+% did-schema V_eta_relation_inheritance_plan.md (2026-10-20): `base.session_id`
+% became the required `session_id` edge. 'SessionId' writes whichever the
+% loaded base declares -- exactly one of the two, never both.
+sid = testCase.TestData.sid;
+[cls, fields] = subjectSpec('m1');
+doc = did2.build.document(cls, fields, 'SessionId', sid);
+names = {doc.depends_on.name};
+if did2.schema.cache.shared().sessionIdIsEdge()
+    verifyFalse(testCase, isfield(doc.base, 'session_id'), ...
+        'on the edge shape base.session_id must not be written as well');
+    verifyEqual(testCase, nnz(strcmp(names, 'session_id')), 1, ...
+        'the session_id edge is written once');
+    verifyEqual(testCase, doc.depends_on(strcmp(names, 'session_id')).document_id, sid);
+else
+    verifyEqual(testCase, doc.base.session_id, sid);
+    verifyFalse(testCase, any(strcmp(names, 'session_id')), ...
+        'on the field shape no session_id edge is written');
+end
+end
+
+function testSessionIdIsGivenOnlyThroughTheOption(testCase)
+% 'SessionId' is the only way to give the session id: on the edge shape it IS
+% the session_id edge, so naming that edge in 'Edges' too is a second id for an
+% edge that takes one; on the field shape no class declares such an edge
+sid = testCase.TestData.sid;
+[cls, fields] = subjectSpec('m1');
+if did2.schema.cache.shared().sessionIdIsEdge()
+    expected = 'did2:build:repeatedEdge';
+else
+    expected = 'did2:build:unknownEdge';
+end
+verifyError(testCase, @() did2.build.document(cls, fields, 'SessionId', sid, ...
+    'Edges', struct('session_id', newId())), expected);
 end
 
 function testDocumentRefusesWhatTheSchemaDoesNotDeclare(testCase)
@@ -723,6 +759,16 @@ function tf = composes()
 % true on a schema whose statement directions take a value kind (2026-10-08)
 c = did2.schema.cache.shared();
 tf = c.hasClass('observation') && ~isempty(c.valueKindRule('observation'));
+end
+
+function sid = sessionIdWritten(doc)
+% the session id a built document carries: base.session_id, or the session_id
+% edge on a schema that declares one (did2.schema.cache/sessionIdIsEdge)
+arguments
+    doc (1,1) struct
+end
+
+sid = did2.schema.cache.sessionIdOf(doc);
 end
 
 function [stmt, ent] = vetaNamesOf()

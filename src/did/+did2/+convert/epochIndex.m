@@ -299,7 +299,7 @@ classdef epochIndex < handle
                 end
             end
             [epochDocumentId, why] = obj.resolve( ...
-                did2.convert.epochIndex.baseField(b, 'session_id'), epochString);
+                did2.schema.cache.sessionIdOf(b), epochString);
         end
 
         function tf = classDeclaresEpochEdge(obj, className)
@@ -468,7 +468,7 @@ classdef epochIndex < handle
                         obj.report.carriers_edge_already_populated + 1;
                     continue;
                 end
-                sid = did2.convert.epochIndex.baseField(b, 'session_id');
+                sid = did2.schema.cache.sessionIdOf(b);
                 resolved = false;
                 for j = 1:numel(hits)
                     if ~isempty(obj.resolve(sid, hits(j).value))
@@ -514,7 +514,7 @@ classdef epochIndex < handle
                 if ~strcmp(did2.convert.epochIndex.classNameOf(b), 'epoch'); continue; end
                 obj.report.epoch_documents_seen = obj.report.epoch_documents_seen + 1;
                 docId = did2.convert.epochIndex.baseField(b, 'id');
-                sid   = did2.convert.epochIndex.baseField(b, 'session_id');
+                sid   = did2.schema.cache.sessionIdOf(b);
                 lid   = '';
                 if isfield(b, 'epoch') && isstruct(b.epoch) && isscalar(b.epoch)
                     lid = did2.convert.epochIndex.charField(b.epoch, ...

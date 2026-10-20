@@ -74,7 +74,7 @@ docOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
 countOf = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:numel(bodies)
     if ~isSessionDocument(bodies{k}, classes{k}); continue; end
-    sid = baseField(bodies{k}, 'session_id');
+    sid = did2.schema.cache.sessionIdOf(bodies{k});
     id = baseField(bodies{k}, 'id');
     if isempty(sid) || isempty(id); continue; end
     if isKey(countOf, sid)
@@ -88,7 +88,7 @@ end
 for j = 1:numel(marked)
     k = marked(j);
     b = removeEdge(bodies{k}, MARKER);
-    sid = baseField(b, 'session_id');
+    sid = did2.schema.cache.sessionIdOf(b);
     if isempty(sid) || ~isKey(countOf, sid)
         report.observations_without_session = report.observations_without_session + 1;
     elseif countOf(sid) > 1

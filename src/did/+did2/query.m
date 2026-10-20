@@ -643,6 +643,25 @@ classdef query
                 values = {s};
                 return;
             end
+            if strcmp(fieldPath, 'base.session_id') ...
+                    && ~(isfield(s, 'base') && isstruct(s.base) ...
+                         && isscalar(s.base) && isfield(s.base, 'session_id'))
+                % THE ONE ALIAS. did-schema V_eta_relation_inheritance_plan.md
+                % (2026-10-20) moved `base.session_id` onto a required
+                % `session_id` depends_on edge; the edge's target, the
+                % session entity, has the session id as its base.id. A
+                % document without the field answers this path from the
+                % edge, so a query written against the field (NDI's
+                % `ndi.query('base.session_id', ...)`) finds both shapes.
+                % did2.database.compileQuery answers it the same way in SQL.
+                sid = did2.schema.cache.sessionIdOf(s);
+                if isempty(sid)
+                    values = {};
+                else
+                    values = {sid};
+                end
+                return;
+            end
             parts = strsplit(fieldPath, '.');
             current = {s};
             for k = 1:numel(parts)

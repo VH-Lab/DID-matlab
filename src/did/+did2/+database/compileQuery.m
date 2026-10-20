@@ -154,6 +154,10 @@ switch op
         [sql, params] = compileDependsOn(ss.param1, ss.param2, isNeg, ctx);
         return;
     case 'hasfield'
+        if strcmp(char(ss.field), sessionIdPath())
+            [sql, params] = compileSessionIdHasField(isNeg);
+            return;
+        end
         [sql, params] = compileHasField(ss.field, isNeg);
         return;
     case 'hasmember'
@@ -371,6 +375,10 @@ function [sql, params] = compileScalar(op, fieldPath, target, isNeg, ctx)
 [stars, prefix, leaf] = splitPathOnStar(fieldPath);
 
 if isempty(stars)
+    if strcmp(prefix, sessionIdPath())
+        [sql, params] = compileSessionIdScalar(op, target, isNeg);
+        return;
+    end
     if scalarPathIsIndexed(prefix, ctx)
         [sql, params] = compileScalarFromScalarSidecar(op, prefix, target, isNeg, ctx);
         return;
@@ -536,6 +544,65 @@ else
     predicate = '1=1';
     params = {};
 end
+end
+
+% -----------------------------------------------------------------------
+% base.session_id: the field, or the edge that replaced it
+% -----------------------------------------------------------------------
+
+function p = sessionIdPath()
+% The one path answered from a `documents` column instead of the body.
+p = 'base.session_id';
+end
+
+function [sql, params] = compileSessionIdScalar(op, target, isNeg)
+% A predicate on `base.session_id` compiles against the `documents.session_id`
+% COLUMN, not the body. did-schema V_eta_relation_inheritance_plan.md
+% (2026-10-20) moved the field onto a required `session_id` depends_on edge,
+% and did2.database.sqlitedb fills the column from whichever the document has
+% (did2.schema.cache.sessionIdOf), so this one predicate finds a did_v1 or older
+% V_eta document by its field and a newer one by its edge -- which is what
+% lets `ndi.query('base.session_id', 'exact_string', sid)` keep working on a
+% V2 database unchanged. The in-memory recheck agrees: did2.query reads the
+% edge for this path when the field is absent.
+%
+% On a field-shape document the column IS the field (it always was filled from
+% it), so nothing a query found before is lost, and the column is indexed
+% (documents_session_id), so the usual scoping query is an index lookup.
+% Negated, a document with no session id matches, as for any absent path.
+arguments
+    op {mustBeText}
+    target
+    isNeg (1,1) logical
+end
+
+valueExpr = 'documents.session_id';
+[predicate, params] = scalarPredicate(op, valueExpr, target);
+if isNeg
+    sql = sprintf('(%s IS NULL OR NOT (%s))', valueExpr, predicate);
+else
+    sql = predicate;
+end
+end
+
+function [sql, params] = compileSessionIdHasField(isNeg)
+% `hasfield base.session_id`: the field is present, or the edge that replaced
+% it is (see compileSessionIdScalar). Presence of the FIELD keeps its old
+% meaning (a field present but blank is present), so it is read from the body
+% as compileHasField reads it; the edge is read from the depends_on sidecar.
+arguments
+    isNeg (1,1) logical
+end
+
+hasField = sprintf('json_type(body, ''%s'') IS NOT NULL', jsonPath(sessionIdPath()));
+hasEdge = ['EXISTS (SELECT 1 FROM depends_on d ' ...
+    'WHERE d.doc_id = documents.id AND d.name = ?)'];
+if isNeg
+    sql = sprintf('(NOT (%s) AND NOT %s)', hasField, hasEdge);
+else
+    sql = sprintf('((%s) OR %s)', hasField, hasEdge);
+end
+params = {'session_id'};
 end
 
 % -----------------------------------------------------------------------

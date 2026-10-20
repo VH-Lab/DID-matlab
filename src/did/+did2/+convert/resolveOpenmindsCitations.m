@@ -982,9 +982,9 @@ function id = datasetIdOf(s)
 %   helper is not visible from this package.
 id = '';
 if isstruct(s) && isfield(s, 'base') && isstruct(s.base)
-    if isfield(s.base, 'session_id') && ~isempty(s.base.session_id)
-        id = char(s.base.session_id);
-    elseif isfield(s.base, 'id') && ~isempty(s.base.id)
+    % the field, or the `session_id` edge that replaced it (did2.schema.cache.sessionIdOf)
+    id = did2.schema.cache.sessionIdOf(s);
+    if isempty(id) && isfield(s.base, 'id') && ~isempty(s.base.id)
         id = char(s.base.id);
     end
 end

@@ -76,6 +76,59 @@ end
 
 % ---- hasfield ----
 
+function testSessionIdIsAnsweredFromTheColumn(testCase)
+% `base.session_id` compiles against documents.session_id, which
+% did2.database.sqlitedb fills from the field OR from the `session_id` edge
+% that replaced it (did-schema V_eta_relation_inheritance_plan.md), so one
+% query finds both shapes -- never against the body, where the edge shape
+% has no such path.
+q = did2.query('base.session_id', 'exact_string', 'sid1');
+[sql, params] = did2.database.compileQuery(q, 'QueryablePaths', {'base.session_id'});
+verifyEqual(testCase, sql, 'documents.session_id = ?');
+verifyEqual(testCase, params, {'sid1'});
+verifyFalse(testCase, contains(sql, 'json_extract'));
+verifyFalse(testCase, contains(sql, 'queryable_scalar_elem'), ...
+    'a queryable base.session_id must still be answered from the column');
+end
+
+function testSessionIdNegatedMatchesADocumentWithNone(testCase)
+q = did2.query('base.session_id', '~exact_string', 'sid1');
+[sql, params] = did2.database.compileQuery(q);
+verifyEqual(testCase, sql, ...
+    '(documents.session_id IS NULL OR NOT (documents.session_id = ?))');
+verifyEqual(testCase, params, {'sid1'});
+end
+
+function testSessionIdHasfieldIsTheFieldOrTheEdge(testCase)
+[sql, params] = did2.database.compileQuery(did2.query('base.session_id', 'hasfield'));
+verifySubstring(testCase, sql, 'json_type(body, ''$.base.session_id'') IS NOT NULL');
+verifySubstring(testCase, sql, 'd.name = ?');
+verifySubstring(testCase, sql, ' OR ');
+verifyEqual(testCase, params, {'session_id'});
+[sql, params] = did2.database.compileQuery(did2.query('base.session_id', '~hasfield'));
+verifySubstring(testCase, sql, 'NOT EXISTS');
+verifyEqual(testCase, params, {'session_id'});
+end
+
+function testSessionIdInMemoryReadsTheEdgeWhenTheFieldIsAbsent(testCase)
+% the recheck did2.database.sqlitedb runs over every SQL hit must agree
+withEdge = struct('base', struct('id', 'd1'), ...
+    'depends_on', struct('name', 'session_id', 'document_id', 'sid1'));
+withField = struct('base', struct('id', 'd2', 'session_id', 'sid1'), ...
+    'depends_on', struct('name', {}, 'document_id', {}));
+q = did2.query('base.session_id', 'exact_string', 'sid1');
+verifyTrue(testCase, q.matches(withEdge));
+verifyTrue(testCase, q.matches(withField));
+verifyFalse(testCase, did2.query('base.session_id', 'exact_string', 'sid2').matches(withEdge));
+verifyTrue(testCase, did2.query('base.session_id', 'hasfield').matches(withEdge));
+verifyFalse(testCase, did2.query('base.session_id', '~exact_string', 'sid1').matches(withEdge));
+% a document with neither has no session id
+neither = struct('base', struct('id', 'd3'), ...
+    'depends_on', struct('name', 'other_id', 'document_id', 'sid1'));
+verifyFalse(testCase, q.matches(neither));
+verifyFalse(testCase, did2.query('base.session_id', 'hasfield').matches(neither));
+end
+
 function testHasfieldUsesJsonType(testCase)
 q = did2.query('base.name', 'hasfield', '');
 [sql, params] = did2.database.compileQuery(q);

@@ -111,9 +111,13 @@ classdef cache < handle
     %       resetSingleton  - drop the cached singleton (test helper).
     %       strictMode      - read/set the #32, #37 and #38 enforcement
     %                         switches.
+    %       sessionIdOf     - a body's session id: the base.session_id field,
+    %                         else the session_id edge.
     %
     %   did2.schema.cache Methods:
     %       getClass            - resolved class definition for a name.
+    %       sessionIdIsEdge     - does `base` declare session_id as an edge
+    %                             (did-schema, 2026-10-20) or as the field?
     %       requiredDependencies - depends_on names declared mustBeNonEmpty
     %                             anywhere in a class chain (#37).
     %       unpopulatedRequiredDependencies - which of those a given body
@@ -552,6 +556,45 @@ classdef cache < handle
                 return;
             end
             tf = isfile(fullfile(obj.schemaPath, [className '.json']));
+        end
+
+        function tf = sessionIdIsEdge(obj)
+            % sessionIdIsEdge - true when `base` declares `session_id` as a
+            %   depends_on EDGE rather than as a field.
+            %
+            %   did-schema V_eta_relation_inheritance_plan.md (2026-10-20,
+            %   built ahead of signature): `base.session_id` became one
+            %   required edge, `session_id`, to the session or dataset
+            %   `entity` a document is stored with; that entity's base.id IS
+            %   its session id. did-schema `main` (and the pinned
+            %   v_eta-pre73) still declare the field. Every caller that writes
+            %   or moves a session id asks here rather than assuming, as the
+            %   builders ask which statement class the schema spells
+            %   (+build/private/vetaNames.m), so one code base writes valid
+            %   documents against either until every repository has moved.
+            %
+            %   ASKED OF THE SCHEMA, NOT INFERRED FROM A DOCUMENT: a v1 body
+            %   carries the field whatever the target is. False when no
+            %   `base` schema is readable (the field is the historical shape).
+            arguments
+                obj
+            end
+            tf = false;
+            if ~obj.hasClass('base')
+                return;
+            end
+            s = obj.getClass('base');
+            if ~isfield(s, 'depends_on') || isempty(s.depends_on)
+                return;
+            end
+            deps = did2.schema.cache.asCellOfDefs(s.depends_on);
+            for k = 1:numel(deps)
+                d = deps{k};
+                if isstruct(d) && isfield(d, 'name') && strcmp(char(d.name), 'session_id')
+                    tf = true;
+                    return;
+                end
+            end
         end
 
         function names = requiredDependencies(obj, className)
@@ -1598,6 +1641,59 @@ classdef cache < handle
             %   stays on, because a disarmed gate is silent and a false
             %   quarantine is loud. So an unrecognised value leaves it armed.
             tf = any(strcmpi(strtrim(getenv(varName)), {'0', 'false', 'no', 'off'}));
+        end
+
+        function sid = sessionIdOf(body)
+            % sessionIdOf - the session id a document body carries, in
+            %   either shape: BODY's `base.session_id` field when it has a
+            %   non-empty one, else the id its `session_id` depends_on edge
+            %   names, else ''. BODY is a body struct or a did2.document.
+            %
+            %   TWO SHAPES, ONE ANSWER. did_v1 and V_eta before 2026-10-20
+            %   store the session id as the field; V_eta after did-schema
+            %   V_eta_relation_inheritance_plan.md stores it as the edge,
+            %   whose target is the session (or dataset) entity, and that
+            %   entity's base.id IS the session id -- so the two are the
+            %   same string. The FIELD is read first: a body on its way
+            %   through the migration still carries it, and it is the
+            %   authority until did2.convert.v1_to_v2 moves it onto the edge.
+            %   The edge's target is read under all three keys, as
+            %   edgeIsPopulated reads it. See also sessionIdIsEdge.
+            arguments
+                body   % a struct or a did2.document
+            end
+            sid = '';
+            if isa(body, 'did2.document')
+                body = body.toStruct();
+            end
+            if ~isstruct(body) || ~isscalar(body)
+                return;
+            end
+            if isfield(body, 'base') && isstruct(body.base) && isscalar(body.base) ...
+                    && isfield(body.base, 'session_id') && ~isempty(body.base.session_id)
+                sid = char(body.base.session_id);
+                return;
+            end
+            if ~isfield(body, 'depends_on') || isempty(body.depends_on)
+                return;
+            end
+            deps = body.depends_on;
+            for k = 1:numel(deps)
+                if iscell(deps)
+                    d = deps{k};
+                else
+                    d = deps(k);
+                end
+                if ~isstruct(d) || ~isfield(d, 'name') || ~strcmp(char(d.name), 'session_id')
+                    continue;
+                end
+                for key = {'document_id', 'value', 'id'}
+                    if isfield(d, key{1}) && ~isempty(d.(key{1}))
+                        sid = char(d.(key{1}));
+                        return;
+                    end
+                end
+            end
         end
 
         function tf = edgeIsPopulated(body, name)

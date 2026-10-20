@@ -295,7 +295,7 @@ verifyEqual(testCase, numel(out.migrated), 2, ...
     'one epoch-id string under two sessions is two epochs, never one');
 s1 = out.migrated{1}.toStruct();
 s2 = out.migrated{2}.toStruct();
-verifyEqual(testCase, {s1.base.session_id, s2.base.session_id}, {'sess_A', 'sess_B'});
+verifyEqual(testCase, {did2.schema.cache.sessionIdOf(s1), did2.schema.cache.sessionIdOf(s2)}, {'sess_A', 'sess_B'});   % field or edge
 verifyEqual(testCase, {depValue(s1, 'filenavigator_id'), ...
                        depValue(s2, 'filenavigator_id')}, {'nav_A', 'nav_B'});
 end

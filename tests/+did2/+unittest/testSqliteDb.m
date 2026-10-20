@@ -426,6 +426,58 @@ verifyEqual(testCase, numel(db.search(did2.query.all())), 2);
 verifyEmpty(testCase, db.search(did2.query.none()));
 end
 
+% ---- base.session_id: the field, or the edge that replaced it ----
+%
+% did-schema V_eta_relation_inheritance_plan.md (2026-10-20) moved
+% `base.session_id` onto a required `session_id` depends_on edge. The
+% `documents.session_id` column stays as the scoping index and is filled from
+% whichever a document has, and a query on `base.session_id` -- NDI's
+% `ndi.query('base.session_id', 'exact_string', sid)` -- finds both shapes.
+% The fixture schema declares the field, so the edge-shaped document is added
+% unvalidated: this pins the storage and the query, not the schema.
+
+function testSessionIdQueryFindsTheFieldAndTheEdge(testCase)
+db = testCase.TestData.db;
+db.add(makeDemoA('field', 'f'));
+db.add(withSessionEdge(makeDemoA('edge', 'e')), 'Validate', false);
+hits = db.search(did2.query('base.session_id', 'exact_string', 'session-edge'));
+verifyEqual(testCase, numel(hits), 1, 'the edge-shaped document was not found by base.session_id');
+verifyEqual(testCase, hits{1}.get('base.name'), 'edge');
+hits = db.search(did2.query('base.session_id', 'exact_string', 'session-field'));
+verifyEqual(testCase, numel(hits), 1, 'the field-shaped document was not found by base.session_id');
+verifyEqual(testCase, hits{1}.get('base.name'), 'field');
+hits = db.search(did2.query('base.session_id', '~exact_string', 'session-edge'));
+verifyEqual(testCase, cellfun(@(d) d.get('base.name'), hits, 'UniformOutput', false), {'field'});
+verifyEqual(testCase, numel(db.search(did2.query('base.session_id', 'hasfield'))), 2);
+end
+
+function testSessionIdColumnIsFilledFromTheEdge(testCase)
+db = testCase.TestData.db;
+doc = withSessionEdge(makeDemoA('edge', 'e'));
+db.add(doc, 'Validate', false);
+dbid = db.testHookDbId();
+row = mksqlite(dbid, 'SELECT session_id FROM documents WHERE id = ?', doc.get('base.id'));
+verifyEqual(testCase, char(row(1).session_id), 'session-edge');
+end
+
+function testGetReadsTheSessionIdFromTheEdge(testCase)
+doc = withSessionEdge(makeDemoA('edge', 'e'));
+verifyFalse(testCase, isfield(doc.toStruct().base, 'session_id'));
+verifyEqual(testCase, doc.get('base.session_id'), 'session-edge');
+end
+
+function doc = withSessionEdge(doc)
+%WITHSESSIONEDGE The same document with its session id on the edge, not the field.
+arguments
+    doc (1,1) did2.document
+end
+s = doc.toStruct();
+sid = s.base.session_id;
+s.base = rmfield(s.base, 'session_id');
+s.depends_on = struct('name', 'session_id', 'document_id', sid);
+doc = did2.document(s);
+end
+
 % ---- helpers ----
 
 function doc = makeDemoA(name, value)

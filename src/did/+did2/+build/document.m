@@ -26,8 +26,18 @@ function doc = document(className, fields, options)
 %   `creation_timestamp` come from the options below, and the did_v1-only
 %   `base.name` is refused: V_eta documents never write it (#73 item 54).
 %
+%   SESSION ID: A FIELD OR AN EDGE, AS THE SCHEMA SAYS. did-schema
+%   V_eta_relation_inheritance_plan.md (2026-10-20) moved `base.session_id`
+%   onto a required `session_id` depends_on edge, to the session or dataset
+%   entity the document is stored with (whose base.id IS its session id).
+%   'SessionId' writes whichever the loaded `base` declares
+%   (did2.schema.cache/sessionIdIsEdge), so a caller is unchanged on either
+%   schema. On the edge shape it is the only way to give that edge: naming
+%   `session_id` in 'Edges' as well is a repeated edge.
+%
 %   Options:
-%     'SessionId'          (required) base.session_id
+%     'SessionId'          (required) the session id: base.session_id, or
+%                          the `session_id` edge on a schema that declares one
 %     'Edges'              the depends_on edges, as either
 %                            - a struct: field name = edge name, value = the
 %                              document id (char), or a cellstr of ids for an
@@ -105,8 +115,10 @@ if isfield(dc, 'abstract') && isequal(dc.abstract, true)
 end
 if isempty(options.SessionId)
     error('did2:build:missingField', ...
-        '''SessionId'' is required: every document belongs to a session (base.session_id).');
+        ['''SessionId'' is required: every document belongs to a session ' ...
+         '(base.session_id, or the session_id edge).']);
 end
+sessionEdge = cache.sessionIdIsEdge();
 
 rule = cache.valueKindRule(className);
 if isempty(kind) && ~isempty(rule) && ~any(strcmp(cache.superclasses(className), char(rule.root)))
@@ -136,7 +148,14 @@ doc.document_class = struct( ...
     'schema_version', 'V_eta');
 
 % ---- depends_on --------------------------------------------------------------
-doc.depends_on = buildEdges(cache, className, options.Edges, chain);
+edges = options.Edges;
+if sessionEdge
+    % base's own edge, after the caller's (so an edge the caller gave keeps
+    % its place); a 'session_id' also given in 'Edges' is then a second id
+    % for it (did2:build:repeatedEdge)
+    edges = [edgePairs(edges); {'session_id', options.SessionId}];
+end
+doc.depends_on = buildEdges(cache, className, edges, chain);
 
 % ---- blocks ------------------------------------------------------------------
 info = cache.resolvePlacementFor(className, kind);
@@ -144,7 +163,7 @@ givenByBlock = routeFields(info, fields, className);
 for k = 1:numel(info.blocksContributed)
     blockName = info.blocksContributed{k};
     if strcmp(blockName, 'base')
-        doc.base = baseBlock(info, options);
+        doc.base = baseBlock(info, options, sessionEdge);
         continue;
     end
     doc.(blockName) = fillBlock(info, blockName, givenByBlock);
@@ -254,7 +273,7 @@ for f = 1:numel(entries)
 end
 end
 
-function base = baseBlock(info, options)
+function base = baseBlock(info, options, sessionEdge)
 id = options.Id;
 if isempty(id)
     id = did.ido.unique_id();
@@ -266,6 +285,9 @@ if isempty(ts)
     ts = char(string(dt));
 end
 supplied = struct('id', id, 'session_id', options.SessionId, 'creation_timestamp', ts);
+if sessionEdge
+    supplied = rmfield(supplied, 'session_id');   % written as base's edge instead
+end
 base = struct();
 entries = info.fieldsByBlock('base');
 for f = 1:numel(entries)
