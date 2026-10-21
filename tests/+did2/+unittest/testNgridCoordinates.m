@@ -158,6 +158,12 @@ verifyEqual(testCase, out.summary.migrated_count, 1);
 end
 
 function testHartleyCalcConsumesNgridAndRefusesAnUnaccountableGrid(testCase)
+% did-schema #88: hartley_calc passes through (receptive_field.value declares
+% no sub-fields), so the ngrid consumption this test pins does not run there.
+c88 = did2.schema.cache.shared().getClass('receptive_field');
+f88 = c88.fields; if isstruct(f88); f88 = num2cell(f88); end
+assumeTrue(testCase, any(cellfun(@(x) strcmp(x.name, 'value') && isfield(x, 'fields') ...
+    && ~isempty(x.fields), f88)), 'hartley_calc passes through on did-schema #88');
 % INVERTED 2026-08-17, NOT DELETED, AND THE INVERSION IS THE POINT.
 %
 % This test used to be `testHartleyCalcAlsoKeepsItsCoordinates` and asserted

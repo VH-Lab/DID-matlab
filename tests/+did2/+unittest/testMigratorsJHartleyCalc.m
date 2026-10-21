@@ -76,6 +76,26 @@ function setupOnce(testCase)
 % hold yet). A test that calls a migrator directly runs it the same way.
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+% did-schema #88 cannot express the fold these tests pin: receptive_field.value
+% is a REQUIRED structure that declares no sub-fields, so hartley_calc passes
+% through on its v1 tombstone (testHartleyCalcPassesThroughOn88 in
+% testMigratorsJ pins that). The fold tests run again the day the composite
+% gains a field.
+testCase.assumeTrue(receptiveFieldValueHasFields(), ...
+    ['receptive_field.value declares no sub-fields on the loaded schema ' ...
+     '(did-schema #88), so hartley_calc passes through and the fold is not run']);
+end
+
+function tf = receptiveFieldValueHasFields()
+tf = false;
+c = did2.schema.cache.shared().getClass('receptive_field');
+f = c.fields;
+if isstruct(f); f = num2cell(f); end
+for k = 1:numel(f)
+    if strcmp(f{k}.name, 'value') && isfield(f{k}, 'fields') && ~isempty(f{k}.fields)
+        tf = true;
+    end
+end
 end
 
 % ===================== the shape ===========================================

@@ -4227,6 +4227,24 @@ verifyError(testCase, @() did2.convert.migrators_j.spike_clusters(body), ...
     'did2:convert:spikeClustersInventedShape');
 end
 
+function testHartleyCalcPassesThroughOn88(testCase)
+% did-schema #88: receptive_field.value is a REQUIRED structure declaring no
+% sub-fields, so no receptive_field_calculation can validate; corpus run
+% 39550766416 quarantined all 210 of 20211116's hartley_calc documents before
+% this passthrough. The document stays on its v1 tombstone, id and body intact.
+body = struct();
+body.document_class = struct('class_name', 'hartley_calc', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = struct('name', {'element_id'}, 'value', {'sub_h'});
+body.base = struct('id', 'hc_1', 'session_id', 'sess_09', 'name', 'hc', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.hartley_calc = struct('input_parameters', struct());
+out = did2.convert.migrators_j.hartley_calc(body);
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'hartley_calc');
+verifyEqual(testCase, out{1}.base.id, 'hc_1');
+end
+
 function testFitcurveFoldsToResidualScore(testCase)
 % did-schema #88 (#73 review item 68): a fit is a `model_fit_calculation`, its
 % value a `model_fit` composite {model, equation, coefficients, goodness}, NOT
