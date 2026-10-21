@@ -582,6 +582,7 @@ POST_PASSES = [
         ("bodies_from_archive", "opaque_bodies from ingested archive series"),
         ("archive_members_carried", "  archive members carried as attached"),
         ("bodies_by_location", "opaque_bodies by location (files named, presence NOT checked)"),
+        ("bodies_size_and_checksum_omitted", "  of which size + checksum omitted (no disk read in this pass)"),
         ("body_owner_links", "  owner_id links (body x observation; shared bodies)"),
         ("body_build_refused", "  epochs whose bodies could not be BUILT (see first error)"),
         ("bodies_quarantined", "  bodies QUARANTINED"),
