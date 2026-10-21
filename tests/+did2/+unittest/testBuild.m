@@ -1092,6 +1092,22 @@ verifyEqual(testCase, lower(rel.directed_relation.relation.node), 'bfo:0000050',
     'part_of is completed from the bound relation value set');
 end
 
+function testRelationOrderCountsFromZeroAndMinusOneIsUnordered(testCase)
+% Jess Haley, 2026-10-21 [author order from 0]: 0 is a real position, so an
+% unordered relation writes -1 (did-schema: `order` blank/default -1, as
+% `positions_from`), never 0.
+child = newId(); parent = newId();
+first = did2.build.directedRelation(child, parent, did2.build.term('', 'part_of'), ...
+    'Order', 0, 'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, first.directed_relation.order, 0);
+none = did2.build.directedRelation(child, parent, did2.build.term('', 'part_of'), ...
+    'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, none.directed_relation.order, -1);
+verifyError(testCase, @() did2.build.directedRelation(child, parent, ...
+    did2.build.term('', 'part_of'), 'Order', -1, 'SessionId', testCase.TestData.sid), ...
+    'did2:build:badOption');
+end
+
 function testUndirectedRelationNeedsTwoEntities(testCase)
 sid = testCase.TestData.sid;
 rel = did2.build.undirectedRelation({newId(), newId()}, did2.build.term('', 'same_as'), ...
