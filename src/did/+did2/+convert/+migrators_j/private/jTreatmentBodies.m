@@ -22,9 +22,10 @@ function [docs, route] = jTreatmentBodies(preBody, variable, chemicals, location
 %                  report (did2.convert.reportNote).
 %
 %   Options:
-%     'AlwaysDose'  true for virus_injection: an injection is a dose wherever
-%                   it was recorded, and an injection with no site is not a
-%                   route-unknown treatment (its route is the injection).
+%     'AlwaysDose'  route as a dose whatever the location, never noted as
+%                   route_unknown. No caller sets it since virus_injection
+%                   follows the location rule (Jess Haley, 2026-10-21
+%                   [virus-location]).
 %     'Notes'       the manipulation's notes.
 %
 %   Decided by Jess Haley, 2026-10-21; the decision is quoted in

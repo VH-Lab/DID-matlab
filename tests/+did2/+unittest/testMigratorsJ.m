@@ -662,8 +662,9 @@ conc = f.get('formulation.value').ingredients(1).concentration;
 verifyEqual(testCase, conc.source_value, 1000);
 verifyEqual(testCase, conc.source_unit.name, 'dilution');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
-% "virus_injection is always a dose (an injection), its volume NaN when
-% unrecorded, its dilution staying on the formulation" (Jess Haley, 2026-10-21)
+% a body site makes a virus_injection a dose, its volume NaN when unrecorded,
+% its dilution staying on the formulation (Jess Haley, 2026-10-21
+% [treatment-location], [virus-location])
 verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
@@ -760,10 +761,15 @@ out2 = runJ(treatmentDrugDoc('td_v1', 'chebi:28001,haloperidol,5', ...
 verifyEqual(testCase, routeUnknownCount(out2, 'treatment_drug'), 0);
 end
 
-function testVirusInjectionAtTheBathIsStillADose(testCase)
-% Birren records AAV DREADDs as virus_injection located in the bath
-% (+birren/TreatmentCreator.m). "virus_injection is always a dose": the
-% location does not make it an immersion.
+function testVirusInjectionAtTheBathIsAnImmersion(testCase)
+% INVERTED from testVirusInjectionAtTheBathIsStillADose. Birren records AAV
+% DREADDs for cell cultures as virus_injection located in the bath
+% (+birren/TreatmentCreator.m, createSayaTreatments.m), with dilution 0, the
+% template blank. "virus_injection follows the same location rule as the other
+% treatments: a bath location makes it an immersion (a manipulation of the
+% subject valued by the virus formulation through value_id, no location
+% observation) ... A dilution of 0 is treated as not recorded (NaN), not as a
+% measured 0." (Jess Haley, 2026-10-21 [virus-location])
 v1 = struct();
 v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -776,11 +782,53 @@ v1.virus_injection = struct('virus_OntologyName', 'addgene:50474', ...
     'diluent_OntologyName', 'NCIm:C0043047', 'diluent_name', 'Water');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 0);
-d = out.migrated{1};
-verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+% manipulation + virus chemical + diluent chemical + formulation + anchor
+verifyEqual(testCase, numel(out.migrated), 5);
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+m = out.migrated{1};
+verifyEqual(testCase, m.get('base.id'), 'vi_bath');
+verifyEqual(testCase, m.get('statement.variable').node, 'addgene:50474');
+formId = depVal(m, 'value_id');
+verifyNotEmpty(testCase, formId, 'an immersion takes its value through value_id');
+verifyEmpty(testCase, depVal(m, 'formulation_id'));
+form = [];
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('base.id'), formId); form = out.migrated{k}; end
+end
+verifyNotEmpty(testCase, form);
+if ~isempty(form)
+    % dilution 0 is not recorded: NaN, and no "dilution" unit is claimed
+    conc = form.get('formulation.value').ingredients(1).concentration;
+    verifyTrue(testCase, isnan(conc.source_value), 'a dilution of 0 is NaN, not a measured 0');
+    verifyFalse(testCase, isfield(conc, 'source_unit') && isstruct(conc.source_unit) ...
+        && ~isempty(conc.source_unit) && strcmp(conc.source_unit.name, 'dilution'));
+end
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
+end
+
+function testVirusInjectionWithNoLocationIsRouteUnknown(testCase)
+% With no location a virus_injection behaves like the other treatments: a dose
+% with a NaN amount, listed as route_unknown, no site observation.
+v1 = struct();
+v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'vi_none', 'session_id', 'sess_09', ...
+    'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
+    'virus_name', 'AAV-ChR2', 'dilution', 1000);
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 1);
+verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'vi_none'});
+[f, ~] = doseChainJ(out.migrated, d);
+verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 1000);
 end
 
 function testBabuAgarMediumIsAnExposure(testCase)
