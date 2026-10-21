@@ -646,9 +646,12 @@ POST_PASSES = [
         ("leaves_without_edge", "  no such edge (complete as they stand)"),
         ("suppressed_responses_seen", "v1 responses STILL SUPPRESSED by the epoch gate"),
         ("parameters_documents_seen", "parameters documents  <- DELETION DENOMINATOR"),
-        ("inlined", "INLINED"),
+        # Jess Haley 2026-10-21 ("b"): one standalone `method` per parameters
+        # document, id preserved; the responses keep `method_id` (was INLINED).
+        ("methods_minted", "METHOD DOCUMENTS MINTED (one per parameters document)"),
+        ("leaves_already_on_method", "  responses already pointing at a method document"),
         # A FIELD-VALUE count, not a document count: one leaf contributes up to
-        # five. It must not be read down the same column as `inlined`.
+        # five. It must not be read down the same column as `methods_minted`.
         ("fields_copied", "  field VALUES copied (cells, not documents)"),
         # did-schema #88: an entry holds exactly one value form, so a knob the
         # writer left [] cannot be stated. Counted here so it does not vanish.
@@ -4642,19 +4645,29 @@ def _render_response_parameters_reading(rep, p):
             p("          *** different fact from the blocked-upstream reading,")
             p("          *** and the two rows exist to keep them apart.")
     else:
-        inlined = _int_or_none(rep.get("inlined"))
-        refused = _int_or_none(rep.get("refused_total"))
+        # Jess Haley 2026-10-21 ("b"): the unit of work is the PARAMETERS
+        # DOCUMENT (one `method` each), not the response, so the accounting is
+        # over parameters documents: each is minted, refused or quarantined.
+        minted = _int_or_none(rep.get("methods_minted"))
+        seen_p = _int_or_none(rep.get("parameters_documents_seen"))
+        doc_refused = None
+        parts = [_int_or_none(rep.get(k)) for k in (
+            "refused_no_fields", "refused_inline_present",
+            "refused_harmonic_mismatch")]
+        if None not in parts:
+            doc_refused = sum(parts)
         quar = _int_or_none(rep.get("fold_quarantined"))
-        if inlined == 0 and refused == 0:
-            p("          *** %d leaf/leaves seen and NOTHING inlined or refused."
-              % leaves)
-            p("          *** That is a real defect in resolveResponseParameters,")
-            p("          *** not a corpus fact: a leaf either folds or is")
+        if seen_p and minted == 0 and doc_refused == 0 and not quar:
+            p("          *** %d parameters document(s) seen and NOTHING minted or"
+              % seen_p)
+            p("          *** refused. That is a")
+            p("          *** real defect in resolveResponseParameters, not a corpus fact: a")
+            p("          *** parameters document either becomes a method or is")
             p("          *** refused with a reason.")
-        if None not in (with_edge, inlined, refused, quar):
-            residual = with_edge - inlined - refused - quar
+        if None not in (seen_p, minted, doc_refused, quar):
+            residual = seen_p - minted - doc_refused - quar
             if residual:
-                p("          *** %d leaf/leaves with an edge neither inlined,"
+                p("          *** %d parameters document(s) neither minted,"
                   % residual)
                 p("          *** refused nor quarantined. The pass matches its")
                 p("          *** rebuilt bodies back by base.id, so a residual")

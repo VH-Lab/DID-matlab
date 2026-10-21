@@ -203,8 +203,9 @@ b    = leaf.toStruct();
 
 verifyEqual(testCase, depValue(b, 'entity_id'),           'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
-verifyEqual(testCase, inputAt(b, 1),       'pres_b671ff');
-verifyEqual(testCase, inputAt(b, 2),       'ctrl_20e84c');
+% BOTH the presentation and the control record, in the UNORDERED input_id
+% (Jess Haley, 2026-10-21, "a"): compared as a set, no position claimed.
+verifyEqual(testCase, inputSet(b), sort({'pres_b671ff', 'ctrl_20e84c'}));
 verifyEqual(testCase, depValue(b, 'method_id'), 'param_77c19b');
 
 % the anchor is a real sibling document, not a dangling string. With the epoch
@@ -260,9 +261,10 @@ function testStatementIsAnInlineCalculationWithTheAppAsMethod(testCase)
 % UPDATED 2026-10-21 for did-schema #88. The value is INLINE (no data_body).
 % The method term is the app -- but #88 keeps "the inline `method` block OR
 % `method_id`, NEVER BOTH", so with the parameters edge present pass 1 writes no
-% inline method and the term arrives with the parameters
-% (did2.convert.resolveResponseParameters). With no parameters edge the term is
-% inline at once. Both halves asserted.
+% inline method; the term and the knobs live on the shared `method` document
+% the edge names (did2.convert.resolveResponseParameters; Jess Haley,
+% 2026-10-21, "b"). With no parameters edge the term is inline at once. Both
+% halves asserted.
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findHarmonicCalc(testCase, out);
 s = leaf.toStruct();
@@ -284,8 +286,9 @@ end
 
 function testInlineMethodParametersStaysEmptyBesideTheEdge(testCase)
 % V_eta's rule (team, 2026-08-09; #88 wording): a statement carries the inline
-% `method` block OR `method_id`, NEVER BOTH. Pass 1 has the edge, so there is
-% no inline method until the resolver inlines the knobs and drops the edge.
+% `method` block OR `method_id`, NEVER BOTH. The response keeps the edge for
+% good (Jess Haley, 2026-10-21, "b": the parameters become ONE shared `method`
+% document), so it never carries an inline method.
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findHarmonicCalc(testCase, out);
 verifyFalse(testCase, isfield(leaf.toStruct().interaction, 'method'));
@@ -311,7 +314,7 @@ verifyFalse(testCase, k.regular);
 verifyEqual(testCase, k.quantity.value(:)', [1 2 3 1 2 3]);
 verifyFalse(testCase, isfield(s.data, 'conditions') && ~isempty(s.data.conditions));
 % the presentation is still the first input
-verifyEqual(testCase, inputAt(s, 1), 'pres_b671ff');
+verifyTrue(testCase, ismember('pres_b671ff', inputSet(s)));
 end
 
 function testAStimidOfTheWrongLengthPassesThrough(testCase)
@@ -390,8 +393,7 @@ verifyFalse(testCase, any(strcmp({b.depends_on.name}, 'instrument_id')));
 % control absent there is exactly one input, the presentation, and no empty
 % second entry is invented.
 verifyEqual(testCase, sum(strcmp({b.depends_on.name}, 'input_id')), 1);
-verifyEqual(testCase, inputAt(b, 1), 'pres_b671ff');
-verifyEmpty(testCase, inputAt(b, 2));
+verifyEqual(testCase, inputSet(b), {'pres_b671ff'});
 end
 
 function testTheUnstampedFixtureIsSuppressedNotFolded(testCase)
@@ -699,20 +701,22 @@ assertFail(testCase, sprintf(['no calculation with the harmonic_component ' ...
     'value kind among {%s}'], strjoin(names, ', ')));
 end
 
-function v = inputAt(b, n)
-%INPUTAT The N-th `input_id` edge of a raw body struct ('' when absent). #88
-%   names the signed `derived_from_#` family `input_id`, an ordered list.
-v = '';
+function ids = inputSet(b)
+%INPUTSET Every `input_id` target of a raw body struct, SORTED. `input_id` is
+%   UNORDERED (did-schema #88, `ordered: false`; Jess Haley 2026-10-21, "a":
+%   the presentation and the control record share it, told apart by the
+%   referenced document's kind), so a test compares the SET and never a
+%   position.
+ids = {};
 if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
-hits = {};
 for k = 1:numel(b.depends_on)
     if ~strcmp(b.depends_on(k).name, 'input_id'); continue; end
     d = b.depends_on(k);
     if isfield(d, 'document_id') && ~isempty(d.document_id)
-        hits{end+1} = char(d.document_id); %#ok<AGROW>
+        ids{end+1} = char(d.document_id); %#ok<AGROW>
     elseif isfield(d, 'value') && ~isempty(d.value)
-        hits{end+1} = char(d.value); %#ok<AGROW>
+        ids{end+1} = char(d.value); %#ok<AGROW>
     end
 end
-if numel(hits) >= n; v = hits{n}; end
+ids = sort(ids);
 end

@@ -1,9 +1,16 @@
 function bodies = stimulus_response_scalar_parameters_basic(preBody)
-%STIMULUS_RESPONSE_SCALAR_PARAMETERS_BASIC Brainstorm-J migrator: DEFERRED
-%   guarded passthrough. The signed model folds this class INLINE into
-%   `subject_interaction.method_parameters` on the response leaf; pass 1 cannot,
-%   and must not delete the documents in the meantime. Routed from
-%   did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
+%STIMULUS_RESPONSE_SCALAR_PARAMETERS_BASIC Brainstorm-J migrator: a guarded
+%   passthrough in pass 1. The batch pass did2.convert.resolveResponseParameters
+%   then replaces each document with ONE standalone `method` document (id
+%   PRESERVED) shared by every response whose `method_id` names it (Decided by
+%   Jess Haley, 2026-10-21, "b"). Routed from did2.convert.v1_to_v2 only when
+%   TargetVersion == 'V_eta'.
+%
+%   SUPERSEDED BELOW: the history that follows describes the earlier INLINE
+%   design (knobs written onto each response, edge dropped, documents deleted).
+%   Under "b" nothing is inlined and nothing is deleted; the passthrough here is
+%   still what the batch pass needs, because it reads the knobs off this
+%   document.
 %
 %   THE DISPOSITION (V_eta_stimulus_response_model_plan.md, TEAM-SIGN-OFF
 %   [stimulus response], 2026-08-08):

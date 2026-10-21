@@ -28,11 +28,11 @@ function bodies = stimulus_response_scalar(preBody)
 %     element_id                     -> entity_id (element.m keeps ids)
 %     stimulator_id                  -> instrument_id
 %     stimulus_presentation_id,
-%     stimulus_control_id            -> input_id, in that order (the signed
-%                                       `derived_from_#` family; #88 names the
-%                                       ordered inputs `input_id`). Which input
-%                                       is the control is NOT recorded -- left
-%                                       open by revision 3 (#52/#63).
+%     stimulus_control_id            -> input_id, both, UNORDERED (#88
+%                                       declares `ordered: false`). No separate
+%                                       control edge: readers tell the two apart
+%                                       by the referenced document's kind
+%                                       (Decided by Jess Haley, 2026-10-21, "a").
 %     stimulus_response_scalar_parameters_id
 %                                    -> method_id (see THE PARAMETERS below)
 %     response_type                  -> value.harmonic ('mean' 0, 'F<n>' n)
@@ -56,15 +56,14 @@ function bodies = stimulus_response_scalar(preBody)
 %   voltage) is recorded on no document in this family (the plan's OPEN 1/2).
 %   `value.response_unit` is not written: the response document records none.
 %
-%   THE PARAMETERS. The signed fold puts the parameters document's run knobs
-%   INLINE on this statement's method. A single-document migrator cannot follow
-%   the edge, so pass 1 re-homes it onto `method_id`, and
-%   did2.convert.resolveResponseParameters (a batch pass) writes
-%   `method = {term, parameters}` and drops the edge. Because #88 says a
-%   statement carries the inline `method` block OR `method_id`, NEVER BOTH,
-%   pass 1 writes NO inline method while the edge is present; the method term
-%   (RESPONSE_METHOD below) arrives with the parameters. A response with no
-%   parameters edge carries the inline method term at once.
+%   THE PARAMETERS. The v1 parameters edge becomes `method_id`, and the
+%   response carries NO inline method beside it (#88: the inline `method` OR
+%   `method_id`, never both). The batch pass did2.convert.resolveResponseParameters
+%   replaces each parameters document with ONE standalone `method` document
+%   (id PRESERVED, term RESPONSE_METHOD, the knobs as parameters) shared by
+%   every response that names it, so the edge keeps resolving (Decided by Jess
+%   Haley, 2026-10-21, "b"). A response with no parameters edge carries the
+%   inline method term at once.
 %
 %   SOFTWARE. The class has no `app` block, so, as jCalculation does, the
 %   calculator is a software entity named RESPONSE_METHOD

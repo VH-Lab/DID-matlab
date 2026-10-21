@@ -283,8 +283,7 @@ out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
 b    = findHarmonicCalc(testCase, out).toStruct();
 verifyEqual(testCase, depValue(b, 'entity_id'),            'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
-verifyEqual(testCase, inputAt(b, 1),       'pres_b671ff');
-verifyEqual(testCase, inputAt(b, 2),       'ctrl_20e84c');
+verifyEqual(testCase, inputSet(b), sort({'pres_b671ff', 'ctrl_20e84c'}));   % unordered
 verifyEqual(testCase, depValue(b, 'method_id'), 'param_77c19b');
 end
 
@@ -345,20 +344,22 @@ assertFail(testCase, sprintf(['no calculation with the harmonic_component ' ...
     'value kind among {%s}'], strjoin(names, ', ')));
 end
 
-function v = inputAt(b, n)
-%INPUTAT The N-th `input_id` edge of a raw body struct ('' when absent). #88
-%   names the signed `derived_from_#` family `input_id`, an ordered list.
-v = '';
+function ids = inputSet(b)
+%INPUTSET Every `input_id` target of a raw body struct, SORTED. `input_id` is
+%   UNORDERED (did-schema #88, `ordered: false`; Jess Haley 2026-10-21, "a":
+%   the presentation and the control record share it, told apart by the
+%   referenced document's kind), so a test compares the SET and never a
+%   position.
+ids = {};
 if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
-hits = {};
 for k = 1:numel(b.depends_on)
     if ~strcmp(b.depends_on(k).name, 'input_id'); continue; end
     d = b.depends_on(k);
     if isfield(d, 'document_id') && ~isempty(d.document_id)
-        hits{end+1} = char(d.document_id); %#ok<AGROW>
+        ids{end+1} = char(d.document_id); %#ok<AGROW>
     elseif isfield(d, 'value') && ~isempty(d.value)
-        hits{end+1} = char(d.value); %#ok<AGROW>
+        ids{end+1} = char(d.value); %#ok<AGROW>
     end
 end
-if numel(hits) >= n; v = hits{n}; end
+ids = sort(ids);
 end

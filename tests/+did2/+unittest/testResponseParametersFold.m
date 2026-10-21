@@ -120,18 +120,20 @@ end
 % ===================== the fold ============================================
 
 function testTheFiveRunKnobsLandInlineOnTheLeaf(testCase)
-% UPDATED 2026-10-21 for did-schema #88. The knobs land as `method.parameters`
-% ENTRIES ({variable, <one value form>}), and the method term arrives with them
-% (pass 1 could not write it beside the `method_id` edge: never both).
-% INVERTED, not relaxed: the two writer-empty knobs (`prestimulus_time`,
-% `prestimulus_normalization`, [] at the writer) were asserted PRESENT-but-empty.
-% #88's entry holds exactly ONE value form, so `[]` cannot be an entry; they are
-% now asserted ABSENT from the list AND COUNTED in `knobs_empty_not_stated`, so
-% the writer's empties stay visible in the report rather than vanishing.
-[~, leaf, rep] = foldPair(testCase, 'F1');
-m = leaf.interaction.method;
-verifyEqual(testCase, m.term.name, 'ndi.app.stimulus.tuning_response');
-p = m.parameters;
+% INVERTED 2026-10-21 (Decided by Jess Haley, 2026-10-21, "b"): the knobs no
+% longer land INLINE on the response. The parameters document becomes ONE
+% standalone `method` document, its id PRESERVED, holding the term (the app)
+% and the knobs as #88 entries ({variable, <one value form>}); the response is
+% untouched. The two writer-empty knobs (`prestimulus_time`,
+% `prestimulus_normalization`, [] at the writer) cannot be an entry (exactly ONE
+% value form), so they are ABSENT from the list and COUNTED in
+% `knobs_empty_not_stated`.
+[out, leaf, rep] = foldPair(testCase, 'F1');
+verifyFalse(testCase, isfield(leaf.interaction, 'method'));
+m = bodyOfClass(testCase, out, 'method');
+verifyEqual(testCase, m.base.id, 'param_77c19b');
+verifyEqual(testCase, m.method.term.name, 'ndi.app.stimulus.tuning_response');
+p = m.method.parameters;
 verifyEqual(testCase, knob(p, 'temporalfreqfunc').text, 'ndi.fun.stimulustemporalfrequency');
 verifyEqual(testCase, knob(p, 'isspike').quantity.value, 1);
 verifyEqual(testCase, knob(p, 'spiketrain dt').quantity.value, 0.001, 'AbsTol', 1e-12);
@@ -141,17 +143,19 @@ verifyEmpty(testCase, knob(p, 'prestimulus normalization'));
 verifyEqual(testCase, numel(p), 3);
 verifyEqual(testCase, rep.fields_copied, 3);
 verifyEqual(testCase, rep.knobs_empty_not_stated, 2);
-verifyEqual(testCase, rep.inlined, 1);
+verifyEqual(testCase, rep.methods_minted, 1);
 end
 
 function testTheEdgeIsDroppedBecauseTheSchemaSaysNeverBoth(testCase)
-% subject_interaction.json, in the schema's own words: "A statement carries the
-% inline `method_parameters` field OR this edge, NEVER BOTH (team, 2026-08-09)".
-% Both halves are asserted -- an inline field beside a surviving edge would
-% satisfy a test that only checked the field.
-[~, leaf] = foldPair(testCase, 'F1');
-verifyEmpty(testCase, depValue(leaf, 'method_id'));
-verifyNotEmpty(testCase, leaf.interaction.method.parameters);
+% INVERTED 2026-10-21 (Jess Haley, "b"): the edge is KEPT -- the response points
+% at the shared `method` document by `method_id` and carries no inline method
+% (never both). Both halves asserted, and the edge must RESOLVE to a `method`
+% in the batch, or keeping it would be keeping a dangling pointer.
+[out, leaf] = foldPair(testCase, 'F1');
+verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
+verifyFalse(testCase, isfield(leaf.interaction, 'method'));
+verifyEqual(testCase, bodyOfClass(testCase, out, 'method').base.id, ...
+    depValue(leaf, 'method_id'));
 end
 
 function testFreqResponseIsNotCopiedBecauseTheHarmonicAlreadyHasIt(testCase)
@@ -159,8 +163,9 @@ function testFreqResponseIsNotCopiedBecauseTheHarmonicAlreadyHasIt(testCase)
 % has already put it on `harmonic_component.value.harmonic` (via `response_type`,
 % which the writer derives from it two lines earlier). Copying it here as well is
 % the drift surface the plan's own OPEN 3 records.
-[~, leaf] = foldPair(testCase, 'F1');
-verifyEmpty(testCase, knob(leaf.interaction.method.parameters, 'freq response'));
+[out, leaf] = foldPair(testCase, 'F1');
+verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
+    'freq response'));
 % ...and the fact itself is NOT lost -- it is on the composite.
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 1);
 end
@@ -173,42 +178,39 @@ function testTheOtherFourEdgesAreUntouched(testCase)
 [~, leaf] = foldPair(testCase, 'F1');
 verifyEqual(testCase, depValue(leaf, 'entity_id'),      'elem_9c027e');
 verifyEqual(testCase, depValue(leaf, 'instrument_id'),  'stim_5daa03');
-verifyEqual(testCase, inputAt(leaf, 1), 'pres_b671ff');
-verifyEqual(testCase, inputAt(leaf, 2), 'ctrl_20e84c');
+verifyEqual(testCase, inputSet(leaf), sort({'pres_b671ff', 'ctrl_20e84c'}));
 verifyNotEmpty(testCase, depValue(leaf, 'time_reference_id'));
 end
 
 function testTheUnreferencedParametersDocumentIsDeleted(testCase)
-% VERIFY-BEFORE-DELETE, ARMED PER DOCUMENT (team, 2026-08-21). The F1 parameters
-% document folds inline and nothing points at it afterwards, so THIS run's own
-% edge-walk proves it unreferenced and it is deleted -- the fold's decided
-% end-state (source retires once its content is inline on method_parameters).
+% INVERTED 2026-10-21 (Jess Haley, "b"): the parameters document is CONVERTED IN
+% PLACE -- one `method` document with the same id -- never deleted, so every
+% edge naming it still resolves. The edge-walk is still measured: the response
+% still points at it.
 [out, ~, rep] = foldPair(testCase, 'F1');
 verifyFalse(testCase, anyClass(out, 'stimulus_response_scalar_parameters_basic'));
+verifyTrue(testCase, anyClass(out, 'method'));
 verifyEqual(testCase, rep.parameters_documents_seen, 1);
-% the gate's own number: after the edge is dropped nothing points at it,
-verifyEqual(testCase, rep.parameters_documents_unreferenced_after, 1);
-verifyEqual(testCase, rep.parameters_documents_referenced_after, 0);
-% ...and the eligible document actually went.
-verifyEqual(testCase, rep.parameters_documents_deleted, 1);
+verifyEqual(testCase, rep.parameters_documents_referenced_after, 1);
+verifyEqual(testCase, rep.parameters_documents_unreferenced_after, 0);
+verifyEqual(testCase, rep.parameters_documents_deleted, 0);
 end
 
 function testTheUnreferencedCountIsMeasuredNotInferred(testCase)
-% The deletion evidence must come from walking the graph, not from "this pass
-% removed the only edge, therefore it is free". Give the parameters document a
-% SECOND referent and the count must go the other way -- an inferred count could
-% not tell the difference, and a wrong 1 here authorises deleting a document
-% something still points at.
+% A SECOND referrer -- an unfolded v1 response naming the same parameters
+% document. Under "b" (Jess Haley, 2026-10-21) the document is SHARED: it
+% becomes one `method` document, the same id, and BOTH referrers still resolve
+% to it. Measured by walking the graph, not inferred.
 extra = otherReferrerFixture('param_77c19b');
 [out, rep] = runFold(testCase, ...
     {withEpochEdge(responseFixture('F1')), parametersFixture(), extra});
-verifyEqual(testCase, rep.inlined, 1);
+verifyEqual(testCase, rep.methods_minted, 1);
 verifyEqual(testCase, rep.parameters_documents_referenced_after, 1);
 verifyEqual(testCase, rep.parameters_documents_unreferenced_after, 0);
-% AND THE SAFETY PROOF: a document something still points at is KEPT, never
-% deleted on the strength of "unreferenced in the corpora we tested".
 verifyEqual(testCase, rep.parameters_documents_deleted, 0);
-verifyTrue(testCase, anyClass(out, 'stimulus_response_scalar_parameters_basic'));
+m = bodyOfClass(testCase, out, 'method');
+src = bodyOfClass(testCase, out, 'stimulus_response_scalar');
+verifyEqual(testCase, depValue(src, 'stimulus_response_scalar_parameters_id'), m.base.id);
 end
 
 % ===================== what it refuses =====================================
@@ -222,7 +224,7 @@ verifyEqual(testCase, rep.leaves_seen, 1);
 verifyEqual(testCase, rep.leaves_with_edge, 1);
 verifyEqual(testCase, rep.refused_not_in_batch, 1);
 verifyEqual(testCase, rep.refused_total, 1);
-verifyEqual(testCase, rep.inlined, 0);
+verifyEqual(testCase, rep.methods_minted, 0);
 leaf = findHarmonicCalc(testCase, out).toStruct();
 verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
 verifyFalse(testCase, isfield(leaf.interaction, 'method'));
@@ -239,7 +241,7 @@ function testADisagreeingHarmonicIsRefusedRatherThanReconciled(testCase)
 verifyEqual(testCase, rep.harmonic_checked, 1);
 verifyEqual(testCase, rep.refused_harmonic_mismatch, 1);
 verifyEqual(testCase, rep.refused_total, 1);
-verifyEqual(testCase, rep.inlined, 0);
+verifyEqual(testCase, rep.methods_minted, 0);
 leaf = findHarmonicCalc(testCase, out).toStruct();
 verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
 verifyFalse(testCase, isfield(leaf.interaction, 'method'));
@@ -263,7 +265,7 @@ p = parametersFixture();
 p.stimulus_response_scalar_parameters_basic = struct('freq_response', 1);
 [out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
 verifyEqual(testCase, rep.refused_no_fields, 1);
-verifyEqual(testCase, rep.inlined, 0);
+verifyEqual(testCase, rep.methods_minted, 0);
 leaf = findHarmonicCalc(testCase, out).toStruct();
 verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
 end
@@ -276,7 +278,7 @@ p = parametersFixture();
 p.document_class.class_name = 'stimulus_response_scalar_parameters';
 [~, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
 verifyEqual(testCase, rep.refused_wrong_class, 1);
-verifyEqual(testCase, rep.inlined, 0);
+verifyEqual(testCase, rep.methods_minted, 0);
 end
 
 % ===================== the denominator =====================================
@@ -294,7 +296,10 @@ function testZeroLeavesBesideSuppressedResponsesReadsAsBlockedNotIdle(testCase)
 verifyEqual(testCase, rep.leaves_seen, 0);
 verifyEqual(testCase, rep.suppressed_responses_seen, 1);
 verifyEqual(testCase, rep.parameters_documents_seen, 1);
-verifyEqual(testCase, rep.inlined, 0);
+% UPDATED 2026-10-21 (Jess Haley, "b"): ONE `method` per source parameters
+% document, whether or not a FOLDED response uses it -- the unfolded response
+% still names it, and the converted document keeps its id, so it still resolves.
+verifyEqual(testCase, rep.methods_minted, 1);
 verifyEqual(testCase, rep.refused_total, 0);
 verifyTrue(testCase, rep.ran);
 end
@@ -366,11 +371,14 @@ if ~isempty(out.quarantine)
 end
 [out, rep] = did2.convert.resolveResponseParameters(out, ...
     'Validate', true, 'TargetVersion', 'V_eta');
-verifyEqual(testCase, rep.inlined, 1);
+verifyEqual(testCase, rep.methods_minted, 1);
 verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
 leaf = findHarmonicCalc(testCase, out).toStruct();
-verifyEqual(testCase, knob(leaf.interaction.method.parameters, 'spiketrain dt').quantity.value, ...
+verifyFalse(testCase, isfield(leaf.interaction, 'method'));   % "b": never inline
+verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
+verifyEqual(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
+    'spiketrain dt').quantity.value, ...
     0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 2);
 % The id is untouched, so every inbound `stimulus_response_scalar_id` reference
@@ -502,22 +510,24 @@ assertFail(testCase, sprintf(['no calculation with the harmonic_component ' ...
     'value kind among {%s}'], strjoin(names, ', ')));
 end
 
-function v = inputAt(b, n)
-%INPUTAT The N-th `input_id` edge of a raw body struct ('' when absent). #88
-%   names the signed `derived_from_#` family `input_id`, an ordered list.
-v = '';
+function ids = inputSet(b)
+%INPUTSET Every `input_id` target of a raw body struct, SORTED. `input_id` is
+%   UNORDERED (did-schema #88, `ordered: false`; Jess Haley 2026-10-21, "a":
+%   the presentation and the control record share it, told apart by the
+%   referenced document's kind), so a test compares the SET and never a
+%   position.
+ids = {};
 if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
-hits = {};
 for k = 1:numel(b.depends_on)
     if ~strcmp(b.depends_on(k).name, 'input_id'); continue; end
     d = b.depends_on(k);
     if isfield(d, 'document_id') && ~isempty(d.document_id)
-        hits{end+1} = char(d.document_id); %#ok<AGROW>
+        ids{end+1} = char(d.document_id); %#ok<AGROW>
     elseif isfield(d, 'value') && ~isempty(d.value)
-        hits{end+1} = char(d.value); %#ok<AGROW>
+        ids{end+1} = char(d.value); %#ok<AGROW>
     end
 end
-if numel(hits) >= n; v = hits{n}; end
+ids = sort(ids);
 end
 
 function e = knob(params, name)

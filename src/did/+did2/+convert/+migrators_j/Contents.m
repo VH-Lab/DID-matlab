@@ -920,11 +920,11 @@
 %         the calculator's software entity. Routed from did2.convert.v1_to_v2 only
 %         when TargetVersion == 'V_eta'.
 %     stimulus_response_scalar_parameters_basic
-%         Brainstorm-J migrator: DEFERRED guarded passthrough. The signed model folds
-%         this class INLINE into `subject_interaction.method_parameters` on the
-%         response leaf; pass 1 cannot, and must not delete the documents in the
-%         meantime. Routed from did2.convert.v1_to_v2 only when TargetVersion ==
-%         'V_eta'.
+%         Brainstorm-J migrator: a guarded passthrough in pass 1. The batch pass
+%         did2.convert.resolveResponseParameters then replaces each document with ONE
+%         standalone `method` document (id PRESERVED) shared by every response whose
+%         `method_id` names it (Decided by Jess Haley, 2026-10-21, "b"). Routed from
+%         did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %     stimulus_tuningcurve
 %         Brainstorm-J migrator: a raw ndi.app.stimulus.tuning_response tuning curve
 %         (the pre-calculator-framework stimulus_tuningcurve document) -> the CONCRETE
