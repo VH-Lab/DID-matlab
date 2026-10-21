@@ -461,6 +461,26 @@ if isfield(result, 'clock_alignment_fold')
     report.clock_alignment_fold = result.clock_alignment_fold;
 end
 
+% FAILURE DOCUMENTS: the ids behind the failure counters, so
+% tools/extract_failure_fixtures.py can turn a red corpus run into a quick-suite
+% fixture without re-running the corpus. Best-effort: a throw here must not
+% cost the run its report, and the failure is written in the block's place.
+try
+    report.failure_documents = did2.unittest.helpers.failureDocuments(result);
+catch fdErr
+    report.failure_documents = struct('audit_failed', fdErr.message);
+end
+% SAMPLED RUN: the manifest travels inside the report, so no reader can take a
+% sampled run's numbers for the full corpus's. ABSENT on a full run.
+try
+    [~, sampleManifest] = did2.unittest.helpers.sampledCorpus(corpusName);
+    if ~isempty(sampleManifest)
+        report.sample = sampleManifest;
+    end
+catch sampleErr
+    report.sample = struct('audit_failed', sampleErr.message);
+end
+
 fid = fopen(reportPath, 'w');
 if fid < 0
     error('did2:test:reportWriteFailed', ...

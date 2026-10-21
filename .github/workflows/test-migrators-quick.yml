@@ -231,6 +231,17 @@ jobs:
         # each is a fixture, not a corpus.
         run: python3 tools/test_corpus_proven.py
 
+      - name: Corpus sampler, failure-fixture extractor, affected-corpora map (python, <2s)
+        # The SAMPLED corpus run (test-corpus.yml `sample: true`) is only as good
+        # as its session picker: a missed class reads as a clean run over that
+        # class, and a cut session makes failures the full corpus does not have.
+        # The extractor turns a red report into a fixture testFailureFixtures
+        # runs here; affected_corpora says which corpora a change must re-run.
+        run: |
+          python3 tools/test_sample_corpus.py
+          python3 tools/test_extract_failure_fixtures.py
+          python3 tools/test_affected_corpora.py
+
       - name: Batch post-passes must be called, persisted and printed (python, <1s)
         # tests/+did2/+unittest/testBatchPassWiring.m gates the CALLED leg from
         # inside the harness, and is the better place for it -- but it needs

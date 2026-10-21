@@ -36,8 +36,8 @@ on:
       did_schema_ref:
         description: >-
           did-schema ref to test against. Empty resolves as on push: a
-          same-named did-schema branch, else main. A port branch whose name
-          did-schema lacks names its schema branch here.
+          same-named did-schema branch, else did-schema #88's branch
+          claude/ecstatic-pascal-md91fw, else main.
         required: false
         default: ''
         type: string
@@ -50,7 +50,7 @@ concurrency:
 
 jobs:
   builder:
-    name: did2.build against did-schema main
+    name: did2.build against did-schema ${{ inputs.did_schema_ref || 'resolved ref' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -69,8 +69,17 @@ jobs:
                https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then
             echo "did-schema HAS branch '$want' -- using it."
             echo "ref=$want" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads \
+               https://github.com/Waltham-Data-Science/did-schema.git claude/ecstatic-pascal-md91fw >/dev/null 2>&1; then
+            # FALLBACK TO #88, NOT main (2026-10-21). DID-matlab's code is ported
+            # to did-schema #88 (#219 merged into #218), so a DID-matlab branch
+            # with no did-schema twin -- e.g. claude/port-88-sampled -- measured
+            # main's schema and failed testBuild against a schema its code no
+            # longer targets (run 39668355430). Same order as the quick gate.
+            echo "did-schema has no branch '$want' -- FALLING BACK to #88's branch claude/ecstatic-pascal-md91fw."
+            echo "ref=claude/ecstatic-pascal-md91fw" >> "$GITHUB_OUTPUT"
           else
-            echo "did-schema has no branch '$want' -- using main (the #73 schema)."
+            echo "did-schema has neither '$want' nor claude/ecstatic-pascal-md91fw -- FALLING BACK to main."
             echo "ref=main" >> "$GITHUB_OUTPUT"
           fi
 
@@ -80,6 +89,11 @@ jobs:
           repository: Waltham-Data-Science/did-schema
           ref: ${{ steps.schema-ref.outputs.ref }}
           path: did-schema
+
+      - name: Print the did-schema ref and sha actually checked out
+        run: |
+          echo "did-schema ref:  ${{ steps.schema-ref.outputs.ref }}"
+          echo "did-schema sha:  $(git -C did-schema rev-parse HEAD)"
 
       - name: Assemble V_eta schema set (stable + draft + deprecated)
         # Same assembly as test-migrators-quick.yml: deprecated/ is part of the

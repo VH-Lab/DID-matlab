@@ -494,6 +494,13 @@ end
 function predDir = ensurePREDCorpus()
 % Download (if necessary) and extract PRED.zip. The unzip target is
 % cached under tempdir so repeated test runs reuse the same files.
+% A SAMPLED run (DID_CORPUS_SAMPLE_DIR, test-corpus.yml `sample: true`) reads
+% tools/sample_corpus.py's copy. PRED is one session, so the sample is the whole
+% corpus; reading it anyway keeps the run's label and its input the same thing.
+predDir = did2.unittest.helpers.sampledCorpus('PRED');
+if ~isempty(predDir)
+    return;
+end
 corpusURL = 'https://ndi-programming-development.s3.us-east-1.amazonaws.com/PRED.zip';
 cacheRoot = fullfile(tempdir(), 'did2-corpus-PRED');
 predDir   = fullfile(cacheRoot, 'PRED');

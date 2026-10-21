@@ -4584,7 +4584,7 @@ def _render_openminds_citations_reading(rep, p):
         p("          %8d  thing(s) consumed with NOWHERE TO PUT THEM (the four"
           % total)
         p("                    LOSSY rows summed). Author ORDER survives as")
-        p("                    `sequence`; the ROLE does not, because `person`")
+        p("                    `order`; the ROLE does not, because `person`")
         p("                    has no role field. This is real loss with a")
         p("                    number on it, and `affiliations_beyond_first_")
         p("                    dropped` is the size of an OPEN team question,")

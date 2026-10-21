@@ -8,7 +8,8 @@ function doc = directedRelation(childId, parentId, relation, options)
 %   when it matches one exactly.
 %
 %   Options:
-%     'Sequence'          integer order among siblings
+%     'Order'             integer position among siblings (`directed_relation.order`;
+%                         named `sequence` until did-schema T20)
 %     'Method'            a term (or a name): how the relation was established
 %     'MethodParameters'  the settings of that method (did2.build.parameter /
 %                         list); did-schema #88 only, where a relation's
@@ -25,7 +26,7 @@ arguments
     childId (1,:) char
     parentId (1,:) char
     relation
-    options.Sequence = []
+    options.Order = []
     options.Method = []
     options.MethodParameters = []
     options.TimeReferenceIds = {}
@@ -41,7 +42,7 @@ arguments
 end
 
 fields = struct('relation', {relation});
-if ~isempty(options.Sequence); fields.sequence = options.Sequence; end
+if ~isempty(options.Order); fields.order = options.Order; end
 fields = methodFields(fields, options.Method, options.MethodParameters, options.SchemaCache);
 edges = struct('child_id', childId, 'parent_id', parentId, ...
     'time_reference_id', {options.TimeReferenceIds}, ...

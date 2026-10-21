@@ -91,10 +91,37 @@ on:
       did_schema_ref:
         description: >-
           did-schema ref to validate against. Default: the did-schema #88
-          branch the migrators are ported to (Jess Haley, 2026-10-21).
+          branch the migrators are ported to (Jess Haley, 2026-10-21). The
+          default does not depend on the branch the run is dispatched from, so
+          it is the same for #218 (claude/ecstatic-pascal-md91fw), port-88 and
+          the nightly schedule; each corpus job prints the ref and sha it used.
         required: false
         default: 'claude/ecstatic-pascal-md91fw'
         type: string
+      sample:
+        # THE FAST LOOP (Jess Haley, 2026-10-21: "we can't be spending hours on
+        # each fix"). Each corpus is cut to a few WHOLE SESSIONS that together
+        # hold every v1 class it contains (tools/sample_corpus.py, greedy and
+        # deterministic), then runs through the same driver, post-passes,
+        # reports and census as a full run. The per-class coverage table is in
+        # the run step's log and the manifest rides inside each report under
+        # `sample`, so a sampled number cannot pass for a full one. A sampled
+        # run is INTEGRITY over the sample, never the corpus; the corpus-proof
+        # snapshot is not written from it. The nightly schedule stays full.
+        description: >-
+          Run a whole-session SAMPLE of each corpus that covers every class it
+          holds (minutes), instead of the full corpus (hours).
+        required: false
+        default: false
+        type: boolean
+      extract_fixtures:
+        description: >-
+          After each corpus, lift the documents behind its failure rows (and
+          what they reference in their session) into a quick-suite fixture
+          folder, uploaded as artifact failure-fixtures-<corpus>.
+        required: false
+        default: false
+        type: boolean
   schedule:
     # 07:00 UTC daily. The full corpus is the slow, thorough gate; PRs are
     # served by test-migrators-quick.yml (~2 min). Measured 2026-08-10 on the
@@ -184,6 +211,32 @@ jobs:
           ref: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
           path: did-schema
 
+      - name: Print the did-schema ref and sha actually checked out
+        # A measurement against the wrong schema looks exactly like a
+        # measurement. actions/checkout already fails when the ref does not
+        # exist; this step makes the ref AND the sha readable in every log and
+        # fails if HEAD is not the tip of what was asked for.
+        env:
+          WANT: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
+        run: |
+          set -euo pipefail
+          got=$(git -C did-schema rev-parse HEAD)
+          tip=$(git ls-remote https://github.com/Waltham-Data-Science/did-schema.git \
+                  "refs/heads/$WANT" "refs/tags/$WANT" | awk 'NR==1{print $1}')
+          echo "did-schema requested: $WANT"
+          echo "did-schema checked out: $got"
+          echo "did-schema remote tip of '$WANT': ${tip:-<none>}"
+          if [ -n "$tip" ]; then
+            if [ "$tip" != "$got" ]; then
+              echo "::warning::did-schema '$WANT' moved since checkout ($tip vs $got); measured $got"
+            fi
+          elif [[ "$got" == "$WANT"* ]]; then
+            echo "did-schema '$WANT' is a commit sha; HEAD matches it"
+          else
+            echo "::error::did-schema ref '$WANT' is no branch, tag or sha prefix of HEAD ($got)"
+            exit 1
+          fi
+
       - name: Assemble V_eta schema set (stable + draft)
         run: |
           mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
@@ -251,6 +304,29 @@ jobs:
             addpath(genpath("tools"));
             matbox.installRequirements(didtools.projectdir());
 
+      - name: "Sample ${{ matrix.corpus }} (whole sessions covering every class)"
+        if: ${{ inputs.sample }}
+        # Downloads the same zip the corpus test would, cuts it to the
+        # sessions tools/sample_corpus.py picks, and points the MATLAB driver
+        # at the cut copy through DID_CORPUS_SAMPLE_DIR. The driver refuses to
+        # fall back to the full corpus when the variable is set and the sample
+        # is missing (did2.unittest.helpers.sampledCorpus).
+        env:
+          CORPUS: ${{ matrix.corpus }}
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/corpus-src"
+          out="$RUNNER_TEMP/corpus-sample"
+          mkdir -p "$src"
+          curl -sSfL -o "$src/$CORPUS.zip" \
+            "https://ndi-programming-development.s3.us-east-1.amazonaws.com/$CORPUS.zip"
+          unzip -q "$src/$CORPUS.zip" -d "$src"
+          python3 -I tools/sample_corpus.py --corpus "$CORPUS" \
+              --src "$src/$CORPUS" --out "$out"
+          mkdir -p tests/corpus-reports
+          cp "$out/$CORPUS.sample.json" "tests/corpus-reports/$CORPUS.sample.json"
+          echo "DID_CORPUS_SAMPLE_DIR=$out" >> "$GITHUB_ENV"
+
       - name: "Run corpus ${{ matrix.corpus }}"
         uses: matlab-actions/run-command@v2
         env:
@@ -308,6 +384,43 @@ jobs:
             corpus-reports/
             tests/corpus-reports/
           if-no-files-found: warn
+
+      - name: "Extract ${{ matrix.corpus }} failures into a quick-suite fixture"
+        # OPTIONAL (`extract_fixtures: true`). Reads the report's
+        # `failure_documents` block and copies the v1 documents behind it, plus
+        # what they reference in their session, into
+        # failure-fixtures/<corpus>/ -- the layout of
+        # tests/+did2/fixtures/corpus_failures/, where testFailureFixtures runs
+        # them on the quick gate. Evidence carriage, not a gate.
+        if: ${{ always() && inputs.extract_fixtures }}
+        continue-on-error: true
+        env:
+          CORPUS: ${{ matrix.corpus }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DID_CORPUS_SAMPLE_DIR:-}" ]; then
+            src="$DID_CORPUS_SAMPLE_DIR/$CORPUS"
+          elif [ -d "/tmp/did2-corpus-$CORPUS/$CORPUS" ]; then
+            src="/tmp/did2-corpus-$CORPUS/$CORPUS"
+          else
+            mkdir -p "$RUNNER_TEMP/extract-src"
+            curl -sSfL -o "$RUNNER_TEMP/extract-src/$CORPUS.zip" \
+              "https://ndi-programming-development.s3.us-east-1.amazonaws.com/$CORPUS.zip"
+            unzip -q "$RUNNER_TEMP/extract-src/$CORPUS.zip" -d "$RUNNER_TEMP/extract-src"
+            src="$RUNNER_TEMP/extract-src/$CORPUS"
+          fi
+          echo "v1 source for extraction: $src"
+          python3 -I tools/extract_failure_fixtures.py \
+              --report tests/corpus-reports --report corpus-reports \
+              --corpus "$CORPUS=$src" --out failure-fixtures
+
+      - name: "Upload ${{ matrix.corpus }} failure fixture"
+        if: ${{ always() && inputs.extract_fixtures }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-fixtures-${{ matrix.corpus }}
+          path: failure-fixtures/
+          if-no-files-found: ignore
 
   census:
     name: Census digest
@@ -390,6 +503,12 @@ jobs:
           path: corpus-reports
         continue-on-error: true
 
+      - name: Sample coverage (which reports are SAMPLED)
+        # Printed BEFORE the digest so no number below is read as a full-corpus
+        # number. A report with no `sample` block prints FULL.
+        if: always()
+        run: python3 tools/sample_corpus.py --summarise-reports corpus-reports tests/corpus-reports
+
       - name: Corpus census digest
         # The digest searches RECURSIVELY and exits non-zero when it finds
         # nothing. Both properties are load-bearing: `upload-artifact` given
@@ -452,16 +571,6 @@ jobs:
           python3 tools/corpus_proven.py --schema-repo did-schema \
               corpus-reports tests/corpus-reports
 
-      - name: Per-corpus done report (report-only)
-        # Per corpus, how many of its classes are at their DECIDED FINAL shape --
-        # the husks/bridges/superseded emissions the integrity check hides.
-        # REPORT-ONLY (no --gate): "done" (formerly "Bar-2") is in progress, so
-        # not reaching it is expected.
-        if: always()
-        run: |
-          python3 did-schema/tools/bar2_gap.py \
-              corpus-reports tests/corpus-reports || true
-
       - name: Carry the proof out of CI as a committable snapshot
         # THE NUMBER THIS RUN PRODUCES OTHERWISE SURVIVES NOWHERE. The rung is
         # printed to a log that scrolls and written to an artifact that
@@ -481,7 +590,9 @@ jobs:
         #
         # `continue-on-error` because this is EVIDENCE CARRIAGE, not a gate --
         # a corpus run must never go red over the bookkeeping of its own proof.
-        if: always()
+        # NOT ON A SAMPLED RUN: a sample is not the corpus, and this file is
+        # the record a human commits as corpus proof.
+        if: ${{ always() && !inputs.sample }}
         continue-on-error: true
         run: |
           if [ -f corpus-proven/v_eta_corpus_proven.json ]; then
@@ -509,3 +620,17 @@ jobs:
             corpus-reports/
             corpus-proven/
           if-no-files-found: ignore
+
+      - name: Remaining gap per corpus -- the work order (report-only)
+        # LAST, so the log ends with it (Jess Haley, 2026-10-21, via the
+        # coordinator). Per corpus, every class it contains that is NOT at its
+        # decided shape -- superseded / second pass / husk-bridge / undecided --
+        # from did-schema's bar2_gap.py, run against the did-schema checkout
+        # this job made (the ref printed below). REPORT-ONLY (no --gate): "done"
+        # is in progress, so not reaching it is expected. On a sampled run the
+        # class list is the sample's, which covers every class of the corpus.
+        if: always()
+        run: |
+          echo "did-schema for bar2_gap: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }} @ $(git -C did-schema rev-parse HEAD)"
+          python3 did-schema/tools/bar2_gap.py \
+              corpus-reports tests/corpus-reports || true
