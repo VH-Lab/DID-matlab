@@ -574,7 +574,7 @@ verifyEqual(testCase, rep.labels_modified, 0);
 bodyIdx = [];
 for k = 1:numel(result.migrated)
     if strcmp(result.migrated{k}.className(), 'opaque_body') ...
-            && strcmp(char(edgeOfDoc(result.migrated{k}, 'statement')), 'om_gf_01')
+            && strcmp(char(edgeOfDoc(result.migrated{k}, 'owner_id')), 'om_gf_01')   % `statement` before did-schema #88
         bodyIdx(end+1) = k; %#ok<AGROW>
     end
 end
