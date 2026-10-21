@@ -76,58 +76,60 @@ function setupOnce(testCase)
 % hold yet). A test that calls a migrator directly runs it the same way.
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
-% did-schema #88 cannot express the fold these tests pin: receptive_field.value
-% is a REQUIRED structure that declares no sub-fields, so hartley_calc passes
-% through on its v1 tombstone (testHartleyCalcPassesThroughOn88 in
-% testMigratorsJ pins that). The fold tests run again the day the composite
-% gains a field.
-testCase.assumeTrue(receptiveFieldValueHasFields(), ...
-    ['receptive_field.value declares no sub-fields on the loaded schema ' ...
-     '(did-schema #88), so hartley_calc passes through and the fold is not run']);
+% RE-ARMED 2026-10-21. On did-schema #88 before data_body AMENDMENT 5,
+% receptive_field.value was a REQUIRED structure declaring no sub-fields, so
+% hartley_calc passed through and these tests were filtered. AMENDMENT 5 (rule
+% `value_inline_or_body` on `value`, Jess Haley, signed 2026-10-21) replaced
+% the required value: a receptive field is `data_body: true` with an empty
+% `value`. A schema without the rule cannot hold the fold.
+testCase.assumeTrue(valueRuleDeclared(), ...
+    ['the loaded schema''s `value` does not declare `value_inline_or_body` ' ...
+     '(did-schema before data_body AMENDMENT 5), so receptive_field.value ' ...
+     'is still required and the fold cannot be stated']);
 end
 
-function tf = receptiveFieldValueHasFields()
+function tf = valueRuleDeclared()
 tf = false;
-c = did2.schema.cache.shared().getClass('receptive_field');
-f = c.fields;
-if isstruct(f); f = num2cell(f); end
-for k = 1:numel(f)
-    if strcmp(f{k}.name, 'value') && isfield(f{k}, 'fields') && ~isempty(f{k}.fields)
-        tf = true;
-    end
+c = did2.schema.cache.shared().getClass('value');
+if ~isfield(c, 'rules') || isempty(c.rules)
+    return;
 end
+r = c.rules;
+if iscell(r)
+    names = cellfun(@(x) char(x.name), r, 'UniformOutput', false);
+else
+    names = {r.name};
+end
+tf = any(strcmp(names, 'value_inline_or_body'));
 end
 
 % ===================== the shape ===========================================
 
 function testTheFoldEmitsTheLeafTheTwoPlanesAndTheSpikeInput(testCase)
-% 1 -> 7: the leaf, the session anchor every calculator fold carries, the
-% `software` entity the app block becomes, the `runtime_environment` entity
-% PR #68 makes REQUIRED on the calculator schema (was #67's decision 6:
-% shape-2 os/interpreter provenance as a standalone entity), TWO plane bodies
-% and ONE input body.
+% The leaf, the session anchor every calculator fold carries, the entities the
+% app block becomes (software, operating system, interpreter on #88; the
+% pre-#88 `runtime_environment` entity is gone), TWO plane bodies and ONE
+% input body.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 7, ...
-    sprintf('expected 7 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
-verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1, strjoin(names, ', '));
 verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 3, ...
     'two planes plus the spike-time input body');
 verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'software')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'runtime_environment')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'runtime_environment')), 0);
 end
 
 function testTheLeafIsTheSignedClassAndItsSuperclassPair(testCase)
 % TEAM-SIGN-OFF [receptive field naming]: the composite is `receptive_field`
-% and the leaf is `receptive_field_calculation`. The method is NOT in the name
-% -- T11 says a name reading as how it was made is a smell -- so this also pins
-% that no class called `spike_triggered_average` or `hartley_receptive_field`
-% is emitted.
+% and the leaf is `receptive_field_calculation` (on #88 a `calculation` whose
+% chain holds `receptive_field`). The method is NOT in the name -- T11 -- so
+% this also pins that no class called `spike_triggered_average` or
+% `hartley_receptive_field` is emitted.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = pick(out, 'receptive_field_calculation');
 supers = {leaf.document_class.superclasses.class_name};
-verifyTrue(testCase, ismember('subject_calculation', supers));
+verifyTrue(testCase, ismember('calculation', supers));
 verifyTrue(testCase, ismember('receptive_field', supers));
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyFalse(testCase, any(contains(names, 'hartley')), ...
@@ -154,24 +156,24 @@ verifyEqual(testCase, carriers, 1, ...
     'the source id must land on exactly one emitted body');
 end
 
-function testElementIdBecomesSubjectIdAndThePresentationBecomesDerivedFrom(testCase)
+function testElementIdBecomesTheEntityAndThePresentationBecomesAnInput(testCase)
 % `element_id` IS a subject edge -- +migrators_j/element.m promotes elements to
-% subjects with their ids PRESERVED. The presentation is provenance, not a
-% subject, so it takes the `derived_from_1` slot subject_calculation declares.
+% subjects with their ids PRESERVED -- and on #88 it is the leaf's `entity_id`.
+% The presentation is provenance, not a subject: an `input_id` (the pre-#88
+% `derived_from_1`). A calculation REQUIRES an operating system, named from
+% the app block.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = pick(out, 'receptive_field_calculation');
-verifyEqual(testCase, depValueOf(leaf, 'subject_id'), 'elem_7');
-verifyEqual(testCase, depValueOf(leaf, 'derived_from_1'), 'pres_3');
-verifyNotEmpty(testCase, depValueOf(leaf, 'time_reference_1'));
+verifyEqual(testCase, depValueOf(leaf, 'entity_id'), 'elem_7');
+verifyEqual(testCase, depValueOf(leaf, 'input_id'), 'pres_3');
+verifyNotEmpty(testCase, depValueOf(leaf, 'time_reference_id'));
 verifyNotEmpty(testCase, depValueOf(leaf, 'software_id'));
+verifyNotEmpty(testCase, depValueOf(leaf, 'operating_system_id'));
 end
 
 function testEveryEmittedEdgeIsNonEmpty(testCase)
 % THE INVENTED-EMPTY-EDGE SWEEP, with its DENOMINATOR asserted first --
 % without that an empty `out` would make this vacuously true.
-% `RequiredDependencies` is ARMED BY DEFAULT (+did2/+schema/cache.m:72), so an
-% empty required edge QUARANTINES; an empty OPTIONAL one validates clean and is
-% invisible, which is the 7,233-document pattern. Neither is emitted here.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 edges = 0;
 for k = 1:numel(out)
@@ -179,60 +181,60 @@ for k = 1:numel(out)
     d = out{k}.depends_on;
     for j = 1:numel(d)
         edges = edges + 1;
-        verifyNotEmpty(testCase, d(j).value, sprintf( ...
+        verifyNotEmpty(testCase, edgeId(d(j)), sprintf( ...
             'body %d (%s) declares edge `%s` with an empty value', ...
             k, out{k}.document_class.class_name, d(j).name));
     end
 end
-verifyGreaterThanOrEqual(testCase, edges, 7, ...
-    ['DENOMINATOR: the sweep must actually see edges -- 4 on the leaf ' ...
-     '(subject_id, time_reference_1, derived_from_1, software_id) and 1 ' ...
-     'statement edge on each of the 3 bodies, plus derived_from_1 on the ' ...
-     'spike body']);
+verifyGreaterThanOrEqual(testCase, edges, 8, ...
+    ['DENOMINATOR: the sweep must actually see edges -- entity_id, ' ...
+     'time_reference_id, input_id, software_id and operating_system_id on ' ...
+     'the leaf, and owner_id on each of the 3 bodies']);
 end
 
 function testTheSubjectEdgeIsNeverEmittedBlank(testCase)
-% THE HUSK TEST. An empty `subject_id` is mustBeNonEmpty and would quarantine,
-% but a migrator that emits one has already thrown away the fact -- and before
-% #37 was armed it validated clean, which is how 4,563 image_observations about
-% nobody went unnoticed for months. Read through `.document_id`, the second
-% spelling jCarrySubject accepts, so the reader divergence that produced that
-% husk cannot come back through this migrator.
+% THE HUSK TEST, read through `.document_id`, the second spelling the edge
+% readers accept, so the reader divergence that produced the image_stack husk
+% cannot come back through this migrator.
 v1 = hartleyCalcV1();
 v1.depends_on = struct('name', {'element_id', 'stimulus_presentation_id'}, ...
     'document_id', {'elem_7', 'pres_3'});
 out = did2.convert.migrators_j.hartley_calc(v1);
 verifyEqual(testCase, ...
-    depValueOf(pick(out, 'receptive_field_calculation'), 'subject_id'), 'elem_7');
+    depValueOf(pick(out, 'receptive_field_calculation'), 'entity_id'), 'elem_7');
 end
 
 % ===================== the composite value =================================
 
-function testTheMethodIsABoundTermOnTheCompositeAndTwoPlanesAreDeclared(testCase)
-% `reverse_correlation.method` -> receptive_field.value.method, 'Hartley' in
-% 210 of 210. `planes` is mustBeNonEmpty and is declared as one entry per
-% emitted body IN EMISSION ORDER, so its length must equal the number of plane
-% bodies -- a mismatch would silently mis-pair a reader's plane names.
+function testTheMethodIsTheCalculatorAndEachPlaneSaysWhatItHolds(testCase)
+% #73 item 57 moved the method onto the statement: its term is the
+% calculator. #73 audit 2 D11 dropped `planes[]`: bodies have no order, so
+% each plane body says what it holds as ONE body condition {variable:
+% represented quantity, term: response estimate | significance}.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-value = pick(out, 'receptive_field_calculation').receptive_field.value;
-verifyEqual(testCase, value.method.name, 'Hartley');
-verifyEqual(testCase, value.storage_mode, 'body');
-verifyEqual(testCase, numel(value.planes), 2);
-verifyEqual(testCase, ...
-    arrayfun(@(p) p.quantity.name, value.planes, 'UniformOutput', false), ...
+leaf = pick(out, 'receptive_field_calculation');
+verifyEqual(testCase, lower(char(leaf.interaction.method.term.name)), 'ndi.calc.vis.hartley');
+planes = planeBodies(out);
+verifyEqual(testCase, numel(planes), 2);
+verifyEqual(testCase, cellfun(@planeName, planes, 'UniformOutput', false), ...
     {'response estimate', 'significance'});
 end
 
-function testTheStatementSaysTheValueIsBodyBackedAndCarriesTheEncoding(testCase)
-% D1: one home for a body-backed value. jCalculation seeds `inline`, which is
-% right for the twelve calculators whose result is a small matrix and wrong
-% here (a plane is 200x200x36 doubles). And `ngrid.data_type` is real source
-% data, so it lands on the STATEMENT with its source spelling beside it.
+function testTheValueIsInItsBodiesAndCarriesTheEncoding(testCase)
+% data_body AMENDMENT 5: `receptive_field.value` declares no sub-fields, so the
+% value is in data bodies (`data_body: true`) and the inline value stays
+% empty. The bytes are a plain array in sampled_body documents, so the leaf
+% says their type (`data_type`), with the source spelling beside it.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-st = pick(out, 'receptive_field_calculation').subject_statement;
-verifyEqual(testCase, st.storage_mode, 'body');
-verifyEqual(testCase, st.datum_type, 'float64');
-verifyEqual(testCase, st.source_datum_type, 'double');
+leaf = pick(out, 'receptive_field_calculation');
+verifyTrue(testCase, logical(leaf.value.data_body));
+verifyEqual(testCase, leaf.value.data_type, 'float64');
+verifyEqual(testCase, leaf.value.source_data_type, 'double');
+if isfield(leaf, 'receptive_field') && isfield(leaf.receptive_field, 'value')
+    v = leaf.receptive_field.value;
+    verifyTrue(testCase, isempty(v) || (isstruct(v) && isempty(fieldnames(v))), ...
+        'the inline value must stay empty: the volume is in the bodies');
+end
 end
 
 % ===================== the two plane bodies ================================
@@ -241,110 +243,93 @@ function testEachPlaneBodyDescribesOnePlaneAndNotTheStack(testCase)
 % THE ARITHMETIC THE SIGNATURE TURNS ON: data_dim is [200 200 36 2] and sums to
 % 438, while `coordinates` has 436 values -- so the length-2 dimension has NO
 % coordinates, which is the writer saying in the data that it is not an axis.
-% Two bodies of three axes each, never one body with a fourth axis of length 2.
+% Two bodies of three keys each, never one body with a fourth key of length 2.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 planes = planeBodies(out);
 verifyEqual(testCase, numel(planes), 2);
 for k = 1:numel(planes)
-    ax = planes{k}.sampled_body.axes;
+    ax = planes{k}.data.keys;
     verifyEqual(testCase, numel(ax), 3, ...
-        'three axes per plane -- the trailing 2 is a plane count, not an axis');
+        'three keys per plane -- the trailing 2 is a plane count, not a key');
     verifyEqual(testCase, [ax.n], [200 200 36]);
 end
 end
 
 function testTheLagAxisCarriesItsValuesRatherThanASpacing(testCase)
-% THE COORDINATE CARRY. The lag axis is `regular = false` with the stored
-% doubles in `values`; the two index axes stay regular because their
-% coordinates ARE 1..200 and `n` already says so.
-%
-% NOT A STYLISTIC CHOICE. The stored T is not reproducible from origin+spacing:
-% 6 of its 36 entries differ at the ulp from -0.1 + k*0.01 (0 of 210 documents
-% reproduce exactly). The fixture carries the real vector, so a regular axis
-% here would fail this assertion rather than pass it by luck.
+% THE COORDINATE CARRY. The lag key is `regular = false` with the stored
+% doubles in `quantity`; the two index keys stay regular because their
+% coordinates ARE 1..200 and `n` already says so. NOT A STYLISTIC CHOICE: 6 of
+% the 36 stored lags differ at the ulp from -0.1 + k*0.01.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-ax = planeBodies(out); ax = ax{1}.sampled_body.axes;
-verifyEqual(testCase, [ax.regular], [true true false]);
-verifyEqual(testCase, ax(1).origin.value, 1);
-verifyEqual(testCase, ax(1).spacing.value, 1);
-verifyEqual(testCase, ax(3).quantity.value, realLagVector());
-verifyEqual(testCase, ax(3).quantity.source_value, realLagVector());
-verifyEmpty(testCase, fieldnames(ax(3).origin), ...
-    'an irregular axis has no origin -- it has a quantity');
+ax = planeBodies(out); ax = ax{1}.data.keys;
+verifyEqual(testCase, logical([ax.regular]), [true true false]);
+verifyEqual(testCase, ax(3).quantity.value(:), realLagVector());
 end
 
 function testTheLagAxisIsNamedAndTheTwoSpatialAxesAreNotGuessed(testCase)
-% The lag axis is named on POSITIVE EVIDENCE: its coordinates equal
-% `hartley_calc.input_parameters.T`, the reverse-correlation lag vector, in 210
-% of 210. Nothing distinguishes X from Y -- both coordinate vectors are the
-% identical default index vector, both dims are 200, and
-% `reverse_correlation.dimension_labels` (the field whose job is to name the
-% axes) is '' in 210 of 210. So they stay positional. `axes[].variable` is
-% queryable, and a guess recorded there is a guess recorded as a fact.
+% The lag key is named on POSITIVE EVIDENCE (its coordinates equal
+% `hartley_calc.input_parameters.T` in 210 of 210). Nothing distinguishes X
+% from Y, so they stay positional: a guess recorded in a queryable `variable`
+% is a guess recorded as a fact.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-ax = planeBodies(out); ax = ax{1}.sampled_body.axes;
+ax = planeBodies(out); ax = ax{1}.data.keys;
 verifyEqual(testCase, ...
-    arrayfun(@(a) a.variable.name, ax, 'UniformOutput', false), ...
+    arrayfun(@(a) char(a.variable.name), ax, 'UniformOutput', false), ...
     {'axis_1', 'axis_2', 'lag'});
 end
 
 function testBothPlanesNameTheSourceFileAndSayWhichPlaneTheyAre(testCase)
 % ONE FILE, TWO BODIES, SAID OUT LOUD. The v1 document attaches a single
 % `hartley_results.ngrid` holding cat(4, sta, p_val), and `data_body` has no
-% byte-range field to split it with. Declaring it on only one body would make
-% the other plane's bytes unreachable from the document that describes them.
-% The name is carried VERBATIM: universalRenames skips the structural keys, so
-% a renamed file name is the image_stack `imagestack_file` bug again.
+% byte-range field to split it with, so both bodies declare it. The name is
+% carried VERBATIM (universalRenames skips the structural keys).
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 planes = planeBodies(out);
 for k = 1:numel(planes)
     verifyEqual(testCase, planes{k}.data_body.filename, 'hartley_results.ngrid');
-    verifyEqual(testCase, planes{k}.files.file_list, {'hartley_results.ngrid'});
+    verifyEqual(testCase, cellstr(planes{k}.files.file_list), {'hartley_results.ngrid'});
     verifyTrue(testCase, contains(planes{k}.data_body.description, ...
         sprintf('plane %d of 2', k)));
     % Without `datum_order` a 200x200x36 volume cannot be reassembled from the
-    % bytes at all, and the field is OPTIONAL to the validator -- so its absence
-    % would be silent. 'F' is a property of MATLAB (`fwrite` linearises
-    % column-major), not an inference. `byte_order` is deliberately NOT set:
-    % the document records the producing machine and not its endianness.
-    % On the block the schema declares it on: `data` since did-schema #88 (D-5).
+    % bytes. 'F' is a property of MATLAB (`fwrite` linearises column-major).
+    % `byte_order` is deliberately NOT set: the document records the
+    % producing machine and not its endianness.
     where = did2.schema.cache.shared().datumOrderBlock();
     if isempty(where); where = 'sampled_body'; end
     verifyEqual(testCase, planes{k}.(where).datum_order, 'F');
-    verifyFalse(testCase, isfield(planes{k}.sampled_body, 'byte_order'));
+    verifyFalse(testCase, isfield(planes{k}.(where), 'byte_order') ...
+        && ~isempty(planes{k}.(where).byte_order));
 end
 end
 
-function testEveryBodyIsBoundToTheCalculationByItsStatementEdge(testCase)
-% `data_body.statement` is the ONE required edge on a body, and it is what makes
-% the volume findable from the subject side.
+function testEveryBodyIsBoundToTheCalculationByItsOwnerEdge(testCase)
+% `owner_id` is the ONE required edge on a body (`statement` before #88), and
+% it is what makes the volume findable from the subject side.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leafId = pick(out, 'receptive_field_calculation').base.id;
 bodies = allOf(out, 'sampled_body');
 verifyEqual(testCase, numel(bodies), 3);
 for k = 1:numel(bodies)
-    verifyEqual(testCase, depValueOf(bodies{k}, 'statement'), leafId);
+    verifyEqual(testCase, depValueOf(bodies{k}, 'owner_id'), leafId);
 end
 end
 
 % ===================== the spike-time input body ===========================
 
-function testSpiketimesBecomeAnInputBodyDerivedFromTheNeuron(testCase)
-% THE SIGNATURE DIVERGES FROM FINDING F6 DELIBERATELY, and this pins the
-% divergence: F6 read these as primary archival data on the neuron-subject; the
-% team decided they are CALCULATION INPUT, because they are WINDOWED to one
-% presentation (210 sets over 21 neurons x 10 presentations) and a windowed
-% subset filed as archival is indistinguishable from a complete train.
+function testSpiketimesBecomeAnInputBodyOfTheCalculation(testCase)
+% THE SIGNATURE DIVERGES FROM FINDING F6 DELIBERATELY: the spike times are
+% CALCULATION INPUT, windowed to one presentation. On #88 a data_body declares
+% no lineage edge; the neuron is the leaf's own entity.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 sb = spikeBody(out);
-verifyNotEmpty(testCase, sb);
-verifyEqual(testCase, depValueOf(sb, 'derived_from_1'), 'elem_7');
-ax = sb.sampled_body.axes;
+assertNotEmpty(testCase, sb);
+verifyEqual(testCase, depValueOf(sb, 'owner_id'), 'hc_1');
+ax = sb.data.keys;
 verifyEqual(testCase, numel(ax), 1);
-verifyEqual(testCase, ax.variable.name, 'time');
-verifyFalse(testCase, ax.regular);
+verifyEqual(testCase, char(ax.variable.name), 'time');
+verifyFalse(testCase, logical(ax.regular));
 verifyEqual(testCase, ax.n, 5);
-verifyEqual(testCase, ax.quantity.value, [0.106; 0.31; 0.55; 0.9; 1.4]);
+verifyEqual(testCase, ax.quantity.value(:), [0.106; 0.31; 0.55; 0.9; 1.4]);
 verifyFalse(testCase, isfield(sb, 'files'), ...
     'the spike train has no attached bytes -- the times ARE the coordinates');
 end
@@ -365,7 +350,7 @@ function testTheDerivableAndEmptyFieldsAreDropped(testCase)
 % `ngrid.data_size` (8, bytes-per-element -- restates the dtype) and
 % `reverse_correlation.dimension_labels` ('' in 210 of 210) are the two the
 % signature names droppable. Nothing else from those blocks survives as a
-% v1-named field on any emitted body.
+% v1-named block on any emitted body.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 for k = 1:numel(out)
     verifyFalse(testCase, isfield(out{k}, 'ngrid'));
@@ -378,43 +363,39 @@ end
 end
 
 function testTheStimulusSequenceIsCARRIEDRatherThanDropped(testCase)
-% `frame_times` + `hartley_numbers` are 5 parallel 3,360-vectors naming which
-% basis function was shown on each frame. The signature sends `frameTimes` to
-% the per-presentation `timed_sequence` and says NOTHING about
-% `hartley_numbers`; `timed_sequence` is DECLARED ABSTRACT, so neither can be
-% built here. They are therefore parked in `method_parameters`, whose own
-% documentation is "Retaining it keeps the computation reproducible" -- and
-% these are the reverse correlation's regressors. Dropping them would be a
-% silent loss of 16,800 real values per document.
+% `frame_times` + `hartley_numbers` are parallel 3,360-vectors naming which
+% basis function was shown on each frame. Their signed home (the
+% per-presentation sequence) cannot be built here, so they are carried in the
+% method parameters, entries named `stimulus sequence.<field>` -- the
+% reverse correlation's regressors. Dropping them would be a silent loss.
 %
 % THIS TEST IS ALSO THE CAMELCASE FALLBACK'S ONLY WITNESS: universalRenames
 % snake_cases `frameTimes` to `frame_times`, and both spellings are read.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-mp = pick(out, 'receptive_field_calculation').subject_interaction.method_parameters;
-verifyEqual(testCase, mp.T, realLagVector()', 'input_parameters still land here');
-verifyEqual(testCase, numel(mp.stimulus_sequence.frame_times), 3360);
-verifyEqual(testCase, numel(mp.stimulus_sequence.hartley_numbers.KXV), 3360);
+leaf = pick(out, 'receptive_field_calculation');
+verifyEqual(testCase, jsondecode(paramText(leaf, 'T')), realLagVector(), 'AbsTol', 1e-12, ...
+    'input_parameters still land here');
+verifyEqual(testCase, numel(jsondecode(paramText(leaf, 'stimulus sequence.frame times'))), 3360);
+verifyEqual(testCase, numel(jsondecode(paramText(leaf, 'stimulus sequence.hartley numbers.KXV'))), 3360);
 
 v1 = hartleyCalcV1();
 ft = v1.hartley_reverse_correlation.frame_times;
 v1.hartley_reverse_correlation = rmfield(v1.hartley_reverse_correlation, 'frame_times');
 v1.hartley_reverse_correlation.frameTimes = ft;
 out2 = did2.convert.migrators_j.hartley_calc(v1);
-mp2 = pick(out2, 'receptive_field_calculation').subject_interaction.method_parameters;
-verifyEqual(testCase, numel(mp2.stimulus_sequence.frame_times), 3360, ...
+leaf2 = pick(out2, 'receptive_field_calculation');
+verifyEqual(testCase, numel(jsondecode(paramText(leaf2, 'stimulus sequence.frame times'))), 3360, ...
     'the camelCase spelling must be read too');
 end
 
 function testStimulusPropertiesAreDroppedWhenTheReferentHoldsThem(testCase)
 % Dropped, and the only reason it is lossless is that the referenced
-% `stimulus_presentation` holds the same spec and survives migration intact
-% (+migrators_j/stimulus_presentation.m is a guarded passthrough). The VALUE
-% comparison is did2.validate.sourceCensus's half -- a single-document migrator
-% cannot follow the edge.
+% `stimulus_presentation` holds the same spec and survives migration. The
+% VALUE comparison is did2.validate.sourceCensus's half.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = pick(out, 'receptive_field_calculation');
-verifyFalse(testCase, isfield(leaf.subject_interaction.method_parameters, ...
-    'stimulus_properties'));
+names = paramNames(leaf);
+verifyFalse(testCase, any(startsWith(names, 'stimulus properties')), strjoin(names, ', '));
 end
 
 % ===================== the guards ==========================================
@@ -439,8 +420,9 @@ v1 = hartleyCalcV1();
 v1.hartley_reverse_correlation.stimulus_properties.gamma = 2.2;
 verifyError(testCase, @() did2.convert.migrators_j.hartley_calc(v1), ...
     'did2:convert:hartleyStimulusPropertiesUnverifiable');
-verifyEqual(testCase, numel(did2.convert.migrators_j.hartley_calc(hartleyCalcV1())), 7, ...
-    'the same document without the extra key folds (leaf, anchor, software, runtime_environment, 2 plane bodies, spike-input body)');
+out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
+verifyEqual(testCase, numel(allOf(out, 'receptive_field_calculation')), 1, ...
+    'the same document without the extra key folds');
 end
 
 function testAMissingNgridBlockIsREFUSED(testCase)
@@ -501,7 +483,8 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, ...
     sprintf('quarantined: %s', strjoin(arrayfun(@(q) ...
         sprintf('%s|%s', q.class_name, q.identifier), out.quarantine, ...
         'UniformOutput', false), '; ')));
-verifyEqual(testCase, out.summary.migrated_count, 7);
+verifyEqual(testCase, out.summary.migrated_count, ...
+    numel(did2.convert.migrators_j.hartley_calc(hartleyCalcV1())));
 end
 
 % ===================== the census half of the stimulus check ===============
@@ -660,8 +643,9 @@ end
 % ===================== small readers =======================================
 
 function b = pick(bodies, className)
-%PICK The single body of CLASSNAME, erroring rather than returning the first of
-%   several -- a silent first-match would hide a duplicate emission.
+%PICK The single body of CLASSNAME (its #88 leaf name), erroring rather than
+%   returning the first of several -- a silent first-match would hide a
+%   duplicate emission.
 hits = allOf(bodies, className);
 if numel(hits) ~= 1
     error('testMigratorsJHartleyCalc:pick', ...
@@ -673,35 +657,62 @@ end
 function hits = allOf(bodies, className)
 hits = {};
 for k = 1:numel(bodies)
-    if isfield(bodies{k}, 'document_class') ...
-            && strcmp(bodies{k}.document_class.class_name, className)
+    if strcmp(did2.unittest.helpers.leafName(bodies{k}), className)
         hits{end+1} = bodies{k}; %#ok<AGROW>
     end
 end
 end
 
 function out = planeBodies(bodies)
-%PLANEBODIES The plane bodies, IN EMISSION ORDER, identified by base.name.
-%   Identified by name rather than by position so a reordering of the emitted
-%   set fails the assertion instead of silently re-pairing the planes.
+%PLANEBODIES The plane bodies, IN EMISSION ORDER: the sampled bodies that say
+%   what they hold in a `represented quantity` condition (#73 audit 2 D11). #88
+%   writes no base.name, so a plane is found by what it says it is.
 out = {};
-for k = 1:numel(bodies)
-    if isfield(bodies{k}, 'base') && isfield(bodies{k}.base, 'name') ...
-            && startsWith(bodies{k}.base.name, 'migrated_receptive_field_plane_')
-        out{end+1} = bodies{k}; %#ok<AGROW>
+sb = allOf(bodies, 'sampled_body');
+for k = 1:numel(sb)
+    if ~isempty(planeName(sb{k}))
+        out{end+1} = sb{k}; %#ok<AGROW>
     end
 end
 end
 
+function name = planeName(b)
+name = '';
+c = [];
+for blk = {'data_body', 'data', 'sampled_body'}
+    if isfield(b, blk{1}) && isfield(b.(blk{1}), 'conditions') ...
+            && ~isempty(b.(blk{1}).conditions)
+        c = b.(blk{1}).conditions;
+        break;
+    end
+end
+if isempty(c); return; end
+if iscell(c); c = c{1}; end
+c = c(1);
+if isfield(c, 'variable') && strcmp(char(c.variable.name), 'represented quantity') ...
+        && isfield(c, 'term')
+    name = char(c.term.name);
+end
+end
+
 function b = spikeBody(bodies)
+%SPIKEBODY The input body: the sampled body that is not a plane.
 b = [];
-for k = 1:numel(bodies)
-    if isfield(bodies{k}, 'base') && isfield(bodies{k}.base, 'name') ...
-            && strcmp(bodies{k}.base.name, ...
-                'migrated_receptive_field_input_spiketimes')
-        b = bodies{k};
+sb = allOf(bodies, 'sampled_body');
+for k = 1:numel(sb)
+    if isempty(planeName(sb{k}))
+        b = sb{k};
         return;
     end
+end
+end
+
+function v = edgeId(e)
+v = '';
+if isfield(e, 'document_id') && ~isempty(e.document_id)
+    v = char(e.document_id);
+elseif isfield(e, 'value') && ~isempty(e.value)
+    v = char(e.value);
 end
 end
 
@@ -711,8 +722,29 @@ if ~isfield(body, 'depends_on'); return; end
 d = body.depends_on;
 for k = 1:numel(d)
     if strcmp(d(k).name, name)
-        v = d(k).value;
+        v = edgeId(d(k));
         return;
     end
 end
+end
+
+function names = paramNames(leaf)
+names = {};
+p = leaf.interaction.method.parameters;
+for k = 1:numel(p)
+    names{end+1} = char(p(k).variable.name); %#ok<AGROW>
+end
+end
+
+function t = paramText(leaf, varName)
+t = '';
+p = leaf.interaction.method.parameters;
+for k = 1:numel(p)
+    if strcmp(char(p(k).variable.name), varName)
+        t = char(p(k).text);
+        return;
+    end
+end
+error('testMigratorsJHartleyCalc:param', 'no method parameter `%s`; have: %s', ...
+    varName, strjoin(paramNames(leaf), ', '));
 end

@@ -4218,11 +4218,15 @@ verifyError(testCase, @() did2.convert.migrators_j.spike_clusters(body), ...
     'did2:convert:spikeClustersInventedShape');
 end
 
-function testHartleyCalcPassesThroughOn88(testCase)
-% did-schema #88: receptive_field.value is a REQUIRED structure declaring no
-% sub-fields, so no receptive_field_calculation can validate; corpus run
-% 39550766416 quarantined all 210 of 20211116's hartley_calc documents before
-% this passthrough. The document stays on its v1 tombstone, id and body intact.
+function testHartleyCalcWithoutAnNgridBlockIsRefused(testCase)
+% INVERTED 2026-10-21 (was testHartleyCalcPassesThroughOn88). The passthrough
+% existed because receptive_field.value was a REQUIRED structure declaring no
+% sub-fields, so no receptive_field_calculation could validate (corpus run
+% 39550766416 quarantined all 210 of 20211116's documents). did-schema
+% data_body AMENDMENT 5 (rule value_inline_or_body) lifted that: the fold
+% runs, and this fixture, which carries no `ngrid` block and so no response
+% volume, is REFUSED rather than emitted as a receptive field whose value
+% lives nowhere. testMigratorsJHartleyCalc owns the fold itself.
 body = struct();
 body.document_class = struct('class_name', 'hartley_calc', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -4230,10 +4234,8 @@ body.depends_on = struct('name', {'element_id'}, 'value', {'sub_h'});
 body.base = struct('id', 'hc_1', 'session_id', 'sess_09', 'name', 'hc', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.hartley_calc = struct('input_parameters', struct());
-out = did2.convert.migrators_j.hartley_calc(body);
-verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'hartley_calc');
-verifyEqual(testCase, out{1}.base.id, 'hc_1');
+verifyError(testCase, @() did2.convert.migrators_j.hartley_calc(body), ...
+    'did2:convert:hartleyNgridBlockMissing');
 end
 
 function testFitcurveFoldsToResidualScore(testCase)
