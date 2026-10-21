@@ -32,6 +32,10 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %     'SourceDatumType'   the source's own type name
 %     'DataBody'          logical: the value is stored in a body
 %     'Notes'             char
+%     'ValueKind'         with LEAFCLASS a DIRECTION ('observation', 'assertion',
+%                         'manipulation', 'calculation'): the value-kind mixin
+%                         ('time', 'dose', ...) -- the did-schema #88 form; the
+%                         older '<kind>_<direction>' leaf name still resolves
 %     'Fields'            any other declared field, as a struct
 %   Edges:
 %     'TimeReferenceIds'  cellstr: the statement's time references (T15
@@ -93,6 +97,7 @@ arguments
     options.Files = {}
     options.Validate (1,1) logical = true
     options.SchemaCache = []
+    options.ValueKind (1,:) char = ''
 end
 
 fields = struct();

@@ -3977,7 +3977,7 @@ verifyEqual(testCase, ob.data_body.content_hash, 'd41d8cd98f00b204e9800998ecf842
 verifyEqual(testCase, ob.data_body.hash_algorithm, 'MD5');
 verifyFalse(testCase, contains(ob.data_body.description, 'd41d8cd9'), ...
     'the MD5 is the checksum, not free text');
-verifyEqual(testCase, ob.data_body.format.name, 'directory');
+verifyEqual(testCase, ob.data_body.format.node, 'EMPTY:0000315');   % "directory of files"
 end
 
 function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
@@ -4634,9 +4634,10 @@ verifyEqual(testCase, out{1}.base.id, 'fc_3');
 end
 
 function testVmspikefitFoldsToResidualScore(testCase)
-% did-schema #88: as fitcurve -- a model_fit_calculation when the source names
-% an operating system, a passthrough when it does not (the NDI template ships
-% no app block, so the passthrough is the expected case).
+% did-schema #88: as fitcurve -- a calculation with the model_fit value kind.
+% UPDATED 2026-10-21: operating_system_id is OPTIONAL (Jess Haley
+% [calculation-os-optional]), so with no app block (the NDI template ships
+% none) it FOLDS with no operating_system_id edge, instead of passing through.
 body = struct();
 body.document_class = struct('class_name', 'vmspikefit', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -4645,8 +4646,11 @@ body.base = struct('id', 'vf_1', 'session_id', 'sess_09', 'name', 'vf', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.vmspikefit = struct('fit_equation', 'exp2', 'fit_sse', 3.25);
 out = did2.convert.migrators_j.vmspikefit(body);
-verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'vmspikefit');
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+assertTrue(testCase, any(strcmp(names, 'model_fit_calculation')), strjoin(names, ', '));
+calc0 = out{find(strcmp(names, 'model_fit_calculation'), 1)};
+verifyEqual(testCase, calc0.base.id, 'vf_1');
+verifyEmpty(testCase, depValue(calc0, 'operating_system_id'));
 body.app = struct('name', 'vm', 'version', '1', 'os', 'GLNXA64');
 out = did2.convert.migrators_j.vmspikefit(body);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
