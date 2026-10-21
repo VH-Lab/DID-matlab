@@ -62,12 +62,16 @@ function fixtures = v1Fixtures()
 % A self-contained set of representative v1 documents -- one (or a small batch)
 % per migrator, so a change to any covered migrator is caught by this fast gate
 % instead of only the ~2h corpus. SELF-CONTAINED: every id a doc depends_on is
-% minted in the same batch (base.session_id is a plain field, NOT an orphan-checked
-% depends_on edge, so a session doc is not required). Shapes are lifted from the
+% minted in the same batch. ON did-schema #88 THAT INCLUDES THE SESSION:
+% base.session_id becomes a required `session_id` EDGE to the session entity
+% (V_eta_relation_inheritance_plan.md), so the batch carries one v1 `session`
+% document per session id the fixtures use (sessionFixture); before #88 it was a
+% plain field and no session document was needed. Shapes are lifted from the
 % migrator unit tests (did2.unittest.testMigratorsJ), which are known-good migrator
 % INPUTS -- but those run Validate=false, so this corpus is the first to put them
 % through full V_eta schema validation + the 0-quarantine / 0-orphan gates.
 fixtures = [ ...
+    { sessionFixture('sess_09'), sessionFixture('sess_10') }, ...
     { subjectGroupDoc(), metadataEditorDoc() }, ...
     manipulationBatch(), ...
     observationBatch(), ...
@@ -497,6 +501,9 @@ verifyNotEmpty(testCase, result.migrated);
 
 % GATE 2: no dangling references (self-contained fixtures -> 0 by construction)
 refRep = did2.validate.references(result.migrated);
+for o = 1:min(numel(refRep.orphans), 20)
+    fprintf('ORPHAN %s\n', jsonencode(refRep.orphans(o)));
+end
 verifyEqual(testCase, refRep.orphan_count, 0, ...
     sprintf('%d orphan depends_on edge(s) of %d examined', ...
         refRep.orphan_count, refRep.edges_examined));
@@ -545,7 +552,7 @@ verifyEqual(testCase, rep.date_fields_dropped, 1);
 verifyEqual(testCase, classOf(result.migrated, 'om_gf_01'), 'term_observation', ...
     ['the folded generic_file did not keep its id -- a changed id is the ' ...
      'dissolution that produced 11,448 orphans in Soph']);
-verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_01', 'subject_id'), ...
+verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_01', 'entity_id'), ...
     'om_gf_subj', 'the statement lost the subject the file belonged to');
 
 % THE REFUSED ONE IS UNTOUCHED AND STILL VALIDATES. This is the assertion that
@@ -1511,4 +1518,16 @@ d.openminds = struct('openminds_type','https://openminds.om-i.org/types/Stimulat
         'preferredOntologyIdentifier','NDIC:00000012', ...
         'description','Assessing spatial frequency tuning'));
 batch = { sub, d };
+end
+
+function b = sessionFixture(sessionId)
+% A v1 `session` document (ndi.session.dir writes one per session); on #88 it
+% becomes the session entity whose base.id IS the session id.
+b = struct();
+b.document_class = struct('class_name', 'session', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+b.depends_on = struct('name', {}, 'value', {});
+b.base = struct('id', ['sd_' sessionId], 'session_id', sessionId, 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+b.session = struct('reference', ['fixture ' sessionId]);
 end

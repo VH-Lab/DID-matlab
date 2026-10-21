@@ -179,8 +179,8 @@ verifyEqual(testCase, rel.directed_relation.relation.name, 'member_of');
 verifyEqual(testCase, rel.directed_relation.relation.node, 'RO:0002350');
 
 % THE ASSERTION THAT MATTERS: both ends resolve, and to the RIGHT tiers.
-child  = documentById(out, depValue(rel, 'child'));
-parent = documentById(out, depValue(rel, 'parent'));
+child  = documentById(out, depValue(rel, 'child_id'));
+parent = documentById(out, depValue(rel, 'parent_id'));
 verifyNotEmpty(testCase, child,  'the member end dangles -- a gating orphan');
 verifyNotEmpty(testCase, parent, 'the group end dangles -- a gating orphan');
 verifyEqual(testCase, child.subject.description,  'bacterial lawn (a bacterial patch)');
