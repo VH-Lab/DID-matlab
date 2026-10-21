@@ -135,6 +135,10 @@ function bodies = neuron_extracellular(preBody)
 %   `reshape(values, [n_time n_channel])` is the inverse. Recorded rather than
 %   worked around: the convention is not stated in the document, and where an
 %   inline multi-axis value should state it is a schema decision.
+%   [did-schema #88, Haley audit D-5, signed 2026-10-20: `datum_order` moved to
+%   `data`, beside `keys`, so an inline value has the slot, and EMPTY MEANS F.
+%   On that schema this fold's column-major flatten is the declared default;
+%   on did-schema main / v_eta-pre73 the paragraph above still holds.]
 %
 %   ---------------------------------------------------------------------
 %   THE UNIT IS DELIBERATELY UNSTATED

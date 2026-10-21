@@ -15,6 +15,9 @@ function doc = sampledBody(ownerId, keys, options)
 %   Options (fields):
 %     'DatumOrder'    'C' (row-major, last key fastest) or 'F' (column-major,
 %                     MATLAB's layout). Required when there is more than one key.
+%                     Written to the block the schema declares it on: `data`,
+%                     beside `keys`, since did-schema #88 (D-5); `sampled_body`
+%                     before (did2.schema.cache/datumOrderBlock).
 %     'ByteOrder'     'little' or 'big'; give it for any multi-byte datum type
 %     'FillValue'     char literal read by the owner's datum_type ("NaN",
 %                     "-32768"): what a missing chunk holds when 'Complete' is true

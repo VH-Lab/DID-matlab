@@ -120,6 +120,9 @@ classdef cache < handle
     %                             (did-schema, 2026-10-20) or as the field?
     %       sourceUnitIsTerm    - is a value's `source_unit` an ontology_term
     %                             (did-schema, 2026-10-21) or char?
+    %       datumOrderBlock     - which block declares `datum_order`:
+    %                             `data` (did-schema #88, 2026-10-20) or
+    %                             `sampled_body`?
     %       requiredDependencies - depends_on names declared mustBeNonEmpty
     %                             anywhere in a class chain (#37).
     %       unpopulatedRequiredDependencies - which of those a given body
@@ -641,6 +644,39 @@ classdef cache < handle
                             tf = isfield(d, 'type') && strcmp(char(d.type), 'ontology_term');
                             return;
                         end
+                    end
+                end
+            end
+        end
+
+        function block = datumOrderBlock(obj)
+            % datumOrderBlock - the class whose block declares `datum_order`.
+            %
+            %   did-schema PR #88 (Haley audit D-5, signed 2026-10-20) moved
+            %   `datum_order` from `sampled_body` up to `data`, beside `keys`,
+            %   so it describes whichever array the keys do: an inline value
+            %   or a body's own; empty means F. did-schema `main` and the
+            %   pinned v_eta-pre73 still declare it on `sampled_body`. A
+            %   builder places a field by its declaration (fillField), so this
+            %   is for a CALLER that writes or reads the block directly, as
+            %   sessionIdIsEdge and sourceUnitIsTerm are for theirs.
+            %
+            %   ASKED OF THE SCHEMA: 'data' when `data` declares it, else
+            %   'sampled_body' when that does, else '' (neither readable).
+            arguments
+                obj
+            end
+            block = '';
+            for c = {'data', 'sampled_body'}
+                if ~obj.hasClass(c{1})
+                    continue;
+                end
+                own = obj.ownFields(c{1});
+                for k = 1:numel(own)
+                    f = own{k};
+                    if isstruct(f) && isfield(f, 'name') && strcmp(char(f.name), 'datum_order')
+                        block = c{1};
+                        return;
                     end
                 end
             end

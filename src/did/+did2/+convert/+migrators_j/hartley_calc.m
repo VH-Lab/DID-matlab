@@ -549,7 +549,9 @@ for k = 1:nPlanes
     %                    endianness; reading one off the other would be a guess
     %                    recorded as a fact, and an empty field is a legal "not
     %                    stated" while a wrong one is undetectable.
-    b.sampled_body.datum_order = 'F';
+    %   The block is the one the loaded schema declares it on: `data` since
+    %   did-schema #88 (D-5), `sampled_body` before (datumOrderBlock).
+    b.(datumOrderBlock()).datum_order = 'F';
     b.data_body = struct( ...
         'filename', sourceFileName(preBody), ...
         'description', sprintf(['plane %d of %d in the source ngrid file: ' ...
@@ -559,6 +561,22 @@ for k = 1:nPlanes
     if isfield(preBody, 'files'); b.files = preBody.files; end
     if isfield(preBody, 'file');  b.file  = preBody.file;  end
     planeBodies{k} = b;
+end
+end
+
+function block = datumOrderBlock()
+%DATUMORDERBLOCK The block that declares `datum_order` in the loaded schema.
+%   `data` since did-schema #88 (Haley audit D-5, 2026-10-20); `sampled_body`
+%   on did-schema main and v_eta-pre73. A migrator holds no cache handle, so
+%   it asks the shared one; `sampled_body` when no schema can be asked.
+block = '';
+try
+    block = did2.schema.cache.shared().datumOrderBlock();
+catch
+    % no schema to ask
+end
+if isempty(block)
+    block = 'sampled_body';
 end
 end
 

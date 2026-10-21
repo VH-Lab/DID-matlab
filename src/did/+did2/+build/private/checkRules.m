@@ -31,7 +31,8 @@ function checkRules(cache, className, doc, chain)
 %        key_n_matches            data.keys: n is the length of the dimension,
 %                                 so it equals the number of positions in
 %                                 `quantity.value` or `term`
-%        datum_order_multikey     sampled_body.datum_order: "REQUIRED in
+%        datum_order_multikey     datum_order (on `data` since did-schema
+%                                 #88, on sampled_body before): "REQUIRED in
 %                                 practice whenever there is more than one key"
 %        require_inherited        a class's `require_inherited` list: an
 %                                 inherited optional field or edge the class

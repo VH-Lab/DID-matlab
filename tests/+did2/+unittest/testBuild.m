@@ -549,7 +549,15 @@ body = did2.build.sampledBody(newId(), keys, 'DatumOrder', 'F', 'ByteOrder', 'li
     'Chunks', 2, 'SessionId', sid);
 verifyEqual(testCase, body.document_class.class_name, 'sampled_body');
 verifyEqual(testCase, body.files.file_list, {'body_data_0', 'body_data_1'});
-verifyEqual(testCase, body.sampled_body.datum_order, 'F');
+% `datum_order` sits on the block the schema declares it on: `data`, beside
+% `keys`, since did-schema #88 (D-5); `sampled_body` before. The other block
+% does not carry it. Both shapes: testBuildDatumOrder.
+where = did2.schema.cache.shared().datumOrderBlock();
+verifyNotEmpty(testCase, where, 'the loaded schema declares datum_order nowhere');
+verifyEqual(testCase, body.(where).datum_order, 'F');
+other = setdiff({'data', 'sampled_body'}, {where});
+verifyFalse(testCase, isfield(body.(other{1}), 'datum_order'), ...
+    sprintf('datum_order is declared on `%s`, so `%s` must not carry it', where, other{1}));
 verifyEqual(testCase, numel(body.data.keys), 2);
 end
 

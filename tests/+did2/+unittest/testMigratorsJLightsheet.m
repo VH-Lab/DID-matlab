@@ -609,7 +609,8 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 b = onlyBody(testCase, out);
 verifyEqual(testCase, edge(b, 'owner_id'), 'pyr_ls_1');
-verifyEqual(testCase, b.sampled_body.datum_order, 'C');
+% on the block the schema declares it on (`data` since did-schema #88, D-5)
+verifyEqual(testCase, b.(did2.schema.cache.shared().datumOrderBlock()).datum_order, 'C');
 verifyEqual(testCase, b.sampled_body.byte_order, 'little');
 verifyEqual(testCase, b.sampled_body.fill_value, '0');
 verifyTrue(testCase, isequal(b.data.complete, true));

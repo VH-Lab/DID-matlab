@@ -278,7 +278,10 @@ for k = 1:numel(planes)
     % would be silent. 'F' is a property of MATLAB (`fwrite` linearises
     % column-major), not an inference. `byte_order` is deliberately NOT set:
     % the document records the producing machine and not its endianness.
-    verifyEqual(testCase, planes{k}.sampled_body.datum_order, 'F');
+    % On the block the schema declares it on: `data` since did-schema #88 (D-5).
+    where = did2.schema.cache.shared().datumOrderBlock();
+    if isempty(where); where = 'sampled_body'; end
+    verifyEqual(testCase, planes{k}.(where).datum_order, 'F');
     verifyFalse(testCase, isfield(planes{k}.sampled_body, 'byte_order'));
 end
 end
