@@ -586,6 +586,28 @@ end
 result.reference_integrity = ...
     did2.unittest.helpers.referenceIntegrityBlock(refRep, refErrMsg);
 
+% ENTITY-TYPE `requires` CENSUS -- REPORT-ONLY (Jess Haley, 2026-10-21, "b").
+% Per entity type and required field (binding_registry_meta.json
+% entity_type_bindings): entities inspected, missing. Nothing quarantines on
+% it; arming it is a later decision taken from this count. Over the FINAL set,
+% so the batch passes' entities (epochs, ...) are in it. Best-effort.
+try
+    result.entity_requires = did2.validate.entityRequires(result.migrated);
+    er = result.entity_requires;
+    fprintf(['entity requires (REPORT-ONLY): %d doc(s) inspected, %d entity(ies), ' ...
+             '%d untyped, %d of a type with no registry row; %d missing\n'], ...
+        er.docs_inspected, er.entities_inspected, er.entities_untyped, ...
+        er.entities_type_without_row, er.missing_total);
+    for i = 1:numel(er.by_type_field)
+        row = er.by_type_field(i);
+        fprintf('    %-14s %-18s inspected %6d  missing %6d\n', ...
+            row.entity_type, row.field, row.inspected, row.missing);
+    end
+catch erErr
+    result.entity_requires = struct('audit_failed', erErr.message);
+    fprintf('entity requires census skipped: %s\n', erErr.message);
+end
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 

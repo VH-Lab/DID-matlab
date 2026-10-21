@@ -81,6 +81,11 @@ end
 if isfield(result, 'silent_loss')
     report.silent_loss = result.silent_loss;
 end
+% Entity-type `requires` census, REPORT-ONLY (Jess Haley, 2026-10-21, "b").
+% ABSENT IS NOT ZERO: written only when the caller computed it.
+if isfield(result, 'entity_requires')
+    report.entity_requires = result.entity_requires;
+end
 % #52 EVIDENCE (report-only): the per-statement time-reference COUNT
 % DISTRIBUTION and, for the multi-reference ones, the SHAPES. Persisted for the
 % same reason as the censuses around it -- the team decision it feeds is about

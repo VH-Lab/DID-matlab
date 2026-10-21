@@ -501,6 +501,36 @@ did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
     'ValueId', newId(), common{:});
 end
 
+function testDoseIngredientsMatchTheirEdges(testCase)
+% did-schema dose.json (Jess Haley, 2026-10-21 [dose per ingredient]): rule
+% `ingredients_match_edges` -- one `value.ingredients` entry per
+% `ingredient_id` edge. `ingredient_in_formulation` needs the formulation and
+% is left to a batch check, so building a dose never errors on it.
+c = did2.schema.cache.shared();
+if ~c.hasClass('dose') || ~isfield(c.getClass('dose'), 'rules') ...
+        || ~any(strcmp(cellfun(@(r) char(r.name), asCell(c.getClass('dose').rules), ...
+            'UniformOutput', false), 'ingredients_match_edges'))
+    assumeFail(testCase, 'the loaded schema has no dose ingredients_match_edges rule');
+end
+sid = testCase.TestData.sid;
+apbm = struct('amount_per_body_mass', struct('grams_per_gram', 1e-6, 'source_value', 1));
+val = struct('volume', did2.build.valueCell('volume', NaN), 'ingredients', apbm);
+base = struct('entity_id', newId(), 'time_reference_id', newId(), 'formulation_id', newId());
+withEdge = base; withEdge.ingredient_id = {newId()};
+doc = did2.build.document('manipulation', ...
+    struct('variable', did2.build.term('', 'dose'), 'value', val), ...
+    'ValueKind', 'dose', 'SessionId', sid, 'Edges', withEdge);
+verifyEqual(testCase, doc.dose.value.ingredients(1).amount_per_body_mass.grams_per_gram, 1e-6);
+verifyError(testCase, @() did2.build.document('manipulation', ...
+    struct('variable', did2.build.term('', 'dose'), 'value', val), ...
+    'ValueKind', 'dose', 'SessionId', sid, 'Edges', base), ...
+    'did2:build:ruleViolated');
+end
+
+function c = asCell(x)
+if iscell(x); c = x(:)'; else; c = num2cell(x(:)'); end
+end
+
 function testAnUnrecordedAmountIsNaNAndCountsAsStated(testCase)
 % Jess Haley, 2026-10-21 (did-schema V_eta_go_forward_class_audit.md): an
 % unrecorded amount is written as NaN in its quantity (e.g. a dose's

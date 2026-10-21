@@ -5510,3 +5510,25 @@ class TestPostMintEpochChain(DigestCase):
         rollup = text[text.index("ACROSS ALL 2 CORPORA"):]
         self.assertNotIn("REACH AN EPOCH", rollup.split("EPOCH-STRING")[0]
                          .split("could not contribute")[1])
+
+
+# ---- entity-type `requires` census (REPORT-ONLY, Jess Haley 2026-10-21 "b")
+
+
+def test_entity_requires_absent_is_not_measured():
+    out = []
+    census_digest.render_entity_requires({}, out)
+    assert any("NOT MEASURED" in line for line in out)
+    assert not any("missing" in line and "0" in line for line in out)
+
+
+def test_entity_requires_prints_denominator_then_rows():
+    r = {"entity_requires": {
+        "docs_inspected": 10, "entities_inspected": 3, "entities_untyped": 0,
+        "entities_type_without_row": 0, "missing_total": 1,
+        "by_type_field": [{"entity_type": "session", "field": "local_identifier",
+                           "inspected": 2, "missing": 1}]}}
+    out = []
+    census_digest.render_entity_requires(r, out)
+    assert "10 doc(s) inspected" in out[0] and "1 missing" in out[0]
+    assert "session" in out[1] and "inspected" in out[1] and "missing" in out[1]
