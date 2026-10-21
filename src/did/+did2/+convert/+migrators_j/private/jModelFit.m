@@ -17,10 +17,10 @@ function bodies = jModelFit(preBody, blk, inputEdges)
 %   sse_per_point}, input_field / output_field (fit_data).
 %
 %   PASSES THROUGH (returns {PREBODY}, the v1 tombstone validates it) when
-%   the document has no subject (decided: "no subject -> refused"), or no
-%   operating system in an `app` block: a #88 calculation REQUIRES
-%   `operating_system_id` (#73 item 53) and nothing else says what the fit ran
-%   on. Both are reported, never invented.
+%   the document has no subject (decided: "no subject -> refused"). A missing
+%   operating system no longer passes it through: `operating_system_id` is
+%   OPTIONAL (Jess Haley, 2026-10-21 [calculation-os-optional]), so the edge is
+%   omitted, never invented.
 
 bodies = {preBody};
 subjectId = jSubjectOf(preBody, {'element_id', 'subject_id'});
@@ -29,9 +29,6 @@ if isempty(subjectId)
 end
 [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
 [runDocs, osId, interpreterId] = jRunEntities(preBody, execEnv);
-if isempty(osId)
-    return;
-end
 
 v = struct();
 nm = charOf(blk, 'fit_name');

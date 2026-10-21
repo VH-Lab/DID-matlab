@@ -3297,8 +3297,8 @@ function testContrastTuningFoldsToCalculationLeaf(testCase)
 % #88). UPDATED for #88: a calculation REQUIRES operating_system_id, read from the
 % v1 `app.os`, so the fixture now carries the `app` block every real calculator
 % document has (ndi.app.newdocument stamps it; all Soph *_calc samples carry it).
-% Without it the document passes through -- see
-% testCalculationWithNoOperatingSystemPassesThrough. Out: leaf + session anchor +
+% (Since 2026-10-21 a document without it still folds, with no
+% operating_system_id -- see testCalculationWithNoOperatingSystemFoldsWithoutTheEdge.) Out: leaf + session anchor +
 % three software entities (app, os, interpreter), each with a version assertion.
 body = struct();
 body.document_class = struct('class_name', 'contrast_tuning', 'class_version', '1.0.0', ...
@@ -4500,14 +4500,22 @@ verifyEqual(testCase, calc.model_fit.value.equation, 'gaussian');
 verifyEqual(testCase, calc.model_fit.value.goodness.sse, 12.5, 'AbsTol', 1e-9);
 end
 
-function testFitcurveWithNoOperatingSystemPassesThrough(testCase)
-% The same document with no `app` block: #88 cannot state a calculation that
-% names no operating system, and one is never invented, so the v1 document
-% passes through unchanged (Jess Haley, 2026-10-21).
+function testFitcurveWithNoOperatingSystemFoldsWithoutTheEdge(testCase)
+% INVERTED 2026-10-21 (was testFitcurveWithNoOperatingSystemPassesThrough).
+% A calculation's operating_system_id is OPTIONAL (Jess Haley, 2026-10-21
+% [calculation-os-optional], did-schema f8ab172): "required when the
+% operating system is known, absent when the source never recorded it". So the
+% same document with no `app` block now FOLDS, with the edge omitted --
+% never invented.
 out = did2.convert.migrators_j.fitcurve(fitcurveBody('fc_1', 'sub_9'));
-verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'fitcurve');
-verifyEqual(testCase, out{1}.fitcurve.fit_sse, 12.5, 'AbsTol', 1e-9);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+assertTrue(testCase, any(strcmp(names, 'model_fit_calculation')), strjoin(names, ', '));
+calc = out{find(strcmp(names, 'model_fit_calculation'), 1)};
+verifyEqual(testCase, calc.base.id, 'fc_1', 'id preserved');
+verifyEqual(testCase, depValue(calc, 'entity_id'), 'sub_9');
+verifyEmpty(testCase, depValue(calc, 'operating_system_id'), ...
+    'no operating system was recorded, so none is named');
+verifyEqual(testCase, calc.model_fit.value.goodness.sse, 12.5, 'AbsTol', 1e-9);
 end
 
 function body = fitcurveBody(id, elementId)
@@ -4921,11 +4929,12 @@ for k = 1:numel(b.depends_on)
 end
 end
 
-function testCalculationWithNoOperatingSystemPassesThrough(testCase)
-% did-schema #88's `calculation` requires operating_system_id. A v1 calculator
-% document with no `app.os` cannot supply one, and inventing an operating system
-% is not allowed, so jCalculation passes the document through UNCHANGED (Jess's
-% rule: pass through and list, never invent). This pins that branch.
+function testCalculationWithNoOperatingSystemFoldsWithoutTheEdge(testCase)
+% INVERTED 2026-10-21 (was testCalculationWithNoOperatingSystemPassesThrough).
+% did-schema #88's `calculation.operating_system_id` is OPTIONAL (Jess Haley,
+% 2026-10-21 [calculation-os-optional]). A v1 calculator document with no
+% `app.os` now FOLDS to its named calculation, id preserved, with the edge
+% omitted -- an operating system is never invented.
 body = struct();
 body.document_class = struct('class_name', 'contrast_tuning', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -4936,8 +4945,13 @@ body.base = struct('id', 'ct_1', 'session_id', 'sess_09', 'name', 'ct', ...
 body.contrast_tuning = struct( ...
     'tuning_curve', struct('contrast', [0 0.25 0.5 1], 'mean', [2 5 9 12]));
 out = did2.convert.migrators_j.contrast_tuning(body);
-verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}, body);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+assertTrue(testCase, any(strcmp(names, 'contrast_tuning_calculation')), strjoin(names, ', '));
+leaf = out{find(strcmp(names, 'contrast_tuning_calculation'), 1)};
+verifyEqual(testCase, leaf.base.id, 'ct_1', 'id preserved');
+verifyEmpty(testCase, depValue(leaf, 'operating_system_id'));
+verifyNotEmpty(testCase, depValue(leaf, 'software_id'), ...
+    'the calculator is still named, from its method name');
 end
 
 

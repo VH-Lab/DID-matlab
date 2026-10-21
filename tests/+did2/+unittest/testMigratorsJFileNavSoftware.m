@@ -253,14 +253,14 @@ verifyEqual(testCase, entityName(out, depValue(leaf.toStruct(), 'operating_syste
 verifyFalse(testCase, isfield(leaf.toStruct(), 'app'));
 end
 
-function testCalculatorWithNoAppBlockMintsNoSoftware(testCase)
-% INVERTED for did-schema #88. A calculator output with no `app` block used to
-% fold with a minimal software entity minted from the calculator's name. #88's
-% `calculation` REQUIRES an operating_system_id, which only `app.os` can supply;
-% inventing one is not allowed, so the document passes through unchanged and
-% nothing -- no software either -- is minted for it. Listed in the port report
-% (calculator outputs without an app block). Real calculator documents carry the
-% block (every Soph *_calc sample does).
+function testCalculatorWithNoAppBlockFoldsWithItsMethodSoftware(testCase)
+% INVERTED AGAIN 2026-10-21 (was testCalculatorWithNoAppBlockMintsNoSoftware,
+% itself an inversion of the pre-#88 behaviour). The reason it passed through
+% -- #88's calculation REQUIRED an operating_system_id only `app.os` can supply
+% -- is gone: the edge is OPTIONAL (Jess Haley, 2026-10-21
+% [calculation-os-optional]). So a calculator output with no `app` block
+% folds again, with a software entity minted from the calculator's name and
+% no operating system (none is invented).
 v1 = struct();
 v1.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
@@ -273,9 +273,10 @@ v1.orientation_direction_tuning = struct('vector', struct('orientation_preferenc
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'software')));
-verifyEqual(testCase, names, {'oridirtuning_calc'});
-verifyEqual(testCase, out.summary.unconverted_count, 1);
+verifyFalse(testCase, any(strcmp(names, 'oridirtuning_calc')), ...
+    'the document folds instead of passing through');
+verifyEqual(testCase, sum(strcmp(names, 'software')), 1, ...
+    'one software entity, minted from the calculator''s name; no OS, no interpreter');
 end
 
 

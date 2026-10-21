@@ -192,10 +192,11 @@ end
 % 2026-09-25): "a raster goes by what its pixels measure, keyed [y, x,
 % (channel)]: JH's microscopy images -> intensity_observation, its masks /
 % closest-patch maps -> label_calculation, chosen from the document's label".
-% A label_calculation is a CALCULATION, which #88 requires to name the
-% operating system it ran on (`operating_system_id`, #73 item 53); a v1
-% image_stack carries no `app` block, so a mask or a map PASSES THROUGH
-% (its v1 tombstone, deprecated/image_stack, validates it) -- reported.
+% A mask or a map PASSES THROUGH (its v1 tombstone, deprecated/image_stack,
+% validates it) -- reported -- because no label_calculation fold has been
+% built on #88. (It used to say the reason was the calculation's required
+% operating_system_id; that is optional since Jess Haley, 2026-10-21
+% [calculation-os-optional], so the unbuilt fold is the only reason left.)
 label = getCharField(getBlock(preBody, 'image_stack'), 'label');
 if isMaskOrMap(label)
     bodies = {preBody};

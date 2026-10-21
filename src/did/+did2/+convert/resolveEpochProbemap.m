@@ -690,7 +690,7 @@ end
 
 report.archive_docs_inspected = numel(archiveIdxAll);
 pyraviewOwners = pyraviewOwnerIndex(bodies, classOf, docIds, sampledIdx);
-report.pyraview_observations_seen = pyraviewOwners.Count;
+report.pyraview_observations_seen = double(pyraviewOwners.Count);
 
 renameBodies = renameBodyBySrcId.values;
 if isempty(newBodies) && isempty(renameBodies)
@@ -1732,8 +1732,8 @@ deps = b.depends_on;
 if iscell(deps); deps = [deps{:}]; end
 keep = ~strcmp({deps.name}, 'owner_id');
 d = deps(find(~keep, 1));
-d.value = char(ownerId);
-if isfield(d, 'document_id'); d.document_id = char(ownerId); end
+if isfield(d, 'value'); d.value = char(ownerId); end          % set only the fields
+if isfield(d, 'document_id'); d.document_id = char(ownerId); end   % it already has
 b.depends_on = [deps(keep), d];
 end
 

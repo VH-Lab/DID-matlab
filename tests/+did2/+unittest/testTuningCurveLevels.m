@@ -412,16 +412,12 @@ verifyEqual(testCase, fieldsChecked, 11, ...
 end
 
 function testTheTwoPreviouslyUnnamedControlFieldsSurvive(testCase)
-testCase.assumeTrue(false, ['NOT PORTED -- the behaviour this asserts is not in the ' ...
-    'did-schema #88 shape: tuning_curve.value.control declares only mean / stddev / ' ...
-    'stderr / individual, so control_mean_stddev and control_mean_stderr have no ' ...
-    'destination (jTuningCurve lists them as dropped, and jCalculation reports them ' ...
-    'as field_dropped migration notes). Reported for a team decision, not deleted.']);
-% DEFECT A, the half that is not a level bug: control_mean_stddev and
-% control_mean_stderr appear in NO name list the old read searched, at any level, so
-% they were dropped for the two families that emit them (spatial_frequency 22/22 and
-% temporal_frequency 8/8 of the writer's mocks). Kept as written for the pre-#88
-% shape; it is not re-armed because #88 has nowhere to put either value.
+% RE-ARMED 2026-10-21. It was filtered because #88 had no slot for these two;
+% Jess Haley decided ("b"): control_mean_stddev -> control.pooled.stddev and
+% control_mean_stderr -> control.pooled.stderr. DEFECT A, the half that is not a
+% level bug: the two names appear in no list the old read searched, at any level,
+% so they were dropped for the two families that emit them (spatial_frequency
+% 22/22 and temporal_frequency 8/8 of the writer's mocks).
 pairs = {'spatial_frequency_tuning', @spatialCurve; ...
          'temporal_frequency_tuning', @temporalCurve};
 verifyEqual(testCase, size(pairs, 1), 2, ...
@@ -429,13 +425,14 @@ verifyEqual(testCase, size(pairs, 1), 2, ...
 for k = 1:size(pairs, 1)
     mk = pairs{k, 2};
     v = foldedValue(pairs{k, 1}, mk(), emptyUnitsProperties());
-    cr = v.control_response;
-    assertTrue(testCase, isfield(cr, 'control_mean_stddev'), sprintf( ...
-        '%s: control_mean_stddev was dropped -- it is in no name list', pairs{k, 1}));
-    assertTrue(testCase, isfield(cr, 'control_mean_stderr'), sprintf( ...
-        '%s: control_mean_stderr was dropped -- it is in no name list', pairs{k, 1}));
-    verifyEqual(testCase, cr.control_mean_stddev, 0.022, 'AbsTol', 1e-12);
-    verifyEqual(testCase, cr.control_mean_stderr, 0.011, 'AbsTol', 1e-12);
+    assertTrue(testCase, isfield(v, 'control') && isfield(v.control, 'pooled'), ...
+        sprintf('%s: value.control.pooled is missing', pairs{k, 1}));
+    p = v.control.pooled;
+    verifyEqual(testCase, p.stddev, 0.022, 'AbsTol', 1e-12, ...
+        sprintf('%s: control_mean_stddev -> control.pooled.stddev', pairs{k, 1}));
+    verifyEqual(testCase, p.stderr, 0.011, 'AbsTol', 1e-12, ...
+        sprintf('%s: control_mean_stderr -> control.pooled.stderr', pairs{k, 1}));
+end
 end
 end
 
@@ -459,7 +456,7 @@ function testNestedControlFieldsAcceptTheCamelCaseSpelling(testCase)
 % The repo's standing rule for a NESTED read (CLAUDE.md; universalRenames.m
 % snake_cases only the IMMEDIATE field names of a property block and leaves nested
 % struct values alone, so a camelCase nested key reaches the migrator unrenamed).
-% #88: controlMeanStddev has no slot, so only controlMean is asserted.
+% controlMeanStddev lands in control.pooled.stddev (Jess Haley, 2026-10-21, "b").
 tc = struct('temporal_frequency', [1; 2; 4; 8], 'mean', [1; 5; 9; 3]);
 tc.controlMean       = [0.5; 0.5; 0.5; 0.5];
 tc.controlMeanStddev = 0.022;
@@ -467,6 +464,8 @@ v = foldedValue('temporal_frequency_tuning', tc, emptyUnitsProperties());
 assertTrue(testCase, isfield(v, 'control') && isfield(v.control, 'mean'), ...
     'the camelCase nested spelling controlMean was not recognised');
 verifyEqual(testCase, v.control.mean, [0.5; 0.5; 0.5; 0.5], 'AbsTol', 1e-12);
+verifyEqual(testCase, v.control.pooled.stddev, 0.022, 'AbsTol', 1e-12, ...
+    'the camelCase nested spelling controlMeanStddev was not recognised');
 end
 
 function testCamelCaseNestedControlFieldIsNotAlsoReportedDropped(testCase)
@@ -483,19 +482,20 @@ did2.convert.reportNote('reset');
 verifyFalse(testCase, any(strcmp(details, ...
     'temporal_frequency_tuning.tuning_curve.controlMean')), ...
     'controlMean was read into value.control and must not also be reported dropped');
-verifyTrue(testCase, any(strcmp(details, ...
+verifyFalse(testCase, any(strcmp(details, ...
     'temporal_frequency_tuning.tuning_curve.controlMeanStddev')), ...
-    'controlMeanStddev has no #88 slot and must be reported dropped');
+    'controlMeanStddev is read into control.pooled.stddev, not dropped');
 end
 
 function testDroppedFieldsReachTheMigrationReport(testCase)
 % jTuningCurve lists the v1 fields #88 has no home for; jCalculation used to
 % discard that list. Each dropped field of a FOLDED document is now one
 % did2.convert.reportNote('field_dropped', <v1 class>, <id>, <field path>).
-% Spatial frequency's control_mean_stddev / control_mean_stderr are the
-% writer's own example of a field with no slot.
+% SF/TF's v1 `abs` block has no #88 home (jTuningCurve's own header names it).
 did2.convert.reportNote('reset');
-foldedValue('spatial_frequency_tuning', spatialCurve(), emptyUnitsProperties());
+body = tuningBody('spatial_frequency_tuning', spatialCurve(), emptyUnitsProperties());
+body.spatial_frequency_tuning.abs = struct('preferred', 0.2);
+did2.convert.migrators_j.spatial_frequency_tuning(body);
 notes = did2.convert.reportNote('collect');
 did2.convert.reportNote('reset');
 assertTrue(testCase, isfield(notes, 'field_dropped'), ...
@@ -506,10 +506,12 @@ verifyEqual(testCase, numel(n.details), n.count, 'one detail per note');
 verifyTrue(testCase, all(strcmp(n.ids, 'lvl_doc_1')), 'notes name the source id');
 verifyTrue(testCase, isfield(n.by_class, 'spatial_frequency_tuning'), ...
     'notes are attributed to the v1 class');
+verifyTrue(testCase, any(strcmp(n.details, 'spatial_frequency_tuning.abs')), ...
+    'the abs block is dropped and must be reported');
 for f = {'control_mean_stddev', 'control_mean_stderr'}
-    verifyTrue(testCase, any(strcmp(n.details, ...
+    verifyFalse(testCase, any(strcmp(n.details, ...
         ['spatial_frequency_tuning.tuning_curve.' f{1}])), ...
-        sprintf('tuning_curve.%s is dropped and must be reported', f{1}));
+        sprintf('tuning_curve.%s is mapped to control.pooled, not dropped', f{1}));
 end
 % nothing that WAS mapped is reported dropped
 verifyFalse(testCase, any(strcmp(n.details, ...

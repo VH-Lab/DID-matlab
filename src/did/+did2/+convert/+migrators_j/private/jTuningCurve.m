@@ -97,6 +97,13 @@ ctl = struct();
 [ctl, used] = takeArr(ctl, used, 'stddev', tc, {'control_stddev'}, false);
 [ctl, used] = takeArr(ctl, used, 'stderr', tc, {'control_stderr'}, false);
 [ctl, used] = takeArr(ctl, used, 'individual', tc, {'control_individual'}, true);
+% the pooled control statistics (SF / TF writers): control_mean_stddev /
+% control_mean_stderr -> control.pooled.stddev / .stderr (Jess Haley,
+% 2026-10-21, "b"); camelCase read through getfn
+pooled = struct();
+[pooled, used] = takeArr(pooled, used, 'stddev', tc, {'control_mean_stddev'}, false);
+[pooled, used] = takeArr(pooled, used, 'stderr', tc, {'control_mean_stderr'}, false);
+if ~isempty(fieldnames(pooled)); ctl.pooled = pooled; end
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
 dropped = [dropped, prefixed('tuning_curve.', setdiff(fieldnames(tc), used))];
 
