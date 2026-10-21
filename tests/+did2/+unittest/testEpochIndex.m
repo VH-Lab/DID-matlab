@@ -343,18 +343,16 @@ function testTheSchemaDecidesWhichClassesMayCarryTheEdge(testCase)
 % `epochid` superclass. The list is read off the SCHEMA here, not kept in the
 % file, so it cannot go stale the first time a class gains the edge.
 %
-% PORTED TO did-schema #88 (2026-10-21). On #88 the declaring set is FIVE:
-% `acquisition_metadata_file` was retired (#73 item 61), `method_parameters`
-% is `method` (2026-10-21), and `epochfiles_ingested` and `syncrule_mapping`
-% now declare the edge themselves -- so `epochfiles_ingested` left the carrier
-% list below. Re-derived from the #88 tree:
-%     grep -l '"epoch_id"' schemas/V_eta/*/*.json
-%       directed_relation epochfiles_ingested ingestion_manifest method
-%       syncrule_mapping
+% PORTED TO did-schema #88 (2026-10-21). On #88 the declaring set is THREE:
+% `acquisition_metadata_file` was retired (#73 item 61) and `method_parameters`
+% is `method` (2026-10-21). Re-derived from the #88 tree by reading each class's
+% `depends_on` names (a text grep for "epoch_id" also hits documentation):
+%     ingestion_manifest  [epoch_file_pattern_id, epoch_id]
+%     directed_relation   [child_id, parent_id, time_reference_id, epoch_id]
+%     method              [software_id, entity_id, epoch_id, parent_id]
 requireSchemaCache(testCase);
 idx = did2.convert.epochIndex();
-for c = {'ingestion_manifest', 'directed_relation', 'method', ...
-         'epochfiles_ingested', 'syncrule_mapping'}
+for c = {'ingestion_manifest', 'directed_relation', 'method'}
     verifyTrue(testCase, idx.classDeclaresEpochEdge(c{1}), ...
         sprintf('%s declares epoch_id in the built V_eta set', c{1}));
 end
@@ -362,7 +360,7 @@ end
 % them can hold the edge -- that gap IS open item #60's remaining schema work.
 for c = {'spikewaves', 'stimulus_presentation', 'stimulus_parameter', ...
          'openminds_stimulus', 'oneepoch', 'pyraview', 'binnedspikeratevm', ...
-         'daqreader_epochdata_ingested'}
+         'daqreader_epochdata_ingested', 'epochfiles_ingested'}
     verifyFalse(testCase, idx.classDeclaresEpochEdge(c{1}), ...
         sprintf('%s must NOT be stampable -- it declares no epoch_id', c{1}));
 end
