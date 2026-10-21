@@ -742,6 +742,78 @@ verifyEqual(testCase, site.get('term.value').node, 'SNOMED:783351009');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
+function testEachAmountRowFillsItsOwnDoseSlot(testCase)
+% Jess Haley, 2026-10-21 ("a"): when a treatment has more than one amount row,
+% EACH amount goes in its matching dose slot -- not only when exactly one row
+% exists. A volume row and a mass row: both reach the dose, both are taken off
+% their ingredient rows (they are amounts, not concentrations), nothing noted.
+v1 = treatmentDrugDoc('td_two_kinds', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+    'NCIT:C227,alprazolam,2,UO:0000022,mg\n' ...
+    'NCIT:C62467,saline,0.5,UO:0000098,mL']), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+v = d.get('dose.value');
+verifyEqual(testCase, v.mass.grams, 2e-3, 'AbsTol', 1e-15);
+verifyEqual(testCase, v.mass.source_value, 2);
+verifyEqual(testCase, v.volume.liters, 0.5e-3, 'AbsTol', 1e-15);
+verifyEqual(testCase, v.volume.source_value, 0.5);
+f = doseChainJ(out.migrated, d);
+ing = f.get('formulation.value').ingredients;
+verifyEqual(testCase, numel(ing), 2);
+verifyTrue(testCase, all(arrayfun(@(e) isnan(e.concentration.source_value), ing)), ...
+    'an amount taken by the dose is not also an ingredient concentration');
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'dose_amount_conflict'));
+end
+
+function testSubstanceAmountRowFillsSubstanceAmount(testCase)
+% A row in a substance-amount unit (mmol) is the dose's substance_amount.
+v1 = treatmentDrugDoc('td_mol', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+    'NCIT:C227,alprazolam,3,UO:0000040,mmol']), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+v = out.migrated{1}.get('dose.value');
+verifyEqual(testCase, v.substance_amount.moles, 3e-3, 'AbsTol', 1e-15);
+verifyEqual(testCase, v.substance_amount.source_value, 3);
+end
+
+function testTwoDisagreeingRowsOfOneKindKeepTheFirstAndReportTheRest(testCase)
+% Two volume rows that disagree: the dose keeps the first; the second is
+% reported (`dose_amount_conflict`, with the two amounts as its detail), and is
+% not written anywhere as a concentration.
+v1 = treatmentDrugDoc('td_two_vols', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+    'NCIT:C227,alprazolam,1,UO:0000098,mL\n' ...
+    'NCIT:C62467,saline,2,UO:0000098,mL']), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+v = out.migrated{1}.get('dose.value');
+verifyEqual(testCase, v.volume.source_value, 1, 'the first row is kept');
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'dose_amount_conflict'), 'the disagreement was not reported');
+n = notes.dose_amount_conflict;
+verifyEqual(testCase, n.count, 1);
+verifyEqual(testCase, n.ids, {'td_two_vols'});
+verifyEqual(testCase, n.by_class.treatment_drug, 1);
+verifyEqual(testCase, n.details, {'volume: kept 1 mL, not 2 mL'});
+end
+
+function testTwoAgreeingRowsOfOneKindAreNotAConflict(testCase)
+% The same amount twice (1 mL and 1000 uL) is one amount: kept once, no note.
+v1 = treatmentDrugDoc('td_same_vols', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+    'NCIT:C227,alprazolam,1,UO:0000098,mL\n' ...
+    'NCIT:C62467,saline,1000,UO:0000101,uL']), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+v = out.migrated{1}.get('dose.value');
+verifyEqual(testCase, v.volume.source_value, 1);
+verifyFalse(testCase, isfield(out.summary.migration_notes, 'dose_amount_conflict'));
+end
+
 function testAStatedAmountKindWithNoNumberPutsTheNaNInThatKind(testCase)
 % "When a dose's amount was not recorded and the kind of quantity is not known,
 % the NaN goes in value.volume.liters; where the kind is known ... the NaN goes

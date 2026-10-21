@@ -1,4 +1,4 @@
-function [value, chemicals] = jDoseValue(chemicals)
+function [value, chemicals, conflicts] = jDoseValue(chemicals)
 %JDOSEVALUE A migrated dose's `value`: the amount the source gave, else NaN.
 %
 %   [VALUE, CHEMICALS] = jDoseValue(CHEMICALS). CHEMICALS is the struct array
@@ -10,13 +10,27 @@ function [value, chemicals] = jDoseValue(chemicals)
 %   Babu) says what the formulation is made of, not how much was given, and
 %   stays on its ingredient entry.
 %
-%   When EXACTLY ONE row carries a finite amount in an amount unit, that
-%   amount becomes the dose's value (its canonical slot filled when the unit
-%   is one this table knows, `source_value` and `source_unit` always) and is
-%   taken off the row, so it is not also written as the ingredient's
-%   concentration. Otherwise -- no such row, or several (an amount per
-%   ingredient is not one amount of the formulation) -- the amount is
-%   unrecorded and is written as NaN in the dose's volume:
+%   EVERY row carrying a finite amount in an amount unit puts that amount in
+%   its matching dose slot -- a volume in `volume`, a mass in `mass`, a
+%   substance amount (mol) in `substance_amount`, a count in `count`, an
+%   amount per body mass in `amount_per_body_mass` -- with its canonical
+%   field filled when the unit is one this table knows, `source_value` and
+%   `source_unit` always, and is taken off its row so it is not also written
+%   as the ingredient's concentration (Jess Haley, 2026-10-21, "a": each
+%   amount in its matching dose slot, not only when exactly one row exists).
+%   Two rows of the SAME kind: the first is kept; a later one that AGREES
+%   with it (the same canonical amount, or the same number and unit when the
+%   unit has no conversion) is a duplicate, and one that DISAGREES is listed
+%   in CONFLICTS (a cellstr, one line each) for the caller to report
+%   (jTreatmentBodies: reportNote 'dose_amount_conflict'). Either way it is
+%   taken off its row.
+%   INTERIM, per-body-mass: the decision puts an amount per body mass on the
+%   ingredient (`formulation.value.ingredients[k].amount_per_body_mass`);
+%   that field is not in the did-schema #88 tree yet (the dose agent is
+%   landing it), so until it is, the amount stays in the dose's
+%   `amount_per_body_mass` slot as before.
+%   No such row: the amount is unrecorded and is written as NaN in the
+%   dose's volume:
 %   `value.volume.liters = NaN` ("An unrecorded amount is written as NaN in
 %   its quantity (e.g. a dose's volume.liters: NaN)", Jess Haley,
 %   2026-10-21). When no row gives a number but exactly one kind of amount
@@ -45,17 +59,43 @@ for k = 1:numel(chemicals)
     slots(end+1, :) = {slot, canon, factor}; %#ok<AGROW>
 end
 
-if isscalar(hits)
-    c = chemicals(hits);
-    q = struct();
-    if ~isempty(slots{1, 3})
-        q.(slots{1, 2}) = double(c.source_value(1)) * slots{1, 3};
+conflicts = {};
+if ~isempty(hits)
+    v = struct();
+    firstSpelled = struct();   % the first row's unit spelling, per slot
+    for i = 1:numel(hits)
+        k = hits(i);
+        c = chemicals(k);
+        [slot, canon, factor] = slots{i, :};
+        sv = double(c.source_value(1));
+        spelled = unitSpelling(c.source_unit);
+        q = struct();
+        if ~isempty(factor)
+            q.(canon) = sv * factor;
+        end
+        q.source_value = sv;
+        q.source_unit = unitTerm(c.source_unit);
+        chemicals(k).source_value = [];
+        chemicals(k).source_unit = [];
+        if ~isfield(v, slot)
+            v.(slot) = q;
+            firstSpelled.(slot) = spelled;
+            continue;
+        end
+        % a second row of the same kind: keep the first; report a disagreement
+        first = v.(slot);
+        if isfield(first, canon) && isfield(q, canon)
+            agree = abs(first.(canon) - q.(canon)) <= 1e-12 * max(1, abs(first.(canon)));
+        else
+            agree = first.source_value == sv && strcmp(firstSpelled.(slot), spelled);
+        end
+        if ~agree
+            conflicts{end+1} = sprintf('%s: kept %s %s, not %s %s', slot, ...
+                num2str(first.source_value, 17), firstSpelled.(slot), ...
+                num2str(sv, 17), spelled); %#ok<AGROW>
+        end
     end
-    q.source_value = double(c.source_value(1));
-    q.source_unit = unitTerm(c.source_unit);
-    value = did2.build.composite('dose', 'value', struct(slots{1, 1}, q));
-    chemicals(hits).source_value = [];
-    chemicals(hits).source_unit = [];
+    value = did2.build.composite('dose', 'value', v);
 elseif isempty(hits) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1)))
     % The source states the KIND of amount (its unit) but not the number: the
     % NaN goes in that quantity, not in volume (Jess Haley, 2026-10-21
@@ -109,12 +149,36 @@ if ~isempty(hit)
     factor = P{hit, 3};
     return;
 end
+% substance amount and count: spelling, slot, canonical field, factor
+Q = { ...
+    'mol',          'substance_amount', 'moles', 1; ...
+    'mmol',         'substance_amount', 'moles', 1e-3; ...
+    'umol',         'substance_amount', 'moles', 1e-6; ...
+    [mu 'mol'],     'substance_amount', 'moles', 1e-6; ...
+    'nmol',         'substance_amount', 'moles', 1e-9; ...
+    'pmol',         'substance_amount', 'moles', 1e-12; ...
+    'count',        'count',            'count', 1; ...
+    'counts',       'count',            'count', 1};
+hit = find(strcmp(Q(:, 1), spelling), 1);
+if ~isempty(hit)
+    [slot, canon, factor] = Q{hit, 2:4};
+    return;
+end
 [~, f, kind] = jSourceUnit(spelling);
 switch kind
     case 'mass'
         slot = 'mass'; canon = 'grams'; factor = f;
     case 'volume'
         slot = 'volume'; canon = 'liters'; factor = f;
+end
+end
+
+function s = unitSpelling(unit)
+s = '';
+if isstruct(unit) && ~isempty(unit) && isfield(unit, 'name')
+    s = strtrim(char(unit.name));
+elseif ischar(unit) || isstring(unit)
+    s = strtrim(char(unit));
 end
 end
 

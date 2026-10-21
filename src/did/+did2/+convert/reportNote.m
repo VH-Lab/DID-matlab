@@ -27,6 +27,10 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     be read from it; it migrates as a dose with a NaN amount
 %                     (Jess Haley, 2026-10-21, did-schema
 %                     V_eta_go_forward_class_audit.md).
+%     dose_amount_conflict  a v1 treatment with two rows of one amount kind
+%                     (two volumes, two masses, ...) that disagree: the dose
+%                     keeps the first; DETAIL names the kind and both amounts
+%                     (jDoseValue; Jess Haley, 2026-10-21, "a").
 %     field_dropped   a v1 field a calculator fold (jCalculation, via
 %                     jTuningCurve / jContrastSensitivityValue) has no home for
 %                     on did-schema #88; DETAIL is its path in the source

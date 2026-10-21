@@ -20,6 +20,8 @@ function [docs, route] = jTreatmentBodies(preBody, variable, chemicals, location
 %                  source's amount, else NaN in `volume.liters`).
 %     'unknown'    the same dose, and a `route_unknown` note in the migration
 %                  report (did2.convert.reportNote).
+%   A dose whose rows give two DIFFERENT amounts of one kind keeps the first
+%   and leaves a `dose_amount_conflict` note per other (jDoseValue).
 %
 %   Options:
 %     'AlwaysDose'  route as a dose whatever the location, never noted as
@@ -61,7 +63,13 @@ switch route
             variable, [], 'TimeReferenceIds', {anchorId}, 'ValueId', formulationId, ...
             'Id', id, extra{:});
     otherwise
-        [value, chemicals] = jDoseValue(chemicals);
+        [value, chemicals, conflicts] = jDoseValue(chemicals);
+        % two rows of one amount kind that disagree: the first is the dose's,
+        % the rest are reported (Jess Haley, 2026-10-21, "a")
+        for k = 1:numel(conflicts)
+            did2.convert.reportNote('dose_amount_conflict', ...
+                char(preBody.document_class.class_name), id, conflicts{k});
+        end
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
         manip = jStatement(preBody, 'dose_manipulation', jSubjectOf(preBody), ...
             variable, value, 'TimeReferenceIds', {anchorId}, ...
