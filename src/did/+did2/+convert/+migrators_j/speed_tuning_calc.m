@@ -1,5 +1,6 @@
 function bodies = speed_tuning_calc(preBody)
-%SPEED_TUNING_CALC Brainstorm-J migrator: the ndi.calc.vis.speed calculator
+%SPEED_TUNING_CALC Brainstorm-J migrator -> speed_tuning_calculation (did-schema #88).
+%   Brainstorm-J migrator: the ndi.calc.vis.speed calculator
 %   OUTPUT document -> the CONCRETE V_eta leaf `speedtuning_calc`
 %   (⊂ [tuning_curve_calculation, speed_tuning]) + a session anchor + minted
 %   `software` and `runtime_environment` entities.

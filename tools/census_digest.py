@@ -452,6 +452,17 @@ POST_PASSES = [
         # path is a number rather than a comment.
         ("method_parameters_epoch_not_in_batch",
          "method_parameters: epoch edge to a document NOT in the batch"),
+        # THE PYRAVIEW FOLD (did-schema #88 port, 2026-10-21): a pyraview body
+        # carrying only an epoch STRING passes through until the epoch entity
+        # exists; this pass then re-runs the migrator with the epoch_id edge
+        # stamped. Same reading as the two folds above.
+        ("pyraview_seen", "pyraview seen"),
+        ("pyraview_folds_emitted", "FOLDED (pyraview with its epoch edge)"),
+        ("pyraview_folds_withheld", "  WITHHELD (fold did not validate)"),
+        ("pyraview_refused_no_epoch_string", "  pyraview: no epoch string"),
+        ("pyraview_refused_no_epoch_document", "  pyraview: no epoch document for the pair"),
+        ("pyraview_refused_migrator_declined", "  pyraview: migrator declined"),
+        ("pyraview_refused_unsafe_output", "  pyraview: refused, unsafe output"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
         ("documents_inspected", "documents inspected"),
@@ -545,6 +556,12 @@ POST_PASSES = [
         ("rename_skipped_no_filenavigator", "  rename SKIPPED: no filenavigator_id (tombstone kept)"),
         ("rename_skipped_no_epoch", "  rename SKIPPED: no resolved epoch (tombstone kept)"),
         ("rename_quarantined", "  rename QUARANTINED (tombstone kept, Bar-1 fallback)"),
+        # did-schema #88 (#73 item 39): no serialized probemap on the manifest,
+        # so a document with ANY row that did not decompose keeps its tombstone.
+        ("rename_skipped_rows_without_home", "  rename SKIPPED: a probemap row has no home (tombstone kept)"),
+        # #73 item 56: one shared acquisition_channels document per (rig, channels).
+        ("acquisition_channels_minted", "acquisition_channels documents minted"),
+        ("channels_unbindable_type", "  rows whose channel type is outside ai/ao/di/do (no channels doc)"),
         ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the

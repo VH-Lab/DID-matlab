@@ -1,5 +1,6 @@
 function bodies = oridirtuning_calc(preBody)
-%ORIDIRTUNING_CALC Brainstorm-J migrator: the ndi.calc.vis.oridir calculator
+%ORIDIRTUNING_CALC Brainstorm-J migrator -> orientation_direction_tuning_calculation (did-schema #88).
+%   Brainstorm-J migrator: the ndi.calc.vis.oridir calculator
 %   OUTPUT document -> the CONCRETE V_eta leaf `oridirtuning_calc`
 %   (⊂ [tuning_curve_calculation, orientation_direction_tuning]) + a session
 %   anchor + minted `software` and `runtime_environment` entities.

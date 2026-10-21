@@ -1,5 +1,6 @@
 function bodies = orientation_direction_tuning(preBody)
-%ORIENTATION_DIRECTION_TUNING Brainstorm-J migrator: did_v1
+%ORIENTATION_DIRECTION_TUNING Brainstorm-J migrator -> orientation_direction_tuning_calculation (did-schema #88).
+%   Brainstorm-J migrator: did_v1
 %   orientation_direction_tuning (raw NDI-matlab result class) -> the CONCRETE
 %   V_eta leaf `oridirtuning_calc` (⊂ [tuning_curve_calculation,
 %   orientation_direction_tuning]) + a session anchor + minted `software` and
