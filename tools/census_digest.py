@@ -587,6 +587,31 @@ POST_PASSES = [
         ("body_build_refused", "  epochs whose bodies could not be BUILT (see first error)"),
         ("bodies_quarantined", "  bodies QUARANTINED"),
         ("observes_retired", "`observes` relations retired (replaced by instrument_id)"),
+        # 2026-10-21 (Jess Haley, "a"): a spike-sorted neuron's per-epoch
+        # observation (time, data_body, its element_epoch .vhsb as the body).
+        ("spike_epochs_seen", "spikes element_epochs seen  <- SPIKE DENOMINATOR"),
+        ("spike_trains_emitted", "  spike-train observations emitted"),
+        ("spike_instrument_resolved", "    with the sorted-from instrument resolved"),
+        ("spike_bodies", "  spike-train bodies (epoch_binary_data.vhsb)"),
+        ("spike_bodies_quarantined", "  spike-train bodies QUARANTINED"),
+        ("spike_refused_no_epoch", "  refused: no epoch document"),
+        ("spike_epochs_no_file", "  refused: no epoch_binary_data.vhsb named"),
+        # 2026-10-21 (Jess Haley, "a"): a v1 daqreader_*_epochdata_ingested is
+        # retired only when every file it holds has a new per-epoch owner.
+        ("archive_docs_inspected", "v1 ingested archives inspected  <- ARCHIVE DENOMINATOR"),
+        ("archive_docs_retired", "  retired (every file owned by a new data body)"),
+        ("archive_docs_kept_unowned_files", "  KEPT: a file with no new owner"),
+        ("archive_files_unowned", "    files with no new owner"),
+        ("archive_kept_referenced", "  KEPT: still referenced by a survivor"),
+        ("archive_dangling_references", "    dangling references found (and avoided)"),
+        # 2026-10-21 (Jess Haley, "a"): pyraview levels owned by the epoch's
+        # recording observation; the separate observation is retired.
+        ("pyraview_observations_seen", "pyraview observations seen  <- PYRAVIEW DENOMINATOR"),
+        ("pyraview_observations_retired", "  retired (levels moved to the recording observation)"),
+        ("pyraview_levels_repointed", "  level bodies re-pointed"),
+        ("pyraview_kept_no_recording_observation", "  KEPT: no recording observation for element+epoch"),
+        ("pyraview_kept_referenced", "  KEPT: still referenced by a survivor"),
+        ("pyraview_repoint_quarantined", "  re-point QUARANTINED (kept as it was)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # five run knobs move inline onto the harmonic_component_calculation leaf

@@ -27,6 +27,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested
 %   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, term_manipulation, ingestion_manifest, relative_reference, opaque_body, intensity_observation
+%   BATCH-PASS-EMITS: acquisition_epoch -> document: time_observation, opaque_body, relative_reference
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)
@@ -68,9 +69,26 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   observation carrying the `instrument_id` edge (`observes_retired`).
 %
 %   NOT HERE: epochs with no epochfiles_ingested cache (PRED, 20211116: their
-%   files are found by the file navigator, so the NDI second pass mints them),
-%   and derived `spikes` elements (their per-epoch bytes are on element_epoch
-%   documents; how those become a body is an open question).
+%   files are found by the file navigator, so the NDI second pass mints them).
+%
+%   THREE MORE JOBS, all decided by Jess Haley, 2026-10-21 ("a"):
+%     SPIKE TRAINS   a derived `spikes` element (a sorted neuron) gets one
+%                    time_observation per epoch -- entity the neuron, instrument
+%                    the element it was sorted from (`derived_from`), variable
+%                    GO:0001508 "action potential", `data_body` true -- and its
+%                    element_epoch's epoch_binary_data.vhsb is the opaque_body
+%                    owned by it (spike_* counters).
+%     V1 ARCHIVES    a daqreader_*_epochdata_ingested is RETIRED once every file
+%                    it holds is carried by a surviving per-epoch body, verified
+%                    per document, and only if nothing that survives names it;
+%                    otherwise kept and counted (archive_* counters).
+%     PYRAVIEW       each pyraview level body (epochMint's fold) is re-pointed
+%                    to the recording observation emitted here for the same
+%                    element (instrument) and epoch, and the separate pyraview
+%                    observation is retired; with no such observation it is
+%                    kept as it was, and counted (pyraview_* counters). The
+%                    pyraview observation's datum_type and its clocked anchor do
+%                    not move with the levels.
 %
 %   IMAGING ROWS ARE NO LONGER DEFERRED (2026-10-21). They were left to the
 %   second pass because the old `image` value cell was required and a probemap
@@ -209,6 +227,25 @@ report = struct( ...
     'body_build_refused',             0, ...
     'body_build_first_error',         '', ...
     'observes_retired',               0, ...
+    'spike_epochs_seen',              0, ...
+    'spike_trains_emitted',           0, ...
+    'spike_refused_no_epoch',         0, ...
+    'spike_epochs_no_file',           0, ...
+    'spike_instrument_resolved',      0, ...
+    'spike_bodies',                   0, ...
+    'spike_bodies_quarantined',       0, ...
+    'archive_docs_inspected',         0, ...
+    'archive_docs_retired',           0, ...
+    'archive_docs_kept_unowned_files',0, ...
+    'archive_files_unowned',          0, ...
+    'archive_kept_referenced',        0, ...
+    'archive_dangling_references',    0, ...
+    'pyraview_observations_seen',     0, ...
+    'pyraview_levels_repointed',      0, ...
+    'pyraview_observations_retired',  0, ...
+    'pyraview_kept_no_recording_observation', 0, ...
+    'pyraview_kept_referenced',       0, ...
+    'pyraview_repoint_quarantined',   0, ...
     'ran',                            false);
 result.epoch_probemap_fold = report;
 
@@ -276,9 +313,21 @@ obs30ByTriple = containers.Map('KeyType', 'char', 'ValueType', 'any');
 readerIdByNavId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 archiveIdxByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
 observesIdxByPair = containers.Map('KeyType', 'char', 'ValueType', 'any');
+spikeElements = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
+acqEpochIdx = [];
+sampledIdx = [];
+archiveIdxAll = [];
 for k = 1:n
     if isempty(bodies{k}); continue; end
     b = bodies{k};
+    if strcmp(classOf{k}, 'acquisition_epoch'); acqEpochIdx(end+1) = k; end %#ok<AGROW>
+    if strcmp(classOf{k}, 'sampled_body'); sampledIdx(end+1) = k; end %#ok<AGROW>
+    if isArchiveClass(classOf{k}); archiveIdxAll(end+1) = k; end %#ok<AGROW>
+    if isElementTypeAssertion(b, 'spikes')
+        eid = depValueOf(b, 'entity_id');
+        if ~isempty(eid); spikeElements(eid) = true; end
+    end
     switch classOf{k}
         case 'epoch'
             lid = '';
@@ -307,6 +356,12 @@ for k = 1:n
                 readerIdByNavId(navId) = rdrId;
             end
         case 'directed_relation'
+            if strcmp(relationNameOf(b), 'derived_from')
+                ch = depValueOf(b, 'child_id');
+                if ~isempty(ch) && ~isKey(derivedParent, ch)
+                    derivedParent(ch) = depValueOf(b, 'parent_id');
+                end
+            end
             if strcmp(relationNameOf(b), 'observes')
                 pk = [depValueOf(b, 'child_id') '|' depValueOf(b, 'parent_id')];
                 if isKey(observesIdxByPair, pk)
@@ -375,6 +430,8 @@ newGroupAc = {};     % acquisition_channels base.id each new body points at ('' 
 epochSpecs = struct('src', {}, 'obsIds', {}, 'sid', {}, 'datestamp', {}, ...
     'epochString', {}, 'navId', {});
 obsPairById = containers.Map('KeyType', 'char', 'ValueType', 'char');
+recByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'char');
+spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'double');  % obs id -> acquisition_epoch idx
 
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
@@ -521,6 +578,8 @@ for k = 1:n
             specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
             if ~isempty(instrumentId)
                 obsPairById(obs.base.id) = [char(instrumentId) '|' char(subjectId)];
+                rk = recKey(instrumentId, epochDocId, entries(e).class);
+                if ~isKey(recByInstrEpoch, rk); recByInstrEpoch(rk) = obs.base.id; end
             end
             newGroupAnchor{end+1} = anchorId;       %#ok<AGROW>
             newGroupAc{end+1} = acId;               %#ok<AGROW>
@@ -576,8 +635,70 @@ for k = 1:n
     end
 end
 
+% ---- spike trains (Jess Haley, 2026-10-21, "a") ------------------------
+% A spike-sorted neuron (a `spikes` element) gets ONE observation per epoch:
+% entity = the neuron subject (ids preserved by +migrators_j/element.m),
+% instrument = the element it was sorted from (its `derived_from` parent),
+% value kind time (spike times), `data_body` true, and the epoch's
+% `epoch_binary_data.vhsb` file (on its element_epoch, now acquisition_epoch)
+% as an opaque_body owned by it -- the pattern of the raw recording bodies
+% above. No file named -> no observation (counted), never a bodiless one.
+for i = 1:numel(acqEpochIdx)
+    k = acqEpochIdx(i);
+    b = bodies{k};
+    elId = depValueOf(b, 'element_id');
+    if isempty(elId) || ~isKey(spikeElements, elId); continue; end
+    report.spike_epochs_seen = report.spike_epochs_seen + 1;
+    sid = sessionIds{k};
+    es = archiveEpochOf(b);
+    if isempty(es) || ~isKey(epochIdByKey, epochKey(sid, es))
+        report.spike_refused_no_epoch = report.spike_refused_no_epoch + 1;
+        continue;
+    end
+    if isempty(vhsbFileInfo(b))
+        report.spike_epochs_no_file = report.spike_epochs_no_file + 1;
+        continue;
+    end
+    epochDocId = epochIdByKey(epochKey(sid, es));
+    datestamp = baseField(b, 'creation_timestamp');
+    if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
+    if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+    if isKey(anchorByEpochId, epochDocId)
+        anchorId = anchorByEpochId(epochDocId);
+    else
+        anchor = mkEpochAnchor(epochDocId, sid, datestamp);
+        anchorId = anchor.base.id;
+        anchorByEpochId(epochDocId) = anchorId;
+        anchorBodyById(anchorId) = anchor;
+        report.epoch_anchors_minted = report.epoch_anchors_minted + 1;
+    end
+    instrumentId = '';
+    if isKey(derivedParent, elId); instrumentId = derivedParent(elId); end
+    obs = did2.build.statement('time_observation', char(elId), SPIKE_TRAIN_VARIABLE(), ...
+        [], 'DataBody', true, 'TimeReferenceIds', {anchorId}, ...
+        'InstrumentId', char(instrumentId), ...
+        'SessionId', char(sid), 'CreationTimestamp', char(datestamp), ...
+        'Validate', false);
+    newBodies{end+1} = obs;              %#ok<AGROW>
+    newGroupAnchor{end+1} = anchorId;    %#ok<AGROW>
+    newGroupAc{end+1} = '';              %#ok<AGROW>
+    spikeObsIds(obs.base.id) = k;
+    if ~isempty(instrumentId)
+        report.spike_instrument_resolved = report.spike_instrument_resolved + 1;
+    end
+end
+
+report.archive_docs_inspected = numel(archiveIdxAll);
+pyraviewOwners = pyraviewOwnerIndex(bodies, classOf, docIds, sampledIdx);
+report.pyraview_observations_seen = pyraviewOwners.Count;
+
 renameBodies = renameBodyBySrcId.values;
 if isempty(newBodies) && isempty(renameBodies)
+    % nothing emitted: no archive file has a new owner, and no pyraview has a
+    % recording observation to move to -- both kept, and counted as such
+    report.archive_docs_kept_unowned_files = report.archive_docs_inspected;
+    report.archive_files_unowned = countArchiveFiles(bodies, archiveIdxAll);
+    report.pyraview_kept_no_recording_observation = report.pyraview_observations_seen;
     result.epoch_probemap_fold = report;
     return;
 end
@@ -665,6 +786,8 @@ for j = 1:numel(newBodies)
     % observation. Both are survivor-counts (post-validation).
     if strcmp(newBodies{j}.document_class.class_name, 'manipulation')
         report.manipulations_emitted = report.manipulations_emitted + 1;
+    elseif isKey(spikeObsIds, id)
+        report.spike_trains_emitted = report.spike_trains_emitted + 1;
     else
         report.observations_emitted = report.observations_emitted + 1;
     end
@@ -686,9 +809,116 @@ for a = 1:numel(anchorKeys)
 end
 
 % --- 2026-10-21: the epoch files, as data bodies of the surviving observations
-[fileBodies, report, newQuarantine] = mkEpochFileBodies(epochSpecs, emittedNewIds, ...
-    bodies, docIds, readerIdByNavId, archiveIdxByKey, options, report);
+[fileBodies, report, newQuarantine, archiveCarried] = mkEpochFileBodies(epochSpecs, ...
+    emittedNewIds, bodies, docIds, readerIdByNavId, archiveIdxByKey, options, report);
 appended = [appended, fileBodies];
+
+% the spike-train bodies: one per surviving spike observation
+[spikeBodies, spikeQ] = mkSpikeBodies(spikeObsIds, emittedNewIds, bodies, ...
+    sessionIds, options);
+report.spike_bodies = numel(spikeBodies);
+report.spike_bodies_quarantined = numel(spikeQ);
+appended = [appended, spikeBodies];
+newQuarantine = [newQuarantine, spikeQ];
+
+% ---- pyraview levels move to the recording observation -------------------
+% (Jess Haley, 2026-10-21, "a"; the signed plan): each pyraview level is a
+% data body owned by that epoch's recording observation -- the one emitted
+% above for the same element (its instrument) and epoch -- and the separate
+% pyraview observation is no longer emitted. Where no recording observation
+% exists for that element and epoch, it is kept as it was, and counted.
+pyraviewRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+levelReplace = containers.Map('KeyType', 'char', 'ValueType', 'any');
+levelIdsByPv = containers.Map('KeyType', 'char', 'ValueType', 'any');
+pvKeys = pyraviewOwners.keys;
+for i = 1:numel(pvKeys)
+    pv = pyraviewOwners(pvKeys{i});
+    rk = recKey(pv.entityId, pv.epochDocId, pv.className);
+    if isempty(pv.epochDocId) || ~isKey(recByInstrEpoch, rk) ...
+            || ~isKey(emittedNewIds, recByInstrEpoch(rk))
+        report.pyraview_kept_no_recording_observation = ...
+            report.pyraview_kept_no_recording_observation + 1;
+        continue;
+    end
+    recId = recByInstrEpoch(rk);
+    moved = {};
+    for j = 1:numel(pv.levelIdx)
+        lb = bodies{pv.levelIdx(j)};
+        lb = setOwner(lb, recId);
+        moved{end+1} = lb; %#ok<AGROW>
+    end
+    res = did2.convert.v1_to_v2(moved, ...
+        'Validate',      options.Validate, ...
+        'SchemaCache',   options.SchemaCache, ...
+        'TargetVersion', options.TargetVersion);
+    if ~isempty(res.quarantine) || numel(res.migrated) ~= numel(moved)
+        report.pyraview_repoint_quarantined = report.pyraview_repoint_quarantined + 1;
+        report.pyraview_kept_no_recording_observation = ...
+            report.pyraview_kept_no_recording_observation + 1;
+        continue;
+    end
+    lids = {};
+    for j = 1:numel(res.migrated)
+        lid = char(res.migrated{j}.get('base.id'));
+        levelReplace(lid) = res.migrated{j};
+        lids{end+1} = lid; %#ok<AGROW>
+    end
+    levelIdsByPv(pvKeys{i}) = lids;
+    report.pyraview_levels_repointed = report.pyraview_levels_repointed + numel(moved);
+    pyraviewRetire(pvKeys{i}) = true;
+end
+
+% ---- v1 ingested archives retire once every file has a new owner ---------
+% (Jess Haley, 2026-10-21, "a"): a daqreader_*_epochdata_ingested document is
+% retired only when EVERY file it holds is carried by a surviving per-epoch
+% data body above, verified per document; one file without a new owner keeps
+% the document (counted). Its id must not be referenced by anything that
+% survives: a reference keeps it too, and is counted.
+archiveRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+candidates = {};
+for i = 1:numel(archiveIdxAll)
+    k = archiveIdxAll(i);
+    held = archiveFileNames(bodies{k});
+    carried = {};
+    if isKey(archiveCarried, k); carried = archiveCarried(k); end
+    unowned = setdiff(held, carried);
+    if isempty(held) || ~isempty(unowned)
+        report.archive_docs_kept_unowned_files = report.archive_docs_kept_unowned_files + 1;
+        report.archive_files_unowned = report.archive_files_unowned + numel(unowned);
+        continue;
+    end
+    candidates{end+1} = docIds{k}; %#ok<AGROW>
+end
+
+% the final set's references, with every planned removal applied
+plannedGone = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for c = 1:numel(candidates); plannedGone(candidates{c}) = true; end
+pvIds = pyraviewRetire.keys;
+for c = 1:numel(pvIds); plannedGone(pvIds{c}) = true; end
+lvKeys = levelReplace.keys;
+for c = 1:numel(lvKeys); plannedGone(lvKeys{c}) = true; end   % replaced below
+refs = referencedIdSet(bodies, docIds, plannedGone, [appended, levelReplace.values]);
+for c = 1:numel(candidates)
+    if isKey(refs, candidates{c})
+        report.archive_kept_referenced = report.archive_kept_referenced + 1;
+        report.archive_dangling_references = report.archive_dangling_references + 1;
+        continue;
+    end
+    archiveRetire(candidates{c}) = true;
+    report.archive_docs_retired = report.archive_docs_retired + 1;
+end
+for c = 1:numel(pvIds)
+    if isKey(refs, pvIds{c})
+        % something that survives still names the pyraview observation: keep it
+        remove(pyraviewRetire, pvIds{c});
+        lids = levelIdsByPv(pvIds{c});
+        for j = 1:numel(lids); remove(levelReplace, lids{j}); end   % levels stay with it
+        report.pyraview_levels_repointed = report.pyraview_levels_repointed - numel(lids);
+        report.pyraview_kept_referenced = report.pyraview_kept_referenced + 1;
+        continue;
+    end
+    report.pyraview_observations_retired = report.pyraview_observations_retired + 1;
+end
 if ~isempty(newQuarantine)
     if isfield(result, 'quarantine') && ~isempty(result.quarantine)
         result.quarantine = [result.quarantine, newQuarantine];
@@ -769,7 +999,12 @@ kept = {};
 for k = 1:n
     id = docIds{k};
     if ~isempty(id) && (isKey(retireSet, id) || isKey(removeAnchorSet, id) ...
-            || isKey(observesRetire, id))
+            || isKey(observesRetire, id) || isKey(archiveRetire, id) ...
+            || isKey(pyraviewRetire, id))
+        continue;
+    end
+    if ~isempty(id) && isKey(levelReplace, id)
+        kept{end+1} = levelReplace(id); %#ok<AGROW>
         continue;
     end
     if ~isempty(id) && isKey(renameBodyBySrcId, id)
@@ -1161,7 +1396,7 @@ end
 
 % ===================== the epoch files as bodies (2026-10-21) ==========
 
-function [out, report, quarantine] = mkEpochFileBodies(specs, emittedIds, bodies, ...
+function [out, report, quarantine, archiveCarried] = mkEpochFileBodies(specs, emittedIds, bodies, ...
         docIds, readerIdByNavId, archiveIdxByKey, options, report)
 %MKEPOCHFILEBODIES One opaque_body per epoch file, owned by every surviving
 %   recording observation of that epoch (owner_id repeats). Ingested: the
@@ -1170,6 +1405,8 @@ function [out, report, quarantine] = mkEpochFileBodies(specs, emittedIds, bodies
 out = {};
 quarantine = [];
 pending = {};
+archiveCarried = containers.Map('KeyType', 'double', 'ValueType', 'any');
+carriedById = containers.Map('KeyType', 'char', 'ValueType', 'any');  % body id -> {archive idx, names}
 for s = 1:numel(specs)
     sp = specs(s);
     owners = {};
@@ -1181,13 +1418,20 @@ for s = 1:numel(specs)
     src = bodies{sp.src};
     made = {};
     archive = [];
+    archiveIdx = 0;
     if ~isempty(sp.navId) && isKey(readerIdByNavId, sp.navId)
         ak = archiveKey(sp.sid, readerIdByNavId(sp.navId), sp.epochString);
-        if isKey(archiveIdxByKey, ak); archive = bodies{archiveIdxByKey(ak)}; end
+        if isKey(archiveIdxByKey, ak)
+            archiveIdx = archiveIdxByKey(ak);
+            archive = bodies{archiveIdx};
+        end
     end
     try
         if ~isempty(archive)
-            [made, nMembers] = archiveBodies(archive, owners, sp);
+            [made, nMembers, memberNames] = archiveBodies(archive, owners, sp);
+            for mi = 1:numel(made)
+                carriedById(char(made{mi}.base.id)) = {archiveIdx, memberNames{mi}};
+            end
             if ~isempty(made)
                 report.epochs_from_archive = report.epochs_from_archive + 1;
                 report.bodies_from_archive = report.bodies_from_archive + numel(made);
@@ -1225,9 +1469,21 @@ res = did2.convert.v1_to_v2(pending, ...
 report.bodies_quarantined = numel(res.quarantine);
 quarantine = res.quarantine;
 out = res.migrated(:)';
+for i = 1:numel(out)
+    try
+        bid = char(out{i}.get('base.id'));
+    catch
+        continue;
+    end
+    if ~isKey(carriedById, bid); continue; end
+    c = carriedById(bid);
+    prev = {};
+    if isKey(archiveCarried, c{1}); prev = archiveCarried(c{1}); end
+    archiveCarried(c{1}) = [prev, c{2}];
+end
 end
 
-function [made, nMembers] = archiveBodies(archive, owners, sp)
+function [made, nMembers, memberNames] = archiveBodies(archive, owners, sp)
 %ARCHIVEBODIES The ingested recording, one opaque_body per attached file series
 %   of a daqreader_*_epochdata_ingested document. A series slot `foo_#` holds
 %   the members `foo_1`, `foo_2`, ... (mfdaq.m attaches its segments that way);
@@ -1236,6 +1492,7 @@ function [made, nMembers] = archiveBodies(archive, owners, sp)
 %   member is skipped (mfdaq declares 62 slots and fills those it used).
 made = {};
 nMembers = 0;
+memberNames = {};   % per made body: the v1 file_info names it carries
 if ~isfield(archive, 'files') || ~isstruct(archive.files); return; end
 list = {};
 if isfield(archive.files, 'file_list'); list = cellstrOf(archive.files.file_list); end
@@ -1288,6 +1545,7 @@ for L = 1:numel(list)
     end
     body.files.file_info = fi;
     made{end+1} = body; %#ok<AGROW>
+    memberNames{end+1} = names(idx); %#ok<AGROW>
     nMembers = nMembers + numel(idx);
 end
 end
@@ -1318,6 +1576,165 @@ for f = 1:numel(files)
         'parameters', '', 'location_type', 'file', 'ingest', 0));
     made{end+1} = body; %#ok<AGROW>
 end
+end
+
+function t = SPIKE_TRAIN_VARIABLE()
+%SPIKE_TRAIN_VARIABLE The variable of a spike-train observation: GO:0001508
+%   "action potential" (Jess Haley, 2026-10-21). The ONE place it is chosen.
+t = struct('node', 'GO:0001508', 'name', 'action potential');
+end
+
+function tf = isElementTypeAssertion(b, typeName)
+% +migrators_j/element.m's `element type` term assertion, valued TYPENAME.
+tf = false;
+if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
+        || ~isfield(b.statement, 'variable'); return; end
+v = b.statement.variable;
+if ~(isstruct(v) && isfield(v, 'name') && strcmp(char(v.name), 'element type')); return; end
+fn = fieldnames(b);
+for i = 1:numel(fn)
+    x = b.(fn{i});
+    if isstruct(x) && isscalar(x) && isfield(x, 'value') && isstruct(x.value) ...
+            && isscalar(x.value) && isfield(x.value, 'name') ...
+            && strcmpi(strtrim(char(x.value.name)), typeName)
+        tf = true;
+        return;
+    end
+end
+end
+
+function k = recKey(instrumentId, epochDocId, className)
+k = [char(instrumentId), char(0), char(epochDocId), char(0), char(className)];
+end
+
+function fi = vhsbFileInfo(b)
+% the `epoch_binary_data.vhsb` file_info entry of an acquisition_epoch, [] if none
+fi = [];
+infos = fileInfos(b);
+for i = 1:numel(infos)
+    if isstruct(infos{i}) && isfield(infos{i}, 'name') ...
+            && strcmp(char(infos{i}.name), 'epoch_binary_data.vhsb')
+        fi = infos{i};
+        return;
+    end
+end
+end
+
+function infos = fileInfos(b)
+infos = {};
+if ~isstruct(b) || ~isfield(b, 'files') || ~isstruct(b.files) ...
+        || ~isfield(b.files, 'file_info') || isempty(b.files.file_info)
+    return;
+end
+fi = b.files.file_info;
+if isstruct(fi); infos = num2cell(fi(:)'); elseif iscell(fi); infos = fi(:)'; end
+end
+
+function names = archiveFileNames(b)
+% every file a v1 ingested archive holds: its attached file_info names
+names = {};
+infos = fileInfos(b);
+for i = 1:numel(infos)
+    if isstruct(infos{i}) && isfield(infos{i}, 'name') && ~isempty(infos{i}.name)
+        names{end+1} = char(infos{i}.name); %#ok<AGROW>
+    end
+end
+names = unique(names);
+end
+
+function n = countArchiveFiles(bodies, idx)
+n = 0;
+for i = 1:numel(idx)
+    n = n + numel(archiveFileNames(bodies{idx(i)}));
+end
+end
+
+function [out, quarantine] = mkSpikeBodies(spikeObsIds, emittedIds, bodies, sessionIds, options)
+% one opaque_body per surviving spike observation: its acquisition_epoch's
+% epoch_binary_data.vhsb, locations VERBATIM (the bytes v1 attached)
+out = {};
+quarantine = [];
+pending = {};
+ids = spikeObsIds.keys;
+for i = 1:numel(ids)
+    if ~isKey(emittedIds, ids{i}); continue; end
+    k = spikeObsIds(ids{i});
+    b = bodies{k};
+    fi = vhsbFileInfo(b);
+    datestamp = baseField(b, 'creation_timestamp');
+    if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
+    if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+    body = did2.build.opaqueBody({ids{i}}, binaryFormat(), ...
+        'Fields', struct('filename', 'epoch_binary_data.vhsb'), ...
+        'Description', sprintf(['The spike times of epoch %s: the v1 ' ...
+            'element_epoch file epoch_binary_data.vhsb, carried as attached.'], ...
+            archiveEpochOf(b)), ...
+        'SessionId', char(sessionIds{k}), 'CreationTimestamp', datestamp, ...
+        'Validate', false);
+    loc = struct();
+    if isfield(fi, 'locations'); loc = fi.locations; end
+    body.files.file_info = struct('name', 'body_data_0', 'locations', {loc});
+    pending{end+1} = body; %#ok<AGROW>
+end
+if isempty(pending); return; end
+res = did2.convert.v1_to_v2(pending, ...
+    'Validate',      options.Validate, ...
+    'SchemaCache',   options.SchemaCache, ...
+    'TargetVersion', options.TargetVersion);
+quarantine = res.quarantine;
+out = res.migrated(:)';
+end
+
+function owners = pyraviewOwnerIndex(bodies, classOf, docIds, sampledIdx)
+%PYRAVIEWOWNERINDEX The pyraview observations in the batch, keyed by id: an
+%   observation with `data_body` true whose sampled_bodies epochMint folded from
+%   a v1 pyraview -- recognised as a recording-kind observation that names NO
+%   instrument (the element itself is its entity, +migrators_j/pyraview.m) and
+%   owns sampled_bodies. Each entry: entityId, epochDocId (its anchor's
+%   referent when that is an epoch), className, levelIdx (its bodies).
+owners = containers.Map('KeyType', 'char', 'ValueType', 'any');
+idxById = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for k = 1:numel(docIds)
+    if ~isempty(docIds{k}); idxById(docIds{k}) = k; end
+end
+for i = 1:numel(sampledIdx)
+    sb = bodies{sampledIdx(i)};
+    oid = depValueOf(sb, 'owner_id');
+    if isempty(oid) || ~isKey(idxById, oid); continue; end
+    ok = idxById(oid);
+    ob = bodies{ok};
+    cn = classOf{ok};
+    if ~any(strcmp(cn, {'voltage_observation', 'current_observation'})); continue; end
+    if ~isempty(depValueOf(ob, 'instrument_id')); continue; end
+    if isKey(owners, oid)
+        e = owners(oid);
+        e.levelIdx(end+1) = sampledIdx(i);
+        owners(oid) = e;
+        continue;
+    end
+    epochDocId = '';
+    aid = depValueOf(ob, 'time_reference_id');
+    if ~isempty(aid) && isKey(idxById, aid)
+        ab = bodies{idxById(aid)};
+        rid = depValueOf(ab, 'referent_id');
+        if ~isempty(rid) && isKey(idxById, rid) && strcmp(classOf{idxById(rid)}, 'epoch')
+            epochDocId = rid;
+        end
+    end
+    owners(oid) = struct('entityId', depValueOf(ob, 'entity_id'), ...
+        'epochDocId', epochDocId, 'className', cn, 'levelIdx', sampledIdx(i));
+end
+end
+
+function b = setOwner(b, ownerId)
+% a body struct with its `owner_id` edge(s) replaced by the one OWNERID
+deps = b.depends_on;
+if iscell(deps); deps = [deps{:}]; end
+keep = ~strcmp({deps.name}, 'owner_id');
+d = deps(find(~keep, 1));
+d.value = char(ownerId);
+if isfield(d, 'document_id'); d.document_id = char(ownerId); end
+b.depends_on = [deps(keep), d];
 end
 
 function c = compressionOf(name)

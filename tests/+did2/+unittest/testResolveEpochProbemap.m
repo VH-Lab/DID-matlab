@@ -317,6 +317,197 @@ for i = 1:numel(bodies)
             verifyFail(testCase, 'an unexpected archive body');
     end
 end
+% Jess Haley, 2026-10-21 ("a"): every file the v1 archive holds (both
+% ai_group1 members and channel_list.bin) is carried by a surviving body and
+% nothing that survives names it, so the archive document is RETIRED.
+verifyEqual(testCase, rep.archive_docs_inspected, 1);
+verifyEqual(testCase, rep.archive_docs_retired, 1);
+verifyEqual(testCase, rep.archive_docs_kept_unowned_files, 0);
+verifyEqual(testCase, rep.archive_dangling_references, 0);
+verifyEmpty(testCase, docById(out, 'arc_i'), 'the fully-owned archive is retired');
+end
+
+function testAnArchiveWithAFileNoBodyCarriesIsKept(testCase)
+% The same ingested epoch, but the archive also holds a file no data body
+% carries (`stray.bin`, attached but in no declared series): the document is
+% KEPT, and the unowned file is counted. Verified per document.
+subj = subjectBody('spec_k', 'sess_k', 'L');
+daq  = struct();
+daq.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+daq.base = struct('id', 'acqsys_k', 'session_id', 'sess_k', ...
+    'name', 'intan1', 'datestamp', '2024-05-01T00:00:00.000Z');
+daq.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'value', {'nav_1', 'rdr_k'});
+arc = struct();
+arc.document_class = struct('class_name', 'daqreader_mfdaq_epochdata_ingested', ...
+    'class_version', 1, 'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+arc.base = struct('id', 'arc_k', 'session_id', 'sess_k', 'name', '', ...
+    'datestamp', '2024-05-01T00:00:00.000Z');
+arc.depends_on = struct('name', 'daqreader_id', 'value', 'rdr_k');
+arc.epochid = struct('epochid', 't0k');
+arc.daqreader_epochdata_ingested = struct('epochtable', ...
+    struct('epochclock', {{'dev_local_time'}}, 't0_t1', [0 10]));
+loc = @(u) struct('delete_original', 0, 'uid', u, 'location', ['ndic://ds/' u], ...
+    'parameters', '', 'location_type', 'ndicloud', 'ingest', 0);
+arc.files = struct('file_list', {{'ai_group1_seg.nbf_#'}}, ...
+    'file_info', struct('name', {'ai_group1_seg.nbf_1', 'stray.bin'}, ...
+        'locations', {loc('u1'), loc('us')}));
+ing  = ingestedWithDeviceRows('ing_k', 'sess_k', 't0k', { ...
+    {'p', '', 'n-trode', 'intan1:ai1-4', 'L'}}, {'/raw/t0k/t0k.rhd'});
+[out, rep] = decompose({sessionBody('sd_k', 'sess_k', 'ref'), subj, daq, arc, ing});
+verifyEqual(testCase, rep.bodies_from_archive, 1);
+verifyEqual(testCase, rep.archive_docs_inspected, 1);
+verifyEqual(testCase, rep.archive_docs_retired, 0);
+verifyEqual(testCase, rep.archive_docs_kept_unowned_files, 1);
+verifyEqual(testCase, rep.archive_files_unowned, 1);
+verifyNotEmpty(testCase, docById(out, 'arc_k'), 'an archive with an unowned file is kept');
+end
+
+% ===================== spike trains (2026-10-21) ========================
+
+function v1 = elementEpochBody(docId, sessionId, elementId, epochId, withFile)
+%ELEMENTEPOCHBODY A did_v1 element_epoch, as NDI's writer makes it
+%   (+ndi/element.m:367-378: newdocument('element_epoch', 'element_epoch.
+%   epoch_clock', ..., 'element_epoch.t0_t1', ..., 'epochid.epochid', ...),
+%   set_dependency_value('element_id', ...)), with the epoch's samples attached
+%   as `epoch_binary_data.vhsb` (ndi.element.timeseries.addepoch).
+v1 = struct();
+v1.document_class = struct('class_name', 'element_epoch', 'class_version', '1.0.0', ...
+    'superclasses', [struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                     struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+v1.depends_on = struct('name', 'element_id', 'value', elementId);
+v1.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0 10]);
+v1.epochid = struct('epochid', epochId);
+if withFile
+    v1.files = struct('file_list', {{'epoch_binary_data.vhsb'}}, ...
+        'file_info', struct('name', 'epoch_binary_data.vhsb', 'locations', ...
+            struct('delete_original', 0, 'uid', 'vhsb_1', ...
+                'location', '/data/t00sp/neuron.vhsb', 'parameters', '', ...
+                'location_type', 'file', 'ingest', 1)));
+else
+    v1.files = struct('file_list', {{'epoch_binary_data.vhsb'}});
+end
+end
+
+function testASortedNeuronGetsOneSpikeTrainObservationPerEpoch(testCase)
+% Jess Haley, 2026-10-21 ("a"): a spike-sorted neuron gets one observation per
+% epoch -- entity the neuron (id preserved), instrument the probe it was
+% sorted from, value kind time, `data_body` true, variable GO:0001508
+% "action potential" -- with its element_epoch's .vhsb as the opaque_body.
+subj = subjectBody('specimen_sp', 'sess_sp', 'L');
+elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp');
+elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
+ee   = elementEpochBody('ee_1', 'sess_sp', 'el_neuron', 't00sp', true);
+ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', {{'tet', '1', 'n-trode', 'L'}});
+[out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ee, ing});
+verifyEqual(testCase, rep.spike_epochs_seen, 1);
+verifyEqual(testCase, rep.spike_trains_emitted, 1);
+verifyEqual(testCase, rep.spike_instrument_resolved, 1);
+verifyEqual(testCase, rep.spike_bodies, 1);
+verifyEqual(testCase, rep.spike_bodies_quarantined, 0);
+verifyEqual(testCase, rep.observations_emitted, 1, 'the probe row is still its own observation');
+spike = {};
+obsAll = bodiesOfClass(out, 'time_observation');
+for i = 1:numel(obsAll)
+    if strcmp(depVal(obsAll{i}, 'entity_id'), 'el_neuron'); spike{end+1} = obsAll{i}; end %#ok<AGROW>
+end
+assertEqual(testCase, numel(spike), 1, 'one spike-train observation of the neuron');
+o = spike{1};
+verifyTrue(testCase, isfield(o, 'time'), 'the value kind is time');
+verifyEqual(testCase, depVal(o, 'instrument_id'), 'el_probe');
+verifyEqual(testCase, char(o.statement.variable.node), 'GO:0001508');
+verifyEqual(testCase, char(o.statement.variable.name), 'action potential');
+b = {};
+ob = bodiesOfClass(out, 'opaque_body');
+for i = 1:numel(ob)
+    if any(strcmp(depVals(ob{i}, 'owner_id'), char(o.base.id))); b{end+1} = ob{i}; end %#ok<AGROW>
+end
+assertEqual(testCase, numel(b), 1, 'the spike train owns exactly one body');
+verifyEqual(testCase, char(b{1}.data_body.filename), 'epoch_binary_data.vhsb');
+verifyEqual(testCase, char(b{1}.files.file_info(1).locations.location), '/data/t00sp/neuron.vhsb');
+end
+
+function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)
+% No epoch_binary_data.vhsb attached: no file to be the body, so no
+% observation (never a bodiless one); counted.
+subj = subjectBody('specimen_sq', 'sess_sq', 'L');
+elP  = elementBody('el_probe_q', 'sess_sq', 'tet', '1', 'n-trode', 1, 'specimen_sq');
+elN  = derivedElementBody('el_neuron_q', 'sess_sq', 'n1', 'spikes', 'el_probe_q');
+ee   = elementEpochBody('ee_q', 'sess_sq', 'el_neuron_q', 't00sq', false);
+ing  = ingestedWithRows('ing_sq', 'sess_sq', 't00sq', {{'tet', '1', 'n-trode', 'L'}});
+[~, rep] = decompose({sessionBody('sd_sq', 'sess_sq', 'ref'), subj, elP, elN, ee, ing});
+verifyEqual(testCase, rep.spike_epochs_seen, 1);
+verifyEqual(testCase, rep.spike_epochs_no_file, 1);
+verifyEqual(testCase, rep.spike_trains_emitted, 0);
+verifyEqual(testCase, rep.spike_bodies, 0);
+end
+
+% ===================== pyraview levels (2026-10-21) =====================
+
+function v1 = pyraviewV1(docId, sessionId, elementId, epochId)
+%PYRAVIEWV1 A did_v1 pyraview (the PRED shape; testMigratorsJMeasurementFilter's
+%   fixture) naming element ELEMENTID at epoch EPOCHID, two levels.
+v1 = struct();
+v1.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
+    'superclasses', [struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                     struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {elementId});
+v1.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.pyraview = struct('label', 'high', 'native_rate', 20000, ...
+    'native_start_time', 0, 'channels', 4, 'data_type', 'double', ...
+    'decimation_sampling_rates', [20000 200]);
+v1.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
+v1.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', [0 10]);
+v1.epochid = struct('epochid', epochId);
+end
+
+function testPyraviewLevelsMoveToTheEpochsRecordingObservation(testCase)
+% Jess Haley, 2026-10-21 ("a"): each pyraview level is a data body owned by
+% that epoch's recording observation (the one emitted here for the same
+% element and epoch), and the separate pyraview observation is retired.
+subj = subjectBody('specimen_pv', 'sess_pv', 'L');
+el   = elementBody('el_pv', 'sess_pv', 'tet', '1', 'n-trode', 1, 'specimen_pv');
+ing  = ingestedWithRows('ing_pv', 'sess_pv', 't00pv', {{'tet', '1', 'n-trode', 'L'}});
+pv   = pyraviewV1('pv_1', 'sess_pv', 'el_pv', 't00pv');
+[out, rep] = decompose({sessionBody('sd_pv', 'sess_pv', 'ref'), subj, el, ing, pv});
+verifyEqual(testCase, rep.pyraview_observations_seen, 1);
+verifyEqual(testCase, rep.pyraview_observations_retired, 1);
+verifyEqual(testCase, rep.pyraview_levels_repointed, 2);
+verifyEqual(testCase, rep.pyraview_kept_no_recording_observation, 0);
+verifyEmpty(testCase, docById(out, 'pv_1'), 'the separate pyraview observation is retired');
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+assertEqual(testCase, numel(obs), 1);
+recId = char(obs{1}.base.id);
+levels = bodiesOfClass(out, 'sampled_body');
+verifyEqual(testCase, numel(levels), 2);
+for i = 1:numel(levels)
+    verifyEqual(testCase, depVals(levels{i}, 'owner_id'), {recId}, ...
+        'a level body is owned by the recording observation');
+end
+end
+
+function testAPyraviewWithNoRecordingObservationIsKeptAndCounted(testCase)
+% No probemap row for the pyraview's element at that epoch: nothing to move
+% to, so the pyraview observation and its levels stay as they were; counted.
+subj = subjectBody('specimen_pw', 'sess_pw', 'L');
+el   = elementBody('el_pw', 'sess_pw', 'tet', '1', 'n-trode', 1, 'specimen_pw');
+elO  = elementBody('el_other', 'sess_pw', 'oth', '1', 'n-trode', 1, 'specimen_pw');
+ing  = ingestedWithRows('ing_pw', 'sess_pw', 't00pw', {{'oth', '1', 'n-trode', 'L'}});
+pv   = pyraviewV1('pv_2', 'sess_pw', 'el_pw', 't00pw');
+[out, rep] = decompose({sessionBody('sd_pw', 'sess_pw', 'ref'), subj, el, elO, ing, pv});
+verifyEqual(testCase, rep.pyraview_observations_seen, 1);
+verifyEqual(testCase, rep.pyraview_observations_retired, 0);
+verifyEqual(testCase, rep.pyraview_kept_no_recording_observation, 1);
+verifyNotEmpty(testCase, docById(out, 'pv_2'), 'kept as it was');
+levels = bodiesOfClass(out, 'sampled_body');
+for i = 1:numel(levels)
+    verifyEqual(testCase, depVals(levels{i}, 'owner_id'), {'pv_2'});
+end
 end
 
 % ===================== an unresolvable subject emits nothing ===========
