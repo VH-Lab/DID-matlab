@@ -854,7 +854,7 @@
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionPyramid -> V_eta
 %         spatial_gene_expression_pyramid (⊂ [base, gene_expression,
 %         subject_observation]) + the shared session anchor. Carries the observation
-%         direction: `variable` bound to NCIT:C16608 "gene expression" per the
+%         direction: `variable` bound to NCIT:C16608 "Gene Expression" per the
 %         DID-schema binding registry; `subject_id` carried from v1 depends_on onto
 %         the inherited subject_statement slot; `time_reference_1` pointing at a
 %         session_relative_reference `during` anchor (the smallest legitimate anchor
