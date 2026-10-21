@@ -665,8 +665,16 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, rep.member_of_relations_emitted, 1);
 verifyEqual(testCase, rep.documents_appended, 16, ...
     '2 entities + 12 observations + 1 member_of + 1 session time reference (#88: an observation needs one)');
-% and the whole batch is reference-clean, which is the gate that actually runs
-refRep = did2.validate.references(out.migrated);
+% and the whole batch is reference-clean, which is the gate that actually runs.
+% #88: `base.session_id` is the `session_id` EDGE, and a session time reference
+% names the session as its referent, so both name the session document -- which
+% these table-row fixtures do not carry (a corpus does). The session id is
+% passed as known, and every OTHER edge must still resolve inside the batch.
+refRep = did2.validate.references(out.migrated, 'KnownIds', {'sess_ecoli'});
+for k = 1:numel(refRep.orphans)
+    o = refRep.orphans(k);
+    testCase.log(1, sprintf('orphan: %s', jsonencode(o)));
+end
 verifyEqual(testCase, refRep.orphan_count, 0, ...
     sprintf('%d orphan edge(s) of %d examined', refRep.orphan_count, ...
         refRep.edges_examined));

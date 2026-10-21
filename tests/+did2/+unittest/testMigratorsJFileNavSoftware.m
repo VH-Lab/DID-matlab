@@ -287,6 +287,11 @@ function testSoftwareIsNotDedupedInPassOne(testCase)
 a = calcBodyNamed('oc_a', 'ndi.calc.vis.oridir', '1.2');
 b = calcBodyNamed('oc_b', 'ndi.calc.vis.oridir', '1.2');
 a.app.os = 'Linux'; b.app.os = 'Linux';
+% and a tuning curve: with none the required result value is empty and the
+% calculator passes through, minting no software at all
+% (testCalculatorWithNoCurvePassesThrough).
+a.orientation_direction_tuning.tuning_curve = struct('direction', [0 90], 'mean', [3 4]);
+b.orientation_direction_tuning.tuning_curve = struct('direction', [0 90], 'mean', [3 4]);
 out = runJ({a, b});
 verifyEmpty(testCase, out.quarantine);
 sw = {};
