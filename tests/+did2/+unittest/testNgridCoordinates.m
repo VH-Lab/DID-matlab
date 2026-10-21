@@ -158,12 +158,20 @@ verifyEqual(testCase, out.summary.migrated_count, 1);
 end
 
 function testHartleyCalcConsumesNgridAndRefusesAnUnaccountableGrid(testCase)
-% did-schema #88: hartley_calc passes through (receptive_field.value declares
-% no sub-fields), so the ngrid consumption this test pins does not run there.
-c88 = did2.schema.cache.shared().getClass('receptive_field');
-f88 = c88.fields; if isstruct(f88); f88 = num2cell(f88); end
-assumeTrue(testCase, any(cellfun(@(x) strcmp(x.name, 'value') && isfield(x, 'fields') ...
-    && ~isempty(x.fields), f88)), 'hartley_calc passes through on did-schema #88');
+% RE-ARMED 2026-10-21: hartley_calc folds again once the loaded schema's
+% `value` declares rule `value_inline_or_body` (did-schema data_body AMENDMENT
+% 5): a receptive field is then `data_body: true` with an empty value. Before
+% it, receptive_field.value was required with no sub-fields and the class
+% passed through.
+vc = did2.schema.cache.shared().getClass('value');
+vr = {};
+if isfield(vc, 'rules') && ~isempty(vc.rules)
+    r = vc.rules;
+    if iscell(r); vr = cellfun(@(x) char(x.name), r, 'UniformOutput', false);
+    else; vr = {r.name}; end
+end
+assumeTrue(testCase, any(strcmp(vr, 'value_inline_or_body')), ...
+    'the loaded schema predates data_body AMENDMENT 5; hartley_calc passes through');
 % INVERTED 2026-08-17, NOT DELETED, AND THE INVERSION IS THE POINT.
 %
 % This test used to be `testHartleyCalcAlsoKeepsItsCoordinates` and asserted

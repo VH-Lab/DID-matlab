@@ -29,6 +29,14 @@ function route = jTreatmentRoute(locationTerm)
 %   stays a dose with NaN and is listed in the migration report as route
 %   unknown."
 %
+%   SUPERSEDED IN PART by Jess Haley, 2026-10-21 [virus-location]:
+%   "virus_injection follows the same location rule as the other treatments:
+%   a bath location makes it an immersion (a manipulation of the subject
+%   valued by the virus formulation through value_id, no location
+%   observation); a body site makes it a dose. A dilution of 0 is treated as
+%   not recorded (NaN), not as a measured 0." So virus_injection is routed here
+%   too; "always a dose" no longer holds.
+%
 %   Decided by Jess Haley, 2026-10-21 [babu-media]: "In the v1 migration, Babu
 %   treatments located at agar plate medium (MICRO:0000480) or ambient air
 %   (XCO:0000918) are exposures of the worms: a manipulation of the worm
