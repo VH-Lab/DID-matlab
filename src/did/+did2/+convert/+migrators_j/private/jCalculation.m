@@ -99,7 +99,14 @@ if ~isempty(opts.ExtraParameters)
     end
 end
 f.method = jMethod(methodName, params);
-if isempty(fieldnames(value)) && ~strcmp(family, 'rf'); value = []; end
+if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
+    % did-schema #88: the result composite's `value` is REQUIRED (tuning_curve,
+    % contrast_sensitivity). A calculator document with no curve has nothing to
+    % state there, and inventing one is not allowed, so it passes through
+    % unchanged rather than quarantining (Jess's rule; listed in the report).
+    bodies = {preBody};
+    return;
+end
 leaf = jStatement(preBody, leafClass, subjectId, ...
     jLabel(variableName), value, ...
     'Keys', keys, ...
