@@ -128,8 +128,12 @@ end
 % times the level's rate; with no duration there is no key, and #88's
 % sampled_body requires one: pass through rather than invent an extent
 if ~isfinite(epochDur)
-    bodies = {preBody};
-    return;
+    % A passthrough cannot validate on #88 (the tombstone lacks the v1
+    % epochclocktimes block), so refuse with the reason instead.
+    error('did2:convert:pyraviewNoExtent', ...
+        ['pyraview "%s": no epoch extent to size its levels (epochclocktimes ' ...
+         'fields: %s).'], char(preBody.base.id), ...
+        strjoin(fieldnamesOf(getBlock(preBody, 'epochclocktimes')), ', '));
 end
 
 filterDoc = jFrequencyFilter(preBody);
@@ -194,8 +198,10 @@ for k = 1:numel(fileList)
         n_k = ceil(epochDur * rate_k - 1e-9);
     end
     if n_k <= 0
-        bodies = {preBody};   % a level with no extent: see above
-        return;
+        error('did2:convert:pyraviewNoExtent', ...
+            ['pyraview "%s": level %d of %d has no extent (rate %g Hz over ' ...
+             '%g s; native rate %g; block fields: %s).'], char(preBody.base.id), ...
+            k, numel(fileList), rate_k, epochDur, nativeRt, strjoin(fieldnamesOf(blk), ', '));
     end
     timeAxis = jAxis(jOntologyTerm('', 'time'), n_k, ...
         'regular',     true, ...
@@ -326,4 +332,9 @@ end
 function c = charOf(x)
 c = '';
 if ischar(x); c = x; elseif isstring(x) && isscalar(x); c = char(x); end
+end
+
+function n = fieldnamesOf(s)
+n = {};
+if isstruct(s); n = fieldnames(s)'; end
 end
