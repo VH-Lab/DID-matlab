@@ -138,8 +138,9 @@ txt = did2.document(m).toJSON('SchemaCache', did2.schema.cache.shared());
 % 1 x 4 weights: one row; 35 x 1 seed: 35 rows of one; 4 x 3 palette
 verifyTrue(testCase, contains(txt, '"matrix":[[0.1,0.2,0.3,0.4]]'), txt);
 verifyTrue(testCase, contains(txt, '"matrix":[[0,0,0],[255,0,0],[0,255,0],[0,0,255]]'), txt);
+s = seed();
 verifyTrue(testCase, contains(txt, sprintf('"matrix":[[%s],', ...
-    did2unittestNumber(seed(1)))), txt);
+    did2unittestNumber(s(1)))), txt);
 % a document whose class declares no matrix is written as jsonencode writes it
 plain = struct('a', [1 2 3]);
 verifyEqual(testCase, did2.document(plain).toJSON(), jsonencode(plain));
