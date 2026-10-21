@@ -83,7 +83,7 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = char(did2.unittest.helpers.leafName(out.migrated{k}));
+    names{k} = char(did2.unittest.helpers.classKey(out.migrated{k}));
 end
 end
 
@@ -347,7 +347,7 @@ if ~isempty(out.quarantine)
         out.quarantine(1).reason));
 end
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'epochfiles_ingested');
 end
 

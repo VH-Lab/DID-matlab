@@ -82,9 +82,9 @@ anchor = jSessionAnchor(preBody, 'during');
 [software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
 swOpt = {};
 if ~isempty(swId); swOpt = {'SoftwareId', swId}; end
-obs = jStatement(preBody, 'count_observation', subjectId, ...
+obs = jStatement(preBody, 'observation', subjectId, ...
     jLabel('spike cluster assignment'), [], 'DataBody', true, ...
-    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', obsId);
+    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', obsId, 'ValueKind', 'count');
 md5 = jGetCharAny(blk, {'res_mat_md5_checksum', 'res_mat_MD5_checksum'});
 o = jOpts(preBody);
 if ~isempty(md5)

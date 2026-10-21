@@ -97,10 +97,10 @@ for k = 1:size(axisMap, 1)
     % others are fresh
     idOpt = {};
     if isempty(obsBodies); idOpt = {'Id', char(preBody.base.id)}; end
-    obs = jStatement(preBody, 'length_observation', jSubjectOf(preBody, subjectSrc), ...
+    obs = jStatement(preBody, 'observation', jSubjectOf(preBody, subjectSrc), ...
         jLabel(axisMap{k, 2}), ...
         jQuantity('length', vals, unit, 'approximate', false), ...
-        'TimeReferenceIds', {anchor.base.id}, idOpt{:});
+        'TimeReferenceIds', {anchor.base.id}, idOpt{:}, 'ValueKind', 'length');
     obsBodies{end+1} = obs; %#ok<AGROW>
 end
 
@@ -113,8 +113,8 @@ bodies = obsBodies;
 if ~isempty(probeModel)
     % Optional probe-model assertion: a timeless subject_assertion leaf (no
     % interaction), a secondary sibling body so it mints a fresh base id.
-    assertion = jStatement(preBody, 'term_assertion', jSubjectOf(preBody, subjectSrc), ...
-        jLabel('probe model'), jLabel(probeModel));
+    assertion = jStatement(preBody, 'assertion', jSubjectOf(preBody, subjectSrc), ...
+        jLabel('probe model'), jLabel(probeModel), 'ValueKind', 'term');
     bodies{end+1} = assertion;
 end
 bodies{end+1} = anchor;

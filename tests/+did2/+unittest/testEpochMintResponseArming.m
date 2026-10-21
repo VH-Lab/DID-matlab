@@ -201,8 +201,8 @@ function testTheResponseFoldExpectsTheCalculationLeafAsItsPrimary(testCase)
 % wrong primary here would read as "the migrator declined" on every document --
 % a refusal counter ticking for a reason that is not true.
 src = epochMintSource();
-verifyTrue(testCase, contains(src, '''harmonic_component_calculation'''), ...
-    'the response fold does not name harmonic_component_calculation as its primary');
+verifyTrue(testCase, contains(src, '{''calculation'', ''harmonic_component''}'), ...
+    'the response fold does not name a calculation of value kind harmonic_component as its primary');
 end
 
 % ===================== readers =========================================

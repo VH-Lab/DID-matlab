@@ -180,7 +180,7 @@ verifyEmpty(testCase, out.quarantine);
 % bodies{2}, so the count is 2 either way.
 verifyEqual(testCase, numel(out.migrated), 2);
 
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, leaf.get('document_class.schema_version'), 'V_eta');
 
 % ID PRESERVED. Two NDI templates declare an inbound edge to it --
@@ -198,7 +198,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 % The point of the repair: V_eta dropped stimulator_id and stimulus_control_id
 % and inverted the parameters edge. All five come back, under J names.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 b    = leaf.toStruct();
 
 verifyEqual(testCase, depValue(b, 'entity_id'),           'elem_9c027e');
@@ -230,7 +230,7 @@ end
 function testHarmonicComponentValueCarriesBothComplexPairs(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 
 verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 1);
 verifyEqual(testCase, leaf.get('harmonic_component.value.real'), ...
@@ -259,7 +259,7 @@ end
 function testStatementIsAnInlineCalculationWithTheAppAsMethod(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, leaf.get('subject_statement.storage_mode'), 'inline');
 verifyEqual(testCase, leaf.get('interaction.method.term.name'), ...
     'ndi.app.stimulus.tuning_response');
@@ -277,7 +277,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 % edge, so the inline block must stay empty until the resolver inlines the six
 % fields and drops the edge.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 verifyEmpty(testCase, fieldnames(leaf.get('subject_interaction.method_parameters')));
 verifyEqual(testCase, depValue(leaf.toStruct(), 'method_parameters_id'), 'param_77c19b');
 end
@@ -297,7 +297,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 %
 % When #45 lands, this test should FAIL and be replaced by an axes assertion.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 s    = leaf.toStruct();
 verifyFalse(testCase, isfield(s.subject_statement, 'axes'));
 if isfield(s.subject_statement, 'conditions')
@@ -324,7 +324,7 @@ out = runJ(v1);
 
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'stimulus_response_scalar');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 % the payload survives intact for the second pass
@@ -342,7 +342,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out = runJ(withEpochEdge(responseFixture('peak')));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -353,7 +353,7 @@ v1 = withEpochEdge(responseFixture('F1'));
 v1.stimulus_response_scalar.responses.response_real = [];
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -367,7 +367,7 @@ v1 = responseFixture('F1');
 keep = ~ismember({v1.depends_on.name}, {'stimulator_id', 'stimulus_control_id'});
 v1.depends_on = v1.depends_on(keep);
 out  = runJ(withEpochEdge(v1));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 b    = leaf.toStruct();
 
 verifyFalse(testCase, any(strcmp({b.depends_on.name}, 'instrument_id')));
@@ -394,9 +394,9 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out = runJ(responseFixture('F1'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'stimulus_response_scalar');
-verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
+verifyFalse(testCase, anyClass(out, 'calculation+harmonic_component'));
 % suppressing is only worth anything if the string it protects is still there
 verifyEqual(testCase, out.migrated{1}.get('stimulus_response.element_epochid'), 't00003');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
@@ -416,7 +416,7 @@ out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 
-leaf   = findClass(testCase, out, 'harmonic_component_calculation');
+leaf   = findClass(testCase, out, 'calculation+harmonic_component');
 anchor = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
     anchor.get('base.id'));
@@ -436,7 +436,7 @@ out = runJ(parametersFixture());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(d), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), ...
     'stimulus_response_scalar_parameters_basic');
 verifyEqual(testCase, d.get('base.id'), 'param_77c19b');
 blk = 'stimulus_response_scalar_parameters_basic.';
@@ -554,7 +554,7 @@ if ~isempty(out.quarantine)
 end
 % leaf + anchor + the passed-through parameters document
 verifyEqual(testCase, numel(out.migrated), 3);
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, leaf.get('base.id'), 'resp_412fa1');
 verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 2);
 
@@ -582,7 +582,7 @@ end
 
 function h = harmonicOf(testCase, responseType)
 out  = runJ(withEpochEdge(responseFixture(responseType)));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 h    = leaf.get('harmonic_component.value.harmonic');
 end
 
@@ -601,14 +601,14 @@ end
 function doc = findClass(testCase, out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
 end
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 % assertFail, not verifyFail: verifyFail records the failure and CONTINUES, and
 % the caller would then dereference an empty doc and report a MATLAB error

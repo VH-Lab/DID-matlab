@@ -245,7 +245,10 @@ if ~isfield(result, 'migrated') || isempty(result.migrated)
 end
 report.ran = true;
 
-LEAF   = 'harmonic_component_calculation';
+% the statement this fold rebuilds: a `calculation` with the
+% `harmonic_component` value kind (did-schema #88). did2.convert.statementKind
+% also reads a pre-port document's joined class name that way.
+LEAF   = {'calculation', 'harmonic_component'};
 PARAMS = 'stimulus_response_scalar_parameters_basic';
 SOURCE = 'stimulus_response_scalar';
 % The five run knobs, in the plan's own order. `freq_response` is deliberately
@@ -308,7 +311,8 @@ rebuilt = {};
 % away -- a counter measuring intent rather than outcome.
 copiedPer = [];
 for k = 1:n
-    if ~strcmp(classes{k}, LEAF); continue; end
+    [leafDir, leafKind] = did2.convert.statementKind(bodies{k});
+    if ~strcmp(leafDir, LEAF{1}) || ~strcmp(leafKind, LEAF{2}); continue; end
     report.leaves_seen = report.leaves_seen + 1;
 
     b = bodies{k};

@@ -52,7 +52,7 @@ function d = onlyClass(testCase, out, className)
 d = [];
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         d = out.migrated{k};
         n = n + 1;
     end
@@ -599,7 +599,7 @@ function testVmspikeGuardsNonEmptySpiketimesWithAPassthrough(testCase)
 out = runJ(vmspikeBody('vm_4', 'sess_A', 'elem_1', 't00001', [0.11 0.22 0.35]));
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'vmspikefilteringparameters');
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'vmspikefilteringparameters');
 verifyEqual(testCase, d.get('base.id'), 'vm_4');
 verifyEqual(testCase, d.get('vmspikefilteringparameters.spiketimes'), [0.11 0.22 0.35], ...
     'AbsTol', 1e-12);

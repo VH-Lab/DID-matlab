@@ -9,8 +9,9 @@ function [entries, disposition] = jRecordingModality(elementType)
 %     'recording'   ELEMENTTYPE names an instrument that MEASURES the specimen.
 %                   ENTRIES is a 1xN struct array, one per modality the type
 %                   records, with fields:
-%                     class         the V_eta observation leaf ('voltage_observation')
-%                     mixin         its data_type superclass ('voltage')
+%                     class         the direction class, always 'observation'
+%                     mixin         its value-kind mixin ('voltage') -- did-schema
+%                                   #88: an observation listing that mixin
 %                     variable      the subject_statement.variable label
 %                     multichannel  true when the type is a MULTI-SITE instrument
 %                                   (the body gets a channel axis; see below)
@@ -195,7 +196,7 @@ end
 % ('extracellular_electrode-4'). Anchor on the '...electrode-' stem so both
 % reach the same row; 'stim-n-trode' cannot match (it has no 'electrode-').
 if strcmp(key, 'n-trode') || ~isempty(regexp(key, '^([a-z0-9_]*_)?electrode-', 'once'))
-    entries = mk('voltage_observation', 'voltage', 'voltage', true);
+    entries = mk('voltage', 'voltage', true);
     disposition = 'recording';
     return;
 end
@@ -203,9 +204,9 @@ end
 switch key
     % --- pipettes: single-channel, modality stated by the type suffix -------
     case {'patch-vm', 'patch-attached', 'sharp-vm'}
-        entries = mk('voltage_observation', 'voltage', 'voltage', false);
+        entries = mk('voltage', 'voltage', false);
     case {'patch-i', 'sharp-i', 'sharp-im'}
-        entries = mk('current_observation', 'current', 'current', false);
+        entries = mk('current', 'current', false);
 
     % --- pipettes: TWO channels of TWO DIFFERENT quantities ----------------
     % PROBE-TYPES.md: patch = "two channels; first is Vm, second is I";
@@ -213,16 +214,17 @@ switch key
     % quantities are two `variable`s, so they are two observations -- see the
     % note in jRecordingObservation on why this is not the multi-channel case.
     case {'patch', 'sharp'}
-        entries = [mk('voltage_observation', 'voltage', 'voltage', false), ...
-                   mk('current_observation', 'current', 'current', false)];
+        entries = [mk('voltage', 'voltage', false), ...
+                   mk('current', 'current', false)];
 
     % --- imaging ------------------------------------------------------------
     case {'wide-field-imaging', 'two-photon-imaging', ...
           'one-photon-imaging', 'brightfield-imaging'}
         % did-schema #88 retired the `image` value kind and image_observation
         % (#73 review item 51, decided 2026-09-25): "a raster goes by what its
-        % pixels measure ... camera frames are an intensity_observation".
-        entries = mk('intensity_observation', 'intensity', 'intensity', false);
+        % pixels measure ... camera frames are an intensity_observation" (quoted
+        % as decided; built as an `observation` with the `intensity` mixin).
+        entries = mk('intensity', 'intensity', false);
 
     % --- the one DERIVED type with a signed shape ---------------------------
     % TEAM-SIGN-OFF [spike train leaf], V_eta_ensemble_plan.md:218,
@@ -250,15 +252,15 @@ switch key
     % document and are still ONE spike train each. The channel axis belongs to
     % the waveform, which is a different document.
     case 'spikes'
-        entries = mk('time_observation', 'time', 'spike', false);
+        entries = mk('time', 'spike', false);
 
     % --- instruments whose name is the quantity ------------------------------
     case {'ecg', 'eeg'}
-        entries = mk('voltage_observation', 'voltage', 'voltage', false);
+        entries = mk('voltage', 'voltage', false);
     case 'accelerometer'
-        entries = mk('acceleration_observation', 'acceleration', 'acceleration', false);
+        entries = mk('acceleration', 'acceleration', false);
     case 'thermometer'
-        entries = mk('temperature_observation', 'temperature', 'temperature', false);
+        entries = mk('temperature', 'temperature', false);
 
     otherwise
         return;   % Guard A: 'lick-spout', 'reward-well', 'ppg', anything new
@@ -272,7 +274,7 @@ function e = emptyEntries()
 e = struct('class', {}, 'mixin', {}, 'variable', {}, 'multichannel', {});
 end
 
-function e = mk(className, mixin, variable, multichannel)
-e = struct('class', className, 'mixin', mixin, 'variable', variable, ...
+function e = mk(mixin, variable, multichannel)
+e = struct('class', 'observation', 'mixin', mixin, 'variable', variable, ...
     'multichannel', logical(multichannel));
 end

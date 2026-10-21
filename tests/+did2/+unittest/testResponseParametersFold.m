@@ -227,7 +227,7 @@ verifyEqual(testCase, rep.leaves_with_edge, 1);
 verifyEqual(testCase, rep.refused_not_in_batch, 1);
 verifyEqual(testCase, rep.refused_total, 1);
 verifyEqual(testCase, rep.inlined, 0);
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
+leaf = bodyOfClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, depValue(leaf, 'method_parameters_id'), 'param_77c19b');
 verifyEmpty(testCase, fieldnames(leaf.subject_interaction.method_parameters));
 end
@@ -245,7 +245,7 @@ verifyEqual(testCase, rep.harmonic_checked, 1);
 verifyEqual(testCase, rep.refused_harmonic_mismatch, 1);
 verifyEqual(testCase, rep.refused_total, 1);
 verifyEqual(testCase, rep.inlined, 0);
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
+leaf = bodyOfClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, depValue(leaf, 'method_parameters_id'), 'param_77c19b');
 verifyEmpty(testCase, fieldnames(leaf.subject_interaction.method_parameters));
 end
@@ -271,7 +271,7 @@ p.stimulus_response_scalar_parameters_basic = struct('freq_response', 1);
 [out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
 verifyEqual(testCase, rep.refused_no_fields, 1);
 verifyEqual(testCase, rep.inlined, 0);
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
+leaf = bodyOfClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, depValue(leaf, 'method_parameters_id'), 'param_77c19b');
 end
 
@@ -382,7 +382,7 @@ end
 verifyEqual(testCase, rep.inlined, 1);
 verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
+leaf = bodyOfClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, leaf.subject_interaction.method_parameters.spiketrain_dt, ...
     0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 2);
@@ -408,7 +408,7 @@ function [out, leaf, rep] = foldPair(testCase, responseType)
 %FOLDPAIR The ordinary case: one stamped response + its parameters document.
 [out, rep] = runFold(testCase, ...
     {withEpochEdge(responseFixture(responseType)), parametersFixture()});
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
+leaf = bodyOfClass(testCase, out, 'calculation+harmonic_component');
 end
 
 function v1 = otherReferrerFixture(targetId)

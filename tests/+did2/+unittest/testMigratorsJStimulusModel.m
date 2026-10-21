@@ -152,7 +152,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'stimulus_presentation');
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'stimulus_presentation');
 verifyEqual(testCase, d.get('base.id'), 'pres_b671ff');
 verifyEqual(testCase, d.get('base.session_id'), 'sess_0001');
 verifyEqual(testCase, d.get('stimulus_presentation.presentation_order'), ...
@@ -262,11 +262,11 @@ function testPassOneMintsNoTimedSequenceAndNoManipulation(testCase)
 out = runJ(presentationFixture());
 names = classNames(out);
 verifyFalse(testCase, any(strcmp(names, 'timed_sequence')));
-verifyFalse(testCase, any(strcmp(names, 'timed_sequence_manipulation')));
+verifyFalse(testCase, any(strcmp(names, 'manipulation+timed_sequence')));
 % ...and NOT the superseded #19 dissolve either. That model
 % (ndi.migrate.internal.stimulusPresentationToManipulation) folded the stimuli
 % into one visual_grating_manipulation and reassigned the id.
-verifyFalse(testCase, any(strcmp(names, 'visual_grating_manipulation')));
+verifyFalse(testCase, any(strcmp(names, 'manipulation+visual_grating')));
 verifyEqual(testCase, names, {'stimulus_presentation'});
 end
 
@@ -282,7 +282,7 @@ out = runJ(controlFixture());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'control_stimulus_ids');
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'control_stimulus_ids');
 verifyEqual(testCase, d.get('base.id'), 'ctrl_20e84c');
 verifyEqual(testCase, d.get('control_stimulus_ids.control_stimulus_ids'), [3; 3; 3; 6; 6; 6]);
 verifyEqual(testCase, out.summary.unconverted_count, 1);
@@ -315,7 +315,7 @@ function testAnAllNaNControlArrayIsARealDocumentAndSurvives(testCase)
 out = runJ(controlFixture(nan(6, 1)));
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'control_stimulus_ids');
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'control_stimulus_ids');
 verifyEqual(testCase, numel(d.get('control_stimulus_ids.control_stimulus_ids')), 6);
 verifyTrue(testCase, all(isnan(d.get('control_stimulus_ids.control_stimulus_ids'))));
 end
@@ -333,7 +333,7 @@ out = runJ(v1);
 
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'control_stimulus_ids');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 % the payload survives intact for the second pass
@@ -347,7 +347,7 @@ v1 = controlFixture();
 v1.depends_on = struct('name', {'stimulus_presentation_id'}, 'id', {'pres_b671ff'});
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'control_stimulus_ids');
 verifyEqual(testCase, depValue(out.migrated{1}.toStruct(), 'stimulus_presentation_id'), ...
     'pres_b671ff');
@@ -404,7 +404,7 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 end
 

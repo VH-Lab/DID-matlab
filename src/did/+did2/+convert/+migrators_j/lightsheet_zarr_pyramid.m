@@ -42,8 +42,8 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %   1. THE OBSERVATION (id = the pyramid's base.id, so every level's
 %      `lightsheetZarrPyramid_id` edge names it and the levels' sampled_bodies
 %      hang off it through `owner_id`). Built with did2.build.statement as
-%      'intensity_observation' -- on a schema where the value kind is a mixin
-%      that is an `observation` listing `intensity` (did2.build resolveLeaf).
+%      an `observation` with 'ValueKind' 'intensity' (did-schema #88: the
+%      direction class listing the `intensity` mixin).
 %        entity_id      <- subject_id
 %        instrument_id  <- element_id (the microscope, promoted to an entity
 %                          with its id preserved), when present
@@ -195,9 +195,9 @@ if ~isempty(pipelineVersion)
     % No time reference: an assertion declares no time_reference_id
     % (statement.json's depends_on is entity_id and value_id only), and
     % ndi.setup.V2.entityDocuments passes none.
-    versionAssertion = did2.build.statement('text_assertion', softwareId, 'version', ...
+    versionAssertion = did2.build.statement('assertion', softwareId, 'version', ...
         did2.build.valueCell('text', {pipelineVersion}), ...
-        'SessionId', sessionId, 'CreationTimestamp', created, 'Validate', false);
+        'SessionId', sessionId, 'CreationTimestamp', created, 'Validate', false, 'ValueKind', 'text');
 end
 
 % ---- the label, and what the store-record pass needs (header, item 3) ---
@@ -243,7 +243,7 @@ FLUORESCENCE_INTENSITY = struct('node', 'NCIT:C184706', 'name', 'Fluorescence In
 % Jess 2026-10-15: every v1 pyramid is a light-sheet volume.
 LIGHTSHEET_METHOD = struct('node', 'FBbi:00000369', ...
     'name', 'selective plane illumination fluorescence microscopy');
-obs = did2.build.statement('intensity_observation', subjectId, FLUORESCENCE_INTENSITY, [], ...
+obs = did2.build.statement('observation', subjectId, FLUORESCENCE_INTENSITY, [], ...
     'Fields', struct('method', jMethod(LIGHTSHEET_METHOD)), ...   % #88: method {term, parameters}
     'DataBody', true, ...
     'DatumType', dataType, ...
@@ -253,7 +253,7 @@ obs = did2.build.statement('intensity_observation', subjectId, FLUORESCENCE_INTE
     'SoftwareId', softwareId, ...
     carried{:}, ...
     'SessionId', sessionId, 'Id', obsId, 'CreationTimestamp', created, ...
-    'Validate', false);
+    'Validate', false, 'ValueKind', 'intensity');
 keep = ~strcmp({obs.depends_on.name}, 'time_reference_id');
 obs.depends_on = obs.depends_on(keep);
 if carryStore

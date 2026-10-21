@@ -64,8 +64,9 @@ function doc = document(className, fields, options)
 %   (did-schema V_eta_entity_composition_plan.md sec. 1, 2026-10-08), the
 %   join leaves are gone: a temperature observation is an `observation`
 %   listing `temperature`. A CLASSNAME the schema lacks of the form
-%   <kind>_<direction> ('temperature_observation') is read that way, so a
-%   caller written for either schema builds the right document on both.
+%   <kind>_<direction> (a pre-composition joined name) is still read that
+%   way, for old-vintage callers; new code passes the direction and
+%   'ValueKind' and never writes the joined name.
 %
 %   Errors, all raised BEFORE any document is returned:
 %     did2:build:abstractClass    CLASSNAME is abstract
@@ -86,9 +87,10 @@ function doc = document(className, fields, options)
 %
 %   Example:
 %     v = did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, 'SourceUnit', 'mV');
-%     doc = did2.build.document('voltage_observation', ...
+%     doc = did2.build.document('observation', ...
 %         struct('variable', did2.build.term('ncit:C25613', 'Voltage'), 'value', v), ...
-%         'SessionId', sessionId, 'Edges', struct('entity_id', subjectId));
+%         'SessionId', sessionId, 'Edges', struct('entity_id', subjectId), ...
+%         'ValueKind', 'voltage');
 %
 %   See also did2.build.statement, did2.build.composite, did2.schema.cache.
 

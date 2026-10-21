@@ -269,9 +269,9 @@ if (isfield(preBody, 'ngrid') && isstruct(preBody.ngrid)) || isempty(subjectOf(p
     return;
 end
 anchor = jSessionAnchor(preBody, 'during');
-obs = jStatement(preBody, 'term_observation', subjectOf(preBody), ...
+obs = jStatement(preBody, 'observation', subjectOf(preBody), ...
     jLabel('imaged region'), jOntologyTerm(node, regionName), ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id));
+    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id), 'ValueKind', 'term');
 v2Body = {obs, anchor};
 end
 

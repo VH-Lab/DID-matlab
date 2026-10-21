@@ -48,9 +48,9 @@ if isempty(methodName); methodName = 'transfer'; end
 % did-schema #88: built through did2.build. The act on the recipient (id
 % preserved), the recipient <- donor provenance relation, and the session anchor.
 anchor = jSessionAnchor(preBody, 'during');
-act = jStatement(preBody, 'term_manipulation', recipientId, material, material, ...
+act = jStatement(preBody, 'manipulation', recipientId, material, material, ...
     'TimeReferenceIds', {anchor.base.id}, ...
-    'Fields', struct('method', jMethod(methodName)), 'Id', char(preBody.base.id));
+    'Fields', struct('method', jMethod(methodName)), 'Id', char(preBody.base.id), 'ValueKind', 'term');
 rel = jEntityRelation(preBody, recipientId, donorId, 'derived_from', '', 'RO:0001000');
 
 v2Body = {act, rel, anchor};

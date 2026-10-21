@@ -141,14 +141,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 end
 
 function doc = firstOfClass(out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
@@ -288,7 +288,7 @@ verifyEqual(testCase, sw.get('entity.local_identifier'), ...
 % migration. jSoftware now normalises the empty; this assertion no longer
 % depends on which empty it is either way.
 % #88: a version is a text_assertion about the software; none is minted here
-verifyFalse(testCase, any(strcmp(classNames(out), 'text_assertion')));
+verifyFalse(testCase, any(strcmp(classNames(out), 'assertion+text')));
 end
 
 function testDaqreaderPreservesItsBaseId(testCase)
@@ -474,7 +474,7 @@ verifyEqual(testCase, depValue(sys, 'software_id'), sw.get('base.id'));
 % version to invent. verifyEmpty + verifyClass rather than verifyEqual(...,''),
 % for the reason spelled out in testDaqreaderDissolvesIntoSoftware.
 % #88: a version is a text_assertion about the software; none is minted here
-verifyFalse(testCase, any(strcmp(classNames(out), 'text_assertion')));
+verifyFalse(testCase, any(strcmp(classNames(out), 'assertion+text')));
 end
 
 function testDaqsystemSoftwareIdIsDistinctFromReaderId(testCase)

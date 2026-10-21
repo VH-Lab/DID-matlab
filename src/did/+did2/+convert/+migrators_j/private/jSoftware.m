@@ -44,8 +44,8 @@ ent = jEntity(pre, 'software', f);
 swId = ent.base.id;
 software = {ent};
 if ~isempty(version)
-    software{end+1} = jStatement(pre, 'text_assertion', swId, ...
+    software{end+1} = jStatement(pre, 'assertion', swId, ...
         did2.build.term('IAO:0000129', 'version number'), ...
-        did2.build.valueCell('text', {version}, 'Canonical', 'text'));
+        did2.build.valueCell('text', {version}, 'Canonical', 'text'), 'ValueKind', 'text');
 end
 end

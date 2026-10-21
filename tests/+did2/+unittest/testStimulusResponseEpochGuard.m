@@ -69,7 +69,7 @@ end
 function d = findClass(testCase, out, className)
 d = [];
 for k = 1:numel(out.migrated)
-    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
+    if strcmp(char(did2.unittest.helpers.classKey(out.migrated{k})), className)
         d = out.migrated{k};
         return;
     end
@@ -166,7 +166,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), ...
     'stimulus_response_scalar');
-verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
+verifyFalse(testCase, anyClass(out, 'calculation+harmonic_component'));
 end
 
 function testTheSuppressedPassthroughStillCarriesBothEpochStrings(testCase)
@@ -219,7 +219,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 out = runJ(responseFixture(''));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 anchor = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
     char(anchor.get('base.id')));
@@ -232,7 +232,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 out = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, char(leaf.get('base.id')), 'resp_412fa1');   % id preserved
 end
 
@@ -242,7 +242,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % relative_to -> epoch. The session anchor is REPLACED, not added beside -- two
 % anchors on one interaction would be #52's undefined-meaning case.
 out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 ref  = findClass(testCase, out, 'relative_time_reference');
 verifyFalse(testCase, anyClass(out, 'session_relative_reference'));
 
@@ -280,7 +280,7 @@ function testBranchOneStillRehomesAllFiveV1Edges(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % Opening the gate must not quietly change anything else about the fold.
 out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
-b    = findClass(testCase, out, 'harmonic_component_calculation').toStruct();
+b    = findClass(testCase, out, 'calculation+harmonic_component').toStruct();
 verifyEqual(testCase, depValue(b, 'subject_id'),           'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
 verifyEqual(testCase, depValue(b, 'derived_from_1'),       'pres_b671ff');

@@ -59,8 +59,8 @@ measurement = jOntologyTerm(node, '');       % name resolved in NDI 2nd pass
 variable = jOntologyTerm('', 'position');    % the kind of measurement (spine "what")
 
 anchor = jSessionAnchor(preBody, 'during');
-obs = jStatement(preBody, 'term_observation', ...
+obs = jStatement(preBody, 'observation', ...
     jSubjectOf(preBody, {'element_id', 'subject_id'}), variable, measurement, ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id));
+    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id), 'ValueKind', 'term');
 bodies = {obs, anchor};
 end

@@ -106,11 +106,11 @@ verifyEqual(testCase, numel(out), 8, ...
 verifyEqual(testCase, sum(strcmp(names, 'cell')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'directed_relation')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'count_assertion')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'voltage_observation')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'score_observation')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'assertion+count')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'observation+voltage')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'observation+score')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'software')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'text_assertion')), 1);   % the software's version
+verifyEqual(testCase, sum(strcmp(names, 'assertion+text')), 1);   % the software's version
 end
 
 
@@ -138,7 +138,7 @@ end
 function testTheWaveformIsAnObservationOfTheUNITNotOfTheRecording(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 neuron = pick(out, 'cell');
-wobs   = pick(out, 'voltage_observation');
+wobs   = pick(out, 'observation+voltage');
 verifyEqual(testCase, depValueOf(wobs, 'entity_id'), neuron.base.id);
 verifyNotEqual(testCase, depValueOf(wobs, 'entity_id'), 'rec_sub_1');
 verifyEqual(testCase, depValueOf(wobs, 'time_reference_id'), ...
@@ -163,7 +163,7 @@ end
 function testTheAxesAreBothPresentAndInSourceDimensionOrder(testCase)
 % UPDATED for #88: the axes are the statement's data.keys.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').data.keys;
+ax = pick(out, 'observation+voltage').data.keys;
 verifyEqual(testCase, numel(ax), 2);
 verifyEqual(testCase, [ax.n], [21 32]);
 verifyEqual(testCase, arrayfun(@(a) a.variable.name, ax, 'UniformOutput', false), ...
@@ -175,7 +175,7 @@ function testTheTimeAxisIsRegularWithTheMeasuredOriginAndSpacing(testCase)
 % UPDATED for #88: the time key's source unit is the registry term for 's'
 % (om:second-Time, 'second'); no canonical unit is stated.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').data.keys;
+ax = pick(out, 'observation+voltage').data.keys;
 verifyTrue(testCase, logical(ax(1).regular));
 verifyEqual(testCase, ax(1).origin.value,         -0.00025, 'AbsTol', 1e-18);
 verifyEqual(testCase, ax(1).origin.source_value,  -0.00025, 'AbsTol', 1e-18);
@@ -192,7 +192,7 @@ v1 = neuronExtracellularV1();
 jitter = [0; 0; 0.0004; zeros(18, 1)];       % one sample displaced
 v1.neuron_extracellular.waveform_sample_times = realTimebase() + jitter;
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'voltage_observation').data.keys;
+ax = pick(out, 'observation+voltage').data.keys;
 verifyFalse(testCase, logical(ax(1).regular));
 verifyEqual(testCase, ax(1).quantity.value(:), realTimebase() + jitter);
 verifyFalse(testCase, isfield(ax(1), 'origin') && ~isempty(ax(1).origin), ...
@@ -202,7 +202,7 @@ end
 
 function testTheChannelAxisIsAnIndexAxisWithNoUnit(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'voltage_observation').data.keys;
+ax = pick(out, 'observation+voltage').data.keys;
 verifyEqual(testCase, ax(2).n, 32);
 verifyTrue(testCase, logical(ax(2).regular));
 verifyEqual(testCase, ax(2).origin.value, 1);
@@ -216,19 +216,19 @@ end
 
 function testAllSixHundredAndSeventyTwoValuesReachTheDocumentInColumnMajorOrder(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-value = pick(out, 'voltage_observation').voltage.value;
+value = pick(out, 'observation+voltage').voltage.value;
 verifyEqual(testCase, numel(value), 672, ...
     'DENOMINATOR: 21 time samples x 32 channels; a short array is a silent drop');
 verifyEqual(testCase, [value.source_value], 1:672, ...
     'column-major -- reshape(values,[21 32]) must invert w(:)');
-ax = pick(out, 'voltage_observation').data.keys;
+ax = pick(out, 'observation+voltage').data.keys;
 verifyEqual(testCase, prod([ax.n]), numel(value));
 end
 
 
 function testTheValueStatesNoUnitAndInventsNoCanonicalNumber(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-value = pick(out, 'voltage_observation').voltage.value;
+value = pick(out, 'observation+voltage').voltage.value;
 verifyFalse(testCase, isfield(value, 'source_unit') && ...
     any(arrayfun(@(v) ~isempty(v.source_unit), value)));
 verifyFalse(testCase, isfield(value, 'volts'), ...
@@ -241,7 +241,7 @@ function testTheStatementIsInlineAndCarriesTheEncoding(testCase)
 % UPDATED for #88: the encoding is value.data_type / source_data_type, and an
 % inline value is simply a value with no data_body flag.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-w = pick(out, 'voltage_observation');
+w = pick(out, 'observation+voltage');
 verifyFalse(testCase, isfield(w.value, 'data_body') && logical(w.value.data_body));
 verifyEqual(testCase, w.value.data_type, 'float64');
 verifyEqual(testCase, w.value.source_data_type, 'double');
@@ -253,8 +253,8 @@ function testTheWaveformStatementHasNoSampleTimeBlock(testCase)
 % UPDATED for #88: time is an ordinary key; neither observation carries a
 % sample_time block (the interaction block has none to carry).
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-verifyFalse(testCase, isfield(pick(out, 'voltage_observation').interaction, 'sample_time'));
-verifyFalse(testCase, isfield(pick(out, 'score_observation').interaction, 'sample_time'));
+verifyFalse(testCase, isfield(pick(out, 'observation+voltage').interaction, 'sample_time'));
+verifyFalse(testCase, isfield(pick(out, 'observation+score').interaction, 'sample_time'));
 end
 
 
@@ -266,7 +266,7 @@ v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'mean_waveform', 'waveform_sample_times'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'voltage_observation')));
+verifyFalse(testCase, any(strcmp(names, 'observation+voltage')));
 verifyEqual(testCase, numel(out), 7, ...   % #88: + the software's version assertion
     sprintf('expected 7 bodies without the waveform, got %d: %s', ...
         numel(out), strjoin(names, ', ')));
@@ -292,7 +292,7 @@ v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'number_of_channels', 'number_of_samples_per_channel'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'voltage_observation').data.keys;
+ax = pick(out, 'observation+voltage').data.keys;
 verifyEqual(testCase, [ax.n], [21 32]);
 end
 
@@ -313,7 +313,7 @@ end
 
 function testTheClusterIndexGetsAQueryableHomeAndNotOnlyAName(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-cidx = pick(out, 'count_assertion');
+cidx = pick(out, 'assertion+count');
 neuron = pick(out, 'cell');
 verifyEqual(testCase, depValueOf(cidx, 'entity_id'), neuron.base.id);
 verifyEqual(testCase, cidx.count.value.count, 7);
@@ -372,9 +372,9 @@ v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, 'quality_number');
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'score_observation')));
+verifyFalse(testCase, any(strcmp(names, 'observation+score')));
 sw   = pick(out, 'software');
-wobs = pick(out, 'voltage_observation');
+wobs = pick(out, 'observation+voltage');
 verifyEqual(testCase, depValueOf(wobs, 'software_id'), sw.base.id);
 verifyEqual(testCase, sw.entity.name, 'JRCLUST');
 verifyFalse(testCase, isfield(wobs.interaction, 'execution_environment'));
@@ -437,7 +437,7 @@ end
 % ===================== small helpers =======================================
 
 function names = classNames(out)
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 end
 
 function b = pick(out, className)

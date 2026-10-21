@@ -3,8 +3,8 @@ function [className, kind] = resolveLeaf(cache, leafClass, kind)
 %
 %   [CLASSNAME, KIND] = resolveLeaf(CACHE, LEAFCLASS, KIND). A class the schema
 %   has is itself (KIND as given, usually ''). A name it lacks of the form
-%   <kind>_<direction> ('temperature_observation') is that direction with that
-%   value kind, when the direction declares `value_kind` -- the 2026-10-08
+%   <kind>_<direction> (a pre-composition joined name, accepted from
+%   old-vintage callers only) is that direction with that value kind, when the direction declares `value_kind` -- the 2026-10-08
 %   composition (did-schema V_eta_entity_composition_plan.md sec. 1), which
 %   removed the join leaves. So a caller written for either schema builds the
 %   right document on both. Anything else is returned unchanged, for the

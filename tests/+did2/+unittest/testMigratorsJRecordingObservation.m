@@ -129,7 +129,7 @@ function testExtracellularProbeBecomesVoltageObservationOfTheSpecimen(testCase)
 % its value in the epoch's files (`data_body` true).
 out = runEpoch(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/2024-06-01/t00001/t00001.rhd'});
-obs = firstOfClass(out, 'voltage_observation');
+obs = firstOfClass(out, 'observation+voltage');
 verifyNotEmpty(testCase, obs, 'no voltage_observation was emitted for an n-trode epoch');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'specimen_1');   % the SPECIMEN
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');      % the electrode (T7)
@@ -140,7 +140,7 @@ verifyTrue(testCase, logical(obs.get('value.data_body')), ...
 anchor = docById(out, depValue(obs, 'time_reference_id'));
 verifyNotEmpty(testCase, anchor);
 ep = docById(out, depValue(anchor, 'referent_id'));
-verifyEqual(testCase, did2.unittest.helpers.leafName(ep), 'epoch');
+verifyEqual(testCase, did2.unittest.helpers.classKey(ep), 'epoch');
 % and pass 1 alone emits no observation at all
 verifyFalse(testCase, anyObservationEmitted(runJ(elementDoc('ctx_probe', 'n-trode', ...
     'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''))));
@@ -161,7 +161,7 @@ el = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specim
 verifyEqual(testCase, countOfClass(runJ(el), 'opaque_body'), 0, ...
     'pass 1 minted a body for an element, which carries no files');
 out = runEpoch(el, files);
-obs = firstOfClass(out, 'voltage_observation');
+obs = firstOfClass(out, 'observation+voltage');
 verifyNotEmpty(testCase, obs);
 bodies = allOfClass(out, 'opaque_body');
 verifyEqual(testCase, numel(bodies), 2, 'one opaque_body per named file');
@@ -190,7 +190,7 @@ function testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId(testCas
 out = runEpoch(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.rhd'});
 sub = firstOfClass(out, 'device');   % #88: an entity of type device
-obs = firstOfClass(out, 'voltage_observation');
+obs = firstOfClass(out, 'observation+voltage');
 verifyEqual(testCase, sub.get('base.id'), 'el_1');
 verifyNotEqual(testCase, obs.get('base.id'), 'el_1');
 end
@@ -204,9 +204,9 @@ function testMultiChannelProbeIsOneObservationWithAChannelAxis(testCase)
 % vhspike2:ai11-14), not N statements.
 out = runEpoch(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.rhd'});
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1, ...
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1, ...
     'a multi-site probe must not fan out into one observation per site');
-obs = firstOfClass(out, 'voltage_observation');
+obs = firstOfClass(out, 'observation+voltage');
 ac = docById(out, depValue(obs, 'acquisition_channels_id'));
 verifyNotEmpty(testCase, ac, 'the observation names no channel map');
 ch = ac.get('acquisition_channels.channels');
@@ -222,8 +222,8 @@ function testUnderscoredElectrodeSpellingAlsoResolves(testCase)
 % regexp 'electrode-\d'. All three reach the same row.
 out = runEpoch(elementDoc('ctx', 'extracellular_electrode-4', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.rhd'});
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
-obs = firstOfClass(out, 'voltage_observation');
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
+obs = firstOfClass(out, 'observation+voltage');
 verifyEqual(testCase, obs.get('statement.variable').name, 'voltage');
 end
 
@@ -232,7 +232,7 @@ function testSingleChannelPipetteCarriesNoChannelAxis(testCase)
 % ONE observation per epoch.
 out = runEpoch(elementDoc('Vm_a', 'patch-Vm', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.abf'});
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 end
 
@@ -249,7 +249,7 @@ verifyTrue(testCase, hasRelation(runJ(el), 'observes'), ...
 out = runEpoch(el, {'/data/t00001/t00001.rhd'});
 verifyFalse(testCase, hasRelation(out, 'observes'), ...
     'the loose `probe observes specimen` relation survived the instrument_id edge');
-obs = firstOfClass(out, 'voltage_observation');
+obs = firstOfClass(out, 'observation+voltage');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
 end
 
@@ -285,7 +285,7 @@ function testDerivedSpikesEmitNoObservationUntilTheirBodyIsDecided(testCase)
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
 verifyEmpty(testCase, out.quarantine, 'the derived element quarantined');
-verifyEqual(testCase, countOfClass(out, 'time_observation'), 0);
+verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
 verifyNotEmpty(testCase, firstOfClass(out, 'cell'), 'the neuron must still become a subject');
 end
 
@@ -317,11 +317,11 @@ function testPatchProducesAVoltageAndACurrentObservation(testCase)
 % owner_id repeats (did-schema data_body, 2026-10-21).
 out = runEpoch(elementDoc('patch_a', 'patch', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.abf'});
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
-verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
+verifyEqual(testCase, countOfClass(out, 'observation+current'), 1);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-volt = firstOfClass(out, 'voltage_observation');
-curr = firstOfClass(out, 'current_observation');
+volt = firstOfClass(out, 'observation+voltage');
+curr = firstOfClass(out, 'observation+current');
 verifyEqual(testCase, depValue(volt, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(curr, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(volt, 'instrument_id'), 'el_1');
@@ -342,8 +342,8 @@ function testCurrentPipetteIsNotLabelledVoltage(testCase)
 % polarity swap one tier over -- a tidy-looking rename that inverts the meaning.
 out = runEpoch(elementDoc('I_a', 'patch-I', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.abf'});
-verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 0);
+verifyEqual(testCase, countOfClass(out, 'observation+current'), 1);
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 0);
 end
 
 % ===================== imaging ============================================
@@ -355,7 +355,7 @@ function testImagingProbeBecomesImageObservation(testCase)
 % no longer defers imaging rows: nothing inline is needed.
 out = runEpoch(elementDoc('camera', 'wide-field-imaging', 'ndi.probe.image', 1, 'specimen_1', ''), ...
     {'/data/t00001/frames.tif'});
-obs = firstOfClass(out, 'intensity_observation');
+obs = firstOfClass(out, 'observation+intensity');
 verifyNotEmpty(testCase, obs);
 verifyEqual(testCase, obs.get('statement.variable').name, 'intensity');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
@@ -402,8 +402,8 @@ function testBannedClassNamesAreNeverMinted(testCase)
 % T11 bans `timeseries_observation` / `signal_observation`, and R6 KILLED `array`
 % outright. Swept across the resolved, the stimulator and the Guard A paths at
 % once, so a future map edit cannot reintroduce one on a branch nobody looked at.
-banned = {'timeseries_observation', 'signal_observation', 'array', ...
-          'dataseries_observation', 'imageseries_observation'};
+banned = {'observation+timeseries', 'observation+signal', 'array', ...
+          'observation+dataseries', 'observation+imageseries'};
 types = {'n-trode', 'patch', 'patch-Vm', 'wide-field-imaging', 'thermometer', ...
          'lick-spout', 'ppg', 'reward-well', 'stimulator', 'event', '', 'madeup'};
 for t = 1:numel(types)
@@ -474,7 +474,7 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
-verifyNotEmpty(testCase, firstOfClass(out, 'voltage_observation'));
+verifyNotEmpty(testCase, firstOfClass(out, 'observation+voltage'));
 verifyNotEmpty(testCase, firstOfClass(out, 'opaque_body'));
 end
 
@@ -489,8 +489,8 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
-verifyEqual(testCase, countOfClass(out, 'time_observation'), 0);
-verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 0);
+verifyEqual(testCase, countOfClass(out, 'observation+time'), 0);
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 0);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 end
 
@@ -526,14 +526,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 end
 
 function d = firstOfClass(out, className)
 d = [];
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         d = out.migrated{k};
         return;
     end
@@ -545,11 +545,14 @@ n = sum(strcmp(classNames(out), className));
 end
 
 function tf = anyObservationEmitted(out)
-%ANYOBSERVATIONEMITTED Did anything at all in the batch end in '_observation'?
-%   Deliberately a SUFFIX sweep rather than a list: a Guard A / stimulator test
-%   that named the classes it does not expect would miss a NEW one.
+%ANYOBSERVATIONEMITTED Did anything at all in the batch be an observation?
+%   Deliberately a sweep rather than a list: a Guard A / stimulator test that
+%   named the classes it does not expect would miss a NEW one. did-schema #88:
+%   'observation' / 'observation+<kind>' (classKey); a joined old name ending
+%   in '_observation' counts too, so an emitter regressing to it is caught.
 names = classNames(out);
-tf = any(cellfun(@(n) numel(n) > 12 && strcmp(n(end-11:end), '_observation'), names));
+tf = any(cellfun(@(n) strcmp(n, 'observation') || strncmp(n, 'observation+', 12) ...
+    || (numel(n) > 12 && strcmp(n(end-11:end), '_observation')), names));
 end
 
 function tf = hasRelation(out, relationName)
@@ -568,7 +571,7 @@ function d = assertionWithVariable(out, variableName)
 d = [];
 for k = 1:numel(out.migrated)
     doc = out.migrated{k};
-    if ~strcmp(did2.unittest.helpers.leafName(doc), 'term_assertion'); continue; end
+    if ~strcmp(did2.unittest.helpers.classKey(doc), 'assertion+term'); continue; end
     v = doc.get('statement.variable');
     if strcmp(v.name, variableName); d = doc; return; end
 end
@@ -635,7 +638,7 @@ end
 function c = allOfClass(out, className)
 c = {};
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         c{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
