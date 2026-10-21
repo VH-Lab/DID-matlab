@@ -1,7 +1,48 @@
 function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBody, instrumentId, subjectId, elementType, bestKnownLabel)
-%JRECORDINGOBSERVATION Assemble the typed observation(s) for a DIRECT recording
-%   element -- open item #30, SIGNED 2026-08-10 in
-%   V_eta_recording_observation_plan.md.
+%JRECORDINGOBSERVATION The pass-1 half of a recording element's observation:
+%   the modality disposition and Guard A's worklist label. SINCE 2026-10-21 IT
+%   EMITS NO OBSERVATION.
+%
+%   ---------------------------------------------------------------------
+%   2026-10-21: ONE OBSERVATION PER ELEMENT PER EPOCH, WITH ITS FILES AS BODIES
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-10-21 (did-schema
+%   V_eta_recording_observation_plan.md): migrated recordings link their epoch
+%   files as data bodies, matching native V2 (NDI ndi.setup.V2.recordingDocuments):
+%   one observation per element PER EPOCH, `data_body` true, an `opaque_body` per
+%   epoch file recorded by location (ingested archives as attached), shared by
+%   the electrodes recorded in it, with the channel map.
+%
+%   This function used to emit ONE observation per element across all its
+%   epochs, with a session 'during' anchor and NO value and NO body. Rule
+%   `value_inline_or_body` (data_body AMENDMENT 5, signed 2026-10-21) refuses
+%   exactly that document, so every direct element QUARANTINED whole. And an
+%   `element` document names no epochs and carries no files (the measurement
+%   below), so pass 1 cannot build the decided shape. The per-epoch observation
+%   is minted where the epoch and its files ARE known:
+%
+%     did2.convert.resolveEpochProbemap   the DID batch pass, over the cached
+%                                         `epochfiles_ingested` documents (each
+%                                         names its epoch, its probe-map rows,
+%                                         its files) and the ingested archives
+%     ndi.migrate.local (second pass)     sessions with no such cache: the file
+%                                         navigator names the epoch's files
+%
+%   So here: RETIREOBSERVES is always false (no `instrument_id` edge exists yet,
+%   so the loose `observes` relation is KEPT; the batch pass retires it when it
+%   emits the replacement), BODIES is always empty, and UNRESOLVEDLABEL is
+%   unchanged (Guard A's worklist entry still belongs to the element).
+%
+%   The derived (`spikes`) branch emits nothing either: its per-epoch samples
+%   live on `element_epoch` documents (one attached `epoch_binary_data.vhsb`
+%   each), and how those become the spike train's body is an OPEN question,
+%   not decided here.
+%
+%   The rest of this header is the history of the pass-1 observation, kept for
+%   its reasoning (ID preservation, multi-channel cardinality, Guard A).
+%
+%   ---------------------------------------------------------------------
+%   HISTORY: open item #30, SIGNED 2026-08-10 in V_eta_recording_observation_plan.md.
 %
 %   [BODIES, RETIREOBSERVES, UNRESOLVEDLABEL] = jRecordingObservation(PREBODY,
 %       INSTRUMENTID, SUBJECTID, ELEMENTTYPE, BESTKNOWNLABEL)
@@ -255,34 +296,18 @@ switch disposition
         unresolvedLabel = firstNonEmptyChar(elementType, bestKnownLabel, '(unspecified)');
         return;
     case 'recording'
-        % the assembler below runs
+        % resolved; the observation itself is minted per epoch (see below)
     otherwise
         return;              % an unknown disposition is never guessed at
 end
 
-anchor = jSessionAnchor(preBody, 'during');
-anchorId = anchor.base.id;
-
-for k = 1:numel(entries)
-    e = entries(k);
-    % did-schema #88: an `observation` with the modality's value kind as a mixin
-    % (resolved by did2.build from '<kind>_observation'). The signal itself stays
-    % in the epoch's files, so the statement carries no inline value and no
-    % body -- the pre-#73 `storage_mode: reference`, which #88 no longer spells.
-    extra = {'TimeReferenceIds', {anchorId}};
-    if hasInstrument
-        extra = [extra, {'InstrumentId', instrumentId}]; %#ok<AGROW>   % T7
-    end
-    obs = jStatement(preBody, e.class, subjectId, jLabel(e.variable), [], ...
-        extra{:});
-    bodies{end+1} = obs;  %#ok<AGROW>
-end
-
-if isempty(bodies)
-    return;
-end
-bodies{end+1} = anchor;
-retireObserves = true;   % the instrument_id edge is now present, so `observes` may go
+% 2026-10-21: NOTHING IS EMITTED HERE (see the header). The modality is
+% resolved -- `entries` is the type's observation leaf(s) -- but the
+% observation belongs to an EPOCH and owns that epoch's files, neither of which
+% an element document carries; the batch pass (resolveEpochProbemap) or the
+% NDI second pass mints it. `hasInstrument` and `entries` are kept so the
+% dispositions above stay exactly what they were.
+%#ok<*NASGU>
 end
 
 function v = baseField(bodyStruct, name, default)

@@ -149,6 +149,13 @@ verifyEqual(testCase, rep.recording_obs_seen, 0);
 end
 
 function testA30ObservationIsSeenAndIsSessionScopedNotEpochScoped(testCase)
+% INVERTED 2026-10-21. Pass 1 no longer emits the session-scoped "#30"
+% recording observation (Jess Haley, 2026-10-21: one observation per element
+% PER EPOCH, its files as data bodies, minted by resolveEpochProbemap AFTER
+% this pass). So the overlap census sees NO recording observation in pass-1
+% output and says so: overlap_vacuous, recording_obs_seen 0. The name is kept so
+% the history is findable; what it now pins is that no session-scoped
+% recording observation reaches this pass.
 % THE DECISION NUMBER. A direct n-trode element emits a voltage_observation
 % (#30) with a SESSION 'during' anchor. epochMint runs BEFORE
 % resolveSessionAnchors, so the anchor is still session_relative_reference --
@@ -157,14 +164,18 @@ function testA30ObservationIsSeenAndIsSessionScopedNotEpochScoped(testCase)
 el  = elementBody('el_1', 'sess_1', 'tet', 'n-trode', 1, 'specimen_1');
 ing = ingestedWithProbes('ing_1', 'sess_1', 't00001', {'a@lab'});
 [~, rep] = mintFrom({sessionBody('sd_1', 'sess_1', 'ref'), el, ing});
-verifyFalse(testCase, rep.overlap_vacuous);
-verifyGreaterThanOrEqual(testCase, rep.recording_obs_seen, 1);
+verifyTrue(testCase, rep.overlap_vacuous);
+verifyEqual(testCase, rep.recording_obs_seen, 0);
 verifyEqual(testCase, rep.recording_obs_epoch_scoped, 0);
-verifyGreaterThanOrEqual(testCase, rep.recording_obs_session_scoped, 1);
+verifyEqual(testCase, rep.recording_obs_session_scoped, 0);
 verifyEqual(testCase, rep.recording_obs_anchor_unresolved, 0);
 end
 
 function testTheSubjectLevelOverlapResolvesWhenTheJoinIsPossible(testCase)
+% UPDATED 2026-10-21: the subject string still resolves (matched 1), but the
+% (epoch, subject) pair is now UNCOVERED by any pass-1 recording observation --
+% pass 1 emits none (one observation per element per epoch, minted after this
+% pass by resolveEpochProbemap). covered 0 / uncovered 1 is the expected state.
 % (session, subject) overlap: the probemap names subject L; a specimen subject
 % document with local_identifier L is in the batch and is what the element (and
 % so the #30 observation) points at via subject_id. So L is MATCHED and the
@@ -176,8 +187,8 @@ ing  = ingestedWithProbes('ing_1', 'sess_1', 't00001', {'L'});
 verifyEqual(testCase, rep.probemap_distinct_subject_strings, 1);
 verifyEqual(testCase, rep.probemap_subject_strings_matched, 1);
 verifyEqual(testCase, rep.probemap_subject_strings_unmatched, 0);
-verifyEqual(testCase, rep.probemap_epoch_subject_covered, 1);
-verifyEqual(testCase, rep.probemap_epoch_subject_uncovered, 0);
+verifyEqual(testCase, rep.probemap_epoch_subject_covered, 0);
+verifyEqual(testCase, rep.probemap_epoch_subject_uncovered, 1);
 end
 
 function testAnUnmatchableSubjectStringIsNamedNotHiddenInAZero(testCase)

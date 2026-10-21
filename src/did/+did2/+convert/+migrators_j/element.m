@@ -18,6 +18,15 @@ function v2Body = element(preBody)
 %                         needs-NDI companion, the same disposition as the
 %                         config-class `ndi_*_class` fields).
 %     - <modality>_observation + sampled_body + session anchor
+%                         NO LONGER EMITTED HERE, SINCE 2026-10-21 (Jess Haley,
+%                         V_eta_recording_observation_plan.md: one observation
+%                         per element PER EPOCH, its epoch files as data
+%                         bodies). An element names no epochs and carries no
+%                         files, so the observation is minted by the batch pass
+%                         did2.convert.resolveEpochProbemap (epochs with a cached
+%                         `epochfiles_ingested`) or the NDI second pass (the file
+%                         navigator); until then `observes` is KEPT. Below is the
+%                         pass-1 shape as it was:
 %                         THE RAW RECORDING (open item #30, SIGNED 2026-08-10).
 %                         For a DIRECT recording element the signal itself is now
 %                         a typed observation OF THE SPECIMEN taken WITH this
@@ -136,6 +145,10 @@ end
 % `modality unresolved` worklist entry for a signal whose modality question is
 % a different one (#118) -- so the branch is opened for the type that has a
 % signature and no wider.
+% 2026-10-21: jRecordingObservation still resolves the modality (and Guard A's
+% worklist label) but EMITS NO OBSERVATION and never retires `observes`; the
+% per-epoch observation with its file bodies is minted by the batch pass /
+% NDI second pass, which also retires `observes` once it has a replacement.
 recordingBodies = {};
 retireObserves = false;
 unresolvedLabel = '';

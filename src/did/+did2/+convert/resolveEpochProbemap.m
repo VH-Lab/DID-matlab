@@ -26,13 +26,59 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested
-%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, term_manipulation, ingestion_manifest, relative_reference
+%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, term_manipulation, ingestion_manifest, relative_reference, opaque_body, intensity_observation
 %
-%   `image_observation` is DELIBERATELY NOT in that list. Imaging types are a
-%   recognised modality (jRecordingModality maps them to image_observation, and
-%   localModality mirrors that), but they CANNOT be emitted VALIDLY here --
-%   see the IMAGE IS DEFERRED note on localModality. They are counted
-%   (rows_image_deferred) and left to the second pass, never emitted blank.
+%   ---------------------------------------------------------------------
+%   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-10-21 (did-schema
+%   V_eta_recording_observation_plan.md): migrated recordings link their epoch
+%   files as data bodies, matching native V2 (NDI
+%   ndi.setup.V2.recordingDocuments): one observation per element per epoch,
+%   `data_body` true, an `opaque_body` per epoch file by location (ingested
+%   archives as attached), SHARED by the electrodes recorded in it, with the
+%   channel map; a file named but absent is still recorded by location.
+%
+%   This pass is where that is buildable from the document batch, because the
+%   epochfiles_ingested document names the epoch, its probe-map rows (which
+%   electrode, which channels) AND its files. So every recording observation
+%   minted here says `data_body: true`, and, per epoch:
+%
+%     INGESTED   the epoch's `daqreader_*_epochdata_ingested` document carries
+%                the recording as attached file series (`ai_group1_seg.nbf_#`,
+%                `channel_list.bin`, ...). Joined through the acquisition
+%                system: epochfiles_ingested.filenavigator_id =
+%                acquisition_system.epoch_file_pattern_id, whose reader_id =
+%                the archive's daqreader_id, at the same epoch string. One
+%                opaque_body per attached series, its members carried AS
+%                ATTACHED (locations verbatim) as body_data_0..N-1.
+%     OTHERWISE  one opaque_body per file the cache names (`epochid://` entries
+%                excluded), recorded BY LOCATION: location = the path v1
+%                recorded, location_type 'file', ingest 0, never copied. Size
+%                and checksum are OMITTED: this pass reads documents, never a
+%                disk, so it cannot know whether the file is present (the test
+%                corpora ship document JSON only -- "files named but absent"
+%                is a property of that test data, counted, not a failure).
+%
+%   Every body names, through a REPEATED `owner_id` (did-schema data_body,
+%   T15), every recording observation of that epoch that survived validation;
+%   each observation's own channels are its `acquisition_channels_id`. And the
+%   loose `probe observes specimen` relation that +migrators_j/element.m keeps
+%   is RETIRED here for every (probe, specimen) pair that now has a surviving
+%   observation carrying the `instrument_id` edge (`observes_retired`).
+%
+%   NOT HERE: epochs with no epochfiles_ingested cache (PRED, 20211116: their
+%   files are found by the file navigator, so the NDI second pass mints them),
+%   and derived `spikes` elements (their per-epoch bytes are on element_epoch
+%   documents; how those become a body is an open question).
+%
+%   IMAGING ROWS ARE NO LONGER DEFERRED (2026-10-21). They were left to the
+%   second pass because the old `image` value cell was required and a probemap
+%   row carries no raster metadata. did-schema #88 retired `image` (a camera
+%   frame is an `intensity_observation`, as jRecordingModality maps it), and with
+%   the frames in the epoch's file bodies (`data_body` true) nothing inline is
+%   needed, so an imaging row is an ordinary recording row. `rows_image_deferred`
+%   is kept as a counter and now reads 0.
 %
 %   `epochfiles_ingested` IS now consumed: after its probemap is decomposed into
 %   observations, the document itself is rewritten to `ingestion_manifest`
@@ -150,6 +196,19 @@ report = struct( ...
     'acquisition_channels_minted',    0, ...
     'channels_unbindable_type',       0, ...
     'fold_quarantined',               0, ...
+    'epochs_with_observations',       0, ...
+    'epochs_from_archive',            0, ...
+    'epochs_by_location',             0, ...
+    'epochs_no_file_named',           0, ...
+    'bodies_from_archive',            0, ...
+    'archive_members_carried',        0, ...
+    'bodies_by_location',             0, ...
+    'bodies_size_and_checksum_omitted',0, ...
+    'body_owner_links',               0, ...
+    'bodies_quarantined',             0, ...
+    'body_build_refused',             0, ...
+    'body_build_first_error',         '', ...
+    'observes_retired',               0, ...
     'ran',                            false);
 result.epoch_probemap_fold = report;
 
@@ -210,6 +269,13 @@ acqSystemIdByName = containers.Map('KeyType', 'char', 'ValueType', 'char');
 %     the probe's own direct recording of the SAME specimen and modality, so the
 %     subject and the class must be in the key. A cell of {index} per triple.
 obs30ByTriple = containers.Map('KeyType', 'char', 'ValueType', 'any');
+% (e) 2026-10-21, the file bodies: acquisition_system.epoch_file_pattern_id (the
+%     v1 filenavigator id, preserved) -> its reader_id (the v1 daqreader id),
+%     and each `daqreader_*_epochdata_ingested` archive by (session, reader,
+%     epoch string). (f) the loose `observes` relations, by (child, parent).
+readerIdByNavId = containers.Map('KeyType', 'char', 'ValueType', 'char');
+archiveIdxByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
+observesIdxByPair = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:n
     if isempty(bodies{k}); continue; end
     b = bodies{k};
@@ -235,7 +301,29 @@ for k = 1:n
                     acqSystemIdByName(key) = docIds{k};
                 end
             end
+            navId = depValueOf(b, 'epoch_file_pattern_id');
+            rdrId = depValueOf(b, 'reader_id');
+            if ~isempty(navId) && ~isempty(rdrId) && ~isKey(readerIdByNavId, navId)
+                readerIdByNavId(navId) = rdrId;
+            end
+        case 'directed_relation'
+            if strcmp(relationNameOf(b), 'observes')
+                pk = [depValueOf(b, 'child_id') '|' depValueOf(b, 'parent_id')];
+                if isKey(observesIdxByPair, pk)
+                    observesIdxByPair(pk) = [observesIdxByPair(pk), k];
+                else
+                    observesIdxByPair(pk) = k;
+                end
+            end
         otherwise
+            if isArchiveClass(classOf{k})
+                rdr = depValueOf(b, 'daqreader_id');
+                ep = archiveEpochOf(b);
+                if ~isempty(rdr) && ~isempty(ep)
+                    ak = archiveKey(sessionIds{k}, rdr, ep);
+                    if ~isKey(archiveIdxByKey, ak); archiveIdxByKey(ak) = k; end
+                end
+            end
             % did-schema #88: an animal, a probe, a cell are all one `entity`
             % class told apart by `type`; any entity that is not a record
             % (session, dataset, software, ...) can be a probemap subject or
@@ -281,6 +369,12 @@ renameBodyBySrcId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 acIdByKey   = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acBodyById  = containers.Map('KeyType', 'char', 'ValueType', 'any');
 newGroupAc = {};     % acquisition_channels base.id each new body points at ('' = none)
+% 2026-10-21: per epochfiles_ingested document, the observations it minted and
+% where their files are -- the bodies are built after validation, owned by the
+% observations that survived.
+epochSpecs = struct('src', {}, 'obsIds', {}, 'sid', {}, 'datestamp', {}, ...
+    'epochString', {}, 'navId', {});
+obsPairById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
@@ -305,6 +399,7 @@ for k = 1:n
     % an unresolved type, a row naming no resolvable subject) keeps the WHOLE
     % v1 document as a passthrough, so the row is never silently dropped.
     rowsWithoutHome = 0;
+    specObsIds = {};
     pm = probemapCharOf(b);
     rowsPM = [];
     if ~isempty(pm); rowsPM = parseProbemapRows(pm); end
@@ -423,6 +518,10 @@ for k = 1:n
             obs = mkObservation(entries(e), subjectId, instrumentId, anchorId, ...
                 sid, datestamp, acId);
             newBodies{end+1} = obs;                 %#ok<AGROW>
+            specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
+            if ~isempty(instrumentId)
+                obsPairById(obs.base.id) = [char(instrumentId) '|' char(subjectId)];
+            end
             newGroupAnchor{end+1} = anchorId;       %#ok<AGROW>
             newGroupAc{end+1} = acId;               %#ok<AGROW>
 
@@ -457,6 +556,12 @@ for k = 1:n
         else
             report.instrument_resolved = report.instrument_resolved + numel(entries);
         end
+    end
+
+    if ~isempty(specObsIds)
+        epochSpecs(end+1) = struct('src', k, 'obsIds', {specObsIds}, ...
+            'sid', sid, 'datestamp', datestamp, 'epochString', es, ...
+            'navId', fnId); %#ok<AGROW>
     end
 
     if isempty(fnId)
@@ -579,6 +684,36 @@ for a = 1:numel(anchorKeys)
     end
 end
 
+% --- 2026-10-21: the epoch files, as data bodies of the surviving observations
+[fileBodies, report, newQuarantine] = mkEpochFileBodies(epochSpecs, emittedNewIds, ...
+    bodies, docIds, readerIdByNavId, archiveIdxByKey, options, report);
+appended = [appended, fileBodies];
+if ~isempty(newQuarantine)
+    if isfield(result, 'quarantine') && ~isempty(result.quarantine)
+        result.quarantine = [result.quarantine, newQuarantine];
+    else
+        result.quarantine = newQuarantine;
+    end
+end
+
+% --- 2026-10-21: retire `observes` where a surviving observation now carries
+% the same (instrument, specimen) pair as its instrument_id / entity_id edges.
+observesRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+emittedKeys = emittedNewIds.keys;
+for i = 1:numel(emittedKeys)
+    if ~isKey(obsPairById, emittedKeys{i}); continue; end
+    pk = obsPairById(emittedKeys{i});
+    if ~isKey(observesIdxByPair, pk); continue; end
+    idxs = observesIdxByPair(pk);
+    for j = 1:numel(idxs)
+        rid = docIds{idxs(j)};
+        if ~isempty(rid) && ~isKey(observesRetire, rid)
+            observesRetire(rid) = true;
+            report.observes_retired = report.observes_retired + 1;
+        end
+    end
+end
+
 % --- commit retirements, gated on a surviving replacement -----------------
 % A matched #30 observation is removed ONLY if at least one of the observations
 % minted to replace it survived. Otherwise the coarse observation is kept -- a
@@ -632,7 +767,8 @@ end
 kept = {};
 for k = 1:n
     id = docIds{k};
-    if ~isempty(id) && (isKey(retireSet, id) || isKey(removeAnchorSet, id))
+    if ~isempty(id) && (isKey(retireSet, id) || isKey(removeAnchorSet, id) ...
+            || isKey(observesRetire, id))
         continue;
     end
     if ~isempty(id) && isKey(renameBodyBySrcId, id)
@@ -656,12 +792,13 @@ end
 
 function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
         sessionId, datestamp, acId)
-% A recording row -> a value-less <modality>_observation of the specimen
-% (did-schema #88: a direction + a value kind), the probe as instrument (T7),
-% the rig + channels through acquisition_channels_id (#73 item 56).
+% A recording row -> a <modality>_observation of the specimen (did-schema #88:
+% a direction + a value kind), the probe as instrument (T7), the rig + channels
+% through acquisition_channels_id (#73 item 56). Its value is the epoch's files:
+% `data_body` true (2026-10-21, native V2 shape; mkEpochFileBodies builds them).
 if nargin < 7; acId = ''; end
 obs = did2.build.statement(entry.class, char(subjectId), ...
-    did2.convert.registeredTerm('', entry.variable), [], ...
+    did2.convert.registeredTerm('', entry.variable), [], 'DataBody', true, ...
     'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
     'AcquisitionChannelsId', char(acId), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
@@ -851,11 +988,10 @@ function [entries, disposition] = localModality(elementType)
 %   Its rows are pinned against jRecordingModality's by
 %   testResolveEpochProbemap.m so the two cannot drift. Covers the SAME rows;
 %   `multichannel` is dropped (this pass mints no body, so there is no axis to
-%   flag). The ONLY intentional divergence is DISPOSITION, not mapping: imaging
-%   types map to image_observation exactly as jRecordingModality does, but this
-%   pass returns disposition 'image_deferred' (see the IMAGE IS DEFERRED note
-%   below) because it cannot emit a valid pure-reference image cell in increment
-%   1. If jRecordingModality gains a row, add it here and update that test.
+%   flag). Since 2026-10-21 there is NO divergence: imaging maps to
+%   intensity_observation with disposition 'recording', as in jRecordingModality
+%   (it was 'image_deferred'; see the note below). If jRecordingModality gains a
+%   row, add it here and update that test.
 if nargin < 1 || isempty(elementType); elementType = ''; end
 key = lower(strtrim(char(elementType)));
 
@@ -890,10 +1026,15 @@ end
 % jRecordingModality only in the DISPOSITION (the type->leaf mapping is identical);
 % jRecordingObservation carries the same latent blank-cell shape, untested because
 % its own tests validate with Validate=false.
+%
+% NO LONGER DEFERRED, 2026-10-21 (the paragraph above is history): #88 maps a
+% camera frame to `intensity_observation` (jRecordingModality, row for row), and
+% with the frames in the epoch's file bodies (`data_body` true) no value cell is
+% needed, so there is nothing to leave blank.
 if any(strcmp(key, {'wide-field-imaging', 'two-photon-imaging', ...
         'one-photon-imaging', 'brightfield-imaging'}))
-    entries = mkEntry('image_observation', 'image', 'image');
-    disposition = 'image_deferred';
+    entries = mkEntry('intensity_observation', 'intensity', 'intensity');
+    disposition = 'recording';
     return;
 end
 
@@ -1015,6 +1156,211 @@ lid = name;
 if ~isempty(reference)
     lid = strtrim(sprintf('%s (ref %s)', name, reference));
 end
+end
+
+% ===================== the epoch files as bodies (2026-10-21) ==========
+
+function [out, report, quarantine] = mkEpochFileBodies(specs, emittedIds, bodies, ...
+        docIds, readerIdByNavId, archiveIdxByKey, options, report)
+%MKEPOCHFILEBODIES One opaque_body per epoch file, owned by every surviving
+%   recording observation of that epoch (owner_id repeats). Ingested: the
+%   archive's attached series, carried as attached. Otherwise: the files the
+%   cache names, by location. Validated here; a quarantine is a real defect.
+out = {};
+quarantine = [];
+pending = {};
+for s = 1:numel(specs)
+    sp = specs(s);
+    owners = {};
+    for i = 1:numel(sp.obsIds)
+        if isKey(emittedIds, sp.obsIds{i}); owners{end+1} = sp.obsIds{i}; end %#ok<AGROW>
+    end
+    if isempty(owners); continue; end
+    report.epochs_with_observations = report.epochs_with_observations + 1;
+    src = bodies{sp.src};
+    made = {};
+    archive = [];
+    if ~isempty(sp.navId) && isKey(readerIdByNavId, sp.navId)
+        ak = archiveKey(sp.sid, readerIdByNavId(sp.navId), sp.epochString);
+        if isKey(archiveIdxByKey, ak); archive = bodies{archiveIdxByKey(ak)}; end
+    end
+    try
+        if ~isempty(archive)
+            [made, nMembers] = archiveBodies(archive, owners, sp);
+            if ~isempty(made)
+                report.epochs_from_archive = report.epochs_from_archive + 1;
+                report.bodies_from_archive = report.bodies_from_archive + numel(made);
+                report.archive_members_carried = report.archive_members_carried + nMembers;
+            end
+        end
+        if isempty(made)
+            made = locationBodies(src, owners, sp);
+            if ~isempty(made)
+                report.epochs_by_location = report.epochs_by_location + 1;
+                report.bodies_by_location = report.bodies_by_location + numel(made);
+                report.bodies_size_and_checksum_omitted = ...
+                    report.bodies_size_and_checksum_omitted + numel(made);
+            end
+        end
+    catch err
+        made = {};
+        report.body_build_refused = report.body_build_refused + 1;
+        if isempty(report.body_build_first_error)
+            report.body_build_first_error = sprintf('%s: %s', err.identifier, err.message);
+        end
+    end
+    if isempty(made)
+        report.epochs_no_file_named = report.epochs_no_file_named + 1;
+        continue;
+    end
+    report.body_owner_links = report.body_owner_links + numel(made) * numel(owners);
+    pending = [pending, made]; %#ok<AGROW>
+end
+if isempty(pending); return; end
+res = did2.convert.v1_to_v2(pending, ...
+    'Validate',      options.Validate, ...
+    'SchemaCache',   options.SchemaCache, ...
+    'TargetVersion', options.TargetVersion);
+report.bodies_quarantined = numel(res.quarantine);
+quarantine = res.quarantine;
+out = res.migrated(:)';
+end
+
+function [made, nMembers] = archiveBodies(archive, owners, sp)
+%ARCHIVEBODIES The ingested recording, one opaque_body per attached file series
+%   of a daqreader_*_epochdata_ingested document. A series slot `foo_#` holds
+%   the members `foo_1`, `foo_2`, ... (mfdaq.m attaches its segments that way);
+%   they become body_data_0, body_data_1, ... in order, locations VERBATIM, so
+%   the bytes are the very ones v1 attached. A declared slot with no attached
+%   member is skipped (mfdaq declares 62 slots and fills those it used).
+made = {};
+nMembers = 0;
+if ~isfield(archive, 'files') || ~isstruct(archive.files); return; end
+list = {};
+if isfield(archive.files, 'file_list'); list = cellstrOf(archive.files.file_list); end
+infos = {};
+if isfield(archive.files, 'file_info') && ~isempty(archive.files.file_info)
+    fi = archive.files.file_info;
+    if isstruct(fi); infos = num2cell(fi(:)'); elseif iscell(fi); infos = fi(:)'; end
+end
+names = cell(1, numel(infos));
+for i = 1:numel(infos)
+    names{i} = '';
+    if isstruct(infos{i}) && isfield(infos{i}, 'name'); names{i} = char(infos{i}.name); end
+end
+for L = 1:numel(list)
+    slot = list{L};
+    if endsWith(slot, '_#')
+        stem = slot(1:end-1);
+        idx = []; seg = [];
+        for i = 1:numel(names)
+            if startsWith(names{i}, stem)
+                tail = names{i}(numel(stem)+1:end);
+                if ~isempty(tail) && all(isstrprop(tail, 'digit'))
+                    idx(end+1) = i; seg(end+1) = str2double(tail); %#ok<AGROW>
+                end
+            end
+        end
+        [~, order] = sort(seg);
+        idx = idx(order);
+    else
+        idx = find(strcmp(names, slot));
+        idx = idx(1:min(1, numel(idx)));
+    end
+    if isempty(idx); continue; end
+    body = did2.build.opaqueBody(owners, binaryFormat(), ...
+        'Chunks', numel(idx), ...
+        'Fields', struct('filename', slot), ...
+        'Description', sprintf(['The ingested recording of epoch %s: v1 attached ' ...
+            'file series %s, carried as attached (%d member(s)).'], ...
+            sp.epochString, slot, numel(idx)), ...
+        'SessionId', sp.sid, 'CreationTimestamp', sp.datestamp, 'Validate', false);
+    fi = struct('name', {}, 'locations', {});
+    for m = 1:numel(idx)
+        loc = struct();
+        if isfield(infos{idx(m)}, 'locations'); loc = infos{idx(m)}.locations; end
+        fi(end+1) = struct('name', sprintf('body_data_%d', m-1), 'locations', {loc}); %#ok<AGROW>
+    end
+    body.files.file_info = fi;
+    made{end+1} = body; %#ok<AGROW>
+    nMembers = nMembers + numel(idx);
+end
+end
+
+function made = locationBodies(src, owners, sp)
+%LOCATIONBODIES One opaque_body per file the epochfiles_ingested cache names,
+%   recorded BY LOCATION (ingest 0, never copied), exactly as
+%   ndi.setup.V2.recordingDocuments / ndi.document/add_file record a file they
+%   do not take in. `epochid://` entries name the epoch, not a file. No size, no
+%   checksum: this pass reads documents, not a disk.
+made = {};
+files = ingestedFilesOf(src);
+for f = 1:numel(files)
+    path = char(files{f});
+    if isempty(strtrim(path)) || contains(path, '://'); continue; end
+    [~, stem, ext] = fileparts(path);
+    body = did2.build.opaqueBody(owners, formatForExtension(ext), ...
+        'Fields', struct('filename', [stem ext]), ...
+        'Description', sprintf(['A raw recording file of epoch %s, recorded by ' ...
+            'location where the source keeps it (named by the v1 ' ...
+            'epochfiles_ingested cache; not ingested, never copied).'], sp.epochString), ...
+        'SessionId', sp.sid, 'CreationTimestamp', sp.datestamp, 'Validate', false);
+    body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
+        'delete_original', 0, 'uid', did.ido.unique_id(), 'location', path, ...
+        'parameters', '', 'location_type', 'file', 'ingest', 0));
+    made{end+1} = body; %#ok<AGROW>
+end
+end
+
+function f = binaryFormat()
+f = struct('node', 'EDAM:format_2333', 'name', 'Binary format');
+end
+
+function f = formatForExtension(ext)
+%FORMATFOREXTENSION An EDAM file-format term for a raw file, by extension, as
+%   the native V2 Haley import chooses one (sessionDocuments.m: .mp4 MPEG-4,
+%   .tif TIFF); text files are Textual format; every other acquisition format
+%   (Intan .rhd, Spike2 .smr, .mat, ...) has no EDAM term and is Binary format.
+switch lower(char(ext))
+    case '.mp4',            f = struct('node', 'EDAM:format_3997', 'name', 'MPEG-4');
+    case {'.tif', '.tiff'}, f = struct('node', 'EDAM:format_3591', 'name', 'TIFF');
+    case {'.txt', '.csv', '.tsv'}, f = struct('node', 'EDAM:format_2330', 'name', 'Textual format');
+    otherwise,              f = binaryFormat();
+end
+end
+
+function tf = isArchiveClass(cn)
+tf = startsWith(cn, 'daqreader_') && endsWith(cn, 'epochdata_ingested');
+end
+
+function k = archiveKey(sessionId, readerId, epochString)
+k = [char(sessionId) '|' char(readerId) '|' char(epochString)];
+end
+
+function es = archiveEpochOf(b)
+es = '';
+if isfield(b, 'epochid') && isstruct(b.epochid)
+    es = charField(b.epochid, {'epochid', 'epoch_id'});
+end
+end
+
+function c = cellstrOf(v)
+c = {};
+if iscell(v); c = cellfun(@char, v(:)', 'UniformOutput', false);
+elseif ischar(v) && ~isempty(v); c = {v};
+elseif isstring(v); c = cellstr(v(:)');
+end
+end
+
+function r = relationNameOf(b)
+r = '';
+if ~isfield(b, 'directed_relation') || ~isstruct(b.directed_relation) ...
+        || ~isfield(b.directed_relation, 'relation')
+    return;
+end
+v = b.directed_relation.relation;
+if isstruct(v) && isfield(v, 'name'); r = char(v.name);
+elseif ischar(v) || isstring(v); r = char(v); end
 end
 
 % ===================== small readers ===================================

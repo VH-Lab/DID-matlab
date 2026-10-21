@@ -570,6 +570,22 @@ POST_PASSES = [
         ("acquisition_channels_minted", "acquisition_channels documents minted"),
         ("channels_unbindable_type", "  rows whose channel type is outside ai/ao/di/do (no channels doc)"),
         ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
+        # 2026-10-21 (Jess Haley, did-schema V_eta_recording_observation_plan.md):
+        # each recording observation is `data_body` true and the epoch's files
+        # are its opaque_bodies, shared through a repeated owner_id. BY LOCATION
+        # means the file is NAMED, not checked: the test corpora carry document
+        # JSON only, so "files named but absent" is a property of the test data.
+        ("epochs_with_observations", "epochs with a surviving recording observation  <- BODY DENOMINATOR"),
+        ("epochs_from_archive", "  epochs whose bodies are the ingested archive (as attached)"),
+        ("epochs_by_location", "  epochs whose bodies are named files, by location"),
+        ("epochs_no_file_named", "  epochs with NO file to point at (observation has no body)"),
+        ("bodies_from_archive", "opaque_bodies from ingested archive series"),
+        ("archive_members_carried", "  archive members carried as attached"),
+        ("bodies_by_location", "opaque_bodies by location (files named, presence NOT checked)"),
+        ("body_owner_links", "  owner_id links (body x observation; shared bodies)"),
+        ("body_build_refused", "  epochs whose bodies could not be BUILT (see first error)"),
+        ("bodies_quarantined", "  bodies QUARANTINED"),
+        ("observes_retired", "`observes` relations retired (replaced by instrument_id)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # five run knobs move inline onto the harmonic_component_calculation leaf

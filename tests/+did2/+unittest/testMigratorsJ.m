@@ -336,8 +336,10 @@ function testElementDerivedBecomesSubjectDerivedFrom(testCase)
 % A derived element (direct=0 with an underlying element) -> a subject (id
 % preserved) + kind assertions (nothing dropped) + a derived_from lineage edge.
 %
-% SINCE 2026-08-18 A DERIVED `spikes` ELEMENT ALSO EMITS a time_observation of
-% the neuron plus its session anchor (TEAM-SIGN-OFF [spike train leaf]). Every
+% 2026-10-21: a derived `spikes` element emits NO observation (a recording is
+% one observation per epoch with its files as bodies; the spike train's
+% per-epoch body is an open question). From 2026-08-18 it emitted a value-less
+% time_observation, refused by rule value_inline_or_body. Every
 % assertion below still holds -- the term_assertion count is unchanged at 2,
 % because the observation is not an assertion -- so this test keeps passing and
 % would keep passing if that emission regressed. It is NOT the gate for it:
@@ -357,51 +359,34 @@ verifyEqual(testCase, depVal(rel, 'parent_id'), 'probe_1');
 end
 
 function testElementDirectDeviceObservesSpecimen(testCase)
-% INVERTED 2026-08-10, not patched. This test USED to assert that a direct
-% device emits a loose `observes` directed_relation onto the specimen. That
-% relation is exactly what the signed raw-recording model retires: the fact
-% "this electrode recorded this animal" now lives INSIDE a typed observation,
-% as `subject_id` = the specimen and `instrument_id` = the electrode (T7),
-% rather than beside it as an untyped edge that carries no modality and no
-% units.
-%
-% So the old assertion was not stale, it was asserting the defect. Updating it
-% to look for the relation somewhere else would have preserved the thing being
-% removed. This is the fourth instance of that pattern in this migration
-% (test_phase1_source_cleanup_and_dep_typing,
-% test_ingested_caches_epochid_dep_only,
-% testMfdaqIngestedDeEncodesToDaqreaderEpochdataIngested were the first three),
-% and the rule from those is the rule here: a test written from the same
-% premise as the code cannot catch the code, so it is inverted, never patched.
-%
-% The retirement is CONDITIONAL, and that is what the second half checks:
-% element.m drops `observes` only when jRecordingObservation actually wrote the
-% replacement `instrument_id` edge. An element whose type resolves to no
-% modality keeps `observes`, because nothing has taken over the job --
-% testMigratorsJRecordingObservation's
-% testUnmappedTypeIsFlaggedQueryablyAndKeepsObserves pins that direction down.
+% INVERTED AGAIN 2026-10-21 -- the name is true again. From 2026-08-10 this
+% asserted that pass 1 drops the loose `observes` relation because element.m
+% emitted the replacement: a session-wide voltage_observation carrying the
+% probe as `instrument_id`. Decided by Jess Haley, 2026-10-21 (did-schema
+% V_eta_recording_observation_plan.md): a recording is ONE observation per
+% element PER EPOCH whose value is that epoch's files (data bodies). An element
+% names no epoch and carries no file, so pass 1 emits no observation, and with
+% nothing in its place `observes` is KEPT (dropping a link with no replacement
+% is loss, not retirement). did2.convert.resolveEpochProbemap retires it when it
+% emits the per-epoch observation (testMigratorsJRecordingObservation's
+% testObservesRelationIsGoneForAMappedRecordingElement pins that half).
 out = runJ(elementDoc('probeA', 'n-trode', 'ndi.probe.timeseries', 1, 'subj_007', ''));
 
-% The loose relation is GONE for a resolvable direct device.
 rel = firstOfClassJ(out.migrated, 'directed_relation');
-verifyEmpty(testCase, rel, ...
-    ['a direct n-trode with a specimen must no longer emit a loose ' ...
-     '`observes` relation -- the attribution moved into the typed observation']);
+verifyNotEmpty(testCase, rel, 'pass 1 dropped `observes` with nothing in its place');
+verifyEqual(testCase, rel.get('directed_relation.relation').name, 'observes');
+verifyEqual(testCase, depVal(rel, 'child_id'), 'el_1');
+verifyEqual(testCase, depVal(rel, 'parent_id'), 'subj_007');
 
-% ...and the attribution it carried is now inside the observation. n-trode is
-% an extracellular electrode bundle, so the modality is voltage.
-obs = firstOfClassJ(out.migrated, 'voltage_observation');
-verifyNotEmpty(testCase, obs, 'a direct n-trode must emit a voltage_observation');
-verifyEqual(testCase, depVal(obs, 'entity_id'), 'subj_007');    % the SPECIMEN
-verifyEqual(testCase, depVal(obs, 'instrument_id'), 'el_1');     % the electrode (T7)
+verifyEmpty(testCase, firstOfClassJ(out.migrated, 'voltage_observation'), ...
+    'pass 1 emitted a recording observation; it is per epoch, minted by the batch pass');
 
 % The element itself is still promoted to a subject with its id PRESERVED --
 % ~50 documents reference `element_id`, and moving it is the 11,448-orphan
-% shape. The observation mints a fresh id; it does not take el_1's.
+% shape.
 subj = firstOfClassJ(out.migrated, 'device');   % #88: an entity of type device
 verifyNotEmpty(testCase, subj, 'the element must still become a subject');
 verifyEqual(testCase, subj.get('base.id'), 'el_1');
-verifyNotEqual(testCase, obs.get('base.id'), 'el_1');
 end
 
 % ============ treatment_transfer -> term_manipulation + relation =======
