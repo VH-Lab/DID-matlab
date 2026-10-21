@@ -1686,14 +1686,20 @@ for k = 1:numel(geom)
 end
 end
 
-% ============ deferred stimulus_bath -> dose_manipulation (V_eta) =======
+% ==== deferred stimulus_bath -> manipulation valued by its formulation =====
 
-function testDeferredBathBecomesDoseManipulation(testCase)
+function testDeferredBathIsAManipulationValuedByItsFormulation(testCase)
 % A stimulus_bath defers per-document (needsSessionContext). At V_eta the
-% resolveDeferredBaths pass must assemble a strict-J `dose_manipulation` (D8
-% retired the `bath`/`pharmacological_manipulation` family), NOT a `bath`:
-% subject_id from the stimulator element, a session_relative anchor, the primary
-% chemical as the spine variable, and the mixture as the dose formulation.
+% resolveDeferredBaths pass assembles it (D8 retired the `bath` /
+% `pharmacological_manipulation` family) as a `manipulation` whose value kind
+% is `formulation` and whose value is the bath's formulation document, through
+% `value_id`: "A bath is a manipulation whose value is the formulation
+% (pointed at through `value_id`), not a dose; a dose always has an amount"
+% (Jess Haley, 2026-10-21; did-schema V_eta_go_forward_class_audit.md).
+% INVERTED from testDeferredBathBecomesDoseManipulation, which asserted a
+% `dose_manipulation` naming its formulation by `formulation_id`: that dose had
+% an empty `dose.value`, which the value rule (`value_inline_or_body`,
+% did-schema data_body AMENDMENT 5) refuses.
 subjId = 'aabb1122ccdd3344_5500000000000001';
 stimId = 'aabb1122ccdd3344_5500000000000002';
 
@@ -1727,9 +1733,11 @@ verifyTrue(testCase, any(arrayfun(@(q) strcmp(q.class_name, 'stimulus_bath'), ..
 out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
     'TargetVersion', 'V_eta');
 
-% strict J: a dose_manipulation, and NEVER the retired `bath` class
-verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 1, ...
-    'no dose_manipulation produced');
+% a manipulation valued by its formulation; never a dose, never the retired `bath`
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1, ...
+    'no formulation-valued manipulation produced');
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0, ...
+    'a bath is not a dose (a dose always has an amount)');
 verifyFalse(testCase, isfield(out.summary.by_class, 'bath'), ...
     'retired `bath` class must not be emitted at V_eta');
 for k = 1:numel(out.quarantine)
@@ -1738,26 +1746,34 @@ for k = 1:numel(out.quarantine)
         sprintf('bath left unresolved: %s', out.quarantine(k).reason));
 end
 
-dose = firstOfClassJ(out.migrated, 'dose_manipulation');
-verifyNotEmpty(testCase, dose);
-verifyEqual(testCase, depVal(dose, 'entity_id'), subjId);
-verifyNotEmpty(testCase, depVal(dose, 'time_reference_id'));
-% the primary chemical is the spine identity and seeds the dose formulation
-verifyEqual(testCase, dose.get('statement.variable').name, 'muscimol');
-% #88: the dose names a `formulation` document, whose ingredients are
-% `chemical` documents reached by `ingredient_id`.
-formId = depVal(dose, 'formulation_id');
-verifyNotEmpty(testCase, formId, 'the dose must name its formulation');
+m = firstOfClassJ(out.migrated, 'formulation_manipulation');
+verifyNotEmpty(testCase, m);
+if isempty(m); return; end
+verifyEqual(testCase, m.get('document_class.class_name'), 'manipulation');
+verifyEqual(testCase, m.get('base.id'), 'aabb1122ccdd3344_5500000000000004', ...
+    'the bath keeps the stimulus_bath id');
+verifyEqual(testCase, depVal(m, 'entity_id'), subjId);
+verifyNotEmpty(testCase, depVal(m, 'time_reference_id'));
+verifyEmpty(testCase, depVal(m, 'formulation_id'), ...
+    'the formulation is the value (value_id), not a dose''s formulation_id');
+% the primary chemical is the spine identity
+verifyEqual(testCase, m.get('statement.variable').name, 'muscimol');
+% its value is the formulation document, through value_id; its own value is empty
+formId = depVal(m, 'value_id');
+verifyNotEmpty(testCase, formId, 'the bath must take its value through value_id');
 form = []; chem = [];
 for k = 1:numel(out.migrated)
     if strcmp(out.migrated{k}.get('base.id'), formId); form = out.migrated{k}; end
 end
 verifyNotEmpty(testCase, form);
 if ~isempty(form)
+    verifyEqual(testCase, form.get('document_class.class_name'), 'formulation');
     chemId = depVal(form, 'ingredient_id');
     for k = 1:numel(out.migrated)
         if strcmp(out.migrated{k}.get('base.id'), chemId); chem = out.migrated{k}; end
     end
+    % the mixture row's amount rides on the formulation's ingredient entry
+    verifyEqual(testCase, form.get('formulation.value').ingredients(1).concentration.source_value, 5);
 end
 verifyNotEmpty(testCase, chem, 'the formulation must name its chemical');
 if ~isempty(chem)

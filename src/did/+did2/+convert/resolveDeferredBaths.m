@@ -28,8 +28,8 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: stimulus_bath
-%   BATCH-PASS-EMITS: stimulus_bath -> document: session_relative_reference,
-%       dose_manipulation, term_observation
+%   BATCH-PASS-EMITS: stimulus_bath -> document: relative_time_reference,
+%       manipulation, formulation, chemical, term_observation
 %
 %   SCOPE OF THAT LINE: V_eta is the only path. The V_zeta branch (makeBath
 %   emitting `bath` + `pharmacological_manipulation`) was deleted with
@@ -377,10 +377,15 @@ function bodies = makeBath(v1Body, subjectId, targetVersion)
 %MAKEBATH Assemble the resolved bath (+ its anchor) for TARGETVERSION. Returns a
 %   cell of bodies {anchor, manipulation, ...} to fold back through v1_to_v2.
 %   Strict J (V_eta) retired the `bath`/`pharmacological_manipulation` family
-%   (D8): a bath is a delivered substance -> a `dose_manipulation`
-%   subject_manipulation leaf, exactly as migrators_j.treatment routes a `bath`
-%   keyword. The V_zeta/V_epsilon branch that kept the `bath` class was deleted
-%   with did-schema #88 (OPEN_WORK #128).
+%   (D8). A bath is a `manipulation` whose value is the bath's `formulation`,
+%   taken through `value_id` -- NOT a dose: "A bath is a manipulation whose
+%   value is the formulation (pointed at through `value_id`), not a dose; a
+%   dose always has an amount" (Jess Haley, 2026-10-21; did-schema
+%   V_eta_go_forward_class_audit.md). A bath gives no amount, so the dose it
+%   used to be had an empty `dose.value`, which the value rule
+%   (`value_inline_or_body`, did-schema data_body AMENDMENT 5) refuses. The
+%   V_zeta/V_epsilon branch that kept the `bath` class was deleted with
+%   did-schema #88 (OPEN_WORK #128).
 if ~strcmp(targetVersion, 'V_eta')
     error('did2:convert:unsupportedTarget', ...
         ['resolveDeferredBaths assembles V_eta only; TargetVersion "%s" has ' ...
@@ -395,8 +400,10 @@ function bodies = makeBathVEta(v1Body, subjectId)
 % relative_time_reference onto the session entity, whose base.id IS the
 % session id), one `chemical` per mixture row, the `formulation` naming them
 % (its ingredient entries carry each row's amount as the source wrote it), the
-% `dose_manipulation` (id preserved) naming the formulation, and the location
-% observation when the bath names a location.
+% `manipulation` (id preserved) whose value kind is `formulation` and whose
+% value is that formulation document, through `value_id` (a bath is not a dose:
+% Jess Haley, 2026-10-21), and the location observation when the bath names a
+% location.
 sessionId = baseField(v1Body, 'session_id', '');
 datestamp = baseField(v1Body, 'datestamp', '');
 if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
@@ -455,10 +462,13 @@ fv.ingredients = entries;
 f = did2.build.document('formulation', struct('value', fv), ...
     o{:}, 'Edges', struct('ingredient_id', {ids}));
 bodies{end+1} = f;
-dose = did2.build.statement('dose_manipulation', char(subjectId), variable, [], ...
-    'TimeReferenceIds', {anchorId}, 'Edges', struct('formulation_id', f.base.id), ...
+% `formulation_manipulation` is no class: did2.build reads it as the direction
+% `manipulation` with the value kind `formulation`. Its own `value` stays empty;
+% the formulation document holds it.
+bath = did2.build.statement('formulation_manipulation', char(subjectId), variable, [], ...
+    'TimeReferenceIds', {anchorId}, 'ValueId', f.base.id, ...
     'Id', char(bathId), o{:});
-bodies = [{dose}, bodies];
+bodies = [{bath}, bodies];
 loc = locationTerm(v1Body);
 if ~isempty(loc.node) || ~isempty(loc.name)
     bodies{end+1} = makeLocationObs(v1Body, subjectId, anchorId, loc);

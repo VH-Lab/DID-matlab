@@ -905,8 +905,8 @@
 %         Brainstorm-J migrator: did_v1 spikewaves -- DEFERRED to the NDI second pass;
 %         the document is passed through UNCHANGED.
 %     stimulus_bath
-%         Deferred: stimulus_bath migrates to a dose_manipulation in the NDI layer /
-%         the coarse resolveDeferredBaths pass.
+%         Deferred: stimulus_bath migrates to a formulation-valued manipulation in the
+%         NDI layer / the coarse resolveDeferredBaths pass.
 %     stimulus_parameter
 %         Brainstorm-J migrator: did_v1 stimulus_parameter -- a PASSTHROUGH that
 %         normalises the template's own untypeable placeholder.
