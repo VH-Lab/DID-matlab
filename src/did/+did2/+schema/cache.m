@@ -1340,6 +1340,24 @@ classdef cache < handle
                         ['{' strjoin(missingDeps, ', ') '}']);
                 end
             end
+            % ---- value_inline_or_body (did-schema data_body AMENDMENT 5) ---
+            % Jess Haley, signed 2026-10-21: a value is inline (`value`
+            % filled) or in data bodies (`data_body` true), never neither; a
+            % statement may instead take its value from a shared value
+            % document through a non-empty `value_id` edge (clarification,
+            % same day). The rule on `value` replaces the per-class required
+            % `value` of nine classes, which is why this switch is ARMED BY
+            % DEFAULT: disarmed, those nine would validate with no value at
+            % all. LAST, like #37, so a document failing an older check keeps
+            % failing for the same reason.
+            if did2.schema.cache.strictMode('ValueInlineOrBody') ...
+                    && obj.valueIsNowhere(s, info, [{className}, expectedAncestors])
+                error('did2:validation:valueNowhere', ...
+                    ['Class "%s" is a value (rule value_inline_or_body): its ' ...
+                     '`value` is empty, `data_body` is not true, and no ' ...
+                     '`value_id` edge names a shared value document, so the ' ...
+                     'value is nowhere.'], className);
+            end
         end
     end
 
@@ -1642,7 +1660,20 @@ classdef cache < handle
                     ... schema with no registry (did-schema main) checks
                     ... nothing. DID_ENFORCE_TERM_REGISTRY=0 turns it off.
                     'TermRegistry', ...
-                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_TERM_REGISTRY'));
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_TERM_REGISTRY'), ...
+                    ... did-schema data_body AMENDMENT 5 (rule
+                    ... value_inline_or_body on `value`, Jess Haley, signed
+                    ... 2026-10-21). ARMED BY DEFAULT because the rule REPLACES
+                    ... a required `value` on nine classes (term, date, logical,
+                    ... polynomial, model_fit, tuning_curve, contrast_sensitivity,
+                    ... harmonic_component, receptive_field): off, those would
+                    ... validate empty. For the other value classes the cost is
+                    ... NOT YET MEASURED on a corpus; a value document that says
+                    ... nothing now quarantines, which is the rule's intent.
+                    ... A schema whose `value` does not declare the rule checks
+                    ... nothing. DID_ENFORCE_VALUE_INLINE_OR_BODY=0 turns it off.
+                    'ValueInlineOrBody', ...
+                        ~did2.schema.cache.envFlagIsOff('DID_ENFORCE_VALUE_INLINE_OR_BODY'));
                 if nargin == 1 && isequal(varargin{1}, '-reset')
                     out = state;
                     return;
@@ -2530,6 +2561,69 @@ classdef cache < handle
                 tf = isempty(value) || isempty(fieldnames(value));
             else
                 tf = isempty(value);
+            end
+        end
+
+        function tf = valueIsNowhere(obj, s, info, ancestors)
+            % valueIsNowhere - true when a document of a class declaring
+            %   rule `value_inline_or_body` (on `value`) has a blank inline
+            %   value, `data_body` not true, and no non-empty `value_id` edge.
+            tf = false;
+            if ~any(strcmp(ancestors, 'value')) || ~obj.hasClass('value')
+                return;
+            end
+            vs = obj.getClass('value');
+            if ~isfield(vs, 'rules') || isempty(vs.rules)
+                return;
+            end
+            r = vs.rules;
+            if iscell(r)
+                names = cellfun(@(x) char(x.name), r, 'UniformOutput', false);
+            else
+                names = arrayfun(@(x) char(x.name), r, 'UniformOutput', false);
+            end
+            if ~any(strcmp(names, 'value_inline_or_body'))
+                return;
+            end
+            value = [];
+            dataBody = [];
+            for k = 1:numel(info.blocksContributed)
+                b = info.blocksContributed{k};
+                if ~isfield(s, b) || ~isstruct(s.(b)) || ~isscalar(s.(b))
+                    continue;
+                end
+                if isempty(value) && isfield(s.(b), 'value') ...
+                        && (strcmp(b, 'value') || any(strcmp(obj.superclasses(b), 'value')))
+                    value = s.(b).value;
+                end
+                if isfield(s.(b), 'data_body')
+                    dataBody = s.(b).data_body;
+                end
+            end
+            if ~isempty(dataBody) && (islogical(dataBody) || isnumeric(dataBody)) ...
+                    && all(dataBody(:))
+                return;
+            end
+            if isfield(s, 'depends_on') && ~isempty(s.depends_on)
+                d = s.depends_on;
+                for k = 1:numel(d)
+                    if iscell(d); e = d{k}; else; e = d(k); end
+                    if ~strcmp(char(e.name), 'value_id'); continue; end
+                    id = '';
+                    if isfield(e, 'document_id') && ~isempty(e.document_id)
+                        id = e.document_id;
+                    elseif isfield(e, 'value') && ~isempty(e.value)
+                        id = e.value;
+                    end
+                    if ~isempty(id)
+                        return;
+                    end
+                end
+            end
+            if isempty(value) || (isstruct(value) && isempty(fieldnames(value))) ...
+                    || (ischar(value) && isempty(strtrim(value))) ...
+                    || obj.isVacuousValue(value)
+                tf = true;
             end
         end
 

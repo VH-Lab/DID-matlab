@@ -563,6 +563,47 @@ verifyError(testCase, @() did2.build.statement('formulation_manipulation', newId
     'treatment', [], common{:}), 'did2:build:ruleViolated');
 end
 
+function testTheValidatorRefusesAValueThatIsNowhere(testCase)
+% did2.schema.cache.validateDocument enforces the same rule as the builder
+% (switch ValueInlineOrBody, armed by default): a value document with no
+% inline value, data_body not true and no value_id edge is refused with
+% did2:validation:valueNowhere. Built valid (in bodies), then flipped.
+if ~valueRuleDeclared()
+    assumeFail(testCase, 'the loaded schema''s `value` does not declare `value_inline_or_body`');
+end
+cache = did2.schema.cache.shared();
+sid = testCase.TestData.sid;
+common = {'TimeReferenceIds', {newId()}, 'SessionId', sid};
+doc = did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
+    'DataBody', true, 'DatumType', did2.build.datumType('int16'), common{:});
+cache.validateDocument(doc);                       % in bodies: valid
+blk = blockWith(doc, 'data_body');
+bad = doc;
+bad.(blk).data_body = false;
+verifyError(testCase, @() cache.validateDocument(bad), 'did2:validation:valueNowhere');
+% switched off, the same document validates
+prev = did2.schema.cache.strictMode('ValueInlineOrBody', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('ValueInlineOrBody', prev));
+cache.validateDocument(bad);
+did2.schema.cache.strictMode('ValueInlineOrBody', true);
+% a shared value document named through value_id: valid
+shared = did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
+    'ValueId', newId(), common{:});
+cache.validateDocument(shared);
+end
+
+function b = blockWith(doc, fieldName)
+b = '';
+names = setdiff(fieldnames(doc), {'document_class', 'depends_on', 'files', 'file'}, 'stable');
+for k = 1:numel(names)
+    if isstruct(doc.(names{k})) && isscalar(doc.(names{k})) && isfield(doc.(names{k}), fieldName)
+        b = names{k};
+        return;
+    end
+end
+error('testBuild:noBlock', 'no block holds `%s`', fieldName);
+end
+
 function tf = valueRuleDeclared()
 tf = false;
 c = did2.schema.cache.shared().getClass('value');
