@@ -83,73 +83,53 @@ directory = jGetChar(blk, dirField);
 md5 = jGetCharAny(blk, {'curated_output_md5_checksum', 'curated_output_MD5_checksum'});
 
 % ---- the id-preserved count_observation handle (the run) --------------------
-obs = jStartInteraction(preBody, 'count_observation', 'subject_observation', ...
-    {'count'}, jOntologyTerm('', 'spike cluster assignment'), ...
-    {'element_id', 'subject_id'}, false);
-obs.subject_statement.storage_mode = 'body';
-obs.subject_interaction.method = jOntologyTerm('', sorterName);   % method = algorithm
-obs.count = struct();   % value is body-backed (the opaque sorter output)
-obsId = obs.base.id;
-
-% ---- the session-relative 'during' anchor -----------------------------------
+% did-schema #88: the assignment is an `observation` with a `count` value kind,
+% about the recording element, whose value is the sorter's output, an
+% opaque_body (the directory) named by its `owner_id`. `data_body` IS true:
+% did-schema data_body AMENDMENT 5 (rule `value_inline_or_body`) says a value
+% is inline or in data bodies, never neither, and this one has no inline
+% value. No `data_type` is given: Jess Haley, 2026-10-21, data_type only for
+% plain-array bytes; an opaque_body's `format` term is its encoding. (Until
+% then `data_body` was left unset to avoid a byte `data_type` the directory
+% does not have.)
 anchor = jSessionAnchor(preBody, 'during');
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-
-% ---- the v1 `app` block -> a software entity + software_id + exec env -------
-% Read through jSoftwareFromApp, which accepts BOTH spellings of the name and
-% version fields: universalRenames rewrites app.name -> app.app_name and
-% app.version -> app.app_version (universalRenames.m:145-164) before any
-% migrator runs, and reading only one spelling is the bug that made the calc
-% fold emit nothing on every real document for weeks.
-[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
-if ~isempty(swId)
-    obs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
-end
-if ~isempty(fieldnames(execEnv))
-    % Set only when populated: absence is how V_eta spells "unset", and an
-    % empty struct here would add a field to every app-less document.
-    obs.subject_interaction.execution_environment = execEnv;
-end
-
-% ---- the opaque_body: the external sorter output directory -------------------
-sessionId = '';
-datestamp = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        datestamp = preBody.base.datestamp;
-    end
-end
+[software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
+swOpt = {};
+if ~isempty(swId); swOpt = {'SoftwareId', swId}; end
+obs = jStatement(preBody, 'observation', ...
+    jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
+    jLabel('spike cluster assignment'), [], ...
+    'Fields', struct('method', jMethod(sorterName)), 'DataBody', true, ...
+    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', char(preBody.base.id), 'ValueKind', 'count');
+% Jess Haley, 2026-10-21 ("a"): the output directory is recorded BY LOCATION,
+% as resolveEpochProbemap records an epoch's files -- body_data_0's location is
+% the directory path, nothing ingested -- and the curated-output MD5 is the
+% body's checksum (content_hash, hash_algorithm MD5), not free text.
 descr = sprintf('%s sorter output directory', sorterName);
+f = struct();
+if ~isempty(directory); f.filename = directory; end
 if ~isempty(md5)
-    descr = sprintf('%s (curated_output_md5_checksum: %s)', descr, md5);
+    f.content_hash = lower(strtrim(md5));
+    f.hash_algorithm = 'MD5';
 end
-body = struct();
-body.document_class = struct('class_name', 'opaque_body', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'data_body', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', {'statement'}, 'value', {obsId});
-body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', sprintf('migrated_%s_output', sorterName), 'datestamp', datestamp);
-% `data_body`, not `opaque_body`, since the #45 hoist (DID-schema
-% 2026-08-14): the byte descriptors moved to the abstract parent and a property
-% block is keyed by the declaring class. `compression` is EMPTY and that is a
-% fact, not a placeholder -- an external sorter directory is stored as it lies.
-% `format` is an ontology TERM since lightsheet point 4 (Jess 2026-10-14;
-% did-schema 877bbde). A directory is not a file format and no term for it has
-% been found or minted, so the term carries the NAME only: a term to find or
-% mint, reported, not invented here.
-% did2.build.formatTerm writes it in the form the loaded schema declares: the
-% name-only term on the current schema, the string 'directory' on v_eta-pre73.
-body.data_body = struct('format', did2.build.formatTerm(struct('node', '', 'name', 'directory')), 'compression', '', ...
-    'filename', directory, 'description', descr);
-% carry any attached output bytes verbatim (the external directory is the usual
-% case, but a doc that ships files owns them on this body now).
-if isfield(preBody, 'files'); body.files = preBody.files; end
-if isfield(preBody, 'file');  body.file  = preBody.file;  end
+o = jOpts(preBody, 'Description', descr, 'Fields', f);
+body = did2.build.opaqueBody(obs.base.id, ...
+    did2.build.formatTerm(SORTER_DIRECTORY_FORMAT()), o{:});
+if ~isempty(directory)
+    body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
+        'delete_original', 0, 'uid', did.ido.unique_id(), 'location', directory, ...
+        'parameters', '', 'location_type', 'file', 'ingest', 0));
+else
+    if isfield(preBody, 'files'); body.files = preBody.files; end
+    if isfield(preBody, 'file');  body.file  = preBody.file;  end
+end
+bodies = [{obs, body, anchor}, software];
+end
 
-bodies = {obs, body, anchor};
-if ~isempty(software)
-    bodies{end+1} = software;
-end
+function t = SORTER_DIRECTORY_FORMAT()
+%SORTER_DIRECTORY_FORMAT The `format` of a sorter's output-directory body:
+%   EMPTY:0000315 "directory of files" (Jess Haley, 2026-10-19, empty-ontology
+%   d500863, minted for exactly the sorter output folder). The one place it is
+%   named.
+t = struct('node', 'EMPTY:0000315', 'name', 'directory of files');
 end

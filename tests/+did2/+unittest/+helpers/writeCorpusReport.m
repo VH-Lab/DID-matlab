@@ -45,6 +45,12 @@ report = struct( ...
     'by_class',          result.summary.by_class, ...
     'quarantine_reasons', reasons);
 
+% did-schema #88: an epoch, an animal, a probe are all ONE `entity` class told
+% apart by `type`, so `by_class` counts them all under `entity`. The census
+% digest's epoch-population cross-check needs the epoch count, so the entity
+% documents are also counted by type.
+report.by_entity_type = entityTypeCounts(result.migrated);
+
 % THE SECOND HALF OF THE HEADLINE CORPUS GATE, PERSISTED FOR THE FIRST TIME.
 % The gate is quoted everywhere in this project as "0 quarantine + 0 orphans".
 % `quarantine_count` is four lines above and has been in this report since it
@@ -85,6 +91,10 @@ end
 % ABSENT IS NOT ZERO: written only when the caller computed it.
 if isfield(result, 'entity_requires')
     report.entity_requires = result.entity_requires;
+end
+% Dose ingredient_in_formulation census (counts only). Absent is not zero.
+if isfield(result, 'dose_ingredients')
+    report.dose_ingredients = result.dose_ingredients;
 end
 % #52 EVIDENCE (report-only): the per-statement time-reference COUNT
 % DISTRIBUTION and, for the multi-reference ones, the SHAPES. Persisted for the
@@ -458,4 +468,22 @@ if fid < 0
 end
 cleanup = onCleanup(@() fclose(fid)); %#ok<NASGU>
 fwrite(fid, jsonencode(report, 'PrettyPrint', true));
+end
+
+function counts = entityTypeCounts(migrated)
+% {type name -> number of entity documents of that type}; empty when none.
+counts = struct();
+for k = 1:numel(migrated)
+    try
+        b = migrated{k}.toStruct();
+        if ~strcmp(char(b.document_class.class_name), 'entity'); continue; end
+        t = matlab.lang.makeValidName(char(b.entity.type.name));
+        if isfield(counts, t)
+            counts.(t) = counts.(t) + 1;
+        else
+            counts.(t) = 1;
+        end
+    catch
+    end
+end
 end

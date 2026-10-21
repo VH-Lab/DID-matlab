@@ -1,4 +1,4 @@
-function value = jContrastSensitivityValue(block)
+function [value, keys, dropped] = jContrastSensitivityValue(block)
 %JCONTRASTSENSITIVITYVALUE Reshape the v1 contrast_sensitivity_calc result bag into the
 %   `contrast_sensitivity` value cell. Sibling of jTuningCurveValue; same principle,
 %   different independent axis.
@@ -14,90 +14,87 @@ function value = jContrastSensitivityValue(block)
 %
 %   Every v1 field is preserved. Reads defensively (isfield-guarded) so an absent
 %   variant yields no entry rather than a validation failure.
+%
+%   did-schema #88 (contrast_sensitivity.value, the #73 audit-2 amendment):
+%   VALUE {model_fit[] {model, coefficients[] {variable, value}, goodness,
+%   sensitivity, relative_max_gain, empirical_c50, saturation_index},
+%   interpolated_values {c50}, significance {...}, response_type (a bound
+%   term)}; KEYS one key along the spatial frequencies the per-SF arrays are
+%   indexed by; DROPPED the v1 fields with no home (`is_modulated_response`).
+%   A Naka-Rushton variant's v1 parameters are a parameters x SF matrix; each
+%   element is one coefficient entry named '<model> parameter k, spatial
+%   frequency j' -- every number kept, a CONSERVATIVE CHOICE recorded.
+
 arguments
     block struct
 end
 
-% NOTE: build the scalar `value` WITHOUT passing a non-scalar struct array to struct()
-% (that would distribute and make `value` itself an array). model_fit is assigned after.
-value = struct( ...
-    'spatial_frequencies', [], 'model_fit', [], ...
-    'interpolated_values', struct(), 'significance', struct(), ...
-    'is_modulated_response', false, 'response_type', '');
-value.model_fit = emptyFits();
-
+value = struct();
+keys = [];
+dropped = {};
 if ~isstruct(block) || ~isscalar(block); return; end
-
-value.spatial_frequencies = getf(block, {'spatial_frequencies'});
-
+sf = getf(block, {'spatial_frequencies'});
+if isnumeric(sf) && ~isempty(sf)
+    keys = did2.build.key(jLabel('spatial frequency'), numel(sf), 'Values', double(sf(:))');
+end
 rt = getf(block, {'response_type'});
-if ischar(rt); value.response_type = rt;
-elseif isstring(rt) && isscalar(rt); value.response_type = char(rt); end
-
-imr = getf(block, {'is_modulated_response'});
-if ~isempty(imr); value.is_modulated_response = logical(imr(1)); end
-
-% fit-less interpolated summary -> the typed interpolated_values sub-block
+if isstring(rt) && isscalar(rt); rt = char(rt); end
+if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
 c50 = getf(block, {'fitless_interpolated_c50'});
-if ~isempty(c50); value.interpolated_values = struct('c50', c50); end
-
-% the Bonferroni p-values -> the typed significance sub-block
+if isnumeric(c50) && ~isempty(c50); value.interpolated_values = struct('c50', double(c50)); end
 sig = struct();
 for nm = {'visual_response_p_bonferroni', 'response_varies_p_bonferroni'}
     v = getf(block, nm);
-    if ~isempty(v); sig.(nm{1}) = v; end
+    if isnumeric(v) && ~isempty(v); sig.(nm{1}) = double(v); end
 end
-value.significance = sig;
-
-value.model_fit = collectVariantFits(block);
+if ~isempty(fieldnames(sig)); value.significance = sig; end
+fits = collectVariantFits(block);
+if ~isempty(fits); value.model_fit = did2.build.list(fits{:}); end
+imr = getf(block, {'is_modulated_response'});
+if ~isempty(imr); dropped{end+1} = 'is_modulated_response'; end
 end
-
-% ===================== helpers =============================================
 
 function v = getf(s, names)
 v = [];
 if ~isstruct(s); return; end
+fn = fieldnames(s);
 for i = 1:numel(names)
-    if isfield(s, names{i}); v = s.(names{i}); return; end
+    hit = find(strcmpi(fn, names{i}), 1);
+    if ~isempty(hit); v = s.(fn{hit}); return; end
 end
 end
 
 function fits = collectVariantFits(block)
-% One model_fit entry per Naka-Rushton variant PRESENT on the source. The four metric
-% families are per-spatial-frequency arrays derived from that specific fit, so they ride
-% inside the entry rather than as parallel top-level arrays keyed by a variant index --
-% that parallel-array coupling is exactly what the _rb/_rbn/_rbns suffixes encoded.
-fits = emptyFits();
+fits = {};
 variants = {'rb', 'rbn', 'rbns'};
 metrics  = {'sensitivity', 'relative_max_gain', 'empirical_c50', 'saturation_index'};
 for i = 1:numel(variants)
     v = variants{i};
-    entry = struct('model', jOntologyTerm('', ['naka_rushton_' v]), ...
-        'coefficients', [], 'goodness', struct(), ...
-        'sensitivity', [], 'relative_max_gain', [], ...
-        'empirical_c50', [], 'saturation_index', []);
+    model = ['naka rushton ' upper(v)];
+    entry = struct('model', jLabel(model));
     present = false;
     coeff = getf(block, {['parameters_' v]});
-    if ~isempty(coeff)
-        entry.coefficients = coeff;
+    if isnumeric(coeff) && ~isempty(coeff)
+        c = {};
+        for j = 1:size(coeff, 2)
+            for k = 1:size(coeff, 1)
+                c{end+1} = struct('variable', jLabel(sprintf( ...
+                    '%s parameter %d, spatial frequency %d', model, k, j)), ...
+                    'value', double(coeff(k, j))); %#ok<AGROW>
+            end
+        end
+        entry.coefficients = did2.build.list(c{:});
         present = true;
     end
     for m = 1:numel(metrics)
         mv = getf(block, {[metrics{m} '_' v]});
-        if ~isempty(mv)
-            entry.(metrics{m}) = mv;
+        if isnumeric(mv) && ~isempty(mv)
+            entry.(metrics{m}) = double(mv);
             present = true;
         end
     end
-    if ~present
-        continue;   % variant absent on this doc -> no entry (not an empty one)
+    if present
+        fits{end+1} = entry; %#ok<AGROW>
     end
-    if isempty(fits); fits = entry; else; fits(end+1) = entry; end %#ok<AGROW>
 end
-end
-
-function e = emptyFits()
-e = struct('model', {}, 'coefficients', {}, 'goodness', {}, ...
-    'sensitivity', {}, 'relative_max_gain', {}, ...
-    'empirical_c50', {}, 'saturation_index', {});
 end

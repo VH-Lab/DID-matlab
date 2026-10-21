@@ -71,7 +71,15 @@ arguments
     preBody (1,1) struct
 end
 
-readerId   = dependencyValue(preBody, 'daqmetadatareader_id');
+% did-schema #88 RETIRED `acquisition_metadata_file` (#73 review item 61): the
+% bytes become an opaque_body OWNED BY the stimulator term_manipulation of the
+% same epoch, which resolveEpochProbemap mints in a batch pass. A single
+% document cannot name that owner, and no pass joins the two yet, so the
+% document PASSES THROUGH on its v1 tombstone, unchanged (Jess Haley,
+% 2026-10-21: what #88 cannot yet express passes through, per class).
+bodies = {preBody};
+return;
+readerId   = dependencyValue(preBody, 'daqmetadatareader_id'); %#ok<UNRCH>
 epochDocId = jEpochDocId(preBody);
 carried    = carriedFiles(preBody);
 

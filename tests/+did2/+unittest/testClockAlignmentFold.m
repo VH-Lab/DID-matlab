@@ -21,35 +21,28 @@ end
 % ===================== the fold ============================================
 
 function testSyncgraphFoldsToPolicyWhenTheSessionResolves(testCase)
-% The headline. A syncgraph whose base.session_id matches a session document in
-% the batch folds to a clock_alignment_policy anchored to that document's id.
+% UPDATED for did-schema #88. This batch pass existed to supply the session
+% DOCUMENT id a single-document migrator could not resolve. On #88 the session
+% entity's id IS the session id and `session_id` is base.session_id as an edge,
+% so pass 1 already folds the graph; the pass then finds no syncgraph left and
+% refuses nothing. The policy is asserted as pass 1 left it.
 result = migrate({ ...
     syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
     sessionDocFixture('sessdoc_A', 'sess_A')});
-% Pass 1 leaves the syncgraph a passthrough.
-verifyEqual(testCase, countOf(result, 'syncgraph'), 1);
-verifyEqual(testCase, countOf(result, 'clock_alignment_policy'), 0);
-
+verifyEqual(testCase, countOf(result, 'syncgraph'), 0);
+verifyEqual(testCase, countOf(result, 'clock_alignment_policy'), 1);
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
 rep = out.clock_alignment_fold;
-
-verifyEqual(testCase, rep.syncgraphs_seen, 1);
-verifyEqual(testCase, rep.policies_folded, 1);
+verifyEqual(testCase, rep.syncgraphs_seen, 0);
+verifyEqual(testCase, rep.policies_folded, 0);
 verifyEqual(testCase, rep.refused_total, 0);
-% The syncgraph is gone; a clock_alignment_policy stands in its place.
-verifyEqual(testCase, countOf(out, 'syncgraph'), 0);
-verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), 1);
-
 policy = firstOf(out, 'clock_alignment_policy');
-% base.id PRESERVED -- syncrule_mapping's syncgraph_id edge still resolves.
 verifyEqual(testCase, policy.get('base.id'), 'graph_1');
-% session_id names the session DOCUMENT's base.id, not the base.session_id
-% (on the edge shape the two are one string: the session entity's id IS its
-% session id).
-verifyEqual(testCase, depValue(policy, 'session_id'), did2.unittest.helpers.sessionDocumentId('sessdoc_A', 'sess_A'));
-% the rule membership survives as a clock_alignment_configuration_# family.
-verifyEqual(testCase, depValue(policy, 'clock_alignment_configuration_1'), 'rule_1');
+verifyEqual(testCase, depValue(policy, 'session_id'), ...
+    did2.unittest.helpers.sessionDocumentId('sessdoc_A', 'sess_A'));
+verifyEqual(testCase, depValue(policy, 'clock_alignment_configuration_id'), 'rule_1');
 end
+
 
 function testTheStampDoesNotPersistOntoThePolicy(testCase)
 % The seam is a transient `session_document_id` dep the migrator reads and
@@ -66,32 +59,35 @@ end
 % ===================== refusal, not invention ==============================
 
 function testNoSessionDocumentIsRefusedNotFilledEmpty(testCase)
-% A syncgraph whose session id names no session document in the batch is LEFT
-% as a passthrough -- never a clock_alignment_policy with an empty required
-% session edge (the invented-empty-edge pattern).
+% UPDATED for #88: the session edge names the session ENTITY by the session id
+% itself, so no session document has to be found -- pass 1 folds the graph and
+% nothing is filled empty (the edge carries sess_MISSING, the id the source
+% names; in a full migration the session entity of that id is in the batch).
 result = migrate({syncgraphFixture('graph_1', {'rule_1'}, 'sess_MISSING')});
+verifyEqual(testCase, countOf(result, 'clock_alignment_policy'), 1);
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
 rep = out.clock_alignment_fold;
-verifyEqual(testCase, rep.syncgraphs_seen, 1);
-verifyEqual(testCase, rep.refused_no_session_document, 1);
-verifyEqual(testCase, rep.policies_folded, 0);
-verifyEqual(testCase, countOf(out, 'syncgraph'), 1);
-verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), 0);
+verifyEqual(testCase, rep.syncgraphs_seen, 0);
+verifyEqual(testCase, rep.refused_no_session_document, 0);
+policy = firstOf(out, 'clock_alignment_policy');
+verifyEqual(testCase, depValue(policy, 'session_id'), 'sess_MISSING');
 end
 
+
 function testTwoSessionDocumentsClaimingOneIdAreRefusedAmbiguous(testCase)
-% Guessing which session a syncgraph belongs to when two documents claim the id
-% would be inventing a fact; refuse and keep the passthrough.
+% UPDATED for #88: there is no session-document lookup left to be ambiguous --
+% the graph folds in pass 1 and the pass refuses nothing.
 result = migrate({ ...
     syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
     sessionDocFixture('sessdoc_A', 'sess_A'), ...
     sessionDocFixture('sessdoc_B', 'sess_A')});
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
 rep = out.clock_alignment_fold;
-verifyEqual(testCase, rep.refused_ambiguous_session, 1);
-verifyEqual(testCase, rep.policies_folded, 0);
-verifyEqual(testCase, countOf(out, 'syncgraph'), 1);
+verifyEqual(testCase, rep.refused_ambiguous_session, 0);
+verifyEqual(testCase, countOf(out, 'syncgraph'), 0);
+verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), 1);
 end
+
 
 function testAnEmptySessionSentinelIsRefused(testCase)
 % ndi.session.empty_id() ("applies in any session") is not a real session; a
@@ -118,13 +114,15 @@ verifyEqual(testCase, out.clock_alignment_fold.syncgraphs_seen, 0);
 end
 
 function testNonEtaTargetIsUntouched(testCase)
-% `clock_alignment_policy` exists only in V_eta; another target is a no-op.
+% A non-V_eta target leaves the batch exactly as it came in. UPDATED for #88:
+% compared against the input rather than a syncgraph count (pass 1 now folds).
 result = migrate({ ...
     syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
     sessionDocFixture('sessdoc_A', 'sess_A')});
 out = did2.convert.resolveClockAlignment(result, 'TargetVersion', 'V_delta');
-verifyEqual(testCase, countOf(out, 'syncgraph'), 1);
-verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), 0);
+verifyEqual(testCase, numel(out.migrated), numel(result.migrated));
+verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), countOf(result, 'clock_alignment_policy'));
+verifyEqual(testCase, countOf(out, 'syncgraph'), countOf(result, 'syncgraph'));
 end
 
 % ===================== fixtures & helpers ==================================

@@ -157,48 +157,27 @@ end
 % the same shape as jEpochDocId. When the fold moves into the batch phase this
 % is the ONE line that changes, and testSyncgraphFoldsWhenTheSessionResolves
 % already drives that branch.
-sessionDocId = jSessionDocId(preBody);
-if isempty(sessionDocId)
-    bodies = {preBody};
-    return;
-end
-
+% did-schema #88: the policy's own `session_id` edge is base's, to the session
+% entity whose base.id IS the session id -- so the session-document lookup
+% resolveClockAlignment supplied on the pre-#73 shape is not needed: the fold
+% happens here, in pass 1.
 implClass = jGetCharAny(block, {'ndi_syncgraph_class', 'ndiSyncgraphClass'});
 [software, swId] = jSyncSoftware(preBody, implClass);
-
-policy = struct();
-policy.document_class = struct('class_name', 'clock_alignment_policy', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-
-deps = struct('name', {}, 'value', {});
-deps(end+1) = struct('name', 'session_id', 'value', sessionDocId);
-if ~isempty(swId)
-    deps(end+1) = struct('name', 'software_id', 'value', swId);
-end
+edges = struct();
+if ~isempty(swId); edges.software_id = swId; end
 ruleIds = syncruleIds(preBody);
-for k = 1:numel(ruleIds)
-    % RENUMBERED FROM 1, not copied: v1's index is bookkeeping inside its own
-    % depends_on list, and a source that has been edited can leave a gap. What
-    % must be preserved is the SET (membership is the whole content) and the
-    % family's own contiguity, which countFamily (silentLoss.m:243) reads.
-    deps(end+1) = struct('name', sprintf('clock_alignment_configuration_%d', k), ...
-        'value', ruleIds{k}); %#ok<AGROW>
-end
-policy.depends_on = deps;
-policy.base = carryBase(preBody, sessionId);
-% The class declares NO fields; a concrete class always contributes a property
-% block (schema/cache.m resolvePlacement), so the block is present and empty.
-policy.clock_alignment_policy = struct();
-
-bodies = {policy};
-if ~isempty(software)
-    bodies{end+1} = software;
-end
+if ~isempty(ruleIds); edges.clock_alignment_configuration_id = ruleIds; end
+o = jOpts(preBody, 'Edges', edges, 'Id', carryId(preBody));
+policy = did2.build.document('clock_alignment_policy', struct(), o{:});
+bodies = [{policy}, software];
 end
 
-% ===================== small helpers =======================================
+function id = carryId(preBody)
+id = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    id = char(preBody.base.id);
+end
+end
 
 function ids = syncruleIds(preBody)
 %SYNCRULEIDS Every populated `syncrule_id` / `syncrule_id_<n>` target, in order.
@@ -241,20 +220,4 @@ function tf = isEmptySessionSentinel(sessionId)
 tf = false;
 if isempty(sessionId); return; end
 tf = all(sessionId == '0' | sessionId == '_');
-end
-
-function b = carryBase(preBody, sessionId)
-%CARRYBASE base PRESERVED -- id, session_id, name, datestamp.
-b = struct('id', '', 'session_id', sessionId, 'name', '', ...
-    'datestamp', '2024-01-01T00:00:00.000Z');
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    src = preBody.base;
-    fn = {'id', 'name', 'datestamp'};
-    for k = 1:numel(fn)
-        if isfield(src, fn{k}) && ~isempty(src.(fn{k}))
-            b.(fn{k}) = src.(fn{k});
-        end
-    end
-end
-if isempty(b.id); b.id = did.ido.unique_id(); end
 end

@@ -11,6 +11,12 @@ function doc = opaqueBody(ownerId, format, options)
 %   is no longer an IANA media type. An opaque_body requires it
 %   (require_inherited).
 %
+%   OWNERID may be a cellstr of several ids: `owner_id` repeats (did-schema
+%   data_body, T15) when one body holds part of the value of several
+%   statements -- a raw recording file shared by the observation of every
+%   electrode recorded in it (Jess Haley, 2026-10-21,
+%   V_eta_recording_observation_plan.md).
+%
 %   The bytes are the file series `body_data_0`, `body_data_1`, ...; the default
 %   is the single member `body_data_0`.
 %
@@ -31,7 +37,7 @@ function doc = opaqueBody(ownerId, format, options)
 %   See also did2.build.sampledBody.
 
 arguments
-    ownerId (1,:) char
+    ownerId {mustBeText} % one owner id, or a cellstr of several (owner_id repeats)
     format
     options.Keys = []
     options.Complete = []
@@ -62,7 +68,29 @@ fields = struct('format', format, 'keys', {options.Keys}, ...
     'compression', options.Compression, 'content_hash', options.ContentHash, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);
-edges = struct('owner_id', ownerId, 'key_id', {options.KeyIds});
+edges = struct('owner_id', {ownerIds(ownerId)}, 'key_id', {options.KeyIds});
 options.Files = bodyFiles(options.Files, options.Chunks);
 doc = forward('opaque_body', fields, edges, options);
+end
+
+function ids = ownerIds(ownerId)
+%OWNERIDS A body's owner id(s) as did2.build.document's 'Edges' takes them: a
+%   char for one owner (unchanged), a cellstr for several. `owner_id` repeats
+%   (did-schema data_body, T15, 2026-10-21) so one raw recording file can belong
+%   to the observation of every electrode recorded in it. An empty cell is left
+%   empty, so the builder's own min_count check reports it.
+arguments
+    ownerId {mustBeText}
+end
+if ischar(ownerId)
+    ids = ownerId;
+elseif isstring(ownerId) && isscalar(ownerId)
+    ids = char(ownerId);
+else
+    ids = cellstr(ownerId);
+    ids = ids(:)';
+    if isscalar(ids)
+        ids = ids{1};
+    end
+end
 end

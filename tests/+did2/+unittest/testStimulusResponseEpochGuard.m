@@ -48,6 +48,18 @@ function tests = testStimulusResponseEpochGuard
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% RE-ARMED 2026-10-21. These tests were filtered while did-schema #88's
+% `calculation` required operating_system_id, which no v1 document records.
+% Decided by Jess Haley, 2026-10-21 [calculation-os-optional]: "A calculation's
+% `operating_system_id` is optional: required when the operating system is
+% known, absent when the source never recorded it." So that reason is gone and
+% the tests run unconditionally; a failure here is a migrator gap to report,
+% not a reason to filter.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== harness =========================================
 
 function out = runJ(v1)
@@ -57,7 +69,7 @@ end
 function d = findClass(testCase, out, className)
 d = [];
 for k = 1:numel(out.migrated)
-    if strcmp(char(out.migrated{k}.get('document_class.class_name')), className)
+    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
         d = out.migrated{k};
         return;
     end
@@ -208,7 +220,7 @@ out = runJ(responseFixture(''));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
-anchor = findClass(testCase, out, 'session_relative_reference');
+anchor = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
     char(anchor.get('base.id')));
 end
@@ -231,7 +243,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % anchors on one interaction would be #52's undefined-meaning case.
 out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
-ref  = findClass(testCase, out, 'relative_reference');
+ref  = findClass(testCase, out, 'relative_time_reference');
 verifyFalse(testCase, anyClass(out, 'session_relative_reference'));
 
 rb = ref.toStruct();
@@ -253,7 +265,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % alone is asserted". A zero offset would assert the response began exactly at
 % the epoch boundary, which the writer never said.
 out = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
-ref = findClass(testCase, out, 'relative_reference');
+ref = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, char(ref.get('relative_reference.value.relation.node')), ...
     'time:intervalDuring');
 verifyEqual(testCase, char(ref.get('relative_reference.value.clock.name')), ...

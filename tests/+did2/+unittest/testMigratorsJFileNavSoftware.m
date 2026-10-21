@@ -44,6 +44,15 @@ function tests = testMigratorsJFileNavSoftware
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% The migrators run inside did2.convert.v1_to_v2, which disarms the
+% TermRegistry strict mode for the call (T19: the check is for imports; a
+% migrator transcribes the source's own terms, which the registry need not
+% hold yet). A test that calls a migrator directly runs it the same way.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== family 1: file navigation ===========================
 
 function testFilenavigatorFoldsToEpochFilePatternPlusSoftware(testCase)
@@ -75,7 +84,7 @@ verifyEqual(testCase, efp.get('base.session_id'), 'sess_1');
 verifyEqual(testCase, efp.get('document_class.schema_version'), 'V_eta');
 
 % the two eval'd strings became declared LISTS -- parsed, never eval'd
-verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), ...
+verifyEqual(testCase, efp.get('epoch_file_pattern.file_pattern'), ...
     {'#\.rhd\>', '#\.tsv\>'});
 verifyEqual(testCase, efp.get('epoch_file_pattern.epoch_map_pattern'), ...
     {'(.*)epochprobemap.ndi'});
@@ -84,7 +93,7 @@ verifyEqual(testCase, efp.get('epoch_file_pattern.epoch_map_format'), ...
 
 % the implementation class name became an EDGE, not a string field
 verifyEqual(testCase, depValue(efp.toStruct(), 'software_id'), sw.get('base.id'));
-verifyEqual(testCase, sw.get('software.name'), 'ndi.file.navigator');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.file.navigator');
 % v1 records no version for the navigator class (the template has no version
 % field), so the dedup handle is the bare name.
 %
@@ -95,9 +104,9 @@ verifyEqual(testCase, sw.get('software.name'), 'ndi.file.navigator');
 % which is a fact about how the empty was constructed, not about the migration.
 % Pinning the shape tests the constructor; pinning emptiness and the class
 % tests what the assertion is actually for.
-verifyClass(testCase, sw.get('software.version'), 'char');
-verifyEmpty(testCase, sw.get('software.version'));
-verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.file.navigator');
+% #88: the software is an entity; with no version there is no version
+% assertion and the local identifier is the bare class name
+verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.file.navigator');
 
 % and the v1 block does not survive anywhere
 verifyFalse(testCase, isfield(efp.toStruct(), 'filenavigator'));
@@ -113,7 +122,7 @@ function testFilenavigatorSinglePatternStaysAList(testCase)
 out = runJ(navBody('{ ''.*\.rhd\>'' }', 'ndi.epoch.epochprobemap_daqsystem', ''));
 verifyEmpty(testCase, out.quarantine);
 efp = firstOfClass(out, 'epoch_file_pattern');
-verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), {'.*\.rhd\>'});
+verifyEqual(testCase, efp.get('epoch_file_pattern.file_pattern'), {'.*\.rhd\>'});
 % nothing was declared for the probe-map file, so the field is ABSENT rather
 % than blank -- a blank required-ish field is what silentLoss counts as vacuous.
 verifyFalse(testCase, isfield(efp.get('epoch_file_pattern'), 'epoch_map_pattern'));
@@ -127,7 +136,7 @@ function testFilenavigatorUnbracedParameterIsOneLiteralPattern(testCase)
 out = runJ(navBody('.*\.rhd\>', '', ''));
 verifyEmpty(testCase, out.quarantine);
 efp = firstOfClass(out, 'epoch_file_pattern');
-verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), {'.*\.rhd\>'});
+verifyEqual(testCase, efp.get('epoch_file_pattern.file_pattern'), {'.*\.rhd\>'});
 end
 
 function testFilenavigatorEmptyListTextDeclaresNoPatterns(testCase)
@@ -137,7 +146,7 @@ out = runJ(navBody('{}', 'ndi.epoch.epochprobemap_daqsystem', '{}'));
 verifyEmpty(testCase, out.quarantine);
 efp = firstOfClass(out, 'epoch_file_pattern');
 blk = efp.get('epoch_file_pattern');
-verifyFalse(testCase, isfield(blk, 'data_file_pattern'));
+verifyFalse(testCase, isfield(blk, 'file_pattern'));
 verifyFalse(testCase, isfield(blk, 'epoch_map_pattern'));
 verifyEqual(testCase, blk.epoch_map_format, 'ndi.epoch.epochprobemap_daqsystem');
 end
@@ -153,7 +162,7 @@ v1.filenavigator.ndi_filenavigator_class = '';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'filenavigator');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'filenavigator');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
@@ -170,7 +179,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);          % no software body
 efp = firstOfClass(out, 'epoch_file_pattern');
 verifyEqual(testCase, depValue(efp.toStruct(), 'software_id'), '');
-verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), {'#.rhd'});
+verifyEqual(testCase, efp.get('epoch_file_pattern.file_pattern'), {'#.rhd'});
 end
 
 function testFilenavigatorSubclassNamesItsOwnSoftware(testCase)
@@ -181,8 +190,9 @@ v1 = navBody('{ ''#.tif'' }', 'ndi.epoch.epochprobemap_daqsystem', '');
 v1.filenavigator.ndi_filenavigator_class = 'ndi.setup.file.navigator.vhPrairie2p';
 out = runJ(v1);
 sw = firstOfClass(out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.setup.file.navigator.vhPrairie2p');
-verifyEqual(testCase, sw.get('base.name'), 'ndi.setup.file.navigator.vhPrairie2p');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.setup.file.navigator.vhPrairie2p');
+% #88: V_eta writes no base.name (#73 item 54); the class is the entity's handle
+verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.setup.file.navigator.vhPrairie2p');
 end
 
 % ===================== family 2: the app -> software fold ==================
@@ -221,38 +231,36 @@ verifyTrue(testCase, any(strcmp(names, 'software')), ...
     ['no software entity was minted -- the app fold read a field name that ' ...
      'universalRenames had already rewritten']);
 sw = out.migrated{find(strcmp(names, 'software'), 1)};
-verifyEqual(testCase, sw.get('software.name'), 'ndi.calc.vis.oridir');
-verifyEqual(testCase, sw.get('software.version'), '1.2');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.calc.vis.oridir');
+% #88: the version is a text_assertion about the software (see local_identifier)
 
 % the dedup key the deferred second pass will merge on
-verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.calc.vis.oridir@1.2');
+verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.calc.vis.oridir@1.2');
 % the homepage rides on entity.global_identifier, scheme URL
-gid = sw.get('entity.global_identifier');
-verifyEqual(testCase, numel(gid), 1);
-verifyEqual(testCase, gid(1).scheme, 'URL');
+% (#88: a plain global identifier string)
+verifyEqual(testCase, cellstr(sw.get('entity.global_identifier')), {'https://github.com/VH-Lab/NDI-matlab'});
 
-leaf = out.migrated{find(~strcmp(names, 'software') & ...
-    ~strcmp(names, 'session_relative_reference'), 1)};
+leaf = out.migrated{find(strcmp(names, 'orientation_direction_tuning_calculation'), 1)};
 verifyEqual(testCase, depValue(leaf.toStruct(), 'software_id'), sw.get('base.id'));
 % run-specific details go to execution_environment on the interaction, NOT onto
 % the software entity (the software's identity is name+version; the os it
 % happened to run on is a fact about this run).
-verifyEqual(testCase, leaf.get('subject_interaction.execution_environment.interpreter'), ...
-    'MATLAB');
-verifyEqual(testCase, leaf.get('subject_interaction.execution_environment.os'), 'Linux');
+% #88: the os and interpreter are `software` entities the calculation names
+verifyEqual(testCase, entityName(out, depValue(leaf.toStruct(), 'interpreter_id')), 'MATLAB');
+verifyEqual(testCase, entityName(out, depValue(leaf.toStruct(), 'operating_system_id')), 'Linux');
 % "The class name stops being copied into every calculator output": no app block
 % survives on the migrated document.
 verifyFalse(testCase, isfield(leaf.toStruct(), 'app'));
 end
 
-function testCalculatorWithNoAppBlockMintsNoSoftware(testCase)
-% Was: "no identity -> no entity and no edge". PR #68's calculator schema
-% declares `software_id` REQUIRED with min_count 1, so a calc doc with no
-% app block would quarantine under `RequiredDependencies` if the fold
-% skipped the mint. jCalculation therefore FALLS BACK to a software entity
-% keyed on the calc's methodName -- honest defect for a source that never
-% named its producer, versus stranding the doc. The kept-as-was navigator
-% rule is unchanged; only the calculator side has to always emit.
+function testCalculatorWithNoAppBlockFoldsWithItsMethodSoftware(testCase)
+% INVERTED AGAIN 2026-10-21 (was testCalculatorWithNoAppBlockMintsNoSoftware,
+% itself an inversion of the pre-#88 behaviour). The reason it passed through
+% -- #88's calculation REQUIRED an operating_system_id only `app.os` can supply
+% -- is gone: the edge is OPTIONAL (Jess Haley, 2026-10-21
+% [calculation-os-optional]). So a calculator output with no `app` block
+% folds again, with a software entity minted from the calculator's name and
+% no operating system (none is invented).
 v1 = struct();
 v1.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
@@ -261,39 +269,49 @@ v1.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '
 v1.depends_on = struct('name', 'element_id', 'value', 'neuron_9');
 v1.base = struct('id', 'oc_3', 'session_id', 'sess_09', 'name', 'oc', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-v1.orientation_direction_tuning = struct('vector', struct('orientation_preference', 12));
-
+% A curve, so there is a value to state: a calculator output with NO curve
+% passes through for that reason alone (jCalculation: the value is required),
+% which is not what this test is about.
+v1.orientation_direction_tuning = struct('vector', struct('orientation_preference', 12), ...
+    'tuning_curve', struct('direction', [0; 90; 180; 270], 'mean', [1; 5; 2; 4]));
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
-verifyTrue(testCase, any(strcmp(names, 'software')));
-leaf = out.migrated{find(~strcmp(names, 'session_relative_reference') ...
-    & ~strcmp(names, 'software') & ~strcmp(names, 'runtime_environment'), 1)};
-verifyNotEmpty(testCase, depValue(leaf.toStruct(), 'software_id'));
+verifyFalse(testCase, any(strcmp(names, 'oridirtuning_calc')), ...
+    'the document folds instead of passing through');
+verifyEqual(testCase, sum(strcmp(names, 'software')), 1, ...
+    'one software entity, minted from the calculator''s name; no OS, no interpreter');
 end
 
+
 function testSoftwareIsNotDedupedInPassOne(testCase)
-% DEDUP BY (name, version) IS DEFERRED, and this pins that so the deferral is a
-% recorded fact rather than an assumption. Two calculator outputs naming the SAME
-% program mint TWO software entities in pass 1: a single-document migrator cannot
-% know about a document it never sees. The merge is the NDI second pass's job --
-% a whole-corpus find-or-create with edge retargeting, the shape of
-% ndi.migrate.internal.pathSPromotion. Both entities carry the same
-% local_identifier, which is the key that pass merges on.
-%
-% WHEN THAT PASS LANDS this test should be REPLACED, not deleted: assert one
-% entity survives and both edges point at it.
+% Two outputs of the same calculator each mint their own software entity in
+% pass 1; the dedup is a later batch pass. UPDATED for #88: the fixture states
+% an operating system (a calculation requires one), so each output also mints
+% an OS software entity; the assertion is about the APP software, picked by name.
 a = calcBodyNamed('oc_a', 'ndi.calc.vis.oridir', '1.2');
 b = calcBodyNamed('oc_b', 'ndi.calc.vis.oridir', '1.2');
+a.app.os = 'Linux'; b.app.os = 'Linux';
+% and a tuning curve: with none the required result value is empty and the
+% calculator passes through, minting no software at all
+% (testCalculatorWithNoCurvePassesThrough).
+a.orientation_direction_tuning.tuning_curve = struct('direction', [0 90], 'mean', [3 4]);
+b.orientation_direction_tuning.tuning_curve = struct('direction', [0 90], 'mean', [3 4]);
 out = runJ({a, b});
 verifyEmpty(testCase, out.quarantine);
-names = classNames(out);
-sw = out.migrated(strcmp(names, 'software'));
+sw = {};
+for k = 1:numel(out.migrated)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), 'software') ...
+            && strcmp(out.migrated{k}.get('entity.name'), 'ndi.calc.vis.oridir')
+        sw{end+1} = out.migrated{k}; %#ok<AGROW>
+    end
+end
 verifyEqual(testCase, numel(sw), 2);
-verifyEqual(testCase, sw{1}.get('software.local_identifier'), 'ndi.calc.vis.oridir@1.2');
-verifyEqual(testCase, sw{2}.get('software.local_identifier'), 'ndi.calc.vis.oridir@1.2');
+verifyEqual(testCase, sw{1}.get('entity.local_identifier'), 'ndi.calc.vis.oridir@1.2');
+verifyEqual(testCase, sw{2}.get('entity.local_identifier'), 'ndi.calc.vis.oridir@1.2');
 verifyNotEqual(testCase, sw{1}.get('base.id'), sw{2}.get('base.id'));
 end
+
 
 % ===================== validation =========================================
 
@@ -360,7 +378,7 @@ names = classNames(out);
 verifyTrue(testCase, any(strcmp(names, 'epoch_file_pattern')));
 % the LIST survived as a list -- not joined, not padded, not drifted to a char
 efp = out.migrated{find(strcmp(names, 'epoch_file_pattern'), 1)};
-verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), ...
+verifyEqual(testCase, efp.get('epoch_file_pattern.file_pattern'), ...
     {'#\.rhd\>', '#\.tsv\>'});
 end
 
@@ -403,7 +421,7 @@ v1.orientation_direction_tuning = struct('vector', struct('orientation_preferenc
 end
 
 function names = classNames(out)
-names = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
     'UniformOutput', false);
 end
 
@@ -433,6 +451,18 @@ for k = 1:numel(b.depends_on)
         v = char(d.document_id); return;
     elseif isfield(d, 'value') && ~isempty(d.value)
         v = char(d.value); return;
+    end
+end
+end
+
+function n = entityName(out, id)
+% the entity.name of the document with base.id ID ('' when none)
+n = '';
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('base.id'), id)
+        e = out.migrated{k}.get('entity');
+        if isfield(e, 'name'); n = char(e.name); end
+        return;
     end
 end
 end

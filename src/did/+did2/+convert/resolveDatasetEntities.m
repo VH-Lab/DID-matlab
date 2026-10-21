@@ -150,6 +150,13 @@ arguments
     options.TargetVersion (1,:) char = 'V_eta'
 end
 
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 % DENOMINATOR FIRST, and unconditionally. Every field is defined before a
 % single document is read, so "did not run" and "ran and removed nothing" are
 % different readings of the same struct rather than the same reading.
@@ -204,7 +211,7 @@ for k = 1:n
         continue;
     end
     idsPresent(id) = true;
-    if ~strcmp(className, 'dataset'); continue; end
+    if ~isDatasetEntity(docs{k}, className); continue; end
     report.dataset_entities_seen = report.dataset_entities_seen + 1;
     r = datasetRichness(docs{k});
     if isKey(bestDatasetIdx, id)
@@ -240,9 +247,10 @@ for k = 1:n
         continue;   % already counted in `documents_unreadable` above
     end
     if ~strcmp(className, 'directed_relation'); continue; end
-    if ~strcmp(char(getBaseName(doc)), 'migrated_session_membership'); continue; end
+    if ~isMembership(doc); continue; end
     report.membership_relations_seen = report.membership_relations_seen + 1;
-    childId = depValueOf(doc, 'child');
+    childId = depValueOf(doc, 'child_id');
+    if isempty(childId); childId = depValueOf(doc, 'child'); end
     if isempty(childId)
         % NOT the linked-session case. An edge with no child names nothing at
         % all, which is a defect in whatever emitted it.
@@ -275,11 +283,38 @@ end
 
 % ===================== helpers =========================================
 
+function tf = isDatasetEntity(doc, className)
+% did-schema #88: an `entity` of type dataset (a `dataset` class before).
+tf = strcmp(className, 'dataset');
+if tf || ~strcmp(className, 'entity'); return; end
+try
+    t = doc.get('entity.type');
+    tf = isstruct(t) && isfield(t, 'name') && strcmpi(char(t.name), 'dataset');
+catch
+    tf = false;
+end
+end
+
+function tf = isMembership(doc)
+% A session's membership in its dataset: `included_in` on #88
+% (V_eta_relation_inheritance_plan.md item 2), `part_of` with the
+% `migrated_session_membership` base.name before (V_eta documents no longer
+% write base.name).
+tf = strcmp(char(getBaseName(doc)), 'migrated_session_membership');
+if tf; return; end
+try
+    r = doc.get('directed_relation.relation');
+    tf = isstruct(r) && isfield(r, 'name') && strcmp(char(r.name), 'included_in');
+catch
+    tf = false;
+end
+end
+
 function r = datasetRichness(doc)
 %DATASETRICHNESS Non-empty dataset fields + global_identifier entries.
 r = 0;
 try
-    ds = doc.get('dataset');
+    ds = doc.get('entity');
     if isstruct(ds)
         fn = fieldnames(ds);
         for i = 1:numel(fn)

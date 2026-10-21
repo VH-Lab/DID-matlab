@@ -32,11 +32,20 @@ on:
       - 'tests/\+did2/\+unittest/testSqliteDb*.m'
       - '.github/workflows/test-builder.yml'
   workflow_dispatch:
+    inputs:
+      did_schema_ref:
+        description: >-
+          did-schema ref to test against. Empty resolves as on push: a
+          same-named did-schema branch, else main. A port branch whose name
+          did-schema lacks names its schema branch here.
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   # Keyed on the commit: a push never cancels another commit's run;
   # only a duplicate run of the same commit is cancelled.
-  group: test-builder-${{ github.sha }}
+  group: test-builder-${{ github.sha }}-${{ inputs.did_schema_ref }}
   cancel-in-progress: true
 
 jobs:
@@ -50,6 +59,11 @@ jobs:
       - name: Resolve the did-schema ref
         id: schema-ref
         run: |
+          if [ -n "${{ inputs.did_schema_ref }}" ]; then
+            echo "did-schema ref given by dispatch: '${{ inputs.did_schema_ref }}'."
+            echo "ref=${{ inputs.did_schema_ref }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           want="${{ github.head_ref || github.ref_name }}"
           if git ls-remote --exit-code --heads \
                https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then

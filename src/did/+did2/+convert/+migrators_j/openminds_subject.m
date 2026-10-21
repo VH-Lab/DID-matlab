@@ -43,16 +43,9 @@ node = firstNonEmpty( ...
 valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 
 % term_assertion: a timeless subject_assertion leaf (no method/interaction).
-body = struct();
-body.document_class = struct('class_name', 'term_assertion', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'subject_assertion', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-body.depends_on = jCarrySubject(preBody, {'subject_id'});
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    body.base = preBody.base;
-end
-body.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
-body.term = struct('value', valueTerm);
+% did-schema #88: a term_assertion built through did2.build, id preserved.
+body = jStatement(preBody, 'term_assertion', jSubjectOf(preBody, {'subject_id'}), ...
+    variable, valueTerm, 'Id', char(preBody.base.id));
 v2Body = body;
 end
 

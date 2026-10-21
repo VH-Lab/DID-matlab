@@ -181,225 +181,101 @@ arguments
     preBody (1,1) struct
 end
 
-TV = 'V_eta';
 params = getBlock(preBody, 'image_stack_parameters');
-
 subjectId = dependencyValue(preBody, 'subject_id');
-
-% ---------------------------------------------------------------------
-% THE GUARD: NO SUBJECT => NO OBSERVATION. Pass the document through.
-% ---------------------------------------------------------------------
-% NDI's own writer leaves this edge empty. Of the seven
-% `ndi.document('imageStack'...)` sites in +setup/+conv/+haley/doImport.m, four
-% set `subject_id` from a subjectGroup_id (421, 461, 477, 496) and THREE set
-% only `document_id` (789, 811, 827 -- the image / mask / closest-patch loop).
-% So those documents genuinely have no subject, and this migrator used to copy
-% that emptiness into a REQUIRED edge: 4,563 JH documents became
-% `image_observation`s about nobody, invisible to every gate because
-% +did2/+validate/references.m:90 skips empty edges.
-%
-% Passing through is only safe because `image_stack` and
-% `image_stack_parameters` were taken BACK OUT of _DELETE_PHASE8 for exactly
-% this, and restated from the NDI template so the passthrough validates. Do not
-% re-delete them without re-checking this branch -- deleting a tombstone ahead
-% of its migrator is what put 2,484 corpus-B documents in quarantine.
-%
-% THE SUBJECT IS **NOT** RECOVERABLE. This comment said the opposite until
-% 2026-08-10 and sketched the join to do it; following that sketch would have
-% INVENTED subjects rather than recovered them. The correction, with evidence:
-%
-% The subject-carrying imageStacks and the subject-less ones are in DIFFERENT
-% SESSIONS. `doImport.m:46-49` builds two:
-%
-%     SessionRef = {'haley_2025_Celegans'; 'haley_2025_Ecoli'};
-%
-% Sites 421/461/477/496 (which DO set subject_id) are Step 5, under
-% `session = sessions{1}`. Sites 789/811/827 (which do not) are Step 8, which
-% opens with `session = sessions{2}` at line 694. The LAST mention of a subject
-% anywhere in that 881-line file is line 689 -- two lines before Step 8 starts.
-% The E. coli session mints no subject, no subject_group and no subject_id at
-% all, because the imaged object is a bacterial lawn on an agar plate and the
-% source never asserts a subject for it.
-%
-% So "the OTHER imageStacks" are C. elegans behaviour plates in another
-% session. Joining to them does not recover a subject; it attaches worms to
-% bacteria. And the join is not merely empty, it is ACTIVELY UNSAFE, because
-% the two plateID string spaces collide:
-%
-%     doImport.m:166 (celegans)  plateID = num2str(plateNum + expType*1000,'%.4i')
-%     doImport.m:729 (ecoli)     plateID = num2str(plateNum,'%.4i')
-%
-% With expType == 0 both emit '0001', '0002', ... over the same range, and only
-% `base.session_id` tells them apart. A plateID join that forgot to scope by
-% session would silently mis-attribute every one of them.
-%
-% `ndi.migrate.internal.ontologyLabelSubjects.m:59-63` had already recorded
-% this ("the images are of bacterial patches on plates and that session has no
-% subject"); this file contradicted it, and this file was wrong.
-%
-% WHAT WOULD ACTUALLY WORK is a modelling call, not a migration operation:
-% mint a subject for the E. coli PLATE. Its row already carries plateID for
-% identity, a `bacteriaStrain` edge to an openMINDS Strain document
-% (doImport.m:734), and OD600/CFU/volume covariates. Then the chain
-% image -> image row -> plateID -> plate row -> plate-subject is traversable
-% ENTIRELY WITHIN session 2, with no cross-session join. Until the team makes
-% that call, the guarded passthrough below is the whole answer and loses
-% nothing.
 if isempty(subjectId)
     bodies = {preBody};
     return;
 end
 
-sessionId = baseField(preBody, 'session_id', '');
-datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
-stackId   = baseField(preBody, 'id', did.ido.unique_id());
+% ---- did-schema #88: what the raster IS (#73 review item 51, decided
+% 2026-09-25): "a raster goes by what its pixels measure, keyed [y, x,
+% (channel)]: JH's microscopy images -> intensity_observation, its masks /
+% closest-patch maps -> label_calculation, chosen from the document's label".
+% A mask or a map PASSES THROUGH (its v1 tombstone, deprecated/image_stack,
+% validates it) -- reported -- because no label_calculation fold has been
+% built on #88. (It used to say the reason was the calculation's required
+% operating_system_id; that is optional since Jess Haley, 2026-10-21
+% [calculation-os-optional], so the unbuilt fold is the only reason left.)
+label = getCharField(getBlock(preBody, 'image_stack'), 'label');
+if isMaskOrMap(label)
+    bodies = {preBody};
+    return;
+end
 
-% format_ontology is the FILE TYPE (an NCIT file-format CURIE like TIFF / MP4).
-% It is NOT the observed quantity, and it is NOT stored: a file's container format
-% is derivable from the bytes themselves (and the short form already rides on
-% image.image_format), so an ontology term for it would be a redundant projection.
+stackId   = baseField(preBody, 'id', did.ido.unique_id());
 dataType = getCharField(params, 'data_type');
 dimOrder = firstNonEmpty(getCharField(params, 'dimension_order'), 'YXCZT');
 dimSize  = numVec(getField(params, 'dimension_size'));
-[clockName, t0] = clockFromParams(params);
-numFrames = frameCount(dimOrder, dimSize);
-
-anchorId = did.ido.unique_id();
-
-% ---- the session-relative time anchor ('during') ----------------------------
-anchor = struct();
-% PASS-1 HANDLE, NOT AN UNMIGRATED CLASS. The signed model retires this class in
-% favour of `relative_reference`, but the same plan makes the change impossible
-% here: `relative_to` is REQUIRED and is not fillable in pass 1 (this body holds
-% base.session_id; the edge needs the session DOCUMENT's base.id). Emitting the
-% new class with an empty required edge would be ~106k husks that validate clean.
-% did2.convert.resolveSessionAnchors folds it in a batch pass, id PRESERVED. Full
-% reasoning in +migrators_j/private/jSessionAnchor.m; the seam is pinned by
-% tests/+did2/+unittest/testSessionAnchorEmitterContract.m.
-anchor.document_class = classBlock('session_relative_reference', {'time_reference'}, TV);
-anchor.depends_on = struct('name', {}, 'value', {});   % session rides on base
-anchor.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'datestamp', datestamp);
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', 'during');
-
-% ---- the discoverable, body-backed image_observation ------------------------
-obs = struct();
-obs.document_class = classBlock('image_observation', {'subject_observation', 'image'}, TV);
-% THE EDGE SET IS REBUILT FROM SCRATCH HERE, so every edge the source carried
-% has to be carried DELIBERATELY -- that rebuild is what silently lost the
-% source `document_id` between 2026-07-10 and today. These two are
-% unconditional: the guard above guarantees a subject, and the anchor is minted
-% a few lines up.
-obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-
-% ---- the source `document_id` -> `ontology_table_row_id` --------------------
-% CONDITIONAL BY CONSTRUCTION. Two of NDI's three imageStack populations reach
-% this arm and only one of them has the edge: haley behaviour sets BOTH
-% document_id and subject_id (doImport.m:429-432), babu sets subject_id alone
-% (import.m:478-479). When it is absent the ENTRY IS OMITTED -- never emitted
-% blank, because a declared-but-empty edge is the invented-empty-edge pattern
-% and the RequiredDependencies gate is armed. `dependencyValue` returns '' for
-% "absent" AND for "present but empty", so both land on the omit branch.
-%
-% The referent is an `ontologyTableRow` document (doImport.m:234-236 builds the
-% behaviour plate rows through table2ontologyTableRowDocs and :430 takes their
-% id), which matches the slot's must_refer_to_document_class. It survives
-% migration with `base.id` untouched -- see fact 3 in the header -- so in a full
-% migration the edge resolves. See the header for the discovery-mode caveat.
-tableRowId = dependencyValue(preBody, 'document_id');
-if ~isempty(tableRowId)
-    obs.depends_on(end+1) = struct('name', 'ontology_table_row_id', ...
-        'value', tableRowId);
+if numel(dimSize) < numel(dimOrder)
+    bodies = {preBody};   % no extent for a dimension: no honest key
+    return;
 end
-% The source `label` is NOT carried: it is a templated prose *definition* of the
-% image type (e.g. "A video recording capturing the behavior of C. elegans...")
-% -- i.e. the definition of the modality ontology term that already rides on
-% subject_statement.variable (from format_ontology). Storing it per-document
-% would duplicate the ontology term's definition; it is reconstructable as a
-% projection. base.name is a short generic name.
-obs.base = struct('id', stackId, 'session_id', sessionId, ...
-    'name', 'migrated_image', 'datestamp', datestamp);
-% storage_mode: body -> the value is in the sampled_body; the statement carries
-% no sample_time (the body owns the cadence).
-% variable is the OBSERVED QUANTITY. On the source that is the linked ontology
-% label (via the image's document_id), not the file format -- resolving it is a
-% second-pass cross-document join (discovery; see V_eta_discovery_notes.md). A
-% non-empty placeholder is emitted here so the statement validates; the second
-% pass replaces it with the label's ontology term.
-% `datum_type` on the STATEMENT (signed sec.5), normalised. NOTE the source
-% here is `firstNonEmpty(dataType, 'uint16')` a few lines up -- a silent default
-% the plan calls out by name -- so a document with no recorded type reports
-% source 'uint16' rather than nothing. That defect is untouched here, and now at
-% least the SOURCE spelling reaches the document so the corpus can be queried
-% for how often the default fired.
-[datumType, sourceDatumType] = jDatumType(dataType);
-obs.subject_statement = struct('variable', struct('node', '', 'name', 'image'), ...
-    'datum_type', datumType, ...
-    'source_datum_type', sourceDatumType, ...
-    'storage_mode', 'body');
-obs.subject_interaction = struct('method', otTerm(''));
-obs.subject_observation = struct();
-% The raster CELL: one `value` slot holding the pixels plus the descriptors needed to
-% interpret them (image now matches the single-`value` convention every other data_type
-% follows -- the descriptors ride inside the cell, as `source_unit` does beside
-% `source_value` in a dimensioned cell). R6 decision 4 is unchanged: dtype is NOT
-% recoverable from an inline matrix, so it is always explicit -- just one level in.
-% dtype from the v1 data_type; axes from dimension_order/size/scale (recovers the N-D
-% calibration the old x/y_resolution lost); pixels empty (they live in the sampled_body,
-% storage_mode:body).
-% NOTE: wrap the axes struct-array in a 1x1 cell so struct() ASSIGNS it as a field (a
-% non-scalar struct value would otherwise distribute the cell into an array), and assign
-% the cell onto obs.image in its own statement for the same reason.
-imageCell = struct( ...
-    'pixels', [], ...
-    'dtype', firstNonEmpty(dataType, 'uint16'), ...
-    'axes', {imageAxes(dimOrder, dimSize, params)}, ...
-    'color_model', otTerm(''), ...
-    'channels', {{}});
-obs.image = struct();
-obs.image.value = imageCell;
 
-% ---- the sampled_body holding the digital frames ----------------------------
-% ONE AXIS: THE FRAME ORDINAL. The stored bytes are the frame SEQUENCE, so array
-% dimension 1 is the frame, and `numFrames = frameCount(dimOrder, dimSize)` (the
-% product of the v1 T and Z extents) is its length. `t0` and the per-frame
-% cadence become the axis origin and spacing -- the same three facts the retired
-% `sample_time` carried, in the field that replaces it (signed sec.2, "time
-% becomes an ordinary axis").
-%
-% THE RASTER DIMENSIONS STAY ON `image.value.axes` AND ARE NOT RESTATED HERE.
-% They describe the IMAGE (R6: descriptors are always explicit on the composite,
-% because dtype is not recoverable from an inline matrix); this describes the
-% STORED SEQUENCE. Copying them onto the body would store one fact twice, the
-% #69 shape this step removes.
-%
-% An earlier version of this comment put that split to the team as an open
-% question about where a body-backed image states its axes. That was a
-% MISREADING of which class was under discussion: `image_stack` is a v1 SOURCE
-% with disposition `retire` -- the same disposition as pyraview and
-% jrclust_clusters, both converted without a question -- and the go-forward
-% `image` composite is a different class whose descriptors R6 already settles.
-% A retiring migrator only has to emit valid V_eta and stop writing a field the
-% schema is dropping.
-body = jSampledBody(stackId, sessionId, datestamp, 'migrated_image_frames');
-body.sampled_body.axes = jAxis(jOntologyTerm('', 'frame'), numFrames, ...
-    'regular',     true, ...
-    'source_unit', 's', ...
-    'origin',      struct('value', t0, 'source_value', t0), ...
-    'spacing',     struct('value', frameDt(clockName), ...
-                          'source_value', frameDt(clockName)));
-% carry the pixel bytes over verbatim as the body's frames (universal renames
-% leave file/files untouched; this doc owns the digital bytes now).
+anchor = jSessionAnchor(preBody, 'during');
+[datumType, sourceDatumType] = jDatumType(firstNonEmpty(dataType, 'uint16'));
+conds = [];
+ts = getField(params, 'timestamp');
+if isnumeric(ts) && isscalar(ts) && isfinite(ts)
+    % the v1 acquisition time is a MATLAB datenum on the named clock; it is
+    % kept as written, as a whole-statement condition (no reference document
+    % can be built from a datenum without assuming the clock is UTC)
+    clk = firstNonEmpty(getCharField(params, 'clocktype'), 'unspecified clock');
+    conds = did2.build.condition(jLabel(['acquisition timestamp (' clk ')']), ...
+        'Value', double(ts), 'SourceValue', sprintf('%.17g', double(ts)));
+end
+extra = {};
+tableRowId = dependencyValue(preBody, 'document_id');
+obs = jStatement(preBody, 'intensity_observation', subjectId, ...
+    jLabel('image intensity'), [], ...
+    'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+    'Conditions', conds, 'Notes', label, ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:});
+if ~isempty(tableRowId)
+    % the v1 `document_id` (the ontologyTableRow this image belongs to): #88
+    % dropped image_observation's `ontology_table_row_id` edge (#73 item 42)
+    % and gives an observation no edge for it; the row is the NDI second
+    % pass's to resolve. Reported.
+end
+% DATUM ORDER 'F': the stack is a MATLAB array in the source's dimension order,
+% column-major (a judgment call, recorded in the port report).
+o = jOpts(preBody, 'DatumOrder', 'F');
+body = did2.build.sampledBody(stackId, imageKeys(dimOrder, dimSize, params), o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
-
 bodies = {obs, body, anchor};
 end
 
-% ===================== geometry / clock builders ===========================
+function tf = isMaskOrMap(label)
+l = lower(label);
+tf = contains(l, 'mask') || contains(l, 'each pixel''s value is the identifier') ...
+    || contains(l, 'label map');
+end
+
+function keys = imageKeys(dimOrder, dimSize, params)
+unitList = splitScaleUnits(getCharField(params, 'dimension_scale_units'));
+names = splitScaleUnits(getCharField(params, 'dimension_labels'));
+entries = {};
+for k = 1:numel(dimOrder)
+    nm = lower(dimOrder(k));
+    if k <= numel(names) && ~isempty(names{k}); nm = names{k}; end
+    sp = axisResolution(params, dimOrder(k));
+    if sp ~= 0
+        u = '';
+        if k <= numel(unitList); u = unitList{k}; end
+        entries{end+1} = jAxis(jOntologyTerm('', nm), dimSize(k), ...
+            'regular', true, 'source_unit', u, ...
+            'origin',  struct('value', 0, 'source_value', 0), ...
+            'spacing', struct('value', sp, 'source_value', sp)); %#ok<AGROW>
+    else
+        entries{end+1} = jAxis(jOntologyTerm('', nm), dimSize(k), ...
+            'regular', true, ...
+            'origin',  struct('value', 1, 'source_value', 1), ...
+            'spacing', struct('value', 1, 'source_value', 1)); %#ok<AGROW>
+    end
+end
+keys = did2.build.list(entries{:});
+end
 
 function r = axisResolution(params, axisChar)
 %AXISRESOLUTION The scale (spacing) of the named spatial axis, 0 if absent.
@@ -436,16 +312,6 @@ end
 end
 
 % ===================== small helpers =======================================
-
-function dc = classBlock(name, supers, tv)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', tv);
-end
-
 
 function t = otTerm(name)
 t = struct('node', '', 'name', name);
@@ -513,106 +379,6 @@ v = default;
 if isfield(bodyStruct, 'base') && isstruct(bodyStruct.base) ...
         && isfield(bodyStruct.base, name) && ~isempty(bodyStruct.base.(name))
     v = bodyStruct.base.(name);
-end
-end
-
-function ax = imageAxes(dimOrder, dimSize, params)
-%IMAGEAXES One signed axis entry per dimension, from the v1 N-D calibration.
-%
-%   REWRITTEN 2026-08-14 FOR THE SIGNED AXIS ENTRY (DID-schema TEAM-SIGN-OFF
-%   [data_body] + AMENDMENT 1, addendum sec.5 "ALL THREE AXES DECLARATIONS FOLD
-%   INTO THE ONE ENTRY"). The old shape {name, length, spacing, unit} no longer
-%   exists. It was the WEAKEST of the three that folded: no regularity flag at
-%   all, so it declared a `spacing` with no way to say whether spacing was even
-%   meaningful, and no `origin`, so it could not say where an axis starts.
-%
-%   LOCKSTEP. `variable` and `n` are mustBeNonEmpty in the new entry, so a cell
-%   written in the old shape quarantines outright. This is the only live writer
-%   of `image.value.axes` in the V_eta path.
-%
-%   THE MAPPING:
-%       name    -> variable.name   the v1 label, VERBATIM (see below)
-%       length  -> n
-%       spacing -> spacing.value + .source_value
-%       unit    -> source_unit     (per-axis now, rather than one shared value)
-%
-%   THE LABEL IS CARRIED VERBATIM AND IS NOT TRANSLATED, deliberately. It would
-%   read better as `space_y`/`channel`/`time` -- the old `kind` field on the
-%   OTHER two axes declarations enumerated exactly that vocabulary -- but this
-%   declaration never had a `kind`, so translating would be INVENTING the
-%   semantic rather than moving it. 'Z' is the case that decides it: depth in a
-%   confocal stack, section index in a serial reconstruction, and v1 does not
-%   say which. A wrong map is a silent semantic error; a bare label is merely
-%   thin. Binding these to real terms is #32, which also fills `node` -- empty
-%   here for the same reason it is empty everywhere else today.
-%
-%   TWO ARMS, BECAUSE AN UNCALIBRATED AXIS IS NOT A CALIBRATED ONE WITH ZERO
-%   SPACING. The old code emitted `spacing: 0` when v1 recorded no resolution,
-%   which says every pixel sits at the same position -- false, and now sayable
-%   as what it is:
-%       resolution known -> a PHYSICAL axis: origin 0 (the raster's own corner,
-%                           which is what a per-pixel spacing is measured from),
-%                           spacing = the v1 scale, source_unit = the v1 unit.
-%       no resolution    -> an INDEX axis: origin 1, spacing 1, no unit. The
-%                           same convention jNgridBody uses for MATLAB's default
-%                           1-based index vector.
-%   Both arms are `regular`, so `origin` is always populated -- the entry
-%   requires it exactly when regular, and both arms are.
-%
-%   `origin` IS THE ONE FIELD v1 DOES NOT SUPPLY, AND THE CONVENTION ABOVE IS
-%   STATED RATHER THAN DERIVED. v1 records extent and scale, never an anchor,
-%   and the entry requires an origin whenever regular, so something must be
-%   written. 0-at-the-corner for a calibrated axis and 1 for an index axis are
-%   the conventional readings, not measurements -- worth a team look if a
-%   dataset ever anchors a stack somewhere else.
-%
-%   NO UNIT CONVERSION IS PERFORMED, and `unit` is left blank while
-%   `source_unit` carries the v1 spelling. That follows every other dimensioned
-%   emission in this package -- treatment.m writes source_unit 'celsius',
-%   virus_injection.m writes 'dilution', jMeasurementFold writes '' -- none of
-%   which converts. Canonicalising 'micrometer' to metres would need a
-%   conversion table this package does not have, and a wrong factor is a silent
-%   1e6 error.
-%
-%   `dimension_scale_units` IS A PER-AXIS LIST AND IS NOW SPLIT. THE OLD CODE
-%   ASSIGNED THE WHOLE STRING TO EVERY AXIS. v1 writes it comma-separated,
-%   positionally aligned with `dimension_order` -- 'YXT' pairs with
-%   'micrometer,micrometer,second' -- so the old per-axis `unit` field was filled
-%   with 'micrometer,micrometer,second' on all three axes, saying the time axis
-%   is measured in micrometres AND seconds AND micrometres. The old shape had
-%   the slot and filled it wrongly; splitting is part of the fold rather than a
-%   separate repair, because the entry that made `source_unit` per-axis is what
-%   makes the joined string obviously wrong.
-%
-%   A SHORT LIST IS NOT PADDED AND A LONG ONE IS NOT TRUNCATED-WITH-A-GUESS: an
-%   axis past the end of the list gets '', which is what an axis with no
-%   recorded unit already gets.
-ax = struct('variable', {}, 'n', {}, 'regular', {}, 'origin', {}, ...
-    'spacing', {}, 'source_unit', {});
-unitList = splitScaleUnits(getCharField(params, 'dimension_scale_units'));
-n = numel(dimOrder);
-for k = 1:n
-    nm = dimOrder(k);
-    len = 0;
-    if k <= numel(dimSize); len = dimSize(k); end
-    sp = axisResolution(params, nm);
-    axisUnit = '';
-    if k <= numel(unitList); axisUnit = unitList{k}; end
-    if sp ~= 0
-        originValue  = 0;      % the raster's own corner
-        spacingValue = sp;
-    else
-        originValue  = 1;      % MATLAB's default index vector
-        spacingValue = 1;
-        axisUnit     = '';     % an index axis has no unit
-    end
-    ax(end+1) = struct( ...
-        'variable',    jOntologyTerm('', nm), ...
-        'n',           len, ...
-        'regular',     true, ...
-        'origin',      struct('value', originValue, 'source_value', originValue), ...
-        'spacing',     struct('value', spacingValue, 'source_value', spacingValue), ...
-        'source_unit', axisUnit); %#ok<AGROW>
 end
 end
 

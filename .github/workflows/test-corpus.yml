@@ -88,6 +88,13 @@ on:
         required: false
         default: ''
         type: string
+      did_schema_ref:
+        description: >-
+          did-schema ref to validate against. Default: the did-schema #88
+          branch the migrators are ported to (Jess Haley, 2026-10-21).
+        required: false
+        default: 'claude/ecstatic-pascal-md91fw'
+        type: string
   schedule:
     # 07:00 UTC daily. The full corpus is the slow, thorough gate; PRs are
     # served by test-migrators-quick.yml (~2 min). Measured 2026-08-10 on the
@@ -174,7 +181,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
           path: did-schema
 
       - name: Assemble V_eta schema set (stable + draft)
@@ -328,7 +335,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Waltham-Data-Science/did-schema
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ inputs.did_schema_ref || 'claude/ecstatic-pascal-md91fw' }}
           path: did-schema
 
       - name: Resolve the NDI-matlab ref

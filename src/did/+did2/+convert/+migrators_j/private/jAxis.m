@@ -33,35 +33,46 @@ function ax = jAxis(variable, n, varargin)
 %   one that quarantines.
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) migrators.
-
-% Assigned one at a time, NOT via struct(...) -- see (2) above.
-ax = struct();
-ax.variable    = variable;
-ax.unit        = struct('node', '', 'name', '');
-ax.source_unit = '';
-ax.approximate = false;
-ax.n           = n;
-ax.regular     = false;
-ax.origin      = struct();
-ax.spacing     = struct();
-ax.quantity    = struct();
-ax.term        = struct('node', '', 'name', '');
+%
+%   did-schema #88: the axis entry is a `keys` entry (data_body amendment 3:
+%   {variable, unit, source_unit, approximate, n, regular, origin, spacing,
+%   quantity, term, positions_from, cyclic, chunk}). This returns it built
+%   through did2.build.composite, with ONLY the sub-fields given (an empty
+%   default is left out, so the schema's key rules -- regular iff origin and
+%   spacing; one position form when not regular -- see what was given).
+%   'source_unit' given as text becomes a term (jSourceUnit). A key given no
+%   positions and not regular violates key_positions_one_form when the
+%   document is built; the caller decides what it has.
 
 if mod(numel(varargin), 2) ~= 0
     error('did2:migrators_j:jAxis:badOptions', ...
         'jAxis options must be name-value pairs; got %d trailing argument(s).', ...
         numel(varargin));
 end
+known = {'variable', 'unit', 'source_unit', 'approximate', 'n', 'regular', ...
+    'origin', 'spacing', 'quantity', 'term', 'positions_from', 'cyclic', 'chunk'};
+ax = struct('variable', variable, 'n', n, 'regular', false);
 for k = 1:2:numel(varargin)
     name = varargin{k};
-    if ~isfield(ax, name)
-        % NOT tolerated. A typo'd option would otherwise add an undeclared
-        % sub-field, and `undeclaredField` is a QUARANTINE -- so the cheap
-        % failure here replaces an expensive one on real documents.
+    if ~any(strcmp(name, known))
         error('did2:migrators_j:jAxis:unknownField', ...
             'jAxis has no sub-field `%s`. The signed entry declares: %s.', ...
-            name, strjoin(fieldnames(ax)', ', '));
+            name, strjoin(known, ', '));
     end
-    ax.(name) = varargin{k + 1};
+    v = varargin{k + 1};
+    if strcmp(name, 'source_unit') && (ischar(v) || isstring(v))
+        v = jSourceUnit(v);
+    end
+    if isempty(v) || (isstruct(v) && isscalar(v) && isempty(fieldnames(v))) ...
+            || (isstruct(v) && isfield(v, 'node') && isfield(v, 'name') ...
+                && isscalar(v) && isempty(v.node) && isempty(v.name))
+        continue;
+    end
+    if strcmp(name, 'quantity') && isstruct(v)
+        if isfield(v, 'value'); v.value = reshape(v.value, 1, []); end
+        if isfield(v, 'source_value'); v.source_value = reshape(v.source_value, 1, []); end
+    end
+    ax.(name) = v;
 end
+ax = did2.build.composite('data', 'keys', ax);
 end

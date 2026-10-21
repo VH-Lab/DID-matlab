@@ -8,6 +8,12 @@ function doc = sampledBody(ownerId, keys, options)
 %   The element type is NOT on the body: it is the owner's `datum_type` ("extent
 %   is per-body, type is per-statement"), and the owner sets `data_body` true.
 %
+%   OWNERID may be a cellstr of several ids: `owner_id` repeats (did-schema
+%   data_body, T15) when one body holds part of the value of several
+%   statements -- a raw recording file shared by the observation of every
+%   electrode recorded in it (Jess Haley, 2026-10-21,
+%   V_eta_recording_observation_plan.md).
+%
 %   The bytes are a DID FILE SERIES, `body_data_0`, `body_data_1`, ... (item
 %   17); an unchunked body is the single member `body_data_0`, which is the
 %   default. 'Chunks' N names members 0..N-1; 'Files' names them outright.
@@ -48,7 +54,7 @@ function doc = sampledBody(ownerId, keys, options)
 %   See also did2.build.opaqueBody, did2.build.key, did2.build.statement.
 
 arguments
-    ownerId (1,:) char
+    ownerId {mustBeText} % one owner id, or a cellstr of several (owner_id repeats)
     keys
     options.DatumOrder = ''
     options.ByteOrder = ''
@@ -80,8 +86,30 @@ fields = struct('keys', {keys}, ...
     'compression', options.Compression, 'content_hash', options.ContentHash, ...
     'hash_algorithm', options.HashAlgorithm, 'description', options.Description);
 fields = bodyFields(fields);
-edges = struct('owner_id', ownerId, 'filter_id', options.FilterId, ...
+edges = struct('owner_id', {ownerIds(ownerId)}, 'filter_id', options.FilterId, ...
     'key_id', {options.KeyIds});
 options.Files = bodyFiles(options.Files, options.Chunks);
 doc = forward('sampled_body', fields, edges, options);
+end
+
+function ids = ownerIds(ownerId)
+%OWNERIDS A body's owner id(s) as did2.build.document's 'Edges' takes them: a
+%   char for one owner (unchanged), a cellstr for several. `owner_id` repeats
+%   (did-schema data_body, T15, 2026-10-21) so one raw recording file can belong
+%   to the observation of every electrode recorded in it. An empty cell is left
+%   empty, so the builder's own min_count check reports it.
+arguments
+    ownerId {mustBeText}
+end
+if ischar(ownerId)
+    ids = ownerId;
+elseif isstring(ownerId) && isscalar(ownerId)
+    ids = char(ownerId);
+else
+    ids = cellstr(ownerId);
+    ids = ids(:)';
+    if isscalar(ids)
+        ids = ids{1};
+    end
+end
 end

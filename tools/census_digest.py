@@ -452,6 +452,24 @@ POST_PASSES = [
         # path is a number rather than a comment.
         ("method_parameters_epoch_not_in_batch",
          "method_parameters: epoch edge to a document NOT in the batch"),
+        # THE PYRAVIEW FOLD (did-schema #88 port, 2026-10-21): a pyraview body
+        # carrying only an epoch STRING passes through until the epoch entity
+        # exists; this pass then re-runs the migrator with the epoch_id edge
+        # stamped. Same reading as the two folds above.
+        ("pyraview_seen", "pyraview seen"),
+        ("pyraview_folds_emitted", "FOLDED (pyraview with its epoch edge)"),
+        ("pyraview_folds_withheld", "  WITHHELD (fold did not validate)"),
+        ("pyraview_refused_no_epoch_string", "  pyraview: no epoch string"),
+        ("pyraview_refused_no_epoch_document", "  pyraview: no epoch document for the pair"),
+        ("pyraview_refused_migrator_declined", "  pyraview: migrator declined"),
+        ("pyraview_refused_unsafe_output", "  pyraview: refused, unsafe output"),
+        # #88: a pyraview cannot pass through pass 1 (its tombstone lacks the v1
+        # epochclocktimes block), so it DEFERS into the quarantine and is folded
+        # here; an unresolved deferral stays quarantined and fails the integrity check loudly.
+        ("pyraview_deferred_seen", "pyraview DEFERRED from pass 1 (in the quarantine)"),
+        ("pyraview_deferred_resolved", "  deferred pyraview FOLDED (left the quarantine)"),
+        ("pyraview_deferred_unresolved", "  deferred pyraview UNRESOLVED (stays quarantined)"),
+        ("pyraview_deferred_epochs_minted", "  epochs minted for a deferred pyraview (it alone named them)"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
         ("documents_inspected", "documents inspected"),
@@ -545,7 +563,55 @@ POST_PASSES = [
         ("rename_skipped_no_filenavigator", "  rename SKIPPED: no filenavigator_id (tombstone kept)"),
         ("rename_skipped_no_epoch", "  rename SKIPPED: no resolved epoch (tombstone kept)"),
         ("rename_quarantined", "  rename QUARANTINED (tombstone kept, integrity fallback)"),
+        # did-schema #88 (#73 item 39): no serialized probemap on the manifest,
+        # so a document with ANY row that did not decompose keeps its tombstone.
+        ("rename_skipped_rows_without_home", "  rename SKIPPED: a probemap row has no home (tombstone kept)"),
+        # #73 item 56: one shared acquisition_channels document per (rig, channels).
+        ("acquisition_channels_minted", "acquisition_channels documents minted"),
+        ("channels_unbindable_type", "  rows whose channel type is outside ai/ao/di/do (no channels doc)"),
         ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
+        # 2026-10-21 (Jess Haley, did-schema V_eta_recording_observation_plan.md):
+        # each recording observation is `data_body` true and the epoch's files
+        # are its opaque_bodies, shared through a repeated owner_id. BY LOCATION
+        # means the file is NAMED, not checked: the test corpora carry document
+        # JSON only, so "files named but absent" is a property of the test data.
+        ("epochs_with_observations", "epochs with a surviving recording observation  <- BODY DENOMINATOR"),
+        ("epochs_from_archive", "  epochs whose bodies are the ingested archive (as attached)"),
+        ("epochs_by_location", "  epochs whose bodies are named files, by location"),
+        ("epochs_no_file_named", "  epochs with NO file to point at (observation has no body)"),
+        ("bodies_from_archive", "opaque_bodies from ingested archive series"),
+        ("archive_members_carried", "  archive members carried as attached"),
+        ("bodies_by_location", "opaque_bodies by location (files named, presence NOT checked)"),
+        ("bodies_size_and_checksum_omitted", "  of which size + checksum omitted (no disk read in this pass)"),
+        ("body_owner_links", "  owner_id links (body x observation; shared bodies)"),
+        ("body_build_refused", "  epochs whose bodies could not be BUILT (see first error)"),
+        ("bodies_quarantined", "  bodies QUARANTINED"),
+        ("observes_retired", "`observes` relations retired (replaced by instrument_id)"),
+        # 2026-10-21 (Jess Haley, "a"): a spike-sorted neuron's per-epoch
+        # observation (time, data_body, its element_epoch .vhsb as the body).
+        ("spike_epochs_seen", "spikes element_epochs seen  <- SPIKE DENOMINATOR"),
+        ("spike_trains_emitted", "  spike-train observations emitted"),
+        ("spike_instrument_resolved", "    with the sorted-from instrument resolved"),
+        ("spike_bodies", "  spike-train bodies (epoch_binary_data.vhsb)"),
+        ("spike_bodies_quarantined", "  spike-train bodies QUARANTINED"),
+        ("spike_refused_no_epoch", "  refused: no epoch document"),
+        ("spike_epochs_no_file", "  refused: no epoch_binary_data.vhsb named"),
+        # 2026-10-21 (Jess Haley, "a"): a v1 daqreader_*_epochdata_ingested is
+        # retired only when every file it holds has a new per-epoch owner.
+        ("archive_docs_inspected", "v1 ingested archives inspected  <- ARCHIVE DENOMINATOR"),
+        ("archive_docs_retired", "  retired (every file owned by a new data body)"),
+        ("archive_docs_kept_unowned_files", "  KEPT: a file with no new owner"),
+        ("archive_files_unowned", "    files with no new owner"),
+        ("archive_kept_referenced", "  KEPT: still referenced by a survivor"),
+        ("archive_dangling_references", "    dangling references found (and avoided)"),
+        # 2026-10-21 (Jess Haley, "a"): pyraview levels owned by the epoch's
+        # recording observation; the separate observation is retired.
+        ("pyraview_observations_seen", "pyraview observations seen  <- PYRAVIEW DENOMINATOR"),
+        ("pyraview_observations_retired", "  retired (levels moved to the recording observation)"),
+        ("pyraview_levels_repointed", "  level bodies re-pointed"),
+        ("pyraview_kept_no_recording_observation", "  KEPT: no recording observation for element+epoch"),
+        ("pyraview_kept_referenced", "  KEPT: still referenced by a survivor"),
+        ("pyraview_repoint_quarantined", "  re-point QUARANTINED (kept as it was)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # five run knobs move inline onto the harmonic_component_calculation leaf
@@ -2268,6 +2334,30 @@ def _edge_arity_verdict(ea, out, indent="      "):
         p("%s*** and it is the independent way of seeing it." % indent)
 
 
+def render_dose_ingredients(r, out):
+    """The dose `ingredient_in_formulation` batch census (Jess Haley,
+    2026-10-21 [dose per ingredient]). Denominator first; absent is NOT
+    MEASURED, never a zero."""
+    p = out.append if isinstance(out, list) else out
+    di = r.get("dose_ingredients")
+    if not isinstance(di, dict) or "audit_failed" in di:
+        why = ("audit failed (%s)" % di.get("audit_failed")) if isinstance(di, dict) \
+            else "this report carries no dose_ingredients block"
+        p("    dose ingredient_in_formulation: NOT MEASURED -- %s" % why)
+        return
+    p("    dose ingredient_in_formulation: %s doc(s) inspected, %s dose(s) "
+      "(%s with ingredient_id), %s formulation not in batch (not checked), "
+      "%s checked, %s violation(s)"
+      % (di.get("docs_inspected", "?"), di.get("doses_inspected", "?"),
+         di.get("doses_with_ingredients", "?"), di.get("formulation_not_in_batch", "?"),
+         di.get("doses_checked", "?"), di.get("violations", "?")))
+    ex = di.get("violation_examples") or []
+    if isinstance(ex, dict):
+        ex = [ex]
+    for e in ex:
+        p("      %s: %s" % (e.get("id", "?"), e.get("message", "?")))
+
+
 def render_entity_requires(r, out):
     """The entity-type `requires` census, REPORT-ONLY (Jess Haley, 2026-10-21,
     "b"): per entity type and required field, entities inspected and missing.
@@ -3865,9 +3955,16 @@ def epoch_populations(r):
             "the report carries no `by_class` -- the FINAL class census is "
             "the only figure that would notice an epoch DELETED after minting")
     else:
-        reading["commensurable"].append(
-            (class_count(normalised_class_index(by_class), "epoch"),
-             "by_class: `epoch` in the FINAL class census"))
+        n_epoch = class_count(normalised_class_index(by_class), "epoch")
+        label = "by_class: `epoch` in the FINAL class census"
+        # did-schema #88: an epoch is an `entity` of type epoch, which by_class
+        # counts under `entity`; the report's by_entity_type carries the type.
+        by_type = r.get("by_entity_type")
+        if isinstance(by_type, dict) and by_type.get("epoch") is not None:
+            n_epoch += _int_or_none(by_type.get("epoch")) or 0
+            label = ("by_class `epoch` + by_entity_type `epoch` in the FINAL "
+                     "class census")
+        reading["commensurable"].append((n_epoch, label))
 
     values = set(v for v, _label in reading["commensurable"])
     if len(values) > 1:
@@ -5858,6 +5955,7 @@ def render_report(r, out):
     # wide question came to be recorded as unmeasured.
     render_edge_arity(r, out)
     render_entity_requires(r, out)
+    render_dose_ingredients(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the

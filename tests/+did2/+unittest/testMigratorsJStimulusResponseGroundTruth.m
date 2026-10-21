@@ -85,6 +85,18 @@ function tests = testMigratorsJStimulusResponseGroundTruth
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% RE-ARMED 2026-10-21. These tests were filtered while did-schema #88's
+% `calculation` required operating_system_id, which no v1 document records.
+% Decided by Jess Haley, 2026-10-21 [calculation-os-optional]: "A calculation's
+% `operating_system_id` is optional: required when the operating system is
+% known, absent when the source never recorded it." So that reason is gone and
+% the tests run unconditionally; a failure here is a migrator gap to report,
+% not a reason to filter.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== fixtures (from the WRITER) ==========================
 
 function v1 = responseFixture(responseType)
@@ -231,7 +243,7 @@ verifyEmpty(testCase, fieldnames(s.subject_interaction.method_parameters));
 % a substitute for an epoch-relative reference; that is exactly what has been
 % fixed, so the session anchor must now be ABSENT.
 verifyFalse(testCase, anyClass(out, 'session_relative_reference'));
-ref = findClass(testCase, out, 'relative_reference');
+ref = findClass(testCase, out, 'relative_time_reference');
 a   = ref.toStruct();
 verifyEqual(testCase, depValue(a, 'relative_to'), epochDocId());
 verifyEqual(testCase, depValue(s, 'time_reference_1'), a.base.id);
@@ -253,7 +265,7 @@ out = runJ(responseFixture('F1'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'stimulus_response_scalar');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'stimulus_response_scalar');
 verifyEqual(testCase, d.get('stimulus_response.element_epochid'), 't00017');
 verifyEqual(testCase, d.get('stimulus_response.stimulator_epochid'), 't00003');
 verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
@@ -282,7 +294,7 @@ for k = 1:numel(out.migrated)
         out.migrated{k}.get('document_class.class_name'));
 end
 % and the epoch that IS carried is carried by REFERENCE, to the element's epoch
-ref = findClass(testCase, out, 'relative_reference');
+ref = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(ref.toStruct(), 'relative_to'), epochDocId());
 end
 
@@ -465,7 +477,7 @@ v1 = emptyEdge(withEpochEdge(responseFixture('F1')), 'element_id');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -644,14 +656,14 @@ end
 function doc = findClass(testCase, out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
 end
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
+    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
 end
 % assertFail, not verifyFail: verifyFail records the failure and CONTINUES, and
 % the caller would then dereference an empty doc and report a MATLAB error

@@ -126,8 +126,11 @@ did2.unittest.helpers.installSchemaPath(testCase, ...
 try
     cache = did2.schema.cache.shared();
     cache.getClass('acquisition_system');
-    cache.getClass('acquisition_metadata_reader');
-    cache.getClass('software');
+    % did-schema #88: `acquisition_metadata_reader` became
+    % `epoch_parameter_reader` (#73 item 65), and `software` is an `entity`
+    % of type software (one entity class).
+    cache.getClass('epoch_parameter_reader');
+    cache.getClass('entity');
 catch err
     assumeFail(testCase, ...
         ['DID_SCHEMA_PATH does not resolve the V_eta daq-configuration ' ...
@@ -138,14 +141,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
+    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
 end
 end
 
 function doc = firstOfClass(out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
@@ -274,8 +277,8 @@ verifyEqual(testCase, depValue(reader, 'software_id'), ...
     firstOfClass(out, 'software').get('base.id'));
 
 sw = firstOfClass(out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.reader.mfdaq.intan');
-verifyEqual(testCase, sw.get('software.local_identifier'), ...
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.daq.reader.mfdaq.intan');
+verifyEqual(testCase, sw.get('entity.local_identifier'), ...
     'ndi.daq.reader.mfdaq.intan');
 % v1's daqreader template has NO version field, so nothing may be invented here.
 % verifyEmpty + verifyClass, NOT verifyEqual(...,''): verifyEqual compares SIZE
@@ -284,8 +287,8 @@ verifyEqual(testCase, sw.get('software.local_identifier'), ...
 % "Actual 1x0 / Expected 0x0" -- a fact about an argument block, not about the
 % migration. jSoftware now normalises the empty; this assertion no longer
 % depends on which empty it is either way.
-verifyClass(testCase, sw.get('software.version'), 'char');
-verifyEmpty(testCase, sw.get('software.version'));
+% #88: a version is a text_assertion about the software; none is minted here
+verifyFalse(testCase, any(strcmp(classNames(out), 'text_assertion')));
 end
 
 function testDaqreaderPreservesItsBaseId(testCase)
@@ -369,16 +372,16 @@ function testMetadataReaderFoldsToTheReaderPlusSoftware(testCase)
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
 names = classNames(out);
 verifyEqual(testCase, numel(names), 2);
-verifyTrue(testCase, any(strcmp(names, 'acquisition_metadata_reader')));
+verifyTrue(testCase, any(strcmp(names, 'epoch_parameter_reader')));
 verifyTrue(testCase, any(strcmp(names, 'software')));
 
-reader = firstOfClass(out, 'acquisition_metadata_reader');
+reader = firstOfClass(out, 'epoch_parameter_reader');
 verifyEqual(testCase, reader.get('base.id'), 'mdreader_id_1');
 verifyEqual(testCase, ...
-    reader.get('acquisition_metadata_reader.metadata_file_pattern'), '.*\.tsv\>');
+    reader.get('epoch_parameter_reader.file_regex'), '.*\.tsv\>');
 
 sw = firstOfClass(out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.metadatareader');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.daq.metadatareader');
 verifyEqual(testCase, depValue(reader, 'software_id'), sw.get('base.id'));
 end
 
@@ -389,7 +392,7 @@ function testMetadataReaderPreservesItsBaseId(testCase)
 % would leave that required edge pointing at nothing.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
 verifyEqual(testCase, ...
-    firstOfClass(out, 'acquisition_metadata_reader').get('base.id'), ...
+    firstOfClass(out, 'epoch_parameter_reader').get('base.id'), ...
     'mdreader_id_1');
 end
 
@@ -401,7 +404,7 @@ function testMetadataReaderMintsNoDaqsystemEdge(testCase)
 % NDI declares the edge the OTHER way (daqsystem -> daqmetadatareader_id) and
 % the schema half removed the invented one. Nothing may put it back.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
-reader = firstOfClass(out, 'acquisition_metadata_reader');
+reader = firstOfClass(out, 'epoch_parameter_reader');
 verifyFalse(testCase, hasDependency(reader, 'daqsystem_id'));
 end
 
@@ -410,11 +413,11 @@ function testMetadataReaderWithoutAClassNameOmitsTheSoftwareEdge(testCase)
 % software_id is OMITTED rather than written empty: an empty edge is skipped by
 % the reference validator, so writing one would be invisible rather than absent.
 out = runJ(daqmetadatareaderV1('', '.*\.tsv\>'));
-verifyEqual(testCase, classNames(out), {'acquisition_metadata_reader'});
+verifyEqual(testCase, classNames(out), {'epoch_parameter_reader'});
 reader = out.migrated{1};
 verifyFalse(testCase, hasDependency(reader, 'software_id'));
 verifyEqual(testCase, ...
-    reader.get('acquisition_metadata_reader.metadata_file_pattern'), '.*\.tsv\>');
+    reader.get('epoch_parameter_reader.file_regex'), '.*\.tsv\>');
 end
 
 function testMetadataReaderWithoutAPatternOmitsTheField(testCase)
@@ -423,8 +426,8 @@ function testMetadataReaderWithoutAPatternOmitsTheField(testCase)
 % is the common subclassed case, not a contrivance. A blank field is what
 % did2.validate.silentLoss counts as vacuous, so it is omitted.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader.NewStimStims', ''));
-reader = firstOfClass(out, 'acquisition_metadata_reader');
-blk = reader.get('acquisition_metadata_reader');
+reader = firstOfClass(out, 'epoch_parameter_reader');
+blk = reader.get('epoch_parameter_reader');   % #88 (#73 item 65): renamed
 verifyFalse(testCase, isfield(blk, 'metadata_file_pattern'));
 end
 
@@ -463,15 +466,15 @@ sw  = firstOfClass(out, 'software');
 % The class name is carried as the software entity's identity, and the edge
 % points at THAT document -- not at a string field, which acquisition_system
 % still does not have ("fields": []).
-verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.system.mfdaq');
-verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.daq.system.mfdaq');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.daq.system.mfdaq');
+verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.daq.system.mfdaq');
 verifyEqual(testCase, depValue(sys, 'software_id'), sw.get('base.id'));
 
 % v1's daqsystem template has ONE field and it is the class name, so there is no
 % version to invent. verifyEmpty + verifyClass rather than verifyEqual(...,''),
 % for the reason spelled out in testDaqreaderDissolvesIntoSoftware.
-verifyClass(testCase, sw.get('software.version'), 'char');
-verifyEmpty(testCase, sw.get('software.version'));
+% #88: a version is a text_assertion about the software; none is minted here
+verifyFalse(testCase, any(strcmp(classNames(out), 'text_assertion')));
 end
 
 function testDaqsystemSoftwareIdIsDistinctFromReaderId(testCase)
@@ -530,8 +533,8 @@ sys = out.migrated{1};
 verifyFalse(testCase, hasDependency(sys, 'software_id'));
 verifyEqual(testCase, depValue(sys, 'reader_id'), 'reader_id_1');
 verifyEqual(testCase, depValue(sys, 'epoch_file_pattern_id'), 'nav_id_1');
-verifyEqual(testCase, depValue(sys, 'acquisition_metadata_reader_1'), 'md_id_1');
-verifyEqual(testCase, depValue(sys, 'acquisition_metadata_reader_2'), 'md_id_2');
+% #88: the metadata readers are the repeated epoch_parameter_reader_id edge
+verifyEqual(testCase, depValues(sys, 'epoch_parameter_reader_id'), {'md_id_1', 'md_id_2'});
 end
 
 function testDaqsystemPreservesIdAndName(testCase)
@@ -542,7 +545,8 @@ function testDaqsystemPreservesIdAndName(testCase)
 out = runJ(daqsystemV1('', {}));
 sys = out.migrated{1};
 verifyEqual(testCase, sys.get('base.id'), 'system_id_1');
-verifyEqual(testCase, sys.get('base.name'), 'intan1');
+% #88: V_eta writes no base.name; the system's name is acquisition_system.name
+verifyEqual(testCase, sys.get('acquisition_system.name'), 'intan1');
 end
 
 function testDaqsystemSkipsTheEmptyBareFamilyEntry(testCase)
@@ -553,8 +557,7 @@ function testDaqsystemSkipsTheEmptyBareFamilyEntry(testCase)
 % which skips them -- and shift the numbering of the real ones.
 out = runJ(daqsystemV1('', {'md_id_1'}));
 sys = out.migrated{1};
-verifyEqual(testCase, depValue(sys, 'acquisition_metadata_reader_1'), 'md_id_1');
-verifyFalse(testCase, hasDependency(sys, 'acquisition_metadata_reader_2'));
+verifyEqual(testCase, depValues(sys, 'epoch_parameter_reader_id'), {'md_id_1'});
 end
 
 function testDaqsystemWithNoMetadataReadersEmitsNoFamily(testCase)
@@ -563,7 +566,7 @@ function testDaqsystemWithNoMetadataReadersEmitsNoFamily(testCase)
 % acquisition_metadata_reader_# min_count 0. The family is ABSENT, not empty.
 out = runJ(daqsystemV1('', {}));
 sys = out.migrated{1};
-verifyFalse(testCase, hasDependency(sys, 'acquisition_metadata_reader_1'));
+verifyFalse(testCase, hasDependency(sys, 'epoch_parameter_reader_id'));
 verifyFalse(testCase, hasDependency(sys, 'daqmetadatareader_id'));
 end
 
@@ -701,4 +704,19 @@ out = runJValidated(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
 verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
 verifyEqual(testCase, out.summary.fragment_count, 0);
+end
+
+function v = depValues(doc, name)
+% every value of a repeated edge, in order (#88 repeats one edge name)
+v = {};
+deps = doc.get('depends_on');
+for k = 1:numel(deps)
+    if strcmp(char(deps(k).name), name)
+        if isfield(deps(k), 'document_id') && ~isempty(deps(k).document_id)
+            v{end+1} = char(deps(k).document_id); %#ok<AGROW>
+        elseif isfield(deps(k), 'value')
+            v{end+1} = char(deps(k).value); %#ok<AGROW>
+        end
+    end
+end
 end

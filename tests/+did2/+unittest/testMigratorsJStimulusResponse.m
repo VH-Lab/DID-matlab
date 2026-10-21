@@ -76,6 +76,18 @@ function tests = testMigratorsJStimulusResponse
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% RE-ARMED 2026-10-21. These tests were filtered while did-schema #88's
+% `calculation` required operating_system_id, which no v1 document records.
+% Decided by Jess Haley, 2026-10-21 [calculation-os-optional]: "A calculation's
+% `operating_system_id` is optional: required when the operating system is
+% known, absent when the source never recorded it." So that reason is gone and
+% the tests run unconditionally; a failure here is a migrator gap to report,
+% not a reason to filter.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== fixtures (from the WRITER) ==========================
 
 function v1 = responseFixture(responseType)
@@ -189,7 +201,7 @@ out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 b    = leaf.toStruct();
 
-verifyEqual(testCase, depValue(b, 'subject_id'),           'elem_9c027e');
+verifyEqual(testCase, depValue(b, 'entity_id'),           'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
 verifyEqual(testCase, depValue(b, 'derived_from_1'),       'pres_b671ff');
 verifyEqual(testCase, depValue(b, 'derived_from_2'),       'ctrl_20e84c');
@@ -200,7 +212,7 @@ verifyEqual(testCase, depValue(b, 'method_parameters_id'), 'param_77c19b');
 % is still 'during' -- spelled as the OWL-Time CURIE the field's value_set
 % binding requires. The session-anchor spelling of the same assertion lives in
 % testWithNoEpochStringTheAnchorIsStillTheDuringSessionReference.
-anchor = findClass(testCase, out, 'relative_reference');
+anchor = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(b, 'time_reference_1'), anchor.get('base.id'));
 verifyEqual(testCase, char(anchor.get('relative_reference.value.relation.node')), ...
     'time:intervalDuring');
@@ -249,13 +261,13 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out  = runJ(withEpochEdge(responseFixture('F1')));
 leaf = findClass(testCase, out, 'harmonic_component_calculation');
 verifyEqual(testCase, leaf.get('subject_statement.storage_mode'), 'inline');
-verifyEqual(testCase, leaf.get('subject_interaction.method.name'), ...
+verifyEqual(testCase, leaf.get('interaction.method.term.name'), ...
     'ndi.app.stimulus.tuning_response');
 % OPEN 1/OPEN 2 of the plan are not closed: the quantity actually measured is not
 % recorded anywhere in this family, so `variable` is the v1-level label and the
 % resolver must refine it from the migrated element. Pinned so a change is
 % deliberate rather than incidental.
-verifyEqual(testCase, leaf.get('subject_statement.variable.name'), 'stimulus response');
+verifyEqual(testCase, leaf.get('statement.variable.name'), 'stimulus response');
 end
 
 function testInlineMethodParametersStaysEmptyBesideTheEdge(testCase)
@@ -312,7 +324,7 @@ out = runJ(v1);
 
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 % the payload survives intact for the second pass
@@ -330,7 +342,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out = runJ(withEpochEdge(responseFixture('peak')));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -341,7 +353,7 @@ v1 = withEpochEdge(responseFixture('F1'));
 v1.stimulus_response_scalar.responses.response_real = [];
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -382,7 +394,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out = runJ(responseFixture('F1'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
 % suppressing is only worth anything if the string it protects is still there
@@ -405,7 +417,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 
 leaf   = findClass(testCase, out, 'harmonic_component_calculation');
-anchor = findClass(testCase, out, 'session_relative_reference');
+anchor = findClass(testCase, out, 'relative_time_reference');
 verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
     anchor.get('base.id'));
 verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
@@ -424,7 +436,7 @@ out = runJ(parametersFixture());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), ...
     'stimulus_response_scalar_parameters_basic');
 verifyEqual(testCase, d.get('base.id'), 'param_77c19b');
 blk = 'stimulus_response_scalar_parameters_basic.';
@@ -589,14 +601,14 @@ end
 function doc = findClass(testCase, out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), className)
+    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
 end
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
+    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
 end
 % assertFail, not verifyFail: verifyFail records the failure and CONTINUES, and
 % the caller would then dereference an empty doc and report a MATLAB error

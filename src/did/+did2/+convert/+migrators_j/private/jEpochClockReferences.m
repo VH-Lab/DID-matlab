@@ -136,41 +136,22 @@ for k = 1:n
     % check that caught a real dead variable in pyraview.m and correctly spared
     % a live one in jAcquisitionChannels.m.
     [bareClock, toleranceSeconds] = deEncodeApprox(clockName);
-
-    ref = struct();
-    ref.document_class = struct('class_name', 'relative_reference', ...
-        'class_version', '2.0.0', ...
-        'superclasses', struct('class_name', 'time_reference', ...
-            'class_version', '4.0.0'), ...
-        'schema_version', 'V_eta');
-    % relative_to is REQUIRED (team call, recorded in the time model plan: "a
-    % relative time with no referent is not interpretable"). The caller has
-    % already established it is non-empty; this function is never reached
-    % otherwise.
-    ref.depends_on = struct('name', {'relative_to'}, 'value', {epochDocId});
-    ref.base = struct('id', did.ido.unique_id(), ...
-        'session_id', sessionId, ...
-        'name', 'migrated_epoch_extent', ...
-        'datestamp', datestamp);
-    % The ROOT block carries `clock_tolerance` ONLY when the source clock stated
-    % one. No tolerance => no block written; ensureClassBlocks pads it
-    % (+did2/+convert/v1_to_v2.m:471-475). An empty tolerance cell would assert
-    % "the timeline is good to 0 s", which the source never said.
-    if ~isempty(toleranceSeconds)
-        ref.time_reference = struct('clock_tolerance', ...
-            durationCell(toleranceSeconds));
+    % did-schema #88: a relative_time_reference whose referent is the epoch
+    % (`referent_id`; `relative_to` before #73), built through did2.build.
+    ct = [];
+    if ~isempty(toleranceSeconds); ct = toleranceSeconds; end
+    sec = struct('node', 'om:second-Time', 'name', 'second');
+    try
+    ref = did2.build.relativeTimeReference(epochDocId, 'Clock', bareClock, ...
+        'Start', t(1), 'StartSourceValue', t(1), 'StartSourceUnit', sec, ...
+        'StartApproximate', false, ...
+        'Duration', t(2) - t(1), 'DurationSourceValue', t(2) - t(1), ...
+        'DurationSourceUnit', sec, 'DurationApproximate', false, ...
+        'ClockTolerance', ct, 'SessionId', sessionId, ...
+        'CreationTimestamp', datestamp, 'Validate', false);
+    catch
+        continue;   % a clock outside the bound set: no reference, never a guess
     end
-    % `relation` is deliberately OMITTED: it is optional and carries the
-    % qualitative Allen relation used when there is NO metric offset, and here
-    % the offsets are the whole content.
-    %
-    % CHANGE 1: the EXTENT is t1 - t0, not the raw t1. `end` is exactly
-    % recoverable as start + duration, so nothing is lost, and the anchor's
-    % uncertainty stops contaminating the span's.
-    ref.relative_reference = struct('value', struct( ...
-        'clock',    jOntologyTerm('', bareClock), ...
-        'start',    durationCell(t(1)), ...
-        'duration', durationCell(t(2) - t(1))));
     refs{end+1} = ref; %#ok<AGROW>
 end
 end
@@ -271,23 +252,6 @@ if numel(clockName) >= 7 && strcmp(clockName(1:7), 'approx_')
     bare = clockName(8:end);
     toleranceSeconds = 5;
 end
-end
-
-function c = durationCell(seconds)
-%DURATIONCELL The T14 one-`value` duration cell: canonical + source provenance.
-%   NDI epoch clock times are already in SECONDS (`ndi.time.clocktype` documents
-%   every tier in seconds), so `seconds` and `source_value` coincide and
-%   `source_unit` is 's'. Recording both is not redundancy -- it is what lets a
-%   later unit change stay lossless.
-%
-%   `approximate` is FALSE, and that is a claim about the NUMBER, not about the
-%   clock: the t0/t1 the writer stored are exact as recorded. Whatever slop the
-%   clock has is on the TIMELINE, and it is carried by `clock_tolerance` --
-%   which is the whole point of CHANGE 4.
-c = struct('seconds', double(seconds), ...
-    'source_unit', 's', ...
-    'source_value', double(seconds), ...
-    'approximate', false);
 end
 
 function s = charOf(v)

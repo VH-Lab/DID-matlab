@@ -74,7 +74,7 @@ verifyEqual(testCase, rep.total_docs, 3);
 verifyGreaterThanOrEqual(testCase, rep.family_uniqueness_violation_count, 1, ...
     'two members sharing value.clock must be reported');
 edges = {rep.family_uniqueness_violation.edge_name};
-verifyTrue(testCase, any(strcmp('time_reference_#', edges)));
+verifyTrue(testCase, any(strcmp('time_reference_id', edges)));
 keys = {rep.family_uniqueness_violation.key};
 verifyTrue(testCase, any(contains(keys, 'dev_local_time')), ...
     'the report must name the clock the two members share');
@@ -164,8 +164,8 @@ function testKeyPrefersTheCurieOverTheLabel(testCase)
 % whose CURIEs agree are the SAME clock and must collide. Written now, while
 % the decision is fresh, so the minting is not also a silent change of meaning.
 [docs, refs] = epochWithClocks({'dev_local_time', 'device local time'});
-refs{1}.relative_reference.value.clock.node = 'NDIC:0000123';
-refs{2}.relative_reference.value.clock.node = 'ndic:0000123';   % case-folded
+refs{1}.relative_time_reference.value.clock.node = 'NDIC:0000123';
+refs{2}.relative_time_reference.value.clock.node = 'ndic:0000123';   % case-folded
 docs = [docs(1), {did2.document(refs{1})}, {did2.document(refs{2})}];
 rep = did2.validate.silentLoss(docs);
 verifyEqual(testCase, rep.uniqueness_denominator.members_keyed_by_node, 2);
@@ -180,11 +180,12 @@ function testAFamilyWithNoRuleIsNotChecked(testCase)
 % been decided for them. The check is driven by the SCHEMA key
 % `referent_unique_by`, not by the word "time_reference", so a family that does
 % not declare the rule must contribute nothing -- not even a denominator.
-b = bodyOf('subject_calculation', 'calc_1');
+% #88: the inputs family is `calculation.input_id`, one name repeated.
+b = bodyOf('calculation', 'calc_1');
 b.depends_on = struct( ...
-    'name',  {'derived_from_1', 'derived_from_2'}, ...
+    'name',  {'input_id', 'input_id'}, ...
     'value', {'src_1', 'src_1'});          % the SAME target twice
-src = bodyOf('subject', 'src_1');
+src = bodyOf('observation', 'src_1');
 rep = did2.validate.silentLoss({did2.document(b), did2.document(src)});
 verifyEqual(testCase, rep.family_uniqueness_violation_count, 0, ...
     'a family that declares no uniqueness rule must not be checked');
@@ -200,43 +201,37 @@ function testTheAuditStillNeverRaises(testCase)
 % resolution path to it.
 verifyWarningFree(testCase, @() did2.validate.silentLoss({[]}));
 verifyWarningFree(testCase, @() did2.validate.silentLoss(struct([])));
-b = bodyOf('epoch', 'ep_bad');
-b.depends_on = struct('name', {'time_reference_1'}, 'value', {'nope'});
+b = epochEntity('ep_bad');
+b.depends_on = struct('name', {'time_reference_id'}, 'value', {'nope'});
 verifyWarningFree(testCase, @() did2.validate.silentLoss({did2.document(b)}));
 end
 
 % ===================== fixtures ========================================
 
 function [docs, refs] = epochWithClocks(clockNames)
-%EPOCHWITHCLOCKS An `epoch` plus one `relative_reference` per entry of
-%   CLOCKNAMES, wired as `time_reference_1..N`.
+%EPOCHWITHCLOCKS An epoch entity plus one `relative_time_reference` per entry
+%   of CLOCKNAMES, wired as repeated `time_reference_id` edges (#88, T15).
 %
-%   THE SHAPE IS COPIED FROM THE LIVE EMITTER, not composed from a V_eta schema
-%   -- the standing rule after migrators were found to have been written against
-%   DID-schema's own V_alpha snapshot. See
-%   +did2/+convert/+migrators_j/private/jEpochClockReferences.m:139-175: class
-%   `relative_reference` over superclass `time_reference`, a `relative_to` edge
-%   to the epoch document, and `relative_reference.value` carrying
+%   THE SHAPE IS COPIED FROM THE LIVE EMITTER on #88: an `entity` whose
+%   `entity.type.name` is 'epoch', and `relative_time_reference` documents with
+%   a `referent_id` edge to it and `relative_time_reference.value` carrying
 %   {clock, start, duration}. An empty CLOCKNAMES entry produces the all-blank
-%   ontology_term that jOntologyTerm emits while #67 is unminted.
+%   ontology_term.
 refs = {};
-epochBody = bodyOf('epoch', 'ep_1');
+epochBody = epochEntity('ep_1');
 deps = struct('name', {}, 'value', {});
 for k = 1:numel(clockNames)
     refId = sprintf('ref_%d', k);
-    r = bodyOf('relative_reference', refId);
+    r = bodyOf('relative_time_reference', refId);
     r.document_class.superclasses = struct('class_name', {'time_reference'}, ...
         'class_version', {'4.0.0'});
-    r.depends_on = struct('name', {'relative_to'}, 'value', {'ep_1'});
-    r.relative_reference = struct('value', struct( ...
+    r.depends_on = struct('name', {'referent_id'}, 'value', {'ep_1'});
+    r.relative_time_reference = struct('value', struct( ...
         'clock',    struct('node', '', 'name', clockNames{k}), ...
-        'start',    struct('seconds', 0,  'source_unit', 's', ...
-                           'source_value', 0,  'approximate', false), ...
-        'duration', struct('seconds', 10, 'source_unit', 's', ...
-                           'source_value', 10, 'approximate', false)));
+        'start',    struct('seconds', 0), ...
+        'duration', struct('seconds', 10)));
     refs{end+1} = r; %#ok<AGROW>
-    deps(end+1) = struct('name', sprintf('time_reference_%d', k), ...
-        'value', refId); %#ok<AGROW>
+    deps(end+1) = struct('name', 'time_reference_id', 'value', refId); %#ok<AGROW>
 end
 epochBody.depends_on = deps;
 docs = {did2.document(epochBody)};
@@ -245,12 +240,19 @@ for k = 1:numel(refs)
 end
 end
 
+function b = epochEntity(id)
+%EPOCHENTITY An epoch on #88: the one `entity` class, kind 'epoch'.
+b = bodyOf('entity', id);
+b.entity = struct('type', struct('node', '', 'name', 'epoch'), ...
+    'local_identifier', id);
+end
+
 function b = bodyOf(className, id)
 b = struct();
 b.document_class = struct('class_name', className, 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}), ...
     'schema_version', 'V_eta');
 b.depends_on = struct('name', {}, 'value', {});
-b.base = struct('id', id, 'session_id', 'sess_1', 'name', id, ...
+b.base = struct('id', id, 'session_id', 'sess_1', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 end

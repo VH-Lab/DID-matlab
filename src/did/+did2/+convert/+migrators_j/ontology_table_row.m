@@ -120,15 +120,11 @@ anchor = makeSessionAnchor(preBody, 'during');
 bodies = {};
 usedAnchor = false;
 for k = 1:numel(rows)
-    [b, isObservation] = migrateRow(preBody, rows{k});
+    [b, isObservation] = migrateRow(preBody, rows{k}, '', anchor.base.id);
     if isempty(b)
         continue;   % skipped column (identity, empty)
     end
-    if isObservation
-        b.depends_on(end+1) = struct('name', 'time_reference_1', ...
-            'value', anchor.base.id);
-        usedAnchor = true;
-    end
+    usedAnchor = usedAnchor || isObservation;
     bodies{end+1} = b; %#ok<AGROW>
 end
 if usedAnchor
@@ -244,90 +240,39 @@ bodies{end+1} = tref;
 end
 
 function body = makeEncObs(preBody, leafClass, shapeClass, variable, num, wormId, trefId)
-body = struct();
-body.document_class = struct('class_name', leafClass, 'class_version', '1.0.0', ...
-    'superclasses', supersOf({'subject_observation', shapeClass}), ...
-    'schema_version', 'V_eta');
-body.depends_on = [ ...
-    struct('name', 'subject_id',       'value', wormId), ...
-    struct('name', 'time_reference_1', 'value', trefId)];
-body.base = freshBase(preBody, 'migrated_encounter_measure');
-body.subject_statement  = struct('variable', variable, 'storage_mode', 'inline');
-body.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
-body.subject_observation = struct();
+% did-schema #88: built through did2.build. The v1 table states no unit, so a
+% quantity cell carries only what was written (jQuantity).
 if strcmp(shapeClass, 'score')
-    body.score = struct('value', struct('value', num, ...
-        'scale', struct('node', '', 'name', ''), ...
-        'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false));
+    v = did2.build.composite('score', 'value', struct('score', num, 'approximate', false));
 else
-    body.(shapeClass) = struct('value', ...
-        struct('source_unit', '', 'source_value', double(num), 'approximate', false));
+    v = jQuantity(shapeClass, double(num), '', 'approximate', false);
 end
+body = jStatement(preBody, leafClass, wormId, variable, v, ...
+    'TimeReferenceIds', {trefId});
 end
 
 function tref = makeEncounterWindow(preBody, onset, offset)
-% A bounded [onset, offset] window relative to the session/assay -- a
-% session_bounded_reference (no parent interaction/epoch required; session rides
-% on base.session_id). The encounter's measurements and its relation all depend
-% on this one document, so the encounter is exactly "everything on it".
-tref = struct();
-tref.document_class = struct('class_name', 'session_bounded_reference', ...
-    'class_version', '1.0.0', 'superclasses', supersOf({'time_reference'}), ...
-    'schema_version', 'V_eta');
-tref.depends_on = struct('name', {}, 'value', {});
-tref.base = freshBase(preBody, 'migrated_encounter_window');
-tref.time_reference = struct('is_approximate', false);
-tref.session_bounded_reference = struct('relation', 'during', ...
-    'start', durationSeconds(onset), 'end', durationSeconds(offset));
+% did-schema #88: the encounter window is a relative_time_reference onto the
+% session entity (`session_bounded_reference` before #73). A start needs a
+% clock (rule clock_with_start); the table's onset/offset are seconds into
+% the session's recording, read on the device's local clock as NDI's Haley
+% import does (ndi.setup.conv.haley.sessionDocuments) -- a CONSERVATIVE
+% CHOICE, recorded (the v1 table names no clock).
+sec = struct('node', 'om:second-Time', 'name', 'second');
+sid = jSid(preBody);
+tref = did2.build.relativeTimeReference(sid, 'Relation', 'intervalDuring', ...
+    'Clock', 'dev_local_time', ...
+    'Start', double(onset), 'StartSourceValue', double(onset), 'StartSourceUnit', sec, ...
+    'StartApproximate', false, ...
+    'End', double(offset), 'EndSourceValue', double(offset), 'EndSourceUnit', sec, ...
+    'EndApproximate', false, ...
+    'SessionId', sid, 'CreationTimestamp', jStamp(preBody), 'Validate', false);
 end
 
 function rel = makeEncounterRelation(preBody, wormId, patchId, trefId)
-rel = struct();
-rel.document_class = struct('class_name', 'directed_relation', ...
-    'class_version', '1.0.0', 'superclasses', supersOf({'relation'}), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',            'value', wormId), ...   % subject of the verb
-    struct('name', 'parent',           'value', patchId), ...  % object of the verb
-    struct('name', 'time_reference_1', 'value', trefId)];      % when it happened
-rel.base = freshBase(preBody, 'migrated_encounter');
-% `relation` (renamed from subject_relation) is abstract with no fields -> no block.
-rel.directed_relation = struct('relation', struct('node', '', 'name', 'encountered'));
+o = jOpts(preBody, 'TimeReferenceIds', {trefId});
+rel = did2.build.directedRelation(wormId, patchId, 'encountered', o{:});
 end
-
-% ===================== per-table map: C. elegans bacterial patch =======
-%
-%   The JH bacterial-patch geometry table (6,206 rows). Each row IS a bacterial
-%   patch -- and the encounter table above references it by document id as the
-%   `worm --encountered--> patch` relation's parent. So this map MINTS a bare
-%   `subject` that PRESERVES the source document id (otherwise the per-column
-%   fan-out would give every output a fresh id and the encounter parent would
-%   dangle). The patch's geometry (OD600, volume, radius, circularity, centre)
-%   becomes observations on that patch, all sharing one session-relative anchor.
-%   The BacterialPatch/PlateIdentifier columns are bare local labels (e.g.
-%   "0017"), not document ids, so they do NOT become relations -- relating to a
-%   non-existent plate document would only trade one orphan for another.
-%   `BacterialPatchIdentifier` is the patch's own identity and becomes its
-%   `local_identifier`. `BacterialPlateIdentifier` names a DIFFERENT entity, so
-%   it is data ABOUT the patch, not the patch's identity: it now falls through
-%   to the per-column path as a `term_observation` instead of being dropped.
-%   Relating the patch to a plate DOCUMENT stays deferred to the NDI second
-%   pass, which can see the migrated-id graph.
-%
-%   local_identifier IS NOW QUALIFIED (2026-08-11). It used to be the bare
-%   `patchID`, which is `1:numPatch` WITHIN a plate (doImport.m:275), so "0001"
-%   recurred on every plate while `jEnsureLocalId` did no dataset-level
-%   qualification and both Haley sessions land in one `ndi.dataset.dir`. Note
-%   the collision was INTRA-session (between plates in one session), so session
-%   scoping would not have fixed it. Team directive 2026-08-11 -- "each
-%   experiment #, plate #, and patch # combo should be unique and should dictate
-%   the local identifier for all patches. None should be labeled just patch #".
-%   This file emits the PAIR `plate/<plateID>/patch/<patchID>` (see
-%   jPatchLocalId: `expID` is not a column of this table and may not be
-%   invented) and `did2.convert.resolveLawnPlateSubjects` upgrades it to the
-%   triple. The id remains a LABEL, not a key -- `base.id` is the key, and
-%   nothing joins on the handle.
 
 function tf = isPatchGeometryTable(cols)
 %ISPATCHGEOMETRYTABLE Signature of the JH C. elegans bacterial-patch geometry
@@ -454,13 +399,9 @@ for i = 1:numel(cols)
     row = struct('ontology_name', c.node, 'name', c.name);
     row.value = c.value;   % assigned, not passed to struct(): a cell value
                            % would otherwise fan the row out into a struct ARRAY
-    [b, isObservation] = migrateRow(preBody, row, patchId);
+    [b, isObservation] = migrateRow(preBody, row, patchId, anchor.base.id);
     if isempty(b); continue; end    % an identity column migrateRow recognises
-    if isObservation
-        b.depends_on(end+1) = struct('name', 'time_reference_1', ...
-            'value', anchor.base.id);
-        usedAnchor = true;
-    end
+    usedAnchor = usedAnchor || isObservation;
     bodies{end+1} = b; %#ok<AGROW>
 end
 if usedAnchor
@@ -492,20 +433,11 @@ if isnumeric(v) && isscalar(v) && ~isnan(v); tf = true; return; end
 end
 
 function body = makePatchSubject(preBody, plateId, patchId)
-%MAKEPATCHSUBJECT Bare V_eta subject PRESERVING the source document id. Mirrors
-%   subject_group -> subject (class subject v3.0.0, bare identity). The id must
-%   be preserved because the encounter table's directed_relation names this
-%   document as its parent.
-body = struct();
-body.document_class = struct('class_name', 'subject', 'class_version', '3.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', {}, 'value', {});
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    body.base = preBody.base;   % PRESERVE id -> encounter parent resolves
-end
+% did-schema #88: an `entity` of type culture (a bacterial patch is a lawn:
+% "a mass grown as one"), id PRESERVED so the encounter's parent resolves.
 localId = jPatchLocalId(plateId, patchId, preBody);  % REQUIRED, and qualified
-body.subject = struct('local_identifier', localId, 'description', 'bacterial patch');
+body = jEntity(preBody, 'culture', struct('local_identifier', localId, ...
+    'description', 'bacterial patch'), 'Id', char(preBody.base.id));
 end
 
 function li = jPatchLocalId(plateId, patchId, preBody)
@@ -536,29 +468,6 @@ li = jEnsureLocalId(li, preBody);   % subject.local_identifier is REQUIRED
 end
 
 % ---- encounter helpers ------------------------------------------------
-
-function supers = supersOf(chain)
-supers = struct('class_name', {}, 'class_version', {});
-for k = 1:numel(chain)
-    supers(end+1) = struct('class_name', chain{k}, 'class_version', '1.0.0'); %#ok<AGROW>
-end
-end
-
-function base = freshBase(preBody, name)
-sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        ds = preBody.base.datestamp;
-    end
-end
-base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', name, 'datestamp', ds);
-end
-
-function d = durationSeconds(x)
-d = struct('source_unit', 's', 'source_value', double(x), 'approximate', false);
-end
 
 function cols = extractColumns(block)
 %EXTRACTCOLUMNS Like extractRows, but keep each column's variable_names KEY so a
@@ -622,7 +531,7 @@ end
 
 % ===================== per-row migration ===============================
 
-function [body, isObservation] = migrateRow(preBody, row, subjectId)
+function [body, isObservation] = migrateRow(preBody, row, subjectId, anchorId)
 %MIGRATEROW One column -> one statement.
 %   SUBJECTID (optional) names the subject explicitly. Omit it on the
 %   per-column fallback path, where the subject is CARRIED from the source
@@ -631,6 +540,7 @@ function [body, isObservation] = migrateRow(preBody, row, subjectId)
 %   `carrySubject` would raise there, because a real ontologyTableRow declares
 %   only `document_id`.
 if nargin < 3; subjectId = ''; end
+if nargin < 4; anchorId = ''; end
 node  = getCharField(row, 'ontology_name');
 label = getCharField(row, 'name');
 variable = struct('node', node, 'name', label);
@@ -662,9 +572,9 @@ isObservation = true;
 if isNumeric
     [leafClass, shapeClass, valueStruct] = dispatchNumeric(hay, row, numVal);
     body = makeNumericObservation(preBody, leafClass, shapeClass, variable, ...
-        valueStruct, subjectId);
+        valueStruct, subjectId, anchorId);
 else
-    body = makeTermObservation(preBody, variable, valueTerm(row), subjectId);
+    body = makeTermObservation(preBody, variable, valueTerm(row), subjectId, anchorId);
 end
 end
 
@@ -714,12 +624,11 @@ elseif containsAny(hay, {'concentration', 'density', 'titer', 'titre', 'glucose'
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'number of', 'count', 'entries', 'trial number', 'identifier', 'samples'})
     leafClass = 'count_observation'; shapeClass = 'count';
-    valueStruct = struct('value', round(numVal), 'unit', ...
-        struct('node', '', 'name', ''), 'approximate', false);
+    valueStruct = did2.build.valueCell('count', round(numVal), 'Approximate', false);
 elseif containsAny(hay, {'percent', 'probability', 'circularity', 'score', 'condition'})
     leafClass = 'score_observation'; shapeClass = 'score';
-    valueStruct = struct('value', numVal, 'scale', struct('node', '', 'name', ''), ...
-        'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false);
+    valueStruct = did2.build.composite('score', 'value', ...
+        struct('score', numVal, 'approximate', false));
 else
     % J §7: intensity is the one dimensionless numeric (a.u.) -- the home for
     % amplitudes / fluorescence / ratios / unrecognised numerics. No generic
@@ -728,78 +637,49 @@ else
     leafClass = 'intensity_observation'; shapeClass = 'intensity';
     valueStruct = sourceCell(unit, numVal);
 end
+if ~any(strcmp(shapeClass, {'count', 'score'}))
+    valueStruct = jQuantity(shapeClass, valueStruct.source_value, ...
+        valueStruct.source_unit, 'approximate', false);
+end
 end
 
 % ===================== destination builders ============================
 
-function body = makeNumericObservation(preBody, leafClass, shapeClass, variable, valueStruct, subjectId)
-body = startStatement(preBody, leafClass, {'subject_observation', shapeClass}, ...
-    variable, subjectId);
-body.subject_interaction = interactionBlock();
-body.subject_observation = struct();
-body.(shapeClass) = struct('value', valueStruct);
+function body = makeNumericObservation(preBody, leafClass, shapeClass, variable, valueStruct, subjectId, anchorId) %#ok<INUSL>
+body = jStatement(preBody, leafClass, subjectOrCarried(preBody, subjectId), ...
+    variable, valueStruct, 'TimeReferenceIds', {anchorId});
 end
 
-function body = makeTermObservation(preBody, variable, valueT, subjectId)
-body = startStatement(preBody, 'term_observation', {'subject_observation'}, ...
-    variable, subjectId);
-body.subject_interaction = interactionBlock();
-body.subject_observation = struct();
-body.term = struct('value', valueT);
+function body = makeTermObservation(preBody, variable, valueT, subjectId, anchorId)
+body = jStatement(preBody, 'term_observation', subjectOrCarried(preBody, subjectId), ...
+    variable, valueT, 'TimeReferenceIds', {anchorId});
 end
 
 function body = makeTermAssertion(preBody, variable, valueT, subjectId)
-body = startStatement(preBody, 'term_assertion', {'subject_assertion'}, ...
-    variable, subjectId);
-body.term = struct('value', valueT);
+body = jStatement(preBody, 'term_assertion', subjectOrCarried(preBody, subjectId), ...
+    variable, valueT);
 end
 
 function body = makeDateAssertion(preBody, variable, row, subjectId)
-body = startStatement(preBody, 'date_assertion', {'subject_assertion'}, ...
-    variable, subjectId);
 raw = getCharField(row, 'value');
-body.date = struct('value', ...
-    struct('instant', raw, 'precision', 'second', 'source', raw));
+v = did2.build.composite('date', 'value', ...
+    struct('instant', raw, 'precision', 'second', 'source_value', raw));
+body = jStatement(preBody, 'date_assertion', subjectOrCarried(preBody, subjectId), ...
+    variable, v);
 end
 
-% ===================== shared helpers ==================================
-
-function body = startStatement(preBody, className, supersChain, variable, subjectId)
-%STARTSTATEMENT Seed a V_eta statement body: document_class header, a fresh
-%   base id, the subject_id edge, and the subject_statement block (variable
-%   + storage_mode). The caller adds the subject_interaction block (for
-%   interactions) and the leaf value block.
-%
-%   SUBJECTID (optional, may be '') names the subject explicitly -- used by a
-%   per-table map, which mints its own subject. Empty or absent falls back to
-%   carrySubject, which reads the SOURCE document's `subject_id` dependency and
-%   raises when there is none.
-if nargin < 5; subjectId = ''; end
-supers = struct('class_name', {}, 'class_version', {});
-for k = 1:numel(supersChain)
-    supers(end+1) = struct('class_name', supersChain{k}, 'class_version', '1.0.0'); %#ok<AGROW>
+function id = subjectOrCarried(preBody, subjectId)
+id = char(subjectId);
+if isempty(id)
+    id = resolvedSubject(preBody);
+    if isempty(id)
+        error('did2:convert:noSubject', ...
+            ['ontology_table_row: refusing to emit a statement with an empty ' ...
+             'entity_id. A real ontologyTableRow declares only `document_id`, ' ...
+             'so the caller must guard on resolvedSubject() and pass the ' ...
+             'document through for the second pass instead.']);
+    end
 end
-body = struct();
-body.document_class = struct('class_name', className, 'class_version', '1.0.0', ...
-    'superclasses', supers, 'schema_version', 'V_eta');
-if isempty(subjectId)
-    body.depends_on = carrySubject(preBody);
-else
-    body.depends_on = struct('name', 'subject_id', 'value', char(subjectId));
-end
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    base = preBody.base;
-    base.id = did.ido.unique_id();   % each column becomes its own document
-    body.base = base;
-end
-body.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
-end
-
-function blk = interactionBlock()
-% method optional (the observation verb is "measurement"); the cadence is a
-% single point (one reading), per D1.
-blk = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
 end
 
 function c = sourceCell(unit, numVal)
@@ -839,44 +719,8 @@ if isfield(preBody, 'depends_on') && isstruct(preBody.depends_on)
 end
 end
 
-function deps = carrySubject(preBody)
-%CARRYSUBJECT The subject_id edge for an emitted statement.
-%
-%   Only ever reached once resolvedSubject() has confirmed a subject exists --
-%   the main function guards on it. It therefore cannot emit an empty edge; if
-%   it ever does, the guard has been removed and 76,766 hollow observations per
-%   corpus are back.
-deps = struct('name', {}, 'value', {});
-subjectVal = resolvedSubject(preBody);
-if isempty(subjectVal)
-    error('did2:convert:noSubject', ...
-        ['ontology_table_row: refusing to emit a statement with an empty ' ...
-         'subject_id. A real ontologyTableRow declares only `document_id`, ' ...
-         'so the caller must guard on resolvedSubject() and pass the ' ...
-         'document through for the second pass instead.']);
-end
-deps(end+1) = struct('name', 'subject_id', 'value', subjectVal);
-end
-
 function anchor = makeSessionAnchor(preBody, relation)
-sessionId = '';
-ds = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        ds = preBody.base.datestamp;
-    end
-end
-anchor = struct();
-anchor.document_class = struct('class_name', 'session_relative_reference', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-anchor.depends_on = struct('name', {}, 'value', {});
-anchor.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'datestamp', ds);
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', relation);
+anchor = jSessionAnchor(preBody, relation);
 end
 
 function rows = extractRows(block)

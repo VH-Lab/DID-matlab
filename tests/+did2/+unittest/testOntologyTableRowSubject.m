@@ -26,6 +26,15 @@ function tests = testOntologyTableRowSubject
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% The migrators run inside did2.convert.v1_to_v2, which disarms the
+% TermRegistry strict mode for the call (T19: the check is for imports; a
+% migrator transcribes the source's own terms, which the registry need not
+% hold yet). A test that calls a migrator directly runs it the same way.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 function realShapedRow = makeRealRow()
 % A did_v1 ontologyTableRow exactly as NDI writes it: ONE dependency,
 % `document_id`. No subject_id. Anything else is our assumption, not the data.
@@ -47,7 +56,7 @@ function testSubjectlessRowPassesThroughInsteadOfFanningOut(testCase)
 out = did2.convert.migrators_j.ontology_table_row(makeRealRow());
 verifyEqual(testCase, numel(out), 1, ...
     'a row with no resolvable subject must not fan out into statements');
-verifyEqual(testCase, out{1}.document_class.class_name, 'ontology_table_row', ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'ontology_table_row', ...
     'the document must pass through as its source class');
 end
 
@@ -96,8 +105,11 @@ for i = 1:numel(out)
     b = out{i};
     if ~isfield(b, 'depends_on') || ~isstruct(b.depends_on); continue; end
     for k = 1:numel(b.depends_on)
-        if strcmp(b.depends_on(k).name, 'subject_id')
-            verifyEqual(testCase, b.depends_on(k).value, 'subj-9');
+        % #88: the subject edge is `entity_id`, written {name, document_id}
+        if strcmp(b.depends_on(k).name, 'entity_id')
+            d = b.depends_on(k);
+            if isfield(d, 'document_id'); v = d.document_id; else; v = d.value; end
+            verifyEqual(testCase, v, 'subj-9');
             sawSubject = true;
         end
     end

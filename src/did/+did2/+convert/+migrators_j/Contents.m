@@ -563,11 +563,13 @@
 %         inherited input_parameters stripped -> method_parameters); app kept; the raw
 %         responses (stimulus_response_scalar_id) -> derived_from_1.
 %     contrast_tuning
+%         Brainstorm-J migrator -> contrast_tuning_calculation (did-schema #88).
 %         Brainstorm-J migrator: did_v1 contrast_tuning (raw NDIcalc-vis result class)
 %         -> the CONCRETE V_eta leaf `contrasttuning_calc` (⊂
 %         [tuning_curve_calculation, contrast_tuning]) + a session anchor + minted
 %         `software` and `runtime_environment` entities.
 %     contrast_tuning_calc
+%         Brainstorm-J migrator -> contrast_tuning_calculation (did-schema #88).
 %         Brainstorm-J migrator: the ndi.calc.vis.contrast calculator OUTPUT document
 %         -> the CONCRETE V_eta leaf `contrasttuning_calc` (⊂
 %         [tuning_curve_calculation, contrast_tuning]) + a session anchor + minted
@@ -789,15 +791,17 @@
 %     openminds_subject
 %         Brainstorm-J migrator: did_v1 openminds_subject -> term_assertion.
 %     oridirtuning_calc
-%         Brainstorm-J migrator: the ndi.calc.vis.oridir calculator OUTPUT document ->
-%         the CONCRETE V_eta leaf `oridirtuning_calc` (⊂ [tuning_curve_calculation,
-%         orientation_direction_tuning]) + a session anchor + minted `software` and
-%         `runtime_environment` entities.
-%     orientation_direction_tuning
-%         Brainstorm-J migrator: did_v1 orientation_direction_tuning (raw NDI-matlab
-%         result class) -> the CONCRETE V_eta leaf `oridirtuning_calc` (⊂
+%         Brainstorm-J migrator -> orientation_direction_tuning_calculation
+%         (did-schema #88). Brainstorm-J migrator: the ndi.calc.vis.oridir calculator
+%         OUTPUT document -> the CONCRETE V_eta leaf `oridirtuning_calc` (⊂
 %         [tuning_curve_calculation, orientation_direction_tuning]) + a session anchor
 %         + minted `software` and `runtime_environment` entities.
+%     orientation_direction_tuning
+%         Brainstorm-J migrator -> orientation_direction_tuning_calculation
+%         (did-schema #88). Brainstorm-J migrator: did_v1 orientation_direction_tuning
+%         (raw NDI-matlab result class) -> the CONCRETE V_eta leaf `oridirtuning_calc`
+%         (⊂ [tuning_curve_calculation, orientation_direction_tuning]) + a session
+%         anchor + minted `software` and `runtime_environment` entities.
 %     position_metadata
 %         Brainstorm-J migrator: did_v1 position_metadata -> term_observation (WHAT
 %         kind of position was recorded) about the element-subject + a session anchor.
@@ -830,15 +834,18 @@
 %         Brainstorm-J migrator: did_v1 sorting_parameters -> ONE `method_parameters`
 %         document (+ the `software` entity its v1 `app` block names).
 %     spatial_frequency_tuning
-%         Brainstorm-J migrator: did_v1 spatial_frequency_tuning (raw NDIcalc-vis
-%         result class) -> the CONCRETE V_eta leaf `spatial_frequency_tuning_calc` (⊂
-%         [tuning_curve_calculation, spatial_frequency_tuning]) + a session anchor +
-%         minted `software` and `runtime_environment` entities.
+%         Brainstorm-J migrator -> spatial_frequency_tuning_calculation (did-schema
+%         #88). Brainstorm-J migrator: did_v1 spatial_frequency_tuning (raw
+%         NDIcalc-vis result class) -> the CONCRETE V_eta leaf
+%         `spatial_frequency_tuning_calc` (⊂ [tuning_curve_calculation,
+%         spatial_frequency_tuning]) + a session anchor + minted `software` and
+%         `runtime_environment` entities.
 %     spatial_frequency_tuning_calc
-%         Brainstorm-J migrator: the ndi.calc.vis.spatialfrequency calculator OUTPUT
-%         document -> the CONCRETE V_eta leaf `spatial_frequency_tuning_calc` (⊂
-%         [tuning_curve_calculation, spatial_frequency_tuning]) + a session anchor +
-%         minted `software` and `runtime_environment` entities.
+%         Brainstorm-J migrator -> spatial_frequency_tuning_calculation (did-schema
+%         #88). Brainstorm-J migrator: the ndi.calc.vis.spatialfrequency calculator
+%         OUTPUT document -> the CONCRETE V_eta leaf `spatial_frequency_tuning_calc`
+%         (⊂ [tuning_curve_calculation, spatial_frequency_tuning]) + a session anchor
+%         + minted `software` and `runtime_environment` entities.
 %     spatial_gene_expression_cells
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionCells -> V_eta
 %         spatial_gene_expression_cells, an id-preserving 1:1 passthrough. The class
@@ -852,18 +859,13 @@
 %         resolves.
 %     spatial_gene_expression_pyramid
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionPyramid -> V_eta
-%         spatial_gene_expression_pyramid (⊂ [base, gene_expression,
-%         subject_observation]) + the shared session anchor. Carries the observation
-%         direction: `variable` bound to NCIT:C16608 "Gene Expression" per the
-%         DID-schema binding registry; `subject_id` carried from v1 depends_on onto
-%         the inherited subject_statement slot; `time_reference_1` pointing at a
-%         session_relative_reference `during` anchor (the smallest legitimate anchor
-%         for a static spatial-transcriptomics section -- see the PROVISIONAL SHAPES
-%         block below); the pyramid's own block fields (chip_serial, pipeline_version,
-%         bin geometry, byte_order, ...) and the gene_expression mixin fields (assay,
-%         count_type, count_units) carry through verbatim. base.id is preserved so a
-%         Cells / Tiles / file_reference row's `spatial_gene_expression_pyramid_id`
-%         edge still resolves.
+%         spatial_gene_expression_pyramid, PASSED THROUGH. did-schema #88 restates the
+%         class as its v1 shape (base + gene_expression, with the v1 `subject_id` /
+%         `geneList_id` edges), so the document validates under its own class and
+%         nothing is reshaped: no statement, no bound `variable` (the "Gene
+%         Expression" binding belongs to the #70 reshape, which #88 does not carry),
+%         no session anchor. base.id is preserved so a Cells / Tiles / file_reference
+%         row's `spatial_gene_expression_pyramid_id` edge still resolves.
 %     spatial_gene_expression_tiles
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionTiles -> V_eta
 %         spatial_gene_expression_tiles, an id-preserving 1:1 passthrough. The class
@@ -874,11 +876,13 @@
 %         key and its immediate fields; ensureClassBlocks rebuilds the superclass
 %         chain. base.id is preserved.
 %     speed_tuning
+%         Brainstorm-J migrator -> speed_tuning_calculation (did-schema #88).
 %         Brainstorm-J migrator: did_v1 speed_tuning (raw NDIcalc-vis result class) ->
 %         the CONCRETE V_eta leaf `speedtuning_calc` (⊂ [tuning_curve_calculation,
 %         speed_tuning]) + a session anchor + minted `software` and
 %         `runtime_environment` entities.
 %     speed_tuning_calc
+%         Brainstorm-J migrator -> speed_tuning_calculation (did-schema #88).
 %         Brainstorm-J migrator: the ndi.calc.vis.speed calculator OUTPUT document ->
 %         the CONCRETE V_eta leaf `speedtuning_calc` (⊂ [tuning_curve_calculation,
 %         speed_tuning]) + a session anchor + minted `software` and
@@ -901,8 +905,8 @@
 %         Brainstorm-J migrator: did_v1 spikewaves -- DEFERRED to the NDI second pass;
 %         the document is passed through UNCHANGED.
 %     stimulus_bath
-%         Deferred: stimulus_bath migrates to a dose_manipulation in the NDI layer /
-%         the coarse resolveDeferredBaths pass.
+%         Deferred: stimulus_bath migrates to a formulation-valued manipulation in the
+%         NDI layer / the coarse resolveDeferredBaths pass.
 %     stimulus_parameter
 %         Brainstorm-J migrator: did_v1 stimulus_parameter -- a PASSTHROUGH that
 %         normalises the template's own untypeable placeholder.
@@ -952,21 +956,26 @@
 %     syncrule_mapping
 %         Brainstorm-J migrator: did_v1 `syncrule_mapping` -> `clock_alignment`.
 %     temporal_frequency_tuning
-%         Brainstorm-J migrator: did_v1 temporal_frequency_tuning (raw NDIcalc-vis
-%         result class) -> the CONCRETE V_eta leaf `temporal_frequency_tuning_calc` (⊂
-%         [tuning_curve_calculation, temporal_frequency_tuning]) + a session anchor +
-%         minted `software` and `runtime_environment` entities.
+%         Brainstorm-J migrator -> temporal_frequency_tuning_calculation (did-schema
+%         #88). Brainstorm-J migrator: did_v1 temporal_frequency_tuning (raw
+%         NDIcalc-vis result class) -> the CONCRETE V_eta leaf
+%         `temporal_frequency_tuning_calc` (⊂ [tuning_curve_calculation,
+%         temporal_frequency_tuning]) + a session anchor + minted `software` and
+%         `runtime_environment` entities.
 %     temporal_frequency_tuning_calc
-%         Brainstorm-J migrator: the ndi.calc.vis.temporalfrequency calculator OUTPUT
-%         document -> the CONCRETE V_eta leaf `temporal_frequency_tuning_calc` (⊂
-%         [tuning_curve_calculation, temporal_frequency_tuning]) + a session anchor +
-%         minted `software` and `runtime_environment` entities.
+%         Brainstorm-J migrator -> temporal_frequency_tuning_calculation (did-schema
+%         #88). Brainstorm-J migrator: the ndi.calc.vis.temporalfrequency calculator
+%         OUTPUT document -> the CONCRETE V_eta leaf `temporal_frequency_tuning_calc`
+%         (⊂ [tuning_curve_calculation, temporal_frequency_tuning]) + a session anchor
+%         + minted `software` and `runtime_environment` entities.
 %     treatment
 %         Brainstorm-J split migrator: did_v1 treatment -> a data-type-named
 %         subject_manipulation leaf (+ an optional site term_observation + the shared
 %         session anchor).
 %     treatment_drug
-%         Brainstorm-J migrator: did_v1 treatment_drug -> dose_manipulation.
+%         Brainstorm-J migrator: did_v1 treatment_drug -> an immersion (`manipulation`
+%         valued by its formulation) or a dose_manipulation, decided by the recorded
+%         location.
 %     treatment_transfer
 %         Brainstorm-J migrator: did_v1 treatment_transfer -> term_manipulation + a
 %         provenance directed_relation.
@@ -976,7 +985,8 @@
 %         [tuning_curve_calculation, tuning_curve]; the raw case per issue #67) + a
 %         session anchor + minted `software` and `runtime_environment` entities.
 %     virus_injection
-%         Brainstorm-J migrator: did_v1 virus_injection -> dose_manipulation.
+%         Brainstorm-J migrator: did_v1 virus_injection -> a dose or an immersion,
+%         decided by the recorded location.
 %     vmneuralresponseresiduals
 %         Brainstorm-J migrator: did_v1 vmneuralresponseresiduals -- DEFERRED to the
 %         NDI second pass; the document is passed through UNCHANGED.

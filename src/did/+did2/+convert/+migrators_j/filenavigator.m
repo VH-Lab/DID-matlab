@@ -133,57 +133,20 @@ if isempty(implClass) && isempty(mapFormat) && isempty(dataList) && isempty(mapL
     return;
 end
 
-sessionId = '';
-datestamp = '';
-if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    sessionId = jGetChar(preBody.base, 'session_id');
-    datestamp = jGetChar(preBody.base, 'datestamp');
-end
-
-% The implementation class name becomes an ENTITY, not a string field (the
-% signed model). v1 records no version for it -- the template has no version
-% field -- so the software carries a name only, and the corpus-wide merge by
-% (name, version) is deferred to the NDI second pass (see jSoftware.m).
+sessionId = jSid(preBody);
+datestamp = jStamp(preBody);
 [software, swId] = jSoftware(implClass, '', '', sessionId, datestamp);
-
-pattern = struct();
-pattern.document_class = struct('class_name', 'epoch_file_pattern', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-
-% software_id is OPTIONAL on epoch_file_pattern (mustBeNonEmpty: false). It is
-% omitted rather than written empty when there is no implementation class -- an
-% empty edge is skipped by +did2/+validate/references.m:90, so writing one would
-% be invisible rather than absent.
-if isempty(swId)
-    pattern.depends_on = struct('name', {}, 'value', {});
-else
-    pattern.depends_on = struct('name', 'software_id', 'value', swId);
-end
-
-% id PRESERVED (see above), together with name / session_id / datestamp.
-if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    pattern.base = preBody.base;
-else
-    pattern.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-        'name', '', 'datestamp', '2024-01-01T00:00:00.000Z');
-end
-
-% Each field is OMITTED when it has no value rather than written blank: the
-% schema's blank_value for the two lists is [], which the char branch of the
-% validator would reject as a type mismatch, and a blank field is precisely what
-% did2.validate.silentLoss counts as vacuous.
+% did-schema #88: `epoch_file_pattern` {file_pattern, epoch_map_pattern,
+% epoch_map_format}; the data-file pattern list is `file_pattern`.
+edges = struct();
+if ~isempty(swId); edges.software_id = swId; end
 efp = struct();
-if ~isempty(dataList); efp.data_file_pattern = dataList; end
+if ~isempty(dataList); efp.file_pattern = dataList; end
 if ~isempty(mapList);  efp.epoch_map_pattern = mapList;  end
 if ~isempty(mapFormat); efp.epoch_map_format = mapFormat; end
-pattern.epoch_file_pattern = efp;
-
-bodies = {pattern};
-if ~isempty(software)
-    bodies{end+1} = software;
-end
+o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
+pattern = did2.build.document('epoch_file_pattern', efp, o{:});
+bodies = [{pattern}, software];
 end
 
 % ===================== helpers =============================================

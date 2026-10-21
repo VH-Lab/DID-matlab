@@ -152,7 +152,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'stimulus_presentation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'stimulus_presentation');
 verifyEqual(testCase, d.get('base.id'), 'pres_b671ff');
 verifyEqual(testCase, d.get('base.session_id'), 'sess_0001');
 verifyEqual(testCase, d.get('stimulus_presentation.presentation_order'), ...
@@ -273,61 +273,53 @@ end
 % ===================== the control designation =============================
 
 function testControlIdsFoldToControlDesignationWithTheIdPreserved(testCase)
+% INVERTED for did-schema #88, which DELETED `control_designation` (#73 review
+% item 67): a presentation's control stimuli fold into `item.control_item`,
+% which the NDI second pass builds when it decomposes the presentation. Pass 1
+% therefore passes control_stimulus_ids through unchanged, id and payload intact,
+% for that pass (listed in the port report).
 out = runJ(controlFixture());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'control_designation');
-verifyEqual(testCase, d.get('document_class.schema_version'), 'V_eta');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'control_stimulus_ids');
 verifyEqual(testCase, d.get('base.id'), 'ctrl_20e84c');
-verifyEqual(testCase, d.get('control_designation.control_stimulus'), [3; 3; 3; 6; 6; 6]);
-verifyEqual(testCase, d.get('control_designation.method.method'), 'pseudorandom');
-verifyEqual(testCase, d.get('control_designation.method.controlid'), 'isblank');
-verifyEqual(testCase, d.get('control_designation.method.controlid_value'), 1);
+verifyEqual(testCase, d.get('control_stimulus_ids.control_stimulus_ids'), [3; 3; 3; 6; 6; 6]);
+verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
+
 
 function testControlDesignationPointsAtThePresentationBothWays(testCase)
-% `timed_sequence_id` is the thing annotated; `derived_from_1` is the provenance
-% (T10). They are the same id today and stay the same id after the decompose,
-% because the presentation is decomposed AROUND its preserved id.
-%
-% `derived_from_1` is the DOCUMENT naming an instance of the `derived_from_#`
-% FAMILY the schema declares (revision 3 of the signed plan). A document names
-% instances; a schema declares the template name.
+% UPDATED for #88 (passthrough, see above): the edge to the presentation stays
+% under its v1 name, which is what the second pass joins on.
 out = runJ(controlFixture());
 b   = out.migrated{1}.toStruct();
-verifyEqual(testCase, depValue(b, 'timed_sequence_id'), 'pres_b671ff');
-verifyEqual(testCase, depValue(b, 'derived_from_1'),    'pres_b671ff');
-% the v1 spelling is gone -- a body still carrying it would be claiming the fold
-% happened while leaving the old edge to be re-read
-verifyEmpty(testCase, depValue(b, 'stimulus_presentation_id'));
+verifyEqual(testCase, depValue(b, 'stimulus_presentation_id'), 'pres_b671ff');
+verifyEmpty(testCase, depValue(b, 'timed_sequence_id'));
 end
+
 
 function testTheAppBlockIsDroppedNotCarriedIntoAnUndeclaredBlock(testCase)
-% The signed naming pass drops the `app` straggler; control_designation's chain
-% is `base` alone, so a carried `app` block would raise
-% did2:validation:undeclaredBlock. `software_id` (T10) is a tracked deferral --
-% the schema declares no such edge yet.
+% UPDATED for #88: the passthrough keeps the document as written -- its app block
+% included -- and mints no software for it.
 out = runJ(controlFixture());
 s   = out.migrated{1}.toStruct();
-verifyFalse(testCase, isfield(s, 'app'));
 verifyFalse(testCase, any(strcmp({s.depends_on.name}, 'software_id')));
+verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
 end
 
+
 function testAnAllNaNControlArrayIsARealDocumentAndSurvives(testCase)
-% tuning_response.m:627-629 -- when the presentation has no control stimulus at
-% all the writer emits `cs_ids = nan(size(stimids))`. That is a normal document,
-% which is why control_designation.control_stimulus is mustNotHaveNaN: false.
-% "Cleaning" it would delete the fact that the control lookup was attempted and
-% found nothing.
+% UPDATED for #88: an all-NaN control array is a real document and passes
+% through with its six NaNs intact.
 out = runJ(controlFixture(nan(6, 1)));
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'control_designation');
-verifyEqual(testCase, size(d.get('control_designation.control_stimulus')), [6 1]);
-verifyTrue(testCase, all(isnan(d.get('control_designation.control_stimulus'))));
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'control_stimulus_ids');
+verifyEqual(testCase, numel(d.get('control_stimulus_ids.control_stimulus_ids')), 6);
+verifyTrue(testCase, all(isnan(d.get('control_stimulus_ids.control_stimulus_ids'))));
 end
+
 
 function testControlIdsWithoutAPresentationPassThroughInsteadOfBecomingAHusk(testCase)
 % Every number in the document is an index INTO a presentation. Emitting a
@@ -341,7 +333,7 @@ out = runJ(v1);
 
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'control_stimulus_ids');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 % the payload survives intact for the second pass
@@ -350,20 +342,17 @@ verifyEqual(testCase, out.migrated{1}.get( ...
 end
 
 function testTheEdgeIsReadThroughTheV1IdSpelling(testCase)
-% A v1 body straight off disk spells the edge `id`; universalRenames
-% (renameDependsOnEntries, precedence document_id > value > id) normalises it to
-% `document_id` before any migrator sees it, and a body a migrator builds itself
-% uses `value`. All three must reach the same string -- reading one spelling only
-% is how openminds_stimulus lost 635 referents.
+% UPDATED for #88: the passthrough keeps the edge whatever its spelling.
 v1 = controlFixture();
 v1.depends_on = struct('name', {'stimulus_presentation_id'}, 'id', {'pres_b671ff'});
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
-    'control_designation');
-verifyEqual(testCase, depValue(out.migrated{1}.toStruct(), 'timed_sequence_id'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+    'control_stimulus_ids');
+verifyEqual(testCase, depValue(out.migrated{1}.toStruct(), 'stimulus_presentation_id'), ...
     'pres_b671ff');
 end
+
 
 % ===================== the batch: no orphans ===============================
 
@@ -391,15 +380,7 @@ end
 % ===================== validation ==========================================
 
 function testPassOneValidatesAgainstTheRealVEtaSchema(testCase)
-% The only test here that proves the migrators and the schema agree. Needs the
-% assembled V_eta set on DID_SCHEMA_PATH (stable + draft + deprecated) -- the
-% quick gate builds exactly that, and control_designation is in the DRAFT tier,
-% so a stable-only schema path will FAIL here rather than skip. Deliberate: a
-% skip reads as success.
-%
-% The presentation fixture is the CURRENT writer vintage. The deprecated inline
-% `presentation_time` vintage is not in this batch because the tombstone does
-% not declare that field yet (the BLOCKING row); add it when the schema lands.
+% Both pass-1 passthroughs validate against their tombstones. UPDATED for #88.
 out = did2.convert.v1_to_v2({presentationFixture(), controlFixture()}, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 if ~isempty(out.quarantine)
@@ -408,13 +389,7 @@ if ~isempty(out.quarantine)
 end
 verifyEqual(testCase, numel(out.migrated), 2);
 verifyEqual(testCase, sort(classNames(out)), ...
-    {'control_designation', 'stimulus_presentation'});
-
-% ...and no silent loss on anything this pass emitted. NOTE what this does NOT
-% assert: `stimulus_presentation.element_id` is still declared REQUIRED by the
-% tombstone, so the empty-required-edge counter will report it until the schema
-% repair lands. That row is produced by the SCHEMA, not by these migrators --
-% asserting zero here would make a green test the reason nobody fixed it.
+    {'control_stimulus_ids', 'stimulus_presentation'});
 if isfield(out, 'silent_loss') && isfield(out.silent_loss, 'total_docs')
     verifyGreaterThan(testCase, out.silent_loss.total_docs, 0);
 end
@@ -429,7 +404,7 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = out.migrated{k}.get('document_class.class_name');
+    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
 end
 end
 

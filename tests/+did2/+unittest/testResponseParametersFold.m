@@ -45,6 +45,18 @@ function tests = testResponseParametersFold
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% RE-ARMED 2026-10-21. These tests were filtered while did-schema #88's
+% `calculation` required operating_system_id, which no v1 document records.
+% Decided by Jess Haley, 2026-10-21 [calculation-os-optional]: "A calculation's
+% `operating_system_id` is optional: required when the operating system is
+% known, absent when the source never recorded it." So that reason is gone and
+% the tests run unconditionally; a failure here is a migrator gap to report,
+% not a reason to filter.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 % ===================== fixtures (from the WRITER) ==========================
 
 function v1 = responseFixture(responseType)

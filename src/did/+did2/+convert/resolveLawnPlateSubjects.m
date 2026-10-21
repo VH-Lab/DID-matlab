@@ -440,6 +440,13 @@ arguments
     options.TargetVersion (1,:) char = 'V_eta'
 end
 
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 % DENOMINATOR FIRST, and unconditionally. Every field exists before a single
 % document is read, so "did not run" (ran == false) and "ran and found nothing"
 % (ran == true, counters 0) are different readings of the same struct rather
@@ -819,7 +826,7 @@ for k = 1:n
         % maxLength 256 on subject.local_identifier. Falling back to the id
         % keeps uniqueness; truncating would destroy the very thing the
         % qualification exists to provide.
-        body.subject.local_identifier = body.base.id;
+        body.entity.local_identifier = body.base.id;
         report.local_identifier_fallback_to_document_id = ...
             report.local_identifier_fallback_to_document_id + 1;
     else
@@ -858,7 +865,7 @@ report.withheld_lawn_tier_not_minted = ...
 relabelBodies = {};
 relabelIds = {};
 for k = 1:n
-    if ~strcmp(classes{k}, 'subject'); continue; end
+    if ~any(strcmp(classes{k}, {'subject', 'entity'})); continue; end
     b = bodies{k};
     handle = subjectField(b, 'local_identifier');
     if ~strcmp(subjectField(b, 'description'), patchDescription()); continue; end
@@ -894,7 +901,7 @@ for k = 1:n
             report.local_identifier_fallback_to_document_id + 1;
         continue;
     end
-    b.subject.local_identifier = newHandle;
+    b.(subjectBlockOf(b)).local_identifier = newHandle;
     relabelBodies{end+1} = b; %#ok<AGROW>
     relabelIds{end+1} = baseField(b, 'id'); %#ok<AGROW>
     formedHandles{end+1}  = newHandle; %#ok<AGROW>
@@ -991,15 +998,26 @@ end
 % orphan; a `member_of` whose parent was never minted would be the same. Both
 % are refused and counted instead.
 statementBodies = {};
+statementAnchor = {};    % the session anchor each observation names ('' for a relation)
+anchorBySession = containers.Map('KeyType', 'char', 'ValueType', 'any');
 statementKind = [];      % 1 plate observation, 3 lawn observation, 0 relation
 for j = 1:numel(subjectMeta)
     if ~isKey(liveSubject, subjectMeta(j).docId); continue; end
     obs = pendingObs{j};
     for i = 1:numel(obs)
         entry = obs{i};
-        statementBodies{end+1} = makeObservation(bodies{subjectMeta(j).idx}, ...
-            entry{1}, entry{2}, entry{3}, entry{4}, subjectMeta(j).docId); %#ok<AGROW>
+        src = bodies{subjectMeta(j).idx};
+        [sidA, dsA] = sessionAndTime(src);
+        if ~isKey(anchorBySession, sidA)
+            a = did2.build.relativeTimeReference(sidA, 'Relation', 'intervalDuring', ...
+                'SessionId', sidA, 'CreationTimestamp', dsA, 'Validate', false);
+            anchorBySession(sidA) = a;
+        end
+        a = anchorBySession(sidA);
+        statementBodies{end+1} = makeObservation(src, ...
+            entry{1}, entry{2}, entry{3}, entry{4}, subjectMeta(j).docId, a.base.id); %#ok<AGROW>
         statementKind(end+1) = subjectMeta(j).kind; %#ok<AGROW>
+        statementAnchor{end+1} = a.base.id; %#ok<AGROW>
     end
 end
 for j = 1:numel(subjectMeta)
@@ -1018,10 +1036,13 @@ for j = 1:numel(subjectMeta)
     statementBodies{end+1} = makeMemberOf(bodies{subjectMeta(j).idx}, ...
         subjectMeta(j).docId, plateSubjectId(plateKey)); %#ok<AGROW>
     statementKind(end+1) = 0; %#ok<AGROW>
+    statementAnchor{end+1} = ''; %#ok<AGROW>
 end
 
 if ~isempty(statementBodies)
-    [survivedB, quarantinedB] = validateBodies(statementBodies, options);
+    anchorBodies = anchorBySession.values;
+    [survivedB, quarantinedB] = validateBodies([statementBodies, anchorBodies(:)'], options);
+    anchorUsed = containers.Map('KeyType', 'char', 'ValueType', 'logical');
     report.statements_quarantined = numel(quarantinedB);
     if ~isempty(quarantinedB)
         result = appendQuarantine(result, quarantinedB);
@@ -1031,6 +1052,14 @@ if ~isempty(statementBodies)
     for i = 1:numel(statementBodies)
         id = statementBodies{i}.base.id;
         if ~isKey(survivedB, id); continue; end
+        aid = statementAnchor{i};
+        if ~isempty(aid)
+            if ~isKey(survivedB, aid); continue; end   % its anchor did not validate
+            if ~isKey(anchorUsed, aid)
+                anchorUsed(aid) = true;
+                appended{end+1} = survivedB(aid); %#ok<AGROW>
+            end
+        end
         appended{end+1} = survivedB(id); %#ok<AGROW>
         switch statementKind(i)
             case 1
@@ -1309,69 +1338,59 @@ end
 % ===================== body builders =======================================
 
 function body = makeSubject(srcBody, localId, description)
-%MAKESUBJECT A bare V_eta subject with a FRESH id.
+%MAKESUBJECT A bare did-schema #88 `entity` with a FRESH id.
 %   Mirrors makePatchSubject in +migrators_j/ontology_table_row.m except for the
 %   id: that one PRESERVES the source id because the encounter relation names
 %   the row as its parent. Here the source row is NOT consumed -- it stays in
 %   the batch -- so preserving would put two documents on one id.
-body = struct();
-body.document_class = struct('class_name', 'subject', 'class_version', '3.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', {}, 'value', {});
-body.base = freshBase(srcBody, 'migrated_lawn_plate_subject');
-body.subject = struct('local_identifier', char(localId), ...
-    'description', description);
+%   The type is the registry's: a lawn is a `culture` ("a bacterial lawn"), a
+%   plate is a `material` ("an agar plate").
+type = 'culture';
+if contains(description, 'plate of lawns')
+    type = 'material';
+end
+[sid, ds] = sessionAndTime(srcBody);
+body = did2.build.document('entity', ...
+    struct('type', did2.build.term('', type), ...
+           'local_identifier', char(localId), 'description', description), ...
+    'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
-function body = makeObservation(srcBody, leafClass, shapeClass, variable, num, subjectId)
-%MAKEOBSERVATION One typed observation of one subject.
-%   The value shapes mirror makeEncObs in +migrators_j/ontology_table_row.m,
-%   which is corpus-proven. NO `time_reference_1` edge: it is optional on
-%   subject_interaction and there is no time to put in one -- see the header.
-body = struct();
-body.document_class = struct('class_name', leafClass, 'class_version', '1.0.0', ...
-    'superclasses', supersOf({'subject_observation', shapeClass}), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', 'subject_id', 'value', subjectId);
-body.base = freshBase(srcBody, 'migrated_lawn_plate_measure');
-body.subject_statement   = struct('variable', variable, 'storage_mode', 'inline');
-body.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
-body.subject_observation = struct();
+function body = makeObservation(srcBody, leafClass, shapeClass, variable, num, subjectId, anchorId)
+%MAKEOBSERVATION One typed observation of one subject (did-schema #88).
+%   An #88 observation REQUIRES a time reference and the table gives no time,
+%   so it names ANCHORID, a "during the session" relative_time_reference the
+%   caller mints once per session. The value carries the source value with no
+%   unit, as the table cell gives none.
 if strcmp(shapeClass, 'score')
-    body.score = struct('value', struct('value', double(num), ...
-        'scale', struct('node', '', 'name', ''), ...
-        'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false));
-else
-    body.(shapeClass) = struct('value', ...
-        struct('source_unit', '', 'source_value', double(num), ...
+    v = did2.build.composite('score', 'value', struct('score', double(num), ...
         'approximate', false));
+else
+    v = did2.build.composite(shapeClass, 'value', ...
+        struct('source_value', double(num), 'approximate', false));
 end
+[sid, ds] = sessionAndTime(srcBody);
+body = did2.build.statement(leafClass, char(subjectId), variable, v, ...
+    'TimeReferenceIds', {char(anchorId)}, 'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
 function rel = makeMemberOf(srcBody, lawnId, plateId)
 %MAKEMEMBEROF lawn --member_of--> plate.
-%   `member_of` is NOT a new relation: binding_registry_meta.json already
-%   carries it as RO:0002350 on `directed_relation`, child_role "the member",
-%   parent_role "the group", child_types and parent_types both `subject` --
-%   which is exactly this pair -- and the signed ensemble decision uses the same
-%   relation for group membership.
-%
-%   NO `time_reference_#` and NO `epoch_id`: both are optional, and a lawn's
+%   `member_of` (RO:0002350) on `directed_relation`: child the member (the
+%   lawn), parent the group (the plate). NO time reference: a lawn's
 %   membership of its plate is a standing structural fact, not an event.
-%   `method` is left empty for the reason the schema itself gives ("Empty for
-%   standing structural relations (part_of, member_of)").
-rel = struct();
-rel.document_class = struct('class_name', 'directed_relation', ...
-    'class_version', '1.0.0', 'superclasses', supersOf({'relation'}), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',  'value', lawnId), ...     % the member: the lawn
-    struct('name', 'parent', 'value', plateId)];       % the group: the plate
-rel.base = freshBase(srcBody, 'migrated_lawn_plate_membership');
-rel.directed_relation = struct('relation', ...
-    struct('node', 'RO:0002350', 'name', 'member_of'));
+[sid, ds] = sessionAndTime(srcBody);
+rel = did2.build.directedRelation(char(lawnId), char(plateId), 'member_of', ...
+    'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
+end
+
+function [sid, ds] = sessionAndTime(srcBody)
+sid = ''; ds = '2024-01-01T00:00:00.000Z';
+if isstruct(srcBody)
+    sid = char(did2.schema.cache.sessionIdOf(srcBody));
+    ds0 = creationTime(srcBody);
+    if ~isempty(ds0); ds = ds0; end
+end
 end
 
 function supers = supersOf(chain)
@@ -1478,7 +1497,7 @@ if isfield(col, 'node') && ischar(col.node); node = col.node; end
 if isfield(col, 'name') && ischar(col.name); name = col.name; end
 if isempty(name) && isfield(col, 'key') && ischar(col.key); name = col.key; end
 if isempty(name); name = col.token; end
-term = struct('node', node, 'name', name);
+term = did2.convert.registeredTerm(node, name);   % T19: the registry's label
 end
 
 function [ok, num] = scalarNumber(x)
@@ -1600,10 +1619,22 @@ end
 
 function v = subjectField(b, name)
 v = '';
-if isstruct(b) && isfield(b, 'subject') && isstruct(b.subject) ...
-        && isscalar(b.subject) && isfield(b.subject, name)
-    x = b.subject.(name);
+blk = subjectBlockOf(b);
+if isempty(blk); return; end
+if isscalar(b.(blk)) && isfield(b.(blk), name)
+    x = b.(blk).(name);
     if ischar(x); v = x; elseif isstring(x) && isscalar(x); v = char(x); end
+end
+end
+
+function blk = subjectBlockOf(b)
+% The block a subject's identity lives in: `subject` before did-schema #73,
+% `entity` on #88.
+blk = '';
+for c = {'entity', 'subject'}
+    if isstruct(b) && isfield(b, c{1}) && isstruct(b.(c{1}))
+        blk = c{1}; return;
+    end
 end
 end
 

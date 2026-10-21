@@ -97,42 +97,12 @@ blk = struct();
 if isfield(preBody, 'control_stimulus_ids') && isstruct(preBody.control_stimulus_ids)
     blk = preBody.control_stimulus_ids;
 end
-presId = depValue(preBody, 'stimulus_presentation_id');
-
-% ---------------------------------------------------------------------------
-% THE GUARD (see above): no presentation => the indices index nothing.
-% ---------------------------------------------------------------------------
-if isempty(presId)
-    bodies = {preBody};
-    return;
-end
-
-v2Body = struct();
-v2Body.document_class = struct('class_name', 'control_designation', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-
-% The presentation body-of-record (the v1 stimulus_presentation id -> the
-% second-pass timed_sequence, id-preserved) + provenance (T10: this designation
-% was DERIVED from it). Both edges are emitted only with a real value, never as
-% an empty placeholder -- an edge present with an empty value is skipped by
-% +did2/+validate/references.m:90 and reads as a fact that was recorded.
-deps = struct('name', {}, 'value', {});
-deps(end+1) = struct('name', 'timed_sequence_id', 'value', presId);
-deps(end+1) = struct('name', 'derived_from_1',    'value', presId);
-v2Body.depends_on = deps;
-
-v2Body.base = preBody.base;   % id preserved -> inbound references resolve
-
-cd_ = struct('control_stimulus', [], 'method', struct());
-if isfield(blk, 'control_stimulus_ids');       cd_.control_stimulus = blk.control_stimulus_ids; end
-if isfield(blk, 'control_stimulus_id_method') && isstruct(blk.control_stimulus_id_method)
-    cd_.method = blk.control_stimulus_id_method;
-end
-v2Body.control_designation = cd_;
-
-bodies = {v2Body};
+% did-schema #88 deleted `control_designation` (#73 review item 67): the
+% control stimulus is said by the item the presentation becomes, in NDI's
+% second pass (`value.control_item`). There is no pass-1 target, so the
+% document PASSES THROUGH under its v1 tombstone (stable/control_stimulus_ids)
+% for that pass to consume -- as `stimulus_presentation` does. Reported.
+bodies = {preBody};
 end
 
 % ===================== small helpers =======================================

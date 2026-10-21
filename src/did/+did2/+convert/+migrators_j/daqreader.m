@@ -126,56 +126,18 @@ if isempty(implClass) && isempty(readerString)
     return;
 end
 
-sessionId = '';
-datestamp = '';
-srcName   = '';
-srcId     = '';
+sessionId = jSid(preBody);
+datestamp = jStamp(preBody);
+srcId = '';
 if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    sessionId = jGetChar(preBody.base, 'session_id');
-    datestamp = jGetChar(preBody.base, 'datestamp');
-    srcName   = jGetChar(preBody.base, 'name');
-    srcId     = jGetChar(preBody.base, 'id');
+    srcId = jGetChar(preBody.base, 'id');
 end
-
-% v1 records no version for a reader -- the template has no version field -- so
-% the entity carries a name only and jSoftware's local_identifier is the bare
-% class name, which is the dedup key the second pass will merge on.
 [software, swId] = jSoftware(implClass, '', '', sessionId, datestamp);
-
-% THE PRESERVED id MOVES TO THE READER, AND THAT IS A DELIBERATE REVERSAL.
-% It used to sit on the `software` body, because `software` was what
-% `acquisition_system.reader_id` pointed at. That edge now points at
-% `acquisition_reader` (did-schema b014e27), and v1's `daqsystem.daqreader_id`
-% names the v1 DAQREADER document -- so the reader is the body that must carry
-% the id forward or every reader_id edge dangles. `software` keeps the fresh
-% id jSoftware minted, which is also what lets the deferred dedup pass merge
-% two rigs sharing one implementation class (#25).
-readerId = srcId;
-if isempty(readerId)
-    readerId = did.ido.unique_id();
-end
-
-reader = struct();
-reader.document_class = struct('class_name', 'acquisition_reader', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-% NEVER AN EMPTY EDGE. `software_id` is optional on `acquisition_reader`, and
-% #37 RequiredDependencies is armed, so an absent software is an ABSENT edge
-% rather than a present-but-blank one -- the invented-empty-edge pattern this
-% repository has paid for six times.
-if isempty(swId)
-    reader.depends_on = struct('name', {}, 'value', {});
-else
-    reader.depends_on = struct('name', {'software_id'}, 'value', {swId});
-end
-reader.base = jBase(readerId, char(sessionId), srcName, datestamp);
-reader.acquisition_reader = struct('reader_string', readerString);
-
-% The reader leads: it is the body that keeps the source id, so a caller
-% reading bodies{1} gets the document the graph still points at.
-bodies = {reader};
-if ~isempty(software)
-    bodies{end+1} = software;
-end
+edges = struct();
+if ~isempty(swId); edges.software_id = swId; end
+f = struct();
+if ~isempty(readerString); f.reader_string = readerString; end
+o = jOpts(preBody, 'Edges', edges, 'Id', srcId);
+reader = did2.build.document('acquisition_reader', f, o{:});
+bodies = [{reader}, software];
 end

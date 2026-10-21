@@ -396,6 +396,13 @@ arguments
     options.TargetVersion (1,:) char = 'V_eta'
 end
 
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 % a migrator transcribes the v1 source's own terms, which the term
 % registry (strictMode 'TermRegistry', tenet T19) need not hold yet: the check
 % is for imports, so it is off while this runs and restored after
@@ -532,6 +539,7 @@ end
 rebuilt    = {};      % the new bodies, statement and body interleaved
 changedIdx = [];      % index into docs of the source each PAIR replaces
 pairBodyId = {};      % the fresh opaque_body id of each pair
+pairAnchorId = {};    % the session time reference each statement names (#88)
 fileIds = genericIdx.keys();
 for f = 1:numel(fileIds)
     id  = fileIds{f};
@@ -574,10 +582,13 @@ for f = 1:numel(fileIds)
     end
 
     bodyId = did.ido.unique_id();
-    rebuilt{end+1} = makeStatement(b, node, subjectId);       %#ok<AGROW>
+    [stmt, anchor] = makeStatement(b, node, subjectId);
+    rebuilt{end+1} = stmt;                                    %#ok<AGROW>
     rebuilt{end+1} = makeOpaqueBody(b, blk, bodyId, id);      %#ok<AGROW>
+    rebuilt{end+1} = anchor;                                  %#ok<AGROW>
     changedIdx(end+1) = k;                                    %#ok<AGROW>
     pairBodyId{end+1} = bodyId;                               %#ok<AGROW>
+    pairAnchorId{end+1} = anchor.base.id;                     %#ok<AGROW>
     if ~isempty(charField(blk, {'date_created'})) ...
             || ~isempty(charField(blk, {'date_updated'})) ...
             || isNumericField(blk, 'date_created') ...
@@ -620,13 +631,16 @@ appended = {};
 for j = 1:numel(changedIdx)
     stmtId = docIds{changedIdx(j)};      % PRESERVED: the source's own id
     bodyId = pairBodyId{j};
-    if isempty(stmtId) || ~isKey(produced, stmtId) || ~isKey(produced, bodyId)
+    anchorId = pairAnchorId{j};
+    if isempty(stmtId) || ~isKey(produced, stmtId) || ~isKey(produced, bodyId) ...
+            || ~isKey(produced, anchorId)
         % Degrade to "not folded": the ORIGINAL stays in the batch.
         report.fold_quarantined = report.fold_quarantined + 1;
         continue;
     end
     docs{changedIdx(j)} = produced(stmtId);
     appended{end+1} = produced(bodyId); %#ok<AGROW>
+    appended{end+1} = produced(anchorId); %#ok<AGROW>
     report.files_folded = report.files_folded + 1;
 end
 
@@ -1396,74 +1410,70 @@ end
 
 % ===================== the two bodies ==================================
 
-function body = makeStatement(src, node, subjectId)
+function [body, anchor] = makeStatement(src, node, subjectId)
 %MAKESTATEMENT The term_observation, WITH THE SOURCE'S OWN base.id.
-%   `variable` is the label's node (the team's instruction, verbatim);
-%   `term.value` restates it because that field is mustBeNonEmpty and the node
-%   is the only term the source carries -- see the header for why that
-%   redundancy was preferred to a false class name or a quarantine.
+%   did-schema #88: built by did2.build.statement. `variable` is the label's
+%   node (the team's instruction, verbatim); the term value restates it,
+%   because the node is the only term the source carries. Both go through the
+%   term registry (T19) so a registered node carries its registered label.
 %
-%   NO `sample_time`: the schema says so itself ("For body-backed values the
-%   cadence lives in sampled_body.sample_time instead"), and this value is
-%   body-backed. NO `time_reference_#`: it is optional, and the only times the
-%   source carries are filesystem datenums, which are not an anchor.
-term = struct('node', char(node), 'name', '');
-body = struct();
-body.document_class = struct('class_name', 'term_observation', ...
-    'class_version', '1.0.0', ...
-    'superclasses', supersOf({'subject_observation', 'term'}), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', 'subject_id', 'value', char(subjectId));
-if isfield(src, 'base') && isstruct(src.base)
-    body.base = src.base;               % THE ID IS NOT TOUCHED.
-end
-body.subject_statement   = struct('variable', term, 'storage_mode', 'body');
-body.subject_interaction = struct('method', struct('node', '', 'name', ''));
-body.subject_observation = struct();
-body.term = struct('value', term);
+%   An #88 observation REQUIRES a time reference, and the only times the
+%   source carries are filesystem datenums, which are not an anchor, so the
+%   statement is "during the session": a relative_time_reference onto the
+%   session (ANCHOR, returned for the caller to validate). The bytes are named by
+%   the opaque_body's owner_id edge; the statement does not set `data_body`
+%   (the same conservative choice as jSorterOutput: a data_body statement
+%   requires a `data_type` the source does not state).
+term = did2.convert.registeredTerm(char(node), '');
+[sid, ds] = sessionAndTime(src);
+anchor = did2.build.relativeTimeReference(sid, 'Relation', 'intervalDuring', ...
+    'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
+body = did2.build.statement('term_observation', char(subjectId), term, term, ...
+    'TimeReferenceIds', {anchor.base.id}, ...
+    'Id', baseField(src, 'id'), 'SessionId', sid, 'CreationTimestamp', ds, ...
+    'Validate', false);
 % NOTHING from the source `generic_file` block reaches the statement: filename,
 % format_ontology and checksum all belong to the BYTES and land on the
 % opaque_body; the two datenums land nowhere (see the header).
 end
 
 function body = makeOpaqueBody(src, blk, bodyId, statementId)
-%MAKEOPAQUEBODY The bytes. Fresh id; `statement` -> the observation.
-%   format       <- format_ontology  as the term's NODE, the CURIE verbatim,
-%                                     name '' (point 4: `format` is a bound
-%                                     ontology_term, did-schema 877bbde). Earlier
-%                                     text, kept for its reasoning: NOT re-expressed as
-%                                     an {node,name} pair -- `format` is a char
-%                                     and manufacturing a name half is the
-%                                     invention the tombstone refused too)
+%MAKEOPAQUEBODY The bytes. Fresh id; owner_id -> the observation.
+%   format       <- format_ontology as a bound term (did2.build.formatTerm);
+%                   'generic file' by name when the source states none, since
+%                   an opaque_body requires a format
 %   filename     <- filename
-%   content_hash <- checksum         (the field added for this fold)
-%   description  is LEFT EMPTY. jSorterOutput puts an MD5 in `description`
-%                because it had nowhere else; that stopgap is not repeated now
-%                that `content_hash` exists.
-body = struct();
-body.document_class = struct('class_name', 'opaque_body', ...
-    'class_version', '1.0.0', ...
-    'superclasses', supersOf({'data_body'}), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', 'statement', 'value', char(statementId));
-body.base = freshBase(src, bodyId, 'migrated_generic_file_bytes');
-% THE BLOCK IS `data_body`, NOT `opaque_body`, SINCE THE #45 HOIST
-% (DID-schema 2026-08-14). `format` / `filename` / `content_hash` /
-% `description` are facts about the BYTES and now live on the abstract parent;
-% opaque_body declares nothing of its own. A property block is keyed by the
-% class that DECLARES the field, so this is a wire-path change, not a rename of
-% convenience: writing `opaque_body.format` after the hoist is an undeclared
-% field on a class that no longer has one.
-body.data_body = struct( ...
-    'format',       formatOf(charField(blk, {'format_ontology', 'formatOntology'})), ...
-    'compression',  '', ...
-    'filename',     charField(blk, {'filename'}), ...
-    'content_hash', charField(blk, {'checksum'}), ...
-    'description',  '');
-% The BYTES ARE NOT READ; the manifest moves verbatim. See the header on the
-% body_data / generic_file.ext slot-name divergence.
+%   content_hash <- checksum
+%   The BYTES ARE NOT READ; the manifest moves verbatim.
+fmt = formatOf(charField(blk, {'format_ontology', 'formatOntology'}));
+if isempty(fmt) || (isstruct(fmt) && isempty(fmt.node) && isempty(fmt.name))
+    fmt = struct('node', '', 'name', 'generic file');
+end
+[sid, ds] = sessionAndTime(src);
+f = struct();
+fn = charField(blk, {'filename'});
+if ~isempty(fn); f.filename = fn; end
+% The datenums are the FILE's times, which #88 data_body now has fields for
+% (file_created / file_modified), so they land there instead of nowhere.
+c = datenumText(numField(blk, {'date_created', 'dateCreated'}));
+if ~isempty(c); f.file_created = c; end
+m = datenumText(numField(blk, {'date_updated', 'dateUpdated'}));
+if ~isempty(m); f.file_modified = m; end
+body = did2.build.opaqueBody(char(statementId), fmt, ...
+    'ContentHash', charField(blk, {'checksum'}), 'Fields', f, ...
+    'Id', char(bodyId), 'SessionId', sid, 'CreationTimestamp', ds, ...
+    'Validate', false);
 if isfield(src, 'files'); body.files = src.files; end
 if isfield(src, 'file');  body.file  = src.file;  end
+end
+
+function [sid, ds] = sessionAndTime(src)
+sid = ''; ds = '2024-01-01T00:00:00.000Z';
+if isstruct(src)
+    sid = char(did2.schema.cache.sessionIdOf(src));
+    ds0 = creationTime(src);
+    if ~isempty(ds0); ds = ds0; end
+end
 end
 
 % ===================== helpers =========================================

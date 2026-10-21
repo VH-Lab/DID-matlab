@@ -165,6 +165,14 @@ NO_REPORT_YET = {}
 # Seven real counters that reached the artifact and stopped there. The debt
 # list shrank; it did not get a longer set of excuses.
 NOT_RENDERED_YET = {
+    "epoch_probemap_fold": {
+        # body_build_first_error (2026-10-21, the recordings-as-bodies build)
+        #     NOT A COUNTER: the text of the first error that stopped an epoch's
+        #     file bodies being built ('' when none). Its count is rendered as
+        #     `body_build_refused`; the text is printed by runCorpusDiscovery
+        #     beside it, and a cross-corpus rollup cannot sum a string.
+        "body_build_first_error",
+    },
     "epoch_mint": {
         "strings_by_source", "epoch_index",
         # epoch_index_report (added 2026-08-12 with the 1 -> N arming rebuild)

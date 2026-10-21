@@ -1,5 +1,6 @@
 function bodies = speed_tuning(preBody)
-%SPEED_TUNING Brainstorm-J migrator: did_v1 speed_tuning (raw NDIcalc-vis result
+%SPEED_TUNING Brainstorm-J migrator -> speed_tuning_calculation (did-schema #88).
+%   Brainstorm-J migrator: did_v1 speed_tuning (raw NDIcalc-vis result
 %   class) -> the CONCRETE V_eta leaf `speedtuning_calc`
 %   (⊂ [tuning_curve_calculation, speed_tuning]) + a session anchor + minted
 %   `software` and `runtime_environment` entities.
@@ -11,8 +12,6 @@ function bodies = speed_tuning(preBody)
 arguments
     preBody (1,1) struct
 end
-bodies = jCalculation(preBody, 'speedtuning_calc', ...
-    {'tuning_curve_calculation', 'speed_tuning'}, ...
-    'tuning_curve', ...
-    'speed tuning', 'ndi.calc.vis.speed', 'speed_tuning');
+bodies = jCalculation(preBody, 'speed_tuning_calculation', 'speed', ...
+    'speed_tuning', 'speed tuning', 'ndi.calc.vis.speed');
 end

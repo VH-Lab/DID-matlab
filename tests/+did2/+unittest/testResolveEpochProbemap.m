@@ -50,16 +50,23 @@ end
 
 % ===================== the headline decomposition =====================
 
-function testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired(testCase)
-% The primary scenario, all in one batch:
-%   row 1  tet/1/n-trode/L   -> voltage_observation, subject_id = specimen,
-%                              instrument_id = the element-subject 'el_1'
-%                              (RESOLVED via local_identifier 'tet (ref 1)'),
-%                              and it RETIRES the #30 obs that names el_1.
-%   row 2  tet/2/n-trode/L   -> voltage_observation, subject_id = specimen,
-%                              instrument_id OMITTED (no 'tet (ref 2)' subject).
-%   row 3  tet/3/n-trode/x   -> subjectstring 'x@lab' resolves to no subject:
-%                              REFUSED, no observation.
+function testTwoObservationsMintedOneRowRefusedAndObservesRetired(testCase)
+% RENAMED 2026-10-21 from testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired.
+% Pass 1 no longer emits the session-wide "#30" observation (Jess Haley,
+% 2026-10-21: one observation per element PER EPOCH, its epoch files as data
+% bodies), so there is no #30 observation to retire: session30_observations_retired
+% is now 0. What pass 1 leaves instead is the loose `observes` relation (el_1
+% observes specimen_1), and THAT is what this pass retires once an observation
+% carries el_1 as instrument_id. Each observation is `data_body` true. The
+% fixture names no file (only `epochid://`), so the epoch is counted
+% epochs_no_file_named and no body is minted.
+% UPDATED for did-schema #88. Two of three rows decompose (the third names a
+% subject not in the batch); the observations are of the specimen, anchored at
+% the minted epoch, with the probe as instrument where it resolves and the
+% channels on a shared acquisition_channels document. NEW ON #88: the
+% ingestion_manifest has no epochprobemap slot (#73 item 39), so the source is
+% renamed ONLY when every row decomposed; here one did not, so the
+% epochfiles_ingested passes through intact (rename_skipped_rows_without_home).
 subj = subjectBody('specimen_1', 'sess_1', 'L');
 el   = elementBody('el_1', 'sess_1', 'tet', '1', 'n-trode', 1, 'specimen_1');
 ing  = ingestedWithRows('ing_1', 'sess_1', 't00001', { ...
@@ -68,7 +75,6 @@ ing  = ingestedWithRows('ing_1', 'sess_1', 't00001', { ...
     {'tet', '3', 'n-trode', 'x@lab'}});
 [out, rep] = decompose({sessionBody('sd_1', 'sess_1', 'ref'), subj, el, ing});
 
-% --- the report -----------------------------------------------------------
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.epochfiles_ingested_seen, 1);
 verifyEqual(testCase, rep.refused_no_epoch, 0);
@@ -81,41 +87,35 @@ verifyEqual(testCase, rep.observations_emitted, 2);
 verifyEqual(testCase, rep.instrument_resolved, 1);
 verifyEqual(testCase, rep.instrument_omitted, 1);
 verifyEqual(testCase, rep.epoch_anchors_minted, 1);
-verifyEqual(testCase, rep.session30_observations_retired, 1);
+verifyEqual(testCase, rep.session30_observations_retired, 0);   % none emitted by pass 1 now
 verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
 verifyEqual(testCase, rep.fold_quarantined, 0);
-% device half: rows 1+2 reach it (row 3 refused at subject first); the
-% devicestring names 'vhspike2', for which no acquisition_system exists here,
-% so the edge is OMITTED (unresolved), and the channel spec parses.
+verifyEqual(testCase, rep.observes_retired, 1);
+verifyEqual(testCase, rep.epochs_with_observations, 1);
+verifyEqual(testCase, rep.epochs_no_file_named, 1);
+verifyEqual(testCase, rep.bodies_by_location + rep.bodies_from_archive, 0);
 verifyEqual(testCase, rep.device_strings_seen, 2);
 verifyEqual(testCase, rep.device_acqsystem_unresolved, 2);
 verifyEqual(testCase, rep.device_acqsystem_resolved, 0);
 verifyEqual(testCase, rep.device_channels_parsed, 2);
-% increment 3: the ingested doc is renamed to ingestion_manifest (its
-% filenavigator_id 'nav_1' and epoch resolve).
-verifyEqual(testCase, rep.manifests_renamed, 1);
+verifyEqual(testCase, rep.manifests_renamed, 0);
+verifyEqual(testCase, rep.rename_skipped_rows_without_home, 1);
 verifyEqual(testCase, rep.rename_quarantined, 0);
-
-% --- THE ROW PARTITION reconciles. Single-modality rows, so observations ==
-%     recording rows and manipulations == stimulator rows (increment 3).
 refused = rep.rows_no_subjectstring + rep.refused_no_subject;
 deferred = rep.rows_unresolved_modality + rep.rows_image_deferred;
 verifyEqual(testCase, rep.probe_rows_total, ...
     rep.observations_emitted + rep.manipulations_emitted + refused + deferred);
 
-% --- exactly two migrated_probemap_observation documents ------------------
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 2);
-
-% both are voltage_observations of the specimen, anchored to the same epoch
-% 'during' anchor.
 anchorIds = {};
 withInstrument = 0;
 for i = 1:numel(obs)
     b = obs{i};
-    verifyEqual(testCase, char(b.document_class.class_name), 'voltage_observation');
-    verifyEqual(testCase, depVal(b, 'subject_id'), 'specimen_1');
-    tr = depVal(b, 'time_reference_1');
+    verifyEqual(testCase, char(did2.unittest.helpers.leafName(b)), 'voltage_observation');
+    verifyTrue(testCase, logical(b.value.data_body));   % its value is the epoch's files
+    verifyEqual(testCase, depVal(b, 'entity_id'), 'specimen_1');
+    tr = depVal(b, 'time_reference_id');
     verifyNotEmpty(testCase, tr);
     anchorIds{end+1} = tr; %#ok<AGROW>
     inst = depVal(b, 'instrument_id');
@@ -123,110 +123,391 @@ for i = 1:numel(obs)
         verifyEqual(testCase, inst, 'el_1');   % the RESOLVED probe-subject
         withInstrument = withInstrument + 1;
     end
+    ch = channelsOf(out, b);
+    verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
+    verifyEqual(testCase, char(ch(1).type.name), 'ai');
+    verifyEqual(testCase, double(ch(1).numbers(:))', [11 12 13 14]);
 end
 verifyEqual(testCase, withInstrument, 1);
-% one shared anchor across both observations
 verifyEqual(testCase, numel(unique(anchorIds)), 1);
-
-% --- the shared anchor is an epoch-scoped 'during' relative_reference ------
 anchors = bodiesNamed(out, 'migrated_probemap_epoch_anchor');
 verifyEqual(testCase, numel(anchors), 1);
 a = anchors{1};
-verifyEqual(testCase, char(a.document_class.class_name), 'relative_reference');
 verifyEqual(testCase, a.base.id, anchorIds{1});
-verifyEqual(testCase, char(a.relative_reference.value.relation.name), 'intervalDuring');
-% its relative_to is the minted epoch document
+verifyEqual(testCase, char(a.relative_time_reference.value.relation.name), 'intervalDuring');
 epochs = bodiesOfClass(out, 'epoch');
 verifyEqual(testCase, numel(epochs), 1);
-verifyEqual(testCase, depVal(a, 'relative_to'), epochs{1}.base.id);
-
-% --- the #30 observation for el_1 is RETIRED ------------------------------
-% element.m emits a voltage_observation (base.name migrated_recording_observation)
-% with instrument_id el_1; resolveEpochProbemap replaces it, so it is gone.
-recObs = bodiesNamed(out, 'migrated_recording_observation');
-for i = 1:numel(recObs)
-    verifyNotEqual(testCase, depVal(recObs{i}, 'instrument_id'), 'el_1');
-end
-verifyEqual(testCase, numel(recObs), 0);   % el_1 was the only direct element
-
-% --- each observation carries the parsed channels, no acquisition_system edge
-for i = 1:numel(obs)
-    verifyEmpty(testCase, depVal(obs{i}, 'acquisition_system_id')); % unresolved
-    ch = obs{i}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
-    verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
-    verifyEqual(testCase, char(ch(1).type.name), 'ai');
-    verifyEqual(testCase, double(ch(1).numbers), [11 12 13 14]);
-end
-
-% --- INCREMENT 3: the ingested document is now an ingestion_manifest --------
-verifyEqual(testCase, numel(bodiesOfClass(out, 'epochfiles_ingested')), 0);
-mani = bodiesOfClass(out, 'ingestion_manifest');
-verifyEqual(testCase, numel(mani), 1);
-m = mani{1};
-verifyEqual(testCase, m.base.id, 'ing_1');                    % id PRESERVED
-verifyEqual(testCase, depVal(m, 'filenavigator_id'), 'nav_1'); % RESTORED
-verifyEqual(testCase, depVal(m, 'epoch_id'), epochs{1}.base.id); % now an EDGE
-verifyEqual(testCase, m.ingestion_manifest.files, {'epochid://t00001'});
-% LOSSLESS ROUND-TRIP: the serialized epochprobemap is carried VERBATIM, so the
-% stimulator/imaging rows that do not decompose into observations are still
-% preserved on the manifest. Recording rows also become observations (above);
-% this string is the full-fidelity record ndi.vintage reads back.
-verifyEqual(testCase, m.ingestion_manifest.epochprobemap, ...
+verifyEqual(testCase, depVal(a, 'referent_id'), epochs{1}.base.id);
+verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_recording_observation')), 0);
+% the source passes through intact: its third row has no home on #88
+verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 0);
+src = bodiesOfClass(out, 'epochfiles_ingested');
+verifyEqual(testCase, numel(src), 1);
+verifyEqual(testCase, src{1}.epochfiles_ingested.epochprobemap, ...
     ing.epochfiles_ingested.epochprobemap);
 end
 
+
 % ===================== the triple key resolves patch/sharp ===============
 
-function testAPatchElementRetiresBOTHClassesViaTheTripleKey(testCase)
-% A `patch` element emits TWO #30 observations (voltage + current), both with
-% instrument_id el_2 and subject specimen_2 -- but DIFFERENT classes. Keying the
-% retirement on instrument ALONE was ambiguous (2 hits) and kept both; the
-% (subject, instrument, CLASS) triple distinguishes them, so the probemap's
-% voltage_observation supersedes the #30 voltage_observation and its
-% current_observation supersedes the #30 current_observation. BOTH retire.
+function testAPatchRowShareOneFileBodyAndRetireObserves(testCase)
+% RENAMED 2026-10-21 from testAPatchElementRetiresBOTHClassesViaTheTripleKey.
+% The two #30 observations it retired are no longer emitted by pass 1. The
+% patch row still yields TWO observations (voltage + current); both were
+% recorded in the epoch's one file, so that file is ONE opaque_body owned by
+% BOTH (owner_id repeats, did-schema data_body 2026-10-21), recorded by
+% location, and the element's `observes` relation is retired.
 subj = subjectBody('specimen_2', 'sess_2', 'L');
 el   = elementBody('el_2', 'sess_2', 'pat', '1', 'patch', 1, 'specimen_2');
 ing  = ingestedWithRows('ing_2', 'sess_2', 't00002', { ...
-    {'pat', '1', 'patch', 'L'}});
+    {'pat', '1', 'patch', 'L'}}, {'/data/t00002/cell.abf'});
 [out, rep] = decompose({sessionBody('sd_2', 'sess_2', 'ref'), subj, el, ing});
-
-% one patch row -> two observations (voltage + current)
 verifyEqual(testCase, rep.observations_emitted, 2);
-verifyEqual(testCase, rep.session30_observations_retired, 2);
-verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
-verifyEqual(testCase, rep.retire_no_match, 0);
-% both #30 observations for el_2 are RETIRED
-recObs = bodiesNamed(out, 'migrated_recording_observation');
-verifyEqual(testCase, numel(recObs), 0);
+verifyEqual(testCase, rep.session30_observations_retired, 0);
+verifyEqual(testCase, rep.observes_retired, 1);
+verifyEqual(testCase, rep.bodies_by_location, 1);
+verifyEqual(testCase, rep.body_owner_links, 2);
+verifyEqual(testCase, rep.bodies_quarantined, 0);
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+ids = sort(cellfun(@(b) char(b.base.id), obs, 'UniformOutput', false));
+bodies = bodiesOfClass(out, 'opaque_body');
+verifyEqual(testCase, numel(bodies), 1);
+verifyEqual(testCase, sort(depVals(bodies{1}, 'owner_id')), ids);
+verifyEqual(testCase, char(bodies{1}.files.file_info(1).locations.location), '/data/t00002/cell.abf');
+verifyEqual(testCase, double(bodies{1}.files.file_info(1).locations.ingest), 0);
+verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_recording_observation')), 0);
 end
 
-function testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording(testCase)
-% THE BUG THE TRIPLE KEY FIXES (174/174 skipped-ambiguous on Soph). A spike-
-% sorted probe carries MORE THAN ONE #30 observation on the same instrument:
-%   el_probe  DIRECT n-trode  -> #30 voltage_observation
-%                                 subject = specimen, instrument = el_probe
-%   el_neuron 'spikes', derived, underlying = el_probe
-%                              -> #30 time_observation (spike-train leaf)
-%                                 subject = el_neuron, instrument = el_probe
-% Keyed on instrument alone that is 2 hits -> ambiguous -> nothing retired. The
-% (subject, instrument, class) triple matches only the probe's OWN direct
-% recording (subject = the specimen), leaving the neuron's spike train intact.
+function testASpikeSortedProbeGetsOnlyItsOwnEpochObservation(testCase)
+% RENAMED 2026-10-21 from testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording.
+% Pass 1 now emits no observation for EITHER element (the probe's is per
+% epoch, minted here; the neuron's spike train waits on an open question about
+% its element_epoch body), so the probe row yields one voltage observation and
+% nothing about the neuron is touched.
 subj = subjectBody('specimen_sp', 'sess_sp', 'L');
 elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp');
 elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
 ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', { ...
     {'tet', '1', 'n-trode', 'L'}});
 [out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ing});
+verifyEqual(testCase, rep.observations_emitted, 1);
+verifyEqual(testCase, rep.session30_observations_retired, 0);
+verifyEqual(testCase, rep.observes_retired, 1);
+verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_recording_observation')), 0);
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+verifyEqual(testCase, depVal(obs{1}, 'instrument_id'), 'el_probe');
+end
 
-verifyEqual(testCase, rep.observations_emitted, 1);       % one probemap voltage obs
-verifyEqual(testCase, rep.session30_observations_retired, 1);
-verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
-% the probe's OWN direct recording (subject specimen_sp) is gone; the neuron's
-% spike-train observation (subject el_neuron, instrument el_probe) SURVIVES.
-recObs = bodiesNamed(out, 'migrated_recording_observation');
-verifyEqual(testCase, numel(recObs), 1);
-verifyEqual(testCase, depVal(recObs{1}, 'subject_id'), 'el_neuron');
-verifyEqual(testCase, depVal(recObs{1}, 'instrument_id'), 'el_probe');
+% ===================== the epoch's files as bodies (2026-10-21) =========
+
+function testAGzippedFileBodyStatesItsCompression(testCase)
+% Jess Haley, 2026-10-21 ("a"): a data body's `compression` is 'gzip' when the
+% file name ends in .tgz or .gz, and is left empty otherwise.
+subj = subjectBody('specimen_z', 'sess_z', 'L');
+el   = elementBody('el_z', 'sess_z', 'pat', '1', 'patch', 1, 'specimen_z');
+ing  = ingestedWithRows('ing_z', 'sess_z', 't00009', { ...
+    {'pat', '1', 'patch', 'L'}}, {'/data/t00009/seg.nbf.tgz', '/data/t00009/cell.abf'});
+[out, rep] = decompose({sessionBody('sd_z', 'sess_z', 'ref'), subj, el, ing});
+verifyEqual(testCase, rep.bodies_quarantined, 0);
+bodies = bodiesOfClass(out, 'opaque_body');
+verifyEqual(testCase, numel(bodies), 2);
+seen = 0;
+for i = 1:numel(bodies)
+    db = bodies{i}.data_body;
+    hasComp = isfield(db, 'compression') && ~isempty(db.compression);
+    switch char(db.filename)
+        case 'seg.nbf.tgz'
+            verifyTrue(testCase, hasComp, 'a .tgz file body states its compression');
+            if hasComp; verifyEqual(testCase, char(db.compression), 'gzip'); end
+            seen = seen + 1;
+        case 'cell.abf'
+            verifyFalse(testCase, hasComp, 'an uncompressed file leaves compression empty');
+            seen = seen + 1;
+    end
+end
+verifyEqual(testCase, seen, 2, 'both file bodies inspected');
+end
+
+function testTwoProbesInOneFileShareItsBodyAndEachKeepsItsChannels(testCase)
+% Jess Haley, 2026-10-21: an opaque_body per epoch file, SHARED by the
+% electrodes recorded in it, with the channel map. Two n-trodes on different
+% channels of one Intan file -> one body per named file (the .rhd and the
+% channel-grouping .txt), each owned by BOTH observations; each observation's
+% channels are its own acquisition_channels document. `epochid://` is not a
+% file. Formats by extension: .rhd Binary format, .txt Textual format.
+subj = subjectBody('spec_f', 'sess_f', 'L');
+ing  = ingestedWithDeviceRows('ing_f', 'sess_f', 't0f', { ...
+    {'a', '', 'n-trode', 'intan1:ai1-4', 'L'}, ...
+    {'b', '', 'n-trode', 'intan1:ai5-8', 'L'}}, ...
+    {'/data/t0f/t0f.rhd', '/data/t0f/vhintan_channelgrouping.txt'});
+[out, rep] = decompose({sessionBody('sd_f', 'sess_f', 'ref'), subj, ing});
+verifyEqual(testCase, rep.observations_emitted, 2);
+verifyEqual(testCase, rep.epochs_by_location, 1);
+verifyEqual(testCase, rep.bodies_by_location, 2);
+verifyEqual(testCase, rep.bodies_size_and_checksum_omitted, 2);
+verifyEqual(testCase, rep.body_owner_links, 4);
+verifyEqual(testCase, rep.bodies_quarantined, 0);
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+ids = sort(cellfun(@(b) char(b.base.id), obs, 'UniformOutput', false));
+bodies = bodiesOfClass(out, 'opaque_body');
+verifyEqual(testCase, numel(bodies), 2);
+fmts = {};
+for i = 1:numel(bodies)
+    verifyEqual(testCase, sort(depVals(bodies{i}, 'owner_id')), ids);
+    verifyEqual(testCase, char(bodies{i}.files.file_info(1).locations.location_type), 'file');
+    fmts{end+1} = char(bodies{i}.data_body.format.node); %#ok<AGROW>
+end
+verifyEqual(testCase, sort(fmts), sort({'EDAM:format_2333', 'EDAM:format_2330'}));
+ch1 = channelsOf(out, obs{1}); ch2 = channelsOf(out, obs{2});
+verifyNotEqual(testCase, double(ch1(1).numbers(:))', double(ch2(1).numbers(:))');
+end
+
+function testAnIngestedEpochTakesItsArchiveAsAttached(testCase)
+% INGESTED: the recording is the archive attached to the epoch's
+% daqreader_*_epochdata_ingested document, found through the acquisition
+% system (epoch_file_pattern_id = the epochfiles' filenavigator_id, reader_id =
+% the archive's daqreader_id) at the same epoch. One opaque_body per attached
+% series, members in segment order as body_data_0..N-1 with their locations
+% VERBATIM; a declared series with no attached member is skipped; the raw file
+% paths the cache names are NOT used.
+subj = subjectBody('spec_i', 'sess_i', 'L');
+daq  = struct();
+daq.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+daq.base = struct('id', 'acqsys_i', 'session_id', 'sess_i', ...
+    'name', 'intan1', 'datestamp', '2024-05-01T00:00:00.000Z');
+daq.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'value', {'nav_1', 'rdr_i'});
+arc = struct();
+arc.document_class = struct('class_name', 'daqreader_mfdaq_epochdata_ingested', ...
+    'class_version', 1, 'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+arc.base = struct('id', 'arc_i', 'session_id', 'sess_i', 'name', '', ...
+    'datestamp', '2024-05-01T00:00:00.000Z');
+arc.depends_on = struct('name', 'daqreader_id', 'value', 'rdr_i');
+arc.epochid = struct('epochid', 't0i');
+arc.daqreader_epochdata_ingested = struct('epochtable', ...
+    struct('epochclock', {{'dev_local_time'}}, 't0_t1', [0 10]));
+loc = @(u) struct('delete_original', 0, 'uid', u, 'location', ['ndic://ds/' u], ...
+    'parameters', '', 'location_type', 'ndicloud', 'ingest', 0);
+arc.files = struct('file_list', {{'ai_group1_seg.nbf_#', 'channel_list.bin', 'di_group1_seg.nbf_#'}}, ...
+    'file_info', struct('name', {'ai_group1_seg.nbf_2', 'channel_list.bin', 'ai_group1_seg.nbf_1'}, ...
+        'locations', {loc('u2'), loc('uc'), loc('u1')}));
+ing  = ingestedWithDeviceRows('ing_i', 'sess_i', 't0i', { ...
+    {'p', '', 'n-trode', 'intan1:ai1-4', 'L'}}, {'/raw/t0i/t0i.rhd'});
+[out, rep] = decompose({sessionBody('sd_i', 'sess_i', 'ref'), subj, daq, arc, ing});
+verifyEqual(testCase, rep.observations_emitted, 1);
+verifyEqual(testCase, rep.epochs_from_archive, 1);
+verifyEqual(testCase, rep.bodies_from_archive, 2);
+verifyEqual(testCase, rep.archive_members_carried, 3);
+verifyEqual(testCase, rep.bodies_by_location, 0);
+verifyEqual(testCase, rep.bodies_quarantined, 0);
+bodies = bodiesOfClass(out, 'opaque_body');
+verifyEqual(testCase, numel(bodies), 2);
+for i = 1:numel(bodies)
+    fi = bodies{i}.files.file_info;
+    switch char(bodies{i}.data_body.filename)
+        case 'ai_group1_seg.nbf_#'
+            verifyEqual(testCase, {fi.name}, {'body_data_0', 'body_data_1'});
+            verifyEqual(testCase, {fi(1).locations.uid, fi(2).locations.uid}, {'u1', 'u2'});
+        case 'channel_list.bin'
+            verifyEqual(testCase, numel(fi), 1);
+            verifyEqual(testCase, char(fi(1).locations.uid), 'uc');
+        otherwise
+            verifyFail(testCase, 'an unexpected archive body');
+    end
+end
+% Jess Haley, 2026-10-21 ("a"): every file the v1 archive holds (both
+% ai_group1 members and channel_list.bin) is carried by a surviving body and
+% nothing that survives names it, so the archive document is RETIRED.
+verifyEqual(testCase, rep.archive_docs_inspected, 1);
+verifyEqual(testCase, rep.archive_docs_retired, 1);
+verifyEqual(testCase, rep.archive_docs_kept_unowned_files, 0);
+verifyEqual(testCase, rep.archive_dangling_references, 0);
+verifyEmpty(testCase, docById(out, 'arc_i'), 'the fully-owned archive is retired');
+end
+
+function testAnArchiveWithAFileNoBodyCarriesIsKept(testCase)
+% The same ingested epoch, but the archive also holds a file no data body
+% carries (`stray.bin`, attached but in no declared series): the document is
+% KEPT, and the unowned file is counted. Verified per document.
+subj = subjectBody('spec_k', 'sess_k', 'L');
+daq  = struct();
+daq.document_class = struct('class_name', 'daqsystem', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+daq.base = struct('id', 'acqsys_k', 'session_id', 'sess_k', ...
+    'name', 'intan1', 'datestamp', '2024-05-01T00:00:00.000Z');
+daq.daqsystem = struct('ndi_daqsystem_class', 'ndi.daq.system.mfdaq');
+daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
+    'value', {'nav_1', 'rdr_k'});
+arc = struct();
+arc.document_class = struct('class_name', 'daqreader_mfdaq_epochdata_ingested', ...
+    'class_version', 1, 'superclasses', struct('definition', '$NDIDOCUMENTPATH/base.json'));
+arc.base = struct('id', 'arc_k', 'session_id', 'sess_k', 'name', '', ...
+    'datestamp', '2024-05-01T00:00:00.000Z');
+arc.depends_on = struct('name', 'daqreader_id', 'value', 'rdr_k');
+arc.epochid = struct('epochid', 't0k');
+arc.daqreader_epochdata_ingested = struct('epochtable', ...
+    struct('epochclock', {{'dev_local_time'}}, 't0_t1', [0 10]));
+loc = @(u) struct('delete_original', 0, 'uid', u, 'location', ['ndic://ds/' u], ...
+    'parameters', '', 'location_type', 'ndicloud', 'ingest', 0);
+arc.files = struct('file_list', {{'ai_group1_seg.nbf_#'}}, ...
+    'file_info', struct('name', {'ai_group1_seg.nbf_1', 'stray.bin'}, ...
+        'locations', {loc('u1'), loc('us')}));
+ing  = ingestedWithDeviceRows('ing_k', 'sess_k', 't0k', { ...
+    {'p', '', 'n-trode', 'intan1:ai1-4', 'L'}}, {'/raw/t0k/t0k.rhd'});
+[out, rep] = decompose({sessionBody('sd_k', 'sess_k', 'ref'), subj, daq, arc, ing});
+verifyEqual(testCase, rep.bodies_from_archive, 1);
+verifyEqual(testCase, rep.archive_docs_inspected, 1);
+verifyEqual(testCase, rep.archive_docs_retired, 0);
+verifyEqual(testCase, rep.archive_docs_kept_unowned_files, 1);
+verifyEqual(testCase, rep.archive_files_unowned, 1);
+verifyNotEmpty(testCase, docById(out, 'arc_k'), 'an archive with an unowned file is kept');
+end
+
+% ===================== spike trains (2026-10-21) ========================
+
+function v1 = elementEpochBody(docId, sessionId, elementId, epochId, withFile)
+%ELEMENTEPOCHBODY A did_v1 element_epoch, as NDI's writer makes it
+%   (+ndi/element.m:367-378: newdocument('element_epoch', 'element_epoch.
+%   epoch_clock', ..., 'element_epoch.t0_t1', ..., 'epochid.epochid', ...),
+%   set_dependency_value('element_id', ...)), with the epoch's samples attached
+%   as `epoch_binary_data.vhsb` (ndi.element.timeseries.addepoch).
+v1 = struct();
+v1.document_class = struct('class_name', 'element_epoch', 'class_version', '1.0.0', ...
+    'superclasses', [struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                     struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+v1.depends_on = struct('name', 'element_id', 'value', elementId);
+v1.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0 10]);
+v1.epochid = struct('epochid', epochId);
+if withFile
+    v1.files = struct('file_list', {{'epoch_binary_data.vhsb'}}, ...
+        'file_info', struct('name', 'epoch_binary_data.vhsb', 'locations', ...
+            struct('delete_original', 0, 'uid', 'vhsb_1', ...
+                'location', '/data/t00sp/neuron.vhsb', 'parameters', '', ...
+                'location_type', 'file', 'ingest', 1)));
+else
+    v1.files = struct('file_list', {{'epoch_binary_data.vhsb'}});
+end
+end
+
+function testASortedNeuronGetsOneSpikeTrainObservationPerEpoch(testCase)
+% Jess Haley, 2026-10-21 ("a"): a spike-sorted neuron gets one observation per
+% epoch -- entity the neuron (id preserved), instrument the probe it was
+% sorted from, value kind time, `data_body` true, variable GO:0001508
+% "action potential" -- with its element_epoch's .vhsb as the opaque_body.
+subj = subjectBody('specimen_sp', 'sess_sp', 'L');
+elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp');
+elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
+ee   = elementEpochBody('ee_1', 'sess_sp', 'el_neuron', 't00sp', true);
+ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', {{'tet', '1', 'n-trode', 'L'}});
+[out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ee, ing});
+verifyEqual(testCase, rep.spike_epochs_seen, 1);
+verifyEqual(testCase, rep.spike_trains_emitted, 1);
+verifyEqual(testCase, rep.spike_instrument_resolved, 1);
+verifyEqual(testCase, rep.spike_bodies, 1);
+verifyEqual(testCase, rep.spike_bodies_quarantined, 0);
+verifyEqual(testCase, rep.observations_emitted, 1, 'the probe row is still its own observation');
+spike = {};
+obsAll = bodiesOfClass(out, 'time_observation');
+for i = 1:numel(obsAll)
+    if strcmp(depVal(obsAll{i}, 'entity_id'), 'el_neuron'); spike{end+1} = obsAll{i}; end %#ok<AGROW>
+end
+assertEqual(testCase, numel(spike), 1, 'one spike-train observation of the neuron');
+o = spike{1};
+verifyTrue(testCase, isfield(o, 'time'), 'the value kind is time');
+verifyEqual(testCase, depVal(o, 'instrument_id'), 'el_probe');
+verifyEqual(testCase, char(o.statement.variable.node), 'GO:0001508');
+verifyEqual(testCase, char(o.statement.variable.name), 'action potential');
+b = {};
+ob = bodiesOfClass(out, 'opaque_body');
+for i = 1:numel(ob)
+    if any(strcmp(depVals(ob{i}, 'owner_id'), char(o.base.id))); b{end+1} = ob{i}; end %#ok<AGROW>
+end
+assertEqual(testCase, numel(b), 1, 'the spike train owns exactly one body');
+verifyEqual(testCase, char(b{1}.data_body.filename), 'epoch_binary_data.vhsb');
+verifyEqual(testCase, char(b{1}.files.file_info(1).locations.location), '/data/t00sp/neuron.vhsb');
+end
+
+function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)
+% No epoch_binary_data.vhsb attached: no file to be the body, so no
+% observation (never a bodiless one); counted.
+subj = subjectBody('specimen_sq', 'sess_sq', 'L');
+elP  = elementBody('el_probe_q', 'sess_sq', 'tet', '1', 'n-trode', 1, 'specimen_sq');
+elN  = derivedElementBody('el_neuron_q', 'sess_sq', 'n1', 'spikes', 'el_probe_q');
+ee   = elementEpochBody('ee_q', 'sess_sq', 'el_neuron_q', 't00sq', false);
+ing  = ingestedWithRows('ing_sq', 'sess_sq', 't00sq', {{'tet', '1', 'n-trode', 'L'}});
+[~, rep] = decompose({sessionBody('sd_sq', 'sess_sq', 'ref'), subj, elP, elN, ee, ing});
+verifyEqual(testCase, rep.spike_epochs_seen, 1);
+verifyEqual(testCase, rep.spike_epochs_no_file, 1);
+verifyEqual(testCase, rep.spike_trains_emitted, 0);
+verifyEqual(testCase, rep.spike_bodies, 0);
+end
+
+% ===================== pyraview levels (2026-10-21) =====================
+
+function v1 = pyraviewV1(docId, sessionId, elementId, epochId)
+%PYRAVIEWV1 A did_v1 pyraview (the PRED shape; testMigratorsJMeasurementFilter's
+%   fixture) naming element ELEMENTID at epoch EPOCHID, two levels.
+v1 = struct();
+v1.document_class = struct('class_name', 'pyraview', 'class_version', '1.0.0', ...
+    'superclasses', [struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                     struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+v1.depends_on = struct('name', {'element_id'}, 'value', {elementId});
+v1.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', 'pyr', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.pyraview = struct('label', 'high', 'native_rate', 20000, ...
+    'native_start_time', 0, 'channels', 4, 'data_type', 'double', ...
+    'decimation_sampling_rates', [20000 200]);
+v1.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
+v1.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', [0 10]);
+v1.epochid = struct('epochid', epochId);
+end
+
+function testPyraviewLevelsMoveToTheEpochsRecordingObservation(testCase)
+% Jess Haley, 2026-10-21 ("a"): each pyraview level is a data body owned by
+% that epoch's recording observation (the one emitted here for the same
+% element and epoch), and the separate pyraview observation is retired.
+subj = subjectBody('specimen_pv', 'sess_pv', 'L');
+el   = elementBody('el_pv', 'sess_pv', 'tet', '1', 'n-trode', 1, 'specimen_pv');
+ing  = ingestedWithRows('ing_pv', 'sess_pv', 't00pv', {{'tet', '1', 'n-trode', 'L'}});
+pv   = pyraviewV1('pv_1', 'sess_pv', 'el_pv', 't00pv');
+[out, rep] = decompose({sessionBody('sd_pv', 'sess_pv', 'ref'), subj, el, ing, pv});
+verifyEqual(testCase, rep.pyraview_observations_seen, 1);
+verifyEqual(testCase, rep.pyraview_observations_retired, 1);
+verifyEqual(testCase, rep.pyraview_levels_repointed, 2);
+verifyEqual(testCase, rep.pyraview_kept_no_recording_observation, 0);
+verifyEmpty(testCase, docById(out, 'pv_1'), 'the separate pyraview observation is retired');
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+assertEqual(testCase, numel(obs), 1);
+recId = char(obs{1}.base.id);
+levels = bodiesOfClass(out, 'sampled_body');
+verifyEqual(testCase, numel(levels), 2);
+for i = 1:numel(levels)
+    verifyEqual(testCase, depVals(levels{i}, 'owner_id'), {recId}, ...
+        'a level body is owned by the recording observation');
+end
+end
+
+function testAPyraviewWithNoRecordingObservationIsKeptAndCounted(testCase)
+% No probemap row for the pyraview's element at that epoch: nothing to move
+% to, so the pyraview observation and its levels stay as they were; counted.
+subj = subjectBody('specimen_pw', 'sess_pw', 'L');
+el   = elementBody('el_pw', 'sess_pw', 'tet', '1', 'n-trode', 1, 'specimen_pw');
+elO  = elementBody('el_other', 'sess_pw', 'oth', '1', 'n-trode', 1, 'specimen_pw');
+ing  = ingestedWithRows('ing_pw', 'sess_pw', 't00pw', {{'oth', '1', 'n-trode', 'L'}});
+pv   = pyraviewV1('pv_2', 'sess_pw', 'el_pw', 't00pw');
+[out, rep] = decompose({sessionBody('sd_pw', 'sess_pw', 'ref'), subj, el, elO, ing, pv});
+verifyEqual(testCase, rep.pyraview_observations_seen, 1);
+verifyEqual(testCase, rep.pyraview_observations_retired, 0);
+verifyEqual(testCase, rep.pyraview_kept_no_recording_observation, 1);
+verifyNotEmpty(testCase, docById(out, 'pv_2'), 'kept as it was');
+levels = bodiesOfClass(out, 'sampled_body');
+for i = 1:numel(levels)
+    verifyEqual(testCase, depVals(levels{i}, 'owner_id'), {'pv_2'});
+end
 end
 
 % ===================== an unresolvable subject emits nothing ===========
@@ -267,41 +548,29 @@ end
 % ===================== modality rows resolve ==========================
 
 function testModalityRowsResolveToTheRightObservationLeaf(testCase)
-% One row per modality family that yields a single observation, all resolvable to
-% the same specimen. Asserts localModality maps each type to the leaf
-% jRecordingModality maps it to -- the pin that keeps the duplicated map honest.
-%
-% IMAGING IS DEFERRED, NOT EMITTED, IN INCREMENT 1. `image.value` is
-% mustBeNonEmpty, and a probemap row carries no raster metadata, so a
-% pure-reference image cell is all-blank and the #38 NonVacuousFields gate (armed
-% by default) refuses it -- inventing a dtype to satisfy it is the guess R6/#30
-% forbid. So the two-photon-imaging row is COUNTED (rows_image_deferred) and emits
-% nothing; the other SIX rows emit. This is the pass recognising a modality it
-% cannot honestly express yet, not a validation bug -- see resolveEpochProbemap's
-% localModality IMAGE IS DEFERRED note. jRecordingObservation carries the same
-% latent blank-image shape but never validates it (its tests run Validate=false).
 subj = subjectBody('spec_m', 'sess_m', 'L');
 ing  = ingestedWithRows('ing_m', 'sess_m', 't0m', { ...
     {'a', '', 'n-trode',              'L'}, ...   % voltage
     {'b', '', 'patch-i',              'L'}, ...   % current
-    {'c', '', 'two-photon-imaging',   'L'}, ...   % image (DEFERRED, not emitted)
+    {'c', '', 'two-photon-imaging',   'L'}, ...   % intensity (no longer deferred, 2026-10-21)
     {'d', '', 'spikes',               'L'}, ...   % time
     {'e', '', 'accelerometer',        'L'}, ...   % acceleration
     {'f', '', 'thermometer',          'L'}, ...   % temperature
     {'g', '', 'extracellular_electrode-4', 'L'}}); % voltage (electrode stem)
 [out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subj, ing});
 verifyEqual(testCase, rep.probe_rows_total, 7);
-verifyEqual(testCase, rep.observations_emitted, 6);
-verifyEqual(testCase, rep.rows_image_deferred, 1);
+verifyEqual(testCase, rep.observations_emitted, 7);
+verifyEqual(testCase, rep.rows_image_deferred, 0);   % #88 + data bodies: imaging is an intensity_observation
 verifyEqual(testCase, rep.rows_unresolved_modality, 0);
-
-got = sort(cellfun(@(b) char(b.document_class.class_name), ...
+% UPDATED for #88: the leaf is the observation direction + its value kind
+got = sort(cellfun(@(b) char(did2.unittest.helpers.leafName(b)), ...
     bodiesNamed(out, 'migrated_probemap_observation'), 'UniformOutput', false));
 want = sort({'voltage_observation', 'current_observation', ...
     'time_observation', 'acceleration_observation', 'temperature_observation', ...
-    'voltage_observation'});
+    'voltage_observation', 'intensity_observation'});
 verifyEqual(testCase, got, want);
 end
+
 
 % A stimulator type decomposes into a `term_manipulation` (#66 increment 3, the
 % T3 direction) -- NOT an observation; an unmapped type (lick-spout) is Guard A
@@ -352,46 +621,50 @@ function testStimManipulationClassSubjectAnchor(testCase)
 [~, ~, manips] = stimDecompose();
 assertNotEmpty(testCase, manips);
 m = manips{1};
-verifyEqual(testCase, char(m.document_class.class_name), 'term_manipulation');
-verifyEqual(testCase, depVal(m, 'subject_id'), 'spec_s');
-verifyNotEmpty(testCase, depVal(m, 'time_reference_1'));
+verifyEqual(testCase, char(did2.unittest.helpers.leafName(m)), 'term_manipulation');
+verifyEqual(testCase, depVal(m, 'entity_id'), 'spec_s');
+verifyNotEmpty(testCase, depVal(m, 'time_reference_id'));
 end
 
+
 function testStimManipulationCarriesTheStimulatorType(testCase)
+% UPDATED for #88: no storage_mode; the stimulator type is the variable and the
+% term value.
 [~, ~, manips] = stimDecompose();
 assertNotEmpty(testCase, manips);
 m = manips{1};
-verifyEqual(testCase, char(m.subject_statement.variable.name), 'stimulator');
-verifyEqual(testCase, char(m.subject_statement.storage_mode), 'inline');
+verifyEqual(testCase, char(m.statement.variable.name), 'stimulator');
 verifyEqual(testCase, char(m.term.value.name), 'stimulator');
 end
+
 
 % ===================== the device half (increment 2) ==================
 
 function testDeviceStringResolvesAcqSystemAndParsesGroupedChannels(testCase)
-% `intan1:ai27-28,45;di0-2` -> acquisition_system_id (the migrated daqsystem
-% named 'intan1') + two channel groups {ai [27 28 45]} and {di [0 1 2]}.
+% UPDATED for #88: the system is named on the acquisition_channels document the
+% observation names (acquisition_system_id), and the grouped channels live there.
 subj = subjectBody('spec_d', 'sess_d', 'L');
 daq  = daqsystemBody('acqsys_d', 'sess_d', 'intan1');
 ing  = ingestedWithDeviceRows('ing_d', 'sess_d', 't0d', { ...
     {'p', '', 'n-trode', 'intan1:ai27-28,45;di0-2', 'L'}});
 [out, rep] = decompose({sessionBody('sd_d', 'sess_d', 'ref'), subj, daq, ing});
-
 verifyEqual(testCase, rep.device_strings_seen, 1);
 verifyEqual(testCase, rep.device_acqsystem_resolved, 1);
 verifyEqual(testCase, rep.device_acqsystem_unresolved, 0);
 verifyEqual(testCase, rep.device_channels_parsed, 1);
 verifyEqual(testCase, rep.device_channels_unparsable, 0);
-
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 1);
-verifyEqual(testCase, depVal(obs{1}, 'acquisition_system_id'), 'acqsys_d');
-ch = obs{1}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
+chDoc = docById(out, depVal(obs{1}, 'acquisition_channels_id'));
+verifyEqual(testCase, depVal(chDoc, 'acquisition_system_id'), 'acqsys_d');
+ch = chDoc.acquisition_channels.channels;
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).type.name), 'ai');
-verifyEqual(testCase, double(ch(1).numbers), [27 28 45]);
+verifyEqual(testCase, double(ch(1).numbers(:))', [27 28 45]);
 verifyEqual(testCase, char(ch(2).type.name), 'di');
-verifyEqual(testCase, double(ch(2).numbers), [0 1 2]);
+verifyEqual(testCase, double(ch(2).numbers(:))', [0 1 2]);
+% every row decomposed, so the source is renamed to the manifest
+verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
 
 % ===================== the rename-thin guard (increment 3) =============
@@ -435,7 +708,8 @@ end
 
 % ===================== fixtures, from the NDI writer ===================
 
-function v1 = ingestedWithRows(docId, sessionId, epochId, rows)
+function v1 = ingestedWithRows(docId, sessionId, epochId, rows, files)
+if nargin < 5; files = {}; end
 %INGESTEDWITHROWS A did_v1 epochfiles_ingested whose epochprobemap serialises the
 %   given rows, each {name, reference, type, subjectstring}. devicestring is a
 %   constant 'vhspike2:ai11-14' (parsed by the device half but resolving to no
@@ -447,10 +721,11 @@ for i = 1:numel(rows)
     pm = [pm, sprintf('%s\t%s\t%s\tvhspike2:ai11-14\t%s\n', ...
         r{1}, r{2}, r{3}, r{4})]; %#ok<AGROW>
 end
-v1 = ingestedRaw(docId, sessionId, epochId, pm);
+v1 = ingestedRaw(docId, sessionId, epochId, pm, files);
 end
 
-function v1 = ingestedRaw(docId, sessionId, epochId, probemapValue)
+function v1 = ingestedRaw(docId, sessionId, epochId, probemapValue, files)
+if nargin < 5; files = {}; end
 %INGESTEDRAW A did_v1 epochfiles_ingested. Block key set {epoch_id, epochprobemap,
 %   files}, dependency {filenavigator_id}, exactly as corpus B's documents carry.
 v1 = struct();
@@ -466,7 +741,7 @@ v1.base = struct('id', docId, 'session_id', sessionId, ...
     'name', '', 'datestamp', '2024-03-23T13:47:40.237Z');
 blk = struct();
 blk.epoch_id = epochId;
-blk.files = {['epochid://' epochId]};
+blk.files = [{['epochid://' epochId]}, files];
 blk.epochprobemap = probemapValue;
 v1.epochfiles_ingested = blk;
 end
@@ -537,7 +812,8 @@ v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
     'id', {'', ''});
 end
 
-function v1 = ingestedWithDeviceRows(docId, sessionId, epochId, rows)
+function v1 = ingestedWithDeviceRows(docId, sessionId, epochId, rows, files)
+if nargin < 5; files = {}; end
 %INGESTEDWITHDEVICEROWS Like ingestedWithRows, but each row is the FULL 5-tuple
 %   {name, reference, type, devicestring, subjectstring} so a test can drive the
 %   device half. Exact serialize() shape.
@@ -547,7 +823,7 @@ for i = 1:numel(rows)
     pm = [pm, sprintf('%s\t%s\t%s\t%s\t%s\n', ...
         r{1}, r{2}, r{3}, r{4}, r{5})]; %#ok<AGROW>
 end
-v1 = ingestedRaw(docId, sessionId, epochId, pm);
+v1 = ingestedRaw(docId, sessionId, epochId, pm, files);
 end
 
 function v1 = subjectBody(docId, sessionId, localId)
@@ -565,16 +841,47 @@ end
 % ===================== helpers ============================================
 
 function out = bodiesNamed(result, baseName)
-%BODIESNAMED Migrated bodies (as structs) whose base.name == BASENAME.
-out = {};
+%BODIESNAMED The bodies a role marker used to tag on base.name.
+%   UPDATED for did-schema #88: V_eta documents write no base.name (#73 item 54),
+%   so the role is read off the structure instead:
+%     migrated_probemap_observation / _manipulation
+%         an observation / manipulation whose time reference anchors at an EPOCH
+%         (the probemap pass anchors every row at its epoch);
+%     migrated_probemap_epoch_anchor
+%         a relative_time_reference whose referent is an epoch;
+%     migrated_recording_observation
+%         an observation with an instrument whose time reference anchors at the
+%         SESSION (the element migrator's whole-session recording observation).
+docs = cell(1, numel(result.migrated));
+byId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:numel(result.migrated)
-    b = result.migrated{k}.toStruct();
-    if isfield(b, 'base') && isfield(b.base, 'name') ...
-            && strcmp(char(b.base.name), baseName)
-        out{end+1} = b; %#ok<AGROW>
+    docs{k} = result.migrated{k}.toStruct();
+    byId(char(docs{k}.base.id)) = docs{k};
+end
+out = {};
+for k = 1:numel(docs)
+    b = docs{k};
+    leaf = char(did2.unittest.helpers.leafName(b));
+    switch baseName
+        case 'migrated_probemap_epoch_anchor'
+            hit = strcmp(leaf, 'relative_time_reference') ...
+                && strcmp(entityTypeOf(byId, depVal(b, 'referent_id')), 'epoch');
+        case 'migrated_probemap_observation'
+            hit = endsWith(leaf, '_observation') ...
+                && strcmp(anchorKind(byId, b), 'epoch');
+        case 'migrated_probemap_manipulation'
+            hit = endsWith(leaf, '_manipulation') ...
+                && strcmp(anchorKind(byId, b), 'epoch');
+        case 'migrated_recording_observation'
+            hit = endsWith(leaf, '_observation') && ~isempty(depVal(b, 'instrument_id')) ...
+                && strcmp(anchorKind(byId, b), 'session');
+        otherwise
+            error('bodiesNamed: unknown role %s', baseName);
     end
+    if hit; out{end+1} = b; end %#ok<AGROW>
 end
 end
+
 
 function out = bodiesOfClass(result, className)
 %BODIESOFCLASS Migrated bodies (as structs) of document_class className.
@@ -582,7 +889,7 @@ out = {};
 for k = 1:numel(result.migrated)
     b = result.migrated{k}.toStruct();
     if isfield(b, 'document_class') && isfield(b.document_class, 'class_name') ...
-            && strcmp(char(b.document_class.class_name), className)
+            && strcmp(char(did2.unittest.helpers.leafName(b)), className)
         out{end+1} = b; %#ok<AGROW>
     end
 end
@@ -604,5 +911,62 @@ for k = 1:numel(items)
     if isfield(d, 'value') && ~isempty(d.value); v = char(d.value);
     elseif isfield(d, 'document_id') && ~isempty(d.document_id); v = char(d.document_id); end
     return;
+end
+end
+
+function t = anchorKind(byId, b)
+% the entity type of the referent of B's (first) time reference
+t = '';
+tr = depVal(b, 'time_reference_id');
+if isempty(tr) || ~isKey(byId, tr); return; end
+t = entityTypeOf(byId, depVal(byId(tr), 'referent_id'));
+end
+
+
+function t = entityTypeOf(byId, id)
+t = '';
+if isempty(id) || ~isKey(byId, id); return; end
+d = byId(id);
+if isfield(d, 'entity') && isfield(d.entity, 'type') && isfield(d.entity.type, 'name')
+    t = char(d.entity.type.name);
+end
+end
+
+
+function ch = channelsOf(result, b)
+% #88: an observation's channels live on the acquisition_channels document it
+% names by acquisition_channels_id
+ch = [];
+id = depVal(b, 'acquisition_channels_id');
+for k = 1:numel(result.migrated)
+    d = result.migrated{k}.toStruct();
+    if strcmp(char(d.base.id), id)
+        ch = d.acquisition_channels.channels;
+        return;
+    end
+end
+end
+
+
+function d = docById(result, id)
+d = [];
+for k = 1:numel(result.migrated)
+    s = result.migrated{k}.toStruct();
+    if strcmp(char(s.base.id), id); d = s; return; end
+end
+end
+
+function v = depVals(b, name)
+%DEPVALS Every value of a REPEATED edge (owner_id, T15), in order.
+v = {};
+if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
+deps = b.depends_on;
+if iscell(deps); items = deps(:)';
+else; items = num2cell(deps(:)'); end
+for k = 1:numel(items)
+    d = items{k};
+    if ~isstruct(d) || ~strcmp(char(d.name), name); continue; end
+    if isfield(d, 'value') && ~isempty(d.value); v{end+1} = char(d.value); %#ok<AGROW>
+    elseif isfield(d, 'document_id') && ~isempty(d.document_id); v{end+1} = char(d.document_id); end %#ok<AGROW>
 end
 end

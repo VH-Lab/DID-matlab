@@ -179,12 +179,12 @@ verifyEqual(testCase, rel.directed_relation.relation.name, 'member_of');
 verifyEqual(testCase, rel.directed_relation.relation.node, 'RO:0002350');
 
 % THE ASSERTION THAT MATTERS: both ends resolve, and to the RIGHT tiers.
-child  = documentById(out, depValue(rel, 'child'));
-parent = documentById(out, depValue(rel, 'parent'));
+child  = documentById(out, depValue(rel, 'child_id'));
+parent = documentById(out, depValue(rel, 'parent_id'));
 verifyNotEmpty(testCase, child,  'the member end dangles -- a gating orphan');
 verifyNotEmpty(testCase, parent, 'the group end dangles -- a gating orphan');
-verifyEqual(testCase, child.subject.description,  'bacterial lawn (a bacterial patch)');
-verifyEqual(testCase, parent.subject.description, 'bacterial plate (a plate of lawns)');
+verifyEqual(testCase, child.entity.description,  'bacterial lawn (a bacterial patch)');
+verifyEqual(testCase, parent.entity.description, 'bacterial plate (a plate of lawns)');
 
 % every observation points at a subject that is in the batch
 obsClasses = {'concentration_observation', 'volume_observation', ...
@@ -192,9 +192,9 @@ obsClasses = {'concentration_observation', 'volume_observation', ...
 nChecked = 0;
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
-    if ~any(strcmp(b.document_class.class_name, obsClasses)); continue; end
+    if ~any(strcmp(did2.unittest.helpers.leafName(b), obsClasses)); continue; end   % #88 leaf names
     nChecked = nChecked + 1;
-    verifyNotEmpty(testCase, documentById(out, depValue(b, 'subject_id')), ...
+    verifyNotEmpty(testCase, documentById(out, depValue(b, 'entity_id')), ...
         'an observation whose subject is not in the batch is an orphan');
 end
 verifyEqual(testCase, nChecked, 12, ...
@@ -213,10 +213,10 @@ function testTheLawnIdentifierIsTheExperimentPlatePatchTriple(testCase)
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()});
 verifyEqual(testCase, rep.lawn_subjects_minted, 1, 'denominator');
 lawn = subjectByDescription(testCase, out, 'bacterial lawn (a bacterial patch)');
-verifyEqual(testCase, lawn.subject.local_identifier, ...
+verifyEqual(testCase, lawn.entity.local_identifier, ...
     'exp/0007/plate/0061/patch/0003');
 plate = subjectByDescription(testCase, out, 'bacterial plate (a plate of lawns)');
-verifyEqual(testCase, plate.subject.local_identifier, 'exp/0007/plate/0061');
+verifyEqual(testCase, plate.entity.local_identifier, 'exp/0007/plate/0061');
 verifyEqual(testCase, rep.local_identifier_collisions_within_batch, 0);
 verifyEqual(testCase, rep.local_identifier_fallback_to_document_id, 0);
 end
@@ -340,7 +340,7 @@ verifyEqual(testCase, rep.refused_plate_row_ambiguous, 0);
 verifyEqual(testCase, rep.chains_resolved, 1);
 verifyEqual(testCase, rep.lawn_subjects_minted, 1);
 lawn = subjectByDescription(testCase, out, 'bacterial lawn (a bacterial patch)');
-verifyEqual(testCase, lawn.subject.local_identifier, ...
+verifyEqual(testCase, lawn.entity.local_identifier, ...
     'exp/0007/plate/0061/patch/0003', ...
     'the other session''s expID 9999 must not reach this lawn');
 end
@@ -508,7 +508,7 @@ verifyEqual(testCase, rep.celegans_patch_subjects_refused_no_exp_id, 0);
 verifyEqual(testCase, rep.celegans_patch_subjects_unparseable_handle, 0);
 
 patch = subjectByDescription(testCase, out, 'bacterial patch');
-verifyEqual(testCase, patch.subject.local_identifier, ...
+verifyEqual(testCase, patch.entity.local_identifier, ...
     'exp/0001/plate/0017/patch/0017');
 % THE RELABEL IS THE SECOND SITE THAT FORMS A HANDLE, so it must reach the
 % collision split too -- a split that only saw the mint site would under-report
@@ -533,7 +533,7 @@ verifyEqual(testCase, rep.celegans_patch_subjects_seen, 1, 'denominator');
 verifyEqual(testCase, rep.celegans_patch_subjects_relabelled, 0);
 verifyEqual(testCase, rep.celegans_patch_subjects_refused_no_exp_id, 1);
 patch = subjectByDescription(testCase, out, 'bacterial patch');
-verifyEqual(testCase, patch.subject.local_identifier, 'plate/0017/patch/0017');
+verifyEqual(testCase, patch.entity.local_identifier, 'plate/0017/patch/0017');
 end
 
 function testNoSubjectAnywhereIsLabelledJustAPatchNumber(testCase)
@@ -557,7 +557,7 @@ for b = 1:numel(batches)
     subs = subjectsOf(out);
     for k = 1:numel(subs)
         nSubjects = nSubjects + 1;
-        handle = subs{k}.subject.local_identifier;
+        handle = subs{k}.entity.local_identifier;
         verifyNotEmpty(testCase, handle, 'local_identifier is REQUIRED');
         verifyEmpty(testCase, regexp(handle, '^\d+$', 'once'), ...
             sprintf(['subject %s is labelled with a bare number -- the ' ...
@@ -663,10 +663,18 @@ verifyEqual(testCase, rep.subjects_quarantined, 0);
 verifyEqual(testCase, rep.statements_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, rep.member_of_relations_emitted, 1);
-verifyEqual(testCase, rep.documents_appended, 15, ...
-    '2 subjects + 12 observations + 1 member_of');
-% and the whole batch is reference-clean, which is the gate that actually runs
-refRep = did2.validate.references(out.migrated);
+verifyEqual(testCase, rep.documents_appended, 16, ...
+    '2 entities + 12 observations + 1 member_of + 1 session time reference (#88: an observation needs one)');
+% and the whole batch is reference-clean, which is the gate that actually runs.
+% #88: `base.session_id` is the `session_id` EDGE, and a session time reference
+% names the session as its referent, so both name the session document -- which
+% these table-row fixtures do not carry (a corpus does). The session id is
+% passed as known, and every OTHER edge must still resolve inside the batch.
+refRep = did2.validate.references(out.migrated, 'KnownIds', {'sess_ecoli'});
+for k = 1:numel(refRep.orphans)
+    o = refRep.orphans(k);
+    testCase.log(1, sprintf('orphan: %s', jsonencode(o)));
+end
 verifyEqual(testCase, refRep.orphan_count, 0, ...
     sprintf('%d orphan edge(s) of %d examined', refRep.orphan_count, ...
         refRep.edges_examined));
@@ -730,14 +738,15 @@ out = s(keep);
 end
 
 function subs = subjectsOf(out)
-subs = findClass(out, 'subject');
+% #88: the plate is a `material` entity, the lawn/patch a `culture` entity
+subs = [findClass(out, 'material'), findClass(out, 'culture'), findClass(out, 'organism')];
 end
 
 function found = findClass(out, className)
 found = {};
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
-    if strcmp(b.document_class.class_name, className)
+    if strcmp(did2.unittest.helpers.leafName(b), className)
         found{end+1} = b; %#ok<AGROW>
     end
 end
@@ -752,10 +761,10 @@ b = found{1};
 end
 
 function b = subjectByDescription(testCase, out, description)
-subs = findClass(out, 'subject');
+subs = subjectsOf(out);
 b = struct();
 for k = 1:numel(subs)
-    if strcmp(subs{k}.subject.description, description); b = subs{k}; return; end
+    if strcmp(subs{k}.entity.description, description); b = subs{k}; return; end
 end
 assertFail(testCase, sprintf('no subject described "%s"', description));
 end

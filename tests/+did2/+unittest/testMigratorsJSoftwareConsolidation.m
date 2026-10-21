@@ -43,54 +43,35 @@ end
 % ============ family 1: the sync cluster (was jSyncSoftware's own build) ====
 
 function testSyncruleSoftwareCarriesTheDedupHandle(testCase)
-% THE REGRESSION TEST for the consolidation. Before it, this document's
-% `software` had name and base.name but no local_identifier, so the dedup pass
-% would have had to special-case sync entities.
-%
-% Source values are what NDI's own writer stores:
-%   git show origin/main:src/ndi/+ndi/+time/syncrule.m:183-187
-%     ndi.document('syncrule', 'syncrule.ndi_syncrule_class', class(obj), ...)
-% and the ctoe parameter set is the closed set isvalidparameters validates
-% (commonTriggersOverlappingEpochs.m:36).
 out = runJ(syncruleBody('ndi.time.syncrule.commonTriggersOverlappingEpochs'));
 verifyEmpty(testCase, out.quarantine);
-
 sw = firstOfClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('software.name'), ...
+verifyEqual(testCase, sw.get('entity.name'), ...
     'ndi.time.syncrule.commonTriggersOverlappingEpochs');
-% THE POINT OF THE FILE
-verifyEqual(testCase, sw.get('software.local_identifier'), ...
+verifyEqual(testCase, sw.get('entity.local_identifier'), ...
     'ndi.time.syncrule.commonTriggersOverlappingEpochs');
-
-% and the configuration still points at it
 cfg = firstOfClass(testCase, out, 'clock_alignment_configuration');
 verifyEqual(testCase, depValue(cfg.toStruct(), 'software_id'), sw.get('base.id'));
 end
 
+
 function testSyncSoftwareVersionStaysEmptyAndTheHandleHasNoAtSign(testCase)
-% v1 records no release for the implementation that computed an alignment, so
-% `version` is EMPTY and the handle is the BARE class name -- jSoftware appends
-% `@<version>` only when there is one. Guessing a version would be exactly the
-% fabrication the ground-truth track exists to stop.
+% UPDATED for #88: a version is a text_assertion about the software, so "no
+% version" is "no version assertion".
 out = runJ(syncruleBody('ndi.time.syncrule.commonTriggersOverlappingEpochs'));
 sw = firstOfClass(testCase, out, 'software');
-% verifyEmpty, NOT verifyEqual(...,''): verifyEqual compares SIZE and MATLAB has
-% more than one empty char (0x0 vs 1x0), which is a fact about how the empty was
-% built, not about the migration.
-verifyClass(testCase, sw.get('software.version'), 'char');
-verifyEmpty(testCase, sw.get('software.version'));
-verifyFalse(testCase, contains(sw.get('software.local_identifier'), '@'));
+verifyFalse(testCase, any(strcmp(classNames(out), 'text_assertion')));
+verifyFalse(testCase, contains(sw.get('entity.local_identifier'), '@'));
 end
 
+
 function testSyncSoftwareGlobalIdentifierStaysEmpty(testCase)
-% A MATLAB class name is not an identifier in any scheme we can name, so the
-% array is present-and-empty rather than absent-and-guessed-at. This behaviour
-% moved from jSyncSoftware into jSoftware with the consolidation; pin it so the
-% move cannot quietly invent a scheme.
 out = runJ(syncruleBody('ndi.time.syncrule.randomPulses'));
 sw = firstOfClass(testCase, out, 'software');
-verifyEmpty(testCase, sw.get('entity.global_identifier'));
+e = sw.get('entity');
+verifyTrue(testCase, ~isfield(e, 'global_identifier') || isempty(e.global_identifier));
 end
+
 
 function testSyncruleWithNoImplementationClassMintsNoSoftware(testCase)
 % No identity -> no entity AND no edge, rather than a `software` named '' with
@@ -108,26 +89,20 @@ end
 % ====== family 2: method_parameters (was jMethodParameters.softwareEntity) ==
 
 function testSettingsSoftwareCarriesTheDedupHandleWithItsVersion(testCase)
-% The other consolidated copy. This one DOES have a version (ndi.app/newdocument
-% populates the whole app block -- src/ndi/+ndi/app.m:105-114), so the handle is
-% NAME@VERSION.
+% UPDATED for #88: the version is a text_assertion about the software entity.
 out = runJ(extractionParamsBody('ndi.app.spikeextractor', '2.1'));
 verifyEmpty(testCase, out.quarantine);
-
 sw = firstOfClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.app.spikeextractor');
-verifyEqual(testCase, sw.get('software.version'), '2.1');
-verifyEqual(testCase, sw.get('software.local_identifier'), ...
-    'ndi.app.spikeextractor@2.1');
-
-mp = firstOfClass(testCase, out, 'method_parameters');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikeextractor');
+verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.app.spikeextractor@2.1');
+ver = firstOfClass(testCase, out, 'text_assertion');
+verifyEqual(testCase, depValue(ver.toStruct(), 'entity_id'), sw.get('base.id'));
+verifyEqual(testCase, ver.get('text.value').text, '2.1');
+mp = firstOfClass(testCase, out, 'method');
 verifyEqual(testCase, depValue(mp.toStruct(), 'software_id'), sw.get('base.id'));
-% base.id PRESERVED: three templates point at it
-% (spike_extraction_parameters_modification / spikewaves / spike_clusters, all
-% `extraction_parameters_id`), and both consumers are deferred passthroughs in
-% pass 1, so the edges have to keep resolving.
 verifyEqual(testCase, mp.get('base.id'), 'sep_1');
 end
+
 
 function testSettingsAppBlockReadsThePostRenameSpelling(testCase)
 % universalRenames has already rewritten app.name -> app.app_name by the time
@@ -143,76 +118,57 @@ verifyTrue(testCase, any(strcmp(names, 'software')), ...
 end
 
 function testSettingsExecutionEnvironmentIsParkedNotDropped(testCase)
-% `execution_environment` is a subject_interaction field and method_parameters
-% is NOT a statement, so the four per-run facts have no typed home on this
-% class. They are PARKED in `other.execution_environment` rather than dropped.
-% (Unchanged by the consolidation; pinned because the parking now happens on the
-% far side of a shared helper, where it is easier to lose.)
+% INVERTED for did-schema #88: a `method` names its software only; #88 names an
+% operating system / interpreter on a calculation alone, and the method's
+% parameters are the algorithm's settings. The run environment is therefore not
+% carried on a method (a loss recorded in the port report) and not disguised as
+% an algorithm setting.
 out = runJ(extractionParamsBody('ndi.app.spikeextractor', '2.1'));
-mp = firstOfClass(testCase, out, 'method_parameters');
-env = mp.get('method_parameters.other.execution_environment');
-verifyEqual(testCase, env.interpreter, 'MATLAB');
-verifyEqual(testCase, env.os, 'Linux');
+mp = firstOfClass(testCase, out, 'method');
+ps = mp.get('method.parameters');
+names = arrayfun(@(e) char(e.variable.name), ps, 'UniformOutput', false);
+verifyFalse(testCase, any(contains(names, 'execution environment')));
+verifyFalse(testCase, any(contains(names, 'interpreter')));
 end
 
+
 function testSettingsWithNoSessionParksTheWholeAppBlock(testCase)
-% THE RequireSession GUARD, which the consolidation had to carry across.
-% `base.session_id` is "mustBeNonEmpty": true (did-schema
-% schemas/V_eta/stable/base.json), so a `software` minted with no session cannot
-% validate -- and v1_to_v2 quarantines the SOURCE when a body it produced fails,
-% turning a clean fold into a loss. So: no entity, no edge, and the app block is
-% parked WHOLE in `other.app`.
-%
-% NOT a duplicate of testMigratorsJMethodParams.m's
-% testNoSoftwareIsMintedWithoutASessionToHangItOn. That test owns the guard's
-% BEHAVIOUR; this one owns the guard SURVIVING THE CONSOLIDATION -- the logic
-% moved out of a local function in jMethodParameters.m into an option on a
-% shared helper, and the last assertion below is the part neither the old code
-% nor that test ever stated:
-%
-% `other.execution_environment` must NOT also be written here: the same four
-% facts would then sit in `other` twice, under two keys. That is why
-% jSoftwareFromApp clears execEnv for a caller that asked for the leftover.
+% UPDATED for #88: a document with no session id cannot be built (every V_eta
+% document's session_id edge is required), so it is QUARANTINED by the builder
+% rather than emitted with an invented session; no software is minted for it.
 v1 = extractionParamsBody('ndi.app.spikeextractor', '2.1');
 v1.base.session_id = '';
 out = runJ(v1);
-names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'software')));
-
-mp = firstOfClass(testCase, out, 'method_parameters');
-verifyEqual(testCase, depValue(mp.toStruct(), 'software_id'), '');
-other = mp.get('method_parameters.other');
-verifyTrue(testCase, isfield(other, 'app'));
-verifyEqual(testCase, other.app.app_name, 'ndi.app.spikeextractor');
-verifyFalse(testCase, isfield(other, 'execution_environment'));
+verifyEmpty(testCase, out.migrated);
+verifyEqual(testCase, numel(out.quarantine), 1);
+verifyNotEmpty(testCase, regexp(out.quarantine(1).reason, 'SessionId', 'once'));
 end
+
 
 % ============ family 3: the calculator path must be UNCHANGED ==============
 
 function testCalculatorNamelessAppStillYieldsAnExecutionEnvironment(testCase)
-% The additive promise on the os/interpreter facts: even when the app block
-% carries no `name` (nothing for `software.name` to be identity from),
-% `subject_interaction.execution_environment` MUST still be populated from
-% the run's os/interpreter. PR #68 additionally makes `software_id` and
-% `runtime_environment_id` REQUIRED on `calculator`, so jCalculation now
-% ALSO mints minimal `software` (methodName-keyed) and `runtime_environment`
-% entities; the execution_environment inline block stays exactly as before.
+% An app block with no name still states the run's os and interpreter. UPDATED
+% for #88: the calculation names them as `software` entities by
+% operating_system_id / interpreter_id; the app software is named after the
+% calculator method. The fixture now carries a tuning curve: with no curve the
+% required result value is empty and the document passes through
+% (testCalculatorWithNoCurvePassesThrough).
 v1 = calcBody('', '');
 v1.app.os = 'Linux';
 v1.app.interpreter = 'MATLAB';
+v1.orientation_direction_tuning.tuning_curve = struct('direction', [0 90], 'mean', [3 4]);
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
-% A minimal software is always minted now (methodName-keyed) so the required
-% edge always resolves.
 verifyTrue(testCase, any(strcmp(names, 'software')));
-leaf = out.migrated{find(~strcmp(names, 'session_relative_reference') ...
-    & ~strcmp(names, 'software') & ~strcmp(names, 'runtime_environment'), 1)};
-verifyEqual(testCase, ...
-    leaf.get('subject_interaction.execution_environment.os'), 'Linux');
-verifyEqual(testCase, ...
-    leaf.get('subject_interaction.execution_environment.interpreter'), 'MATLAB');
+leaf = out.migrated{find(strcmp(names, 'orientation_direction_tuning_calculation'), 1)};
+s = leaf.toStruct();
+verifyEqual(testCase, nameOf(out, depValue(s, 'operating_system_id')), 'Linux');
+verifyEqual(testCase, nameOf(out, depValue(s, 'interpreter_id')), 'MATLAB');
+verifyEqual(testCase, nameOf(out, depValue(s, 'software_id')), 'ndi.calc.vis.oridir');
 end
+
 
 % ===================== fixtures ============================================
 
@@ -225,24 +181,11 @@ out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
 end
 
 function v1 = syncruleBody(implClass)
-%SYNCRULEBODY A did_v1 `syncrule`, shaped as NDI's writer stores it.
-%   git show origin/main:src/ndi/ndi_common/database_documents/daq/syncrule.json
-%      "syncrule": { "ndi_syncrule_class": "...", "parameters": [] }
-%      (no depends_on at all)
-%   git show origin/main:src/ndi/+ndi/+time/syncrule.m:183-187
-%      ... 'base.session_id', ndi.session.empty_id(), ...
-%   -- so a syncrule carries the all-zero SENTINEL, not a session id. That is
-%   also why this file's no-session test uses spike_extraction_parameters and
-%   not a syncrule: the sentinel is non-empty, so it does not exercise the
-%   RequireSession guard.
-%
-%   The parameter set is commonTriggersOverlappingEpochs's closed set
-%   (isvalidparameters, commonTriggersOverlappingEpochs.m:36). BOTH device names
-%   and BOTH channels are present because syncrule.m guards on the pair: with
-%   fewer than two `acquisition_channels` it passes the document through and no
-%   software is minted, which would test the guard rather than the fold.
-%   Matches tests/+did2/+unittest/testMigratorsJClockAlignment.m's fixture so
-%   the two files cannot drift into describing different source documents.
+% UPDATED for did-schema #88: a FILE-BASED rule (no device pair). A channel-based
+% rule passes through on #88 (its DAQ system names cannot become an
+% acquisition_system_id inside one document), so the software it would mint is
+% exercised here on the rule shape that still folds. The implementation class
+% is whatever the test passes; the software is named by it either way.
 v1 = struct();
 v1.document_class = struct('class_name', 'syncrule', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -251,12 +194,9 @@ v1.base = struct('id', 'sr_1', ...
     'session_id', '0000000000000000_0000000000000000', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
 v1.syncrule = struct('ndi_syncrule_class', implClass, ...
-    'parameters', struct( ...
-        'daqsystem1_name', 'vhtaste_sync', 'daqsystem2_name', 'vhtaste_bpod', ...
-        'daqsystem_ch1', 'dep1', 'daqsystem_ch2', 'mk1', ...
-        'epochclocktype', 'dev_local_time', ...
-        'minEmbeddedFileOverlap', 1, 'errorOnFailure', true));
+    'parameters', struct('number_fullpath_matches', 2));
 end
+
 
 function v1 = extractionParamsBody(appName, appVersion)
 %EXTRACTIONPARAMSBODY A did_v1 `spike_extraction_parameters`.
@@ -306,7 +246,7 @@ end
 % ===================== accessors ==========================================
 
 function names = classNames(out)
-names = cellfun(@(d) d.get('document_class.class_name'), out.migrated, ...
+names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
     'UniformOutput', false);
 end
 
@@ -334,6 +274,30 @@ for k = 1:numel(b.depends_on)
         v = char(d.document_id); return;
     elseif isfield(d, 'value') && ~isempty(d.value)
         v = char(d.value); return;
+    end
+end
+end
+
+function testCalculatorWithNoCurvePassesThrough(testCase)
+% did-schema #88's result composite REQUIRES its value. A calculator output whose
+% result block carries no curve has nothing to state there, so it passes through
+% unchanged (never a quarantine, never an invented curve).
+v1 = calcBody('', '');
+v1.app.os = 'Linux';
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, classNames(out), {'oridirtuning_calc'});
+verifyEqual(testCase, out.summary.unconverted_count, 1);
+end
+
+
+function n = nameOf(out, id)
+n = '';
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('base.id'), id)
+        e = out.migrated{k}.get('entity');
+        if isfield(e, 'name'); n = char(e.name); end
+        return;
     end
 end
 end

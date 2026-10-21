@@ -56,7 +56,7 @@ end
 function docs = ofClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(char(out.migrated{k}.get('document_class.class_name')), className)
+    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
@@ -128,7 +128,7 @@ verifyEqual(testCase, char(align{1}.get('base.id')), 'map_0001', ...
 % ...and the two relative_reference endpoints appear. The epoch sources here are
 % passthrough manifests that emit no references of their own, so the two are the
 % ONLY relative_references in the batch.
-refs = ofClass(out, 'relative_reference');
+refs = ofClass(out, 'relative_time_reference');
 verifyNumElements(testCase, refs, 2, ...
     'branch 1 emits exactly two endpoint references');
 end
@@ -145,26 +145,27 @@ verifyNumElements(testCase, align, 1);
 % epoch local_identifier -> minted epoch document id
 epochId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 for e = ofClass(out, 'epoch')
-    epochId(char(e{1}.get('epoch.local_identifier'))) = char(e{1}.get('base.id'));
+    epochId(char(e{1}.get('entity.local_identifier'))) = char(e{1}.get('base.id'));
 end
 verifyTrue(testCase, isKey(epochId, 't00001') && isKey(epochId, 't00002'), ...
     'both endpoint epochs must have been minted');
 
-fromId = depValueOf(align{1}, 'from_reference');
-toId   = depValueOf(align{1}, 'to_reference');
+% #88: the alignment names its endpoints by input_id / output_id
+fromId = depValueOf(align{1}, 'input_id');
+toId   = depValueOf(align{1}, 'output_id');
 verifyNotEmpty(testCase, fromId);
 verifyNotEmpty(testCase, toId);
 fromRef = docWithId(out, fromId);
 toRef   = docWithId(out, toId);
 verifyNotEmpty(testCase, fromRef, 'from_reference names no document in the batch');
 verifyNotEmpty(testCase, toRef, 'to_reference names no document in the batch');
-verifyEqual(testCase, char(fromRef.get('document_class.class_name')), ...
-    'relative_reference');
-verifyEqual(testCase, char(toRef.get('document_class.class_name')), ...
-    'relative_reference');
+verifyEqual(testCase, char(did2.unittest.helpers.leafName(fromRef)), ...
+    'relative_time_reference');
+verifyEqual(testCase, char(did2.unittest.helpers.leafName(toRef)), ...
+    'relative_time_reference');
 
 % each reference anchored to ITS endpoint's minted epoch, and NOT left empty.
-anchors = sort({depValueOf(fromRef, 'relative_to'), depValueOf(toRef, 'relative_to')});
+anchors = sort({depValueOf(fromRef, 'referent_id'), depValueOf(toRef, 'referent_id')});
 expected = sort({epochId('t00001'), epochId('t00002')});
 verifyEqual(testCase, anchors, expected, ...
     'the endpoints must anchor at the two minted epochs, not at any epoch');
