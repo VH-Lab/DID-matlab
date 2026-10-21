@@ -15,6 +15,15 @@ function v2Body = ontology_image(preBody)
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
+%   did-schema #88 (2026-10-21), READ BEFORE THE HISTORY BELOW. Where the text
+%   below says `term_observation` / `image_observation`, #88 emits DIRECTION
+%   classes with ONE value-kind mixin: the region is an `observation` with the
+%   `term` value kind, and the raster (#73 review item 51: an ontologyImage's
+%   pixels are an ordinary numeric image) an `observation` with the
+%   `intensity` value kind, body-backed by a `sampled_body`. A document with no
+%   subject passes through whole (#88 requires `entity_id`). Vintage B still
+%   passes through; the subject-bearing raster arm is unchanged in reach.
+%
 %   ---------------------------------------------------------------------
 %   WHY THIS MIGRATOR IS VINTAGE-AWARE, AND WHY ONE VINTAGE IS DEFERRED
 %   ---------------------------------------------------------------------
@@ -254,25 +263,53 @@ end
 node = jGetChar(block, 'ontology_name');
 regionName = jGetChar(block, 'ontology_region');
 
-% did-schema #88: an ontology image's raster is a LABEL MAP (each pixel names
-% a region), which #73 review item 51 sends to label_calculation. The reason
-% this said it passed through -- "#88 requires a calculation to name its
-% operating system, and this document has no `app` block" -- is gone
-% (operating_system_id optional, Jess Haley 2026-10-21 [calculation-os-optional]).
-% What remains is that NO fold to label_calculation + sampled_body has been
-% built on #88, so a vintage-A document WITH a raster still passes through
-% (reported); without one, the region is a term observation.
-% A document naming no subject cannot be an observation either (#88 requires
-% the entity_id edge), so it passes through the same way.
-if (isfield(preBody, 'ngrid') && isstruct(preBody.ngrid)) || isempty(subjectOf(preBody))
+% did-schema #88. A document naming no subject cannot be an observation (#88
+% requires the entity_id edge), so it passes through, raster and all.
+subjectId = subjectOf(preBody);
+if isempty(subjectId)
     v2Body = {preBody};
     return;
 end
 anchor = jSessionAnchor(preBody, 'during');
-obs = jStatement(preBody, 'observation', subjectOf(preBody), ...
+% The region: an `observation` with the `term` value kind. It keeps the source
+% id, so an inbound edge naming the source lands on exactly one body.
+obs = jStatement(preBody, 'observation', subjectId, ...
     jLabel('imaged region'), jOntologyTerm(node, regionName), ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id), 'ValueKind', 'term');
+    'ValueKind', 'term', ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id));
 v2Body = {obs, anchor};
+if ~(isfield(preBody, 'ngrid') && isstruct(preBody.ngrid))
+    return;
+end
+
+% THE RASTER (#73 review item 51, decided target recorded in did-schema's
+% V_eta_migration_targets.json `ontology_image` row and V_eta_OPEN_WORK.md
+% row #47): the pixels are an ordinary numeric image (NDI imageDocMaker.m:
+% `image` is "a numeric matrix"), so the raster is an `observation` with the
+% `intensity` value kind, its value BODY-BACKED (data_body true, the plain
+% array's element type on the statement's `data_type`), and the bytes a
+% `sampled_body` whose keys are the ngrid's dimensions (jNgridBody: data_dim ->
+% one key per dimension; coordinates carried or refused, never dropped). The
+% ontology terms stay the term observation above. 1 -> 4.
+% `variable` is the depicted term, as the fold's tests have always pinned: the
+% term is on this document, so nothing is deferred.
+imgId = did.ido.unique_id();
+% Keys per #73 review item 51: a raster is keyed [y, x, (channel)]. The ngrid's
+% data_dim is MATLAB's size(image) (mat2ngrid), so dimension 1 is rows (y),
+% 2 columns (x), 3 the channel.
+[imgBody, dataType, sourceDataType] = ...
+    jNgridBody(preBody, imgId, 'migrated_ontology_image_raster', ...
+    {'y', 'x', 'channel'});
+% the v1 file rides as written (name and locations), as hartley_calc's bodies
+% do: renaming it would cut it from the bytes NDI stores under that name
+if isfield(preBody, 'files'); imgBody.files = preBody.files; end
+if isfield(preBody, 'file');  imgBody.file  = preBody.file;  end
+imgObs = jStatement(preBody, 'observation', subjectId, ...
+    jOntologyTerm(node, regionName), struct(), ...
+    'ValueKind', 'intensity', ...
+    'DataBody', true, 'DatumType', dataType, 'SourceDatumType', sourceDataType, ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', imgId);
+v2Body = {obs, imgObs, imgBody, anchor};
 end
 
 function v = subjectOf(preBody)

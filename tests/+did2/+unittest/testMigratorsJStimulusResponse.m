@@ -6,7 +6,9 @@ function tests = testMigratorsJStimulusResponse
 %   [stimulus response], 2026-08-08 -- four classes to TWO):
 %
 %     stimulus_response_scalar
-%         -> harmonic_component_calculation (id PRESERVED) + a time anchor
+%         -> a `calculation` with the `harmonic_component` value kind
+%            (did-schema #88: direction class + one value-kind mixin; id
+%            PRESERVED) + a time anchor + the calculator's software entity
 %            (a `relative_reference` onto the epoch when the epoch document
 %             exists, jCalculation's session anchor when there is no epoch
 %             string at all, and NO FOLD in between -- see the epoch gate below)
@@ -38,7 +40,7 @@ function tests = testMigratorsJStimulusResponse
 %   the fold PRODUCES therefore has to open that gate, or it is asserting the
 %   contents of a document the migrator never emits -- which is how all ten of
 %   them failed in Actions run 31439501430 with
-%   `no "harmonic_component_calculation" among {stimulus_response_scalar}`.
+%   `no "<the calculation>" among {stimulus_response_scalar}`.
 %
 %   The gate is opened the way the epoch pass opens it in production, not by
 %   weakening the assertions: `withEpochEdge` stamps the same `epoch_id` edge
@@ -169,18 +171,17 @@ end
 % ===================== the fold ============================================
 
 function testResponseScalarFoldsToHarmonicComponentCalculation(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 out = runJ(withEpochEdge(responseFixture('F1')));
 verifyEmpty(testCase, out.quarantine);
-% 1 -> 2: the leaf plus its 'during' time anchor. No software entity: this class
-% has no `app` block (its NDI superclasses are base + stimulus_response), so
-% jCalculation emits none. The anchor is a `relative_reference` onto the epoch
-% rather than jCalculation's session anchor, because the epoch document exists --
-% stimulus_response_scalar.m:306-310 retargets `time_reference_1` and REPLACES
-% bodies{2}, so the count is 2 either way.
-verifyEqual(testCase, numel(out.migrated), 2);
+% UPDATED 2026-10-21 for did-schema #88: 1 -> 3. The calculation, its time
+% anchor (a relative_time_reference onto the epoch, because the epoch document
+% exists), and the calculator's SOFTWARE ENTITY: on #88 a calculation with no
+% `app` block names its method's software, as jCalculation does (it emitted
+% none before #88).
+verifyEqual(testCase, numel(out.migrated), 3);
+verifyTrue(testCase, anyClass(out, 'relative_time_reference'));
 
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
+leaf = findHarmonicCalc(testCase, out);
 verifyEqual(testCase, leaf.get('document_class.schema_version'), 'V_eta');
 
 % ID PRESERVED. Two NDI templates declare an inbound edge to it --
@@ -194,18 +195,18 @@ verifyEqual(testCase, leaf.get('base.session_id'), 'sess_0001');
 end
 
 function testTheFiveV1EdgesAreAllRehomed(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % The point of the repair: V_eta dropped stimulator_id and stimulus_control_id
 % and inverted the parameters edge. All five come back, under J names.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
+leaf = findHarmonicCalc(testCase, out);
 b    = leaf.toStruct();
 
 verifyEqual(testCase, depValue(b, 'entity_id'),           'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
-verifyEqual(testCase, depValue(b, 'derived_from_1'),       'pres_b671ff');
-verifyEqual(testCase, depValue(b, 'derived_from_2'),       'ctrl_20e84c');
-verifyEqual(testCase, depValue(b, 'method_parameters_id'), 'param_77c19b');
+% BOTH the presentation and the control record, in the UNORDERED input_id
+% (Jess Haley, 2026-10-21, "a"): compared as a set, no position claimed.
+verifyEqual(testCase, inputSet(b), sort({'pres_b671ff', 'ctrl_20e84c'}));
+verifyEqual(testCase, depValue(b, 'method_id'), 'param_77c19b');
 
 % the anchor is a real sibling document, not a dangling string. With the epoch
 % document in hand it is a `relative_reference` onto that epoch and the relation
@@ -213,10 +214,12 @@ verifyEqual(testCase, depValue(b, 'method_parameters_id'), 'param_77c19b');
 % binding requires. The session-anchor spelling of the same assertion lives in
 % testWithNoEpochStringTheAnchorIsStillTheDuringSessionReference.
 anchor = findClass(testCase, out, 'relative_time_reference');
-verifyEqual(testCase, depValue(b, 'time_reference_1'), anchor.get('base.id'));
-verifyEqual(testCase, char(anchor.get('relative_reference.value.relation.node')), ...
+verifyEqual(testCase, depValue(b, 'time_reference_id'), anchor.get('base.id'));
+verifyEqual(testCase, char(anchor.get('relative_time_reference.value.relation.node')), ...
     'time:intervalDuring');
-verifyFalse(testCase, anyClass(out, 'session_relative_reference'));
+% #88 has one time-reference class, so "an epoch anchor, not the session one"
+% is read off its referent rather than its class name.
+verifyEqual(testCase, depValue(anchor.toStruct(), 'referent_id'), epochDocId());
 
 % and the v1 spellings are GONE -- a leaf that still carried element_id would be
 % claiming the fold happened while leaving the old edge to be re-read.
@@ -228,9 +231,8 @@ verifyEmpty(testCase, depValue(b, 'stimulus_response_scalar_parameters_id'));
 end
 
 function testHarmonicComponentValueCarriesBothComplexPairs(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
+leaf = findHarmonicCalc(testCase, out);
 
 verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 1);
 verifyEqual(testCase, leaf.get('harmonic_component.value.real'), ...
@@ -239,14 +241,13 @@ verifyEqual(testCase, leaf.get('harmonic_component.value.imaginary'), ...
     [0.31 -1.20 0.08 0.29 -1.11 0.05], 'AbsTol', 1e-12);
 % The CONTROL pair is the half V_eta had no home for at all. It is not
 % decoration: control_response_* is what response_* is measured against.
-verifyEqual(testCase, leaf.get('harmonic_component.value.control_real'), ...
+verifyEqual(testCase, leaf.get('harmonic_component.value.control.real'), ...
     [0.42 0.42 0.42 0.39 0.39 0.39], 'AbsTol', 1e-12);
-verifyEqual(testCase, leaf.get('harmonic_component.value.control_imaginary'), ...
+verifyEqual(testCase, leaf.get('harmonic_component.value.control.imaginary'), ...
     [0.01 0.01 0.01 0.02 0.02 0.02], 'AbsTol', 1e-12);
 end
 
 function testResponseTypeBecomesTheHarmonicNumber(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % tuning_response.m:262-266 -- 'mean' when freq_response==0, else 'F<n>'. The
 % three response_types are ONE thing at three values, which is the whole reason
 % the class is called harmonic_component. freq_response_commands = [0 1 2] (:202),
@@ -257,60 +258,80 @@ verifyEqual(testCase, harmonicOf(testCase, 'F2'), 2);
 end
 
 function testStatementIsAnInlineCalculationWithTheAppAsMethod(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
+% UPDATED 2026-10-21 for did-schema #88. The value is INLINE (no data_body).
+% The method term is the app -- but #88 keeps "the inline `method` block OR
+% `method_id`, NEVER BOTH", so with the parameters edge present pass 1 writes no
+% inline method; the term and the knobs live on the shared `method` document
+% the edge names (did2.convert.resolveResponseParameters; Jess Haley,
+% 2026-10-21, "b"). With no parameters edge the term is inline at once. Both
+% halves asserted.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
-verifyEqual(testCase, leaf.get('subject_statement.storage_mode'), 'inline');
+leaf = findHarmonicCalc(testCase, out);
+s = leaf.toStruct();
+verifyFalse(testCase, isfield(s, 'value') && isfield(s.value, 'data_body') ...
+    && isequal(s.value.data_body, true));
+verifyFalse(testCase, isfield(s.interaction, 'method'));
+% OPEN 1/OPEN 2 of the plan are not closed: the quantity actually measured is not
+% recorded anywhere in this family, so `variable` is the v1-level label.
+verifyEqual(testCase, leaf.get('statement.variable.name'), 'stimulus response');
+
+v1 = responseFixture('F1');
+v1.depends_on(strcmp({v1.depends_on.name}, ...
+    'stimulus_response_scalar_parameters_id')) = [];
+leaf = findHarmonicCalc(testCase, runJ(withEpochEdge(v1)));
 verifyEqual(testCase, leaf.get('interaction.method.term.name'), ...
     'ndi.app.stimulus.tuning_response');
-% OPEN 1/OPEN 2 of the plan are not closed: the quantity actually measured is not
-% recorded anywhere in this family, so `variable` is the v1-level label and the
-% resolver must refine it from the migrated element. Pinned so a change is
-% deliberate rather than incidental.
-verifyEqual(testCase, leaf.get('statement.variable.name'), 'stimulus response');
+verifyEmpty(testCase, depValue(leaf.toStruct(), 'method_id'));
 end
 
 function testInlineMethodParametersStaysEmptyBesideTheEdge(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
-% V_eta's rule (team, 2026-08-09): a statement carries the inline
-% `method_parameters` field OR `method_parameters_id`, NEVER BOTH. Pass 1 has the
-% edge, so the inline block must stay empty until the resolver inlines the six
-% fields and drops the edge.
+% V_eta's rule (team, 2026-08-09; #88 wording): a statement carries the inline
+% `method` block OR `method_id`, NEVER BOTH. The response keeps the edge for
+% good (Jess Haley, 2026-10-21, "b": the parameters become ONE shared `method`
+% document), so it never carries an inline method.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
-verifyEmpty(testCase, fieldnames(leaf.get('subject_interaction.method_parameters')));
-verifyEqual(testCase, depValue(leaf.toStruct(), 'method_parameters_id'), 'param_77c19b');
+leaf = findHarmonicCalc(testCase, out);
+verifyFalse(testCase, isfield(leaf.toStruct().interaction, 'method'));
+verifyEqual(testCase, depValue(leaf.toStruct(), 'method_id'), 'param_77c19b');
 end
 
-function testStimidIsDeferredRatherThanWrittenIntoConditions(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
-% DELIBERATE DEFERRAL, PINNED. Revision 1 of the signed plan moves `stimid` to an
-% `axes[]` entry and states that `conditions` is explicitly NOT an axis. V_eta's
-% subject_statement has no `axes` field yet (it declares variable / conditions /
-% storage_mode), so pass 1 carries neither: emitting `axes` would quarantine on
-% undeclaredField, and emitting `conditions` would write the shape the signed
-% revision rejects into every migrated document.
-%
-% Nothing is lost. stimid is column 3 of ts_stim_onsetoffsetid (:248-249), which
-% is stim_doc.document_properties.stimulus_presentation.presentation_order
-% verbatim (:237-239) -- and that document is derived_from_1 on this leaf.
-%
-% When #45 lands, this test should FAIL and be replaced by an axes assertion.
+function testStimidIsTheReadingKeyNotACondition(testCase)
+% INVERTED 2026-10-21 (was testStimidIsDeferredRatherThanWrittenIntoConditions,
+% which said: "When #45 lands, this test should FAIL and be replaced by an axes
+% assertion"). #45 has landed as `keys`, so revision 1 of the signed plan is
+% built: `stimid` is the reading dimension's key -- variable 'stimulus', n the
+% reading count (CHECKED equal to the value's length), positions the stimid
+% values -- and still NOT a condition.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
+leaf = findHarmonicCalc(testCase, out);
 s    = leaf.toStruct();
-verifyFalse(testCase, isfield(s.subject_statement, 'axes'));
-if isfield(s.subject_statement, 'conditions')
-    verifyEmpty(testCase, s.subject_statement.conditions);
+k = s.data.keys;
+verifyEqual(testCase, numel(k), 1);
+verifyEqual(testCase, k.variable.name, 'stimulus');
+verifyEqual(testCase, k.n, 6);
+verifyEqual(testCase, numel(s.harmonic_component.value.real), 6);
+verifyFalse(testCase, k.regular);
+verifyEqual(testCase, k.quantity.value(:)', [1 2 3 1 2 3]);
+verifyFalse(testCase, isfield(s.data, 'conditions') && ~isempty(s.data.conditions));
+% the presentation is still the first input
+verifyTrue(testCase, ismember('pres_b671ff', inputSet(s)));
 end
-% the recovery path must be present, or the deferral argument is not true
-verifyEqual(testCase, depValue(s, 'derived_from_1'), 'pres_b671ff');
+
+function testAStimidOfTheWrongLengthPassesThrough(testCase)
+% A key whose n disagrees with the value it indexes would misdescribe it, so
+% the document passes through rather than folding (guard 5). STAMPED, so the
+% epoch gate cannot be what produces the passthrough.
+v1 = withEpochEdge(responseFixture('F1'));
+v1.stimulus_response_scalar.responses.stimid = [1 2 3];
+out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
+    'stimulus_response_scalar');
 end
 
 % ===================== the guards ==========================================
 
 function testNoElementIdPassesThroughInsteadOfEmittingASubjectlessLeaf(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % subject_statement.subject_id is mustBeNonEmpty, and references.m skips empty
 % edges, so a subject-less leaf would validate clean and be invisible -- the
 % image_stack husk (4,563 documents) and the fitcurve husk both worked exactly
@@ -332,7 +353,6 @@ verifyEqual(testCase, out.migrated{1}.get('stimulus_response_scalar.response_typ
 end
 
 function testUnparseableResponseTypePassesThrough(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % The V_delta/V_eta tombstone's own documentation claims 'peak' and 'frequency'
 % are possible values; that text came from DID-schema's V_alpha snapshot, and the
 % writer can produce only 'mean' | 'F<n>'. If a document ever carries something
@@ -347,7 +367,6 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
 end
 
 function testEmptyResponsesPassThrough(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % STAMPED, so guard 3 is the only guard that can fire (see guard 1's test).
 v1 = withEpochEdge(responseFixture('F1'));
 v1.stimulus_response_scalar.responses.response_real = [];
@@ -358,7 +377,6 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
 end
 
 function testMissingOptionalEdgesAreOmittedNotEmptied(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % The 26,406-document invented-empty-edge pattern in one assertion: a restored
 % edge whose source value is absent must not appear at all. An edge present with
 % an empty value is skipped by references.m and by the schema cache alike, so it
@@ -367,19 +385,18 @@ v1 = responseFixture('F1');
 keep = ~ismember({v1.depends_on.name}, {'stimulator_id', 'stimulus_control_id'});
 v1.depends_on = v1.depends_on(keep);
 out  = runJ(withEpochEdge(v1));
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
+leaf = findHarmonicCalc(testCase, out);
 b    = leaf.toStruct();
 
 verifyFalse(testCase, any(strcmp({b.depends_on.name}, 'instrument_id')));
-verifyFalse(testCase, any(strcmp({b.depends_on.name}, 'derived_from_2')));
-% ...and derived_from_1 keeps its number rather than being packed down to fill
-% the gap: a document names the instances of the family (revision 3), so
-% renumbering would make two datasets disagree about what derived_from_1 means.
-verifyEqual(testCase, depValue(b, 'derived_from_1'), 'pres_b671ff');
+% #88: the signed derived_from_# family is the ORDERED list input_id. With the
+% control absent there is exactly one input, the presentation, and no empty
+% second entry is invented.
+verifyEqual(testCase, sum(strcmp({b.depends_on.name}, 'input_id')), 1);
+verifyEqual(testCase, inputSet(b), {'pres_b671ff'});
 end
 
 function testTheUnstampedFixtureIsSuppressedNotFolded(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % THE OTHER SIDE OF EVERY `withEpochEdge` ABOVE, and the branch every did_v1
 % document in every corpus takes today: the writer sets `element_epochid`
 % unconditionally (tuning_response.m:317-318, a straight line with no branch) and
@@ -396,14 +413,13 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'stimulus_response_scalar');
-verifyFalse(testCase, anyClass(out, 'calculation+harmonic_component'));
+verifyFalse(testCase, anyHarmonicCalc(out));
 % suppressing is only worth anything if the string it protects is still there
 verifyEqual(testCase, out.migrated{1}.get('stimulus_response.element_epochid'), 't00003');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
 function testWithNoEpochStringTheAnchorIsStillTheDuringSessionReference(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % BRANCH 3, and the home of the session-anchor assertion that
 % testTheFiveV1EdgesAreAllRehomed used to carry. With no epoch string there is
 % nothing for the fold to destroy, so it runs on jCalculation's session anchor --
@@ -414,13 +430,17 @@ v1 = responseFixture('F1');
 v1.stimulus_response.element_epochid = '';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 2);
+verifyEqual(testCase, numel(out.migrated), 3);   % + the software entity (#88)
 
-leaf   = findClass(testCase, out, 'calculation+harmonic_component');
+leaf   = findHarmonicCalc(testCase, out);
 anchor = findClass(testCase, out, 'relative_time_reference');
-verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
+verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_id'), ...
     anchor.get('base.id'));
-verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+% #88: one time-reference class; the session anchor is a relative_time_reference
+% whose referent is the session and whose relation is the OWL-Time 'during'.
+verifyEqual(testCase, char(anchor.get('relative_time_reference.value.relation.node')), ...
+    'time:intervalDuring');
+verifyEqual(testCase, depValue(anchor.toStruct(), 'referent_id'), 'sess_0001');
 % id still preserved on the branch that does not have an epoch document
 verifyEqual(testCase, leaf.get('base.id'), 'resp_412fa1');
 end
@@ -428,7 +448,6 @@ end
 % ===================== the parameters document =============================
 
 function testParametersBasicPassesThroughWithItsIdAndFields(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % DEFERRED, NOT DELETED. The signed fold is inline into method_parameters, which
 % needs the resolver pass; until then the document must survive so the leaf's
 % method_parameters_id resolves and so the six values are still there to inline.
@@ -449,7 +468,6 @@ verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
 function testParametersBasicKeepsTheTwoEmptyFieldsPRESENT(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % THE SEAM BETWEEN THIS MIGRATOR AND did2.convert.resolveResponseParameters, and
 % the one part of it the test above does not assert: it checks four of the six
 % fields, and the two it skips are the two that are EMPTY.
@@ -490,7 +508,6 @@ verifyEmpty(testCase, blk.prestimulus_normalization);
 end
 
 function testParametersBasicMustNotRegainTheInventedReverseEdge(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % This class was the LARGEST instance of the invented-empty-edge pattern: 11,440
 % documents, 100% of them carrying an empty, REQUIRED `stimulus_response_scalar_id`
 % that NDI has the other way round (on the response, tuning_response.m:323-324).
@@ -501,7 +518,6 @@ verifyEmpty(testCase, depValue(b, 'stimulus_response_scalar_id'));
 end
 
 function testTheMigratedPairHasNoOrphanEdges(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % The gate that actually matters on a corpus. The four external referents
 % (element, stimulator, presentation, control) are supplied as KnownIds -- they
 % migrate in their own right with ids preserved (element.m promotes elements to
@@ -519,7 +535,10 @@ verifyEmpty(testCase, out.quarantine);
 % than fabricated into the batch. It is listed SEPARATELY here so that a reader
 % can see it is our own second pass's product and not an NDI-side id.
 report = did2.validate.references(out.migrated, 'KnownIds', ...
-    [{'elem_9c027e', 'stim_5daa03', 'pres_b671ff', 'ctrl_20e84c'}, {epochDocId()}]);
+    [{'elem_9c027e', 'stim_5daa03', 'pres_b671ff', 'ctrl_20e84c'}, {epochDocId()}, ...
+     {'sess_0001'}]);
+% ('sess_0001' is the session document: #88 gives every document a required
+% `session_id` edge, and the session migrates in its own right like the element.)
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
 verifyGreaterThanOrEqual(testCase, report.edges_examined, 6);
 if report.orphan_count > 0
@@ -532,9 +551,8 @@ end
 % ===================== validation ==========================================
 
 function testFoldValidatesAgainstTheRealVEtaSchema(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimulus_response_scalar is now a guarded passthrough since harmonic_component_calculation was deleted; these assertion-heavy tests need reworking to expect passthrough behaviour.");
 % The only test here that proves the migrator and the schema agree. The other
-% tests would pass just as happily against a harmonic_component_calculation that
+% tests would pass just as happily against a value kind that
 % does not exist. Needs the assembled V_eta set on DID_SCHEMA_PATH (stable +
 % draft + deprecated) -- the quick gate builds exactly that, and
 % harmonic_component/_calculation are in the DRAFT tier, so a stable-only schema
@@ -552,9 +570,9 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
-% leaf + anchor + the passed-through parameters document
-verifyEqual(testCase, numel(out.migrated), 3);
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
+% calculation + anchor + software entity + the passed-through parameters document
+verifyEqual(testCase, numel(out.migrated), 4);
+leaf = findHarmonicCalc(testCase, out);
 verifyEqual(testCase, leaf.get('base.id'), 'resp_412fa1');
 verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 2);
 
@@ -564,7 +582,7 @@ verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 2);
 if isfield(out, 'silent_loss') && isfield(out.silent_loss, 'total_docs')
     % DENOMINATOR FIRST -- silentLoss printed zeros for two days while reading
     % nothing, so a zero is only evidence once total_docs is non-zero.
-    verifyEqual(testCase, out.silent_loss.total_docs, 3);
+    verifyEqual(testCase, out.silent_loss.total_docs, 4);
     verifyEqual(testCase, out.silent_loss.skipped_docs, 0);
     verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
     verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
@@ -582,7 +600,7 @@ end
 
 function h = harmonicOf(testCase, responseType)
 out  = runJ(withEpochEdge(responseFixture(responseType)));
-leaf = findClass(testCase, out, 'calculation+harmonic_component');
+leaf = findHarmonicCalc(testCase, out);
 h    = leaf.get('harmonic_component.value.harmonic');
 end
 
@@ -637,4 +655,58 @@ for k = 1:numel(b.depends_on)
     end
     return;
 end
+end
+
+% ===================== did-schema #88 readers (added 2026-10-21) ==========
+% The fold emits the DIRECTION class `calculation` with ONE value-kind mixin,
+% `harmonic_component`, in its superclasses. There is no leaf class name, so
+% these readers ask for that pair rather than for a composed name.
+
+function tf = isHarmonicCalc(doc)
+%ISHARMONICCALC A `calculation` with the `harmonic_component` value kind,
+%   read through did2.unittest.helpers.classKey (direction + value kind).
+tf = strcmp(did2.unittest.helpers.classKey(doc), 'calculation+harmonic_component');
+end
+
+function tf = anyHarmonicCalc(out)
+tf = false;
+for k = 1:numel(out.migrated)
+    if isHarmonicCalc(out.migrated{k}); tf = true; return; end
+end
+end
+
+function doc = findHarmonicCalc(testCase, out)
+%FINDHARMONICCALC The one harmonic_component calculation in OUT (a
+%   did2.document); assertFail when there is none.
+doc = [];
+names = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    names{k} = char(out.migrated{k}.get('document_class.class_name'));
+    if isHarmonicCalc(out.migrated{k})
+        doc = out.migrated{k};
+        return;
+    end
+end
+assertFail(testCase, sprintf(['no calculation with the harmonic_component ' ...
+    'value kind among {%s}'], strjoin(names, ', ')));
+end
+
+function ids = inputSet(b)
+%INPUTSET Every `input_id` target of a raw body struct, SORTED. `input_id` is
+%   UNORDERED (did-schema #88, `ordered: false`; Jess Haley 2026-10-21, "a":
+%   the presentation and the control record share it, told apart by the
+%   referenced document's kind), so a test compares the SET and never a
+%   position.
+ids = {};
+if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
+for k = 1:numel(b.depends_on)
+    if ~strcmp(b.depends_on(k).name, 'input_id'); continue; end
+    d = b.depends_on(k);
+    if isfield(d, 'document_id') && ~isempty(d.document_id)
+        ids{end+1} = char(d.document_id); %#ok<AGROW>
+    elseif isfield(d, 'value') && ~isempty(d.value)
+        ids{end+1} = char(d.value); %#ok<AGROW>
+    end
+end
+ids = sort(ids);
 end

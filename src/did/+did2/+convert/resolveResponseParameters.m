@@ -1,5 +1,5 @@
 function [result, report] = resolveResponseParameters(result, options)
-%RESOLVERESPONSEPARAMETERS Inline the stimulus-response run knobs onto the leaf.
+%RESOLVERESPONSEPARAMETERS Turn each stimulus-response parameters document into a shared `method`.
 %
 %   [RESULT, REPORT] = did2.convert.resolveResponseParameters(RESULT) takes the
 %   struct returned by did2.convert.v1_to_v2 (after the sibling post-passes) and
@@ -15,8 +15,8 @@ function [result, report] = resolveResponseParameters(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: stimulus_response_scalar_parameters_basic
-%   BATCH-PASS-EMITS: stimulus_response_scalar_parameters_basic -> inline:
-%       method_parameters
+%   BATCH-PASS-EMITS: stimulus_response_scalar_parameters_basic -> document:
+%       method
 %
 %   `inline` IS NOT A SOFTER `document`, AND THE DISTINCTION IS THE THIRD OF
 %   THE THREE EMISSION SHAPES row 107 names. The destination is the
@@ -40,6 +40,36 @@ function [result, report] = resolveResponseParameters(result, options)
 %   THIS FILE HAS BEEN EXECUTED. test-migrators-quick.yml is the first thing
 %   with an opinion. Said here rather than in a commit message because a header
 %   is what the next reader sees.
+%
+%   ---------------------------------------------------------------------
+%   did-schema #88 AND JESS'S DECISION "b" (2026-10-21). READ THIS FIRST.
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-10-21 ("b"): a v1
+%   `stimulus_response_scalar_parameters_basic` becomes ONE standalone `method`
+%   document per source parameters document (id PRESERVED), shared by every
+%   response that used it; each response keeps `method_id` pointing at it, with
+%   no inline method. So this pass NO LONGER INLINES and NO LONGER DELETES:
+%     the response    a `calculation` whose value kind is `harmonic_component`;
+%                     left exactly as pass 1 emitted it (edge `method_id`)
+%     the parameters  each `stimulus_response_scalar_parameters_basic` is
+%                     REPLACED IN PLACE by `method {term, parameters}` with the
+%                     same id, so every `method_id` keeps resolving; the term
+%                     is the app (`ndi.app.stimulus.tuning_response`)
+%     the knobs       one `{variable, <one value form>}` entry each, the
+%                     variable a label of the v1 field name (jParameterList's
+%                     convention). A writer-empty `[]` knob takes the meaning
+%                     NDI defines for it (Jess Haley, 2026-10-21, "c"):
+%                     prestimulus_normalization -> 0, prestimulus_time -> left
+%                     out; both counted in `knobs_empty_ndi_defined`. Any other
+%                     empty knob is not stated and is counted in
+%                     `knobs_empty_not_stated`.
+%     the check       `freq_response` is still compared with the harmonic of
+%                     EVERY response using the document; any disagreement
+%                     leaves the parameters document unconverted
+%     the counters    `methods_minted` replaces `inlined`;
+%                     `parameters_documents_deleted` is 0 by construction
+%   The prose below is the history of the inline design and is superseded
+%   wherever it says "inline", "drop the edge" or "delete".
 %
 %   ---------------------------------------------------------------------
 %   THE SIGNED MODEL, AND WHICH LINE OF IT THIS FILE IS
@@ -143,7 +173,7 @@ function [result, report] = resolveResponseParameters(result, options)
 %   `element_epochid` string but `jEpochDocId` answers '' -- which it does for
 %   every did_v1 document by construction, and the writer sets that string
 %   unconditionally -- the fold is SUPPRESSED and the document passes through
-%   whole. So pass 1 emits no `harmonic_component_calculation` on real corpora
+%   whole. So pass 1 emits no harmonic_component calculation on real corpora
 %   until #60 stamps the `epoch_id` edge.
 %
 %   A pass whose every counter is 0 is exactly the shape this project keeps
@@ -217,8 +247,11 @@ report = struct( ...
     'leaves_without_edge',                     0, ...
     'suppressed_responses_seen',               0, ...
     'parameters_documents_seen',               0, ...
-    'inlined',                                 0, ...
+    'leaves_already_on_method',                0, ...
+    'methods_minted',                          0, ...
     'fields_copied',                           0, ...
+    'knobs_empty_not_stated',                  0, ...
+    'knobs_empty_ndi_defined',                 0, ...
     'harmonic_checked',                        0, ...
     'harmonic_uncheckable',                    0, ...
     'refused_not_in_batch',                    0, ...
@@ -231,12 +264,12 @@ report = struct( ...
     'fold_quarantined',                        0, ...
     'parameters_documents_referenced_after',   0, ...
     'parameters_documents_unreferenced_after', 0, ...
-    'parameters_documents_deleted',            0, ...
+    'parameters_documents_deleted',            0, ...   % never: converted in place
     'ran',                                     false);
 result.response_parameters_fold = report;
 
 if ~strcmp(options.TargetVersion, 'V_eta')
-    return;     % harmonic_component_calculation exists only in V_eta.
+    return;     % the harmonic_component value kind exists only in V_eta.
 end
 if ~isfield(result, 'migrated') || isempty(result.migrated)
     report.ran = true;
@@ -245,10 +278,10 @@ if ~isfield(result, 'migrated') || isempty(result.migrated)
 end
 report.ran = true;
 
-% the statement this fold rebuilds: a `calculation` with the
-% `harmonic_component` value kind (did-schema #88). did2.convert.statementKind
-% also reads a pre-port document's joined class name that way.
-LEAF   = {'calculation', 'harmonic_component'};
+DIRECTION  = 'calculation';            % did-schema #88: direction class ...
+VALUE_KIND = 'harmonic_component';     % ... plus this value-kind mixin
+METHOD_TERM = 'ndi.app.stimulus.tuning_response';   % as the migrator names it
+METHOD = 'method';
 PARAMS = 'stimulus_response_scalar_parameters_basic';
 SOURCE = 'stimulus_response_scalar';
 % The five run knobs, in the plan's own order. `freq_response` is deliberately
@@ -264,12 +297,17 @@ report.documents_inspected = n;
 % A document this cannot read is COUNTED, never dropped.
 bodies    = cell(1, n);
 classes   = repmat({''}, 1, n);
+isLeaf    = false(1, n);
 docIds    = repmat({''}, 1, n);
 for k = 1:n
     try
         b = docs{k}.toStruct();
         bodies{k}  = b;
         classes{k} = classNameOf(b);
+        % did2.convert.statementKind: the #88 direction + mixin (it also reads
+        % a pre-port document's joined class name that way)
+        [leafDir, leafKind] = did2.convert.statementKind(b);
+        isLeaf(k)  = strcmp(leafDir, DIRECTION) && strcmp(leafKind, VALUE_KIND);
         docIds{k}  = baseField(b, 'id');
     catch
         report.documents_unreadable = report.documents_unreadable + 1;
@@ -301,38 +339,21 @@ for k = 1:n
     end
 end
 
-% --- inline what can be inlined honestly -----------------------------------
-changedIdx = [];
-rebuilt = {};
-% Per-changed-body field counts, banked and only ADDED TO THE REPORT once the
-% body has actually landed in `migrated`. An earlier draft incremented
-% `fields_copied` at rebuild time, so a body that then QUARANTINED would have
-% contributed five copied fields to a report describing work that was thrown
-% away -- a counter measuring intent rather than outcome.
-copiedPer = [];
+% --- which responses point at which parameters document --------------------
+% The responses are NOT changed by this pass (Jess Haley, 2026-10-21, "b"):
+% each keeps its `method_id`, no inline method. This walk only finds, per
+% parameters document, the responses that use it -- for the harmonic check.
+refsTo = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:n
-    [leafDir, leafKind] = did2.convert.statementKind(bodies{k});
-    if ~strcmp(leafDir, LEAF{1}) || ~strcmp(leafKind, LEAF{2}); continue; end
+    if ~isLeaf(k); continue; end
     report.leaves_seen = report.leaves_seen + 1;
-
     b = bodies{k};
-    paramId = depValue(b, 'method_parameters_id');
+    paramId = depValue(b, 'method_id');
     if isempty(paramId)
         report.leaves_without_edge = report.leaves_without_edge + 1;
         continue;
     end
     report.leaves_with_edge = report.leaves_with_edge + 1;
-
-    % NEVER BOTH. Pass 1 leaves the inline field an empty struct, so this only
-    % fires if something else has already written it -- in which case the edge
-    % and the field disagree about which is authoritative and this pass must not
-    % pick.
-    inlineNow = blockField(b, 'subject_interaction', 'method_parameters');
-    if isstruct(inlineNow) && ~isempty(fieldnames(inlineNow))
-        report.refused_inline_present = report.refused_inline_present + 1;
-        continue;
-    end
-
     if ~isKey(byId, paramId)
         report.refused_not_in_batch = report.refused_not_in_batch + 1;
         continue;
@@ -341,40 +362,90 @@ for k = 1:n
         report.refused_ambiguous = report.refused_ambiguous + 1;
         continue;
     end
-    pIdx = byId(paramId);
-    if ~strcmp(classes{pIdx}, PARAMS)
+    cls = classes{byId(paramId)};
+    if strcmp(cls, METHOD)
+        % already a method document (a re-run): nothing to do for this edge
+        report.leaves_already_on_method = report.leaves_already_on_method + 1;
+        continue;
+    end
+    if ~strcmp(cls, PARAMS)
         report.refused_wrong_class = report.refused_wrong_class + 1;
         continue;
     end
-
-    pBlk = blockOf(bodies{pIdx}, PARAMS);
-
-    % freq_response vs value.harmonic. Checked, never copied.
-    [verdict, checked] = harmonicAgrees(b, pBlk);
-    if checked
-        report.harmonic_checked = report.harmonic_checked + 1;
+    if isKey(refsTo, paramId)
+        refsTo(paramId) = [refsTo(paramId), k];
     else
-        report.harmonic_uncheckable = report.harmonic_uncheckable + 1;
+        refsTo(paramId) = k;
     end
-    if ~verdict
+end
+
+% --- one `method` document per parameters document, id PRESERVED ------------
+changedIdx = [];
+rebuilt = {};
+% Per-changed-body counts, banked and only ADDED TO THE REPORT once the body
+% has actually landed in `migrated` -- a counter measuring outcome, not intent.
+copiedPer = [];
+emptyPer = [];
+definedPer = [];
+for k = 1:n
+    if ~strcmp(classes{k}, PARAMS); continue; end
+    pid = docIds{k};
+    pBlk = blockOf(bodies{k}, PARAMS);
+    users = [];
+    if ~isempty(pid) && isKey(refsTo, pid); users = refsTo(pid); end
+
+    % NEVER BOTH. A response carrying an inline method BESIDE the edge already
+    % breaks the schema's rule; which of the two is authoritative is not this
+    % pass's call, so the parameters document is left as it is.
+    inlineSeen = false;
+    for u = users
+        m = blockField(bodies{u}, 'interaction', 'method');
+        if isstruct(m) && ~isempty(m) && ~isempty(fieldnames(m))
+            inlineSeen = true;
+        end
+    end
+    if inlineSeen
+        report.refused_inline_present = report.refused_inline_present + 1;
+        continue;
+    end
+
+    % freq_response vs every user's value.harmonic. Checked, never copied: the
+    % writer dedups parameters documents by freq_response, so every response
+    % sharing one must agree with it.
+    mismatch = false;
+    for u = users
+        [verdict, checked] = harmonicAgrees(bodies{u}, pBlk);
+        if checked
+            report.harmonic_checked = report.harmonic_checked + 1;
+        else
+            report.harmonic_uncheckable = report.harmonic_uncheckable + 1;
+        end
+        if ~verdict; mismatch = true; end
+    end
+    if mismatch
         report.refused_harmonic_mismatch = report.refused_harmonic_mismatch + 1;
         continue;
     end
 
-    [params, copied] = knobsOf(pBlk, KNOBS);
+    [params, copied, emptied, defined] = knobsOf(pBlk, KNOBS);
     if copied == 0
-        % Inlining an empty struct records nothing WHILE removing the edge that
-        % still points at the values -- strictly worse than leaving it alone.
+        % A method with no settings records nothing the source said.
         report.refused_no_fields = report.refused_no_fields + 1;
         continue;
     end
 
-    b.subject_interaction.method_parameters = params;
-    b.depends_on = dropDep(b.depends_on, 'method_parameters_id');
+    sid = depValue(bodies{k}, 'session_id');
+    if isempty(sid); sid = baseField(bodies{k}, 'session_id'); end
+    ts = baseField(bodies{k}, 'creation_timestamp');
+    if isempty(ts); ts = baseField(bodies{k}, 'datestamp'); end
+    mdoc = did2.build.method(did2.convert.registeredTerm('', METHOD_TERM), params, ...
+        'SessionId', sid, 'Id', pid, 'CreationTimestamp', ts, 'Validate', false);
 
-    rebuilt{end+1} = b;          %#ok<AGROW>
+    rebuilt{end+1} = mdoc;       %#ok<AGROW>
     changedIdx(end+1) = k;       %#ok<AGROW>
     copiedPer(end+1) = copied;   %#ok<AGROW>
+    emptyPer(end+1) = emptied;   %#ok<AGROW>
+    definedPer(end+1) = defined; %#ok<AGROW>
 end
 
 report.refused_total = report.refused_not_in_batch ...
@@ -386,10 +457,9 @@ report.refused_total = report.refused_not_in_batch ...
 
 if ~isempty(changedIdx)
     % --- validate through the same door every other pass uses --------------
-    % The bodies are tagged schema_version == TargetVersion, so v1_to_v2
-    % short-circuits them (isAlreadyTarget) to ensureClassBlocks + validate. A
-    % body that cannot validate lands in `quarantine` and the ORIGINAL is kept,
-    % so a bad inline degrades to "not inlined" rather than to a lost document.
+    % A body that cannot validate lands in `quarantine` and the ORIGINAL
+    % parameters document is kept, so a bad conversion degrades to "not
+    % converted" rather than to a lost document.
     out = did2.convert.v1_to_v2(rebuilt, ...
         'Validate',      options.Validate, ...
         'SchemaCache',   options.SchemaCache, ...
@@ -404,8 +474,7 @@ if ~isempty(changedIdx)
         end
     end
 
-    % Match on base.id, not on position: a quarantined body leaves no slot, and
-    % the id is the one thing this pass guarantees is unchanged.
+    % Match on base.id (preserved), not on position.
     producedById = containers.Map('KeyType', 'char', 'ValueType', 'double');
     for j = 1:numel(out.migrated)
         try
@@ -417,12 +486,12 @@ if ~isempty(changedIdx)
         id = docIds{changedIdx(j)};
         if ~isempty(id) && isKey(producedById, id)
             docs{changedIdx(j)} = out.migrated{producedById(id)};
-            % `bodies` is updated too, because the unreferenced-after walk below
-            % reads it and must see the POST-fold graph -- an edge this pass just
-            % removed must not still count as a referent.
-            bodies{changedIdx(j)} = rebuilt{j};
-            report.inlined = report.inlined + 1;
+            report.methods_minted = report.methods_minted + 1;
             report.fields_copied = report.fields_copied + copiedPer(j);
+            report.knobs_empty_not_stated = ...
+                report.knobs_empty_not_stated + emptyPer(j);
+            report.knobs_empty_ndi_defined = ...
+                report.knobs_empty_ndi_defined + definedPer(j);
         end
     end
 
@@ -430,12 +499,11 @@ if ~isempty(changedIdx)
     result.summary = recountSummary(result);
 end
 
-% --- THE DELETION EVIDENCE, computed rather than inferred ------------------
-% Walk every edge of every document still in the batch and ask which parameters
-% documents anybody still points at. Not "this pass removed N edges, therefore N
-% are free": another class could reference one, and an inference is not a
-% measurement. `bodies` has been updated in place for the leaves that changed,
-% so this reads the POST-fold graph.
+% --- who still points at each parameters document --------------------------
+% Measured over every edge of every document, not inferred. Every parameters
+% document is CONVERTED IN PLACE (id preserved), never deleted, so these are
+% evidence about sharing, not a deletion gate: `referenced_after` counts the
+% parameters documents some response (or anything else) uses.
 referenced = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:n
     b = bodies{k};
@@ -448,7 +516,6 @@ for k = 1:n
         if ~isempty(v); referenced(v) = true; end
     end
 end
-toDelete = [];
 for k = 1:n
     if ~strcmp(classes{k}, PARAMS); continue; end
     if ~isempty(docIds{k}) && isKey(referenced, docIds{k})
@@ -457,24 +524,7 @@ for k = 1:n
     else
         report.parameters_documents_unreferenced_after = ...
             report.parameters_documents_unreferenced_after + 1;
-        toDelete(end+1) = k; %#ok<AGROW>
     end
-end
-
-% ARM THE VERIFY-BEFORE-DELETE, PER DOCUMENT (team, 2026-08-21). Delete ONLY the
-% source documents THIS run's own edge-walk (above) proved unreferenced -- never
-% a global flip on the strength of the sample. A dataset where anything still
-% points at a parameters document keeps it (its id is in `referenced`), so
-% nothing is stranded by "unreferenced in the corpora we tested". This reaches
-% the fold's decided end-state -- `stimulus_response_scalar_parameters_basic`
-% folds inline to `method_parameters` and the source retires -- without the
-% sample risk the gate was guarding against. `unreferenced_after` stays the
-% count that WAS eligible; `deleted` is what actually went (equal here, but kept
-% distinct so a future referent that blocks a delete is visible in the report).
-if ~isempty(toDelete)
-    result.migrated(toDelete) = [];
-    report.parameters_documents_deleted = numel(toDelete);
-    result.summary = recountSummary(result);
 end
 
 result.response_parameters_fold = report;
@@ -484,7 +534,7 @@ end
 
 function [agrees, checked] = harmonicAgrees(leafBody, pBlk)
 %HARMONICAGREES Does the parameters document's `freq_response` match the leaf's
-%   `harmonic_component.value.harmonic`?
+%   `harmonic_component.value.harmonic` (the value-kind block on #88)?
 %
 %   AGREES is true when they match OR when the comparison cannot be made;
 %   CHECKED says which of those two it was, so "verified equal" and "could not
@@ -512,27 +562,78 @@ checked = true;
 agrees = (double(fr) == double(h));
 end
 
-function [params, copied] = knobsOf(pBlk, knobs)
-%KNOBSOF The five run knobs, VERBATIM, in the plan's order.
-%   Snake + camelCase fallback per the standing migrator lesson: universalRenames
-%   snake-cases block-level fields, but this pass also runs on bodies a test
-%   built by hand, and reading only one spelling is how the syncrule_mapping bug
-%   survived. An ABSENT knob is skipped; a PRESENT-but-empty one is copied,
-%   because `[]` is what the writer actually wrote.
-%   NOT named `inline`: that was a MATLAB function name for two decades and a
-%   local of the same name is a needless shadowing question in a file nobody can
-%   run here.
-params = struct();
+function [params, copied, emptied, defined] = knobsOf(pBlk, knobs)
+%KNOBSOF The run knobs as did-schema #88 `method.parameters` entries, in the
+%   plan's order. Snake + camelCase fallback per the standing migrator lesson.
+%   An ABSENT knob is skipped. A PRESENT-but-EMPTY one cannot be an entry (#88:
+%   exactly one value form) and is counted in EMPTIED rather than copied (see
+%   the #88 note in the header). A numeric/logical scalar is a `quantity`
+%   (value, and the source as text); a char is `text`; anything else is
+%   `text`, JSON-encoded -- the jParameterList convention.
+%
+%   EMPTY SETTINGS WITH A MEANING NDI DEFINES (Decided by Jess Haley,
+%   2026-10-21, [empty response settings] "c"). The writer documents what `[]`
+%   means for two knobs (NDI origin/main +ndi/+app/+stimulus/tuning_response.m,
+%   the parameter table above `temporalfreqfunc = ...`):
+%     prestimulus_normalization  "[] or 0) No normalization"  -> written as 0
+%     prestimulus_time           [] = no baseline period      -> LEFT OUT
+%   Both are counted in DEFINED, not EMPTIED. The 0 carries no source_value:
+%   the source wrote no number. Never NaN. Any OTHER empty knob has no defined
+%   meaning, is not stated, and is counted in EMPTIED.
+%   NOT named `inline`: that was a MATLAB function name for two decades.
+params = [];
 copied = 0;
+emptied = 0;
+defined = 0;
+entries = {};
 for k = 1:numel(knobs)
     name = knobs{k};
     camel = toCamel(name);
     if isfield(pBlk, name)
-        params.(name) = pBlk.(name);
-        copied = copied + 1;
+        v = pBlk.(name);
     elseif isfield(pBlk, camel)
-        params.(name) = pBlk.(camel);
-        copied = copied + 1;
+        v = pBlk.(camel);
+    else
+        continue;
+    end
+    var = did2.convert.registeredTerm('', strrep(name, '_', ' '));
+    if isempty(v)
+        switch name
+            case 'prestimulus_normalization'
+                entries{end+1} = did2.build.parameter(var, 'Value', 0); %#ok<AGROW>
+                copied = copied + 1;
+                defined = defined + 1;
+            case 'prestimulus_time'
+                defined = defined + 1;      % no baseline period: left out
+            otherwise
+                emptied = emptied + 1;
+        end
+        continue;
+    end
+    if (isnumeric(v) || islogical(v)) && isscalar(v)
+        e = did2.build.parameter(var, 'Value', double(v), ...
+            'SourceValue', shortestText(double(v)));
+    elseif ischar(v) && isrow(v)
+        e = did2.build.parameter(var, 'Text', v);
+    elseif isstring(v) && isscalar(v)
+        e = did2.build.parameter(var, 'Text', char(v));
+    else
+        e = did2.build.parameter(var, 'Text', char(jsonencode(v)));
+    end
+    entries{end+1} = e; %#ok<AGROW>
+    copied = copied + 1;
+end
+if ~isempty(entries)
+    params = did2.build.list(entries{:});
+end
+end
+
+function t = shortestText(x)
+% The shortest decimal text that reads back as exactly X (jParameterList's).
+for p = 1:17
+    t = sprintf('%.*g', p, x);
+    if str2double(t) == x
+        return;
     end
 end
 end

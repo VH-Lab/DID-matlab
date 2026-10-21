@@ -915,18 +915,16 @@
 %         DEFERRED to the NDI second pass; pass 1 is a GUARDED PASSTHROUGH that
 %         carries the document intact.
 %     stimulus_response_scalar
-%         Brainstorm-J migrator: did_v1 stimulus_response_scalar -- CONVERTED TO A
-%         GUARDED PASSTHROUGH in PR #68 (Waltham-Data-Science/ DID-schema/pull/68).
-%         The previous target class `harmonic_component_calculation` was DELETED from
-%         V_eta under the calculator restructure -- see issue #67 decision 10 -- so
-%         there is no destination for the fold. The document is passed through
-%         UNCHANGED for the NDI second pass.
+%         Brainstorm-J migrator: did_v1 stimulus_response_scalar -> a `calculation`
+%         whose value kind is `harmonic_component` (id PRESERVED), + its time anchor +
+%         the calculator's software entity. Routed from did2.convert.v1_to_v2 only
+%         when TargetVersion == 'V_eta'.
 %     stimulus_response_scalar_parameters_basic
-%         Brainstorm-J migrator: DEFERRED guarded passthrough. The signed model folds
-%         this class INLINE into `subject_interaction.method_parameters` on the
-%         response leaf; pass 1 cannot, and must not delete the documents in the
-%         meantime. Routed from did2.convert.v1_to_v2 only when TargetVersion ==
-%         'V_eta'.
+%         Brainstorm-J migrator: a guarded passthrough in pass 1. The batch pass
+%         did2.convert.resolveResponseParameters then replaces each document with ONE
+%         standalone `method` document (id PRESERVED) shared by every response whose
+%         `method_id` names it (Decided by Jess Haley, 2026-10-21, "b"). Routed from
+%         did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %     stimulus_tuningcurve
 %         Brainstorm-J migrator: a raw ndi.app.stimulus.tuning_response tuning curve
 %         (the pre-calculator-framework stimulus_tuningcurve document) -> the CONCRETE

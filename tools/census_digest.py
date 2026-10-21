@@ -614,9 +614,10 @@ POST_PASSES = [
         ("pyraview_repoint_quarantined", "  re-point QUARANTINED (kept as it was)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
-    # five run knobs move inline onto the harmonic_component_calculation leaf
-    # and `method_parameters_id` is dropped, because the schema says a statement
-    # carries the inline field OR the edge, never both.
+    # run knobs move inline onto the calculation whose value kind is
+    # harmonic_component (did-schema #88: `interaction.method`), and `method_id`
+    # is dropped, because the schema says a statement carries the inline method
+    # OR the edge, never both.
     #
     # READ `leaves_seen` AND `suppressed_responses_seen` AS A PAIR, ALWAYS.
     # `leaves_seen: 0` alone is ambiguous and the pass was built so that it does
@@ -640,15 +641,24 @@ POST_PASSES = [
     ("response_parameters_fold", "did2.convert.resolveResponseParameters", [
         ("documents_inspected", "documents inspected"),
         ("documents_unreadable", "UNREADABLE"),
-        ("leaves_seen", "harmonic_component_calculation leaves  <- DENOMINATOR"),
-        ("leaves_with_edge", "  carrying method_parameters_id"),
+        ("leaves_seen", "harmonic_component calculations  <- DENOMINATOR"),
+        ("leaves_with_edge", "  carrying method_id"),
         ("leaves_without_edge", "  no such edge (complete as they stand)"),
         ("suppressed_responses_seen", "v1 responses STILL SUPPRESSED by the epoch gate"),
         ("parameters_documents_seen", "parameters documents  <- DELETION DENOMINATOR"),
-        ("inlined", "INLINED"),
+        # Jess Haley 2026-10-21 ("b"): one standalone `method` per parameters
+        # document, id preserved; the responses keep `method_id` (was INLINED).
+        ("methods_minted", "METHOD DOCUMENTS MINTED (one per parameters document)"),
+        ("leaves_already_on_method", "  responses already pointing at a method document"),
         # A FIELD-VALUE count, not a document count: one leaf contributes up to
-        # five. It must not be read down the same column as `inlined`.
+        # five. It must not be read down the same column as `methods_minted`.
         ("fields_copied", "  field VALUES copied (cells, not documents)"),
+        # did-schema #88: an entry holds exactly one value form, so a knob the
+        # writer left [] cannot be stated. Counted here so it does not vanish.
+        ("knobs_empty_not_stated", "  writer-empty knobs NOT stated (no value form)"),
+        # Jess Haley 2026-10-21 ("c"): [] given NDI's documented meaning
+        # (prestimulus_normalization -> 0, prestimulus_time -> left out).
+        ("knobs_empty_ndi_defined", "  writer-empty knobs given NDI's defined meaning"),
         ("harmonic_checked", "freq_response cross-checked against value.harmonic"),
         ("harmonic_uncheckable", "  not checkable (one side unreadable)"),
         ("refused_total", "REFUSED (total)"),
@@ -4592,7 +4602,7 @@ def _render_response_parameters_reading(rep, p):
     p("          THE STIMULUS-RESPONSE FOLD -- the reading of the rows above")
     leaves = _reading_denominator(
         rep, "leaves_seen",
-        "harmonic_component_calculation leaf/leaves in the batch", p,
+        "harmonic_component calculation(s) in the batch", p,
         when_absent=[
             "The pass landed 2026-08-11, so a report from before then carries",
             "no counter of any kind for it.",
@@ -4638,19 +4648,29 @@ def _render_response_parameters_reading(rep, p):
             p("          *** different fact from the blocked-upstream reading,")
             p("          *** and the two rows exist to keep them apart.")
     else:
-        inlined = _int_or_none(rep.get("inlined"))
-        refused = _int_or_none(rep.get("refused_total"))
+        # Jess Haley 2026-10-21 ("b"): the unit of work is the PARAMETERS
+        # DOCUMENT (one `method` each), not the response, so the accounting is
+        # over parameters documents: each is minted, refused or quarantined.
+        minted = _int_or_none(rep.get("methods_minted"))
+        seen_p = _int_or_none(rep.get("parameters_documents_seen"))
+        doc_refused = None
+        parts = [_int_or_none(rep.get(k)) for k in (
+            "refused_no_fields", "refused_inline_present",
+            "refused_harmonic_mismatch")]
+        if None not in parts:
+            doc_refused = sum(parts)
         quar = _int_or_none(rep.get("fold_quarantined"))
-        if inlined == 0 and refused == 0:
-            p("          *** %d leaf/leaves seen and NOTHING inlined or refused."
-              % leaves)
-            p("          *** That is a real defect in resolveResponseParameters,")
-            p("          *** not a corpus fact: a leaf either folds or is")
+        if seen_p and minted == 0 and doc_refused == 0 and not quar:
+            p("          *** %d parameters document(s) seen and NOTHING minted or"
+              % seen_p)
+            p("          *** refused. That is a")
+            p("          *** real defect in resolveResponseParameters, not a corpus fact: a")
+            p("          *** parameters document either becomes a method or is")
             p("          *** refused with a reason.")
-        if None not in (with_edge, inlined, refused, quar):
-            residual = with_edge - inlined - refused - quar
+        if None not in (seen_p, minted, doc_refused, quar):
+            residual = seen_p - minted - doc_refused - quar
             if residual:
-                p("          *** %d leaf/leaves with an edge neither inlined,"
+                p("          *** %d parameters document(s) neither minted,"
                   % residual)
                 p("          *** refused nor quarantined. The pass matches its")
                 p("          *** rebuilt bodies back by base.id, so a residual")
@@ -6654,7 +6674,7 @@ def _rollup_response_parameters_reading(totals, key_missing_in, carried, p):
     p("      THE STIMULUS-RESPONSE FOLD -- the reading of the totals above")
     leaves = _rollup_denominator(
         totals, key_missing_in, carried, "leaves_seen",
-        "harmonic_component_calculation leaf/leaves", p,
+        "harmonic_component calculation(s)", p,
         when_absent=["These counters landed 2026-08-11."],
         when_zero=[
             "No leaf reached the fold in any corpus, so every INLINE and",

@@ -2638,7 +2638,8 @@ class TestResponseParametersRendering(ThreePassCase):
             "ran": True, "documents_inspected": 1000, "documents_unreadable": 0,
             "leaves_seen": 0, "leaves_with_edge": 0, "leaves_without_edge": 0,
             "suppressed_responses_seen": 11167,
-            "parameters_documents_seen": 11440, "inlined": 0,
+            "parameters_documents_seen": 11440, "methods_minted": 0,
+            "leaves_already_on_method": 0,
             "fields_copied": 0, "harmonic_checked": 0,
             "harmonic_uncheckable": 0, "refused_not_in_batch": 0,
             "refused_ambiguous": 0, "refused_wrong_class": 0,
@@ -2657,7 +2658,7 @@ class TestResponseParametersRendering(ThreePassCase):
         text, failed = self.run_digest()
         self.assertEqual(failed, [])
         self.assertIn("did2.convert.resolveResponseParameters", text)
-        self.assertIn("INLINED", text)
+        self.assertIn("METHOD DOCUMENTS MINTED", text)
 
     def test_zero_leaves_beside_suppressed_responses_says_blocked_upstream(self):
         # THE PAIR. `leaves_seen: 0` alone is three findings; the pass reports
@@ -2684,15 +2685,18 @@ class TestResponseParametersRendering(ThreePassCase):
         self.assertIn("A bare 0 here means neither", text)
 
     def test_leaves_with_nothing_inlined_or_refused_is_called_a_defect(self):
+        # INVERTED 2026-10-21 (Jess Haley, "b"): the unit is the parameters
+        # document -- one becomes a `method` or is refused -- so the defect is
+        # parameters documents with nothing minted or refused.
         self._corpus("A", response_parameters_fold=self._rp(
             leaves_seen=5, leaves_with_edge=5))
         text, _ = self.run_digest()
-        self.assertIn("NOTHING inlined or refused", text)
+        self.assertIn("NOTHING minted or", text)
         self.assertIn("real defect in resolveResponseParameters", text)
 
     def test_a_harmonic_mismatch_is_the_alarming_row(self):
         self._corpus("A", response_parameters_fold=self._rp(
-            leaves_seen=5, leaves_with_edge=5, inlined=4,
+            leaves_seen=5, leaves_with_edge=5, methods_minted=4,
             refused_harmonic_mismatch=1, refused_total=1))
         text, _ = self.run_digest()
         self.assertIn("IS THE ALARMING ROW OF THE BLOCK", text)
@@ -2752,8 +2756,8 @@ class TestResponseParametersRendering(ThreePassCase):
             suppressed_responses_seen=0, parameters_documents_seen=0,
             parameters_documents_referenced_after=0))
         _percorpus, rollup_text, _f = self.halves()
-        self.assertIn("DENOMINATOR: 0 harmonic_component_calculation "
-                      "leaf/leaves across 2 report(s)", rollup_text)
+        self.assertIn("DENOMINATOR: 0 harmonic_component calculation(s) "
+                      "across 2 report(s)", rollup_text)
         self.assertIn("REFUSAL total above is VACUOUS", rollup_text)
         self.assertIn("0 leaves beside 0 suppressed responses", rollup_text)
 
