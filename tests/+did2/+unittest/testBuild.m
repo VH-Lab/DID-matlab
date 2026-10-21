@@ -511,7 +511,9 @@ if ~valueRuleDeclared() || ~composes() || ~did2.schema.cache.shared().hasClass('
     assumeFail(testCase, 'the loaded schema has no value rule, no value kinds or no dose');
 end
 sid = testCase.TestData.sid;
-edges = struct('entity_id', newId(), 'time_reference_id', newId());
+% dose requires the formulation given (dose.json `formulation_id`)
+edges = struct('entity_id', newId(), 'time_reference_id', newId(), ...
+    'formulation_id', newId());
 unknown = struct('volume', did2.build.valueCell('volume', NaN));
 doc = did2.build.document('manipulation', ...
     struct('variable', did2.build.term('', 'dose'), 'value', unknown), ...
