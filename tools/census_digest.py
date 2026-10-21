@@ -2334,6 +2334,36 @@ def _edge_arity_verdict(ea, out, indent="      "):
         p("%s*** and it is the independent way of seeing it." % indent)
 
 
+def render_entity_requires(r, out):
+    """The entity-type `requires` census, REPORT-ONLY (Jess Haley, 2026-10-21,
+    "b"): per entity type and required field, entities inspected and missing.
+    Denominator first; an absent block is NOT MEASURED, never a zero."""
+    p = out.append if isinstance(out, list) else out
+    er = r.get("entity_requires")
+    if er is None:
+        p("    entity requires (REPORT-ONLY): NOT MEASURED -- this report carries "
+          "no entity_requires block")
+        return
+    if not isinstance(er, dict) or "audit_failed" in er:
+        why = er.get("audit_failed") if isinstance(er, dict) else type(er).__name__
+        p("    entity requires (REPORT-ONLY): NOT MEASURED -- audit failed (%s)" % why)
+        return
+    p("    entity requires (REPORT-ONLY): %s doc(s) inspected, %s entity(ies) "
+      "(%s untyped, %s of a type with no registry row); %s missing"
+      % (er.get("docs_inspected", "?"), er.get("entities_inspected", "?"),
+         er.get("entities_untyped", "?"), er.get("entities_type_without_row", "?"),
+         er.get("missing_total", "?")))
+    if er.get("registry_unavailable"):
+        p("      registry UNAVAILABLE: every count above is NOT MEASURED")
+    rows = er.get("by_type_field") or []
+    if isinstance(rows, dict):
+        rows = [rows]
+    for row in rows:
+        p("      %-14s %-18s inspected %6s  missing %6s"
+          % (row.get("entity_type", "?"), row.get("field", "?"),
+             row.get("inspected", "?"), row.get("missing", "?")))
+
+
 def render_edge_arity(r, out):
     """Render one corpus's edge-arity block. Denominator first."""
     p = lambda s="": out.append(s)
@@ -5900,6 +5930,7 @@ def render_report(r, out):
     # and reading the narrow answer without the wide one beside it is how the
     # wide question came to be recorded as unmeasured.
     render_edge_arity(r, out)
+    render_entity_requires(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the

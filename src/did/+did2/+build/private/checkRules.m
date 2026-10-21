@@ -43,6 +43,9 @@ function checkRules(cache, className, doc, chain)
 %        require_inherited        a class's `require_inherited` list: an
 %                                 inherited optional field or edge the class
 %                                 makes required
+%   (Schema rules ingredients_match_edges and ingredient_in_formulation, did-schema
+%   dose.json 2026-10-21: the first is checked; the second needs the formulation
+%   document and is left to a batch check, by name.)
 %        value_in_set             binding_registry_meta.json: a variable whose
 %                                 row lists `values` takes its term value
 %                                 from that closed list (Jess Haley,
@@ -148,6 +151,31 @@ for c = 1:numel(chain)
                     violated(ruleName, className, ...
                         'give `value.ingredients`, a `product_id` edge, or both.');
                 end
+            case 'ingredients_match_edges'
+                % did-schema dose.json (Jess Haley, 2026-10-21 [dose per
+                % ingredient]): `value.ingredients` has exactly one entry per
+                % `ingredient_id` edge, in the same order. Checkable here.
+                v = findField(doc, blocks, 'value');
+                nIng = 0;
+                if isstruct(v) && isfield(v, 'ingredients') && ~isAbsent(v.ingredients)
+                    nIng = numel(v.ingredients);
+                end
+                nEdge = sum(strcmp(edgeNames, 'ingredient_id') ...
+                    | ~cellfun(@isempty, regexp(edgeNames, '^ingredient_id_\d+$', 'once')));
+                if nIng ~= nEdge
+                    violated(ruleName, className, sprintf( ...
+                        ['`value.ingredients` has %d entr(ies) and the dose has %d ' ...
+                         '`ingredient_id` edge(s); they must match one to one.'], nIng, nEdge));
+                end
+            case 'ingredient_in_formulation'
+                % NOT checkable on the dose alone: it needs the formulation
+                % the dose's formulation_id names (did-schema dose.json: "a
+                % batch (database) check, or a builder check when the
+                % formulation is at hand"). did2.build builds one document and
+                % never has the formulation at hand, so this rule is KNOWN and
+                % deliberately left to a batch check -- listed here so it is
+                % not an unknown rule, and so the gap is in one place.
+                continue;
             otherwise
                 error('did2:build:unknownRule', ...
                     ['Class "%s" declares rule "%s", which did2.build does ' ...

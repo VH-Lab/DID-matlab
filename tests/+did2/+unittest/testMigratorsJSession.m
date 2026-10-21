@@ -247,18 +247,31 @@ assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
 verifyEqual(testCase, out.migrated{1}.get('entity.local_identifier'), 'ts_2024');
 end
 
-function testAnEmptyReferenceQuarantinesRatherThanBeingInvented(testCase)
-% `local_identifier` is mustBeNonEmpty. A session with no reference is a FACT
-% ABOUT THE SOURCE, and manufacturing a handle for it would be the
-% hollow-document defect -- a document that validates while saying nothing.
-% So the correct behaviour is a loud quarantine, not a quiet substitution.
+function testAnEmptyReferenceIsCountedRatherThanInvented(testCase)
+% RENAMED 2026-10-21 from testAnEmptyReferenceQuarantinesRatherThanBeingInvented.
+% A session with no reference is a FACT ABOUT THE SOURCE; manufacturing a
+% handle for it would be the hollow-document defect. The registry says a
+% session `requires` local_identifier (entity_type_bindings), and that check is
+% REPORT-ONLY for now (Jess Haley, 2026-10-21, "b"): the session migrates with
+% the field blank -- nothing invented -- and did2.validate.entityRequires
+% COUNTS it missing. WHEN THE CHECK IS ARMED as a quarantining check (a later
+% decision, taken from a corpus count), this becomes a quarantine assertion again.
 assumeVEtaSchemas(testCase);
 out = runJValidated(sessionV1(''));
-verifyEmpty(testCase, out.migrated, ...
-    'an empty session reference was migrated; nothing may invent a handle');
-assertNotEmpty(testCase, out.quarantine, ...
-    'an empty session.local_identifier passed validation; mustBeNonEmpty is not enforced');
-verifyEqual(testCase, out.quarantine(1).class_name, 'session');
+verifyEmpty(testCase, out.quarantine, ...
+    'report-only: an empty session reference is counted, not quarantined');
+assertNotEmpty(testCase, out.migrated, 'the session was not migrated');
+s = out.migrated{1}.toStruct();
+lid = '';
+if isfield(s.entity, 'local_identifier'); lid = char(s.entity.local_identifier); end
+verifyEmpty(testCase, strtrim(lid), 'nothing may invent a handle');
+rep = did2.validate.entityRequires(out.migrated);
+verifyEqual(testCase, rep.entities_inspected, 1);
+row = rep.by_type_field(strcmp({rep.by_type_field.entity_type}, 'session') ...
+    & strcmp({rep.by_type_field.field}, 'local_identifier'));
+assertNumElements(testCase, row, 1, 'no session/local_identifier row in the census');
+verifyEqual(testCase, row.inspected, 1);
+verifyEqual(testCase, row.missing, 1, 'the empty reference is COUNTED missing');
 end
 
 function testABodyWithNoSessionBlockPassesThroughUnchanged(testCase)
