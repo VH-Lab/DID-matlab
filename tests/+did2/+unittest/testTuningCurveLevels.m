@@ -159,12 +159,12 @@ function tests = testTuningCurveLevels
 %                                    testTheTwoPreviouslyUnnamedControlFieldsSurvive
 %   Per-trial matrices take the stimulus dimension FIRST on #88 (audit 2, D3), so
 %   a v1 trials x stimuli `control_individual` arrives transposed.
-%   FIXTURES: a #88 calculation REQUIRES an operating_system_id, so a fixture with
-%   no `app` block passes through untouched and every assertion here would be
-%   vacuous. Each fixture therefore carries the `app` block ndi.app.newdocument
-%   stamps -- the same update testMigratorsJ made for #88 (calcAppJ). Whether a
-%   source with NO app block should fold is a separate, pending decision that
-%   this file does not take.
+%   FIXTURES: +migrators_j/private/jCalculation.m passes a source with no
+%   operating system (no `app.os`) through untouched, so a fixture with no `app`
+%   block would make every assertion here vacuous. Each fixture therefore carries
+%   the `app` block ndi.app.newdocument stamps -- the same update testMigratorsJ
+%   made for #88 (calcAppJ). How a source with NO app block folds (Jess Haley,
+%   2026-10-21, [calculation-os-optional]) is not what this file tests.
 %
 %   Run with:  results = runtests('did2.unittest.testTuningCurveLevels');
 
@@ -194,7 +194,7 @@ body.depends_on = [ struct('name', 'element_id',              'value', 'elem_lvl
                     struct('name', 'stimulus_tuningcurve_id', 'value', 'rawcurve_lvl_1')];
 body.base = struct('id', 'lvl_doc_1', 'session_id', 'sess_lvl', 'name', 'lvl', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-body.app = calcApp('ndi.calc.vis.tuning');   % #88: an operating system is required
+body.app = calcApp('ndi.calc.vis.tuning');   % jCalculation needs app.os to fold
 blk = struct();
 blk.properties   = props;
 blk.tuning_curve = tc;
@@ -330,7 +330,7 @@ body.document_class = struct('class_name', 'stimulus_tuningcurve', ...
 body.depends_on = struct('name', 'element_id', 'value', 'elem_flat_1');
 body.base = struct('id', 'flat_doc_1', 'session_id', 'sess_flat', 'name', 'raw', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-body.app = calcApp('ndi.app.stimulus.tuning_response');   % #88: an OS is required
+body.app = calcApp('ndi.app.stimulus.tuning_response');   % jCalculation needs app.os to fold
 body.stimulus_tuningcurve = tc;
 end
 
@@ -525,7 +525,7 @@ body.document_class = struct('class_name', 'stimulus_tuningcurve', ...
 body.depends_on = struct('name', 'element_id', 'value', 'elem_lvl_2');
 body.base = struct('id', 'lvl_doc_2', 'session_id', 'sess_lvl', 'name', 'raw', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-body.app = calcApp('ndi.app.stimulus.tuning_response');   % #88: an OS is required
+body.app = calcApp('ndi.app.stimulus.tuning_response');   % jCalculation needs app.os to fold
 % the flat block, tuning_response.m:400-405 -- no `properties`, no `tuning_curve`
 body.stimulus_tuningcurve = struct( ...
     'independent_variable_label', {{'Contrast'}}, ...
@@ -662,8 +662,8 @@ end
 function a = calcApp(name)
 % The v1 `app` block ndi.app.newdocument stamps on every app/calculator document;
 % values from a real Soph temporal_frequency_tuning_calc document (the same block
-% testMigratorsJ's calcAppJ uses). #88: a calculation REQUIRES an operating system,
-% which comes from `app.os`; without it the source passes through.
+% testMigratorsJ's calcAppJ uses). jCalculation takes the operating system from
+% `app.os`; without one the source passes through and nothing here is exercised.
 a = struct('name', name, 'version', '3c482d1', ...
     'url', 'https://github.com/VH-Lab/NDIcalc-vis-matlab', 'os', 'MACA64', ...
     'os_version', '15.4.1', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
