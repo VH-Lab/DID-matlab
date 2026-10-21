@@ -491,8 +491,7 @@ verifyEqual(testCase, doc.document_class.class_name, leafSpec('voltage_observati
 did2.build.statement('voltage_observation', newId(), 'voltage', ...
     did2.build.valueCell('voltage', 0.01), common{:});
 % a shared standalone value (value_id): statement.json says the statement's
-% own value is then empty. Accepted; whether the rule meant to cover it is
-% an open question (see checkRules.m).
+% own value is then empty (clarification, Jess Haley, 2026-10-21).
 did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
     'ValueId', newId(), common{:});
 end

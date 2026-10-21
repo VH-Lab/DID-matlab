@@ -111,11 +111,11 @@ for c = 1:numel(chain)
                 % in data bodies (`data_body` true), never neither. It
                 % replaces the required `value` of term, date, logical,
                 % polynomial, model_fit, tuning_curve, contrast_sensitivity,
-                % harmonic_component and receptive_field. A statement whose
-                % value is in a shared standalone document (a non-empty
-                % `value_id` edge) also passes: did-schema statement.json
-                % says its own value is then empty. Whether the rule meant
-                % to cover that case is an OPEN question, not decided here.
+                % harmonic_component and receptive_field. CLARIFICATION
+                % (Jess Haley, 2026-10-21): a statement may also take its
+                % value from a shared value document through a non-empty
+                % `value_id` edge (did-schema statement.json); the shared
+                % document itself is inline or in bodies.
                 if ~isTrue(findField(doc, blocks, 'data_body')) ...
                         && isBlankValue(findField(doc, blocks, 'value')) ...
                         && ~hasEdge(doc, 'value_id')
@@ -513,7 +513,10 @@ for k = 1:numel(doc.depends_on)
     if iscell(doc.depends_on)
         d = doc.depends_on{k};
     end
-    if strcmp(char(d.name), name) && isfield(d, 'value') && ~isAbsent(d.value)
+    % did2.build writes an edge as {name, document_id}; a v1-shaped one
+    % carries `value`
+    if strcmp(char(d.name), name) && ((isfield(d, 'document_id') && ~isAbsent(d.document_id)) ...
+            || (isfield(d, 'value') && ~isAbsent(d.value)))
         tf = true;
         return;
     end
