@@ -290,8 +290,11 @@ tc.stimid                     = [1 2 3 4];
 tc.response_mean              = [1 5 9 12];
 tc.response_stddev            = [0.1 0.2 0.3 0.4];
 tc.response_stderr            = [0.05 0.1 0.15 0.2];
-tc.individual_responses_real      = [1.0 1.1 0.9; 5.1 4.9 5.0; 8.8 9.2 9.0; 12.2 11.8 12.0];
-tc.individual_responses_imaginary = zeros(4, 3);
+% trials x points, as the writer stores them: vlt.data.cellarray2mat puts each
+% point's trial vector in a COLUMN (CORRECTED 2026-10-21; this fixture was
+% points x trials, which the comment above also said, and the writer does not do)
+tc.individual_responses_real      = [1.0 1.1 0.9; 5.1 4.9 5.0; 8.8 9.2 9.0; 12.2 11.8 12.0].';
+tc.individual_responses_imaginary = [0.1 0 0; 0 0.2 0; 0 0 0; 0 0 -0.1].';
 tc.stimulus_presentation_number   = [1 2 3; 4 5 6; 7 8 9; 10 11 12];
 tc.control_stimid  = [];
 tc.response_units  = [];
@@ -299,9 +302,9 @@ tc.control_response_mean   = [0.50 0.52 0.48 0.51];
 tc.control_response_stddev = [0.02 0.03 0.02 0.04];
 tc.control_response_stderr = [0.01 0.015 0.01 0.02];
 tc.control_individual_responses_real = ...
-    [0.5 0.6 0.4; 0.5 0.6 0.5; 0.4 0.5 0.5; 0.5 0.5 0.6];
+    [0.5 0.6 0.4; 0.5 0.6 0.5; 0.4 0.5 0.5; 0.5 0.5 0.6].';
 tc.control_individual_responses_imaginary = ...
-    [0.1 0.0 -0.1; 0 0 0; 0 0 0; 0 0 0];
+    [0.1 0.0 -0.1; 0 0 0; 0 0 0; 0 0 0].';
 end
 
 function tc = flatRawCurveWithNoControlData()
@@ -623,33 +626,25 @@ for k = 1:size(expected, 1)
         sprintf('value.control.%s carries the wrong value', nm), 'AbsTol', 1e-12);
     checked = checked + 1;
 end
-% DENOMINATOR, asserted rather than printed: 3 of the flat curve's 5 control names are
-% mapped. If that becomes 5, this number must be changed deliberately and the two
-% `control_individual_responses_*` rows argued for, not slipped in.
+% DENOMINATOR: the three control STATISTICS. The two per-trial halves
+% (control_individual_responses_real / _imaginary) land together in
+% control.individual (Jess Haley, 2026-10-21, "a1"), asserted in
+% testFlatRawCurvePerTrialResponsesKeepBothHalves.
 verifyEqual(testCase, checked, 3, ...
-    '3 of the flat curve''s 5 control names have a V_eta destination');
+    'the three control statistics are checked');
 end
 
-function testFlatRawCurveControlBlockIsExactlyTheThreeMappedNames(testCase)
-% DEFECT C's overshoot guard, and the record of the two names that are NOT mapped.
-% `control_individual_responses_real` and `_imaginary` are the two halves of ONE complex
-% quantity, and the composite slot (`control_individual` in v1, `control.individual`
-% on #88) holds the RECOMBINED, real-valued per-trial matrix -- stated by a first-party
-% NDI writer of orientation_direction_tuning rather than inferred
-% (`+ndi/+app/oridirtuning.m` on origin/main 42c94e5, :145-148 forms
-% `real + sqrt(-1)*imag` then abs()es it into control_ind_real, :182 assigns
-% `'control_individual', vlt.data.cellarray2mat(control_ind_real)`). So
-% control.individual IS abs(real + i*imag), NOT the real part, and aliasing `_real`
-% onto it would relabel a component as the whole, wrongly and silently, for exactly
-% the modulated data the imaginary part exists for. Hence: reported, not forced, and
-% pinned here so the omission is a decision the suite defends.
+function testFlatRawCurveControlBlockIsTheFourMappedNames(testCase)
+% REWRITTEN 2026-10-21 (was ...IsExactlyTheThreeMappedNames). Jess Haley decided
+% ("a1") that the per-trial response keeps BOTH halves NDI stores
+% (tuning_response.m:465-472): control.individual is keys x trials x 2,
+% [real, imaginary] last. So the control block is the three statistics PLUS
+% individual -- and nothing else (control_stimid is never assigned).
 v = flatFoldedValue(flatRawCurve());
 assertTrue(testCase, isfield(v, 'control'), 'value.control is missing');
 got = sort(fieldnames(v.control));
-verifyEqual(testCase, got, sort({'mean'; 'stddev'; 'stderr'}), ...
-    ['the flat raw curve maps exactly three control names. ' ...
-     'control_individual_responses_real/_imaginary are the halves of one complex ' ...
-     'quantity and must not land in control.individual, which holds abs(real + i*imag).']);
+verifyEqual(testCase, got, sort({'individual'; 'mean'; 'stddev'; 'stderr'}), ...
+    'the flat raw curve maps the three control statistics and control.individual');
 end
 
 function testFlatRawCurveWithNoControlDataInventsNothing(testCase)
@@ -670,30 +665,56 @@ if isfield(v, 'control')
 end
 end
 
-function testFlatRawCurveKeepsItsUnmappedControlNamesOutOfTheBlockEntirely(testCase)
-% The other direction of the same guard: `control_stimid` (tuning_response.m:403) is
-% DECLARED AND NEVER ASSIGNED in the writer, so it is [] in every document, and the two
-% `control_individual_responses_*` matrices are halves of one complex quantity. None
-% may appear in the emitted control block under any spelling: on #88 the one slot a
-% per-trial control matrix could ride in is `control.individual`, so that name is
-% checked by name, and every key by substring.
-%
-% The count is asserted FIRST and UNCONDITIONALLY, so "no key carries them" and "there
-% were no keys" cannot be confused.
-v = flatFoldedValue(flatRawCurve());
-assertTrue(testCase, isfield(v, 'control'), 'value.control is missing');
+function testFlatRawCurvePerTrialResponsesKeepBothHalves(testCase)
+% REWRITTEN 2026-10-21 (was ...KeepsItsUnmappedControlNamesOutOfTheBlockEntirely,
+% which pinned the halves as UNMAPPED pending this decision). Jess Haley,
+% 2026-10-21 ("a1"): `individual` and `control.individual` are keys x trials x 2,
+% [real, imaginary] in the last dimension, whenever v1 carries the imaginary
+% half. v1 stores trials x points (cellarray2mat), so each half is transposed.
+tc = flatRawCurve();
+v = flatFoldedValue(tc);
+assertTrue(testCase, isfield(v, 'individual'), 'value.individual is missing');
+verifyEqual(testCase, size(v.individual), [4 3 2], 'keys x trials x [real, imaginary]');
+verifyEqual(testCase, v.individual(:, :, 1), tc.individual_responses_real.', 'AbsTol', 1e-12);
+verifyEqual(testCase, v.individual(:, :, 2), tc.individual_responses_imaginary.', 'AbsTol', 1e-12);
+assertTrue(testCase, isfield(v, 'control') && isfield(v.control, 'individual'), ...
+    'value.control.individual is missing');
+verifyEqual(testCase, size(v.control.individual), [4 3 2]);
+verifyEqual(testCase, v.control.individual(:, :, 1), ...
+    tc.control_individual_responses_real.', 'AbsTol', 1e-12);
+verifyEqual(testCase, v.control.individual(:, :, 2), ...
+    tc.control_individual_responses_imaginary.', 'AbsTol', 1e-12);
 fns = fieldnames(v.control);
-verifyEqual(testCase, numel(fns), 3, ...
-    ['DENOMINATOR: the sweep below inspects the emitted control keys. With none ' ...
-     'emitted there is nothing to inspect and its silence would mean nothing.']);
 for k = 1:numel(fns)
-    verifyEmpty(testCase, strfind(fns{k}, 'individual'), sprintf( ...
-        ['value.control.%s: the real/imaginary per-trial control matrices are ' ...
-         'deliberately unmapped (they are halves of one complex quantity) -- no key ' ...
-         'may carry them'], fns{k}));
     verifyEmpty(testCase, strfind(fns{k}, 'stimid'), sprintf( ...
         'value.control.%s: control_stimid is never assigned by the writer', fns{k}));
 end
+end
+
+function testFlatRawCurveWithNoImaginaryHalfIsKeysByTrials(testCase)
+% The other branch: no imaginary half carried -> keys x trials, unchanged.
+tc = flatRawCurve();
+tc = rmfield(tc, {'individual_responses_imaginary', 'control_individual_responses_imaginary'});
+v = flatFoldedValue(tc);
+verifyEqual(testCase, size(v.individual), [4 3]);
+verifyEqual(testCase, v.individual, tc.individual_responses_real.', 'AbsTol', 1e-12);
+verifyEqual(testCase, size(v.control.individual), [4 3]);
+% mean / stddev / stderr unchanged by either branch
+verifyEqual(testCase, v.mean, [1 5 9 12], 'AbsTol', 1e-12);
+end
+
+function testFlatRawCurveHalvesAcceptTheCamelCaseSpelling(testCase)
+% The nested-read rule: camelCase spellings of both halves are read the same.
+tc = flatRawCurve();
+tc.individualResponsesReal = tc.individual_responses_real;
+tc.individualResponsesImaginary = tc.individual_responses_imaginary;
+tc.controlIndividualResponsesReal = tc.control_individual_responses_real;
+tc.controlIndividualResponsesImaginary = tc.control_individual_responses_imaginary;
+tc = rmfield(tc, {'individual_responses_real', 'individual_responses_imaginary', ...
+    'control_individual_responses_real', 'control_individual_responses_imaginary'});
+v = flatFoldedValue(tc);
+verifyEqual(testCase, size(v.individual), [4 3 2]);
+verifyEqual(testCase, size(v.control.individual), [4 3 2]);
 end
 
 function testFlatRawCurveControlRepairDoesNotDisturbTheEmpiricalCurve(testCase)

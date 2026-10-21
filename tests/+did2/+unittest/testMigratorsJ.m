@@ -579,7 +579,7 @@ if ~isempty(f)
     verifyTrue(testCase, isnan(f.get('formulation.value').ingredients(1).concentration.source_value), ...
         'numeric_value is not the ingredient''s amount');
 end
-p = m.document_properties;
+p = m.toStruct();
 cnd = p.statement.conditions;
 verifyEqual(testCase, cnd.variable.name, 'numeric value');
 verifyEqual(testCase, cnd.quantity.value, 2.5, 'AbsTol', 1e-12);
@@ -622,7 +622,8 @@ out = runJ(treatmentDoc('', 'craniotomy', 3, ''));
 verifyEmpty(testCase, out.quarantine);
 m = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'term_manipulation');
-cnd = m.document_properties.statement.conditions;
+mp = m.toStruct();
+cnd = mp.statement.conditions;
 verifyEqual(testCase, cnd.variable.name, 'numeric value');
 verifyEqual(testCase, cnd.quantity.value, 3);
 verifyEqual(testCase, out.summary.migration_notes.treatment_number_unlabelled.details, ...

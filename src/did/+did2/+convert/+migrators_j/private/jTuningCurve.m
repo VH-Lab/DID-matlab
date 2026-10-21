@@ -35,8 +35,11 @@ function [value, keys, leafFields, dropped] = jTuningCurve(srcBlk, family)
 %     DROPPED   cellstr naming every v1 field this mapping has no home for
 %       (reported by the port, never silently): e.g. contrast fits'
 %       relative_max_gain / saturation_index / sensitivity, SF/TF's `abs`
-%       block, stimulus_tuningcurve's stimid / presentation numbers / imaginary
-%       parts.
+%       block, stimulus_tuningcurve's stimid / presentation numbers.
+%   The raw curve's per-trial responses keep BOTH halves NDI stores:
+%   `individual` / `control.individual` are keys x trials x 2 ([real, imag]
+%   last) when v1 carries the *_imaginary half, keys x trials otherwise (Jess
+%   Haley, 2026-10-21, "a1").
 %
 %   Fit coefficients are a vector in v1 with no names; each becomes a
 %   `{variable, value}` entry named '<model> parameter k' (a label) -- a
@@ -193,26 +196,20 @@ used = {};   % the field names AS SPELLED in the document (snake or camelCase)
 [value, used] = takeArr(value, used, 'mean', st, {'response_mean'}, false);
 [value, used] = takeArr(value, used, 'stddev', st, {'response_stddev'}, false);
 [value, used] = takeArr(value, used, 'stderr', st, {'response_stderr'}, false);
-[value, used] = takeArr(value, used, 'individual', st, {'individual_responses_real', 'individual_responses'}, true);
+[value, used] = takeTrials(value, used, 'individual', st, ...
+    {'individual_responses_real', 'individual_responses'}, {'individual_responses_imaginary'});
 ctl = struct();
 [ctl, used] = takeArr(ctl, used, 'mean', st, {'control_response_mean'}, false);
 [ctl, used] = takeArr(ctl, used, 'stddev', st, {'control_response_stddev'}, false);
 [ctl, used] = takeArr(ctl, used, 'stderr', st, {'control_response_stderr'}, false);
-[ctl, used] = takeArr(ctl, used, 'individual', st, {'control_individual_responses_real'}, true);
+[ctl, used] = takeTrials(ctl, used, 'individual', st, ...
+    {'control_individual_responses_real'}, {'control_individual_responses_imaginary'});
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
 [u, nm] = getfn(st, {'response_units'}); used{end+1} = nm;
 value = putUnit(value, u);
 used = used(~cellfun(@isempty, used));
 rest = setdiff(fieldnames(st), used);
-% an imaginary part that is all zero carries nothing; a non-zero one has no home
-keep = true(size(rest));
-for k = 1:numel(rest)
-    x = st.(rest{k});
-    if contains(rest{k}, 'imaginary') && isnumeric(x) && all(x(:) == 0 | isnan(x(:)))
-        keep(k) = false;
-    end
-end
-dropped = prefixed('stimulus_tuningcurve.', rest(keep));
+dropped = prefixed('stimulus_tuningcurve.', reshape(rest, 1, []));
 end
 
 function keys = makeKeys(names, cols)
@@ -372,6 +369,33 @@ if isnumeric(x) && ~isempty(x)
         x = x.';   % v1: trials x stimuli; #88: stimuli x trials (D3)
     end
     s.(name) = x;
+end
+end
+
+function [s, used] = takeTrials(s, used, name, src, realNames, imagNames)
+% A per-trial response that NDI stores as two halves (tuning_response.m
+% :465-472, individual_responses_real / _imaginary, trials x points in v1):
+% keys x trials x 2, [real, imaginary] in the LAST dimension, whenever the
+% imaginary half is carried; keys x trials when it is absent (Jess Haley,
+% 2026-10-21, "a1"). Both names as spelled are recorded as read.
+[re, nmR] = getfn(src, realNames);
+[im, nmI] = getfn(src, imagNames);
+if ~isempty(nmR); used{end+1} = nmR; end
+if ~isempty(nmI); used{end+1} = nmI; end
+if ~(isnumeric(re) && ~isempty(re))
+    return;
+end
+x = trialsLastOrient(double(re));
+if isnumeric(im) && ~isempty(im) && isequal(size(im), size(re))
+    x = cat(3, x, trialsLastOrient(double(im)));
+end
+s.(name) = x;
+end
+
+function x = trialsLastOrient(x)
+% v1: trials x stimuli; #88: stimuli x trials (D3), as putArr does
+if ismatrix(x) && ~isvector(x)
+    x = x.';
 end
 end
 
