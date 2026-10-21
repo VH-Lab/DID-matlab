@@ -126,32 +126,42 @@ end
 % ---- the session entity takes its session id as its id ------------------------
 
 function testTheSessionIsReIdOnlyOnTheEdgeShape(testCase)
-useShape(testCase, 'edge');
+% On the edge shape the session entity is re-identified to the session id and
+% names itself. UPDATED for did-schema #88: the session migrator builds through
+% did2.build, which reads the REAL schema (the `entity` class), so this runs on
+% the real schema rather than the base-only stub; the field-shape half is gone
+% because #88 has no field shape for the builders to read (see
+% testMembershipIsPartOfOnTheFieldShape).
 s = runJ(sessionV1()).migrated{1}.toStruct();
 verifyEqual(testCase, s.base.id, 'sess_09');
 verifyEqual(testCase, edgeTargets(s, 'session_id'), {'sess_09'}, ...
     'the session entity points at itself');
-useShape(testCase, 'field');
-s = runJ(sessionV1()).migrated{1}.toStruct();
-verifyEqual(testCase, s.base.id, 'sess_doc_1');
-verifyEqual(testCase, s.base.session_id, 'sess_09');
+verifyEqual(testCase, char(did2.unittest.helpers.leafName(s)), 'session');
 end
+
 
 % ---- record membership: included_in, not part_of -----------------------------
 
 function testMembershipIsIncludedInOnTheEdgeShape(testCase)
-useShape(testCase, 'edge');
+% UPDATED for #88: run on the real schema (the builder needs the entity and
+% relation classes the base-only stub does not have).
 rel = membershipRelation(runJ(sessionInADatasetV1()));
 verifyEqual(testCase, rel.directed_relation.relation.name, 'included_in');
 verifyEqual(testCase, rel.directed_relation.relation.node, 'schema:isPartOf');
-% the relation is a dataset-level document: its edge names the dataset entity
 verifyEqual(testCase, edgeTargets(rel, 'session_id'), {'dsid_1'});
 end
 
+
 function testMembershipIsPartOfOnTheFieldShape(testCase)
+% INVERTED for did-schema #88. The field shape (base.session_id a FIELD) predates
+% #88; the migrators now build through did2.build, which needs the real classes
+% the base-only stub lacks. Under that stub the membership cannot be built, and
+% the document is QUARANTINED with a reason -- never emitted half-built.
 useShape(testCase, 'field');
-rel = membershipRelation(runJ(sessionInADatasetV1()));
-verifyEqual(testCase, rel.directed_relation.relation.name, 'part_of');
+out = runJ(sessionInADatasetV1());
+verifyEmpty(testCase, out.migrated);
+verifyGreaterThan(testCase, numel(out.quarantine), 0);
+verifyNotEmpty(testCase, out.quarantine(1).reason);
 end
 
 % ===================== helpers =================================================
