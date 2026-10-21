@@ -307,8 +307,37 @@ jobs:
         # coverage.py and a rung that contradicts its own census all DO fail --
         # run #3 printed `NO CORPUS REPORTS FOUND` after an hour of green
         # corpora and exited 0, and that must not be expressible here.
+        #
+        # BOTH SIBLINGS ARE NAMED EXPLICITLY, as test-corpus.yml's census job
+        # and did-schema's own tests.yml already do. coverage.py's `find_repo`
+        # tries `$ENV`, then `/home/user/<name>`, then `<dirname of the
+        # did-schema root>/<name>`. On a runner the third candidate for
+        # DID-matlab is `$GITHUB_WORKSPACE/DID-matlab`, which does not exist:
+        # the workspace IS the DID-matlab checkout. Without DID_MATLAB, run
+        # 39507670395 printed `DID-matlab: *** NOT FOUND`, wrote 104 v1 rows
+        # against a committed 113 (the 11 vhlab app/calculator classes with no
+        # NDI template dropped), and the universe check below faulted --
+        # correctly. NDI_MATLAB resolved only by the accident of the path shape.
+        #
+        # coverage.py reads NDI templates from `origin/main` VIA GIT. The NDI
+        # checkout above is shallow and sparse and follows a same-named branch
+        # when NDI has one; then `origin/main` is absent and the ref lookup
+        # falls through to the sparse working tree -- a smaller universe, not
+        # an error. So the tip of main is fetched here when it is missing (the
+        # tree at the tip is all coverage.py reads), and the step says which.
         if: always()
+        env:
+          DID_MATLAB: ${{ github.workspace }}
+          NDI_MATLAB: ${{ github.workspace }}/NDI-matlab
         run: |
+          if git -C "$NDI_MATLAB" rev-parse --verify -q refs/remotes/origin/main >/dev/null; then
+            echo "NDI-matlab origin/main present: $(git -C "$NDI_MATLAB" rev-parse --short refs/remotes/origin/main)"
+          else
+            echo "NDI-matlab origin/main ABSENT in the sparse checkout -- fetching the tip of main for coverage.py."
+            git -C "$NDI_MATLAB" fetch --no-tags --depth=1 origin \
+                +refs/heads/main:refs/remotes/origin/main
+            echo "NDI-matlab origin/main now: $(git -C "$NDI_MATLAB" rev-parse --short refs/remotes/origin/main)"
+          fi
           python3 tools/corpus_proven.py --schema-repo did-schema \
               corpus-reports tests/corpus-reports
 
