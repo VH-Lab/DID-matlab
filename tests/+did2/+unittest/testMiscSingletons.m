@@ -694,7 +694,7 @@ end
 function testInteractionPurposeMissingEdgeFamilyIsReportOnly(testCase)
 % THIS TEST ASSERTS A GAP, DELIBERATELY. INVERT IT, DO NOT PATCH IT.
 %
-% `interaction_id_#` declares min_count 1. Nothing enforces it: cache.m:193-246
+% `interaction_id` (#88: one name repeated, `multiple`; `interaction_id_#` before) declares min_count 1. Nothing enforces it: cache.m:193-246
 % (requiredDependencies) EXCLUDES numbered families by design -- "a MISSING
 % instance is not a blank one" -- so a purpose covering no interaction at all
 % validates clean. The only instrument that sees it is the report-only census
@@ -713,7 +713,7 @@ verifyEqual(testCase, rep.skipped_docs, 0);
 verifyEqual(testCase, rep.family_violation_count, 1, ...
     'the census is the only thing that sees a missing required edge family');
 verifyEqual(testCase, rep.family_count_violation(1).class_name, 'interaction_purpose');
-verifyEqual(testCase, rep.family_count_violation(1).edge_name, 'interaction_id_#');
+verifyEqual(testCase, rep.family_count_violation(1).edge_name, 'interaction_id');
 end
 
 function testInteractionPurposeIsNotEmittedByPassOne(testCase)

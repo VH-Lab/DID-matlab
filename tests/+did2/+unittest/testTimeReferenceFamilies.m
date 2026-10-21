@@ -196,7 +196,7 @@ function testABlankMemberIsNotAReference(testCase)
 % as a reference would make "one anchor" and "one blank where an anchor goes"
 % the same number, which is the hole #72 had to open in silentLoss.
 b = logicalObservation('vo_1', {});
-b.depends_on(end+1) = struct('name', 'time_reference_1', 'value', '');
+b.depends_on(end+1) = struct('name', 'time_reference_id', 'value', '');
 rep = did2.validate.timeReferenceFamilies({did2.document(b)});
 verifyEqual(testCase, rep.members_examined, 1, ...
     'the blank member must be EXAMINED -- it is present');
@@ -278,16 +278,13 @@ function testAMixedAbsoluteAndRelativeFamilyIsItsOwnShape(testCase)
 % "is one an absolute_reference and the other relative" is one of the properties
 % the team asked to be grouped on. It must not be folded in with two relatives.
 refs = nClockPair(1, 'm');
-abs1 = bodyOf('absolute_reference', 'ref_abs');
+abs1 = bodyOf('absolute_time_reference', 'ref_abs');
 abs1.document_class.class_version = '2.0.0';
 abs1.document_class.superclasses = struct('class_name', {'time_reference'}, ...
     'class_version', {'4.0.0'});
 abs1.base.name = 'migrated_session_anchor';
-abs1.absolute_reference = struct('value', struct( ...
-    'start', struct('utc', '2024-06-01T12:00:00.000Z', ...
-                    'source_value', '2024-06-01T12:00:00.000Z', ...
-                    'source_timezone', 'UTC', 'source_utc_offset', '+00:00', ...
-                    'approximate', false)));
+abs1.absolute_time_reference = struct('value', struct( ...
+    'start', struct('utc', '2024-06-01T12:00:00.000Z')));
 refs{end+1} = abs1;
 docs = statementWithReferences('vo_mixed', refs);
 rep = did2.validate.timeReferenceFamilies(docs);
@@ -354,21 +351,25 @@ docs = statementWithReferences('vo_split', splitAnchorPair());
 rep = did2.validate.timeReferenceFamilies(docs);
 verifyEqual(testCase, numel(rep.shape), 1);
 verifyEqual(testCase, rep.shape(1).example_document_id, 'vo_split');
-verifyEqual(testCase, rep.shape(1).example_class_name, 'logical_observation');
+verifyEqual(testCase, rep.shape(1).example_class_name, 'observation');
 verifyEqual(testCase, rep.shape(1).members, 2);
-verifyEqual(testCase, rep.shape(1).family, 'time_reference_#');
+verifyEqual(testCase, rep.shape(1).family, 'time_reference_id');
 end
 
 % ===================== emitter attribution =================================
 
 function testTheEmitterIsAttributedFromWhatTheDocumentsActuallyCarry(testCase)
+% #88 NOTE: #88 documents carry NO `base.name`, so on a real #88 batch every
+% statement reads as unattributed (testAnUnattributableStatementIsCountedAsSuch).
+% These fixtures still stamp one to exercise the attribution path for any
+% vintage that carries it.
 % `base.name` is the only provenance a migrated document carries, and the ANCHOR
 % names are the sharper fingerprint -- a split-anchor pair is two
 % `migrated_valid_interval_anchor` documents, which names the pass.
 docs = statementWithReferences('vo_split', splitAnchorPair());
 rep = did2.validate.timeReferenceFamilies(docs);
 verifyEqual(testCase, numel(rep.emitter), 1);
-verifyEqual(testCase, rep.emitter(1).statement_class, 'logical_observation');
+verifyEqual(testCase, rep.emitter(1).statement_class, 'observation');
 verifyEqual(testCase, rep.emitter(1).statement_name, 'migrated_valid_interval');
 verifyEqual(testCase, rep.emitter(1).anchor_names, 'migrated_valid_interval_anchor');
 verifyEqual(testCase, rep.emitter(1).statements, 1);
@@ -408,17 +409,18 @@ end
 % ===================== scope and schema-driven discovery ===================
 
 function testTheFamilyIsFoundThroughASubclassReferent(testCase)
-% NO NAME MATCHING. `epoch.time_reference_#` declares
-% `must_refer_to_document_class: relative_reference` -- a SUBCLASS of
-% time_reference -- so a sweep that looked for the referent class literally
-% would miss the epoch family entirely.
-ep = bodyOf('epoch', 'ep_host');
-ep.document_class.superclasses = struct('class_name', {'entity'}, ...
-    'class_version', {'1.0.0'});
+% NO NAME MATCHING. The family is found from what the schema says it refers
+% to. Before #88 `epoch.time_reference_#` referred to `relative_reference`, a
+% SUBCLASS; on #88 an epoch is an `entity` and `entity.time_reference_id`
+% refers to `time_reference` itself. Either way it must be found, and on a
+% class that is not a statement.
+ep = bodyOf('entity', 'ep_host');
+ep.entity = struct('type', struct('node', '', 'name', 'epoch'), ...
+    'local_identifier', 'ep_host');
 refs = nClockPair(2, 'e');
 deps = struct('name', {}, 'value', {});
 for k = 1:numel(refs)
-    deps(end+1) = struct('name', sprintf('time_reference_%d', k), ...
+    deps(end+1) = struct('name', 'time_reference_id', ...
         'value', refs{k}.base.id); %#ok<AGROW>
 end
 ep.depends_on = deps;
@@ -428,30 +430,30 @@ for k = 1:numel(refs)
 end
 rep = did2.validate.timeReferenceFamilies(docs);
 verifyEqual(testCase, rep.docs_declaring_family, 1, ...
-    'epoch declares the family via a SUBCLASS referent and must be found');
+    'the epoch entity declares the family and must be found');
 verifyEqual(testCase, rep.statements_multi_reference, 1);
 end
 
 function testANonTimeFamilyContributesNothingNotEvenADenominator(testCase)
-% `derived_from_#` is N different inputs and is not a time reference. A
-% `subject_calculation` DOES declare `time_reference_#` (it is a
-% subject_interaction), so the class is in scope -- but its derived_from members
-% must not enter any counter. Asserting only "0 shapes" would pass even if they
-% had been examined, which is the vacuous half of the assertion.
-b = bodyOf('subject_calculation', 'calc_1');
-b.document_class.superclasses = struct('class_name', {'subject_interaction'}, ...
+% `input_id` (#88; `derived_from_#` before) is N different inputs and is not a
+% time reference. A `calculation` DOES declare `time_reference_id` (it is an
+% interaction), so the class is in scope -- but its input members must not
+% enter any counter. Asserting only "0 shapes" would pass even if they had been
+% examined, which is the vacuous half of the assertion.
+b = bodyOf('calculation', 'calc_1');
+b.document_class.superclasses = struct('class_name', {'interaction'}, ...
     'class_version', {'1.0.0'});
-b.depends_on = struct('name', {'derived_from_1', 'derived_from_2'}, ...
+b.depends_on = struct('name', {'input_id', 'input_id'}, ...
     'value', {'src_1', 'src_2'});
-src1 = bodyOf('subject', 'src_1');
-src2 = bodyOf('subject', 'src_2');
+src1 = bodyOf('observation', 'src_1');
+src2 = bodyOf('observation', 'src_2');
 rep = did2.validate.timeReferenceFamilies({did2.document(b), ...
     did2.document(src1), did2.document(src2)});
 verifyEqual(testCase, rep.docs_declaring_family, 1, ...
-    'subject_calculation is a subject_interaction and declares the time family');
+    'calculation is an interaction and declares the time family');
 verifyEqual(testCase, rep.slots_examined, 1, 'exactly ONE slot -- the time family');
 verifyEqual(testCase, rep.members_examined, 0, ...
-    'derived_from_# members must not be counted as time references');
+    'input_id members must not be counted as time references');
 verifyEqual(testCase, rep.statements_with_reference, 0);
 end
 
@@ -460,9 +462,9 @@ function testTheDiscriminatorLabelIsReadFromTheSchema(testCase)
 % declared `referent_unique_by`, not a word typed into the instrument. Read the
 % declaration out of the same cache the instrument uses and assert the key
 % follows it, so a schema rename cannot leave a stale label behind.
-uniqueBy = declaredUniqueBy('subject_interaction');
+uniqueBy = declaredUniqueBy('interaction');
 assumeNotEmpty(testCase, uniqueBy, ...
-    'subject_interaction declares no referent_unique_by in this schema set');
+    'interaction declares no referent_unique_by in this schema set');
 parts = strsplit(uniqueBy, '.');
 expected = [parts{end} '='];
 docs = statementWithReferences('vo_split', splitAnchorPair());
@@ -479,7 +481,7 @@ verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies({[]}));
 verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies(struct([])));
 verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies({}));
 b = logicalObservation('vo_bad', {});
-b.depends_on(end+1) = struct('name', 'time_reference_1', 'value', 'nope');
+b.depends_on(end+1) = struct('name', 'time_reference_id', 'value', 'nope');
 verifyWarningFree(testCase, ...
     @() did2.validate.timeReferenceFamilies({did2.document(b)}));
 b2 = bodyOf('a_class_that_does_not_exist', 'x_1');
@@ -494,11 +496,10 @@ end
 % here is composed from a V_eta schema or from a docstring.
 
 function docs = statementWithReferences(stmtId, refs)
-%STATEMENTWITHREFERENCES A `logical_observation` wired to REFS as
-%   `time_reference_1..N`, followed by the reference documents themselves.
-%   The numbering is makeLogicalObservation's verbatim: the family is numbered
-%   in the order given, and the order is the ONLY thing distinguishing the
-%   members -- which is #52.
+%STATEMENTWITHREFERENCES An `observation` wired to REFS as repeated
+%   `time_reference_id` edges (#88, T15), followed by the reference documents
+%   themselves. The edges carry one name, so the order given is the ONLY thing
+%   distinguishing the members -- which is #52.
 b = logicalObservation(stmtId, refs);
 docs = {did2.document(b)};
 for k = 1:numel(refs)
@@ -507,27 +508,22 @@ end
 end
 
 function b = logicalObservation(stmtId, refs)
-%LOGICALOBSERVATION resolveValidIntervals.m (makeLogicalObservation).
-b = bodyOf('logical_observation', stmtId);
+%LOGICALOBSERVATION A validity statement on #88: an `observation` of an entity
+%   (the `logical_observation` class was retired, #73 item 52). Only the class,
+%   the edges and the base block matter to the instrument.
+b = bodyOf('observation', stmtId);
 b.document_class.superclasses = struct( ...
-    'class_name',    {'subject_observation', 'logical'}, ...
-    'class_version', {'1.0.0', '1.0.0'});
+    'class_name',    {'interaction'}, 'class_version', {'1.0.0'});
 b.base.name = 'migrated_valid_interval';
-deps = struct('name', {'subject_id'}, 'value', {'element_sub_1'});
+deps = struct('name', {'entity_id'}, 'value', {'element_sub_1'});
 for k = 1:numel(refs)
-    deps(end+1) = struct('name', sprintf('time_reference_%d', k), ...
+    deps(end+1) = struct('name', 'time_reference_id', ...
         'value', refs{k}.base.id); %#ok<AGROW>
 end
 b.depends_on = deps;
-b.subject_statement = struct( ...
-    'variable', struct('node', '', 'name', 'data validity'), ...
-    'storage_mode', 'inline');
-b.subject_interaction = struct('method', struct('node', '', 'name', 'curation'));
-b.subject_observation = struct();
-% NO NESTED CELL and NO LEAF BLOCK: `logical.value` is a bare boolean array,
-% and `logical_observation` declares no fields at all (`sequence` was deleted
-% with HAZARD 2 -- v1's array order is invisible to its only consumer).
-b.logical = struct('value', true);
+b.statement = struct( ...
+    'variable', struct('node', '', 'name', 'data validity'));
+b.interaction = struct('method', struct('term', struct('node', '', 'name', 'curation')));
 end
 
 function refs = splitAnchorPair()
@@ -569,23 +565,22 @@ function r = relativeReference(refId, clockName, anchorId, startSeconds, duratio
 %   jEpochClockReferences.m:139-175, which build the identical body. An EMPTY
 %   DURATIONSECONDS is an INSTANT -- `duration` is not written at all, which is
 %   how the split case says "a point, not a span".
-r = bodyOf('relative_reference', refId);
-r.document_class.class_version = '2.0.0';
+r = bodyOf('relative_time_reference', refId);
+r.document_class.class_version = '2.2.0';
 r.document_class.superclasses = struct('class_name', {'time_reference'}, ...
     'class_version', {'4.0.0'});
-r.depends_on = struct('name', {'relative_to'}, 'value', {anchorId});
+r.depends_on = struct('name', {'referent_id'}, 'value', {anchorId});
 value = struct('clock', struct('node', '', 'name', clockName), ...
     'start', durationCell(startSeconds));
 if ~isempty(durationSeconds)
     value.duration = durationCell(durationSeconds);
 end
-r.relative_reference = struct('value', value);
+r.relative_time_reference = struct('value', value);
 end
 
 function c = durationCell(seconds)
 %DURATIONCELL The T14 one-`value` duration cell, resolveValidIntervals.m:782-786.
-c = struct('seconds', double(seconds), 'source_unit', 's', ...
-    'source_value', double(seconds), 'approximate', false);
+c = struct('seconds', double(seconds));
 end
 
 function b = bodyOf(className, id)
@@ -620,7 +615,8 @@ end
 for k = 1:numel(items)
     d = items{k};
     if ~isstruct(d) || ~isfield(d, 'name'); continue; end
-    if ~contains(char(d.name), '#'); continue; end
+    isMultiple = isfield(d, 'multiple') && islogical(d.multiple) && d.multiple;
+    if ~contains(char(d.name), '#') && ~isMultiple; continue; end
     if isfield(d, 'referent_unique_by') && ~isempty(d.referent_unique_by)
         uq = char(d.referent_unique_by);
         return;

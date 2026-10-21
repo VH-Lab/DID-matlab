@@ -43,8 +43,8 @@ function testTotalDocsCountsWhatWasHandedIn(testCase)
 % THE test. Feed it real did2.document objects -- the exact type v1_to_v2
 % passes -- and the census must report having looked at them. Before the fix
 % this returned total_docs = 0 for any number of documents.
-docs = {docObj('subject', 'sub_1'), docObj('subject', 'sub_2'), ...
-        docObj('subject', 'sub_3')};
+docs = {docObj('entity', 'sub_1'), docObj('entity', 'sub_2'), ...
+        docObj('entity', 'sub_3')};
 rep = did2.validate.silentLoss(docs);
 verifyEqual(testCase, rep.total_docs, 3, ...
     'the census must count the documents it was handed');
@@ -56,8 +56,8 @@ function testUnreadableInputIsCountedNotSilentlyDropped(testCase)
 % discarded. Dropping it is what made a broken counter look like a clean one:
 % total_docs was taken from the survivors, so zero survivors read as zero
 % documents rather than as total failure.
-docs = {docObj('subject', 'sub_1'), struct('not_a_document', 1), ...
-        docObj('subject', 'sub_2')};
+docs = {docObj('entity', 'sub_1'), struct('not_a_document', 1), ...
+        docObj('entity', 'sub_2')};
 rep = did2.validate.silentLoss(docs);
 verifyEqual(testCase, rep.total_docs, 3, ...
     'unreadable documents must still be counted in the total');
@@ -80,14 +80,14 @@ end
 % ===================== input-shape coverage ================================
 
 function testAcceptsPlainStructArray(testCase)
-s = [bodyStruct('subject', 'sub_1'), bodyStruct('subject', 'sub_2')];
+s = [bodyStruct('entity', 'sub_1'), bodyStruct('entity', 'sub_2')];
 rep = did2.validate.silentLoss(s);
 verifyEqual(testCase, rep.total_docs, 2);
 verifyEqual(testCase, rep.skipped_docs, 0);
 end
 
 function testAcceptsCellOfStructs(testCase)
-rep = did2.validate.silentLoss({bodyStruct('subject', 'sub_1')});
+rep = did2.validate.silentLoss({bodyStruct('entity', 'sub_1')});
 verifyEqual(testCase, rep.total_docs, 1);
 verifyEqual(testCase, rep.skipped_docs, 0);
 end
@@ -99,8 +99,8 @@ function testCountsAnEmptyRequiredDependency(testCase)
 % built for. A required depends_on edge left empty is invisible to every other
 % gate: validate/references skips empty edges and the schema cache never checks
 % dependency non-emptiness at all. This is the ~7,007-empty-subject_id case.
-body = bodyStruct('term_observation', 'obs_1');
-body.depends_on = struct('name', 'subject_id', 'value', '');
+body = bodyStruct('observation', 'obs_1');
+body.depends_on = struct('name', 'entity_id', 'value', '');
 rep = did2.validate.silentLoss({did2.document(body)});
 verifyEqual(testCase, rep.total_docs, 1);
 verifyTrue(testCase, rep.empty_dependency_count >= 0, ...
@@ -124,23 +124,23 @@ function testNumberedFamilyCountIsMeasured(testCase)
 % carrying none must be reported. REPORT ONLY: this raises nothing, because the
 % counts have never been measured on real data and enforcing a minimum before
 % knowing them is how a gate turns red on a corpus.
-b = bodyStruct('voltage_observation', 'obs_no_time');
+b = bodyStruct('observation', 'obs_no_time');
 rep = did2.validate.silentLoss({did2.document(b)});
 verifyGreaterThanOrEqual(testCase, rep.family_violation_count, 1, ...
     'a statement with no time_reference instance must be reported');
 edges = {rep.family_count_violation.edge_name};
-verifyTrue(testCase, any(strcmp('time_reference_#', edges)));
+verifyTrue(testCase, any(strcmp('time_reference_id', edges)));
 end
 
 function testSatisfiedFamilyIsSilent(testCase)
 % One instance satisfies min_count 1 -- and the family check must not fire just
 % because an edge is blank. That is the separate empty-edge check; conflating
 % the two is what made `mustBeNonEmpty` look like it meant something here.
-b = bodyStruct('voltage_observation', 'obs_with_time');
-b.depends_on = struct('name', {'time_reference_1'}, 'value', {'tr_1'});
+b = bodyStruct('observation', 'obs_with_time');
+b.depends_on = struct('name', {'time_reference_id'}, 'value', {'tr_1'});
 rep = did2.validate.silentLoss({did2.document(b)});
 edges = {rep.family_count_violation.edge_name};
-verifyFalse(testCase, any(strcmp('time_reference_#', edges)), ...
+verifyFalse(testCase, any(strcmp('time_reference_id', edges)), ...
     'one instance satisfies min_count 1');
 end
 
@@ -168,7 +168,7 @@ function testTheBlockCarriesItsOwnDenominator(testCase)
 % Rule 5. The block must state how many documents it looked at, on its own,
 % without the reader having to hold total_docs in their head -- and it must do
 % so even when it found nothing.
-docs = {docObj('subject', 'sub_1'), docObj('subject', 'sub_2')};
+docs = {docObj('entity', 'sub_1'), docObj('entity', 'sub_2')};
 rep = did2.validate.silentLoss(docs);
 verifyTrue(testCase, isfield(rep, 'epoch_association'));
 ea = rep.epoch_association;
@@ -212,14 +212,14 @@ function testTheNamesItFollowedAreReportedAsData(testCase)
 % they are REPORTED, with a flag saying whether the schema still has classes by
 % those names. Without this, renaming `epoch` would take every count to zero
 % and the report would read clean -- the demo_ndi failure exactly.
-rep = did2.validate.silentLoss({docObj('subject', 'sub_1')});
+rep = did2.validate.silentLoss({docObj('entity', 'sub_1')});
 ea = rep.epoch_association;
-verifyEqual(testCase, ea.anchor_edge, 'relative_to');
+verifyEqual(testCase, ea.anchor_edge, 'referent_id');
 verifyEqual(testCase, ea.reference_root, 'time_reference');
 verifyEqual(testCase, ea.terminal_class, 'epoch');
 verifyGreaterThan(testCase, ea.max_depth, 1);
 verifyEqual(testCase, ea.terminal_class_in_schema, 1, ...
-    'a class named `epoch` must load, or every reaches-an-epoch count is vacuous');
+    'an `epoch` class, or on #88 the `entity` class whose kind is epoch, must load');
 verifyEqual(testCase, ea.reference_root_in_schema, 1);
 end
 
@@ -229,8 +229,8 @@ function testAFamilyPresentButEntirelyBlankIsReported(testCase)
 % deliberately does not care what a member holds, and the empty-edge census
 % excludes numbered families by construction. Between them the existing checks
 % step over exactly this document.
-b = bodyStruct('voltage_observation', 'obs_blank_time');
-b.depends_on = struct('name', {'time_reference_1'}, 'value', {''});
+b = bodyStruct('observation', 'obs_blank_time');
+b.depends_on = struct('name', {'time_reference_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 ea = rep.epoch_association;
 verifyEqual(testCase, ea.family_docs_present, 1);
@@ -240,28 +240,28 @@ verifyEqual(testCase, ea.family_members_empty, 1);
 verifyEqual(testCase, ea.family_members_populated, 0);
 % and the family-count check must STILL be silent, because one member exists.
 edges = {rep.family_count_violation.edge_name};
-verifyFalse(testCase, any(strcmp('time_reference_#', edges)), ...
+verifyFalse(testCase, any(strcmp('time_reference_id', edges)), ...
     'min_count 1 is satisfied -- that is precisely why this hole was invisible');
 end
 
 function testTheAllEmptyRowReachesTheReport(testCase)
 % The #63 bug, guarded a third time: an accumulator that is never assigned
 % reports a zero meaning "not reported". This asserts the ROW, not the count.
-b = bodyStruct('voltage_observation', 'obs_blank_time');
-b.depends_on = struct('name', {'time_reference_1'}, 'value', {''});
+b = bodyStruct('observation', 'obs_blank_time');
+b.depends_on = struct('name', {'time_reference_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(b)});
 rows = rep.epoch_association.family_all_empty_by_class;
 verifyNotEmpty(testCase, rows, ...
     'the by-class table must be ASSIGNED, not accumulated and dropped');
-verifyEqual(testCase, rows(1).edge_name, 'time_reference_#');
-verifyEqual(testCase, rows(1).class_name, 'voltage_observation');
+verifyEqual(testCase, rows(1).edge_name, 'time_reference_id');
+verifyEqual(testCase, rows(1).class_name, 'observation');
 end
 
 function testAnAbsentFamilyIsNotAnEmptyOne(testCase)
 % Two different facts. A document carrying no member at all is a cardinality
 % violation (already reported by #63); a document carrying a BLANK member is
 % not, and only the new counter separates them.
-b = bodyStruct('voltage_observation', 'obs_no_time');
+b = bodyStruct('observation', 'obs_no_time');
 rep = did2.validate.silentLoss({did2.document(b)});
 ea = rep.epoch_association;
 verifyEqual(testCase, ea.family_docs_absent, 1);
@@ -272,13 +272,13 @@ end
 
 function testAPopulatedFamilyReachingAnEpochIsCountedEndToEnd(testCase)
 % The chain the decision rests on, assembled in full:
-%   subject_interaction --time_reference_1--> relative_reference
-%                       --relative_to-------> epoch
-obs = bodyStruct('voltage_observation', 'obs_1');
-obs.depends_on = struct('name', {'time_reference_1'}, 'value', {'ref_1'});
-ref = bodyStruct('relative_reference', 'ref_1');
-ref.depends_on = struct('name', {'relative_to'}, 'value', {'epoch_1'});
-ep  = bodyStruct('epoch', 'epoch_1');
+%   observation --time_reference_id--> relative_time_reference
+%               --referent_id--------> entity (kind epoch)      (#88)
+obs = bodyStruct('observation', 'obs_1');
+obs.depends_on = struct('name', {'time_reference_id'}, 'value', {'ref_1'});
+ref = bodyStruct('relative_time_reference', 'ref_1');
+ref.depends_on = struct('name', {'referent_id'}, 'value', {'epoch_1'});
+ep  = epochEntity('epoch_1');
 rep = did2.validate.silentLoss({did2.document(obs), did2.document(ref), ...
                                 did2.document(ep)});
 ea = rep.epoch_association;
@@ -294,10 +294,10 @@ function testAReferenceWhoseAnchorIsBlankIsItsOwnState(testCase)
 % `relative_to` is REQUIRED, so a blank one is a real defect -- and a different
 % one from "the target is not in this batch". Conflating them would report a
 % broken document as a sampling artefact.
-obs = bodyStruct('voltage_observation', 'obs_1');
-obs.depends_on = struct('name', {'time_reference_1'}, 'value', {'ref_1'});
-ref = bodyStruct('relative_reference', 'ref_1');
-ref.depends_on = struct('name', {'relative_to'}, 'value', {''});
+obs = bodyStruct('observation', 'obs_1');
+obs.depends_on = struct('name', {'time_reference_id'}, 'value', {'ref_1'});
+ref = bodyStruct('relative_time_reference', 'ref_1');
+ref.depends_on = struct('name', {'referent_id'}, 'value', {''});
 rep = did2.validate.silentLoss({did2.document(obs), did2.document(ref)});
 ea = rep.epoch_association;
 verifyEqual(testCase, ea.chain_member_anchor_empty, 1);
@@ -310,8 +310,8 @@ function testATargetOutsideTheBatchIsUndeterminedNotAFailure(testCase)
 % batch may resolve perfectly in a full migration -- jSessionAnchor's
 % discovery-mode orphans were exactly that. It must not be counted as reaching
 % nothing.
-obs = bodyStruct('voltage_observation', 'obs_1');
-obs.depends_on = struct('name', {'time_reference_1'}, 'value', {'ref_elsewhere'});
+obs = bodyStruct('observation', 'obs_1');
+obs.depends_on = struct('name', {'time_reference_id'}, 'value', {'ref_elsewhere'});
 rep = did2.validate.silentLoss({did2.document(obs)});
 ea = rep.epoch_association;
 verifyEqual(testCase, ea.chain_member_unresolved, 1);
@@ -323,12 +323,12 @@ end
 function testTheEightMemberStatesAreExhaustive(testCase)
 % The invariant that stops a member falling out of the accounting into a
 % silence: the eight per-member counters must sum to chain_members_examined.
-obs = bodyStruct('voltage_observation', 'obs_1');
-obs.depends_on = struct('name', {'time_reference_1', 'time_reference_2'}, ...
+obs = bodyStruct('observation', 'obs_1');
+obs.depends_on = struct('name', {'time_reference_id', 'time_reference_id'}, ...
                         'value', {'ref_1', 'ref_missing'});
-ref = bodyStruct('relative_reference', 'ref_1');
-ref.depends_on = struct('name', {'relative_to'}, 'value', {'epoch_1'});
-ep  = bodyStruct('epoch', 'epoch_1');
+ref = bodyStruct('relative_time_reference', 'ref_1');
+ref.depends_on = struct('name', {'referent_id'}, 'value', {'epoch_1'});
+ep  = epochEntity('epoch_1');
 rep = did2.validate.silentLoss({did2.document(obs), did2.document(ref), ...
                                 did2.document(ep)});
 ea = rep.epoch_association;
@@ -348,7 +348,7 @@ function testEpochIdEmptyResolvedAndUnresolvedAreThreeStates(testCase)
 % #72's second half, and the one the epoch plan asked for BY NAME. An edge
 % naming a missing document and an edge naming nothing are different failures
 % and this project has conflated them before.
-ep  = bodyStruct('epoch', 'epoch_1');
+ep  = epochEntity('epoch_1');
 r1  = bodyStruct('directed_relation', 'rel_ok');
 r1.depends_on = struct('name', {'epoch_id'}, 'value', {'epoch_1'});
 r2  = bodyStruct('directed_relation', 'rel_blank');
@@ -375,7 +375,7 @@ function testAnEpochIdPointingAtSomethingElseIsNotAHealthyEdge(testCase)
 % It resolves -- so an existence-only reference check passes it -- and it names
 % the wrong kind of document. Counted as a named subset of `resolved` rather
 % than folded into it.
-sub = bodyStruct('subject', 'sub_1');
+sub = bodyStruct('entity', 'sub_1');
 rel = bodyStruct('directed_relation', 'rel_1');
 rel.depends_on = struct('name', {'epoch_id'}, 'value', {'sub_1'});
 rep = did2.validate.silentLoss({did2.document(sub), did2.document(rel)});
@@ -807,12 +807,19 @@ function d = docObj(className, id)
 d = did2.document(bodyStruct(className, id));
 end
 
+function b = epochEntity(id)
+%EPOCHENTITY An epoch on #88: the one `entity` class, kind 'epoch'.
+b = bodyStruct('entity', id);
+b.entity = struct('type', struct('node', '', 'name', 'epoch'), ...
+    'local_identifier', id);
+end
+
 function b = bodyStruct(className, id)
 b = struct();
 b.document_class = struct('class_name', className, 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}), ...
     'schema_version', 'V_eta');
 b.depends_on = struct('name', {}, 'value', {});
-b.base = struct('id', id, 'session_id', 'sess_1', 'name', id, ...
+b.base = struct('id', id, 'session_id', 'sess_1', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 end

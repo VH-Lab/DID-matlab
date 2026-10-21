@@ -597,7 +597,8 @@ end
 % (The four names themselves are stamped by eaNewReport, so they are present
 % even on the early returns above.) These two flags need the cache:
 report.epoch_association.terminal_class_in_schema  = ...
-    double(eaClassLoads(cache, eaTerminalClass()));
+    double(eaClassLoads(cache, eaTerminalClass()) || ...
+           eaClassLoads(cache, eaEntityClass()));
 report.epoch_association.reference_root_in_schema  = ...
     double(eaClassLoads(cache, eaReferenceRoot()));
 
@@ -817,7 +818,7 @@ for k = 1:numel(bodies)
         info = eaClassInfo(cache, className, eaClassMemo);
         report.epoch_association.docs_classified = ...
             report.epoch_association.docs_classified + 1;
-        if info.is_terminal
+        if eaIsTerminal(body, info)
             report.epoch_association.epoch_documents = ...
                 report.epoch_association.epoch_documents + 1;
         end
@@ -932,7 +933,7 @@ for k = 1:numel(bodies)
                 report.epoch_association.epoch_id_resolved = ...
                     report.epoch_association.epoch_id_resolved + 1;
                 targetInfo = eaClassInfo(cache, classNameOf(idIndex(v)), eaClassMemo);
-                if ~targetInfo.is_terminal
+                if ~eaIsTerminal(idIndex(v), targetInfo)
                     state = 'resolved_not_epoch';
                     report.epoch_association.epoch_id_resolved_not_epoch = ...
                         report.epoch_association.epoch_id_resolved_not_epoch + 1;
@@ -1101,7 +1102,11 @@ for k = 1:numel(chain)
         dep = items{d};
         if ~isstruct(dep) || ~isfield(dep, 'name'); continue; end
         n = char(dep.name);
-        if ~contains(n, '#'); continue; end
+        % #88 (T15): a family is ONE name repeated, declared `multiple: true`;
+        % the older spelling is `name_#`, numbered. Both are families.
+        isMultiple = isfield(dep, 'multiple') && ~isempty(dep.multiple) && ...
+            islogical(dep.multiple) && dep.multiple;
+        if ~contains(n, '#') && ~isMultiple; continue; end
         lo = 0; hi = NaN; uq = ''; rt = '';
         if isfield(dep, 'min_count') && ~isempty(dep.min_count); lo = double(dep.min_count); end
         if isfield(dep, 'max_count') && ~isempty(dep.max_count); hi = double(dep.max_count); end
@@ -1155,6 +1160,11 @@ if isstruct(deps)
 elseif iscell(deps)
     items = deps(:)';
 else
+    return;
+end
+if ~contains(famName, '#')
+    % #88: the family is one name repeated, so its members are matched exactly.
+    vals = edgeValues(body, famName);
     return;
 end
 prefix = strrep(famName, '#', '');
@@ -1314,6 +1324,11 @@ function n = countFamily(body, famName)
 %   how many instances exist, not whether one of them is blank (that is the
 %   separate, and separately reported, empty-edge check).
 n = 0;
+if ~contains(famName, '#')
+    % #88: one name repeated -- every edge carrying it is a member.
+    n = numel(edgeValues(body, famName));
+    return;
+end
 if ~isfield(body, 'depends_on') || ~isstruct(body.depends_on); return; end
 prefix = strrep(famName, '#', '');
 for k = 1:numel(body.depends_on)
@@ -1971,8 +1986,9 @@ end
 
 function s = eaAnchorEdge()
 %EAANCHOREDGE The edge a time reference uses to name what it is measured
-%   against. `relative_reference.relative_to`.
-s = 'relative_to';
+%   against. `relative_time_reference.referent_id` on #88 (it was
+%   `relative_reference.relative_to` before).
+s = 'referent_id';
 end
 
 function s = eaReferenceRoot()
@@ -1982,8 +1998,45 @@ s = 'time_reference';
 end
 
 function s = eaTerminalClass()
-%EATERMINALCLASS What the chain is being asked to reach.
+%EATERMINALCLASS What the chain is being asked to reach. On #88 an epoch is
+%   an `entity` whose `entity.type.name` is this string; a schema that still
+%   carries an `epoch` CLASS is recognised by its chain as before.
 s = 'epoch';
+end
+
+function s = eaNodeLabel(body, cls)
+%EANODELABEL A terminus as the census reports it: the class name, or for a #88
+%   `entity` its kind (`epoch`, `session`, ...), which is what the class name
+%   said before every kind became one class.
+s = cls;
+if ~strcmp(cls, eaEntityClass()); return; end
+try
+    t = body.entity.type;
+    if iscell(t); t = t{1}; end
+    if ~isempty(t.name); s = char(t.name); end
+catch
+end
+end
+
+function s = eaEntityClass()
+%EAENTITYCLASS The one entity class of #88; its kind is `entity.type.name`.
+s = 'entity';
+end
+
+function tf = eaIsTerminal(body, info)
+%EAISTERMINAL Is this DOCUMENT an epoch? By class (an `epoch` class in its
+%   chain) or, on #88, by being an `entity` whose type name is `epoch`. The
+%   second test needs the document, not the class, which is why this takes
+%   both.
+tf = info.is_terminal;
+if tf || ~info.is_entity; return; end
+try
+    t = body.entity.type;
+    if iscell(t); t = t{1}; end
+    tf = strcmp(char(t.name), eaTerminalClass());
+catch
+    tf = false;
+end
 end
 
 function s = eaEpochEdge()
@@ -2089,7 +2142,8 @@ function info = eaClassInfo(cache, className, memo)
 %   answer. The documents that produce it are already counted in `skipped_docs`
 %   when the failure is total.
 info = struct('is_terminal', false, 'is_reference', false, ...
-              'declares_anchor', false, 'declares_epoch_id', false);
+              'declares_anchor', false, 'declares_epoch_id', false, ...
+              'is_entity', false);
 info.time_families = {};
 if isempty(className); return; end
 if memo.isKey(className)
@@ -2104,6 +2158,7 @@ catch
 end
 if ~isempty(chain)
     info.is_terminal  = any(strcmp(chain, eaTerminalClass()));
+    info.is_entity    = any(strcmp(chain, eaEntityClass()));
     info.is_reference = any(strcmp(chain, eaReferenceRoot()));
     info.declares_anchor   = eaChainDeclaresEdge(cache, chain, eaAnchorEdge());
     info.declares_epoch_id = eaChainDeclaresEdge(cache, chain, eaEpochEdge());
@@ -2203,9 +2258,9 @@ end
 refBody = idIndex(memberId);
 refClass = classNameOf(refBody);
 refInfo = eaClassInfo(cache, refClass, classMemo);
-if refInfo.is_terminal
+if eaIsTerminal(refBody, refInfo)
     % Degenerate but real: the family points straight at an epoch.
-    state = 'reaches_epoch'; terminus = refClass; return;
+    state = 'reaches_epoch'; terminus = eaNodeLabel(refBody, refClass); return;
 end
 if ~refInfo.is_reference
     state = 'not_a_reference'; terminus = refClass; return;
@@ -2274,15 +2329,15 @@ while ~isempty(frontier)
         node = idIndex(id);
         nodeClass = classNameOf(node);
         nodeInfo = eaClassInfo(cache, nodeClass, classMemo);
-        if nodeInfo.is_terminal
-            state = 'reaches_epoch'; terminus = nodeClass;
+        if eaIsTerminal(node, nodeInfo)
+            state = 'reaches_epoch'; terminus = eaNodeLabel(node, nodeClass);
             walkMemo(memoKey) = struct('state', state, 'terminus', terminus);
             return;
         end
         outgoing = eaOutgoingIds(node, nodeInfo);
         if isempty(outgoing)
             sawTerminated = true;
-            if isempty(firstTerminus); firstTerminus = nodeClass; end
+            if isempty(firstTerminus); firstTerminus = eaNodeLabel(node, nodeClass); end
         else
             next = [next, outgoing]; %#ok<AGROW>
         end

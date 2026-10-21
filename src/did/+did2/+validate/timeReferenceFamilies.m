@@ -470,6 +470,8 @@ if isempty(uniqueBy); uniqueBy = ''; end
 kindPart  = trfKindPart(cache, refs, chainMemo);
 discPart  = trfAgreementPart(trfLastSegment(uniqueBy), ...
                              trfTermKeys(refs, uniqueBy));
+% The label stays `relative_to` on #88 (the edge is now `referent_id`): the
+% census digest parses shape keys by this label.
 anchorPart = trfAgreementPart('relative_to', trfAnchorKeys(refs));
 extentPart = trfExtentPart(refs);
 
@@ -482,9 +484,13 @@ labels = cell(1, numel(refs));
 for k = 1:numel(refs)
     cn = trfClassName(refs{k});
     chain = trfChain(cache, cn, chainMemo);
-    if any(strcmp(chain, 'absolute_reference'))
+    % #88 names them absolute_/relative_time_reference; the older names are
+    % kept so a pre-#88 batch still reads.
+    if any(strcmp(chain, 'absolute_reference')) || ...
+            any(strcmp(chain, 'absolute_time_reference'))
         labels{k} = 'abs';
-    elseif any(strcmp(chain, 'relative_reference'))
+    elseif any(strcmp(chain, 'relative_reference')) || ...
+            any(strcmp(chain, 'relative_time_reference'))
         labels{k} = 'rel';
     elseif any(strcmp(chain, 'time_reference'))
         labels{k} = 'timeref';
@@ -588,7 +594,9 @@ function keys = trfAnchorKeys(refs)
 %   rather than being folded into `same`.
 keys = cell(1, numel(refs));
 for k = 1:numel(refs)
-    keys{k} = trfEdgeValue(refs{k}, 'relative_to');
+    % #88: `relative_time_reference.referent_id` (was `relative_to`).
+    keys{k} = trfEdgeValue(refs{k}, 'referent_id');
+    if isempty(keys{k}); keys{k} = trfEdgeValue(refs{k}, 'relative_to'); end
 end
 end
 
@@ -719,7 +727,11 @@ for k = 1:numel(chain)
         dep = items{d};
         if ~isstruct(dep) || ~isfield(dep, 'name'); continue; end
         nm = trfChar(dep.name);
-        if ~contains(nm, '#'); continue; end
+        % #88 (T15): a family is ONE name repeated, declared `multiple: true`;
+        % the older spelling is `name_#`. Both are families.
+        isMultiple = isfield(dep, 'multiple') && islogical(dep.multiple) ...
+            && isscalar(dep.multiple) && dep.multiple;
+        if ~contains(nm, '#') && ~isMultiple; continue; end
         if any(strcmp({fams.name}, nm)); continue; end
         refersTo = '';
         if isfield(dep, 'must_refer_to_document_class') ...
@@ -797,7 +809,17 @@ elseif iscell(deps)
 else
     return;
 end
-prefix = strrep(trfChar(famName), '#', '');
+fam = trfChar(famName);
+if ~contains(fam, '#')
+    % #88: one name repeated, so members match it exactly.
+    for k = 1:numel(items)
+        d = items{k};
+        if ~isstruct(d) || ~isfield(d, 'name'); continue; end
+        if strcmp(trfChar(d.name), fam); vals{end+1} = trfDepValue(d); end %#ok<AGROW>
+    end
+    return;
+end
+prefix = strrep(fam, '#', '');
 for k = 1:numel(items)
     d = items{k};
     if ~isstruct(d) || ~isfield(d, 'name'); continue; end
