@@ -248,7 +248,7 @@
 %                            DOI/PMID/PMCID -> global_identifier), `web_resource`
 %                            (FullDocumentation IRI -> global_identifier scheme
 %                            URL). Relationships are `directed_relation`s:
-%                            dataset -has_author-> person (sequence = position),
+%                            dataset -has_author-> person (order = position),
 %                            person -affiliated_with-> organization,
 %                            dataset -funded_by-> award -issued_by-> organization,
 %                            dataset -cites-> publication,

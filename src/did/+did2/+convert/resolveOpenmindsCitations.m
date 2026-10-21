@@ -202,8 +202,8 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %                                        'point of contact', 'Custodian').
 %                                        `person` has no role field and
 %                                        `directed_relation` has only
-%                                        relation / method / sequence. Author
-%                                        ORDER survives as `sequence`; the role
+%                                        relation / method / order. Author
+%                                        ORDER survives as `order`; the role
 %                                        does not. metadata_editor drops these
 %                                        too -- it never reads authorRole.
 %     SemanticDataType                   `dataset` has no data-type field.

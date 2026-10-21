@@ -35,7 +35,7 @@ function v2Body = metadata_editor(preBody)
 %     - web_resource  FullDocumentation IRI -> global_identifier{scheme='URL'}.
 %
 %   Bucket 1 -- RELATIONSHIPS -> directed_relation (kept, as edges not fields):
-%     dataset -has_author-> person       (sequence = author position)
+%     dataset -has_author-> person       (order = author position)
 %     person  -affiliated_with-> organization
 %     dataset -funded_by-> funding
 %     funding -issued_by-> organization  (the funder)
