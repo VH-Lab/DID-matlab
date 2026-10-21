@@ -1,9 +1,9 @@
 function installSchemaPath(testCase, skipMessageContext)
-%INSTALLSCHEMAPATH Probe a V_delta schema dir, set DID_SCHEMA_PATH, reset cache.
+%INSTALLSCHEMAPATH Probe a V_eta schema dir, set DID_SCHEMA_PATH, reset cache.
 %
 %   did2.unittest.helpers.installSchemaPath(TESTCASE, SKIPMESSAGECONTEXT) probes
 %   DID_SCHEMA_PATH then the sibling-checkout default. If neither
-%   resolves to a folder of V_delta `*.json` files, the test is
+%   resolves to a folder of V_eta `*.json` files, the test is
 %   filtered via assumeFail with a clear message. Otherwise the env
 %   var is set and the schema-cache singleton is reset.
 %
@@ -27,7 +27,7 @@ end
 schemaPath = resolveSchemaPath();
 if isempty(schemaPath)
     assumeFail(testCase, ...
-        ['V_delta schemas not found. Set DID_SCHEMA_PATH or check out ', ...
+        ['V_eta schemas not found. Set DID_SCHEMA_PATH or check out ', ...
          'did-schema as a sibling of DID-matlab; ' skipMessageContext '.']);
 end
 setenv('DID_SCHEMA_PATH', schemaPath);
@@ -43,7 +43,7 @@ if ~isempty(envPath)
 end
 toolboxDir = did.toolboxdir();
 candidates{end+1} = fullfile(toolboxDir, '..', '..', '..', ...
-    'did-schema', 'schemas', 'V_delta', 'stable'); %#ok<AGROW>
+    'did-schema', 'schemas', 'V_eta', 'stable'); %#ok<AGROW>
 
 p = '';
 for k = 1:numel(candidates)

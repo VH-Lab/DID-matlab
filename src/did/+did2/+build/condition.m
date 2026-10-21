@@ -7,14 +7,17 @@ function c = condition(variable, options)
 %                                                       the same option)
 %   C = did2.build.condition(VARIABLE, 'Count', N)      integer
 %   C = did2.build.condition(VARIABLE, 'Text', S)       free string
+%   C = did2.build.condition(VARIABLE, 'Matrix', A)     a numeric array, as
+%                                                       ONE value
 %
 %   VARIABLE is a term or a name (arm direction, OD600, trial type). Exactly ONE
 %   value form is given, and it is ONE value: "a one-value fact true of EVERY
 %   value of the statement" (statement.conditions). A fact with several values
 %   is a key, not a condition. The entry is the same as a method parameter's
 %   (data_body AMENDMENT 3): {variable, unit, source_unit, approximate} plus
-%   one of `term`, `quantity` {value, source_value}, `count` or `text`, so it
-%   takes the same options as did2.build.parameter.
+%   one of `term`, `quantity` {value, source_value}, `count`, `text` or
+%   `matrix` (data_body AMENDMENT 4), so it takes the same options as
+%   did2.build.parameter.
 %
 %   Options:
 %     'Term'           a term (or a name)
@@ -24,6 +27,8 @@ function c = condition(variable, options)
 %                      -> quantity.source_value (kept verbatim)
 %     'Count'          an integer
 %     'Text'           char
+%     'Matrix'         a numeric array that is ONE value of VARIABLE, in
+%                      'Unit'; no 'SourceValue' (did-schema #88)
 %     'Unit'           canonical unit (a term or a name); absent when categorical
 %     'SourceUnit'     the unit as the source gave it: its registered term
 %                      where the schema declares source_unit a term, text
@@ -44,13 +49,14 @@ arguments
     options.SourceValue = ''
     options.Count = []
     options.Text = ''
+    options.Matrix = []
     options.Unit = []
     options.SourceUnit = ''
     options.Approximate = []
     options.SchemaCache = []
 end
 
-s = oneValueEntry(variable, {'Term', 'Value', 'Quantity', 'Count', 'Text'}, options, ...
+s = oneValueEntry(variable, {'Term', 'Value', 'Quantity', 'Count', 'Text', 'Matrix'}, options, ...
     'conditions_one_value');
 statementClass = vetaNames(options.SchemaCache);   % `subject_statement` before 2026-10-08
 c = did2.build.composite(statementClass, 'conditions', s, ...

@@ -888,18 +888,18 @@ function testBothNewPassesAreNoOpsOnANonVEtaTarget(testCase)
 % Wiring a pass into a shared harness means it now runs on every target that
 % harness supports. Both passes must return their input untouched -- with a
 % denominator saying so -- when the target is not V_eta, or wiring them would
-% change V_delta/V_zeta runs that nothing here re-verifies.
+% change V_delta runs that nothing here re-verifies.
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 
 [outA, repA] = did2.convert.epochMint(r, 'Validate', false, ...
-    'TargetVersion', 'V_zeta');
+    'TargetVersion', 'V_delta');
 verifyEqual(testCase, outA.migrated, {});
 verifyFalse(testCase, repA.ran);
 verifyEqual(testCase, repA.documents_inspected, 0);
 
 [outB, repB] = did2.convert.resolveSessionAnchors(r, 'Validate', false, ...
-    'TargetVersion', 'V_zeta');
+    'TargetVersion', 'V_delta');
 verifyEqual(testCase, outB.migrated, {});
 verifyFalse(testCase, repB.ran);
 verifyEqual(testCase, repB.documents_inspected, 0);
@@ -940,12 +940,12 @@ end
 function testFoldGenericFilesIsANoOpOnANonVEtaTarget(testCase)
 % `opaque_body` and the statement tier exist only in V_eta. Wiring this pass
 % into the shared harnesses means it now runs on every target they support, so
-% a V_delta/V_zeta run must come back untouched -- with a denominator saying it
+% a V_delta run must come back untouched -- with a denominator saying it
 % did not run, not a zeroed one saying it found nothing.
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 [out, rep] = did2.convert.foldGenericFiles(r, 'Validate', false, ...
-    'TargetVersion', 'V_zeta');
+    'TargetVersion', 'V_delta');
 verifyEqual(testCase, out.migrated, {});
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);

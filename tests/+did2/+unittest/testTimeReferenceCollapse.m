@@ -331,13 +331,13 @@ verifyTrue(testCase, isfield(out, 'session_anchor_fold'));
 end
 
 function testANonEtaTargetIsUntouched(testCase)
-% relative_reference exists only in V_eta. V_zeta / V_epsilon still have the
-% eight-class family and their migrators (+migrators_i, +migrators_e) still emit
-% into it, so this pass must be a no-op there -- `ran` false is the proof it
+% relative_reference exists only in V_eta. The pass must be a no-op on any
+% other target (V_delta here; V_zeta/V_epsilon and their migrators were deleted
+% with did-schema #88) -- `ran` false is the proof it
 % declined rather than silently found nothing.
 out = runJ({anchorBody('anchor_1', 'SID_1', 'during')});
 [out, rep] = did2.convert.resolveSessionAnchors(out, ...
-    'Validate', false, 'TargetVersion', 'V_zeta');
+    'Validate', false, 'TargetVersion', 'V_delta');
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, classNames(out), {'session_relative_reference'});
 end

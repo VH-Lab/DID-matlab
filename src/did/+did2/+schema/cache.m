@@ -162,6 +162,9 @@ classdef cache < handle
         % subjects called getClass 900,580 times.
         superclassMemo
         placementMemo
+        % Per class (and value kind): where the class declares a `matrix`
+        % field (matrixFieldPaths). Pure in the loaded schemas, as above.
+        matrixPathMemo
     end
 
     methods (Access = private)
@@ -174,6 +177,7 @@ classdef cache < handle
             obj.loadedClasses = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.superclassMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.placementMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
+            obj.matrixPathMemo = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.loadRegistry();
         end
     end
@@ -545,6 +549,74 @@ classdef cache < handle
                 s.(blockName) = did2.schema.cache.coerceBlock( ...
                     s.(blockName), {entries.fieldDef});
             end
+        end
+
+        function paths = matrixFieldPaths(obj, s)
+            % matrixFieldPaths - where S's class declares a `matrix` field.
+            %
+            %   PATHS = obj.matrixFieldPaths(S) returns a cell of paths, each a
+            %   cellstr of field names from the document root (block first),
+            %   to every field of type `matrix` in S's class and value kind --
+            %   e.g. {'method','parameters','matrix'}. A step through an
+            %   array of structures is a step through each of its elements.
+            %   Empty when the class is unknown here or declares none.
+            %
+            %   WHY: did2.document/toJSON writes a `matrix` value with every
+            %   dimension present (data_body AMENDMENT 4, did-schema #88:
+            %   "row-major as JSON nested arrays"), because `jsonencode`
+            %   writes a 1xN row and an Nx1 column alike as a flat array and
+            %   `jsondecode` reads every flat array back as a COLUMN -- so a
+            %   row would come back transposed. The writer needs the schema to
+            %   know which values are matrices, as rehydrate needs it to know
+            %   which are arrays of structures. Class and kind are resolved
+            %   exactly as rehydrate resolves them.
+            arguments
+                obj
+                s (1,1) struct
+            end
+            paths = {};
+            className = '';
+            if isfield(s, 'document_class') && isstruct(s.document_class) ...
+                    && isfield(s.document_class, 'class_name')
+                className = char(s.document_class.class_name);
+            end
+            if isempty(className)
+                return;
+            end
+            unknownKey = ['?' className];
+            if isKey(obj.matrixPathMemo, unknownKey)
+                return;
+            end
+            if ~obj.hasClass(className)
+                obj.matrixPathMemo(unknownKey) = {};
+                return;
+            end
+            kind = '';
+            if isfield(s.document_class, 'superclasses')
+                try
+                    kind = obj.documentValueKind(className, ...
+                        obj.superclassClassNames(s.document_class.superclasses));
+                catch
+                    kind = '';   % validateDocument reports a bad kind
+                end
+            end
+            memoKey = [className '|' kind];
+            if isKey(obj.matrixPathMemo, memoKey)
+                paths = obj.matrixPathMemo(memoKey);
+                return;
+            end
+            info = obj.resolvePlacementFor(className, kind);
+            for k = 1:numel(info.blocksContributed)
+                blockName = info.blocksContributed{k};
+                if ~isKey(info.fieldsByBlock, blockName)
+                    continue;
+                end
+                entries = info.fieldsByBlock(blockName);
+                found = did2.schema.cache.matrixPathsIn( ...
+                    {entries.fieldDef}, {blockName});
+                paths = [paths, found]; %#ok<AGROW>
+            end
+            obj.matrixPathMemo(memoKey) = paths;
         end
 
         function tf = hasClass(obj, className)
@@ -1604,7 +1676,14 @@ classdef cache < handle
             % three '..'s land at the *sibling* of DID-matlab where a
             % did-schema checkout typically lives. (The previous two
             % '..'s expected did-schema *inside* DID-matlab.)
-            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
+            %
+            % V_eta, not V_delta: did-schema #88 deleted schemas/V_alpha ..
+            % V_zeta (OPEN_WORK #128), so V_eta is the only schema set left.
+            % V_eta spreads its classes over stable/, draft/ and deprecated/;
+            % this fallback reads stable/ only. The CI workflows copy all three
+            % tiers into one directory and set DID_SCHEMA_PATH to it, which
+            % wins over this default (above).
+            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_eta', 'stable');
         end
 
         function block = coerceBlock(block, fieldDefs)
@@ -1659,6 +1738,25 @@ classdef cache < handle
             % so the array's field set cannot diverge between elements.
             for k = 1:numel(value)
                 value(k) = did2.schema.cache.coerceBlock(value(k), subDefs);
+            end
+        end
+
+        function paths = matrixPathsIn(fieldDefs, prefix)
+            % matrixPathsIn - the `matrix` fields among FIELDDEFS, recursively,
+            %   each as PREFIX followed by its field names.
+            paths = {};
+            for i = 1:numel(fieldDefs)
+                fdef = fieldDefs{i};
+                if ~isstruct(fdef) || ~isfield(fdef, 'name') || ~isfield(fdef, 'type')
+                    continue;
+                end
+                here = [prefix, {char(fdef.name)}];
+                if strcmp(char(fdef.type), 'matrix')
+                    paths{end+1} = here; %#ok<AGROW>
+                elseif isfield(fdef, 'fields') && ~isempty(fdef.fields)
+                    paths = [paths, did2.schema.cache.matrixPathsIn( ...
+                        did2.schema.cache.asCellOfDefs(fdef.fields), here)]; %#ok<AGROW>
+                end
             end
         end
 

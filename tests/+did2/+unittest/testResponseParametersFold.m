@@ -363,12 +363,12 @@ end
 function testItIsANoOpOnANonVEtaTarget(testCase)
 testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % `harmonic_component_calculation` exists only in V_eta, and this pass is wired
-% into shared harnesses that also run V_delta/V_zeta. `ran` FALSE with every
+% into shared harnesses that also run V_delta. `ran` FALSE with every
 % counter 0 is the off-target reading, distinct from the empty-batch one above.
 r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 [out, rep] = did2.convert.resolveResponseParameters(r, ...
-    'Validate', false, 'TargetVersion', 'V_zeta');
+    'Validate', false, 'TargetVersion', 'V_delta');
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, out.migrated, {});

@@ -23,7 +23,10 @@ function checkRules(cache, className, doc, chain)
 %        parameter_one_form       interaction.method.parameters (and the
 %                                 standalone method's): the same entry --
 %                                 exactly one of `term`, `quantity`, `count`,
-%                                 `text` (`method_parameters` before #88)
+%                                 `text`, `matrix` (`method_parameters`
+%                                 before #88; `matrix` since #88, data_body
+%                                 AMENDMENT 4, where the whole array is ONE
+%                                 value)
 %        parameter_variable_once  method.parameters: variable "UNIQUE within
 %                                 the list"
 %        parameters_not_both      interaction.method: "A statement carries
@@ -129,7 +132,7 @@ if isstruct(conditions)
         given = valueForms(conditions(k));
         if numel(given) ~= 1
             violated('conditions_one_value', className, sprintf( ...
-                'condition %d carries %d value forms (%s); exactly one of term, quantity, count, text.', ...
+                'condition %d carries %d value forms (%s); exactly one of term, quantity, count, text, matrix.', ...
                 k, numel(given), strjoin(given, ', ')));
         end
         n = valueCount(conditions(k), given{1});
@@ -167,7 +170,7 @@ for b = 1:numel(blocks)
         given = valueForms(params(k));
         if numel(given) ~= 1
             violated('parameter_one_form', className, sprintf( ...
-                'parameter %d carries %d value forms (%s); exactly one of term, quantity, count, text.', ...
+                'parameter %d carries %d value forms (%s); exactly one of term, quantity, count, text, matrix.', ...
                 k, numel(given), strjoin(given, ', ')));
         end
         if valueCount(params(k), given{1}) ~= 1
@@ -367,7 +370,7 @@ arguments
 end
 
 given = {};
-for f = {'term', 'quantity', 'count', 'text'}
+for f = {'term', 'quantity', 'count', 'text', 'matrix'}
     if isfield(entry, f{1}) && ~isAbsent(entry.(f{1}))
         given{end+1} = f{1}; %#ok<AGROW>
     end
@@ -386,6 +389,8 @@ switch form
     case 'quantity'
         n = 0;
         if isstruct(v) && isfield(v, 'value'); n = numel(v.value); end
+    case 'matrix'
+        n = double(~isAbsent(v));   % the whole array is ONE value (AMENDMENT 4)
     case 'text'
         n = double(~isAbsent(v));
         if ischar(v) && size(v, 1) > 1; n = size(v, 1); end

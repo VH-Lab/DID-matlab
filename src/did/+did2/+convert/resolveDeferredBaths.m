@@ -31,14 +31,12 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   BATCH-PASS-EMITS: stimulus_bath -> document: session_relative_reference,
 %       dose_manipulation, term_observation
 %
-%   SCOPE OF THAT LINE: it states the V_eta path (makeBathVEta, :396), which is
-%   what the corpus harness runs -- runCorpusDiscovery.m:46 defaults
-%   `TargetVersion` to 'V_eta'. THIS FILE'S DEFAULT IS 'V_zeta', and on that
-%   branch makeBath (:341) emits `bath` + `pharmacological_manipulation`
-%   instead. Those are V_zeta classes with no V_eta home, so they are
-%   deliberately NOT declared: the ledger this declaration feeds is the V_eta
-%   one, and naming them there would credit a class V_eta retired.
-%   `term_observation` is CONDITIONAL (:462-466, only when the source names a
+%   SCOPE OF THAT LINE: V_eta is the only path. The V_zeta branch (makeBath
+%   emitting `bath` + `pharmacological_manipulation`) was deleted with
+%   +migrators_e/+migrators_i (did-schema #88, OPEN_WORK #128): only
+%   +migrators_j.stimulus_bath defers a bath now, so no other target can
+%   reach this pass with work to do.
+%   `term_observation` is CONDITIONAL (makeBathVEta, only when the source names a
 %   location); the declaration states what the pass can emit, not what every
 %   document produces.
 %   ---------------------------------------------------------------------
@@ -55,8 +53,11 @@ function [result, report] = resolveDeferredBaths(result, options)
 %     Validate      (1,1 logical, default true) - forwarded to the v1_to_v2
 %                   re-validation of the assembled bodies.
 %     SchemaCache   ([] or a did2.schema.cache handle, default []) - forwarded.
-%     TargetVersion (1,:) char, default 'V_zeta') - the migration target the
-%                   assembled bodies are tagged with (Brainstorm I).
+%     TargetVersion (1,:) char, default 'V_eta') - the migration target the
+%                   assembled bodies are tagged with. Only 'V_eta' assembles;
+%                   any other target counts each deferred bath under
+%                   refused_bath_assembly_failed (none can occur: only
+%                   +migrators_j defers a bath).
 %
 %   ---------------------------------------------------------------------
 %   THE REPORT, AND THE BARE `catch` IT REPLACES
@@ -113,7 +114,7 @@ arguments
     result (1,1) struct
     options.Validate (1,1) logical = true
     options.SchemaCache = []
-    options.TargetVersion (1,:) char = 'V_zeta'
+    options.TargetVersion (1,:) char = 'V_eta'
 end
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
@@ -378,53 +379,15 @@ function bodies = makeBath(v1Body, subjectId, targetVersion)
 %   Strict J (V_eta) retired the `bath`/`pharmacological_manipulation` family
 %   (D8): a bath is a delivered substance -> a `dose_manipulation`
 %   subject_manipulation leaf, exactly as migrators_j.treatment routes a `bath`
-%   keyword. Earlier targets (V_zeta/E) keep the `bath` class.
-if strcmp(targetVersion, 'V_eta')
-    bodies = makeBathVEta(v1Body, subjectId);
-    return;
+%   keyword. The V_zeta/V_epsilon branch that kept the `bath` class was deleted
+%   with did-schema #88 (OPEN_WORK #128).
+if ~strcmp(targetVersion, 'V_eta')
+    error('did2:convert:unsupportedTarget', ...
+        ['resolveDeferredBaths assembles V_eta only; TargetVersion "%s" has ' ...
+         'no bath model (V_epsilon/V_zeta were deleted, did-schema #88).'], ...
+        targetVersion);
 end
-
-sessionId = baseField(v1Body, 'session_id', '');
-datestamp = baseField(v1Body, 'datestamp', '');
-bathId    = baseField(v1Body, 'id', did.ido.unique_id());
-mixture   = parseMixture(v1Body);
-
-% session_relative_reference('during'): the ordinal fallback anchor.
-anchorId = did.ido.unique_id();
-anchorBody = struct();
-anchorBody.document_class = struct('class_name', 'session_relative_reference', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
-    'schema_version', targetVersion);
-% Session identity rides on base.session_id; no redundant session_id edge
-% (it only produced discovery-mode orphans). See V_zeta
-% session_relative_reference (depends_on now empty).
-anchorBody.depends_on = struct('name', {}, 'value', {});
-anchorBody.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'creation_timestamp', datestamp);
-anchorBody.time_reference = struct('is_approximate', true);
-anchorBody.session_relative_reference = struct('relation', 'during');
-
-bathBody = struct();
-bathBody.document_class = struct('class_name', 'bath', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'pharmacological_manipulation', ...
-        'class_version', '1.0.0'), ...
-    'schema_version', targetVersion);
-bathBody.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-bathBody.base = struct('id', bathId, 'session_id', sessionId, ...
-    'name', 'migrated_bath', 'creation_timestamp', datestamp);
-if strcmp(targetVersion, 'V_zeta')
-    bathBody.subject_interaction = struct( ...
-        'method', struct('node', '', 'name', ''), ...
-        'variable', primaryChemical(mixture), ...
-        'target_structure', {struct('node', {}, 'name', {})});
-    bathBody.manipulation = struct('notes', '');
-end
-bathBody.pharmacological_manipulation = struct('mixture', mixture);
-bathBody.bath = struct('kind', 'drug', 'location', locationTerm(v1Body));
-bodies = {anchorBody, bathBody};
+bodies = makeBathVEta(v1Body, subjectId);
 end
 
 function bodies = makeBathVEta(v1Body, subjectId)

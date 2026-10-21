@@ -10,6 +10,16 @@ function s = oneValueEntry(variable, forms, opts, ruleName)
 %     quantity   {value, source_value}               OPTS.Value (+ SourceValue)
 %     count      an integer                          OPTS.Count
 %     text       char                                OPTS.Text
+%     matrix     a numeric N-D array, as ONE value   OPTS.Matrix
+%
+%   MATRIX (data_body AMENDMENT 4, did-schema #88) holds a whole numeric
+%   array -- a colour palette n x 3, a weight vector, a 35-number seed -- as
+%   ONE value of VARIABLE, in Unit. It carries no SourceValue (an array has no
+%   source spelling to keep). It is stored as double, its shape kept: did2's
+%   JSON writer (did2.document/toJSON) writes it row-major as nested arrays
+%   with every dimension present, so a 1xN row, an Nx1 column and an n x 3
+%   palette each read back as they were written. A logical array is stored as
+%   0/1 doubles.
 %
 %   SourceValue is stored as TEXT. Give the source's own spelling when there
 %   is one; a number is written as the shortest decimal that reads back to it.
@@ -47,6 +57,13 @@ one = opts.(form);
 switch form
     case 'Term'
         isOne = ischar(one) || (isstring(one) && isscalar(one)) || (isstruct(one) && isscalar(one));
+    case 'Matrix'
+        % the whole array is ONE value of the variable, whatever its size
+        if ~((isnumeric(one) || islogical(one)) && isreal(one))
+            error('did2:build:typeMismatch', ...
+                '%s: ''Matrix'' is a real numeric array.', ruleName);
+        end
+        isOne = true;
     case 'Text'
         isOne = (ischar(one) && size(one, 1) <= 1) || (isstring(one) && isscalar(one));
         if ~isOne
@@ -66,7 +83,8 @@ end
 numeric = any(strcmp(form, {'Value', 'Quantity'}));
 if ~isAbsent(opts.SourceValue)
     if ~numeric
-        error('did2:build:ruleViolated', '''SourceValue'' applies only to a number (''%s'').', ...
+        error('did2:build:ruleViolated', ...
+            '''SourceValue'' applies only to a number (''%s''); a ''Matrix'' carries none.', ...
             strjoin(intersect(forms, {'Value', 'Quantity'}, 'stable'), ''' / '''));
     end
     if (isnumeric(opts.SourceValue) || islogical(opts.SourceValue)) && isscalar(opts.SourceValue)
@@ -76,9 +94,9 @@ if ~isAbsent(opts.SourceValue)
             '''SourceValue'' is the text the source wrote ("1e-3", "0.030"), or one number.');
     end
 end
-if (~isAbsent(opts.Unit) || ~isAbsent(opts.SourceUnit)) && ~(numeric || strcmp(form, 'Count'))
+if (~isAbsent(opts.Unit) || ~isAbsent(opts.SourceUnit)) && ~(numeric || any(strcmp(form, {'Count', 'Matrix'})))
     error('did2:build:ruleViolated', ...
-        '''Unit''/''SourceUnit'' apply only to a number or a count.');
+        '''Unit''/''SourceUnit'' apply only to a number, a count or a matrix.');
 end
 
 s = struct('variable', {variable});
@@ -92,6 +110,8 @@ switch form
         s.count = one;
     case 'Text'
         s.text = char(one);
+    case 'Matrix'
+        s.matrix = double(one);
     otherwise
         q = struct('value', one);
         if ~isAbsent(opts.SourceValue)

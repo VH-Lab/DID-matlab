@@ -485,7 +485,7 @@ out = runJ({sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
             elementEpochBody('ee_0', 'sess_A', 't00069', 'el_1')});
 before = numel(out.migrated);
 [out, rep] = did2.convert.epochMint(out, ...
-    'Validate', false, 'TargetVersion', 'V_zeta');
+    'Validate', false, 'TargetVersion', 'V_delta');
 verifyFalse(testCase, rep.ran, 'a non-V_eta target must report that it did not run');
 verifyEqual(testCase, numel(out.migrated), before);
 end
