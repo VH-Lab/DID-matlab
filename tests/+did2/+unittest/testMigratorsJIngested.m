@@ -116,22 +116,23 @@ end
 
 function assumeVEtaSchemas(testCase)
 %ASSUMEVETASCHEMAS Skip unless the schema cache can resolve the V_eta classes.
-%   installSchemaPath only checks that SOME folder of *.json exists, so a
-%   V_delta-only checkout would satisfy it and then fail these tests for the
-%   wrong reason. Probing the two classes the folds actually emit turns that into
-%   an honest skip.
+%   UPDATED for did-schema #88: it probes what the folds emit on #88 -- the
+%   relative_time_reference lift and the restored did_v1 tombstone the
+%   metadata document passes through to. (`acquisition_metadata_file` was
+%   retired by #73 item 61; probing it skipped every test here.)
 did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the V_eta validation tests');
 try
     cache = did2.schema.cache.shared();
-    cache.getClass('acquisition_metadata_file');
-    cache.getClass('relative_reference');
+    cache.getClass('relative_time_reference');
+    cache.getClass('daqmetadatareader_epochdata_ingested');
 catch err
     assumeFail(testCase, ...
         ['DID_SCHEMA_PATH does not resolve the V_eta ingested-payload ' ...
          'targets (' err.message ').']);
 end
 end
+
 
 function names = fieldNamesOf(cache, className)
 %FIELDNAMESOF Top-level field names declared anywhere in CLASSNAME's chain.
@@ -295,34 +296,32 @@ verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
 function testMetadataIngestedFoldsWhenTheEpochEdgeIsPresent(testCase)
+% INVERTED for did-schema #88, which RETIRED the fold target
+% `acquisition_metadata_file` (#73 item 61: the bytes become an opaque_body of
+% the stimulator's term_manipulation, an NDI second-pass need). Even with the
+% epoch edge present the migrator now DECLINES: the document comes back
+% unchanged and passes through as its did_v1 tombstone.
 out = runJ(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
-    'acquisition_metadata_file');
-verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
-% base.id PRESERVED (T10)
+    'daqmetadatareader_epochdata_ingested');
 verifyEqual(testCase, doc.get('base.id'), 'amf_1');
-verifyEqual(testCase, doc.get('base.session_id'), 'sess_09');
-% BOTH required edges populated -- the whole point of the guard
-verifyEqual(testCase, depVal(doc, 'acquisition_metadata_reader_id'), 'mdr_1');
-verifyEqual(testCase, depVal(doc, 'epoch_id'), 'epoch_doc_1');
-% the bytes, which are the entire content of the class
+verifyEqual(testCase, depVal(doc, 'daqmetadatareader_id'), 'mdr_1');
 verifyEqual(testCase, doc.get('files.file_list'), {'data.bin'});
-% the class declares no fields but is CONCRETE, so the empty block must exist
-verifyTrue(testCase, isfield(doc.toStruct(), 'acquisition_metadata_file'));
+verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
+
 function testMetadataFoldDropsTheEpochidBlockForTheEdge(testCase)
-% acquisition_metadata_file does NOT inherit `epochid`, so carrying the block
-% over would trip did2:validation:undeclaredBlock. The epoch attribution is not
-% lost -- it moves from the string to the edge, which is the whole reason the
-% fold is gated on the edge existing.
+% INVERTED for #88 with the test above: nothing folds, so the epochid block --
+% the document's only epoch attribution on the passthrough -- is KEPT.
 out = runJ(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
 s = out.migrated{1}.toStruct();
-verifyFalse(testCase, isfield(s, 'epochid'));
-verifyEqual(testCase, depVal(out.migrated{1}, 'epoch_id'), 'epoch_doc_1');
+verifyTrue(testCase, isfield(s, 'epochid'));
+verifyEqual(testCase, out.migrated{1}.get('epochid.epochid'), 't00001');
 end
+
 
 function testMetadataIngestedWithNoReaderEdgePassesThrough(testCase)
 v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
@@ -346,17 +345,19 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
 end
 
 function testMetadataIngestedReadsTheFileSpellingNDIAlsoUses(testCase)
-% did2.validate.fileList accepts `files.file_list` and `file.file_list`; the
-% migrator's guard has to agree with the auditor or a real document could be
-% passed through for a reason the audit does not report.
+% A document written with NDI's other spelling (`file`, not `files`) still
+% reaches the same disposition. UPDATED for #88: that disposition is the
+% passthrough.
 v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
 v1 = rmfield(v1, 'files');
 v1.file = struct('file_list', {{'data.bin'}});
 out = runJ(v1);
+verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
-    'acquisition_metadata_file');
-verifyEqual(testCase, out.migrated{1}.get('files.file_list'), {'data.bin'});
+    'daqmetadatareader_epochdata_ingested');
+verifyEqual(testCase, out.migrated{1}.get('base.id'), 'amf_1');
 end
+
 
 % ===================== daqreader_epochdata_ingested ========================
 
@@ -380,7 +381,7 @@ verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
 ref = refs{1};
-verifyEqual(testCase, depVal(ref, 'relative_to'), 'epoch_doc_1');
+verifyEqual(testCase, depVal(ref, 'referent_id'), 'epoch_doc_1');
 % INVERTED for #65 increment 2. THREE things this block used to assert are now
 % wrong, and two of them were wrong before the change as well:
 %   * `value.clock` was read as a bare CHAR while the schema has typed it
@@ -392,12 +393,12 @@ verifyEqual(testCase, depVal(ref, 'relative_to'), 'epoch_doc_1');
 %     each other. 0..10 becomes start 0 + duration 10.
 %   * `time_reference.is_approximate` is DEPRECATED (CHANGE 2) and this emitter
 %     no longer writes it at all.
-verifyEqual(testCase, ref.get('relative_reference.value.clock.name'), 'dev_local_time');
-verifyEqual(testCase, ref.get('relative_reference.value.start.seconds'), 0);
-val = ref.get('relative_reference.value');
+verifyEqual(testCase, ref.get('relative_time_reference.value.clock.name'), 'dev_local_time');
+verifyEqual(testCase, ref.get('relative_time_reference.value.start.seconds'), 0);
+val = ref.get('relative_time_reference.value');
 verifyFalse(testCase, isfield(val, 'end'));
 verifyEqual(testCase, val.duration.seconds, 10);
-verifyEqual(testCase, val.duration.source_unit, 's');
+verifyEqual(testCase, val.duration.source_unit.name, 'second');   % #88: a registry term
 % dev_local_time is the precise tier (within 0.1 ms). It states NO tolerance, so
 % no clock_tolerance is written -- absence, not a fabricated zero.
 tr = ref.get('time_reference');
@@ -432,7 +433,7 @@ refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 2);
 byClock = containers.Map();
 for k = 1:numel(refs)
-    v = refs{k}.get('relative_reference.value');
+    v = refs{k}.get('relative_time_reference.value');
     % INVERTED for #65 increment 2: the clock is an ontology_term cell, and the
     % pair is (anchor, EXTENT) rather than (start, end). The pairing this test
     % exists to protect -- t0_t1's column k belongs to epochclock{k} -- is
@@ -450,7 +451,7 @@ function testReaderIngestedAcceptsTheDegenerateVectorT0T1(testCase)
 out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0 10]), 'epoch_doc_1'));
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
-val = refs{1}.get('relative_reference.value');
+val = refs{1}.get('relative_time_reference.value');
 verifyEqual(testCase, val.start.seconds, 0);
 % INVERTED for #65 increment 2: the extent is `duration` (t1 - t0), not `end`.
 verifyEqual(testCase, val.duration.seconds, 10);
@@ -484,7 +485,7 @@ out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time', 'no_time'}, t0t1), 'epoch_doc_1'));
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'dev_local_time');
+verifyEqual(testCase, refs{1}.get('relative_time_reference.value.clock.name'), 'dev_local_time');
 end
 
 function testApproxClockDeEncodesToAClockToleranceNotABoolean(testCase)
@@ -498,10 +499,10 @@ function testApproxClockDeEncodesToAClockToleranceNotABoolean(testCase)
 out = runJ(withEpochEdge(readerIngestedV1({'approx_utc'}, [0; 10]), 'epoch_doc_1'));
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'utc');
+verifyEqual(testCase, refs{1}.get('relative_time_reference.value.clock.name'), 'utc');
 verifyEqual(testCase, refs{1}.get('time_reference.clock_tolerance.seconds'), 5);
 % and the magnitude did NOT collapse back into a flag on either value cell
-val = refs{1}.get('relative_reference.value');
+val = refs{1}.get('relative_time_reference.value');
 verifyFalse(testCase, isfield(val, 'approximate'));
 verifyFalse(testCase, logical(val.start.approximate));
 end
@@ -511,7 +512,7 @@ function testReferenceOmitsRelationWhenItHasAMetric(testCase)
 % offset. Emitting both would assert the same fact twice, in two vocabularies.
 out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0; 10]), 'epoch_doc_1'));
 refs = docsOfClass(out, 'relative_time_reference');
-val = refs{1}.get('relative_reference.value');
+val = refs{1}.get('relative_time_reference.value');
 verifyFalse(testCase, isfield(val, 'relation'));
 end
 
@@ -541,7 +542,7 @@ verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'dev_local_time');
+verifyEqual(testCase, refs{1}.get('relative_time_reference.value.clock.name'), 'dev_local_time');
 % the de-encode still happened
 src = docsOfClass(out, 'daqreader_epochdata_ingested');
 verifyEqual(testCase, ...
@@ -585,12 +586,12 @@ out = runJ(withEpochEdge(imageIngestedV1(), 'epoch_doc_7'));
 verifyEqual(testCase, numel(out.migrated), 2);
 refs = docsOfClass(out, 'relative_time_reference');
 verifyEqual(testCase, numel(refs), 1);
-verifyEqual(testCase, depVal(refs{1}, 'relative_to'), 'epoch_doc_7');
+verifyEqual(testCase, depVal(refs{1}, 'referent_id'), 'epoch_doc_7');
 % INVERTED for #65 increment 2: `value.end` is gone, the extent is
 % `value.duration` = t1 - t0. The fixture's epoch runs 0 .. 12.5 s, so the span
 % is the same number here -- which is exactly why the assertion has to name the
 % new field rather than the old value.
-verifyEqual(testCase, refs{1}.get('relative_reference.value.duration.seconds'), 12.5);
+verifyEqual(testCase, refs{1}.get('relative_time_reference.value.duration.seconds'), 12.5);
 end
 
 function testImageIngestedEmitsNoSubjectlessObservation(testCase)
@@ -792,14 +793,22 @@ end
 % ===================== under the real V_eta validator ======================
 
 function testMetadataFoldValidatesUnderVEta(testCase)
+% THE INSTRUMENT for the inversions above. The metadata fold declines because
+% #88 has no `acquisition_metadata_file`. If the class comes back, this goes
+% red and the fold in +migrators_j/daqmetadatareader_epochdata_ingested.m is
+% to be re-armed rather than left declining.
 assumeVEtaSchemas(testCase);
-out = runJValidated(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
-verifyEqual(testCase, out.summary.quarantine_count, 0, ...
-    reasonsOf(out));
-verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
-    'acquisition_metadata_file');
+cache = did2.schema.cache.shared();
+gone = false;
+try
+    cache.getClass('acquisition_metadata_file');
+catch
+    gone = true;
 end
+verifyTrue(testCase, gone, ...
+    'acquisition_metadata_file is back in the schema -- re-arm the metadata fold');
+end
+
 
 function testMetadataPassthroughValidatesUnderVEta(testCase)
 % The passthrough is only SAFE because the source tombstone was repaired from
@@ -820,15 +829,15 @@ verifyEqual(testCase, numel(docsOfClass(out, 'relative_time_reference')), 1);
 end
 
 function testTheFoldLeavesNoEmptyRequiredEdgeAndNoFragment(testCase)
-% The two instruments that would see this family failing quietly. An
-% acquisition_metadata_file with an empty epoch_id would validate, so
-% quarantine_count alone proves nothing.
+% UPDATED for #88: on the passthrough (the only disposition now) nothing is
+% emitted with an empty required edge, a vacuous field, a fragment, or a
+% declared-absent file.
 assumeVEtaSchemas(testCase);
-out = runJValidated(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
+out = runJValidated(metadataIngestedV1());
+verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
 verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
 verifyEqual(testCase, out.summary.fragment_count, 0);
-% and the declared payload is actually carried (#64's first direction)
 verifyEqual(testCase, out.file_list_audit.declared_absent_count, 0);
 end
 
