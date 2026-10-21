@@ -105,8 +105,11 @@ for i = 1:numel(out)
     b = out{i};
     if ~isfield(b, 'depends_on') || ~isstruct(b.depends_on); continue; end
     for k = 1:numel(b.depends_on)
-        if strcmp(b.depends_on(k).name, 'subject_id')
-            verifyEqual(testCase, b.depends_on(k).value, 'subj-9');
+        % #88: the subject edge is `entity_id`, written {name, document_id}
+        if strcmp(b.depends_on(k).name, 'entity_id')
+            d = b.depends_on(k);
+            if isfield(d, 'document_id'); v = d.document_id; else; v = d.value; end
+            verifyEqual(testCase, v, 'subj-9');
             sawSubject = true;
         end
     end
