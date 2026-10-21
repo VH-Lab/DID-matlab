@@ -79,8 +79,16 @@ function blk = bodyBlock(doc)
 %   and the condition under test look identical. toStruct + isfield is what
 %   the demo fold uses for the same job (testMigratorsJDemoFold.m:147-149).
 s = doc.toStruct();
-% #88: the session is an `entity` of type session; its block is `entity`
-if isfield(s, 'entity'); s.session = s.entity; end
+% #88: the session is an `entity` of type session; its block is `entity`.
+% `entity.type` is #88's own KIND field (always 'session' here), not the V_zeta
+% `session.type` invention the test hunts, so it is set aside before the check.
+if isfield(s, 'entity')
+    s.session = s.entity;
+    if isfield(s.session, 'type') && isstruct(s.session.type) ...
+            && strcmp(char(s.session.type.name), 'session')
+        s.session = rmfield(s.session, 'type');
+    end
+end
 if ~isfield(s, 'session')
     blk = struct();
     return;
