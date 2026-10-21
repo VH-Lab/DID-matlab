@@ -150,6 +150,13 @@ arguments
     options.TargetVersion (1,:) char = 'V_eta'
 end
 
+% A batch pass builds documents from the v1 source's own terms, exactly as a
+% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
+% runs, as it is there, and restored after (unregistered terms are still
+% collected when did2.build.unregisteredTerms('-collect') is on).
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+
 % DENOMINATOR FIRST, and unconditionally. Every field is defined before a
 % single document is read, so "did not run" and "ran and removed nothing" are
 % different readings of the same struct rather than the same reading.
