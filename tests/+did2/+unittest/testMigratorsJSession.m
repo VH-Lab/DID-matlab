@@ -79,6 +79,8 @@ function blk = bodyBlock(doc)
 %   and the condition under test look identical. toStruct + isfield is what
 %   the demo fold uses for the same job (testMigratorsJDemoFold.m:147-149).
 s = doc.toStruct();
+% #88: the session is an `entity` of type session; its block is `entity`
+if isfield(s, 'entity'); s.session = s.entity; end
 if ~isfield(s, 'session')
     blk = struct();
     return;
@@ -173,7 +175,7 @@ else
     verifyEqual(testCase, doc.get('base.id'), 'sess_doc_1');
 end
 verifyEqual(testCase, doc.get('base.session_id'), 'sess_09');
-verifyEqual(testCase, doc.get('session.local_identifier'), 'ts_2024');
+verifyEqual(testCase, doc.get('entity.local_identifier'), 'ts_2024');
 end
 
 function testOnTheEdgeShapeTheSessionIsReIdToItsSessionId(testCase)
@@ -220,7 +222,7 @@ for f = {'type', 'date', 'purpose'}
     verifyFalse(testCase, isfield(blk, f{1}), ...
         sprintf('session.%s survived; it is undeclared and will quarantine', f{1}));
 end
-verifyEqual(testCase, out.migrated{1}.get('session.local_identifier'), 'ts_2024');
+verifyEqual(testCase, out.migrated{1}.get('entity.local_identifier'), 'ts_2024');
 end
 
 function testTheRenamedDocumentValidates(testCase)
@@ -230,7 +232,7 @@ assumeVEtaSchemas(testCase);
 out = runJValidated(sessionVZetaVintage('ts_2024'));
 verifyEmpty(testCase, out.quarantine, reasonsOf(out));
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
-verifyEqual(testCase, out.migrated{1}.get('session.local_identifier'), 'ts_2024');
+verifyEqual(testCase, out.migrated{1}.get('entity.local_identifier'), 'ts_2024');
 end
 
 function testAnEmptyReferenceQuarantinesRatherThanBeingInvented(testCase)
