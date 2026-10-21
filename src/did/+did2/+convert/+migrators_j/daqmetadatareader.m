@@ -110,59 +110,20 @@ if isempty(implClass) && isempty(filePattern)
     return;
 end
 
-sessionId = '';
-datestamp = '';
-if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    sessionId = jGetChar(preBody.base, 'session_id');
-    datestamp = jGetChar(preBody.base, 'datestamp');
-end
-
-% v1 records no version for a metadata reader -- the template has no version
-% field -- so the entity carries a name only; the corpus-wide merge by
-% (name, version) is deferred to the NDI second pass (private/jSoftware.m).
-%
-% jSoftware is called ONLY with a non-empty name. It does return [] for an
-% empty one, but its `name (1,:) char` arguments block is a size constraint a
-% 0x0 '' does not obviously satisfy, and there is no MATLAB here to settle it;
-% the branch is cheaper than the question.
-software = [];
+sessionId = jSid(preBody);
+datestamp = jStamp(preBody);
+software = {};
 swId     = '';
 if ~isempty(implClass)
     [software, swId] = jSoftware(implClass, '', '', sessionId, datestamp);
 end
-
-reader = struct();
-reader.document_class = struct('class_name', 'acquisition_metadata_reader', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-
-if isempty(swId)
-    reader.depends_on = struct('name', {}, 'value', {});
-else
-    reader.depends_on = struct('name', 'software_id', 'value', swId);
-end
-
-% base carried verbatim: id PRESERVED (see above), together with session_id,
-% name and datestamp.
-if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    reader.base = preBody.base;
-else
-    reader.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-        'name', '', 'datestamp', '2024-01-01T00:00:00.000Z');
-end
-
-% The field is OMITTED rather than written blank when the reader declares no
-% pattern: a blank required-ish field is exactly what did2.validate.silentLoss
-% counts as vacuous, and the schema's blank_value is '' either way.
-amr = struct();
-if ~isempty(filePattern)
-    amr.metadata_file_pattern = filePattern;
-end
-reader.acquisition_metadata_reader = amr;
-
-bodies = {reader};
-if ~isempty(software)
-    bodies{end+1} = software;
-end
+% did-schema #88: `acquisition_metadata_reader` is `epoch_parameter_reader`;
+% the tab-separated file parameter is its `file_regex`.
+edges = struct();
+if ~isempty(swId); edges.software_id = swId; end
+f = struct();
+if ~isempty(filePattern); f.file_regex = filePattern; end
+o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
+reader = did2.build.document('epoch_parameter_reader', f, o{:});
+bodies = [{reader}, software];
 end

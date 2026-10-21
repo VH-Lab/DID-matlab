@@ -62,34 +62,23 @@ if isnumeric(numValue) && ~isempty(numValue) && isfinite(numValue(1))
     leaf = jQuantityLeaf(hay, wordBoundary);
 end
 
+% did-schema #88: built through did2.build (jStatement); '<kind>_observation'
+% is the `observation` direction with that value kind as a mixin.
+entityId = jDependency(preBody, 'subject_id');
 if isempty(leaf) && looksLikeCURIE(strValue)
-    % the value IS an ontology term (the consumer's nested-CURIE branch)
-    obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-        {}, variable, {'subject_id'});
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-    obs.term = struct('value', jOntologyTerm(strValue, ''));
+    obs = jStatement(preBody, 'term_observation', entityId, variable, ...
+        did2.build.term(strValue, ''), 'TimeReferenceIds', {anchor.base.id});
     bodies = {obs, anchor};
     return;
 end
-
 if isempty(leaf)
-    % No honest leaf -- date of birth, an untyped number, or free prose. The
-    % caller carries the document through; the unconverted-document counter
-    % makes that visible.
     return;
 end
-
-obs = jStartInteraction(preBody, [leaf '_observation'], 'subject_observation', ...
-    {leaf}, variable, {'subject_id'});
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-obs.subject_statement.storage_mode = 'inline';
-% unit deliberately unstated -- see the header.
-obs.(leaf) = struct('value', struct('source_unit', '', ...
-    'source_value', double(numValue(1)), 'approximate', false));
+obs = jStatement(preBody, [leaf '_observation'], entityId, variable, ...
+    jQuantity(leaf, double(numValue(1)), '', 'approximate', false), ...
+    'TimeReferenceIds', {anchor.base.id});
 bodies = {obs, anchor};
 end
-
-% ===================== small helpers =======================================
 
 function tf = looksLikeCURIE(s)
 tf = ~isempty(s) && ischar(s) ...

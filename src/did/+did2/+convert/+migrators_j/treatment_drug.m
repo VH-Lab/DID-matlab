@@ -27,24 +27,22 @@ block = preBody.treatment_drug;
 chemicals = parseMixtureTable(block);
 variable  = chemicals(1).substance;   % the primary drug is the spine identity
 
-dose = jStartInteraction(preBody, 'dose_manipulation', ...
-    'subject_manipulation', {'dose'}, variable);
-dose.dose = struct('value', jDoseValue(chemicals));
-
+% did-schema #88: chemical + formulation documents, and the dose names the
+% formulation (jDoseBodies).
 anchor = jSessionAnchor(preBody, 'during');
-dose.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
+[parts, formulationId] = jDoseBodies(preBody, chemicals);
+dose = jStatement(preBody, 'dose_manipulation', jSubjectOf(preBody), variable, [], ...
+    'TimeReferenceIds', {anchor.base.id}, ...
+    'Edges', struct('formulation_id', formulationId), 'Id', char(preBody.base.id));
+bodies = [{dose}, parts];
 
-bodies = {dose};
-% universalRenames snake_cases block fields (location_ontologyNode ->
-% location_ontology_node); read the snake form first, camelCase as a fallback.
 siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'location_ontology_node', 'location_ontologyNode'}), ...
     jGetCharAny(block, {'location_name'}));
 if ~isempty(siteTerm.node) || ~isempty(siteTerm.name)
-    obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-        {}, jOntologyTerm('', 'anatomical location'), {'subject_id'}, true);
-    obs.term = struct('value', siteTerm);
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
+    obs = jStatement(preBody, 'term_observation', jSubjectOf(preBody), ...
+        did2.build.label('anatomical location'), siteTerm, ...
+        'TimeReferenceIds', {anchor.base.id});
     bodies{end+1} = obs;
 end
 bodies{end+1} = anchor;
@@ -58,7 +56,7 @@ function chemicals = parseMixtureTable(block)
 %   {substance, amount} records `dose.value.formulation.chemicals` wants. Always
 %   returns >= 1 record (a blank one if nothing parses) so the document
 %   validates; the blank is the curator's signal.
-chemicals = struct('substance', {}, 'amount', {});
+chemicals = struct('substance', {}, 'source_value', {}, 'source_unit', {});
 raw = jGetChar(block, 'mixture_table');
 if ~isempty(raw)
     lines = strsplit(raw, newline);
@@ -68,15 +66,16 @@ if ~isempty(raw)
             continue;
         end
         substance = jOntologyTerm(strtrim(cols{1}), strtrim(cols{2}));
-        amount = jConcentration();
+        amount = [];
         if numel(cols) >= 3 && ~isempty(strtrim(cols{3}))
-            amount.source_value = str2double(strtrim(cols{3}));
+            amount = str2double(strtrim(cols{3}));
         end
-        chemicals(end+1) = struct('substance', substance, 'amount', amount); %#ok<AGROW>
+        chemicals(end+1) = struct('substance', substance, 'source_value', amount, ...
+            'source_unit', ''); %#ok<AGROW>
     end
 end
 if isempty(chemicals)
     chemicals(end+1) = struct('substance', jOntologyTerm('', ''), ...
-        'amount', jConcentration());
+        'source_value', [], 'source_unit', '');
 end
 end

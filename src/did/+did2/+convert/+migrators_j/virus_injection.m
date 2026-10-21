@@ -25,36 +25,37 @@ block = preBody.virus_injection;
 virusTerm = jOntologyTerm( ...
     jGetCharAny(block, {'virus_ontology_name', 'virus_OntologyName'}), ...
     jGetCharAny(block, {'virus_name'}));
-amount = jConcentration();
+dilution = [];
+dilutionUnit = '';
 if isfield(block, 'dilution') && isnumeric(block.dilution) && ~isempty(block.dilution)
-    amount.source_value = double(block.dilution(1));
-    amount.source_unit = 'dilution';
+    dilution = double(block.dilution(1));
+    dilutionUnit = 'dilution';
 end
-chemicals = struct('substance', virusTerm, 'amount', amount);
-
+chemicals = struct('substance', virusTerm, 'source_value', dilution, ...
+    'source_unit', dilutionUnit);
 diluentNode = jGetCharAny(block, {'diluent_ontology_name', 'diluent_OntologyName'});
 diluentName = jGetCharAny(block, {'diluent_name'});
 if ~isempty(diluentNode) || ~isempty(diluentName)
     chemicals(end+1) = struct('substance', jOntologyTerm(diluentNode, diluentName), ...
-        'amount', jConcentration());
+        'source_value', [], 'source_unit', '');
 end
 
-dose = jStartInteraction(preBody, 'dose_manipulation', ...
-    'subject_manipulation', {'dose'}, virusTerm);
-dose.dose = struct('value', jDoseValue(chemicals));
-
+% did-schema #88: chemical + formulation documents, and the dose names the
+% formulation (jDoseBodies).
 anchor = jSessionAnchor(preBody, 'during');
-dose.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
+[parts, formulationId] = jDoseBodies(preBody, chemicals);
+dose = jStatement(preBody, 'dose_manipulation', jSubjectOf(preBody), virusTerm, [], ...
+    'TimeReferenceIds', {anchor.base.id}, ...
+    'Edges', struct('formulation_id', formulationId), 'Id', char(preBody.base.id));
+bodies = [{dose}, parts];
 
-bodies = {dose};
 siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'virus_location_ontology_name', 'virusLocation_OntologyName'}), ...
     jGetCharAny(block, {'virus_location_name', 'virusLocation_name'}));
 if ~isempty(siteTerm.node) || ~isempty(siteTerm.name)
-    obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-        {}, jOntologyTerm('', 'anatomical location'), {'subject_id'}, true);
-    obs.term = struct('value', siteTerm);
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
+    obs = jStatement(preBody, 'term_observation', jSubjectOf(preBody), ...
+        did2.build.label('anatomical location'), siteTerm, ...
+        'TimeReferenceIds', {anchor.base.id});
     bodies{end+1} = obs;
 end
 bodies{end+1} = anchor;

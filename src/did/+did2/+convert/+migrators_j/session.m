@@ -76,58 +76,37 @@ function v2Body = session(preBody)
 %   STATUS: NOT VERIFIED BY EXECUTION. There is no MATLAB in the authoring
 %   environment, so not one line of this file has been run.
 
+%   did-schema #88: `session` is an `entity` of type session
+%   (V_eta_entity_composition_plan.md sec. 4), and its base.id IS the session
+%   id (V_eta_relation_inheritance_plan.md item 4, signed 2026-10-21: "a
+%   migrated session entity takes the v1 session id as its base.id"), so every
+%   migrated document's `session_id` edge resolves to it. `reference` is its
+%   `local_identifier` (required for type session). The three V_zeta inventions
+%   have nowhere to go and are dropped, as before. A body with no session id
+%   keeps its own id.
+
 arguments
     preBody (1,1) struct
 end
 
-v2Body = preBody;
-
-% THE SESSION ENTITY'S ID IS ITS SESSION ID, on a schema where `session_id` is
-% an edge (did-schema V_eta_relation_inheritance_plan.md, 2026-10-20, built
-% ahead of signature). Every document's `session_id` edge then points at this
-% document, and points at it by the v1 `base.session_id` string it already
-% carries -- so the session document takes that string as its base.id, and
-% its own edge points at itself. Nothing in v1 refers to a session document by
-% its old base.id (v1 joins on the session_id string), so the re-id strands
-% nothing. On the field shape base.id is PRESERVED, as before.
-if sessionIdIsEdge() && isfield(v2Body, 'base') && isstruct(v2Body.base) ...
-        && isfield(v2Body.base, 'session_id') && ~isempty(v2Body.base.session_id)
-    v2Body.base.id = char(v2Body.base.session_id);
+id = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    id = char(preBody.base.id);
 end
-
-if ~isfield(v2Body, 'session') || ~isstruct(v2Body.session) ...
-        || ~isscalar(v2Body.session)
-    return;     % nothing to rewrite; the body passes through as it arrived
+sid = jSid(preBody);
+if ~isempty(sid)
+    id = sid;
 end
-
-blk = v2Body.session;
-
-% The rename. `reference` is copied then removed, so a body that somehow
-% carries BOTH keeps the v1 one -- the source is the authority.
-if isfield(blk, 'reference')
-    blk.local_identifier = blk.reference;
-    blk = rmfield(blk, 'reference');
-end
-
-% The three inventions.
-for f = {'type', 'date', 'purpose'}
-    if isfield(blk, f{1})
-        blk = rmfield(blk, f{1});
+li = '';
+if isfield(preBody, 'session') && isstruct(preBody.session) && isscalar(preBody.session)
+    for f = {'reference', 'local_identifier'}
+        if isfield(preBody.session, f{1}) && ~isempty(preBody.session.(f{1}))
+            li = char(preBody.session.(f{1}));
+            break;
+        end
     end
 end
-
-v2Body.session = blk;
-end
-
-function tf = sessionIdIsEdge()
-% Does the loaded schema store the session id as an EDGE (did-schema
-% V_eta_relation_inheritance_plan.md, 2026-10-20)? A migrator holds no cache
-% handle, so it asks the shared one -- the cache did2.convert.v1_to_v2 also
-% falls back to. False when no schema can be loaded: the historical field shape.
-tf = false;
-try
-    tf = did2.schema.cache.shared().sessionIdIsEdge();
-catch
-    % no schema to ask
-end
+% The value is carried, never invented: an empty reference leaves
+% local_identifier out, and validation quarantines the session (it is required).
+v2Body = jEntity(preBody, 'session', struct('local_identifier', li), 'Id', id);
 end

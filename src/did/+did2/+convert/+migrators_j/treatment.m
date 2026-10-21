@@ -70,12 +70,13 @@ if containsAny(hay, {'date of birth', 'non-survival experiment time', ...
 end
 
 % --- branch dispatch into strict-J leaves (first match wins) -----------
+anchor = jSessionAnchor(preBody, 'during');
 if containsAny(hay, {'cool', 'cold', 'heat', 'warm', 'thermal', 'temperature'})
-    manip = makeTemperatureManipulation(preBody, variable, notesText, numValue);
+    manip = makeTemperatureManipulation(preBody, variable, notesText, numValue, anchor.base.id);
 elseif containsAny(hay, {'inject', 'virus', 'aav', 'tracer', 'drug', ...
         'vehicle', 'bath', 'infusion', 'perfusate'}) ...
         || startsWith(lower(node), 'chebi:')
-    manip = makeDoseManipulation(preBody, variable, notesText, numValue);
+    manip = makeDoseManipulation(preBody, variable, notesText, numValue, anchor.base.id);
 elseif containsAny(hay, {'craniotomy', 'implant', 'lesion', 'perfus', ...
         'eye opening', 'eyelid', 'ear notch', 'ear punch', 'tail clip', ...
         'toe clip', 'whisker', 'suture', 'surgery', 'transection', ...
@@ -83,7 +84,7 @@ elseif containsAny(hay, {'craniotomy', 'implant', 'lesion', 'perfus', ...
         'rear', 'deprivation', 'isolation', 'enrichment', 'housing', ...
         'light', 'dark', 'restriction', 'diet', 'training', 'habituation', ...
         'restraint', 'fast', 'regime'})
-    manip = makeTermManipulation(preBody, variable, notesText);
+    manip = makeTermManipulation(preBody, variable, notesText, anchor.base.id);
 else
     error('did2:convert:unresolvedTreatment', ...
         ['treatment "%s" (%s) could not be routed to a manipulation ', ...
@@ -91,64 +92,49 @@ else
 end
 
 % --- shared session anchor; wire onto the manipulation -----------------
-anchor = jSessionAnchor(preBody, 'during');
-manip.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-
-bodies = {manip};
+v2Body = [manip, {anchor}];
 if ~isempty(siteTerm)
-    obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-        {}, jOntologyTerm('', 'anatomical location'), {'subject_id'}, true);
-    obs.term = struct('value', siteTerm);
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-    bodies{end+1} = obs;
+    obs = jStatement(preBody, 'term_observation', jSubjectOf(preBody), ...
+        did2.build.label('anatomical location'), siteTerm, ...
+        'TimeReferenceIds', {anchor.base.id});
+    v2Body = [v2Body, {obs}];
 end
-bodies{end+1} = anchor;
-v2Body = bodies;
 end
 
-% ===================== destination builders ============================
+% ===================== leaf builders =======================================
+% Each returns a CELL of documents, the manipulation FIRST, and takes the
+% anchor's id: did-schema #88 builds the whole statement at once (did2.build),
+% so the time reference is made before it.
 
-function body = makeTemperatureManipulation(preBody, variable, notesText, numValue)
-body = jStartInteraction(preBody, 'temperature_manipulation', ...
-    'subject_manipulation', {'temperature'}, variable);
-body.subject_manipulation.notes = notesText;
-body.temperature = struct('value', temperatureSeries(numValue));
-end
-
-function body = makeDoseManipulation(preBody, variable, notesText, numValue)
-body = jStartInteraction(preBody, 'dose_manipulation', ...
-    'subject_manipulation', {'dose'}, variable);
-body.subject_manipulation.notes = notesText;
-% the treatment substance is the spine identity AND the (single) dose chemical.
-% Carry a source numeric_value as the amount (otherwise dropped -- only the
-% temperature branch used to consume it); the source unit is left blank for
-% discovery-mode fill-in.
-amount = jConcentration();
-if nargin >= 4 && ~isempty(numValue) && isnumeric(numValue)
-    amount.source_value = double(numValue(1));
-end
-chemicals = struct('substance', variable, 'amount', amount);
-body.dose = struct('value', jDoseValue(chemicals));
-end
-
-function body = makeTermManipulation(preBody, variable, notesText)
-body = jStartInteraction(preBody, 'term_manipulation', ...
-    'subject_manipulation', {}, variable);
-body.subject_manipulation.notes = notesText;
-body.term = struct('value', variable);   % the imposed act term
-end
-
-% ===================== local helpers ===================================
-
-function s = temperatureSeries(numValue)
-% A typed temperature value; series-as-cardinality -> a length-1 series is a
-% single composite. Celsius assumed when a raw number is present (discovery
-% mode refines the source unit).
-s = struct('source_unit', '', 'source_value', 0.0, 'approximate', false);
+function docs = makeTemperatureManipulation(preBody, variable, notesText, numValue, anchorId)
+value = [];
 if ~isempty(numValue) && isnumeric(numValue)
-    s.source_value = double(numValue(1));
-    s.source_unit = 'celsius';
+    value = jQuantity('temperature', double(numValue(1)), 'celsius', 'approximate', false);
 end
+docs = {jStatement(preBody, 'temperature_manipulation', jSubjectOf(preBody), variable, ...
+    value, 'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
+    'Id', char(preBody.base.id))};
+end
+
+function docs = makeDoseManipulation(preBody, variable, notesText, numValue, anchorId)
+% did-schema #88: a dose names a `formulation` document (required
+% `formulation_id`), whose ingredient is a `chemical` -- see jDoseBodies. The
+% amount the source gave (unit unstated) rides on the ingredient entry.
+chem = struct('substance', variable, 'source_value', [], 'source_unit', '');
+if nargin >= 4 && ~isempty(numValue) && isnumeric(numValue)
+    chem.source_value = double(numValue(1));
+end
+[parts, formulationId] = jDoseBodies(preBody, chem);
+dose = jStatement(preBody, 'dose_manipulation', jSubjectOf(preBody), variable, [], ...
+    'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
+    'Edges', struct('formulation_id', formulationId), 'Id', char(preBody.base.id));
+docs = [{dose}, parts];
+end
+
+function docs = makeTermManipulation(preBody, variable, notesText, anchorId)
+docs = {jStatement(preBody, 'term_manipulation', jSubjectOf(preBody), variable, ...
+    variable, 'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
+    'Id', char(preBody.base.id))};
 end
 
 function tf = looksLikeCURIE(s)

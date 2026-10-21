@@ -85,14 +85,13 @@ localId = name;
 if ~isempty(reference); localId = strtrim(sprintf('%s (ref %s)', name, reference)); end
 localId = jEnsureLocalId(localId, preBody);   % subject.local_identifier is REQUIRED
 
-% --- the element as a bare subject (id preserved) ---------------------------
-subjectDoc = struct();
-subjectDoc.document_class = struct('class_name', 'subject', 'class_version', '3.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-subjectDoc.depends_on = struct('name', {}, 'value', {});
-if isfield(preBody, 'base') && isstruct(preBody.base); subjectDoc.base = preBody.base; end
-subjectDoc.subject = struct('local_identifier', localId, 'description', '');
+% --- the element as an entity (id preserved) -------------------------------
+% did-schema #88: one `entity` class with a bound `type`
+% (V_eta_entity_composition_plan.md sec. 4). Which type an element is, is read
+% off its v1 `type` by elementEntityType below -- a PROPOSED mapping (device for
+% a probe, cell for a sorted unit, group for an ensemble), not a signed one.
+subjectDoc = jEntity(preBody, elementEntityType(type), ...
+    struct('local_identifier', localId), 'Id', elementId);
 
 bodies = {subjectDoc};
 
@@ -178,51 +177,40 @@ end
 % ===================== builders ========================================
 
 function a = kindAssertion(preBody, subjectId, variableName, valueName)
-%KINDASSERTION A timeless term_assertion about the element-subject.
-a = struct();
-a.document_class = struct('class_name', 'term_assertion', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'subject_assertion', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-a.depends_on = struct('name', 'subject_id', 'value', subjectId);
-a.base = freshBase(preBody, 'migrated_element_kind');
-a.subject_statement = struct('variable', jOntologyTerm('', variableName), ...
-    'storage_mode', 'inline');
-a.term = struct('value', jOntologyTerm('', valueName));
+a = jStatement(preBody, 'term_assertion', subjectId, ...
+    did2.build.label(variableName), did2.build.label(valueName));
 end
 
 function rel = lineageRelation(preBody, childId, parentId, relationName)
-%LINEAGERELATION child --relationName--> parent (both subjects post-retirement).
-rel = struct();
-rel.document_class = struct('class_name', 'directed_relation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'relation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',  'value', childId), ...
-    struct('name', 'parent', 'value', parentId)];
-rel.base = freshBase(preBody, 'migrated_element_lineage');
-% `relation` (renamed from subject_relation) is abstract with no fields -> no block.
-rel.directed_relation = struct('relation', jOntologyTerm('', relationName));
+%LINEAGERELATION child --relationName--> parent (both entities).
+%   `observes` is NOT in did-schema #88's relation set (dropped, #73 audit 2
+%   D5). It is still written for the one branch that has no replacement (a
+%   direct stimulator or unresolved element, whose instrument edge arrives with
+%   the stimulus model), because dropping the probe -> specimen link with nothing
+%   standing in its place is data loss. It validates only because the binding
+%   conformance switch is off (#32). A SCHEMA QUESTION, reported with the port.
+rel = jEntityRelation(preBody, childId, parentId, relationName);
 end
 
-% ===================== small helpers ===================================
+function t = elementEntityType(elementType)
+%ELEMENTENTITYTYPE The entity.type an element-subject takes (PROPOSED, unsigned):
+%   a sorted unit ('spikes', 'neuron') is a cell, an ensemble a group, and every
+%   other element (a probe, a stimulator, a derived signal) a device.
+switch lower(strtrim(char(elementType)))
+    case {'spikes', 'neuron', 'cell'}
+        t = 'cell';
+    case {'ensemble'}
+        t = 'group';
+    otherwise
+        t = 'device';
+end
+end
 
 function id = baseId(preBody)
 id = '';
 if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
     id = preBody.base.id;
 end
-end
-
-function base = freshBase(preBody, name)
-sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        ds = preBody.base.datestamp;
-    end
-end
-base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', name, 'datestamp', ds);
 end
 
 function v = getField(block, name)

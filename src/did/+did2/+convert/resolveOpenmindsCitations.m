@@ -602,8 +602,8 @@ if ~isempty(approaches)
 end
 % how_to_cite / accessibility / ethics_assessment / copyright_year are NOT in
 % the graph. Omitted rather than written blank: a blank is a vacuous field.
-newBodies{end+1} = entityDoc(dv, 'dataset', datasetId, datasetBlock, ...
-    emptyGids(), false);
+newBodies = [newBodies, entityDoc(dv, 'dataset', datasetId, datasetBlock, ...
+    emptyGids(), false)];
 tally.datasets_emitted = 1;
 
 % --- authors -> person + has_author / affiliated_with -----------------------
@@ -626,8 +626,8 @@ for i = 1:numel(authorRefs)
         'given_name',  charField(pf, {'givenName', 'given_name'}), ...
         'family_name', charField(pf, {'familyName', 'family_name'}), ...
         'email',       email);
-    newBodies{end+1} = entityDoc(p, 'person', personId, personBlock, ...
-        buildGids({'ORCID', orcid}), true); %#ok<AGROW>
+    newBodies = [newBodies, entityDoc(p, 'person', personId, personBlock, ...
+        buildGids({'ORCID', orcid}), true)]; %#ok<AGROW>
     tally.persons_emitted = tally.persons_emitted + 1;
     tally.persons_id_preserved = tally.persons_id_preserved + 1;
     newBodies{end+1} = relationDoc(dv, datasetId, personId, 'has_author', i); %#ok<AGROW>
@@ -650,7 +650,7 @@ for i = 1:numel(authorRefs)
     if isempty(orgName); continue; end
     [orgId, orgBody] = orgFor(org, orgName, orgIds, baseField(org, 'id', ''));
     if ~isempty(orgBody)
-        newBodies{end+1} = orgBody; %#ok<AGROW>
+        newBodies = [newBodies, orgBody]; %#ok<AGROW>
         tally.organizations_emitted = tally.organizations_emitted + 1;
         if strcmp(orgId, baseField(org, 'id', ''))
             tally.organizations_id_preserved = tally.organizations_id_preserved + 1;
@@ -680,9 +680,9 @@ for i = 1:numel(fundRefs)
     end
     awardId = baseField(fu, 'id', '');
     if isempty(awardId); continue; end
-    newBodies{end+1} = entityDoc(fu, 'funding', awardId, ...
+    newBodies = [newBodies, entityDoc(fu, 'funding', awardId, ...
         struct('title', awardTitle), ...
-        buildGids({'AwardNumber', awardNumber}), true); %#ok<AGROW>
+        buildGids({'AwardNumber', awardNumber}), true)]; %#ok<AGROW>
     tally.funding_emitted = tally.funding_emitted + 1;
     newBodies{end+1} = relationDoc(dv, datasetId, awardId, 'funded_by', []); %#ok<AGROW>
     tally.relations_emitted = tally.relations_emitted + 1;
@@ -691,7 +691,7 @@ for i = 1:numel(fundRefs)
     funder = bodies{funderIdx};
     [orgId, orgBody] = orgFor(funder, funderName, orgIds, baseField(funder, 'id', ''));
     if ~isempty(orgBody)
-        newBodies{end+1} = orgBody; %#ok<AGROW>
+        newBodies = [newBodies, orgBody]; %#ok<AGROW>
         tally.organizations_emitted = tally.organizations_emitted + 1;
         if strcmp(orgId, baseField(funder, 'id', ''))
             tally.organizations_id_preserved = tally.organizations_id_preserved + 1;
@@ -719,8 +719,8 @@ for i = 1:numel(pubRefs)
     end
     pubId = baseField(pub, 'id', '');
     if isempty(pubId); continue; end
-    newBodies{end+1} = entityDoc(pub, 'publication', pubId, ...
-        struct('title', ''), buildGids({'DOI', doi}), true); %#ok<AGROW>
+    newBodies = [newBodies, entityDoc(pub, 'publication', pubId, ...
+        struct('title', ''), buildGids({'DOI', doi}), true)]; %#ok<AGROW>
     tally.publications_emitted = tally.publications_emitted + 1;
     newBodies{end+1} = relationDoc(dv, datasetId, pubId, 'cites', []); %#ok<AGROW>
     tally.relations_emitted = tally.relations_emitted + 1;
@@ -747,9 +747,9 @@ for i = 1:numel(docRefs)
     end
     wrId = baseField(wr, 'id', '');
     if isempty(wrId); continue; end
-    newBodies{end+1} = entityDoc(wr, 'web_resource', wrId, ...
+    newBodies = [newBodies, entityDoc(wr, 'web_resource', wrId, ...
         struct('label', 'full documentation'), ...
-        buildGids({scheme, value}), true); %#ok<AGROW>
+        buildGids({scheme, value}), true)]; %#ok<AGROW>
     tally.web_resources_emitted = tally.web_resources_emitted + 1;
     newBodies{end+1} = relationDoc(dv, datasetId, wrId, 'documented_by', []); %#ok<AGROW>
     tally.relations_emitted = tally.relations_emitted + 1;

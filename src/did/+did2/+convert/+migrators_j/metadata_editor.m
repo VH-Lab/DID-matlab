@@ -171,8 +171,8 @@ datasetBlock.support_channel = getStrList(ms, 'SupportChannel');
 % the v1 migration leaves it empty. The schema field remains for openMINDS-IMPORT
 % round-trip (an imported DatasetVersion carries it explicitly), just not for the
 % did_v1 corpus migration.
-bodies{end+1} = entityDoc(preBody, 'dataset', datasetId, datasetBlock, ...
-    emptyGids(), false);
+bodies = [bodies, entityDoc(preBody, 'dataset', datasetId, datasetBlock, ...
+    emptyGids(), false)];
 
 % --- authors -> person entities + has_author / affiliated_with relations -----
 authors = getStructArray(ms, 'Author');
@@ -184,14 +184,14 @@ for i = 1:numel(authors)
         'family_name', getChar(a, 'familyName'), ...
         'email',       nestedChar(a, {'contactInformation', 'email'}));
     personId = did.ido.unique_id();
-    bodies{end+1} = entityDoc(preBody, 'person', personId, personBlock, ...
-        buildGids({'ORCID', orcid}), true);
+    bodies = [bodies, entityDoc(preBody, 'person', personId, personBlock, ...
+        buildGids({'ORCID', orcid}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, personId, 'has_author', i);
 
     affName = nestedChar(a, {'affiliation', 'memberOf', 'fullName'});
     if ~isempty(affName)
         [orgId, orgBody] = orgFor(preBody, affName, orgIds);
-        if ~isempty(orgBody); bodies{end+1} = orgBody; end
+        if ~isempty(orgBody); bodies = [bodies, orgBody]; end
         bodies{end+1} = relationDoc(preBody, personId, orgId, 'affiliated_with', []);
     end
 end
@@ -206,14 +206,14 @@ for i = 1:numel(funding)
         continue;   % an empty funding slot carries nothing
     end
     awardId = did.ido.unique_id();
-    bodies{end+1} = entityDoc(preBody, 'funding', awardId, ...
-        struct('title', awardTitle), buildGids({'AwardNumber', awardNumber}), true);
+    bodies = [bodies, entityDoc(preBody, 'funding', awardId, ...
+        struct('title', awardTitle), buildGids({'AwardNumber', awardNumber}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, awardId, 'funded_by', []);
 
     funderName = getChar(f, 'funder');
     if ~isempty(funderName)
         [orgId, orgBody] = orgFor(preBody, funderName, orgIds);
-        if ~isempty(orgBody); bodies{end+1} = orgBody; end
+        if ~isempty(orgBody); bodies = [bodies, orgBody]; end
         bodies{end+1} = relationDoc(preBody, awardId, orgId, 'issued_by', []);
     end
 end
@@ -226,9 +226,9 @@ for i = 1:numel(pubs)
     doi = getChar(p, 'DOI'); pmid = getChar(p, 'PMID'); pmcid = getChar(p, 'PMCID');
     if isempty(title) && isempty(doi) && isempty(pmid) && isempty(pmcid); continue; end
     pubId = did.ido.unique_id();
-    bodies{end+1} = entityDoc(preBody, 'publication', pubId, ...
+    bodies = [bodies, entityDoc(preBody, 'publication', pubId, ...
         struct('title', title), ...
-        buildGids({'DOI', doi}, {'PMID', pmid}, {'PMCID', pmcid}), true);
+        buildGids({'DOI', doi}, {'PMID', pmid}, {'PMCID', pmcid}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, pubId, 'cites', []);
 end
 
@@ -236,8 +236,8 @@ end
 docIRI = getChar(ms, 'FullDocumentation');
 if ~isempty(docIRI)
     wrId = did.ido.unique_id();
-    bodies{end+1} = entityDoc(preBody, 'web_resource', wrId, ...
-        struct('label', 'full documentation'), buildGids({'URL', docIRI}), true);
+    bodies = [bodies, entityDoc(preBody, 'web_resource', wrId, ...
+        struct('label', 'full documentation'), buildGids({'URL', docIRI}), true)];
     bodies{end+1} = relationDoc(preBody, datasetId, wrId, 'documented_by', []);
 end
 

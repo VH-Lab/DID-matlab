@@ -40,18 +40,18 @@ jobs:
         # is missing (PR merged into main), fall back to main.
         run: |
           want="${{ github.head_ref || github.ref_name }}"
-          schema_pr68="claude/calculator-restructure-2026-09-21"
+          schema_pr68="claude/ecstatic-pascal-md91fw"   # did-schema #88, the shape the migrators are ported to
           if git ls-remote --exit-code --heads \
                https://github.com/Waltham-Data-Science/did-schema.git "$want" >/dev/null 2>&1; then
             echo "did-schema HAS branch '$want' -- using it."
             echo "ref=$want" >> "$GITHUB_OUTPUT"
           elif git ls-remote --exit-code --heads \
                https://github.com/Waltham-Data-Science/did-schema.git "$schema_pr68" >/dev/null 2>&1; then
-            echo "did-schema HAS PR #68 branch '$schema_pr68' -- using it (this DID-matlab PR implements it)."
+            echo "did-schema HAS PR #88 branch '$schema_pr68' -- using it (the migrators are ported to it)."
             echo "ref=$schema_pr68" >> "$GITHUB_OUTPUT"
           else
-            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- FALLING BACK to v_eta-pre73 (the pre-#73 schema; see test-code.yml)."
-            echo "ref=v_eta-pre73" >> "$GITHUB_OUTPUT"
+            echo "did-schema has NEITHER '$want' NOR '$schema_pr68' -- FALLING BACK to main."
+            echo "ref=main" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check out did-schema (sibling, for V_eta validation)

@@ -39,19 +39,11 @@ if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, '
     groupId = preBody.base.id;
 end
 
-subjectDoc = struct();
-subjectDoc.document_class = struct( ...
-    'class_name', 'subject', 'class_version', '3.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-subjectDoc.depends_on = struct('name', {}, 'value', {});
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    subjectDoc.base = preBody.base;   % preserve id -> member edges' parent resolves
-end
-% bare identity: no is_group / is_biological in V_eta
+% did-schema #88: an `entity` of type group (members by `member_of`), id
+% preserved so the member edges' parent resolves.
 groupName = jEnsureLocalId(groupName, preBody);   % local_identifier is REQUIRED
-subjectDoc.subject = struct('local_identifier', groupName, 'description', desc);
-
+subjectDoc = jEntity(preBody, 'group', ...
+    struct('local_identifier', groupName, 'description', desc), 'Id', groupId);
 bodies = {subjectDoc};
 for memberId = memberSubjectIds(preBody)
     bodies{end+1} = memberOfRelation(preBody, memberId{1}, groupId); %#ok<AGROW>
@@ -80,25 +72,7 @@ end
 end
 
 function rel = memberOfRelation(preBody, memberId, groupId)
-%MEMBEROFRELATION member --member_of--> group (child = member, parent = group).
-sessionId = ''; ds = '2024-01-01T00:00:00.000Z';
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    if isfield(preBody.base, 'session_id'); sessionId = preBody.base.session_id; end
-    if isfield(preBody.base, 'datestamp') && ~isempty(preBody.base.datestamp)
-        ds = preBody.base.datestamp;
-    end
-end
-rel = struct();
-rel.document_class = struct('class_name', 'directed_relation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'relation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',  'value', memberId), ...   % the member
-    struct('name', 'parent', 'value', groupId)];       % the group
-rel.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_group_membership', 'datestamp', ds);
-% `relation` (renamed from subject_relation) is abstract with no fields -> no block.
-rel.directed_relation = struct('relation', struct('node', '', 'name', 'member_of'));
+rel = jEntityRelation(preBody, memberId, groupId, 'member_of');
 end
 
 function s = getCharField(block, name)

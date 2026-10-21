@@ -260,43 +260,21 @@ switch disposition
         return;              % an unknown disposition is never guessed at
 end
 
-sessionId = baseField(preBody, 'session_id', '');
-datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
-
-% ---- the shared session-relative 'during' anchor -----------------------------
 anchor = jSessionAnchor(preBody, 'during');
 anchorId = anchor.base.id;
 
 for k = 1:numel(entries)
     e = entries(k);
-    obsId = did.ido.unique_id();
-
-    obs = struct();
-    obs.document_class = classBlock(e.class, {'subject_observation', e.mixin});
-    obs.depends_on = struct('name', 'subject_id', 'value', subjectId);
+    % did-schema #88: an `observation` with the modality's value kind as a mixin
+    % (resolved by did2.build from '<kind>_observation'). The signal itself stays
+    % in the epoch's files, so the statement carries no inline value and no
+    % body -- the pre-#73 `storage_mode: reference`, which #88 no longer spells.
+    extra = {'TimeReferenceIds', {anchorId}};
     if hasInstrument
-        obs.depends_on(end+1) = ...
-            struct('name', 'instrument_id', 'value', instrumentId);   % T7
+        extra = [extra, {'InstrumentId', instrumentId}]; %#ok<AGROW>   % T7
     end
-    obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
-    obs.base = struct('id', obsId, 'session_id', sessionId, ...
-        'name', 'migrated_recording_observation', 'datestamp', datestamp);
-    % 'reference', not 'body': see the header. The samples live in the
-    % acquisition files, reached the way v1 reaches them.
-    obs.subject_statement = struct( ...
-        'variable', jOntologyTerm('', e.variable), ...
-        'storage_mode', 'reference');
-    % `method` is left blank: the leaf class already names the act (the
-    % jStartInteraction convention), and no algorithm produced this value.
-    % No `sample_time` on the statement -- the body owns the cadence (D1).
-    obs.subject_interaction = struct('method', jOntologyTerm('', ''));
-    obs.subject_observation = struct();
-    obs = attachQuantityBlock(obs, e.mixin);
-
-    % NO BODY. The element document carries no files -- see the header -- so a
-    % `sampled_body` minted here could only ever be empty. The observation
-    % alone is the honest record: this electrode measured this modality from
-    % this specimen, and the value is outside the database.
+    obs = jStatement(preBody, e.class, subjectId, did2.build.label(e.variable), [], ...
+        extra{:});
     bodies{end+1} = obs;  %#ok<AGROW>
 end
 
@@ -306,57 +284,6 @@ end
 bodies{end+1} = anchor;
 retireObserves = true;   % the instrument_id edge is now present, so `observes` may go
 end
-
-% ===================== builders ============================================
-
-function obs = attachQuantityBlock(obs, mixin)
-%ATTACHQUANTITYBLOCK The data_type block, empty because the value is body-backed.
-%   `image` declares `value` with "mustBeNonEmpty": true, so the
-%   raster CELL must be present even when the pixels are not. Only DECLARED
-%   subfields are written; `dtype` stays blank because R6 is right that dtype is
-%   not recoverable from bytes we have not read, and a guess here would be the
-%   thing R6 wrote the rule against.
-%
-%   THIS COMMENT SAID "(the only data_type that does)" AND CITED
-%   schemas/V_eta/draft/image.json. Both were wrong; corrected 2026-08-11.
-%   The path is stable/, not draft/, and the uniqueness claim is wrong by 8x:
-%
-%       DENOMINATOR: 243 V_eta class schemas parsed
-%       declaring field `value` mustBeNonEmpty: 10
-%         contrast_sensitivity  date  harmonic_component  image  polynomial
-%         term  timed_sequence  tuning_curve        (8 data_type descendants)
-%         absolute_reference  relative_reference   (time_reference, not data_type)
-%
-%   It matters because this comment states the RULE this function implements,
-%   and the branch below fires for `image` and nothing else. The blast radius is
-%   bounded today only because jRecordingModality reaches just
-%   voltage/current/image/acceleration/temperature -- but a maintainer adding a
-%   modality that maps to `date`, `term`, `tuning_curve` or `contrast_sensitivity`
-%   would read "image is the only one", skip the cell, and emit a document that
-%   fails mustBeNonEmpty. If you add such a modality, extend the branch.
-%
-%   Asserted twice, here and in testMigratorsJRecordingObservation.m:223 -- a
-%   test written from the same premise as the code, so it pinned the error
-%   rather than catching it.
-if strcmp(mixin, 'image')
-    obs.image = struct();
-    obs.image.value = struct('pixels', [], 'dtype', '', ...
-        'color_model', jOntologyTerm('', ''));
-    return;
-end
-obs.(mixin) = struct();
-end
-
-function dc = classBlock(name, supers)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', 'V_eta');
-end
-
-% ===================== small helpers =======================================
 
 function v = baseField(bodyStruct, name, default)
 v = default;

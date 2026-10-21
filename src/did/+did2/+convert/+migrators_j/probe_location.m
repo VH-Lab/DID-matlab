@@ -26,12 +26,10 @@ block = preBody.probe_location;
 
 locTerm = jOntologyTerm(jGetChar(block, 'ontology_name'), jGetChar(block, 'name'));
 
-obs = jStartInteraction(preBody, 'term_observation', 'subject_observation', ...
-    {}, jOntologyTerm('', 'anatomical location'), {'probe_id', 'element_id', 'subject_id'});
-obs.term = struct('value', locTerm);
-
 anchor = jSessionAnchor(preBody, 'during');
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchor.base.id);
-
+obs = jStatement(preBody, 'term_observation', ...
+    jSubjectOf(preBody, {'probe_id', 'element_id', 'subject_id'}), ...
+    did2.build.label('anatomical location'), locTerm, ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id));
 v2Body = {obs, anchor};
 end

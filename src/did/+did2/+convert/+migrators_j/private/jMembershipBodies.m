@@ -22,7 +22,7 @@ for k = 1:numel(entries)
     if isempty(memberSession); continue; end
     if strcmp(memberSession, datasetId); continue; end   % the dataset's own root
     bodies{end+1} = jEntityRelation(preBody, memberSession, datasetId, ...
-        relation{2}, 'migrated_session_membership', relation{1}); %#ok<AGROW>
+        relation{2}, '', relation{1}); %#ok<AGROW>
 end
 end
 

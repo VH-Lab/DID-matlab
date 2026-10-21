@@ -219,7 +219,10 @@ switch key
     % --- imaging ------------------------------------------------------------
     case {'wide-field-imaging', 'two-photon-imaging', ...
           'one-photon-imaging', 'brightfield-imaging'}
-        entries = mk('image_observation', 'image', 'image', false);
+        % did-schema #88 retired the `image` value kind and image_observation
+        % (#73 review item 51) and the image model (#24) is unbuilt, so an
+        % imaging element has no observation to become: Guard A, reported.
+        return;
 
     % --- the one DERIVED type with a signed shape ---------------------------
     % TEAM-SIGN-OFF [spike train leaf], V_eta_ensemble_plan.md:218,
