@@ -4,7 +4,8 @@ function bodies = daqmetadatareader_epochdata_ingested(preBody)
 %   retired `acquisition_metadata_file`, and the decided target, an
 %   `opaque_body` owned by the epoch's stimulator manipulation, is built by the
 %   batch pass did2.convert.resolveEpochProbemap (mkMetadataArchiveBodies).
-%   The history below describes the retired 2026-08-08 fold.
+%
+%   The rest of this header records the retired 2026-08-08 fold.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   1 -> 1, base.id PRESERVED. The signed decision
