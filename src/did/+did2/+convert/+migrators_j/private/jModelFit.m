@@ -114,10 +114,19 @@ end
 end
 
 function v = numOf(b, name)
+% A number, as the source stored it: numeric, or TEXT -- the NDI template types
+% fit_sse as a string (did-schema's fitcurve tombstone keeps that), so '12.5'
+% is read as 12.5. Text that is not a number reads as absent, never as NaN.
 v = [];
-if isstruct(b) && isfield(b, name) && isnumeric(b.(name)) && ~isempty(b.(name))
-    v = double(b.(name));
-    v = v(:)';
+if ~(isstruct(b) && isfield(b, name)) || isempty(b.(name))
+    return;
+end
+x = b.(name);
+if isnumeric(x)
+    v = double(x(:)');
+elseif ischar(x) || (isstring(x) && isscalar(x))
+    d = str2double(x);
+    if isfinite(d); v = d; end
 end
 end
 

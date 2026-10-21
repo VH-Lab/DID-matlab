@@ -235,10 +235,15 @@ end
 % each wrapped self-contained (a subjDoc minted for every depends_on id). Covers
 % the spike/waveform body-backed folds, the inline quantity observations, the
 % tuning decompositions, the dataset entities, and the in-place renames.
+% fx_pyraview IS NOT IN THE ZOO on did-schema #88: every real pyraview names an
+% epoch (its template carries `epochid`), and #88 anchors it to the EPOCH
+% ENTITY epochMint mints, which needs a session document this corpus
+% deliberately lacks (see the header). The pyraview DEFERS and would stay in the
+% quarantine here by design; testMigratorsJMeasurementFilter covers its fold.
 function batch = zooBatch()
 batch = [ ...
     fx_spikewaves(), fx_spike_clusters(), fx_jrclust_clusters(), ...
-    fx_binnedspikeratevm(), fx_pyraview(), fx_neuron_extracellular(), ...
+    fx_binnedspikeratevm(), fx_neuron_extracellular(), ...
     fx_vmspikefit(), fx_vmspikesummary(), fx_vmspikefilteringparameters(), ...
     fx_vmneuralresponseresiduals(), ...
     fx_fitcurve(), fx_simple_calc(), fx_contrast_tuning(), ...
@@ -903,7 +908,7 @@ d.depends_on = struct('name','element_id','value','fc_sub');
 d.base = struct('id','fc_01','session_id','sess_09','name','fc','datestamp','2024-06-01T12:00:00.000Z');
 % The NDI template's fields: fit_equation and fit_sse (fit_function and
 % goodness_of_fit never existed; a #88 passthrough exposes them).
-d.fitcurve = struct('fit_equation','gaussian','fit_sse',0.94);
+d.fitcurve = struct('fit_equation','gaussian','fit_sse','0.94');   % the template types it as a string
 batch = { sub, d };
 end
 
