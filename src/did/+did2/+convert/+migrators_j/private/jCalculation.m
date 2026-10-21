@@ -37,7 +37,11 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %       circular_statistics, interpolated_values)
 %
 %   V1 FIELDS WITH NO HOME are listed by jTuningCurve / jContrastSensitivityValue
-%   and dropped; the port reports them.
+%   and dropped; each one is REPORTED, never silently: one
+%   did2.convert.reportNote('field_dropped', <v1 class>, <id>, <field path>)
+%   per dropped field of a document that folds (a document that passes through
+%   drops nothing, so it leaves no note). The report's
+%   summary.migration_notes.field_dropped carries them.
 %
 %   Returns {leaf, anchor, software..., run entities...}.
 
@@ -73,14 +77,15 @@ if isempty(subjectId) || isempty(osId)
 end
 
 leafFields = struct();
+dropped = {};
 if strcmp(family, 'csf')
-    [value, keys] = jContrastSensitivityValue(srcBlk);
+    [value, keys, dropped] = jContrastSensitivityValue(srcBlk);
 elseif strcmp(family, 'rf')
     % receptive_field.value declares no sub-fields: the volume is in bodies
     value = struct();
     keys = [];
 else
-    [value, keys, leafFields] = jTuningCurve(srcBlk, family);
+    [value, keys, leafFields, dropped] = jTuningCurve(srcBlk, family);
 end
 
 anchor = jSessionAnchor(preBody, 'during');
@@ -121,6 +126,16 @@ leaf = jStatement(preBody, leafClass, subjectId, ...
     'Id', char(preBody.base.id));   % id preserved -> inbound references resolve
 
 bodies = [{leaf, anchor}, software, runDocs];
+
+% the v1 fields the value mapping had no home for: reported, one note each
+className = '';
+if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
+    className = char(preBody.document_class.class_name);
+end
+for k = 1:numel(dropped)
+    did2.convert.reportNote('field_dropped', className, ...
+        char(preBody.base.id), [sourceBlock '.' dropped{k}]);
+end
 end
 
 function ids = inputIds(preBody)

@@ -74,26 +74,26 @@ axesNames = {'direction', 'angle', 'contrast', 'spatial_frequency', ...
     'temporal_frequency', 'speed'};
 present = {};
 cols = {};
+used = {};   % the field names AS SPELLED in the document (snake or camelCase)
 for k = 1:numel(axesNames)
-    v = getf(tc, axesNames(k));
+    [v, nm] = getfn(tc, axesNames(k));
     if isnumeric(v) && ~isempty(v)
         present{end+1} = axesNames{k}; %#ok<AGROW>
         cols{end+1} = double(v(:)); %#ok<AGROW>
+        used{end+1} = nm; %#ok<AGROW>
     end
 end
 keys = makeKeys(present, cols);
-used = [present, {'mean', 'stddev', 'stderr', 'individual', 'raw_individual', ...
-    'control_mean', 'control_stddev', 'control_stderr', 'control_individual'}];
-value = putArr(value, 'mean', getf(tc, {'mean'}), false);
-value = putArr(value, 'stddev', getf(tc, {'stddev'}), false);
-value = putArr(value, 'stderr', getf(tc, {'stderr'}), false);
-value = putArr(value, 'individual', getf(tc, {'individual'}), true);
-value = putArr(value, 'raw_individual', getf(tc, {'raw_individual'}), true);
+[value, used] = takeArr(value, used, 'mean', tc, {'mean'}, false);
+[value, used] = takeArr(value, used, 'stddev', tc, {'stddev'}, false);
+[value, used] = takeArr(value, used, 'stderr', tc, {'stderr'}, false);
+[value, used] = takeArr(value, used, 'individual', tc, {'individual'}, true);
+[value, used] = takeArr(value, used, 'raw_individual', tc, {'raw_individual'}, true);
 ctl = struct();
-ctl = putArr(ctl, 'mean', getf(tc, {'control_mean'}), false);
-ctl = putArr(ctl, 'stddev', getf(tc, {'control_stddev'}), false);
-ctl = putArr(ctl, 'stderr', getf(tc, {'control_stderr'}), false);
-ctl = putArr(ctl, 'individual', getf(tc, {'control_individual'}), true);
+[ctl, used] = takeArr(ctl, used, 'mean', tc, {'control_mean'}, false);
+[ctl, used] = takeArr(ctl, used, 'stddev', tc, {'control_stddev'}, false);
+[ctl, used] = takeArr(ctl, used, 'stderr', tc, {'control_stderr'}, false);
+[ctl, used] = takeArr(ctl, used, 'individual', tc, {'control_individual'}, true);
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
 dropped = [dropped, prefixed('tuning_curve.', setdiff(fieldnames(tc), used))];
 
@@ -156,7 +156,8 @@ end
 
 known = [{'properties', 'tuning_curve', 'significance', 'vector', 'fitless'}, ...
     names(strcmp(names, 'fit') | startsWith(names, 'fit_'))'];
-rest = setdiff(names, known);
+fold = @(c) lower(strrep(c, '_', ''));
+rest = names(~ismember(fold(names), fold(known)));
 dropped = [dropped, reshape(rest, 1, [])];
 end
 
@@ -186,21 +187,22 @@ if numel(names) < numel(cols)
     end
 end
 keys = makeKeys(names(1:numel(cols)), cols);
-value = putArr(value, 'mean', getf(st, {'response_mean'}), false);
-value = putArr(value, 'stddev', getf(st, {'response_stddev'}), false);
-value = putArr(value, 'stderr', getf(st, {'response_stderr'}), false);
-value = putArr(value, 'individual', getf(st, {'individual_responses_real', 'individual_responses'}), true);
+used = {};   % the field names AS SPELLED in the document (snake or camelCase)
+[~, nm] = getfn(st, {'independent_variable_label'}); used{end+1} = nm;
+[~, nm] = getfn(st, {'independent_variable_value'}); used{end+1} = nm;
+[value, used] = takeArr(value, used, 'mean', st, {'response_mean'}, false);
+[value, used] = takeArr(value, used, 'stddev', st, {'response_stddev'}, false);
+[value, used] = takeArr(value, used, 'stderr', st, {'response_stderr'}, false);
+[value, used] = takeArr(value, used, 'individual', st, {'individual_responses_real', 'individual_responses'}, true);
 ctl = struct();
-ctl = putArr(ctl, 'mean', getf(st, {'control_response_mean'}), false);
-ctl = putArr(ctl, 'stddev', getf(st, {'control_response_stddev'}), false);
-ctl = putArr(ctl, 'stderr', getf(st, {'control_response_stderr'}), false);
-ctl = putArr(ctl, 'individual', getf(st, {'control_individual_responses_real'}), true);
+[ctl, used] = takeArr(ctl, used, 'mean', st, {'control_response_mean'}, false);
+[ctl, used] = takeArr(ctl, used, 'stddev', st, {'control_response_stddev'}, false);
+[ctl, used] = takeArr(ctl, used, 'stderr', st, {'control_response_stderr'}, false);
+[ctl, used] = takeArr(ctl, used, 'individual', st, {'control_individual_responses_real'}, true);
 if ~isempty(fieldnames(ctl)); value.control = ctl; end
-value = putUnit(value, getf(st, {'response_units'}));
-used = {'independent_variable_label', 'independent_variable_value', 'response_mean', ...
-    'response_stddev', 'response_stderr', 'individual_responses_real', ...
-    'individual_responses', 'control_response_mean', 'control_response_stddev', ...
-    'control_response_stderr', 'control_individual_responses_real', 'response_units'};
+[u, nm] = getfn(st, {'response_units'}); used{end+1} = nm;
+value = putUnit(value, u);
+used = used(~cellfun(@isempty, used));
 rest = setdiff(fieldnames(st), used);
 % an imaginary part that is all zero carries nothing; a non-zero one has no home
 keep = true(size(rest));
@@ -373,10 +375,20 @@ if isnumeric(x) && ~isempty(x)
 end
 end
 
+function [s, used] = takeArr(s, used, name, src, names, trialsLast)
+% putArr from the first of NAMES SRC carries, recording the name as spelled
+[x, nm] = getfn(src, names);
+s = putArr(s, name, x, trialsLast);
+if ~isempty(nm)
+    used{end+1} = nm;
+end
+end
+
 function b = sub(s, name)
 b = struct();
-if isstruct(s) && isfield(s, name) && isstruct(s.(name)) && isscalar(s.(name))
-    b = s.(name);
+[v, nm] = getfn(s, {name});
+if ~isempty(nm) && isstruct(v) && isscalar(v)
+    b = v;
 end
 end
 
@@ -385,12 +397,21 @@ v = getfn(s, names);
 end
 
 function [v, nm] = getfn(s, names)
+% The first of NAMES that S carries. A NESTED field is not renamed by
+% universalRenames (it snake_cases only a block's immediate field names), so
+% each name is matched in any case AND in its camelCase spelling (controlMean
+% for control_mean): case and underscores are ignored, an exact match first.
+% NM is the field name as spelled in S.
 v = [];
 nm = '';
 if ~isstruct(s); return; end
 fn = fieldnames(s);
+folded = lower(strrep(fn, '_', ''));
 for i = 1:numel(names)
     hit = find(strcmpi(fn, names{i}), 1);
+    if isempty(hit)
+        hit = find(strcmp(folded, lower(strrep(names{i}, '_', ''))), 1);
+    end
     if ~isempty(hit)
         nm = fn{hit};
         v = s.(nm);

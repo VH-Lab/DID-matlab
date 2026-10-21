@@ -1,4 +1,4 @@
-function out = reportNote(action, arg2, arg3)
+function out = reportNote(action, arg2, arg3, arg4)
 %REPORTNOTE A note a per-document migrator leaves for the migration report.
 %
 %   A migrator returns documents, nothing else, so a fact about HOW it migrated
@@ -10,6 +10,8 @@ function out = reportNote(action, arg2, arg3)
 %   into `summary.migration_notes` at the end.
 %
 %   did2.convert.reportNote(KIND, CLASSNAME, DOCID)   record one note
+%   did2.convert.reportNote(KIND, CLASSNAME, DOCID, DETAIL)
+%                                                     ... naming WHAT (a char)
 %   did2.convert.reportNote('reset')                  forget all notes
 %   N = did2.convert.reportNote('mark')               the number recorded so far
 %   did2.convert.reportNote('truncate', N)            keep only the first N
@@ -17,6 +19,7 @@ function out = reportNote(action, arg2, arg3)
 %       S.<kind>.count       how many documents carry the note
 %       S.<kind>.by_class    a struct, class name -> count
 %       S.<kind>.ids         the source document ids, in order
+%       S.<kind>.details     the DETAIL of each note, parallel to ids ('' if none)
 %
 %   KINDS IN USE:
 %     route_unknown   a v1 treatment (treatment / treatment_drug) that names no
@@ -24,15 +27,19 @@ function out = reportNote(action, arg2, arg3)
 %                     be read from it; it migrates as a dose with a NaN amount
 %                     (Jess Haley, 2026-10-21, did-schema
 %                     V_eta_go_forward_class_audit.md).
+%     field_dropped   a v1 field a calculator fold (jCalculation, via
+%                     jTuningCurve / jContrastSensitivityValue) has no home for
+%                     on did-schema #88; DETAIL is its path in the source
+%                     document ('<block>.<field>'). One note per field.
 
 persistent notes
 if isempty(notes)
-    notes = struct('kind', {}, 'class_name', {}, 'id', {});
+    notes = struct('kind', {}, 'class_name', {}, 'id', {}, 'detail', {});
 end
 out = [];
 switch action
     case 'reset'
-        notes = struct('kind', {}, 'class_name', {}, 'id', {});
+        notes = struct('kind', {}, 'class_name', {}, 'id', {}, 'detail', {});
     case 'mark'
         out = numel(notes);
     case 'truncate'
@@ -45,7 +52,8 @@ switch action
         for k = 1:numel(notes)
             f = matlab.lang.makeValidName(notes(k).kind);
             if ~isfield(out, f)
-                out.(f) = struct('count', 0, 'by_class', struct(), 'ids', {{}});
+                out.(f) = struct('count', 0, 'by_class', struct(), 'ids', {{}}, ...
+                    'details', {{}});
             end
             out.(f).count = out.(f).count + 1;
             c = matlab.lang.makeValidName(notes(k).class_name);
@@ -55,6 +63,7 @@ switch action
                 out.(f).by_class.(c) = 1;
             end
             out.(f).ids{end+1} = notes(k).id;
+            out.(f).details{end+1} = notes(k).detail;
         end
     otherwise
         % record: reportNote(KIND, CLASSNAME, DOCID)
@@ -62,7 +71,10 @@ switch action
         docId = '';
         if nargin >= 2; className = arg2; end
         if nargin >= 3; docId = arg3; end
+        detail = '';
+        if nargin >= 4; detail = arg4; end
         notes(end+1) = struct('kind', char(action), ...
-            'class_name', char(className), 'id', char(docId));
+            'class_name', char(className), 'id', char(docId), ...
+            'detail', char(detail));
 end
 end

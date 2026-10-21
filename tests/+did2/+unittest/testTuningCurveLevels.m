@@ -412,8 +412,8 @@ function testTheTwoPreviouslyUnnamedControlFieldsSurvive(testCase)
 testCase.assumeTrue(false, ['NOT PORTED -- the behaviour this asserts is not in the ' ...
     'did-schema #88 shape: tuning_curve.value.control declares only mean / stddev / ' ...
     'stderr / individual, so control_mean_stddev and control_mean_stderr have no ' ...
-    'destination (jTuningCurve lists them as dropped, and jCalculation discards that ' ...
-    'list). Reported for a team decision, not deleted.']);
+    'destination (jTuningCurve lists them as dropped, and jCalculation reports them ' ...
+    'as field_dropped migration notes). Reported for a team decision, not deleted.']);
 % DEFECT A, the half that is not a level bug: control_mean_stddev and
 % control_mean_stderr appear in NO name list the old read searched, at any level, so
 % they were dropped for the two families that emit them (spatial_frequency 22/22 and
@@ -464,6 +464,62 @@ v = foldedValue('temporal_frequency_tuning', tc, emptyUnitsProperties());
 assertTrue(testCase, isfield(v, 'control') && isfield(v.control, 'mean'), ...
     'the camelCase nested spelling controlMean was not recognised');
 verifyEqual(testCase, v.control.mean, [0.5; 0.5; 0.5; 0.5], 'AbsTol', 1e-12);
+end
+
+function testCamelCaseNestedControlFieldIsNotAlsoReportedDropped(testCase)
+% The camelCase read must also count as a READ: controlMean reaches value.control
+% and is NOT listed among the dropped fields, while controlMeanStddev (no #88
+% slot) is reported dropped under its own spelling.
+tc = struct('temporal_frequency', [1; 2; 4; 8], 'mean', [1; 5; 9; 3]);
+tc.controlMean       = [0.5; 0.5; 0.5; 0.5];
+tc.controlMeanStddev = 0.022;
+did2.convert.reportNote('reset');
+foldedValue('temporal_frequency_tuning', tc, emptyUnitsProperties());
+details = droppedDetails();
+did2.convert.reportNote('reset');
+verifyFalse(testCase, any(strcmp(details, ...
+    'temporal_frequency_tuning.tuning_curve.controlMean')), ...
+    'controlMean was read into value.control and must not also be reported dropped');
+verifyTrue(testCase, any(strcmp(details, ...
+    'temporal_frequency_tuning.tuning_curve.controlMeanStddev')), ...
+    'controlMeanStddev has no #88 slot and must be reported dropped');
+end
+
+function testDroppedFieldsReachTheMigrationReport(testCase)
+% jTuningCurve lists the v1 fields #88 has no home for; jCalculation used to
+% discard that list. Each dropped field of a FOLDED document is now one
+% did2.convert.reportNote('field_dropped', <v1 class>, <id>, <field path>).
+% Spatial frequency's control_mean_stddev / control_mean_stderr are the
+% writer's own example of a field with no slot.
+did2.convert.reportNote('reset');
+foldedValue('spatial_frequency_tuning', spatialCurve(), emptyUnitsProperties());
+notes = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+assertTrue(testCase, isfield(notes, 'field_dropped'), ...
+    'no field_dropped note: the dropped-fields list was discarded again');
+n = notes.field_dropped;
+verifyEqual(testCase, numel(n.ids), n.count, 'one id per note');
+verifyEqual(testCase, numel(n.details), n.count, 'one detail per note');
+verifyTrue(testCase, all(strcmp(n.ids, 'lvl_doc_1')), 'notes name the source id');
+verifyTrue(testCase, isfield(n.by_class, 'spatial_frequency_tuning'), ...
+    'notes are attributed to the v1 class');
+for f = {'control_mean_stddev', 'control_mean_stderr'}
+    verifyTrue(testCase, any(strcmp(n.details, ...
+        ['spatial_frequency_tuning.tuning_curve.' f{1}])), ...
+        sprintf('tuning_curve.%s is dropped and must be reported', f{1}));
+end
+% nothing that WAS mapped is reported dropped
+verifyFalse(testCase, any(strcmp(n.details, ...
+    'spatial_frequency_tuning.tuning_curve.control_mean')), ...
+    'control_mean was mapped, not dropped');
+end
+
+function d = droppedDetails()
+notes = did2.convert.reportNote('collect');
+d = {};
+if isfield(notes, 'field_dropped')
+    d = notes.field_dropped.details;
+end
 end
 
 % ===================== DEFECT B ============================================

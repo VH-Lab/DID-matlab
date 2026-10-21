@@ -942,6 +942,14 @@ for k = 1:numel(kinds)
     for j = 1:numel(cls)
         fprintf('      %-40s %d\n', cls{j}, n.by_class.(cls{j}));
     end
+    % what the notes name (field_dropped: the field path), distinct, counted
+    if isfield(n, 'details')
+        d = n.details(~cellfun(@isempty, n.details));
+        [u, ~, ix] = unique(d);
+        for j = 1:numel(u)
+            fprintf('        %-38s %d\n', u{j}, sum(ix == j));
+        end
+    end
 end
 end
 
