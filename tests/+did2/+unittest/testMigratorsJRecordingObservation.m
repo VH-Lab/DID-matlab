@@ -105,12 +105,14 @@ verifyEqual(testCase, obs.get('statement.variable').name, 'voltage');
 % caught it. `element` declares NO files (15 of 91 v1 templates do; element is
 % not one), so a body minted here is empty by construction in every session,
 % ingested or not. Team: "a body means bytes".
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
+% #88 has no storage_mode: the samples stay in the ingested files the element
+% names, so the observation states no value of its own and no body
+verifyFalse(testCase, isfield(obs.get('value'), 'data_body') && logical(obs.get('value.data_body')));
 % timing: the shared session 'during' anchor (the epoch join is the second pass)
-verifyNotEmpty(testCase, depValue(obs, 'time_reference_1'));
+verifyNotEmpty(testCase, depValue(obs, 'time_reference_id'));
 anchor = firstOfClass(out, 'relative_time_reference');
 verifyNotEmpty(testCase, anchor);
-verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
+verifyEqual(testCase, depValue(obs, 'time_reference_id'), anchor.get('base.id'));
 end
 
 function testNoBodyIsEmittedBecauseTheElementCarriesNoBytes(testCase)
@@ -142,7 +144,7 @@ function testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId(testCas
 % Moving that id onto the observation would silently re-point all of them (the
 % 11,448-orphan shape). The observation is new, so nothing can dangle on it.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
-sub = firstOfClass(out, 'subject');
+sub = firstOfClass(out, 'device');   % #88: an entity of type device
 obs = firstOfClass(out, 'voltage_observation');
 verifyEqual(testCase, sub.get('base.id'), 'el_1');
 verifyNotEqual(testCase, obs.get('base.id'), 'el_1');
@@ -252,11 +254,13 @@ verifyEqual(testCase, depValue(obs, 'instrument_id'), 'probe_1', ...
 verifyEqual(testCase, obs.get('statement.variable').name, 'spike');
 % `reference`, not `body`: the times are in the sorter's .vhsb, which the
 % element document does not carry -- the same reason the voltage case says so.
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
+% #88 has no storage_mode: the samples stay in the ingested files the element
+% names, so the observation states no value of its own and no body
+verifyFalse(testCase, isfield(obs.get('value'), 'data_body') && logical(obs.get('value.data_body')));
 % and it is anchored, like every other observation this assembler emits
 anchor = firstOfClass(out, 'relative_time_reference');
 verifyNotEmpty(testCase, anchor);
-verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
+verifyEqual(testCase, depValue(obs, 'time_reference_id'), anchor.get('base.id'));
 % NOT the unresolved path. `spikes` has a signature; it must never surface on
 % the Guard A worklist, which is where every derived type still goes.
 verifyEqual(testCase, countOfClass(out, 'time_observation'), 1);
@@ -302,8 +306,8 @@ verifyEqual(testCase, depValue(volt, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(curr, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(volt, 'instrument_id'), 'el_1');
 verifyEqual(testCase, depValue(curr, 'instrument_id'), 'el_1');
-verifyEqual(testCase, depValue(volt, 'time_reference_1'), depValue(curr, 'time_reference_1'));
-verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);
+verifyEqual(testCase, depValue(volt, 'time_reference_id'), depValue(curr, 'time_reference_id'));
+verifyEqual(testCase, countOfClass(out, 'relative_time_reference'), 1);
 verifyEqual(testCase, volt.get('statement.variable').name, 'voltage');
 verifyEqual(testCase, curr.get('statement.variable').name, 'current');
 end
@@ -325,7 +329,8 @@ function testImagingProbeBecomesImageObservation(testCase)
 out = runJ(elementDoc('camera', 'wide-field-imaging', 'ndi.probe.image', 1, 'specimen_1', ''));
 obs = firstOfClass(out, 'intensity_observation');
 verifyNotEmpty(testCase, obs);
-verifyEqual(testCase, obs.get('statement.variable').name, 'image');
+% #88 (#73 item 51): a raster goes by what its pixels measure -- intensity
+verifyEqual(testCase, obs.get('statement.variable').name, 'intensity');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
 % `image` declares `value` mustBeNonEmpty, so the raster cell has to be present
 % even though the pixels are not. This said "draft/image.json is the ONLY
@@ -334,7 +339,8 @@ verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
 % term, timed_sequence, tuning_curve, over 243 schemas). Corrected 2026-08-11.
 % The claim was made here AND in the migrator it tests, so this test pinned the
 % error instead of catching it -- see jRecordingObservation/attachQuantityBlock.
-verifyNotEmpty(testCase, fieldnames(obs.get('image.value')));
+% and no image descriptor cell exists any more; the frames stay in the files
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'specimen_1');
 verifyFalse(testCase, hasRelation(out, 'observes'));
 end
 
@@ -428,7 +434,7 @@ function testNoSpecimenMeansNoObservationAndNoEmptyRequiredEdge(testCase)
 out = runJ(elementDoc('orphan_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, '', ''));
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-verifyEqual(testCase, countOfClass(out, 'subject'), 1);   % the element still migrates
+verifyEqual(testCase, countOfClass(out, 'device'), 1);   % the element still migrates (#88: a device entity)
 end
 
 % ===================== validation =========================================
@@ -476,7 +482,7 @@ verifyNotEmpty(testCase, firstOfClass(out, 'time_observation'), ...
 % testDerivedSpikesBecomesATimeObservationOfTheNeuronItself proves why.
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 0);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);   % was 1
-verifyEqual(testCase, countOfClass(out, 'session_relative_reference'), 1);
+verifyEqual(testCase, countOfClass(out, 'relative_time_reference'), 1);
 end
 
 % ===================== fixtures ===========================================
@@ -553,7 +559,7 @@ function d = assertionWithVariable(out, variableName)
 d = [];
 for k = 1:numel(out.migrated)
     doc = out.migrated{k};
-    if ~strcmp(doc.get('document_class.class_name'), 'term_assertion'); continue; end
+    if ~strcmp(did2.unittest.helpers.leafName(doc), 'term_assertion'); continue; end
     v = doc.get('statement.variable');
     if strcmp(v.name, variableName); d = doc; return; end
 end
