@@ -114,19 +114,23 @@ function bodies = hartley_calc(preBody)
 %     ngrid.data_dim            -> one axis entry per dimension, per PLANE
 %     ngrid.coordinates         -> axes[].quantity (the lag axis) / dropped as
 %                                  redundant (the two index axes)
-%     ngrid.data_type 'double'  -> subject_statement.datum_type 'float64'
-%                                  + source_datum_type 'double' (jDatumType)
+%     ngrid.data_type 'double'  -> value.data_type 'float64' on the leaf
+%                                  + source_data_type 'double' (jDatumType)
 %     ngrid.data_size 8         -> DROPPED. Bytes-per-element restates the
 %                                  dtype; it is derivable, unlike coordinates.
 %     reverse_correlation.method 'Hartley'
-%                               -> receptive_field.value.method, a term. NOT in
-%                                  the class name (T11: the name must not read
-%                                  as how it was made).
+%                               -> NOT CARRIED on did-schema #88. #73 item 57
+%                                  moved the method off the composite onto the
+%                                  statement, whose `interaction.method.term` is
+%                                  the calculator, 'ndi.calc.vis.hartley'
+%                                  (jCalculation). Still NOT in the class name
+%                                  (T11: the name must not read as how it was
+%                                  made).
 %     reverse_correlation.dimension_labels ''
 %                               -> DROPPED. Empty in 210 of 210, and the
 %                                  signature names it droppable.
 %     hartley_calc.input_parameters {T, X_sample, Y_sample}
-%                               -> subject_interaction.method_parameters, via
+%                               -> interaction.method.parameters, via
 %                                  jCalculation's shared reader.
 %     hartley_reverse_correlation.reconstruction_properties.{T,X,Y}_coords
 %                               -> the axis segmentation (above). They are the
@@ -228,8 +232,10 @@ function bodies = hartley_calc(preBody)
 %   class, so the destination cannot be instantiated at all; it belongs to the
 %   stimulus model (#31), which is out of this signature's scope.
 %
-%   THEY ARE THEREFORE CARRIED, NOT DROPPED, in
-%   `subject_interaction.method_parameters.stimulus_sequence`. That field is
+%   THEY ARE THEREFORE CARRIED, NOT DROPPED, in the method parameters
+%   (`interaction.method.parameters` on did-schema #88, entries named
+%   `stimulus sequence.<field>`; `subject_interaction.method_parameters
+%   .stimulus_sequence` before). That field is
 %   declared free-form and its documentation is "the calculator input_parameters
 %   that produced it [...] Retaining it keeps the computation reproducible" --
 %   and these two blocks ARE the reverse-correlation's regressors, i.e. exactly
@@ -248,18 +254,13 @@ arguments
     preBody (1,1) struct
 end
 
-% did-schema #88 CANNOT EXPRESS THIS DOCUMENT, so it passes through on its v1
-% tombstone (Jess Haley, 2026-10-21: per class, never invent a shape). The
-% leaf's value composite `receptive_field` declares `value` as a REQUIRED
-% non-empty structure with NO sub-fields (the volume moved onto the plane
-% bodies, #73 audit 2 D11), so no document can satisfy it: corpus run
-% 39550766416 quarantined all 210 of 20211116's hartley_calc documents with
-% 'Field "receptive_field.value" is required to be non-empty.' The fold below
-% is kept for the day the composite gains a field; it is not reached.
-if ~foldExpressible()
-    bodies = {preBody};
-    return;
-end
+% `receptive_field.value` declares no sub-fields (the volume is on the plane
+% bodies, #73 audit 2 D11). Until 2026-10-21 it was also REQUIRED, so no
+% document could satisfy it and this fold passed through (corpus run
+% 39550766416 quarantined all 210 of 20211116's documents before that guard).
+% did-schema data_body AMENDMENT 5 (rule `value_inline_or_body`, Jess Haley,
+% signed 2026-10-21) replaced the required value: a receptive field is
+% `data_body: true` with an empty `value`, so the signed fold runs.
 
 % The eight keys the referenced stimulus_presentation's generator spec
 % supplies, and therefore the eight this document may drop. Named here, once,
@@ -681,22 +682,5 @@ id = '<no base.id>';
 if isfield(preBody, 'base') && isstruct(preBody.base) ...
         && isfield(preBody.base, 'id') && ~isempty(preBody.base.id)
     id = char(preBody.base.id);
-end
-end
-
-function tf = foldExpressible()
-% True when the loaded schema's receptive_field.value declares a sub-field a
-% document could fill. On did-schema #88 it declares none.
-tf = false;
-try
-    c = did2.schema.cache.shared().getClass('receptive_field');
-    for k = 1:numel(c.fields)
-        f = c.fields(k);
-        if iscell(c.fields); f = c.fields{k}; end
-        if strcmp(f.name, 'value') && isfield(f, 'fields') && ~isempty(f.fields)
-            tf = true; return;
-        end
-    end
-catch
 end
 end

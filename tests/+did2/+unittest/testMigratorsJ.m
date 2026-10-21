@@ -662,8 +662,9 @@ conc = f.get('formulation.value').ingredients(1).concentration;
 verifyEqual(testCase, conc.source_value, 1000);
 verifyEqual(testCase, conc.source_unit.name, 'dilution');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
-% "virus_injection is always a dose (an injection), its volume NaN when
-% unrecorded, its dilution staying on the formulation" (Jess Haley, 2026-10-21)
+% a body site makes a virus_injection a dose, its volume NaN when unrecorded,
+% its dilution staying on the formulation (Jess Haley, 2026-10-21
+% [treatment-location], [virus-location])
 verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
@@ -741,6 +742,27 @@ verifyEqual(testCase, site.get('term.value').node, 'SNOMED:783351009');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
+function testAStatedAmountKindWithNoNumberPutsTheNaNInThatKind(testCase)
+% "When a dose's amount was not recorded and the kind of quantity is not known,
+% the NaN goes in value.volume.liters; where the kind is known ... the NaN goes
+% in that quantity instead" (Jess Haley, 2026-10-21 [unknown-amount-slot]).
+% A row stating mg/kg with a blank number: the kind (amount per body mass) is
+% known, so the NaN goes there, with the unit, and not in volume.
+v1 = treatmentDrugDoc('td_kind', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,,SNOMED:396163008,mg/kg'), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+v = d.get('dose.value');
+verifyTrue(testCase, isnan(v.amount_per_body_mass.grams_per_gram));
+verifyEqual(testCase, v.amount_per_body_mass.source_unit.node, 'SNOMED:396163008');
+verifyFalse(testCase, isfield(v, 'volume') && ~isempty(v.volume) && isstruct(v.volume) ...
+    && isfield(v.volume, 'liters') && ~isempty(v.volume.liters), ...
+    'a known kind takes the NaN; volume is only the default');
+end
+
 function testTreatmentDrugWithNoLocationIsRouteUnknown(testCase)
 % No location recorded: the route cannot be read, so a dose with a NaN amount
 % and a `route_unknown` note in the migration report; no site observation.
@@ -760,10 +782,15 @@ out2 = runJ(treatmentDrugDoc('td_v1', 'chebi:28001,haloperidol,5', ...
 verifyEqual(testCase, routeUnknownCount(out2, 'treatment_drug'), 0);
 end
 
-function testVirusInjectionAtTheBathIsStillADose(testCase)
-% Birren records AAV DREADDs as virus_injection located in the bath
-% (+birren/TreatmentCreator.m). "virus_injection is always a dose": the
-% location does not make it an immersion.
+function testVirusInjectionAtTheBathIsAnImmersion(testCase)
+% INVERTED from testVirusInjectionAtTheBathIsStillADose. Birren records AAV
+% DREADDs for cell cultures as virus_injection located in the bath
+% (+birren/TreatmentCreator.m, createSayaTreatments.m), with dilution 0, the
+% template blank. "virus_injection follows the same location rule as the other
+% treatments: a bath location makes it an immersion (a manipulation of the
+% subject valued by the virus formulation through value_id, no location
+% observation) ... A dilution of 0 is treated as not recorded (NaN), not as a
+% measured 0." (Jess Haley, 2026-10-21 [virus-location])
 v1 = struct();
 v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -776,11 +803,120 @@ v1.virus_injection = struct('virus_OntologyName', 'addgene:50474', ...
     'diluent_OntologyName', 'NCIm:C0043047', 'diluent_name', 'Water');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 0);
-d = out.migrated{1};
-verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+% manipulation + virus chemical + diluent chemical + formulation + anchor
+verifyEqual(testCase, numel(out.migrated), 5);
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+m = out.migrated{1};
+verifyEqual(testCase, m.get('base.id'), 'vi_bath');
+verifyEqual(testCase, m.get('statement.variable').node, 'addgene:50474');
+formId = depVal(m, 'value_id');
+verifyNotEmpty(testCase, formId, 'an immersion takes its value through value_id');
+verifyEmpty(testCase, depVal(m, 'formulation_id'));
+form = [];
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('base.id'), formId); form = out.migrated{k}; end
+end
+verifyNotEmpty(testCase, form);
+if ~isempty(form)
+    % dilution 0 is not recorded: NaN, and no "dilution" unit is claimed
+    conc = form.get('formulation.value').ingredients(1).concentration;
+    verifyTrue(testCase, isnan(conc.source_value), 'a dilution of 0 is NaN, not a measured 0');
+    verifyFalse(testCase, isfield(conc, 'source_unit') && isstruct(conc.source_unit) ...
+        && ~isempty(conc.source_unit) && strcmp(conc.source_unit.name, 'dilution'));
+end
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
+end
+
+function testVirusInjectionWithNoLocationIsRouteUnknown(testCase)
+% With no location a virus_injection behaves like the other treatments: a dose
+% with a NaN amount, listed as route_unknown, no site observation.
+v1 = struct();
+v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'vi_none', 'session_id', 'sess_09', ...
+    'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
+    'virus_name', 'AAV-ChR2', 'dilution', 1000);
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 1);
+verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'vi_none'});
+[f, ~] = doseChainJ(out.migrated, d);
+verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 1000);
+end
+
+function testBabuAgarMediumIsAnExposure(testCase)
+% Babu writes a chemical training row as a treatment_drug located at agar plate
+% medium (MICRO:0000480, +babu/treatments.json `agar`). "Babu treatments located
+% at agar plate medium (MICRO:0000480) or ambient air (XCO:0000918) are
+% exposures of the worms: a manipulation of the worm subject valued by the
+% formulation through value_id, not a dose, with no anatomical-location
+% observation" (Jess Haley, 2026-10-21 [babu-media]).
+v1 = treatmentDrugDoc('td_agar', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nCHEBI:82021,imazapyr,0.08,OM:MolarVolumeUnit,Molar'), ...
+    'MICRO:0000480', 'agar plate medium');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 4);   % manipulation + chemical + formulation + anchor
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+m = out.migrated{1};
+verifyEqual(testCase, m.get('base.id'), 'td_agar');
+verifyEqual(testCase, depVal(m, 'entity_id'), 'subj_007');
+verifyNotEmpty(testCase, depVal(m, 'value_id'));
+verifyEmpty(testCase, depVal(m, 'formulation_id'));
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
+end
+
+function testBabuAmbientAirIsAnExposure(testCase)
+% Babu's odour training rows are located in ambient air (XCO:0000918); the
+% diacetyl mixture has two rows, both kept as ingredients.
+v1 = treatmentDrugDoc('td_air', ...
+    sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+             'CHEBI:16583,"butane-2,3-dione",1,NCIT:C48571,Percent Volume per Volume\n' ...
+             'CHEBI:16236,ethanol,99,NCIT:C48571,Percent Volume per Volume']), ...
+    'XCO:0000918', 'ambient air');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 5);   % manipulation + 2 chemicals + formulation + anchor
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+m = out.migrated{1};
+verifyEqual(testCase, m.get('statement.variable').name, 'butane-2,3-dione');
+end
+
+function testBabuHeatRowIsATemperatureManipulation(testCase)
+% Babu's heat pulse: a treatment_drug at agar plate medium whose one mixture row
+% is OM:Heat, 37, NCIT:C42559 "Degree Celsius". "a heat row (OM:Heat, 37 °C) is
+% a temperature manipulation of the worms at each training time" (Jess Haley,
+% 2026-10-21 [babu-media]). No formulation, no chemical, no location observation.
+v1 = treatmentDrugDoc('td_heat', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nOM:Heat,heat,37,NCIT:C42559,Degree Celsius'), ...
+    'MICRO:0000480', 'agar plate medium');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 2);   % temperature manipulation + anchor
+m = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'temperature_manipulation');
+verifyEqual(testCase, m.get('base.id'), 'td_heat');
+verifyEqual(testCase, depVal(m, 'entity_id'), 'subj_007');
+t = m.get('temperature.value');
+verifyEqual(testCase, t(1).celsius, 37);
+verifyEqual(testCase, t(1).source_value, 37);
+verifyEqual(testCase, t(1).source_unit.node, 'NCIT:C42559');
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
 function v1 = treatmentDrugDoc(id, mixtureTable, locNode, locName)
@@ -4151,11 +4287,15 @@ verifyError(testCase, @() did2.convert.migrators_j.spike_clusters(body), ...
     'did2:convert:spikeClustersInventedShape');
 end
 
-function testHartleyCalcPassesThroughOn88(testCase)
-% did-schema #88: receptive_field.value is a REQUIRED structure declaring no
-% sub-fields, so no receptive_field_calculation can validate; corpus run
-% 39550766416 quarantined all 210 of 20211116's hartley_calc documents before
-% this passthrough. The document stays on its v1 tombstone, id and body intact.
+function testHartleyCalcWithoutAnNgridBlockIsRefused(testCase)
+% INVERTED 2026-10-21 (was testHartleyCalcPassesThroughOn88). The passthrough
+% existed because receptive_field.value was a REQUIRED structure declaring no
+% sub-fields, so no receptive_field_calculation could validate (corpus run
+% 39550766416 quarantined all 210 of 20211116's documents). did-schema
+% data_body AMENDMENT 5 (rule value_inline_or_body) lifted that: the fold
+% runs, and this fixture, which carries no `ngrid` block and so no response
+% volume, is REFUSED rather than emitted as a receptive field whose value
+% lives nowhere. testMigratorsJHartleyCalc owns the fold itself.
 body = struct();
 body.document_class = struct('class_name', 'hartley_calc', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -4163,10 +4303,8 @@ body.depends_on = struct('name', {'element_id'}, 'value', {'sub_h'});
 body.base = struct('id', 'hc_1', 'session_id', 'sess_09', 'name', 'hc', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.hartley_calc = struct('input_parameters', struct());
-out = did2.convert.migrators_j.hartley_calc(body);
-verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'hartley_calc');
-verifyEqual(testCase, out{1}.base.id, 'hc_1');
+verifyError(testCase, @() did2.convert.migrators_j.hartley_calc(body), ...
+    'did2:convert:hartleyNgridBlockMissing');
 end
 
 function testFitcurveFoldsToResidualScore(testCase)

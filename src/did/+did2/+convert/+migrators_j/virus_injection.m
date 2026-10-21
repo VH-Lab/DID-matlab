@@ -1,20 +1,25 @@
 function v2Body = virus_injection(preBody)
-%VIRUS_INJECTION Brainstorm-J migrator: did_v1 virus_injection -> dose_manipulation.
+%VIRUS_INJECTION Brainstorm-J migrator: did_v1 virus_injection -> a dose or an
+%   immersion, decided by the recorded location.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
-%   Strict J has no `injection` class (D8): a viral injection is a
-%   dose_manipulation, WHEREVER it was recorded -- "virus_injection is always a
-%   dose (an injection), its volume NaN when unrecorded, its dilution staying
-%   on the formulation" (Jess Haley, 2026-10-21; jTreatmentRoute quotes the
-%   whole decision). The virus identity is the spine
-%   `subject_statement.variable` AND the formulation's first ingredient (a
-%   `chemical`, serotype carried in the ontology term); the dilution is that
-%   ingredient's concentration (`source_unit` "dilution"); a named diluent is a
-%   second ingredient. The template has no volume field, so the dose's amount
-%   is always NaN in `volume.liters` (jDoseValue). The site is Path S --
-%   merely-located -> a `term_observation` here (D3), attributed -> promoted
-%   by the NDI second pass. A virus_injection with no site is NOT counted as
-%   route unknown: its route is the injection.
+%   Strict J has no `injection` class (D8). "virus_injection follows the same
+%   location rule as the other treatments: a bath location makes it an
+%   immersion (a manipulation of the subject valued by the virus formulation
+%   through value_id, no location observation); a body site makes it a dose.
+%   A dilution of 0 is treated as not recorded (NaN), not as a measured 0."
+%   (Jess Haley, 2026-10-21 [virus-location]; supersedes "virus_injection is
+%   always a dose" in [treatment-location].) Birren writes virus at the bath
+%   (NCIm:C0179246) for cell cultures, with dilution 0, the template blank.
+%
+%   The virus identity is the spine `subject_statement.variable` AND the
+%   formulation's first ingredient (a `chemical`); a non-zero dilution is that
+%   ingredient's concentration (`source_unit` "dilution"), and 0 is NaN; a
+%   named diluent is a second ingredient. Routing is jTreatmentRoute /
+%   jTreatmentBodies: bath -> immersion; a body site -> a dose whose amount is
+%   NaN in `volume.liters` (the template has no volume field) plus the site
+%   `term_observation` (Path S, D3); no location -> that dose, listed in the
+%   migration report as `route_unknown`.
 
 arguments
     preBody (1,1) struct
@@ -33,7 +38,10 @@ virusTerm = jOntologyTerm( ...
     jGetCharAny(block, {'virus_name'}));
 dilution = [];
 dilutionUnit = '';
-if isfield(block, 'dilution') && isnumeric(block.dilution) && ~isempty(block.dilution)
+if isfield(block, 'dilution') && isnumeric(block.dilution) && ~isempty(block.dilution) ...
+        && double(block.dilution(1)) ~= 0
+    % 0 is the template blank, not a measured dilution: left unrecorded, so
+    % jDoseBodies writes the ingredient's concentration as NaN.
     dilution = double(block.dilution(1));
     dilutionUnit = 'dilution';
 end
@@ -46,14 +54,12 @@ if ~isempty(diluentNode) || ~isempty(diluentName)
         'source_value', [], 'source_unit', '');
 end
 
-anchor = jSessionAnchor(preBody, 'during');
-bodies = jTreatmentBodies(preBody, virusTerm, chemicals, [], anchor.base.id, ...
-    'AlwaysDose', true);
-
 siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'virus_location_ontology_name', 'virusLocation_OntologyName'}), ...
     jGetCharAny(block, {'virus_location_name', 'virusLocation_name'}));
-if ~isempty(siteTerm.node) || ~isempty(siteTerm.name)
+anchor = jSessionAnchor(preBody, 'during');
+[bodies, route] = jTreatmentBodies(preBody, virusTerm, chemicals, siteTerm, anchor.base.id);
+if strcmp(route, 'dose')
     obs = jStatement(preBody, 'term_observation', jSubjectOf(preBody), ...
         jLabel('anatomical location'), siteTerm, ...
         'TimeReferenceIds', {anchor.base.id});

@@ -13,6 +13,8 @@ function [docs, route] = jTreatmentBodies(preBody, variable, chemicals, location
 %                  empty `value` and a `value_id` edge to the formulation -- the
 %                  shape resolveDeferredBaths writes for a stimulus_bath
 %                  (DID-matlab ff6d542). No amount: the subject sat in it.
+%     'exposure'   the same shape, for Babu's agar plate medium / ambient air
+%                  (Jess Haley, 2026-10-21 [babu-media]).
 %     'dose'       a `dose_manipulation` whose `formulation_id` names the
 %                  formulation and whose value is the amount (jDoseValue: the
 %                  source's amount, else NaN in `volume.liters`).
@@ -20,9 +22,10 @@ function [docs, route] = jTreatmentBodies(preBody, variable, chemicals, location
 %                  report (did2.convert.reportNote).
 %
 %   Options:
-%     'AlwaysDose'  true for virus_injection: an injection is a dose wherever
-%                   it was recorded, and an injection with no site is not a
-%                   route-unknown treatment (its route is the injection).
+%     'AlwaysDose'  route as a dose whatever the location, never noted as
+%                   route_unknown. No caller sets it since virus_injection
+%                   follows the location rule (Jess Haley, 2026-10-21
+%                   [virus-location]).
 %     'Notes'       the manipulation's notes.
 %
 %   Decided by Jess Haley, 2026-10-21; the decision is quoted in
@@ -50,7 +53,7 @@ if ~isempty(options.Notes)
 end
 
 switch route
-    case 'immersion'
+    case {'immersion', 'exposure'}
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
         % `formulation_manipulation` is no class: did2.build reads it as the
         % direction `manipulation` with the value kind `formulation`.
