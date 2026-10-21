@@ -1,4 +1,4 @@
-function [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals)
+function [value, chemicals, conflicts, ingredientRows, placeholders] = jDoseValue(chemicals)
 %JDOSEVALUE A migrated dose's `value`: the amount the source gave, else NaN.
 %
 %   [VALUE, CHEMICALS] = jDoseValue(CHEMICALS). CHEMICALS is the struct array
@@ -32,6 +32,15 @@ function [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals)
 %   adds one `ingredient_id` edge per row to that row's chemical
 %   (rule ingredients_match_edges). The top level then states the whole
 %   formulation's amount; unrecorded, it is NaN in volume.liters.
+%   A PLACEHOLDER IS NOT AN AMOUNT (Jess Haley, 2026-10-21 [dose per
+%   ingredient]): an amount per body mass on a VEHICLE row (saline,
+%   EFO:0002677 -- Hunsberger's control group is written `saline, 1 mg/kg`,
+%   copied from the drug group's row) is the amount of no active ingredient.
+%   It is not made an ingredient amount and not a concentration: it is taken
+%   off its row and listed in PLACEHOLDERS (a cellstr, one line each:
+%   substance, number, unit) for the caller to report
+%   (jTreatmentBodies: reportNote 'amount_placeholder'); with no other amount
+%   the dose's volume is NaN.
 %   No such row: the amount is unrecorded and is written as NaN in the
 %   dose's volume:
 %   `value.volume.liters = NaN` ("An unrecorded amount is written as NaN in
@@ -63,6 +72,7 @@ for k = 1:numel(chemicals)
 end
 
 conflicts = {};
+placeholders = {};
 ingredientRows = [];
 ingredients = struct('amount_per_body_mass', {});
 if ~isempty(hits)
@@ -82,6 +92,12 @@ if ~isempty(hits)
         q.source_unit = unitTerm(c.source_unit);
         chemicals(k).source_value = [];
         chemicals(k).source_unit = [];
+        if strcmp(slot, 'amount_per_body_mass') && isVehicle(c.substance)
+            % a vehicle's "amount per body mass" names no active ingredient
+            placeholders{end+1} = sprintf('%s: %s %s', termName(c.substance), ...
+                num2str(sv, 17), spelled); %#ok<AGROW>
+            continue;
+        end
         if strcmp(slot, 'amount_per_body_mass')
             % one ingredient's own amount, not the formulation's
             ingredients(end+1) = struct('amount_per_body_mass', q); %#ok<AGROW>
@@ -189,6 +205,29 @@ switch kind
         slot = 'mass'; canon = 'grams'; factor = f;
     case 'volume'
         slot = 'volume'; canon = 'liters'; factor = f;
+end
+end
+
+function tf = isVehicle(substance)
+% a vehicle carries no active ingredient: saline (EFO:0002677, the term the
+% Hunsberger converter writes), or a substance named 'saline' / 'vehicle'
+tf = false;
+if ~isstruct(substance) || isempty(substance)
+    return;
+end
+node = '';
+if isfield(substance, 'node'); node = strtrim(char(substance.node)); end
+if strcmpi(node, 'EFO:0002677')
+    tf = true;
+    return;
+end
+tf = any(strcmpi(termName(substance), {'saline', 'vehicle'}));
+end
+
+function n = termName(substance)
+n = '';
+if isstruct(substance) && ~isempty(substance) && isfield(substance, 'name')
+    n = strtrim(char(substance.name));
 end
 end
 
