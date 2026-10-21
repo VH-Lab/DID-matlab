@@ -150,8 +150,9 @@ end
 verifyTrue(testCase, isKey(epochId, 't00001') && isKey(epochId, 't00002'), ...
     'both endpoint epochs must have been minted');
 
-fromId = depValueOf(align{1}, 'from_reference');
-toId   = depValueOf(align{1}, 'to_reference');
+% #88: the alignment names its endpoints by input_id / output_id
+fromId = depValueOf(align{1}, 'input_id');
+toId   = depValueOf(align{1}, 'output_id');
 verifyNotEmpty(testCase, fromId);
 verifyNotEmpty(testCase, toId);
 fromRef = docWithId(out, fromId);
@@ -159,12 +160,12 @@ toRef   = docWithId(out, toId);
 verifyNotEmpty(testCase, fromRef, 'from_reference names no document in the batch');
 verifyNotEmpty(testCase, toRef, 'to_reference names no document in the batch');
 verifyEqual(testCase, char(did2.unittest.helpers.leafName(fromRef)), ...
-    'relative_reference');
+    'relative_time_reference');
 verifyEqual(testCase, char(did2.unittest.helpers.leafName(toRef)), ...
-    'relative_reference');
+    'relative_time_reference');
 
 % each reference anchored to ITS endpoint's minted epoch, and NOT left empty.
-anchors = sort({depValueOf(fromRef, 'relative_to'), depValueOf(toRef, 'relative_to')});
+anchors = sort({depValueOf(fromRef, 'referent_id'), depValueOf(toRef, 'referent_id')});
 expected = sort({epochId('t00001'), epochId('t00002')});
 verifyEqual(testCase, anchors, expected, ...
     'the endpoints must anchor at the two minted epochs, not at any epoch');

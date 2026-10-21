@@ -988,15 +988,19 @@ for k = 1:n
     % would store one fact twice with nothing saying which is authoritative --
     % the defect open item #69 exists for.
     if isfield(b, 'method') && isstruct(b.method) && isscalar(b.method) ...
-            && isfield(b.method, 'parameters') && isstruct(b.method.parameters)
+            && isfield(b.method, 'parameters') ...
+            && (isstruct(b.method.parameters) || iscell(b.method.parameters))
         % #88: the parked string is the 'epochid' parameter entry; the edge
-        % now says it, so the entry goes
+        % now says it, so the entry goes. The list is a struct array when
+        % built and may be a cell of structs once it has been through a
+        % document round trip (ragged entries), so both are read.
         ps = b.method.parameters;
         keepP = true(1, numel(ps));
         for ii = 1:numel(ps)
-            keepP(ii) = ~(isfield(ps(ii), 'variable') && isstruct(ps(ii).variable) ...
-                && isfield(ps(ii).variable, 'name') ...
-                && strcmp(char(ps(ii).variable.name), 'epochid'));
+            if iscell(ps); e = ps{ii}; else; e = ps(ii); end
+            keepP(ii) = ~(isstruct(e) && isfield(e, 'variable') && isstruct(e.variable) ...
+                && isfield(e.variable, 'name') ...
+                && strcmp(char(e.variable.name), 'epochid'));
         end
         b.method.parameters = ps(keepP);
         if isempty(b.method.parameters)
