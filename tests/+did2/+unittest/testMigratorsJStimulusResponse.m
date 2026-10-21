@@ -342,7 +342,7 @@ out = runJ(v1);
 
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 % the payload survives intact for the second pass
@@ -360,7 +360,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out = runJ(withEpochEdge(responseFixture('peak')));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -371,7 +371,7 @@ v1 = withEpochEdge(responseFixture('F1'));
 v1.stimulus_response_scalar.responses.response_real = [];
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -412,7 +412,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 out = runJ(responseFixture('F1'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
 % suppressing is only worth anything if the string it protects is still there
@@ -454,7 +454,7 @@ out = runJ(parametersFixture());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), ...
     'stimulus_response_scalar_parameters_basic');
 verifyEqual(testCase, d.get('base.id'), 'param_77c19b');
 blk = 'stimulus_response_scalar_parameters_basic.';

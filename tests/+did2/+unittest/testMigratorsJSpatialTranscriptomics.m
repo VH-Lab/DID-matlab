@@ -248,7 +248,7 @@ function testFileReferenceIsNotFoldedToGenericFile(testCase)
 % DO NOT "FIX" THIS TEST BY DELETING IT. If the team rules the other way,
 % the class's own .md doc has to change first.
 out = did2.convert.migrators_j.file_reference(fileReferenceV1());
-verifyEqual(testCase, out{1}.document_class.class_name, 'file_reference');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'file_reference');
 end
 
 function testGeneListPreservesReferenceTableFields(testCase)

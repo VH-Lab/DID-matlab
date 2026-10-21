@@ -113,7 +113,7 @@ anchorIds = {};
 withInstrument = 0;
 for i = 1:numel(obs)
     b = obs{i};
-    verifyEqual(testCase, char(b.document_class.class_name), 'voltage_observation');
+    verifyEqual(testCase, char(did2.unittest.helpers.leafName(b)), 'voltage_observation');
     verifyEqual(testCase, depVal(b, 'subject_id'), 'specimen_1');
     tr = depVal(b, 'time_reference_1');
     verifyNotEmpty(testCase, tr);
@@ -132,7 +132,7 @@ verifyEqual(testCase, numel(unique(anchorIds)), 1);
 anchors = bodiesNamed(out, 'migrated_probemap_epoch_anchor');
 verifyEqual(testCase, numel(anchors), 1);
 a = anchors{1};
-verifyEqual(testCase, char(a.document_class.class_name), 'relative_reference');
+verifyEqual(testCase, char(did2.unittest.helpers.leafName(a)), 'relative_reference');
 verifyEqual(testCase, a.base.id, anchorIds{1});
 verifyEqual(testCase, char(a.relative_reference.value.relation.name), 'intervalDuring');
 % its relative_to is the minted epoch document
@@ -352,7 +352,7 @@ function testStimManipulationClassSubjectAnchor(testCase)
 [~, ~, manips] = stimDecompose();
 assertNotEmpty(testCase, manips);
 m = manips{1};
-verifyEqual(testCase, char(m.document_class.class_name), 'term_manipulation');
+verifyEqual(testCase, char(did2.unittest.helpers.leafName(m)), 'term_manipulation');
 verifyEqual(testCase, depVal(m, 'subject_id'), 'spec_s');
 verifyNotEmpty(testCase, depVal(m, 'time_reference_1'));
 end

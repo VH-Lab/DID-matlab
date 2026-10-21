@@ -347,7 +347,7 @@ if ~isempty(out.quarantine)
         out.quarantine(1).reason));
 end
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'epochfiles_ingested');
 end
 

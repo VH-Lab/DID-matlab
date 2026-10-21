@@ -283,7 +283,7 @@ out = runJ(responseFixture('F1'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'stimulus_response_scalar');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'stimulus_response_scalar');
 verifyEqual(testCase, d.get('stimulus_response.element_epochid'), 't00017');
 verifyEqual(testCase, d.get('stimulus_response.stimulator_epochid'), 't00003');
 verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
@@ -495,7 +495,7 @@ v1 = emptyEdge(withEpochEdge(responseFixture('F1')), 'element_id');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 

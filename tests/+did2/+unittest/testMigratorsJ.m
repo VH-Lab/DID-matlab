@@ -181,7 +181,7 @@ out = runJ(v1);
 
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), 'subject');
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'subject');
 verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
 verifyEqual(testCase, doc.get('entity.local_identifier'), 'cohortA');
 % bare identity: is_group / is_biological must NOT be present in V_eta
@@ -217,7 +217,7 @@ v1.base = struct('id', 'sub_bare', 'session_id', 'sess_09', ...
 v1.subject = struct('local_identifier', '', 'description', '');
 out = runJ(v1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), 'subject');
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'subject');
 verifyEqual(testCase, doc.get('entity.local_identifier'), 'sub_bare');
 end
 
@@ -287,7 +287,7 @@ out = runJ(v1);
 
 verifyEqual(testCase, numel(out.migrated), 1);
 a = out.migrated{1};
-verifyEqual(testCase, a.get('document_class.class_name'), 'term_assertion');
+verifyEqual(testCase, did2.unittest.helpers.leafName(a), 'term_assertion');
 % the entity type -> the asserted variable; the ontology id + label -> the value
 verifyEqual(testCase, a.get('statement.variable').name, 'species');
 verifyEqual(testCase, a.get('term.value').node, 'NCBITaxon:6239');
@@ -510,7 +510,7 @@ end
 function testOntologyTableRowNumericColumn(testCase)
 out = runJ(tableRow());
 mass = out.migrated{1};   % BodyWeight -> mass_observation
-verifyEqual(testCase, mass.get('document_class.class_name'), 'mass_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(mass), 'mass_observation');
 % identity is on the spine variable (subject_statement), value on the mass leaf
 verifyEqual(testCase, mass.get('statement.variable').name, 'body weight');
 verifyEqual(testCase, mass.get('mass.value').source_value, 24.3);
@@ -523,14 +523,14 @@ end
 function testOntologyTableRowStringColumnIsTermObservation(testCase)
 out = runJ(tableRow());
 term = out.migrated{3};   % TrialType -> term_observation (string value)
-verifyEqual(testCase, term.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(term), 'term_observation');
 verifyEqual(testCase, term.get('term.value').name, 'Startle 95 dB');
 end
 
 function testOntologyTableRowAmplitudeIsIntensity(testCase)
 out = runJ(tableRow());
 amp = out.migrated{2};   % a.u. amplitude -> intensity_observation (J §7)
-verifyEqual(testCase, amp.get('document_class.class_name'), 'intensity_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(amp), 'intensity_observation');
 verifyEqual(testCase, amp.get('intensity.value').source_value, 38);
 end
 
@@ -553,7 +553,7 @@ function testTreatmentTemperatureIsTemperatureManipulation(testCase)
 out = runJ(treatmentDoc('', 'cold exposure', 4.0, ''));
 verifyEqual(testCase, numel(out.migrated), 2);   % manip + anchor
 m = out.migrated{1};
-verifyEqual(testCase, m.get('document_class.class_name'), 'temperature_manipulation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'temperature_manipulation');
 verifyEqual(testCase, m.get('temperature.value').source_value, 4.0);
 verifyEqual(testCase, m.get('statement.variable').name, 'cold exposure');
 verifyEqual(testCase, depVal(m, 'subject_id'), 'subj_007');
@@ -564,7 +564,7 @@ end
 function testTreatmentSubstanceIsDoseManipulation(testCase)
 out = runJ(treatmentDoc('chebi:28001', 'haloperidol', 2.5, ''));
 m = out.migrated{1};
-verifyEqual(testCase, m.get('document_class.class_name'), 'dose_manipulation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'dose_manipulation');
 chem = m.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
 % the source numeric_value is carried as the dose amount (not dropped)
@@ -576,7 +576,7 @@ end
 function testTreatmentProcedureIsTermManipulation(testCase)
 out = runJ(treatmentDoc('', 'craniotomy', [], ''));
 m = out.migrated{1};
-verifyEqual(testCase, m.get('document_class.class_name'), 'term_manipulation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'term_manipulation');
 verifyEqual(testCase, m.get('term.value').name, 'craniotomy');
 end
 
@@ -590,7 +590,7 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'term_observation'));
 % " Target Location" stripped from the manipulation's spine variable
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
 site = out.migrated{2};
-verifyEqual(testCase, site.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(site), 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
 
@@ -608,7 +608,7 @@ v1.treatment_drug = struct('mixture_table', 'chebi:28001,haloperidol,5', ...
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 3);   % dose + site obs + anchor
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'dose_manipulation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
 chem = d.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
 verifyEqual(testCase, chem(1).amount.source_value, 5);
@@ -616,7 +616,7 @@ verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
 % the site node survives the universalRenames snake-casing (location_ontologyNode
 % -> location_ontology_node)
 site = out.migrated{2};
-verifyEqual(testCase, site.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(site), 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
 
@@ -633,7 +633,7 @@ v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 3);   % dose + site obs + anchor
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'dose_manipulation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
 chem = d.get('dose.value').formulation.chemicals;
 verifyEqual(testCase, chem(1).substance.name, 'AAV-ChR2');
 verifyEqual(testCase, chem(1).amount.source_value, 1000);
@@ -656,7 +656,7 @@ v1.probe_location = struct('ontology_name', 'uberon:0002436', 'name', 'primary v
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 2);   % obs + anchor
 o = out.migrated{1};
-verifyEqual(testCase, o.get('document_class.class_name'), 'term_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(o), 'term_observation');
 verifyEqual(testCase, o.get('term.value').node, 'uberon:0002436');
 % the probe is the subject (device-as-subject, D2)
 verifyEqual(testCase, depVal(o, 'subject_id'), 'probe_42');
@@ -686,7 +686,7 @@ function testOntologyLabelDefersToSecondPass(testCase)
 % graph, so the document is carried through intact for the second pass.
 out = did2.convert.migrators_j.ontology_label(ontologyLabelBody());
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'ontology_label');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'ontology_label');
 verifyEqual(testCase, out{1}.ontology_label.ontology_node, 'uberon:3373');
 % the link to the labelled document is kept, and no husk observation is minted
 verifyEqual(testCase, depValue(out{1}, 'document_id'), 'imstack_9');
@@ -751,7 +751,7 @@ out = runJ(ontologyLabelBody());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), 'ontology_label');
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'ontology_label');
 % the load-bearing assertion: the referent id, after the rename step
 verifyEqual(testCase, depVal(doc, 'document_id'), 'imstack_9', ...
     'the document_id edge must survive universalRenames + the migrator');
@@ -802,7 +802,7 @@ out = runJ(v1);
 % 1 -> 3, exactly as image_stack folds
 verifyEqual(testCase, numel(out.migrated), 3);
 obs = out.migrated{1};
-verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 % id PRESERVED, so anything referring to this document still resolves
 verifyEqual(testCase, obs.get('base.id'), 'img_01');
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');
@@ -1019,7 +1019,7 @@ verifyFalse(testCase, isfield(out.summary.by_class, 'image_observation'), ...
 % migrator DIRECTLY and so really do get structs back. Two green CI jobs went
 % red on that alone.
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), 'image_stack');
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'image_stack');
 verifyEqual(testCase, doc.get('base.id'), 'is_02');
 % the payload survives for the second pass
 verifyEqual(testCase, doc.get('image_stack_parameters.data_type'), 'uint8');
@@ -1040,7 +1040,7 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
 
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'image_stack');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'image_stack');
 end
 
 function testImageStackBecomesBodyBackedObservation(testCase)
@@ -1062,7 +1062,7 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'image_observation'));
 verifyTrue(testCase, isfield(out.summary.by_class, 'sampled_body'));
 verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
 obs = out.migrated{1};
-verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 % the source `label` is NOT carried -- it is the definition of the modality
 % ontology term (on variable), reconstructable as a projection, so base.name is
 % a short generic name rather than the prose label.
@@ -1109,7 +1109,7 @@ verifyEqual(testCase, imageCell.axes(3).spacing.value, 1);
 verifyEqual(testCase, imageCell.axes(3).origin.value, 0);
 % frames in the sampled_body; cadence n = T*Z = 10*1
 sb = out.migrated{2};
-verifyEqual(testCase, sb.get('document_class.class_name'), 'sampled_body');
+verifyEqual(testCase, did2.unittest.helpers.leafName(sb), 'sampled_body');
 % the frame ORDINAL axis replaces sample_time (signed sec.2): n = T*Z = 10*1.
 verifyEqual(testCase, sb.get('sampled_body.axes').n, 10);
 verifyEqual(testCase, sb.get('sampled_body.axes').variable.name, 'frame');
@@ -1341,7 +1341,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3, ...
     'the fold arm is 1 -> image_observation + sampled_body + anchor');
 obs = out.migrated{1};
-verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 
 % THE EDGE SET, as a set. DENOMINATOR: 3 edges on the observation.
 verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), ...
@@ -1371,7 +1371,7 @@ verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
 % and the file rides to the body -- asserted because every other fold-arm
 % fixture declares no files at all, the same blind spot that let image_stack's
 % tombstone declare `imagestack_file` while NDI writes `imageStack`
-verifyEqual(testCase, out.migrated{2}.get('document_class.class_name'), 'sampled_body');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{2}), 'sampled_body');
 sbStruct = out.migrated{2}.toStruct();
 verifyTrue(testCase, isfield(sbStruct, 'files'), ...
     'the carried bytes must land on the sampled_body');
@@ -1484,7 +1484,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3, ...
     'a babu imageStack has a subject, so it folds like any other');
 obs = out.migrated{1};
-verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 
 % NON-VACUITY FIRST: the fold happened and the edges that SHOULD be there are.
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_babu_3');
@@ -1516,7 +1516,7 @@ v1.depends_on = struct('name', {'subject_id', 'document_id'}, ...
 
 out = runJ(v1);
 obs = out.migrated{1};
-verifyEqual(testCase, obs.get('document_class.class_name'), 'image_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_babu_3');
 verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), {'subject_id', 'time_reference_1'}, ...
     'an empty source document_id must not become an empty V_eta edge');
@@ -1835,7 +1835,7 @@ out = runJ(cultivationPlateRow());
 verifyEqual(testCase, numel(out.migrated), 1, ...
     'the cultivation plate was fanned out instead of passed through');
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'ontology_table_row');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'ontology_table_row');
 verifyEqual(testCase, d.get('base.id'), 'otr_cultivation');
 bc = out.summary.by_class;
 % NOT a patch: no minted subject, and none of the geometry-map outputs
@@ -2348,7 +2348,7 @@ v1.metadata_editor = struct('metadata_structure', []);
 out = runJRoundTrip(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
 ds = out.migrated{1};
-verifyEqual(testCase, ds.get('document_class.class_name'), 'dataset');
+verifyEqual(testCase, did2.unittest.helpers.leafName(ds), 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'sess_09');
 verifyEqual(testCase, ds.get('dataset.full_name'), '(unnamed dataset)');
 end
@@ -2598,13 +2598,13 @@ software = out{2};
 % The READER leads and keeps the source id: acquisition_system.reader_id points
 % at `acquisition_reader`, and v1 daqsystem.daqreader_id names the v1 daqreader
 % document, so this is the body every reader_id edge still resolves to.
-verifyEqual(testCase, reader.document_class.class_name, 'acquisition_reader');
+verifyEqual(testCase, did2.unittest.helpers.leafName(reader), 'acquisition_reader');
 verifyEqual(testCase, reader.base.id, 'ndr_1', ...
     'base.id must be preserved on the reader or reader_id edges dangle');
 verifyEqual(testCase, reader.acquisition_reader.reader_string, 'intan');
 % The implementation class became a `software` entity with its OWN id -- which
 % is what lets the deferred dedup pass merge rigs sharing one class (#25).
-verifyEqual(testCase, software.document_class.class_name, 'software');
+verifyEqual(testCase, did2.unittest.helpers.leafName(software), 'software');
 verifyEqual(testCase, software.software.name, 'ndi.daq.reader.mfdaq.ndr');
 verifyNotEqual(testCase, software.base.id, reader.base.id);
 % The edge is PRESENT and POPULATED, never present-and-blank.
@@ -2669,7 +2669,7 @@ body.daqreader_epochdata_ingested = struct('epochtable', ...
 body.daqreader_mfdaq_epochdata_ingested = struct('parameters', ...
     struct('sample_analog_segment', 1000000, 'sample_digital_segment', 1000000));
 out = did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested(body);
-verifyEqual(testCase, out.document_class.class_name, 'daqreader_epochdata_ingested');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out), 'daqreader_epochdata_ingested');
 % the mfdaq `parameters` de-encoded onto the parent, epochtable preserved
 verifyEqual(testCase, out.daqreader_epochdata_ingested.parameters.sample_analog_segment, 1000000);
 verifyTrue(testCase, isfield(out.daqreader_epochdata_ingested, 'epochtable'));
@@ -2695,7 +2695,7 @@ body.base = struct('id', 'ee_1', 'session_id', 'sess_09', ...
 body.epochid = struct('epochid', 't00001');
 body.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0; 930.35]);
 out = did2.convert.migrators_j.element_epoch(body);
-verifyEqual(testCase, out.document_class.class_name, 'acquisition_epoch');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out), 'acquisition_epoch');
 % the property block is renamed too, and the base clocks transform ran
 verifyTrue(testCase, isfield(out, 'acquisition_epoch'));
 verifyFalse(testCase, isfield(out, 'element_epoch'));
@@ -2730,7 +2730,7 @@ out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.className(), 'distance_metadata');
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'distance_metadata');
 
 blk = doc.get('distance_metadata');
 % two endpoint records, labelled A and B, in order
@@ -2870,7 +2870,7 @@ function testSpikewavesDefersToSecondPass(testCase)
 out = did2.convert.migrators_j.spikewaves(spikewavesBody());
 verifyClass(testCase, out, 'cell');
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'spikewaves');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'spikewaves');
 verifyEqual(testCase, out{1}.spikewaves.extraction_name, 'thresh_5sd');
 % the bytes ride along untouched, and no stray anchor is left behind
 verifyEqual(testCase, numel(out{1}.files.file_list), 2);
@@ -2915,7 +2915,7 @@ function testBinnedSpikeRateDefersToSecondPass(testCase)
 % -birren and vhlab-toolbox were all searched; no writer exists in any of them.
 out = did2.convert.migrators_j.binnedspikeratevm(binnedSpikeRateBody());
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'binnedspikeratevm');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'binnedspikeratevm');
 verifyEqual(testCase, out{1}.binnedspikeratevm.parameters.binsize, 0.030, 'AbsTol', 1e-12);
 verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
 end
@@ -2964,7 +2964,7 @@ function testVmSpikeSummaryDefersToSecondPass(testCase)
 % can see, which is why this was wrong rather than destructive.
 out = did2.convert.migrators_j.vmspikesummary(vmSpikeSummaryBody());
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'vmspikesummary');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'vmspikesummary');
 verifyEqual(testCase, out{1}.vmspikesummary.number_of_spikes, 249);
 verifyEqual(testCase, out{1}.vmspikesummary.median_max_dvdt, 180.4, 'AbsTol', 1e-9);
 % the extraction edge the old tombstone did not declare is carried
@@ -3216,7 +3216,7 @@ verifyEqual(testCase, leaf.subject_interaction.method_parameters.best_algorithm,
 % V_eta tuning_curve.value renames response_mean -> mean
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
 % concrete leaf carries the v1 spelling per Lepsky et al. 2026
-verifyEqual(testCase, leaf.document_class.class_name, 'tuningcurve_calc');
+verifyEqual(testCase, did2.unittest.helpers.leafName(leaf), 'tuningcurve_calc');
 % app -> a software ENTITY + runtime_environment ENTITY
 sw = out{find(strcmp(names, 'software'), 1)};
 verifyEqual(testCase, sw.software.name, 'ndi.calc.stimulus.tuningcurve');
@@ -3376,7 +3376,7 @@ function testOntologyImageVintageABecomesTermObservation(testCase)
 out = did2.convert.migrators_j.ontology_image(ontologyImageVintageA());
 verifyEqual(testCase, numel(out), 2);
 o = out{1};
-verifyEqual(testCase, o.document_class.class_name, 'term_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(o), 'term_observation');
 verifyEqual(testCase, o.statement.variable.name, 'imaged region');
 verifyEqual(testCase, o.term.value.node, 'uberon:0002436');
 verifyEqual(testCase, o.term.value.name, 'primary visual cortex');
@@ -3392,7 +3392,7 @@ v1 = ontologyImageVintageB();
 out = did2.convert.migrators_j.ontology_image(v1);
 verifyEqual(testCase, numel(out), 1);
 o = out{1};
-verifyEqual(testCase, o.document_class.class_name, 'ontology_image');
+verifyEqual(testCase, did2.unittest.helpers.leafName(o), 'ontology_image');
 verifyEqual(testCase, o.ontology_image.ontology_nodes, 'uberon:0000955,uberon:0002436');
 % the raster block must survive for the second pass. NOTE: this calls the
 % migrator directly, so `coordinates` is still present here -- in the real
@@ -3452,7 +3452,7 @@ v1.electrode_offset_voltage = struct('offset', 0.5, 'temperature', 11);
 out = did2.convert.migrators_j.electrode_offset_voltage(v1);
 verifyEqual(testCase, numel(out), 2);
 o = out{1};
-verifyEqual(testCase, o.document_class.class_name, 'voltage_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(o), 'voltage_observation');
 verifyEqual(testCase, o.subject_statement.storage_mode, 'inline');
 verifyEqual(testCase, depValue(o, 'entity_id'), 'probe_7');
 % a single reading, expressed as a length-1 array
@@ -3521,7 +3521,7 @@ body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Spec
 out = did2.convert.migrators_j.openminds_element(body);
 verifyEqual(testCase, numel(out), 1);
 a = out{1};
-verifyEqual(testCase, a.document_class.class_name, 'term_assertion');
+verifyEqual(testCase, did2.unittest.helpers.leafName(a), 'term_assertion');
 verifyEqual(testCase, a.statement.variable.name, 'species');
 verifyEqual(testCase, a.term.value.node, 'NCBITaxon:6239');
 verifyEqual(testCase, a.term.value.name, 'Caenorhabditis elegans');
@@ -3558,7 +3558,7 @@ body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Stim
 
 out = did2.convert.migrators_j.openminds_stimulus(body);
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'openminds_stimulus');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'openminds_stimulus');
 % carried INTACT -- the epoch and the referent both survive for the second pass
 verifyEqual(testCase, out{1}.epochid.epochid, 't00001');
 verifyEqual(testCase, out{1}.depends_on(1).name, 'stimulus_element_id');
@@ -3725,7 +3725,7 @@ function testSortingOutputsDefersToSecondPass(testCase)
 out = did2.convert.migrators_j.spike_interface_sorting_outputs(sortingOutputsBody());
 verifyClass(testCase, out, 'cell');
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'spike_interface_sorting_outputs');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'spike_interface_sorting_outputs');
 verifyEqual(testCase, out{1}.spike_interface_sorting_outputs.sorter_name, 'kilosort');
 verifyEqual(testCase, out{1}.spike_interface_sorting_outputs.unit, 'ms');
 verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
@@ -3826,7 +3826,7 @@ function testSite2ChannelMapDefersToSecondPass(testCase)
 % document's site ordering. The join is the second pass's to make.
 out = did2.convert.migrators_j.site2channelmap(site2ChannelMapBody());
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'site2channelmap');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'site2channelmap');
 verifyEqual(testCase, out{1}.site2channelmap.map, [5; 6; 7; 8]);
 % the edge that gives `map` its meaning is kept
 verifyEqual(testCase, depValue(out{1}, 'probe_geometry_id'), 'pg_2');
@@ -3859,12 +3859,12 @@ body.position_metadata = struct('ontology_node', 'EMPTY:0000200', ...
 bodies = did2.convert.migrators_j.position_metadata(body);
 verifyEqual(testCase, numel(bodies), 2);              % obs + anchor
 obs = bodies{1};
-verifyEqual(testCase, obs.document_class.class_name, 'term_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'term_observation');
 verifyEqual(testCase, obs.term.value.node, 'EMPTY:0000200');
 verifyEqual(testCase, obs.statement.variable.name, 'position');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'pos_elem_7');
 anchor = bodies{2};
-verifyEqual(testCase, anchor.document_class.class_name, 'session_relative_reference');
+verifyEqual(testCase, did2.unittest.helpers.leafName(anchor), 'session_relative_reference');
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 end
 
@@ -4213,7 +4213,7 @@ function testSpikeClustersDefersToSecondPass(testCase)
 % without reading.
 out = did2.convert.migrators_j.spike_clusters(spikeClustersBody());
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'spike_clusters');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'spike_clusters');
 verifyEqual(testCase, numel(out{1}.spike_clusters.clusterinfo), 2);
 verifyEqual(testCase, out{1}.spike_clusters.waveform_sample_times, [0; 1; 2]);
 verifyEqual(testCase, out{1}.files.file_list{1}, 'spike_cluster.bin');
@@ -4241,7 +4241,7 @@ body.base = struct('id', 'hc_1', 'session_id', 'sess_09', 'name', 'hc', ...
 body.hartley_calc = struct('input_parameters', struct());
 out = did2.convert.migrators_j.hartley_calc(body);
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'hartley_calc');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'hartley_calc');
 verifyEqual(testCase, out{1}.base.id, 'hc_1');
 end
 
@@ -4272,7 +4272,7 @@ function testFitcurveWithNoOperatingSystemPassesThrough(testCase)
 % passes through unchanged (Jess Haley, 2026-10-21).
 out = did2.convert.migrators_j.fitcurve(fitcurveBody('fc_1', 'sub_9'));
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'fitcurve');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'fitcurve');
 verifyEqual(testCase, out{1}.fitcurve.fit_sse, 12.5, 'AbsTol', 1e-9);
 end
 
@@ -4339,7 +4339,7 @@ body.fitcurve = struct('fit_equation', 'gaussian', 'fit_sse', 1.5);
 out = did2.convert.migrators_j.fitcurve(body);
 
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'fitcurve');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'fitcurve');
 verifyEqual(testCase, out{1}.base.id, 'fc_3');
 end
 
@@ -4356,7 +4356,7 @@ body.base = struct('id', 'vf_1', 'session_id', 'sess_09', 'name', 'vf', ...
 body.vmspikefit = struct('fit_equation', 'exp2', 'fit_sse', 3.25);
 out = did2.convert.migrators_j.vmspikefit(body);
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'vmspikefit');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'vmspikefit');
 body.app = struct('name', 'vm', 'version', '1', 'os', 'GLNXA64');
 out = did2.convert.migrators_j.vmspikefit(body);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
@@ -4388,7 +4388,7 @@ function testSimpleCalcDefersToSecondPass(testCase)
 % carried through intact rather than turned into an observation about nobody.
 out = did2.convert.migrators_j.simple_calc(simpleCalcDoc());
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'simple_calc');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'simple_calc');
 verifyEqual(testCase, out{1}.simple_calc.answer, 5);
 % no husk observation, and no stray anchor left behind either
 verifyFalse(testCase, isfield(out{1}, 'subject_statement'));
@@ -4435,7 +4435,7 @@ function testVmResidualsDefersToSecondPass(testCase)
 % (output WAS produced), so NO counter saw it.
 out = did2.convert.migrators_j.vmneuralresponseresiduals(vmResidualsBody());
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'vmneuralresponseresiduals');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'vmneuralresponseresiduals');
 verifyEqual(testCase, out{1}.vmneuralresponseresiduals.element_epochid, 't00001');
 verifyEqual(testCase, out{1}.vmneuralresponseresiduals.column_labels.fifth_column, ...
     'Residual signal');
@@ -4551,7 +4551,7 @@ verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
 
 % the class is KEPT -- this is a fold, not a dissolution
-verifyEqual(testCase, d.get('document_class.class_name'), 'oneepoch');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'oneepoch');
 % the inherited block is GONE from the top level. Checked with isfield on the
 % struct rather than by expecting d.get() to throw -- probe 7's lesson: an
 % assertion about behaviour I have not observed is an assertion that can pass for
@@ -4654,7 +4654,7 @@ if ~isempty(out.quarantine)
         out.quarantine(1).reason));
 end
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'oneepoch');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'oneepoch');
 end
 
 function v = depValue(b, name)

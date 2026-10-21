@@ -152,7 +152,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'stimulus_presentation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'stimulus_presentation');
 verifyEqual(testCase, d.get('base.id'), 'pres_b671ff');
 verifyEqual(testCase, d.get('base.session_id'), 'sess_0001');
 verifyEqual(testCase, d.get('stimulus_presentation.presentation_order'), ...
@@ -278,7 +278,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'control_designation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'control_designation');
 verifyEqual(testCase, d.get('document_class.schema_version'), 'V_eta');
 verifyEqual(testCase, d.get('base.id'), 'ctrl_20e84c');
 verifyEqual(testCase, d.get('control_designation.control_stimulus'), [3; 3; 3; 6; 6; 6]);
@@ -324,7 +324,7 @@ function testAnAllNaNControlArrayIsARealDocumentAndSurvives(testCase)
 out = runJ(controlFixture(nan(6, 1)));
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'control_designation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'control_designation');
 verifyEqual(testCase, size(d.get('control_designation.control_stimulus')), [6 1]);
 verifyTrue(testCase, all(isnan(d.get('control_designation.control_stimulus'))));
 end
@@ -341,7 +341,7 @@ out = runJ(v1);
 
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'control_stimulus_ids');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 % the payload survives intact for the second pass
@@ -359,7 +359,7 @@ v1 = controlFixture();
 v1.depends_on = struct('name', {'stimulus_presentation_id'}, 'id', {'pres_b671ff'});
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'control_designation');
 verifyEqual(testCase, depValue(out.migrated{1}.toStruct(), 'timed_sequence_id'), ...
     'pres_b671ff');

@@ -325,7 +325,7 @@ function testNoSubjectMeansNoObservationAndNoBodyEither(testCase)
 v1 = productionOntologyImage();
 out = did2.convert.migrators_j.ontology_image(v1);
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, out{1}.document_class.class_name, 'ontology_image');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'ontology_image');
 % the raster rides through INTACT, which is why `ontology_image` still needs its
 % `ngrid` superclass and why retiring `ngrid` is NOT unblocked
 verifyTrue(testCase, isfield(out{1}, 'ngrid'));

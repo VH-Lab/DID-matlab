@@ -267,7 +267,7 @@ b.depends_on = struct('name', {'subject_id'}, 'value', {''});
 out = runJ(b);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'subjectmeasurement');
 verifyEqual(testCase, out.migrated{1}.get('subjectmeasurement.measurement'), 'age');
 end
@@ -281,7 +281,7 @@ b = subjectMeasurementBody();
 b.subjectmeasurement.measurement = 'coat color';
 out = runJ(b);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'subjectmeasurement');
 % and no orphan anchor is left behind pointing at a fold that did not happen
 verifyFalse(testCase, any(strcmp(classNames(out), 'absolute_reference')));
@@ -299,7 +299,7 @@ b = subjectMeasurementBody();
 b.subjectmeasurement.measurement = 'voltage';
 out = runJ(b);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'subjectmeasurement');
 end
 
@@ -329,7 +329,7 @@ b = subjectMeasurementBody();
 b.subjectmeasurement.value = [30 31];
 out = runJ(b);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'subjectmeasurement');
 end
 

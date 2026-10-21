@@ -162,7 +162,7 @@ v1.filenavigator.ndi_filenavigator_class = '';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'filenavigator');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'filenavigator');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 

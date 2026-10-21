@@ -319,7 +319,7 @@ function testSyncgraphPassesThroughUntilTheSessionDocumentResolves(testCase)
 out = runJ(syncgraphFixture({'rule_a', 'rule_b', 'rule_c'}));
 verifyEqual(testCase, numel(out.migrated), 1, ...
     'a did_v1 syncgraph must pass through -- no session document can be resolved in pass 1');
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'syncgraph');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncgraph');
 verifyEqual(testCase, out.migrated{1}.get('base.id'), 'graph_0001', ...
     'base.id must survive, or syncrule_mapping.syncgraph_id and the live NDI query break');
 end
@@ -372,7 +372,7 @@ function testGraphWithTheEmptySessionSentinelPassesThrough(testCase)
 % exist is an orphan, not a fact, so the document passes through instead.
 out = runJ(syncgraphFixture({'rule_a'}, '0000000000000000_0000000000000000'));
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'syncgraph');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncgraph');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
@@ -402,7 +402,7 @@ function testMappingPassesThroughBecauseNoEpochDocumentExists(testCase)
 out = runJ(mappingFixture(false));
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), 'syncrule_mapping');
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'syncrule_mapping');
 verifyEqual(testCase, doc.get('base.id'), 'map_0001');
 verifyEqual(testCase, doc.get('syncrule_mapping.mapping'), [1.0002 -0.5]);
 end
@@ -542,7 +542,7 @@ out = runJ(mappingFixture(true));
 align = findClass(testCase, out, 'clock_alignment');
 fromRef = docWithId(testCase, out, depVal(align, 'from_reference'));
 toRef   = docWithId(testCase, out, depVal(align, 'to_reference'));
-verifyEqual(testCase, fromRef.get('document_class.class_name'), 'relative_reference');
+verifyEqual(testCase, did2.unittest.helpers.leafName(fromRef), 'relative_reference');
 verifyEqual(testCase, fromRef.get('base.name'), 'vhtaste_sync');
 verifyEqual(testCase, toRef.get('base.name'), 'vhtaste_bpod');
 verifyEqual(testCase, depVal(fromRef, 'relative_to'), 'epochdoc_a');
@@ -566,7 +566,7 @@ v1 = mappingFixture(true);
 v1.syncrule_mapping.epochnode_a.epoch_clock = 'no_time';
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'syncrule_mapping');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncrule_mapping');
 end
 
 function testNonFiniteExtentYieldsNoConversionAtAll(testCase)
@@ -576,7 +576,7 @@ v1 = mappingFixture(true);
 v1.syncrule_mapping.epochnode_b.t0_t1 = [NaN NaN];
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), 'syncrule_mapping');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncrule_mapping');
 end
 
 % ===================== the counters =======================================

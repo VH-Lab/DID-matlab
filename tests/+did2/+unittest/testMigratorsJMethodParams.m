@@ -614,7 +614,7 @@ function testVmspikeGuardsNonEmptySpiketimesWithAPassthrough(testCase)
 out = runJ(vmspikeBody('vm_4', 'sess_A', 'elem_1', 't00001', [0.11 0.22 0.35]));
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, d.get('document_class.class_name'), 'vmspikefilteringparameters');
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'vmspikefilteringparameters');
 verifyEqual(testCase, d.get('base.id'), 'vm_4');
 verifyEqual(testCase, d.get('vmspikefilteringparameters.spiketimes'), [0.11 0.22 0.35], ...
     'AbsTol', 1e-12);

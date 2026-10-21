@@ -283,7 +283,7 @@ function testMetadataIngestedPassesThroughWithoutAnEpochDocument(testCase)
 out = runJ(metadataIngestedV1());
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
     'daqmetadatareader_epochdata_ingested');
 % the epoch identity survives as the STRING, because that is all there is
 verifyEqual(testCase, doc.get('epochid.epochid'), 't00001');
@@ -298,7 +298,7 @@ function testMetadataIngestedFoldsWhenTheEpochEdgeIsPresent(testCase)
 out = runJ(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
     'acquisition_metadata_file');
 verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
 % base.id PRESERVED (T10)
@@ -329,7 +329,7 @@ v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
 v1.depends_on(1).value = '';          % daqmetadatareader_id emptied
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'daqmetadatareader_epochdata_ingested');
 end
 
@@ -341,7 +341,7 @@ v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
 v1.files = struct('file_list', {{}});
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'daqmetadatareader_epochdata_ingested');
 end
 
@@ -353,7 +353,7 @@ v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
 v1 = rmfield(v1, 'files');
 v1.file = struct('file_list', {{'data.bin'}});
 out = runJ(v1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'acquisition_metadata_file');
 verifyEqual(testCase, out.migrated{1}.get('files.file_list'), {'data.bin'});
 end
@@ -364,7 +364,7 @@ function testReaderIngestedPassesThroughWithoutAnEpochDocument(testCase)
 out = runJ(readerIngestedV1({'dev_local_time'}, [0; 10]));
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
     'daqreader_epochdata_ingested');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 % the recording archives are untouched -- for an ingested session they are the
@@ -525,7 +525,7 @@ body = mfdaqIngestedV1();
 out = did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested(body);
 verifyTrue(testCase, isstruct(out));
 verifyTrue(testCase, isscalar(out));
-verifyEqual(testCase, out.document_class.class_name, 'daqreader_epochdata_ingested');
+verifyEqual(testCase, did2.unittest.helpers.leafName(out), 'daqreader_epochdata_ingested');
 verifyEqual(testCase, out.daqreader_epochdata_ingested.parameters.sample_analog_segment, ...
     1000000);
 verifyEqual(testCase, out.epochid.epochid, 't00001');
@@ -571,7 +571,7 @@ function testImageIngestedPassesThroughWithoutAnEpochDocument(testCase)
 out = runJ(imageIngestedV1());
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, doc.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
     'daqreader_image_epochdata_ingested');
 verifyEqual(testCase, doc.get('daqreader_image_epochdata_ingested.num_frames'), 3);
 verifyEqual(testCase, doc.get('files.file_list'), {'frames.bin'});
@@ -797,7 +797,7 @@ out = runJValidated(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
 verifyEqual(testCase, out.summary.quarantine_count, 0, ...
     reasonsOf(out));
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, out.migrated{1}.get('document_class.class_name'), ...
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'acquisition_metadata_file');
 end
 
