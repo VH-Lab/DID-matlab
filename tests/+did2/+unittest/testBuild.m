@@ -465,11 +465,12 @@ verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), '
 verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
     v, 'Keys', did2.build.key('time', 1, 'Values', 0, 'Chunk', 1), common{:}), ...
     'did2:build:ruleViolated');
-% data_type only for plain-array bytes (Jess Haley, 2026-10-21): an untyped
-% inline array needs one; data_body true alone does not (the body may be an
-% opaque_body, whose format term is the encoding)
+% data_type only for plain-array bytes (Jess Haley, 2026-10-21): data_body
+% true alone does not need one (the body may be an opaque_body, whose format
+% term is the encoding). A bare inline array where the schema declares a cell
+% is refused by the type check before any rule is read.
 verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
-    [0.01 0.02], common{:}), 'did2:build:ruleViolated');
+    [0.01 0.02], common{:}), 'did2:build:typeMismatch');
 did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
     'DataBody', true, common{:});
 end
@@ -546,6 +547,20 @@ end
 if isfile(f)
     delete(f);
 end
+end
+
+function testFormulationValuedThroughValueIdSkipsIngredientsOrProduct(testCase)
+% A bath is a manipulation valued by its formulation (Jess Haley, 2026-10-21):
+% the statement's own `value` is empty and `value_id` names the formulation
+% document, which holds the ingredients. `ingredients_or_product` and
+% `value_inline_or_body` both pass; without the edge the statement is refused.
+sid = testCase.TestData.sid;
+common = {'TimeReferenceIds', {newId()}, 'SessionId', sid};
+doc = did2.build.statement('formulation_manipulation', newId(), 'treatment', [], ...
+    'ValueId', newId(), common{:});
+verifyTrue(testCase, any(strcmp({doc.depends_on.name}, 'value_id')));
+verifyError(testCase, @() did2.build.statement('formulation_manipulation', newId(), ...
+    'treatment', [], common{:}), 'did2:build:ruleViolated');
 end
 
 function tf = valueRuleDeclared()

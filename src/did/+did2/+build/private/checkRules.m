@@ -132,6 +132,16 @@ for c = 1:numel(chain)
                          'value is neither inline nor in data bodies.']);
                 end
             case 'ingredients_or_product'
+                % A statement whose value kind is `formulation` (a bath: a
+                % manipulation valued by its formulation, Jess Haley,
+                % 2026-10-21) takes its value through `value_id`; its own
+                % `value` is then empty and the shared formulation document,
+                % checked when it is built, holds the ingredients
+                % (did-schema statement.json, `value_id`). Ported from
+                % claude/port-88 ff6d542.
+                if hasEdge(doc, 'value_id')
+                    continue;
+                end
                 v = findField(doc, blocks, 'value');
                 hasIngredients = isstruct(v) && isfield(v, 'ingredients') && ~isAbsent(v.ingredients);
                 if ~hasIngredients && ~any(strcmp(edgeNames, 'product_id'))
