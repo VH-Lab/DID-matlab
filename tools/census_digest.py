@@ -469,6 +469,7 @@ POST_PASSES = [
         ("pyraview_deferred_seen", "pyraview DEFERRED from pass 1 (in the quarantine)"),
         ("pyraview_deferred_resolved", "  deferred pyraview FOLDED (left the quarantine)"),
         ("pyraview_deferred_unresolved", "  deferred pyraview UNRESOLVED (stays quarantined)"),
+        ("pyraview_deferred_epochs_minted", "  epochs minted for a deferred pyraview (it alone named them)"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
         ("documents_inspected", "documents inspected"),

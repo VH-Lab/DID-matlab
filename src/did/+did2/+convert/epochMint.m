@@ -525,6 +525,7 @@ report = struct( ...
     'pyraview_deferred_seen',              0, ...
     'pyraview_deferred_resolved',          0, ...
     'pyraview_deferred_unresolved',        0, ...
+    'pyraview_deferred_epochs_minted',     0, ...
     'syncrule_already_folded',             0, ...
     'syncrule_edges_stamped',              0, ...
     'syncrule_folds_emitted',              0, ...
@@ -1861,6 +1862,18 @@ end
 q = result.quarantine;
 keep = true(1, numel(q));
 stamped = {};
+nDeferredFolded = 0;
+% The sessions the batch holds: a #88 session entity's base.id IS its session id.
+sessionIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:numel(result.migrated)
+    try
+        b = result.migrated{k}.toStruct();
+        if strcmp(classNameOf(b), 'session')
+            sessionIds(char(b.base.id)) = true;
+        end
+    catch
+    end
+end
 for k = 1:numel(q)
     if ~isfield(q(k), 'class_name') || ~strcmp(q(k).class_name, 'pyraview') ...
             || ~isfield(q(k), 'identifier') ...
@@ -1883,11 +1896,26 @@ for k = 1:numel(q)
         sid = char(v1.base.session_id);
     end
     key = pairKey(sid, es);
+    if ~isempty(es) && ~isKey(epochIdByKey, key) && ~isempty(sid) ...
+            && isKey(sessionIds, sid)
+        % The deferred document may be the ONLY one naming this epoch (PRED:
+        % its one pyraview), and it sat in the quarantine while the mint read
+        % the batch. Mint the epoch here, by the same rule as above: one per
+        % (session, epoch string), and only for a session the batch holds.
+        ds = '';
+        if isfield(v1.base, 'datestamp'); ds = char(v1.base.datestamp); end
+        e = mintEpoch(es, sid, sid, ds);
+        epochIdByKey(key) = e.base.id;
+        stamped{end+1} = e; %#ok<AGROW>
+        report.pyraview_deferred_epochs_minted = ...
+            report.pyraview_deferred_epochs_minted + 1;
+    end
     if isempty(es) || ~isKey(epochIdByKey, key)
         report.pyraview_deferred_unresolved = report.pyraview_deferred_unresolved + 1;
         continue;
     end
     stamped{end+1} = setDep(v1, 'epoch_id', epochIdByKey(key)); %#ok<AGROW>
+    nDeferredFolded = nDeferredFolded + 1;
     keep(k) = false;
 end
 if isempty(stamped)
@@ -1895,7 +1923,7 @@ if isempty(stamped)
 end
 out = did2.convert.v1_to_v2(stamped, 'Validate', options.Validate, ...
     'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion);
-report.pyraview_deferred_resolved = numel(stamped) - numel(out.quarantine);
+report.pyraview_deferred_resolved = nDeferredFolded - numel(out.quarantine);
 result.migrated = [result.migrated, out.migrated];
 result.quarantine = [q(keep), out.quarantine];
 result.summary = recountSummary(result);
