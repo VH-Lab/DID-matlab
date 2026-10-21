@@ -578,11 +578,18 @@ end
 epochIdByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
 epochCountByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
-    if ~strcmp(classes{k}, 'epoch'); continue; end
+    % did-schema #88: an epoch is an `entity` whose type is `epoch`.
+    isEpochEntity = strcmp(classes{k}, 'entity') && isfield(bodies{k}, 'entity') ...
+        && isstruct(bodies{k}.entity) && isfield(bodies{k}.entity, 'type') ...
+        && isstruct(bodies{k}.entity.type) && isfield(bodies{k}.entity.type, 'name') ...
+        && strcmp(char(bodies{k}.entity.type.name), 'epoch');
+    if ~strcmp(classes{k}, 'epoch') && ~isEpochEntity; continue; end
     report.epoch_documents_seen = report.epoch_documents_seen + 1;
     lid = '';
     if isfield(bodies{k}, 'epoch') && isstruct(bodies{k}.epoch)
         lid = charField(bodies{k}.epoch, {'local_identifier'});
+    elseif isEpochEntity
+        lid = charField(bodies{k}.entity, {'local_identifier'});
     end
     if isempty(lid) || isempty(docIds{k}); continue; end
     key = pairKey(sessionIds{k}, lid);
@@ -627,6 +634,13 @@ if ~options.Decompose
     return;
 end
 report.dormant = false;
+% did-schema #88 retired `logical_observation` (#73 review item 52), the class
+% the decomposition below emits, so there is no target to decompose into. Say so
+% rather than build a shape the schema no longer has.
+error('did2:convert:validIntervalTargetRetired', ...
+    ['resolveValidIntervals: Decompose was requested, but logical_observation ' ...
+     'was retired in did-schema #73 review item 52; valid_interval documents ' ...
+     'stay on their v1 tombstone.']);
 
 % --- decompose every interval we can decompose honestly --------------------
 refBodies = {};
