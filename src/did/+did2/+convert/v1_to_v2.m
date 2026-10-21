@@ -206,11 +206,16 @@ legacy = struct( ...
     'moved_vintage_unreadable_block',      0);
 legacyMovedNames = {};   legacyMovedValues = [];
 legacyDiscNames  = {};   legacyDiscValues  = [];
+% Notes a migrator leaves about HOW it migrated a document (did2.convert.
+% reportNote), e.g. a treatment whose route is unknown. Reset per batch; a
+% quarantined body's notes are dropped, since that body did not migrate.
+did2.convert.reportNote('reset');
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
     originalJSON = encodeForQuarantine(rawBody);
     className = '<unknown>';
+    noteMark = did2.convert.reportNote('mark');
     try
         preBody = ensureStruct(rawBody);
         refuseUnknownSchemaVersion(preBody);
@@ -319,6 +324,7 @@ for k = 1:numel(bodies)
                 classCountNames, classCountValues, outName);
         end
     catch err
+        did2.convert.reportNote('truncate', noteMark);
         % `identifier` is carried alongside `reason` so the rollup can group
         % by FAILURE KIND rather than by message text. Messages interpolate
         % class and edge names, so every one of the 7,233 empty-required-edge
@@ -385,7 +391,8 @@ result.summary = struct( ...
     'fragment_by_class',  buildByClassTable(fragNames, fragValues), ...
     'emitted_nothing_count',    sum(emptyValues), ...
     'emitted_nothing_by_class', buildByClassTable(emptyNames, emptyValues), ...
-    'legacy_ndi_document', legacy);
+    'legacy_ndi_document', legacy, ...
+    'migration_notes', did2.convert.reportNote('collect'));
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
 % migrates away without a trace: required depends_on edges left empty, and
@@ -916,9 +923,25 @@ fprintf('  quarantine_count: %d\n', result.summary.quarantine_count);
 printUnconverted(result);
 printFragments(result);
 printEmittedNothing(result);
+printMigrationNotes(result);
 printLegacyNdiDocument(result);
 printSilentLoss(result);
 printQuarantine(result);
+end
+
+function printMigrationNotes(result)
+%PRINTMIGRATIONNOTES Notes migrators left (did2.convert.reportNote), per kind.
+if ~isfield(result.summary, 'migration_notes'); return; end
+notes = result.summary.migration_notes;
+kinds = fieldnames(notes);
+for k = 1:numel(kinds)
+    n = notes.(kinds{k});
+    fprintf('  migration note %s: %d document(s)\n', kinds{k}, n.count);
+    cls = fieldnames(n.by_class);
+    for j = 1:numel(cls)
+        fprintf('      %-40s %d\n', cls{j}, n.by_class.(cls{j}));
+    end
+end
 end
 
 function printLegacyNdiDocument(result)

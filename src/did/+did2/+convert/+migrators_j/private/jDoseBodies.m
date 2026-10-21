@@ -11,13 +11,18 @@ function [docs, formulationId] = jDoseBodies(preBody, chemicals)
 %   CHEMICALS is a struct array with fields
 %       substance     an ontology term {node, name}
 %       source_value  [] or the number the source gave for it
-%       source_unit   '' or the source's unit spelling
+%       source_unit   '' or the source's unit spelling, or a term {node, name}
 %   Each becomes a `chemical` {substance}. Its amount, when the source gave
 %   one, is the ingredient entry's `concentration` with `source_value` (and
 %   `source_unit` as a term, jSourceUnit) and NO canonical value: the v1
 %   treatment documents state no unit the canonical could be computed from.
 %   A substance with no amount gets an empty ingredient entry (every field of
 %   an entry is optional; the entry must exist, one per edge).
+%
+%   The formulation is what a DOSE names (`formulation_id`) and what an
+%   IMMERSION is valued by (`value_id`), so jTreatmentBodies uses it for both.
+%   An amount a dose takes off a row (jDoseValue) is no longer on that row
+%   when it arrives here.
 %
 %   DOCS = {chemical..., formulation}; FORMULATIONID the formulation's id.
 
@@ -35,7 +40,9 @@ for k = 1:numel(chemicals)
     if isfield(c, 'source_value') && ~isempty(c.source_value) ...
             && isnumeric(c.source_value) && isfinite(c.source_value(1))
         conc = struct('source_value', double(c.source_value(1)));
-        if isfield(c, 'source_unit') && ~isempty(c.source_unit)
+        if isfield(c, 'source_unit') && isstruct(c.source_unit) && ~isempty(c.source_unit)
+            conc.source_unit = c.source_unit;          % already a term (jMixtureTable)
+        elseif isfield(c, 'source_unit') && ~isempty(c.source_unit)
             conc.source_unit = jSourceUnit(c.source_unit);
         end
         e.concentration = conc;

@@ -3,12 +3,18 @@ function v2Body = virus_injection(preBody)
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   Strict J has no `injection` class (D8): a viral injection is a
-%   dose_manipulation -- the virus identity is the spine
-%   `subject_statement.variable` AND the first `dose.value.formulation.chemicals`
-%   substance (serotype carried in the ontology term), the dilution/titer is its
-%   concentration amount, and a named diluent is a second chemical. The site is
-%   Path S -- merely-located -> a `term_observation` here (D3), attributed ->
-%   promoted by the NDI second pass. 1 -> 2, or 1 -> 3 when a site is present.
+%   dose_manipulation, WHEREVER it was recorded -- "virus_injection is always a
+%   dose (an injection), its volume NaN when unrecorded, its dilution staying
+%   on the formulation" (Jess Haley, 2026-10-21; jTreatmentRoute quotes the
+%   whole decision). The virus identity is the spine
+%   `subject_statement.variable` AND the formulation's first ingredient (a
+%   `chemical`, serotype carried in the ontology term); the dilution is that
+%   ingredient's concentration (`source_unit` "dilution"); a named diluent is a
+%   second ingredient. The template has no volume field, so the dose's amount
+%   is always NaN in `volume.liters` (jDoseValue). The site is Path S --
+%   merely-located -> a `term_observation` here (D3), attributed -> promoted
+%   by the NDI second pass. A virus_injection with no site is NOT counted as
+%   route unknown: its route is the injection.
 
 arguments
     preBody (1,1) struct
@@ -40,14 +46,9 @@ if ~isempty(diluentNode) || ~isempty(diluentName)
         'source_value', [], 'source_unit', '');
 end
 
-% did-schema #88: chemical + formulation documents, and the dose names the
-% formulation (jDoseBodies).
 anchor = jSessionAnchor(preBody, 'during');
-[parts, formulationId] = jDoseBodies(preBody, chemicals);
-dose = jStatement(preBody, 'dose_manipulation', jSubjectOf(preBody), virusTerm, [], ...
-    'TimeReferenceIds', {anchor.base.id}, ...
-    'Edges', struct('formulation_id', formulationId), 'Id', char(preBody.base.id));
-bodies = [{dose}, parts];
+bodies = jTreatmentBodies(preBody, virusTerm, chemicals, [], anchor.base.id, ...
+    'AlwaysDose', true);
 
 siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'virus_location_ontology_name', 'virusLocation_OntologyName'}), ...

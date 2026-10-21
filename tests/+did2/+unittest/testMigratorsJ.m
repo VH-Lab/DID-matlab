@@ -568,6 +568,16 @@ if ~isempty(c)
 end
 verifyNotEmpty(testCase, f, 'the formulation the dose names is not in the batch');
 verifyEqual(testCase, m.get('statement.variable').node, 'chebi:28001');
+% A generic treatment with no location: "stays a dose with NaN and is listed
+% in the migration report as route unknown" (Jess Haley, 2026-10-21). The
+% unitless numeric_value is no amount of the dose; it stays on the ingredient.
+verifyTrue(testCase, isnan(m.get('dose.value').volume.liters), ...
+    'an unrecorded amount is NaN in the dose''s volume');
+if ~isempty(f)
+    verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 2.5);
+end
+verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 1);
+verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'tr_01'});
 end
 
 function testTreatmentProcedureIsTermManipulation(testCase)
@@ -590,6 +600,9 @@ verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol'
 site = firstOfClassJ(out.migrated, 'term_observation');
 verifyEqual(testCase, did2.unittest.helpers.leafName(site), 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+% a body site makes it a dose; no amount recorded -> NaN; the route is known
+verifyTrue(testCase, isnan(out.migrated{1}.get('dose.value').volume.liters));
+verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
 end
 
 % ===================== treatment_drug / virus_injection ================
@@ -614,6 +627,10 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
 verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 5);
 verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
+% a body site (a brain area) -> a dose; the row gives no amount unit -> NaN
+verifyTrue(testCase, isnan(d.get('dose.value').volume.liters), ...
+    'an unrecorded amount is NaN in the dose''s volume');
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 % the site node survives the universalRenames snake-casing (location_ontologyNode
 % -> location_ontology_node)
 site = firstOfClassJ(out.migrated, 'term_observation');
@@ -642,9 +659,144 @@ conc = f.get('formulation.value').ingredients(1).concentration;
 verifyEqual(testCase, conc.source_value, 1000);
 verifyEqual(testCase, conc.source_unit.name, 'dilution');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
+% "virus_injection is always a dose (an injection), its volume NaN when
+% unrecorded, its dilution staying on the formulation" (Jess Haley, 2026-10-21)
+verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
 site = firstOfClassJ(out.migrated, 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
+end
+
+function testTreatmentDrugInTheBathIsAnImmersion(testCase)
+% Birren writes chronic CNO as a treatment_drug located in the bath
+% (+birren/TreatmentCreator.m: location NCIm:C0179246 'bath', mixture_table by
+% writetablechar, HEADER row first). "a bath location makes the treatment an
+% immersion (a manipulation valued by its formulation through value_id)"
+% (Jess Haley, 2026-10-21): no dose, no location observation (the bath is no
+% site on the subject), and the Molar row stays the ingredient's concentration.
+v1 = treatmentDrugDoc('td_bath', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIm:C0212364,clozapine N-oxide,1e-05,OM:MolarVolumeUnit,Molar'), ...
+    'NCIm:C0179246', 'bath');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+% manipulation + chemical + formulation + anchor
+verifyEqual(testCase, numel(out.migrated), 4);
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+m = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'formulation_manipulation');
+verifyEqual(testCase, m.get('base.id'), 'td_bath');
+verifyEmpty(testCase, depVal(m, 'formulation_id'));
+formId = depVal(m, 'value_id');
+verifyNotEmpty(testCase, formId, 'an immersion takes its value through value_id');
+form = [];
+for k = 1:numel(out.migrated)
+    if strcmp(out.migrated{k}.get('base.id'), formId); form = out.migrated{k}; end
+end
+verifyNotEmpty(testCase, form);
+if ~isempty(form)
+    verifyEqual(testCase, form.get('document_class.class_name'), 'formulation');
+    conc = form.get('formulation.value').ingredients(1).concentration;
+    verifyEqual(testCase, conc.source_value, 1e-5, 'AbsTol', 1e-12);
+    verifyEqual(testCase, conc.source_unit.name, 'Molar');
+end
+% the header row is not a chemical
+verifyEqual(testCase, m.get('statement.variable').name, 'clozapine N-oxide');
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
+end
+
+function testTreatmentDrugIntraperitonealTakesTheSourcesAmount(testCase)
+% Hunsberger writes alprazolam as a treatment_drug at Intraperitoneal
+% (SNOMED:783351009) with a mixture row `0.25 mg/kg` (SNOMED:396163008)
+% (+hunsberger/TreatmentCreator.m). A body site -> a dose "with the source's
+% amount when it has one": the mg/kg row is the dose's amount per body mass,
+% taken off the ingredient entry (it is not a concentration).
+v1 = treatmentDrugDoc('td_ip', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+% dose + chemical + formulation + site obs + anchor
+verifyEqual(testCase, numel(out.migrated), 5);
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+a = d.get('dose.value').amount_per_body_mass;
+verifyEqual(testCase, a.source_value, 0.25);
+verifyEqual(testCase, a.grams_per_gram, 0.25e-6, 'AbsTol', 1e-15);
+verifyEqual(testCase, a.source_unit.node, 'SNOMED:396163008');
+[f, c] = doseChainJ(out.migrated, d);
+verifyEqual(testCase, c.get('chemical.value').substance.name, 'alprazolam');
+e = f.get('formulation.value').ingredients(1);
+verifyFalse(testCase, isstruct(e) && isfield(e, 'concentration') && ~isempty(e.concentration), ...
+    'a per-body-mass amount is the dose''s, not the ingredient''s concentration');
+site = firstOfClassJ(out.migrated, 'term_observation');
+verifyEqual(testCase, site.get('term.value').node, 'SNOMED:783351009');
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
+end
+
+function testTreatmentDrugWithNoLocationIsRouteUnknown(testCase)
+% No location recorded: the route cannot be read, so a dose with a NaN amount
+% and a `route_unknown` note in the migration report; no site observation.
+v1 = treatmentDrugDoc('td_none', 'chebi:28001,haloperidol,5', '', '');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 4);   % dose + chemical + formulation + anchor
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 1);
+verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'td_none'});
+% the notes are per batch: a second run does not carry the first one's note
+out2 = runJ(treatmentDrugDoc('td_v1', 'chebi:28001,haloperidol,5', ...
+    'uberon:0002436', 'primary visual cortex'));
+verifyEqual(testCase, routeUnknownCount(out2, 'treatment_drug'), 0);
+end
+
+function testVirusInjectionAtTheBathIsStillADose(testCase)
+% Birren records AAV DREADDs as virus_injection located in the bath
+% (+birren/TreatmentCreator.m). "virus_injection is always a dose": the
+% location does not make it an immersion.
+v1 = struct();
+v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', 'vi_bath', 'session_id', 'sess_09', ...
+    'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.virus_injection = struct('virus_OntologyName', 'addgene:50474', ...
+    'virus_name', 'AAV9-hSyn-hM3D(Gq)-mCherry', 'dilution', 0, ...
+    'virusLocation_OntologyName', 'NCIm:C0179246', 'virusLocation_name', 'bath', ...
+    'diluent_OntologyName', 'NCIm:C0043047', 'diluent_name', 'Water');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 0);
+d = out.migrated{1};
+verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
+verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
+end
+
+function v1 = treatmentDrugDoc(id, mixtureTable, locNode, locName)
+v1 = struct();
+v1.document_class = struct('class_name', 'treatment_drug', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', id, 'session_id', 'sess_09', ...
+    'name', 'td', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.treatment_drug = struct('mixture_table', mixtureTable, ...
+    'location_ontologyNode', locNode, 'location_name', locName);
+end
+
+function n = routeUnknownCount(out, className)
+% did2.convert.reportNote's `route_unknown` count for one source class.
+n = 0;
+if ~isfield(out.summary, 'migration_notes'); n = -1; return; end
+notes = out.summary.migration_notes;
+if isfield(notes, 'route_unknown') && isfield(notes.route_unknown.by_class, className)
+    n = notes.route_unknown.by_class.(className);
+end
 end
 
 % ===================== probe_location / ontology_label =================

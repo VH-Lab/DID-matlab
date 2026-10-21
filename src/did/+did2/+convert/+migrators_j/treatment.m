@@ -9,8 +9,12 @@ function v2Body = treatment(preBody)
 %   data-type leaves (V_eta_migration_plan.md Parts C-D; treatment.md):
 %
 %       temperature_manipulation  imposed heat/cold -> a typed temperature value
-%       dose_manipulation         a delivered substance -> a dose/formulation
-%                                 composite (the substance is the spine identity)
+%       dose_manipulation         a delivered substance -> a dose naming a
+%                                 formulation (the substance is the spine
+%                                 identity); an immersion (bath site) is a
+%                                 `manipulation` valued by the formulation
+%                                 instead, and a row with no site is a dose
+%                                 reported as route_unknown (jTreatmentBodies)
 %       term_manipulation         a payload-free procedure or husbandry regime
 %                                 -> the act as a bound ontology term (no escape
 %                                 hatch)
@@ -76,7 +80,11 @@ if containsAny(hay, {'cool', 'cold', 'heat', 'warm', 'thermal', 'temperature'})
 elseif containsAny(hay, {'inject', 'virus', 'aav', 'tracer', 'drug', ...
         'vehicle', 'bath', 'infusion', 'perfusate'}) ...
         || startsWith(lower(node), 'chebi:')
-    manip = makeDoseManipulation(preBody, variable, notesText, numValue, anchor.base.id);
+    [manip, route] = makeSubstanceManipulation(preBody, variable, notesText, ...
+        numValue, siteTerm, anchor.base.id);
+    if strcmp(route, 'immersion')
+        siteTerm = struct('node', {}, 'name', {});   % the bath is no site on the subject
+    end
 elseif containsAny(hay, {'craniotomy', 'implant', 'lesion', 'perfus', ...
         'eye opening', 'eyelid', 'ear notch', 'ear punch', 'tail clip', ...
         'toe clip', 'whisker', 'suture', 'surgery', 'transection', ...
@@ -116,19 +124,25 @@ docs = {jStatement(preBody, 'temperature_manipulation', jSubjectOf(preBody), var
     'Id', char(preBody.base.id))};
 end
 
-function docs = makeDoseManipulation(preBody, variable, notesText, numValue, anchorId)
-% did-schema #88: a dose names a `formulation` document (required
-% `formulation_id`), whose ingredient is a `chemical` -- see jDoseBodies. The
-% amount the source gave (unit unstated) rides on the ingredient entry.
+function [docs, route] = makeSubstanceManipulation(preBody, variable, notesText, numValue, siteTerm, anchorId)
+% A delivered substance, routed by its recorded location (jTreatmentRoute,
+% Jess Haley, 2026-10-21): the bath -> an immersion (a `manipulation` valued
+% by its formulation through `value_id`); any other site -> a dose; no site
+% -> a dose listed as `route_unknown` in the migration report. A v1
+% `treatment` records a location only through the Dab "Target Location"
+% idiom (string_value), so most substance rows are route unknown. A dose's
+% amount is NaN in `volume.liters` (jDoseValue): `numeric_value` states no
+% unit, so it stays where it was, on the ingredient entry, not on the dose.
 chem = struct('substance', variable, 'source_value', [], 'source_unit', '');
-if nargin >= 4 && ~isempty(numValue) && isnumeric(numValue)
+if ~isempty(numValue) && isnumeric(numValue)
     chem.source_value = double(numValue(1));
 end
-[parts, formulationId] = jDoseBodies(preBody, chem);
-dose = jStatement(preBody, 'dose_manipulation', jSubjectOf(preBody), variable, [], ...
-    'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
-    'Edges', struct('formulation_id', formulationId), 'Id', char(preBody.base.id));
-docs = [{dose}, parts];
+loc = [];
+if ~isempty(siteTerm)
+    loc = siteTerm(1);
+end
+[docs, route] = jTreatmentBodies(preBody, variable, chem, loc, anchorId, ...
+    'Notes', notesText);
 end
 
 function docs = makeTermManipulation(preBody, variable, notesText, anchorId)
