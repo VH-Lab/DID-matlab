@@ -47,7 +47,7 @@ if isempty(methodName); methodName = 'transfer'; end
 % ---- 1. the transfer act: a term_manipulation on the recipient ----
 % did-schema #88: built through did2.build. The act on the recipient (id
 % preserved), the recipient <- donor provenance relation, and the session anchor.
-anchor = jSessionAnchor(preBody, 'during');
+anchor = jTreatmentAnchor(preBody, block);   % the recorded timestamp, else the session
 act = jStatement(preBody, 'manipulation', recipientId, material, material, ...
     'TimeReferenceIds', {anchor.base.id}, ...
     'Fields', struct('method', jMethod(methodName)), 'Id', char(preBody.base.id), 'ValueKind', 'term');

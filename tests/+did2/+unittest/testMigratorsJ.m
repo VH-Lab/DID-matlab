@@ -391,6 +391,55 @@ end
 
 % ============ treatment_transfer -> term_manipulation + relation =======
 
+function v1 = babuTransferV1(id, timestamp)
+% A did_v1 treatment_transfer as the Babu importer writes it
+% (+setup/+conv/+babu/TreatmentCreator.m: clocktype 'dev_local_time',
+% timestamp = seconds(hours(-TransferTime)), a NUMBER of seconds; the
+% treatmentMaker sets recipient_id and donor_id).
+v1 = struct();
+v1.document_class = struct('class_name', 'treatment_transfer', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = [ ...
+    struct('name', 'recipient_id', 'value', 'worm_1'), ...
+    struct('name', 'donor_id',     'value', 'plate_1')];
+v1.base = struct('id', id, 'session_id', 'sess_babu', ...
+    'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.treatment_transfer = struct('timestamp', timestamp, 'clocktype', 'dev_local_time', ...
+    'entity_name', 'Caenorhabditis elegans', 'entity_ontologyNode', 'NCBITaxon:6239', ...
+    'method_name', 'pick', 'method_ontologyNode', 'EMPTY:0000001');
+end
+
+function testTransferAnchoredAtItsTimestampOnTheSessionClock(testCase)
+% Jess Haley, 2026-10-21 [transfer onset]: the timestamp (20 h before ->
+% seconds(hours(-20)) = -72000) is the onset, on the session's dev_local_time.
+out = runJ(babuTransferV1('tt_ts', -72000));
+verifyEmpty(testCase, out.quarantine);
+act = out.migrated{1};
+a = firstOfClassJ(out.migrated, 'relative_time_reference');
+assertNotEmpty(testCase, a);
+verifyEqual(testCase, depVal(act, 'time_reference_id'), a.get('base.id'));
+verifyEqual(testCase, depVal(a, 'referent_id'), 'sess_babu', 'offset from the session');
+v = a.get('relative_time_reference.value');
+verifyEqual(testCase, v.start.seconds, -72000);
+verifyEqual(testCase, v.start.source_value, -72000);
+verifyTrue(testCase, contains(char(v.clock.name), 'dev_local_time') || ...
+    contains(lower(char(v.clock.name)), 'local'), 'the session''s local clock');
+end
+
+function testTransferWithNoTimestampIsDuringTheSession(testCase)
+% NaN (Babu's TransferTime is NaN where no transfer time was recorded) or
+% absent: "during the session".
+for ts = {NaN, []}
+    out = runJ(babuTransferV1('tt_nots', ts{1}));
+    verifyEmpty(testCase, out.quarantine);
+    a = firstOfClassJ(out.migrated, 'relative_time_reference');
+    v = a.get('relative_time_reference.value');
+    verifyEqual(testCase, v.relation.name, 'intervalDuring');
+    verifyFalse(testCase, isfield(v, 'start') && ~isempty(v.start) ...
+        && isstruct(v.start) && isfield(v.start, 'seconds') && ~isempty(v.start.seconds));
+end
+end
+
 function testTreatmentTransferBecomesTermManipulationPlusProvenance(testCase)
 v1 = struct();
 v1.document_class = struct('class_name', 'treatment_transfer', 'class_version', '1.0.0', ...
