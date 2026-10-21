@@ -298,3 +298,20 @@ def test_helper_index_drops_a_declaration_carrying_errors():
                                    "reason": None}},
                "errors": ["EMITS: `other` is not in CONSUMES"]}}}
     assert bpd.helper_index(out) == {}
+
+
+def test_the_88_statement_form_direction_plus_kind_is_a_target():
+    """did-schema #88 has no `<kind>_<direction>` leaf classes: a statement is a
+    direction plus one value-kind mixin, declared `direction+kind`, with or
+    without spaces around the `+` (normalised)."""
+    d = _parse("%P.", _C + "generic_file",
+               _E + "generic_file -> document: observation+term, manipulation + formulation, opaque_body")
+    assert not d["errors"], d["errors"]
+    assert d["emits"]["generic_file"]["targets"] == [
+        "observation+term", "manipulation+formulation", "opaque_body"]
+
+
+def test_a_malformed_plus_form_is_still_not_a_class_name():
+    d = _parse("%P.", _C + "generic_file",
+               _E + "generic_file -> document: observation+, +term")
+    assert sum("is not a class name" in e for e in d["errors"]) == 2, d["errors"]

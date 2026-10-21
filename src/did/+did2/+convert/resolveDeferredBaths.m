@@ -29,7 +29,7 @@ function [result, report] = resolveDeferredBaths(result, options)
 %
 %   BATCH-PASS-CONSUMES: stimulus_bath
 %   BATCH-PASS-EMITS: stimulus_bath -> document: relative_time_reference,
-%       manipulation, formulation, chemical, term_observation
+%       manipulation+formulation, formulation, chemical, observation+term
 %
 %   SCOPE OF THAT LINE: V_eta is the only path. The V_zeta branch (makeBath
 %   emitting `bath` + `pharmacological_manipulation`) was deleted with

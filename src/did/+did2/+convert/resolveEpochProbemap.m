@@ -27,8 +27,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview
-%   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, term_manipulation, ingestion_manifest, relative_reference, opaque_body, intensity_observation
-%   BATCH-PASS-EMITS: acquisition_epoch -> document: time_observation, opaque_body, relative_reference
+%   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity
+%   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
 %       +migrators_j/pyraview through epochMint) are RE-POINTED to the epoch's
 %       recording observation and its separate observation retired; nothing
