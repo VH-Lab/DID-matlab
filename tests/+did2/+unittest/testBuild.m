@@ -1079,11 +1079,13 @@ end
 function testDirectedRelation(testCase)
 child = newId(); parent = newId();
 rel = did2.build.directedRelation(child, parent, did2.build.term('', 'part_of'), ...
-    'Sequence', 2, 'SessionId', testCase.TestData.sid);
+    'Order', 2, 'SessionId', testCase.TestData.sid);
 names = {rel.depends_on.name};
 verifyEqual(testCase, rel.depends_on(strcmp(names, 'child_id')).document_id, child);
 verifyEqual(testCase, rel.depends_on(strcmp(names, 'parent_id')).document_id, parent);
-verifyEqual(testCase, rel.directed_relation.sequence, 2);
+verifyEqual(testCase, rel.directed_relation.order, 2);
+% did-schema T20 renamed `sequence` to `order`; only `order` is emitted
+verifyFalse(testCase, isfield(rel.directed_relation, 'sequence'));
 % prefixes match case-insensitively (CURIE_lookups_meta.json); the schema writes
 % them lowercase since 2026-10-08, `BFO:` before
 verifyEqual(testCase, lower(rel.directed_relation.relation.node), 'bfo:0000050', ...

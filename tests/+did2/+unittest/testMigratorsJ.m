@@ -2612,7 +2612,8 @@ end
 function testMetadataEditorAuthorsAndOrcid(testCase)
 % UPDATED for #88: a person is an entity named 'given family', its ORCID a
 % `ORCID:` global identifier; given name, family name and e-mail are assertions
-% about it; authorship is has_author (dataset -> person) with a sequence.
+% about it; authorship is has_author (dataset -> person) with an order
+% (`directed_relation.order`, `sequence` until did-schema T20).
 out = runJ(metadataEditorDoc());
 persons = allOfClassJ(out.migrated, 'person');
 verifyEqual(testCase, numel(persons), 2);
@@ -2630,7 +2631,8 @@ for k = 1:numel(out.migrated)
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
             && strcmp(d.get('directed_relation.relation').name, 'has_author')
         verifyEqual(testCase, depVal(d, 'child_id'), ds.get('base.id'));
-        seqs(end+1) = d.get('directed_relation.sequence'); %#ok<AGROW>
+        seqs(end+1) = d.get('directed_relation.order'); %#ok<AGROW>
+        verifyFalse(testCase, isfield(d.documentProperties.directed_relation, 'sequence'));
     end
 end
 verifyEqual(testCase, sort(seqs), [1 2]);
