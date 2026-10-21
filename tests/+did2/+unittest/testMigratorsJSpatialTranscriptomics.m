@@ -54,17 +54,17 @@ end
 % ===================== the pyramid =========================================
 
 function testPyramidEmitsPyramidAndAnchor(testCase)
-% 1 -> 2. The subject_observation direction on the pyramid REQUIRES a
-% time_reference_# edge (min_count 1 on subject_interaction). The smallest
-% legitimate anchor is a session_relative_reference with relation `during`
-% -- see the migrator header, open team question 1.
+% INVERTED for did-schema #88, which restates spatial_gene_expression_pyramid in
+% its v1 shape: the statement reshape built on did-schema main (#70) is not part
+% of #88 (#73 review item 18, nothing from the eight NDI spatial classes is
+% carried forward). The migrator therefore passes the document through unchanged
+% -- no anchor, no statement -- and the reshape is listed as an NDI need.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
-verifyEqual(testCase, numel(out), 2, ...
-    sprintf('expected 2 bodies (pyramid + anchor), got %d', numel(out)));
-names = classNames(out);
-verifyEqual(testCase, sum(strcmp(names, 'spatial_gene_expression_pyramid')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, classNames(out), {'spatial_gene_expression_pyramid'});
+verifyEqual(testCase, out{1}, pyramidV1(), 'the body was not carried verbatim');
 end
+
 
 function testPyramidPreservesBaseId(testCase)
 % ID PRESERVATION -- every Cells / Tiles / file_reference / cell_type_labels
@@ -77,34 +77,32 @@ verifyEqual(testCase, pyr.base.id, v1.base.id);
 end
 
 function testPyramidCarriesSubjectIdFromV1DependsOn(testCase)
-% subject_id required-ness lives on the INHERITED subject_statement slot
-% (per the Corrected Option C sign-off). The v1 body already carries a
-% subject_id dep; the migrator must NOT drop it and must NOT invent it.
+% UPDATED for #88 (passthrough): the v1 subject edge rides under its v1 name.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-verifyEqual(testCase, depValue(pyr, 'entity_id'), 'subj_stereoseq_1');
+verifyEqual(testCase, depValue(pyr, 'subject_id'), 'subj_stereoseq_1');
 end
+
 
 function testPyramidBindsVariableToGeneExpression(testCase)
-% The `variable` binding was signed on the same DID-schema commit that
-% landed the schemas (71298fd; binding_registry_meta.json entry: `class:
-% spatial_gene_expression_pyramid`, `variable.node: NCIT:C16608`,
-% `variable.name: gene expression`). The migrator writes exactly that.
+% UPDATED for #88 (passthrough): no statement is built, so no variable is bound;
+% the assay facts stay on the gene_expression block where v1 wrote them.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-verifyEqual(testCase, pyr.statement.variable.node, 'NCIT:C16608');
-verifyEqual(testCase, pyr.statement.variable.name, 'gene expression');
+verifyFalse(testCase, isfield(pyr, 'statement'));
+verifyEqual(testCase, pyr.gene_expression.assay, 'Stereo-seq');
 end
 
+
 function testPyramidCarriesTimeReferenceEdgeAtTheAnchor(testCase)
-% time_reference_1 REQUIRED (subject_interaction min_count 1) -- the edge
-% must point at the anchor body we emit alongside.
+% UPDATED for #88 (passthrough): no anchor is minted and no time-reference edge
+% is added to the v1 document.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
+verifyFalse(testCase, any(strcmp(classNames(out), 'relative_time_reference')));
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-anchor = pick(out, 'relative_time_reference');
-verifyEqual(testCase, depValue(pyr, 'time_reference_1'), anchor.base.id);
-verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
+verifyEmpty(testCase, depValue(pyr, 'time_reference_id'));
 end
+
 
 function testPyramidCarriesGeneListIdVerbatim(testCase)
 % gene_list_id (mustBeNonEmpty: true) is the pyramid's own dep and must
@@ -147,19 +145,12 @@ verifyEqual(testCase, pyr.gene_expression.count_units, 'UMI');
 end
 
 function testPyramidMethodOmittedNotEmittedEmpty(testCase)
-% OPEN QUESTION 2 in the migrator header: whether to write a `method`
-% ontology_term. Default is to OMIT the field, NOT emit an empty term --
-% did-schema's unminted-term ratchet (#70) counts empty ontology_terms
-% and an emitted `{node: '', name: ''}` would push the migrator baseline
-% up by one. Absence is legal here (subject_interaction.method's
-% mustBeNonEmpty is false) and honest: the pyramid's method question is
-% still open. ASSERTED so a future flip is deliberate rather than silent.
+% UPDATED for #88 (passthrough): neither a method nor an interaction block is
+% invented on the v1 document.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
-verifyFalse(testCase, isfield(pyr.subject_interaction, 'method'), ...
-    ['subject_interaction.method must be OMITTED, not emitted empty -- ' ...
-     'an empty {node,name} term ticks the did-schema #70 ratchet']);
-verifyTrue(testCase, isempty(fieldnames(pyr.subject_interaction.method_parameters)));
+verifyFalse(testCase, isfield(pyr, 'interaction'));
+verifyFalse(testCase, isfield(pyr, 'subject_interaction'));
 end
 
 % ===================== the id-inheritance chain =============================
