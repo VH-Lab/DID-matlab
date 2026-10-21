@@ -33,7 +33,7 @@ function [result, report] = epochMint(result, options)
 %   BATCH-PASS-EMITS: stimulus_response_scalar -> nothing: SAME REASON, exactly.
 %       The second armed loop stamps the `epoch_id` edge and re-runs
 %       +migrators_j/stimulus_response_scalar; the
-%       `harmonic_component_calculation` leaf and its anchor are minted THERE
+%       calculation (value kind `harmonic_component`) and its anchor are minted THERE
 %       and are already credited to that migrator, whose rung 3 reads `yes` on
 %       the ladder today. Declaring them here would count one emission twice --
 %       which is the failure the `-> nothing` form exists to prevent, and is
@@ -1234,7 +1234,7 @@ end
 %
 %     source class    daqmetadatareader_epochdata_ingested  vs stimulus_response_scalar
 %     epoch string    the `epochid` MIXIN                   vs `stimulus_response.element_epochid`
-%     primary class   acquisition_metadata_file             vs harmonic_component_calculation
+%     primary class   acquisition_metadata_file             vs calculation (value kind harmonic_component)
 %     counters        metadata_*                            vs response_*
 %
 % Unifying the two would be the better end state and is OWED -- but it means
@@ -1262,7 +1262,10 @@ end
 % documents over 11 distinct values, and the mint already SEES that source
 % (did2.validate.epochStrings reads it), so the epochs those anchors need exist.
 for k = 1:n
-    if strcmp(rows(k).class_name, 'harmonic_component_calculation')
+    % did-schema #88: the fold's output is the DIRECTION class `calculation`
+    % with the `harmonic_component` value-kind mixin; there is no leaf name.
+    if strcmp(rows(k).class_name, 'calculation') ...
+            && hasSuperclassNamed(bodies{k}, 'harmonic_component')
         % A re-run -- find-or-create, as the metadata block above.
         report.response_scalar_already_folded = ...
             report.response_scalar_already_folded + 1;
@@ -1306,7 +1309,7 @@ for k = 1:n
             report.arming_calls_returning_multiple + 1;
     end
     [safe, why, unchecked] = armingIsSafe(offered, ...
-        'harmonic_component_calculation', rows(k).doc_id, ...
+        'calculation', rows(k).doc_id, ...
         checkEdgeDeclaration, edgeIndex, edgeMemo);
     report.arming_edge_declaration_unchecked = ...
         report.arming_edge_declaration_unchecked + unchecked;
@@ -1380,7 +1383,7 @@ end
 %
 %     source class    stimulus_response_scalar   vs syncrule_mapping
 %     epoch string    element_epochid (ONE)      vs TWO, one per endpoint node
-%     primary class   harmonic_component_calculation vs clock_alignment
+%     primary class   calculation (harmonic_component) vs clock_alignment
 %     counters        response_*                 vs syncrule_*
 %     edges stamped   ONE (epoch_id)             vs TWO (epoch_id_1, epoch_id_2)
 %
@@ -2013,7 +2016,7 @@ function tbl = defaultArmingMigrators()
 %   grep): exactly FOUR classes declare an `epoch_id` dependency --
 %   acquisition_metadata_file, ingestion_manifest, directed_relation,
 %   method_parameters. Unchanged from the 2026-08-12 reading, and
-%   `harmonic_component_calculation` is NOT among them.
+%   `calculation` (the response fold's output on #88) is NOT among them.
 %
 %   WHY THAT DOES NOT BLOCK THIS ROW. The refusal exists to stop a body being
 %   PERSISTED with an `epoch_id` its class does not declare. The two daqreader
@@ -2204,6 +2207,27 @@ function k = pairKey(sessionId, epochString)
 %   between the writer and the reader resolves to nothing while looking like a
 %   data problem, and four copies is four chances for that.
 k = did2.convert.epochIndex.pairKey(sessionId, epochString);
+end
+
+function tf = hasSuperclassNamed(b, name)
+%HASSUPERCLASSNAMED Whether NAME is among a body's superclasses (a struct
+%   array, or a cell of structs/chars after a JSON round trip).
+tf = false;
+if ~isstruct(b) || ~isfield(b, 'document_class') || ~isstruct(b.document_class) ...
+        || ~isfield(b.document_class, 'superclasses')
+    return;
+end
+sc = b.document_class.superclasses;
+if isstruct(sc); sc = num2cell(sc); end
+if ~iscell(sc); return; end
+for k = 1:numel(sc)
+    e = sc{k};
+    if isstruct(e) && isfield(e, 'class_name') && strcmp(char(e.class_name), name)
+        tf = true; return;
+    elseif (ischar(e) || isstring(e)) && strcmp(char(e), name)
+        tf = true; return;
+    end
+end
 end
 
 function cn = classNameOf(b)

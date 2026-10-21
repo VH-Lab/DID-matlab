@@ -254,14 +254,14 @@ end
 node = jGetChar(block, 'ontology_name');
 regionName = jGetChar(block, 'ontology_region');
 
-% did-schema #88: an ontology image's raster is a LABEL MAP (each pixel names
-% a region), which #73 review item 51 sends to label_calculation. The reason
-% this said it passed through -- "#88 requires a calculation to name its
-% operating system, and this document has no `app` block" -- is gone
-% (operating_system_id optional, Jess Haley 2026-10-21 [calculation-os-optional]).
-% What remains is that NO fold to label_calculation + sampled_body has been
-% built on #88, so a vintage-A document WITH a raster still passes through
-% (reported); without one, the region is a term observation.
+% did-schema #88: NO raster fold is built here, so a vintage-A document WITH a
+% raster passes through (reported); without one, the region is a term
+% observation. The decided home of an ontologyImage raster is recorded in
+% did-schema (#73 review item 51, V_eta_spatial_transcriptomics_plan.md, and
+% the ontology_image row of V_eta_migration_targets.json): the pixels are an
+% ordinary numeric image, so an observation with the `intensity` value kind
+% plus a sampled_body, with the ontology nodes staying a term observation.
+% Building that fold is open (V_eta_OPEN_WORK.md row #47).
 % A document naming no subject cannot be an observation either (#88 requires
 % the entity_id edge), so it passes through the same way.
 if (isfield(preBody, 'ngrid') && isstruct(preBody.ngrid)) || isempty(subjectOf(preBody))

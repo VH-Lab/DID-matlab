@@ -120,67 +120,65 @@ end
 % ===================== the fold ============================================
 
 function testTheFiveRunKnobsLandInlineOnTheLeaf(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
-% THE CENTRAL ASSERTION. All five, by value, in the plan's own mapping:
-%   temporalfreqfunc, prestimulus_time, prestimulus_normalization,
-%   isspike, spiketrain_dt  ->  subject_interaction.method_parameters
+% UPDATED 2026-10-21 for did-schema #88. The knobs land as `method.parameters`
+% ENTRIES ({variable, <one value form>}), and the method term arrives with them
+% (pass 1 could not write it beside the `method_id` edge: never both).
+% INVERTED, not relaxed: the two writer-empty knobs (`prestimulus_time`,
+% `prestimulus_normalization`, [] at the writer) were asserted PRESENT-but-empty.
+% #88's entry holds exactly ONE value form, so `[]` cannot be an entry; they are
+% now asserted ABSENT from the list AND COUNTED in `knobs_empty_not_stated`, so
+% the writer's empties stay visible in the report rather than vanishing.
 [~, leaf, rep] = foldPair(testCase, 'F1');
-mp = leaf.subject_interaction.method_parameters;
-verifyEqual(testCase, mp.temporalfreqfunc, 'ndi.fun.stimulustemporalfrequency');
-verifyEqual(testCase, mp.isspike, 1);
-verifyEqual(testCase, mp.spiketrain_dt, 0.001, 'AbsTol', 1e-12);
-% PRESENT-AND-EMPTY, not absent. The writer sets both to [] on every document
-% (tuning_response.m:174-175) and the plan's worked example inlines them as [].
-% Dropping them would make "the writer's default was in force" and "nobody
-% recorded this" the same shape.
-verifyTrue(testCase, isfield(mp, 'prestimulus_time'));
-verifyEmpty(testCase, mp.prestimulus_time);
-verifyTrue(testCase, isfield(mp, 'prestimulus_normalization'));
-verifyEmpty(testCase, mp.prestimulus_normalization);
-verifyEqual(testCase, rep.fields_copied, 5);
+m = leaf.interaction.method;
+verifyEqual(testCase, m.term.name, 'ndi.app.stimulus.tuning_response');
+p = m.parameters;
+verifyEqual(testCase, knob(p, 'temporalfreqfunc').text, 'ndi.fun.stimulustemporalfrequency');
+verifyEqual(testCase, knob(p, 'isspike').quantity.value, 1);
+verifyEqual(testCase, knob(p, 'spiketrain dt').quantity.value, 0.001, 'AbsTol', 1e-12);
+verifyEqual(testCase, knob(p, 'spiketrain dt').quantity.source_value, '0.001');
+verifyEmpty(testCase, knob(p, 'prestimulus time'));
+verifyEmpty(testCase, knob(p, 'prestimulus normalization'));
+verifyEqual(testCase, numel(p), 3);
+verifyEqual(testCase, rep.fields_copied, 3);
+verifyEqual(testCase, rep.knobs_empty_not_stated, 2);
 verifyEqual(testCase, rep.inlined, 1);
 end
 
 function testTheEdgeIsDroppedBecauseTheSchemaSaysNeverBoth(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % subject_interaction.json, in the schema's own words: "A statement carries the
 % inline `method_parameters` field OR this edge, NEVER BOTH (team, 2026-08-09)".
 % Both halves are asserted -- an inline field beside a surviving edge would
 % satisfy a test that only checked the field.
 [~, leaf] = foldPair(testCase, 'F1');
-verifyEmpty(testCase, depValue(leaf, 'method_parameters_id'));
-verifyNotEmpty(testCase, fieldnames(leaf.subject_interaction.method_parameters));
+verifyEmpty(testCase, depValue(leaf, 'method_id'));
+verifyNotEmpty(testCase, leaf.interaction.method.parameters);
 end
 
 function testFreqResponseIsNotCopiedBecauseTheHarmonicAlreadyHasIt(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % One fact, one place. `freq_response` IS the harmonic number and the migrator
 % has already put it on `harmonic_component.value.harmonic` (via `response_type`,
 % which the writer derives from it two lines earlier). Copying it here as well is
 % the drift surface the plan's own OPEN 3 records.
 [~, leaf] = foldPair(testCase, 'F1');
-mp = leaf.subject_interaction.method_parameters;
-verifyFalse(testCase, isfield(mp, 'freq_response'));
+verifyEmpty(testCase, knob(leaf.interaction.method.parameters, 'freq response'));
 % ...and the fact itself is NOT lost -- it is on the composite.
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 1);
 end
 
 function testTheOtherFourEdgesAreUntouched(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % This pass removes exactly ONE edge. The four the migrator RECOVERED --
 % instrument_id (the stimulator, T7) and derived_from_1/_2 (presentation and
 % control), plus subject_id -- must survive it, or the resolver has undone the
 % repair the migrator exists for.
 [~, leaf] = foldPair(testCase, 'F1');
-verifyEqual(testCase, depValue(leaf, 'subject_id'),     'elem_9c027e');
+verifyEqual(testCase, depValue(leaf, 'entity_id'),      'elem_9c027e');
 verifyEqual(testCase, depValue(leaf, 'instrument_id'),  'stim_5daa03');
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'pres_b671ff');
-verifyEqual(testCase, depValue(leaf, 'derived_from_2'), 'ctrl_20e84c');
-verifyNotEmpty(testCase, depValue(leaf, 'time_reference_1'));
+verifyEqual(testCase, inputAt(leaf, 1), 'pres_b671ff');
+verifyEqual(testCase, inputAt(leaf, 2), 'ctrl_20e84c');
+verifyNotEmpty(testCase, depValue(leaf, 'time_reference_id'));
 end
 
 function testTheUnreferencedParametersDocumentIsDeleted(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % VERIFY-BEFORE-DELETE, ARMED PER DOCUMENT (team, 2026-08-21). The F1 parameters
 % document folds inline and nothing points at it afterwards, so THIS run's own
 % edge-walk proves it unreferenced and it is deleted -- the fold's decided
@@ -196,7 +194,6 @@ verifyEqual(testCase, rep.parameters_documents_deleted, 1);
 end
 
 function testTheUnreferencedCountIsMeasuredNotInferred(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % The deletion evidence must come from walking the graph, not from "this pass
 % removed the only edge, therefore it is free". Give the parameters document a
 % SECOND referent and the count must go the other way -- an inferred count could
@@ -217,7 +214,6 @@ end
 % ===================== what it refuses =====================================
 
 function testAParametersDocumentOutsideTheBatchIsRefusedNotGuessed(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % The leaf alone: its `method_parameters_id` names a document not in the batch.
 % Refusing keeps the edge -- which still resolves in a full migration -- rather
 % than dropping it and losing the reference to values this pass never read.
@@ -227,13 +223,12 @@ verifyEqual(testCase, rep.leaves_with_edge, 1);
 verifyEqual(testCase, rep.refused_not_in_batch, 1);
 verifyEqual(testCase, rep.refused_total, 1);
 verifyEqual(testCase, rep.inlined, 0);
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
-verifyEqual(testCase, depValue(leaf, 'method_parameters_id'), 'param_77c19b');
-verifyEmpty(testCase, fieldnames(leaf.subject_interaction.method_parameters));
+leaf = findHarmonicCalc(testCase, out).toStruct();
+verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
+verifyFalse(testCase, isfield(leaf.interaction, 'method'));
 end
 
 function testADisagreeingHarmonicIsRefusedRatherThanReconciled(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % `response_type` is a TOTAL FUNCTION of `freq_response` at the writer
 % (tuning_response.m:262-266), so 'F1' beside freq_response == 2 cannot happen in
 % data the writer produced. If it does, the identity this whole fold rests on has
@@ -245,13 +240,12 @@ verifyEqual(testCase, rep.harmonic_checked, 1);
 verifyEqual(testCase, rep.refused_harmonic_mismatch, 1);
 verifyEqual(testCase, rep.refused_total, 1);
 verifyEqual(testCase, rep.inlined, 0);
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
-verifyEqual(testCase, depValue(leaf, 'method_parameters_id'), 'param_77c19b');
-verifyEmpty(testCase, fieldnames(leaf.subject_interaction.method_parameters));
+leaf = findHarmonicCalc(testCase, out).toStruct();
+verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
+verifyFalse(testCase, isfield(leaf.interaction, 'method'));
 end
 
 function testAnAgreeingHarmonicIsCountedAsCheckedNotMerelyNotRefused(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % "0 mismatches" is only evidence once something says the comparison HAPPENED.
 % This is Operating Rule 5 applied to a predicate: `harmonic_checked` and
 % `harmonic_uncheckable` are separate counters precisely so a fold that never
@@ -263,7 +257,6 @@ verifyEqual(testCase, rep.refused_harmonic_mismatch, 0);
 end
 
 function testAParametersDocumentWithNoKnobsIsRefused(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % Inlining an empty struct records nothing WHILE removing the edge that still
 % points at wherever the values are. Strictly worse than leaving it alone.
 p = parametersFixture();
@@ -271,12 +264,11 @@ p.stimulus_response_scalar_parameters_basic = struct('freq_response', 1);
 [out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
 verifyEqual(testCase, rep.refused_no_fields, 1);
 verifyEqual(testCase, rep.inlined, 0);
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
-verifyEqual(testCase, depValue(leaf, 'method_parameters_id'), 'param_77c19b');
+leaf = findHarmonicCalc(testCase, out).toStruct();
+verifyEqual(testCase, depValue(leaf, 'method_id'), 'param_77c19b');
 end
 
 function testAnEdgePointingAtTheWrongClassIsRefused(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % `must_refer_to_document_class` is DECLARATIVE and existence-only, so nothing
 % else in the pipeline would notice. This pass reads the referenced document's
 % fields, so it checks the class itself rather than trusting the edge name.
@@ -290,7 +282,6 @@ end
 % ===================== the denominator =====================================
 
 function testZeroLeavesBesideSuppressedResponsesReadsAsBlockedNotIdle(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % THE REASON THIS PASS HAS TWO COUNTERS INSTEAD OF ONE. On every real corpus
 % today the migrator's epoch gate suppresses every fold (jEpochDocId answers ''
 % by construction and the writer sets `element_epochid` unconditionally), so
@@ -309,7 +300,6 @@ verifyTrue(testCase, rep.ran);
 end
 
 function testTheSuppressedResponseIsLeftWhollyAloneByThisPass(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % The companion to the test above, and the one that says the suppression stays
 % LOSSLESS. This pass reads `stimulus_response_scalar` documents only to count
 % them; it must not touch one. Both epoch strings and the parameters edge have to
@@ -325,7 +315,6 @@ verifyEqual(testCase, depValue(src, 'stimulus_response_scalar_parameters_id'), .
 end
 
 function testAnEmptyBatchRansWithEveryCounterAtZero(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % "ran and found nothing" must be readable as such, and must NOT print the same
 % as "did not run" (the off-target case below).
 r = struct('migrated', {{}}, 'quarantine', [], ...
@@ -343,8 +332,7 @@ verifyTrue(testCase, out.response_parameters_fold.ran);
 end
 
 function testItIsANoOpOnANonVEtaTarget(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
-% `harmonic_component_calculation` exists only in V_eta, and this pass is wired
+% The harmonic_component value kind exists only in V_eta, and this pass is wired
 % into shared harnesses that also run V_delta. `ran` FALSE with every
 % counter 0 is the off-target reading, distinct from the empty-batch one above.
 r = struct('migrated', {{}}, 'quarantine', [], ...
@@ -359,7 +347,6 @@ end
 % ===================== validation ==========================================
 
 function testTheInlinedLeafValidatesAgainstTheRealVEtaSchema(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % The only test here that proves the pass and the schema agree; every other test
 % would pass just as happily against a method_parameters field that does not
 % exist. Needs the assembled V_eta set on DID_SCHEMA_PATH (stable + draft +
@@ -382,8 +369,8 @@ end
 verifyEqual(testCase, rep.inlined, 1);
 verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
-verifyEqual(testCase, leaf.subject_interaction.method_parameters.spiketrain_dt, ...
+leaf = findHarmonicCalc(testCase, out).toStruct();
+verifyEqual(testCase, knob(leaf.interaction.method.parameters, 'spiketrain dt').quantity.value, ...
     0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.harmonic_component.value.harmonic, 2);
 % The id is untouched, so every inbound `stimulus_response_scalar_id` reference
@@ -408,7 +395,7 @@ function [out, leaf, rep] = foldPair(testCase, responseType)
 %FOLDPAIR The ordinary case: one stamped response + its parameters document.
 [out, rep] = runFold(testCase, ...
     {withEpochEdge(responseFixture(responseType)), parametersFixture()});
-leaf = bodyOfClass(testCase, out, 'harmonic_component_calculation');
+leaf = findHarmonicCalc(testCase, out).toStruct();
 end
 
 function v1 = otherReferrerFixture(targetId)
@@ -468,5 +455,78 @@ for k = 1:numel(b.depends_on)
         v = char(b.depends_on(k).value);
     end
     return;
+end
+end
+
+% ===================== did-schema #88 readers (added 2026-10-21) ==========
+% The fold emits the DIRECTION class `calculation` with ONE value-kind mixin,
+% `harmonic_component`, in its superclasses. There is no leaf class name, so
+% these readers ask for that pair rather than for a composed name.
+
+function tf = isHarmonicCalc(doc)
+%ISHARMONICCALC Class `calculation` with `harmonic_component` among its
+%   superclasses.
+if isa(doc, 'did2.document'); doc = doc.toStruct(); end
+tf = false;
+if ~isstruct(doc) || ~isfield(doc, 'document_class'); return; end
+if ~strcmp(char(doc.document_class.class_name), 'calculation'); return; end
+sc = doc.document_class.superclasses;
+if isstruct(sc); sc = num2cell(sc); end
+for k = 1:numel(sc)
+    e = sc{k};
+    if isstruct(e); e = e.class_name; end
+    if strcmp(char(e), 'harmonic_component'); tf = true; return; end
+end
+end
+
+function tf = anyHarmonicCalc(out)
+tf = false;
+for k = 1:numel(out.migrated)
+    if isHarmonicCalc(out.migrated{k}); tf = true; return; end
+end
+end
+
+function doc = findHarmonicCalc(testCase, out)
+%FINDHARMONICCALC The one harmonic_component calculation in OUT (a
+%   did2.document); assertFail when there is none.
+doc = [];
+names = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    names{k} = char(out.migrated{k}.get('document_class.class_name'));
+    if isHarmonicCalc(out.migrated{k})
+        doc = out.migrated{k};
+        return;
+    end
+end
+assertFail(testCase, sprintf(['no calculation with the harmonic_component ' ...
+    'value kind among {%s}'], strjoin(names, ', ')));
+end
+
+function v = inputAt(b, n)
+%INPUTAT The N-th `input_id` edge of a raw body struct ('' when absent). #88
+%   names the signed `derived_from_#` family `input_id`, an ordered list.
+v = '';
+if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
+hits = {};
+for k = 1:numel(b.depends_on)
+    if ~strcmp(b.depends_on(k).name, 'input_id'); continue; end
+    d = b.depends_on(k);
+    if isfield(d, 'document_id') && ~isempty(d.document_id)
+        hits{end+1} = char(d.document_id); %#ok<AGROW>
+    elseif isfield(d, 'value') && ~isempty(d.value)
+        hits{end+1} = char(d.value); %#ok<AGROW>
+    end
+end
+if numel(hits) >= n; v = hits{n}; end
+end
+
+function e = knob(params, name)
+%KNOB The `method.parameters` entry whose variable is the label NAME, [] when
+%   there is none. Reads a struct array or a cell (JSON round trip).
+e = [];
+if isstruct(params); params = num2cell(params); end
+for k = 1:numel(params)
+    v = params{k}.variable;
+    if strcmp(char(v.name), name); e = params{k}; return; end
 end
 end

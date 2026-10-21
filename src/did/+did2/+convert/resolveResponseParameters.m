@@ -16,7 +16,7 @@ function [result, report] = resolveResponseParameters(result, options)
 %
 %   BATCH-PASS-CONSUMES: stimulus_response_scalar_parameters_basic
 %   BATCH-PASS-EMITS: stimulus_response_scalar_parameters_basic -> inline:
-%       method_parameters
+%       method
 %
 %   `inline` IS NOT A SOFTER `document`, AND THE DISTINCTION IS THE THIRD OF
 %   THE THREE EMISSION SHAPES row 107 names. The destination is the
@@ -40,6 +40,31 @@ function [result, report] = resolveResponseParameters(result, options)
 %   THIS FILE HAS BEEN EXECUTED. test-migrators-quick.yml is the first thing
 %   with an opinion. Said here rather than in a commit message because a header
 %   is what the next reader sees.
+%
+%   ---------------------------------------------------------------------
+%   PORTED TO did-schema #88 (2026-10-21). READ THIS BEFORE THE HISTORY BELOW.
+%   ---------------------------------------------------------------------
+%   The prose below describes the pre-#88 names; the mechanism is unchanged.
+%   On #88:
+%     the response    a `calculation` whose value kind is `harmonic_component`
+%                     (class `calculation`, `harmonic_component` among its
+%                     superclasses) -- there is no leaf class name
+%     the edge        `method_id` (was `method_parameters_id`)
+%     the inline      `interaction.method = {term, parameters}` (was
+%                     `subject_interaction.method_parameters`); #88 keeps the
+%                     rule "the inline `method` block OR `method_id`, NEVER
+%                     BOTH", so pass 1 writes no inline method beside the edge
+%                     and THIS pass writes the term with the parameters
+%     the knobs       one `{variable, <one value form>}` entry each, the
+%                     variable a label of the v1 field name (the
+%                     jParameterList convention); the harmonic is read from
+%                     `harmonic_component.value.harmonic`
+%     EMPTY KNOBS     #88's entry holds EXACTLY ONE value form, so a `[]` knob
+%                     cannot be stated as an entry. It is SKIPPED (as
+%                     jParameterList skips empties) and COUNTED in
+%                     `knobs_empty_not_stated`, so "the writer wrote []" stays
+%                     visible in the report instead of vanishing. This
+%                     supersedes "EMPTY VALUES ARE COPIED" below.
 %
 %   ---------------------------------------------------------------------
 %   THE SIGNED MODEL, AND WHICH LINE OF IT THIS FILE IS
@@ -143,7 +168,7 @@ function [result, report] = resolveResponseParameters(result, options)
 %   `element_epochid` string but `jEpochDocId` answers '' -- which it does for
 %   every did_v1 document by construction, and the writer sets that string
 %   unconditionally -- the fold is SUPPRESSED and the document passes through
-%   whole. So pass 1 emits no `harmonic_component_calculation` on real corpora
+%   whole. So pass 1 emits no harmonic_component calculation on real corpora
 %   until #60 stamps the `epoch_id` edge.
 %
 %   A pass whose every counter is 0 is exactly the shape this project keeps
@@ -219,6 +244,7 @@ report = struct( ...
     'parameters_documents_seen',               0, ...
     'inlined',                                 0, ...
     'fields_copied',                           0, ...
+    'knobs_empty_not_stated',                  0, ...
     'harmonic_checked',                        0, ...
     'harmonic_uncheckable',                    0, ...
     'refused_not_in_batch',                    0, ...
@@ -236,7 +262,7 @@ report = struct( ...
 result.response_parameters_fold = report;
 
 if ~strcmp(options.TargetVersion, 'V_eta')
-    return;     % harmonic_component_calculation exists only in V_eta.
+    return;     % the harmonic_component value kind exists only in V_eta.
 end
 if ~isfield(result, 'migrated') || isempty(result.migrated)
     report.ran = true;
@@ -245,7 +271,9 @@ if ~isfield(result, 'migrated') || isempty(result.migrated)
 end
 report.ran = true;
 
-LEAF   = 'harmonic_component_calculation';
+DIRECTION  = 'calculation';            % did-schema #88: direction class ...
+VALUE_KIND = 'harmonic_component';     % ... plus this value-kind mixin
+METHOD_TERM = 'ndi.app.stimulus.tuning_response';   % as the migrator names it
 PARAMS = 'stimulus_response_scalar_parameters_basic';
 SOURCE = 'stimulus_response_scalar';
 % The five run knobs, in the plan's own order. `freq_response` is deliberately
@@ -261,12 +289,14 @@ report.documents_inspected = n;
 % A document this cannot read is COUNTED, never dropped.
 bodies    = cell(1, n);
 classes   = repmat({''}, 1, n);
+isLeaf    = false(1, n);
 docIds    = repmat({''}, 1, n);
 for k = 1:n
     try
         b = docs{k}.toStruct();
         bodies{k}  = b;
         classes{k} = classNameOf(b);
+        isLeaf(k)  = strcmp(classes{k}, DIRECTION) && hasSuperclass(b, VALUE_KIND);
         docIds{k}  = baseField(b, 'id');
     catch
         report.documents_unreadable = report.documents_unreadable + 1;
@@ -307,12 +337,13 @@ rebuilt = {};
 % contributed five copied fields to a report describing work that was thrown
 % away -- a counter measuring intent rather than outcome.
 copiedPer = [];
+emptyPer = [];
 for k = 1:n
-    if ~strcmp(classes{k}, LEAF); continue; end
+    if ~isLeaf(k); continue; end
     report.leaves_seen = report.leaves_seen + 1;
 
     b = bodies{k};
-    paramId = depValue(b, 'method_parameters_id');
+    paramId = depValue(b, 'method_id');
     if isempty(paramId)
         report.leaves_without_edge = report.leaves_without_edge + 1;
         continue;
@@ -323,8 +354,8 @@ for k = 1:n
     % fires if something else has already written it -- in which case the edge
     % and the field disagree about which is authoritative and this pass must not
     % pick.
-    inlineNow = blockField(b, 'subject_interaction', 'method_parameters');
-    if isstruct(inlineNow) && ~isempty(fieldnames(inlineNow))
+    inlineNow = blockField(b, 'interaction', 'method');
+    if isstruct(inlineNow) && ~isempty(inlineNow) && ~isempty(fieldnames(inlineNow))
         report.refused_inline_present = report.refused_inline_present + 1;
         continue;
     end
@@ -357,7 +388,7 @@ for k = 1:n
         continue;
     end
 
-    [params, copied] = knobsOf(pBlk, KNOBS);
+    [params, copied, emptied] = knobsOf(pBlk, KNOBS);
     if copied == 0
         % Inlining an empty struct records nothing WHILE removing the edge that
         % still points at the values -- strictly worse than leaving it alone.
@@ -365,12 +396,18 @@ for k = 1:n
         continue;
     end
 
-    b.subject_interaction.method_parameters = params;
-    b.depends_on = dropDep(b.depends_on, 'method_parameters_id');
+    if ~isfield(b, 'interaction') || ~isstruct(b.interaction)
+        b.interaction = struct();
+    end
+    b.interaction.method = struct( ...
+        'term', did2.convert.registeredTerm('', METHOD_TERM), ...
+        'parameters', params);
+    b.depends_on = dropDep(b.depends_on, 'method_id');
 
     rebuilt{end+1} = b;          %#ok<AGROW>
     changedIdx(end+1) = k;       %#ok<AGROW>
     copiedPer(end+1) = copied;   %#ok<AGROW>
+    emptyPer(end+1) = emptied;   %#ok<AGROW>
 end
 
 report.refused_total = report.refused_not_in_batch ...
@@ -419,6 +456,8 @@ if ~isempty(changedIdx)
             bodies{changedIdx(j)} = rebuilt{j};
             report.inlined = report.inlined + 1;
             report.fields_copied = report.fields_copied + copiedPer(j);
+            report.knobs_empty_not_stated = ...
+                report.knobs_empty_not_stated + emptyPer(j);
         end
     end
 
@@ -480,7 +519,7 @@ end
 
 function [agrees, checked] = harmonicAgrees(leafBody, pBlk)
 %HARMONICAGREES Does the parameters document's `freq_response` match the leaf's
-%   `harmonic_component.value.harmonic`?
+%   `harmonic_component.value.harmonic` (the value-kind block on #88)?
 %
 %   AGREES is true when they match OR when the comparison cannot be made;
 %   CHECKED says which of those two it was, so "verified equal" and "could not
@@ -508,27 +547,58 @@ checked = true;
 agrees = (double(fr) == double(h));
 end
 
-function [params, copied] = knobsOf(pBlk, knobs)
-%KNOBSOF The five run knobs, VERBATIM, in the plan's order.
-%   Snake + camelCase fallback per the standing migrator lesson: universalRenames
-%   snake-cases block-level fields, but this pass also runs on bodies a test
-%   built by hand, and reading only one spelling is how the syncrule_mapping bug
-%   survived. An ABSENT knob is skipped; a PRESENT-but-empty one is copied,
-%   because `[]` is what the writer actually wrote.
-%   NOT named `inline`: that was a MATLAB function name for two decades and a
-%   local of the same name is a needless shadowing question in a file nobody can
-%   run here.
-params = struct();
+function [params, copied, emptied] = knobsOf(pBlk, knobs)
+%KNOBSOF The run knobs as did-schema #88 `method.parameters` entries, in the
+%   plan's order. Snake + camelCase fallback per the standing migrator lesson.
+%   An ABSENT knob is skipped. A PRESENT-but-EMPTY one cannot be an entry (#88:
+%   exactly one value form) and is counted in EMPTIED rather than copied (see
+%   the #88 note in the header). A numeric/logical scalar is a `quantity`
+%   (value, and the source as text); a char is `text`; anything else is
+%   `text`, JSON-encoded -- the jParameterList convention.
+%   NOT named `inline`: that was a MATLAB function name for two decades.
+params = [];
 copied = 0;
+emptied = 0;
+entries = {};
 for k = 1:numel(knobs)
     name = knobs{k};
     camel = toCamel(name);
     if isfield(pBlk, name)
-        params.(name) = pBlk.(name);
-        copied = copied + 1;
+        v = pBlk.(name);
     elseif isfield(pBlk, camel)
-        params.(name) = pBlk.(camel);
-        copied = copied + 1;
+        v = pBlk.(camel);
+    else
+        continue;
+    end
+    if isempty(v)
+        emptied = emptied + 1;
+        continue;
+    end
+    var = did2.convert.registeredTerm('', strrep(name, '_', ' '));
+    if (isnumeric(v) || islogical(v)) && isscalar(v)
+        e = did2.build.parameter(var, 'Value', double(v), ...
+            'SourceValue', shortestText(double(v)));
+    elseif ischar(v) && isrow(v)
+        e = did2.build.parameter(var, 'Text', v);
+    elseif isstring(v) && isscalar(v)
+        e = did2.build.parameter(var, 'Text', char(v));
+    else
+        e = did2.build.parameter(var, 'Text', char(jsonencode(v)));
+    end
+    entries{end+1} = e; %#ok<AGROW>
+    copied = copied + 1;
+end
+if ~isempty(entries)
+    params = did2.build.list(entries{:});
+end
+end
+
+function t = shortestText(x)
+% The shortest decimal text that reads back as exactly X (jParameterList's).
+for p = 1:17
+    t = sprintf('%.*g', p, x);
+    if str2double(t) == x
+        return;
     end
 end
 end
@@ -553,6 +623,27 @@ cn = '';
 if isstruct(b) && isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
     cn = char(b.document_class.class_name);
+end
+end
+
+function tf = hasSuperclass(b, name)
+%HASSUPERCLASS Whether NAME is among the document's superclasses (a struct
+%   array, or a cell of structs/chars after a JSON round trip).
+tf = false;
+if ~isstruct(b) || ~isfield(b, 'document_class') || ~isstruct(b.document_class) ...
+        || ~isfield(b.document_class, 'superclasses')
+    return;
+end
+sc = b.document_class.superclasses;
+if isstruct(sc); sc = num2cell(sc); end
+if ~iscell(sc); return; end
+for k = 1:numel(sc)
+    e = sc{k};
+    if isstruct(e) && isfield(e, 'class_name') && strcmp(char(e.class_name), name)
+        tf = true; return;
+    elseif (ischar(e) || isstring(e)) && strcmp(char(e), name)
+        tf = true; return;
+    end
 end
 end
 

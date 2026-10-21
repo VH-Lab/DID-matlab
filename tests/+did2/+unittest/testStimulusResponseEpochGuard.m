@@ -159,18 +159,16 @@ end
 % ===================== BRANCH 2: the live branch today =================
 
 function testAnEpochStringWithNoEpochDocumentSuppressesTheFold(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 out = runJ(responseFixture('t00003'));
 verifyEmpty(testCase, out.quarantine);
 % 1 -> 1. NOT the leaf, NOT an anchor: the source document, whole.
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), ...
     'stimulus_response_scalar');
-verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
+verifyFalse(testCase, anyHarmonicCalc(out));
 end
 
 function testTheSuppressedPassthroughStillCarriesBothEpochStrings(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % The whole point of suppressing. If this assertion ever fails, the suppression
 % has stopped buying anything and should be reconsidered rather than kept.
 out = runJ(responseFixture('t00003'));
@@ -181,7 +179,6 @@ verifyEqual(testCase, sort({hits.value}), {'t00003', 't00003'});
 end
 
 function testTheSuppressionIsVisibleToTheRetentionCounter(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % A suppression nobody counts is indistinguishable from a drop. The counter that
 % proves it: v1 pairs in, pairs still reachable out, and the subtraction.
 v1  = responseFixture('t00003');
@@ -194,7 +191,6 @@ verifyEqual(testCase, r.pairs_dropped, 0);
 end
 
 function testTheMintCanSeeThisFamilysEpochStrings(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % Branch 1 is unreachable until an `epoch` document exists for this pair, and
 % that is did2.convert.epochMint's job. Before this change its reader could not
 % see the stimulus-response family at all, so the epochs branch 1 needs would
@@ -214,46 +210,51 @@ end
 % ===================== BRANCH 3: nothing to lose =======================
 
 function testWithNoEpochStringTheFoldStillRunsOnTheSessionAnchor(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % Refusing here would strand a document for a fact it does not have.
 out = runJ(responseFixture(''));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 2);
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+verifyEqual(testCase, numel(out.migrated), 3);   % + the software entity (#88)
+leaf = findHarmonicCalc(testCase, out);
 anchor = findClass(testCase, out, 'relative_time_reference');
-verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
+verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_id'), ...
     char(anchor.get('base.id')));
+% the SESSION anchor: its referent is the session (#88 has one time-reference
+% class, so the referent is what distinguishes it from branch 1's)
+verifyEqual(testCase, depValue(anchor.toStruct(), 'referent_id'), 'sess_0001');
 end
 
 % ===================== BRANCH 1: the day the mint stamps the edge ======
 
 function testAnEpochDocumentUnlocksTheFold(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 out = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 2);
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+verifyEqual(testCase, numel(out.migrated), 3);   % + the software entity (#88)
+leaf = findHarmonicCalc(testCase, out);
 verifyEqual(testCase, char(leaf.get('base.id')), 'resp_412fa1');   % id preserved
 end
 
 function testTheAnchorIsARelativeReferenceOntoTheEpochNotASessionAnchor(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % Revision 2 of the sign-off, built: `element_epochid` -> relative_reference,
 % relative_to -> epoch. The session anchor is REPLACED, not added beside -- two
 % anchors on one interaction would be #52's undefined-meaning case.
 out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findHarmonicCalc(testCase, out);
 ref  = findClass(testCase, out, 'relative_time_reference');
-verifyFalse(testCase, anyClass(out, 'session_relative_reference'));
+% exactly ONE anchor: the session anchor is replaced, not added beside
+nRefs = 0;
+for k = 1:numel(out.migrated)
+    nRefs = nRefs + strcmp(char(out.migrated{k}.get('document_class.class_name')), ...
+        'relative_time_reference');
+end
+verifyEqual(testCase, nRefs, 1);
 
 rb = ref.toStruct();
-verifyEqual(testCase, depValue(rb, 'relative_to'), 'epochdoc_aa11');
-verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_1'), ...
+verifyEqual(testCase, depValue(rb, 'referent_id'), 'epochdoc_aa11');
+verifyEqual(testCase, depValue(leaf.toStruct(), 'time_reference_id'), ...
     char(ref.get('base.id')));
 end
 
 function testTheEpochAnchorStatesTheRelationAndTheClockAndNoInventedOffset(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % `clock` is TRANSCRIBED from the writer, not chosen: the epoch this anchors to
 % is the recording element's, produced by
 %   E.syncgraph.time_convert(..., ndi.time.clocktype('dev_local_time'))
@@ -266,32 +267,30 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmon
 % the epoch boundary, which the writer never said.
 out = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
 ref = findClass(testCase, out, 'relative_time_reference');
-verifyEqual(testCase, char(ref.get('relative_reference.value.relation.node')), ...
+verifyEqual(testCase, char(ref.get('relative_time_reference.value.relation.node')), ...
     'time:intervalDuring');
-verifyEqual(testCase, char(ref.get('relative_reference.value.clock.name')), ...
+verifyEqual(testCase, char(ref.get('relative_time_reference.value.clock.name')), ...
     'dev_local_time');
-val = ref.get('relative_reference.value');
+val = ref.get('relative_time_reference.value');
 verifyFalse(testCase, isfield(val, 'start') && ~isempty(val.start) ...
     && isstruct(val.start) && isfield(val.start, 'source_value') ...
     && ~isempty(val.start.source_value) && val.start.source_value ~= 0);
 end
 
 function testBranchOneStillRehomesAllFiveV1Edges(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % Opening the gate must not quietly change anything else about the fold.
 out  = runJ(withEpochEdge(responseFixture('t00003'), 'epochdoc_aa11'));
-b    = findClass(testCase, out, 'harmonic_component_calculation').toStruct();
-verifyEqual(testCase, depValue(b, 'subject_id'),           'elem_9c027e');
+b    = findHarmonicCalc(testCase, out).toStruct();
+verifyEqual(testCase, depValue(b, 'entity_id'),            'elem_9c027e');
 verifyEqual(testCase, depValue(b, 'instrument_id'),        'stim_5daa03');
-verifyEqual(testCase, depValue(b, 'derived_from_1'),       'pres_b671ff');
-verifyEqual(testCase, depValue(b, 'derived_from_2'),       'ctrl_20e84c');
-verifyEqual(testCase, depValue(b, 'method_parameters_id'), 'param_77c19b');
+verifyEqual(testCase, inputAt(b, 1),       'pres_b671ff');
+verifyEqual(testCase, inputAt(b, 2),       'ctrl_20e84c');
+verifyEqual(testCase, depValue(b, 'method_id'), 'param_77c19b');
 end
 
 % ===================== the guards that already existed =================
 
 function testTheOlderGuardsStillPassTheDocumentThrough(testCase)
-testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): harmonic_component_calculation was deleted; stimulus_response_scalar is now a guarded passthrough. Rework this suite once the replacement class lands.");
 % Guard 1 (no element_id) must keep winning even with no epoch string, or the
 % new gate would have quietly reordered the refusals.
 v1 = responseFixture('');
@@ -300,4 +299,66 @@ out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, char(out.migrated{1}.get('document_class.class_name')), ...
     'stimulus_response_scalar');
+end
+
+% ===================== did-schema #88 readers (added 2026-10-21) ==========
+% The fold emits the DIRECTION class `calculation` with ONE value-kind mixin,
+% `harmonic_component`, in its superclasses. There is no leaf class name, so
+% these readers ask for that pair rather than for a composed name.
+
+function tf = isHarmonicCalc(doc)
+%ISHARMONICCALC Class `calculation` with `harmonic_component` among its
+%   superclasses.
+if isa(doc, 'did2.document'); doc = doc.toStruct(); end
+tf = false;
+if ~isstruct(doc) || ~isfield(doc, 'document_class'); return; end
+if ~strcmp(char(doc.document_class.class_name), 'calculation'); return; end
+sc = doc.document_class.superclasses;
+if isstruct(sc); sc = num2cell(sc); end
+for k = 1:numel(sc)
+    e = sc{k};
+    if isstruct(e); e = e.class_name; end
+    if strcmp(char(e), 'harmonic_component'); tf = true; return; end
+end
+end
+
+function tf = anyHarmonicCalc(out)
+tf = false;
+for k = 1:numel(out.migrated)
+    if isHarmonicCalc(out.migrated{k}); tf = true; return; end
+end
+end
+
+function doc = findHarmonicCalc(testCase, out)
+%FINDHARMONICCALC The one harmonic_component calculation in OUT (a
+%   did2.document); assertFail when there is none.
+doc = [];
+names = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    names{k} = char(out.migrated{k}.get('document_class.class_name'));
+    if isHarmonicCalc(out.migrated{k})
+        doc = out.migrated{k};
+        return;
+    end
+end
+assertFail(testCase, sprintf(['no calculation with the harmonic_component ' ...
+    'value kind among {%s}'], strjoin(names, ', ')));
+end
+
+function v = inputAt(b, n)
+%INPUTAT The N-th `input_id` edge of a raw body struct ('' when absent). #88
+%   names the signed `derived_from_#` family `input_id`, an ordered list.
+v = '';
+if ~isfield(b, 'depends_on') || isempty(b.depends_on); return; end
+hits = {};
+for k = 1:numel(b.depends_on)
+    if ~strcmp(b.depends_on(k).name, 'input_id'); continue; end
+    d = b.depends_on(k);
+    if isfield(d, 'document_id') && ~isempty(d.document_id)
+        hits{end+1} = char(d.document_id); %#ok<AGROW>
+    elseif isfield(d, 'value') && ~isempty(d.value)
+        hits{end+1} = char(d.value); %#ok<AGROW>
+    end
+end
+if numel(hits) >= n; v = hits{n}; end
 end
