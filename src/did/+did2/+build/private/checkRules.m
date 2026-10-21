@@ -84,14 +84,22 @@ for c = 1:numel(chain)
                     forEachKey(doc, blocks, @keyNoChunk);
                 end
             case {'datum_type_when_bytes', 'data_type_when_bytes'}
-                % `data_type_when_bytes` since 2026-10-08 (the field renamed);
-                % the part a per-document check can see is the same: a value
-                % whose bytes are in a body must say how they are encoded.
+                % `data_type_when_bytes` since 2026-10-08 (the field renamed).
+                % Jess Haley, 2026-10-21 (did-schema data_body AMENDMENT 5):
+                % `data_type` is required only when the bytes are a PLAIN
+                % ARRAY -- a sampled_body, or an untyped inline array; an
+                % opaque_body's `format` term is the encoding, so
+                % `data_body: true` alone no longer demands it. A body's kind
+                % is not visible on its owner, so the sampled_body half is a
+                % batch check; the part a per-document check can see is an
+                % inline value given as a bare numeric or text array, which
+                % no declared cell is.
                 f = strrep(ruleName, '_when_bytes', '');
-                if isTrue(findField(doc, blocks, 'data_body')) ...
+                v = findField(doc, blocks, 'value');
+                if (isnumeric(v) || ischar(v) || isstring(v)) && ~isAbsent(v) ...
                         && isAbsent(findField(doc, blocks, f))
                     violated(ruleName, className, ...
-                        sprintf('`data_body` is true, so `%s` must be given.', f));
+                        sprintf('`value` is a bare array the schema does not type, so `%s` must be given.', f));
                 end
             case 'clock_with_start'
                 % an offset -- a start or an end -- means nothing until its

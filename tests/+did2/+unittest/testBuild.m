@@ -465,9 +465,13 @@ verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), '
 verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
     v, 'Keys', did2.build.key('time', 1, 'Values', 0, 'Chunk', 1), common{:}), ...
     'did2:build:ruleViolated');
-% data_body true needs a datum_type
+% data_type only for plain-array bytes (Jess Haley, 2026-10-21): an untyped
+% inline array needs one; data_body true alone does not (the body may be an
+% opaque_body, whose format term is the encoding)
 verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
-    [], 'DataBody', true, common{:}), 'did2:build:ruleViolated');
+    [0.01 0.02], common{:}), 'did2:build:ruleViolated');
+did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
+    'DataBody', true, common{:});
 end
 
 function testValueInlineOrBody(testCase)
