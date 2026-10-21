@@ -985,7 +985,8 @@
 %         [tuning_curve_calculation, tuning_curve]; the raw case per issue #67) + a
 %         session anchor + minted `software` and `runtime_environment` entities.
 %     virus_injection
-%         Brainstorm-J migrator: did_v1 virus_injection -> dose_manipulation.
+%         Brainstorm-J migrator: did_v1 virus_injection -> a dose or an immersion,
+%         decided by the recorded location.
 %     vmneuralresponseresiduals
 %         Brainstorm-J migrator: did_v1 vmneuralresponseresiduals -- DEFERRED to the
 %         NDI second pass; the document is passed through UNCHANGED.

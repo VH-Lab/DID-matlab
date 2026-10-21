@@ -19,21 +19,30 @@ function [value, chemicals] = jDoseValue(chemicals)
 %   unrecorded and is written as NaN in the dose's volume:
 %   `value.volume.liters = NaN` ("An unrecorded amount is written as NaN in
 %   its quantity (e.g. a dose's volume.liters: NaN)", Jess Haley,
-%   2026-10-21). Whether NaN survives a did2 write and read is DID-matlab
+%   2026-10-21). When no row gives a number but exactly one kind of amount
+%   unit is stated, the NaN goes in THAT quantity, with the unit as
+%   `source_unit` ("where the kind is known ... the NaN goes in that quantity
+%   instead", Jess Haley, 2026-10-21 [unknown-amount-slot]). Whether NaN
+%   survives a did2 write and read is DID-matlab
 %   #218's work (testSqliteDbNonFinite); this function only writes it.
 
 hits = [];
 slots = {};
+kindOnly = [];          % rows stating an amount UNIT but no number
+kindSlots = {};
 for k = 1:numel(chemicals)
     c = chemicals(k);
-    if isempty(c.source_value) || ~isnumeric(c.source_value) || ~isfinite(c.source_value(1))
+    [slot, canon, factor] = amountSlot(c.source_unit);
+    if isempty(slot)
         continue;
     end
-    [slot, canon, factor] = amountSlot(c.source_unit);
-    if ~isempty(slot)
-        hits(end+1) = k; %#ok<AGROW>
-        slots(end+1, :) = {slot, canon, factor}; %#ok<AGROW>
+    if isempty(c.source_value) || ~isnumeric(c.source_value) || ~isfinite(c.source_value(1))
+        kindOnly(end+1) = k; %#ok<AGROW>
+        kindSlots(end+1, :) = {slot, canon}; %#ok<AGROW>
+        continue;
     end
+    hits(end+1) = k; %#ok<AGROW>
+    slots(end+1, :) = {slot, canon, factor}; %#ok<AGROW>
 end
 
 if isscalar(hits)
@@ -47,7 +56,20 @@ if isscalar(hits)
     value = did2.build.composite('dose', 'value', struct(slots{1, 1}, q));
     chemicals(hits).source_value = [];
     chemicals(hits).source_unit = [];
+elseif isempty(hits) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1)))
+    % The source states the KIND of amount (its unit) but not the number: the
+    % NaN goes in that quantity, not in volume (Jess Haley, 2026-10-21
+    % [unknown-amount-slot]). The unit is carried as `source_unit`.
+    c = chemicals(kindOnly(1));
+    q = struct(kindSlots{1, 2}, NaN, 'source_unit', unitTerm(c.source_unit));
+    value = did2.build.composite('dose', 'value', struct(kindSlots{1, 1}, q));
+    for k = kindOnly
+        chemicals(k).source_value = [];
+        chemicals(k).source_unit = [];
+    end
 else
+    % Neither the amount nor its kind is known: the NaN goes in
+    % value.volume.liters (Jess Haley, 2026-10-21 [unknown-amount-slot]).
     value = did2.build.composite('dose', 'value', ...
         struct('volume', struct('liters', NaN)));
 end
