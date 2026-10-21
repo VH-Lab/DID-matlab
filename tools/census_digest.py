@@ -614,9 +614,10 @@ POST_PASSES = [
         ("pyraview_repoint_quarantined", "  re-point QUARANTINED (kept as it was)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
-    # five run knobs move inline onto the harmonic_component_calculation leaf
-    # and `method_parameters_id` is dropped, because the schema says a statement
-    # carries the inline field OR the edge, never both.
+    # run knobs move inline onto the calculation whose value kind is
+    # harmonic_component (did-schema #88: `interaction.method`), and `method_id`
+    # is dropped, because the schema says a statement carries the inline method
+    # OR the edge, never both.
     #
     # READ `leaves_seen` AND `suppressed_responses_seen` AS A PAIR, ALWAYS.
     # `leaves_seen: 0` alone is ambiguous and the pass was built so that it does
@@ -640,8 +641,8 @@ POST_PASSES = [
     ("response_parameters_fold", "did2.convert.resolveResponseParameters", [
         ("documents_inspected", "documents inspected"),
         ("documents_unreadable", "UNREADABLE"),
-        ("leaves_seen", "harmonic_component_calculation leaves  <- DENOMINATOR"),
-        ("leaves_with_edge", "  carrying method_parameters_id"),
+        ("leaves_seen", "harmonic_component calculations  <- DENOMINATOR"),
+        ("leaves_with_edge", "  carrying method_id"),
         ("leaves_without_edge", "  no such edge (complete as they stand)"),
         ("suppressed_responses_seen", "v1 responses STILL SUPPRESSED by the epoch gate"),
         ("parameters_documents_seen", "parameters documents  <- DELETION DENOMINATOR"),
@@ -649,6 +650,9 @@ POST_PASSES = [
         # A FIELD-VALUE count, not a document count: one leaf contributes up to
         # five. It must not be read down the same column as `inlined`.
         ("fields_copied", "  field VALUES copied (cells, not documents)"),
+        # did-schema #88: an entry holds exactly one value form, so a knob the
+        # writer left [] cannot be stated. Counted here so it does not vanish.
+        ("knobs_empty_not_stated", "  writer-empty knobs NOT stated (no value form)"),
         ("harmonic_checked", "freq_response cross-checked against value.harmonic"),
         ("harmonic_uncheckable", "  not checkable (one side unreadable)"),
         ("refused_total", "REFUSED (total)"),
@@ -4568,7 +4572,7 @@ def _render_response_parameters_reading(rep, p):
     p("          THE STIMULUS-RESPONSE FOLD -- the reading of the rows above")
     leaves = _reading_denominator(
         rep, "leaves_seen",
-        "harmonic_component_calculation leaf/leaves in the batch", p,
+        "harmonic_component calculation(s) in the batch", p,
         when_absent=[
             "The pass landed 2026-08-11, so a report from before then carries",
             "no counter of any kind for it.",
@@ -6629,7 +6633,7 @@ def _rollup_response_parameters_reading(totals, key_missing_in, carried, p):
     p("      THE STIMULUS-RESPONSE FOLD -- the reading of the totals above")
     leaves = _rollup_denominator(
         totals, key_missing_in, carried, "leaves_seen",
-        "harmonic_component_calculation leaf/leaves", p,
+        "harmonic_component calculation(s)", p,
         when_absent=["These counters landed 2026-08-11."],
         when_zero=[
             "No leaf reached the fold in any corpus, so every INLINE and",

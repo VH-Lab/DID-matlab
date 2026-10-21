@@ -2752,8 +2752,8 @@ class TestResponseParametersRendering(ThreePassCase):
             suppressed_responses_seen=0, parameters_documents_seen=0,
             parameters_documents_referenced_after=0))
         _percorpus, rollup_text, _f = self.halves()
-        self.assertIn("DENOMINATOR: 0 harmonic_component_calculation "
-                      "leaf/leaves across 2 report(s)", rollup_text)
+        self.assertIn("DENOMINATOR: 0 harmonic_component calculation(s) "
+                      "across 2 report(s)", rollup_text)
         self.assertIn("REFUSAL total above is VACUOUS", rollup_text)
         self.assertIn("0 leaves beside 0 suppressed responses", rollup_text)
 
