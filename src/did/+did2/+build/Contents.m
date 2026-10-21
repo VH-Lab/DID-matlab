@@ -29,7 +29,8 @@
 %     condition              one whole-statement qualifier (`conditions` entry)
 %     parameter              one algorithm setting (a `method.parameters` entry);
 %                            the same entry as a condition: one `term`,
-%                            `quantity`, `count` or `text`
+%                            `quantity`, `count`, `text` or `matrix` (a
+%                            numeric array as one value, did-schema #88)
 %     fitEntry               one model fit (`model_fit` entry)
 %     term, label            an ontology term; a term known only by name
 %     list                   join separately built entries into one array

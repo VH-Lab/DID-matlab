@@ -43,6 +43,9 @@ classdef document < handle
 
     properties (Access = private)
         schemaCacheHandle = []
+        % the cache this document was last validated with; toJSON asks it
+        % which fields are `matrix` (see toJSON)
+        validatedCacheHandle = []
     end
 
     methods
@@ -133,12 +136,44 @@ classdef document < handle
 
         function jsonText = toJSON(obj, opts)
             % toJSON - serialise documentProperties to V_delta JSON text.
+            %
+            %   TXT = D.toJSON() / D.toJSON('PrettyPrint', true,
+            %   'SchemaCache', C)
+            %
+            %   `jsonencode`, except for a field the schema types `matrix`
+            %   (data_body AMENDMENT 4, did-schema #88: a numeric N-D array,
+            %   "row-major as JSON nested arrays"). `jsonencode` writes a 1xN
+            %   row and an Nx1 column alike as a flat [a,b,c], and `jsondecode`
+            %   reads every flat array back as a COLUMN, so a row vector would
+            %   come back transposed. A non-empty `matrix` value is therefore
+            %   written with EVERY dimension present: a 1xN row is [[a,b,c]],
+            %   an Nx1 column [[a],[b],[c]], an n x 3 palette [[r,g,b],...], a
+            %   scalar [[x]] -- and plain `jsondecode` reads each back at the
+            %   shape it was written. Numbers are written in the shortest
+            %   decimal (15 to 17 significant digits) that reads back to the
+            %   same double; a non-finite one is null, as jsonencode writes it.
+            %
+            %   Which fields are matrices is asked of the schema
+            %   (did2.schema.cache/matrixFieldPaths): the cache given here,
+            %   else the one this document was last validated with (so a
+            %   did2.database.sqlitedb write, which validates and then calls
+            %   toJSON, uses the database's own), else the shared one. When no
+            %   schema can say -- an unknown class, no schema path -- the text
+            %   is plain `jsonencode`, as it always was; so is every document
+            %   whose class declares no `matrix` field.
             arguments
                 obj
                 opts.PrettyPrint (1,1) logical = false
+                opts.SchemaCache = []
             end
-            jsonText = jsonencode(obj.documentProperties, ...
-                'PrettyPrint', opts.PrettyPrint);
+            paths = obj.matrixPaths(opts.SchemaCache);
+            if isempty(paths)
+                jsonText = jsonencode(obj.documentProperties, ...
+                    'PrettyPrint', opts.PrettyPrint);
+                return;
+            end
+            jsonText = did2.document.encodeWithMatrices( ...
+                obj.documentProperties, paths, opts.PrettyPrint);
         end
 
         function s = toStruct(obj)
@@ -177,6 +212,9 @@ classdef document < handle
             end
             cache = obj.resolveSchemaCache(opts.SchemaCache);
             cache.validateDocument(obj);
+            % remembered for toJSON only (which fields are matrices): a
+            % database validates with its own cache and then serialises
+            obj.validatedCacheHandle = cache;
         end
     end
 
@@ -264,6 +302,112 @@ classdef document < handle
     end
 
     methods (Static, Access = private)
+        function txt = encodeWithMatrices(props, paths, pretty)
+            % encodeWithMatrices - jsonencode PROPS with every non-empty value
+            %   at PATHS written by nestedArrayText. Each such value is first
+            %   replaced by a placeholder string, the struct is encoded, and
+            %   each quoted placeholder is replaced by the array's text. A
+            %   placeholder that is not found exactly once (the document's
+            %   own text contains it) is lengthened and the encoding redone.
+            base = 'DID2MATRIX';
+            while true
+                texts = {};
+                p = props;
+                for i = 1:numel(paths)
+                    [p, texts] = did2.document.tokeniseMatrices(p, paths{i}, texts, base);
+                end
+                txt = jsonencode(p, 'PrettyPrint', pretty);
+                if isempty(texts)
+                    return;
+                end
+                isUnique = true;
+                for k = 1:numel(texts)
+                    if numel(strfind(txt, ['"' base sprintf('%dX', k) '"'])) ~= 1
+                        isUnique = false;
+                        break;
+                    end
+                end
+                if isUnique
+                    break;
+                end
+                base = [base 'Z']; %#ok<AGROW>
+            end
+            for k = 1:numel(texts)
+                txt = strrep(txt, ['"' base sprintf('%dX', k) '"'], texts{k});
+            end
+        end
+
+        function [v, texts] = tokeniseMatrices(v, path, texts, base)
+            % tokeniseMatrices - replace each non-empty numeric value at PATH
+            %   (field names; struct arrays and cells walked element-wise) by
+            %   a placeholder, and append its array text to TEXTS.
+            if isempty(path)
+                if (isnumeric(v) || islogical(v)) && ~isempty(v) && isreal(v) && ~issparse(v)
+                    texts{end+1} = did2.document.nestedArrayText(v);
+                    v = sprintf('%s%dX', base, numel(texts));
+                end
+                return;
+            end
+            name = path{1};
+            if isstruct(v)
+                if ~isfield(v, name)
+                    return;
+                end
+                for k = 1:numel(v)
+                    [sub, texts] = did2.document.tokeniseMatrices( ...
+                        v(k).(name), path(2:end), texts, base);
+                    v(k).(name) = sub;
+                end
+            elseif iscell(v)
+                for k = 1:numel(v)
+                    [v{k}, texts] = did2.document.tokeniseMatrices(v{k}, path, texts, base);
+                end
+            end
+        end
+
+        function t = nestedArrayText(x)
+            % nestedArrayText - X as row-major JSON nested arrays, one level
+            %   per dimension (size(X) as MATLAB reports it, so at least 2):
+            %   the first index outermost, which is how jsondecode reads it.
+            t = did2.document.nestDims(x, size(x));
+        end
+
+        function t = nestDims(x, sz)
+            if numel(sz) == 1
+                t = ['[' strjoin(did2.document.numberTexts(x), ',') ']'];
+                return;
+            end
+            flat = reshape(x, sz(1), []);
+            parts = cell(1, sz(1));
+            for i = 1:sz(1)
+                parts{i} = did2.document.nestDims(flat(i, :), sz(2:end));
+            end
+            t = ['[' strjoin(parts, ',') ']'];
+        end
+
+        function c = numberTexts(x)
+            % numberTexts - each element of X as JSON number text: the
+            %   shortest of 15/16/17 significant digits that reads back to the
+            %   same double; null when not finite; true/false for a logical.
+            x = reshape(x, 1, []);
+            if islogical(x)
+                c = cell(1, numel(x));
+                c(x) = {'true'};
+                c(~x) = {'false'};
+                return;
+            end
+            x = double(x);
+            c = cellstr(compose('%.15g', x));
+            for digits = [16 17]
+                bad = str2double(c) ~= x & isfinite(x);
+                if ~any(bad)
+                    break;
+                end
+                c(bad) = cellstr(compose(sprintf('%%.%dg', digits), x(bad)));
+            end
+            c(~isfinite(x)) = {'null'};
+        end
+
         function out = parseJSONText(jsonText)
             text = char(jsonText);
             out = jsondecode(text);
@@ -317,6 +461,28 @@ classdef document < handle
     end
 
     methods (Access = private)
+        function paths = matrixPaths(obj, override)
+            % matrixPaths - the document's `matrix` field paths, or {} when no
+            %   schema can say (see toJSON).
+            paths = {};
+            try
+                if ~isempty(override)
+                    cache = override;
+                elseif ~isempty(obj.validatedCacheHandle)
+                    cache = obj.validatedCacheHandle;
+                else
+                    cache = obj.resolveSchemaCache([]);
+                end
+                if ismethod(cache, 'matrixFieldPaths')
+                    paths = cache.matrixFieldPaths(obj.documentProperties);
+                end
+            catch
+                % No schema to ask (no schema path, an unreadable class):
+                % plain jsonencode, the writer's behaviour before matrices.
+                paths = {};
+            end
+        end
+
         function cache = resolveSchemaCache(obj, override)
             if ~isempty(override)
                 cache = override;
