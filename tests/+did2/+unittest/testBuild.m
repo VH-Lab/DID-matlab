@@ -470,6 +470,114 @@ verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), '
     [], 'DataBody', true, common{:}), 'did2:build:ruleViolated');
 end
 
+% ===================== method (did-schema #88, 2026-10-21) ====================
+
+function testStatementWritesOneMethodBlock(testCase)
+% DID-schema V_eta_method_plan.md: an interaction's technique and its settings
+% are ONE block, `method: {term, parameters}`; `method_parameters` is gone
+if ~methodIsABlock()
+    return;   % a schema before #88: `method` is a bare term
+end
+doc = did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), ...
+    'Method', 'whole-cell patch clamp', ...
+    'MethodParameters', did2.build.list(did2.build.parameter('gain', 'Value', 100), ...
+        did2.build.parameter('filter', 'Term', 'bessel')), ...
+    'TimeReferenceIds', {newId()}, 'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, doc.interaction.method.term.name, 'whole-cell patch clamp');
+verifyEqual(testCase, numel(doc.interaction.method.parameters), 2);
+verifyEqual(testCase, doc.interaction.method.parameters(1).quantity.value, 100);
+verifyFalse(testCase, isfield(doc.interaction, 'method_parameters'));
+% a term alone, and settings alone, are each a block
+t = did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), 'Method', 'refrigeration', ...
+    'TimeReferenceIds', {newId()}, 'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, fieldnames(t.interaction.method), {'term'});
+end
+
+function testMethodDocument(testCase)
+% the standalone `method` document: the same block, with an id of its own
+if ~methodIsABlock()
+    return;
+end
+sid = testCase.TestData.sid;
+m = did2.build.method('drifting sinusoidal grating', did2.build.list( ...
+        did2.build.parameter('orientation', 'Value', 90, 'Unit', 'degree'), ...
+        did2.build.parameter('contrast', 'Value', 1)), ...
+    'Name', 'default', 'SoftwareId', newId(), 'SessionId', sid);
+verifyEqual(testCase, m.document_class.class_name, 'method');
+verifyEqual(testCase, m.method.name, 'default');
+verifyEqual(testCase, m.method.term.name, 'drifting sinusoidal grating');
+verifyEqual(testCase, numel(m.method.parameters), 2);
+verifyTrue(testCase, any(strcmp({m.depends_on.name}, 'software_id')));
+% a blank: a term, no settings
+b = did2.build.method('blank screen', [], 'SessionId', sid);
+verifyFalse(testCase, isfield(b.method, 'parameters'));
+% lineage points at another method
+c = did2.build.method([], did2.build.parameter('contrast', 'Value', 0.5), ...
+    'ParentId', m.base.id, 'SessionId', sid);
+verifyEqual(testCase, c.depends_on(strcmp({c.depends_on.name}, 'parent_id')).document_id, m.base.id);
+% the same knob twice
+verifyError(testCase, @() did2.build.method('x', did2.build.list( ...
+    did2.build.parameter('gain', 'Value', 1), did2.build.parameter('gain', 'Value', 2)), ...
+    'SessionId', sid), 'did2:build:ruleViolated');
+% a statement points at it by `method_id`
+obs = did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), 'MethodId', m.base.id, ...
+    'TimeReferenceIds', {newId()}, 'SessionId', sid);
+verifyEqual(testCase, obs.depends_on(strcmp({obs.depends_on.name}, 'method_id')).document_id, m.base.id);
+verifyFalse(testCase, isfield(obs.interaction, 'method'));
+% the option's old name writes the same edge
+old = did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), 'MethodParametersId', m.base.id, ...
+    'TimeReferenceIds', {newId()}, 'SessionId', sid);
+verifyTrue(testCase, any(strcmp({old.depends_on.name}, 'method_id')));
+verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), 'MethodId', m.base.id, ...
+    'MethodParametersId', m.base.id, 'TimeReferenceIds', {newId()}, 'SessionId', sid), ...
+    'did2:build:badOption');
+end
+
+function testInlineMethodOrMethodIdNeverBoth(testCase)
+% "A statement carries the inline `method` block OR this edge, NEVER BOTH" --
+% on #88 the inline term alone counts
+if ~methodIsABlock()
+    return;
+end
+common = {'TimeReferenceIds', {newId()}, 'SessionId', testCase.TestData.sid};
+v = did2.build.valueCell('voltage', 0.01);
+verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    v, 'Method', 'refrigeration', 'MethodId', newId(), common{:}), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    v, 'MethodParameters', did2.build.parameter('gain', 'Value', 1), ...
+    'MethodId', newId(), common{:}), 'did2:build:ruleViolated');
+end
+
+function testRelationMethodIsTheSameBlock(testCase)
+if ~methodIsABlock()
+    return;
+end
+rel = did2.build.directedRelation(newId(), newId(), did2.build.term('', 'part_of'), ...
+    'Method', 'image registration', ...
+    'MethodParameters', did2.build.parameter('threshold', 'Value', 0.5), ...
+    'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, rel.relation.method.term.name, 'image registration');
+verifyEqual(testCase, rel.relation.method.parameters.quantity.value, 0.5);
+u = did2.build.undirectedRelation({newId(), newId()}, did2.build.term('', 'same_as'), ...
+    'Method', 'manual curation', 'SessionId', testCase.TestData.sid);
+verifyEqual(testCase, u.relation.method.term.name, 'manual curation');
+end
+
+function tf = methodIsABlock()
+% did-schema #88: the standalone class is `method` and carries `parameters`
+c = did2.schema.cache.shared();
+tf = false;
+if c.hasClass('method')
+    own = c.ownFields('method');
+    tf = any(cellfun(@(d) strcmp(char(d.name), 'parameters'), own));
+end
+end
+
 % ===================== value kinds (2026-10-08) ===============================
 
 function testAValueKindIsListedAfterTheDirection(testCase)

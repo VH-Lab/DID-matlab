@@ -2,7 +2,7 @@ function s = oneValueEntry(variable, forms, opts, ruleName)
 %ONEVALUEENTRY The fields of a one-value entry: a condition or a parameter.
 %
 %   S = oneValueEntry(VARIABLE, FORMS, OPTS, RULENAME) builds the struct shared
-%   by a statement's `conditions` and a `method_parameters` list (data_body
+%   by a statement's `conditions` and a method's `parameters` list (data_body
 %   AMENDMENT 3): {variable, unit, source_unit, approximate} plus exactly ONE
 %   value form, holding ONE value:
 %

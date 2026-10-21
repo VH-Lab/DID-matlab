@@ -20,14 +20,17 @@ function checkRules(cache, className, doc, chain)
 %                                 appears at most once across a statement's
 %                                 keys and conditions"; data.keys: variable
 %                                 "UNIQUE within the list"
-%        parameter_one_form       interaction.method_parameters: the same
-%                                 entry -- exactly one of `term`, `quantity`,
-%                                 `count`, `text`
-%        parameter_variable_once  method_parameters: variable "UNIQUE within
+%        parameter_one_form       interaction.method.parameters (and the
+%                                 standalone method's): the same entry --
+%                                 exactly one of `term`, `quantity`, `count`,
+%                                 `text` (`method_parameters` before #88)
+%        parameter_variable_once  method.parameters: variable "UNIQUE within
 %                                 the list"
-%        parameters_not_both      interaction.method_parameters: "the
-%                                 statement points at a method_parameters
-%                                 document by method_parameters_id. Never both."
+%        parameters_not_both      interaction.method: "A statement carries
+%                                 the inline `method` block OR this edge
+%                                 [method_id], NEVER BOTH" (before #88:
+%                                 inline `method_parameters` OR
+%                                 `method_parameters_id`)
 %        key_n_matches            data.keys: n is the length of the dimension,
 %                                 so it equals the number of positions in
 %                                 `quantity.value` or `term`
@@ -143,12 +146,22 @@ if ~isempty(dup)
         'variable(s) %s appear more than once across keys and conditions.', strjoin(dup, ', ')));
 end
 
+hasMethodEdge = any(ismember(edgeNames, {'method_id', 'method_parameters_id'}));
 for b = 1:numel(blocks)
     block = doc.(blocks{b});
-    if ~isstruct(block) || ~isfield(block, 'method_parameters') || isAbsent(block.method_parameters)
+    if ~isstruct(block) || ~isscalar(block)
         continue;
     end
-    params = block.method_parameters;
+    [params, inline] = parametersOf(blocks{b}, block);
+    if inline && hasMethodEdge
+        violated('parameters_not_both', className, ...
+            ['an inline `method` (its term or parameters) and a `method_id` edge ' ...
+             'were both given (`method_parameters` / `method_parameters_id` before ' ...
+             'did-schema #88).']);
+    end
+    if isAbsent(params) || ~isstruct(params)
+        continue;
+    end
     pseen = cell(1, numel(params));
     for k = 1:numel(params)
         given = valueForms(params(k));
@@ -168,10 +181,6 @@ for b = 1:numel(blocks)
     if ~isempty(dup)
         violated('parameter_variable_once', className, sprintf( ...
             'parameter variable(s) %s appear more than once.', strjoin(dup, ', ')));
-    end
-    if ~strcmp(blocks{b}, 'method_parameters') && any(strcmp(edgeNames, 'method_parameters_id'))
-        violated('parameters_not_both', className, ...
-            'inline `method_parameters` and a `method_parameters_id` edge were both given.');
     end
 end
 
@@ -322,6 +331,32 @@ end
 if isfield(key, 'term') && ~isAbsent(key.term) && numel(key.term) ~= n
     violated('key_n_matches', className, sprintf( ...
         'key %d has n = %d but %d terms.', k, n, numel(key.term)));
+end
+end
+
+function [params, inline] = parametersOf(blockName, block)
+%PARAMETERSOF A block's method settings, and whether they sit inline.
+%   On the did-schema #88 shape (DID-schema V_eta_method_plan.md) a
+%   statement, relation or clock_alignment_configuration carries
+%   `method: {term, parameters}` inline and the standalone `method` document
+%   carries `parameters` in its own block; before #88 the list was
+%   `method_parameters`, inline on an interaction and on the standalone
+%   `method_parameters` document. INLINE is true when the block carries an
+%   inline method (on #88 its term alone counts: the block OR the edge, never
+%   both) -- the standalone document's own list is not inline.
+params = [];
+inline = false;
+if isfield(block, 'method') && isstruct(block.method) && isscalar(block.method) ...
+        && (isfield(block.method, 'term') || isfield(block.method, 'parameters'))
+    inline = true;
+    if isfield(block.method, 'parameters')
+        params = block.method.parameters;
+    end
+elseif strcmp(blockName, 'method') && isfield(block, 'parameters')
+    params = block.parameters;
+elseif isfield(block, 'method_parameters') && ~isAbsent(block.method_parameters)
+    params = block.method_parameters;
+    inline = ~strcmp(blockName, 'method_parameters');
 end
 end
 

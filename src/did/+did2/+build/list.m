@@ -8,7 +8,7 @@ function out = list(varargin)
 %   function reads as "not given". Field order follows the first entry that
 %   carries each field.
 %
-%   Use it to assemble `keys`, `conditions`, `method_parameters`, a fit's
+%   Use it to assemble `keys`, `conditions`, a method's `parameters`, a fit's
 %   `coefficients`, ... from entries made by did2.build.key, .condition,
 %   .parameter, etc. With no arguments it returns a 0x0 struct.
 %

@@ -10,6 +10,9 @@ function doc = directedRelation(childId, parentId, relation, options)
 %   Options:
 %     'Sequence'          integer order among siblings
 %     'Method'            a term (or a name): how the relation was established
+%     'MethodParameters'  the settings of that method (did2.build.parameter /
+%                         list); did-schema #88 only, where a relation's
+%                         `method` is the block {term, parameters}
 %     'TimeReferenceIds'  cellstr: when it held (T15 `multiple`)
 %     'EpochId'           the epoch it is scoped to
 %     'ValueId'           a data_type document qualifying the relation
@@ -24,6 +27,7 @@ arguments
     relation
     options.Sequence = []
     options.Method = []
+    options.MethodParameters = []
     options.TimeReferenceIds = {}
     options.EpochId = ''
     options.ValueId = ''
@@ -38,7 +42,7 @@ end
 
 fields = struct('relation', {relation});
 if ~isempty(options.Sequence); fields.sequence = options.Sequence; end
-if ~isempty(options.Method);   fields.method = options.Method;     end
+fields = methodFields(fields, options.Method, options.MethodParameters, options.SchemaCache);
 edges = struct('child_id', childId, 'parent_id', parentId, ...
     'time_reference_id', {options.TimeReferenceIds}, ...
     'epoch_id', options.EpochId, 'value_id', options.ValueId);

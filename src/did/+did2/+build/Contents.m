@@ -19,13 +19,15 @@
 %     relativeTimeReference  a time offset from another document, on a clock
 %     absoluteTimeReference  a wall-clock (UTC) instant or interval
 %     directedRelation       child <relation> parent
+%     method                 a named, shared method: {term, parameters} with an
+%                            id of its own (`method_parameters` before #88)
 %     undirectedRelation     a symmetric relation among entities
 %
 %   Parts of documents
 %     valueCell              a data_type's `value` cells (volts, seconds, count, ...)
 %     key                    one dimension of a value (`keys` entry)
 %     condition              one whole-statement qualifier (`conditions` entry)
-%     parameter              one algorithm setting (`method_parameters` entry);
+%     parameter              one algorithm setting (a `method.parameters` entry);
 %                            the same entry as a condition: one `term`,
 %                            `quantity`, `count` or `text`
 %     fitEntry               one model fit (`model_fit` entry)
@@ -40,7 +42,7 @@
 %     clock_with_start, ingredients_or_product) -- an UNKNOWN rule is an error,
 %     not a skip; `require_inherited`; conditions carry one value; variables are
 %     unique across keys and conditions; parameters carry one form and are
-%     unique; inline parameters and method_parameters_id are never both given;
+%     unique; an inline `method` and a `method_id` edge are never both given;
 %     key n matches its positions; a multi-key sampled_body names datum_order.
 %   And every ontology term in a vocabulary slot (a variable, method, unit,
 %   condition, parameter or key) and every value term (term.value, a
