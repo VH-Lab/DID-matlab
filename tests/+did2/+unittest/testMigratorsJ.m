@@ -569,15 +569,114 @@ end
 verifyNotEmpty(testCase, f, 'the formulation the dose names is not in the batch');
 verifyEqual(testCase, m.get('statement.variable').node, 'chebi:28001');
 % A generic treatment with no location: "stays a dose with NaN and is listed
-% in the migration report as route unknown" (Jess Haley, 2026-10-21). The
-% unitless numeric_value is no amount of the dose; it stays on the ingredient.
+% in the migration report as route unknown" (Jess Haley, 2026-10-21).
+% numeric_value is NEVER an amount -- not the dose's, not the ingredient's
+% (Jess Haley, 2026-10-21, "yes"): the term (haloperidol) does not say what
+% kind of number 2.5 is, so it is an unlabelled condition, and noted.
 verifyTrue(testCase, isnan(m.get('dose.value').volume.liters), ...
     'an unrecorded amount is NaN in the dose''s volume');
 if ~isempty(f)
-    verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 2.5);
+    verifyTrue(testCase, isnan(f.get('formulation.value').ingredients(1).concentration.source_value), ...
+        'numeric_value is not the ingredient''s amount');
 end
+p = m.document_properties;
+cnd = p.statement.conditions;
+verifyEqual(testCase, cnd.variable.name, 'numeric value');
+verifyEqual(testCase, cnd.quantity.value, 2.5, 'AbsTol', 1e-12);
+verifyFalse(testCase, isfield(cnd, 'unit'), 'an unlabelled number has no unit');
+n = out.summary.migration_notes.treatment_number_unlabelled;
+verifyEqual(testCase, n.ids, {'tr_01'});
+verifyEqual(testCase, n.details, {'haloperidol: 2.5'});
 verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 1);
 verifyEqual(testCase, out.summary.migration_notes.route_unknown.ids, {'tr_01'});
+end
+
+function testVhlabGratingTrainingHoursIsADurationOfTheTerm(testCase)
+% NDI origin/main +setup/+conv/+vhlab/treatmentTable.m row 1:
+%   {'EMPTY:Treatment: Grating direction-of-motion visual stimulation', "", duration_hours}
+% written by treatmentMaker.create_treatment_doc as ontologyName (the looked-up
+% id, EMPTY:0000199) + name + numeric_value. The term's definition says the
+% number is "provided in hours", so it is a duration (time) of that term, in
+% hours (Jess Haley, 2026-10-21, "yes") -- not an amount, not quarantined.
+out = runJ(treatmentDoc('EMPTY:0000199', ...
+    'treatment: grating direction-of-motion visual stimulation', 6.5, ''));
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 2);   % manip + anchor
+m = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'time_manipulation');
+verifyEqual(testCase, m.get('base.id'), 'tr_01');
+verifyEqual(testCase, m.get('statement.variable').node, 'EMPTY:0000199');
+t = m.get('time.value');
+verifyEqual(testCase, t(1).source_value, 6.5);
+verifyEqual(testCase, t(1).seconds, 6.5 * 3600, 'AbsTol', 1e-9);
+verifyEqual(testCase, t(1).source_unit.name, 'hour');
+notes = out.summary.migration_notes;
+verifyFalse(testCase, isfield(notes, 'treatment_number_unlabelled'));
+verifyFalse(testCase, isfield(notes, 'route_unknown'));
+end
+
+function testUnlabelledTreatmentNumberOnATermManipulation(testCase)
+% A procedure term that does not say what its number is: the number is kept,
+% unlabelled, as a condition, and the report notes it.
+out = runJ(treatmentDoc('', 'craniotomy', 3, ''));
+verifyEmpty(testCase, out.quarantine);
+m = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'term_manipulation');
+cnd = m.document_properties.statement.conditions;
+verifyEqual(testCase, cnd.variable.name, 'numeric value');
+verifyEqual(testCase, cnd.quantity.value, 3);
+verifyEqual(testCase, out.summary.migration_notes.treatment_number_unlabelled.details, ...
+    {'craniotomy: 3'});
+end
+
+function testTreatmentDrugAnchoredAtItsAdministrationOnset(testCase)
+% Jess Haley, 2026-10-21 ("a"): a treatment is anchored at the recorded
+% administration_onset_time, and at the session only when none is recorded.
+% Babu writes the onset as a time of day (+babu/TreatmentCreator.m:70,
+% string(..., 'hh:mm:ss')) on a heat pulse.
+v1 = treatmentDrugDoc('td_onset', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nOM:Heat,heat,37,NCIT:C42559,Degree Celsius'), ...
+    'MICRO:0000480', 'agar plate medium');
+v1.treatment_drug.administration_onset_time = '10:32:00';
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+m = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'temperature_manipulation');
+a = out.migrated{2};
+verifyEqual(testCase, a.get('document_class.class_name'), 'absolute_time_reference');
+verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '10:32:00');
+verifyEqual(testCase, depVal(m, 'time_reference_id'), a.get('base.id'));
+% an ISO-8601 UTC onset on a dose: the instant is normalised; the site
+% observation shares the anchor
+v1 = treatmentDrugDoc('td_onset_iso', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+v1.treatment_drug.administration_onset_time = '2024-06-01T09:15:00Z';
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+a = firstOfClassJ(out.migrated, 'absolute_time_reference');
+verifyNotEmpty(testCase, a);
+verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '2024-06-01T09:15:00Z');
+verifyNotEmpty(testCase, a.get('absolute_time_reference.value.start.utc'));
+verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
+site = firstOfClassJ(out.migrated, 'term_observation');
+verifyEqual(testCase, depVal(site, 'time_reference_id'), a.get('base.id'));
+end
+
+function testTreatmentDrugWithNoOnsetIsAnchoredDuringTheSession(testCase)
+% No administration_onset_time (the template blank []): "during the session".
+v1 = treatmentDrugDoc('td_no_onset', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+v1.treatment_drug.administration_onset_time = [];
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+a = firstOfClassJ(out.migrated, 'relative_time_reference');
+verifyNotEmpty(testCase, a);
+verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
+verifyEmpty(testCase, firstOfClassJ(out.migrated, 'absolute_time_reference'));
 end
 
 function testTreatmentProcedureIsTermManipulation(testCase)

@@ -28,6 +28,15 @@ function v2Body = treatment(preBody)
 %   `directed_relation` by the NDI second pass (ndi.migrate), which has the
 %   corpus-wide subject graph the single-document migrator lacks.
 %
+%   numeric_value: NEVER an amount. A term that says what its number is
+%   (termNumberKind; e.g. EMPTY:0000199, a duration in hours) makes a
+%   `<kind>_manipulation` valued by it; a temperature term keeps the number as
+%   its temperature; otherwise the number is an unlabelled condition
+%   ('numeric value') and a `treatment_number_unlabelled` report note (Jess
+%   Haley, 2026-10-21, "yes"). The anchor is the recorded
+%   administration onset when there is one, else the session
+%   (jTreatmentAnchor; Jess Haley, 2026-10-21, "a").
+%
 %   1 -> 2 (manipulation + anchor), or 1 -> 3 when the row carries a site.
 %   Not-a-manipulation rows (date of birth, experiment time) and rows whose
 %   branch cannot be resolved raise an error so the dispatcher routes the source
@@ -74,14 +83,41 @@ if containsAny(hay, {'date of birth', 'non-survival experiment time', ...
 end
 
 % --- branch dispatch into strict-J leaves (first match wins) -----------
-anchor = jSessionAnchor(preBody, 'during');
+anchor = jTreatmentAnchor(preBody, block);   % the recorded onset, else the session
+
+% --- numeric_value is NEVER an amount (Jess Haley, 2026-10-21, "yes"): it is
+% the value the treatment's TERM says it is. A term that says what kind of
+% number it carries (termNumberKind) makes the statement that kind of value;
+% otherwise the number is kept, unlabelled, as a condition on the statement
+% and the migration report notes it (`treatment_number_unlabelled`).
+hasNumber = ~isempty(numValue) && isnumeric(numValue);
+[kind, unit] = termNumberKind(node, label);
+if ~isempty(kind)
+    v = [];
+    if hasNumber
+        v = jQuantity(kind, double(numValue(1)), unit);
+    end
+    manip = {jStatement(preBody, [kind '_manipulation'], jSubjectOf(preBody), variable, ...
+        v, 'TimeReferenceIds', {anchor.base.id}, 'Notes', notesText, ...
+        'Id', char(preBody.base.id))};
+    v2Body = [manip, {anchor}];
+    return;
+end
+numberCondition = [];
+if hasNumber && isfinite(double(numValue(1)))
+    numberCondition = did2.build.condition(jLabel('numeric value'), ...
+        'Value', double(numValue(1)));
+end
+
 if containsAny(hay, {'cool', 'cold', 'heat', 'warm', 'thermal', 'temperature'})
+    % the term says what the number is: a temperature
     manip = makeTemperatureManipulation(preBody, variable, notesText, numValue, anchor.base.id);
+    numberCondition = [];
 elseif containsAny(hay, {'inject', 'virus', 'aav', 'tracer', 'drug', ...
         'vehicle', 'bath', 'infusion', 'perfusate'}) ...
         || startsWith(lower(node), 'chebi:')
     [manip, route] = makeSubstanceManipulation(preBody, variable, notesText, ...
-        numValue, siteTerm, anchor.base.id);
+        numberCondition, siteTerm, anchor.base.id);
     if any(strcmp(route, {'immersion', 'exposure'}))
         siteTerm = struct('node', {}, 'name', {});   % a bath / medium is no site on the subject
     end
@@ -92,14 +128,20 @@ elseif containsAny(hay, {'craniotomy', 'implant', 'lesion', 'perfus', ...
         'rear', 'deprivation', 'isolation', 'enrichment', 'housing', ...
         'light', 'dark', 'restriction', 'diet', 'training', 'habituation', ...
         'restraint', 'fast', 'regime'})
-    manip = makeTermManipulation(preBody, variable, notesText, anchor.base.id);
+    manip = makeTermManipulation(preBody, variable, notesText, numberCondition, anchor.base.id);
 else
     error('did2:convert:unresolvedTreatment', ...
         ['treatment "%s" (%s) could not be routed to a manipulation ', ...
          'leaf; curator review required.'], label, node);
 end
 
-% --- shared session anchor; wire onto the manipulation -----------------
+if ~isempty(numberCondition)
+    did2.convert.reportNote('treatment_number_unlabelled', ...
+        char(preBody.document_class.class_name), char(preBody.base.id), ...
+        sprintf('%s: %s', label, num2str(double(numValue(1)), 17)));
+end
+
+% --- shared anchor; wire onto the manipulation -------------------------
 v2Body = [manip, {anchor}];
 if ~isempty(siteTerm)
     obs = jStatement(preBody, 'term_observation', jSubjectOf(preBody), ...
@@ -124,31 +166,62 @@ docs = {jStatement(preBody, 'temperature_manipulation', jSubjectOf(preBody), var
     'Id', char(preBody.base.id))};
 end
 
-function [docs, route] = makeSubstanceManipulation(preBody, variable, notesText, numValue, siteTerm, anchorId)
+function [docs, route] = makeSubstanceManipulation(preBody, variable, notesText, numberCondition, siteTerm, anchorId)
 % A delivered substance, routed by its recorded location (jTreatmentRoute,
 % Jess Haley, 2026-10-21): the bath -> an immersion (a `manipulation` valued
 % by its formulation through `value_id`); any other site -> a dose; no site
 % -> a dose listed as `route_unknown` in the migration report. A v1
 % `treatment` records a location only through the Dab "Target Location"
 % idiom (string_value), so most substance rows are route unknown. A dose's
-% amount is NaN in `volume.liters` (jDoseValue): `numeric_value` states no
-% unit, so it stays where it was, on the ingredient entry, not on the dose.
+% amount is NaN in `volume.liters` (jDoseValue). `numeric_value` is NEVER
+% read as an amount -- neither the dose's nor the ingredient's (Jess Haley,
+% 2026-10-21, "yes"); an unlabelled number rides as NUMBERCONDITION.
 chem = struct('substance', variable, 'source_value', [], 'source_unit', '');
-if ~isempty(numValue) && isnumeric(numValue)
-    chem.source_value = double(numValue(1));
-end
 loc = [];
 if ~isempty(siteTerm)
     loc = siteTerm(1);
 end
 [docs, route] = jTreatmentBodies(preBody, variable, chem, loc, anchorId, ...
-    'Notes', notesText);
+    'Notes', notesText, 'Conditions', numberCondition);
 end
 
-function docs = makeTermManipulation(preBody, variable, notesText, anchorId)
+function docs = makeTermManipulation(preBody, variable, notesText, numberCondition, anchorId)
+extra = {};
+if ~isempty(numberCondition)
+    extra = {'Conditions', numberCondition};
+end
 docs = {jStatement(preBody, 'term_manipulation', jSubjectOf(preBody), variable, ...
     variable, 'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
-    'Id', char(preBody.base.id))};
+    'Id', char(preBody.base.id), extra{:})};
+end
+
+function [kind, unit] = termNumberKind(node, label)
+% The kind of number a treatment TERM says its numeric_value is, and the
+% unit it is given in ('' / '' when the term does not say). Keyed by the
+% term (CURIE key) or its label. One row per term whose definition states it:
+%   EMPTY:0000199 "treatment: grating direction-of-motion visual stimulation",
+%   defined "Training was provided for several hours with drifting
+%   sinusoidal gratings (provided in hours)"; NDI's one writer,
+%   +setup/+conv/+vhlab/treatmentTable.m row 1, stores duration_hours.
+T = {'EMPTY:0000199', 'treatment: grating direction-of-motion visual stimulation', 'time', 'hours'};
+kind = '';
+unit = '';
+lab = lower(strtrim(label));
+for k = 1:size(T, 1)
+    hit = strcmpi(lab, T{k, 2});
+    if ~hit && ~isempty(node)
+        try
+            hit = strcmp(char(did2.schema.curieKey(node)), char(did2.schema.curieKey(T{k, 1})));
+        catch
+            hit = strcmpi(strtrim(node), T{k, 1});
+        end
+    end
+    if hit
+        kind = T{k, 3};
+        unit = T{k, 4};
+        return;
+    end
+end
 end
 
 function tf = looksLikeCURIE(s)

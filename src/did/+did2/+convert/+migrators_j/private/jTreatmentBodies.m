@@ -29,6 +29,8 @@ function [docs, route] = jTreatmentBodies(preBody, variable, chemicals, location
 %                   follows the location rule (Jess Haley, 2026-10-21
 %                   [virus-location]).
 %     'Notes'       the manipulation's notes.
+%     'Conditions'  the manipulation's `conditions` (did2.build.condition),
+%                   e.g. a generic treatment's unlabelled number (treatment.m).
 %
 %   Decided by Jess Haley, 2026-10-21; the decision is quoted in
 %   jTreatmentRoute.
@@ -41,6 +43,7 @@ arguments
     anchorId
     options.AlwaysDose (1,1) logical = false
     options.Notes = ''
+    options.Conditions = []
 end
 
 if options.AlwaysDose
@@ -52,6 +55,9 @@ id = char(preBody.base.id);
 extra = {};
 if ~isempty(options.Notes)
     extra = {'Notes', options.Notes};
+end
+if ~isempty(options.Conditions)
+    extra = [extra, {'Conditions', options.Conditions}];
 end
 
 switch route
