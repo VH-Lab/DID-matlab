@@ -3425,6 +3425,10 @@ obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'ks_1');                            % id preserved
 verifyEqual(testCase, obs.interaction.method.term.name, 'kilosort');% method = algorithm
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_ks');
+% data_body AMENDMENT 5: no inline value, so the value is in data bodies; and
+% no data_type, because the body is opaque (Jess Haley, 2026-10-21)
+verifyTrue(testCase, logical(obs.value.data_body));
+verifyFalse(testCase, isfield(obs.value, 'data_type') && ~isempty(obs.value.data_type));
 
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, depValue(ob, 'owner_id'), 'ks_1');              % body -> the obs

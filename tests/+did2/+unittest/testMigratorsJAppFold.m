@@ -357,6 +357,20 @@ verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('interaction.method.term.name'), 'kiasort');
 end
 
+function testSorterObservationValueIsInItsOpaqueBody(testCase)
+% did-schema data_body AMENDMENT 5 (rule value_inline_or_body): the sorter's
+% count observation has no inline value, so data_body is true; the body is an
+% opaque_body, whose format term is the encoding, so no data_type (Jess Haley,
+% 2026-10-21).
+out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
+verifyEmpty(testCase, out.quarantine);
+obs = onlyClass(testCase, out, 'count_observation');
+verifyTrue(testCase, logical(obs.get('value.data_body')));
+s = obs.toStruct();
+verifyFalse(testCase, isfield(s.value, 'data_type') && ~isempty(s.value.data_type));
+onlyClass(testCase, out, 'opaque_body');
+end
+
 function testSorterWithoutAnAppBlockIsUnchanged(testCase)
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', false));
 verifyEmpty(testCase, out.quarantine);

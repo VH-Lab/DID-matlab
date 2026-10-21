@@ -83,11 +83,15 @@ directory = jGetChar(blk, dirField);
 md5 = jGetCharAny(blk, {'curated_output_md5_checksum', 'curated_output_MD5_checksum'});
 
 % ---- the id-preserved count_observation handle (the run) --------------------
-% did-schema #88: the assignment is a `count` observation of the recording
-% element whose value is the sorter's output, an opaque_body (the directory),
-% named by its `owner_id`. `data_body` is NOT set on the statement: #88 then
-% requires a byte `data_type`, and a sorter's output directory has none -- the
-% body's owner edge is the link (a CONSERVATIVE CHOICE, recorded).
+% did-schema #88: the assignment is an `observation` with a `count` value kind,
+% about the recording element, whose value is the sorter's output, an
+% opaque_body (the directory) named by its `owner_id`. `data_body` IS true:
+% did-schema data_body AMENDMENT 5 (rule `value_inline_or_body`) says a value
+% is inline or in data bodies, never neither, and this one has no inline
+% value. No `data_type` is given: Jess Haley, 2026-10-21, data_type only for
+% plain-array bytes; an opaque_body's `format` term is its encoding. (Until
+% then `data_body` was left unset to avoid a byte `data_type` the directory
+% does not have.)
 anchor = jSessionAnchor(preBody, 'during');
 [software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
 swOpt = {};
@@ -95,7 +99,7 @@ if ~isempty(swId); swOpt = {'SoftwareId', swId}; end
 obs = jStatement(preBody, 'count_observation', ...
     jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
     jLabel('spike cluster assignment'), [], ...
-    'Fields', struct('method', jMethod(sorterName)), ...
+    'Fields', struct('method', jMethod(sorterName)), 'DataBody', true, ...
     'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', char(preBody.base.id));
 descr = sprintf('%s sorter output directory', sorterName);
 if ~isempty(md5)
