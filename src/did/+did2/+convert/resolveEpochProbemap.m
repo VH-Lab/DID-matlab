@@ -1269,9 +1269,13 @@ for L = 1:numel(list)
         idx = idx(1:min(1, numel(idx)));
     end
     if isempty(idx); continue; end
+    flds = struct('filename', slot);
+    comp = compressionOf(names{idx(1)});
+    if isempty(comp); comp = compressionOf(slot); end
+    if ~isempty(comp); flds.compression = comp; end
     body = did2.build.opaqueBody(owners, binaryFormat(), ...
         'Chunks', numel(idx), ...
-        'Fields', struct('filename', slot), ...
+        'Fields', flds, ...
         'Description', sprintf(['The ingested recording of epoch %s: v1 attached ' ...
             'file series %s, carried as attached (%d member(s)).'], ...
             sp.epochString, slot, numel(idx)), ...
@@ -1300,8 +1304,11 @@ for f = 1:numel(files)
     path = char(files{f});
     if isempty(strtrim(path)) || contains(path, '://'); continue; end
     [~, stem, ext] = fileparts(path);
+    flds = struct('filename', [stem ext]);
+    comp = compressionOf([stem ext]);
+    if ~isempty(comp); flds.compression = comp; end
     body = did2.build.opaqueBody(owners, formatForExtension(ext), ...
-        'Fields', struct('filename', [stem ext]), ...
+        'Fields', flds, ...
         'Description', sprintf(['A raw recording file of epoch %s, recorded by ' ...
             'location where the source keeps it (named by the v1 ' ...
             'epochfiles_ingested cache; not ingested, never copied).'], sp.epochString), ...
@@ -1310,6 +1317,18 @@ for f = 1:numel(files)
         'delete_original', 0, 'uid', did.ido.unique_id(), 'location', path, ...
         'parameters', '', 'location_type', 'file', 'ingest', 0));
     made{end+1} = body; %#ok<AGROW>
+end
+end
+
+function c = compressionOf(name)
+%COMPRESSIONOF A data body's `compression`: 'gzip' when the file name ends in
+%   .tgz or .gz (the ingested `.nbf.tgz` segments), else '' -- left empty.
+%   Jess Haley, 2026-10-21 ("a"); `compression` is a plain char field
+%   (did-schema data_body: "e.g. 'lzw', 'gzip'").
+c = '';
+n = lower(strtrim(char(name)));
+if endsWith(n, '.tgz') || endsWith(n, '.gz')
+    c = 'gzip';
 end
 end
 

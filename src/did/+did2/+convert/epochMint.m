@@ -1219,6 +1219,7 @@ for k = 1:n
     % which fields exist makes the read an ERROR rather than a false.
     armEntry.is_response_fold = false;
     armEntry.is_syncrule_fold = false;
+    armEntry.is_pyraview_fold = false;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
@@ -1364,6 +1365,7 @@ for k = 1:n
     armEntry.is_metadata_fold = false;
     armEntry.is_response_fold = true;
     armEntry.is_syncrule_fold = false;
+    armEntry.is_pyraview_fold = false;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
@@ -1505,6 +1507,7 @@ for k = 1:n
     armEntry.is_metadata_fold = false;
     armEntry.is_response_fold = false;
     armEntry.is_syncrule_fold = true;
+    armEntry.is_pyraview_fold = false;
     armings{end+1} = armEntry;                      %#ok<AGROW>
     changedIdx(end+1)       = k;                    %#ok<AGROW>
     changedPrimaryId{end+1} = armEntry.primary_id;  %#ok<AGROW>
@@ -1792,8 +1795,19 @@ for a = 1:numel(armings)
             report.syncrule_folds_withheld = ...
                 report.syncrule_folds_withheld + 1;
         end
+    elseif armings{a}.is_pyraview_fold
+        % THE FOURTH FOLD (pyraview, #88 part 5). It had no reader here, so
+        % `pyraview_folds_emitted` stayed 0 whatever happened -- the
+        % missing-number failure the note below exists to prevent.
+        if armingCarried(a)
+            report.pyraview_folds_emitted = ...
+                report.pyraview_folds_emitted + 1;
+        else
+            report.pyraview_folds_withheld = ...
+                report.pyraview_folds_withheld + 1;
+        end
     end
-    % NO `else` BRANCH, DELIBERATELY: a FOURTH fold kind added without a reader
+    % NO `else` BRANCH, DELIBERATELY: a FIFTH fold kind added without a reader
     % here would be silently uncounted, so the invariant is asserted in
     % testEpochMintResponseArming rather than guessed at with a catch-all that
     % would attribute it to whichever counter came last.

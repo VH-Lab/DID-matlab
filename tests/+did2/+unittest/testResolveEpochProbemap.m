@@ -200,6 +200,34 @@ end
 
 % ===================== the epoch's files as bodies (2026-10-21) =========
 
+function testAGzippedFileBodyStatesItsCompression(testCase)
+% Jess Haley, 2026-10-21 ("a"): a data body's `compression` is 'gzip' when the
+% file name ends in .tgz or .gz, and is left empty otherwise.
+subj = subjectBody('specimen_z', 'sess_z', 'L');
+el   = elementBody('el_z', 'sess_z', 'pat', '1', 'patch', 1, 'specimen_z');
+ing  = ingestedWithRows('ing_z', 'sess_z', 't00009', { ...
+    {'pat', '1', 'patch', 'L'}}, {'/data/t00009/seg.nbf.tgz', '/data/t00009/cell.abf'});
+[out, rep] = decompose({sessionBody('sd_z', 'sess_z', 'ref'), subj, el, ing});
+verifyEqual(testCase, rep.bodies_quarantined, 0);
+bodies = bodiesOfClass(out, 'opaque_body');
+verifyEqual(testCase, numel(bodies), 2);
+seen = 0;
+for i = 1:numel(bodies)
+    db = bodies{i}.data_body;
+    hasComp = isfield(db, 'compression') && ~isempty(db.compression);
+    switch char(db.filename)
+        case 'seg.nbf.tgz'
+            verifyTrue(testCase, hasComp, 'a .tgz file body states its compression');
+            if hasComp; verifyEqual(testCase, char(db.compression), 'gzip'); end
+            seen = seen + 1;
+        case 'cell.abf'
+            verifyFalse(testCase, hasComp, 'an uncompressed file leaves compression empty');
+            seen = seen + 1;
+    end
+end
+verifyEqual(testCase, seen, 2, 'both file bodies inspected');
+end
+
 function testTwoProbesInOneFileShareItsBodyAndEachKeepsItsChannels(testCase)
 % Jess Haley, 2026-10-21: an opaque_body per epoch file, SHARED by the
 % electrodes recorded in it, with the channel map. Two n-trodes on different

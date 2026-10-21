@@ -139,21 +139,18 @@ end
 end
 
 function testEveryFoldKindSetsEveryFlag(testCase)
-% `armings` is a struct set and the carry loop asks every entry for ALL flags.
-% An entry missing one makes that read an ERROR, not a false -- so every flag
-% assignment must appear once per arming block. There are now THREE blocks
-% (metadata, response, syncrule), each setting all three flags, so each flag
-% name appears exactly three times.
+% `armings` entries are asked by the carry loop for EVERY flag, so every flag
+% assignment must appear once per arming block. There are FOUR blocks
+% (metadata, response, syncrule and -- since did-schema #88 part 5 --
+% pyraview), each setting all four flags, so each flag name appears exactly
+% four times.
 src = epochMintSource();
-nMeta = numel(strfind(src, 'armEntry.is_metadata_fold ='));
-nResp = numel(strfind(src, 'armEntry.is_response_fold ='));
-nSync = numel(strfind(src, 'armEntry.is_syncrule_fold ='));
-verifyEqual(testCase, nMeta, 3, ...
-    'expected all three arming blocks to set is_metadata_fold');
-verifyEqual(testCase, nResp, 3, ...
-    'expected all three arming blocks to set is_response_fold');
-verifyEqual(testCase, nSync, 3, ...
-    'expected all three arming blocks to set is_syncrule_fold');
+flags = {'is_metadata_fold', 'is_response_fold', 'is_syncrule_fold', 'is_pyraview_fold'};
+for f = flags
+    n = numel(strfind(src, ['armEntry.' f{1} ' =']));
+    verifyEqual(testCase, n, 4, ...
+        sprintf('expected all four arming blocks to set %s', f{1}));
+end
 end
 
 function testEveryFoldFlagHasACarryReader(testCase)
@@ -172,6 +169,10 @@ verifyTrue(testCase, contains(src, 'elseif armings{a}.is_response_fold'), ...
     'the carry loop does not read is_response_fold');
 verifyTrue(testCase, contains(src, 'elseif armings{a}.is_syncrule_fold'), ...
     'the carry loop does not read is_syncrule_fold');
+verifyTrue(testCase, contains(src, 'elseif armings{a}.is_pyraview_fold'), ...
+    'the carry loop does not read is_pyraview_fold');
+verifyTrue(testCase, contains(src, 'report.pyraview_folds_emitted + 1'), ...
+    'the pyraview fold has no emitted reader in the carry loop');
 end
 
 % ===================== the string source, which is not the mixin =======
