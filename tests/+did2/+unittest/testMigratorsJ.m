@@ -2994,10 +2994,13 @@ verifyError(testCase, @() did2.convert.migrators_j.vmspikesummary(body), ...
 end
 
 function testContrastTuningFoldsToCalculationLeaf(testCase)
-% Calculator composite-leaf model (Lepsky et al.): contrast_tuning -> the leaf
-% contrast_tuning_calculation (id-preserved) + a session anchor. 1 -> 2. The result
-% is kept verbatim as the composite value; base.id + depends_on preserved; the raw
-% stimulus_tuningcurve becomes derived_from_1. Supersedes the grain-A decomposition.
+% contrast_tuning -> the contrast_tuning_calculation leaf, id-preserved (did-schema
+% #88). UPDATED for #88: a calculation REQUIRES operating_system_id, read from the
+% v1 `app.os`, so the fixture now carries the `app` block every real calculator
+% document has (ndi.app.newdocument stamps it; all Soph *_calc samples carry it).
+% Without it the document passes through -- see
+% testCalculationWithNoOperatingSystemPassesThrough. Out: leaf + session anchor +
+% three software entities (app, os, interpreter), each with a version assertion.
 body = struct();
 body.document_class = struct('class_name', 'contrast_tuning', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -3005,33 +3008,28 @@ body.depends_on = [ struct('name', 'element_id', 'value', 'sub_8'), ...
                     struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_1')];
 body.base = struct('id', 'ct_1', 'session_id', 'sess_09', 'name', 'ct', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = calcAppJ('ndi.calc.vis.contrast');
 body.contrast_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s', 'response_type', 'mean'), ...
     'tuning_curve', struct('contrast', [0 0.25 0.5 1], 'mean', [2 5 9 12]));
 
 out = did2.convert.migrators_j.contrast_tuning(body);
-verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'contrasttuning_calc')));
-verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
-verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));   % not decomposed
-leaf = out{find(strcmp(names, 'contrasttuning_calc'), 1)};
-verifyEqual(testCase, leaf.base.id, 'ct_1');                          % id preserved
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'sub_8');
-verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.contrast');
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_1');
-% V_eta tuning_curve.value renamed response_mean -> mean
+verifyEqual(testCase, numel(out), 8);
+leaf = calcLeafJ(testCase, out, 'contrast_tuning_calculation', 'ct_1', 'sub_8');
+verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
+verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.contrast');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [2 5 9 12]);
-verifyEqual(testCase, leaf.subject_statement.storage_mode, 'inline');
+verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0 0.25 0.5 1]);
+verifyEqual(testCase, lower(leaf.data.keys(1).variable.name), 'contrast');
 end
 
+
 function testOrientationDirectionTuningFoldsToCalculationLeaf(testCase)
-% Calculator composite-leaf model (Lepsky et al.): orientation_direction_tuning ->
-% the subject_calculation LEAF orientation_direction_tuning_calculation
-% (id-preserved) + a session anchor. 1 -> 2. The structured result is kept VERBATIM
-% as the composite value; base.id + depends_on preserved so downstream refs resolve;
-% the raw stimulus_tuningcurve becomes derived_from_1; the algorithm names the
-% method. Supersedes the earlier grain-A decomposition into observations.
+% orientation_direction_tuning -> orientation_direction_tuning_calculation,
+% id-preserved (#88). UPDATED for #88: app block added (operating_system_id is
+% required); `vector` lands on the leaf's circular_statistics, significance on
+% tuning_curve_calculation, the `fit` block on model_fit, the direction axis on
+% data.keys, and the consumed curve on input_id (was derived_from_1).
 body = struct();
 body.document_class = struct('class_name', 'orientation_direction_tuning', ...
     'class_version', '1.0.0', ...
@@ -3040,6 +3038,7 @@ body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_1'), ...
                     struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_1')];
 body.base = struct('id', 'odt_1', 'session_id', 'sess_09', 'name', 'odt', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = calcAppJ('ndi.calc.vis.oridir');
 body.orientation_direction_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s'), ...
     'tuning_curve', struct('direction', [0 90 180 270], 'mean', [10 2 9 3]), ...
@@ -3048,36 +3047,34 @@ body.orientation_direction_tuning = struct( ...
     'fit', struct('hwhh', 22.0));
 
 out = did2.convert.migrators_j.orientation_direction_tuning(body);
-verifyEqual(testCase, numel(out), 4);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'oridirtuning_calc')));
-verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
-% NOT decomposed into observations any more (calculators are composite leafs now)
-verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
+verifyEqual(testCase, numel(out), 8);
+verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));   % not decomposed
 verifyFalse(testCase, any(strcmp(names, 'angle_observation')));
-
-leaf = out{find(strcmp(names, 'oridirtuning_calc'), 1)};
-verifyEqual(testCase, leaf.base.id, 'odt_1');                               % id preserved
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_1');           % neuron carried
-verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.oridir');
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_1');           % provenance
-verifyNotEmpty(testCase, depValue(leaf, 'time_reference_1'));              % session anchor
-verifyEqual(testCase, leaf.subject_statement.storage_mode, 'inline');
-% V_eta independent_variables[] is an ARRAY of {variable, values, unit}; the
-% direction axis's values are the v1 direction vector.
-verifyEqual(testCase, leaf.tuning_curve.value.independent_variables(1).values, [0 90 180 270]);
-% circular_statistics no longer emitted (V_eta tuning_curve has no such field).
-% Family-leaf fields (significance, model_fit) live on tuning_curve_calculation.
+leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'odt_1', 'neuron_1');
+verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
+verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.oridir');
+verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0 90 180 270]);
+verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 verifyEqual(testCase, leaf.tuning_curve_calculation.significance.visual_response_anova_p, ...
     0.002, 'AbsTol', 1e-9);
+cs = leaf.orientation_direction_tuning_calculation.circular_statistics;
+verifyEqual(testCase, cs.orientation_preference, 47.5, 'AbsTol', 1e-9);
+verifyEqual(testCase, cs.circular_variance, 0.3, 'AbsTol', 1e-9);
+mf = leaf.tuning_curve_calculation.model_fit;
+verifyEqual(testCase, numel(mf), 1);
+verifyEqual(testCase, mf(1).metrics.half_width_at_half_maximum, 22.0, 'AbsTol', 1e-9);
 end
 
+
 function testOridirtuningCalcUndefersToLeaf(testCase)
-% The ndi.calc.vis.oridir calculator OUTPUT document (oridirtuning_calc, currently a
-% deferred passthrough) un-defers 1 -> 1, id-preserved, into the SAME leaf as its
-% result sibling. This is where the calculator provenance actually lands:
-% input_parameters -> method_parameters, the app block kept, the raw
-% stimulus_tuningcurve -> derived_from_1, and the result composite verbatim.
+% The ndi.calc.vis.oridir OUTPUT document folds 1 -> 1, id-preserved, into the
+% SAME leaf as its result sibling. UPDATED for #88: input_parameters ->
+% interaction.method.parameters (a list of entries); the app block -> a software
+% entity (software_id), the os -> operating_system_id and the interpreter ->
+% interpreter_id, each a `software` entity with a version text_assertion (the
+% runtime_environment entity was deleted, #73 item 53); the consumed curve ->
+% input_id.
 body = struct();
 body.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'; 'orientation_direction_tuning'; 'tuning_fit'}, ...
@@ -3097,37 +3094,29 @@ body.orientation_direction_tuning = struct( ...
     'vector', struct('orientation_preference', 47.5));
 
 out = did2.convert.migrators_j.oridirtuning_calc(body);
-% leaf + session anchor + software entity + runtime_environment entity
-verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'oridirtuning_calc')));
-leaf = out{find(strcmp(names, 'oridirtuning_calc'), 1)};
-verifyEqual(testCase, leaf.base.id, 'oc_1');                                % id preserved
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_9');
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_9');
-% input_parameters -> method_parameters
-verifyEqual(testCase, leaf.subject_interaction.method_parameters.independent_variable, ...
-    'direction');
-% app -> a software ENTITY referenced by software_id, and a
-% runtime_environment ENTITY referenced by runtime_environment_id
-sw = out{find(strcmp(names, 'software'), 1)};
-verifyEqual(testCase, sw.entity.name, 'ndi.calc.vis.oridir');
-verifyEqual(testCase, sw.software.version, '1.2');
+verifyEqual(testCase, numel(out), 8);
+leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'oc_1', 'neuron_9');
+verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_9');
+verifyEqual(testCase, paramTextJ(leaf, 'independent variable'), 'direction');
+sw = entityByNameJ(out, 'ndi.calc.vis.oridir');
+verifyEqual(testCase, sw.entity.local_identifier, 'ndi.calc.vis.oridir@1.2');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
-rt = out{find(strcmp(names, 'runtime_environment'), 1)};
-verifyEqual(testCase, rt.runtime_environment.interpreter, 'MATLAB');
-verifyEqual(testCase, depValue(leaf, 'runtime_environment_id'), rt.base.id);
-% V_eta drops circular_statistics from tuning_curve.value (no such field).
-% The direction axis lands under independent_variables[].
-verifyEqual(testCase, leaf.tuning_curve.value.independent_variables(1).values, [0 90 180 270]);
+os = entityByNameJ(out, 'Linux');
+verifyEqual(testCase, depValue(leaf, 'operating_system_id'), os.base.id);
+it = entityByNameJ(out, 'MATLAB');
+verifyEqual(testCase, depValue(leaf, 'interpreter_id'), it.base.id);
+verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0 90 180 270]);
 end
 
+
 function testContrastSensitivityCalcUndefersToLeaf(testCase)
-% The aggregate ndi.calc.vis.contrast_sensitivity output (a flat bag of matrices on
-% its own block, NO result-composite superclass) un-defers 1 -> 1, id-preserved, into
-% contrast_sensitivity_calculation (a newly-authored composite). It HAS element_id ->
-% single-doc fold; the result fields move to the composite block (input_parameters
-% stripped -> method_parameters); app kept; raw responses -> derived_from_1.
+% The aggregate ndi.calc.vis.contrast_sensitivity output folds 1 -> 1,
+% id-preserved, into contrast_sensitivity_calculation. UPDATED for #88: the
+% spatial frequencies are the statement's key (data.keys), each RB/RBN/RBNS
+% Naka-Rushton variant is one value.model_fit entry whose coefficients are a
+% {variable, value} list, input_parameters -> method.parameters, the consumed
+% responses -> input_id, and `is_modulated_response` has no #88 field (dropped,
+% reported by the migrator).
 body = struct();
 body.document_class = struct('class_name', 'contrast_sensitivity_calc', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'; 'calculator'}, 'class_version', {'1.0.0'; '1.0.0'}));
@@ -3148,54 +3137,37 @@ body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
     'input_parameters', struct('threshold', 1));
 
 out = did2.convert.migrators_j.contrast_sensitivity_calc(body);
-% leaf + session anchor + software entity + runtime_environment entity
-verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'contrast_sensitivity_calculation')));
-leaf = out{find(strcmp(names, 'contrast_sensitivity_calculation'), 1)};
-verifyEqual(testCase, leaf.base.id, 'cs_1');                                % id preserved
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_cs');          % element_id -> subject
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_cs');
-verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.contrast_sensitivity');
-% input_parameters -> method_parameters, and stripped from the composite block
-verifyEqual(testCase, leaf.subject_interaction.method_parameters.threshold, 1);
-verifyFalse(testCase, isfield(leaf.contrast_sensitivity, 'input_parameters'));
-% the flat v1 bag is RESHAPED onto the `value` cell: RB/RBN/RBNS are Naka-Rushton fit
-% VARIANTS, so each becomes one model_fit entry carrying its own coefficients and the
-% per-spatial-frequency metrics derived from that fit (T11: the variant is no longer a
-% field-name suffix). Absent variants produce no entry -- rbn is missing here.
+verifyEqual(testCase, numel(out), 8);
+leaf = calcLeafJ(testCase, out, 'contrast_sensitivity_calculation', 'cs_1', 'neuron_cs');
+verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_cs');
+verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.contrast_sensitivity');
+verifyEqual(testCase, paramValueJ(leaf, 'threshold'), 1);
+verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0.5 1 2 4]);
 csv = leaf.contrast_sensitivity.value;
-verifyEqual(testCase, csv.spatial_frequencies, [0.5 1 2 4]);
 verifyEqual(testCase, numel(csv.model_fit), 2);            % rb and rbns, not rbn
-models = arrayfun(@(e) e.model.name, csv.model_fit, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(models, 'naka_rushton_rb')));
-verifyTrue(testCase, any(strcmp(models, 'naka_rushton_rbns')));
-verifyFalse(testCase, any(strcmp(models, 'naka_rushton_rbn')));
-rb = csv.model_fit(strcmp(models, 'naka_rushton_rb'));
+models = arrayfun(@(e) lower(char(e.model.name)), csv.model_fit, 'UniformOutput', false);
+rbAt = find(endsWith(models, ' rb'), 1);
+verifyNotEmpty(testCase, find(endsWith(models, ' rbns'), 1));
+verifyEmpty(testCase, find(endsWith(models, ' rbn'), 1));
+assertNotEmpty(testCase, rbAt);
+rb = csv.model_fit(rbAt);
 verifyEqual(testCase, rb.sensitivity, [10 20 15 5]);       % metric rides INSIDE its fit
 verifyEqual(testCase, rb.empirical_c50, [0.2 0.3 0.4 0.5]);
-verifyEqual(testCase, rb.coefficients, [12 0.25 2]);       % was parameters_rb (T13)
-% fit-less and significance scalars stay TYPED sub-blocks, not a {name,value} bag
+verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
 verifyEqual(testCase, csv.interpolated_values.c50, [0.21 0.31 0.41 0.51]);
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
-verifyTrue(testCase, csv.is_modulated_response);
-verifyEqual(testCase, csv.response_type, 'mean');
-% the old flat suffixed fields are gone from the composite
-verifyFalse(testCase, isfield(leaf.contrast_sensitivity, 'sensitivity_rb'));
-% app -> a software ENTITY referenced by software_id
-sw = out{find(strcmp(names, 'software'), 1)};
-verifyEqual(testCase, sw.entity.name, 'ndi.calc.vis.contrast_sensitivity');
+verifyEqual(testCase, lower(csv.response_type.name), 'mean');
+sw = entityByNameJ(out, 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 end
 
+
 function testTuningcurveCalcUndefersToLeaf(testCase)
-% The ndi.calc.stimulus.tuningcurve calculator OUTPUT (tuningcurve_calc) un-defers
-% 1 -> 1, id-preserved, into the stimulus_tuningcurve_calculation leaf. Contrary to
-% an earlier belief, this doc HAS a populated element_id (tuningcurve_calc IS-A
-% stimulus_tuningcurve, whose element_id the writer sets), so the fold is single-doc:
-% element_id -> subject_id; the tuning-curve result sits on the inherited
-% stimulus_tuningcurve block (kept verbatim); the calc block's input_parameters ->
-% method_parameters; app kept; the raw stimulus_response_scalar -> derived_from_1.
+% The ndi.calc.stimulus.tuningcurve OUTPUT folds 1 -> 1, id-preserved, into the
+% concrete tuning_curve_calculation leaf (#88). element_id -> entity_id; the
+% inherited stimulus_tuningcurve block is reshaped (response_mean -> value.mean,
+% the independent variable -> data.keys); input_parameters -> method.parameters;
+% the consumed stimulus_response_scalar -> input_id.
 body = struct();
 body.document_class = struct('class_name', 'tuningcurve_calc', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'; 'stimulus_tuningcurve'}, ...
@@ -3215,36 +3187,26 @@ body.tuningcurve_calc = struct('log', 'ok', ...
     'input_parameters', struct('best_algorithm', 'empirical_maximum'));
 
 out = did2.convert.migrators_j.tuningcurve_calc(body);
-% leaf + session anchor + software entity + runtime_environment entity
-verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'tuningcurve_calc')));
-leaf = out{find(strcmp(names, 'tuningcurve_calc'), 1)};
-verifyEqual(testCase, leaf.base.id, 'tcc_1');                          % id preserved
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_tc');      % element_id -> subject
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_tc');
-verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.stimulus.tuningcurve');
-% input_parameters (on the calc block) -> method_parameters
-verifyEqual(testCase, leaf.subject_interaction.method_parameters.best_algorithm, 'empirical_maximum');
-% V_eta tuning_curve.value renames response_mean -> mean
+verifyEqual(testCase, numel(out), 8);
+leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'tcc_1', 'neuron_tc');
+verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_tc');
+verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.stimulus.tuningcurve');
+verifyEqual(testCase, paramTextJ(leaf, 'best algorithm'), 'empirical_maximum');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
-% concrete leaf carries the v1 spelling per Lepsky et al. 2026
-verifyEqual(testCase, did2.unittest.helpers.leafName(leaf), 'tuningcurve_calc');
-% app -> a software ENTITY + runtime_environment ENTITY
-sw = out{find(strcmp(names, 'software'), 1)};
-verifyEqual(testCase, sw.entity.name, 'ndi.calc.stimulus.tuningcurve');
+verifyEqual(testCase, leaf.data.keys(1).quantity.value, [0 0.25 0.5 1]);
+sw = entityByNameJ(out, 'ndi.calc.stimulus.tuningcurve');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
-rt = out{find(strcmp(names, 'runtime_environment'), 1)};
-verifyEqual(testCase, rt.runtime_environment.os, 'Linux');
-verifyEqual(testCase, depValue(leaf, 'runtime_environment_id'), rt.base.id);
+os = entityByNameJ(out, 'Linux');
+verifyEqual(testCase, depValue(leaf, 'operating_system_id'), os.base.id);
 end
 
+
 function testStimulusTuningcurveRawFoldsToCalculationLeaf(testCase)
-% A raw ndi.app.stimulus.tuning_response tuning curve (pre-calculator-framework
-% stimulus_tuningcurve) folds to the SAME leaf as tuningcurve_calc, so downstream
-% stimulus_tuningcurve_id refs resolve to either. Single-doc: element_id -> subject_id;
-% result kept verbatim; no calc input_parameters/app (method_parameters/app empty);
-% raw stimulus_response_scalar -> derived_from_1.
+% A raw ndi.app.stimulus.tuning_response curve folds to the SAME leaf class as
+% tuningcurve_calc, so stimulus_tuningcurve_id refs resolve to either. UPDATED for
+% #88: the fixture carries the `app` block ndi.app.newdocument stamps (an
+% operating system is required); a raw curve has no input_parameters, so the
+% method carries its term and no parameters.
 body = struct();
 body.document_class = struct('class_name', 'stimulus_tuningcurve', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -3252,34 +3214,21 @@ body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_rt'), ...
                     struct('name', 'stimulus_response_scalar_id', 'value', 'resp_rt')];
 body.base = struct('id', 'stc_1', 'session_id', 'sess_11', 'name', 'rawtc', ...
     'datestamp', '2024-07-01T12:00:00.000Z');
+body.app = calcAppJ('ndi.app.stimulus.tuning_response');
 body.stimulus_tuningcurve = struct( ...
     'independent_variable_label', 'direction', ...
     'independent_variable_value', [0 90 180 270], ...
     'response_mean', [10 2 9 3], 'response_units', 'Spikes/s');
 
 out = did2.convert.migrators_j.stimulus_tuningcurve(body);
-verifyEqual(testCase, numel(out), 4);
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'tuningcurve_calc')));
-leaf = out{find(strcmp(names, 'tuningcurve_calc'), 1)};
-verifyEqual(testCase, leaf.base.id, 'stc_1');                          % id preserved
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_rt');      % element_id -> subject
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'resp_rt');
-verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.app.stimulus.tuning_response');
-% V_eta tuning_curve.value renames response_mean -> mean
+verifyEqual(testCase, numel(out), 8);
+leaf = calcLeafJ(testCase, out, 'tuning_curve_calculation', 'stc_1', 'neuron_rt');
+verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_rt');
+verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.app.stimulus.tuning_response');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
-% no calculator provenance on a raw doc -> empty method_parameters. PR #68's
-% calculator schema requires BOTH `software_id` and `runtime_environment_id`
-% with min_count 1 (mustBeNonEmpty), so jCalculation always mints:
-%   - a minimal `software` entity keyed on the methodName when the source
-%     carries no app.name (so the required edge always resolves), and
-%   - a minimal `runtime_environment` entity (empty fields when the source
-%     has no os/interpreter facts).
-verifyTrue(testCase, isempty(fieldnames(leaf.subject_interaction.method_parameters)));
-verifyEqual(testCase, numel(out), 4);   % leaf + anchor + minimal software + minimal runtime_environment
-verifyNotEmpty(testCase, depValue(leaf, 'software_id'));
-verifyNotEmpty(testCase, depValue(leaf, 'runtime_environment_id'));
+verifyEqual(testCase, nParamsJ(leaf), 0);
 end
+
 
 function d = firstByVariable(migrated, varName)
 d = [];
@@ -3293,31 +3242,31 @@ end
 end
 
 function testSpeedTuningFoldsToCalculationLeaf(testCase)
-% Calculator composite-leaf model: speed_tuning -> the leaf speed_tuning_calculation
-% (id-preserved) + a session anchor. 1 -> 2. The (SF, TF, mean) result is kept
-% verbatim as the composite value. Supersedes the derived-speed-axis decomposition.
+% speed_tuning -> speed_tuning_calculation, id-preserved (#88). UPDATED for #88:
+% app block added (an operating system is required); the two stimulus axes
+% (SF, TF) become ONE key whose positions are labelled by both values.
 body = struct();
 body.document_class = struct('class_name', 'speed_tuning', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
 body.depends_on = struct('name', {'element_id'}, 'value', {'sub_s'});
 body.base = struct('id', 'sp_1', 'session_id', 'sess_09', 'name', 'sp', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = calcAppJ('ndi.calc.vis.speed');
 body.speed_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s'), ...
     'tuning_curve', struct('spatial_frequency', [0.5 0.5 1], ...
         'temporal_frequency', [2 4 4], 'mean', [5 8 6]));
 
 out = did2.convert.migrators_j.speed_tuning(body);
-verifyEqual(testCase, numel(out), 4);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'speedtuning_calc')));
+verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
-leaf = out{find(strcmp(names, 'speedtuning_calc'), 1)};
-verifyEqual(testCase, leaf.base.id, 'sp_1');
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'sub_s');
-verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.speed');
+leaf = calcLeafJ(testCase, out, 'speed_tuning_calculation', 'sp_1', 'sub_s');
+verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.speed');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [5 8 6]);
+verifyEqual(testCase, leaf.data.keys(1).n, 3);
 end
+
 
 function v1 = ontologyImageVintageA()
 % VINTAGE A (legacy, DID-schema V_alpha/V_beta ancestry): the region is two
@@ -3882,11 +3831,11 @@ verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 end
 
 function testSpatialFrequencyTuningFoldsToCalculationLeaf(testCase)
-% Calculator composite-leaf model: spatial_frequency_tuning -> the leaf
-% spatial_frequency_tuning_calculation (id-preserved) + a session anchor. 1 -> 2.
-% The full result (tuning_curve / significance / fitless / fit_dog) is kept verbatim
-% as the composite value; derived_from the raw stimulus_tuningcurve. Supersedes the
-% grain-A scalar decomposition.
+% spatial_frequency_tuning -> spatial_frequency_tuning_calculation, id-preserved
+% (#88). UPDATED for #88: app block added (an operating system is required);
+% significance on tuning_curve_calculation, `fitless` on the leaf's
+% interpolated_values, `fit_dog` one model_fit entry (its r2 -> goodness.r2, its
+% pref -> metrics.preferred_value).
 body = struct();
 body.document_class = struct('class_name', 'spatial_frequency_tuning', ...
     'class_version', '1.0.0', ...
@@ -3895,6 +3844,7 @@ body.depends_on = [ struct('name', 'element_id', 'value', 'neuron_2'), ...
                     struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_2')];
 body.base = struct('id', 'sf_1', 'session_id', 'sess_09', 'name', 'sf', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
+body.app = calcAppJ('ndi.calc.vis.spatial_frequency_tuning');
 body.spatial_frequency_tuning = struct( ...
     'properties', struct('response_units', 'spikes/s'), ...
     'tuning_curve', struct('spatial_frequency', [0.05 0.1 0.2 0.5], 'mean', [2 8 5 1]), ...
@@ -3904,25 +3854,25 @@ body.spatial_frequency_tuning = struct( ...
     'fit_dog', struct('r2', 0.95, 'pref', 0.13));
 
 out = did2.convert.migrators_j.spatial_frequency_tuning(body);
-verifyEqual(testCase, numel(out), 4);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'spatial_frequency_tuning_calc')));
+verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'score_observation')));
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
-leaf = out{find(strcmp(names, 'spatial_frequency_tuning_calc'), 1)};
-verifyEqual(testCase, leaf.base.id, 'sf_1');
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'neuron_2');
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_2');
-verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.spatialfrequency');
-% V_eta lifts significance + model_fit off tuning_curve.value onto
-% tuning_curve_calculation. interpolated_values are dropped from the emitted
-% shape (per-family scalars belong on the concrete class in a follow-up).
+leaf = calcLeafJ(testCase, out, 'spatial_frequency_tuning_calculation', 'sf_1', 'neuron_2');
+verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_2');
+verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.spatial_frequency_tuning');
 mf = leaf.tuning_curve_calculation.model_fit;
-dogEntry = mf(arrayfun(@(e) strcmp(e.model.name, 'dog'), mf));
-verifyEqual(testCase, dogEntry.coefficients.r2, 0.95, 'AbsTol', 1e-9);
+verifyEqual(testCase, numel(mf), 1);
+verifyEqual(testCase, lower(char(mf(1).model.name)), 'dog');
+verifyEqual(testCase, mf(1).goodness.r2, 0.95, 'AbsTol', 1e-9);
+verifyEqual(testCase, mf(1).metrics.preferred_value, 0.13, 'AbsTol', 1e-9);
 verifyEqual(testCase, leaf.tuning_curve_calculation.significance.visual_response_anova_p, ...
     0.01, 'AbsTol', 1e-9);
+iv = leaf.spatial_frequency_tuning_calculation.interpolated_values;
+verifyEqual(testCase, iv.preferred_value, 0.12, 'AbsTol', 1e-9);
+verifyEqual(testCase, iv.half_maximum_below, 0.06, 'AbsTol', 1e-9);
 end
+
 
 % ==== temporal_frequency_tuning: the fifth tuning family, built FROM THE WRITER ====
 
@@ -4002,6 +3952,10 @@ body.depends_on = [ struct('name', 'element_id', 'value', 'tf_elem_3'), ...
                     struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_tf_9')];
 body.base = struct('id', 'tft_1', 'session_id', 'sess_09', 'name', 'tft', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
+% The `app` block every real calculator document carries (a Soph
+% temporal_frequency_tuning_calc sample has exactly these keys). #88's calculation
+% requires an operating system, read from app.os.
+body.app = calcAppJ('ndi.calc.vis.temporal_frequency_tuning');
 
 % properties: response_units is EMPTY in 8/8 of the writer's mock documents, so it is
 % built by assignment rather than through struct(), which would be a lie about shape.
@@ -4058,100 +4012,64 @@ body.temporal_frequency_tuning = blk;
 end
 
 function testTemporalFrequencyTuningFoldsToCalculationLeaf(testCase)
-% V_eta (PR #68): did_v1 temporal_frequency_tuning -> the CONCRETE
-% `temporal_frequency_tuning_calc` leaf (⊂ [tuning_curve_calculation,
-% temporal_frequency_tuning]) + a session anchor + a minimal software entity
-% + a minimal runtime_environment (PR #68 makes BOTH software_id and
-% runtime_environment_id REQUIRED on calculator, so both are always minted;
-% when the source has no app.name / no os facts, both are minted minimally --
-% keyed on the calc methodName / with empty env fields).
+% did_v1 temporal_frequency_tuning -> temporal_frequency_tuning_calculation
+% (#88), from the WRITER-shaped fixture below. UPDATED for #88: the leaf is the
+% concrete *_calculation class (under tuning_curve_calculation); the consumed
+% curve -> input_id; the TF axis -> data.keys; the five co-existing fits ->
+% tuning_curve_calculation.model_fit with {model, coefficients list, goodness,
+% metrics, sampled_fit}; `fitless` -> the leaf's interpolated_values.
 out = did2.convert.migrators_j.temporal_frequency_tuning(temporalFrequencyTuningBody());
-
-assertEqual(testCase, numel(out), 4, ...
-    'expected {leaf, session anchor, minimal software, minimal runtime_environment}');
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-assertTrue(testCase, any(strcmp(names, 'temporal_frequency_tuning_calc')), ...
-    'no temporal_frequency_tuning_calc leaf was emitted');
-assertTrue(testCase, any(strcmp(names, 'relative_time_reference')), ...
-    'no session anchor was emitted');
-% R2/R3 collapse is reversed: the abstract tuning_curve_calculation is no
-% longer the class_name of the leaf; nothing is decomposed to scalars either.
-verifyFalse(testCase, any(strcmp(names, 'tuning_curve_calculation')));
+verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'frequency_observation')));
-
-leaf   = out{find(strcmp(names, 'temporal_frequency_tuning_calc'), 1)};
-anchor = out{find(strcmp(names, 'relative_time_reference'), 1)};
-
-% ---- the fold's contract: id preserved, edges re-pointed, nothing minted ----
-verifyEqual(testCase, leaf.base.id, 'tft_1');            % downstream refs must resolve
-verifyEqual(testCase, leaf.base.session_id, 'sess_09');
-verifyEqual(testCase, depValue(leaf, 'entity_id'), 'tf_elem_3');    % element_id ->
-verifyEqual(testCase, depValue(leaf, 'derived_from_1'), 'tc_tf_9');  % the consumed curve
-verifyEqual(testCase, depValue(leaf, 'time_reference_1'), anchor.base.id);
-verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
-% V_eta: the concrete leaf inherits from the abstract family leaf + the marker
+leaf = calcLeafJ(testCase, out, 'temporal_frequency_tuning_calculation', 'tft_1', 'tf_elem_3');
+verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_tf_9');
+verifyEqual(testCase, depValue(leaf, 'session_id'), 'sess_09');
 superNames = {leaf.document_class.superclasses.class_name};
 verifyTrue(testCase, any(strcmp(superNames, 'tuning_curve_calculation')));
-verifyTrue(testCase, any(strcmp(superNames, 'temporal_frequency_tuning')));
-verifyEqual(testCase, leaf.interaction.method.term.name, 'ndi.calc.vis.temporalfrequency');
-verifyEqual(testCase, leaf.statement.variable.name, 'temporal frequency tuning');
-
-% ---- input_parameters -> method_parameters ----
-% A BARE result document has none.
-mp = leaf.subject_interaction.method_parameters;
-verifyTrue(testCase, isstruct(mp));
-verifyEqual(testCase, numel(fieldnames(mp)), 0, ...
+verifyEqual(testCase, lower(leaf.interaction.method.term.name), ...
+    'ndi.calc.vis.temporal_frequency_tuning');
+verifyEqual(testCase, nParamsJ(leaf), 0, ...
     'a bare temporal_frequency_tuning document carries no input_parameters to carry');
 
-% ---- the reshape: jTuningCurveValue, V_eta split ----
-verifyTrue(testCase, isfield(leaf.tuning_curve, 'value'), ...
-    'the composite must carry a `value` cell (T14), not the v1 block verbatim');
+verifyEqual(testCase, leaf.data.keys(1).quantity.value, [1 2 4 8]);
+verifyEqual(testCase, lower(leaf.data.keys(1).variable.name), 'temporal frequency');
 v = leaf.tuning_curve.value;
-% V_eta names: independent_variables[] (ARRAY of {variable, values, unit});
-% response_mean/stddev/stderr -> mean/stddev/stderr; individual_responses -> individual.
-assertFalse(testCase, isempty(v.independent_variables), 'the TF axis was dropped');
-verifyEqual(testCase, v.independent_variables(1).values, [1; 2; 4; 8]);
-verifyEqual(testCase, v.independent_variables(1).variable.name, 'temporal frequency');
-assertFalse(testCase, isempty(v.mean), 'the mean response curve was dropped');
 verifyEqual(testCase, v.mean, [1; 5; 9; 3]);
 verifyEqual(testCase, v.stddev, [0.1; 0.2; 0.3; 0.4]);
 verifyEqual(testCase, v.stderr, [0.05; 0.1; 0.15; 0.2]);
-verifyEqual(testCase, size(v.individual), [2 4]);
-% V_eta lifts significance + model_fit OFF the composite value AND ONTO the
-% abstract family-leaf block (tuning_curve_calculation).
+verifyEqual(testCase, size(v.individual), [4 2]);   % #88 D3: stimuli x trials
+verifyEqual(testCase, v.control.mean, [0.5; 0.5; 0.5; 0.5]);
 verifyEqual(testCase, leaf.tuning_curve_calculation.significance.visual_response_anova_p, ...
     0.002, 'AbsTol', 1e-12);
 verifyEqual(testCase, leaf.tuning_curve_calculation.significance.across_stimuli_anova_p, ...
     0.031, 'AbsTol', 1e-12);
+iv = leaf.temporal_frequency_tuning_calculation.interpolated_values;
+verifyEqual(testCase, iv.preferred_value, 4.2, 'AbsTol', 1e-12);
 
-% ---- interpolated_values and circular_statistics DROPPED from the composite
-% value under V_eta. Per-family scalars belong on the concrete class in a
-% follow-up (its own schema fields list is empty today).
-
-% ---- the five co-existing fits become a model_fit ARRAY on the family leaf ----
 mf = leaf.tuning_curve_calculation.model_fit;
 assertEqual(testCase, numel(mf), 5, ...
     ['the TF family carries five co-existing fits (dog, movshon, movshon_c, ' ...
      'spline, gausslog); a single model_fit means the array collapsed']);
-gotModels = sort(arrayfun(@(e) e.model.name, mf, 'UniformOutput', false));
-verifyEqual(testCase, gotModels, ...
-    {'dog', 'gausslog', 'movshon', 'movshon_c', 'spline'});
-% coefficient blocks are NOT uniform between fits, and each is carried whole
-mv = mf(arrayfun(@(e) strcmp(e.model.name, 'movshon'), mf));
+gotModels = sort(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false));
+verifyEqual(testCase, gotModels, {'dog', 'gausslog', 'movshon', 'movshon c', 'spline'});
+mv = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'movshon'));
 assertEqual(testCase, numel(mv), 1, 'expected exactly one movshon entry');
-verifyEqual(testCase, mv.coefficients.R2, 0.83, 'AbsTol', 1e-12);
-verifyEqual(testCase, mv.coefficients.Pref, 4.0, 'AbsTol', 1e-12);
-dg = mf(arrayfun(@(e) strcmp(e.model.name, 'dog'), mf));
+verifyEqual(testCase, mv.goodness.r2, 0.83, 'AbsTol', 1e-12);
+verifyEqual(testCase, mv.metrics.preferred_value, 4.0, 'AbsTol', 1e-12);
+dg = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'dog'));
 assertEqual(testCase, numel(dg), 1, 'expected exactly one dog entry');
-verifyEqual(testCase, numel(dg.coefficients.parameters), 5);   % [0 a1 b1 a2 b2]
-verifyEqual(testCase, dg.coefficients.bandwidth, 2.65, 'AbsTol', 1e-12);
-sp = mf(arrayfun(@(e) strcmp(e.model.name, 'spline'), mf));
+verifyEqual(testCase, nCoeffJ(dg), 5);   % [0 a1 b1 a2 b2]
+verifyEqual(testCase, dg.metrics.bandwidth, 2.65, 'AbsTol', 1e-12);
+sp = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'spline'));
 assertEqual(testCase, numel(sp), 1, 'expected exactly one spline entry');
-verifyFalse(testCase, isfield(sp.coefficients, 'parameters'), ...
-    'the spline fit has no parameters block in the writer; one here would be invented');
-% `abs` is not a fit and must not become a sixth model_fit entry
+verifyEqual(testCase, nCoeffJ(sp), 0, ...
+    'the spline fit has no parameters block in the writer; coefficients here would be invented');
 verifyFalse(testCase, any(strcmp(gotModels, 'abs')));
 end
+
+% ---- helpers for the #88 calculation tests ----
+
 
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
@@ -4697,5 +4615,116 @@ for k = 1:numel(b.depends_on)
         v = b.depends_on(k).value;
     end
     return;
+end
+end
+
+function testCalculationWithNoOperatingSystemPassesThrough(testCase)
+% did-schema #88's `calculation` requires operating_system_id. A v1 calculator
+% document with no `app.os` cannot supply one, and inventing an operating system
+% is not allowed, so jCalculation passes the document through UNCHANGED (Jess's
+% rule: pass through and list, never invent). This pins that branch.
+body = struct();
+body.document_class = struct('class_name', 'contrast_tuning', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+body.depends_on = [ struct('name', 'element_id', 'value', 'sub_8'), ...
+                    struct('name', 'stimulus_tuningcurve_id', 'value', 'tc_1')];
+body.base = struct('id', 'ct_1', 'session_id', 'sess_09', 'name', 'ct', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+body.contrast_tuning = struct( ...
+    'tuning_curve', struct('contrast', [0 0.25 0.5 1], 'mean', [2 5 9 12]));
+out = did2.convert.migrators_j.contrast_tuning(body);
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}, body);
+end
+
+
+function a = calcAppJ(name)
+% The v1 `app` block ndi.app.newdocument stamps on every app/calculator
+% document; values from a real Soph temporal_frequency_tuning_calc document.
+a = struct('name', name, 'version', '3c482d1', ...
+    'url', 'https://github.com/VH-Lab/NDIcalc-vis-matlab', 'os', 'MACA64', ...
+    'os_version', '15.4.1', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
+end
+
+
+function leaf = calcLeafJ(testCase, out, leafClass, id, entityId)
+% The #88 calculation contract every calculator fold shares: the named leaf class,
+% id preserved, the entity edge, a time reference that is one of the emitted
+% documents, and the required software + operating-system edges.
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+at = find(strcmp(names, leafClass), 1);
+assertNotEmpty(testCase, at, sprintf('no %s leaf; got: %s', leafClass, strjoin(names, ', ')));
+leaf = out{at};
+verifyEqual(testCase, leaf.base.id, id);
+verifyEqual(testCase, depValue(leaf, 'entity_id'), entityId);
+ids = cellfun(@(b) char(b.base.id), out, 'UniformOutput', false);
+tr = depValue(leaf, 'time_reference_id');
+verifyNotEmpty(testCase, tr);
+verifyTrue(testCase, any(strcmp(ids, tr)), 'the time reference is not among the emitted documents');
+verifyTrue(testCase, any(strcmp(ids, depValue(leaf, 'software_id'))));
+verifyTrue(testCase, any(strcmp(ids, depValue(leaf, 'operating_system_id'))));
+end
+
+
+function e = entityByNameJ(out, name)
+e = [];
+for k = 1:numel(out)
+    b = out{k};
+    if strcmp(b.document_class.class_name, 'entity') && isfield(b.entity, 'name') ...
+            && strcmp(char(b.entity.name), name)
+        e = b; return;
+    end
+end
+error('no entity named %s', name);
+end
+
+
+function e = paramEntryJ(leaf, varName)
+e = [];
+p = leaf.interaction.method;
+if ~isfield(p, 'parameters'); return; end
+p = p.parameters;
+for k = 1:numel(p)
+    if isstruct(p(k).variable) && strcmpi(char(p(k).variable.name), varName)
+        e = p(k); return;
+    end
+end
+end
+
+
+function t = paramTextJ(leaf, varName)
+e = paramEntryJ(leaf, varName);
+t = '';
+if ~isempty(e); t = char(e.text); end
+end
+
+
+function v = paramValueJ(leaf, varName)
+e = paramEntryJ(leaf, varName);
+v = [];
+if ~isempty(e); v = e.quantity.value; end
+end
+
+
+function n = nParamsJ(leaf)
+n = 0;
+m = leaf.interaction.method;
+if ~isfield(m, 'parameters') || ~isstruct(m.parameters); return; end
+for k = 1:numel(m.parameters)
+    v = m.parameters(k).variable;
+    if isstruct(v) && isfield(v, 'name') && ~isempty(v.name); n = n + 1; end
+end
+end
+
+
+function n = nCoeffJ(fit)
+n = 0;
+if ~isfield(fit, 'coefficients') || ~isstruct(fit.coefficients); return; end
+c = fit.coefficients;
+for k = 1:numel(c)
+    if isfield(c(k), 'variable') && isstruct(c(k).variable) && isfield(c(k).variable, 'name') ...
+            && ~isempty(c(k).variable.name) && ~isempty(c(k).value)
+        n = n + 1;
+    end
 end
 end
