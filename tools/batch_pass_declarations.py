@@ -94,7 +94,16 @@ _MARKER = re.compile(
     r"^%\s*(" + re.escape(CONSUMES_TOKEN) + "|" + re.escape(EMITS_TOKEN)
     + r")\s*:\s*(.*)$")
 _COMMENT = re.compile(r"^%\s?(.*)$")
-_NAME = re.compile(r"^[A-Za-z_]\w*$")
+# A class name, or did-schema #88's statement form `direction+kind` (the
+# direction class plus ONE value-kind mixin, e.g. `observation+voltage`; spaces
+# around the `+` allowed, normalised away by _norm_target). #88 has no joined
+# `<kind>_<direction>` leaf classes, so a declaration must be able to name one.
+_NAME = re.compile(r"^[A-Za-z_]\w*(\s*\+\s*[A-Za-z_]\w*)?$")
+
+
+def _norm_target(t):
+    """`observation + voltage` -> `observation+voltage`; a class name unchanged."""
+    return re.sub(r"\s*\+\s*", "+", t.strip())
 
 
 def _read_text(path):
@@ -248,7 +257,7 @@ def parse_declaration(text):
                 d["errors"].append("%s: `%s` is not a class name"
                                    % (EMITS_TOKEN, t))
             entry = {"form": form,
-                     "targets": [t for t in targets if _NAME.match(t)],
+                     "targets": [_norm_target(t) for t in targets if _NAME.match(t)],
                      "reason": None}
         if src == "UNATTRIBUTED":
             d["unattributed"].append(entry)

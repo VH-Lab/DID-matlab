@@ -18,8 +18,8 @@ function [result, report] = resolveLawnPlateSubjects(result, options)
 %
 %   BATCH-PASS-CONSUMES: ontology_table_row
 %   BATCH-PASS-EMITS: ontology_table_row -> document: subject,
-%       directed_relation, concentration_observation, volume_observation,
-%       length_observation, score_observation
+%       directed_relation, observation+concentration, observation+volume,
+%       observation+length, observation+score
 %
 %   `ROW = 'ontology_table_row'` at :507 is the only class this pass selects
 %   on; everything else it touches it has just minted. The four observation

@@ -79,7 +79,27 @@ conflicts = {};
 placeholders = {};
 ingredientRows = [];
 entryByRow = containers.Map('KeyType', 'double', 'ValueType', 'any');
-if ~isempty(hits)
+% A per-body-mass row that NAMES a chemical but gives no number is that
+% chemical's unrecorded amount: its value.ingredients entry, amount_per_body_mass
+% NaN with the unit, paired with its ingredient_id edge -- not the dose's top
+% level (Jess Haley, 2026-10-21 [blank per-body-mass on the ingredient]).
+keepKind = true(size(kindOnly));
+for i = 1:numel(kindOnly)
+    k = kindOnly(i);
+    c = chemicals(k);
+    if strcmp(kindSlots{i, 1}, 'amount_per_body_mass') && namesChemical(c.substance) ...
+            && ~isVehicle(c.substance)
+        q = struct(kindSlots{i, 2}, NaN, 'source_unit', unitTerm(c.source_unit));
+        entryByRow(k) = struct('amount_per_body_mass', q);
+        ingredientRows(end+1) = k; %#ok<AGROW>
+        chemicals(k).source_value = [];
+        chemicals(k).source_unit = [];
+        keepKind(i) = false;
+    end
+end
+kindOnly = kindOnly(keepKind);
+kindSlots = kindSlots(keepKind, :);
+if ~isempty(hits) || ~isempty(ingredientRows)
     v = struct();
     firstSpelled = struct();   % the first row's unit spelling, per slot
     for i = 1:numel(hits)
@@ -137,7 +157,17 @@ if ~isempty(hits)
                 num2str(sv, 17), spelled); %#ok<AGROW>
         end
     end
-    if isempty(fieldnames(v))
+    if isempty(fieldnames(v)) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1))) ...
+            && ~strcmp(kindSlots{1, 1}, 'amount_per_body_mass')
+        % the whole formulation's amount is unrecorded but its KIND is stated
+        % ([unknown-amount-slot]): the NaN goes in that quantity
+        c = chemicals(kindOnly(1));
+        v.(kindSlots{1, 1}) = struct(kindSlots{1, 2}, NaN, 'source_unit', unitTerm(c.source_unit));
+        for k = kindOnly
+            chemicals(k).source_value = [];
+            chemicals(k).source_unit = [];
+        end
+    elseif isempty(fieldnames(v))
         % only per-ingredient amounts: the whole formulation's amount is
         % unrecorded, NaN at the top level (did-schema dose.json example)
         v.volume = struct('liters', NaN);

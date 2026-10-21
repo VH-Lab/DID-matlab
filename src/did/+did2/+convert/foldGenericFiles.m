@@ -35,7 +35,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   the grammar is in the parser's docstring.
 %
 %   BATCH-PASS-CONSUMES: generic_file, ontology_label, file_reference
-%   BATCH-PASS-EMITS: generic_file -> document: term_observation, opaque_body
+%   BATCH-PASS-EMITS: generic_file -> document: observation+term, opaque_body
 %   BATCH-PASS-EMITS: file_reference -> document: opaque_body
 %   BATCH-PASS-EMITS: ontology_label -> nothing: read at :446-457 (the `ontology_label` loop) for the
 %       sibling label's `ontologyNode`, which becomes the observation's
