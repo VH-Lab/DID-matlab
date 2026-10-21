@@ -341,7 +341,126 @@ def _decomment(line):
     return "".join(out)
 
 
-def minted_classes(text):
+# THE #88 BUILDER (DID-matlab #218): documents are minted through
+# `did2.build`, which reads the class from the schema, so a mint site no longer
+# carries a `'class_name'` literal. Recognised the way did-schema's
+# tools/status_board.py recognises it (its IDIOMS 4 and 5):
+#   did2.build.statement('<direction>', ..., 'ValueKind', '<kind>')
+#       -> `<direction>+<kind>` (the declaration grammar's spelling, _NAME)
+#   did2.build.document('<class>', ...)          -> `<class>` (+ its ValueKind)
+#   did2.build.<fixed builder>(...)              -> its one class
+#   an ENTITY-TYPE WRAPPER: a helper whose body calls
+#   did2.build.document('entity', ...) and takes a parameter named `type`;
+#   a call `<wrapper>(..., '<type>', ...)` with a literal at that index mints
+#   `entity (<type>)` (did-schema coverage.py's compose_target spelling).
+#   The wrapper is found by SHAPE, never by name.
+_BUILDER_CALL = re.compile(r"(?<![\w.])did2\.build\.([A-Za-z_]\w*)\s*\(")
+_BUILDER_FIXED_CLASS = {
+    "relativeTimeReference": "relative_time_reference",
+    "absoluteTimeReference": "absolute_time_reference",
+    "sampledBody": "sampled_body",
+    "opaqueBody": "opaque_body",
+    "directedRelation": "directed_relation",
+    "undirectedRelation": "undirected_relation",
+    "method": "method",
+}
+_LITERAL = re.compile(r"^\s*'([A-Za-z_]\w*)'\s*$")
+_FUNC_HEAD = re.compile(
+    r"^\s*function\s+(?:\[[^\]]*\]\s*=\s*|[A-Za-z_]\w*\s*=\s*)?"
+    r"([A-Za-z_]\w*)\s*\(([^)]*)\)")
+
+
+def _code_of(text):
+    """The file's code with comments stripped and `...` continuations joined."""
+    lines = [_decomment(raw) for raw in text.splitlines()]
+    joined = "\n".join(lines)
+    return re.sub(r"\.\.\.[^\n]*\n", " ", joined)
+
+
+def _call_args(code, open_paren):
+    """Top-level argument sources of the call whose `(` is at `open_paren`."""
+    depth, quote, start, args = 0, False, open_paren + 1, []
+    i = open_paren
+    while i < len(code):
+        ch = code[i]
+        if ch == "'" :
+            # a quote after an identifier/close bracket is a transpose
+            prev = code[i - 1] if i > 0 else " "
+            if quote or not (prev.isalnum() or prev in ")]}_."):
+                quote = not quote
+        elif not quote:
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+                if depth == 0:
+                    args.append(code[start:i])
+                    return args
+            elif ch == "," and depth == 1:
+                args.append(code[start:i])
+                start = i + 1
+        i += 1
+    return args
+
+
+def _value_kind(args):
+    for i, a in enumerate(args):
+        m = _LITERAL.match(a)
+        if m and m.group(1) == "ValueKind" and i + 1 < len(args):
+            k = _LITERAL.match(args[i + 1])
+            return k.group(1) if k else None
+    return None
+
+
+def entity_type_wrappers(texts):
+    """{function name: index of its `type` parameter} for the helpers whose body
+    calls did2.build.document('entity', ...) -- found by shape."""
+    out = {}
+    for text in texts.values():
+        code = _code_of(text)
+        if not re.search(r"did2\.build\.document\s*\(\s*'entity'", code):
+            continue
+        m = _FUNC_HEAD.search(code)
+        if not m:
+            continue
+        params = [p.strip() for p in m.group(2).split(",")]
+        if "type" in params:
+            out[m.group(1)] = params.index("type")
+    return out
+
+
+def builder_minted_classes(text, wrappers=None):
+    """The #88 builder mints in `text` (see the block comment above)."""
+    found = set()
+    code = _code_of(text)
+    for bm in _BUILDER_CALL.finditer(code):
+        name = bm.group(1)
+        if name in _BUILDER_FIXED_CLASS:
+            found.add(_BUILDER_FIXED_CLASS[name])
+            continue
+        if name not in ("statement", "document"):
+            continue
+        args = _call_args(code, bm.end() - 1)
+        if not args:
+            continue
+        m = _LITERAL.match(args[0])
+        if not m:
+            continue        # a class from a parameter: a wrapper's body
+        kind = _value_kind(args[1:])
+        found.add(m.group(1) + ("+" + kind if kind else ""))
+    for name, idx in (wrappers or {}).items():
+        for wm in re.finditer(r"(?<![\w.])" + re.escape(name) + r"\s*\(", code):
+            if _FUNC_HEAD.match(code[code.rfind("\n", 0, wm.start()) + 1:]):
+                continue    # the wrapper's own function line
+            args = _call_args(code, wm.end() - 1)
+            if idx < len(args):
+                lm = _LITERAL.match(args[idx])
+                if lm:
+                    found.add("entity (%s)" % lm.group(1))
+    return found
+
+
+def minted_classes(text, wrappers=None):
     """Classes this file MINTS, read from code with comments stripped.
 
     Reported per helper so `helpers_minting_undeclared` can name the files
@@ -356,6 +475,7 @@ def minted_classes(text):
         for rx in _STRONG_MINT:
             for m in rx.finditer(code):
                 found.add(m.group(1))
+    found |= builder_minted_classes(text, wrappers)
     return sorted(found)
 
 
@@ -373,6 +493,19 @@ def scan_helpers(root=None):
     out = {"root": root, "dirs": [], "candidates": 0, "helpers": {},
            "declared": [], "undeclared": [], "invalid": [],
            "minting": [], "helpers_minting_undeclared": [], "why": None}
+
+    # the entity-type wrappers, by shape, over every helper file first
+    texts = {}
+    for rel in HELPER_DIRS:
+        d = os.path.join(root, CONVERT_PKG, rel)
+        if os.path.isdir(d):
+            for name in os.listdir(d):
+                if name.endswith(".m"):
+                    t = _read_text(os.path.join(d, name))
+                    if t is not None:
+                        texts[os.path.join(rel, name)] = t
+    wrappers = entity_type_wrappers(texts)
+    out["entity_type_wrappers"] = sorted(wrappers)
 
     for rel in HELPER_DIRS:
         d = os.path.join(root, CONVERT_PKG, rel)
@@ -393,7 +526,7 @@ def scan_helpers(root=None):
                     "errors": ["source not readable"]}
                 out["undeclared"].append(fn)
                 continue
-            mints = minted_classes(text)
+            mints = minted_classes(text, wrappers)
             if mints:
                 out["minting"].append(fn)
             has_marker = (CONSUMES_TOKEN in text) or (EMITS_TOKEN in text)
