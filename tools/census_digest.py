@@ -3859,9 +3859,16 @@ def epoch_populations(r):
             "the report carries no `by_class` -- the FINAL class census is "
             "the only figure that would notice an epoch DELETED after minting")
     else:
-        reading["commensurable"].append(
-            (class_count(normalised_class_index(by_class), "epoch"),
-             "by_class: `epoch` in the FINAL class census"))
+        n_epoch = class_count(normalised_class_index(by_class), "epoch")
+        label = "by_class: `epoch` in the FINAL class census"
+        # did-schema #88: an epoch is an `entity` of type epoch, which by_class
+        # counts under `entity`; the report's by_entity_type carries the type.
+        by_type = r.get("by_entity_type")
+        if isinstance(by_type, dict) and by_type.get("epoch") is not None:
+            n_epoch += _int_or_none(by_type.get("epoch")) or 0
+            label = ("by_class `epoch` + by_entity_type `epoch` in the FINAL "
+                     "class census")
+        reading["commensurable"].append((n_epoch, label))
 
     values = set(v for v, _label in reading["commensurable"])
     if len(values) > 1:

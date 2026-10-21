@@ -1924,6 +1924,16 @@ end
 out = did2.convert.v1_to_v2(stamped, 'Validate', options.Validate, ...
     'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion);
 report.pyraview_deferred_resolved = nDeferredFolded - numel(out.quarantine);
+% The epochs minted here ARE this pass's mints, so they count in epochs_minted
+% (the census digest checks that figure against the epochs in the batch).
+for j = 1:numel(out.migrated)
+    try
+        if strcmp(classNameOf(out.migrated{j}.toStruct()), 'epoch')
+            report.epochs_minted = report.epochs_minted + 1;
+        end
+    catch
+    end
+end
 result.migrated = [result.migrated, out.migrated];
 result.quarantine = [q(keep), out.quarantine];
 result.summary = recountSummary(result);
