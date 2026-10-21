@@ -454,13 +454,24 @@ function testBinaryseriesFoldBlockersAreStillInTheSchema(testCase)
 % mappings this checks:
 %   time_type -> the time axis's datum_type    data_type -> the statement's
 %   data_dim  -> the axis count      samples_regular_intervals -> axis `regular`
+%
+% PORTED TO did-schema #88 (2026-10-21), slot for slot -- the four mappings
+% are unchanged, only where #88 declares each destination moved:
+%   subject_statement          -> `statement` (the statement family renamed;
+%                                 the subject edge is `entity_id`)
+%   statement.datum_type       -> `value.data_type` (the element type lives on
+%                                 the VALUE, renamed from datum_type 2026-10-08)
+%   axes[] on statement + body -> ONE declaration, `data.keys[]`, inherited by
+%                                 both `value` and `sampled_body`
 cache = did2.schema.cache.shared();
 
-% DENOMINATOR FIRST. All three classes must RESOLVE or every assertion below is
+% DENOMINATOR FIRST. All four classes must RESOLVE or every assertion below is
 % vacuous -- "the slot is absent" and "the schema set is not on the path" would
 % otherwise read identically, which is the silentLoss defect in miniature.
 try
-    statement = cache.getClass('subject_statement');
+    statement = cache.getClass('statement');
+    value     = cache.getClass('value');
+    data      = cache.getClass('data');
     body      = cache.getClass('sampled_body');
     tombstone = cache.getClass('binaryseries_parameters');
 catch err
@@ -472,44 +483,46 @@ end
 verifyTrue(testCase, isstruct(tombstone), ...
     'the binaryseries_parameters source tombstone must exist to pass through to');
 
-% ---- (1) THE THREE SLOTS #45 BUILT. Absence here means the tier REGRESSED.
-verifyTrue(testCase, ~isempty(fieldDecl(statement, 'datum_type')), ...
-    ['subject_statement.datum_type has gone -- it is the destination the ' ...
-     'signature names for binaryseries_parameters.data_type.']);
-stmtAxes = fieldDecl(statement, 'axes');
-bodyAxes = fieldDecl(body, 'axes');
-verifyNotEmpty(testCase, stmtAxes, 'subject_statement.axes[] has gone (#45 regressed)');
-verifyNotEmpty(testCase, bodyAxes, 'sampled_body.axes[] has gone (#45 regressed)');
-% `data_dim -> the axis count` needs no field: it is numel(axes). `regular` does.
-for m = {{'subject_statement', stmtAxes}, {'sampled_body', bodyAxes}}
-    verifyTrue(testCase, ~isempty(subDecl(m{1}{2}, 'regular')), ...
-        sprintf(['%s.axes[].regular has gone -- it is the destination for ' ...
-                 'samples_regular_intervals.'], m{1}{1}));
+% ---- (1) THE SLOTS #45 BUILT. Absence here means the tier REGRESSED.
+verifyTrue(testCase, ~isempty(fieldDecl(value, 'data_type')), ...
+    ['value.data_type has gone -- it is the destination the signature ' ...
+     'names for binaryseries_parameters.data_type.']);
+keysDecl = fieldDecl(data, 'keys');
+verifyNotEmpty(testCase, keysDecl, 'data.keys[] has gone (#45 regressed)');
+% both signed targets reach `keys` through `data`
+for c = {'value', 'sampled_body'}
+    verifyTrue(testCase, any(strcmp(cache.classChain(c{1}), 'data')), ...
+        sprintf('%s no longer inherits data.keys[]', c{1}));
 end
+% `data_dim -> the axis count` needs no field: it is numel(keys). `regular` does.
+verifyTrue(testCase, ~isempty(subDecl(keysDecl, 'regular')), ...
+    ['data.keys[].regular has gone -- it is the destination for ' ...
+     'samples_regular_intervals.']);
 
 % ---- (2) THE ONE SLOT THAT DID NOT LAND, and the reason `time_type` is still
 % homeless. V_eta_data_body_model_plan.md's ADDENDUM of 2026-08-09 ("the axis
 % carries its own `datum_type`") was written FROM this class -- the plan says so
-% -- and the built axis entry does not carry it, on either mount. If this goes
-% red the addendum has landed and `time_type` finally has a destination; that is
-% a genuine change in the fold's status and the migrator header says what to do.
-for m = {{'subject_statement', stmtAxes}, {'sampled_body', bodyAxes}}
-    verifyEmpty(testCase, subDecl(m{1}{2}, 'datum_type'), ...
-        sprintf(['%s.axes[] now declares `datum_type`. The 2026-08-09 addendum ' ...
+% -- and the built key entry does not carry it, under either spelling. If this
+% goes red the addendum has landed and `time_type` finally has a destination;
+% that is a genuine change in the fold's status and the migrator header says
+% what to do.
+for nm = {'datum_type', 'data_type'}
+    verifyEmpty(testCase, subDecl(keysDecl, nm{1}), ...
+        sprintf(['data.keys[] now declares `%s`. The 2026-08-09 addendum ' ...
                  'has landed, so binaryseries_parameters.time_type has a ' ...
                  'destination for the first time -- read the migrator header ' ...
                  'before changing anything. It does NOT lift the edge blocker.'], ...
-                m{1}{1}));
+                nm{1}));
 end
 
 % ---- (3) THE BLOCKER #45 NEVER TOUCHED, in the schema rather than in prose.
-% subject_statement is ABSTRACT (+did2/+schema/cache.m raises
+% statement is ABSTRACT (+did2/+schema/cache.m raises
 % did2:validation:abstractInstantiation for any document naming such a class),
 % so the target the coverage ledger records BY NAME cannot be minted even given
 % a subject. sampled_body must stay CONCRETE -- that half also proves this
 % predicate can return false, so the assertion above is not vacuous.
 verifyTrue(testCase, schemaSaysAbstract(statement), ...
-    ['V_eta subject_statement is no longer abstract. The signed target is now ' ...
+    ['V_eta statement is no longer abstract. The signed target is now ' ...
      'directly instantiable -- which does NOT make the fold buildable (the ' ...
      'source still carries no edge and no `variable`), but it does change the ' ...
      'reason. Read the migrator header.']);
@@ -519,8 +532,8 @@ verifyFalse(testCase, schemaSaysAbstract(body), ...
 % ---- (4) and the required-ness that makes minting one a quarantine, not a
 % husk. Read off the schema so that a relaxation is noticed here rather than on
 % a corpus run.
-verifyTrue(testCase, depIsRequired(statement, 'subject_id'), ...
-    'subject_statement.subject_id stopped being mustBeNonEmpty');
+verifyTrue(testCase, depIsRequired(statement, 'entity_id'), ...
+    'statement.entity_id stopped being mustBeNonEmpty');
 verifyTrue(testCase, ~isempty(fieldDecl(statement, 'variable')), ...
     'statement.variable has gone');
 end

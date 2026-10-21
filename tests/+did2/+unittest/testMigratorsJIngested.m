@@ -737,17 +737,27 @@ function testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks(testCase)
 % testImageIngestedCarriesNoEdgeToASubjectOrElement means the SOURCE moved and
 % blocker 1 -- the team question -- may have an answer. Those are different
 % events and this file must not report them as one.
+%
+% PORTED TO did-schema #88 (2026-10-21). #88 retired `image_observation` and the
+% V_eta `image` value (#73 item 51); a statement is a direction class
+% (`observation`) and the subject edge is `entity_id`, required on `statement`.
+% The data_body tier was restated too: the axis entry is `data.keys[]`
+% (`axes[]` before), the element type is `value.data_type` (`datum_type` on the
+% statement before), irregular numeric positions are `keys[].quantity`
+% (`values` until 2026-10-19), and a body's link to what it holds is the
+% OPTIONAL `data_body.owner_id` (the REQUIRED `statement` edge before). So on
+% #88 the body no longer hangs off a required edge at all -- and the subject
+% STILL blocks the observation, which is the half of this test that matters.
 assumeVEtaSchemas(testCase);
 cache = did2.schema.cache.shared();
-% assumeVEtaSchemas probes `acquisition_metadata_file` and `relative_reference`,
-% and BOTH are in schemas/V_eta/stable. The two classes this test is about are
-% in schemas/V_eta/DRAFT, and did2.schema.cache reads ONE non-recursive folder
-% (`dir(fullfile(obj.schemaPath, '*.json'))`), so a stable-only path satisfies
-% that probe and would then make this test ERROR on a missing class rather than
-% skip. CI assembles stable + draft + deprecated into one flat directory
-% (test-code.yml:157); locally it may not. Probe what THIS test needs.
+% The classes this test reads span stable (statement, observation, value, data)
+% and DRAFT (sampled_body, data_body). did2.schema.cache reads ONE non-recursive
+% folder, so a stable-only path would make this test ERROR on a missing class
+% rather than skip. CI assembles stable + draft + deprecated into one flat
+% directory; locally it may not. Probe what THIS test needs.
 try
-    cache.getClass('image_observation');
+    cache.getClass('observation');
+    cache.getClass('value');
     cache.getClass('sampled_body');
 catch err
     assumeFail(testCase, ...
@@ -756,38 +766,57 @@ catch err
          'assembled stable+draft V_eta set.']);
 end
 
-% -- the subject is REQUIRED, on both unemitted targets -------------------
-% stated as a set membership rather than a count: the assertion is about
-% subject_id specifically, and a count would pass on the wrong edge.
-obsRequired = cache.requiredDependencies('image_observation');
-verifyTrue(testCase, any(strcmp(obsRequired, 'subject_id')), ...
-    ['image_observation no longer requires subject_id; blocker 1 in ' ...
+% -- the subject is REQUIRED on the unemitted observation ------------------
+% stated as a set membership rather than a count: the assertion is about the
+% subject edge specifically, and a count would pass on the wrong edge.
+obsRequired = cache.requiredDependencies('observation');
+verifyTrue(testCase, any(strcmp(obsRequired, 'entity_id')), ...
+    ['observation no longer requires entity_id; blocker 1 in ' ...
      '+migrators_j/daqreader_image_epochdata_ingested.m is the thing to re-read']);
-bodyRequired = cache.requiredDependencies('sampled_body');
-verifyTrue(testCase, any(strcmp(bodyRequired, 'statement')), ...
-    ['sampled_body no longer requires `statement`; both unemitted targets ' ...
-     'hung off that one edge, which is why the fold was one fact away']);
+% the body names its owner through an edge the schema DECLARES (optional on #88)
+verifyTrue(testCase, ismember('owner_id', declaredDependencies(cache, 'sampled_body')), ...
+    'sampled_body declares no `owner_id`; the body has no way to name its statement');
 
 % -- and the destinations the header would land in DO exist ---------------
-stmtFields = fieldNamesOf(cache, 'subject_statement');
-verifyTrue(testCase, ismember('datum_type', stmtFields), ...
-    'subject_statement.datum_type is where revision 2 puts `data_type`');
-verifyTrue(testCase, ismember('axes', stmtFields), ...
-    'subject_statement.axes is the statement half of the axis entry');
+valueFields = fieldNamesOf(cache, 'value');
+verifyTrue(testCase, ismember('data_type', valueFields), ...
+    'value.data_type is where revision 2 puts `data_type`');
+verifyTrue(testCase, ismember('keys', valueFields), ...
+    'value.keys (inherited from data) is the value half of the axis entry');
 
 % the IRREGULAR case specifically -- `frametimes` is one time per frame
 % (+ndi/+daq/+reader/image.m:180, :196-202), so origin/spacing cannot hold it
-% and a `values` slot is the only landing place.
-axesDef = namedField(cache, 'sampled_body', 'axes');
-assertNotEmpty(testCase, axesDef, ...
-    'sampled_body declares no `axes`; every assertion below would be vacuous');
-axisSub = subFieldNames(axesDef);
-verifyTrue(testCase, ismember('values', axisSub), ...
-    'sampled_body.axes[].values is the only home for irregular frametimes');
-verifyTrue(testCase, ismember('regular', axisSub), ...
+% and a stored-positions slot is the only landing place.
+keysDef = namedField(cache, 'sampled_body', 'keys');
+assertNotEmpty(testCase, keysDef, ...
+    'sampled_body declares no `keys`; every assertion below would be vacuous');
+keySub = subFieldNames(keysDef);
+verifyTrue(testCase, ismember('quantity', keySub), ...
+    'sampled_body.keys[].quantity is the only home for irregular frametimes');
+verifyTrue(testCase, ismember('regular', keySub), ...
     'without `regular` nothing distinguishes stored coordinates from generated ones');
-verifyTrue(testCase, ismember('n', axisSub), ...
-    'each axis`s `n` is where dimension_size lands');
+verifyTrue(testCase, ismember('n', keySub), ...
+    'each key`s `n` is where dimension_size lands');
+end
+
+function names = declaredDependencies(cache, className)
+%DECLAREDDEPENDENCIES Every depends_on name declared anywhere in CLASSNAME's
+%   chain, required or not. jsondecode gives a CELL when the entries' keys
+%   differ, so both shapes are walked.
+names = {};
+chain = cache.classChain(className);
+for k = 1:numel(chain)
+    c = cache.getClass(chain{k});
+    if ~isstruct(c) || ~isfield(c, 'depends_on'); continue; end
+    deps = c.depends_on;
+    if isstruct(deps); deps = num2cell(deps); end
+    if ~iscell(deps); continue; end
+    for d = 1:numel(deps)
+        if isstruct(deps{d}) && isfield(deps{d}, 'name')
+            names{end+1} = char(deps{d}.name); %#ok<AGROW>
+        end
+    end
+end
 end
 
 % ===================== under the real V_eta validator ======================

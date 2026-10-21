@@ -1103,23 +1103,25 @@ end
 
 
 function testTheFoldedFileValidatesAgainstItsSchema(testCase)
-% Validation ON. This is the test that fails if the built
-% `acquisition_metadata_file` schema and the folded body ever disagree -- a new
-% required field, a renamed edge, a changed file declaration. It is also the
-% only test here that would catch the fold emitting a body the validator
-% rejects, in which case the ORIGINAL passthrough is what stays in the batch
-% (the replacement is keyed on the id coming back out of v1_to_v2) and
-% `metadata_ingested_folds_withheld` is the number that says so.
+% Validation ON. PORTED TO did-schema #88 (2026-10-21): the fold target
+% `acquisition_metadata_file` was RETIRED (#73 item 61), so the migrator the
+% mint arms DECLINES and the source passes through as its did_v1 tombstone
+% (testTheMintArmsTheIngestedMetadataFold pins the counters with validation
+% off). What this test still owns is the same property it always did: the body
+% that LEAVES the mint must validate. Here that is the tombstone, under the
+% real validator -- a #88 tombstone that disagreed with the passthrough (a new
+% required field, a renamed edge, the stamped `epoch_id` undeclared) would
+% quarantine here and nowhere else.
 %
 % Requires the assembled V_eta schema set on DID_SCHEMA_PATH, which is why the
 % rest of this file runs with Validate false.
 did2.unittest.helpers.installSchemaPath(testCase, ...
-    'skipping the acquisition_metadata_file validation test');
+    'skipping the ingested-metadata tombstone validation test');
 try
-    did2.schema.cache.shared().getClass('acquisition_metadata_file');
+    did2.schema.cache.shared().getClass('daqmetadatareader_epochdata_ingested');
 catch err
     assumeFail(testCase, ...
-        ['DID_SCHEMA_PATH does not resolve acquisition_metadata_file (' ...
+        ['DID_SCHEMA_PATH does not resolve daqmetadatareader_epochdata_ingested (' ...
          err.message ').']);
 end
 out = did2.convert.v1_to_v2({ ...
@@ -1129,10 +1131,13 @@ out = did2.convert.v1_to_v2({ ...
 [out, rep] = did2.convert.epochMint(out, ...
     'Validate', true, 'TargetVersion', 'V_eta');
 verifyEqual(testCase, rep.mint_quarantined, 0, ...
-    'a folded document that cannot validate is a build defect, not a data problem');
-verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 1);
-verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 0);
-verifyNumElements(testCase, ofClass(out, 'acquisition_metadata_file'), 1);
+    'a body leaving the mint that cannot validate is a build defect, not a data problem');
+verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0, ...
+    '#88 has no fold target; nothing may be emitted');
+verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 1);
+verifyEmpty(testCase, ofClass(out, 'acquisition_metadata_file'));
+verifyNumElements(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), 1, ...
+    'the source passes through under its tombstone, and validates there');
 end
 
 % ===================== the 1 -> N arming path ==========================
@@ -1421,10 +1426,12 @@ function testAnExtraThatDoesNotSurviveTakesTHEWHOLECALLWithIt(testCase)
 did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the atomic-carry validation test');
 try
-    did2.schema.cache.shared().getClass('relative_reference');
+    % `relative_reference` until did-schema #88, which renamed it
+    % `relative_time_reference` (the referent edge is `referent_id`).
+    did2.schema.cache.shared().getClass('relative_time_reference');
 catch err
     assumeFail(testCase, ...
-        ['DID_SCHEMA_PATH does not resolve relative_reference (' ...
+        ['DID_SCHEMA_PATH does not resolve relative_time_reference (' ...
          err.message ').']);
 end
 out = runJ(oneMetadataBatch());
@@ -1448,13 +1455,24 @@ end
 
 function bodies = foldPlusUnreferencedExtent(b)
 %FOLDPLUSUNREFERENCEDEXTENT The fold, plus one reference with NO referent.
-%   `relative_to` is mustBeNonEmpty (schemas/V_eta/stable/relative_reference.json),
-%   so with #37 armed this body cannot validate. It is the invented-empty-edge
-%   pattern used deliberately, as the sibling that must take the call down.
+%   `referent_id` is mustBeNonEmpty (did-schema #88
+%   schemas/V_eta/stable/relative_time_reference.json; `relative_to` on the
+%   pre-#88 `relative_reference`), so with #37 armed this body cannot validate.
+%   It is the invented-empty-edge pattern used deliberately, as the sibling
+%   that must take the call down. Only the referent edge is blanked; any other
+%   edge the real emitter wrote (the session edge) is kept.
 primary = realFoldPrimary(b);
 refs = realEpochExtentReferences(1);
 bad = refs{1};
-bad.depends_on = struct('name', {'relative_to'}, 'value', {''});
+blanked = false;
+for k = 1:numel(bad.depends_on)
+    if any(strcmp(char(bad.depends_on(k).name), {'referent_id', 'relative_to'}))
+        if isfield(bad.depends_on, 'value'); bad.depends_on(k).value = ''; end
+        if isfield(bad.depends_on, 'document_id'); bad.depends_on(k).document_id = ''; end
+        blanked = true;
+    end
+end
+assert(blanked, 'the real emitter wrote no referent edge to blank');
 bodies = { primary, bad };
 end
 

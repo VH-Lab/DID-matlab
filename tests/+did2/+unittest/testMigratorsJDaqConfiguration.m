@@ -126,8 +126,11 @@ did2.unittest.helpers.installSchemaPath(testCase, ...
 try
     cache = did2.schema.cache.shared();
     cache.getClass('acquisition_system');
-    cache.getClass('acquisition_metadata_reader');
-    cache.getClass('software');
+    % did-schema #88: `acquisition_metadata_reader` became
+    % `epoch_parameter_reader` (#73 item 65), and `software` is an `entity`
+    % of type software (one entity class).
+    cache.getClass('epoch_parameter_reader');
+    cache.getClass('entity');
 catch err
     assumeFail(testCase, ...
         ['DID_SCHEMA_PATH does not resolve the V_eta daq-configuration ' ...

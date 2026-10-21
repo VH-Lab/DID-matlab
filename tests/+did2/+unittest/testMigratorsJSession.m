@@ -118,24 +118,28 @@ function assumeVEtaSchemas(testCase)
 %   `local_identifier`.
 did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the V_eta session rename validation test');
+% did-schema #88: there is no `session` class. A session is an `entity` of
+% type session, and `local_identifier` is declared on `entity`.
 try
     cache = did2.schema.cache.shared();
-    cls = cache.getClass('session');
+    cls = cache.getClass('entity');
 catch err
     assumeFail(testCase, ...
-        ['DID_SCHEMA_PATH does not resolve the `session` class (' ...
+        ['DID_SCHEMA_PATH does not resolve the `entity` class (' ...
          err.message ').']);
     return;
 end
 names = {};
 if isprop(cls, 'fields') || isfield(cls, 'fields')
-    for k = 1:numel(cls.fields)
-        names{end+1} = cls.fields(k).name; %#ok<AGROW>
+    fs = cls.fields;
+    if isstruct(fs); fs = num2cell(fs); end   % jsondecode gives a cell for mixed keys
+    for k = 1:numel(fs)
+        names{end+1} = char(fs{k}.name); %#ok<AGROW>
     end
 end
 if ~any(strcmp(names, 'local_identifier'))
     assumeFail(testCase, ...
-        ['the resolved `session` class declares no `local_identifier`; ' ...
+        ['the resolved `entity` class declares no `local_identifier`; ' ...
          'DID_SCHEMA_PATH points at a pre-rename V_eta build.']);
 end
 end
