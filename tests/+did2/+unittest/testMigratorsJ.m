@@ -3519,6 +3519,9 @@ verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_8');
 % to assert and none is invented.
 sbod = out{find(strcmp(names, 'opaque_body'), 1)};
 verifyEqual(testCase, depValue(sbod, 'owner_id'), obs.base.id);   % == 'jc_1'
+% data_body AMENDMENT 5: the value is in the opaque body; no data_type (opaque)
+verifyTrue(testCase, logical(obs.value.data_body));
+verifyFalse(testCase, isfield(obs.value, 'data_type') && ~isempty(obs.value.data_type));
 verifyEqual(testCase, sbod.data_body.format.node, 'EDAM:format_2333');
 verifyTrue(testCase, contains(sbod.data_body.description, 'd41d8cd9'));   % MD5 noted
 verifyEqual(testCase, sbod.files.file_list{1}, 'clusters.mat');

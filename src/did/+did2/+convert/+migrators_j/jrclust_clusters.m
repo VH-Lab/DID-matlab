@@ -73,14 +73,17 @@ obsId     = baseField(preBody, 'id', did.ido.unique_id());
 % did-schema #88: built through did2.build. The cluster assignment is a
 % `count` observation of the recording element; its value is the JRCLUST
 % results file, an opaque_body (a binary file, not a sampled array: #88's
-% sampled_body requires keys and this file states none). `data_body` is not
-% set on the statement (see jSorterOutput).
+% sampled_body requires keys and this file states none). `data_body` IS true
+% (did-schema data_body AMENDMENT 5, rule `value_inline_or_body`: no inline
+% value, so the value is in data bodies) and no `data_type` is given (Jess
+% Haley, 2026-10-21: an opaque_body's `format` term is its encoding). See
+% jSorterOutput.
 anchor = jSessionAnchor(preBody, 'during');
 [software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
 swOpt = {};
 if ~isempty(swId); swOpt = {'SoftwareId', swId}; end
 obs = jStatement(preBody, 'count_observation', subjectId, ...
-    jLabel('spike cluster assignment'), [], ...
+    jLabel('spike cluster assignment'), [], 'DataBody', true, ...
     'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', obsId);
 md5 = jGetCharAny(blk, {'res_mat_md5_checksum', 'res_mat_MD5_checksum'});
 o = jOpts(preBody);
