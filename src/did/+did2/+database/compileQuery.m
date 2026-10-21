@@ -426,6 +426,11 @@ if ischar(target) || (isstring(target) && isscalar(target))
     existsSQL = sprintf(['EXISTS (SELECT 1 %s json_each(%s) jm ' ...
         'WHERE jm.type = ''text'' AND jm.value = ?)'], joinSQL, src);
     params = {char(target)};
+    if isempty(params{1})
+        % mksqlite binds an empty char as NULL: write it into the SQL
+        existsSQL = strrep(existsSQL, 'jm.value = ?', 'jm.value = ''''');
+        params = {};
+    end
     exact = pathExact;
 elseif (isnumeric(target) || islogical(target)) && isscalar(target)
     src = sprintf(['CASE %s WHEN ''array'' THEN %s ' ...
@@ -480,7 +485,12 @@ for k = 1:numel(subNames)
     subExpr = sprintf('json_extract(%s, ''%s'')', elementRoot('je'), jsonPath(sn));
     clauses{k} = sprintf('%s = ?', subExpr);
     params{k}  = char(targets{k});
+    if isempty(params{k})
+        % mksqlite binds an empty char as NULL: write it into the SQL
+        clauses{k} = sprintf('%s = ''''', subExpr);
+    end
 end
+params = params(~cellfun(@isempty, params));
 inner = sprintf('SELECT 1 FROM json_each(%s) je WHERE %s', ...
     starSource('body', arrayPath), strjoin(clauses, ' AND '));
 existsSQL = sprintf('EXISTS (%s)', inner);
@@ -687,6 +697,12 @@ switch op
     case 'exact_string'
         predicate = sprintf('%s = ?', valueExpr);
         params = bindParam(target);
+        if isText && strlength(string(target)) == 0
+            % mksqlite binds an empty char as NULL, and `= NULL` is never
+            % true: an empty text is written into the SQL instead
+            predicate = sprintf('%s = ''''', valueExpr);
+            params = {};
+        end
         if isText && ~strcmp(typeExpr, 'NUMCOL')
             % A text target equals only a text value: SQLite does not
             % equate 5 and '5' -- except in a REAL/INTEGER column, whose
@@ -698,6 +714,10 @@ switch op
         % LOWER on both sides; portable across mksqlite without ICU.
         predicate = sprintf('LOWER(%s) = LOWER(?)', valueExpr);
         params = bindParam(target);
+        if isText && strlength(string(target)) == 0
+            predicate = sprintf('LOWER(%s) = ''''', valueExpr);   % as exact_string
+            params = {};
+        end
         if isText
             % LOWER folds ASCII only, a subset of the evaluator's strcmpi
             [exactPred, exactParams] = guarded(textGuard(typeExpr), predicate, params);
@@ -724,6 +744,10 @@ switch op
         else
             predicate = [valueExpr ' LIKE ? ESCAPE ''\'''];   % not sprintf: it reads \ as an escape
             params = {did2.query.wildcardToLike(target)};
+            if isempty(params{1})
+                predicate = [valueExpr ' = '''''];   % an empty pattern: see exact_string
+                params = {};
+            end
             if isText && strlength(string(target)) > 0
                 [exactPred, exactParams] = guarded(textGuard(typeExpr), predicate, params);
             end
