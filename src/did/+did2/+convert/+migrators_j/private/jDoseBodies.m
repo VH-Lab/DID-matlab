@@ -16,8 +16,9 @@ function [docs, formulationId] = jDoseBodies(preBody, chemicals)
 %   one, is the ingredient entry's `concentration` with `source_value` (and
 %   `source_unit` as a term, jSourceUnit) and NO canonical value: the v1
 %   treatment documents state no unit the canonical could be computed from.
-%   A substance with no amount gets an empty ingredient entry (every field of
-%   an entry is optional; the entry must exist, one per edge).
+%   A substance with no amount gets `concentration.source_value` = NaN: the
+%   amount is unrecorded, and an all-empty entry would leave the formulation's
+%   `value` blank, which value_inline_or_body refuses.
 %
 %   The formulation is what a DOSE names (`formulation_id`) and what an
 %   IMMERSION is valued by (`value_id`), so jTreatmentBodies uses it for both.
@@ -46,6 +47,13 @@ for k = 1:numel(chemicals)
             conc.source_unit = jSourceUnit(c.source_unit);
         end
         e.concentration = conc;
+    else
+        % The source gave no amount for this ingredient. An unrecorded amount
+        % is NaN in its quantity (Jess Haley, 2026-10-21), and an entry with
+        % nothing in it is a blank formulation `value`, which the value rule
+        % (value_inline_or_body, data_body AMENDMENT 5) refuses: a
+        % formulation carries its ingredients inline.
+        e.concentration = struct('source_value', NaN);
     end
     entries{k} = e;
 end

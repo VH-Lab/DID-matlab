@@ -602,6 +602,9 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(site), 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 % a body site makes it a dose; no amount recorded -> NaN; the route is known
 verifyTrue(testCase, isnan(out.migrated{1}.get('dose.value').volume.liters));
+% the formulation still carries its ingredient inline (NaN concentration)
+fT = doseChainJ(out.migrated, out.migrated{1});
+verifyTrue(testCase, isnan(fT.get('formulation.value').ingredients(1).concentration.source_value));
 verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
 end
 
@@ -728,9 +731,11 @@ verifyEqual(testCase, a.grams_per_gram, 0.25e-6, 'AbsTol', 1e-15);
 verifyEqual(testCase, a.source_unit.node, 'SNOMED:396163008');
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'alprazolam');
+% the per-body-mass amount is the dose's, not the ingredient's concentration:
+% the ingredient's own amount is unrecorded, NaN (a blank entry would leave the
+% formulation's value empty, which value_inline_or_body refuses)
 e = f.get('formulation.value').ingredients(1);
-verifyFalse(testCase, isstruct(e) && isfield(e, 'concentration') && ~isempty(e.concentration), ...
-    'a per-body-mass amount is the dose''s, not the ingredient''s concentration');
+verifyTrue(testCase, isnan(e.concentration.source_value));
 site = firstOfClassJ(out.migrated, 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'SNOMED:783351009');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
