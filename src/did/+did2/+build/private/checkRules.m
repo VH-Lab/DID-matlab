@@ -105,6 +105,24 @@ for c = 1:numel(chain)
                 end
             case 'end_consistent'
                 endConsistent(findField(doc, blocks, 'value'), ruleName, className);
+            case 'value_inline_or_body'
+                % did-schema data_body AMENDMENT 5 (Jess Haley, 2026-10-21;
+                % decided, not signed): a value is inline (`value` filled) or
+                % in data bodies (`data_body` true), never neither. It
+                % replaces the required `value` of term, date, logical,
+                % polynomial, model_fit, tuning_curve, contrast_sensitivity,
+                % harmonic_component and receptive_field. A statement whose
+                % value is in a shared standalone document (a non-empty
+                % `value_id` edge) also passes: did-schema statement.json
+                % says its own value is then empty. Whether the rule meant
+                % to cover that case is an OPEN question, not decided here.
+                if ~isTrue(findField(doc, blocks, 'data_body')) ...
+                        && isBlankValue(findField(doc, blocks, 'value')) ...
+                        && ~hasEdge(doc, 'value_id')
+                    violated(ruleName, className, ...
+                        ['`value` is empty and `data_body` is not true: the ' ...
+                         'value is neither inline nor in data bodies.']);
+                end
             case 'ingredients_or_product'
                 v = findField(doc, blocks, 'value');
                 hasIngredients = isstruct(v) && isfield(v, 'ingredients') && ~isAbsent(v.ingredients);
@@ -462,6 +480,44 @@ end
 
 function tf = isTrue(v)
 tf = ~isempty(v) && (islogical(v) || isnumeric(v)) && all(v(:));
+end
+
+function tf = isBlankValue(v)
+% Nothing filled at any depth: absent, or a struct / cell whose every leaf is
+% blank ({node: '', name: ''} is a blank term). false and 0 are values.
+if iscell(v)
+    tf = all(cellfun(@isBlankValue, v));
+elseif isstruct(v)
+    tf = true;
+    names = fieldnames(v);
+    for e = 1:numel(v)
+        for n = 1:numel(names)
+            if ~isBlankValue(v(e).(names{n}))
+                tf = false;
+                return;
+            end
+        end
+    end
+else
+    tf = isAbsent(v);
+end
+end
+
+function tf = hasEdge(doc, name)
+tf = false;
+if ~isfield(doc, 'depends_on') || isempty(doc.depends_on)
+    return;
+end
+for k = 1:numel(doc.depends_on)
+    d = doc.depends_on(k);
+    if iscell(doc.depends_on)
+        d = doc.depends_on{k};
+    end
+    if strcmp(char(d.name), name) && isfield(d, 'value') && ~isAbsent(d.value)
+        tf = true;
+        return;
+    end
+end
 end
 
 function violated(ruleName, where, message)

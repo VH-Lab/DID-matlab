@@ -470,6 +470,48 @@ verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), '
     [], 'DataBody', true, common{:}), 'did2:build:ruleViolated');
 end
 
+function testValueInlineOrBody(testCase)
+% did-schema rule `value_inline_or_body` on `value` (data_body AMENDMENT 5,
+% Jess Haley, 2026-10-21; decided, not signed): a value is inline or in data
+% bodies, never neither. It replaces the required `value` of nine classes.
+if ~valueRuleDeclared()
+    assumeFail(testCase, ['the loaded schema''s `value` does not declare ' ...
+        '`value_inline_or_body` (did-schema before 697427d)']);
+end
+sid = testCase.TestData.sid;
+common = {'TimeReferenceIds', {newId()}, 'SessionId', sid};
+% neither inline nor in bodies: refused
+verifyError(testCase, @() did2.build.statement('voltage_observation', newId(), ...
+    'voltage', [], common{:}), 'did2:build:ruleViolated');
+% in bodies, no inline value: builds
+doc = did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
+    'DataBody', true, 'DatumType', did2.build.datumType('int16'), common{:});
+verifyEqual(testCase, doc.document_class.class_name, leafSpec('voltage_observation'));
+% inline: builds
+did2.build.statement('voltage_observation', newId(), 'voltage', ...
+    did2.build.valueCell('voltage', 0.01), common{:});
+% a shared standalone value (value_id): statement.json says the statement's
+% own value is then empty. Accepted; whether the rule meant to cover it is
+% an open question (see checkRules.m).
+did2.build.statement('voltage_observation', newId(), 'voltage', [], ...
+    'ValueId', newId(), common{:});
+end
+
+function tf = valueRuleDeclared()
+tf = false;
+c = did2.schema.cache.shared().getClass('value');
+if ~isfield(c, 'rules') || isempty(c.rules)
+    return;
+end
+r = c.rules;
+if iscell(r)
+    names = cellfun(@(x) char(x.name), r, 'UniformOutput', false);
+else
+    names = {r.name};
+end
+tf = any(strcmp(names, 'value_inline_or_body'));
+end
+
 % ===================== method (did-schema #88, 2026-10-21) ====================
 
 function testStatementWritesOneMethodBlock(testCase)
