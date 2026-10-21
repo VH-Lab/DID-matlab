@@ -22,6 +22,8 @@ function [docs, route] = jTreatmentBodies(preBody, variable, chemicals, location
 %                  report (did2.convert.reportNote).
 %   A dose whose rows give two DIFFERENT amounts of one kind keeps the first
 %   and leaves a `dose_amount_conflict` note per other (jDoseValue).
+%   A vehicle row's amount per body mass (saline `1 mg/kg`) is not an amount:
+%   an `amount_placeholder` note per row (jDoseValue).
 %
 %   Options:
 %     'AlwaysDose'  route as a dose whatever the location, never noted as
@@ -69,7 +71,14 @@ switch route
             variable, [], 'TimeReferenceIds', {anchorId}, 'ValueId', formulationId, ...
             'Id', id, extra{:}, 'ValueKind', 'formulation');
     otherwise
-        [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals);
+        [value, chemicals, conflicts, ingredientRows, placeholders] = jDoseValue(chemicals);
+        % a vehicle's per-body-mass number (Hunsberger saline `1 mg/kg`) is a
+        % placeholder, not an amount: reported, not written (Jess Haley,
+        % 2026-10-21 [dose per ingredient])
+        for k = 1:numel(placeholders)
+            did2.convert.reportNote('amount_placeholder', ...
+                char(preBody.document_class.class_name), id, placeholders{k});
+        end
         % two rows of one amount kind that disagree: the first is the dose's,
         % the rest are reported (Jess Haley, 2026-10-21, "a")
         for k = 1:numel(conflicts)

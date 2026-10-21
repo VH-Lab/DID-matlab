@@ -850,6 +850,37 @@ verifyEqual(testCase, site.get('term.value').node, 'SNOMED:783351009');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
+function testSalinePerBodyMassIsAPlaceholderNotAnAmount(testCase)
+% Hunsberger's control group is written `saline, 1 mg/kg` (EFO:0002677,
+% +hunsberger/TreatmentCreator.m): the drug group's per-body-mass number copied
+% onto a vehicle. It is the amount of NO active ingredient (Jess Haley,
+% 2026-10-21 [dose per ingredient]), so it is not an ingredient amount and not
+% a concentration: the dose's volume is NaN, there is no ingredient entry or
+% ingredient_id edge, and the migration report carries `amount_placeholder`.
+v1 = treatmentDrugDoc('td_saline', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nEFO:0002677,saline,1,SNOMED:396163008,mg/kg'), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+dv = d.get('dose.value');
+verifyTrue(testCase, isnan(dv.volume.liters), 'the injected volume is unrecorded');
+verifyFalse(testCase, isfield(dv, 'ingredients') && ~isempty(dv.ingredients), ...
+    'a vehicle''s placeholder is not an ingredient amount');
+verifyFalse(testCase, isfield(dv, 'amount_per_body_mass') && ~isempty(dv.amount_per_body_mass), ...
+    'nor the dose''s own amount per body mass');
+verifyEmpty(testCase, depVal(d, 'ingredient_id'));
+f = doseChainJ(out.migrated, d);
+e = f.get('formulation.value').ingredients(1);
+verifyTrue(testCase, isnan(e.concentration.source_value), 'nor a concentration');
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'amount_placeholder'), 'the placeholder was not reported');
+verifyEqual(testCase, notes.amount_placeholder.count, 1);
+verifyEqual(testCase, notes.amount_placeholder.ids, {'td_saline'});
+verifyEqual(testCase, notes.amount_placeholder.details, {'saline: 1 mg/kg'});
+end
+
 function testEachAmountRowFillsItsOwnDoseSlot(testCase)
 % Jess Haley, 2026-10-21 ("a"): when a treatment has more than one amount row,
 % EACH amount goes in its matching dose slot -- not only when exactly one row
