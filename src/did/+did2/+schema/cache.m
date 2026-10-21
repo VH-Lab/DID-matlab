@@ -150,6 +150,7 @@ classdef cache < handle
         loadedClasses
         curieRegistry struct = struct()
         termRegistry struct = struct()
+        bindingRegistry struct = struct()
     end
 
     properties (Access = private)
@@ -2255,6 +2256,12 @@ classdef cache < handle
             termFile = fullfile(obj.schemaPath, 'term_registry_meta.json');
             if isfile(termFile)
                 obj.termRegistry = jsondecode(fileread(termFile));
+            end
+            % the binding registry: a variable's closed value list
+            % (`values`, Jess Haley 2026-10-21; did2.schema.valueInSet)
+            bindingFile = fullfile(obj.schemaPath, 'binding_registry_meta.json');
+            if isfile(bindingFile)
+                obj.bindingRegistry = jsondecode(fileread(bindingFile));
             end
         end
 

@@ -80,11 +80,11 @@ function testPyramidBindsVariableToGeneExpression(testCase)
 % The `variable` binding was signed on the same DID-schema commit that
 % landed the schemas (71298fd; binding_registry_meta.json entry: `class:
 % spatial_gene_expression_pyramid`, `variable.node: NCIT:C16608`,
-% `variable.name: gene expression`). The migrator writes exactly that.
+% `variable.name: Gene Expression`, the term registry's spelling since 2026-10-21). The migrator writes exactly that.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
 pyr = pick(out, 'spatial_gene_expression_pyramid');
 verifyEqual(testCase, pyr.subject_statement.variable.node, 'NCIT:C16608');
-verifyEqual(testCase, pyr.subject_statement.variable.name, 'gene expression');
+verifyEqual(testCase, pyr.subject_statement.variable.name, 'Gene Expression');
 end
 
 function testPyramidCarriesTimeReferenceEdgeAtTheAnchor(testCase)

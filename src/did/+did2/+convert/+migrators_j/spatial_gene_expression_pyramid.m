@@ -3,7 +3,7 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %   spatialGeneExpressionPyramid -> V_eta spatial_gene_expression_pyramid
 %   (⊂ [base, gene_expression, subject_observation]) + the shared session
 %   anchor. Carries the observation direction: `variable` bound to
-%   NCIT:C16608 "gene expression" per the DID-schema binding registry;
+%   NCIT:C16608 "Gene Expression" per the DID-schema binding registry;
 %   `subject_id` carried from v1 depends_on onto the inherited
 %   subject_statement slot; `time_reference_1` pointing at a
 %   session_relative_reference `during` anchor (the smallest legitimate
@@ -29,7 +29,7 @@ function bodies = spatial_gene_expression_pyramid(preBody)
 %   moves from the class's own declaration to the inherited slot. The
 %   `variable` binding was landed by the same DID-schema commit
 %   (71298fd, schemas/V_eta/stable/binding_registry_meta.json) --
-%   {node: "NCIT:C16608", name: "gene expression"} bound to
+%   {node: "NCIT:C16608", name: "Gene Expression"} bound to
 %   `spatial_gene_expression_pyramid`. Scope: DID-schema OPEN_WORK
 %   #122 / #123. Row #124 (corpus proof) is DEFERRED -- none of the 6
 %   target corpora holds this class.
@@ -146,7 +146,7 @@ pyramid.document_class.schema_version = TV;
 % registry entry that made it callable was signed on the same commit
 % that landed the schemas.
 pyramid.subject_statement = struct( ...
-    'variable',     jOntologyTerm('NCIT:C16608', 'gene expression'), ...
+    'variable',     jOntologyTerm('NCIT:C16608', 'Gene Expression'), ...
     'storage_mode', 'inline');
 
 % subject_interaction (inherited): time_reference_# is carried on the
