@@ -107,8 +107,14 @@ epochStr = getCharField(getBlock(preBody, 'epochid'), 'epochid');
 epochClk = getCharField(getBlock(preBody, 'epochclocktimes'), 'clocktype');
 epochDocId = jEpochDocId(preBody);
 if ~isempty(epochStr) && isempty(epochDocId)
-    bodies = {preBody};
-    return;
+    % DEFER (the stimulus_bath pattern): the #88 pyraview tombstone does not
+    % declare the v1 `epochclocktimes` block, so the document cannot wait in
+    % the batch as a passthrough. It waits in the quarantine instead, and
+    % did2.convert.epochMint folds it once the epoch entity exists.
+    error('did2:convert:needsEpochContext', ...
+        ['pyraview "%s" names epoch "%s"; its time anchor is the epoch ' ...
+         'entity epochMint mints, so it is deferred to that pass.'], ...
+        char(preBody.base.id), epochStr);
 end
 epochSpan = numVec(getField(getBlock(preBody, 'epochclocktimes'), 't0_t1'));
 epochDur  = NaN;

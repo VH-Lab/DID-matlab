@@ -4228,33 +4228,45 @@ verifyError(testCase, @() did2.convert.migrators_j.spike_clusters(body), ...
 end
 
 function testFitcurveFoldsToResidualScore(testCase)
-% #9 (scalar, pragmatic): fitcurve -> a fit-residual score_observation (method =
-% the fit equation). 1->2. fit_parameters deferred.
-%
-% Fixture built from the NDI TEMPLATE, not from our schema. fit_equation and
-% fit_sse are what the template actually carries; the previous fixture used
-% fit_function and goodness_of_fit, which have never existed in NDI's history
-% (0 commits, against 7 for the real names) and so matched nothing real.
-% SSE is unbounded and LOWER IS BETTER, so the value is labelled as a residual
-% rather than a 0..1 "goodness" score -- see the migrator header.
+% did-schema #88 (#73 review item 68): a fit is a `model_fit_calculation`, its
+% value a `model_fit` composite {model, equation, coefficients, goodness}, NOT
+% a residual score_observation. A calculation REQUIRES an operating system, so
+% the fold happens only for a source whose `app` block names one; this fixture
+% (the NDI template's fields plus an element_id and an app block) folds, and
+% the one below without an app block passes through.
+body = fitcurveBody('fc_1', 'sub_9');
+body.app = struct('name', 'ndi.fit', 'version', '1.0', 'os', 'GLNXA64', ...
+    'os_version', '6.1', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
+out = did2.convert.migrators_j.fitcurve(body);
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(names, 'model_fit_calculation')), strjoin(names, ', '));
+calc = out{find(strcmp(names, 'model_fit_calculation'), 1)};
+verifyEqual(testCase, calc.base.id, 'fc_1', 'id preserved');
+verifyEqual(testCase, depValue(calc, 'entity_id'), 'sub_9');
+verifyNotEmpty(testCase, depValue(calc, 'operating_system_id'));
+verifyEqual(testCase, calc.model_fit.value.equation, 'gaussian');
+verifyEqual(testCase, calc.model_fit.value.goodness.sse, 12.5, 'AbsTol', 1e-9);
+end
+
+function testFitcurveWithNoOperatingSystemPassesThrough(testCase)
+% The same document with no `app` block: #88 cannot state a calculation that
+% names no operating system, and one is never invented, so the v1 document
+% passes through unchanged (Jess Haley, 2026-10-21).
+out = did2.convert.migrators_j.fitcurve(fitcurveBody('fc_1', 'sub_9'));
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'fitcurve');
+verifyEqual(testCase, out{1}.fitcurve.fit_sse, 12.5, 'AbsTol', 1e-9);
+end
+
+function body = fitcurveBody(id, elementId)
+% Built from the NDI TEMPLATE: fit_equation and fit_sse are what it carries.
 body = struct();
 body.document_class = struct('class_name', 'fitcurve', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
-body.depends_on = struct('name', {'element_id'}, 'value', {'sub_9'});
-body.base = struct('id', 'fc_1', 'session_id', 'sess_09', 'name', 'fc', ...
+body.depends_on = struct('name', {'element_id'}, 'value', {elementId});
+body.base = struct('id', id, 'session_id', 'sess_09', 'name', 'fc', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.fitcurve = struct('fit_equation', 'gaussian', 'fit_sse', 12.5);
-out = did2.convert.migrators_j.fitcurve(body);
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'score_observation')));
-obs = out{find(strcmp(names, 'score_observation'), 1)};
-verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_9');
-verifyEqual(testCase, obs.score.value.value, 12.5, 'AbsTol', 1e-9);
-verifyEqual(testCase, obs.interaction.method.term.name, 'gaussian');
-verifyEqual(testCase, obs.statement.variable.name, 'residual sum of squares');
-% the false 0..1 bounds must NOT be asserted on an unbounded residual
-verifyFalse(testCase, isfield(obs.score.value, 'scale_min'));
-verifyFalse(testCase, isfield(obs.score.value, 'scale_max'));
 end
 
 function testFitcurveWithNoSubjectPassesThroughInsteadOfObservingNobody(testCase)
@@ -4314,9 +4326,9 @@ verifyEqual(testCase, out{1}.base.id, 'fc_3');
 end
 
 function testVmspikefitFoldsToResidualScore(testCase)
-% Fixture built from the NDI template. r_squared has never existed on
-% vmspikefit; fit_sse has. r^2 is not recoverable here -- the template ships no
-% data field -- so the residual is reported as a residual, not relabelled.
+% did-schema #88: as fitcurve -- a model_fit_calculation when the source names
+% an operating system, a passthrough when it does not (the NDI template ships
+% no app block, so the passthrough is the expected case).
 body = struct();
 body.document_class = struct('class_name', 'vmspikefit', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -4325,13 +4337,14 @@ body.base = struct('id', 'vf_1', 'session_id', 'sess_09', 'name', 'vf', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.vmspikefit = struct('fit_equation', 'exp2', 'fit_sse', 3.25);
 out = did2.convert.migrators_j.vmspikefit(body);
+verifyEqual(testCase, numel(out), 1);
+verifyEqual(testCase, out{1}.document_class.class_name, 'vmspikefit');
+body.app = struct('name', 'vm', 'version', '1', 'os', 'GLNXA64');
+out = did2.convert.migrators_j.vmspikefit(body);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
-obs = out{find(strcmp(names, 'score_observation'), 1)};
-verifyEqual(testCase, obs.score.value.value, 3.25, 'AbsTol', 1e-9);
-verifyEqual(testCase, obs.interaction.method.term.name, 'exp2');
-verifyEqual(testCase, obs.statement.variable.name, 'residual sum of squares');
-verifyFalse(testCase, isfield(obs.score.value, 'scale_min'));
-verifyFalse(testCase, isfield(obs.score.value, 'scale_max'));
+calc = out{find(strcmp(names, 'model_fit_calculation'), 1)};
+verifyEqual(testCase, calc.model_fit.value.equation, 'exp2');
+verifyEqual(testCase, calc.model_fit.value.goodness.sse, 3.25, 'AbsTol', 1e-9);
 end
 
 function body = simpleCalcDoc()

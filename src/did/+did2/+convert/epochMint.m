@@ -515,6 +515,9 @@ report = struct( ...
     'pyraview_refused_unsafe_output',      0, ...
     'pyraview_folds_emitted',              0, ...
     'pyraview_folds_withheld',             0, ...
+    'pyraview_deferred_seen',              0, ...
+    'pyraview_deferred_resolved',          0, ...
+    'pyraview_deferred_unresolved',        0, ...
     'syncrule_already_folded',             0, ...
     'syncrule_edges_stamped',              0, ...
     'syncrule_folds_emitted',              0, ...
@@ -1614,6 +1617,7 @@ if isempty(minted) && isempty(changedIdx)
     % so rather than reading 0 dropped over an unstated denominator.
     report.arming_bodies_dropped = report.arming_bodies_offered;
     report.epoch_index_report = edgeIndex.report;
+    [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
     result.epoch_mint = report;
     return;
 end
@@ -1830,7 +1834,64 @@ result.summary = recountSummary(result);
 % `schema_lookups_unavailable` (no cache at all) and `schema_lookups_failed`
 % (the chain lookup threw) are different problems with different owners.
 report.epoch_index_report = edgeIndex.report;
+[result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
 result.epoch_mint = report;
+end
+
+function [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options)
+%RESOLVEDEFERREDPYRAVIEWS The pyraviews pass 1 DEFERRED, folded now.
+%   did-schema #88: a pyraview's v1 tombstone does not declare the
+%   `epochclocktimes` block every v1 pyraview carries, so a pyraview cannot
+%   pass through pass 1 and wait for the arming loop above. Instead
+%   +migrators_j/pyraview DEFERS (error did2:convert:needsEpochContext, the
+%   stimulus_bath pattern), the document lands in the quarantine with its
+%   original body, and this stage -- once the epochs exist -- stamps `epoch_id`
+%   onto the v1 body and runs it through v1_to_v2 again. A resolved deferral
+%   leaves the quarantine; an unresolvable one stays there, counted.
+if ~isfield(result, 'quarantine') || isempty(result.quarantine)
+    return;
+end
+q = result.quarantine;
+keep = true(1, numel(q));
+stamped = {};
+for k = 1:numel(q)
+    if ~isfield(q(k), 'class_name') || ~strcmp(q(k).class_name, 'pyraview') ...
+            || ~isfield(q(k), 'identifier') ...
+            || ~strcmp(q(k).identifier, 'did2:convert:needsEpochContext')
+        continue;
+    end
+    report.pyraview_deferred_seen = report.pyraview_deferred_seen + 1;
+    try
+        v1 = jsondecode(q(k).original_body);
+    catch
+        report.pyraview_deferred_unresolved = report.pyraview_deferred_unresolved + 1;
+        continue;
+    end
+    es = '';
+    if isfield(v1, 'epochid') && isstruct(v1.epochid) && isfield(v1.epochid, 'epochid')
+        es = char(v1.epochid.epochid);
+    end
+    sid = '';
+    if isfield(v1, 'base') && isstruct(v1.base) && isfield(v1.base, 'session_id')
+        sid = char(v1.base.session_id);
+    end
+    key = pairKey(sid, es);
+    if isempty(es) || ~isKey(epochIdByKey, key)
+        report.pyraview_deferred_unresolved = report.pyraview_deferred_unresolved + 1;
+        continue;
+    end
+    stamped{end+1} = setDep(v1, 'epoch_id', epochIdByKey(key)); %#ok<AGROW>
+    keep(k) = false;
+end
+if isempty(stamped)
+    return;
+end
+out = did2.convert.v1_to_v2(stamped, 'Validate', options.Validate, ...
+    'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion);
+report.pyraview_deferred_resolved = numel(stamped) - numel(out.quarantine);
+result.migrated = [result.migrated, out.migrated];
+result.quarantine = [q(keep), out.quarantine];
+result.summary = recountSummary(result);
 end
 
 % ===================== builders ========================================

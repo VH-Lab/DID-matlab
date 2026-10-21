@@ -463,6 +463,12 @@ POST_PASSES = [
         ("pyraview_refused_no_epoch_document", "  pyraview: no epoch document for the pair"),
         ("pyraview_refused_migrator_declined", "  pyraview: migrator declined"),
         ("pyraview_refused_unsafe_output", "  pyraview: refused, unsafe output"),
+        # #88: a pyraview cannot pass through pass 1 (its tombstone lacks the v1
+        # epochclocktimes block), so it DEFERS into the quarantine and is folded
+        # here; an unresolved deferral stays quarantined and fails Bar-1 loudly.
+        ("pyraview_deferred_seen", "pyraview DEFERRED from pass 1 (in the quarantine)"),
+        ("pyraview_deferred_resolved", "  deferred pyraview FOLDED (left the quarantine)"),
+        ("pyraview_deferred_unresolved", "  deferred pyraview UNRESOLVED (stays quarantined)"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
         ("documents_inspected", "documents inspected"),
