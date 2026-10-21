@@ -449,9 +449,25 @@ anchorId = anchorBody.base.id;
 bodies = {anchorBody};
 ids = {};
 entries = {};
+props = struct();
 for i = 1:numel(mixture)
     chem = mixture(i).chemical;
     if isempty(chem.node) && isempty(chem.name)
+        continue;
+    end
+    a = mixture(i).amount;
+    unitTerm = did2.convert.registeredTerm(a.source_unit.node, a.source_unit.name);
+    % A WHOLE-MIXTURE PROPERTY is not an ingredient: the pH row and the
+    % osmolarity row land on the formulation's own `ph` / `osmolarity`, which
+    % #88 declares for exactly these (the source writes them as table rows).
+    if strcmpi(chem.name, 'pH') && isfinite(a.source_value)
+        props.ph = struct('ph', a.source_value, 'source_value', a.source_value, ...
+            'source_unit', unitTerm, 'approximate', false);
+        continue;
+    end
+    if any(strcmpi(chem.name, {'osm', 'osmolarity'})) && isfinite(a.source_value)
+        props.osmolarity = struct('source_value', a.source_value, ...
+            'source_unit', unitTerm, 'approximate', false);
         continue;
     end
     sub = did2.convert.registeredTerm(chem.node, chem.name);
@@ -459,21 +475,21 @@ for i = 1:numel(mixture)
     bodies{end+1} = c; %#ok<AGROW>
     ids{end+1} = c.base.id; %#ok<AGROW>
     e = struct();
-    a = mixture(i).amount;
     if isfinite(a.source_value)
-        conc = struct('source_value', a.source_value);
-        if ~isempty(a.source_unit)
-            conc.source_unit = did2.convert.registeredTerm('', a.source_unit);
+        conc = struct('source_value', a.source_value, 'approximate', false);
+        if ~isempty(a.source_unit.node) || ~isempty(a.source_unit.name)
+            conc.source_unit = unitTerm;
+        end
+        if strcmpi(a.source_unit.name, 'Molar')
+            conc.molar = a.source_value;      % the canonical slot, unit computable
         end
         e.concentration = conc;
     end
     entries{end+1} = e; %#ok<AGROW>
 end
-if isempty(ids)
-    error('did2:convert:bathNoChemical', ...
-        'stimulus_bath "%s" names no chemical, so no formulation can say what was given.', bathId);
-end
-f = did2.build.document('formulation', struct('value', struct('ingredients', {entries})), ...
+fv = props;
+fv.ingredients = entries;
+f = did2.build.document('formulation', struct('value', fv), ...
     o{:}, 'Edges', struct('ingredient_id', {ids}));
 bodies{end+1} = f;
 dose = did2.build.statement('dose_manipulation', char(subjectId), variable, [], ...
@@ -517,34 +533,43 @@ end
 end
 
 function mixture = parseMixture(body)
+%PARSEMIXTURE The bath's mixture_table rows, as NDI's writer serialises them:
+%   a CSV with a HEADER row (ontologyName,name,value,ontologyUnit,unitName) and
+%   double-quoted names that may hold commas ("sodium phosphate, monobasic,
+%   anhydrous"). Each row is {chemical {node,name}, amount {source_value,
+%   source_unit {node,name}}}; the header is not a row. (The pre-#88 reader
+%   split on every comma and kept the header, which produced a chemical whose
+%   node was the literal text "ontologyName".)
 mixture = struct('chemical', {}, 'amount', {});
-if isfield(body, 'stimulus_bath') && isstruct(body.stimulus_bath) ...
-        && isfield(body.stimulus_bath, 'mixture_table')
-    raw = body.stimulus_bath.mixture_table;
-    if ischar(raw) || (isstring(raw) && isscalar(raw))
-        lines = strsplit(char(raw), newline);
-        for i = 1:numel(lines)
-            cols = strsplit(strtrim(lines{i}), ',', 'CollapseDelimiters', false);
-            if numel(cols) < 5 || isempty(strtrim(cols{1}))
-                continue;
-            end
-            chemical = struct('node', strtrim(cols{1}), 'name', strtrim(cols{2}));
-            amount = struct('source_value', str2double(cols{3}), ...
-                'source_unit', strtrim(cols{5}), 'approximate', false);
-            mixture(end+1) = struct('chemical', chemical, 'amount', amount); %#ok<AGROW>
-        end
-    end
+if ~(isfield(body, 'stimulus_bath') && isstruct(body.stimulus_bath) ...
+        && isfield(body.stimulus_bath, 'mixture_table'))
+    return;
 end
-if isempty(mixture)
-    mixture(1) = struct( ...
-        'chemical', struct('node', '', 'name', ''), ...
-        'amount', struct('source_value', 0.0, 'source_unit', '', ...
-            'approximate', false));
+raw = body.stimulus_bath.mixture_table;
+if ~(ischar(raw) || (isstring(raw) && isscalar(raw)))
+    return;
+end
+lines = regexp(char(raw), '\r?\n', 'split');
+for i = 1:numel(lines)
+    line = strtrim(lines{i});
+    if isempty(line); continue; end
+    cols = regexp(line, '("([^"]|"")*"|[^,]*)(,|$)', 'tokens');
+    cols = cellfun(@(c) unquote(c{1}), cols, 'UniformOutput', false);
+    if numel(cols) < 5 || isempty(cols{1}); continue; end
+    if strcmpi(cols{1}, 'ontologyName'); continue; end      % the header row
+    chemical = struct('node', cols{1}, 'name', cols{2});
+    amount = struct('source_value', str2double(cols{3}), ...
+        'source_unit', struct('node', cols{4}, 'name', cols{5}), 'approximate', false);
+    mixture(end+1) = struct('chemical', chemical, 'amount', amount); %#ok<AGROW>
 end
 end
 
-% ===================== small helpers =======================================
-
+function t = unquote(t)
+t = strtrim(t);
+if numel(t) >= 2 && t(1) == '"' && t(end) == '"'
+    t = strrep(t(2:end-1), '""', '"');
+end
+end
 function tf = isDeferredBath(qEntry)
 tf = false;
 if isfield(qEntry, 'class_name') && strcmp(qEntry.class_name, 'stimulus_bath')
