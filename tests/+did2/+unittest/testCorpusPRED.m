@@ -44,7 +44,7 @@ testCase.TestData.predDir = '';
 schemaPath = resolveSchemaPath();
 if isempty(schemaPath)
     assumeFail(testCase, ...
-        ['V_delta schemas not found. Set DID_SCHEMA_PATH or check out ', ...
+        ['V_eta schemas not found. Set DID_SCHEMA_PATH or check out ', ...
          'did-schema as a sibling of DID-matlab; skipping PRED corpus test.']);
 end
 setenv('DID_SCHEMA_PATH', schemaPath);
@@ -479,7 +479,7 @@ end
 % did-schema is a sibling of the DID-matlab checkout.
 toolboxDir = did.toolboxdir();
 candidates{end+1} = fullfile(toolboxDir, '..', '..', '..', ...
-    'did-schema', 'schemas', 'V_delta', 'stable'); %#ok<AGROW>
+    'did-schema', 'schemas', 'V_eta', 'stable'); %#ok<AGROW>
 
 p = '';
 for k = 1:numel(candidates)

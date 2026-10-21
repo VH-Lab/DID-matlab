@@ -1604,7 +1604,14 @@ classdef cache < handle
             % three '..'s land at the *sibling* of DID-matlab where a
             % did-schema checkout typically lives. (The previous two
             % '..'s expected did-schema *inside* DID-matlab.)
-            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_delta', 'stable');
+            %
+            % V_eta, not V_delta: did-schema #88 deleted schemas/V_alpha ..
+            % V_zeta (OPEN_WORK #128), so V_eta is the only schema set left.
+            % V_eta spreads its classes over stable/, draft/ and deprecated/;
+            % this fallback reads stable/ only. The CI workflows copy all three
+            % tiers into one directory and set DID_SCHEMA_PATH to it, which
+            % wins over this default (above).
+            p = fullfile(toolboxDir, '..', '..', '..', 'did-schema', 'schemas', 'V_eta', 'stable');
         end
 
         function block = coerceBlock(block, fieldDefs)
