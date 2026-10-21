@@ -64,10 +64,32 @@ assertEqual(testCase, n, 1, sprintf('expected exactly one %s document', classNam
 end
 
 function s = bag(doc)
-%BAG The `other` sub-struct. A local variable rather than a chained
-%   doc.get(...).field -- indexing into a call result is not something to rely
-%   on here, and the intermediate reads better anyway.
-s = doc.get('method_parameters.other');
+%BAG The source's settings, read back as a struct. did-schema #88 has no
+%   `other` bag: every setting is a `method.parameters` entry, a nested field
+%   named with dots ('filter.do filter') and its value in quantity / text /
+%   term / count. This rebuilds the struct the pre-#88 bag held, so a test can
+%   still ask for bag(d).filter.filter_type.
+s = struct();
+list = doc.get('method.parameters');
+if isstruct(list); list = num2cell(list); end
+for k = 1:numel(list)
+    e = list{k};
+    parts = strsplit(char(e.variable.name), '.');
+    parts = cellfun(@(x) matlab.lang.makeValidName(strrep(strtrim(x), ' ', '_')), ...
+        parts, 'UniformOutput', false);
+    if isfield(e, 'quantity') && ~isempty(e.quantity)
+        v = e.quantity.value;
+    elseif isfield(e, 'text') && ~isempty(e.text)
+        v = e.text;
+    elseif isfield(e, 'term') && ~isempty(e.term)
+        v = e.term.name;
+    elseif isfield(e, 'count') && ~isempty(e.count)
+        v = e.count;
+    else
+        v = [];
+    end
+    s = setfield(s, parts{:}, v); %#ok<SFLD>
+end
 end
 
 function v = depValue(doc, name)
@@ -115,7 +137,7 @@ end
 
 function e = paramEntry(testCase, doc, variableName)
 %PARAMENTRY The one `parameter` row whose bound variable is VARIABLENAME.
-list = doc.get('method_parameters.method_parameters');
+list = doc.get('method.parameters');
 for k = 1:numel(list)
     if strcmp(list(k).variable.name, variableName)
         e = list(k);
@@ -130,7 +152,7 @@ e = struct('variable', struct('node', '', 'name', ''), 'source_unit', '', ...
 end
 
 function names = paramVariables(doc)
-list = doc.get('method_parameters.method_parameters');
+list = doc.get('method.parameters');
 names = {};
 for k = 1:numel(list)
     names{end+1} = list(k).variable.name; %#ok<AGROW>
@@ -267,7 +289,7 @@ verifyEqual(testCase, d.get('document_class.schema_version'), 'V_eta');
 verifyEqual(testCase, d.get('base.id'), 'sep_1');
 verifyEqual(testCase, d.get('base.name'), 'default');
 % and again on the declared field that exists for that query
-verifyEqual(testCase, d.get('method_parameters.name'), 'default');
+verifyEqual(testCase, d.get('method.name'), 'default');
 end
 
 function testExtractionEmitsTheFourBoundVariables(testCase)
@@ -276,7 +298,7 @@ function testExtractionEmitsTheFourBoundVariables(testCase)
 % obvious candidate) would be a modelling decision, and only the team makes
 % those. If this list grows, the plan has to have grown first.
 d = onlyClass(testCase, runJ(extractionBody('sep_2', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'waveform window start', ...
     'waveform window duration', 'standard-deviation threshold'}));
@@ -287,9 +309,9 @@ function testExtractionRefractoryPeriodUnifiesWithVmspikeRefract(testCase)
 % vmspikefilteringparameters.refract (0.0025) are two v1 names for ONE concept,
 % and after the fold a query can see that. Asserted here on both sides at once.
 dExtract = onlyClass(testCase, runJ(extractionBody('sep_3', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 dVm = onlyClass(testCase, runJ(vmspikeBody('vm_3', 'sess_A', 'elem_1', 't00001', '')), ...
-    'method_parameters');
+    'method');
 a = paramEntry(testCase, dExtract, 'refractory period');
 b = paramEntry(testCase, dVm, 'refractory period');
 verifyEqual(testCase, a.quantity.value, 0.001, 'AbsTol', 1e-12);
@@ -303,7 +325,7 @@ function testExtractionWaveformWindowIsAnchorPlusExtent(testCase)
 % V_eta. `end` is exactly recoverable (start + duration = 0.001) and is
 % deliberately NOT stored, which is why `waveform window end` must be absent.
 d = onlyClass(testCase, runJ(extractionBody('sep_4', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 st = paramEntry(testCase, d, 'waveform window start');
 du = paramEntry(testCase, d, 'waveform window duration');
 verifyEqual(testCase, st.quantity.value, -0.00045, 'AbsTol', 1e-12);
@@ -323,7 +345,7 @@ function testExtractionSourceUnitIsEmptyBecauseV1RecordsNone(testCase)
 % samples -- but that is the REGISTRY's business, not source provenance.
 % Claiming source_unit 's' would put a unit in the record v1 never recorded.
 d = onlyClass(testCase, runJ(extractionBody('sep_5', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 r = paramEntry(testCase, d, 'refractory period');
 w = paramEntry(testCase, d, 'waveform window start');
 verifyEqual(testCase, r.source_unit, '');
@@ -336,7 +358,7 @@ function testExtractionThresholdSplitsByMethodStandardDeviation(testCase)
 % same quantity; making the dimension depend on a sibling `threshold_method`
 % field is the same mistake as a `unit` field.
 d = onlyClass(testCase, runJ(extractionBody('sep_6', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 e = paramEntry(testCase, d, 'standard-deviation threshold');
 verifyEqual(testCase, e.quantity.value, -4, 'AbsTol', 1e-12);
 verifyEqual(testCase, e.quantity.source_value, '-4');
@@ -353,7 +375,7 @@ function testExtractionThresholdSplitsByMethodAbsolute(testCase)
 v1 = extractionBody('sep_7', 'default', 'sess_A');
 v1.spike_extraction_parameters.threshold_method = 'absolute';
 v1.spike_extraction_parameters.threshold_parameter = -0.05;
-d = onlyClass(testCase, runJ(v1), 'method_parameters');
+d = onlyClass(testCase, runJ(v1), 'method');
 e = paramEntry(testCase, d, 'absolute voltage threshold');
 verifyEqual(testCase, e.quantity.value, -0.05, 'AbsTol', 1e-12);
 verifyFalse(testCase, any(strcmp(paramVariables(d), 'standard-deviation threshold')));
@@ -367,7 +389,7 @@ function testUnknownThresholdMethodIsNotGivenADimension(testCase)
 % assert a quantity it does not know.
 v1 = extractionBody('sep_8', 'default', 'sess_A');
 v1.spike_extraction_parameters.threshold_method = 'median_absolute_deviation';
-d = onlyClass(testCase, runJ(v1), 'method_parameters');
+d = onlyClass(testCase, runJ(v1), 'method');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'waveform window start', 'waveform window duration'}));
 b = bag(d);
@@ -380,7 +402,7 @@ function testExtractionTailIsKeptWholeNotDropped(testCase)
 % allow-list, so a field NDI adds later survives by default. Every one of the
 % eleven fields that is not a bound variable has to be findable here.
 d = onlyClass(testCase, runJ(extractionBody('sep_9', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 b = bag(d);
 verifyEqual(testCase, b.center_range_time, 0.0005, 'AbsTol', 1e-12);
 verifyEqual(testCase, b.overlap, 0.5, 'AbsTol', 1e-12);
@@ -405,7 +427,7 @@ function testExtractionCarriesAnUnknownFieldRatherThanDroppingIt(testCase)
 % the other way.
 v1 = extractionBody('sep_10', 'default', 'sess_A');
 v1.spike_extraction_parameters.some_future_knob = 17;
-d = onlyClass(testCase, runJ(v1), 'method_parameters');
+d = onlyClass(testCase, runJ(v1), 'method');
 b = bag(d);
 verifyEqual(testCase, b.some_future_knob, 17);
 end
@@ -417,7 +439,7 @@ function testExtractionHasNoScopeEdgesAtAll(testCase)
 % dependencies at all, so subject_id / epoch_id / derived_from_id must be
 % ABSENT, not present-and-blank.
 d = onlyClass(testCase, runJ(extractionBody('sep_11', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 names = edgeNames(d);
 verifyFalse(testCase, any(strcmp(names, 'subject_id')));
 verifyFalse(testCase, any(strcmp(names, 'epoch_id')));
@@ -448,7 +470,7 @@ function testExtractionParksTheEnvironmentFieldsRatherThanDroppingThem(testCase)
 % subject_interaction, which method_parameters is not. Parked whole in the bag
 % rather than dropped -- an open question, not a solved one.
 d = onlyClass(testCase, runJ(extractionBody('sep_13', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 b = bag(d);
 env = b.execution_environment;
 verifyEqual(testCase, env.os, 'MACA64');
@@ -483,7 +505,7 @@ out = runJ(modificationBody('sepm_1', 'default', 'sess_A', 'sep_1', 'elem_9', 't
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
 verifyEqual(testCase, d.get('base.id'), 'sepm_1');
-verifyEqual(testCase, d.get('method_parameters.name'), 'default');
+verifyEqual(testCase, d.get('method.name'), 'default');
 verifyEqual(testCase, depValue(d, 'derived_from_id'), 'sep_1');
 verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
@@ -504,7 +526,7 @@ function testModificationParksTheEpochStringInsteadOfInventingAnEdge(testCase)
 % and not pointed at a document that does not exist -- and the string is parked.
 d = onlyClass(testCase, ...
     runJ(modificationBody('sepm_2', 'default', 'sess_A', 'sep_1', 'elem_9', 't00042')), ...
-    'method_parameters');
+    'method');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'epoch_id')));
 b = bag(d);
 verifyEqual(testCase, b.epochid, 't00042');
@@ -514,7 +536,7 @@ function testModificationOmitsLineageWhenTheSourceEdgeIsEmpty(testCase)
 % derived_from_id is optional and must never be written blank. An empty v1
 % extraction_parameters_id means NO edge, not an edge to nowhere.
 v1 = modificationBody('sepm_3', 'default', 'sess_A', '', 'elem_9', 't00042');
-d = onlyClass(testCase, runJ(v1), 'method_parameters');
+d = onlyClass(testCase, runJ(v1), 'method');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'derived_from_id')));
 verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
 end
@@ -530,7 +552,8 @@ function testSortingFoldsWithAnEmptyParameterListAndAFullBag(testCase)
 out = runJ(sortingBody('sp_1', 'default', 'sess_A'));
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
-verifyEmpty(testCase, d.get('method_parameters.method_parameters'));
+% did-schema #88 has no separate bag: the six fields are the method's parameter
+% entries, so the list is NOT empty; they are read back through bag() below.
 b = bag(d);
 verifyEqual(testCase, b.graphical_mode, 1);
 verifyEqual(testCase, b.num_pca_features, 10);
@@ -544,10 +567,10 @@ function testSortingPreservesTheIdAndTheNameSpikesorterQueriesBy(testCase)
 % spike_clusters.sorting_parameters_id points at the id; spikesorter.m:373 looks
 % the protocol up by base.name with exact_string. Both have to survive.
 d = onlyClass(testCase, runJ(sortingBody('sp_2', 'default', 'sess_A')), ...
-    'method_parameters');
+    'method');
 verifyEqual(testCase, d.get('base.id'), 'sp_2');
 verifyEqual(testCase, d.get('base.name'), 'default');
-verifyEqual(testCase, d.get('method_parameters.name'), 'default');
+verifyEqual(testCase, d.get('method.name'), 'default');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'subject_id')));
 end
 
@@ -570,7 +593,7 @@ function testVmspikeThresholdKeepsItsVerbatimStringAndBecomesANumber(testCase)
 % query can compare, quantity.source_value is the string the source wrote, kept
 % whatever the registry later says.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_2', 'sess_A', 'elem_1', 't00001', '')), ...
-    'method_parameters');
+    'method');
 e = paramEntry(testCase, d, 'absolute voltage threshold');
 verifyEqual(testCase, e.quantity.value, 0.030, 'AbsTol', 1e-12);
 verifyEqual(testCase, e.quantity.source_value, '0.030');
@@ -606,7 +629,7 @@ function testVmspikeKeepsSamplingRateRatherThanDroppingIt(testCase)
 % duplicate that does not yet exist. Kept in the bag; raised as an open question
 % rather than decided by a migrator.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_5', 'sess_A', 'elem_1', 't00001', '')), ...
-    'method_parameters');
+    'method');
 b = bag(d);
 verifyEqual(testCase, b.sampling_rate, 0);
 verifyEqual(testCase, b.new_sampling_rate, 0);
@@ -618,7 +641,7 @@ function testVmspikeGroupsItsFilterSettingsIncludingTheRenamedRm60Hz(testCase)
 % spelling is the shape of bug that has bitten this repo repeatedly, so the
 % rename is exercised rather than assumed.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_6', 'sess_A', 'elem_1', 't00001', '')), ...
-    'method_parameters');
+    'method');
 b = bag(d);
 f = b.filter;
 verifyEqual(testCase, f.rm60_hz, 1);
@@ -631,7 +654,7 @@ function testVmspikeParksItsEpochStringToo(testCase)
 % template. Same treatment either way: no `epoch` document exists to point at in
 % pass 1, so the string is parked instead of the edge being invented.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_7', 'sess_A', 'elem_1', 't00099', '')), ...
-    'method_parameters');
+    'method');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'epoch_id')));
 b = bag(d);
 verifyEqual(testCase, b.epochid, 't00099');
@@ -661,11 +684,12 @@ if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
-% 4 method_parameters + 4 software entities
-verifyEqual(testCase, numel(out.migrated), 8);
+% 4 methods + 4 software entities, each with its version assertion (on
+% did-schema #88 a software's version is a text_assertion about the entity)
+verifyEqual(testCase, numel(out.migrated), 12);
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), 'method_parameters')
+    if strcmp(out.migrated{k}.get('document_class.class_name'), 'method')
         n = n + 1;
     end
 end
