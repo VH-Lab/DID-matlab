@@ -544,7 +544,7 @@ POST_PASSES = [
         ("manifests_renamed", "ingestion_manifests renamed (epochfiles_ingested consumed)"),
         ("rename_skipped_no_filenavigator", "  rename SKIPPED: no filenavigator_id (tombstone kept)"),
         ("rename_skipped_no_epoch", "  rename SKIPPED: no resolved epoch (tombstone kept)"),
-        ("rename_quarantined", "  rename QUARANTINED (tombstone kept, Bar-1 fallback)"),
+        ("rename_quarantined", "  rename QUARANTINED (tombstone kept, integrity fallback)"),
         ("fold_quarantined", "QUARANTINED by the fold (observations/anchors)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
