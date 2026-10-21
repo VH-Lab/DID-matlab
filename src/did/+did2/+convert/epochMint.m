@@ -697,8 +697,10 @@ indexRows = struct('session_id', {}, 'local_identifier', {}, ...
 for k = 1:n
     if ~strcmp(rows(k).class_name, 'epoch'); continue; end
     lid = '';
-    if isfield(bodies{k}, 'epoch') && isstruct(bodies{k}.epoch)
-        lid = charField(bodies{k}.epoch, {'local_identifier'});
+    for blk = {'entity', 'epoch'}   % #88: the entity block; `epoch` before
+        if isfield(bodies{k}, blk{1}) && isstruct(bodies{k}.(blk{1})) && isempty(lid)
+            lid = charField(bodies{k}.(blk{1}), {'local_identifier'});
+        end
     end
     if isempty(lid) || isempty(rows(k).doc_id); continue; end
     existingKey = pairKey(rows(k).session_id, lid);
@@ -877,7 +879,7 @@ extraBodies = {};    % bodies 2..N of every armed call, awaiting the re-fold
 extentRefIds = {};
 for m = 1:numel(minted)
     epochBody = minted{m};
-    key = pairKey(epochBody.base.session_id, epochBody.epoch.local_identifier);
+    key = pairKey(did2.schema.cache.sessionIdOf(epochBody), epochBody.entity.local_identifier);
     if ~isKey(clocksByKey, key); continue; end
     sessionDocumentId = depValueOf(epochBody, 'session_id');
     if isempty(sessionDocumentId)
@@ -889,7 +891,7 @@ for m = 1:numel(minted)
         continue;
     end
     [refs, stats] = epochExtentReferences(clocksByKey(key), ...
-        sessionDocumentId, epochBody.base.session_id, creationTime(epochBody));
+        sessionDocumentId, did2.schema.cache.sessionIdOf(epochBody), creationTime(epochBody));
     report.epoch_extent_skipped_no_time = ...
         report.epoch_extent_skipped_no_time + stats.no_time;
     report.epoch_extent_duplicate_clock = ...
@@ -898,8 +900,9 @@ for m = 1:numel(minted)
         report.epoch_extent_conflicting_clock + stats.conflicting;
     if isempty(refs); continue; end
     for r = 1:numel(refs)
-        epochBody = setDep(epochBody, sprintf('time_reference_%d', r), ...
-            refs{r}.base.id);
+        % did-schema #88: one `time_reference_id` edge declared `multiple`,
+        % repeated, not a numbered `time_reference_#` family
+        epochBody = addDep(epochBody, 'time_reference_id', refs{r}.base.id);
         % TWO LISTS, TWO JOBS. `extraBodies` gets the body VALIDATED (it joins
         % rebuildIn); `extentRefIds` gets it EMITTED (the append loop after the
         % mint). Using only the first is what dropped them in 68a1900.
@@ -1725,16 +1728,17 @@ function body = mintEpoch(epochString, sessionId, sessionDocumentId, datestamp)
 %   device needs the daq graph (#59). An edge emitted empty is the defect, not a
 %   placeholder.
 if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
-body = struct();
-body.document_class = struct( ...
-    'class_name',     'epoch', ...
-    'class_version',  '1.0.0', ...
-    'superclasses',   struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-body.depends_on = struct('name', 'session_id', 'value', sessionDocumentId);
-body.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_epoch', 'creation_timestamp', datestamp);
-body.epoch = struct('local_identifier', epochString);
+% did-schema #88: an `entity` of type epoch (the `epoch` class went,
+% V_eta_entity_composition_plan.md sec. 4), its local_identifier the v1 epoch
+% string. Its `session_id` edge names the session entity, whose base.id IS
+% the session id (V_eta_relation_inheritance_plan.md item 4), so
+% SESSIONDOCUMENTID and SESSIONID are the same id on #88.
+body = did2.build.document('entity', ...
+    struct('type', did2.build.term('', 'epoch'), 'local_identifier', epochString), ...
+    'SessionId', sessionId, 'CreationTimestamp', datestamp, 'Validate', false);
+if ~strcmp(sessionDocumentId, sessionId) && ~did2.schema.cache.shared().sessionIdIsEdge()
+    body = setDep(body, 'session_id', sessionDocumentId);
+end
 end
 
 % ===================== the arming path =================================
@@ -1957,10 +1961,48 @@ k = did2.convert.epochIndex.pairKey(sessionId, epochString);
 end
 
 function cn = classNameOf(b)
+%CLASSNAMEOF The class name, except that an `entity` (did-schema #88: one
+%   entity class with a bound type) answers its TYPE ('session', 'epoch',
+%   ...), so the rows below keep comparing on 'session' and 'epoch'. The
+%   standalone `method` (#88; `method_parameters` before) answers
+%   'method_parameters', the name the epoch_id stamping loop looks for.
 cn = '';
 if isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
     cn = char(b.document_class.class_name);
+end
+if strcmp(cn, 'entity') && isfield(b, 'entity') && isstruct(b.entity) ...
+        && isfield(b.entity, 'type')
+    t = b.entity.type;
+    if isstruct(t) && isfield(t, 'name') && ~isempty(t.name)
+        cn = char(t.name);
+    elseif ischar(t) && ~isempty(t)
+        cn = t;
+    end
+elseif strcmp(cn, 'method')
+    cn = 'method_parameters';
+elseif any(strcmp(cn, {'observation', 'assertion', 'manipulation', 'calculation'}))
+    % #88: a statement is its direction plus a value-kind mixin; answer the
+    % leaf name '<kind>_<direction>' the loops below compare on
+    kind = valueKindOf(b, cn);
+    if ~isempty(kind)
+        cn = [kind '_' cn];
+    end
+end
+end
+
+function kind = valueKindOf(b, cn)
+kind = '';
+try
+    sc = b.document_class.superclasses;
+    if isstruct(sc); sc = num2cell(sc); end
+    names = cell(1, numel(sc));
+    for k = 1:numel(sc)
+        if isstruct(sc{k}); names{k} = char(sc{k}.class_name); else; names{k} = char(sc{k}); end
+    end
+    kind = char(did2.schema.cache.shared().documentValueKind(cn, names));
+catch
+    kind = '';
 end
 end
 
@@ -2181,9 +2223,14 @@ for k = 1:n
     if isempty(id); continue; end
     if ~isempty(cn) && ~isKey(classById, id); classById(id) = cn; end
     if ~isKey(bodyById, id) && isstruct(bodies{k}); bodyById(id) = bodies{k}; end
-    if strcmp(cn, 'subject') && isstruct(bodies{k}) ...
-            && isfield(bodies{k}, 'subject') && isstruct(bodies{k}.subject)
-        lid = charField(bodies{k}.subject, {'local_identifier'});
+    subjBlock = '';
+    if isstruct(bodies{k}) && isfield(bodies{k}, 'subject') && isstruct(bodies{k}.subject)
+        subjBlock = 'subject';                       % pre-#73
+    elseif isstruct(bodies{k}) && isfield(bodies{k}, 'entity') && isstruct(bodies{k}.entity)
+        subjBlock = 'entity';                        % did-schema #88
+    end
+    if ~isempty(subjBlock)
+        lid = charField(bodies{k}.(subjBlock), {'local_identifier'});
         if ~isempty(lid)
             if ~isKey(subjectLocalById, id);  subjectLocalById(id) = lid; end
             if ~isKey(subjectIdByLocal, lid); subjectIdByLocal(lid) = id; end
@@ -2202,6 +2249,7 @@ for k = 1:n
     if ~isRecordingObservation(bodies{k}); continue; end
     recSeen = recSeen + 1;
     trId = depValueOf(bodies{k}, 'time_reference_1');
+    if isempty(trId); trId = depValueOf(bodies{k}, 'time_reference_id'); end
     if isempty(trId) || ~isKey(classById, trId)
         recUnresolved = recUnresolved + 1;
     elseif any(strcmp(classById(trId), ...
@@ -2216,6 +2264,7 @@ for k = 1:n
         recSession = recSession + 1;
     end
     subjId = depValueOf(bodies{k}, 'subject_id');
+    if isempty(subjId); subjId = depValueOf(bodies{k}, 'entity_id'); end
     if isempty(subjId) || ~isKey(subjectLocalById, subjId); continue; end
     coveredSubjectSession(pairKey(rows(k).session_id, ...
         subjectLocalById(subjId))) = true;
@@ -2404,6 +2453,7 @@ function tf = referenceIsEpochScoped(refBody, classById)
 tf = false;
 if ~isstruct(refBody); return; end
 target = depValueOf(refBody, 'relative_to');
+if isempty(target); target = depValueOf(refBody, 'referent_id'); end
 if isempty(target); return; end
 tf = isKey(classById, target) && strcmp(classById(target), 'epoch');
 end
@@ -2515,6 +2565,32 @@ if ~isfield(newEntry, 'name'); newEntry.name = name; end
 b.depends_on = [deps(:)', newEntry];
 end
 
+function b = addDep(b, name, value)
+%ADDDEP Append a depends_on entry NAME -> VALUE (an edge declared `multiple`
+%   repeats its name), in the shape the entries already have.
+if ~isfield(b, 'depends_on') || isempty(b.depends_on)
+    b.depends_on = struct('name', name, 'document_id', value);
+    return;
+end
+deps = b.depends_on;
+if iscell(deps)
+    deps{end+1} = struct('name', name, 'document_id', value);
+    b.depends_on = deps;
+    return;
+end
+fn = fieldnames(deps);
+e = struct();
+for k = 1:numel(fn)
+    switch fn{k}
+        case 'name';        e.name = name;
+        case 'value';       e.value = value;
+        case 'document_id'; e.document_id = value;
+        otherwise;          e.(fn{k}) = '';
+    end
+end
+b.depends_on = [reshape(deps, 1, []), e];
+end
+
 function summary = recountSummary(result)
 %RECOUNTSUMMARY Same contract as resolveDatasetEntities' local copy.
 summary = struct();
@@ -2620,31 +2696,23 @@ for k = 1:numel(entries)
         continue;
     end
     seen(e.name) = e;
-    ref = struct();
-    ref.document_class = struct('class_name', 'relative_reference', ...
-        'class_version', '2.0.0', ...
-        'superclasses', struct('class_name', 'time_reference', ...
-            'class_version', '4.0.0'), ...
-        'schema_version', 'V_eta');
-    ref.depends_on = struct('name', {'relative_to'}, 'value', {sessionDocumentId});
-    ref.base = struct('id', did.ido.unique_id(), ...
-        'session_id', sessionId, ...
-        'name', 'migrated_epoch_extent', ...
-        'creation_timestamp', datestamp);
-    ref.relative_reference = struct('value', struct( ...
-        'clock',    struct('node', '', 'name', e.name), ...
-        'start',    extentDuration(e.t0), ...
-        'duration', extentDuration(e.t1 - e.t0)));
+    % did-schema #88: a relative_time_reference onto the session entity,
+    % built through did2.build. A clock name outside the bound set is refused
+    % by the builder and counted, never guessed.
+    sec = struct('node', 'om:second-Time', 'name', 'second');
+    try
+        ref = did2.build.relativeTimeReference(sessionDocumentId, 'Clock', e.name, ...
+            'Start', e.t0, 'StartSourceValue', e.t0, 'StartSourceUnit', sec, ...
+            'StartApproximate', false, ...
+            'Duration', e.t1 - e.t0, 'DurationSourceValue', e.t1 - e.t0, ...
+            'DurationSourceUnit', sec, 'DurationApproximate', false, ...
+            'SessionId', sessionId, 'CreationTimestamp', datestamp, 'Validate', false);
+    catch
+        stats.no_time = stats.no_time + 1;
+        continue;
+    end
     refs{end+1} = ref; %#ok<AGROW>
 end
-end
-
-function c = extentDuration(seconds)
-%EXTENTDURATION A V_eta `duration` cell. `source_unit` is 's' because the v1
-%   clocks block stores seconds -- stated, not converted, per the standing rule
-%   that the source's own unit is carried verbatim beside the canonical value.
-c = struct('seconds', double(seconds), 'source_unit', 's', ...
-    'source_value', double(seconds), 'approximate', false);
 end
 
 function ts = creationTime(body)

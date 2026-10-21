@@ -136,93 +136,60 @@ haveBoth    = ~isempty(channelsA) && ~isempty(channelsB);
 haveNeither = isempty(channelsA) && isempty(channelsB);
 minPaths    = readNumber(params, {'number_fullpath_matches', 'numberFullpathMatches'});
 isFileBased = ~isempty(minPaths);
-if ~haveBoth && ~(haveNeither && isFileBased)
-    bodies = {preBody};      % half-specified pair, or no criterion at all
+% did-schema #88 PASSES A CHANNEL-BASED RULE THROUGH (v1 form, as before
+% pass 1). `acquisition_channels` names the system its channels belong to only
+% by an `acquisition_system_id` EDGE, and the v1 rule names its two systems by
+% NAME (daqsystem1_name / daqsystem2_name); resolving a name to the system's id
+% needs the batch, which a single-document migrator does not have. The
+% pre-#73 shape kept the name in base.name, which V_eta no longer writes, so
+% folding here would drop which device each channel group is on. Reported.
+if ~(haveNeither && isFileBased)
+    bodies = {preBody};
     return;
 end
 
 implClass = jGetCharAny(block, {'ndi_syncrule_class', 'ndiSyncruleClass'});
 [software, swId] = jSyncSoftware(preBody, implClass);
 
-cfg = struct();
-cfg.document_class = struct('class_name', 'clock_alignment_configuration', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-deps = struct('name', {}, 'value', {});
-if ~isempty(swId)
-    deps(end+1) = struct('name', 'software_id', 'value', swId);
-end
-% DEVICE-PAIR RULE: EXACTLY 2 acquisition_channels, UNORDERED. `_#` and not
-% from_/to_ because the rule is SYMMETRIC: commonTriggersOverlappingEpochs.m:
-% 110-115 accepts the pair in either order and normalises 1/2 afterwards, and
-% filefind.m:133-136 computes `forward`/`backward` and takes either. A FILE-BASED
-% rule (haveNeither) carries ZERO channels -- amendment 1 -- so these edges and
-% the two channel bodies are emitted ONLY when both channels exist.
-if haveBoth
-    deps(end+1) = struct('name', 'acquisition_channels_1', 'value', channelsA.base.id);
-    deps(end+1) = struct('name', 'acquisition_channels_2', 'value', channelsB.base.id);
-end
-cfg.depends_on = deps;
-% base PRESERVED verbatim, id and name included.
-cfg.base = carryBase(preBody);
-
-cfgBlock = struct();
-clockName = jGetCharAny(params, {'epochclocktype', 'epochClockType', 'epoch_clock_type'});
-if ~isempty(clockName)
-    % STAGED with an empty node (#67/#70): the field is bound to did_clocktype,
-    % whose four terms all carry `"node": ""` in the schema's own value_set --
-    % no NDIC identifier can be assigned from any repository in scope. Omitted
-    % entirely when the source has no clock, rather than emitted all-blank:
-    % `clock` is optional, and an all-blank ontology_term is exactly the vacuous
-    % value silentLoss:322 exists to name.
-    cfgBlock.clock = jOntologyTerm('', clockName);
-end
-minPaths = readNumber(params, {'number_fullpath_matches', 'numberFullpathMatches'});
+% A file-based rule: a clock_alignment_configuration whose settings are its
+% inline `method.parameters` (did-schema #88, V_eta_method_plan.md: one method
+% shape; the three settings were their own fields before).
+params = [];
+minPaths = readNumber(params0(block), {'number_fullpath_matches', 'numberFullpathMatches'});
 if ~isempty(minPaths)
-    cfgBlock.minimum_matching_file_paths = minPaths;
+    params = [params, did2.build.parameter(did2.build.label('minimum matching file paths'), ...
+        'Count', minPaths)];
 end
-syncFile = jGetCharAny(params, {'syncfilename', 'syncFilename', 'sync_filename'});
+syncFile = jGetCharAny(params0(block), {'syncfilename', 'syncFilename', 'sync_filename'});
 if ~isempty(syncFile)
-    cfgBlock.sync_file_name = syncFile;
+    params = did2.build.list(params, did2.build.parameter( ...
+        did2.build.label('sync file name'), 'Text', syncFile));
 end
-minOverlap = readNumber(params, {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'});
+minOverlap = readNumber(params0(block), {'minEmbeddedFileOverlap', 'min_embedded_file_overlap'});
 if ~isempty(minOverlap)
-    cfgBlock.minimum_embedded_file_overlap = minOverlap;
+    params = did2.build.list(params, did2.build.parameter( ...
+        did2.build.label('minimum embedded file overlap'), 'Value', minOverlap));
 end
-% errorOnFailure is deliberately NOT carried (repair 5).
-cfg.clock_alignment_configuration = cfgBlock;
+f = struct();
+clockName = jGetCharAny(params0(block), {'epochclocktype', 'epochClockType', 'epoch_clock_type'});
+if ~isempty(clockName)
+    f.clock = clockName;
+end
+if ~isempty(params)
+    f.method = jMethod([], params);
+end
+edges = struct();
+if ~isempty(swId); edges.software_id = swId; end
+o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
+cfg = did2.build.document('clock_alignment_configuration', f, o{:});
+bodies = [{cfg}, software];
+end
 
-if haveBoth
-    bodies = {cfg, channelsA, channelsB};
-else
-    bodies = {cfg};   % file-based rule: the channel-less configuration only
+function p = params0(block)
+p = struct();
+if isfield(block, 'parameters') && isstruct(block.parameters) && isscalar(block.parameters)
+    p = block.parameters;
 end
-if ~isempty(software)
-    bodies{end+1} = software;
-end
-end
-
-% ===================== small helpers =======================================
-
-function b = carryBase(preBody)
-%CARRYBASE base PRESERVED -- id, session_id, name, datestamp.
-%   `base.session_id` on a syncrule is ndi.session.empty_id()
-%   ('0000000000000000_0000000000000000', syncrule.m:186) -- a real, non-empty
-%   string meaning "applies in any session", so it satisfies base's REQUIRED
-%   session_id without any invention.
-b = struct('id', '', 'session_id', '', 'name', '', ...
-    'datestamp', '2024-01-01T00:00:00.000Z');
-if isfield(preBody, 'base') && isstruct(preBody.base)
-    src = preBody.base;
-    fn = {'id', 'session_id', 'name', 'datestamp'};
-    for k = 1:numel(fn)
-        if isfield(src, fn{k}) && ~isempty(src.(fn{k}))
-            b.(fn{k}) = src.(fn{k});
-        end
-    end
-end
-if isempty(b.id); b.id = did.ido.unique_id(); end
 end
 
 function v = readNumber(block, names)

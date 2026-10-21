@@ -75,7 +75,7 @@ function [software, swId] = jSyncSoftware(preBody, implementationClass)
 %
 %   Shared helper for the Brainstorm-J (+migrators_j) clock-alignment migrators.
 
-software = [];
+software = {};
 swId = '';
 implementationClass = char(implementationClass);
 if isempty(implementationClass)
