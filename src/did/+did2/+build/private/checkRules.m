@@ -137,7 +137,8 @@ for c = 1:numel(chain)
                 % 2026-10-21) takes its value through `value_id`; its own
                 % `value` is then empty and the shared formulation document,
                 % checked when it is built, holds the ingredients
-                % (did-schema statement.json, `value_id`).
+                % (did-schema statement.json, `value_id`). Ported from
+                % claude/port-88 ff6d542.
                 if hasEdge(doc, 'value_id')
                     continue;
                 end

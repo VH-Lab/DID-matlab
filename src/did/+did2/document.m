@@ -151,7 +151,20 @@ classdef document < handle
             %   scalar [[x]] -- and plain `jsondecode` reads each back at the
             %   shape it was written. Numbers are written in the shortest
             %   decimal (15 to 17 significant digits) that reads back to the
-            %   same double; a non-finite one is null, as jsonencode writes it.
+            %   same double; a non-finite one is NaN, Infinity or -Infinity, as
+            %   the rest of the text writes it (below).
+            %
+            %   NON-FINITE NUMBERS ARE WRITTEN AS V1 WRITES THEM (Jess Haley,
+            %   2026-10-21, did-schema V_eta_go_forward_class_audit.md: "An
+            %   unrecorded amount is written as NaN in its quantity [...], and
+            %   V2 stores NaN the way V1 does"). V1 encodes with
+            %   did.datastructures.jsonencodenan, i.e. jsonencode(...,
+            %   'ConvertInfAndNaN', false): the literals NaN, Infinity and
+            %   -Infinity, which jsondecode reads back. Plain jsonencode writes
+            %   null, and jsondecode reads a scalar null back as [] -- a NaN
+            %   amount would come out of the database ABSENT. SQLite's JSON
+            %   functions read the literals as JSON5 (NaN as null, Infinity as
+            %   a real); testSqliteDbNonFinite pins all of it.
             %
             %   Which fields are matrices is asked of the schema
             %   (did2.schema.cache/matrixFieldPaths): the cache given here,
@@ -169,7 +182,7 @@ classdef document < handle
             paths = obj.matrixPaths(opts.SchemaCache);
             if isempty(paths)
                 jsonText = jsonencode(obj.documentProperties, ...
-                    'PrettyPrint', opts.PrettyPrint);
+                    'ConvertInfAndNaN', false, 'PrettyPrint', opts.PrettyPrint);
                 return;
             end
             jsonText = did2.document.encodeWithMatrices( ...
@@ -316,7 +329,7 @@ classdef document < handle
                 for i = 1:numel(paths)
                     [p, texts] = did2.document.tokeniseMatrices(p, paths{i}, texts, base);
                 end
-                txt = jsonencode(p, 'PrettyPrint', pretty);
+                txt = jsonencode(p, 'ConvertInfAndNaN', false, 'PrettyPrint', pretty);
                 if isempty(texts)
                     return;
                 end
@@ -388,7 +401,9 @@ classdef document < handle
         function c = numberTexts(x)
             % numberTexts - each element of X as JSON number text: the
             %   shortest of 15/16/17 significant digits that reads back to the
-            %   same double; null when not finite; true/false for a logical.
+            %   same double; NaN / Infinity / -Infinity when not finite, as
+            %   jsonencode(..., 'ConvertInfAndNaN', false) spells them (toJSON);
+            %   true/false for a logical.
             x = reshape(x, 1, []);
             if islogical(x)
                 c = cell(1, numel(x));
@@ -405,7 +420,9 @@ classdef document < handle
                 end
                 c(bad) = cellstr(compose(sprintf('%%.%dg', digits), x(bad)));
             end
-            c(~isfinite(x)) = {'null'};
+            c(isnan(x)) = {'NaN'};
+            c(x == Inf) = {'Infinity'};
+            c(x == -Inf) = {'-Infinity'};
         end
 
         function out = parseJSONText(jsonText)
