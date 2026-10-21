@@ -973,7 +973,9 @@
 %         subject_manipulation leaf (+ an optional site term_observation + the shared
 %         session anchor).
 %     treatment_drug
-%         Brainstorm-J migrator: did_v1 treatment_drug -> dose_manipulation.
+%         Brainstorm-J migrator: did_v1 treatment_drug -> an immersion (`manipulation`
+%         valued by its formulation) or a dose_manipulation, decided by the recorded
+%         location.
 %     treatment_transfer
 %         Brainstorm-J migrator: did_v1 treatment_transfer -> term_manipulation + a
 %         provenance directed_relation.
