@@ -402,8 +402,8 @@ function testBannedClassNamesAreNeverMinted(testCase)
 % T11 bans `timeseries_observation` / `signal_observation`, and R6 KILLED `array`
 % outright. Swept across the resolved, the stimulator and the Guard A paths at
 % once, so a future map edit cannot reintroduce one on a branch nobody looked at.
-banned = {'timeseries_observation', 'signal_observation', 'array', ...
-          'dataseries_observation', 'imageseries_observation'};
+banned = {'observation+timeseries', 'observation+signal', 'array', ...
+          'observation+dataseries', 'observation+imageseries'};
 types = {'n-trode', 'patch', 'patch-Vm', 'wide-field-imaging', 'thermometer', ...
          'lick-spout', 'ppg', 'reward-well', 'stimulator', 'event', '', 'madeup'};
 for t = 1:numel(types)

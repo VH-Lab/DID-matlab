@@ -768,7 +768,7 @@ a = firstOfClassJ(out.migrated, 'absolute_time_reference');
 assertNotEmpty(testCase, a, 'no absolute time reference at the administration date');
 verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '2024-05-02');
 verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
-site = firstOfClassJ(out.migrated, 'term_observation');
+site = firstOfClassJ(out.migrated, 'observation+term');
 verifyEqual(testCase, depVal(site, 'time_reference_id'), a.get('base.id'));
 end
 
@@ -916,7 +916,7 @@ v1 = treatmentDrugDoc('td_saline', ...
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 dv = d.get('dose.value');
 verifyTrue(testCase, isnan(dv.volume.liters), 'the injected volume is unrecorded');
 verifyFalse(testCase, isfield(dv, 'ingredients') && ~isempty(dv.ingredients), ...
@@ -1972,7 +1972,7 @@ end
 function d = firstOfClassJ(migrated, className)
 d = [];
 for k = 1:numel(migrated)
-    % #88: a class name OR a leaf name (`term_observation`, `organism`, ...)
+    % #88: a class name OR a leaf name (`observation+term`, `organism`, ...; classKey)
     if strcmp(migrated{k}.get('document_class.class_name'), className) ...
             || strcmp(did2.unittest.helpers.classKey(migrated{k}), className)
         d = migrated{k}; return;
@@ -3501,7 +3501,7 @@ out = did2.convert.migrators_j.orientation_direction_tuning(body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 8);
 verifyFalse(testCase, any(strcmp(names, 'observation+frequency')));   % not decomposed
-verifyFalse(testCase, any(strcmp(names, 'angle_observation')));
+verifyFalse(testCase, any(strcmp(names, 'observation+angle')));
 leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'odt_1', 'neuron_1');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
 verifyEqual(testCase, lower(leaf.interaction.method.term.name), 'ndi.calc.vis.oridir');
