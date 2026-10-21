@@ -40,33 +40,15 @@ tests = functiontests(localfunctions);
 end
 
 function setupOnce(testCase)
-% did-schema #88: harmonic_component_calculation is a CALCULATION, which
-% requires an operating_system_id, and a v1 stimulus_response_scalar carries no
-% app block to name one; the fold cannot be expressed, so the migrator passes
-% the documents through on their v1 tombstones (Jess Haley, 2026-10-21: per
-% class, never invent). The fold tests in this file are filtered with that
-% reason on a schema where a calculation requires an operating system.
+% RE-ARMED 2026-10-21. These tests were filtered while did-schema #88's
+% `calculation` required operating_system_id, which no v1 document records.
+% Decided by Jess Haley, 2026-10-21 [calculation-os-optional]: "A calculation's
+% `operating_system_id` is optional: required when the operating system is
+% known, absent when the source never recorded it." So that reason is gone and
+% the tests run unconditionally; a failure here is a migrator gap to report,
+% not a reason to filter.
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
-testCase.assumeFalse(calculationRequiresOperatingSystem(), ...
-    ['a calculation requires operating_system_id on the loaded schema ' ...
-     '(did-schema #88) and stimulus_response_scalar names none: it passes through']);
-end
-
-function tf = calculationRequiresOperatingSystem()
-tf = false;
-try
-    c = did2.schema.cache.shared().getClass('calculation');
-    d = c.depends_on;
-    if isstruct(d); d = num2cell(d); end
-    for k = 1:numel(d)
-        if strcmp(d{k}.name, 'operating_system_id') && isfield(d{k}, 'mustBeNonEmpty') ...
-                && d{k}.mustBeNonEmpty
-            tf = true;
-        end
-    end
-catch
-end
 end
 
 % ===================== the arming table ================================
