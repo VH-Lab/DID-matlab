@@ -262,8 +262,8 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation')
         verifyEqual(testCase, d.get('directed_relation.relation').name, 'member_of');
-        verifyEqual(testCase, depVal(d, 'parent'), 'grp_1');   % the group
-        children{end+1} = depVal(d, 'child'); %#ok<AGROW>
+        verifyEqual(testCase, depVal(d, 'parent_id'), 'grp_1');   % the group
+        children{end+1} = depVal(d, 'child_id'); %#ok<AGROW>
     end
 end
 verifyEqual(testCase, sort(children), {'m_1', 'm_2', 'm_3'});
@@ -352,8 +352,8 @@ verifyEqual(testCase, out.summary.by_class.term_assertion, 2);
 % lineage: derived_from the underlying element (safe computational lineage)
 rel = firstOfClassJ(out.migrated, 'directed_relation');
 verifyEqual(testCase, rel.get('directed_relation.relation').name, 'derived_from');
-verifyEqual(testCase, depVal(rel, 'child'), 'el_1');
-verifyEqual(testCase, depVal(rel, 'parent'), 'probe_1');
+verifyEqual(testCase, depVal(rel, 'child_id'), 'el_1');
+verifyEqual(testCase, depVal(rel, 'parent_id'), 'probe_1');
 end
 
 function testElementDirectDeviceObservesSpecimen(testCase)
@@ -434,8 +434,8 @@ verifyEqual(testCase, act.get('term.value').name, 'embryonic tissue');
 verifyEqual(testCase, act.get('subject_interaction.method').name, 'transplantation');
 
 rel = out.migrated{2};
-verifyEqual(testCase, depVal(rel, 'child'), 'rec_001');
-verifyEqual(testCase, depVal(rel, 'parent'), 'don_002');
+verifyEqual(testCase, depVal(rel, 'child_id'), 'rec_001');
+verifyEqual(testCase, depVal(rel, 'parent_id'), 'don_002');
 verifyEqual(testCase, rel.get('directed_relation.relation').name, 'derived_from');
 
 anchor = out.migrated{3};
@@ -1602,8 +1602,8 @@ verifyEqual(testCase, depVal(vel, 'entity_id'), 'worm_1');
 verifyEqual(testCase, depVal(vel, 'time_reference_id'), tref.get('base.id'));
 % the relation is the encounter record: worm --encountered--> patch, same window
 rel = firstOfClassJ(out.migrated, 'directed_relation');
-verifyEqual(testCase, depVal(rel, 'child'), 'worm_1');
-verifyEqual(testCase, depVal(rel, 'parent'), 'patch_1');
+verifyEqual(testCase, depVal(rel, 'child_id'), 'worm_1');
+verifyEqual(testCase, depVal(rel, 'parent_id'), 'patch_1');
 verifyEqual(testCase, rel.get('directed_relation.relation').name, 'encountered');
 verifyEqual(testCase, depVal(rel, 'time_reference_id'), tref.get('base.id'));
 % the window carries onset/offset
@@ -2079,7 +2079,7 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
             && strcmp(d.get('directed_relation.relation').name, 'has_author')
-        verifyEqual(testCase, depVal(d, 'child'), ds.get('base.id'));
+        verifyEqual(testCase, depVal(d, 'child_id'), ds.get('base.id'));
         seqs(end+1) = d.get('directed_relation.sequence'); %#ok<AGROW>
     end
 end
@@ -2107,7 +2107,7 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
             && strcmp(d.get('directed_relation.relation').name, 'affiliated_with')
-        affParents{end+1} = depVal(d, 'parent'); %#ok<AGROW>
+        affParents{end+1} = depVal(d, 'parent_id'); %#ok<AGROW>
     end
 end
 verifyEqual(testCase, numel(affParents), 2);
@@ -2124,10 +2124,10 @@ agid = award.get('entity.global_identifier');
 verifyEqual(testCase, agid(1).scheme, 'AwardNumber');
 verifyEqual(testCase, agid(1).value, 'R01-12345');
 funded = relByName(out.migrated, 'funded_by');
-verifyEqual(testCase, depVal(funded, 'child'), ds.get('base.id'));
-verifyEqual(testCase, depVal(funded, 'parent'), award.get('base.id'));
+verifyEqual(testCase, depVal(funded, 'child_id'), ds.get('base.id'));
+verifyEqual(testCase, depVal(funded, 'parent_id'), award.get('base.id'));
 issued = relByName(out.migrated, 'issued_by');
-verifyEqual(testCase, depVal(issued, 'child'), award.get('base.id'));
+verifyEqual(testCase, depVal(issued, 'child_id'), award.get('base.id'));
 % publication: title + DOI/PMID/PMCID identifiers; dataset -cites-> publication
 pub = firstOfClassJ(out.migrated, 'publication');
 verifyEqual(testCase, pub.get('publication.title'), 'On Worms');
@@ -2135,15 +2135,15 @@ pgid = pub.get('entity.global_identifier');
 schemes = {pgid.scheme};
 verifyTrue(testCase, all(ismember({'DOI', 'PMID', 'PMCID'}, schemes)));
 cites = relByName(out.migrated, 'cites');
-verifyEqual(testCase, depVal(cites, 'parent'), pub.get('base.id'));
+verifyEqual(testCase, depVal(cites, 'parent_id'), pub.get('base.id'));
 % web_resource: the documentation IRI is a resource referenced by a relation
 wr = firstOfClassJ(out.migrated, 'web_resource');
 wgid = wr.get('entity.global_identifier');
 verifyEqual(testCase, wgid(1).scheme, 'URL');
 verifyEqual(testCase, wgid(1).value, 'https://example.org/docs');
 documented = relByName(out.migrated, 'documented_by');
-verifyEqual(testCase, depVal(documented, 'child'), ds.get('base.id'));
-verifyEqual(testCase, depVal(documented, 'parent'), wr.get('base.id'));
+verifyEqual(testCase, depVal(documented, 'child_id'), ds.get('base.id'));
+verifyEqual(testCase, depVal(documented, 'parent_id'), wr.get('base.id'));
 end
 
 % ---- metadata_editor THROUGH A JSON ROUND TRIP -------------------------
@@ -2424,13 +2424,13 @@ verifyEqual(testCase, wgid(1).scheme, 'NDICloud');
 verifyEqual(testCase, wgid(1).value, 'd-12345');
 % dataset -stored_at-> web_resource ; web_resource -hosted_by-> organization
 stored = relByName(out.migrated, 'stored_at');
-verifyEqual(testCase, depVal(stored, 'child'), 'dsid_1');
-verifyEqual(testCase, depVal(stored, 'parent'), wr.get('base.id'));
+verifyEqual(testCase, depVal(stored, 'child_id'), 'dsid_1');
+verifyEqual(testCase, depVal(stored, 'parent_id'), wr.get('base.id'));
 hosted = relByName(out.migrated, 'hosted_by');
-verifyEqual(testCase, depVal(hosted, 'child'), wr.get('base.id'));
+verifyEqual(testCase, depVal(hosted, 'child_id'), wr.get('base.id'));
 org = firstOfClassJ(out.migrated, 'organization');
 verifyEqual(testCase, org.get('organization.full_name'), 'ndicloud-lab');
-verifyEqual(testCase, depVal(hosted, 'parent'), org.get('base.id'));
+verifyEqual(testCase, depVal(hosted, 'parent_id'), org.get('base.id'));
 end
 
 function v1 = sessionInADatasetDoc(memberSession)
@@ -2472,8 +2472,8 @@ rel = firstOfClassJ(out.migrated, 'directed_relation');
 [relName, relNode] = membershipRelation();
 verifyEqual(testCase, rel.get('directed_relation.relation').name, relName);
 verifyEqual(testCase, rel.get('directed_relation.relation').node, relNode);
-verifyEqual(testCase, depVal(rel, 'child'), 'member_sess_9');   % the member session
-verifyEqual(testCase, depVal(rel, 'parent'), 'dsid_1');          % the dataset
+verifyEqual(testCase, depVal(rel, 'child_id'), 'member_sess_9');   % the member session
+verifyEqual(testCase, depVal(rel, 'parent_id'), 'dsid_1');          % the dataset
 % the edge is tagged so the post-pass can prune it if the session is absent
 verifyEqual(testCase, rel.get('base.name'), 'migrated_session_membership');
 end
@@ -2499,8 +2499,8 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation')
         verifyEqual(testCase, d.get('directed_relation.relation').name, relName);
-        verifyEqual(testCase, depVal(d, 'parent'), 'dsid_1');
-        children{end+1} = depVal(d, 'child'); %#ok<AGROW>
+        verifyEqual(testCase, depVal(d, 'parent_id'), 'dsid_1');
+        children{end+1} = depVal(d, 'child_id'); %#ok<AGROW>
     end
 end
 verifyEqual(testCase, sort(children), {'member_a', 'member_b'});
@@ -2535,7 +2535,7 @@ for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
             && strcmp(d.get('directed_relation.relation').name, relName)
-        verifyNotEqual(testCase, depVal(d, 'child'), 'absent_sess');
+        verifyNotEqual(testCase, depVal(d, 'child_id'), 'absent_sess');
     end
 end
 end
@@ -4188,8 +4188,8 @@ neuron = out{find(strcmp(names, 'subject'), 1)};
 verifyEqual(testCase, neuron.subject.local_identifier, 'unit_7');
 rel = out{find(strcmp(names, 'directed_relation'), 1)};
 % derived_from: unit (child) <- recording subject (parent)
-verifyEqual(testCase, depValue(rel, 'child'), neuron.base.id);
-verifyEqual(testCase, depValue(rel, 'parent'), 'rec_sub_1');
+verifyEqual(testCase, depValue(rel, 'child_id'), neuron.base.id);
+verifyEqual(testCase, depValue(rel, 'parent_id'), 'rec_sub_1');
 verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
 % the quality observation is about the minted unit
 qobs = out{find(strcmp(names, 'score_observation'), 1)};
