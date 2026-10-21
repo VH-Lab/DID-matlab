@@ -273,6 +273,24 @@ function tests = testSessionAnchorEmitterContract
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% did-schema #88 deleted the classes this file pins (session_relative_reference,
+% session_bounded_reference and the relative_reference they fold into; #65
+% increment 3b), and every migrator now builds its relative_time_reference
+% directly through did2.build, so resolveSessionAnchors has nothing to fold.
+% The tests are filtered with that reason on a schema without the class, and
+% run again on one that has it.
+c = did2.schema.cache.shared();
+hasClass = true;
+try
+    c.getClass('relative_reference');
+catch
+    hasClass = false;
+end
+testCase.assumeTrue(hasClass, ['relative_reference does not exist on the loaded ' ...
+    'schema (did-schema #88): the session-anchor fold has nothing to fold']);
+end
+
 % ===================== the emitter roster ==============================
 
 function roster = emitterRoster()
