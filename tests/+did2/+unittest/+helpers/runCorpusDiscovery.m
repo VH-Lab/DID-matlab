@@ -69,6 +69,15 @@ for k = 1:numel(files)
     bodies{k} = fileread(fullfile(files(k).folder, files(k).name));
 end
 
+% T19 COLLECTION (did-schema #88 port, 2026-10-21): v1_to_v2 disarms the
+% TermRegistry check for a migration, so a term the registry does not hold
+% would pass unseen. Collect them instead, and print them after the passes, so
+% every unregistered variable / unit / value the migrators write is a listed
+% row to register rather than a silence.
+did2.build.unregisteredTerms('-reset');
+prevCollect = did2.build.unregisteredTerms('-collect', true);
+restoreCollect = onCleanup(@() did2.build.unregisteredTerms('-collect', prevCollect)); %#ok<NASGU>
+
 result = did2.convert.v1_to_v2(bodies, 'Validate', true, ...
     'TargetVersion', options.TargetVersion);
 
@@ -586,6 +595,8 @@ end
 result.reference_integrity = ...
     did2.unittest.helpers.referenceIntegrityBlock(refRep, refErrMsg);
 
+printUnregisteredTerms(corpusName);
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 reportPath = did2.unittest.helpers.writeCorpusReport(corpusName, result, reasons);
 
@@ -710,6 +721,20 @@ for k = 1:min(numel(reasons), 15)
 end
 end
 
+
+function printUnregisteredTerms(corpusName)
+% Every term a migrator or pass wrote that the did-schema term registry does
+% not hold (tenet T19), with the field it was written to and how often.
+rows = did2.build.unregisteredTerms();
+fprintf('\n--- UNREGISTERED TERMS (%s): %d distinct (term, field) row(s) ---\n', ...
+    corpusName, numel(rows));
+if isempty(rows); return; end
+[~, order] = sort([rows.count], 'descend');
+for k = order
+    fprintf('  %7d  %-40s %-18s %s\n', rows(k).count, ...
+        ['"' rows(k).name '"'], rows(k).node, rows(k).field);
+end
+end
 
 function printFragmentCensus(result)
 %PRINTFRAGMENTCENSUS Phase 1 report-only: migrations that emitted ONLY

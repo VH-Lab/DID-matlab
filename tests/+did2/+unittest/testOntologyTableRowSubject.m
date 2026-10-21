@@ -26,6 +26,15 @@ function tests = testOntologyTableRowSubject
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% The migrators run inside did2.convert.v1_to_v2, which disarms the
+% TermRegistry strict mode for the call (T19: the check is for imports; a
+% migrator transcribes the source's own terms, which the registry need not
+% hold yet). A test that calls a migrator directly runs it the same way.
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+end
+
 function realShapedRow = makeRealRow()
 % A did_v1 ontologyTableRow exactly as NDI writes it: ONE dependency,
 % `document_id`. No subject_id. Anything else is our assumption, not the data.
