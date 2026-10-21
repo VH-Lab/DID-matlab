@@ -67,7 +67,8 @@ end
 entityId = jDependency(preBody, 'subject_id');
 if isempty(leaf) && looksLikeCURIE(strValue)
     obs = jStatement(preBody, 'term_observation', entityId, variable, ...
-        did2.build.term(strValue, ''), 'TimeReferenceIds', {anchor.base.id});
+        did2.build.term(strValue, ''), 'TimeReferenceIds', {anchor.base.id}, ...
+        'Id', sourceId(preBody));
     bodies = {obs, anchor};
     return;
 end
@@ -76,8 +77,17 @@ if isempty(leaf)
 end
 obs = jStatement(preBody, [leaf '_observation'], entityId, variable, ...
     jQuantity(leaf, double(numValue(1)), '', 'approximate', false), ...
-    'TimeReferenceIds', {anchor.base.id});
+    'TimeReferenceIds', {anchor.base.id}, 'Id', sourceId(preBody));
 bodies = {obs, anchor};
+end
+
+function id = sourceId(preBody)
+% The ONE observation a measurement folds to keeps the source id, as the pre-#88
+% fold did (jStartInteraction), so anything naming the measurement still resolves.
+id = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isfield(preBody.base, 'id')
+    id = char(preBody.base.id);
+end
 end
 
 function tf = looksLikeCURIE(s)
