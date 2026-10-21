@@ -165,6 +165,7 @@ POST_PASSES = [
         ("membership_kept_child_present", "  kept, child present"),
         ("membership_dropped_child_absent", "  DROPPED, child absent  <- upper bound if any doc was unreadable"),
         ("membership_dropped_no_child_edge", "  DROPPED, no child edge at all"),
+        ("session_entities_dropped_dataset_id", "SESSION ENTITY under a dataset's own id: dropped (the dataset is that id's entity)"),
         ("migrated_before", "migrated before"),
         ("migrated_after", "  after"),
         ("documents_removed", "documents REMOVED"),

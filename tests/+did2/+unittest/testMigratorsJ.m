@@ -3059,6 +3059,46 @@ end
 end
 
 
+function testADatasetsOwnSessionDoesNotDuplicateTheDatasetId(testCase)
+% REGRESSION (NDI e2e run 39688367871, NDI:migrate:duplicateIds
+% "4126900def47f5c1_40bc968437441768 x2: entity, entity"). A dataset's own
+% session has the dataset's id as its session id (NDI: D.id() is the
+% base.session_id of everything stored with the dataset), so a v1 `session`
+% document stored there makes +migrators_j/session mint a session entity under
+% the SAME id as the dataset entity. did-schema base.json `session_id`: "The
+% session or dataset this document is stored with: the `entity` document of
+% type session or dataset", so that id already has its entity -- the dataset.
+% The batch must end with ONE entity per id.
+ses = struct();
+ses.document_class = struct('class_name', 'session', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
+ses.base = struct('id', 'sess_doc_ds', 'session_id', 'dsid_1', ...
+    'name', 'ts', 'datestamp', '2024-06-01T12:00:00.000Z');
+ses.session = struct('reference', 'the_dataset_session');
+remote = datasetRemoteDoc();                    % dataset entity dsid_1
+member = sessionInADatasetDoc('dsid_1');        % lists its own session (jMembershipBodies skips it)
+batch = {jsonencode(ses), jsonencode(remote), jsonencode(member)};
+out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
+[out, rep] = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
+ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+[u, ~, j] = unique(ids);
+dup = u(accumarray(j(:), 1) > 1);
+verifyEmpty(testCase, dup, sprintf('duplicate ids: %s', strjoin(dup, ', ')));
+hits = out.migrated(strcmp(ids, 'dsid_1'));
+assertEqual(testCase, numel(hits), 1);
+verifyEqual(testCase, char(hits{1}.get('entity.type').name), 'dataset');
+verifyEqual(testCase, rep.session_entities_dropped_dataset_id, 1);
+% and no relation is left pointing from that id to itself
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'directed_relation')
+        verifyNotEqual(testCase, depVal(d, 'child_id'), depVal(d, 'parent_id'), ...
+            'a relation from the dataset to itself');
+    end
+end
+end
+
+
 % ============ regression: relations carry no stale subject_relation block =====
 
 function testDirectedRelationsHaveNoSubjectRelationBlock(testCase)

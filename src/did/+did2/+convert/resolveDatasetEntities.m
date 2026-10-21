@@ -24,7 +24,10 @@ function [result, report] = resolveDatasetEntities(result, options)
 %       dataset_session_info -- are each consumed by their own per-class
 %       migrator and are credited there, not here.
 %   BATCH-PASS-EMITS: NONE -- this pass only REMOVES documents and edges. There
-%       is no `document_class` write anywhere in the file.
+%       is no `document_class` write anywhere in the file. (2026-10-21: it also
+%       removes a session entity minted under a dataset's own id; see pass
+%       1b. No membership edge from that id to itself is left to prune:
+%       jMembershipBodies already skips "the dataset's own root".)
 %   ---------------------------------------------------------------------
 %
 %     1. DEDUPLICATE dataset entities. Every dataset-level source
@@ -173,6 +176,7 @@ report = struct( ...
     'membership_kept_child_present',      0, ...
     'membership_dropped_child_absent',    0, ...
     'membership_dropped_no_child_edge',   0, ...
+    'session_entities_dropped_dataset_id', 0, ...
     'documents_removed',                  0, ...
     'documents_removed_unattributed',     0, ...
     'migrated_before',                    0, ...
@@ -237,6 +241,33 @@ for k = 1:n
 end
 report.distinct_dataset_ids = double(bestDatasetIdx.Count);
 
+% --- pass 1b: a dataset's own session is the dataset ---------------------------
+% NDI stores a dataset's documents under the dataset's own session, whose id is
+% D.id() -- the same id every dataset-level source mints the dataset entity on.
+% So a v1 `session` document stored with the dataset makes +migrators_j/session
+% mint a session entity under the DATASET's id, and the batch then holds two
+% entities with one id (NDI e2e run 39688367871, NDI:migrate:duplicateIds).
+% did-schema base.json `session_id` names "the `entity` document of type session
+% or dataset" a document is stored with, so that id's entity is the dataset; the
+% session entity is dropped, and counted. Its `local_identifier` (the v1 session
+% reference) has no slot on the dataset entity and goes with it -- counted, not
+% silent.
+for k = 1:n
+    if ~keep(k); continue; end
+    try
+        id = char(docs{k}.get('base.id'));
+        className = docs{k}.className();
+    catch
+        continue;   % counted in `documents_unreadable` above
+    end
+    if ~isKey(bestDatasetIdx, id) || bestDatasetIdx(id) == k; continue; end
+    if isSessionEntity(docs{k}, className)
+        keep(k) = false;
+        report.session_entities_dropped_dataset_id = ...
+            report.session_entities_dropped_dataset_id + 1;
+    end
+end
+
 % --- pass 2: drop best-effort membership edges whose member session is absent -
 for k = 1:n
     if ~keep(k); continue; end
@@ -276,7 +307,8 @@ report.documents_removed = n - sum(keep);
 report.documents_removed_unattributed = report.documents_removed ...
     - report.duplicates_dropped_poorer_richness ...
     - report.membership_dropped_child_absent ...
-    - report.membership_dropped_no_child_edge;
+    - report.membership_dropped_no_child_edge ...
+    - report.session_entities_dropped_dataset_id;
 result.summary = recountSummary(result);
 result.dataset_entity_resolution = report;
 end
@@ -290,6 +322,18 @@ if tf || ~strcmp(className, 'entity'); return; end
 try
     t = doc.get('entity.type');
     tf = isstruct(t) && isfield(t, 'name') && strcmpi(char(t.name), 'dataset');
+catch
+    tf = false;
+end
+end
+
+function tf = isSessionEntity(doc, className)
+% did-schema #88: an `entity` of type session (a `session` class before).
+tf = strcmp(className, 'session');
+if tf || ~strcmp(className, 'entity'); return; end
+try
+    t = doc.get('entity.type');
+    tf = isstruct(t) && isfield(t, 'name') && strcmpi(char(t.name), 'session');
 catch
     tf = false;
 end
