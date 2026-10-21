@@ -274,7 +274,7 @@ verifyEqual(testCase, depValue(reader, 'software_id'), ...
     firstOfClass(out, 'software').get('base.id'));
 
 sw = firstOfClass(out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.reader.mfdaq.intan');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.daq.reader.mfdaq.intan');
 verifyEqual(testCase, sw.get('software.local_identifier'), ...
     'ndi.daq.reader.mfdaq.intan');
 % v1's daqreader template has NO version field, so nothing may be invented here.
@@ -369,16 +369,16 @@ function testMetadataReaderFoldsToTheReaderPlusSoftware(testCase)
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
 names = classNames(out);
 verifyEqual(testCase, numel(names), 2);
-verifyTrue(testCase, any(strcmp(names, 'acquisition_metadata_reader')));
+verifyTrue(testCase, any(strcmp(names, 'epoch_parameter_reader')));
 verifyTrue(testCase, any(strcmp(names, 'software')));
 
-reader = firstOfClass(out, 'acquisition_metadata_reader');
+reader = firstOfClass(out, 'epoch_parameter_reader');
 verifyEqual(testCase, reader.get('base.id'), 'mdreader_id_1');
 verifyEqual(testCase, ...
-    reader.get('acquisition_metadata_reader.metadata_file_pattern'), '.*\.tsv\>');
+    reader.get('epoch_parameter_reader.file_regex'), '.*\.tsv\>');
 
 sw = firstOfClass(out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.metadatareader');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.daq.metadatareader');
 verifyEqual(testCase, depValue(reader, 'software_id'), sw.get('base.id'));
 end
 
@@ -389,7 +389,7 @@ function testMetadataReaderPreservesItsBaseId(testCase)
 % would leave that required edge pointing at nothing.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
 verifyEqual(testCase, ...
-    firstOfClass(out, 'acquisition_metadata_reader').get('base.id'), ...
+    firstOfClass(out, 'epoch_parameter_reader').get('base.id'), ...
     'mdreader_id_1');
 end
 
@@ -401,7 +401,7 @@ function testMetadataReaderMintsNoDaqsystemEdge(testCase)
 % NDI declares the edge the OTHER way (daqsystem -> daqmetadatareader_id) and
 % the schema half removed the invented one. Nothing may put it back.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
-reader = firstOfClass(out, 'acquisition_metadata_reader');
+reader = firstOfClass(out, 'epoch_parameter_reader');
 verifyFalse(testCase, hasDependency(reader, 'daqsystem_id'));
 end
 
@@ -410,11 +410,11 @@ function testMetadataReaderWithoutAClassNameOmitsTheSoftwareEdge(testCase)
 % software_id is OMITTED rather than written empty: an empty edge is skipped by
 % the reference validator, so writing one would be invisible rather than absent.
 out = runJ(daqmetadatareaderV1('', '.*\.tsv\>'));
-verifyEqual(testCase, classNames(out), {'acquisition_metadata_reader'});
+verifyEqual(testCase, classNames(out), {'epoch_parameter_reader'});
 reader = out.migrated{1};
 verifyFalse(testCase, hasDependency(reader, 'software_id'));
 verifyEqual(testCase, ...
-    reader.get('acquisition_metadata_reader.metadata_file_pattern'), '.*\.tsv\>');
+    reader.get('epoch_parameter_reader.file_regex'), '.*\.tsv\>');
 end
 
 function testMetadataReaderWithoutAPatternOmitsTheField(testCase)
@@ -423,7 +423,7 @@ function testMetadataReaderWithoutAPatternOmitsTheField(testCase)
 % is the common subclassed case, not a contrivance. A blank field is what
 % did2.validate.silentLoss counts as vacuous, so it is omitted.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader.NewStimStims', ''));
-reader = firstOfClass(out, 'acquisition_metadata_reader');
+reader = firstOfClass(out, 'epoch_parameter_reader');
 blk = reader.get('acquisition_metadata_reader');
 verifyFalse(testCase, isfield(blk, 'metadata_file_pattern'));
 end
@@ -463,7 +463,7 @@ sw  = firstOfClass(out, 'software');
 % The class name is carried as the software entity's identity, and the edge
 % points at THAT document -- not at a string field, which acquisition_system
 % still does not have ("fields": []).
-verifyEqual(testCase, sw.get('software.name'), 'ndi.daq.system.mfdaq');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.daq.system.mfdaq');
 verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.daq.system.mfdaq');
 verifyEqual(testCase, depValue(sys, 'software_id'), sw.get('base.id'));
 

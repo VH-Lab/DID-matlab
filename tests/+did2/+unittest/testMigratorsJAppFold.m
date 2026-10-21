@@ -311,7 +311,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 4);   % obs + opaque_body + anchor + software
 
 sw = onlyClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.app.spikesorter');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
 verifyEqual(testCase, sw.get('software.version'), '1.4.2');
 verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.app.spikesorter@1.4.2');
 verifyEqual(testCase, sw.get('base.session_id'), 'sess_09');
@@ -520,5 +520,5 @@ verifyFalse(testCase, isfield(renamed.app, 'name'));
 
 out = runJ(v1);
 sw  = onlyClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.app.spikesorter');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
 end

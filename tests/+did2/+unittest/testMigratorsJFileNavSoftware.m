@@ -93,7 +93,7 @@ verifyEqual(testCase, efp.get('epoch_file_pattern.epoch_map_format'), ...
 
 % the implementation class name became an EDGE, not a string field
 verifyEqual(testCase, depValue(efp.toStruct(), 'software_id'), sw.get('base.id'));
-verifyEqual(testCase, sw.get('software.name'), 'ndi.file.navigator');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.file.navigator');
 % v1 records no version for the navigator class (the template has no version
 % field), so the dedup handle is the bare name.
 %
@@ -190,7 +190,7 @@ v1 = navBody('{ ''#.tif'' }', 'ndi.epoch.epochprobemap_daqsystem', '');
 v1.filenavigator.ndi_filenavigator_class = 'ndi.setup.file.navigator.vhPrairie2p';
 out = runJ(v1);
 sw = firstOfClass(out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.setup.file.navigator.vhPrairie2p');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.setup.file.navigator.vhPrairie2p');
 verifyEqual(testCase, sw.get('base.name'), 'ndi.setup.file.navigator.vhPrairie2p');
 end
 
@@ -230,7 +230,7 @@ verifyTrue(testCase, any(strcmp(names, 'software')), ...
     ['no software entity was minted -- the app fold read a field name that ' ...
      'universalRenames had already rewritten']);
 sw = out.migrated{find(strcmp(names, 'software'), 1)};
-verifyEqual(testCase, sw.get('software.name'), 'ndi.calc.vis.oridir');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.calc.vis.oridir');
 verifyEqual(testCase, sw.get('software.version'), '1.2');
 
 % the dedup key the deferred second pass will merge on

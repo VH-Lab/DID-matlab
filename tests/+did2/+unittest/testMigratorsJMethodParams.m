@@ -455,7 +455,7 @@ out = runJ(extractionBody('sep_12', 'default', 'sess_A'));
 verifyEqual(testCase, numel(out.migrated), 2);
 mp = onlyClass(testCase, out, 'method');
 sw = onlyClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi_app_spikeextractor');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi_app_spikeextractor');
 verifyEqual(testCase, sw.get('software.version'), '1.2.3');
 verifyEqual(testCase, sw.get('base.session_id'), 'sess_A');
 verifyEqual(testCase, depValue(mp, 'software_id'), sw.get('base.id'));

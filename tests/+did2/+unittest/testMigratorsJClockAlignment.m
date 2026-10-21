@@ -292,7 +292,7 @@ function testSoftwareCarriesTheImplementationClass(testCase)
 % strategy this is. Dropping it without a software entity would lose it.
 out = runJ(syncruleFixture('randomPulses'));
 sw = findClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.time.syncrule.randomPulses');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.time.syncrule.randomPulses');
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
 verifyEqual(testCase, depVal(cfg, 'software_id'), sw.get('base.id'));
 end

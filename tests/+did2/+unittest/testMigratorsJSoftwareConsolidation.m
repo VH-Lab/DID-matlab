@@ -56,7 +56,7 @@ out = runJ(syncruleBody('ndi.time.syncrule.commonTriggersOverlappingEpochs'));
 verifyEmpty(testCase, out.quarantine);
 
 sw = firstOfClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('software.name'), ...
+verifyEqual(testCase, sw.get('entity.name'), ...
     'ndi.time.syncrule.commonTriggersOverlappingEpochs');
 % THE POINT OF THE FILE
 verifyEqual(testCase, sw.get('software.local_identifier'), ...
@@ -115,7 +115,7 @@ out = runJ(extractionParamsBody('ndi.app.spikeextractor', '2.1'));
 verifyEmpty(testCase, out.quarantine);
 
 sw = firstOfClass(testCase, out, 'software');
-verifyEqual(testCase, sw.get('software.name'), 'ndi.app.spikeextractor');
+verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikeextractor');
 verifyEqual(testCase, sw.get('software.version'), '2.1');
 verifyEqual(testCase, sw.get('software.local_identifier'), ...
     'ndi.app.spikeextractor@2.1');

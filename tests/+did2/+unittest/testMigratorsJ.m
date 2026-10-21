@@ -2605,7 +2605,7 @@ verifyEqual(testCase, reader.acquisition_reader.reader_string, 'intan');
 % The implementation class became a `software` entity with its OWN id -- which
 % is what lets the deferred dedup pass merge rigs sharing one class (#25).
 verifyEqual(testCase, did2.unittest.helpers.leafName(software), 'software');
-verifyEqual(testCase, software.software.name, 'ndi.daq.reader.mfdaq.ndr');
+verifyEqual(testCase, software.entity.name, 'ndi.daq.reader.mfdaq.ndr');
 verifyNotEqual(testCase, software.base.id, reader.base.id);
 % The edge is PRESENT and POPULATED, never present-and-blank.
 verifyEqual(testCase, reader.depends_on(1).name, 'software_id');
@@ -3098,7 +3098,7 @@ verifyEqual(testCase, leaf.subject_interaction.method_parameters.independent_var
 % app -> a software ENTITY referenced by software_id, and a
 % runtime_environment ENTITY referenced by runtime_environment_id
 sw = out{find(strcmp(names, 'software'), 1)};
-verifyEqual(testCase, sw.software.name, 'ndi.calc.vis.oridir');
+verifyEqual(testCase, sw.entity.name, 'ndi.calc.vis.oridir');
 verifyEqual(testCase, sw.software.version, '1.2');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 rt = out{find(strcmp(names, 'runtime_environment'), 1)};
@@ -3171,7 +3171,7 @@ verifyEqual(testCase, csv.response_type, 'mean');
 verifyFalse(testCase, isfield(leaf.contrast_sensitivity, 'sensitivity_rb'));
 % app -> a software ENTITY referenced by software_id
 sw = out{find(strcmp(names, 'software'), 1)};
-verifyEqual(testCase, sw.software.name, 'ndi.calc.vis.contrast_sensitivity');
+verifyEqual(testCase, sw.entity.name, 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 end
 
@@ -3219,7 +3219,7 @@ verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
 verifyEqual(testCase, did2.unittest.helpers.leafName(leaf), 'tuningcurve_calc');
 % app -> a software ENTITY + runtime_environment ENTITY
 sw = out{find(strcmp(names, 'software'), 1)};
-verifyEqual(testCase, sw.software.name, 'ndi.calc.stimulus.tuningcurve');
+verifyEqual(testCase, sw.entity.name, 'ndi.calc.stimulus.tuningcurve');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 rt = out{find(strcmp(names, 'runtime_environment'), 1)};
 verifyEqual(testCase, rt.runtime_environment.os, 'Linux');
