@@ -1,4 +1,4 @@
-function corpusDir = runCorpusDiscovery(testCase, corpusName, corpusURL, innerDir, options)
+function [corpusDir, result] = runCorpusDiscovery(testCase, corpusName, corpusURL, innerDir, options)
 %RUNCORPUSDISCOVERY Shared driver for v1 corpus discovery-mode tests.
 %
 %   CORPUSDIR = did2.unittest.helpers.runCorpusDiscovery(TESTCASE, CORPUSNAME,
@@ -52,12 +52,26 @@ arguments
     % asserted again -- a migrator change that reintroduces an orphan fails the
     % corpus test instead of only logging it.
     options.AssertNoOrphans (1,1) logical = true
+    % A local folder of v1 *.json to run instead of downloading CORPUSURL.
+    % Used by testFailureFixtures for fixtures tools/extract_failure_fixtures.py
+    % wrote; the corpus driver is otherwise unchanged.
+    options.CorpusDir char = ''
 end
 
 did2.unittest.helpers.installSchemaPath(testCase, sprintf('skipping %s corpus test', corpusName));
 
-cacheName = ['did2-corpus-' innerDir];
-corpusDir = did2.unittest.helpers.ensureCorpus(corpusURL, cacheName, innerDir);
+% WHERE THE DOCUMENTS COME FROM, in order: an explicit CorpusDir (the quick
+% suite's extracted failure fixtures), a SAMPLED copy when the workflow asked
+% for one (DID_CORPUS_SAMPLE_DIR; tools/sample_corpus.py), else the full zip.
+if ~isempty(options.CorpusDir)
+    corpusDir = options.CorpusDir;
+else
+    corpusDir = did2.unittest.helpers.sampledCorpus(innerDir);
+    if isempty(corpusDir)
+        cacheName = ['did2-corpus-' innerDir];
+        corpusDir = did2.unittest.helpers.ensureCorpus(corpusURL, cacheName, innerDir);
+    end
+end
 
 files = dir(fullfile(corpusDir, '*.json'));
 files = files(~startsWith({files.name}, '._'));

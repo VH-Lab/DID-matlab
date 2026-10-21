@@ -514,6 +514,8 @@ end
 report = struct( ...
     'total_docs',                0, ...
     'empty_required_dependency', struct('class_name', {}, 'edge_name', {}, 'count', {}), ...
+    'empty_required_dependency_docs', struct('doc_id', {}, 'class_name', {}, 'edge_name', {}), ...
+    'empty_required_dependency_docs_cap', emptyDocCap(), ...
     'vacuous_required_field',    struct('class_name', {}, 'block', {}, 'field_name', {}, 'count', {}), ...
     'empty_dependency_count',    0, ...
     'vacuous_field_count',       0, ...
@@ -603,6 +605,11 @@ report.epoch_association.reference_root_in_schema  = ...
     double(eaClassLoads(cache, eaReferenceRoot()));
 
 depKeys = {}; depCounts = [];
+% WHICH documents, not only how many: a capped sample of (doc_id, class, edge)
+% rows so tools/extract_failure_fixtures.py can lift the failing source
+% documents into a quick-suite fixture. The counts in `depKeys` stay complete;
+% the cap is announced in `empty_required_dependency_docs_cap`.
+depDocs = struct('doc_id', {}, 'class_name', {}, 'edge_name', {});
 fldKeys = {}; fldCounts = [];
 famKeys = {}; famCounts = [];
 uniKeys = {}; uniCounts = [];
@@ -689,6 +696,10 @@ for k = 1:numel(bodies)
             if ~edgeIsPopulated(body, name)
                 key = sprintf('%s|%s', className, name);
                 [depKeys, depCounts] = bump(depKeys, depCounts, key);
+                if numel(depDocs) < emptyDocCap()
+                    depDocs(end+1) = struct('doc_id', bodyId(body), ...
+                        'class_name', className, 'edge_name', name); %#ok<AGROW>
+                end
             end
         end
 
@@ -977,6 +988,7 @@ end
 
 report.empty_required_dependency = explode(depKeys, depCounts, ...
     {'class_name', 'edge_name'});
+report.empty_required_dependency_docs = depDocs;
 report.vacuous_required_field = explode(fldKeys, fldCounts, ...
     {'class_name', 'block', 'field_name'});
 % #63. THE BUG THIS LINE PAIR FIXES: famKeys/famCounts were accumulated in the
@@ -1299,6 +1311,12 @@ for b = 1:numel(blocks)
         return;
     end
 end
+end
+
+function n = emptyDocCap()
+%EMPTYDOCCAP Rows kept in `empty_required_dependency_docs`. The complete count
+%   is `empty_required_dependency`; this is the sample that names documents.
+n = 2000;
 end
 
 function id = bodyId(body)

@@ -154,6 +154,10 @@ unconvValues = [];
 % mode, and the only one no counter could see.
 fragNames = {};
 fragValues = [];
+% WHICH sources fragmented, by v1 base.id, so a failing corpus run names the
+% documents tools/extract_failure_fixtures.py lifts into a quick-suite fixture.
+% Complete (one short id per fragment); the counts above stay the census.
+fragIds = {};
 % Report-only: documents a migrator CONSUMED and EMITTED NOTHING for -- an empty
 % cell back from a split migrator (e.g. a metadata-only lightsheetZarrLevel,
 % #73 L3(c)). Without this the source would vanish from every count: it is not
@@ -295,6 +299,7 @@ for k = 1:numel(bodies)
                 % PHASE 1 REPORT-ONLY: the FRAGMENT mode. See countFragments.
                 [fragNames, fragValues] = bumpClassCounter( ...
                     fragNames, fragValues, className);
+                fragIds{end+1} = sourceIdOf(preBody); %#ok<AGROW>
             end
         end
         % Collect every produced body. Each is padded, optionally
@@ -389,6 +394,7 @@ result.summary = struct( ...
     'unconverted_by_class', buildByClassTable(unconvNames, unconvValues), ...
     'fragment_count',     sum(fragValues), ...
     'fragment_by_class',  buildByClassTable(fragNames, fragValues), ...
+    'fragment_source_ids', {fragIds}, ...
     'emitted_nothing_count',    sum(emptyValues), ...
     'emitted_nothing_by_class', buildByClassTable(emptyNames, emptyValues), ...
     'legacy_ndi_document', legacy, ...
@@ -558,6 +564,16 @@ if ~known
          'migrators over it would reshape fields whose meaning is unknown ' ...
          'here. Upgrade did2, or migrate this document with the version that ' ...
          'wrote it.'], sv);
+end
+end
+
+function id = sourceIdOf(body)
+%SOURCEIDOF The v1 document's base.id, or '' when it carries none.
+id = '';
+if isstruct(body) && isscalar(body) && isfield(body, 'base') ...
+        && isstruct(body.base) && isscalar(body.base) && isfield(body.base, 'id')
+    v = body.base.id;
+    if ischar(v); id = v; elseif isstring(v) && isscalar(v); id = char(v); end
 end
 end
 
