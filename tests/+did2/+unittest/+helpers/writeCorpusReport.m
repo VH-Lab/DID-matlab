@@ -92,6 +92,10 @@ end
 if isfield(result, 'entity_requires')
     report.entity_requires = result.entity_requires;
 end
+% Dose ingredient_in_formulation census (counts only). Absent is not zero.
+if isfield(result, 'dose_ingredients')
+    report.dose_ingredients = result.dose_ingredients;
+end
 % #52 EVIDENCE (report-only): the per-statement time-reference COUNT
 % DISTRIBUTION and, for the multi-reference ones, the SHAPES. Persisted for the
 % same reason as the censuses around it -- the team decision it feeds is about

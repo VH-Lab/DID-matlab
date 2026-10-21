@@ -174,7 +174,9 @@ for c = 1:numel(chain)
                 % formulation is at hand"). did2.build builds one document and
                 % never has the formulation at hand, so this rule is KNOWN and
                 % deliberately left to a batch check -- listed here so it is
-                % not an unknown rule, and so the gap is in one place.
+                % not an unknown rule, and so the gap is in one place. A
+                % caller that holds both documents (a migrator, an import)
+                % runs did2.build.checkDoseIngredients(dose, formulation).
                 continue;
             otherwise
                 error('did2:build:unknownRule', ...

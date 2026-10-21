@@ -593,6 +593,73 @@ verifyError(testCase, @() did2.build.statement('formulation_manipulation', newId
     'treatment', [], common{:}), 'did2:build:ruleViolated');
 end
 
+function testADoseStatesAnAmountPerIngredient(testCase)
+% Jess Haley, 2026-10-21 [dose per ingredient] (did-schema dose.json): the
+% top-level quantities are the whole formulation; `value.ingredients` holds
+% the amount of specific ingredients, one entry per repeated `ingredient_id`
+% edge on the dose, same order (rule ingredients_match_edges). Each such
+% ingredient must be one of the formulation's (rule ingredient_in_formulation,
+% which needs the formulation, so did2.build.checkDoseIngredients checks it).
+if ~composes() || ~doseHasIngredients()
+    assumeFail(testCase, 'the loaded schema''s dose has no ingredient_id edge');
+end
+% the substances and the variable are the example's, not registry terms
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = testCase.TestData.sid;
+chemA = did2.build.document('chemical', struct('value', struct('substance', ...
+    did2.build.term('NCIT:C227', 'alprazolam'))), 'SessionId', sid);
+chemB = did2.build.document('chemical', struct('value', struct('substance', ...
+    did2.build.term('EFO:0002677', 'saline'))), 'SessionId', sid);
+form = did2.build.document('formulation', struct('value', struct('ingredients', ...
+    {{struct('concentration', struct('source_value', NaN)), ...
+      struct('concentration', struct('source_value', NaN))}})), ...
+    'SessionId', sid, 'Edges', struct('ingredient_id', ...
+    {{chemA.base.id, chemB.base.id}}));
+perMass = struct('amount_per_body_mass', struct('grams_per_gram', 1e-6, ...
+    'source_value', 1));
+value = struct('volume', did2.build.valueCell('volume', NaN), ...
+    'ingredients', perMass);
+doc = did2.build.statement('dose_manipulation', newId(), 'treatment', value, ...
+    'TimeReferenceIds', {newId()}, 'SessionId', sid, ...
+    'Edges', struct('formulation_id', form.base.id, 'ingredient_id', {{chemA.base.id}}));
+blk = blockWith(doc, 'value');
+verifyEqual(testCase, doc.(blk).value.ingredients(1).amount_per_body_mass.grams_per_gram, 1e-6);
+verifyTrue(testCase, isnan(doc.(blk).value.volume.liters));
+verifyEqual(testCase, sum(strcmp({doc.depends_on.name}, 'ingredient_id')), 1);
+did2.build.checkDoseIngredients(doc, form);                  % alprazolam is in it
+% one entry, no edge (or two edges, one entry): refused
+verifyError(testCase, @() did2.build.statement('dose_manipulation', newId(), ...
+    'treatment', value, 'TimeReferenceIds', {newId()}, 'SessionId', sid, ...
+    'Edges', struct('formulation_id', form.base.id)), 'did2:build:ruleViolated');
+verifyError(testCase, @() did2.build.statement('dose_manipulation', newId(), ...
+    'treatment', value, 'TimeReferenceIds', {newId()}, 'SessionId', sid, ...
+    'Edges', struct('formulation_id', form.base.id, 'ingredient_id', ...
+    {{chemA.base.id, chemB.base.id}})), 'did2:build:ruleViolated');
+% an ingredient that is not the formulation's: refused by the cross-document check
+other = did2.build.statement('dose_manipulation', newId(), 'treatment', value, ...
+    'TimeReferenceIds', {newId()}, 'SessionId', sid, ...
+    'Edges', struct('formulation_id', form.base.id, 'ingredient_id', {{newId()}}));
+verifyError(testCase, @() did2.build.checkDoseIngredients(other, form), ...
+    'did2:build:ruleViolated');
+end
+
+function tf = doseHasIngredients()
+c = did2.schema.cache.shared();
+tf = false;
+if ~c.hasClass('dose')
+    return;
+end
+s = c.getClass('dose');
+d = s.depends_on;
+if iscell(d)
+    names = cellfun(@(x) char(x.name), d, 'UniformOutput', false);
+else
+    names = {d.name};
+end
+tf = any(strcmp(names, 'ingredient_id'));
+end
+
 function testTheValidatorRefusesAValueThatIsNowhere(testCase)
 % did2.schema.cache.validateDocument enforces the same rule as the builder
 % (switch ValueInlineOrBody, armed by default): a value document with no

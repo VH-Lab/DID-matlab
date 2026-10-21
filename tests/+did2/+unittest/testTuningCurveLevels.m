@@ -434,7 +434,6 @@ for k = 1:size(pairs, 1)
         sprintf('%s: control_mean_stderr -> control.pooled.stderr', pairs{k, 1}));
 end
 end
-end
 
 function testControlBlockInventsNothing(testCase)
 % The guard half of DEFECT A. A family whose writer emits two control fields must

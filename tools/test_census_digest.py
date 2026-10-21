@@ -5532,3 +5532,16 @@ def test_entity_requires_prints_denominator_then_rows():
     census_digest.render_entity_requires(r, out)
     assert "10 doc(s) inspected" in out[0] and "1 missing" in out[0]
     assert "session" in out[1] and "inspected" in out[1] and "missing" in out[1]
+
+
+def test_dose_ingredients_absent_is_not_measured_and_present_prints_denominator():
+    out = []
+    census_digest.render_dose_ingredients({}, out)
+    assert "NOT MEASURED" in out[0]
+    out = []
+    census_digest.render_dose_ingredients({"dose_ingredients": {
+        "docs_inspected": 9, "doses_inspected": 2, "doses_with_ingredients": 1,
+        "formulation_not_in_batch": 0, "doses_checked": 2, "violations": 1,
+        "violation_examples": [{"id": "d1", "message": "m"}]}}, out)
+    assert "9 doc(s) inspected" in out[0] and "1 violation(s)" in out[0]
+    assert out[1].strip().startswith("d1:")
