@@ -971,7 +971,7 @@ for i = 1:numel(lk)
         case 'time'
             if ~hasUnit(L) && hasUnit(P)
                 L.unit = P.unit;
-                converted = isfield(P, 'source_unit') && ~isempty(P.source_unit);
+                converted = isfield(P, 'source_unit') && ~isempty(sourceSpelling(P.source_unit));
                 if converted
                     L.source_unit = P.source_unit;
                     factor = scaleOf(P);
@@ -1041,17 +1041,38 @@ end
 function t = sourceUnitOf(K)
 %SOURCEUNITOF The unit as the source spelled it: source_unit, else the unit's
 %   name (a key omits source_unit when the source was already canonical).
+%   source_unit is text, or a term whose name is read (did-schema
+%   V_eta_source_unit_plan.md: a term where the schema declares one).
 arguments
     K struct
 end
 
 t = '';
-if isfield(K, 'source_unit') && ~isempty(K.source_unit)
-    t = char(K.source_unit);
+if isfield(K, 'source_unit') && ~isempty(sourceSpelling(K.source_unit))
+    t = sourceSpelling(K.source_unit);
 elseif isfield(K, 'unit') && isstruct(K.unit) && isfield(K.unit, 'name')
     t = char(K.unit.name);
 elseif isfield(K, 'unit') && (ischar(K.unit) || isstring(K.unit))
     t = char(K.unit);
+end
+end
+
+function t = sourceSpelling(u)
+%SOURCESPELLING A source_unit's text: itself (char), or a term's name (its node
+%   when it has no name); '' for a blank term or anything else.
+arguments
+    u
+end
+
+t = '';
+if isstruct(u) && ~isempty(u)
+    if isfield(u, 'name') && ~isempty(u(1).name)
+        t = char(u(1).name);
+    elseif isfield(u, 'node') && ~isempty(u(1).node)
+        t = char(u(1).node);
+    end
+elseif ischar(u) || isstring(u)
+    t = char(u);
 end
 end
 
