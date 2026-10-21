@@ -29,6 +29,20 @@ function [whereSQL, params] = compileQuery(q, opts)
 %   correctness backstop, so the SQL clause is only required to be an
 %   over-approximation of the true result.
 %
+%   That makes NEGATION the hazard: NOT of an over-approximation drops true
+%   matches before the recheck can see them. A negated term is therefore
+%   compiled from an EXACT predicate only (scalarPredicate's second form,
+%   which knows the value's JSON type: SQL compares 5 with '5' under LOWER,
+%   CAST and LIKE, the evaluator does not), and to the conservative 1=1
+%   where there is none -- ~regexp, ~exact_number of an array, a ~[*] whose
+%   expansion reaches entries the evaluator does not.
+%
+%   A `[*]` level is read through a CASE on its JSON type, so that it
+%   reaches what did2.query's walkPath reaches: the entries of an array, an
+%   OBJECT as one entry (jsonencode writes a one-entry array of structures
+%   as an object), nothing else; a leaf is read from an object entry only.
+%   json_each is never handed a bare text, which it rejects as malformed.
+%
 %   `hasanyelement` (the correlated "same element" operator, see
 %   did2.query) compiles to EXISTS over json_each of the array, with the
 %   sub-query's predicates applied to each element (`json_each.value`), so
@@ -198,7 +212,7 @@ switch op
         [sql, params] = compileHasField(ss.field, isNeg, ctx);
         return;
     case 'hasmember'
-        [sql, params] = compileHasMember(ss.field, ss.param1, isNeg);
+        [sql, params] = compileHasMember(ss.field, ss.param1, isNeg, ctx);
         return;
     case 'hasanysubfield_contains_string'
         % Sugar: <field>[*].<sub> + contains_string
@@ -342,40 +356,98 @@ if isempty(stars)
     params = {};
     return;
 end
-% At least one [*]: existence over the join expansion.
+% At least one [*]: existence over the join expansion. With a leaf, the
+% leaf must be present (JSON null counts, as walkPath returns it); with
+% none, any element reached is a value.
 [joinSQL, witnessAlias] = buildArrayJoin(stars, ctx);
-witnessExpr = leafValueExpression(witnessAlias, leaf, ctx);
-condition = sprintf('json_type(%s) IS NOT NULL', witnessExpr);
-inner = sprintf('SELECT 1 %s WHERE %s', joinSQL, condition);
-existsSQL = sprintf('EXISTS (%s)', inner);
+if isempty(leaf)
+    condition = '1=1';
+else
+    condition = sprintf('%s IS NOT NULL', leafTypeExpression(witnessAlias, leaf));
+end
+existsSQL = sprintf('EXISTS (SELECT 1 %s WHERE %s)', joinSQL, condition);
 if isNeg
-    sql = sprintf('(NOT %s)', existsSQL);
+    % NOT EXISTS is exact only where the SQL reaches the elements the
+    % evaluator reaches (see starPathIsExact) and there is a leaf: with
+    % none, a numeric array's entries count here and not in walkPath.
+    if ~isempty(leaf) && starPathIsExact(stars, ctx)
+        sql = sprintf('(NOT %s)', existsSQL);
+    else
+        sql = '1=1';
+    end
 else
     sql = existsSQL;
 end
 params = {};
 end
 
-function [sql, params] = compileHasMember(fieldPath, target, isNeg)
-% `hasmember`: the field is a flat array and contains the scalar target.
-[stars, prefix, leaf] = splitPathOnStar(fieldPath);
+function [sql, params] = compileHasMember(fieldPath, target, isNeg, ctx)
+% `hasmember`: the value at the field contains the scalar target, as
+% did2.query.opHasMember decides it: a text target is a text value equal to
+% it, or a text entry of an array (an array holding a text is a cell array
+% in MATLAB); a numeric target is equal to a number, or to any entry of a
+% numeric array (of any shape). The value is read through a CASE (as
+% hasanyelement reads its array), so a text value is never handed to
+% json_each, which rejects it as malformed JSON.
+%
+% The text form is exact. The numeric form walks every nested level
+% (json_tree), so it over-approximates (a number inside a mixed array, or
+% inside an object, is not a member in the evaluator); its negation and any
+% other target compile to the conservative 1=1.
+arguments
+    fieldPath % the field's dot-path, possibly with [*]; char() below
+    target % the member sought
+    isNeg (1,1) logical
+    ctx (1,1) struct
+end
+
+[stars, prefix, leaf] = splitPathOnStar(char(fieldPath));
 if isempty(stars)
-    arrayExpr = sprintf('json_extract(body, ''%s'')', jsonPath(prefix));
-    inner = sprintf('SELECT 1 FROM json_each(%s) je WHERE %s', ...
-        arrayExpr, valueEquality('je.value', target));
-    existsSQL = sprintf('EXISTS (%s)', inner);
-    params = bindParam(target);
+    joinSQL = 'FROM';
+    typeExpr = sprintf('json_type(%s, ''%s'')', ctx.root, jsonPath(prefix));
+    valueExpr = scalarValueExpression(prefix, ctx);
+    pathExact = true;
 else
-    % `arr[*].sub.hasmember`: leaf must address an array.
-    [joinSQL, witnessAlias] = buildArrayJoin(stars);
-    witnessExpr = leafValueExpression(witnessAlias, leaf);
-    inner = sprintf(['SELECT 1 %s, json_each(%s) je ' ...
-        'WHERE %s'], joinSQL, witnessExpr, valueEquality('je.value', target));
-    existsSQL = sprintf('EXISTS (%s)', inner);
-    params = bindParam(target);
+    [joinSQL, witnessAlias] = buildArrayJoin(stars, ctx);
+    joinSQL = [joinSQL ','];
+    if isempty(leaf)
+        typeExpr = [witnessAlias '.type'];
+        valueExpr = [witnessAlias '.value'];
+    else
+        typeExpr = leafTypeExpression(witnessAlias, leaf);
+        valueExpr = leafValueExpression(witnessAlias, leaf);
+    end
+    pathExact = ~isempty(leaf) && starPathIsExact(stars, ctx);
+end
+
+if ischar(target) || (isstring(target) && isscalar(target))
+    src = sprintf(['CASE %s WHEN ''array'' THEN %s ' ...
+        'WHEN ''text'' THEN json_array(%s) ELSE ''[]'' END'], typeExpr, valueExpr, valueExpr);
+    existsSQL = sprintf(['EXISTS (SELECT 1 %s json_each(%s) jm ' ...
+        'WHERE jm.type = ''text'' AND jm.value = ?)'], joinSQL, src);
+    params = {char(target)};
+    exact = pathExact;
+elseif (isnumeric(target) || islogical(target)) && isscalar(target)
+    src = sprintf(['CASE %s WHEN ''array'' THEN %s ' ...
+        'WHEN ''integer'' THEN json_array(%s) WHEN ''real'' THEN json_array(%s) ' ...
+        'ELSE ''[]'' END'], typeExpr, valueExpr, valueExpr, valueExpr);
+    existsSQL = sprintf(['EXISTS (SELECT 1 %s json_tree(%s) jm ' ...
+        'WHERE jm.type IN (''integer'', ''real'') AND CAST(jm.value AS REAL) = ?)'], ...
+        joinSQL, src);
+    params = {double(target)};
+    exact = false;
+else
+    sql = '1=1';
+    params = {};
+    return;
 end
 if isNeg
-    sql = sprintf('(NOT %s)', existsSQL);
+    if exact
+        sql = sprintf('(NOT %s)', existsSQL);
+    else
+        sql = '1=1';
+        params = {};
+    end
 else
     sql = existsSQL;
 end
@@ -384,23 +456,41 @@ end
 function [sql, params] = compileHasAnySubfieldExact(arrayPath, subNames, targets, isNeg)
 % Correlated existence check used by depends_on lowering: each element of
 % the array-of-structures at arrayPath must simultaneously match every
-% (subNames{i}, targets{i}) pair.
+% (subNames{i}, targets{i}) pair. The elements are the evaluator's
+% (did2.query.opHasAnySubfieldExact): every entry of an array, an object (a
+% one-entry array of structures, as jsonencode writes it) as one element,
+% nothing else; a sub-field is read only from an object element, so a text
+% element is never handed to json_extract (a malformed-JSON error).
 if ~iscell(subNames),  subNames = {subNames};  end
 if ~iscell(targets),   targets  = {targets};   end
-arrayExpr = sprintf('json_extract(body, ''%s'')', jsonPath(arrayPath));
+arrayPath = char(arrayPath);
+if isempty(arrayPath) || contains(arrayPath, '[*]')
+    % The evaluator reads no array here (an empty path, or a `[*]` segment,
+    % which is not a field name): it never matches. Permissive all the same.
+    sql = '1=1';
+    params = {};
+    return;
+end
 clauses = cell(1, numel(subNames));
 params  = cell(1, numel(subNames));
+exact = true;
 for k = 1:numel(subNames)
-    subExpr = sprintf('json_extract(je.value, ''%s'')', ...
-        jsonPath(char(subNames{k})));
+    sn = char(subNames{k});
+    exact = exact && ~contains(sn, '.') && ~isempty(sn);
+    subExpr = sprintf('json_extract(%s, ''%s'')', elementRoot('je'), jsonPath(sn));
     clauses{k} = sprintf('%s = ?', subExpr);
     params{k}  = char(targets{k});
 end
 inner = sprintf('SELECT 1 FROM json_each(%s) je WHERE %s', ...
-    arrayExpr, strjoin(clauses, ' AND '));
+    starSource('body', arrayPath), strjoin(clauses, ' AND '));
 existsSQL = sprintf('EXISTS (%s)', inner);
 if isNeg
-    sql = sprintf('(NOT %s)', existsSQL);
+    if exact
+        sql = sprintf('(NOT %s)', existsSQL);
+    else
+        sql = '1=1';
+        params = {};
+    end
 else
     sql = existsSQL;
 end
@@ -421,31 +511,73 @@ if isempty(stars)
         return;
     end
     valueExpr = scalarValueExpression(prefix, ctx);
-    [predicate, params] = scalarPredicate(op, valueExpr, target);
-    if isNeg
-        % Missing path -> ~op should be true. The generated column (or
-        % `json_extract` fallback) returns NULL for unresolvable paths.
-        sql = sprintf('(%s IS NULL OR NOT (%s))', valueExpr, predicate);
-    else
-        sql = predicate;
+    if ~isNeg
+        [sql, params] = scalarPredicate(op, valueExpr, target);
+        return;
     end
+    % Missing path -> ~op should be true: `json_extract` returns NULL for an
+    % unresolvable path. NOT of the predicate is sound only where the
+    % predicate is EXACT (see scalarPredicate); else the conservative 1=1.
+    typeExpr = sprintf('json_type(%s, ''%s'')', ctx.root, jsonPath(prefix));
+    [~, ~, exactPred, exactParams] = scalarPredicate(op, valueExpr, target, typeExpr);
+    [sql, params] = negateExact(['(' valueExpr ' IS NULL OR NOT (@PRED@))'], ...
+        exactPred, exactParams);
     return;
 end
 
-if ~ctx.inElement && arrayPathIsIndexed(fieldPath, ctx)
+if ~ctx.inElement && arrayPathIsIndexed(fieldPath, ctx) ...
+        && (isNeg || sidecarCanDecide(op, target))
     [sql, params] = compileScalarFromSidecar(op, fieldPath, target, isNeg, ctx);
     return;
 end
 
 [joinSQL, witnessAlias] = buildArrayJoin(stars, ctx);
-witnessExpr = leafValueExpression(witnessAlias, leaf, ctx);
-[predicate, params] = scalarPredicate(op, witnessExpr, target);
-inner = sprintf('SELECT 1 %s WHERE %s', joinSQL, predicate);
-existsSQL = sprintf('EXISTS (%s)', inner);
-if isNeg
-    sql = sprintf('(NOT %s)', existsSQL);
-else
-    sql = existsSQL;
+witnessExpr = leafValueExpression(witnessAlias, leaf);
+if ~isNeg
+    [predicate, params] = scalarPredicate(op, witnessExpr, target);
+    sql = sprintf('EXISTS (SELECT 1 %s WHERE %s)', joinSQL, predicate);
+    return;
+end
+% NOT EXISTS is sound only where the SQL reaches no element the evaluator
+% does not (starPathIsExact) and the predicate is exact on each. With no
+% leaf the element itself is the value, and a NUMBER element may sit in a
+% numeric array, which the evaluator's `[*]` does not iterate (a text one
+% always sits in a cell array, which it does), so only the text operators
+% are exact there.
+exactPred = '';
+exactParams = {};
+if starPathIsExact(stars, ctx) ...
+        && (~isempty(leaf) || ~any(strcmp(op, {'exact_number', 'lessthan', ...
+            'lessthaneq', 'greaterthan', 'greaterthaneq'})))
+    if isempty(leaf)
+        typeExpr = [witnessAlias '.type'];
+    else
+        typeExpr = leafTypeExpression(witnessAlias, leaf);
+    end
+    [~, ~, exactPred, exactParams] = scalarPredicate(op, witnessExpr, target, typeExpr);
+end
+[sql, params] = negateExact(['(NOT EXISTS (SELECT 1 ' joinSQL ' WHERE @PRED@))'], ...
+    exactPred, exactParams);
+end
+
+function tf = sidecarCanDecide(op, target)
+% May a POSITIVE `[*]` term be answered from queryable_array_elem? The
+% sidecar has no row for an element whose leaf is empty ('' or JSON null;
+% sqlitedb.isEmptyLeaf), so it can only answer an operator that no empty
+% leaf satisfies in the evaluator: exact_string '' does, and so may a
+% regexp or a wildcard of stars alone. Anything else reads the body
+% (json_each). A negated term needs no such care: an element without a row
+% cannot satisfy the predicate inside NOT EXISTS, which only widens it.
+isText = ischar(target) || (isstring(target) && isscalar(target));
+switch op
+    case {'exact_string', 'exact_string_anycase', 'contains_string'}
+        tf = isText && strlength(string(target)) > 0;
+    case 'wildcard'
+        tf = isText && ~isempty(regexprep(char(target), '(?<!\\)\*', ''));
+    case {'exact_number', 'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'}
+        tf = isnumeric(target) && isscalar(target);
+    otherwise
+        tf = false;
 end
 end
 
@@ -493,17 +625,26 @@ function [sql, params] = compileScalarFromSidecar(op, fieldPath, target, isNeg, 
 % exact_number) compile to a permissive `1=1` predicate; the
 % in-memory post-filter in did2.database.sqlitedb.search enforces
 % correctness regardless.
+%
+% Negated, NOT EXISTS of an inexact predicate would drop true matches, so
+% only an exact one is negated (the column's affinity stands in for the
+% value's type: the sidecar holds what the schema declared), else 1=1.
 affinity = arrayPathAffinity(fieldPath, ctx);
 valueExpr = sidecarValueExpression(affinity);
-[predicate, params] = scalarPredicate(op, valueExpr, target);
-inner = sprintf(['SELECT 1 FROM queryable_array_elem qae ' ...
-    'WHERE qae.doc_id = documents.id AND qae.path = ? AND %s'], predicate);
-params = [{fieldPath}, params];
-existsSQL = sprintf('EXISTS (%s)', inner);
-if isNeg
-    sql = sprintf('(NOT %s)', existsSQL);
-else
-    sql = existsSQL;
+inner = ['SELECT 1 FROM queryable_array_elem qae ' ...
+    'WHERE qae.doc_id = documents.id AND qae.path = ? AND %s'];
+if ~isNeg
+    [predicate, params] = scalarPredicate(op, valueExpr, target);
+    sql = sprintf(['EXISTS (' inner ')'], predicate);
+    params = [{fieldPath}, params];
+    return;
+end
+[~, ~, exactPred, exactParams] = scalarPredicate(op, valueExpr, target, ...
+    affinityTypeToken(affinity));
+[sql, params] = negateExact(['(NOT EXISTS (' strrep(inner, '%s', '@PRED@') '))'], ...
+    exactPred, exactParams);
+if ~strcmp(sql, '1=1')
+    params = [{fieldPath}, params];
 end
 end
 
@@ -517,19 +658,60 @@ switch upper(char(affinity))
 end
 end
 
-function [predicate, params] = scalarPredicate(op, valueExpr, target)
+function [predicate, params, exactPred, exactParams] = scalarPredicate(op, valueExpr, target, typeExpr)
 % Build a single boolean SQL fragment comparing valueExpr to target.
+%
+% PREDICATE over-approximates the evaluator (did2.query.applyScalarOp):
+% every value the evaluator matches, it matches. That is all a positive
+% term needs. NOT of it is a different matter -- NOT of a superset drops
+% true matches, which the in-memory recheck never sees -- so a negated term
+% is built from EXACTPRED instead: a predicate that matches ONLY values the
+% evaluator matches, or '' when none can be written, and the caller then
+% compiles the negation to the conservative 1=1.
+%
+% TYPEEXPR says what is known of the value's type, which the exact forms
+% need (SQL compares and casts across types where the evaluator does not:
+% LOWER(5) is '5', CAST('45' AS REAL) is 45, 5 LIKE '5' is true):
+%   a SQL expression    giving the JSON type ('text', 'integer', ...)
+%   'TEXTCOL'           the value is text (a TEXT column)
+%   'NUMCOL'            the value is a number (a REAL/INTEGER column)
+%   '' (or absent)      unknown: only exact_string has an exact form
+if nargin < 4
+    typeExpr = '';
+end
+exactPred = '';
+exactParams = {};
+isText = ischar(target) || (isstring(target) && isscalar(target));
+isNum = isnumeric(target) && isscalar(target);
 switch op
     case 'exact_string'
         predicate = sprintf('%s = ?', valueExpr);
         params = bindParam(target);
+        if isText && ~strcmp(typeExpr, 'NUMCOL')
+            % A text target equals only a text value: SQLite does not
+            % equate 5 and '5' -- except in a REAL/INTEGER column, whose
+            % affinity turns '5' into 5 (NUMCOL: no exact form).
+            exactPred = predicate;
+            exactParams = params;
+        end
     case 'exact_string_anycase'
         % LOWER on both sides; portable across mksqlite without ICU.
         predicate = sprintf('LOWER(%s) = LOWER(?)', valueExpr);
         params = bindParam(target);
+        if isText
+            % LOWER folds ASCII only, a subset of the evaluator's strcmpi
+            [exactPred, exactParams] = guarded(textGuard(typeExpr), predicate, params);
+        end
     case 'contains_string'
+        % LIKE ignores ASCII case and reads % and _ as wildcards: a superset.
         predicate = sprintf('%s LIKE ?', valueExpr);
         params = {['%' char(target) '%']};
+        if isText && strlength(string(target)) > 0
+            % instr is case-sensitive and literal, as strfind is (which
+            % finds nothing for an empty needle, hence the guard above)
+            [exactPred, exactParams] = guarded(textGuard(typeExpr), ...
+                sprintf('instr(%s, ?) > 0', valueExpr), {char(target)});
+        end
     case 'wildcard'
         % SQLite's LIKE ignores case for ASCII letters only; the in-memory
         % recheck ignores it for all, so a non-ASCII letter in another case
@@ -542,17 +724,21 @@ switch op
         else
             predicate = [valueExpr ' LIKE ? ESCAPE ''\'''];   % not sprintf: it reads \ as an escape
             params = {did2.query.wildcardToLike(target)};
+            if isText && strlength(string(target)) > 0
+                [exactPred, exactParams] = guarded(textGuard(typeExpr), predicate, params);
+            end
         end
     case 'regexp'
         % SQLite REGEXP requires a UDF that mksqlite does not register by
         % default. Emit a permissive pre-filter and rely on the in-memory
-        % post-filter for correctness.
+        % post-filter for correctness. No exact form.
         predicate = '1=1';
         params = {};
     case 'exact_number'
-        if isnumeric(target) && isscalar(target)
+        if isNum
             predicate = sprintf('CAST(%s AS REAL) = ?', valueExpr);
             params = {double(target)};
+            [exactPred, exactParams] = guarded(numGuard(typeExpr), predicate, params);
         else
             % Arrays / matrices: full equality is hard in pure SQL.
             % Permissive pre-filter; post-filter enforces equality.
@@ -560,26 +746,93 @@ switch op
             params = {};
         end
     case 'lessthan'
-        [predicate, params] = numericComparison(valueExpr, target, '<');
+        [predicate, params, exactPred, exactParams] = numericComparison(valueExpr, target, '<', typeExpr);
     case 'lessthaneq'
-        [predicate, params] = numericComparison(valueExpr, target, '<=');
+        [predicate, params, exactPred, exactParams] = numericComparison(valueExpr, target, '<=', typeExpr);
     case 'greaterthan'
-        [predicate, params] = numericComparison(valueExpr, target, '>');
+        [predicate, params, exactPred, exactParams] = numericComparison(valueExpr, target, '>', typeExpr);
     case 'greaterthaneq'
-        [predicate, params] = numericComparison(valueExpr, target, '>=');
+        [predicate, params, exactPred, exactParams] = numericComparison(valueExpr, target, '>=', typeExpr);
     otherwise
         error('did2:database:unknownOperator', ...
             'Unknown scalar operator "%s".', op);
 end
 end
 
-function [predicate, params] = numericComparison(valueExpr, target, sqlOp)
+function [predicate, params, exactPred, exactParams] = numericComparison(valueExpr, target, sqlOp, typeExpr)
+exactPred = '';
+exactParams = {};
 if isnumeric(target) && isscalar(target)
     predicate = sprintf('CAST(%s AS REAL) %s ?', valueExpr, sqlOp);
     params = {double(target)};
+    [exactPred, exactParams] = guarded(numGuard(typeExpr), predicate, params);
 else
     predicate = '1=1';
     params = {};
+end
+end
+
+function g = textGuard(typeExpr)
+% The SQL that holds only for a text value; '' when the value is known to
+% be text; [] (no exact form) when it is known not to be, or unknown.
+switch typeExpr
+    case 'TEXTCOL'
+        g = '';
+    case {'NUMCOL', ''}
+        g = [];
+    otherwise
+        g = sprintf('%s = ''text''', typeExpr);
+end
+end
+
+function g = numGuard(typeExpr)
+% As textGuard, for a number. A JSON true/false is not one: the evaluator
+% reads it as a logical, which no numeric operator matches.
+switch typeExpr
+    case 'NUMCOL'
+        g = '';
+    case {'TEXTCOL', ''}
+        g = [];
+    otherwise
+        g = sprintf('%s IN (''integer'', ''real'')', typeExpr);
+end
+end
+
+function [exactPred, exactParams] = guarded(guard, predicate, params)
+% PREDICATE restricted by GUARD (see textGuard): [] is no exact form.
+if isnumeric(guard) && isempty(guard) && ~ischar(guard)
+    exactPred = '';
+    exactParams = {};
+elseif isempty(guard)
+    exactPred = predicate;
+    exactParams = params;
+else
+    exactPred = sprintf('(%s AND %s)', guard, predicate);
+    exactParams = params;
+end
+end
+
+function [sql, params] = negateExact(template, exactPred, exactParams)
+% A negated term: TEMPLATE with @PRED@ replaced by the exact predicate, or
+% the conservative 1=1 when there is none (see scalarPredicate).
+if isempty(exactPred)
+    sql = '1=1';
+    params = {};
+else
+    sql = strrep(template, '@PRED@', exactPred);
+    params = exactParams;
+end
+end
+
+function t = affinityTypeToken(affinity)
+% A sidecar column's affinity as a scalarPredicate type token.
+switch upper(char(affinity))
+    case 'TEXT'
+        t = 'TEXTCOL';
+    case {'REAL', 'INTEGER'}
+        t = 'NUMCOL';
+    otherwise
+        t = '';
 end
 end
 
@@ -614,12 +867,14 @@ arguments
 end
 
 valueExpr = 'documents.session_id';
-[predicate, params] = scalarPredicate(op, valueExpr, target);
-if isNeg
-    sql = sprintf('(%s IS NULL OR NOT (%s))', valueExpr, predicate);
-else
-    sql = predicate;
+if ~isNeg
+    [sql, params] = scalarPredicate(op, valueExpr, target);
+    return;
 end
+% the column holds the session id as text; an inexact negation is 1=1
+[~, ~, exactPred, exactParams] = scalarPredicate(op, valueExpr, target, 'TEXTCOL');
+[sql, params] = negateExact(['(' valueExpr ' IS NULL OR NOT (@PRED@))'], ...
+    exactPred, exactParams);
 end
 
 function [sql, params] = compileSessionIdHasField(isNeg)
@@ -670,7 +925,8 @@ arguments
     ctx (1,1) struct
 end
 
-switch ctx.queryablePaths(dotPath)
+affinity = ctx.queryablePaths(dotPath);
+switch affinity
     case 'TEXT'
         valueExpr = 'qse.value_text';
     case {'INTEGER', 'REAL'}
@@ -680,14 +936,21 @@ switch ctx.queryablePaths(dotPath)
     otherwise
         valueExpr = 'qse.value_raw';
 end
-[predicate, params] = scalarPredicate(op, valueExpr, target);
-inner = sprintf(['(SELECT qse.doc_id FROM queryable_scalar_elem qse ' ...
-    'WHERE qse.path = ? AND %s)'], predicate);
-params = [{dotPath}, params];
-if isNeg
-    sql = ['(documents.id NOT IN ' inner ')'];
-else
-    sql = ['documents.id IN ' inner];
+inner = ['(SELECT qse.doc_id FROM queryable_scalar_elem qse ' ...
+    'WHERE qse.path = ? AND @PRED@)'];
+if ~isNeg
+    [predicate, params] = scalarPredicate(op, valueExpr, target);
+    sql = ['documents.id IN ' strrep(inner, '@PRED@', predicate)];
+    params = [{dotPath}, params];
+    return;
+end
+% NOT IN a superset drops true matches: only an exact predicate is negated
+% (see scalarPredicate), else the conservative 1=1.
+[~, ~, exactPred, exactParams] = scalarPredicate(op, valueExpr, target, ...
+    affinityTypeToken(affinity));
+[sql, params] = negateExact(['(documents.id NOT IN ' inner ')'], exactPred, exactParams);
+if ~strcmp(sql, '1=1')
+    params = [{dotPath}, params];
 end
 end
 
@@ -776,9 +1039,14 @@ function [sql, lastAlias] = buildArrayJoin(stars, ctx)
 % of an EXISTS subquery for a `[*]`-bearing path. Inside a hasanyelement
 % sub-query the levels are read from the element (ctx.root) and counted as
 % the evaluator counts them (arrayElementSource), so nothing is dropped.
-if nargin < 2
-    ctx = struct('root', 'body', 'inElement', false);
-end
+%
+% Elsewhere each level is read through starSource, which iterates what
+% did2.query's walkPath iterates for a `[*]`: every entry of an array, and
+% an OBJECT as one entry -- jsonencode writes a one-entry array of
+% structures as an object, and json_each over the object itself would step
+% through its fields (a text field then reached json_extract, which SQLite
+% rejects as malformed JSON). A deeper level is read from an object entry
+% only (elementRoot).
 if ctx.inElement
     parts = cell(1, numel(stars));
     for k = 1:numel(stars)
@@ -799,40 +1067,69 @@ end
 parts = cell(1, numel(stars));
 for k = 1:numel(stars)
     if k == 1
-        sourceExpr = sprintf('json_extract(body, ''%s'')', jsonPath(stars{k}));
+        sourceExpr = starSource(ctx.root, stars{k});
     else
         % Relative dot-path inside the previous element value.
         prevAlias = sprintf('je%d', k - 1);
         if isempty(stars{k})
-            sourceExpr = sprintf('%s.value', prevAlias);
+            sourceExpr = starSourceOfRow(prevAlias);
         else
-            sourceExpr = sprintf('json_extract(%s.value, ''%s'')', ...
-                prevAlias, jsonPath(stars{k}));
+            sourceExpr = starSource(elementRoot(prevAlias), stars{k});
         end
     end
-    alias = sprintf('je%d', k);
-    if k == 1
-        parts{k} = sprintf('json_each(%s) %s', sourceExpr, alias);
-    else
-        parts{k} = sprintf(', json_each(%s) %s', sourceExpr, alias);
-    end
+    parts{k} = sprintf('json_each(%s) je%d', sourceExpr, k);
 end
-sql = ['FROM ' strjoin(parts, '')];
+sql = ['FROM ' strjoin(parts, ', ')];
 lastAlias = sprintf('je%d', numel(stars));
 end
 
-function expr = leafValueExpression(witnessAlias, leaf, ctx)
-% The value expression at the leaf of an `[*]`-bearing path. Inside a
-% hasanyelement sub-query a leaf is read only from an object element
-% (elementRoot): json_extract of a text element is a malformed-JSON error.
+function src = starSource(root, dotPath)
+% The value at dotPath under ROOT as the JSON array of the entries a `[*]`
+% reaches in did2.query.walkPath: an array as itself, an object as a
+% one-entry array, anything else (text, number, null, missing) as none.
+p = jsonPath(dotPath);
+x = sprintf('json_extract(%s, ''%s'')', root, p);
+src = sprintf(['CASE json_type(%s, ''%s'') WHEN ''array'' THEN %s ' ...
+    'WHEN ''object'' THEN json_array(json(%s)) ELSE ''[]'' END'], root, p, x, x);
+end
+
+function src = starSourceOfRow(alias)
+% starSource for the value of a json_each row (a `[*][*]` level).
+src = sprintf(['CASE %s.type WHEN ''array'' THEN %s.value ' ...
+    'WHEN ''object'' THEN json_array(json(%s.value)) ELSE ''[]'' END'], ...
+    alias, alias, alias);
+end
+
+function tf = starPathIsExact(stars, ctx)
+% Does the json_each expansion of a `[*]` path (outside a hasanyelement
+% sub-query) reach only entries did2.query.walkPath reaches, so that NOT
+% EXISTS over it is sound? With a leaf it does: the leaf is read from object
+% entries only, and those are exactly the evaluator's structure entries. A
+% `[*][*]` level never is (walkPath reads `a[*]` as a field name, so it
+% reaches nothing there). Without a leaf the caller must also ask whether
+% its operator can tell a numeric array's entries (not iterated by walkPath)
+% from a cell array's.
+tf = ~ctx.inElement && ~isempty(stars{1}) && ~any(cellfun(@isempty, stars(2:end)));
+end
+
+function expr = leafValueExpression(witnessAlias, leaf)
+% The value expression at the leaf of an `[*]`-bearing path. A leaf is read
+% only from an object element (elementRoot): json_extract of a text
+% element is a malformed-JSON error.
 if isempty(leaf)
     expr = sprintf('%s.value', witnessAlias);
-elseif nargin >= 3 && ctx.inElement
-    expr = sprintf('json_extract(%s, ''%s'')', elementRoot(witnessAlias), jsonPath(leaf));
 else
-    expr = sprintf('json_extract(%s.value, ''%s'')', ...
-        witnessAlias, jsonPath(leaf));
+    % From an object entry only, also outside a sub-query: json_extract of
+    % a text entry is a malformed-JSON error, and the evaluator finds no
+    % field in anything but a structure.
+    expr = sprintf('json_extract(%s, ''%s'')', elementRoot(witnessAlias), jsonPath(leaf));
 end
+end
+
+function expr = leafTypeExpression(witnessAlias, leaf)
+% The JSON type (json_type) of the value leafValueExpression reads, or
+% NULL where there is none.
+expr = sprintf('json_type(%s, ''%s'')', elementRoot(witnessAlias), jsonPath(leaf));
 end
 
 % -----------------------------------------------------------------------
@@ -1070,15 +1367,6 @@ else
     % Multi-element arrays / cells: bind as char(0); the in-memory
     % post-filter will enforce correctness.
     out = {''};
-end
-end
-
-function frag = valueEquality(expr, target)
-% Boolean SQL comparing `expr` to a bound `?` placeholder of the right type.
-if isnumeric(target) && isscalar(target)
-    frag = sprintf('CAST(%s AS REAL) = ?', expr);
-else
-    frag = sprintf('%s = ?', expr);
 end
 end
 

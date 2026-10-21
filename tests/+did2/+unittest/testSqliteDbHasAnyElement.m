@@ -122,20 +122,15 @@ end
 
 function testIndependentStarsStillMatchAcrossEntries(testCase)
 % Current behaviour, kept: and() of two [*] predicates matches the
-% document whose 45 belongs to the contrast entry.
-%
-% The one-entry document is removed first. Its axes are stored as an
-% OBJECT (jsonencode of a 1x1 struct), and a plain `[*]` path that is not
-% in the sidecar (name) runs json_each over that object's values and then
-% json_extract on a text value: SQLite raises "malformed JSON". That is a
-% defect of the existing `[*]` compilation, not of hasanyelement (which
-% counts an object as one element), and is left for its own change.
-testCase.TestData.db.remove(testCase.TestData.docs{2});
-testCase.TestData.docs(2) = [];
+% document whose 45 belongs to the contrast entry. The one-entry document
+% (axes stored as an OBJECT) is searched too: a plain `[*]` path not in the
+% sidecar (name) reads an object as one element since 2026-10-21, where it
+% used to raise "malformed JSON".
 q = and(did2.query('demoArray.axes[*].name', 'exact_string', 'orientation'), ...
     did2.query('demoArray.axes[*].size', 'exact_number', 45));
 names = searchNames(testCase, q);
 verifyTrue(testCase, any(strcmp(names, 'falseMatch')));
+verifyTrue(testCase, any(strcmp(names, 'single')));
 end
 
 function testHasAnyElementExcludesTheFalseMatch(testCase)

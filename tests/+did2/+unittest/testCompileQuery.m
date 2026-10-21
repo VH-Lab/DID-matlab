@@ -147,8 +147,13 @@ end
 function testStarPathExpandsToJsonEach(testCase)
 q = did2.query('demoA.axes[*].name', 'exact_string', 'x');
 [sql, params] = did2.database.compileQuery(q);
-verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.axes''))');
-verifySubstring(testCase, sql, 'json_extract(je1.value, ''$.name'') = ?');
+% Each level is read through a CASE, so a one-entry array (which
+% jsonencode writes as an OBJECT) is one element and a text value is none;
+% json_each over the object itself stepped through its fields, and a text
+% field then reached json_extract: "malformed JSON". The leaf is read from
+% an object element only.
+verifySubstring(testCase, sql, 'json_each(CASE json_type(body, ''$.demoA.axes'') WHEN ''array'' THEN json_extract(body, ''$.demoA.axes'') WHEN ''object'' THEN json_array(json(json_extract(body, ''$.demoA.axes''))) ELSE ''[]'' END) je1');
+verifySubstring(testCase, sql, 'json_extract((CASE WHEN je1.type = ''object'' THEN je1.value END), ''$.name'') = ?');
 verifySubstring(testCase, sql, 'EXISTS (');
 verifyEqual(testCase, params, {'x'});
 end
@@ -156,14 +161,101 @@ end
 function testNestedStarPaths(testCase)
 q = did2.query('demoA.multiscales[*].datasets[*].path', 'regexp', '^0/');
 [sql, ~] = did2.database.compileQuery(q);
-verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.multiscales'')) je1');
-verifySubstring(testCase, sql, 'json_each(json_extract(je1.value, ''$.datasets'')) je2');
+verifySubstring(testCase, sql, 'json_each(CASE json_type(body, ''$.demoA.multiscales'') WHEN ''array''');
+verifySubstring(testCase, sql, 'ELSE ''[]'' END) je1');
+% the second level is read from an object element of the first
+verifySubstring(testCase, sql, 'json_each(CASE json_type((CASE WHEN je1.type = ''object'' THEN je1.value END), ''$.datasets'') WHEN ''array''');
+verifySubstring(testCase, sql, 'ELSE ''[]'' END) je2');
 end
 
 function testNegatedStarPath(testCase)
 q = did2.query('demoA.axes[*].name', '~exact_string', 'x');
 [sql, ~] = did2.database.compileQuery(q);
 verifySubstring(testCase, sql, '(NOT EXISTS (');
+end
+
+% ---- negation never drops a true match ----
+%
+% The SQL may over-approximate (the in-memory recheck makes it exact), so
+% NOT of an over-approximate predicate would DROP true matches the recheck
+% never sees. A negated term is compiled only from an EXACT predicate, and
+% to the conservative 1=1 otherwise. Until 2026-10-21 a top-level ~regexp
+% compiled to `(v IS NULL OR NOT (1=1))`, matching only documents without
+% the field.
+
+function testNegatedUnexpressibleTopLevelIsPermissive(testCase)
+for q = {did2.query('demoA.value', '~regexp', '^a'), ...
+         did2.query('demoA.value', '~exact_number', [1 2]), ...
+         did2.query('demoA.value', '~lessthan', [1 2]), ...
+         did2.query('demoA.value', '~wildcard', [char(233) '*'])}
+    [sql, params] = did2.database.compileQuery(q{1});
+    verifyEqual(testCase, sql, '1=1');
+    verifyEqual(testCase, params, {});
+end
+end
+
+function testNegatedExactStringStaysExact(testCase)
+[sql, params] = did2.database.compileQuery(did2.query('base.name', '~exact_string', 'alice'));
+verifyEqual(testCase, sql, ['(json_extract(body, ''$.base.name'') IS NULL OR NOT ' ...
+    '(json_extract(body, ''$.base.name'') = ?))']);
+verifyEqual(testCase, params, {'alice'});
+end
+
+function testNegatedContainsStringIsCaseSensitiveAndTyped(testCase)
+% LIKE ignores ASCII case and reads % and _ as wildcards, so NOT LIKE
+% dropped 'Alpha' from ~contains_string 'alp'; the negation is built from
+% instr (literal, case-sensitive, as strfind) on a text value.
+[sql, params] = did2.database.compileQuery(did2.query('demoA.value', '~contains_string', 'alp'));
+verifySubstring(testCase, sql, 'json_type(body, ''$.demoA.value'') = ''text''');
+verifySubstring(testCase, sql, 'instr(json_extract(body, ''$.demoA.value''), ?) > 0');
+verifyFalse(testCase, contains(sql, 'LIKE'));
+verifyEqual(testCase, params, {'alp'});
+end
+
+function testNegatedNumericComparisonIsTyped(testCase)
+% CAST('45' AS REAL) is 45, a text value the evaluator never compares.
+[sql, params] = did2.database.compileQuery(did2.query('demoA.value', '~lessthan', 10));
+verifySubstring(testCase, sql, 'json_type(body, ''$.demoA.value'') IN (''integer'', ''real'')');
+verifyEqual(testCase, params, {10});
+end
+
+function testNegatedUnexpressibleElsewhereIsPermissive(testCase)
+% the json_each, sidecar, scalar-sidecar and session-column routes alike
+verifyEqual(testCase, did2.database.compileQuery( ...
+    did2.query('demoA.axes[*].name', '~regexp', '^a')), '1=1');
+verifyEqual(testCase, did2.database.compileQuery( ...
+    did2.query('demoArray.axes[*].unit', '~regexp', '^u'), ...
+    'QueryableArrayPaths', {'demoArray.axes[*].unit'}), '1=1');
+verifyEqual(testCase, did2.database.compileQuery( ...
+    did2.query('base.name', '~regexp', '^a'), ...
+    'QueryablePaths', struct('path', {'base.name'}, 'affinity', {'TEXT'})), '1=1');
+verifyEqual(testCase, did2.database.compileQuery( ...
+    did2.query('base.session_id', '~regexp', '^s')), '1=1');
+verifyEqual(testCase, did2.database.compileQuery( ...
+    did2.query('demoA.tags', '~hasmember', 5)), '1=1');
+% a [*] with no leaf: a number may sit in a numeric array, which the
+% evaluator's [*] does not iterate
+verifyEqual(testCase, did2.database.compileQuery( ...
+    did2.query('demoA.tags[*]', '~exact_number', 5)), '1=1');
+end
+
+function testNegatedExactElsewhereStaysExact(testCase)
+[sql, ~] = did2.database.compileQuery(did2.query('demoA.axes[*].name', '~exact_string', 'x'));
+verifySubstring(testCase, sql, '(NOT EXISTS (');
+[sql, ~] = did2.database.compileQuery(did2.query('demoArray.axes[*].unit', '~exact_string', 'um'), ...
+    'QueryableArrayPaths', {'demoArray.axes[*].unit'});
+verifySubstring(testCase, sql, '(NOT EXISTS (SELECT 1 FROM queryable_array_elem qae');
+[sql, ~] = did2.database.compileQuery(did2.query('demoA.tags', '~hasmember', 'green'));
+verifySubstring(testCase, sql, '(NOT EXISTS (');
+end
+
+function testHasanysubfieldExactReadsAnObjectAsOneElement(testCase)
+q = did2.query('demoA.axes', 'hasanysubfield_exact_string', {'name', 'unit'}, {'x', 'deg'});
+[sql, params] = did2.database.compileQuery(q);
+verifySubstring(testCase, sql, 'json_each(CASE json_type(body, ''$.demoA.axes'')');
+verifySubstring(testCase, sql, ['json_extract((CASE WHEN je.type = ''object'' THEN je.value END), ' ...
+    '''$.name'') = ?']);
+verifyEqual(testCase, params, {'x', 'deg'});
 end
 
 % ---- isa & depends_on ----
@@ -263,16 +355,19 @@ end
 function testHasmemberUsesJsonEach(testCase)
 q = did2.query('demoA.tags', 'hasmember', 'green');
 [sql, params] = did2.database.compileQuery(q);
-verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.tags'')) je');
-verifySubstring(testCase, sql, 'je.value = ?');
+% A text value is one candidate (json_each rejects bare text as malformed
+% JSON), an array its entries, anything else none; only a text entry
+% equals a text target, as in the evaluator.
+verifySubstring(testCase, sql, 'json_each(CASE json_type(body, ''$.demoA.tags'') WHEN ''array'' THEN json_extract(body, ''$.demoA.tags'') WHEN ''text'' THEN json_array(json_extract(body, ''$.demoA.tags'')) ELSE ''[]'' END) jm');
+verifySubstring(testCase, sql, 'jm.type = ''text'' AND jm.value = ?');
 verifyEqual(testCase, params, {'green'});
 end
 
 function testHasanysubfieldContainsStringRewritesToStarPath(testCase)
 q = did2.query('demoA.items', 'hasanysubfield_contains_string', 'note', 'tasty');
 [sql, params] = did2.database.compileQuery(q);
-verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.items''))');
-verifySubstring(testCase, sql, 'json_extract(je1.value, ''$.note'') LIKE ?');
+verifySubstring(testCase, sql, 'json_each(CASE json_type(body, ''$.demoA.items'')');
+verifySubstring(testCase, sql, 'json_extract((CASE WHEN je1.type = ''object'' THEN je1.value END), ''$.note'') LIKE ?');
 verifyEqual(testCase, params, {'%tasty%'});
 end
 
@@ -359,7 +454,7 @@ function testStarPathIgnoresQueryablePaths(testCase)
 q = did2.query('demoA.axes[*].name', 'exact_string', 'x');
 [sql, ~] = did2.database.compileQuery(q, ...
     'QueryablePaths', {'demoA.axes[*].name', 'base.name'});
-verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.axes''))');
+verifySubstring(testCase, sql, 'json_each(CASE json_type(body, ''$.demoA.axes'')');
 end
 
 % ---- step 5: routing [*] paths to queryable_array_elem ----
@@ -385,7 +480,7 @@ function testIndexedStarPathFallsBackForUnknownPath(testCase)
 q = did2.query('demoA.axes[*].name', 'exact_string', 'x');
 [sql, ~] = did2.database.compileQuery(q, ...
     'QueryableArrayPaths', {'demoArray.axes[*].unit'});
-verifySubstring(testCase, sql, 'json_each(json_extract(body, ''$.demoA.axes''))');
+verifySubstring(testCase, sql, 'json_each(CASE json_type(body, ''$.demoA.axes'')');
 testCase.verifyFalse(contains(sql, 'queryable_array_elem'));
 end
 
@@ -415,15 +510,20 @@ verifySubstring(testCase, sql, 'CAST(qae.value_num AS REAL) < ?');
 verifyEqual(testCase, params, {'demoArray.axes[*].size', 100});
 end
 
-function testIndexedStarRegexpRoutesPermissivelyToSidecar(testCase)
-% Regexp can't be expressed in sqlite, but we can still narrow on the
-% sidecar's `path = ?`, which is a strictly tighter pre-filter than
-% the json_each fallback's bare `1=1`.
+function testIndexedStarRegexpReadsTheBody(testCase)
+% A positive regexp used to go to the sidecar (`qae.path = ? AND 1=1`),
+% but the sidecar keeps no row for an element whose leaf is empty, and a
+% regexp may match an empty value: the document would be DROPPED. An
+% operator no empty leaf satisfies still uses the sidecar; the others read
+% the body through json_each (changed 2026-10-21).
 q = did2.query('demoArray.axes[*].unit', 'regexp', '^um');
 [sql, params] = did2.database.compileQuery(q, ...
     'QueryableArrayPaths', {'demoArray.axes[*].unit'});
-verifySubstring(testCase, sql, 'queryable_array_elem qae');
-verifySubstring(testCase, sql, 'qae.path = ?');
-verifySubstring(testCase, sql, '1=1');
-verifyEqual(testCase, params, {'demoArray.axes[*].unit'});
+testCase.verifyFalse(contains(sql, 'queryable_array_elem'));
+verifySubstring(testCase, sql, 'json_each(CASE json_type(body, ''$.demoArray.axes'')');
+verifyEqual(testCase, params, {});
+q = did2.query('demoArray.axes[*].unit', 'exact_string', '');
+sql = did2.database.compileQuery(q, 'QueryableArrayPaths', {'demoArray.axes[*].unit'});
+testCase.verifyFalse(contains(sql, 'queryable_array_elem'), ...
+    'exact_string of an empty text matches an empty leaf, which has no sidecar row');
 end
