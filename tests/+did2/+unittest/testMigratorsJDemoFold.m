@@ -148,7 +148,7 @@ verifyEqual(testCase, doc.get('base.session_id'), 'sess_09');
 verifyEqual(testCase, doc.get('demo.value'), 5);
 verifyTrue(testCase, isnumeric(doc.get('demo.value')), ...
     'demo.value is declared double; the did_v1 template declares char');
-verifyFalse(testCase, doc.get('demo.is_mock'));
+verifyFalse(testCase, doc.get('demo.mock'));
 % the file the did_v1 template declares and V_eta re-declares survives
 verifyEqual(testCase, doc.get('files.file_list'), {'filename1.ext'});
 % the consumed did_v1 block is GONE -- a populated leftover trips the strict
@@ -170,8 +170,8 @@ doc = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'demo');
 verifyEqual(testCase, doc.get('base.id'), 'demo_mock_1');
 verifyEqual(testCase, doc.get('demo.value'), 10);
-verifyTrue(testCase, doc.get('demo.is_mock'), ...
-    'is_mock is the only marker separating self-test artefacts from real data');
+verifyTrue(testCase, doc.get('demo.mock'), ...
+    'mock (#88; is_mock before) is the only marker separating self-test artefacts from real data');
 % ALL THREE did_v1 blocks are consumed, named one at a time so a failure says
 % which one survived
 s = doc.toStruct();
@@ -190,7 +190,7 @@ out = runJ(demoNdiMockV1(3, 0));
 verifyEmpty(testCase, out.quarantine);
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the demoNDIMock fold emitted no document; the assertion below would be vacuous');
-verifyFalse(testCase, out.migrated{1}.get('demo.is_mock'));
+verifyFalse(testCase, out.migrated{1}.get('demo.mock'));
 end
 
 % ===================== the value guard =====================================
@@ -211,7 +211,7 @@ verifyFalse(testCase, isfield(s.demo, 'value'), ...
     'an unset did_v1 value became a present field; 0 would read as a real measurement');
 % the rest of the fold still happened
 verifyEqual(testCase, did2.unittest.helpers.leafName(s), 'demo');
-verifyFalse(testCase, s.demo.is_mock);
+verifyFalse(testCase, s.demo.mock);
 end
 
 function testDemoRefusesAValueItCannotHold(testCase)
@@ -264,7 +264,7 @@ verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the demoNDI fold produced no validated document');
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'demo');
-verifyFalse(testCase, out.migrated{1}.get('demo.is_mock'));
+verifyFalse(testCase, out.migrated{1}.get('demo.mock'));
 
 out = runJValidated(demoNdiMockV1(10, 1));
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
@@ -272,7 +272,7 @@ assertEqual(testCase, numel(out.migrated), 1, ...
     'the demoNDIMock fold produced no validated document');
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'demo');
 verifyEqual(testCase, out.migrated{1}.get('demo.value'), 10);
-verifyTrue(testCase, out.migrated{1}.get('demo.is_mock'));
+verifyTrue(testCase, out.migrated{1}.get('demo.mock'));
 end
 
 % ===================== `mock` needs no migrator ============================
