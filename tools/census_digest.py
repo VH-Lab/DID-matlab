@@ -634,10 +634,13 @@ POST_PASSES = [
     #     N leaves, 0 inlined      a real defect in resolveResponseParameters,
     #                              unless refused_total accounts for all of them.
     #
-    # IT DELETES NOTHING, AND THAT IS THE GATE RATHER THAN AN OMISSION. The
-    # three `parameters_documents_*` rows ARE the verify-before-delete
-    # measurement the plan requires before 11,440 documents may go; they are
-    # EVIDENCE, never authorisation, and the corpora are a SAMPLE.
+    # IT DELETES NOTHING, BECAUSE NOTHING IS LEFT TO DELETE. Since Jess Haley's
+    # [response parameters as a shared method] (2026-10-21) each parameters
+    # document is CONVERTED IN PLACE into a standalone `method` document, id
+    # preserved, and the responses keep their `method_id` edge to it. The
+    # `parameters_documents_*` rows are no longer a verify-before-delete gate:
+    # referenced/unreferenced is evidence about SHARING (how many methods some
+    # response uses), and `_deleted` must stay 0.
     ("response_parameters_fold", "did2.convert.resolveResponseParameters", [
         ("documents_inspected", "documents inspected"),
         ("documents_unreadable", "UNREADABLE"),
@@ -645,7 +648,7 @@ POST_PASSES = [
         ("leaves_with_edge", "  carrying method_id"),
         ("leaves_without_edge", "  no such edge (complete as they stand)"),
         ("suppressed_responses_seen", "v1 responses STILL SUPPRESSED by the epoch gate"),
-        ("parameters_documents_seen", "parameters documents  <- DELETION DENOMINATOR"),
+        ("parameters_documents_seen", "parameters documents  <- CONVERSION DENOMINATOR"),
         # Jess Haley 2026-10-21 ("b"): one standalone `method` per parameters
         # document, id preserved; the responses keep `method_id` (was INLINED).
         ("methods_minted", "METHOD DOCUMENTS MINTED (one per parameters document)"),
@@ -669,12 +672,12 @@ POST_PASSES = [
         ("refused_inline_present", "  the leaf already carries inline parameters"),
         ("refused_harmonic_mismatch", "  freq_response ~= value.harmonic"),
         ("fold_quarantined", "QUARANTINED by the fold"),
-        ("parameters_documents_referenced_after", "DELETION GATE: still referenced after"),
-        ("parameters_documents_unreferenced_after", "  UNREFERENCED after (evidence only)"),
-        # 0 by construction -- this pass never deletes. Printed anyway, because
-        # the gate it measures is a gate to delete 11,440 documents and a
-        # non-zero here would mean the pass pre-empted the team's decision.
-        ("parameters_documents_deleted", "parameters documents DELETED (0 by construction)"),
+        ("parameters_documents_referenced_after", "SHARING: method documents some response uses"),
+        ("parameters_documents_unreferenced_after", "  used by no response (evidence only)"),
+        # 0 by construction -- each parameters document is converted in place
+        # into a method document (id preserved), so nothing is removed. Printed
+        # anyway: a non-zero would mean documents vanished from the batch.
+        ("parameters_documents_deleted", "parameters documents DELETED (0 by construction: converted in place)"),
     ]),
     # TEAM DECISION 2026-08-11 (two of them): "each lawn can be a subject and a
     # plate of lawns is another subject where each lawn is a member of it", and
@@ -4688,39 +4691,38 @@ def _render_response_parameters_reading(rep, p):
         p("          *** than picking a winner, so nothing is lost -- but the")
         p("          *** cause is worth finding before it is read as noise.")
 
-    # THE DELETION GATE. Rendered whether or not anything folded, because it is
-    # measured over the whole batch and is the number a deletion decision would
-    # be quoted from.
+    # THE SHARING READING (formerly the deletion gate). Rendered whether or not
+    # anything folded: each parameters document is converted in place into a
+    # method document, so referenced/unreferenced says how many methods a
+    # response uses -- not what may be deleted.
     seen = _int_or_none(rep.get("parameters_documents_seen"))
     ref_after = _int_or_none(rep.get("parameters_documents_referenced_after"))
     unref = _int_or_none(rep.get("parameters_documents_unreferenced_after"))
     deleted = _int_or_none(rep.get("parameters_documents_deleted"))
     if seen is None:
-        p("          *** the deletion-gate denominator is absent, so the")
+        p("          *** the conversion denominator is absent, so the")
         p("          *** referenced/unreferenced rows cannot be read.")
         return
-    p("          DELETION GATE: %d parameters document(s) in this batch" % seen)
+    p("          METHOD SHARING: %d parameters document(s) converted in place in this batch" % seen)
     if seen == 0:
         p("          *** 0 seen -- the referenced/unreferenced rows above are")
-        p("          *** VACUOUS. Nothing here bears on whether the class may")
-        p("          *** be retired.")
+        p("          *** VACUOUS.")
     elif None not in (ref_after, unref) and ref_after + unref != seen:
         p("          *** referenced (%d) + unreferenced (%d) != seen (%d). The"
           % (ref_after, unref, seen))
         p("          *** walk classifies every parameters document exactly")
         p("          *** once, so this is a counter that stopped moving.")
     elif unref is not None:
-        p("          %8d  unreferenced after the fold. This is EVIDENCE for the"
+        p("          %8d  method document(s) no response uses. Computed by"
           % unref)
-        p("                    verify-before-delete gate and NEVER authorisation:")
-        p("                    the corpora are a SAMPLE, and it is computed by")
-        p("                    walking every edge of every document rather than")
-        p("                    by assuming this pass removed the only referent.")
+        p("                    walking every edge of every document; it is a")
+        p("                    reading about sharing, not a deletion gate (the")
+        p("                    documents are kept: they ARE the methods now).")
     if deleted:
-        p("          *** parameters_documents_deleted is %d and MUST be 0. This"
+        p("          *** parameters_documents_deleted is %d and MUST be 0. Each"
           % deleted)
-        p("          *** pass deletes nothing by construction; a non-zero means")
-        p("          *** it has pre-empted a decision that is the team's.")
+        p("          *** parameters document is converted in place into a method")
+        p("          *** document; a non-zero means documents vanished.")
 
 
 def _collision_split_reading(rep, collisions, pad, p):
@@ -6701,18 +6703,16 @@ def _rollup_response_parameters_reading(totals, key_missing_in, carried, p):
     seen = totals.get("parameters_documents_seen")
     unref = totals.get("parameters_documents_unreferenced_after")
     if seen is None:
-        p("      *** the deletion-gate denominator is carried by no report, so")
-        p("      *** nothing here bears on retiring the parameters class.")
+        p("      *** the conversion denominator is carried by no report.")
         return
-    p("      DELETION GATE: %d parameters document(s) over %d report(s)"
+    p("      METHOD SHARING: %d parameters document(s) converted in place over %d report(s)"
       % (seen, len(carried)))
     if seen == 0:
-        p("      *** 0 seen -- the gate rows are VACUOUS in this run.")
+        p("      *** 0 seen -- the sharing rows are VACUOUS in this run.")
     elif unref is not None:
-        p("      %8d  unreferenced after the fold. EVIDENCE, NEVER" % unref)
-        p("                AUTHORISATION: the corpora are a SAMPLE, and a class")
-        p("                absent from the ones we test may be well represented")
-        p("                in a dataset still waiting to migrate.")
+        p("      %8d  method document(s) no response uses (kept: they are" % unref)
+        p("                the methods; a reading about sharing, not a deletion")
+        p("                gate).")
 
 
 def _rollup_lawn_plate_reading(totals, key_missing_in, carried, p):

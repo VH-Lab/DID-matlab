@@ -2703,20 +2703,23 @@ class TestResponseParametersRendering(ThreePassCase):
         self.assertIn("refusal(s) for freq_response ~= value.harmonic", text)
         self.assertIn("refuses rather", text)
 
-    def test_the_deletion_gate_prints_its_own_denominator(self):
+    def test_the_sharing_reading_prints_its_own_denominator(self):
+        # Formerly the deletion gate: since [response parameters as a shared
+        # method] each parameters document is converted in place into a method
+        # document, so the rows read sharing, not what may be deleted.
         self._corpus("A", response_parameters_fold=self._rp())
         text, _ = self.run_digest()
-        self.assertIn("DELETION GATE: 11440 parameters document(s) in this "
-                      "batch", text)
-        self.assertIn("EVIDENCE", text)
+        self.assertIn("METHOD SHARING: 11440 parameters document(s) converted "
+                      "in place in this batch", text)
+        self.assertNotIn("DELETION GATE: 11440", text)
 
-    def test_a_zero_deletion_denominator_says_vacuous(self):
+    def test_a_zero_conversion_denominator_says_vacuous(self):
         self._corpus("A", response_parameters_fold=self._rp(
             parameters_documents_seen=0,
             parameters_documents_referenced_after=0))
         percorpus, _rollup, _f = self.halves()
-        self.assertIn("DELETION GATE: 0 parameters document(s) in this batch",
-                      percorpus)
+        self.assertIn("METHOD SHARING: 0 parameters document(s) converted in "
+                      "place in this batch", percorpus)
         self.assertIn("the referenced/unreferenced rows above are", percorpus)
         self.assertIn("VACUOUS", percorpus)
 
