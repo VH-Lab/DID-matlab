@@ -77,7 +77,7 @@ function testItIsANoOpOnANonVEtaTarget(testCase)
 % off-target reading, and it must not print the same as the empty-batch one.
 r = emptyResult();
 [out, rep] = did2.convert.resolveOpenmindsCitations(r, ...
-    'Validate', false, 'TargetVersion', 'V_zeta');
+    'Validate', false, 'TargetVersion', 'V_delta');
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, out.migrated, {});

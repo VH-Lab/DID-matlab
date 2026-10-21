@@ -107,11 +107,11 @@ end
 
 function testItIsANoOpOnANonVEtaTarget(testCase)
 % `subject` v3.0.0 and the observation leaves exist only in V_eta, and this pass
-% is wired into harnesses that also run V_delta/V_zeta. `ran` FALSE with every
+% is wired into harnesses that also run V_delta. `ran` FALSE with every
 % counter 0 is the off-target reading, distinct from the empty-batch one above.
 r = emptyResult();
 [out, rep] = did2.convert.resolveLawnPlateSubjects(r, ...
-    'Validate', false, 'TargetVersion', 'V_zeta');
+    'Validate', false, 'TargetVersion', 'V_delta');
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, out.migrated, {});

@@ -122,7 +122,7 @@ function testNonEtaTargetIsUntouched(testCase)
 result = migrate({ ...
     syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
     sessionDocFixture('sessdoc_A', 'sess_A')});
-out = did2.convert.resolveClockAlignment(result, 'TargetVersion', 'V_zeta');
+out = did2.convert.resolveClockAlignment(result, 'TargetVersion', 'V_delta');
 verifyEqual(testCase, countOf(out, 'syncgraph'), 1);
 verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), 0);
 end

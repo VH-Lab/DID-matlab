@@ -80,22 +80,10 @@ function result = v1_to_v2(v1Bodies, options)
 %                      each of the three fields is struct('audit_skipped',
 %                      true) -- never an empty census, which would read as
 %                      clean.
-%     TargetVersion    (1,:) char, default 'V_delta') - migration target.
+%     TargetVersion    (1,:) char, default 'V_delta') - migration target,
+%                      'V_delta' or 'V_eta'.
 %                      'V_delta' (default) preserves the historical
-%                      class-preserving 1->1 behaviour. 'V_epsilon' routes
-%                      classes that have a Brainstorm-E split migrator
-%                      under +did2.+convert.+migrators_e (treatment,
-%                      ontology_table_row) through that migrator instead,
-%                      which may fan one source body out to several
-%                      destination documents (1 -> N). 'V_zeta' routes
-%                      classes that have a Brainstorm-I split/fold migrator
-%                      under +did2.+convert.+migrators_i (treatment,
-%                      ontology_table_row, subject_group, treatment_drug,
-%                      virus_injection, treatment_transfer, stimulus_bath)
-%                      through that migrator, targeting the Brainstorm-I
-%                      classes (the subject_interaction spine with
-%                      method/variable/target_structure, shape-typed
-%                      observation leaves, and generic_manipulation).
+%                      class-preserving 1->1 behaviour.
 %                      'V_eta' routes classes that have a Brainstorm-J
 %                      split/fold migrator under +did2.+convert.+migrators_j
 %                      through that migrator, targeting the Brainstorm-J
@@ -104,8 +92,12 @@ function result = v1_to_v2(v1Bodies, options)
 %                      subject_manipulation, data-type-named leaves +
 %                      dose/formulation/chemical composites, term_manipulation,
 %                      and subject_relation documents; no injection/bath, no
-%                      escape hatch). Any non-'V_delta' target stamps
+%                      escape hatch). A 'V_eta' target stamps
 %                      document_class.schema_version with the target name.
+%                      The 'V_epsilon' and 'V_zeta' targets (+migrators_e,
+%                      +migrators_i) were removed with did-schema #88, which
+%                      deleted schemas/V_alpha .. V_zeta (OPEN_WORK #128);
+%                      asking for either is an argument-validation error.
 %
 %   STATUS of the 2026-08-11 edit (`summary.legacy_ndi_document`, the
 %   accumulator and its printer): WRITTEN WITHOUT MATLAB OR OCTAVE AND NOT
@@ -123,7 +115,7 @@ arguments
     options.CheckReferences (1,1) logical = false
     options.ReferenceDatabase = []
     options.RenameClassNames (1,1) logical = true
-    options.TargetVersion (1,:) char = 'V_delta'
+    options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'V_delta', 'V_eta'})} = 'V_delta'
     options.Audits (1,1) logical = true
 end
 
@@ -262,10 +254,9 @@ for k = 1:numel(bodies)
             % runConcreteMigrator returns a CELL of one-or-more bodies.
             % Default (TargetVersion 'V_delta') always returns a single
             % body via the existing per-class migrator, so behaviour is
-            % unchanged. Under TargetVersion 'V_epsilon' (+migrators_e) or
-            % 'V_zeta' (+migrators_i) a class with a split/fold migrator
-            % (treatment, ontology_table_row, ...) may fan out to several
-            % bodies (1 -> N).
+            % unchanged. Under TargetVersion 'V_eta' (+migrators_j) a class
+            % with a split/fold migrator (treatment, ontology_table_row, ...)
+            % may fan out to several bodies (1 -> N).
             v2Bodies = runConcreteMigrator(v2Body, className, ...
                 options.TargetVersion);
             % PHASE 1 REPORT-ONLY (V_eta_ground_truth_plan.md): did the migrator
@@ -576,17 +567,13 @@ function bodies = runConcreteMigrator(v2Body, className, targetVersion)
 %RUNCONCRETEMIGRATOR Run the concrete-class migrator, return a cell of bodies.
 %   Default ('V_delta') preserves the historical 1 -> 1 behaviour: the
 %   per-class migrator under +did2.+convert.+migrators is applied and a
-%   single-element cell is returned. Under 'V_epsilon', a class that has
-%   a Brainstorm-E split migrator under +did2.+convert.+migrators_e is
+%   single-element cell is returned. Under 'V_eta', a class that has
+%   a Brainstorm-J split/fold migrator under +did2.+convert.+migrators_j is
 %   routed there instead; that migrator may return either a single body
 %   (struct) or several (struct array / cell), enabling the treatment ->
 %   manipulation and ontology_table_row -> observations (1 -> N) splits.
 splitPackage = '';
-if strcmp(targetVersion, 'V_epsilon')
-    splitPackage = 'did2.convert.migrators_e.';
-elseif strcmp(targetVersion, 'V_zeta')
-    splitPackage = 'did2.convert.migrators_i.';
-elseif strcmp(targetVersion, 'V_eta')
+if strcmp(targetVersion, 'V_eta')
     splitPackage = 'did2.convert.migrators_j.';
 end
 if ~isempty(splitPackage)
