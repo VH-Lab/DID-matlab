@@ -1,11 +1,12 @@
 function [result, report] = resolveEpochProbemap(result, options)
 %RESOLVEEPOCHPROBEMAP Decompose an ingested epoch's serialized `epochprobemap`
-%   into one epoch-scoped `<modality>_observation` per probe row, retiring #30's
+%   into one epoch-scoped observation (direction `observation` + the modality's
+%   value-kind mixin) per probe row, retiring #30's
 %   coarse session-scoped observation for that same probe.
 %
 %   The epochprobemap decomposition (DID-schema V_eta_OPEN_WORK.md row #66),
 %   ALL THREE INCREMENTS:
-%     1  OBSERVATION half: one epoch-scoped `<modality>_observation` per probe
+%     1  OBSERVATION half: one epoch-scoped observation of the modality per probe
 %        row (subject_id, instrument_id, per-epoch 'during' anchor).
 %     2  DEVICE half: the row's `devicestring` (`intan1:ai27-28,45;di1-4`)
 %        splits into an `acquisition_system_id` edge (device name resolved
@@ -93,7 +94,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   IMAGING ROWS ARE NO LONGER DEFERRED (2026-10-21). They were left to the
 %   second pass because the old `image` value cell was required and a probemap
 %   row carries no raster metadata. did-schema #88 retired `image` (a camera
-%   frame is an `intensity_observation`, as jRecordingModality maps it), and with
+%   frame is an observation of `intensity`, as jRecordingModality maps it), and with
 %   the frames in the epoch's file bodies (`data_body` true) nothing inline is
 %   needed, so an imaging row is an ordinary recording row. `rows_image_deferred`
 %   is kept as a counter and now reads 0.
@@ -267,6 +268,7 @@ report.documents_inspected = n;
 % A document this cannot read is COUNTED, never dropped.
 bodies = cell(1, n);
 classOf = repmat({''}, 1, n);
+kindOf = repmat({''}, 1, n);     % a statement's value kind (classOf is its direction)
 sessionIds = repmat({''}, 1, n);
 docIds = repmat({''}, 1, n);
 for k = 1:n
@@ -274,6 +276,7 @@ for k = 1:n
         b = docs{k}.toStruct();
         bodies{k} = b;
         classOf{k} = classNameOf(b);
+        [~, kindOf{k}] = did2.convert.statementKind(b);
         sessionIds{k} = did2.schema.cache.sessionIdOf(b);
         docIds{k} = baseField(b, 'id');
     catch
@@ -397,7 +400,7 @@ for k = 1:n
         subj  = depValueOf(b, 'entity_id');
         instr = depValueOf(b, 'instrument_id');
         if ~isempty(subj) && ~isempty(instr)
-            tk = obs30TripleKey(subj, instr, classOf{k});
+            tk = obs30TripleKey(subj, instr, classOf{k}, kindOf{k});
             if isKey(obs30ByTriple, tk)
                 obs30ByTriple(tk) = [obs30ByTriple(tk), {k}];
             else
@@ -578,14 +581,14 @@ for k = 1:n
             specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
             if ~isempty(instrumentId)
                 obsPairById(obs.base.id) = [char(instrumentId) '|' char(subjectId)];
-                rk = recKey(instrumentId, epochDocId, entries(e).class);
+                rk = recKey(instrumentId, epochDocId, entries(e).class, entries(e).mixin);
                 if ~isKey(recByInstrEpoch, rk); recByInstrEpoch(rk) = obs.base.id; end
             end
             newGroupAnchor{end+1} = anchorId;       %#ok<AGROW>
             newGroupAc{end+1} = acId;               %#ok<AGROW>
 
             if ~isempty(instrumentId)
-                tk = obs30TripleKey(subjectId, instrumentId, entries(e).class);
+                tk = obs30TripleKey(subjectId, instrumentId, entries(e).class, entries(e).mixin);
                 if isKey(obs30ByTriple, tk)
                     hits = obs30ByTriple(tk);
                     if isscalar(hits)
@@ -689,7 +692,7 @@ for i = 1:numel(acqEpochIdx)
 end
 
 report.archive_docs_inspected = numel(archiveIdxAll);
-pyraviewOwners = pyraviewOwnerIndex(bodies, classOf, docIds, sampledIdx);
+pyraviewOwners = pyraviewOwnerIndex(bodies, classOf, kindOf, docIds, sampledIdx);
 report.pyraview_observations_seen = double(pyraviewOwners.Count);
 
 renameBodies = renameBodyBySrcId.values;
@@ -833,7 +836,7 @@ levelIdsByPv = containers.Map('KeyType', 'char', 'ValueType', 'any');
 pvKeys = pyraviewOwners.keys;
 for i = 1:numel(pvKeys)
     pv = pyraviewOwners(pvKeys{i});
-    rk = recKey(pv.entityId, pv.epochDocId, pv.className);
+    rk = recKey(pv.entityId, pv.epochDocId, pv.className, pv.valueKind);
     if isempty(pv.epochDocId) || ~isKey(recByInstrEpoch, rk) ...
             || ~isKey(emittedNewIds, recByInstrEpoch(rk))
         report.pyraview_kept_no_recording_observation = ...
@@ -1028,14 +1031,13 @@ end
 
 function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
         sessionId, datestamp, acId)
-% A recording row -> a <modality>_observation of the specimen (did-schema #88:
-% a direction + a value kind), the probe as instrument (T7), the rig + channels
+% A recording row -> an observation of the specimen (did-schema #88: a
+% direction + a value kind), the probe as instrument (T7), the rig + channels
 % through acquisition_channels_id (#73 item 56). Its value is the epoch's files:
 % `data_body` true (2026-10-21, native V2 shape; mkEpochFileBodies builds them).
 if nargin < 7; acId = ''; end
-% did-schema #88: the direction class plus ONE value-kind mixin, never a
-% '<kind>_observation' leaf name (entry.class stays the switch key only)
-obs = did2.build.statement('observation', char(subjectId), ...
+% did-schema #88: the direction class plus ONE value-kind mixin
+obs = did2.build.statement(entry.class, char(subjectId), ...
     did2.convert.registeredTerm('', entry.variable), [], 'ValueKind', entry.mixin, ...
     'DataBody', true, ...
     'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
@@ -1134,11 +1136,14 @@ if isfield(blk, 'files') && ~isempty(blk.files)
 end
 end
 
-function k = obs30TripleKey(subjectId, instrumentId, className)
-%OBS30TRIPLEKEY The (subject, instrument, class) key a probemap observation and
-%   the #30 observation it supersedes must share. NUL-joined so no component
-%   value can bleed into the next (ids and class names never contain NUL).
-k = [char(subjectId), char(0), char(instrumentId), char(0), char(className)];
+function k = obs30TripleKey(subjectId, instrumentId, className, valueKind)
+%OBS30TRIPLEKEY The (subject, instrument, class, value kind) key a probemap
+%   observation and the #30 observation it supersedes must share (did-schema
+%   #88: the class is the direction, the value kind its mixin). NUL-joined so
+%   no component value can bleed into the next (ids and class names never
+%   contain NUL).
+k = [char(subjectId), char(0), char(instrumentId), char(0), char(className), ...
+    char(0), char(valueKind)];
 end
 
 % ===================== the device string ==============================
@@ -1228,7 +1233,7 @@ function [entries, disposition] = localModality(elementType)
 %   testResolveEpochProbemap.m so the two cannot drift. Covers the SAME rows;
 %   `multichannel` is dropped (this pass mints no body, so there is no axis to
 %   flag). Since 2026-10-21 there is NO divergence: imaging maps to
-%   intensity_observation with disposition 'recording', as in jRecordingModality
+%   an observation of intensity with disposition 'recording', as in jRecordingModality
 %   (it was 'image_deferred'; see the note below). If jRecordingModality gains a
 %   row, add it here and update that test.
 if nargin < 1 || isempty(elementType); elementType = ''; end
@@ -1246,7 +1251,7 @@ end
 
 % multi-site electrode families: 'n-trode' and any '...electrode-' stem
 if strcmp(key, 'n-trode') || ~isempty(regexp(key, '^([a-z0-9_]*_)?electrode-', 'once'))
-    entries = mkEntry('voltage_observation', 'voltage', 'voltage');
+    entries = mkEntry('voltage', 'voltage');
     disposition = 'recording';
     return;
 end
@@ -1267,32 +1272,32 @@ end
 % its own tests validate with Validate=false.
 %
 % NO LONGER DEFERRED, 2026-10-21 (the paragraph above is history): #88 maps a
-% camera frame to `intensity_observation` (jRecordingModality, row for row), and
+% camera frame to an observation of `intensity` (jRecordingModality, row for row), and
 % with the frames in the epoch's file bodies (`data_body` true) no value cell is
 % needed, so there is nothing to leave blank.
 if any(strcmp(key, {'wide-field-imaging', 'two-photon-imaging', ...
         'one-photon-imaging', 'brightfield-imaging'}))
-    entries = mkEntry('intensity_observation', 'intensity', 'intensity');
+    entries = mkEntry('intensity', 'intensity');
     disposition = 'recording';
     return;
 end
 
 switch key
     case {'patch-vm', 'patch-attached', 'sharp-vm'}
-        entries = mkEntry('voltage_observation', 'voltage', 'voltage');
+        entries = mkEntry('voltage', 'voltage');
     case {'patch-i', 'sharp-i', 'sharp-im'}
-        entries = mkEntry('current_observation', 'current', 'current');
+        entries = mkEntry('current', 'current');
     case {'patch', 'sharp'}
-        entries = [mkEntry('voltage_observation', 'voltage', 'voltage'), ...
-                   mkEntry('current_observation', 'current', 'current')];
+        entries = [mkEntry('voltage', 'voltage'), ...
+                   mkEntry('current', 'current')];
     case 'spikes'
-        entries = mkEntry('time_observation', 'time', 'spike');
+        entries = mkEntry('time', 'spike');
     case {'ecg', 'eeg'}
-        entries = mkEntry('voltage_observation', 'voltage', 'voltage');
+        entries = mkEntry('voltage', 'voltage');
     case 'accelerometer'
-        entries = mkEntry('acceleration_observation', 'acceleration', 'acceleration');
+        entries = mkEntry('acceleration', 'acceleration');
     case 'thermometer'
-        entries = mkEntry('temperature_observation', 'temperature', 'temperature');
+        entries = mkEntry('temperature', 'temperature');
     otherwise
         return;   % 'lick-spout', 'reward-well', 'ppg', anything new -> unresolved
 end
@@ -1303,8 +1308,9 @@ function e = emptyEntries()
 e = struct('class', {}, 'mixin', {}, 'variable', {});
 end
 
-function e = mkEntry(className, mixin, variable)
-e = struct('class', className, 'mixin', mixin, 'variable', variable);
+function e = mkEntry(mixin, variable)
+% did-schema #88: an `observation` (the direction) listing ONE value-kind mixin
+e = struct('class', 'observation', 'mixin', mixin, 'variable', variable);
 end
 
 % ===================== probemap parsing ================================
@@ -1606,8 +1612,9 @@ for i = 1:numel(fn)
 end
 end
 
-function k = recKey(instrumentId, epochDocId, className)
-k = [char(instrumentId), char(0), char(epochDocId), char(0), char(className)];
+function k = recKey(instrumentId, epochDocId, className, valueKind)
+k = [char(instrumentId), char(0), char(epochDocId), char(0), char(className), ...
+    char(0), char(valueKind)];
 end
 
 function fi = vhsbFileInfo(b)
@@ -1688,13 +1695,16 @@ quarantine = res.quarantine;
 out = res.migrated(:)';
 end
 
-function owners = pyraviewOwnerIndex(bodies, classOf, docIds, sampledIdx)
+function owners = pyraviewOwnerIndex(bodies, classOf, kindOf, docIds, sampledIdx)
 %PYRAVIEWOWNERINDEX The pyraview observations in the batch, keyed by id: an
 %   observation with `data_body` true whose sampled_bodies epochMint folded from
 %   a v1 pyraview -- recognised as a recording-kind observation that names NO
 %   instrument (the element itself is its entity, +migrators_j/pyraview.m) and
 %   owns sampled_bodies. Each entry: entityId, epochDocId (its anchor's
-%   referent when that is an epoch), className, levelIdx (its bodies).
+%   referent when that is an epoch), className (the direction), valueKind,
+%   levelIdx (its bodies). A recording-kind observation is an `observation`
+%   whose value kind is voltage or current; did2.convert.statementKind also
+%   reads a pre-port document's joined class name that way.
 owners = containers.Map('KeyType', 'char', 'ValueType', 'any');
 idxById = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:numel(docIds)
@@ -1707,7 +1717,8 @@ for i = 1:numel(sampledIdx)
     ok = idxById(oid);
     ob = bodies{ok};
     cn = classOf{ok};
-    if ~any(strcmp(cn, {'voltage_observation', 'current_observation'})); continue; end
+    vk = kindOf{ok};
+    if ~strcmp(cn, 'observation') || ~any(strcmp(vk, {'voltage', 'current'})); continue; end
     if ~isempty(depValueOf(ob, 'instrument_id')); continue; end
     if isKey(owners, oid)
         e = owners(oid);
@@ -1725,7 +1736,8 @@ for i = 1:numel(sampledIdx)
         end
     end
     owners(oid) = struct('entityId', depValueOf(ob, 'entity_id'), ...
-        'epochDocId', epochDocId, 'className', cn, 'levelIdx', sampledIdx(i));
+        'epochDocId', epochDocId, 'className', cn, 'valueKind', vk, ...
+        'levelIdx', sampledIdx(i));
 end
 end
 
@@ -1878,7 +1890,9 @@ end
 
 function cn = classNameOf(b)
 % The class to switch on. did-schema #88: an `entity` reads as its type
-% ('epoch', 'organism', ...); a statement as <value kind>_<direction>.
+% ('epoch', 'organism', ...); a statement as its DIRECTION ('observation', ...),
+% its value kind read separately by did2.convert.statementKind (which also
+% reads a pre-port joined class name as direction + kind).
 cn = '';
 if isstruct(b) && isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
@@ -1890,18 +1904,8 @@ if strcmp(cn, 'entity') && isfield(b, 'entity') && isstruct(b.entity) ...
     if isstruct(t) && isfield(t, 'name') && ~isempty(t.name)
         cn = char(t.name);
     end
-elseif any(strcmp(cn, {'observation', 'assertion', 'manipulation', 'calculation'}))
-    try
-        sc = b.document_class.superclasses;
-        if isstruct(sc); sc = num2cell(sc); end
-        names = cell(1, numel(sc));
-        for k = 1:numel(sc)
-            if isstruct(sc{k}); names{k} = char(sc{k}.class_name); else; names{k} = char(sc{k}); end
-        end
-        kind = char(did2.schema.cache.shared().documentValueKind(cn, names));
-        if ~isempty(kind); cn = [kind '_' cn]; end
-    catch
-    end
+elseif ~isempty(cn)
+    cn = did2.convert.statementKind(b);
 end
 end
 

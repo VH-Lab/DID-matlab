@@ -83,7 +83,7 @@ end
 end
 
 function names = classNames(out)
-names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
+names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
     'UniformOutput', false);
 end
 
@@ -157,7 +157,7 @@ out = runJ(subjectMeasurementBody());
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 
-obs = docOfClass(testCase, out, 'time_observation');
+obs = docOfClass(testCase, out, 'observation+time');
 ref = docOfClass(testCase, out, 'absolute_time_reference');
 
 % subject_id CARRIES OVER, and the source id is PRESERVED (dissolving a
@@ -216,7 +216,7 @@ verifyEqual(testCase, ref.get('absolute_time_reference.value.start.approximate')
 % base.datestamp is the RECORD-CREATION stamp and is a DIFFERENT FACT -- the
 % tombstone says so ("SHADOWS base.datestamp"). It must not be confused with the
 % measurement instant on either document.
-obs = docOfClass(testCase, out, 'time_observation');
+obs = docOfClass(testCase, out, 'observation+time');
 % base.datestamp -> base.creation_timestamp (did-schema 72fa57f). The FIXTURE
 % above still writes did_v1 `datestamp`, deliberately: these assertions are
 % about the MIGRATED output, and the rename happens on the way out.
@@ -243,7 +243,7 @@ verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
 verifyFalse(testCase, any(strcmp(names, 'absolute_time_reference')));
 anchor = docOfClass(testCase, out, 'relative_time_reference');
-obs = docOfClass(testCase, out, 'time_observation');
+obs = docOfClass(testCase, out, 'observation+time');
 verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_id'), ...
     anchor.get('base.id'));
 end
@@ -274,7 +274,7 @@ b.depends_on = struct('name', {'subject_id'}, 'value', {''});
 out = runJ(b);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'subjectmeasurement');
 verifyEqual(testCase, out.migrated{1}.get('subjectmeasurement.measurement'), 'age');
 end
@@ -288,7 +288,7 @@ b = subjectMeasurementBody();
 b.subjectmeasurement.measurement = 'coat color';
 out = runJ(b);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'subjectmeasurement');
 % and no orphan anchor is left behind pointing at a fold that did not happen
 verifyFalse(testCase, any(strcmp(classNames(out), 'absolute_time_reference')));
@@ -306,17 +306,17 @@ b = subjectMeasurementBody();
 b.subjectmeasurement.measurement = 'voltage';
 out = runJ(b);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'subjectmeasurement');
 end
 
 function testWholeWordQuantitiesStillFold(testCase)
 % The other side of the same rule: narrowing must not break the real cases.
-cases = { 'weight', 'mass_observation'; ...
-          'body mass', 'mass_observation'; ...
-          'temperature', 'temperature_observation'; ...
-          'body length', 'length_observation'; ...
-          'age', 'time_observation' };
+cases = { 'weight', 'observation+mass'; ...
+          'body mass', 'observation+mass'; ...
+          'temperature', 'observation+temperature'; ...
+          'body length', 'observation+length'; ...
+          'age', 'observation+time' };
 for k = 1:size(cases, 1)
     b = subjectMeasurementBody();
     b.subjectmeasurement.measurement = cases{k, 1};
@@ -336,7 +336,7 @@ b = subjectMeasurementBody();
 b.subjectmeasurement.value = [30 31];
 out = runJ(b);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'subjectmeasurement');
 end
 
@@ -366,7 +366,7 @@ if ~isempty(out.quarantine)
         out.quarantine(1).reason));
 end
 names = sort(classNames(out));
-verifyEqual(testCase, names, {'absolute_time_reference', 'time_observation'});
+verifyEqual(testCase, names, {'absolute_time_reference', 'observation+time'});
 end
 
 function testMeasurementSiblingIsUnchangedByTheExtraction(testCase)
@@ -384,7 +384,7 @@ v1.base = struct('id', 'me_1', 'session_id', 'sess_09', ...
 v1.measurement = struct('ontology_name', 'PATO:0000128', 'name', 'body weight', ...
     'numeric_value', 22.5, 'string_value', '');
 out = runJ(v1);
-obs = docOfClass(testCase, out, 'mass_observation');
+obs = docOfClass(testCase, out, 'observation+mass');
 verifyEqual(testCase, obs.get('mass.value.source_value'), 22.5);
 verifyFalse(testCase, isfield(obs.get('mass.value'), 'source_unit') ...
     && ~isempty(obs.get('mass.value').source_unit));
@@ -442,7 +442,7 @@ verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'high_pass');
 % and the direct call (no superclass pass, so the block still says `type`)
 % resolves the same band -- both spellings are live, exactly as for depends_on.
 bodies = did2.convert.migrators_j.pyraview(pyraviewBody(predFilterBlock()));
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), bodies, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), bodies, 'UniformOutput', false);
 idx = find(strcmp(names, 'frequency_filter'), 1);
 assertNotEmpty(testCase, idx);
 verifyEqual(testCase, bodies{idx}.frequency_filter.band.name, 'high_pass');
@@ -553,7 +553,7 @@ function testPyraviewWithNoFilterBlockIsUnchanged(testCase)
 % stray frequency_filter.
 out = runJ(pyraviewBody());
 names = classNames(out);
-verifyTrue(testCase, any(strcmp(names, 'voltage_observation')));
+verifyTrue(testCase, any(strcmp(names, 'observation+voltage')));
 verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 2);
 verifyFalse(testCase, any(strcmp(names, 'frequency_filter')));

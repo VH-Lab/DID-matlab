@@ -112,7 +112,7 @@ anchorIds = {};
 withInstrument = 0;
 for i = 1:numel(obs)
     b = obs{i};
-    verifyEqual(testCase, char(did2.unittest.helpers.leafName(b)), 'voltage_observation');
+    verifyEqual(testCase, char(did2.unittest.helpers.classKey(b)), 'observation+voltage');
     verifyTrue(testCase, logical(b.value.data_body));   % its value is the epoch's files
     verifyEqual(testCase, depVal(b, 'entity_id'), 'specimen_1');
     tr = depVal(b, 'time_reference_id');
@@ -411,7 +411,7 @@ verifyEqual(testCase, rep.spike_bodies, 1);
 verifyEqual(testCase, rep.spike_bodies_quarantined, 0);
 verifyEqual(testCase, rep.observations_emitted, 1, 'the probe row is still its own observation');
 spike = {};
-obsAll = bodiesOfClass(out, 'time_observation');
+obsAll = bodiesOfClass(out, 'observation+time');
 for i = 1:numel(obsAll)
     if strcmp(depVal(obsAll{i}, 'entity_id'), 'el_neuron'); spike{end+1} = obsAll{i}; end %#ok<AGROW>
 end
@@ -563,11 +563,11 @@ verifyEqual(testCase, rep.observations_emitted, 7);
 verifyEqual(testCase, rep.rows_image_deferred, 0);   % #88 + data bodies: imaging is an intensity_observation
 verifyEqual(testCase, rep.rows_unresolved_modality, 0);
 % UPDATED for #88: the leaf is the observation direction + its value kind
-got = sort(cellfun(@(b) char(did2.unittest.helpers.leafName(b)), ...
+got = sort(cellfun(@(b) char(did2.unittest.helpers.classKey(b)), ...
     bodiesNamed(out, 'migrated_probemap_observation'), 'UniformOutput', false));
-want = sort({'voltage_observation', 'current_observation', ...
-    'time_observation', 'acceleration_observation', 'temperature_observation', ...
-    'voltage_observation', 'intensity_observation'});
+want = sort({'observation+voltage', 'observation+current', ...
+    'observation+time', 'observation+acceleration', 'observation+temperature', ...
+    'observation+voltage', 'observation+intensity'});
 verifyEqual(testCase, got, want);
 end
 
@@ -621,7 +621,7 @@ function testStimManipulationClassSubjectAnchor(testCase)
 [~, ~, manips] = stimDecompose();
 assertNotEmpty(testCase, manips);
 m = manips{1};
-verifyEqual(testCase, char(did2.unittest.helpers.leafName(m)), 'term_manipulation');
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(m)), 'manipulation+term');
 verifyEqual(testCase, depVal(m, 'entity_id'), 'spec_s');
 verifyNotEmpty(testCase, depVal(m, 'time_reference_id'));
 end
@@ -840,6 +840,13 @@ end
 
 % ===================== helpers ============================================
 
+function tf = isDirection(key, direction)
+% KEY (did2.unittest.helpers.classKey) is a statement of DIRECTION: the #88
+% '<direction>+<kind>'. A joined old name does NOT count, so an emitter that
+% regressed to one fails here.
+tf = strcmp(key, direction) || strncmp(key, [direction '+'], numel(direction) + 1);
+end
+
 function out = bodiesNamed(result, baseName)
 %BODIESNAMED The bodies a role marker used to tag on base.name.
 %   UPDATED for did-schema #88: V_eta documents write no base.name (#73 item 54),
@@ -861,19 +868,19 @@ end
 out = {};
 for k = 1:numel(docs)
     b = docs{k};
-    leaf = char(did2.unittest.helpers.leafName(b));
+    leaf = char(did2.unittest.helpers.classKey(b));
     switch baseName
         case 'migrated_probemap_epoch_anchor'
             hit = strcmp(leaf, 'relative_time_reference') ...
                 && strcmp(entityTypeOf(byId, depVal(b, 'referent_id')), 'epoch');
         case 'migrated_probemap_observation'
-            hit = endsWith(leaf, '_observation') ...
+            hit = isDirection(leaf, 'observation') ...
                 && strcmp(anchorKind(byId, b), 'epoch');
         case 'migrated_probemap_manipulation'
-            hit = endsWith(leaf, '_manipulation') ...
+            hit = isDirection(leaf, 'manipulation') ...
                 && strcmp(anchorKind(byId, b), 'epoch');
         case 'migrated_recording_observation'
-            hit = endsWith(leaf, '_observation') && ~isempty(depVal(b, 'instrument_id')) ...
+            hit = isDirection(leaf, 'observation') && ~isempty(depVal(b, 'instrument_id')) ...
                 && strcmp(anchorKind(byId, b), 'session');
         otherwise
             error('bodiesNamed: unknown role %s', baseName);
@@ -889,7 +896,7 @@ out = {};
 for k = 1:numel(result.migrated)
     b = result.migrated{k}.toStruct();
     if isfield(b, 'document_class') && isfield(b.document_class, 'class_name') ...
-            && strcmp(char(did2.unittest.helpers.leafName(b)), className)
+            && strcmp(char(did2.unittest.helpers.classKey(b)), className)
         out{end+1} = b; %#ok<AGROW>
     end
 end

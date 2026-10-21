@@ -268,7 +268,7 @@ end
 function out = docsOfClass(result, className)
 out = {};
 for k = 1:numel(result.migrated)
-    if strcmp(did2.unittest.helpers.leafName(result.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(result.migrated{k}), className)
         out{end+1} = result.migrated{k}; %#ok<AGROW>
     end
 end
@@ -359,7 +359,7 @@ verifyEqual(testCase, rep.statements_emitted, 0, ...
 verifyEqual(testCase, rep.references_emitted, 0);
 verifyEqual(testCase, rep.intervals_decomposed, 0);
 verifyEqual(testCase, rep.documents_appended, 0);
-verifyEmpty(testCase, docsOfClass(result, 'logical_observation'));
+verifyEmpty(testCase, docsOfClass(result, 'observation+logical'));
 verifyEmpty(testCase, docsOfClass(result, 'relative_time_reference'));
 verifyEqual(testCase, numel(result.migrated), before, ...
     'the dormant pass changed the batch');
@@ -418,7 +418,7 @@ verifyTrue(testCase, rep.ran, 'the pass must report that it ran');
 verifyEqual(testCase, rep.sources_seen, 0);
 verifyEqual(testCase, rep.statements_emitted, 0);
 verifyEqual(testCase, rep.documents_appended, 0);
-verifyEmpty(testCase, docsOfClass(result, 'logical_observation'), ...
+verifyEmpty(testCase, docsOfClass(result, 'observation+logical'), ...
     ['a logical statement was minted for an element with NO valid_interval ' ...
      'document. Absence means the data is VALID; minting anything here turns ' ...
      'every markgarbage-free dataset from "all good" into "annotated", and ' ...

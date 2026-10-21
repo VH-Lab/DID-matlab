@@ -162,7 +162,7 @@ v1.filenavigator.ndi_filenavigator_class = '';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'filenavigator');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'filenavigator');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
@@ -301,7 +301,7 @@ out = runJ({a, b});
 verifyEmpty(testCase, out.quarantine);
 sw = {};
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), 'software') ...
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), 'software') ...
             && strcmp(out.migrated{k}.get('entity.name'), 'ndi.calc.vis.oridir')
         sw{end+1} = out.migrated{k}; %#ok<AGROW>
     end
@@ -421,7 +421,7 @@ v1.orientation_direction_tuning = struct('vector', struct('orientation_preferenc
 end
 
 function names = classNames(out)
-names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
+names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
     'UniformOutput', false);
 end
 

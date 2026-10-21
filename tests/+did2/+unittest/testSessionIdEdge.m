@@ -136,7 +136,7 @@ s = runJ(sessionV1()).migrated{1}.toStruct();
 verifyEqual(testCase, s.base.id, 'sess_09');
 verifyEqual(testCase, edgeTargets(s, 'session_id'), {'sess_09'}, ...
     'the session entity points at itself');
-verifyEqual(testCase, char(did2.unittest.helpers.leafName(s)), 'session');
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(s)), 'session');
 end
 
 

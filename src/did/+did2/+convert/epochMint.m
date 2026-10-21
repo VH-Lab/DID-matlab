@@ -621,8 +621,8 @@ report.documents_inspected = n;
 % struct('f', {{c}}) double-brace, and that trap has already produced one
 % silently-empty reader in this package. `rows(k).epoch_string` is kept as the
 % FIRST string only, for the code paths that want a single answer.
-rows = struct('class_name', {}, 'epoch_string', {}, 'session_id', {}, ...
-              'doc_id', {}, 'datestamp', {});
+rows = struct('class_name', {}, 'value_kind', {}, 'epoch_string', {}, ...
+              'session_id', {}, 'doc_id', {}, 'datestamp', {});
 bodies = cell(1, n);
 epochValues  = cell(1, n);
 epochSources = cell(1, n);
@@ -641,15 +641,17 @@ for k = 1:n
         end
         first = '';
         if ~isempty(hits); first = hits(1).value; end
+        [~, valueKind] = did2.convert.statementKind(b);
         rows(k) = struct( ...
             'class_name',   classNameOf(b), ...
+            'value_kind',   valueKind, ...
             'epoch_string', first, ...
             'session_id',   did2.schema.cache.sessionIdOf(b), ...
             'doc_id',       baseField(b, 'id'), ...
             'datestamp',    creationTime(b));
     catch
         report.documents_unreadable = report.documents_unreadable + 1;
-        rows(k) = struct('class_name', '', 'epoch_string', '', ...
+        rows(k) = struct('class_name', '', 'value_kind', '', 'epoch_string', '', ...
             'session_id', '', 'doc_id', '', 'datestamp', '');
     end
 end
@@ -1262,7 +1264,7 @@ end
 % documents over 11 distinct values, and the mint already SEES that source
 % (did2.validate.epochStrings reads it), so the epochs those anchors need exist.
 for k = 1:n
-    if strcmp(rows(k).class_name, 'harmonic_component_calculation')
+    if isStatementRow(rows(k), 'calculation', 'harmonic_component')
         % A re-run -- find-or-create, as the metadata block above.
         report.response_scalar_already_folded = ...
             report.response_scalar_already_folded + 1;
@@ -1306,7 +1308,7 @@ for k = 1:n
             report.arming_calls_returning_multiple + 1;
     end
     [safe, why, unchecked] = armingIsSafe(offered, ...
-        'harmonic_component_calculation', rows(k).doc_id, ...
+        {'calculation', 'harmonic_component'}, rows(k).doc_id, ...
         checkEdgeDeclaration, edgeIndex, edgeMemo);
     report.arming_edge_declaration_unchecked = ...
         report.arming_edge_declaration_unchecked + unchecked;
@@ -1521,7 +1523,7 @@ end
 % migrator re-run, exactly as for syncrule_mapping; the primary body is the
 % voltage observation, id preserved.
 for k = 1:n
-    if strcmp(rows(k).class_name, 'voltage_observation') ...
+    if isStatementRow(rows(k), 'observation', 'voltage') ...
             && isstruct(bodies{k}) && isfield(bodies{k}, 'pyraview')
         continue;
     end
@@ -1555,7 +1557,7 @@ for k = 1:n
             report.arming_calls_returning_multiple + 1;
     end
     [safe, why, unchecked] = armingIsSafe(offered, ...
-        'voltage_observation', rows(k).doc_id, ...
+        {'observation', 'voltage'}, rows(k).doc_id, ...
         checkEdgeDeclaration, edgeIndex, edgeMemo);
     report.arming_edge_declaration_unchecked = ...
         report.arming_edge_declaration_unchecked + unchecked;
@@ -2146,7 +2148,7 @@ if isempty(offered)
 end
 primary = offered{1};
 if ~isstruct(primary) || ~isscalar(primary) ...
-        || ~strcmp(classNameOf(primary), primaryClass)
+        || ~isPrimaryClass(primary, primaryClass)
     why = 'declined';
     return;
 end
@@ -2211,7 +2213,10 @@ function cn = classNameOf(b)
 %   entity class with a bound type) answers its TYPE ('session', 'epoch',
 %   ...), so the rows below keep comparing on 'session' and 'epoch'. The
 %   standalone `method` (#88; `method_parameters` before) answers
-%   'method_parameters', the name the epoch_id stamping loop looks for.
+%   'method_parameters', the name the epoch_id stamping loop looks for. A
+%   statement answers its DIRECTION ('observation', ...; an old-vintage joined
+%   leaf is read as its direction too); its value kind is `rows(k).value_kind`
+%   (did2.convert.statementKind).
 cn = '';
 if isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
@@ -2227,28 +2232,26 @@ if strcmp(cn, 'entity') && isfield(b, 'entity') && isstruct(b.entity) ...
     end
 elseif strcmp(cn, 'method')
     cn = 'method_parameters';
-elseif any(strcmp(cn, {'observation', 'assertion', 'manipulation', 'calculation'}))
-    % #88: a statement is its direction plus a value-kind mixin; answer the
-    % leaf name '<kind>_<direction>' the loops below compare on
-    kind = valueKindOf(b, cn);
-    if ~isempty(kind)
-        cn = [kind '_' cn];
-    end
+else
+    cn = did2.convert.statementKind(b);
 end
 end
 
-function kind = valueKindOf(b, cn)
-kind = '';
-try
-    sc = b.document_class.superclasses;
-    if isstruct(sc); sc = num2cell(sc); end
-    names = cell(1, numel(sc));
-    for k = 1:numel(sc)
-        if isstruct(sc{k}); names{k} = char(sc{k}.class_name); else; names{k} = char(sc{k}); end
-    end
-    kind = char(did2.schema.cache.shared().documentValueKind(cn, names));
-catch
-    kind = '';
+function tf = isStatementRow(row, direction, kind)
+%ISSTATEMENTROW Is ROW a statement of DIRECTION with value kind KIND? Both
+%   vintages: the #88 direction + mixin, and an old joined leaf (read by
+%   did2.convert.statementKind).
+tf = strcmp(row.class_name, direction) && strcmp(row.value_kind, kind);
+end
+
+function tf = isPrimaryClass(primary, primaryClass)
+%ISPRIMARYCLASS PRIMARYCLASS is a class name, or {direction, value kind} for
+%   a statement (did-schema #88).
+if iscell(primaryClass)
+    [d, k] = did2.convert.statementKind(primary);
+    tf = strcmp(d, primaryClass{1}) && strcmp(k, primaryClass{2});
+else
+    tf = strcmp(classNameOf(primary), primaryClass);
 end
 end
 

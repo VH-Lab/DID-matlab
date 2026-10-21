@@ -75,14 +75,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = char(did2.unittest.helpers.leafName(out.migrated{k}));
+    names{k} = char(did2.unittest.helpers.classKey(out.migrated{k}));
 end
 end
 
 function docs = ofClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
+    if strcmp(char(did2.unittest.helpers.classKey(out.migrated{k})), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end

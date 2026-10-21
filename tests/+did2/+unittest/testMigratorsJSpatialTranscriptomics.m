@@ -239,7 +239,7 @@ function testFileReferenceIsNotFoldedToGenericFile(testCase)
 % DO NOT "FIX" THIS TEST BY DELETING IT. If the team rules the other way,
 % the class's own .md doc has to change first.
 out = did2.convert.migrators_j.file_reference(fileReferenceV1());
-verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'file_reference');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out{1}), 'file_reference');
 end
 
 function testGeneListPreservesReferenceTableFields(testCase)
@@ -483,7 +483,7 @@ end
 % ===================== small helpers =======================================
 
 function names = classNames(out)
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 end
 
 function b = pick(out, className)

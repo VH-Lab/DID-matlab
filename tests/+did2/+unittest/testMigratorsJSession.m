@@ -179,7 +179,7 @@ verifyEmpty(testCase, out.quarantine, reasonsOf(out));
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the session migrator emitted no document; every assertion below would be vacuous');
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'session');
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'session');
 if did2.schema.cache.shared().sessionIdIsEdge()
     % the session entity's id IS its session id (see the next test)
     verifyEqual(testCase, doc.get('base.id'), 'sess_09');

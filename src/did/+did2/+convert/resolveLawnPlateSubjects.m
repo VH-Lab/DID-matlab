@@ -1123,13 +1123,13 @@ d = 'bacterial patch';
 end
 
 function m = plateMeasures()
-%PLATEMEASURES {token, leafClass, shapeClass} for the E. coli plate row.
+%PLATEMEASURES {token, direction, value kind} for the E. coli plate row.
 %
 %   CFU is a CONCENTRATION, not a count, and that is the writer's own arithmetic
 %   rather than a preference: doImport.m:157 converts it to "CFU/mL of OD600 = 1
 %   solution (standard)" -- an explicit per-volume normalisation. Both OD600
 %   columns follow the precedent already in the tree (applyPatchGeometryMap maps
-%   BacterialOD600TargetAtSeeding to concentration_observation).
+%   BacterialOD600TargetAtSeeding to an observation of concentration).
 %
 %   The other TEN plate columns -- expID, the two labels, peptoneFlag, the five
 %   timestamps and the strain document-id string -- are NOT typed here. They are
@@ -1137,30 +1137,30 @@ function m = plateMeasures()
 %   of them. A boolean leaf and a date leaf for this tier are separate
 %   decisions, not something to invent inside a join.
 m = {
-    'bacterialod600measurement',                'concentration_observation', 'concentration'
-    'bacterialod600targetatseeding',            'concentration_observation', 'concentration'
-    'bacterialcolonyformingunitscfumeasurement','concentration_observation', 'concentration'
-    'bacterialpatchvolume',                     'volume_observation',        'volume'};
+    'bacterialod600measurement',                'observation',               'concentration'
+    'bacterialod600targetatseeding',            'observation',               'concentration'
+    'bacterialcolonyformingunitscfumeasurement','observation',               'concentration'
+    'bacterialpatchvolume',                     'observation',               'volume'};
 end
 
 function m = lawnMeasures()
-%LAWNMEASURES {token, leafClass, shapeClass} for the E. coli patch/lawn row.
+%LAWNMEASURES {token, direction, value kind} for the E. coli patch/lawn row.
 %
 %   Radius -> length and circularity -> score follow applyPatchGeometryMap
 %   exactly. The six fluorescence columns are dimensionless arbitrary units, and
-%   D8 gives V_eta exactly one home for those -- `intensity_observation`, "J's
+%   D8 gives V_eta exactly one home for those -- an `intensity` observation, "J's
 %   one dimensionless numeric; NO generic escape hatch". `borderCenterRatio` is
 %   a ratio of two of them, so it goes there too rather than to `score`, which
 %   carries a scale with a minimum and a maximum a ratio does not have.
 m = {
-    'bacterialpatchradius',                          'length_observation',    'length'
-    'bacterialpatchcircularity',                     'score_observation',     'score'
-    'bacterialpatchborderpeakfluorescenceintensity', 'intensity_observation', 'intensity'
-    'bacterialpatchborderedgefluorescenceintensity', 'intensity_observation', 'intensity'
-    'bacterialpatchborderfluorescenceamplitude',     'intensity_observation', 'intensity'
-    'bacterialpatchmeanfluorescenceamplitude',       'intensity_observation', 'intensity'
-    'bacterialpatchcenterfluorescenceamplitude',     'intensity_observation', 'intensity'
-    'bacterialpatchbordertocenterfluorescenceratio', 'intensity_observation', 'intensity'};
+    'bacterialpatchradius',                          'observation',           'length'
+    'bacterialpatchcircularity',                     'observation',           'score'
+    'bacterialpatchborderpeakfluorescenceintensity', 'observation',           'intensity'
+    'bacterialpatchborderedgefluorescenceintensity', 'observation',           'intensity'
+    'bacterialpatchborderfluorescenceamplitude',     'observation',           'intensity'
+    'bacterialpatchmeanfluorescenceamplitude',       'observation',           'intensity'
+    'bacterialpatchcenterfluorescenceamplitude',     'observation',           'intensity'
+    'bacterialpatchbordertocenterfluorescenceratio', 'observation',           'intensity'};
 end
 
 function t = knownTokens()
@@ -1356,8 +1356,9 @@ body = did2.build.document('entity', ...
     'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 
-function body = makeObservation(srcBody, leafClass, shapeClass, variable, num, subjectId, anchorId)
-%MAKEOBSERVATION One typed observation of one subject (did-schema #88).
+function body = makeObservation(srcBody, direction, shapeClass, variable, num, subjectId, anchorId)
+%MAKEOBSERVATION One typed observation of one subject (did-schema #88): the
+%   direction DIRECTION with the value-kind mixin SHAPECLASS.
 %   An #88 observation REQUIRES a time reference and the table gives no time,
 %   so it names ANCHORID, a "during the session" relative_time_reference the
 %   caller mints once per session. The value carries the source value with no
@@ -1370,7 +1371,8 @@ else
         struct('source_value', double(num), 'approximate', false));
 end
 [sid, ds] = sessionAndTime(srcBody);
-body = did2.build.statement(leafClass, char(subjectId), variable, v, ...
+body = did2.build.statement(direction, char(subjectId), variable, v, ...
+    'ValueKind', shapeClass, ...
     'TimeReferenceIds', {char(anchorId)}, 'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 end
 

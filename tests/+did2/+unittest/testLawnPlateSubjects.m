@@ -187,12 +187,12 @@ verifyEqual(testCase, child.entity.description,  'bacterial lawn (a bacterial pa
 verifyEqual(testCase, parent.entity.description, 'bacterial plate (a plate of lawns)');
 
 % every observation points at a subject that is in the batch
-obsClasses = {'concentration_observation', 'volume_observation', ...
-    'length_observation', 'score_observation', 'intensity_observation'};
+obsClasses = {'observation+concentration', 'observation+volume', ...
+    'observation+length', 'observation+score', 'observation+intensity'};
 nChecked = 0;
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
-    if ~any(strcmp(did2.unittest.helpers.leafName(b), obsClasses)); continue; end   % #88 leaf names
+    if ~any(strcmp(did2.unittest.helpers.classKey(b), obsClasses)); continue; end   % #88 leaf names
     nChecked = nChecked + 1;
     verifyNotEmpty(testCase, documentById(out, depValue(b, 'entity_id')), ...
         'an observation whose subject is not in the batch is an orphan');
@@ -310,7 +310,7 @@ verifyEqual(testCase, repFlag.lawn_rows_with_values_but_none_emittable, 1);
 verifyEqual(testCase, repFlag.lawn_rows_with_no_values_at_all, 0);
 verifyEqual(testCase, repFlag.lawn_subjects_minted, 0);
 verifyEqual(testCase, repFlag.lawn_observations_emitted, 0);
-verifyEmpty(testCase, findClass(out, 'score_observation'), ...
+verifyEmpty(testCase, findClass(out, 'observation+score'), ...
     'a logical must not be laundered into a numeric observation');
 end
 
@@ -746,7 +746,7 @@ function found = findClass(out, className)
 found = {};
 for k = 1:numel(out.migrated)
     b = out.migrated{k}.toStruct();
-    if strcmp(did2.unittest.helpers.leafName(b), className)
+    if strcmp(did2.unittest.helpers.classKey(b), className)
         found{end+1} = b; %#ok<AGROW>
     end
 end

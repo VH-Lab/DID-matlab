@@ -60,7 +60,7 @@ function testSyncSoftwareVersionStaysEmptyAndTheHandleHasNoAtSign(testCase)
 % version" is "no version assertion".
 out = runJ(syncruleBody('ndi.time.syncrule.commonTriggersOverlappingEpochs'));
 sw = firstOfClass(testCase, out, 'software');
-verifyFalse(testCase, any(strcmp(classNames(out), 'text_assertion')));
+verifyFalse(testCase, any(strcmp(classNames(out), 'assertion+text')));
 verifyFalse(testCase, contains(sw.get('entity.local_identifier'), '@'));
 end
 
@@ -95,7 +95,7 @@ verifyEmpty(testCase, out.quarantine);
 sw = firstOfClass(testCase, out, 'software');
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikeextractor');
 verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.app.spikeextractor@2.1');
-ver = firstOfClass(testCase, out, 'text_assertion');
+ver = firstOfClass(testCase, out, 'assertion+text');
 verifyEqual(testCase, depValue(ver.toStruct(), 'entity_id'), sw.get('base.id'));
 verifyEqual(testCase, ver.get('text.value').text, '2.1');
 mp = firstOfClass(testCase, out, 'method');
@@ -246,7 +246,7 @@ end
 % ===================== accessors ==========================================
 
 function names = classNames(out)
-names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
+names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, ...
     'UniformOutput', false);
 end
 

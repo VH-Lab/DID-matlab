@@ -189,7 +189,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 % STAMPED: the fold only runs when an `epoch` document exists (the gate), and
 % this test is about what the FOLD does.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 s    = leaf.toStruct();
 
 verifyFalse(testCase, isfield(s, 'stimulus_response'));
@@ -226,7 +226,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 % WHICH THIS STRING IS DESTROYED -- if a future change reintroduces one, this
 % test is the thing that must be made to fail first.
 out  = runJ(withEpochEdge(responseFixture('F1')));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 s    = leaf.toStruct();
 
 % The leaf itself still carries no epoch STRING, under any spelling -- the fold
@@ -265,10 +265,10 @@ out = runJ(responseFixture('F1'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'stimulus_response_scalar');
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'stimulus_response_scalar');
 verifyEqual(testCase, d.get('stimulus_response.element_epochid'), 't00017');
 verifyEqual(testCase, d.get('stimulus_response.stimulator_epochid'), 't00003');
-verifyFalse(testCase, anyClass(out, 'harmonic_component_calculation'));
+verifyFalse(testCase, anyClass(out, 'calculation+harmonic_component'));
 end
 
 function testTheDroppedStringIsNotSilentlyReplacedByTheStimulatorOne(testCase)
@@ -363,7 +363,7 @@ for k = 1:numel(keys_)
         verifyFail(testCase, sprintf('response_type %s quarantined: %s', ...
             rt, out.quarantine(1).reason));
     end
-    leaf = findClass(testCase, out, 'harmonic_component_calculation');
+    leaf = findClass(testCase, out, 'calculation+harmonic_component');
     verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), ...
         expected(rt), sprintf('response_type %s', rt));
 end
@@ -401,7 +401,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 9);
 
 counts = classCounts(out);
-verifyEqual(testCase, counts('harmonic_component_calculation'), 3);
+verifyEqual(testCase, counts('calculation+harmonic_component'), 3);
 verifyEqual(testCase, counts('relative_reference'), 3);
 verifyEqual(testCase, counts('stimulus_response_scalar_parameters_basic'), 3);
 verifyFalse(testCase, counts.isKey('session_relative_reference'));
@@ -429,7 +429,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 6);
 
 counts = classCounts(out);
-verifyFalse(testCase, counts.isKey('harmonic_component_calculation'));
+verifyFalse(testCase, counts.isKey('calculation+harmonic_component'));
 verifyFalse(testCase, counts.isKey('relative_reference'));
 verifyFalse(testCase, counts.isKey('session_relative_reference'));
 verifyEqual(testCase, counts('stimulus_response_scalar'), 3);
@@ -454,7 +454,7 @@ v1 = withEpochEdge(responseFixture('F1'));
 v1 = emptyEdge(v1, 'stimulator_id');
 v1 = emptyEdge(v1, 'stimulus_control_id');
 out  = runJ(v1);
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 b    = leaf.toStruct();
 
 verifyFalse(testCase, any(strcmp({b.depends_on.name}, 'instrument_id')));
@@ -477,7 +477,7 @@ v1 = emptyEdge(withEpochEdge(responseFixture('F1')), 'element_id');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -544,7 +544,7 @@ testCase.assumeTrue(false, "V_eta rework in progress (DID-schema PR #68): stimul
 % just stop converting a class of document, and the only visible trace would be
 % an `unconverted` count nobody has a baseline for.
 out  = runJ(withEpochEdge(responseFixture('F3')));
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 3);
 % ...and it is the FOLD, not a passthrough that happens to be present too.
 verifyFalse(testCase, anyClass(out, 'stimulus_response_scalar'));
@@ -576,7 +576,7 @@ if ~isempty(out.quarantine)
 end
 % leaf + epoch anchor + the passed-through parameters document
 verifyEqual(testCase, numel(out.migrated), 3);
-leaf = findClass(testCase, out, 'harmonic_component_calculation');
+leaf = findClass(testCase, out, 'calculation+harmonic_component');
 verifyEqual(testCase, leaf.get('harmonic_component.value.harmonic'), 3);
 verifyEqual(testCase, findClass(testCase, out, ...
     'stimulus_response_scalar_parameters_basic').get( ...
@@ -656,14 +656,14 @@ end
 function doc = findClass(testCase, out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
 end
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 % assertFail, not verifyFail: verifyFail records the failure and CONTINUES, and
 % the caller would then dereference an empty doc and report a MATLAB error

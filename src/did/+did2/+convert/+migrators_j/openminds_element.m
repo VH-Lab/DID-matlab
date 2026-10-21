@@ -49,8 +49,8 @@ valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 
 % term_assertion: a timeless subject_assertion leaf (no method/interaction).
 % did-schema #88: a term_assertion built through did2.build, id preserved.
-body = jStatement(preBody, 'term_assertion', jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
-    variable, valueTerm, 'Id', char(preBody.base.id));
+body = jStatement(preBody, 'assertion', jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
+    variable, valueTerm, 'Id', char(preBody.base.id), 'ValueKind', 'term');
 v2Body = {body};
 end
 

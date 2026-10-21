@@ -4,10 +4,12 @@ function doc = jStatement(preBody, leafClass, entityId, variable, value, varargi
 %
 %   DOC = jStatement(PREBODY, LEAFCLASS, ENTITYID, VARIABLE, VALUE, NAME, VALUE, ...)
 %   is did2.build.statement(LEAFCLASS, ENTITYID, VARIABLE, VALUE, jOpts(PREBODY){:},
-%   NAME, VALUE, ...). LEAFCLASS is '<kind>_<direction>' ('voltage_observation',
-%   'term_assertion') or a named calculator class; on did-schema #88 the builder
-%   reads it as the direction class with that value kind as a mixin
-%   (V_eta_entity_composition_plan.md sec. 1). VARIABLE is a term or a name.
+%   NAME, VALUE, ...). LEAFCLASS is a direction class ('observation',
+%   'assertion', 'manipulation', 'calculation') with its value-kind mixin
+%   given as 'ValueKind' ('voltage', 'term', ...), or one of the named
+%   calculator classes (did-schema #88, V_eta_entity_composition_plan.md
+%   sec. 1). Write the direction + 'ValueKind' form; never a joined
+%   '<kind>_<direction>' name (tests/+did2/+unittest/testNoOldLeafNames.m). VARIABLE is a term or a name.
 %   ENTITYID is what the statement is about (its `entity_id` edge).
 %
 %   An interaction (observation, manipulation, calculation) needs at least one

@@ -190,8 +190,8 @@ end
 % ===================== builders ========================================
 
 function a = kindAssertion(preBody, subjectId, variableName, valueName)
-a = jStatement(preBody, 'term_assertion', subjectId, ...
-    jLabel(variableName), jLabel(valueName));
+a = jStatement(preBody, 'assertion', subjectId, ...
+    jLabel(variableName), jLabel(valueName), 'ValueKind', 'term');
 end
 
 function rel = lineageRelation(preBody, childId, parentId, relationName)

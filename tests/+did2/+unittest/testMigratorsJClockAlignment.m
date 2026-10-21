@@ -180,7 +180,7 @@ out = runJ(syncruleFixture('ctoe'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'syncrule');
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'syncrule');
 verifyEqual(testCase, doc.get('base.id'), 'rule_ctoe');
 verifyEqual(testCase, out.summary.unconverted_by_class.syncrule, 1);
 verifyEqual(testCase, countClass(out, 'acquisition_channels'), 0);
@@ -207,7 +207,7 @@ function testChannelSpecDecomposesTheWayNdiParsesIt(testCase)
 % nothing is emitted half-built (no software, no channels).
 out = runJ(syncruleFixture('randomPulses'));
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncrule');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'syncrule');
 verifyEqual(testCase, countClass(out, 'software'), 0);
 end
 
@@ -248,7 +248,7 @@ function testFilefindNamesDevicesWithNoChannels(testCase)
 out = runJ(syncruleFixture('filefind'));
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'syncrule');
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'syncrule');
 p = doc.get('syncrule.parameters');
 verifyEqual(testCase, p.daqsystem1, 'mydaq1');
 verifyEqual(testCase, p.syncfilename, 'syncfile.txt');
@@ -342,7 +342,7 @@ function testGraphWithTheEmptySessionSentinelPassesThrough(testCase)
 % exist is an orphan, not a fact, so the document passes through instead.
 out = runJ(syncgraphFixture({'rule_a'}, '0000000000000000_0000000000000000'));
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncgraph');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'syncgraph');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
 
@@ -372,7 +372,7 @@ function testMappingPassesThroughBecauseNoEpochDocumentExists(testCase)
 out = runJ(mappingFixture(false));
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'syncrule_mapping');
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'syncrule_mapping');
 verifyEqual(testCase, doc.get('base.id'), 'map_0001');
 verifyEqual(testCase, doc.get('syncrule_mapping.mapping'), [1.0002 -0.5]);
 end
@@ -510,7 +510,7 @@ out = runJ(mappingFixture(true));
 align = findClass(testCase, out, 'clock_alignment');
 fromRef = docWithId(testCase, out, depVal(align, 'input_id'));
 toRef   = docWithId(testCase, out, depVal(align, 'output_id'));
-verifyEqual(testCase, did2.unittest.helpers.leafName(fromRef), 'relative_time_reference');
+verifyEqual(testCase, did2.unittest.helpers.classKey(fromRef), 'relative_time_reference');
 verifyEqual(testCase, depVal(fromRef, 'referent_id'), 'epochdoc_a');
 verifyEqual(testCase, depVal(toRef, 'referent_id'), 'epochdoc_b');
 val = fromRef.get('relative_time_reference.value');
@@ -530,7 +530,7 @@ v1 = mappingFixture(true);
 v1.syncrule_mapping.epochnode_a.epoch_clock = 'no_time';
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncrule_mapping');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'syncrule_mapping');
 end
 
 function testNonFiniteExtentYieldsNoConversionAtAll(testCase)
@@ -540,7 +540,7 @@ v1 = mappingFixture(true);
 v1.syncrule_mapping.epochnode_b.t0_t1 = [NaN NaN];
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncrule_mapping');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'syncrule_mapping');
 end
 
 % ===================== the counters =======================================
@@ -684,7 +684,7 @@ end
 function n = countClass(out, className)
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         n = n + 1;
     end
 end
@@ -703,7 +703,7 @@ function doc = findClass(testCase, out, className)
 doc = [];
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
     if isempty(doc) && strcmp(names{k}, className)
         doc = out.migrated{k};
     end
