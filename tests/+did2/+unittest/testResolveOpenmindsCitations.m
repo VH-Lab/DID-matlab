@@ -480,7 +480,7 @@ function idx = classesOf(out, className)
 idx = [];
 for k = 1:numel(out.migrated)
     if strcmp(out.migrated{k}.className(), className) ...
-            || strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+            || strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         idx(end+1) = k; %#ok<AGROW>
     end
 end

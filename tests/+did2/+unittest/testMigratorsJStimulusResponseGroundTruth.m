@@ -262,7 +262,7 @@ out = runJ(responseFixture('F1'));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'stimulus_response_scalar');
+verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'stimulus_response_scalar');
 verifyEqual(testCase, d.get('stimulus_response.element_epochid'), 't00017');
 verifyEqual(testCase, d.get('stimulus_response.stimulator_epochid'), 't00003');
 verifyFalse(testCase, anyHarmonicCalc(out));
@@ -481,7 +481,7 @@ v1 = emptyEdge(withEpochEdge(responseFixture('F1')), 'element_id');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'stimulus_response_scalar');
 end
 
@@ -659,14 +659,14 @@ end
 function doc = findClass(testCase, out, className)
 doc = [];
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         doc = out.migrated{k};
         return;
     end
 end
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 % assertFail, not verifyFail: verifyFail records the failure and CONTINUES, and
 % the caller would then dereference an empty doc and report a MATLAB error
@@ -702,19 +702,9 @@ end
 % these readers ask for that pair rather than for a composed name.
 
 function tf = isHarmonicCalc(doc)
-%ISHARMONICCALC Class `calculation` with `harmonic_component` among its
-%   superclasses.
-if isa(doc, 'did2.document'); doc = doc.toStruct(); end
-tf = false;
-if ~isstruct(doc) || ~isfield(doc, 'document_class'); return; end
-if ~strcmp(char(doc.document_class.class_name), 'calculation'); return; end
-sc = doc.document_class.superclasses;
-if isstruct(sc); sc = num2cell(sc); end
-for k = 1:numel(sc)
-    e = sc{k};
-    if isstruct(e); e = e.class_name; end
-    if strcmp(char(e), 'harmonic_component'); tf = true; return; end
-end
+%ISHARMONICCALC A `calculation` with the `harmonic_component` value kind,
+%   read through did2.unittest.helpers.classKey (direction + value kind).
+tf = strcmp(did2.unittest.helpers.classKey(doc), 'calculation+harmonic_component');
 end
 
 function tf = anyHarmonicCalc(out)

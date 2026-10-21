@@ -201,13 +201,8 @@ function testTheResponseFoldExpectsTheCalculationLeafAsItsPrimary(testCase)
 % wrong primary here would read as "the migrator declined" on every document --
 % a refusal counter ticking for a reason that is not true.
 src = epochMintSource();
-% INVERTED 2026-10-21 for did-schema #88: the primary is the DIRECTION class
-% `calculation`, recognised as this fold's by its `harmonic_component`
-% value-kind mixin. There is no leaf class name to look for.
-verifyTrue(testCase, contains(src, '''calculation'', rows(k).doc_id'), ...
-    'the response fold does not name `calculation` as its primary');
-verifyTrue(testCase, contains(src, '''harmonic_component'')'), ...
-    'the response fold does not recognise its output by the harmonic_component value kind');
+verifyTrue(testCase, contains(src, '{''calculation'', ''harmonic_component''}'), ...
+    'the response fold does not name a calculation of value kind harmonic_component as its primary');
 end
 
 % ===================== readers =========================================

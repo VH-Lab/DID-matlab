@@ -57,8 +57,11 @@ function [result, report] = resolveResponseParameters(result, options)
 %                     is the app (`ndi.app.stimulus.tuning_response`)
 %     the knobs       one `{variable, <one value form>}` entry each, the
 %                     variable a label of the v1 field name (jParameterList's
-%                     convention). A writer-empty `[]` knob cannot be an entry
-%                     (exactly ONE value form) and is SKIPPED and COUNTED in
+%                     convention). A writer-empty `[]` knob takes the meaning
+%                     NDI defines for it (Jess Haley, 2026-10-21, "c"):
+%                     prestimulus_normalization -> 0, prestimulus_time -> left
+%                     out; both counted in `knobs_empty_ndi_defined`. Any other
+%                     empty knob is not stated and is counted in
 %                     `knobs_empty_not_stated`.
 %     the check       `freq_response` is still compared with the harmonic of
 %                     EVERY response using the document; any disagreement
@@ -248,6 +251,7 @@ report = struct( ...
     'methods_minted',                          0, ...
     'fields_copied',                           0, ...
     'knobs_empty_not_stated',                  0, ...
+    'knobs_empty_ndi_defined',                 0, ...
     'harmonic_checked',                        0, ...
     'harmonic_uncheckable',                    0, ...
     'refused_not_in_batch',                    0, ...
@@ -300,7 +304,10 @@ for k = 1:n
         b = docs{k}.toStruct();
         bodies{k}  = b;
         classes{k} = classNameOf(b);
-        isLeaf(k)  = strcmp(classes{k}, DIRECTION) && hasSuperclass(b, VALUE_KIND);
+        % did2.convert.statementKind: the #88 direction + mixin (it also reads
+        % a pre-port document's joined class name that way)
+        [leafDir, leafKind] = did2.convert.statementKind(b);
+        isLeaf(k)  = strcmp(leafDir, DIRECTION) && strcmp(leafKind, VALUE_KIND);
         docIds{k}  = baseField(b, 'id');
     catch
         report.documents_unreadable = report.documents_unreadable + 1;
@@ -379,6 +386,7 @@ rebuilt = {};
 % has actually landed in `migrated` -- a counter measuring outcome, not intent.
 copiedPer = [];
 emptyPer = [];
+definedPer = [];
 for k = 1:n
     if ~strcmp(classes{k}, PARAMS); continue; end
     pid = docIds{k};
@@ -419,7 +427,7 @@ for k = 1:n
         continue;
     end
 
-    [params, copied, emptied] = knobsOf(pBlk, KNOBS);
+    [params, copied, emptied, defined] = knobsOf(pBlk, KNOBS);
     if copied == 0
         % A method with no settings records nothing the source said.
         report.refused_no_fields = report.refused_no_fields + 1;
@@ -437,6 +445,7 @@ for k = 1:n
     changedIdx(end+1) = k;       %#ok<AGROW>
     copiedPer(end+1) = copied;   %#ok<AGROW>
     emptyPer(end+1) = emptied;   %#ok<AGROW>
+    definedPer(end+1) = defined; %#ok<AGROW>
 end
 
 report.refused_total = report.refused_not_in_batch ...
@@ -481,6 +490,8 @@ if ~isempty(changedIdx)
             report.fields_copied = report.fields_copied + copiedPer(j);
             report.knobs_empty_not_stated = ...
                 report.knobs_empty_not_stated + emptyPer(j);
+            report.knobs_empty_ndi_defined = ...
+                report.knobs_empty_ndi_defined + definedPer(j);
         end
     end
 
@@ -551,7 +562,7 @@ checked = true;
 agrees = (double(fr) == double(h));
 end
 
-function [params, copied, emptied] = knobsOf(pBlk, knobs)
+function [params, copied, emptied, defined] = knobsOf(pBlk, knobs)
 %KNOBSOF The run knobs as did-schema #88 `method.parameters` entries, in the
 %   plan's order. Snake + camelCase fallback per the standing migrator lesson.
 %   An ABSENT knob is skipped. A PRESENT-but-EMPTY one cannot be an entry (#88:
@@ -559,10 +570,21 @@ function [params, copied, emptied] = knobsOf(pBlk, knobs)
 %   the #88 note in the header). A numeric/logical scalar is a `quantity`
 %   (value, and the source as text); a char is `text`; anything else is
 %   `text`, JSON-encoded -- the jParameterList convention.
+%
+%   EMPTY SETTINGS WITH A MEANING NDI DEFINES (Decided by Jess Haley,
+%   2026-10-21, [empty response settings] "c"). The writer documents what `[]`
+%   means for two knobs (NDI origin/main +ndi/+app/+stimulus/tuning_response.m,
+%   the parameter table above `temporalfreqfunc = ...`):
+%     prestimulus_normalization  "[] or 0) No normalization"  -> written as 0
+%     prestimulus_time           [] = no baseline period      -> LEFT OUT
+%   Both are counted in DEFINED, not EMPTIED. The 0 carries no source_value:
+%   the source wrote no number. Never NaN. Any OTHER empty knob has no defined
+%   meaning, is not stated, and is counted in EMPTIED.
 %   NOT named `inline`: that was a MATLAB function name for two decades.
 params = [];
 copied = 0;
 emptied = 0;
+defined = 0;
 entries = {};
 for k = 1:numel(knobs)
     name = knobs{k};
@@ -574,11 +596,20 @@ for k = 1:numel(knobs)
     else
         continue;
     end
+    var = did2.convert.registeredTerm('', strrep(name, '_', ' '));
     if isempty(v)
-        emptied = emptied + 1;
+        switch name
+            case 'prestimulus_normalization'
+                entries{end+1} = did2.build.parameter(var, 'Value', 0); %#ok<AGROW>
+                copied = copied + 1;
+                defined = defined + 1;
+            case 'prestimulus_time'
+                defined = defined + 1;      % no baseline period: left out
+            otherwise
+                emptied = emptied + 1;
+        end
         continue;
     end
-    var = did2.convert.registeredTerm('', strrep(name, '_', ' '));
     if (isnumeric(v) || islogical(v)) && isscalar(v)
         e = did2.build.parameter(var, 'Value', double(v), ...
             'SourceValue', shortestText(double(v)));
@@ -627,27 +658,6 @@ cn = '';
 if isstruct(b) && isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
     cn = char(b.document_class.class_name);
-end
-end
-
-function tf = hasSuperclass(b, name)
-%HASSUPERCLASS Whether NAME is among the document's superclasses (a struct
-%   array, or a cell of structs/chars after a JSON round trip).
-tf = false;
-if ~isstruct(b) || ~isfield(b, 'document_class') || ~isstruct(b.document_class) ...
-        || ~isfield(b.document_class, 'superclasses')
-    return;
-end
-sc = b.document_class.superclasses;
-if isstruct(sc); sc = num2cell(sc); end
-if ~iscell(sc); return; end
-for k = 1:numel(sc)
-    e = sc{k};
-    if isstruct(e) && isfield(e, 'class_name') && strcmp(char(e.class_name), name)
-        tf = true; return;
-    elseif (ischar(e) || isstring(e)) && strcmp(char(e), name)
-        tf = true; return;
-    end
 end
 end
 

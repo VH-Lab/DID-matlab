@@ -292,9 +292,9 @@ POST_PASSES = [
         # sources must not read as a batch where everything succeeded.
         ("response_fold_vacuous", "stimulus-response fold VACUOUS (no sources)"),
         ("response_scalar_seen", "stimulus_response_scalar seen"),
-        ("response_scalar_already_folded", "  already harmonic_component_calculation"),
+        ("response_scalar_already_folded", "  already a calculation (harmonic_component value kind)"),
         ("response_scalar_edges_stamped", "  epoch_id stamped"),
-        ("response_scalar_folds_emitted", "FOLDED to harmonic_component_calculation"),
+        ("response_scalar_folds_emitted", "FOLDED to a calculation (harmonic_component value kind)"),
         ("response_scalar_folds_withheld", "  WITHHELD (fold did not validate)"),
         ("response_refused_total", "REFUSED (total)"),
         ("response_refused_no_epoch_string", "  no element_epochid on the document"),
@@ -656,6 +656,9 @@ POST_PASSES = [
         # did-schema #88: an entry holds exactly one value form, so a knob the
         # writer left [] cannot be stated. Counted here so it does not vanish.
         ("knobs_empty_not_stated", "  writer-empty knobs NOT stated (no value form)"),
+        # Jess Haley 2026-10-21 ("c"): [] given NDI's documented meaning
+        # (prestimulus_normalization -> 0, prestimulus_time -> left out).
+        ("knobs_empty_ndi_defined", "  writer-empty knobs given NDI's defined meaning"),
         ("harmonic_checked", "freq_response cross-checked against value.harmonic"),
         ("harmonic_uncheckable", "  not checkable (one side unreadable)"),
         ("refused_total", "REFUSED (total)"),

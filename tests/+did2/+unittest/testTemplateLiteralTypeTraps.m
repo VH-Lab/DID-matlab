@@ -101,7 +101,7 @@ function d = onlyClass(testCase, out, className)
 d = [];
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         d = out.migrated{k};
         n = n + 1;
     end
@@ -341,10 +341,10 @@ v1 = imageStackBody(739038.5);
 v1.depends_on(1).value = 'sub_1';          % give it a subject -> the built path
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-names = cellfun(@(d) char(did2.unittest.helpers.leafName(d)), out.migrated, ...
+names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...
     'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(names, 'intensity_observation')));
-obs = out.migrated{find(strcmp(names, 'intensity_observation'), 1)};
+verifyTrue(testCase, any(strcmp(names, 'observation+intensity')));
+obs = out.migrated{find(strcmp(names, 'observation+intensity'), 1)};
 c = obs.get('statement.conditions');
 verifyEqual(testCase, c.quantity.value, 739038.5, 'AbsTol', 1e-9);
 verifyTrue(testCase, startsWith(c.variable.name, 'acquisition timestamp'));
@@ -358,9 +358,9 @@ v1 = imageStackBody([]);
 v1.depends_on(1).value = 'sub_1';
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-names = cellfun(@(d) char(did2.unittest.helpers.leafName(d)), out.migrated, ...
+names = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), out.migrated, ...
     'UniformOutput', false);
-obs = out.migrated{find(strcmp(names, 'intensity_observation'), 1)};
+obs = out.migrated{find(strcmp(names, 'observation+intensity'), 1)};
 s = obs.toStruct();
 verifyFalse(testCase, isfield(s.statement, 'conditions') && ~isempty(s.statement.conditions), ...
     'an absent timestamp must not become a condition (a 0 would read as a real datenum)');

@@ -62,22 +62,22 @@ if isnumeric(numValue) && ~isempty(numValue) && isfinite(numValue(1))
     leaf = jQuantityLeaf(hay, wordBoundary);
 end
 
-% did-schema #88: built through did2.build (jStatement); '<kind>_observation'
-% is the `observation` direction with that value kind as a mixin.
+% did-schema #88: built through did2.build (jStatement): the `observation`
+% direction with the value kind as its mixin.
 entityId = jDependency(preBody, 'subject_id');
 if isempty(leaf) && looksLikeCURIE(strValue)
-    obs = jStatement(preBody, 'term_observation', entityId, variable, ...
+    obs = jStatement(preBody, 'observation', entityId, variable, ...
         did2.build.term(strValue, ''), 'TimeReferenceIds', {anchor.base.id}, ...
-        'Id', sourceId(preBody));
+        'Id', sourceId(preBody), 'ValueKind', 'term');
     bodies = {obs, anchor};
     return;
 end
 if isempty(leaf)
     return;
 end
-obs = jStatement(preBody, [leaf '_observation'], entityId, variable, ...
+obs = jStatement(preBody, 'observation', entityId, variable, ...
     jQuantity(leaf, double(numValue(1)), '', 'approximate', false), ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', sourceId(preBody));
+    'TimeReferenceIds', {anchor.base.id}, 'Id', sourceId(preBody), 'ValueKind', leaf);
 bodies = {obs, anchor};
 end
 

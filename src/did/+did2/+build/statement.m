@@ -2,11 +2,10 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %STATEMENT A statement document: VARIABLE of SUBJECTID has VALUE.
 %
 %   DOC = did2.build.statement(LEAFCLASS, SUBJECTID, VARIABLE, VALUE, ...)
-%   builds a concrete statement leaf -- an observation, assertion, manipulation
-%   or calculation ('voltage_observation', 'term_assertion',
-%   'dose_manipulation', 'tuning_curve_calculation', ...) -- about the entity
-%   (on a schema where the value kind is a mixin, 'voltage_observation' names
-%   an `observation` listing `voltage`; see did2.build.document)
+%   builds a statement -- LEAFCLASS a direction ('observation', 'assertion',
+%   'manipulation', 'calculation') with its value-kind mixin given as
+%   'ValueKind' ('voltage', 'term', 'dose', ...), or a named calculator
+%   ('tuning_curve_calculation', ...) -- about the entity
 %   SUBJECTID (its `entity_id` edge; usually a subject, any entity may be
 %   described). VARIABLE is a term or a name; VALUE is the leaf's `value`, e.g.
 %   from did2.build.valueCell or did2.build.term. VALUE may be [] when the
@@ -34,8 +33,9 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %     'Notes'             char
 %     'ValueKind'         with LEAFCLASS a DIRECTION ('observation', 'assertion',
 %                         'manipulation', 'calculation'): the value-kind mixin
-%                         ('time', 'dose', ...) -- the did-schema #88 form; the
-%                         older '<kind>_<direction>' leaf name still resolves
+%                         ('time', 'dose', ...) -- the did-schema #88 form; a
+%                         joined '<kind>_<direction>' name from an old-vintage
+%                         caller still resolves, but is never written here
 %     'Fields'            any other declared field, as a struct
 %   Edges:
 %     'TimeReferenceIds'  cellstr: the statement's time references (T15
@@ -58,10 +58,10 @@ function doc = statement(leafClass, subjectId, variable, value, options)
 %     'SchemaCache' -- as did2.build.document.
 %
 %   Example:
-%     doc = did2.build.statement('voltage_observation', subjectId, 'voltage', ...
+%     doc = did2.build.statement('observation', subjectId, 'voltage', ...
 %         did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, 'SourceUnit', 'mV'), ...
 %         'SessionId', sessionId, 'TimeReferenceIds', {timeRefId}, ...
-%         'InstrumentId', electrodeId);
+%         'InstrumentId', electrodeId, 'ValueKind', 'voltage');
 %
 %   See also did2.build.document, did2.build.valueCell, did2.build.key.
 

@@ -770,7 +770,7 @@ function leaf = tuningLeaf(out)
 %   orientation_direction_tuning_calculation, ..., or tuning_curve_calculation for
 %   the raw curve), each carrying the `tuning_curve` value block.
 if ~iscell(out); out = {out}; end
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 for k = 1:numel(out)
     b = out{k};
     if isa(b, 'did2.document'); b = b.toStruct(); end

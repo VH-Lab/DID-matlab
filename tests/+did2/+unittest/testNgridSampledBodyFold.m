@@ -110,7 +110,7 @@ function testNgridFoldsToASampledBodyBesideAnImageObservation(testCase)
 % image_observation the team named, the sampled_body carrying the grid, and the
 % shared session anchor.
 out = did2.convert.migrators_j.ontology_image(foldableOntologyImage());
-names = cellfun(@kindName, out, 'UniformOutput', false);
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 4, ...
     sprintf('expected 4 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 % UPDATED 2026-10-21 for did-schema #88 and #73 review item 51: the raster is
@@ -360,7 +360,7 @@ function testNoSubjectMeansNoObservationAndNoBodyEither(testCase)
 v1 = productionOntologyImage();
 out = did2.convert.migrators_j.ontology_image(v1);
 verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, kindName(out{1}), 'ontology_image');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out{1}), 'ontology_image');
 % the raster rides through INTACT, which is why `ontology_image` still needs its
 % `ngrid` superclass and why retiring `ngrid` is NOT unblocked
 verifyTrue(testCase, isfield(out{1}, 'ngrid'));
@@ -382,7 +382,7 @@ function testABlankSubjectEdgeIsTreatedAsNoSubject(testCase)
 v1 = foldableOntologyImage();
 v1.depends_on(1).value = '';
 out = did2.convert.migrators_j.ontology_image(v1);
-names = cellfun(@kindName, out, 'UniformOutput', false);
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
 % INVERTED 2026-10-21 for did-schema #88: `entity_id` is REQUIRED, so the
 % term observation can no longer be emitted with an empty subject either. The
 % document passes through whole (what #88 cannot express passes through, Jess
@@ -410,7 +410,7 @@ function testATableRowEdgeIsNotAcceptedAsASubject(testCase)
 v1 = foldableOntologyImage();
 v1.depends_on = struct('name', {'ontology_table_row_id'}, 'value', {'otr_3'});
 out = did2.convert.migrators_j.ontology_image(v1);
-names = cellfun(@kindName, out, 'UniformOutput', false);
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
 verifyFalse(testCase, ismember('observation+intensity', names), ...
     'a table row must not be accepted as the subject of an observation');
 verifyFalse(testCase, ismember('sampled_body', names), ...
@@ -434,7 +434,7 @@ verifyEqual(testCase, numel(shapes), 2, ...
     'DENOMINATOR: both NDI-reachable ontologyImage shapes are checked');
 for k = 1:numel(shapes)
     out = did2.convert.migrators_j.ontology_image(shapes{k});
-    names = cellfun(@kindName, out, 'UniformOutput', false);
+    names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
     verifyFalse(testCase, ismember('sampled_body', names), ...
         sprintf(['shape %d reached the raster fold. No NDI writer emits an ' ...
                  'ontologyImage with both a raster and a subject -- if that ' ...
@@ -601,7 +601,7 @@ function b = pick(bodies, className)
 %   several -- a silent first-match would hide a duplicate emission.
 hits = {};
 for k = 1:numel(bodies)
-    if strcmp(kindName(bodies{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(bodies{k}), className)
         hits{end+1} = bodies{k}; %#ok<AGROW>
     end
 end
@@ -630,27 +630,6 @@ end
 end
 
 % ===================== did-schema #88 readers (added 2026-10-21) ==========
-
-function n = kindName(b)
-%KINDNAME A body's class, and for a statement its direction AND value kind as
-%   '<direction>+<kind>' ('observation+intensity'). Never a composed leaf name:
-%   on #88 a statement is a direction class with ONE value-kind mixin.
-n = char(b.document_class.class_name);
-if ~any(strcmp(n, {'observation', 'assertion', 'manipulation', 'calculation'}))
-    return;
-end
-sc = b.document_class.superclasses;
-if isstruct(sc); sc = num2cell(sc); end
-for k = 1:numel(sc)
-    e = sc{k};
-    if isstruct(e); e = e.class_name; end
-    if isfield(b, char(e)) && ~any(strcmp(char(e), ...
-            {'interaction', 'statement', 'base', 'value', 'data', n}))
-        n = [n '+' char(e)];
-        return;
-    end
-end
-end
 
 function b = pickKind(bodies, direction, kind)
 %PICKKIND The single statement of DIRECTION with value kind KIND.

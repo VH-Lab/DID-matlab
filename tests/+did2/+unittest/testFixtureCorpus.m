@@ -549,7 +549,7 @@ verifyEqual(testCase, rep.fold_quarantined, 0);
 verifyEqual(testCase, rep.date_fields_dropped, 1);
 
 % THE ID IS PRESERVED and the class changed under it.
-verifyEqual(testCase, classOf(result.migrated, 'om_gf_01'), 'term_observation', ...
+verifyEqual(testCase, classOf(result.migrated, 'om_gf_01'), 'observation+term', ...
     ['the folded generic_file did not keep its id -- a changed id is the ' ...
      'dissolution that produced 11,448 orphans in Soph']);
 verifyEqual(testCase, edgeOf(result.migrated, 'om_gf_01', 'entity_id'), ...
@@ -601,7 +601,7 @@ function cn = classOf(migrated, docId)
 cn = '';
 for k = 1:numel(migrated)
     if strcmp(char(migrated{k}.get('base.id')), docId)
-        cn = char(did2.unittest.helpers.leafName(migrated{k}));
+        cn = char(did2.unittest.helpers.classKey(migrated{k}));
         return;
     end
 end

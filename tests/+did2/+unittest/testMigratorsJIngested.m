@@ -101,14 +101,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 end
 
 function docs = docsOfClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
@@ -284,7 +284,7 @@ function testMetadataIngestedPassesThroughWithoutAnEpochDocument(testCase)
 out = runJ(metadataIngestedV1());
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), ...
     'daqmetadatareader_epochdata_ingested');
 % the epoch identity survives as the STRING, because that is all there is
 verifyEqual(testCase, doc.get('epochid.epochid'), 't00001');
@@ -304,7 +304,7 @@ function testMetadataIngestedFoldsWhenTheEpochEdgeIsPresent(testCase)
 out = runJ(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), ...
     'daqmetadatareader_epochdata_ingested');
 verifyEqual(testCase, doc.get('base.id'), 'amf_1');
 verifyEqual(testCase, depVal(doc, 'daqmetadatareader_id'), 'mdr_1');
@@ -328,7 +328,7 @@ v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
 v1.depends_on(1).value = '';          % daqmetadatareader_id emptied
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'daqmetadatareader_epochdata_ingested');
 end
 
@@ -340,7 +340,7 @@ v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
 v1.files = struct('file_list', {{}});
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'daqmetadatareader_epochdata_ingested');
 end
 
@@ -353,7 +353,7 @@ v1 = rmfield(v1, 'files');
 v1.file = struct('file_list', {{'data.bin'}});
 out = runJ(v1);
 verifyEqual(testCase, numel(out.migrated), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'daqmetadatareader_epochdata_ingested');
 verifyEqual(testCase, out.migrated{1}.get('base.id'), 'amf_1');
 end
@@ -365,7 +365,7 @@ function testReaderIngestedPassesThroughWithoutAnEpochDocument(testCase)
 out = runJ(readerIngestedV1({'dev_local_time'}, [0; 10]));
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), ...
     'daqreader_epochdata_ingested');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 % the recording archives are untouched -- for an ingested session they are the
@@ -526,7 +526,7 @@ body = mfdaqIngestedV1();
 out = did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested(body);
 verifyTrue(testCase, isstruct(out));
 verifyTrue(testCase, isscalar(out));
-verifyEqual(testCase, did2.unittest.helpers.leafName(out), 'daqreader_epochdata_ingested');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'daqreader_epochdata_ingested');
 verifyEqual(testCase, out.daqreader_epochdata_ingested.parameters.sample_analog_segment, ...
     1000000);
 verifyEqual(testCase, out.epochid.epochid, 't00001');
@@ -572,7 +572,7 @@ function testImageIngestedPassesThroughWithoutAnEpochDocument(testCase)
 out = runJ(imageIngestedV1());
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), ...
     'daqreader_image_epochdata_ingested');
 verifyEqual(testCase, doc.get('daqreader_image_epochdata_ingested.num_frames'), 3);
 verifyEqual(testCase, doc.get('files.file_list'), {'frames.bin'});
@@ -604,7 +604,7 @@ function testImageIngestedEmitsNoSubjectlessObservation(testCase)
 % this asserts the same shape is not rebuilt one class over.
 out = runJ(withEpochEdge(imageIngestedV1(), 'epoch_doc_7'));
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'intensity_observation')));
+verifyFalse(testCase, any(strcmp(names, 'observation+intensity')));
 verifyFalse(testCase, any(strcmp(names, 'sampled_body')));
 end
 

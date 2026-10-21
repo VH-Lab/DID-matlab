@@ -360,14 +360,14 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = char(did2.unittest.helpers.leafName(out.migrated{k}));
+    names{k} = char(did2.unittest.helpers.classKey(out.migrated{k}));
 end
 end
 
 function docs = ofClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
+    if strcmp(char(did2.unittest.helpers.classKey(out.migrated{k})), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
@@ -890,7 +890,7 @@ function testTheStatementEdgeStillResolvesAfterTheFold(testCase)
     treatmentTransferBody('SID_1')});
 verifyEqual(testCase, rep.anchors_folded, 1);
 
-acts = ofClass(out, 'term_manipulation');
+acts = ofClass(out, 'manipulation+term');
 verifyEqual(testCase, numel(acts), 1);
 target = depValue(acts{1}.toStruct(), 'time_reference_1');
 verifyNotEmpty(testCase, target, 'the act lost its time_reference_1 edge');

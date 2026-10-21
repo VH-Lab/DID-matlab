@@ -56,7 +56,7 @@ end
 function docs = ofClass(out, className)
 docs = {};
 for k = 1:numel(out.migrated)
-    if strcmp(char(did2.unittest.helpers.leafName(out.migrated{k})), className)
+    if strcmp(char(did2.unittest.helpers.classKey(out.migrated{k})), className)
         docs{end+1} = out.migrated{k}; %#ok<AGROW>
     end
 end
@@ -159,9 +159,9 @@ fromRef = docWithId(out, fromId);
 toRef   = docWithId(out, toId);
 verifyNotEmpty(testCase, fromRef, 'from_reference names no document in the batch');
 verifyNotEmpty(testCase, toRef, 'to_reference names no document in the batch');
-verifyEqual(testCase, char(did2.unittest.helpers.leafName(fromRef)), ...
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(fromRef)), ...
     'relative_time_reference');
-verifyEqual(testCase, char(did2.unittest.helpers.leafName(toRef)), ...
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(toRef)), ...
     'relative_time_reference');
 
 % each reference anchored to ITS endpoint's minted epoch, and NOT left empty.

@@ -124,10 +124,11 @@ function testTheFiveRunKnobsLandInlineOnTheLeaf(testCase)
 % longer land INLINE on the response. The parameters document becomes ONE
 % standalone `method` document, its id PRESERVED, holding the term (the app)
 % and the knobs as #88 entries ({variable, <one value form>}); the response is
-% untouched. The two writer-empty knobs (`prestimulus_time`,
-% `prestimulus_normalization`, [] at the writer) cannot be an entry (exactly ONE
-% value form), so they are ABSENT from the list and COUNTED in
-% `knobs_empty_not_stated`.
+% untouched. INVERTED AGAIN 2026-10-21 (Decided by Jess Haley, [empty response
+% settings] "c"): the two writer-empty knobs take the meaning NDI defines for
+% `[]` -- `prestimulus_normalization` [] is "no normalization", written 0;
+% `prestimulus_time` [] is no baseline period, left out -- counted in
+% `knobs_empty_ndi_defined`, never NaN.
 [out, leaf, rep] = foldPair(testCase, 'F1');
 verifyFalse(testCase, isfield(leaf.interaction, 'method'));
 m = bodyOfClass(testCase, out, 'method');
@@ -139,11 +140,60 @@ verifyEqual(testCase, knob(p, 'isspike').quantity.value, 1);
 verifyEqual(testCase, knob(p, 'spiketrain dt').quantity.value, 0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, knob(p, 'spiketrain dt').quantity.source_value, '0.001');
 verifyEmpty(testCase, knob(p, 'prestimulus time'));
-verifyEmpty(testCase, knob(p, 'prestimulus normalization'));
-verifyEqual(testCase, numel(p), 3);
-verifyEqual(testCase, rep.fields_copied, 3);
-verifyEqual(testCase, rep.knobs_empty_not_stated, 2);
+verifyEqual(testCase, knob(p, 'prestimulus normalization').quantity.value, 0);
+verifyEqual(testCase, numel(p), 4);
+verifyEqual(testCase, rep.fields_copied, 4);
+verifyEqual(testCase, rep.knobs_empty_ndi_defined, 2);
+verifyEqual(testCase, rep.knobs_empty_not_stated, 0);
 verifyEqual(testCase, rep.methods_minted, 1);
+end
+
+function testAnEmptyNormalizationIsWrittenAsNoNormalization(testCase)
+% "c", case 1: prestimulus_normalization [] -> 0 ("[] or 0) No normalization",
+% tuning_response.m's parameter table). A number, never NaN, and no invented
+% source_value: the source wrote none.
+[out, ~, rep] = foldPair(testCase, 'F1');
+e = knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
+    'prestimulus normalization');
+verifyEqual(testCase, e.quantity.value, 0);
+verifyFalse(testCase, isnan(e.quantity.value));
+verifyFalse(testCase, isfield(e.quantity, 'source_value') ...
+    && ~isempty(e.quantity.source_value));
+verifyGreaterThanOrEqual(testCase, rep.knobs_empty_ndi_defined, 1);
+end
+
+function testAnEmptyPrestimulusTimeIsLeftOut(testCase)
+% "c", case 2: prestimulus_time [] means no baseline period, so no entry is
+% written -- and it is COUNTED as given its defined meaning, not as lost.
+[out, ~, rep] = foldPair(testCase, 'F1');
+verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
+    'prestimulus time'));
+verifyEqual(testCase, rep.knobs_empty_ndi_defined, 2);
+verifyEqual(testCase, rep.knobs_empty_not_stated, 0);
+end
+
+function testSetPrestimulusValuesAreCarriedAsGiven(testCase)
+% The other side of "c": a non-empty value is the source's own, carried as is.
+p = parametersFixture();
+p.stimulus_response_scalar_parameters_basic.prestimulus_time = 0.5;
+p.stimulus_response_scalar_parameters_basic.prestimulus_normalization = 2;
+[out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
+params = bodyOfClass(testCase, out, 'method').method.parameters;
+verifyEqual(testCase, knob(params, 'prestimulus time').quantity.value, 0.5);
+verifyEqual(testCase, knob(params, 'prestimulus normalization').quantity.value, 2);
+verifyEqual(testCase, rep.knobs_empty_ndi_defined, 0);
+end
+
+function testAnyOtherEmptyKnobIsCountedNotStated(testCase)
+% An empty knob NDI gives no meaning for (here spiketrain_dt []) has no value
+% to write: it is left out and COUNTED in knobs_empty_not_stated.
+p = parametersFixture();
+p.stimulus_response_scalar_parameters_basic.spiketrain_dt = [];
+[out, rep] = runFold(testCase, {withEpochEdge(responseFixture('F1')), p});
+verifyEmpty(testCase, knob(bodyOfClass(testCase, out, 'method').method.parameters, ...
+    'spiketrain dt'));
+verifyEqual(testCase, rep.knobs_empty_not_stated, 1);
+verifyEqual(testCase, rep.knobs_empty_ndi_defined, 2);
 end
 
 function testTheEdgeIsDroppedBecauseTheSchemaSaysNeverBoth(testCase)
@@ -472,19 +522,9 @@ end
 % these readers ask for that pair rather than for a composed name.
 
 function tf = isHarmonicCalc(doc)
-%ISHARMONICCALC Class `calculation` with `harmonic_component` among its
-%   superclasses.
-if isa(doc, 'did2.document'); doc = doc.toStruct(); end
-tf = false;
-if ~isstruct(doc) || ~isfield(doc, 'document_class'); return; end
-if ~strcmp(char(doc.document_class.class_name), 'calculation'); return; end
-sc = doc.document_class.superclasses;
-if isstruct(sc); sc = num2cell(sc); end
-for k = 1:numel(sc)
-    e = sc{k};
-    if isstruct(e); e = e.class_name; end
-    if strcmp(char(e), 'harmonic_component'); tf = true; return; end
-end
+%ISHARMONICCALC A `calculation` with the `harmonic_component` value kind,
+%   read through did2.unittest.helpers.classKey (direction + value kind).
+tf = strcmp(did2.unittest.helpers.classKey(doc), 'calculation+harmonic_component');
 end
 
 function tf = anyHarmonicCalc(out)

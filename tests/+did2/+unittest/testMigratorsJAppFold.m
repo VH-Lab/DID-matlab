@@ -149,7 +149,7 @@ end
 function names = classNames(out)
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
-    names{k} = did2.unittest.helpers.leafName(out.migrated{k});
+    names{k} = did2.unittest.helpers.classKey(out.migrated{k});
 end
 end
 
@@ -157,7 +157,7 @@ function d = onlyClass(testCase, out, className)
 d = [];
 n = 0;
 for k = 1:numel(out.migrated)
-    if strcmp(did2.unittest.helpers.leafName(out.migrated{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(out.migrated{k}), className)
         d = out.migrated{k};
         n = n + 1;
     end
@@ -308,12 +308,12 @@ verifyEqual(testCase, numel(out.migrated), 5);   % obs + opaque_body + anchor + 
 sw = onlyClass(testCase, out, 'software');
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
 verifyEqual(testCase, sw.get('entity.local_identifier'), 'ndi.app.spikesorter@1.4.2');
-ver = onlyClass(testCase, out, 'text_assertion');
+ver = onlyClass(testCase, out, 'assertion+text');
 verifyEqual(testCase, depValue(ver, 'entity_id'), sw.get('base.id'));
 verifyEqual(testCase, ver.get('statement.variable').name, 'version number');
 verifyEqual(testCase, ver.get('text.value').text, '1.4.2');
 verifyEqual(testCase, depValue(sw, 'session_id'), 'sess_09');
-obs = onlyClass(testCase, out, 'count_observation');
+obs = onlyClass(testCase, out, 'observation+count');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'srt_1');            % id still preserved
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'rec_sub_1');
@@ -328,7 +328,7 @@ function testKilosortExecutionEnvironmentIsCarried(testCase)
 % carried. Recorded in the port report as a loss on non-calculation statements.
 % This asserts nothing invents a home for them.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
-obs = onlyClass(testCase, out, 'count_observation');
+obs = onlyClass(testCase, out, 'observation+count');
 verifyEmpty(testCase, depValue(obs, 'operating_system_id'));
 verifyEmpty(testCase, depValue(obs, 'interpreter_id'));
 verifyFalse(testCase, hasClass(out, 'runtime_environment'));
@@ -352,7 +352,7 @@ function testKiasortFoldsTheSameWay(testCase)
 out = runJ(sorterBody('kiasort_clusters', 'kiasort_directory', true));
 verifyEmpty(testCase, out.quarantine);
 sw  = onlyClass(testCase, out, 'software');
-obs = onlyClass(testCase, out, 'count_observation');
+obs = onlyClass(testCase, out, 'observation+count');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('interaction.method.term.name'), 'kiasort');
 end
@@ -364,7 +364,7 @@ function testSorterObservationValueIsInItsOpaqueBody(testCase)
 % 2026-10-21).
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
 verifyEmpty(testCase, out.quarantine);
-obs = onlyClass(testCase, out, 'count_observation');
+obs = onlyClass(testCase, out, 'observation+count');
 verifyTrue(testCase, logical(obs.get('value.data_body')));
 s = obs.toStruct();
 verifyFalse(testCase, isfield(s.value, 'data_type') && ~isempty(s.value.data_type));
@@ -376,7 +376,7 @@ out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', false));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3);
 verifyFalse(testCase, hasClass(out, 'software'));
-obs = onlyClass(testCase, out, 'count_observation');
+obs = onlyClass(testCase, out, 'observation+count');
 verifyEmpty(testCase, depValue(obs, 'software_id'));
 end
 
@@ -412,7 +412,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 5);
 verifyTrue(testCase, hasClass(out, 'opaque_body'));
 sw  = onlyClass(testCase, out, 'software');
-obs = onlyClass(testCase, out, 'count_observation');
+obs = onlyClass(testCase, out, 'observation+count');
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'jc_1');             % id still preserved
 end
@@ -433,13 +433,13 @@ out = runJ(neuronBody(true, true));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 7);
 sw   = onlyClass(testCase, out, 'software');
-qobs = onlyClass(testCase, out, 'score_observation');
+qobs = onlyClass(testCase, out, 'observation+score');
 verifyEqual(testCase, depValue(qobs, 'software_id'), sw.get('base.id'));
 neuron = onlyClass(testCase, out, 'cell');
 verifyEmpty(testCase, depValue(neuron, 'software_id'));
 rel = onlyClass(testCase, out, 'directed_relation');
 verifyEmpty(testCase, depValue(rel, 'software_id'));
-cidx = onlyClass(testCase, out, 'count_assertion');
+cidx = onlyClass(testCase, out, 'assertion+count');
 verifyEmpty(testCase, depValue(cidx, 'software_id'));
 end
 
@@ -460,8 +460,8 @@ function testNeuronExtracellularWithoutQualityStillHasNowhereToPutItsSoftware(te
 % in testMigratorsJNeuronExtracellular.m asserts that half.
 out = runJ(neuronBody(true, false));
 verifyEmpty(testCase, out.quarantine);
-verifyFalse(testCase, hasClass(out, 'score_observation'));
-verifyFalse(testCase, hasClass(out, 'voltage_observation'));
+verifyFalse(testCase, hasClass(out, 'observation+score'));
+verifyFalse(testCase, hasClass(out, 'observation+voltage'));
 verifyFalse(testCase, hasClass(out, 'software'));
 % subject + relation + anchor + count_assertion
 verifyEqual(testCase, numel(out.migrated), 4);
@@ -478,7 +478,7 @@ function testVmspikefitHangsSoftwareOnTheResidualObservation(testCase)
 out = runJ(vmspikefitBody(true, true));
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 8);   % calc + anchor + 3 software + 3 versions
-calc = onlyClass(testCase, out, 'model_fit_calculation');
+calc = onlyClass(testCase, out, 'calculation+model_fit');
 verifyEqual(testCase, calc.get('base.id'), 'vf_1');
 v = calc.get('model_fit.value');
 verifyEqual(testCase, v.equation, 'exp2');
@@ -497,11 +497,11 @@ function testVmspikefitWithoutSseStillHasNowhereToPutItsSoftware(testCase)
 % rather than emitting nothing.
 out = runJ(vmspikefitBody(true, false));
 verifyEmpty(testCase, out.quarantine);
-calc = onlyClass(testCase, out, 'model_fit_calculation');
+calc = onlyClass(testCase, out, 'calculation+model_fit');
 v = calc.get('model_fit.value');
 verifyEqual(testCase, v.equation, 'exp2');
 verifyFalse(testCase, isfield(v, 'goodness') && ~isempty(v.goodness));
-verifyFalse(testCase, hasClass(out, 'score_observation'));
+verifyFalse(testCase, hasClass(out, 'observation+score'));
 end
 
 

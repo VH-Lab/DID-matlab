@@ -111,7 +111,7 @@ function testTheFoldEmitsTheLeafTheTwoPlanesAndTheSpikeInput(testCase)
 % pre-#88 `runtime_environment` entity is gone), TWO plane bodies and ONE
 % input body.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyEqual(testCase, sum(strcmp(names, 'receptive_field_calculation')), 1, strjoin(names, ', '));
 verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 3, ...
     'two planes plus the spike-time input body');
@@ -133,7 +133,7 @@ leaf = pick(out, 'receptive_field_calculation');
 supers = {leaf.document_class.superclasses.class_name};
 verifyTrue(testCase, ismember('calculation', supers));
 verifyTrue(testCase, ismember('receptive_field', supers));
-names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
 verifyFalse(testCase, any(contains(names, 'hartley')), ...
     'the method must not appear in any emitted class name (T11)');
 verifyFalse(testCase, any(contains(names, 'spike_triggered')));
@@ -690,7 +690,7 @@ end
 function hits = allOf(bodies, className)
 hits = {};
 for k = 1:numel(bodies)
-    if strcmp(did2.unittest.helpers.leafName(bodies{k}), className)
+    if strcmp(did2.unittest.helpers.classKey(bodies{k}), className)
         hits{end+1} = bodies{k}; %#ok<AGROW>
     end
 end

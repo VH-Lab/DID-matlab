@@ -211,17 +211,17 @@ offset  = colNum(cols, [P 'EncounterOffsetTime']);
 tref = makeEncounterWindow(preBody, onset, offset);
 
 % behaviour measurements -> worm observations, all sharing the window
-%   key suffix -> {leafClass, shapeClass}. Onset/offset are the window (not
+%   key suffix -> {direction, value kind}. Onset/offset are the window (not
 %   observations); the EncounterIdentifier is derived (dropped).
 measures = {
-    'DecelerationUponEncounter',            'acceleration_observation', 'acceleration'
-    'MinimumVelocityDuringEncounter',       'velocity_observation',     'velocity'
-    'PeakVelocityBeforeEncounterOnset',     'velocity_observation',     'velocity'
-    'MinimumVelocityAfterEncounterOffset',  'velocity_observation',     'velocity'
-    'PosteriorProbabilityOfExploitation',   'score_observation',        'score'
-    'PosteriorProbabilityOfSensing',        'score_observation',        'score'
-    'RelativeDensityOfEncounteredBacteria', 'concentration_observation','concentration'
-    'RelativeDensityOfCultivationBacteria', 'concentration_observation','concentration'};
+    'DecelerationUponEncounter',            'observation',              'acceleration'
+    'MinimumVelocityDuringEncounter',       'observation',              'velocity'
+    'PeakVelocityBeforeEncounterOnset',     'observation',              'velocity'
+    'MinimumVelocityAfterEncounterOffset',  'observation',              'velocity'
+    'PosteriorProbabilityOfExploitation',   'observation',              'score'
+    'PosteriorProbabilityOfSensing',        'observation',              'score'
+    'RelativeDensityOfEncounteredBacteria', 'observation',              'concentration'
+    'RelativeDensityOfCultivationBacteria', 'observation',              'concentration'};
 
 bodies = {};
 for i = 1:size(measures, 1)
@@ -239,7 +239,7 @@ bodies{end+1} = makeEncounterRelation(preBody, wormId, patchId, tref.base.id);
 bodies{end+1} = tref;
 end
 
-function body = makeEncObs(preBody, leafClass, shapeClass, variable, num, wormId, trefId)
+function body = makeEncObs(preBody, direction, shapeClass, variable, num, wormId, trefId)
 % did-schema #88: built through did2.build. The v1 table states no unit, so a
 % quantity cell carries only what was written (jQuantity).
 if strcmp(shapeClass, 'score')
@@ -247,8 +247,8 @@ if strcmp(shapeClass, 'score')
 else
     v = jQuantity(shapeClass, double(num), '', 'approximate', false);
 end
-body = jStatement(preBody, leafClass, wormId, variable, v, ...
-    'TimeReferenceIds', {trefId});
+body = jStatement(preBody, direction, wormId, variable, v, ...
+    'TimeReferenceIds', {trefId}, 'ValueKind', shapeClass);
 end
 
 function tref = makeEncounterWindow(preBody, onset, offset)
@@ -356,12 +356,12 @@ anchor = makeSessionAnchor(preBody, 'during');
 % geometry columns -> observations on the patch. Identifier columns are the
 % patch's identity (skipped); centre X/Y are positions carried as lengths.
 measures = {
-    'BacterialOD600TargetAtSeeding',    'concentration_observation','concentration'
-    'BacterialPatchVolume',             'volume_observation',       'volume'
-    'BacterialPatchRadius',             'length_observation',       'length'
-    'BacterialPatchCircularity',        'score_observation',        'score'
-    'BacterialPatchCenter_XCoordinate', 'length_observation',       'length'
-    'BacterialPatchCenter_YCoordinate', 'length_observation',       'length'};
+    'BacterialOD600TargetAtSeeding',    'observation',              'concentration'
+    'BacterialPatchVolume',             'observation',              'volume'
+    'BacterialPatchRadius',             'observation',              'length'
+    'BacterialPatchCircularity',        'observation',              'score'
+    'BacterialPatchCenter_XCoordinate', 'observation',              'length'
+    'BacterialPatchCenter_YCoordinate', 'observation',              'length'};
 
 bodies = {subjectDoc};
 usedAnchor = false;
@@ -570,63 +570,63 @@ end
 % timed measurements -> observations
 isObservation = true;
 if isNumeric
-    [leafClass, shapeClass, valueStruct] = dispatchNumeric(hay, row, numVal);
-    body = makeNumericObservation(preBody, leafClass, shapeClass, variable, ...
+    [shapeClass, valueStruct] = dispatchNumeric(hay, row, numVal);
+    body = makeNumericObservation(preBody, shapeClass, variable, ...
         valueStruct, subjectId, anchorId);
 else
     body = makeTermObservation(preBody, variable, valueTerm(row), subjectId, anchorId);
 end
 end
 
-function [leafClass, shapeClass, valueStruct] = dispatchNumeric(hay, row, numVal)
-%DISPATCHNUMERIC Choose the data-type leaf by the property's DIMENSION. The
+function [shapeClass, valueStruct] = dispatchNumeric(hay, row, numVal)
+%DISPATCHNUMERIC Choose the value kind by the property's DIMENSION. The
 %   property rides on the spine `variable`; word-boundary matching only.
 unit = getCharField(row, 'unit');
 if containsAny(hay, {'body weight', 'body mass', 'weight', 'mass'})
-    leafClass = 'mass_observation'; shapeClass = 'mass';
+    shapeClass = 'mass';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'radius', 'body length', 'length', 'diameter', 'distance', 'size'})
-    leafClass = 'length_observation'; shapeClass = 'length';
+    shapeClass = 'length';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'sampling rate', 'heart rate', 'respiration rate', 'frequency', 'rate'})
-    leafClass = 'frequency_observation'; shapeClass = 'frequency';
+    shapeClass = 'frequency';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'deceleration', 'acceleration'})
-    leafClass = 'acceleration_observation'; shapeClass = 'acceleration';
+    shapeClass = 'acceleration';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'velocity', 'speed'})
-    leafClass = 'velocity_observation'; shapeClass = 'velocity';
+    shapeClass = 'velocity';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'onset time', 'offset time', 'age', 'duration', 'latency', 'time'})
     % `time`, not `duration`: the V_eta shape mixin was renamed by
     % TEAM-SIGN-OFF [time dtype] (DID-schema V_eta_tenet_audit.md, 2026-08-17).
     % The HAYSTACK words are unchanged -- they match the source column's label,
     % which is did_v1 text and did not move.
-    leafClass = 'time_observation'; shapeClass = 'time';
+    shapeClass = 'time';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'volume'})
-    leafClass = 'volume_observation'; shapeClass = 'volume';
+    shapeClass = 'volume';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'temperature'})
-    leafClass = 'temperature_observation'; shapeClass = 'temperature';
+    shapeClass = 'temperature';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'pressure'})
-    leafClass = 'pressure_observation'; shapeClass = 'pressure';
+    shapeClass = 'pressure';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'voltage', 'membrane potential'})
-    leafClass = 'voltage_observation'; shapeClass = 'voltage';
+    shapeClass = 'voltage';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'current'})
-    leafClass = 'current_observation'; shapeClass = 'current';
+    shapeClass = 'current';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'concentration', 'density', 'titer', 'titre', 'glucose'})
-    leafClass = 'concentration_observation'; shapeClass = 'concentration';
+    shapeClass = 'concentration';
     valueStruct = sourceCell(unit, numVal);
 elseif containsAny(hay, {'number of', 'count', 'entries', 'trial number', 'identifier', 'samples'})
-    leafClass = 'count_observation'; shapeClass = 'count';
+    shapeClass = 'count';
     valueStruct = did2.build.valueCell('count', round(numVal), 'Approximate', false);
 elseif containsAny(hay, {'percent', 'probability', 'circularity', 'score', 'condition'})
-    leafClass = 'score_observation'; shapeClass = 'score';
+    shapeClass = 'score';
     valueStruct = did2.build.composite('score', 'value', ...
         struct('score', numVal, 'approximate', false));
 else
@@ -634,7 +634,7 @@ else
     % amplitudes / fluorescence / ratios / unrecognised numerics. No generic
     % escape hatch (D8); a genuinely mis-dimensioned value is caught in
     % discovery-mode review, not silently dropped.
-    leafClass = 'intensity_observation'; shapeClass = 'intensity';
+    shapeClass = 'intensity';
     valueStruct = sourceCell(unit, numVal);
 end
 if ~any(strcmp(shapeClass, {'count', 'score'}))
@@ -645,27 +645,28 @@ end
 
 % ===================== destination builders ============================
 
-function body = makeNumericObservation(preBody, leafClass, shapeClass, variable, valueStruct, subjectId, anchorId) %#ok<INUSL>
-body = jStatement(preBody, leafClass, subjectOrCarried(preBody, subjectId), ...
-    variable, valueStruct, 'TimeReferenceIds', {anchorId});
+function body = makeNumericObservation(preBody, shapeClass, variable, valueStruct, subjectId, anchorId)
+% did-schema #88: an `observation` with the value-kind mixin SHAPECLASS
+body = jStatement(preBody, 'observation', subjectOrCarried(preBody, subjectId), ...
+    variable, valueStruct, 'TimeReferenceIds', {anchorId}, 'ValueKind', shapeClass);
 end
 
 function body = makeTermObservation(preBody, variable, valueT, subjectId, anchorId)
-body = jStatement(preBody, 'term_observation', subjectOrCarried(preBody, subjectId), ...
-    variable, valueT, 'TimeReferenceIds', {anchorId});
+body = jStatement(preBody, 'observation', subjectOrCarried(preBody, subjectId), ...
+    variable, valueT, 'TimeReferenceIds', {anchorId}, 'ValueKind', 'term');
 end
 
 function body = makeTermAssertion(preBody, variable, valueT, subjectId)
-body = jStatement(preBody, 'term_assertion', subjectOrCarried(preBody, subjectId), ...
-    variable, valueT);
+body = jStatement(preBody, 'assertion', subjectOrCarried(preBody, subjectId), ...
+    variable, valueT, 'ValueKind', 'term');
 end
 
 function body = makeDateAssertion(preBody, variable, row, subjectId)
 raw = getCharField(row, 'value');
 v = did2.build.composite('date', 'value', ...
     struct('instant', raw, 'precision', 'second', 'source_value', raw));
-body = jStatement(preBody, 'date_assertion', subjectOrCarried(preBody, subjectId), ...
-    variable, v);
+body = jStatement(preBody, 'assertion', subjectOrCarried(preBody, subjectId), ...
+    variable, v, 'ValueKind', 'date');
 end
 
 function id = subjectOrCarried(preBody, subjectId)
