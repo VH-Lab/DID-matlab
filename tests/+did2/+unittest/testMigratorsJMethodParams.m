@@ -287,7 +287,7 @@ verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
 verifyEqual(testCase, d.get('document_class.schema_version'), 'V_eta');
 verifyEqual(testCase, d.get('base.id'), 'sep_1');
-verifyEqual(testCase, d.get('base.name'), 'default');
+verifyEqual(testCase, d.get('method.name'), 'default');
 % and again on the declared field that exists for that query
 verifyEqual(testCase, d.get('method.name'), 'default');
 end
@@ -506,7 +506,7 @@ verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
 verifyEqual(testCase, d.get('base.id'), 'sepm_1');
 verifyEqual(testCase, d.get('method.name'), 'default');
-verifyEqual(testCase, depValue(d, 'derived_from_id'), 'sep_1');
+verifyEqual(testCase, depValue(d, 'parent_id'), 'sep_1');
 verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'waveform window start', ...
@@ -537,7 +537,7 @@ function testModificationOmitsLineageWhenTheSourceEdgeIsEmpty(testCase)
 % extraction_parameters_id means NO edge, not an edge to nowhere.
 v1 = modificationBody('sepm_3', 'default', 'sess_A', '', 'elem_9', 't00042');
 d = onlyClass(testCase, runJ(v1), 'method');
-verifyFalse(testCase, any(strcmp(edgeNames(d), 'derived_from_id')));
+verifyFalse(testCase, any(strcmp(edgeNames(d), 'parent_id')));
 verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
 end
 
@@ -569,7 +569,7 @@ function testSortingPreservesTheIdAndTheNameSpikesorterQueriesBy(testCase)
 d = onlyClass(testCase, runJ(sortingBody('sp_2', 'default', 'sess_A')), ...
     'method');
 verifyEqual(testCase, d.get('base.id'), 'sp_2');
-verifyEqual(testCase, d.get('base.name'), 'default');
+verifyEqual(testCase, d.get('method.name'), 'default');
 verifyEqual(testCase, d.get('method.name'), 'default');
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'subject_id')));
 end

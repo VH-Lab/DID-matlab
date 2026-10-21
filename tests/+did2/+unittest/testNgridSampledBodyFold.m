@@ -94,6 +94,30 @@ function setupOnce(testCase)
 % hold yet). A test that calls a migrator directly runs it the same way.
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+% did-schema #88 (#73 review item 51) sends an ontology image's RASTER -- a label
+% map -- to label_calculation, a CALCULATION, which requires an operating
+% system the v1 ontologyImage document cannot name; so a document with an
+% ngrid passes through on its v1 tombstone. The ngrid fold these tests pin is
+% filtered with that reason where a calculation requires an operating system.
+testCase.assumeFalse(calculationRequiresOperatingSystem(), ...
+    ['a calculation requires operating_system_id on the loaded schema ' ...
+     '(did-schema #88): an ontology image with a raster passes through']);
+end
+
+function tf = calculationRequiresOperatingSystem()
+tf = false;
+try
+    c = did2.schema.cache.shared().getClass('calculation');
+    d = c.depends_on;
+    if isstruct(d); d = num2cell(d); end
+    for k = 1:numel(d)
+        if strcmp(d{k}.name, 'operating_system_id') && isfield(d{k}, 'mustBeNonEmpty') ...
+                && d{k}.mustBeNonEmpty
+            tf = true;
+        end
+    end
+catch
+end
 end
 
 % ===================== the fold ============================================

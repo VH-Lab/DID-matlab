@@ -128,6 +128,11 @@ b.pyraview = struct('label', 'high', 'native_rate', 20000, ...
     'native_start_time', 0, 'channels', 4, 'data_type', 'double', ...
     'decimation_sampling_rates', [20000 200]);
 b.files = struct('file_list', {{'level1.bin', 'level2.bin'}});
+% The epoch extent sizes each level's time key on did-schema #88 (a sampled
+% body requires keys). With no epoch string the pyraview is anchored "during
+% the session" and folds in pass 1, as the PRED corpus document does once its
+% epoch exists.
+b.epochclocktimes = struct('clocktype', 'dev_local_time', 't0_t1', [0 10]);
 if nargin > 0 && ~isempty(filterBlock)
     b.filter = filterBlock;
 end
@@ -153,7 +158,7 @@ verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 
 obs = docOfClass(testCase, out, 'time_observation');
-ref = docOfClass(testCase, out, 'absolute_reference');
+ref = docOfClass(testCase, out, 'absolute_time_reference');
 
 % subject_id CARRIES OVER, and the source id is PRESERVED (dissolving a
 % referenced document without keeping its id is the 11,448-orphan mistake).
@@ -184,7 +189,7 @@ function testDatestampBecomesTheInstantNotAField(testCase)
 % mapping would have DROPPED the measurement time. Assert it survives, in the
 % right place, and that it did not leak onto the observation.
 out = runJ(subjectMeasurementBody());
-ref = docOfClass(testCase, out, 'absolute_reference');
+ref = docOfClass(testCase, out, 'absolute_time_reference');
 
 % INVERTED for #65 increment 2 (V_eta_time_reference_model_plan.md:468,
 % TEAM-SIGN-OFF [time_reference] 2026-08-08). The flat `start_utc` /
@@ -235,7 +240,7 @@ verifyEmpty(testCase, out.quarantine);
 
 names = classNames(out);
 verifyFalse(testCase, any(strcmp(names, 'absolute_time_reference')));
-anchor = docOfClass(testCase, out, 'session_relative_reference');
+anchor = docOfClass(testCase, out, 'relative_time_reference');
 obs = docOfClass(testCase, out, 'time_observation');
 verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_1'), ...
     anchor.get('base.id'));
@@ -251,7 +256,7 @@ function testUnparseableDatestampKeepsTheSourceString(testCase)
 b = subjectMeasurementBody();
 b.subjectmeasurement.datestamp = '17-Mar-2017 19:53:57';
 out = runJ(b);
-ref = docOfClass(testCase, out, 'absolute_reference');
+ref = docOfClass(testCase, out, 'absolute_time_reference');
 verifyEqual(testCase, ref.get('absolute_reference.value.start.source_value'), ...
     '17-Mar-2017 19:53:57');
 verifyFalse(testCase, isfield(ref.get('absolute_reference.value.start'), 'utc'));
@@ -284,8 +289,8 @@ verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'subjectmeasurement');
 % and no orphan anchor is left behind pointing at a fold that did not happen
-verifyFalse(testCase, any(strcmp(classNames(out), 'absolute_reference')));
-verifyFalse(testCase, any(strcmp(classNames(out), 'session_relative_reference')));
+verifyFalse(testCase, any(strcmp(classNames(out), 'absolute_time_reference')));
+verifyFalse(testCase, any(strcmp(classNames(out), 'relative_time_reference')));
 end
 
 function testVoltageIsNotTypedAsADuration(testCase)
@@ -359,7 +364,7 @@ if ~isempty(out.quarantine)
         out.quarantine(1).reason));
 end
 names = sort(classNames(out));
-verifyEqual(testCase, names, {'absolute_reference', 'time_observation'});
+verifyEqual(testCase, names, {'absolute_time_reference', 'time_observation'});
 end
 
 function testMeasurementSiblingIsUnchangedByTheExtraction(testCase)
@@ -383,8 +388,8 @@ verifyEqual(testCase, obs.get('mass.value.source_unit'), '');
 verifyEqual(testCase, obs.get('statement.variable.node'), 'PATO:0000128');
 % `measurement` keeps the ORDINAL session anchor -- only subjectmeasurement has
 % an instant to anchor to.
-verifyTrue(testCase, any(strcmp(classNames(out), 'session_relative_reference')));
-verifyFalse(testCase, any(strcmp(classNames(out), 'absolute_reference')));
+verifyTrue(testCase, any(strcmp(classNames(out), 'relative_time_reference')));
+verifyFalse(testCase, any(strcmp(classNames(out), 'absolute_time_reference')));
 end
 
 % ===================== FAMILY 2: frequency_filter ==========================
