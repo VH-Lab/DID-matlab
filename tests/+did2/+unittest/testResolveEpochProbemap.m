@@ -51,15 +51,13 @@ end
 % ===================== the headline decomposition =====================
 
 function testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired(testCase)
-% The primary scenario, all in one batch:
-%   row 1  tet/1/n-trode/L   -> voltage_observation, subject_id = specimen,
-%                              instrument_id = the element-subject 'el_1'
-%                              (RESOLVED via local_identifier 'tet (ref 1)'),
-%                              and it RETIRES the #30 obs that names el_1.
-%   row 2  tet/2/n-trode/L   -> voltage_observation, subject_id = specimen,
-%                              instrument_id OMITTED (no 'tet (ref 2)' subject).
-%   row 3  tet/3/n-trode/x   -> subjectstring 'x@lab' resolves to no subject:
-%                              REFUSED, no observation.
+% UPDATED for did-schema #88. Two of three rows decompose (the third names a
+% subject not in the batch); the observations are of the specimen, anchored at
+% the minted epoch, with the probe as instrument where it resolves and the
+% channels on a shared acquisition_channels document. NEW ON #88: the
+% ingestion_manifest has no epochprobemap slot (#73 item 39), so the source is
+% renamed ONLY when every row decomposed; here one did not, so the
+% epochfiles_ingested passes through intact (rename_skipped_rows_without_home).
 subj = subjectBody('specimen_1', 'sess_1', 'L');
 el   = elementBody('el_1', 'sess_1', 'tet', '1', 'n-trode', 1, 'specimen_1');
 ing  = ingestedWithRows('ing_1', 'sess_1', 't00001', { ...
@@ -68,7 +66,6 @@ ing  = ingestedWithRows('ing_1', 'sess_1', 't00001', { ...
     {'tet', '3', 'n-trode', 'x@lab'}});
 [out, rep] = decompose({sessionBody('sd_1', 'sess_1', 'ref'), subj, el, ing});
 
-% --- the report -----------------------------------------------------------
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.epochfiles_ingested_seen, 1);
 verifyEqual(testCase, rep.refused_no_epoch, 0);
@@ -84,38 +81,27 @@ verifyEqual(testCase, rep.epoch_anchors_minted, 1);
 verifyEqual(testCase, rep.session30_observations_retired, 1);
 verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
 verifyEqual(testCase, rep.fold_quarantined, 0);
-% device half: rows 1+2 reach it (row 3 refused at subject first); the
-% devicestring names 'vhspike2', for which no acquisition_system exists here,
-% so the edge is OMITTED (unresolved), and the channel spec parses.
 verifyEqual(testCase, rep.device_strings_seen, 2);
 verifyEqual(testCase, rep.device_acqsystem_unresolved, 2);
 verifyEqual(testCase, rep.device_acqsystem_resolved, 0);
 verifyEqual(testCase, rep.device_channels_parsed, 2);
-% increment 3: the ingested doc is renamed to ingestion_manifest (its
-% filenavigator_id 'nav_1' and epoch resolve).
-verifyEqual(testCase, rep.manifests_renamed, 1);
+verifyEqual(testCase, rep.manifests_renamed, 0);
+verifyEqual(testCase, rep.rename_skipped_rows_without_home, 1);
 verifyEqual(testCase, rep.rename_quarantined, 0);
-
-% --- THE ROW PARTITION reconciles. Single-modality rows, so observations ==
-%     recording rows and manipulations == stimulator rows (increment 3).
 refused = rep.rows_no_subjectstring + rep.refused_no_subject;
 deferred = rep.rows_unresolved_modality + rep.rows_image_deferred;
 verifyEqual(testCase, rep.probe_rows_total, ...
     rep.observations_emitted + rep.manipulations_emitted + refused + deferred);
 
-% --- exactly two migrated_probemap_observation documents ------------------
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 2);
-
-% both are voltage_observations of the specimen, anchored to the same epoch
-% 'during' anchor.
 anchorIds = {};
 withInstrument = 0;
 for i = 1:numel(obs)
     b = obs{i};
     verifyEqual(testCase, char(did2.unittest.helpers.leafName(b)), 'voltage_observation');
-    verifyEqual(testCase, depVal(b, 'subject_id'), 'specimen_1');
-    tr = depVal(b, 'time_reference_1');
+    verifyEqual(testCase, depVal(b, 'entity_id'), 'specimen_1');
+    tr = depVal(b, 'time_reference_id');
     verifyNotEmpty(testCase, tr);
     anchorIds{end+1} = tr; %#ok<AGROW>
     inst = depVal(b, 'instrument_id');
@@ -123,57 +109,30 @@ for i = 1:numel(obs)
         verifyEqual(testCase, inst, 'el_1');   % the RESOLVED probe-subject
         withInstrument = withInstrument + 1;
     end
+    ch = channelsOf(out, b);
+    verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
+    verifyEqual(testCase, char(ch(1).type.name), 'ai');
+    verifyEqual(testCase, double(ch(1).numbers(:))', [11 12 13 14]);
 end
 verifyEqual(testCase, withInstrument, 1);
-% one shared anchor across both observations
 verifyEqual(testCase, numel(unique(anchorIds)), 1);
-
-% --- the shared anchor is an epoch-scoped 'during' relative_reference ------
 anchors = bodiesNamed(out, 'migrated_probemap_epoch_anchor');
 verifyEqual(testCase, numel(anchors), 1);
 a = anchors{1};
-verifyEqual(testCase, char(did2.unittest.helpers.leafName(a)), 'relative_reference');
 verifyEqual(testCase, a.base.id, anchorIds{1});
-verifyEqual(testCase, char(a.relative_reference.value.relation.name), 'intervalDuring');
-% its relative_to is the minted epoch document
+verifyEqual(testCase, char(a.relative_time_reference.value.relation.name), 'intervalDuring');
 epochs = bodiesOfClass(out, 'epoch');
 verifyEqual(testCase, numel(epochs), 1);
-verifyEqual(testCase, depVal(a, 'relative_to'), epochs{1}.base.id);
-
-% --- the #30 observation for el_1 is RETIRED ------------------------------
-% element.m emits a voltage_observation (base.name migrated_recording_observation)
-% with instrument_id el_1; resolveEpochProbemap replaces it, so it is gone.
-recObs = bodiesNamed(out, 'migrated_recording_observation');
-for i = 1:numel(recObs)
-    verifyNotEqual(testCase, depVal(recObs{i}, 'instrument_id'), 'el_1');
-end
-verifyEqual(testCase, numel(recObs), 0);   % el_1 was the only direct element
-
-% --- each observation carries the parsed channels, no acquisition_system edge
-for i = 1:numel(obs)
-    verifyEmpty(testCase, depVal(obs{i}, 'acquisition_system_id')); % unresolved
-    ch = obs{i}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
-    verifyEqual(testCase, numel(ch), 1);                 % one group: ai11-14
-    verifyEqual(testCase, char(ch(1).type.name), 'ai');
-    verifyEqual(testCase, double(ch(1).numbers), [11 12 13 14]);
-end
-
-% --- INCREMENT 3: the ingested document is now an ingestion_manifest --------
-verifyEqual(testCase, numel(bodiesOfClass(out, 'epochfiles_ingested')), 0);
-mani = bodiesOfClass(out, 'ingestion_manifest');
-verifyEqual(testCase, numel(mani), 1);
-m = mani{1};
-verifyEqual(testCase, m.base.id, 'ing_1');                    % id PRESERVED
-verifyEqual(testCase, depVal(m, 'filenavigator_id'), 'nav_1'); % RESTORED
-verifyEqual(testCase, depVal(m, 'epoch_id'), epochs{1}.base.id); % now an EDGE
-verifyEqual(testCase, m.ingestion_manifest.files, {'epochid://t00001'});
-% LOSSLESS ROUND-TRIP: the serialized epochprobemap is carried VERBATIM, so the
-% stimulator/imaging rows that do not decompose into observations are still
-% preserved on the manifest. Recording rows also become observations (above);
-% this string is the full-fidelity record ndi.vintage reads back.
-verifyEqual(testCase, m.ingestion_manifest.epochprobemap, ...
+verifyEqual(testCase, depVal(a, 'referent_id'), epochs{1}.base.id);
+verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_recording_observation')), 0);
+% the source passes through intact: its third row has no home on #88
+verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 0);
+src = bodiesOfClass(out, 'epochfiles_ingested');
+verifyEqual(testCase, numel(src), 1);
+verifyEqual(testCase, src{1}.epochfiles_ingested.epochprobemap, ...
     ing.epochfiles_ingested.epochprobemap);
 end
+
 
 % ===================== the triple key resolves patch/sharp ===============
 
@@ -201,33 +160,22 @@ verifyEqual(testCase, numel(recObs), 0);
 end
 
 function testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording(testCase)
-% THE BUG THE TRIPLE KEY FIXES (174/174 skipped-ambiguous on Soph). A spike-
-% sorted probe carries MORE THAN ONE #30 observation on the same instrument:
-%   el_probe  DIRECT n-trode  -> #30 voltage_observation
-%                                 subject = specimen, instrument = el_probe
-%   el_neuron 'spikes', derived, underlying = el_probe
-%                              -> #30 time_observation (spike-train leaf)
-%                                 subject = el_neuron, instrument = el_probe
-% Keyed on instrument alone that is 2 hits -> ambiguous -> nothing retired. The
-% (subject, instrument, class) triple matches only the probe's OWN direct
-% recording (subject = the specimen), leaving the neuron's spike train intact.
+% UPDATED for #88 edge names (entity_id) and role detection by structure.
 subj = subjectBody('specimen_sp', 'sess_sp', 'L');
 elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp');
 elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
 ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', { ...
     {'tet', '1', 'n-trode', 'L'}});
 [out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ing});
-
 verifyEqual(testCase, rep.observations_emitted, 1);       % one probemap voltage obs
 verifyEqual(testCase, rep.session30_observations_retired, 1);
 verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
-% the probe's OWN direct recording (subject specimen_sp) is gone; the neuron's
-% spike-train observation (subject el_neuron, instrument el_probe) SURVIVES.
 recObs = bodiesNamed(out, 'migrated_recording_observation');
 verifyEqual(testCase, numel(recObs), 1);
-verifyEqual(testCase, depVal(recObs{1}, 'subject_id'), 'el_neuron');
+verifyEqual(testCase, depVal(recObs{1}, 'entity_id'), 'el_neuron');
 verifyEqual(testCase, depVal(recObs{1}, 'instrument_id'), 'el_probe');
 end
+
 
 % ===================== an unresolvable subject emits nothing ===========
 
@@ -267,19 +215,6 @@ end
 % ===================== modality rows resolve ==========================
 
 function testModalityRowsResolveToTheRightObservationLeaf(testCase)
-% One row per modality family that yields a single observation, all resolvable to
-% the same specimen. Asserts localModality maps each type to the leaf
-% jRecordingModality maps it to -- the pin that keeps the duplicated map honest.
-%
-% IMAGING IS DEFERRED, NOT EMITTED, IN INCREMENT 1. `image.value` is
-% mustBeNonEmpty, and a probemap row carries no raster metadata, so a
-% pure-reference image cell is all-blank and the #38 NonVacuousFields gate (armed
-% by default) refuses it -- inventing a dtype to satisfy it is the guess R6/#30
-% forbid. So the two-photon-imaging row is COUNTED (rows_image_deferred) and emits
-% nothing; the other SIX rows emit. This is the pass recognising a modality it
-% cannot honestly express yet, not a validation bug -- see resolveEpochProbemap's
-% localModality IMAGE IS DEFERRED note. jRecordingObservation carries the same
-% latent blank-image shape but never validates it (its tests run Validate=false).
 subj = subjectBody('spec_m', 'sess_m', 'L');
 ing  = ingestedWithRows('ing_m', 'sess_m', 't0m', { ...
     {'a', '', 'n-trode',              'L'}, ...   % voltage
@@ -294,14 +229,15 @@ verifyEqual(testCase, rep.probe_rows_total, 7);
 verifyEqual(testCase, rep.observations_emitted, 6);
 verifyEqual(testCase, rep.rows_image_deferred, 1);
 verifyEqual(testCase, rep.rows_unresolved_modality, 0);
-
-got = sort(cellfun(@(b) char(b.document_class.class_name), ...
+% UPDATED for #88: the leaf is the observation direction + its value kind
+got = sort(cellfun(@(b) char(did2.unittest.helpers.leafName(b)), ...
     bodiesNamed(out, 'migrated_probemap_observation'), 'UniformOutput', false));
 want = sort({'voltage_observation', 'current_observation', ...
     'time_observation', 'acceleration_observation', 'temperature_observation', ...
     'voltage_observation'});
 verifyEqual(testCase, got, want);
 end
+
 
 % A stimulator type decomposes into a `term_manipulation` (#66 increment 3, the
 % T3 direction) -- NOT an observation; an unmapped type (lick-spout) is Guard A
@@ -353,45 +289,49 @@ function testStimManipulationClassSubjectAnchor(testCase)
 assertNotEmpty(testCase, manips);
 m = manips{1};
 verifyEqual(testCase, char(did2.unittest.helpers.leafName(m)), 'term_manipulation');
-verifyEqual(testCase, depVal(m, 'subject_id'), 'spec_s');
-verifyNotEmpty(testCase, depVal(m, 'time_reference_1'));
+verifyEqual(testCase, depVal(m, 'entity_id'), 'spec_s');
+verifyNotEmpty(testCase, depVal(m, 'time_reference_id'));
 end
 
+
 function testStimManipulationCarriesTheStimulatorType(testCase)
+% UPDATED for #88: no storage_mode; the stimulator type is the variable and the
+% term value.
 [~, ~, manips] = stimDecompose();
 assertNotEmpty(testCase, manips);
 m = manips{1};
 verifyEqual(testCase, char(m.statement.variable.name), 'stimulator');
-verifyEqual(testCase, char(m.subject_statement.storage_mode), 'inline');
 verifyEqual(testCase, char(m.term.value.name), 'stimulator');
 end
+
 
 % ===================== the device half (increment 2) ==================
 
 function testDeviceStringResolvesAcqSystemAndParsesGroupedChannels(testCase)
-% `intan1:ai27-28,45;di0-2` -> acquisition_system_id (the migrated daqsystem
-% named 'intan1') + two channel groups {ai [27 28 45]} and {di [0 1 2]}.
+% UPDATED for #88: the system is named on the acquisition_channels document the
+% observation names (acquisition_system_id), and the grouped channels live there.
 subj = subjectBody('spec_d', 'sess_d', 'L');
 daq  = daqsystemBody('acqsys_d', 'sess_d', 'intan1');
 ing  = ingestedWithDeviceRows('ing_d', 'sess_d', 't0d', { ...
     {'p', '', 'n-trode', 'intan1:ai27-28,45;di0-2', 'L'}});
 [out, rep] = decompose({sessionBody('sd_d', 'sess_d', 'ref'), subj, daq, ing});
-
 verifyEqual(testCase, rep.device_strings_seen, 1);
 verifyEqual(testCase, rep.device_acqsystem_resolved, 1);
 verifyEqual(testCase, rep.device_acqsystem_unresolved, 0);
 verifyEqual(testCase, rep.device_channels_parsed, 1);
 verifyEqual(testCase, rep.device_channels_unparsable, 0);
-
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 1);
-verifyEqual(testCase, depVal(obs{1}, 'acquisition_system_id'), 'acqsys_d');
-ch = obs{1}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
+chDoc = docById(out, depVal(obs{1}, 'acquisition_channels_id'));
+verifyEqual(testCase, depVal(chDoc, 'acquisition_system_id'), 'acqsys_d');
+ch = chDoc.acquisition_channels.channels;
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).type.name), 'ai');
-verifyEqual(testCase, double(ch(1).numbers), [27 28 45]);
+verifyEqual(testCase, double(ch(1).numbers(:))', [27 28 45]);
 verifyEqual(testCase, char(ch(2).type.name), 'di');
-verifyEqual(testCase, double(ch(2).numbers), [0 1 2]);
+verifyEqual(testCase, double(ch(2).numbers(:))', [0 1 2]);
+% every row decomposed, so the source is renamed to the manifest
+verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
 
 % ===================== the rename-thin guard (increment 3) =============
@@ -565,16 +505,47 @@ end
 % ===================== helpers ============================================
 
 function out = bodiesNamed(result, baseName)
-%BODIESNAMED Migrated bodies (as structs) whose base.name == BASENAME.
-out = {};
+%BODIESNAMED The bodies a role marker used to tag on base.name.
+%   UPDATED for did-schema #88: V_eta documents write no base.name (#73 item 54),
+%   so the role is read off the structure instead:
+%     migrated_probemap_observation / _manipulation
+%         an observation / manipulation whose time reference anchors at an EPOCH
+%         (the probemap pass anchors every row at its epoch);
+%     migrated_probemap_epoch_anchor
+%         a relative_time_reference whose referent is an epoch;
+%     migrated_recording_observation
+%         an observation with an instrument whose time reference anchors at the
+%         SESSION (the element migrator's whole-session recording observation).
+docs = cell(1, numel(result.migrated));
+byId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = 1:numel(result.migrated)
-    b = result.migrated{k}.toStruct();
-    if isfield(b, 'base') && isfield(b.base, 'name') ...
-            && strcmp(char(b.base.name), baseName)
-        out{end+1} = b; %#ok<AGROW>
+    docs{k} = result.migrated{k}.toStruct();
+    byId(char(docs{k}.base.id)) = docs{k};
+end
+out = {};
+for k = 1:numel(docs)
+    b = docs{k};
+    leaf = char(did2.unittest.helpers.leafName(b));
+    switch baseName
+        case 'migrated_probemap_epoch_anchor'
+            hit = strcmp(leaf, 'relative_time_reference') ...
+                && strcmp(entityTypeOf(byId, depVal(b, 'referent_id')), 'epoch');
+        case 'migrated_probemap_observation'
+            hit = endsWith(leaf, '_observation') ...
+                && strcmp(anchorKind(byId, b), 'epoch');
+        case 'migrated_probemap_manipulation'
+            hit = endsWith(leaf, '_manipulation') ...
+                && strcmp(anchorKind(byId, b), 'epoch');
+        case 'migrated_recording_observation'
+            hit = endsWith(leaf, '_observation') && ~isempty(depVal(b, 'instrument_id')) ...
+                && strcmp(anchorKind(byId, b), 'session');
+        otherwise
+            error('bodiesNamed: unknown role %s', baseName);
     end
+    if hit; out{end+1} = b; end %#ok<AGROW>
 end
 end
+
 
 function out = bodiesOfClass(result, className)
 %BODIESOFCLASS Migrated bodies (as structs) of document_class className.
@@ -604,5 +575,47 @@ for k = 1:numel(items)
     if isfield(d, 'value') && ~isempty(d.value); v = char(d.value);
     elseif isfield(d, 'document_id') && ~isempty(d.document_id); v = char(d.document_id); end
     return;
+end
+end
+
+function t = anchorKind(byId, b)
+% the entity type of the referent of B's (first) time reference
+t = '';
+tr = depVal(b, 'time_reference_id');
+if isempty(tr) || ~isKey(byId, tr); return; end
+t = entityTypeOf(byId, depVal(byId(tr), 'referent_id'));
+end
+
+
+function t = entityTypeOf(byId, id)
+t = '';
+if isempty(id) || ~isKey(byId, id); return; end
+d = byId(id);
+if isfield(d, 'entity') && isfield(d.entity, 'type') && isfield(d.entity.type, 'name')
+    t = char(d.entity.type.name);
+end
+end
+
+
+function ch = channelsOf(result, b)
+% #88: an observation's channels live on the acquisition_channels document it
+% names by acquisition_channels_id
+ch = [];
+id = depVal(b, 'acquisition_channels_id');
+for k = 1:numel(result.migrated)
+    d = result.migrated{k}.toStruct();
+    if strcmp(char(d.base.id), id)
+        ch = d.acquisition_channels.channels;
+        return;
+    end
+end
+end
+
+
+function d = docById(result, id)
+d = [];
+for k = 1:numel(result.migrated)
+    s = result.migrated{k}.toStruct();
+    if strcmp(char(s.base.id), id); d = s; return; end
 end
 end
