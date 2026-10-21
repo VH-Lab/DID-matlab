@@ -26,7 +26,16 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   DID-schema tools/coverage.py, which credits the completion ladder from it.
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
-%   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview
+%   `element` is consumed because each per-epoch recording observation (Jess
+%   Haley 2026-10-21 [epoch files as data bodies], [spike trains as epoch
+%   bodies]) is the observation OF that element: its instrument is the
+%   element-entity +migrators_j/element.m kept under the element's own id,
+%   found by the probe-map row's name and reference, and the element's
+%   `observes` relation is retired here once that observation carries the
+%   instrument_id edge. The same documents are also listed under
+%   epochfiles_ingested, whose probe-map rows and files they are built from.
+%
+%   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview, element
 %   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
@@ -34,6 +43,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       recording observation and its separate observation retired; nothing
 %       new is minted for it here, so crediting it would count epochMint's
 %       emission twice.
+%   BATCH-PASS-EMITS: element -> document: observation+voltage, observation+current, observation+intensity, observation+acceleration, observation+temperature, observation+time, opaque_body, relative_time_reference
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)

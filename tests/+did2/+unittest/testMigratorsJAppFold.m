@@ -447,44 +447,39 @@ end
 % ===================== neuron_extracellular ================================
 
 function testNeuronExtracellularHangsSoftwareOnTheQualityObservation(testCase)
-% UPDATED for #88: the unit is a cell entity, the software has a version
-% assertion (7 bodies), and only the observation names the software.
+% INVERTED 2026-10-21 (did-schema #73 review item 48, signed
+% [spatial_transcriptomics_family]): every statement about the unit is a
+% CALCULATION, so each names the app's software and the run's OS and
+% interpreter. The name is kept for history.
 out = runJ(neuronBody(true, true));
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 7);
-sw   = onlyClass(testCase, out, 'software');
-qobs = onlyClass(testCase, out, 'observation+score');
-verifyEqual(testCase, depValue(qobs, 'software_id'), sw.get('base.id'));
+sw = softwareNamed(testCase, out, 'ndi.app.spikesorter');
+qcalc = onlyClass(testCase, out, 'calculation+score');
+verifyEqual(testCase, depValue(qcalc, 'software_id'), sw.get('base.id'));
+verifyNotEmpty(testCase, depValue(qcalc, 'operating_system_id'));
+verifyNotEmpty(testCase, depValue(qcalc, 'interpreter_id'));
+cidx = onlyClass(testCase, out, 'calculation+label');
+verifyEqual(testCase, depValue(cidx, 'software_id'), sw.get('base.id'));
 neuron = onlyClass(testCase, out, 'cell');
 verifyEmpty(testCase, depValue(neuron, 'software_id'));
 rel = onlyClass(testCase, out, 'directed_relation');
 verifyEmpty(testCase, depValue(rel, 'software_id'));
-cidx = onlyClass(testCase, out, 'assertion+count');
-verifyEmpty(testCase, depValue(cidx, 'software_id'));
+verifyFalse(testCase, hasClass(out, 'observation+score'));
 end
 
 
 function testNeuronExtracellularWithoutQualityStillHasNowhereToPutItsSoftware(testCase)
-% A RESIDUAL LOSS, ASSERTED AS ONE -- AND IT IS SMALLER THAN IT WAS. Without
-% `quality_number` there is no score_observation; without `mean_waveform` there
-% is no voltage_observation either, and none of {subject, directed_relation,
-% session_relative_reference, count_assertion} declares `software_id`. No slot
-% is invented for it. INVERT THIS TEST when the team gives those bodies a home
-% -- do not patch it, because a patched version would assert whatever the code
-% then did.
-%
-% THE FIXTURE NOW HAS TO WITHHOLD TWO THINGS, NOT ONE, and that is the point:
-% since 2026-08-17 the mean-waveform fold emits a voltage_observation, which
-% DOES reach subject_interaction, so a document with a waveform and no quality
-% number no longer loses its software. testTheWaveformObservationCarriesTheAppBlock
-% in testMigratorsJNeuronExtracellular.m asserts that half.
+% INVERTED 2026-10-21, as this test asked to be "when the team gives those
+% bodies a home": item 48 makes the cluster index a label CALCULATION, which
+% declares software_id, so a unit with neither a quality number nor a waveform
+% still names its software. The name is kept for history.
 out = runJ(neuronBody(true, false));
 verifyEmpty(testCase, out.quarantine);
-verifyFalse(testCase, hasClass(out, 'observation+score'));
-verifyFalse(testCase, hasClass(out, 'observation+voltage'));
-verifyFalse(testCase, hasClass(out, 'software'));
-% subject + relation + anchor + count_assertion
-verifyEqual(testCase, numel(out.migrated), 4);
+verifyFalse(testCase, hasClass(out, 'calculation+score'));
+verifyFalse(testCase, hasClass(out, 'calculation+voltage'));
+sw = softwareNamed(testCase, out, 'ndi.app.spikesorter');
+cidx = onlyClass(testCase, out, 'calculation+label');
+verifyEqual(testCase, depValue(cidx, 'software_id'), sw.get('base.id'));
 end
 
 % ===================== vmspikefit ==========================================

@@ -1,9 +1,13 @@
 function tests = testMigratorsJNeuronExtracellular
 %TESTMIGRATORSJNEURONEXTRACELLULAR The mean-waveform fold: `neuron_extracellular`
-%   -> a `voltage_observation` of the derived unit carrying the 21x32 waveform
-%   INLINE over a time axis and a channel axis, plus the `count_assertion` that
-%   gives `cluster_index` a queryable home, and the guards that stop the fold
-%   asserting a shape it cannot justify.
+%   -> a calculation (value kind voltage) about the derived unit carrying the
+%   21x32 waveform INLINE over a time key and a channel key, the label
+%   calculations for `cluster_index` and `quality_label`, and the guards that
+%   stop the fold asserting a shape it cannot justify.
+%
+%   2026-10-21: every statement about the unit is a CALCULATION with input_id ->
+%   the sorting output (did-schema #73 review item 48, signed
+%   [spatial_transcriptomics_family]); the tests below were inverted to it.
 %
 %   STATUS: NEVER RUN LOCALLY. `command -v matlab octave` exits 1 in the
 %   container this was written in, so every assertion below is UNEXECUTED here.
@@ -96,21 +100,29 @@ end
 % ===================== the shape ===========================================
 
 function testTheFoldEmitsSevenBodiesOnARealShapedDocument(testCase)
-% UPDATED for did-schema #88: the unit is an `entity` of type cell, and the
-% app's software entity carries its version as a text_assertion, so a
-% real-shaped document now yields EIGHT bodies (the name is kept for history).
+% INVERTED 2026-10-21 for #73 review item 48 (signed [spatial_transcriptomics_family]):
+% every statement about the unit is a CALCULATION. A real-shaped document
+% yields TWELVE bodies (the name is kept for history): the unit, its
+% derived_from, the anchor, two label calculations (cluster_index,
+% quality_label), the waveform and the quality score; the app's software with
+% its version, and the run's OS and interpreter (the interpreter with its
+% version; the fixture's OS version is empty).
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 names = classNames(out);
-verifyEqual(testCase, numel(out), 8, ...
-    sprintf('expected 8 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyEqual(testCase, numel(out), 12, ...
+    sprintf('expected 12 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyEqual(testCase, sum(strcmp(names, 'cell')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'directed_relation')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'assertion+count')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'observation+voltage')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'observation+score')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'software')), 1);
-verifyEqual(testCase, sum(strcmp(names, 'assertion+text')), 1);   % the software's version
+verifyEqual(testCase, sum(strcmp(names, 'calculation+label')), 2);
+verifyEqual(testCase, sum(strcmp(names, 'calculation+voltage')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'calculation+score')), 1);
+verifyEqual(testCase, sum(strcmp(names, 'software')), 3);         % app, OS, interpreter
+verifyEqual(testCase, sum(strcmp(names, 'assertion+text')), 2);   % software versions
+verifyFalse(testCase, any(strncmp(names, 'observation', 11)), ...
+    'no statement about the unit is an observation any more (item 48)');
+verifyFalse(testCase, any(strncmp(names, 'assertion+count', 15)), ...
+    'cluster_index is a label, not a count (item 48)');
 end
 
 
@@ -138,7 +150,7 @@ end
 function testTheWaveformIsAnObservationOfTheUNITNotOfTheRecording(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 neuron = pick(out, 'cell');
-wobs   = pick(out, 'observation+voltage');
+wobs   = pick(out, 'calculation+voltage');
 verifyEqual(testCase, depValueOf(wobs, 'entity_id'), neuron.base.id);
 verifyNotEqual(testCase, depValueOf(wobs, 'entity_id'), 'rec_sub_1');
 verifyEqual(testCase, depValueOf(wobs, 'time_reference_id'), ...
@@ -163,7 +175,7 @@ end
 function testTheAxesAreBothPresentAndInSourceDimensionOrder(testCase)
 % UPDATED for #88: the axes are the statement's data.keys.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'observation+voltage').data.keys;
+ax = pick(out, 'calculation+voltage').data.keys;
 verifyEqual(testCase, numel(ax), 2);
 verifyEqual(testCase, [ax.n], [21 32]);
 verifyEqual(testCase, arrayfun(@(a) a.variable.name, ax, 'UniformOutput', false), ...
@@ -175,7 +187,7 @@ function testTheTimeAxisIsRegularWithTheMeasuredOriginAndSpacing(testCase)
 % UPDATED for #88: the time key's source unit is the registry term for 's'
 % (om:second-Time, 'second'); no canonical unit is stated.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'observation+voltage').data.keys;
+ax = pick(out, 'calculation+voltage').data.keys;
 verifyTrue(testCase, logical(ax(1).regular));
 verifyEqual(testCase, ax(1).origin.value,         -0.00025, 'AbsTol', 1e-18);
 verifyEqual(testCase, ax(1).origin.source_value,  -0.00025, 'AbsTol', 1e-18);
@@ -192,7 +204,7 @@ v1 = neuronExtracellularV1();
 jitter = [0; 0; 0.0004; zeros(18, 1)];       % one sample displaced
 v1.neuron_extracellular.waveform_sample_times = realTimebase() + jitter;
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'observation+voltage').data.keys;
+ax = pick(out, 'calculation+voltage').data.keys;
 verifyFalse(testCase, logical(ax(1).regular));
 verifyEqual(testCase, ax(1).quantity.value(:), realTimebase() + jitter);
 verifyFalse(testCase, isfield(ax(1), 'origin') && ~isempty(ax(1).origin), ...
@@ -202,7 +214,7 @@ end
 
 function testTheChannelAxisIsAnIndexAxisWithNoUnit(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-ax = pick(out, 'observation+voltage').data.keys;
+ax = pick(out, 'calculation+voltage').data.keys;
 verifyEqual(testCase, ax(2).n, 32);
 verifyTrue(testCase, logical(ax(2).regular));
 verifyEqual(testCase, ax(2).origin.value, 1);
@@ -216,19 +228,19 @@ end
 
 function testAllSixHundredAndSeventyTwoValuesReachTheDocumentInColumnMajorOrder(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-value = pick(out, 'observation+voltage').voltage.value;
+value = pick(out, 'calculation+voltage').voltage.value;
 verifyEqual(testCase, numel(value), 672, ...
     'DENOMINATOR: 21 time samples x 32 channels; a short array is a silent drop');
 verifyEqual(testCase, [value.source_value], 1:672, ...
     'column-major -- reshape(values,[21 32]) must invert w(:)');
-ax = pick(out, 'observation+voltage').data.keys;
+ax = pick(out, 'calculation+voltage').data.keys;
 verifyEqual(testCase, prod([ax.n]), numel(value));
 end
 
 
 function testTheValueStatesNoUnitAndInventsNoCanonicalNumber(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-value = pick(out, 'observation+voltage').voltage.value;
+value = pick(out, 'calculation+voltage').voltage.value;
 verifyFalse(testCase, isfield(value, 'source_unit') && ...
     any(arrayfun(@(v) ~isempty(v.source_unit), value)));
 verifyFalse(testCase, isfield(value, 'volts'), ...
@@ -241,7 +253,7 @@ function testTheStatementIsInlineAndCarriesTheEncoding(testCase)
 % UPDATED for #88: the encoding is value.data_type / source_data_type, and an
 % inline value is simply a value with no data_body flag.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-w = pick(out, 'observation+voltage');
+w = pick(out, 'calculation+voltage');
 verifyFalse(testCase, isfield(w.value, 'data_body') && logical(w.value.data_body));
 verifyEqual(testCase, w.value.data_type, 'float64');
 verifyEqual(testCase, w.value.source_data_type, 'double');
@@ -253,8 +265,8 @@ function testTheWaveformStatementHasNoSampleTimeBlock(testCase)
 % UPDATED for #88: time is an ordinary key; neither observation carries a
 % sample_time block (the interaction block has none to carry).
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-verifyFalse(testCase, isfield(pick(out, 'observation+voltage').interaction, 'sample_time'));
-verifyFalse(testCase, isfield(pick(out, 'observation+score').interaction, 'sample_time'));
+verifyFalse(testCase, isfield(pick(out, 'calculation+voltage').interaction, 'sample_time'));
+verifyFalse(testCase, isfield(pick(out, 'calculation+score').interaction, 'sample_time'));
 end
 
 
@@ -266,9 +278,9 @@ v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'mean_waveform', 'waveform_sample_times'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'observation+voltage')));
-verifyEqual(testCase, numel(out), 7, ...   % #88: + the software's version assertion
-    sprintf('expected 7 bodies without the waveform, got %d: %s', ...
+verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')));
+verifyEqual(testCase, numel(out), 11, ...   % the 12 of the full fold, less the waveform
+    sprintf('expected 11 bodies without the waveform, got %d: %s', ...
         numel(out), strjoin(names, ', ')));
 end
 
@@ -292,7 +304,7 @@ v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
     {'number_of_channels', 'number_of_samples_per_channel'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
-ax = pick(out, 'observation+voltage').data.keys;
+ax = pick(out, 'calculation+voltage').data.keys;
 verifyEqual(testCase, [ax.n], [21 32]);
 end
 
@@ -312,16 +324,70 @@ end
 % ===================== cluster_index =======================================
 
 function testTheClusterIndexGetsAQueryableHomeAndNotOnlyAName(testCase)
+% INVERTED 2026-10-21 (#73 review item 48): `cluster_index` is a nominal
+% LABEL, computed by the sort -- a calculation with the `label` value kind
+% whose value is the index as a string, not a count.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-cidx = pick(out, 'assertion+count');
 neuron = pick(out, 'cell');
+cidx = labelCalc(out, 'spike sorter cluster index');
 verifyEqual(testCase, depValueOf(cidx, 'entity_id'), neuron.base.id);
-verifyEqual(testCase, cidx.count.value.count, 7);
-verifyFalse(testCase, isfield(cidx.count.value, 'unit') && ~isempty(cidx.count.value.unit), ...
-    'a label counts nothing -- an invented unit here would read as a cardinality');
-verifyEqual(testCase, cidx.statement.variable.name, ...
-    'spike sorter cluster index');
+verifyEqual(testCase, cidx.label.value.name, '7');
 verifyEqual(testCase, neuron.entity.local_identifier, 'unit_7');
+end
+
+
+function testTheQualityLabelIsALabelCalculationNotDropped(testCase)
+% `quality_label` ('multi' / 'single' in the corpus) was dropped before item
+% 48; it is now a label calculation about the unit.
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+q = labelCalc(out, 'spike sort quality');
+verifyEqual(testCase, q.label.value.name, 'multi');
+verifyEqual(testCase, depValueOf(q, 'entity_id'), pick(out, 'cell').base.id);
+end
+
+
+function testEveryCalculationNamesItsSoftwareAndRun(testCase)
+% A calculation requires its software (did-schema `calculation`
+% require_inherited software_id) and names the run's OS and interpreter.
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+names = classNames(out);
+idx = find(strncmp(names, 'calculation+', 12));
+verifyEqual(testCase, numel(idx), 4, 'DENOMINATOR: two labels, the waveform, the score');
+swIds = cellfun(@(b) b.base.id, out(strcmp(names, 'software')), 'UniformOutput', false);
+for k = idx
+    c = out{k};
+    verifyTrue(testCase, any(strcmp(depValueOf(c, 'software_id'), swIds)));
+    verifyTrue(testCase, any(strcmp(depValueOf(c, 'operating_system_id'), swIds)));
+    verifyTrue(testCase, any(strcmp(depValueOf(c, 'interpreter_id'), swIds)));
+    verifyEqual(testCase, depValueOf(c, 'time_reference_id'), ...
+        pick(out, 'relative_time_reference').base.id);
+end
+end
+
+
+function testThePopulatedSortingOutputBecomesEveryCalculationsInput(testCase)
+% Item 48: input_id -> the sorting output. Every NDI writer sets
+% `spike_clusters_id` to it (spikesorter.m, kilosort/kiasort/jrclust probe.m),
+% and the sorter documents keep their ids when they migrate.
+v1 = neuronExtracellularV1();
+v1.depends_on(2).value = 'sorter_out_1';
+out = did2.convert.migrators_j.neuron_extracellular(v1);
+names = classNames(out);
+idx = find(strncmp(names, 'calculation+', 12));
+verifyEqual(testCase, numel(idx), 4);
+for k = idx
+    verifyEqual(testCase, depValueOf(out{k}, 'input_id'), 'sorter_out_1');
+end
+end
+
+
+function testAnEmptySortingOutputWritesNoInputEdge(testCase)
+% EMPTY on all 21 corpus documents: then no input_id at all, never an empty one.
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+for k = 1:numel(out)
+    if ~isfield(out{k}, 'depends_on'); continue; end
+    verifyFalse(testCase, any(strcmp({out{k}.depends_on.name}, 'input_id')));
+end
 end
 
 
@@ -355,41 +421,40 @@ for k = 1:numel(out)
             k, out{k}.document_class.class_name, d(j).name));
     end
 end
-verifyGreaterThanOrEqual(testCase, edges, 8, ...
-    ['DENOMINATOR: 2 on the relation (child, parent), 1 on the ' ...
-     'count_assertion, and 3 on each of the two observations ' ...
-     '(entity_id, time_reference_id, software_id)']);
+verifyGreaterThanOrEqual(testCase, edges, 22, ...
+    ['DENOMINATOR: 2 on the relation (child, parent), and 5 on each of the ' ...
+     'four calculations (entity_id, time_reference_id, software_id, ' ...
+     'operating_system_id, interpreter_id)']);
 end
 
 
 function testTheWaveformObservationCarriesTheAppBlock(testCase)
-% The app becomes the software entity the waveform observation names.
-% UPDATED for #88: an observation has no execution-environment slot (only a
-% calculation names an operating system / interpreter), so app.os and
-% app.interpreter are not carried on an observation -- recorded in the port
-% report as a loss on non-calculation statements.
+% The app becomes the software entity the waveform calculation names (the
+% name is kept for history); as a calculation it also names the run's OS.
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, 'quality_number');
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 names = classNames(out);
-verifyFalse(testCase, any(strcmp(names, 'observation+score')));
-sw   = pick(out, 'software');
-wobs = pick(out, 'observation+voltage');
-verifyEqual(testCase, depValueOf(wobs, 'software_id'), sw.base.id);
-verifyEqual(testCase, sw.entity.name, 'JRCLUST');
-verifyFalse(testCase, isfield(wobs.interaction, 'execution_environment'));
+verifyFalse(testCase, any(strcmp(names, 'calculation+score')));
+wcalc = pick(out, 'calculation+voltage');
+sws = out(strcmp(names, 'software'));
+app = sws{cellfun(@(b) strcmp(b.entity.name, 'JRCLUST'), sws)};
+verifyEqual(testCase, depValueOf(wcalc, 'software_id'), app.base.id);
+os = sws{cellfun(@(b) strcmp(b.entity.name, 'MACA64'), sws)};
+verifyEqual(testCase, depValueOf(wcalc, 'operating_system_id'), os.base.id);
 end
 
 
 function testNoSoftwareEntityIsEmittedWhenNothingCanReferenceIt(testCase)
-% An unreferenced `software` entity would record the program without recording
-% what it produced -- and it would be an orphan in the graph. With neither
-% observation there is no carrier, so no entity is minted.
+% An unreferenced `software` entity would be an orphan in the graph. With no
+% calculation at all (no cluster index, quality or waveform) nothing names
+% one, so none is minted.
 v1 = neuronExtracellularV1();
 v1.neuron_extracellular = rmfield(v1.neuron_extracellular, ...
-    {'quality_number', 'mean_waveform', 'waveform_sample_times'});
+    {'quality_number', 'quality_label', 'cluster_index', 'mean_waveform', 'waveform_sample_times'});
 out = did2.convert.migrators_j.neuron_extracellular(v1);
 verifyFalse(testCase, any(strcmp(classNames(out), 'software')));
+verifyEqual(testCase, numel(out), 3, 'the unit, its derived_from and the anchor');
 end
 
 % ===================== the fixture =========================================
@@ -438,6 +503,16 @@ end
 
 function names = classNames(out)
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
+end
+
+function b = labelCalc(out, variableName)
+names = classNames(out);
+idx = find(strcmp(names, 'calculation+label'));
+for k = idx
+    if strcmp(out{k}.statement.variable.name, variableName); b = out{k}; return; end
+end
+error('testMigratorsJNeuronExtracellular:noSuchBody', ...
+    'no calculation+label with variable `%s`', variableName);
 end
 
 function b = pick(out, className)
