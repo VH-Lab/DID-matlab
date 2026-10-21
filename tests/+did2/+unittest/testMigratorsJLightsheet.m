@@ -333,10 +333,12 @@ b = onlyBody(testCase, out);
 keys = keyList(b.data.keys);
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 t = keys{strcmp(names, 'time')};
+% units are OM terms (Jess 2026-10-21), node and English label from om-2.0.rdf
 verifyEqual(testCase, t.unit.name, 'second');
-verifyEqual(testCase, t.unit.node, 'UO:0000010', 'point 10');
+verifyEqual(testCase, t.unit.node, 'om:second-Time', 'OM, not UO');
 z = keys{strcmp(names, 'z')};
-verifyEqual(testCase, z.unit.node, 'UO:0000008');
+verifyEqual(testCase, z.unit.node, 'om:metre');
+verifyEqual(testCase, z.unit.name, 'metre', 'OM''s label, not the NGFF spelling');
 verifyEqual(testCase, rep.pyramid_key_units_name_only, 0);
 c = keys{strcmp(names, 'channel')};
 verifyEqual(testCase, labelNames(c.term), {'GCaMP6s', 'tdTomato'});
@@ -359,10 +361,12 @@ keys = keyList(b.data.keys);
 names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
 z = keys{strcmp(names, 'z')};
 % the source's spelling, or on a schema where source_unit is a term
-% (V_eta_source_unit_plan.md) that spelling's term
-verifyEqual(testCase, termOrText(z.source_unit), 'micrometer', 'the level''s own unit is kept');
+% (V_eta_source_unit_plan.md) that spelling's OM term (Jess 2026-10-21)
 if did2.schema.cache.shared().sourceUnitIsTerm()
-    verifyEqual(testCase, z.source_unit.node, 'UO:0000017', 'the unit table''s term for micrometer');
+    verifyEqual(testCase, z.source_unit.node, 'om:micrometre', 'the unit table''s term for micrometer');
+    verifyEqual(testCase, z.source_unit.name, 'micrometre', 'OM''s label for it');
+else
+    verifyEqual(testCase, z.source_unit, 'micrometer', 'the level''s own unit is kept');
 end
 end
 
@@ -432,7 +436,7 @@ verifyEqual(testCase, v.name, 'Fluorescence Intensity');
 end
 
 function testAnUnmappedUnitStaysNameOnlyAndIsCounted(testCase)
-% Point 10: a unit with no unambiguous UO mapping keeps its name and no node,
+% Point 10: a unit with no unambiguous OM mapping keeps its name and no node,
 % and the pass counts it.
 assumeCompositionSchema(testCase);
 p = pyramidV1();
@@ -440,6 +444,35 @@ p.lightsheetZarrPyramid.axes_units = 'second,,micrometer,micrometer,furlong';
 [out, rep] = runWithPass({p});
 verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
 verifyEqual(testCase, rep.pyramid_key_units_name_only, 1);
+end
+
+function testEveryNgffUnitSpellingIsItsOmTerm(testCase)
+% Jess 2026-10-21: units are OM terms. The canonical unit of a converted axis is
+% OM's metre / second; where source_unit is a term (V_eta_source_unit_plan.md)
+% the source spelling becomes its OM term, named by OM's English label.
+assumeCompositionSchema(testCase);
+p = pyramidV1();
+p.lightsheetZarrPyramid.axes_units = 'millisecond,,nanometer,millimeter,centimeter';
+out = runJ(p);
+verifyEqual(testCase, numel(out.quarantine), 0, reasonsOf(out));
+obs = pickById(out, 'pyr_ls_1');
+keys = keyList(blockField(obs, 'keys'));
+names = cellfun(@(k) k.variable.name, keys, 'UniformOutput', false);
+expect = {'time', 'om:second-Time', 'second', 'millisecond', 'om:millisecond-Time', 'millisecond'; ...
+          'z',    'om:metre',       'metre',  'nanometer',   'om:nanometre',        'nanometre'; ...
+          'y',    'om:metre',       'metre',  'millimeter',  'om:millimetre',       'millimetre'; ...
+          'x',    'om:metre',       'metre',  'centimeter',  'om:centimetre',       'centimetre'};
+for r = 1:size(expect, 1)
+    k = keys{strcmp(names, expect{r, 1})};
+    verifyEqual(testCase, k.unit.node, expect{r, 2}, [expect{r, 1} ': canonical unit node']);
+    verifyEqual(testCase, k.unit.name, expect{r, 3}, [expect{r, 1} ': canonical unit name']);
+    if did2.schema.cache.shared().sourceUnitIsTerm()
+        verifyEqual(testCase, k.source_unit.node, expect{r, 5}, [expect{r, 1} ': source unit node']);
+        verifyEqual(testCase, k.source_unit.name, expect{r, 6}, [expect{r, 1} ': source unit name']);
+    else
+        verifyEqual(testCase, k.source_unit, expect{r, 4}, [expect{r, 1} ': source spelling kept']);
+    end
+end
 end
 
 % ===================== point 1: the session time reference ================
@@ -1234,16 +1267,4 @@ v1.fileReference = struct( ...
     'fileSize', 0, ...
     'checksum', '0123456789abcdef0123456789abcdef', ...
     'checksumAlgorithm', 'MD5');
-end
-
-function n = termOrText(u)
-% a source_unit's name: the text itself (char shape) or the term's name
-arguments
-    u
-end
-if isstruct(u)
-    n = char(u.name);
-else
-    n = char(u);
-end
 end

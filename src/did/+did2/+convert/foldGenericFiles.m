@@ -731,7 +731,7 @@ strip = unique([carriers, find(keyCarrier)]);
 pyramidKeys = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for k = find(keyCarrier)
     pyramidKeys(docIds{k}) = blockFieldOf(bodies{k}, 'keys');
-    % Point 10: a unit with no unambiguous UO mapping stays name-only; COUNT it.
+    % Point 10: a unit with no unambiguous OM mapping stays name-only; COUNT it.
     pk = keyCells(pyramidKeys(docIds{k}));
     for i = 1:numel(pk)
         if isfield(pk{i}, 'unit') && isstruct(pk{i}.unit) ...

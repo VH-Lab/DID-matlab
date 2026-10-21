@@ -151,8 +151,9 @@ function bodies = lightsheet_zarr_pyramid(preBody)
 %   * TERMS -- DECIDED (Jess 2026-10-14, lightsheet point 10, option C;
 %     nodes checked on OLS): the observation's `variable` is NCIT:C184706
 %     'Fluorescence Intensity' (it was the bare name 'fluorescence'); the
-%     keys' canonical units carry UO nodes (second UO:0000010, meter
-%     UO:0000008), an unrecognised unit stays name-only; the levels'
+%     keys' canonical units are OM terms (second om:second-Time, metre
+%     om:metre; Jess 2026-10-21, replacing the UO nodes), an unrecognised
+%     unit stays name-only; the levels'
 %     `summary statistic` values carry NCIT nodes (Maximum NCIT:C25564,
 %     Arithmetic Mean NCIT:C53319). The axis names (time, channel, z, y, x)
 %     and the variable 'summary statistic' stay names with no node (term

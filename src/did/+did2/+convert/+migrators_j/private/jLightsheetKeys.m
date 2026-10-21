@@ -31,8 +31,9 @@ function keys = jLightsheetKeys(axesOrder, shape, scale, translation, units, cha
 %   source unit is one of the UDUNITS-2 names OME-NGFF allows for a space or
 %   time axis; origin/spacing then carry the canonical numbers and
 %   source_origin/source_spacing/source_unit the source's own. The canonical
-%   unit carries its UO node (point 10, Jess 2026-10-14: second UO:0000010;
-%   meter UO:0000008). An axis whose unit is unrecognised keeps its numbers
+%   unit is its OM term (Jess 2026-10-21: units are OM terms, consistent with
+%   DID-schema's term registry: second om:second-Time, metre om:metre; this
+%   replaces point 10's UO nodes). An axis whose unit is unrecognised keeps its numbers
 %   and the unit NAME-ONLY, as the source spelled it (point 10); an axis with
 %   no unit keeps its numbers with NO unit -- the honest "not stated" --
 %   rather than borrowing one. (The SmartSPIM path
@@ -125,7 +126,7 @@ for k = 1:nAx
     else
         [factor, canonical] = canonicalUnit(units{k}, kind);
         if isempty(canonical) && ~isempty(strtrim(char(units{k})))
-            % Point 10: a unit with no unambiguous UO mapping stays NAME-ONLY,
+            % Point 10: a unit with no unambiguous OM mapping stays NAME-ONLY,
             % as the source spelled it, with the source's own numbers. The
             % store-record pass counts these (pyramid_key_units_name_only).
             opts = {'Unit', struct('node', '', 'name', strtrim(char(units{k}))), ...
@@ -149,20 +150,39 @@ keys = did2.build.list(entries{:});
 end
 
 function t = unitTerm(name)
-%UNITTERM A canonical unit name as its UO term (point 10, Jess 2026-10-14).
-%   second UO:0000010 and micrometer UO:0000017 were checked on OLS by Jess;
-%   meter UO:0000008 is UO's metre (the canonical length every space axis is
-%   converted to). A name not in this table stays name-only.
+%UNITTERM A unit spelling (OME-NGFF / UDUNITS-2) as its OM term.
+%   Jess 2026-10-21: units are OM (Ontology of units of Measure 2.0) terms,
+%   consistent with DID-schema's term registry; this replaces point 10's UO
+%   nodes. Each node is the OM IRI's local name under the `om:` prefix and
+%   each name is that element's English rdfs:label in om-2.0.rdf, so the
+%   name is OM's spelling ('metre'), not the source's ('meter'). The table
+%   covers every spelling canonicalUnit accepts, so a converted axis's
+%   source unit is a term too. The lookup ignores case and surrounding
+%   space, as canonicalUnit does. A spelling not in the table stays
+%   name-only, as the source spelled it.
 arguments
     name {mustBeText}
 end
 
-table = {'second', 'UO:0000010'; 'micrometer', 'UO:0000017'; 'meter', 'UO:0000008'};
-k = find(strcmp(table(:, 1), name), 1);
+name = strtrim(char(name));
+table = { ...
+    'angstrom',    'om:angstrom',        'angstrom'; ...
+    'nanometer',   'om:nanometre',       'nanometre'; ...
+    'micrometer',  'om:micrometre',      'micrometre'; ...
+    'millimeter',  'om:millimetre',      'millimetre'; ...
+    'centimeter',  'om:centimetre',      'centimetre'; ...
+    'meter',       'om:metre',           'metre'; ...
+    'nanosecond',  'om:nanosecond-Time', 'nanosecond'; ...
+    'microsecond', 'om:microsecond-Time','microsecond'; ...
+    'millisecond', 'om:millisecond-Time','millisecond'; ...
+    'second',      'om:second-Time',     'second'; ...
+    'minute',      'om:minute-Time',     'minute'; ...
+    'hour',        'om:hour',            'hour'};
+k = find(strcmp(table(:, 1), lower(name)), 1);
 if isempty(k)
     t = struct('node', '', 'name', name);
 else
-    t = struct('node', table{k, 2}, 'name', name);
+    t = struct('node', table{k, 2}, 'name', table{k, 3});
 end
 end
 
