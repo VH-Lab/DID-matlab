@@ -70,100 +70,30 @@ sessionId = baseField(preBody, 'session_id', '');
 datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
 obsId     = baseField(preBody, 'id', did.ido.unique_id());
 
-anchorId = did.ido.unique_id();
-
-% ---- the session-relative time anchor ('during') ----------------------------
-anchor = struct();
-% PASS-1 HANDLE, NOT AN UNMIGRATED CLASS. The signed model retires this class in
-% favour of `relative_reference`, but the same plan makes the change impossible
-% here: `relative_to` is REQUIRED and is not fillable in pass 1 (this body holds
-% base.session_id; the edge needs the session DOCUMENT's base.id). Emitting the
-% new class with an empty required edge would be ~106k husks that validate clean.
-% did2.convert.resolveSessionAnchors folds it in a batch pass, id PRESERVED. Full
-% reasoning in +migrators_j/private/jSessionAnchor.m; the seam is pinned by
-% tests/+did2/+unittest/testSessionAnchorEmitterContract.m.
-anchor.document_class = classBlock('session_relative_reference', {'time_reference'}, TV);
-anchor.depends_on = struct('name', {}, 'value', {});
-anchor.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'datestamp', datestamp);
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', 'during');
-
-% ---- the body-backed count_observation (cluster labels) ---------------------
-obs = struct();
-obs.document_class = classBlock('count_observation', {'subject_observation', 'count'}, TV);
-obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-obs.base = struct('id', obsId, 'session_id', sessionId, ...
-    'name', 'migrated_jrclust_clusters', 'datestamp', datestamp);
-obs.subject_statement = struct( ...
-    'variable', struct('node', '', 'name', 'spike cluster assignment'), ...
-    'storage_mode', 'body');
-obs.subject_interaction = struct('method', otTerm(''));
-obs.subject_observation = struct();
-obs.count = struct();   % value is body-backed
-
-% ---- the v1 `app` block -> a software entity + software_id + exec env -------
-% jSoftwareFromApp reads BOTH spellings of name/version: universalRenames has
-% already rewritten app.name -> app.app_name and app.version -> app.app_version
-% (universalRenames.m:145-164) by the time any migrator runs.
-[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
-if ~isempty(swId)
-    obs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
+% did-schema #88: built through did2.build. The cluster assignment is a
+% `count` observation of the recording element; its value is the JRCLUST
+% results file, an opaque_body (a binary file, not a sampled array: #88's
+% sampled_body requires keys and this file states none). `data_body` is not
+% set on the statement (see jSorterOutput).
+anchor = jSessionAnchor(preBody, 'during');
+[software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
+swOpt = {};
+if ~isempty(swId); swOpt = {'SoftwareId', swId}; end
+obs = jStatement(preBody, 'count_observation', subjectId, ...
+    did2.build.label('spike cluster assignment'), [], ...
+    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', obsId);
+md5 = jGetCharAny(blk, {'res_mat_md5_checksum', 'res_mat_MD5_checksum'});
+o = jOpts(preBody);
+if ~isempty(md5)
+    o = jOpts(preBody, 'Description', sprintf('JRCLUST results (res_mat_MD5_checksum: %s)', md5));
 end
-if ~isempty(fieldnames(execEnv))
-    obs.subject_interaction.execution_environment = execEnv;
-end
-
-% ---- the sampled_body: one cluster index per spike --------------------------
-% NO `sample_time` AND NO `axes`, AND THE SECOND HALF IS THE DELIBERATE ONE.
-%
-% The retired `sample_time` here was three-quarters placeholder: `regular: false`
-% with `t0` and `dt` both zero -- an irregular timeline containing no times. Its
-% only content was `n`, and `n` was a hardcoded literal 0 meaning UNKNOWN rather
-% than "zero spikes".
-%
-% So there is nothing to convert into an axis. The array is one cluster index per
-% spike, so array dimension 1 is the spike ordinal, but its EXTENT is not on this
-% document -- the count lives in the JRCLUST payload the body carries, and a
-% migrator does not read bytes. `n` is mustBeNonEmpty on an axis entry, so the
-% only axis expressible here is one of extent zero, and that ASSERTS a
-% zero-length dimension. It is the fabricated-measurement shape the spikewaves
-% fold refuses in exactly these words: "every document described an extraction of
-% ZERO spikes of ZERO samples -- a fabricated measurement that validates
-% cleanly". That the old block wrote n = 0 anyway is not a precedent for
-% repeating it; it is the defect being removed.
-%
-% An absent axes list says nothing. A zero-extent one says something false. No
-% guarded emission is written either: the spike count was a hardcoded `numSpikes
-% = 0` local, and a branch gated on a literal constant is dead code pretending to
-% be a capability. The variable is gone with it -- left in place it would have
-% been assigned and never read, which is the orphan code scanning 219 caught in
-% pyraview. When the count becomes derivable, the axis is four lines (see jAxis).
-body = jSampledBody(obsId, sessionId, datestamp, 'migrated_jrclust_clusters_body');
-% carry the JRCLUST output bytes verbatim (this doc owns them now). The *_res.mat
-% MD5 checksum is a regenerable file hash -- not re-expressed on the body.
+body = did2.build.opaqueBody(obs.base.id, did2.build.formatTerm('EDAM:format_2333'), o{:});
 if isfield(preBody, 'files'); body.files = preBody.files; end
 if isfield(preBody, 'file');  body.file  = preBody.file;  end
-
-bodies = {obs, body, anchor};
-if ~isempty(software)
-    bodies{end+1} = software;
-end
+bodies = [{obs, body, anchor}, software];
 end
 
 % ===================== small helpers =======================================
-
-function dc = classBlock(name, supers, tv)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', tv);
-end
-
 
 function t = otTerm(name)
 t = struct('node', '', 'name', name);

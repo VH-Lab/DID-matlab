@@ -320,132 +320,56 @@ if isnumeric(clusterIndex) && isscalar(clusterIndex)
     unitName = sprintf('unit_%d', round(clusterIndex));
 end
 
+% did-schema #88: built through did2.build. The neuron is an `entity` of type
+% cell (a sorted unit); its derivation from the recording element is a
+% `derived_from` relation; its statements hang off one session anchor.
 neuronId = did.ido.unique_id();
-sessionId = baseField(preBody, 'session_id', '');
-datestamp = baseField(preBody, 'datestamp', '2024-01-01T00:00:00.000Z');
-
-% ---- the derived subject: the sorted unit ----------------------------------
-neuron = struct();
-neuron.document_class = struct('class_name', 'subject', 'class_version', '3.0.0', ...
-    'superclasses', struct('class_name', 'entity', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-neuron.depends_on = struct('name', {}, 'value', {});
-neuron.base = struct('id', neuronId, 'session_id', sessionId, ...
-    'name', unitName, 'datestamp', datestamp);
-neuron.subject = struct('local_identifier', unitName, 'description', ...
-    'spike-sorted extracellular unit (derived)');
-
-% ---- the provenance relation: unit derived_from the recording subject -------
-rel = struct();
-rel.document_class = struct('class_name', 'directed_relation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'relation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-rel.depends_on = [ ...
-    struct('name', 'child',  'value', neuronId), ...
-    struct('name', 'parent', 'value', recordingSubjectId)];
-rel.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'derived_from', 'datestamp', datestamp);
-rel.directed_relation = struct('relation', otTerm('ro:0001000', 'derived_from'));
-
-% ---- the shared session anchor ('during') for the observations --------------
-anchorId = did.ido.unique_id();
-anchor = struct();
-% PASS-1 HANDLE, NOT AN UNMIGRATED CLASS. The signed model retires this class in
-% favour of `relative_reference`, but the same plan makes the change impossible
-% here: `relative_to` is REQUIRED and is not fillable in pass 1 (this body holds
-% base.session_id; the edge needs the session DOCUMENT's base.id). Emitting the
-% new class with an empty required edge would be ~106k husks that validate clean.
-% did2.convert.resolveSessionAnchors folds it in a batch pass, id PRESERVED. Full
-% reasoning in +migrators_j/private/jSessionAnchor.m; the seam is pinned by
-% tests/+did2/+unittest/testSessionAnchorEmitterContract.m.
-anchor.document_class = classBlock('session_relative_reference', {'time_reference'});
-anchor.depends_on = struct('name', {}, 'value', {});
-anchor.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'datestamp', datestamp);
-anchor.time_reference = struct('is_approximate', true);
-anchor.session_relative_reference = struct('relation', 'during');
+neuron = jEntity(preBody, 'cell', struct('local_identifier', unitName, ...
+    'description', 'spike-sorted extracellular unit (derived)'), 'Id', neuronId);
+rel = jEntityRelation(preBody, neuronId, recordingSubjectId, 'derived_from', '', 'RO:0001000');
+anchor = jSessionAnchor(preBody, 'during');
+anchorId = anchor.base.id;
 
 bodies = {neuron, rel, anchor};
 
-% ---- the sorter's cluster index (see "CLUSTER_INDEX" in the header) ---------
 if isnumeric(clusterIndex) && isscalar(clusterIndex) && isfinite(clusterIndex)
-    cidx = struct();
-    cidx.document_class = classBlock('count_assertion', {'subject_assertion', 'count'});
-    cidx.depends_on = struct('name', {'subject_id'}, 'value', {neuronId});
-    cidx.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-        'name', 'migrated_sorter_cluster_index', 'datestamp', datestamp);
-    cidx.subject_statement = struct( ...
-        'variable', jOntologyTerm('', 'spike sorter cluster index'), ...
-        'storage_mode', 'inline');
-    % Assigned in its own statement rather than inside struct(...): the value of
-    % `count` is a composite, and a non-scalar struct passed to struct()
-    % DISTRIBUTES into a struct array of blocks instead of setting one field.
-    % Scalar here, but the idiom is uniform across this file for that reason.
-    cidx.count = struct();
-    % `unit` is "what is counted" and this counts nothing -- BLANK, not invented.
-    cidx.count.value = struct('value', round(double(clusterIndex)), ...
-        'unit', otTerm('', ''), 'approximate', false);
-    bodies{end+1} = cidx;
+    bodies{end+1} = jStatement(preBody, 'count_assertion', neuronId, ...
+        did2.build.label('spike sorter cluster index'), ...
+        did2.build.valueCell('count', round(double(clusterIndex)), 'Approximate', false));
 end
 
-% ---- the v1 `app` block -> a software entity (+ the edge, on the obs) -------
-% jSoftwareFromApp reads BOTH spellings of name/version (universalRenames has
-% already rewritten app.name -> app.app_name by the time a migrator runs).
-% The entity is emitted ONLY when some body took the edge -- see the header:
-% none of {subject, directed_relation, session_relative_reference,
-% count_assertion} declares `software_id`, and an unreferenced entity would
-% record the software without recording what it produced.
-[software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
+% The run environment (os / interpreter) is not carried on an observation:
+% #88 gives only a calculation operating_system_id / interpreter_id edges, and
+% these are observations of the unit -- the software edge stays. Reported.
+[software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
 softwareIsReferenced = false;
+swOpt = {};
+if ~isempty(swId)
+    swOpt = {'SoftwareId', swId};
+end
 
-% ---- the mean spike waveform as a voltage_observation OF the unit ----------
-wobs = meanWaveformObservation(blk, neuronId, anchorId, sessionId, datestamp);
+wobs = meanWaveformObservation(preBody, blk, neuronId, anchorId, swOpt);
 if ~isempty(wobs)
-    if ~isempty(swId)
-        wobs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
-        softwareIsReferenced = true;
-    end
-    if ~isempty(fieldnames(execEnv))
-        wobs.subject_interaction.execution_environment = execEnv;
-    end
+    softwareIsReferenced = softwareIsReferenced || ~isempty(swId);
     bodies{end+1} = wobs;
 end
 
-% ---- the sort quality as a score_observation OF the unit (inline) -----------
 quality = getField(blk, 'quality_number');
 if isnumeric(quality) && isscalar(quality)
-    qobs = struct();
-    qobs.document_class = classBlock('score_observation', {'subject_observation', 'score'});
-    qobs.depends_on = [ ...
-        struct('name', 'subject_id',       'value', neuronId), ...
-        struct('name', 'time_reference_1', 'value', anchorId)];
-    qobs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-        'name', 'migrated_sort_quality', 'datestamp', datestamp);
-    qobs.subject_statement = struct('variable', otTerm('', 'spike sort quality'), ...
-        'storage_mode', 'inline');
-    qobs.subject_interaction = struct('method', otTerm('', ''), ...
-        'sample_time', struct('kind', 'point'));
-    qobs.subject_observation = struct();
-    qobs.score = struct('value', struct('value', double(quality), ...
-        'scale', otTerm('', ''), 'scale_min', 0.0, 'scale_max', 0.0, 'approximate', false));
-    if ~isempty(swId)
-        qobs.depends_on(end+1) = struct('name', 'software_id', 'value', swId);
-        softwareIsReferenced = true;
-    end
-    if ~isempty(fieldnames(execEnv))
-        qobs.subject_interaction.execution_environment = execEnv;
-    end
-    bodies{end+1} = qobs;
+    qv = did2.build.composite('score', 'value', ...
+        struct('score', double(quality), 'approximate', false));
+    bodies{end+1} = jStatement(preBody, 'score_observation', neuronId, ...
+        did2.build.label('spike sort quality'), qv, ...
+        'TimeReferenceIds', {anchorId}, swOpt{:});
+    softwareIsReferenced = softwareIsReferenced || ~isempty(swId);
 end
 
 if softwareIsReferenced && ~isempty(software)
-    bodies{end+1} = software;
+    bodies = [bodies, software];
 end
 end
 
-% ===================== the mean waveform ===================================
-
-function obs = meanWaveformObservation(blk, neuronId, anchorId, sessionId, datestamp)
+function obs = meanWaveformObservation(preBody, blk, neuronId, anchorId, swOpt)
 %MEANWAVEFORMOBSERVATION The mean spike waveform as an inline voltage_observation
 %   of the sorted unit, over a time axis and a channel axis.
 %
@@ -526,56 +450,14 @@ channelAxis = jAxis(jOntologyTerm('', 'channel'), nChannels, ...
     'origin',  struct('value', 1, 'source_value', 1), ...
     'spacing', struct('value', 1, 'source_value', 1));
 
-obs = struct();
-obs.document_class = classBlock('voltage_observation', ...
-    {'subject_observation', 'voltage'});
-obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', neuronId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_mean_spike_waveform', 'datestamp', datestamp);
-
-obs.subject_statement = struct( ...
-    'variable', jOntologyTerm('', 'mean spike waveform'), ...
-    'storage_mode', 'inline');
-% Assigned separately, NOT inside struct(...): `axes` is a 1x2 struct array and
-% struct() DISTRIBUTES a non-scalar struct value into a struct array of
-% statements. Concatenation is safe only because jAxis gives both entries the
-% same field set in the same order -- that is what the helper is for.
-%
-% BOTH AXES OR NEITHER. axes[k] IS array dimension k, so a one-entry list does
-% not mean "here is one of the dimensions", it ASSERTS that dimension 1 is that
-% axis. Both extents are known here, so both are stated.
-obs.subject_statement.axes = [timeAxis, channelAxis];
-% The encoding of the values belongs to the STATEMENT (signed sec.5). Read off
-% the array's own class rather than defaulted -- image_stack.m's
-% `firstNonEmpty(dataType, 'uint16')` is the defect not repeated.
 [datumType, sourceDatumType] = jDatumType(class(w));
-if ~isempty(datumType)
-    obs.subject_statement.datum_type = datumType;
-end
-if ~isempty(sourceDatumType)
-    obs.subject_statement.source_datum_type = sourceDatumType;
-end
-
-% `sample_time` IS DELIBERATELY ABSENT. Time is an ordinary axis now (signed
-% sec.2, "both sample_time blocks retire"); writing the cadence into both would
-% store one fact twice, which is the #69 shape the axis exists to remove. The
-% score_observation above still carries `kind: 'point'` because a scalar quality
-% has no axis at all -- that is a different statement, not an inconsistency.
-obs.subject_interaction = struct('method', otTerm('', ''));
-obs.subject_observation = struct();
-
-% The values. COLUMN-MAJOR -- `w(:)` is MATLAB's own linearisation and matches
-% the axis order emitted above, so reshape(values, [nTime nChannels]) inverts it.
-% See the header: there is no `datum_order` slot on an inline statement to say so
-% in the document, and that is a recorded team question.
-%
-% Assigned separately for the reason above: jMeasureArray returns a 1xN struct
-% array (672 entries on a real document) and struct('value', thatArray) would
-% distribute into 672 `voltage` blocks instead of one block holding 672 values.
-obs.voltage = struct();
-obs.voltage.value = jMeasureArray(double(w(:)), '');
+% the samples carry no unit in v1, so the cells carry only what was written
+obs = jStatement(preBody, 'voltage_observation', neuronId, ...
+    did2.build.label('mean spike waveform'), ...
+    jQuantity('voltage', double(w(:))', '', 'approximate', false), ...
+    'Keys', did2.build.list(timeAxis, channelAxis), ...
+    'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
+    'TimeReferenceIds', {anchorId}, swOpt{:});
 end
 
 function checkRedundantCount(blk, name, derived, derivedFrom)
@@ -627,15 +509,6 @@ isRegular = max(abs(model - t)) <= tolerance;
 end
 
 % ===================== small helpers =======================================
-
-function dc = classBlock(name, supers)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
-end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', 'V_eta');
-end
 
 function t = otTerm(node, name)
 t = struct('node', char(node), 'name', char(name));
