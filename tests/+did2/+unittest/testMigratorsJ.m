@@ -742,6 +742,27 @@ verifyEqual(testCase, site.get('term.value').node, 'SNOMED:783351009');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
+function testAStatedAmountKindWithNoNumberPutsTheNaNInThatKind(testCase)
+% "When a dose's amount was not recorded and the kind of quantity is not known,
+% the NaN goes in value.volume.liters; where the kind is known ... the NaN goes
+% in that quantity instead" (Jess Haley, 2026-10-21 [unknown-amount-slot]).
+% A row stating mg/kg with a blank number: the kind (amount per body mass) is
+% known, so the NaN goes there, with the unit, and not in volume.
+v1 = treatmentDrugDoc('td_kind', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,,SNOMED:396163008,mg/kg'), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+v = d.get('dose.value');
+verifyTrue(testCase, isnan(v.amount_per_body_mass.grams_per_gram));
+verifyEqual(testCase, v.amount_per_body_mass.source_unit.node, 'SNOMED:396163008');
+verifyFalse(testCase, isfield(v, 'volume') && ~isempty(v.volume) && isstruct(v.volume) ...
+    && isfield(v.volume, 'liters') && ~isempty(v.volume.liters), ...
+    'a known kind takes the NaN; volume is only the default');
+end
+
 function testTreatmentDrugWithNoLocationIsRouteUnknown(testCase)
 % No location recorded: the route cannot be read, so a dose with a NaN amount
 % and a `route_unknown` note in the migration report; no site observation.
