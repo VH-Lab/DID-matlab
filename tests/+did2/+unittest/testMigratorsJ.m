@@ -253,7 +253,7 @@ out = runJ(v1);
 
 % 1 subject + 3 member_of relations
 verifyEqual(testCase, numel(out.migrated), 4);
-sub = firstOfClassJ(out.migrated, 'subject');
+sub = firstOfClassJ(out.migrated, 'group');   % #88: an entity of type group
 verifyEqual(testCase, sub.get('base.id'), 'grp_1');   % group id preserved
 verifyEqual(testCase, out.summary.by_class.directed_relation, 3);
 % each relation is member --member_of--> group
@@ -291,13 +291,13 @@ verifyEqual(testCase, numel(out.migrated), 1);
 a = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(a), 'term_assertion');
 % the entity type -> the asserted variable; the ontology id + label -> the value
-verifyEqual(testCase, a.get('statement.variable').name, 'species');
+% the registry label for NCIT:C45293 is 'Species' (#88 writes registry labels)
+verifyEqual(testCase, a.get('statement.variable').name, 'Species');
 verifyEqual(testCase, a.get('term.value').node, 'NCBITaxon:6239');
 verifyEqual(testCase, a.get('term.value').name, 'Caenorhabditis elegans');
 verifyEqual(testCase, depVal(a, 'entity_id'), 'subj_007');
-% an assertion is timeless: it is a subject_assertion, not an interaction
-supers = a.get('document_class.superclasses');
-verifyEqual(testCase, supers(1).class_name, 'subject_assertion');
+% an assertion is timeless: #88 class `assertion`, not an interaction
+verifyEqual(testCase, a.get('document_class.class_name'), 'assertion');
 end
 
 function testOpenmindsGeneticStrainTypeVariableIsDeCamelCased(testCase)
@@ -344,11 +344,11 @@ function testElementDerivedBecomesSubjectDerivedFrom(testCase)
 % testMigratorsJRecordingObservation.m owns that, and the note is here so the
 % next reader does not mistake a green run of this test for coverage of it.
 out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
-sub = firstOfClassJ(out.migrated, 'subject');
+sub = firstOfClassJ(out.migrated, 'cell');   % #88: a spikes element is an entity of type cell
 verifyEqual(testCase, sub.get('base.id'), 'el_1');                 % id preserved
 verifyEqual(testCase, sub.get('entity.local_identifier'), 'unit3 (ref 1)');
 % type + ndi_element_class preserved as term_assertions (no silent drop)
-verifyEqual(testCase, out.summary.by_class.term_assertion, 2);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_assertion'), 2);
 % lineage: derived_from the underlying element (safe computational lineage)
 rel = firstOfClassJ(out.migrated, 'directed_relation');
 verifyEqual(testCase, rel.get('directed_relation.relation').name, 'derived_from');
@@ -398,7 +398,7 @@ verifyEqual(testCase, depVal(obs, 'instrument_id'), 'el_1');     % the electrode
 % The element itself is still promoted to a subject with its id PRESERVED --
 % ~50 documents reference `element_id`, and moving it is the 11,448-orphan
 % shape. The observation mints a fresh id; it does not take el_1's.
-subj = firstOfClassJ(out.migrated, 'subject');
+subj = firstOfClassJ(out.migrated, 'device');   % #88: an entity of type device
 verifyNotEmpty(testCase, subj, 'the element must still become a subject');
 verifyEqual(testCase, subj.get('base.id'), 'el_1');
 verifyNotEqual(testCase, obs.get('base.id'), 'el_1');
@@ -422,16 +422,16 @@ out = runJ(v1);
 
 % 1 -> 3: the act, the provenance relation, the anchor.
 verifyEqual(testCase, numel(out.migrated), 3);
-verifyTrue(testCase, isfield(out.summary.by_class, 'term_manipulation'));
-verifyTrue(testCase, isfield(out.summary.by_class, 'directed_relation'));
-verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 1);
 
 act = out.migrated{1};
 % recipient is the patient; the material term is the value AND the variable
 verifyEqual(testCase, depVal(act, 'entity_id'), 'rec_001');
 verifyEqual(testCase, act.get('statement.variable').name, 'embryonic tissue');
 verifyEqual(testCase, act.get('term.value').name, 'embryonic tissue');
-verifyEqual(testCase, act.get('subject_interaction.method').name, 'transplantation');
+verifyEqual(testCase, act.get('interaction.method').term.name, 'transplantation');
 
 rel = out.migrated{2};
 verifyEqual(testCase, depVal(rel, 'child_id'), 'rec_001');
@@ -439,7 +439,7 @@ verifyEqual(testCase, depVal(rel, 'parent_id'), 'don_002');
 verifyEqual(testCase, rel.get('directed_relation.relation').name, 'derived_from');
 
 anchor = out.migrated{3};
-verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during');
+verifyEqual(testCase, anchor.get('relative_time_reference.value').relation.name, 'intervalDuring');
 end
 
 % ============ ontology_table_row -> assertions/observations (1 -> N) ====
@@ -463,10 +463,10 @@ function testOntologyTableRowSplitsByShape(testCase)
 out = runJ(tableRow());
 % 3 kept columns (identity skipped) + 1 shared anchor
 verifyEqual(testCase, numel(out.migrated), 4);
-verifyTrue(testCase, isfield(out.summary.by_class, 'mass_observation'));
-verifyTrue(testCase, isfield(out.summary.by_class, 'intensity_observation'));
-verifyTrue(testCase, isfield(out.summary.by_class, 'term_observation'));
-verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
+verifyEqual(testCase, nLeafJ(out.migrated, 'mass_observation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'intensity_observation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 1);
 % identity column is skipped, not an observation
 verifyFalse(testCase, isfield(out.summary.by_class, 'local_identifier'));
 end
@@ -513,10 +513,9 @@ function testOntologyTableRowNumericColumn(testCase)
 out = runJ(tableRow());
 mass = out.migrated{1};   % BodyWeight -> mass_observation
 verifyEqual(testCase, did2.unittest.helpers.leafName(mass), 'mass_observation');
-% identity is on the spine variable (subject_statement), value on the mass leaf
+% identity is on the statement variable, value on the mass block
 verifyEqual(testCase, mass.get('statement.variable').name, 'body weight');
 verifyEqual(testCase, mass.get('mass.value').source_value, 24.3);
-verifyEqual(testCase, mass.get('subject_statement.storage_mode'), 'inline');
 % the spine: subject_id carried, shared time anchor wired on
 verifyEqual(testCase, depVal(mass, 'entity_id'), 'subj_001');
 verifyEqual(testCase, depVal(mass, 'time_reference_id'), out.migrated{4}.get('base.id'));
@@ -597,12 +596,13 @@ function testTreatmentTargetLocationEmitsSiteObservation(testCase)
 % Dab "Target Location" idiom: the site rides in string_value; strict J has no
 % target_structure, so a located site becomes a term_observation (D3).
 out = runJ(treatmentDoc('chebi:28001', 'muscimol Target Location', [], 'uberon:0002436'));
-verifyEqual(testCase, numel(out.migrated), 3);   % dose manip + site obs + anchor
-verifyTrue(testCase, isfield(out.summary.by_class, 'dose_manipulation'));
-verifyTrue(testCase, isfield(out.summary.by_class, 'term_observation'));
+% #88: dose manip + its chemical + formulation + anchor + site obs
+verifyEqual(testCase, numel(out.migrated), 5);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 1);
 % " Target Location" stripped from the manipulation's spine variable
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
-site = out.migrated{2};
+site = firstOfClassJ(out.migrated, 'term_observation');
 verifyEqual(testCase, did2.unittest.helpers.leafName(site), 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
@@ -619,16 +619,19 @@ v1.base = struct('id', 'td_01', 'session_id', 'sess_09', ...
 v1.treatment_drug = struct('mixture_table', 'chebi:28001,haloperidol,5', ...
     'location_ontologyNode', 'uberon:0002436', 'location_name', 'primary visual cortex');
 out = runJ(v1);
-verifyEqual(testCase, numel(out.migrated), 3);   % dose + site obs + anchor
+% #88: dose + chemical + formulation + site obs + anchor
+verifyEqual(testCase, numel(out.migrated), 5);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
-chem = d.get('dose.value').formulation.chemicals;
-verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
-verifyEqual(testCase, chem(1).amount.source_value, 5);
+% #88 dose chain: dose -> formulation_id -> formulation (ingredient entry carries
+% the amount) -> ingredient_id -> chemical (the substance)
+[f, c] = doseChainJ(out.migrated, d);
+verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
+verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 5);
 verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
 % the site node survives the universalRenames snake-casing (location_ontologyNode
 % -> location_ontology_node)
-site = out.migrated{2};
+site = firstOfClassJ(out.migrated, 'term_observation');
 verifyEqual(testCase, did2.unittest.helpers.leafName(site), 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
@@ -644,15 +647,18 @@ v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
     'virus_name', 'AAV-ChR2', 'dilution', 1000, ...
     'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1');
 out = runJ(v1);
-verifyEqual(testCase, numel(out.migrated), 3);   % dose + site obs + anchor
+% #88: dose + chemical + formulation + site obs + anchor
+verifyEqual(testCase, numel(out.migrated), 5);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
-chem = d.get('dose.value').formulation.chemicals;
-verifyEqual(testCase, chem(1).substance.name, 'AAV-ChR2');
-verifyEqual(testCase, chem(1).amount.source_value, 1000);
+[f, c] = doseChainJ(out.migrated, d);
+verifyEqual(testCase, c.get('chemical.value').substance.name, 'AAV-ChR2');
+conc = f.get('formulation.value').ingredients(1).concentration;
+verifyEqual(testCase, conc.source_value, 1000);
+verifyEqual(testCase, conc.source_unit.name, 'dilution');
 verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
 % site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
-site = out.migrated{2};
+site = firstOfClassJ(out.migrated, 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
 
@@ -787,16 +793,11 @@ end
 % ===================== image_stack -> body-backed observation ==========
 
 function testDidV1ImageMigratesSoTheNameCollisionCannotBite(testCase)
-% did_v1 has a class called `image` (a stored image file); V_eta ALSO has one
-% (the standalone raster data_type from R6), and they share not one field. A
-% schema name resolves to one schema, so before this migrator existed a real
-% did_v1 image document passed through by default into the data_type, whose
-% required `value` guaranteed a quarantine.
-%
-% The fix consumes the v1 class rather than renaming the V_eta one: once every
-% did_v1 image document migrates, none can reach that schema under that name.
-% The fold is image_stack's -- this IS its single-image sibling, same
-% imageStack_parameters superclass and file-backed pixels.
+% A did_v1 `image` with a subject folds exactly as image_stack does. UPDATED for
+% did-schema #88: the fold emits an intensity_observation (variable 'image
+% intensity', value.data_type from the parameters block, value.data_body true)
+% whose pixels live on a sampled_body; the v1 `image` name is now the
+% deprecated tombstone (#73 item 51), so a fold never re-uses it.
 v1 = struct();
 v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
@@ -812,21 +813,19 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
     'dimension_scale', [0.25 0.25 1], 'clocktype', 'no_time', 'timestamp', 0);
 
 out = runJ(v1);
-% 1 -> 3, exactly as image_stack folds
-verifyEqual(testCase, numel(out.migrated), 3);
+verifyEqual(testCase, numel(out.migrated), 3);   % observation + sampled_body + anchor
 obs = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
-% id PRESERVED, so anything referring to this document still resolves
-verifyEqual(testCase, obs.get('base.id'), 'img_01');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'intensity_observation');
+verifyEqual(testCase, obs.get('base.id'), 'img_01');     % id PRESERVED
 verifyEqual(testCase, depVal(obs, 'entity_id'), 'subj_007');
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
+verifyTrue(testCase, logical(obs.get('value.data_body')));
 % dtype comes from the parameters block, never guessed from the pixels
-verifyEqual(testCase, obs.get('image.value').dtype, 'uint8');
-% nothing is left carrying the class name `image`, which is the whole point
+verifyEqual(testCase, obs.get('value.data_type'), 'uint8');
 names = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
     'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'image')));
 end
+
 
 function testDidV1ImageDoesNotMintADanglingCollectionEdge(testCase)
 % imageCollection has NO V_eta class and NO migrator, so carrying
@@ -862,21 +861,14 @@ end
 % ---- the subject-less did_v1 `image`: refused, because it cannot pass through --
 
 function testDidV1ImageWithNoSubjectIsRefusedLoudlyBecauseItsNameIsTaken(testCase)
-% THE ASYMMETRY WITH image_stack, WHICH IS THE WHOLE POINT OF THIS TEST.
-%
-% migrators_j/image.m delegates UNCONDITIONALLY into image_stack, whose
-% subject-less guard (image_stack.m:248-251) hands the body back unchanged. For
-% `image_stack` that is safe: it has a tombstone in V_eta `deprecated/`. For
-% `image` it is not -- the name belongs to R6's raster data_type, which is
-% ABSTRACT, and no `deprecated/image.json` exists. So the passthrough would die
-% at +did2/+schema/cache.m:672 reporting `abstractInstantiation` (a message
-% naming the schema, not the cause) when validation is on, and survive SILENTLY
-% under a wrong-meaning class name when it is off -- which is what `runJ` does,
-% so nothing in this suite would have seen it.
-%
-% The document is one NDI is entitled to write: image_schema.json declares
-% `subject_id` "mustbenotempty": 0 and the template defaults it to "". This
-% fixture is that shape -- an imageCollection edge and no subject at all.
+% INVERTED for did-schema #88. This test pinned a REFUSAL that existed because
+% V_eta spent the name `image` on an abstract raster data_type, so a subject-less
+% did_v1 image could not pass through under its own name. #88 retired that
+% data_type and restated `image` as the did_v1 TOMBSTONE in deprecated/ (#73
+% item 51), so the reason for the refusal is gone: a subject-less image now
+% passes through unchanged, exactly as a subject-less image_stack does (Jess's
+% rule: pass through, never invent a subject). The function name is kept so the
+% history is searchable; the assertion is the passthrough.
 v1 = struct();
 v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
@@ -890,32 +882,21 @@ v1.image_stack_parameters = struct('data_type', 'uint8', ...
     'dimension_scale', [0.5 0.5], 'clocktype', 'no_time', 'timestamp', 0);
 
 out = runJ(v1);
-
-% denominator first: one body went in, and it was accounted for exactly once
 verifyEqual(testCase, out.summary.total, 1);
-verifyEqual(testCase, out.summary.migrated_count + out.summary.quarantine_count, 1);
-% nothing may be emitted -- not an observation about nobody, and not a
-% passthrough wearing a name that means something else in V_eta
-verifyEmpty(testCase, out.migrated, ...
-    'a subject-less did_v1 image must emit nothing at all');
-verifyEqual(testCase, numel(out.quarantine), 1);
-% THE IDENTIFIER IS THE POINT. `abstractInstantiation` here would mean the
-% refusal was removed and the validator caught it by accident, in a bucket
-% shared with real abstract-instantiation mistakes.
-verifyEqual(testCase, out.quarantine(1).identifier, ...
-    'did2:convert:imageNoSubjectHasNoTombstone');
-verifyEqual(testCase, out.quarantine(1).class_name, 'image');
-% and the message must be diagnosable: it names the document
-verifyNotEmpty(testCase, regexp(out.quarantine(1).reason, 'img_03', 'once'), ...
-    'the refusal must name the document it refused');
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+verifyEqual(testCase, numel(out.migrated), 1, ...
+    'a subject-less did_v1 image passes through as exactly one document');
+doc = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'image');
+verifyEqual(testCase, doc.get('base.id'), 'img_03');
+verifyEqual(testCase, out.summary.unconverted_by_class.image, 1);
 end
 
+
 function testDidV1ImageWithABlankSubjectEdgeIsRefusedToo(testCase)
-% The edge PRESENT but blank -- the template's own default ("subject_id": "")
-% and the shape the invented-empty-edge pattern produces. image_stack's
-% `dependencyValue` returns '' for both "absent" and "present but empty", so
-% both must land on the same refusal; this pins that they do rather than
-% assuming it.
+% INVERTED for #88 with the test above: the blank-subject image passes through
+% to the deprecated `image` tombstone too, so "absent" and "present but empty"
+% still land on the same arm.
 v1 = struct();
 v1.document_class = struct('class_name', 'image', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base', 'image_stack_parameters'}, ...
@@ -930,42 +911,21 @@ v1.image_stack_parameters = struct('data_type', 'uint16', ...
     'dimension_scale', [1 1], 'clocktype', 'no_time', 'timestamp', 0);
 
 out = runJ(v1);
-
 verifyEqual(testCase, out.summary.total, 1);
-verifyEmpty(testCase, out.migrated);
-verifyEqual(testCase, numel(out.quarantine), 1);
-verifyEqual(testCase, out.quarantine(1).identifier, ...
-    'did2:convert:imageNoSubjectHasNoTombstone');
+verifyEqual(testCase, out.summary.quarantine_count, 0);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'image');
 end
 
-function testTheVEtaImageNameIsAbstractSoAPassthroughIsNotAnOption(testCase)
-% THE INSTRUMENT, NOT THE BEHAVIOUR. The two tests above assert what the
-% migrator does; this one asserts the FACT that makes doing it necessary, so
-% that the day the fact changes, the guard is re-examined instead of quietly
-% outliving its reason.
-%
-% Two halves, and the second is what keeps the first from being vacuous:
-%   (a) V_eta `image` is ABSTRACT -- so a passthrough under that name cannot
-%       validate, whatever fields it carries.
-%   (b) V_eta `image_stack` is CONCRETE -- the tombstone that makes ITS
-%       passthrough legal. Without (b), `classIsAbstract` returning true for
-%       everything (a broken reader, a cache that resolved nothing) would pass
-%       (a) and prove nothing.
-%
-% If someone mints a v1-shaped tombstone for `image` under a different name, or
-% R6 stops spending the name on the raster data_type, this test goes red and the
-% refusal in migrators_j/image.m can become a passthrough.
-% NO ENV MUTATION HERE. The quick gate exports DID_SCHEMA_PATH to the assembled
-% V_eta set (stable + draft + deprecated) before MATLAB starts, so the singleton
-% already resolves both classes. Reading it is enough; installing a path would
-% change process state for every other test in this file, all of which run with
-% 'Validate', false and touch no cache at all.
-cache = did2.schema.cache.shared();
 
-% DENOMINATOR: both classes must RESOLVE, or "not abstract" and "not there"
-% would read the same. getClass RAISES for a missing file, so this is a
-% try/catch and a SKIP -- a run against a V_delta-only schema path must say it
-% did not look, never that it looked and found nothing wrong.
+function testTheVEtaImageNameIsAbstractSoAPassthroughIsNotAnOption(testCase)
+% INVERTED for did-schema #88, and kept as THE INSTRUMENT for the two tests
+% above: their passthrough is legal only because `image` now resolves to a
+% CONCRETE did_v1 tombstone (deprecated/, #73 item 51). If `image` ever becomes
+% abstract again, or the tombstone leaves the validation set, this goes red and
+% the passthrough has to be re-examined. `image_stack` is checked beside it so
+% "concrete" is not read off a reader that answers false for everything.
+cache = did2.schema.cache.shared();
 try
     imgSchema   = cache.getClass('image');
     stackSchema = cache.getClass('image_stack');
@@ -975,28 +935,12 @@ catch err
          err.message ') -- this test measured nothing.']);
     return;
 end
-verifyTrue(testCase, isstruct(imgSchema) && isfield(imgSchema, 'document_class'), ...
-    'the V_eta `image` schema has no document_class header');
-verifyTrue(testCase, isstruct(stackSchema) && isfield(stackSchema, 'document_class'), ...
-    'the V_eta `image_stack` tombstone has no document_class header');
-
-% NOT `cache.classIsAbstract(...)`. That method is real and does exactly this,
-% and it is in the `methods (Access = private)` block at
-% +did2/+schema/cache.m:1434 -- calling it from here raises
-% MATLAB:class:MethodRestricted (CI run 31517651627). The header field is
-% public data on a struct getClass already returns, so read that; `schemaSaysAbstract`
-% below mirrors the private method's own tolerance for logical-or-numeric rather
-% than assuming jsondecode's shape.
-verifyTrue(testCase, schemaSaysAbstract(imgSchema), ...
-    ['V_eta `image` is no longer abstract. A did_v1 `image` could now pass ' ...
-     'through under its own name -- re-examine the refusal in ' ...
-     '+migrators_j/image.m.']);
-verifyFalse(testCase, schemaSaysAbstract(stackSchema), ...
-    ['V_eta `image_stack` must stay CONCRETE: it is the tombstone the ' ...
-     'subject-less image_stack passthrough validates against. (This half also ' ...
-     'proves classIsAbstract can return false, so the assertion above is not ' ...
-     'vacuous.)']);
+verifyFalse(testCase, schemaSaysAbstract(imgSchema), ...
+    'V_eta `image` must be the CONCRETE did_v1 tombstone the passthrough validates against');
+verifyEqual(testCase, imgSchema.document_class.maturity_level, 'deprecated');
+verifyFalse(testCase, schemaSaysAbstract(stackSchema));
 end
+
 
 function testImageStackWithNoSubjectPassesThroughInsteadOfObservingNobody(testCase)
 % THE 4,563. NDI's own writer leaves subject_id empty on three of its seven
@@ -1024,7 +968,7 @@ out = runJ(v1);
 
 verifyEqual(testCase, numel(out.migrated), 1, ...
     'a subject-less image_stack must pass through as exactly one document');
-verifyFalse(testCase, isfield(out.summary.by_class, 'image_observation'), ...
+verifyEqual(testCase, nLeafJ(out.migrated, 'intensity_observation'), 0, ...
     'must NOT emit an observation with no subject');
 % NOTE THE ACCESSOR. v1_to_v2 returns did2.document OBJECTS, read with
 % .get('dotted.path') -- NOT structs. The first draft of these two tests used
@@ -1057,6 +1001,12 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'image_st
 end
 
 function testImageStackBecomesBodyBackedObservation(testCase)
+% UPDATED for did-schema #88: an image stack folds to an intensity_observation
+% (variable 'image intensity'; the v1 label rides on statement.notes; the
+% acquisition timestamp is a whole-statement condition) + a sampled_body whose
+% data.keys carry one key per dimension in dimension_order, owned by the
+% observation (owner_id), datum_order 'F' (a MATLAB array, column-major) + the
+% session anchor.
 v1 = struct();
 v1.document_class = struct('class_name', 'image_stack', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -1069,66 +1019,35 @@ v1.image_stack_parameters = struct('data_type', 'uint16', ...
     'dimension_order', 'YXCZT', 'dimension_size', [512 512 1 1 10], ...
     'dimension_scale', [0.5 0.5 1 1 1], 'clocktype', 'dev_local_time', 'timestamp', 0);
 out = runJ(v1);
-% 1 -> 3: image_observation + sampled_body + anchor
 verifyEqual(testCase, numel(out.migrated), 3);
-verifyTrue(testCase, isfield(out.summary.by_class, 'image_observation'));
-verifyTrue(testCase, isfield(out.summary.by_class, 'sampled_body'));
-verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference'));
+verifyEqual(testCase, nLeafJ(out.migrated, 'intensity_observation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'sampled_body'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 1);
 obs = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
-% the source `label` is NOT carried -- it is the definition of the modality
-% ontology term (on variable), reconstructable as a projection, so base.name is
-% a short generic name rather than the prose label.
-verifyEqual(testCase, obs.get('base.name'), 'migrated_image');
-% the value lives in the body: storage_mode: body on the statement
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'intensity_observation');
+verifyEqual(testCase, obs.get('statement.variable').name, 'image intensity');
+verifyEqual(testCase, obs.get('statement.notes'), 'a two-photon stack');
 verifyEqual(testCase, depVal(obs, 'entity_id'), 'subj_007');
-% the raster CELL: image now matches the single-`value` convention every other
-% data_type follows -- ONE payload slot holding the pixels plus the descriptors
-% needed to read them (dtype is not recoverable from a bare matrix, R6 dec. 4).
-imageCell = obs.get('image.value');
-verifyEqual(testCase, imageCell.dtype, 'uint16');
-verifyEmpty(testCase, imageCell.pixels);          % storage_mode:body -> pixels in the body
-verifyEqual(testCase, numel(imageCell.axes), 5);  % YXCZT, the full N-D calibration
-% UPDATED 2026-08-14 for the signed axis entry (DID-schema TEAM-SIGN-OFF
-% [data_body] + AMENDMENT 1, addendum sec.5). The old shape
-% {name, length, spacing, unit} no longer exists.
-%
-% NOT AN INVERSION -- every property below is the SAME property under a new
-% field name, which is why the values are unchanged: five dimensions, the Y
-% label, 512 samples, 0.5 spacing.
-%
-% Read with `axes(1).` rather than a chained `axes.variable.name`: `axes` is a
-% 1x5 STRUCT ARRAY, so `axes.variable` is a comma-separated list and MATLAB
-% refuses to index into one. Indexing first yields a scalar, so the chain is
-% then legal.
-verifyEqual(testCase, imageCell.axes(1).variable.name, 'Y');   % was `.name`
-verifyEqual(testCase, imageCell.axes(1).n, 512);               % was `.length`
-verifyEqual(testCase, imageCell.axes(1).spacing.value, 0.5);   % was `.spacing`
-% `regular` and `origin` are NEW and are the point of the fold: the old shape
-% declared a `spacing` with no way to say whether spacing was meaningful, and no
-% origin at all. A calibrated axis is anchored at the raster's own corner.
-verifyTrue(testCase, imageCell.axes(1).regular);
-verifyEqual(testCase, imageCell.axes(1).origin.value, 0);
-% EMPTY because THIS fixture sets `dimension_scale` and no
-% `dimension_scale_units` -- so a real stack can carry a CALIBRATED axis whose
-% spacing has no stated unit, 0.5 of something. Fixtures that DO set it are
-% covered by testImageStackScaleUnitsAreSplitPerAxis.
-verifyEqual(testCase, imageCell.axes(1).source_unit, '');
-% C/Z/T carry scale 1 here and land on the CALIBRATED arm, not the index arm,
-% because v1 recorded a scale for them. Treating a recorded 1 as filler would be
-% a guess about intent the data does not support.
-verifyEqual(testCase, imageCell.axes(3).spacing.value, 1);
-verifyEqual(testCase, imageCell.axes(3).origin.value, 0);
-% frames in the sampled_body; cadence n = T*Z = 10*1
+verifyEqual(testCase, obs.get('value.data_type'), 'uint16');
+verifyTrue(testCase, logical(obs.get('value.data_body')));
 sb = out.migrated{2};
 verifyEqual(testCase, did2.unittest.helpers.leafName(sb), 'sampled_body');
-% the frame ORDINAL axis replaces sample_time (signed sec.2): n = T*Z = 10*1.
-verifyEqual(testCase, sb.get('sampled_body.axes').n, 10);
-verifyEqual(testCase, sb.get('sampled_body.axes').variable.name, 'frame');
-% the body belongs to the image_observation statement
-verifyEqual(testCase, depVal(sb, 'statement'), obs.get('base.id'));
+verifyEqual(testCase, depVal(sb, 'owner_id'), obs.get('base.id'));
+verifyEqual(testCase, sb.get('data.datum_order'), 'F');
+keys = sb.get('data.keys');
+verifyEqual(testCase, numel(keys), 5);               % YXCZT
+verifyEqual(testCase, keys(1).variable.name, 'y');
+verifyEqual(testCase, keys(1).n, 512);
+verifyTrue(testCase, logical(keys(1).regular));
+verifyEqual(testCase, keys(1).spacing.value, 0.5);
+verifyEqual(testCase, keys(1).origin.value, 0);
+% C/Z/T carry a recorded scale of 1, so they are calibrated, not index axes
+verifyEqual(testCase, keys(3).spacing.value, 1);
+verifyEqual(testCase, keys(3).origin.value, 0);
+verifyEqual(testCase, keys(5).variable.name, 't');
+verifyEqual(testCase, keys(5).n, 10);
 end
+
 
 % ---- image_stack: the `document_id` edge on the FOLD arm ---------------
 %
@@ -1154,55 +1073,43 @@ end
 % 0 orphans.
 
 function testImageStackScaleUnitsAreSplitPerAxis(testCase)
-%TESTIMAGESTACKSCALEUNITSARESPLITPERAXIS v1's unit list is per-axis, not shared.
-%
-%   THIS PINS A DEFECT THE FOLD FIXED, not just a new field name. v1 writes
-%   `dimension_scale_units` comma-separated and positionally aligned with
-%   `dimension_order` -- this fixture is NDI's own haley writer, 'YXT' against
-%   'micrometer,micrometer,second'. The old `imageAxes` read the field once and
-%   assigned the WHOLE STRING to every axis's `unit`, so the time axis claimed to
-%   be measured in micrometres and seconds and micrometres at once.
-%
-%   Nothing caught it because the old assertions stopped at
-%   `name`/`length`/`spacing` -- the one field that was wrong was the one field
-%   no test read.
+% v1's `dimension_scale_units` is per-axis and positionally aligned with
+% `dimension_order`. UPDATED for #88: each key on the sampled_body carries its
+% own source_unit, written with the registry label ('micrometer' is the
+% registry's om:micrometre 'micrometre'; 'second' is om:second-Time).
 out = runJ(behaviourImageStack());
-obs = out.migrated{1};
-axes = obs.get('image.value').axes;
-verifyEqual(testCase, numel(axes), 3, 'dimension_order YXT is three axes');
-verifyEqual(testCase, axes(1).variable.name, 'Y');
-verifyEqual(testCase, axes(3).variable.name, 'T');
-% THE POINT: one unit each, in order -- not the joined string three times.
-verifyEqual(testCase, axes(1).source_unit, 'micrometer');
-verifyEqual(testCase, axes(2).source_unit, 'micrometer');
-verifyEqual(testCase, axes(3).source_unit, 'second');
-% and the scales stay paired with their own axis
-verifyEqual(testCase, axes(1).spacing.value, 1.5);
-verifyEqual(testCase, axes(3).spacing.value, 0.2);
+sb = firstOfClassJ(out.migrated, 'sampled_body');
+keys = sb.get('data.keys');
+verifyEqual(testCase, numel(keys), 3, 'dimension_order YXT is three keys');
+verifyEqual(testCase, keys(1).variable.name, 'y');
+verifyEqual(testCase, keys(3).variable.name, 't');
+verifyEqual(testCase, keys(1).source_unit.name, 'micrometre');
+verifyEqual(testCase, keys(2).source_unit.name, 'micrometre');
+verifyEqual(testCase, keys(3).source_unit.name, 'second');
+verifyEqual(testCase, keys(1).spacing.value, 1.5);
+verifyEqual(testCase, keys(3).spacing.value, 0.2);
 end
 
+
 function testImageStackAxisWithNoRecordedScaleIsAnIndexAxis(testCase)
-%TESTIMAGESTACKAXISWITHNORECORDEDSCALEISANINDEXAXIS 0 spacing is not a spacing.
-%
-%   The old shape emitted `spacing: 0` when v1 recorded no resolution, which says
-%   every sample sits at the same position. The signed entry can say what is
-%   actually true -- an axis indexed 1,2,3... with no physical unit -- which is
-%   the convention jNgridBody uses for MATLAB's default index vector.
+% A dimension with no recorded scale is an index key: regular, origin 1,
+% spacing 1, no unit. UPDATED for #88: read off the sampled_body's data.keys.
 v1 = behaviourImageStack();
 v1.image_stack_parameters.dimension_scale = [];        % nothing recorded
 v1.image_stack_parameters.dimension_scale_units = '';
 out = runJ(v1);
-axes = out.migrated{1}.get('image.value').axes;
-verifyEqual(testCase, numel(axes), 3);
+keys = firstOfClassJ(out.migrated, 'sampled_body').get('data.keys');
+verifyEqual(testCase, numel(keys), 3);
 for k = 1:3
-    verifyTrue(testCase, axes(k).regular);
-    verifyEqual(testCase, axes(k).spacing.value, 1);
-    verifyEqual(testCase, axes(k).origin.value, 1, ...
-        'an index axis starts at 1, not at 0');
-    verifyEqual(testCase, axes(k).source_unit, '', ...
+    verifyTrue(testCase, logical(keys(k).regular));
+    verifyEqual(testCase, keys(k).spacing.value, 1);
+    verifyEqual(testCase, keys(k).origin.value, 1, 'an index axis starts at 1, not at 0');
+    verifyTrue(testCase, ~isfield(keys(k), 'source_unit') || isempty(keys(k).source_unit) ...
+        || (isstruct(keys(k).source_unit) && isempty(keys(k).source_unit.name)), ...
         'an index axis carries no unit');
 end
 end
+
 
 function v1 = behaviourImageStack()
 %BEHAVIOURIMAGESTACK The JH C. elegans behaviour-plate imageStack, as NDI's own
@@ -1328,106 +1235,43 @@ otr.ontology_table_row = struct('variable_names', strjoin(keys, ','), ...
 end
 
 function testImageStackFoldCarriesDocumentIdIntoTheOntologyTableRowSlot(testCase)
-%TESTIMAGESTACKFOLDCARRIESDOCUMENTIDINTOTHEONTOLOGYTABLEROWSLOT The carry.
-%
-%   THIS IS AN INVERSION, NOT A NEW TEST. It was
-%   testImageStackFoldDropsDocumentIdForWantOfASlot, which asserted that the
-%   fold arm loses the source `document_id` -- true when written, and written
-%   from the pre-slot premise that there was nowhere to put the edge. The slot
-%   landed (did-schema 6cf31f2: image_observation gains `ontology_table_row_id`,
-%   mustBeNonEmpty false, must_refer_to_document_class `ontology_table_row`),
-%   so the test that pinned the loss had to be turned round rather than
-%   deleted. A test written from the same premise as the code cannot catch the
-%   code; three tests in this repo have already had to be inverted for
-%   asserting a bug.
-%
-%   THE ASSERTION IS THE WHOLE EDGE SET, NOT ONE LOOKUP. `verifyEqual(depVal(
-%   ..., 'ontology_table_row_id'), 'otr_plate_1')` alone would pass if depVal
-%   were broken in a way that happened to return that string, and would say
-%   nothing about what else got emitted. So the NAMES are read off the document
-%   and compared as a set, which fails on a dropped edge, on an invented extra
-%   edge (the failure mode behind the 76,766 hollow ontology_table_row
-%   statements), and on a renamed one.
+% INVERTED for did-schema #88, which removed image_observation's
+% `ontology_table_row_id` slot (#73 item 42) and gives an observation no edge
+% for the ontologyTableRow an image belongs to. The fold therefore does NOT
+% carry the v1 `document_id`; resolving the image to its plate row is an NDI
+% second-pass need (listed in the port report). The whole edge set is still
+% asserted, so a dropped, invented or renamed edge fails here.
 out = runJ(behaviourImageStack());
-
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3, ...
-    'the fold arm is 1 -> image_observation + sampled_body + anchor');
+    'the fold arm is 1 -> intensity_observation + sampled_body + anchor');
 obs = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
-
-% THE EDGE SET, as a set. DENOMINATOR: 3 edges on the observation.
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'intensity_observation');
 verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), ...
-    {'ontology_table_row_id', 'subject_id', 'time_reference_1'}, ...
-    'the fold arm emits exactly subject_id + the anchor + the carried row');
+    {'entity_id', 'time_reference_id'});
 verifyEqual(testCase, depVal(obs, 'entity_id'), 'subjgrp_7');
-verifyNotEmpty(testCase, depVal(obs, 'time_reference_id'));
-% THE CARRY: the source `document_id` value, under the slot's name.
-verifyEqual(testCase, depVal(obs, 'ontology_table_row_id'), 'otr_plate_1', ...
-    'the plate row the source document_id named must survive the fold');
-% ...and NOT under its did_v1 name. The slot is `ontology_table_row_id`; an
-% edge still called `document_id` would be undeclared on image_observation,
-% and +did2/+schema/cache.m has no undeclared-dependency check to catch it.
-verifyFalse(testCase, any(strcmp(depNamesOf(obs), 'document_id')), ...
-    'the did_v1 edge name must not survive onto the V_eta observation');
-% The BODY and the ANCHOR are not given the edge -- the observation is the
-% handle, and duplicating a reference is how one fact becomes two that can
-% disagree.
-for k = 2:numel(out.migrated)
-    verifyFalse(testCase, any(strcmp(depNamesOf(out.migrated{k}), ...
-        'ontology_table_row_id')), ...
-        'only the observation carries the row edge');
+for k = 1:numel(out.migrated)
+    verifyFalse(testCase, any(strcmp(depNamesOf(out.migrated{k}), 'document_id')), ...
+        'the did_v1 edge name must not survive onto a V_eta document');
 end
-% the fold itself is unaffected by the extra source edge
 verifyEqual(testCase, obs.get('base.id'), 'is_beh_01');
-verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
-% and the file rides to the body -- asserted because every other fold-arm
-% fixture declares no files at all, the same blind spot that let image_stack's
-% tombstone declare `imagestack_file` while NDI writes `imageStack`
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{2}), 'sampled_body');
 sbStruct = out.migrated{2}.toStruct();
-verifyTrue(testCase, isfield(sbStruct, 'files'), ...
-    'the carried bytes must land on the sampled_body');
+verifyTrue(testCase, isfield(sbStruct, 'files'), 'the carried bytes must land on the sampled_body');
 verifyEqual(testCase, sbStruct.files.file_list{1}, 'imageStack', ...
-    'and under NDI''s own spelling -- universalRenames.m:308 skips file keys');
+    'and under NDI''s own spelling -- universalRenames skips file keys');
 obsStruct = obs.toStruct();
 verifyFalse(testCase, isfield(obsStruct, 'files'), ...
     'the observation is the handle; the bytes belong to the body');
 end
 
+
 function testImageStackDocumentIdReferentSurvivesTheBatch(testCase)
-%TESTIMAGESTACKDOCUMENTIDREFERENTSURVIVESTHEBATCH The carried edge resolves.
-%
-%   REWRITTEN WITH THE CARRY. This test used to prove a COUNTERFACTUAL -- the
-%   edge was dropped, so it could never appear in an orphan report, and the
-%   only way to ask "would it have resolved?" was to append a synthetic probe
-%   document carrying it. Now the migrator emits the edge itself, so the real
-%   thing is examined by the real instrument and the probe is gone.
-%
-%   The referent is an `ontologyTableRow`. Since ef58c15 (2026-07-29, nineteen
-%   days after the migrator header was written) every path of
-%   +migrators_j/ontology_table_row.m keeps the source `base.id` on exactly one
-%   emitted body, and a real row -- which never declares `subject_id`, because
-%   tableDocMaker.m:231 sets only `document_id` -- takes the guarded
-%   passthrough and keeps it trivially.
-%
-%   THE CONTROL ARM IS NOT OPTIONAL, and it is the same batch minus the row.
-%   references.m:90 SKIPS empty edges, so an observation whose edge failed to
-%   serialise -- or was quietly emitted blank -- would report 0 orphans and
-%   look exactly like proof. Dropping the referent must therefore produce
-%   EXACTLY ONE orphan naming it; without that half, the zero above means
-%   nothing.
-%
-%   THAT CONTROL IS ALSO THE RISK, STATED AS A TEST. A discovery-mode batch
-%   need not contain the referent, and then this edge orphans -- jSessionAnchor's
-%   note about that is CORRECT and is not being overridden. The first half
-%   asserts the FULL-batch case, which is what a full migration is; the second
-%   half is what a subset looks like.
-%
-%   THE BATCH IS SELF-CONTAINED ON PURPOSE -- the image, its plate row AND the
-%   subject group its `subject_id` names. A batch missing the group would
-%   orphan for a reason that has nothing to do with this question, and reading
-%   `orphan_count` past that would be guesswork.
+% UPDATED for did-schema #88 (see the test above: the plate-row edge is not
+% carried). What still holds, and is asserted: in a self-contained batch (image,
+% plate row, subject group) the plate row survives on exactly one document,
+% passes through, and nothing orphans; and without the row nothing orphans
+% either, because no emitted edge names it.
 group = struct();
 group.document_class = struct('class_name', 'subject_group', ...
     'class_version', '1.0.0', ...
@@ -1438,101 +1282,53 @@ group.base = struct('id', 'subjgrp_7', 'session_id', 'sess_celegans', ...
 group.subject_group = struct('group_name', 'plate_worms', 'description', '');
 
 out = runJ({behaviourImageStack(), behaviourPlateRow(), group});
-
 verifyEmpty(testCase, out.quarantine);
-% DENOMINATOR: 3 sources -> 5 documents (image fold 1->3, row passthrough 1->1,
-% group 1->1). Stated so a change in the fan-out is visible here rather than
-% quietly shifting what the counts below are counting.
-verifyEqual(testCase, numel(out.migrated), 5);
-
-% the row passed through -- guarded, unmapped, id intact
+verifyEqual(testCase, numel(out.migrated), 5);   % image 1->3, row 1->1, group 1->1
 ids = cellfun(@(d) d.get('base.id'), out.migrated, 'UniformOutput', false);
-verifyEqual(testCase, sum(strcmp(ids, 'otr_plate_1')), 1, ...
-    'the referent id must survive migration on exactly one document');
+verifyEqual(testCase, sum(strcmp(ids, 'otr_plate_1')), 1);
 classes = cellfun(@(d) did2.unittest.helpers.leafName(d), out.migrated, ...
     'UniformOutput', false);
-verifyTrue(testCase, any(strcmp(classes, 'ontology_table_row')), ...
-    'a real ontologyTableRow has no subject_id, so it passes through');
-
-% NON-VACUITY: the observation really is carrying the edge that is about to be
-% graded. A zero orphan count over a batch that emitted no such edge is not a
-% result, it is an empty denominator.
-obs = out.migrated{find(strcmp(classes, 'intensity_observation'), 1)};
-verifyEqual(testCase, depVal(obs, 'ontology_table_row_id'), 'otr_plate_1');
-
+verifyTrue(testCase, any(strcmp(classes, 'ontology_table_row')));
 rep = did2.validate.references(out.migrated, ...
     'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
-verifyGreaterThan(testCase, rep.edges_examined, 0, ...
-    'DENOMINATOR: references must have examined edges at all');
-verifyEqual(testCase, rep.orphan_count, 0, ...
-    'the carried ontology_table_row_id resolves in a full batch');
+verifyGreaterThan(testCase, rep.edges_examined, 0);
+verifyEqual(testCase, rep.orphan_count, 0);
 
-% CONTROL: the same instrument, the same image, the referent REMOVED. This is
-% both the discrimination check and the discovery-mode case.
 outNoRow = runJ({behaviourImageStack(), group});
 repMissing = did2.validate.references(outNoRow.migrated, ...
     'KnownIds', did2.unittest.helpers.sessionKnownIds(outNoRow.migrated));
-verifyEqual(testCase, repMissing.orphan_count, 1, ...
-    'the control proves the check discriminates rather than passing everything');
-verifyEqual(testCase, repMissing.orphans(1).edge_document_id, 'otr_plate_1');
+verifyGreaterThan(testCase, repMissing.edges_examined, 0);
+verifyEqual(testCase, repMissing.orphan_count, 0, ...
+    'no emitted edge names the plate row on #88, so its absence orphans nothing');
 end
+
 
 function testImageStackBabuShapeOmitsTheSlotRatherThanEmittingItBlank(testCase)
-%TESTIMAGESTACKBABUSHAPEOMITSTHESLOTRATHERTHANEMITTINGITBLANK The other half.
-%
-%   The carry has to be conditional, so proving it fires is only half the
-%   gate: the population that has no `document_id` at all must come out with
-%   NO ENTRY, not with an entry whose value is ''. Those two look identical to
-%   depVal and to references.m (which skips empty edges, references.m:90), and
-%   the blank one is the invented-empty-edge pattern -- 7,233 documents in the
-%   last census, each validating clean while naming nobody.
-%
-%   The fixture is +setup/+conv/+babu/import.m:474, the eighth
-%   `ndi.document('imageStack')` site and the one the migrator header did not
-%   know about: it sets `subject_id` (import.m:478-479) and no `document_id`
-%   anywhere in the loop, so it reaches the FOLD arm with nothing to carry.
+% A babu imageStack (subject, no document_id) folds like any other. UPDATED for
+% #88: leaf intensity_observation; edges exactly entity_id + time_reference_id.
 out = runJ(babuImageStack());
-
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 3, ...
-    'a babu imageStack has a subject, so it folds like any other');
+verifyEqual(testCase, numel(out.migrated), 3);
 obs = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
-
-% NON-VACUITY FIRST: the fold happened and the edges that SHOULD be there are.
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'intensity_observation');
 verifyEqual(testCase, depVal(obs, 'entity_id'), 'subjgrp_babu_3');
 verifyNotEmpty(testCase, depVal(obs, 'time_reference_id'));
+verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), ...
+    {'entity_id', 'time_reference_id'});
+end
 
-% THE ASSERTION: the slot is ABSENT, not present-and-empty. Read by NAME --
-% depVal cannot tell those apart and would pass either way.
-verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), {'subject_id', 'time_reference_1'}, ...
-    'no document_id on the source means no ontology_table_row_id on the fold');
-for k = 1:numel(out.migrated)
-    verifyFalse(testCase, any(strcmp(depNamesOf(out.migrated{k}), ...
-        'ontology_table_row_id')), ...
-        'a blank edge is worse than no edge -- omit the entry entirely');
-end
-end
 
 function testImageStackBlankDocumentIdIsOmittedNotCarriedThrough(testCase)
-%TESTIMAGESTACKBLANKDOCUMENTIDISOMITTEDNOTCARRIEDTHROUGH The third shape.
-%
-%   Absent and present-but-blank are different inputs and must reach the same
-%   output. This is the shape the NDI templates actually ship (the
-%   ontologyTableRow template carries `depends_on: [{"name":"document_id",
-%   "value":""}]`), so an imageStack could plausibly arrive with the key
-%   declared and unset -- and copying that through would recreate, on a brand
-%   new edge, the exact pattern the census was built to find.
+% An empty source document_id must not become an empty edge. UPDATED for #88.
 v1 = babuImageStack();
 v1.depends_on = struct('name', {'subject_id', 'document_id'}, ...
                        'value', {'subjgrp_babu_3', ''});
-
 out = runJ(v1);
 obs = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
+verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'intensity_observation');
 verifyEqual(testCase, depVal(obs, 'entity_id'), 'subjgrp_babu_3');
-verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), {'subject_id', 'time_reference_1'}, ...
-    'an empty source document_id must not become an empty V_eta edge');
+verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), ...
+    {'entity_id', 'time_reference_id'});
 end
 
 % ============ ontology_table_row per-table map: C. elegans encounter ====
@@ -1574,7 +1370,9 @@ end
 function d = firstOfClassJ(migrated, className)
 d = [];
 for k = 1:numel(migrated)
-    if strcmp(migrated{k}.get('document_class.class_name'), className)
+    % #88: a class name OR a leaf name (`term_observation`, `organism`, ...)
+    if strcmp(migrated{k}.get('document_class.class_name'), className) ...
+            || strcmp(did2.unittest.helpers.leafName(migrated{k}), className)
         d = migrated{k}; return;
     end
 end
@@ -1584,19 +1382,18 @@ function testEncounterTableMap(testCase)
 out = runJ(encounterRow());
 % 8 worm observations + 1 relation + 1 shared time_reference
 verifyEqual(testCase, numel(out.migrated), 10);
-bc = out.summary.by_class;
-verifyTrue(testCase, isfield(bc, 'velocity_observation'));
-verifyTrue(testCase, isfield(bc, 'acceleration_observation'));
-verifyTrue(testCase, isfield(bc, 'score_observation'));
-verifyTrue(testCase, isfield(bc, 'concentration_observation'));
-verifyTrue(testCase, isfield(bc, 'directed_relation'));
-verifyTrue(testCase, isfield(bc, 'session_bounded_reference'));
+m = out.migrated;   % #88: by_class counts raw classes; count leaves
+verifyEqual(testCase, nLeafJ(m, 'velocity_observation'), 3);
+verifyEqual(testCase, nLeafJ(m, 'acceleration_observation'), 1);
+verifyEqual(testCase, nLeafJ(m, 'score_observation'), 2);
+verifyEqual(testCase, nLeafJ(m, 'concentration_observation'), 2);
+verifyEqual(testCase, nLeafJ(m, 'directed_relation'), 1);
+verifyEqual(testCase, nLeafJ(m, 'relative_time_reference'), 1);   % #88: the bounded session reference
 % onset/offset are the window (not observations); encounter # is derived (dropped)
-verifyFalse(testCase, isfield(bc, 'time_observation'));
-verifyFalse(testCase, isfield(bc, 'count_observation'));
-verifyEqual(testCase, bc.velocity_observation, 3);
+verifyEqual(testCase, nLeafJ(m, 'time_observation'), 0);
+verifyEqual(testCase, nLeafJ(m, 'count_observation'), 0);
 % a measurement is about the worm and shares the encounter window
-tref = firstOfClassJ(out.migrated, 'session_bounded_reference');
+tref = firstOfClassJ(out.migrated, 'relative_time_reference');
 vel = firstOfClassJ(out.migrated, 'velocity_observation');
 verifyEqual(testCase, depVal(vel, 'entity_id'), 'worm_1');
 verifyEqual(testCase, depVal(vel, 'time_reference_id'), tref.get('base.id'));
@@ -1607,7 +1404,7 @@ verifyEqual(testCase, depVal(rel, 'parent_id'), 'patch_1');
 verifyEqual(testCase, rel.get('directed_relation.relation').name, 'encountered');
 verifyEqual(testCase, depVal(rel, 'time_reference_id'), tref.get('base.id'));
 % the window carries onset/offset
-verifyEqual(testCase, tref.get('session_bounded_reference.start').source_value, 1249.72);
+verifyEqual(testCase, tref.get('relative_time_reference.value').start.seconds, 1249.72);
 end
 
 % ==== ontology_table_row per-table map: C. elegans bacterial patch ======
@@ -1643,21 +1440,20 @@ out = runJ(patchGeometryRow());
 % (no longer dropped -- see testPatchGeometryCarriesUnenumeratedColumns)
 % + 1 shared session anchor
 verifyEqual(testCase, numel(out.migrated), 9);
-bc = out.summary.by_class;
+m = out.migrated;   % #88: the patch is an entity of type culture; leaves counted
 % the patch is declared as a bare subject
-verifyTrue(testCase, isfield(bc, 'subject'));
-verifyEqual(testCase, bc.subject, 1);
+verifyEqual(testCase, nLeafJ(m, 'culture'), 1);
 % geometry -> observations (OD600, volume, radius + centre X/Y, circularity)
-verifyEqual(testCase, bc.concentration_observation, 1);
-verifyEqual(testCase, bc.volume_observation, 1);
-verifyEqual(testCase, bc.length_observation, 3);   % radius + centre X + centre Y
-verifyEqual(testCase, bc.score_observation, 1);
-verifyTrue(testCase, isfield(bc, 'session_relative_reference'));
+verifyEqual(testCase, nLeafJ(m, 'concentration_observation'), 1);
+verifyEqual(testCase, nLeafJ(m, 'volume_observation'), 1);
+verifyEqual(testCase, nLeafJ(m, 'length_observation'), 3);   % radius + centre X + centre Y
+verifyEqual(testCase, nLeafJ(m, 'score_observation'), 1);
+verifyEqual(testCase, nLeafJ(m, 'relative_time_reference'), 1);
 % the patch's OWN identifier is its identity, not a measurement
-verifyFalse(testCase, isfield(bc, 'count_observation'));
+verifyEqual(testCase, nLeafJ(m, 'count_observation'), 0);
 % the minted subject PRESERVES the source document id (the encounter table's
 % directed_relation parent points at it) and names the patch
-sub = firstOfClassJ(out.migrated, 'subject');
+sub = firstOfClassJ(out.migrated, 'culture');
 verifyEqual(testCase, sub.get('base.id'), 'otr_patch');
 % THIS ASSERTION WAS INVERTED 2026-08-11, not updated. It read '0017' -- the
 % bare `patchID` -- which is precisely what the team directive of that day
@@ -1670,7 +1466,7 @@ verifyEqual(testCase, sub.get('entity.local_identifier'), ...
     ['the patch handle must carry its plate; the experiment number is not a ' ...
      'column of this table and is added by did2.convert.resolveLawnPlateSubjects']);
 % every geometry observation is about that patch and shares the anchor
-anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
+anchor = firstOfClassJ(out.migrated, 'relative_time_reference');
 od = firstOfClassJ(out.migrated, 'concentration_observation');
 verifyEqual(testCase, depVal(od, 'entity_id'), 'otr_patch');
 verifyEqual(testCase, depVal(od, 'time_reference_id'), anchor.get('base.id'));
@@ -1692,7 +1488,7 @@ function testAPatchSubjectIsNeverLabelledJustThePatchNumber(testCase)
 %   gone, the OLD code returned the bare `patchID`. The handle must fall back to
 %   the document id instead -- unique by construction -- and never to the number.
 out = runJ(patchGeometryRow());
-sub = firstOfClassJ(out.migrated, 'subject');
+sub = firstOfClassJ(out.migrated, 'culture');   % #88: entity of type culture
 handle = sub.get('entity.local_identifier');
 verifyNotEmpty(testCase, handle, 'local_identifier is REQUIRED on a subject');
 verifyEmpty(testCase, regexp(handle, '^\d+$', 'once'), ...
@@ -1701,7 +1497,7 @@ verifyEqual(testCase, handle, 'plate/0061/patch/0017');
 
 noPlate = dropColumnJ(patchGeometryRow(), 'BacterialPlateIdentifier');
 out2 = runJ(noPlate);
-sub2 = firstOfClassJ(out2.migrated, 'subject');
+sub2 = firstOfClassJ(out2.migrated, 'culture');
 handle2 = sub2.get('entity.local_identifier');
 % DENOMINATOR FIRST: the map must still have dispatched, or this asserts nothing
 % about the handle at all -- a row that fell through to the passthrough would
@@ -1756,14 +1552,12 @@ otr.ontology_table_row.ontology_nodes = [ ...
 otr.ontology_table_row.data.BacterialPatchThickness = 12.5;
 
 out = runJ(otr);
-bc = out.summary.by_class;
 % dimensionless numeric with no recognised dimension -> intensity (J §7, D8);
 % the point of the assertion is that it EXISTS, not which leaf it picked
-verifyTrue(testCase, isfield(bc, 'intensity_observation'), ...
+verifyEqual(testCase, nLeafJ(out.migrated, 'intensity_observation'), 1, ...
     'an unenumerated column was dropped by the patch geometry map');
-verifyEqual(testCase, bc.intensity_observation, 1);
 % and it is about the patch, on the same anchor as the enumerated measures
-anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
+anchor = firstOfClassJ(out.migrated, 'relative_time_reference');
 extra = firstOfClassJ(out.migrated, 'intensity_observation');
 verifyEqual(testCase, depVal(extra, 'entity_id'), 'otr_patch');
 verifyEqual(testCase, depVal(extra, 'time_reference_id'), anchor.get('base.id'));
@@ -1852,11 +1646,13 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'ontology_table_row');
 verifyEqual(testCase, d.get('base.id'), 'otr_cultivation');
 bc = out.summary.by_class;
 % NOT a patch: no minted subject, and none of the geometry-map outputs
-verifyFalse(testCase, isfield(bc, 'subject'), ...
+% #88: by_class counts raw classes, so the leaves are counted directly
+verifyEqual(testCase, nLeafJ(out.migrated, 'culture'), 0, ...
     'a cultivation plate was minted as a bacterial-patch subject');
-verifyFalse(testCase, isfield(bc, 'concentration_observation'));
-verifyFalse(testCase, isfield(bc, 'volume_observation'));
-verifyFalse(testCase, isfield(bc, 'session_relative_reference'));
+verifyEqual(testCase, nLeafJ(out.migrated, 'concentration_observation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'volume_observation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 0);
+verifyFalse(testCase, isfield(bc, 'entity'));
 % and nothing was quarantined to achieve that
 verifyEmpty(testCase, out.quarantine);
 end
@@ -1882,10 +1678,10 @@ for k = 1:numel(geom)
     otr.ontology_table_row.ontology_nodes = strjoin( ...
         repmat({'EMPTY:0'}, 1, numel(kept)), ',');
     out = runJ(otr);
-    verifyTrue(testCase, isfield(out.summary.by_class, 'subject'), ...
+    verifyEqual(testCase, nLeafJ(out.migrated, 'culture'), 1, ...
         sprintf(['the patch geometry map stopped firing when %s was absent; ' ...
                  'one missing geometry column must not un-dispatch it'], geom{k}));
-    sub = firstOfClassJ(out.migrated, 'subject');
+    sub = firstOfClassJ(out.migrated, 'culture');
     verifyEqual(testCase, sub.get('base.id'), 'otr_patch');
 end
 end
@@ -1932,7 +1728,7 @@ out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
     'TargetVersion', 'V_eta');
 
 % strict J: a dose_manipulation, and NEVER the retired `bath` class
-verifyTrue(testCase, isfield(out.summary.by_class, 'dose_manipulation'), ...
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 1, ...
     'no dose_manipulation produced');
 verifyFalse(testCase, isfield(out.summary.by_class, 'bath'), ...
     'retired `bath` class must not be emitted at V_eta');
@@ -1966,7 +1762,8 @@ end
 function ds = allOfClassJ(migrated, className)
 ds = {};
 for k = 1:numel(migrated)
-    if strcmp(migrated{k}.get('document_class.class_name'), className)
+    if strcmp(migrated{k}.get('document_class.class_name'), className) ...
+            || strcmp(did2.unittest.helpers.leafName(migrated{k}), className)
         ds{end+1} = migrated{k}; %#ok<AGROW>
     end
 end
@@ -2017,62 +1814,75 @@ v1.metadata_editor = struct('metadata_structure', ms);
 end
 
 function testMetadataEditorDecomposes(testCase)
+% UPDATED for did-schema #88: every thing the editor names is an `entity` with a
+% type (dataset, person, organization, funding, publication, protocol); the
+% dataset's and each person's own attributes become assertions ABOUT that
+% entity (abbreviation, version number, version innovation, License, release
+% date, Keyword; given name, family name, E-mail Address). The documentation
+% link is a `protocol` entity (#88 has no web_resource). Experimental approach,
+% techniques and subjects are still not stored (projections).
 out = runJ(metadataEditorDoc());
-bc = out.summary.by_class;
-% dataset + 2 persons + 2 orgs (deduped) + 1 funding + 1 publication + 1 web_resource
-% + 8 relations (has_author x2, affiliated_with x2, funded_by, issued_by, cites,
-%   documented_by) = 16
-verifyEqual(testCase, numel(out.migrated), 16);
-verifyEqual(testCase, bc.dataset, 1);
-verifyEqual(testCase, bc.person, 2);
-verifyEqual(testCase, bc.organization, 2);   % Analytical Society (deduped) + NIH
-verifyEqual(testCase, bc.funding, 1);
-verifyEqual(testCase, bc.publication, 1);
-verifyEqual(testCase, bc.web_resource, 1);
-verifyEqual(testCase, bc.directed_relation, 8);
-% projections and GUI prose are NOT persisted as classes
-verifyFalse(testCase, isfield(bc, 'subject'));
-verifyFalse(testCase, isfield(bc, 'term_assertion'));
+m = out.migrated;
+% 8 entities + 11 assertions + 8 relations
+verifyEqual(testCase, numel(m), 27);
+verifyEqual(testCase, nLeafJ(m, 'dataset'), 1);
+verifyEqual(testCase, nLeafJ(m, 'person'), 2);
+verifyEqual(testCase, nLeafJ(m, 'organization'), 2);   % Analytical Society (deduped) + NIH
+verifyEqual(testCase, nLeafJ(m, 'funding'), 1);
+verifyEqual(testCase, nLeafJ(m, 'publication'), 1);
+verifyEqual(testCase, nLeafJ(m, 'protocol'), 1);
+verifyEqual(testCase, nLeafJ(m, 'directed_relation'), 8);
+verifyEqual(testCase, out.summary.by_class.assertion, 11);
+% no subject is minted and nothing about the editor's Subjects is asserted
+verifyEqual(testCase, nLeafJ(m, 'organism'), 0);
+ds = firstOfClassJ(m, 'dataset');
+for k = 1:numel(m)
+    if strcmp(m{k}.get('document_class.class_name'), 'assertion')
+        verifyTrue(testCase, any(strcmp(depVal(m{k}, 'entity_id'), ...
+            [{ds.get('base.id')}, cellfun(@(p) p.get('base.id'), allOfClassJ(m, 'person'), ...
+            'UniformOutput', false)])), 'an assertion is about something the editor named');
+    end
 end
+end
+
 
 function testMetadataEditorDatasetEntity(testCase)
+% UPDATED for #88: the dataset is an entity (name, description) whose id is the
+% session id, and its other attributes are assertions about it.
 out = runJ(metadataEditorDoc());
 ds = firstOfClassJ(out.migrated, 'dataset');
-% keyed on the DATASET id (base.session_id), not the metadata_editor doc's base.id
-verifyEqual(testCase, ds.get('base.id'), 'sess_09');
-verifyEqual(testCase, ds.get('dataset.full_name'), 'The Big Worm Dataset');
-verifyEqual(testCase, ds.get('dataset.short_name'), 'BigWorm');
-verifyEqual(testCase, ds.get('dataset.version'), '1.0.0');
-verifyEqual(testCase, ds.get('dataset.license'), 'CC-BY-4.0');
-verifyEqual(testCase, ds.get('dataset.release_date'), '2024-01-15');
-% openMINDS DatasetVersion fields with homes -> stored, not dropped
-verifyEqual(testCase, ds.get('dataset.version_innovation'), 'first release');
-kw = ds.get('dataset.keyword');
-verifyEqual(testCase, sort(kw(:)'), {'calcium imaging', 'worm'});
-% experimental_approach is a per-subject PROJECTION -> NOT populated on migration
-% (the field stays for openMINDS import; the did_v1 blob's value is not stored)
-dsb = ds.get('dataset');
-verifyFalse(testCase, isfield(dsb, 'experimental_approach') ...
-    && ~isempty(dsb.experimental_approach));
-% documentation is NOT a dataset field -- it is a relation -> web_resource
-verifyFalse(testCase, isfield(dsb, 'documentation'));
+id = ds.get('base.id');
+verifyEqual(testCase, id, 'sess_09');
+verifyEqual(testCase, ds.get('entity.name'), 'The Big Worm Dataset');
+verifyEqual(testCase, ds.get('entity.description'), 'A dataset of worms.');
+verifyEqual(testCase, textAboutJ(out.migrated, id, 'Abbreviation'), {'BigWorm'});
+verifyEqual(testCase, textAboutJ(out.migrated, id, 'version number'), {'1.0.0'});
+verifyEqual(testCase, textAboutJ(out.migrated, id, 'version innovation'), {'first release'});
+lic = assertionAboutJ(out.migrated, id, 'License');
+verifyEqual(testCase, lic.get('term.value').name, 'CC-BY-4.0');
+rd = assertionAboutJ(out.migrated, id, 'release date');
+verifyEqual(testCase, rd.get('date.value').instant, '2024-01-15');
+kw = textAboutJ(out.migrated, id, 'Keyword');
+verifyEqual(testCase, sort(kw), {'calcium imaging', 'worm'});
+% bucket-2 projections are not stored
+verifyEmpty(testCase, assertionAboutJ(out.migrated, id, 'experimental approach'));
 end
 
+
 function testMetadataEditorAuthorsAndOrcid(testCase)
+% UPDATED for #88: a person is an entity named 'given family', its ORCID a
+% `ORCID:` global identifier; given name, family name and e-mail are assertions
+% about it; authorship is has_author (dataset -> person) with a sequence.
 out = runJ(metadataEditorDoc());
 persons = allOfClassJ(out.migrated, 'person');
 verifyEqual(testCase, numel(persons), 2);
-% the first author carries given/family/email and an ORCID global_identifier
 ada = personByFamily(persons, 'Lovelace');
-verifyEqual(testCase, ada.get('person.given_name'), 'Ada');
-verifyEqual(testCase, ada.get('person.email'), 'ada@example.org');
-gid = ada.get('entity.global_identifier');
-verifyEqual(testCase, gid(1).scheme, 'ORCID');
-verifyEqual(testCase, gid(1).value, '0000-0001-2345-6789');
-% the second author had no ORCID -> empty global_identifier
+verifyEqual(testCase, textAboutJ(out.migrated, ada.get('base.id'), 'given name'), {'Ada'});
+verifyEqual(testCase, textAboutJ(out.migrated, ada.get('base.id'), 'E-mail Address'), {'ada@example.org'});
+gid = cellstr(ada.get('entity.global_identifier'));
+verifyEqual(testCase, gid, {'ORCID:0000-0001-2345-6789'});
 alan = personByFamily(persons, 'Turing');
-verifyEmpty(testCase, alan.get('entity.global_identifier'));
-% has_author edges: dataset -> each person, carrying the author position
+verifyEmpty(testCase, globalIdsJ(alan));
 ds = firstOfClassJ(out.migrated, 'dataset');
 seqs = [];
 for k = 1:numel(out.migrated)
@@ -2086,21 +1896,25 @@ end
 verifyEqual(testCase, sort(seqs), [1 2]);
 end
 
+
 function p = personByFamily(persons, family)
+% #88: a person entity is named 'given family'
 p = [];
 for k = 1:numel(persons)
-    if strcmp(persons{k}.get('person.family_name'), family); p = persons{k}; return; end
+    if endsWith(char(persons{k}.get('entity.name')), [' ' family]); p = persons{k}; return; end
 end
 end
 
+
 function testMetadataEditorOrgDedupAndAffiliation(testCase)
+% One organization per distinct name, and both authors' affiliated_with point at
+% the same one. UPDATED for #88: an organization is an entity; its name is
+% entity.name.
 out = runJ(metadataEditorDoc());
-% both authors share one org: exactly one 'Analytical Society' organization
 orgs = allOfClassJ(out.migrated, 'organization');
-names = cellfun(@(o) o.get('organization.full_name'), orgs, 'UniformOutput', false);
+names = cellfun(@(o) o.get('entity.name'), orgs, 'UniformOutput', false);
 verifyEqual(testCase, sum(strcmp(names, 'Analytical Society')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'NIH')), 1);
-% both affiliated_with edges point at the single shared org id
 society = orgs{strcmp(names, 'Analytical Society')};
 affParents = {};
 for k = 1:numel(out.migrated)
@@ -2114,37 +1928,34 @@ verifyEqual(testCase, numel(affParents), 2);
 verifyEqual(testCase, unique(affParents), {society.get('base.id')});
 end
 
+
 function testMetadataEditorFundingPublicationDocumentation(testCase)
+% UPDATED for #88: the award is a `funding` entity (title -> entity.name, award
+% number -> entity.local_identifier); the publication's DOI/PMID/PMCID are
+% CURIE global identifiers; the documentation URL is a `protocol` entity whose
+% global identifier is the URL.
 out = runJ(metadataEditorDoc());
 ds = firstOfClassJ(out.migrated, 'dataset');
-% funding: title + award-number identifier; dataset -funded_by-> funding -issued_by-> NIH
 award = firstOfClassJ(out.migrated, 'funding');
-verifyEqual(testCase, award.get('funding.title'), 'BRAIN Initiative');
-agid = award.get('entity.global_identifier');
-verifyEqual(testCase, agid(1).scheme, 'AwardNumber');
-verifyEqual(testCase, agid(1).value, 'R01-12345');
+verifyEqual(testCase, award.get('entity.name'), 'BRAIN Initiative');
+verifyEqual(testCase, award.get('entity.local_identifier'), 'R01-12345');
 funded = relByName(out.migrated, 'funded_by');
 verifyEqual(testCase, depVal(funded, 'child_id'), ds.get('base.id'));
 verifyEqual(testCase, depVal(funded, 'parent_id'), award.get('base.id'));
 issued = relByName(out.migrated, 'issued_by');
 verifyEqual(testCase, depVal(issued, 'child_id'), award.get('base.id'));
-% publication: title + DOI/PMID/PMCID identifiers; dataset -cites-> publication
 pub = firstOfClassJ(out.migrated, 'publication');
-verifyEqual(testCase, pub.get('publication.title'), 'On Worms');
-pgid = pub.get('entity.global_identifier');
-schemes = {pgid.scheme};
-verifyTrue(testCase, all(ismember({'DOI', 'PMID', 'PMCID'}, schemes)));
+verifyEqual(testCase, pub.get('entity.name'), 'On Worms');
+verifyEqual(testCase, sort(globalIdsJ(pub)), sort({'doi:10.1/worm', 'PMID:123', 'PMCID:PMC9'}));
 cites = relByName(out.migrated, 'cites');
 verifyEqual(testCase, depVal(cites, 'parent_id'), pub.get('base.id'));
-% web_resource: the documentation IRI is a resource referenced by a relation
-wr = firstOfClassJ(out.migrated, 'web_resource');
-wgid = wr.get('entity.global_identifier');
-verifyEqual(testCase, wgid(1).scheme, 'URL');
-verifyEqual(testCase, wgid(1).value, 'https://example.org/docs');
+wr = firstOfClassJ(out.migrated, 'protocol');
+verifyEqual(testCase, globalIdsJ(wr), {'https://example.org/docs'});
 documented = relByName(out.migrated, 'documented_by');
 verifyEqual(testCase, depVal(documented, 'child_id'), ds.get('base.id'));
 verifyEqual(testCase, depVal(documented, 'parent_id'), wr.get('base.id'));
 end
+
 
 % ---- metadata_editor THROUGH A JSON ROUND TRIP -------------------------
 %
@@ -2213,31 +2024,27 @@ end
 end
 
 function testMetadataEditorSurvivesTheJsonRoundTrip(testCase)
-% The BASELINE: the existing fixture, serialised and decoded, must decompose
-% into exactly the same 16 documents the struct-fed test asserts. Its Author
-% array is key-uniform, so jsondecode hands back a struct array and this
-% passes with or without the cell tolerance -- that is deliberate. It pins
-% that the round trip itself (Keyword as a JSON string array, `depends_on`
-% as `[]`, the nested PascalCase blob) changes nothing.
+% The decomposition is unchanged by a jsonencode/jsondecode round trip.
+% UPDATED for #88 (entity types, assertions; 27 documents).
 out = runJRoundTrip(metadataEditorDoc());
-bc = out.summary.by_class;
-verifyEqual(testCase, numel(out.migrated), 16);
-verifyEqual(testCase, bc.dataset, 1);
-verifyEqual(testCase, bc.person, 2);
-verifyEqual(testCase, bc.organization, 2);
-verifyEqual(testCase, bc.funding, 1);
-verifyEqual(testCase, bc.publication, 1);
-verifyEqual(testCase, bc.web_resource, 1);
-verifyEqual(testCase, bc.directed_relation, 8);
-ds = firstOfClassJ(out.migrated, 'dataset');
+m = out.migrated;
+verifyEqual(testCase, numel(m), 27);
+verifyEqual(testCase, nLeafJ(m, 'dataset'), 1);
+verifyEqual(testCase, nLeafJ(m, 'person'), 2);
+verifyEqual(testCase, nLeafJ(m, 'organization'), 2);
+verifyEqual(testCase, nLeafJ(m, 'funding'), 1);
+verifyEqual(testCase, nLeafJ(m, 'publication'), 1);
+verifyEqual(testCase, nLeafJ(m, 'protocol'), 1);
+verifyEqual(testCase, nLeafJ(m, 'directed_relation'), 8);
+ds = firstOfClassJ(m, 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'sess_09');
-verifyEqual(testCase, ds.get('dataset.full_name'), 'The Big Worm Dataset');
-kw = ds.get('dataset.keyword');
-verifyEqual(testCase, sort(kw(:)'), {'calcium imaging', 'worm'});
-ada = personByFamily(allOfClassJ(out.migrated, 'person'), 'Lovelace');
+verifyEqual(testCase, ds.get('entity.name'), 'The Big Worm Dataset');
+verifyEqual(testCase, sort(textAboutJ(m, 'sess_09', 'Keyword')), {'calcium imaging', 'worm'});
+ada = personByFamily(allOfClassJ(m, 'person'), 'Lovelace');
 verifyNotEmpty(testCase, ada);
-verifyEqual(testCase, ada.get('person.email'), 'ada@example.org');
+verifyEqual(testCase, textAboutJ(m, ada.get('base.id'), 'E-mail Address'), {'ada@example.org'});
 end
+
 
 function v1 = metadataEditorDocCellShapedAuthors()
 % Two authors whose objects DIFFER IN FIELD ORDER, which is one of the two
@@ -2269,39 +2076,30 @@ v1.metadata_editor.metadata_structure = ms;
 end
 
 function testMetadataEditorAuthorsSurviveTheCellDecode(testCase)
-% THE REGRESSION. Before the cell tolerance this produced 9 documents and
-% ZERO persons: no person, no has_author, no affiliated_with, and no
-% 'Analytical Society' organization (it is minted only from an affiliation).
-% The dataset / funding / publication / web_resource half still came out,
-% which is exactly why nothing downstream noticed.
+% Authors given as a cell (heterogeneous structs) decode the same as a struct
+% array. UPDATED for #88.
 out = runJRoundTrip(metadataEditorDocCellShapedAuthors());
-bc = out.summary.by_class;
-verifyEqual(testCase, numel(out.migrated), 16);
-verifyEqual(testCase, bc.person, 2);
-verifyEqual(testCase, bc.organization, 2);      % Analytical Society + NIH
-verifyEqual(testCase, countRelsByName(out.migrated, 'has_author'), 2);
-verifyEqual(testCase, countRelsByName(out.migrated, 'affiliated_with'), 2);
-% the per-author payload survives the cell -> struct-array normalisation
-persons = allOfClassJ(out.migrated, 'person');
+m = out.migrated;
+verifyEqual(testCase, numel(m), 27);
+verifyEqual(testCase, nLeafJ(m, 'person'), 2);
+verifyEqual(testCase, nLeafJ(m, 'organization'), 2);      % Analytical Society + NIH
+verifyEqual(testCase, countRelsByName(m, 'has_author'), 2);
+verifyEqual(testCase, countRelsByName(m, 'affiliated_with'), 2);
+persons = allOfClassJ(m, 'person');
 ada = personByFamily(persons, 'Lovelace');
 verifyNotEmpty(testCase, ada);
-verifyEqual(testCase, ada.get('person.given_name'), 'Ada');
-verifyEqual(testCase, ada.get('person.email'), 'ada@example.org');
-agid = ada.get('entity.global_identifier');
-verifyEqual(testCase, agid(1).scheme, 'ORCID');
-verifyEqual(testCase, agid(1).value, '0000-0001-2345-6789');
-% author 2 carries neither an ORCID nor the `authorRole` key at all: the
-% field-union normalisation must leave it empty, not error and not inherit
-% author 1's value
+verifyEqual(testCase, textAboutJ(m, ada.get('base.id'), 'given name'), {'Ada'});
+verifyEqual(testCase, textAboutJ(m, ada.get('base.id'), 'E-mail Address'), {'ada@example.org'});
+verifyEqual(testCase, globalIdsJ(ada), {'ORCID:0000-0001-2345-6789'});
 alan = personByFamily(persons, 'Turing');
 verifyNotEmpty(testCase, alan);
-verifyEqual(testCase, alan.get('person.given_name'), 'Alan');
-verifyEmpty(testCase, alan.get('entity.global_identifier'));
-% both affiliations still dedup to ONE organization id
-orgs = allOfClassJ(out.migrated, 'organization');
-names = cellfun(@(o) o.get('organization.full_name'), orgs, 'UniformOutput', false);
+verifyEqual(testCase, textAboutJ(m, alan.get('base.id'), 'given name'), {'Alan'});
+verifyEmpty(testCase, globalIdsJ(alan));
+orgs = allOfClassJ(m, 'organization');
+names = cellfun(@(o) o.get('entity.name'), orgs, 'UniformOutput', false);
 verifyEqual(testCase, sum(strcmp(names, 'Analytical Society')), 1);
 end
+
 
 function v1 = metadataEditorDocCellShapedFundingAndPublications()
 % The same cell trigger on the other two lists the migrator reads with
@@ -2321,41 +2119,31 @@ v1.metadata_editor.metadata_structure = ms;
 end
 
 function testMetadataEditorFundingAndPublicationSurviveTheCellDecode(testCase)
-% Before the cell tolerance: 10 documents, ZERO funding and ZERO publication
-% entities, and only ONE organization (the authors' affiliation) because both
-% funders are minted from the Funding list.
+% Funding and publications given as cells decode in full. UPDATED for #88.
 out = runJRoundTrip(metadataEditorDocCellShapedFundingAndPublications());
-bc = out.summary.by_class;
-verifyEqual(testCase, bc.funding, 2);
-verifyEqual(testCase, bc.publication, 2);
-verifyEqual(testCase, bc.organization, 3);      % Analytical Society + NIH + NSF
-verifyEqual(testCase, countRelsByName(out.migrated, 'funded_by'), 2);
-verifyEqual(testCase, countRelsByName(out.migrated, 'issued_by'), 2);
-verifyEqual(testCase, countRelsByName(out.migrated, 'cites'), 2);
-verifyEqual(testCase, numel(out.migrated), 22);
-% the award WITHOUT an awardNumber must still be an entity, with no identifier
-awards = allOfClassJ(out.migrated, 'funding');
-titles = cellfun(@(a) a.get('funding.title'), awards, 'UniformOutput', false);
+m = out.migrated;
+verifyEqual(testCase, nLeafJ(m, 'funding'), 2);
+verifyEqual(testCase, nLeafJ(m, 'publication'), 2);
+verifyEqual(testCase, nLeafJ(m, 'organization'), 3);      % Analytical Society + NIH + NSF
+verifyEqual(testCase, countRelsByName(m, 'funded_by'), 2);
+verifyEqual(testCase, countRelsByName(m, 'issued_by'), 2);
+verifyEqual(testCase, countRelsByName(m, 'cites'), 2);
+verifyEqual(testCase, numel(m), 33);   % 11 entities + 11 assertions + 11 relations
+awards = allOfClassJ(m, 'funding');
+titles = cellfun(@(a) a.get('entity.name'), awards, 'UniformOutput', false);
 verifyEqual(testCase, sort(titles), {'BRAIN Initiative', 'Neural Circuits'});
 nsf = awards{strcmp(titles, 'Neural Circuits')};
-verifyEmpty(testCase, nsf.get('entity.global_identifier'));
-% the publication that carries only a DOI keeps exactly that one identifier
-pubs = allOfClassJ(out.migrated, 'publication');
-ptitles = cellfun(@(p) p.get('publication.title'), pubs, 'UniformOutput', false);
+verifyEmpty(testCase, globalIdsJ(nsf));
+pubs = allOfClassJ(m, 'publication');
+ptitles = cellfun(@(p) p.get('entity.name'), pubs, 'UniformOutput', false);
 again = pubs{strcmp(ptitles, 'On Worms, Again')};
-agid = again.get('entity.global_identifier');
-verifyEqual(testCase, numel(agid), 1);
-verifyEqual(testCase, agid(1).scheme, 'DOI');
-verifyEqual(testCase, agid(1).value, '10.1/worms-again');
+verifyEqual(testCase, globalIdsJ(again), {'doi:10.1/worms-again'});
 end
 
+
 function testMetadataEditorEmptyStructureStillYieldsTheUnnamedDataset(testCase)
-% `"metadata_structure": []` is the NDI TEMPLATE'S OWN DEFAULT
-% (ndi_common/database_documents/ingestion/metadata_editor.json on
-% origin/main), and it decodes to a 0x0 double, not a struct. One bare
-% `dataset` is the RIGHT answer for a document that states no metadata, and
-% the `(unnamed dataset)` fallback is load-bearing for it. This test pins
-% that the shape-tolerance edit did not change either.
+% An editor with no structure still yields the dataset entity, named
+% '(unnamed dataset)'. UPDATED for #88: the name is entity.name.
 v1 = metadataEditorDoc();
 v1.metadata_editor = struct('metadata_structure', []);
 out = runJRoundTrip(v1);
@@ -2363,24 +2151,22 @@ verifyEqual(testCase, numel(out.migrated), 1);
 ds = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(ds), 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'sess_09');
-verifyEqual(testCase, ds.get('dataset.full_name'), '(unnamed dataset)');
+verifyEqual(testCase, ds.get('entity.name'), '(unnamed dataset)');
 end
 
+
 function testMetadataEditorStructureInsideACellIsStillRead(testCase)
-% The same tolerance one level up: the blob itself arriving as a JSON array
-% of unlike objects, which jsondecode hands back as a cell. NO corpus
-% document is known to be shaped this way -- this covers the cell branch of
-% getScalarStruct so it is not new code with no test, per the standing rule
-% that a reader added for a shape nobody exercises is a reader nobody checks.
+% A structure wrapped in a cell beside other keys is still read. UPDATED for #88.
 v1 = metadataEditorDoc();
 ms = v1.metadata_editor.metadata_structure;
 other = struct('SomeOtherKey', 'ignored');
 v1.metadata_editor.metadata_structure = {ms, other};
 out = runJRoundTrip(v1);
-verifyEqual(testCase, numel(out.migrated), 16);
+verifyEqual(testCase, numel(out.migrated), 27);
 ds = firstOfClassJ(out.migrated, 'dataset');
-verifyEqual(testCase, ds.get('dataset.full_name'), 'The Big Worm Dataset');
+verifyEqual(testCase, ds.get('entity.name'), 'The Big Worm Dataset');
 end
+
 
 function r = relByName(migrated, relName)
 r = [];
@@ -2406,32 +2192,25 @@ v1.dataset_remote = struct('dataset_id', 'd-12345', 'organization_id', 'ndicloud
 end
 
 function testDatasetRemoteDissolves(testCase)
-% dataset_remote -> bare dataset (keyed on D.id()=base.session_id) + web_resource
-% (cloud id on global_identifier) + stored_at + organization + hosted_by.
+% UPDATED for did-schema #88: the remote copy's cloud id is a CURIE global
+% identifier on the dataset entity itself (ndicloud:<id>), and the hosting
+% organization is an entity the dataset is hosted_by. #88 has no web_resource,
+% so there is no stored_at hop.
 out = runJ(datasetRemoteDoc());
-bc = out.summary.by_class;
-verifyEqual(testCase, bc.dataset, 1);
-verifyEqual(testCase, bc.web_resource, 1);
-verifyEqual(testCase, bc.organization, 1);
-verifyEqual(testCase, bc.directed_relation, 2);   % stored_at + hosted_by
-% the dataset entity is keyed on the dataset id, not the source doc id
-ds = firstOfClassJ(out.migrated, 'dataset');
+m = out.migrated;
+verifyEqual(testCase, nLeafJ(m, 'dataset'), 1);
+verifyEqual(testCase, nLeafJ(m, 'organization'), 1);
+verifyEqual(testCase, nLeafJ(m, 'directed_relation'), 1);   % hosted_by
+ds = firstOfClassJ(m, 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'dsid_1');
-% the cloud id rides on the web_resource's global_identifier
-wr = firstOfClassJ(out.migrated, 'web_resource');
-wgid = wr.get('entity.global_identifier');
-verifyEqual(testCase, wgid(1).scheme, 'NDICloud');
-verifyEqual(testCase, wgid(1).value, 'd-12345');
-% dataset -stored_at-> web_resource ; web_resource -hosted_by-> organization
-stored = relByName(out.migrated, 'stored_at');
-verifyEqual(testCase, depVal(stored, 'child_id'), 'dsid_1');
-verifyEqual(testCase, depVal(stored, 'parent_id'), wr.get('base.id'));
-hosted = relByName(out.migrated, 'hosted_by');
-verifyEqual(testCase, depVal(hosted, 'child_id'), wr.get('base.id'));
-org = firstOfClassJ(out.migrated, 'organization');
-verifyEqual(testCase, org.get('organization.full_name'), 'ndicloud-lab');
+verifyEqual(testCase, globalIdsJ(ds), {'ndicloud:d-12345'});
+hosted = relByName(m, 'hosted_by');
+verifyEqual(testCase, depVal(hosted, 'child_id'), 'dsid_1');
+org = firstOfClassJ(m, 'organization');
+verifyEqual(testCase, org.get('entity.name'), 'ndicloud-lab');
 verifyEqual(testCase, depVal(hosted, 'parent_id'), org.get('base.id'));
 end
+
 
 function v1 = sessionInADatasetDoc(memberSession)
 v1 = struct();
@@ -2460,12 +2239,11 @@ end
 end
 
 function testSessionInADatasetMembership(testCase)
-% -> bare dataset (id = base.session_id) + session -included_in-> dataset
-% (-part_of-> before the relation inheritance change).
+% UPDATED for #88: the dataset is an entity; membership is the relation
+% membershipRelation() names; V_eta writes no base.name (#73 item 54).
 out = runJ(sessionInADatasetDoc('member_sess_9'));
-bc = out.summary.by_class;
-verifyEqual(testCase, bc.dataset, 1);
-verifyEqual(testCase, bc.directed_relation, 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dataset'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 1);
 ds = firstOfClassJ(out.migrated, 'dataset');
 verifyEqual(testCase, ds.get('base.id'), 'dsid_1');
 rel = firstOfClassJ(out.migrated, 'directed_relation');
@@ -2474,13 +2252,11 @@ verifyEqual(testCase, rel.get('directed_relation.relation').name, relName);
 verifyEqual(testCase, rel.get('directed_relation.relation').node, relNode);
 verifyEqual(testCase, depVal(rel, 'child_id'), 'member_sess_9');   % the member session
 verifyEqual(testCase, depVal(rel, 'parent_id'), 'dsid_1');          % the dataset
-% the edge is tagged so the post-pass can prune it if the session is absent
-verifyEqual(testCase, rel.get('base.name'), 'migrated_session_membership');
 end
 
+
 function testDatasetSessionInfoAggregate(testCase)
-% the legacy AGGREGATE form: a nested dataset_session_info struct array, one
-% entry per member session -> bare dataset + one part_of per member.
+% One membership relation per listed session. UPDATED for #88 (dataset entity).
 v1 = struct();
 v1.document_class = struct('class_name', 'dataset_session_info', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -2491,8 +2267,8 @@ e1 = struct('session_id', 'member_a', 'is_linked', 0);
 e2 = struct('session_id', 'member_b', 'is_linked', 1);
 v1.dataset_session_info = struct('dataset_session_info', [e1 e2]);
 out = runJ(v1);
-verifyEqual(testCase, out.summary.by_class.dataset, 1);
-verifyEqual(testCase, out.summary.by_class.directed_relation, 2);   % two members
+verifyEqual(testCase, nLeafJ(out.migrated, 'dataset'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'directed_relation'), 2);   % two members
 children = {};
 relName = membershipRelation();
 for k = 1:numel(out.migrated)
@@ -2506,30 +2282,23 @@ end
 verifyEqual(testCase, sort(children), {'member_a', 'member_b'});
 end
 
+
 function testResolveDatasetEntitiesDedupAndPrune(testCase)
-% The batch post-pass: a rich metadata_editor dataset and a bare dataset_remote
-% stub share the dataset id -> deduped to ONE (rich wins); a membership edge to
-% an absent linked session is pruned so it never orphans the corpus.
+% Three sources each mint a dataset entity on dsid_1; the batch pass keeps ONE
+% (the editor's, which carries a name) and prunes membership edges to sessions
+% not in the batch. UPDATED for #88: the dataset is an entity of type dataset.
 editor = metadataEditorDoc();                 % base.session_id = sess_09
 editor.base.session_id = 'dsid_1';            % put it on the same dataset id
 remote = datasetRemoteDoc();                  % base.session_id = dsid_1 (bare stub)
 member = sessionInADatasetDoc('absent_sess'); % member session NOT in the batch
 batch = {jsonencode(editor), jsonencode(remote), jsonencode(member)};
 out = did2.convert.v1_to_v2(batch, 'Validate', false, 'TargetVersion', 'V_eta');
-% before the pass: >1 dataset entity on the shared id, and a membership edge
-verifyGreaterThan(testCase, out.summary.by_class.dataset, 1);
+verifyGreaterThan(testCase, nLeafJ(out.migrated, 'dataset'), 1);
 out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'V_eta');
-% after: exactly one dataset entity on dsid_1, and it is the RICH one
-datasets = {};
-for k = 1:numel(out.migrated)
-    if strcmp(out.migrated{k}.get('document_class.class_name'), 'dataset')
-        datasets{end+1} = out.migrated{k}; %#ok<AGROW>
-    end
-end
+datasets = allOfClassJ(out.migrated, 'dataset');
 verifyEqual(testCase, numel(datasets), 1);
 verifyEqual(testCase, datasets{1}.get('base.id'), 'dsid_1');
-verifyEqual(testCase, datasets{1}.get('dataset.full_name'), 'The Big Worm Dataset');
-% the unresolvable membership edge was pruned
+verifyEqual(testCase, datasets{1}.get('entity.name'), 'The Big Worm Dataset');
 relName = membershipRelation();
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
@@ -2539,6 +2308,7 @@ for k = 1:numel(out.migrated)
     end
 end
 end
+
 
 % ============ regression: relations carry no stale subject_relation block =====
 
@@ -2621,8 +2391,8 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(software), 'software');
 verifyEqual(testCase, software.entity.name, 'ndi.daq.reader.mfdaq.ndr');
 verifyNotEqual(testCase, software.base.id, reader.base.id);
 % The edge is PRESENT and POPULATED, never present-and-blank.
-verifyEqual(testCase, reader.depends_on(1).name, 'software_id');
-verifyEqual(testCase, reader.depends_on(1).value, software.base.id);
+% #88 builders write {name, document_id}; read the edge by name
+verifyEqual(testCase, depValue(reader, 'software_id'), software.base.id);
 % INVERTED 2026-08-10. This asserted that `file_extension` is carried across.
 % It is an INVENTED field -- `git grep -l "file_extension" origin/main --
 % '*.m' '*.json'` returns ZERO files, so no NDI template declares it and no
@@ -2813,13 +2583,14 @@ verifyEqual(testCase, numel(sbods), 2);
 
 obs = out{find(strcmp(names, 'voltage_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'pv_1');
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
+verifyTrue(testCase, logical(obs.value.data_body));   % #88: the value lives in bodies
+verifyEqual(testCase, obs.value.data_type, 'int16');
 verifyEqual(testCase, obs.statement.variable.name, 'lfp');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_7');
 % every level body shares the statement (the observation) and owns one file;
 % levels are told apart by dt (native 1/1000 vs decimated 1/500)
 for j = 1:numel(sbods)
-    verifyEqual(testCase, depValue(sbods{j}, 'statement'), 'pv_1');
+    verifyEqual(testCase, depValue(sbods{j}, 'owner_id'), 'pv_1');   % #88: owner_id
     % `datum` collapsed (signed sec.5); the encoding is on the STATEMENT now,
     % normalised -- 'int16' is already canonical, so no source spelling is kept.
     verifyFalse(testCase, isfield(sbods{j}.sampled_body, 'datum'));
@@ -3415,21 +3186,22 @@ out = did2.convert.migrators_j.electrode_offset_voltage(v1);
 verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(o), 'voltage_observation');
-verifyEqual(testCase, o.subject_statement.storage_mode, 'inline');
 verifyEqual(testCase, depValue(o, 'entity_id'), 'probe_7');
 % a single reading, expressed as a length-1 array
 vals = o.voltage.value;
 verifyEqual(testCase, numel(vals), 1);
 verifyEqual(testCase, vals(1).source_value, 0.5, 'AbsTol', 1e-9);
-verifyEqual(testCase, vals(1).source_unit, 'V');
+verifyEqual(testCase, vals(1).source_unit.name, 'V');   % #88: a bound term
+verifyEqual(testCase, vals(1).volts, 0.5, 'AbsTol', 1e-9);
 % temperature qualifies the SAME statement rather than becoming its own doc
-verifyEqual(testCase, o.subject_statement.conditions.variable.name, 'temperature');
-verifyEqual(testCase, o.subject_statement.conditions.quantity.value, 11, 'AbsTol', 1e-9);
-verifyEqual(testCase, o.subject_statement.conditions.quantity.source_value, '11', ...
+c = o.statement.conditions;   % #88: conditions live on `statement`
+verifyEqual(testCase, c.variable.name, 'temperature');
+verifyEqual(testCase, c.quantity.value, 11, 'AbsTol', 1e-9);
+verifyEqual(testCase, c.quantity.source_value, '11', ...
     'a condition''s source_value is text');
 % no unit is asserted for temperature -- the source states no scale
-verifyEqual(testCase, o.subject_statement.conditions.source_unit, '');
-verifyFalse(testCase, isfield(o.subject_statement.conditions, 'unit'));
+verifyFalse(testCase, isfield(c, 'source_unit') && ~isempty(c.source_unit));
+verifyFalse(testCase, isfield(c, 'unit'));
 end
 
 function testElectrodeOffsetVoltageOmitsUnrecordedTemperature(testCase)
@@ -3447,7 +3219,7 @@ v1.electrode_offset_voltage = struct('offset', -0.3, 'temperature', NaN);
 out = did2.convert.migrators_j.electrode_offset_voltage(v1);
 o = out{1};
 verifyEqual(testCase, o.voltage.value(1).source_value, -0.3, 'AbsTol', 1e-9);
-verifyFalse(testCase, isfield(o.subject_statement, 'conditions'));
+verifyFalse(testCase, isfield(o.statement, 'conditions'));
 end
 
 function testElectrodeOffsetVoltageRejectsInventedShape(testCase)
@@ -3484,12 +3256,11 @@ out = did2.convert.migrators_j.openminds_element(body);
 verifyEqual(testCase, numel(out), 1);
 a = out{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(a), 'term_assertion');
-verifyEqual(testCase, a.statement.variable.name, 'species');
+verifyEqual(testCase, a.statement.variable.name, 'Species');   % the registry label of NCIT:C45293
 verifyEqual(testCase, a.term.value.node, 'NCBITaxon:6239');
 verifyEqual(testCase, a.term.value.name, 'Caenorhabditis elegans');
 verifyEqual(testCase, depValue(a, 'entity_id'), 'elem_9');
-supers = a.document_class.superclasses;
-verifyEqual(testCase, supers(1).class_name, 'subject_assertion');
+verifyEqual(testCase, a.document_class.class_name, 'assertion');   % #88
 end
 
 function testOpenmindsStimulusPassesThroughForSecondPass(testCase)
@@ -3564,27 +3335,20 @@ out = did2.convert.migrators_j.jrclust_clusters(body);
 verifyEqual(testCase, numel(out), 3);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'count_observation')));
-verifyTrue(testCase, any(strcmp(names, 'sampled_body')));
+% #88: the .mat is an OPAQUE body (format EDAM:format_2333), not a sampled one
+verifyTrue(testCase, any(strcmp(names, 'opaque_body')));
 verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
 obs = out{find(strcmp(names, 'count_observation'), 1)};
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_8');
 
-sbod = out{find(strcmp(names, 'sampled_body'), 1)};
-verifyEqual(testCase, depValue(sbod, 'statement'), obs.base.id);   % == 'jc_1'
-% `datum.kind` is gone with `datum`: scalar-vs-array WAS the axis count, which
-% axes[] now states directly.
-verifyFalse(testCase, isfield(sbod.sampled_body, 'datum'));
-% THE UNKNOWN LENGTH IS NOW SAID BY SILENCE RATHER THAN BY A ZERO. This asserted
-% `sample_time.n == 0` and called it "unknown length" -- but 0 is a VALUE, and on
-% an axis entry (`n` is mustBeNonEmpty) it would assert a zero-length dimension,
-% which is the fabricated measurement testSpikewavesDefersToSecondPass refuses in
-% this same file. jrclust_clusters carries no spike count and the real one lives
-% in the payload, so the body now states no extent at all.
-verifyFalse(testCase, isfield(sbod.sampled_body, 'sample_time') ...
-    && ~isempty(fieldnames(sbod.sampled_body.sample_time)));
-verifyFalse(testCase, isfield(sbod.sampled_body, 'axes'));
+% #88: the .mat payload is an OPAQUE body owned by the observation; it states no
+% extent at all (the real spike count lives in the payload), so there is no key
+% to assert and none is invented.
+sbod = out{find(strcmp(names, 'opaque_body'), 1)};
+verifyEqual(testCase, depValue(sbod, 'owner_id'), obs.base.id);   % == 'jc_1'
+verifyEqual(testCase, sbod.data_body.format.node, 'EDAM:format_2333');
+verifyTrue(testCase, contains(sbod.data_body.description, 'd41d8cd9'));   % MD5 noted
 verifyEqual(testCase, sbod.files.file_list{1}, 'clusters.mat');
 end
 
@@ -3614,7 +3378,7 @@ out = did2.convert.migrators_j.kilosort_clusters(body);
 % The edge lands on count_observation, which is the only one of the three
 % bodies that declares software_id (via subject_observation ->
 % subject_interaction); the opaque_body and the anchor do not.
-verifyEqual(testCase, numel(out), 4);
+verifyEqual(testCase, numel(out), 5);   % #88: + the software version text_assertion
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'count_observation')));
 verifyTrue(testCase, any(strcmp(names, 'opaque_body')));
@@ -3624,12 +3388,11 @@ verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 
 obs = out{find(strcmp(names, 'count_observation'), 1)};
 verifyEqual(testCase, obs.base.id, 'ks_1');                            % id preserved
-verifyEqual(testCase, obs.subject_statement.storage_mode, 'body');
 verifyEqual(testCase, obs.interaction.method.term.name, 'kilosort');% method = algorithm
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_ks');
 
 ob = out{find(strcmp(names, 'opaque_body'), 1)};
-verifyEqual(testCase, depValue(ob, 'statement'), 'ks_1');             % body -> the obs
+verifyEqual(testCase, depValue(ob, 'owner_id'), 'ks_1');              % body -> the obs
 verifyEqual(testCase, ob.data_body.filename, 'ks_out/session1');    % directory preserved
 verifyTrue(testCase, contains(ob.data_body.description, 'd41d8cd9'));% MD5 noted
 end
@@ -3650,7 +3413,7 @@ body.kiasort_clusters = struct('kiasort_directory', 'ka_out/session1', ...
 out = did2.convert.migrators_j.kiasort_clusters(body);
 % 3 -> 4: the app block now becomes a `software` entity instead of being
 % dropped -- see the sibling kilosort test above for why this arity moved.
-verifyEqual(testCase, numel(out), 4);
+verifyEqual(testCase, numel(out), 5);   % #88: + the software version text_assertion
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyTrue(testCase, any(strcmp(names, 'software')), ...
     'the app block must become a software entity, not vanish');
@@ -3732,7 +3495,7 @@ names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', fa
 verifyEqual(testCase, sum(strcmp(names, 'length_observation')), 2);
 vars = {};
 for k = 1:numel(out)
-    if strcmp(out{k}.document_class.class_name, 'length_observation')
+    if strcmp(names{k}, 'length_observation')
         vars{end+1} = out{k}.statement.variable.name; %#ok<AGROW>
     end
 end
@@ -3744,7 +3507,8 @@ lr = out{find(strcmp(names, 'length_observation'), 1)};
 verifyEqual(testCase, depValue(lr, 'entity_id'), 'probe_5');
 verifyEqual(testCase, numel(lr.length.value), 2);
 verifyEqual(testCase, lr.length.value(2).source_value, 20, 'AbsTol', 1e-9);
-verifyEqual(testCase, lr.length.value(1).source_unit, 'um');
+verifyEqual(testCase, lr.length.value(1).source_unit.name, 'micrometre');   % registry label for 'um'
+verifyEqual(testCase, lr.length.value(2).meters, 2e-5, 'AbsTol', 1e-12);
 
 % probe_model, not the invented probe_type
 assertion = out{find(strcmp(names, 'term_assertion'), 1)};
@@ -3824,10 +3588,12 @@ obs = bodies{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'term_observation');
 verifyEqual(testCase, obs.term.value.node, 'EMPTY:0000200');
 verifyEqual(testCase, obs.statement.variable.name, 'position');
+verifyEqual(testCase, obs.statement.variable.node, 'PATO:0000140');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'pos_elem_7');
 anchor = bodies{2};
-verifyEqual(testCase, did2.unittest.helpers.leafName(anchor), 'session_relative_reference');
-verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
+verifyEqual(testCase, did2.unittest.helpers.leafName(anchor), 'relative_time_reference');
+verifyEqual(testCase, anchor.relative_time_reference.value.relation.name, 'intervalDuring');
+verifyEqual(testCase, depValue(obs, 'time_reference_id'), anchor.base.id);
 end
 
 function testSpatialFrequencyTuningFoldsToCalculationLeaf(testCase)
@@ -4095,15 +3861,15 @@ out = did2.convert.migrators_j.neuron_extracellular(body);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
 verifyEqual(testCase, numel(out), 5, ...
     sprintf('expected 5 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
-verifyTrue(testCase, any(strcmp(names, 'subject')));
+verifyTrue(testCase, any(strcmp(names, 'cell')));   % #88: the unit is an entity of type cell
 verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
 verifyTrue(testCase, any(strcmp(names, 'score_observation')));
 verifyTrue(testCase, any(strcmp(names, 'count_assertion')));
 verifyFalse(testCase, any(strcmp(names, 'voltage_observation')), ...
     'no mean_waveform in this fixture -- an observation here would be a husk');
 
-neuron = out{find(strcmp(names, 'subject'), 1)};
-verifyEqual(testCase, neuron.subject.local_identifier, 'unit_7');
+neuron = out{find(strcmp(names, 'cell'), 1)};
+verifyEqual(testCase, neuron.entity.local_identifier, 'unit_7');
 rel = out{find(strcmp(names, 'directed_relation'), 1)};
 % derived_from: unit (child) <- recording subject (parent)
 verifyEqual(testCase, depValue(rel, 'child_id'), neuron.base.id);
@@ -4112,7 +3878,7 @@ verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
 % the quality observation is about the minted unit
 qobs = out{find(strcmp(names, 'score_observation'), 1)};
 verifyEqual(testCase, depValue(qobs, 'entity_id'), neuron.base.id);
-verifyEqual(testCase, qobs.score.value.value, 3, 'AbsTol', 1e-9);
+verifyEqual(testCase, qobs.score.value.score, 3, 'AbsTol', 1e-9);
 end
 
 function body = spikeClustersBody()
@@ -4726,5 +4492,71 @@ for k = 1:numel(c)
             && ~isempty(c(k).variable.name) && ~isempty(c(k).value)
         n = n + 1;
     end
+end
+end
+
+function n = nLeafJ(migrated, leaf)
+% #88: summary.by_class counts raw class names (`observation`, `entity`); a test
+% asking for a leaf (`term_observation`, `organism`) counts it here.
+n = 0;
+for k = 1:numel(migrated)
+    if strcmp(did2.unittest.helpers.leafName(migrated{k}), leaf)
+        n = n + 1;
+    end
+end
+end
+
+
+function [f, c] = doseChainJ(migrated, dose)
+% #88 dose chain: the dose names its formulation (formulation_id); the
+% formulation names its ingredient chemical (ingredient_id).
+f = []; c = [];
+fId = depVal(dose, 'formulation_id');
+for k = 1:numel(migrated)
+    if strcmp(migrated{k}.get('base.id'), fId); f = migrated{k}; end
+end
+if isempty(f); error('the formulation the dose names is not in the batch'); end
+cId = depVal(f, 'ingredient_id');
+for k = 1:numel(migrated)
+    if strcmp(migrated{k}.get('base.id'), cId); c = migrated{k}; end
+end
+if isempty(c); error('the chemical the formulation names is not in the batch'); end
+end
+
+function a = assertionAboutJ(migrated, entityId, varName)
+% #88: the first assertion about entityId whose variable is named varName.
+a = [];
+for k = 1:numel(migrated)
+    d = migrated{k};
+    if strcmp(d.get('document_class.class_name'), 'assertion') ...
+            && strcmp(depVal(d, 'entity_id'), entityId)
+        v = d.get('statement.variable');
+        if isstruct(v) && strcmpi(char(v.name), varName)
+            a = d; return;
+        end
+    end
+end
+end
+
+
+function t = textAboutJ(migrated, entityId, varName)
+% #88: the text value(s) of the text_assertion about entityId named varName,
+% as a cell row ({} when there is none).
+t = {};
+a = assertionAboutJ(migrated, entityId, varName);
+if isempty(a); return; end
+v = a.get('text.value');
+if iscell(v); v = [v{:}]; end
+t = arrayfun(@(e) char(e.text), v, 'UniformOutput', false);
+t = reshape(t, 1, []);
+end
+
+
+function g = globalIdsJ(e)
+% #88: an entity's global identifiers as a cell row ({} when none).
+g = {};
+s = e.get('entity');
+if isfield(s, 'global_identifier') && ~isempty(s.global_identifier)
+    g = reshape(cellstr(s.global_identifier), 1, []);
 end
 end
