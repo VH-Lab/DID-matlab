@@ -184,7 +184,11 @@ for k = 1:numel(fileList)
     if k <= numel(starts); t0_k = starts(k); end
     n_k = 0;
     if rate_k > 0
-        n_k = round(epochDur * rate_k);
+        % CEIL, not round: a decimated level holds one sample per bin, and the
+        % last, partial bin is still written. PRED's coarsest level (0.0002 Hz
+        % over 28.1 s) rounds to 0 samples, which passed the whole document
+        % through (a judgment call, recorded in the port report).
+        n_k = ceil(epochDur * rate_k - 1e-9);
     end
     if n_k <= 0
         bodies = {preBody};   % a level with no extent: see above
