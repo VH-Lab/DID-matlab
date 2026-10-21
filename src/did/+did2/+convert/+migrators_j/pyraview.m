@@ -89,11 +89,11 @@ subjectId = firstNonEmpty(dependencyValue(preBody, 'element_id'), ...
     dependencyValue(preBody, 'subject_id'));
 obsId     = baseField(preBody, 'id', did.ido.unique_id());
 
-label    = getCharField(blk, 'label');
-dataType = getCharField(blk, 'data_type');
-channels = getField(blk, 'channels');
-t0       = numScalar(getField(blk, 'native_start_time'), 0.0);
-nativeRt = numScalar(getField(blk, 'native_rate'), 0.0);
+label    = charOf(fieldByNormalisedName(blk, 'label'));
+dataType = charOf(fieldByNormalisedName(blk, 'datatype'));
+channels = fieldByNormalisedName(blk, 'channels');
+t0       = numScalar(fieldByNormalisedName(blk, 'nativestarttime'), 0.0);
+nativeRt = numScalar(fieldByNormalisedName(blk, 'nativerate'), 0.0);
 
 % ---- did-schema #88: the time anchor ---------------------------------------
 % The pre-#73 `epoch_bounded_reference` (the epoch named by its STRING) is
@@ -116,7 +116,10 @@ if ~isempty(epochStr) && isempty(epochDocId)
          'entity epochMint mints, so it is deferred to that pass.'], ...
         char(preBody.base.id), epochStr);
 end
-epochSpan = numVec(getField(getBlock(preBody, 'epochclocktimes'), 't0_t1'));
+% Read the extent by its NORMALISED name: universalRenames' snake_case pass may
+% respell `t0_t1` (digits next to underscores), and a missed spelling here
+% passes the whole document through (corpus run 39555306048, PRED).
+epochSpan = numVec(fieldByNormalisedName(getBlock(preBody, 'epochclocktimes'), 't0t1'));
 epochDur  = NaN;
 if numel(epochSpan) >= 2 && all(isfinite(epochSpan(1:2)))
     epochDur = double(epochSpan(2)) - double(epochSpan(1));
@@ -163,8 +166,8 @@ if isfield(preBody, 'files') && isstruct(preBody.files) ...
     if ~iscell(fileList); fileList = {fileList}; end
 end
 if isempty(fileList); fileList = {''}; end   % at least the native body
-rates  = numVec(getField(blk, 'decimation_sampling_rates'));
-starts = numVec(getField(blk, 'decimation_start_times'));
+rates  = numVec(fieldByNormalisedName(blk, 'decimationsamplingrates'));
+starts = numVec(fieldByNormalisedName(blk, 'decimationstarttimes'));
 nChannels   = numScalar(channels, 0);
 channelAxis = [];
 if nChannels > 0
@@ -304,4 +307,23 @@ if isfield(bodyStruct, 'base') && isstruct(bodyStruct.base) ...
         && isfield(bodyStruct.base, name) && ~isempty(bodyStruct.base.(name))
     v = bodyStruct.base.(name);
 end
+end
+
+function v = fieldByNormalisedName(block, normalised)
+% The field of BLOCK whose name, lower-cased with underscores removed, is
+% NORMALISED; [] when there is none.
+v = [];
+if ~isstruct(block); return; end
+fn = fieldnames(block);
+for k = 1:numel(fn)
+    if strcmp(lower(strrep(fn{k}, '_', '')), normalised)
+        v = block.(fn{k});
+        return;
+    end
+end
+end
+
+function c = charOf(x)
+c = '';
+if ischar(x); c = x; elseif isstring(x) && isscalar(x); c = char(x); end
 end
