@@ -589,8 +589,11 @@
 %         `acquisition_metadata_reader` (+ the `software` entity for the
 %         implementation class). 1 -> 2, or 1 -> 1, or a guarded passthrough.
 %     daqmetadatareader_epochdata_ingested
-%         Brainstorm-J migrator: the per-epoch companion-spreadsheet bytes ->
-%         `acquisition_metadata_file`.
+%         Brainstorm-J migrator: the per-epoch metadata archive. On did-schema #88
+%         this PASSES THROUGH: #73 review item 61 retired `acquisition_metadata_file`,
+%         and the decided target, an `opaque_body` owned by the epoch's stimulator
+%         manipulation, is built by the batch pass did2.convert.resolveEpochProbemap
+%         (mkMetadataArchiveBodies).
 %     daqreader
 %         Brainstorm-J migrator: did_v1 daqreader folds to an `acquisition_reader` + a
 %         `software` entity. 1 -> 2, base.id PRESERVED ON THE READER.

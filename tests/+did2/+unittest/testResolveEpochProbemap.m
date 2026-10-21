@@ -801,6 +801,84 @@ end
 
 % ===================== the device half (increment 2) ==================
 
+% ---- #73 review item 61: the epoch's metadata archive ---------------------
+% "data.bin (a .nbf.tgz of the epoch's parsed stimulus parameters, written by
+% NDI metadatareader.ingest_epochfiles) becomes an opaque_body owned by the
+% stimulator's term_manipulation for that epoch." The archive is found through
+% the acquisition system: its epoch_file_pattern_id is the epochfiles'
+% filenavigator_id and its epoch_parameter_reader_id (the v1
+% daqmetadatareader_id_#) is the archive's daqmetadatareader_id, at the same
+% epoch string. Fixtures follow the writer (NDI origin/main
+% +ndi/+daq/metadatareader.m ingest_epochfiles: epochid block,
+% daqmetadatareader_id edge, one file `data.bin` added from
+% [metadatafile '.nbf.tgz']).
+function [out, rep] = metadataDecompose(archiveEpoch)
+subj = subjectBody('spec_m', 'sess_m', 'L');
+stim = elementBody('stim_m', 'sess_m', 'stim', '1', 'stimulator', 1, 'spec_m');
+daq = daqsystemBody('acqsys_m', 'sess_m', 'stimdev');
+daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id', ...
+    'daqmetadatareader_id_1'}, 'value', {'nav_1', 'rdr_m', 'mdr_m'});
+ing = ingestedWithRows('ing_m', 'sess_m', 't0m', {{'stim', '1', 'stimulator', 'L'}});
+[out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subj, stim, daq, ...
+    metadataArchiveBody('mda_m', 'sess_m', 'mdr_m', archiveEpoch), ing});
+end
+
+function v1 = metadataArchiveBody(docId, sessionId, readerId, epochId)
+v1 = struct();
+v1.document_class = struct( ...
+    'definition',         '$NDIDOCUMENTPATH/ingestion/daqmetadatareader_epochdata_ingested.json', ...
+    'validation',         '$NDISCHEMAPATH/ingestion/daqmetadatareader_epochdata_ingested_schema.json', ...
+    'class_name',         'daqmetadatareader_epochdata_ingested', ...
+    'property_list_name', 'daqmetadatareader_epochdata_ingested', ...
+    'class_version',      1, ...
+    'superclasses',       struct('definition', ...
+        {'$NDIDOCUMENTPATH/base.json', '$NDIDOCUMENTPATH/epochid.json'}));
+v1.depends_on = struct('name', 'daqmetadatareader_id', 'value', readerId);
+v1.base = struct('id', docId, 'session_id', sessionId, ...
+    'name', '', 'datestamp', '2024-03-23T13:47:40.237Z');
+v1.epochid = struct('epochid', epochId);
+v1.daqmetadatareader_epochdata_ingested = struct();
+v1.files = struct('file_list', {{'data.bin'}}, ...
+    'file_info', struct('name', 'data.bin', 'locations', struct( ...
+        'delete_original', 0, 'uid', 'umd', 'location', '/tmp/abc123.nbf.tgz', ...
+        'parameters', '', 'location_type', 'file', 'ingest', 1)));
+end
+
+function testAMetadataArchiveBecomesTheStimulatorManipulationsBody(testCase)
+[out, rep] = metadataDecompose('t0m');
+verifyEqual(testCase, rep.metadata_archives_inspected, 1);
+verifyEqual(testCase, rep.metadata_archives_to_body, 1);
+verifyEqual(testCase, rep.metadata_archives_kept_no_owner, 0);
+verifyEqual(testCase, rep.metadata_archives_quarantined, 0);
+manips = bodiesNamed(out, 'migrated_probemap_manipulation');
+assertEqual(testCase, numel(manips), 1);
+d = docById(out, 'mda_m');
+assertNotEmpty(testCase, d, 'the body keeps the archive''s id');
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), 'opaque_body');
+verifyEqual(testCase, depVals(d, 'owner_id'), {char(manips{1}.base.id)});
+verifyEqual(testCase, char(d.data_body.format.node), 'EDAM:format_2333');
+verifyEqual(testCase, char(d.data_body.filename), 'data.bin');
+verifyEqual(testCase, char(d.data_body.compression), 'gzip');
+verifyFalse(testCase, isfield(d, 'value'), 'an opaque body carries no data_type');
+fi = d.files.file_info;
+verifyEqual(testCase, char(fi(1).name), 'body_data_0');
+verifyEqual(testCase, char(fi(1).locations.location), '/tmp/abc123.nbf.tgz');
+verifyEmpty(testCase, bodiesOfClass(out, 'daqmetadatareader_epochdata_ingested'), ...
+    'the v1 document is replaced: its one file has a new owner');
+end
+
+function testAMetadataArchiveWithNoStimulatorManipulationIsKept(testCase)
+% another epoch's archive: no stimulator manipulation of ITS epoch -> kept, counted
+[out, rep] = metadataDecompose('t9z');
+verifyEqual(testCase, rep.metadata_archives_inspected, 1);
+verifyEqual(testCase, rep.metadata_archives_to_body, 0);
+verifyEqual(testCase, rep.metadata_archives_kept_no_owner, 1);
+d = docById(out, 'mda_m');
+assertNotEmpty(testCase, d);
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(d)), ...
+    'daqmetadatareader_epochdata_ingested');
+end
+
 function testDeviceStringResolvesAcqSystemAndParsesGroupedChannels(testCase)
 % UPDATED for #88: the system is named on the acquisition_channels document the
 % observation names (acquisition_system_id), and the grouped channels live there.
