@@ -9,6 +9,12 @@ function route = jTreatmentRoute(locationTerm)
 %                  the formulation through `value_id`, not a dose;
 %     'dose'       any other location (intraperitoneal, a brain area, ...): a
 %                  body site, so the subject was given an amount -- a dose;
+%     'exposure'   the location is an environmental medium the worms sat on or
+%                  in -- agar plate medium (MICRO:0000480) or ambient air
+%                  (XCO:0000918), the two Babu locations: the same shape as an
+%                  immersion, a `manipulation` of the worm valued by the
+%                  formulation through `value_id`, no anatomical-location
+%                  observation;
 %     'unknown'    no location at all: migrates as a dose with a NaN amount,
 %                  and the migration report lists it as route unknown.
 %
@@ -22,6 +28,17 @@ function route = jTreatmentRoute(locationTerm)
 %   dilution staying on the formulation; a generic treatment with no location
 %   stays a dose with NaN and is listed in the migration report as route
 %   unknown."
+%
+%   Decided by Jess Haley, 2026-10-21 [babu-media]: "In the v1 migration, Babu
+%   treatments located at agar plate medium (MICRO:0000480) or ambient air
+%   (XCO:0000918) are exposures of the worms: a manipulation of the worm
+%   subject valued by the formulation through value_id, not a dose, with no
+%   anatomical-location observation; a heat row (OM:Heat, 37 °C) is a
+%   temperature manipulation of the worms at each training time. Plates are
+%   not minted in the migration; they are minted in a proper Babu V2 import
+%   from source." The medium test is by node (CURIE key) or by the writer's
+%   label ("agar plate medium", "ambient air"); the heat row is handled in
+%   treatment_drug.m, before routing.
 %
 %   THE BATH TEST. The term is the bath when its node is NCIm:C0179246 (the
 %   node NDI's writers use: +birren/TreatmentCreator.m, createSayaTreatments.m,
@@ -50,8 +67,23 @@ if ~isBath
 end
 if isBath
     route = 'immersion';
+elseif isMedium(node, name)
+    route = 'exposure';
 else
     route = 'dose';
+end
+end
+
+function tf = isMedium(node, name)
+% Babu's two environmental media (+babu/treatments.json `agar`, `air`).
+media = {'MICRO:0000480', 'agar plate medium'; 'XCO:0000918', 'ambient air'};
+tf = false;
+for k = 1:size(media, 1)
+    if (~isempty(node) && strcmpi(curieKeyOf(node), curieKeyOf(media{k, 1}))) ...
+            || strcmpi(name, media{k, 2})
+        tf = true;
+        return;
+    end
 end
 end
 

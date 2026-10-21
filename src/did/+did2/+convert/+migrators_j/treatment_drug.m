@@ -21,6 +21,10 @@ function v2Body = treatment_drug(preBody)
 %                           attributed site is promoted by the NDI second pass.
 %     no location           a dose with a NaN amount, listed in the migration
 %                           report as `route_unknown` (did2.convert.reportNote).
+%     agar plate medium /   an EXPOSURE (Babu): the immersion shape, no location
+%     ambient air           observation (Jess Haley, 2026-10-21 [babu-media]).
+%     a heat-only mixture   a `temperature_manipulation` of the worm (Babu's
+%                           OM:Heat row), whatever the location.
 %
 %   1 -> N: the manipulation, one chemical per mixture row, the formulation
 %   and the anchor, plus the site observation for a dose at a site.
@@ -42,6 +46,16 @@ siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'location_ontology_node', 'location_ontologyNode'}), ...
     jGetCharAny(block, {'location_name'}));
 anchor = jSessionAnchor(preBody, 'during');
+if isHeatOnly(chemicals)
+    % Babu writes a heat pulse as a treatment_drug whose one mixture row is
+    % OM:Heat at 37 Degree Celsius (+babu/treatments.json `heat`), one
+    % document per training time. "a heat row (OM:Heat, 37 °C) is a
+    % temperature manipulation of the worms at each training time" (Jess
+    % Haley, 2026-10-21 [babu-media]). No formulation, no location
+    % observation (the location is the agar medium, no site on the worm).
+    v2Body = {makeHeat(preBody, chemicals(1), anchor.base.id), anchor};
+    return;
+end
 [bodies, route] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, anchor.base.id);
 if strcmp(route, 'dose')
     obs = jStatement(preBody, 'term_observation', jSubjectOf(preBody), ...
@@ -51,4 +65,46 @@ if strcmp(route, 'dose')
 end
 bodies{end+1} = anchor;
 v2Body = bodies;
+end
+
+% ===================== local helpers ===================================
+
+function tf = isHeatOnly(chemicals)
+% Every mixture row is a heat row: node OM:Heat or name "heat".
+tf = ~isempty(chemicals);
+for k = 1:numel(chemicals)
+    sub = chemicals(k).substance;
+    if ~(strcmpi(strtrim(char(sub.node)), 'OM:Heat') || strcmpi(strtrim(char(sub.name)), 'heat'))
+        tf = false;
+        return;
+    end
+end
+end
+
+function doc = makeHeat(preBody, row, anchorId)
+% A temperature_manipulation of the worm: the row's number in its unit, with
+% the canonical `celsius` filled only when the unit says Celsius (NCIT:C42559
+% "Degree Celsius" in Babu's table) -- no unit is guessed.
+c = struct();
+v = row.source_value;
+unit = row.source_unit;
+isC = false;
+if isstruct(unit) && ~isempty(unit)
+    isC = strcmpi(strtrim(char(unit.node)), 'NCIT:C42559') ...
+        || ~isempty(regexpi(char(unit.name), 'celsius', 'once'));
+end
+if ~isempty(v) && isnumeric(v) && isfinite(v(1))
+    if isC
+        c.celsius = double(v(1));
+    end
+    c.source_value = double(v(1));
+end
+if isstruct(unit) && ~isempty(unit)
+    c.source_unit = unit;
+end
+c.approximate = false;
+value = did2.build.composite('temperature', 'value', {c});
+doc = jStatement(preBody, 'temperature_manipulation', jSubjectOf(preBody), ...
+    did2.convert.registeredTerm(row.substance.node, row.substance.name), value, ...
+    'TimeReferenceIds', {anchorId}, 'Id', char(preBody.base.id));
 end

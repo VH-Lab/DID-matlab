@@ -783,6 +783,73 @@ verifyTrue(testCase, isnan(d.get('dose.value').volume.liters));
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
 end
 
+function testBabuAgarMediumIsAnExposure(testCase)
+% Babu writes a chemical training row as a treatment_drug located at agar plate
+% medium (MICRO:0000480, +babu/treatments.json `agar`). "Babu treatments located
+% at agar plate medium (MICRO:0000480) or ambient air (XCO:0000918) are
+% exposures of the worms: a manipulation of the worm subject valued by the
+% formulation through value_id, not a dose, with no anatomical-location
+% observation" (Jess Haley, 2026-10-21 [babu-media]).
+v1 = treatmentDrugDoc('td_agar', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nCHEBI:82021,imazapyr,0.08,OM:MolarVolumeUnit,Molar'), ...
+    'MICRO:0000480', 'agar plate medium');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 4);   % manipulation + chemical + formulation + anchor
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+m = out.migrated{1};
+verifyEqual(testCase, m.get('base.id'), 'td_agar');
+verifyEqual(testCase, depVal(m, 'entity_id'), 'subj_007');
+verifyNotEmpty(testCase, depVal(m, 'value_id'));
+verifyEmpty(testCase, depVal(m, 'formulation_id'));
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
+end
+
+function testBabuAmbientAirIsAnExposure(testCase)
+% Babu's odour training rows are located in ambient air (XCO:0000918); the
+% diacetyl mixture has two rows, both kept as ingredients.
+v1 = treatmentDrugDoc('td_air', ...
+    sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+             'CHEBI:16583,"butane-2,3-dione",1,NCIT:C48571,Percent Volume per Volume\n' ...
+             'CHEBI:16236,ethanol,99,NCIT:C48571,Percent Volume per Volume']), ...
+    'XCO:0000918', 'ambient air');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 5);   % manipulation + 2 chemicals + formulation + anchor
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+m = out.migrated{1};
+verifyEqual(testCase, m.get('statement.variable').name, 'butane-2,3-dione');
+end
+
+function testBabuHeatRowIsATemperatureManipulation(testCase)
+% Babu's heat pulse: a treatment_drug at agar plate medium whose one mixture row
+% is OM:Heat, 37, NCIT:C42559 "Degree Celsius". "a heat row (OM:Heat, 37 °C) is
+% a temperature manipulation of the worms at each training time" (Jess Haley,
+% 2026-10-21 [babu-media]). No formulation, no chemical, no location observation.
+v1 = treatmentDrugDoc('td_heat', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nOM:Heat,heat,37,NCIT:C42559,Degree Celsius'), ...
+    'MICRO:0000480', 'agar plate medium');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 2);   % temperature manipulation + anchor
+m = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'temperature_manipulation');
+verifyEqual(testCase, m.get('base.id'), 'td_heat');
+verifyEqual(testCase, depVal(m, 'entity_id'), 'subj_007');
+t = m.get('temperature.value');
+verifyEqual(testCase, t(1).celsius, 37);
+verifyEqual(testCase, t(1).source_value, 37);
+verifyEqual(testCase, t(1).source_unit.node, 'NCIT:C42559');
+verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'dose_manipulation'), 0);
+verifyEqual(testCase, nLeafJ(out.migrated, 'term_observation'), 0);
+verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
+end
+
 function v1 = treatmentDrugDoc(id, mixtureTable, locNode, locName)
 v1 = struct();
 v1.document_class = struct('class_name', 'treatment_drug', 'class_version', '1.0.0', ...
