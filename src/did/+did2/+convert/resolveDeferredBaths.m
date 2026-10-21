@@ -36,9 +36,21 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   +migrators_e/+migrators_i (did-schema #88, OPEN_WORK #128): only
 %   +migrators_j.stimulus_bath defers a bath now, so no other target can
 %   reach this pass with work to do.
-%   `term_observation` is CONDITIONAL (makeBathVEta, only when the source names a
-%   location); the declaration states what the pass can emit, not what every
-%   document produces.
+%   `term_observation` is CONDITIONAL (makeBathVEta, only when the source names an
+%   ANATOMICAL location -- not the generic bath, see below); the declaration
+%   states what the pass can emit, not what every document produces.
+%
+%   WHERE THE BATH IS (Jess Haley, 2026-10-21, replacing D3's
+%   located-by-default; did-schema V_eta_go_forward_class_audit.md): "Any
+%   statement about an anatomical region of a subject -- manipulation or
+%   observation -- targets that region's part entity ... A statement about the
+%   whole subject (a whole-prep or whole-slice bath, i.e. the generic 'bath'
+%   location NCIm:C0179246) targets the subject." So the location observation
+%   is emitted, co-anchored with the bath, only for an anatomical location (a
+%   Marder compartment); the NDI second pass (ndi.migrate.internal.
+%   pathSPromotion) turns it into the region's part and moves the bath onto
+%   it. The generic bath gets none -- it is no site on the subject, the same
+%   call +migrators_j/private/jTreatmentRoute makes for a treatment.
 %   ---------------------------------------------------------------------
 %
 %   This is the COARSE resolver for callers without a live session (e.g. corpus
@@ -470,8 +482,33 @@ bath = did2.build.statement('formulation_manipulation', char(subjectId), variabl
     'Id', char(bathId), o{:});
 bodies = [{bath}, bodies];
 loc = locationTerm(v1Body);
-if ~isempty(loc.node) || ~isempty(loc.name)
+if (~isempty(loc.node) || ~isempty(loc.name)) && ~isGenericBath(loc)
     bodies{end+1} = makeLocationObs(v1Body, subjectId, anchorId, loc);
+end
+end
+
+function tf = isGenericBath(loc)
+%ISGENERICBATH The whole-prep / whole-slice bath location: a name 'bath', the
+%   node NCIm:C0179246 compared as a CURIE key, or a registry term labelled
+%   'bath' -- +migrators_j/private/jTreatmentRoute's test, restated here because
+%   a private function is not callable from this package.
+node = strtrim(char(loc.node));
+name = strtrim(char(loc.name));
+tf = strcmpi(name, 'bath');
+if ~tf && ~isempty(node)
+    tf = strcmpi(curieKeyOf(node), curieKeyOf('NCIm:C0179246'));
+end
+if ~tf
+    r = did2.convert.registeredTerm(node, name);
+    tf = strcmpi(strtrim(r.name), 'bath');
+end
+end
+
+function k = curieKeyOf(node)
+try
+    k = char(did2.schema.curieKey(node));
+catch
+    k = lower(node);
 end
 end
 

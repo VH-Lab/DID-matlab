@@ -1934,6 +1934,49 @@ verifyEqual(testCase, locObs.get('term.value').name, 'CNS');
 verifyEqual(testCase, depVal(locObs, 'entity_id'), subjId);
 end
 
+function testDeferredGenericBathHasNoLocationObservation(testCase)
+% "A statement about the whole subject (a whole-prep or whole-slice bath, i.e.
+% the generic 'bath' location NCIm:C0179246) targets the subject" (Jess Haley,
+% 2026-10-21): the generic bath is no site on the subject, so no `anatomical
+% location` observation is emitted and the NDI second pass has nothing to
+% promote. Dabrowska writes this location on every bath
+% (dabrowska_bathtargets.json), with the name 'Baths, Water, Laboratory'.
+subjId = 'aabb1122ccdd3344_5500000000000011';
+stimId = 'aabb1122ccdd3344_5500000000000012';
+elem = struct();
+elem.document_class = struct('class_name', 'element', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+elem.depends_on = struct('name', {'subject_id'}, 'value', {subjId});
+elem.base = struct('id', stimId, 'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+    'name', 'stimulator', 'datestamp', '2024-06-01T12:00:00.000Z');
+elem.element = struct('ndi_element_class', 'ndi.element', 'name', 'bath_x', ...
+    'reference', 1, 'type', 'stimulator', 'direct', 0);
+for loc = {struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Laboratory'), ...
+           struct('ontologyNode', '', 'name', 'bath')}
+    bath = struct();
+    bath.document_class = struct('class_name', 'stimulus_bath', 'class_version', '1.0.0', ...
+        'superclasses', [ struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                          struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+    bath.depends_on = struct('name', {'stimulus_element_id'}, 'value', {stimId});
+    bath.base = struct('id', 'aabb1122ccdd3344_5500000000000014', ...
+        'session_id', 'aabb1122ccdd3344_9900aabbccddeeff', ...
+        'name', 'bath', 'datestamp', '2024-06-01T12:00:00.000Z');
+    bath.epochid = struct('epochid', 'epoch_t00001');
+    bath.stimulus_bath = struct('location', loc{1}, ...
+        'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+    out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(bath)}, ...
+        'Validate', false, 'TargetVersion', 'V_eta');
+    out = did2.convert.resolveDeferredBaths(out, 'Validate', false, ...
+        'TargetVersion', 'V_eta');
+    verifyEqual(testCase, nLeafJ(out.migrated, 'formulation_manipulation'), 1);
+    verifyEmpty(testCase, firstOfClassJ(out.migrated, 'term_observation'), ...
+        sprintf('the generic bath (%s) is no site on the subject', loc{1}.name));
+    m = firstOfClassJ(out.migrated, 'formulation_manipulation');
+    verifyEqual(testCase, depVal(m, 'entity_id'), subjId, ...
+        'the generic bath is about the whole subject');
+end
+end
+
 % ============ metadata_editor -> dataset + entities + relations =========
 
 function ds = allOfClassJ(migrated, className)
