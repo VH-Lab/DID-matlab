@@ -65,9 +65,9 @@ switch route
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
         % `formulation_manipulation` is no class: did2.build reads it as the
         % direction `manipulation` with the value kind `formulation`.
-        manip = jStatement(preBody, 'formulation_manipulation', jSubjectOf(preBody), ...
+        manip = jStatement(preBody, 'manipulation', jSubjectOf(preBody), ...
             variable, [], 'TimeReferenceIds', {anchorId}, 'ValueId', formulationId, ...
-            'Id', id, extra{:});
+            'Id', id, extra{:}, 'ValueKind', 'formulation');
     otherwise
         [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals);
         % two rows of one amount kind that disagree: the first is the dose's,
@@ -85,9 +85,9 @@ switch route
                 'UniformOutput', false);
             edges.ingredient_id = ingIds;
         end
-        manip = jStatement(preBody, 'dose_manipulation', jSubjectOf(preBody), ...
+        manip = jStatement(preBody, 'manipulation', jSubjectOf(preBody), ...
             variable, value, 'TimeReferenceIds', {anchorId}, ...
-            'Edges', edges, 'Id', id, extra{:});
+            'Edges', edges, 'Id', id, extra{:}, 'ValueKind', 'dose');
         if strcmp(route, 'unknown')
             did2.convert.reportNote('route_unknown', ...
                 char(preBody.document_class.class_name), id);

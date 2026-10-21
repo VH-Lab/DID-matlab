@@ -269,7 +269,11 @@ v1.document_class = struct('class_name', 'oridirtuning_calc', 'class_version', '
 v1.depends_on = struct('name', 'element_id', 'value', 'neuron_9');
 v1.base = struct('id', 'oc_3', 'session_id', 'sess_09', 'name', 'oc', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
-v1.orientation_direction_tuning = struct('vector', struct('orientation_preference', 12));
+% A curve, so there is a value to state: a calculator output with NO curve
+% passes through for that reason alone (jCalculation: the value is required),
+% which is not what this test is about.
+v1.orientation_direction_tuning = struct('vector', struct('orientation_preference', 12), ...
+    'tuning_curve', struct('direction', [0; 90; 180; 270], 'mean', [1; 5; 2; 4]));
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);

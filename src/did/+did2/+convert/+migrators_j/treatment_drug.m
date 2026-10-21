@@ -58,9 +58,9 @@ if isHeatOnly(chemicals)
 end
 [bodies, route] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, anchor.base.id);
 if strcmp(route, 'dose')
-    obs = jStatement(preBody, 'term_observation', jSubjectOf(preBody), ...
+    obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
         jLabel('anatomical location'), siteTerm, ...
-        'TimeReferenceIds', {anchor.base.id});
+        'TimeReferenceIds', {anchor.base.id}, 'ValueKind', 'term');
     bodies{end+1} = obs;
 end
 bodies{end+1} = anchor;
@@ -104,7 +104,7 @@ if isstruct(unit) && ~isempty(unit)
 end
 c.approximate = false;
 value = did2.build.composite('temperature', 'value', {c});
-doc = jStatement(preBody, 'temperature_manipulation', jSubjectOf(preBody), ...
+doc = jStatement(preBody, 'manipulation', jSubjectOf(preBody), ...
     did2.convert.registeredTerm(row.substance.node, row.substance.name), value, ...
-    'TimeReferenceIds', {anchorId}, 'Id', char(preBody.base.id));
+    'TimeReferenceIds', {anchorId}, 'Id', char(preBody.base.id), 'ValueKind', 'temperature');
 end

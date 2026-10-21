@@ -30,7 +30,7 @@ function v2Body = treatment(preBody)
 %
 %   numeric_value: NEVER an amount. A term that says what its number is
 %   (termNumberKind; e.g. EMPTY:0000199, a duration in hours) makes a
-%   `<kind>_manipulation` valued by it; a temperature term keeps the number as
+%   manipulation of that value kind, valued by it; a temperature term keeps the number as
 %   its temperature; otherwise the number is an unlabelled condition
 %   ('numeric value') and a `treatment_number_unlabelled` report note (Jess
 %   Haley, 2026-10-21, "yes"). The anchor is the recorded
@@ -97,9 +97,9 @@ if ~isempty(kind)
     if hasNumber
         v = jQuantity(kind, double(numValue(1)), unit);
     end
-    manip = {jStatement(preBody, [kind '_manipulation'], jSubjectOf(preBody), variable, ...
+    manip = {jStatement(preBody, 'manipulation', jSubjectOf(preBody), variable, ...
         v, 'TimeReferenceIds', {anchor.base.id}, 'Notes', notesText, ...
-        'Id', char(preBody.base.id))};
+        'Id', char(preBody.base.id), 'ValueKind', kind)};
     v2Body = [manip, {anchor}];
     return;
 end
@@ -144,9 +144,9 @@ end
 % --- shared anchor; wire onto the manipulation -------------------------
 v2Body = [manip, {anchor}];
 if ~isempty(siteTerm)
-    obs = jStatement(preBody, 'term_observation', jSubjectOf(preBody), ...
+    obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
         jLabel('anatomical location'), siteTerm, ...
-        'TimeReferenceIds', {anchor.base.id});
+        'TimeReferenceIds', {anchor.base.id}, 'ValueKind', 'term');
     v2Body = [v2Body, {obs}];
 end
 end
@@ -161,9 +161,9 @@ value = [];
 if ~isempty(numValue) && isnumeric(numValue)
     value = jQuantity('temperature', double(numValue(1)), 'celsius', 'approximate', false);
 end
-docs = {jStatement(preBody, 'temperature_manipulation', jSubjectOf(preBody), variable, ...
+docs = {jStatement(preBody, 'manipulation', jSubjectOf(preBody), variable, ...
     value, 'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
-    'Id', char(preBody.base.id))};
+    'Id', char(preBody.base.id), 'ValueKind', 'temperature')};
 end
 
 function [docs, route] = makeSubstanceManipulation(preBody, variable, notesText, numberCondition, siteTerm, anchorId)
@@ -190,9 +190,9 @@ extra = {};
 if ~isempty(numberCondition)
     extra = {'Conditions', numberCondition};
 end
-docs = {jStatement(preBody, 'term_manipulation', jSubjectOf(preBody), variable, ...
+docs = {jStatement(preBody, 'manipulation', jSubjectOf(preBody), variable, ...
     variable, 'TimeReferenceIds', {anchorId}, 'Notes', notesText, ...
-    'Id', char(preBody.base.id), extra{:})};
+    'Id', char(preBody.base.id), extra{:}, 'ValueKind', 'term')};
 end
 
 function [kind, unit] = termNumberKind(node, label)
