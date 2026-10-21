@@ -29,6 +29,21 @@ function [whereSQL, params] = compileQuery(q, opts)
 %   correctness backstop, so the SQL clause is only required to be an
 %   over-approximation of the true result.
 %
+%   `hasanyelement` (the correlated "same element" operator, see
+%   did2.query) compiles to EXISTS over json_each of the array, with the
+%   sub-query's predicates applied to each element (`json_each.value`), so
+%   all of them must hold for ONE element. A one-entry array that JSON
+%   stores as an object, and a scalar, count as one element, as they do in
+%   the evaluator. Where an AND-ed leaf of the sub-query is a path in the
+%   queryable_array_elem sidecar, the EXISTS is preceded by `documents.id
+%   IN (SELECT doc_id FROM queryable_array_elem ...)` so SQLite can start
+%   from the sidecar's index; the EXISTS keeps the correlation. Inside a
+%   sub-query a negated leaf that cannot be compiled exactly becomes 1=1
+%   (NOT of an over-approximation would drop true matches), and the negated
+%   `~hasanyelement` compiles to NOT EXISTS only when its whole sub-query
+%   compiles exactly (exact_string, hasfield, and/or of those, nested
+%   hasanyelement), and to the conservative 1=1 otherwise.
+%
 %   See also: did2.query, did2.database.sqlitedb,
 %   did-schema/schemas/did_query_model.md.
 
@@ -40,7 +55,10 @@ end
 
 ctx = struct( ...
     'queryablePaths', {asPathSet(opts.QueryablePaths)}, ...
-    'queryableArrayPaths', {asArrayPathMap(opts.QueryableArrayPaths)});
+    'queryableArrayPaths', {asArrayPathMap(opts.QueryableArrayPaths)}, ...
+    'root', 'body', ...          % the JSON every body path is read from
+    'inElement', false, ...      % inside a hasanyelement sub-query?
+    'depth', 0);                 % hasanyelement nesting depth (for aliases)
 [whereSQL, params] = compileSearchstructArray(q.searchstructure, ctx);
 end
 
@@ -136,7 +154,26 @@ isNeg = ~isempty(op) && op(1) == '~';
 if isNeg
     op = op(2:end);
 end
+if ctx.inElement && ~any(strcmp(op, {'or', 'hasanyelement'}))
+    % Inside a hasanyelement sub-query the paths are read from one element
+    % (ctx.root). Document-level operators (isa, depends_on, the
+    % base.session_id column) and the ones whose SQL does not read the
+    % element the way the evaluator does are left to the recheck, and a
+    % negated leaf is compiled only when its positive form is EXACT: NOT
+    % of an over-approximation would drop true matches.
+    if any(strcmp(op, {'isa', 'depends_on', 'hasmember', ...
+            'hasanysubfield_exact_string'})) ...
+            || isempty(char(ss.field)) || strcmp(char(ss.field), sessionIdPath()) ...
+            || (isNeg && ~leafIsExact(ss))
+        sql = '1=1';
+        params = {};
+        return;
+    end
+end
 switch op
+    case 'hasanyelement'
+        [sql, params] = compileHasAnyElement(ss.field, ss.param1, isNeg, ctx);
+        return;
     case 'or'
         if isNeg
             error('did2:database:badOperator', ...
@@ -158,7 +195,7 @@ switch op
             [sql, params] = compileSessionIdHasField(isNeg);
             return;
         end
-        [sql, params] = compileHasField(ss.field, isNeg);
+        [sql, params] = compileHasField(ss.field, isNeg, ctx);
         return;
     case 'hasmember'
         [sql, params] = compileHasMember(ss.field, ss.param1, isNeg);
@@ -290,13 +327,13 @@ end
 % leaf operators over the document body
 % -----------------------------------------------------------------------
 
-function [sql, params] = compileHasField(fieldPath, isNeg)
+function [sql, params] = compileHasField(fieldPath, isNeg, ctx)
 % `hasfield` checks path presence, not value. json_type returns NULL for
 % missing paths and non-NULL ('null', 'object', 'array', 'integer',
 % 'real', 'text', 'true', 'false') for present-but-arbitrary values.
 [stars, prefix, leaf] = splitPathOnStar(fieldPath);
 if isempty(stars)
-    expr = sprintf('json_type(body, ''%s'')', jsonPath(prefix));
+    expr = sprintf('json_type(%s, ''%s'')', ctx.root, jsonPath(prefix));
     if isNeg
         sql = sprintf('(%s IS NULL)', expr);
     else
@@ -306,8 +343,8 @@ if isempty(stars)
     return;
 end
 % At least one [*]: existence over the join expansion.
-[joinSQL, witnessAlias] = buildArrayJoin(stars);
-witnessExpr = leafValueExpression(witnessAlias, leaf);
+[joinSQL, witnessAlias] = buildArrayJoin(stars, ctx);
+witnessExpr = leafValueExpression(witnessAlias, leaf, ctx);
 condition = sprintf('json_type(%s) IS NOT NULL', witnessExpr);
 inner = sprintf('SELECT 1 %s WHERE %s', joinSQL, condition);
 existsSQL = sprintf('EXISTS (%s)', inner);
@@ -375,11 +412,11 @@ function [sql, params] = compileScalar(op, fieldPath, target, isNeg, ctx)
 [stars, prefix, leaf] = splitPathOnStar(fieldPath);
 
 if isempty(stars)
-    if strcmp(prefix, sessionIdPath())
+    if strcmp(prefix, sessionIdPath()) && ~ctx.inElement
         [sql, params] = compileSessionIdScalar(op, target, isNeg);
         return;
     end
-    if scalarPathIsIndexed(prefix, ctx)
+    if ~ctx.inElement && scalarPathIsIndexed(prefix, ctx)
         [sql, params] = compileScalarFromScalarSidecar(op, prefix, target, isNeg, ctx);
         return;
     end
@@ -395,13 +432,13 @@ if isempty(stars)
     return;
 end
 
-if arrayPathIsIndexed(fieldPath, ctx)
+if ~ctx.inElement && arrayPathIsIndexed(fieldPath, ctx)
     [sql, params] = compileScalarFromSidecar(op, fieldPath, target, isNeg, ctx);
     return;
 end
 
-[joinSQL, witnessAlias] = buildArrayJoin(stars);
-witnessExpr = leafValueExpression(witnessAlias, leaf);
+[joinSQL, witnessAlias] = buildArrayJoin(stars, ctx);
+witnessExpr = leafValueExpression(witnessAlias, leaf, ctx);
 [predicate, params] = scalarPredicate(op, witnessExpr, target);
 inner = sprintf('SELECT 1 %s WHERE %s', joinSQL, predicate);
 existsSQL = sprintf('EXISTS (%s)', inner);
@@ -656,13 +693,14 @@ end
 
 function expr = scalarValueExpression(dotPath, ctx)
 % scalarValueExpression - the SQL value expression for a (no-[*]) scalar
-% path that is NOT queryable: read from the body.
+% path that is NOT queryable: read from the body (or, inside a
+% hasanyelement sub-query, from the element).
 arguments
     dotPath {mustBeText}
-    ctx (1,1) struct %#ok<INUSA> unused: the signature matches the other value-expression builders
+    ctx (1,1) struct
 end
 
-expr = sprintf('json_extract(body, ''%s'')', jsonPath(dotPath));
+expr = sprintf('json_extract(%s, ''%s'')', ctx.root, jsonPath(dotPath));
 end
 
 function out = jsonPath(dotPath)
@@ -733,9 +771,31 @@ end
 leaf = remaining;
 end
 
-function [sql, lastAlias] = buildArrayJoin(stars)
+function [sql, lastAlias] = buildArrayJoin(stars, ctx)
 % Build the `FROM json_each(...) je1 [, json_each(...) jeK ...]` portion
-% of an EXISTS subquery for a `[*]`-bearing path.
+% of an EXISTS subquery for a `[*]`-bearing path. Inside a hasanyelement
+% sub-query the levels are read from the element (ctx.root) and counted as
+% the evaluator counts them (arrayElementSource), so nothing is dropped.
+if nargin < 2
+    ctx = struct('root', 'body', 'inElement', false);
+end
+if ctx.inElement
+    parts = cell(1, numel(stars));
+    for k = 1:numel(stars)
+        alias = sprintf('je%d', k);
+        if k == 1
+            src = arrayElementSource(ctx.root, stars{k});
+        elseif isempty(stars{k})
+            src = eachElementSource(sprintf('je%d', k - 1));
+        else
+            src = arrayElementSource(elementRoot(sprintf('je%d', k - 1)), stars{k});
+        end
+        parts{k} = sprintf('json_each(%s) %s', src, alias);
+    end
+    sql = ['FROM ' strjoin(parts, ', ')];
+    lastAlias = sprintf('je%d', numel(stars));
+    return;
+end
 parts = cell(1, numel(stars));
 for k = 1:numel(stars)
     if k == 1
@@ -761,13 +821,234 @@ sql = ['FROM ' strjoin(parts, '')];
 lastAlias = sprintf('je%d', numel(stars));
 end
 
-function expr = leafValueExpression(witnessAlias, leaf)
-% The value expression at the leaf of an `[*]`-bearing path.
+function expr = leafValueExpression(witnessAlias, leaf, ctx)
+% The value expression at the leaf of an `[*]`-bearing path. Inside a
+% hasanyelement sub-query a leaf is read only from an object element
+% (elementRoot): json_extract of a text element is a malformed-JSON error.
 if isempty(leaf)
     expr = sprintf('%s.value', witnessAlias);
+elseif nargin >= 3 && ctx.inElement
+    expr = sprintf('json_extract(%s, ''%s'')', elementRoot(witnessAlias), jsonPath(leaf));
 else
     expr = sprintf('json_extract(%s.value, ''%s'')', ...
         witnessAlias, jsonPath(leaf));
+end
+end
+
+% -----------------------------------------------------------------------
+% hasanyelement: the correlated "same element" operator
+% -----------------------------------------------------------------------
+
+function [sql, params] = compileHasAnyElement(fieldPath, sub, isNeg, ctx)
+% EXISTS (SELECT 1 FROM json_each(<the array>) haeN WHERE <sub-query on
+% haeN>): one element satisfies every predicate of the sub-query. See the
+% file header for the sidecar prefilter and for negation.
+arguments
+    fieldPath % the array's dot-path; char() below
+    sub % a did2.query or a search-structure array
+    isNeg (1,1) logical
+    ctx (1,1) struct
+end
+
+subSS = subquerySearchstructOf(sub);
+fieldPath = char(fieldPath);
+if endsWith(fieldPath, '[*]')
+    fieldPath = fieldPath(1:end-3);
+end
+depth = ctx.depth + 1;
+[stars, prefix, leaf] = splitPathOnStar(fieldPath);
+if isempty(stars)
+    alias = sprintf('hae%d', depth);
+    fromSQL = sprintf('json_each(%s) %s', arrayElementSource(ctx.root, prefix), alias);
+else
+    % `[*]` before the array: every array those levels reach is searched.
+    parts = cell(1, numel(stars) + 1);
+    prev = '';
+    for k = 1:numel(stars)
+        a = sprintf('hae%d_%d', depth, k);
+        if k == 1
+            src = arrayElementSource(ctx.root, stars{k});
+        elseif isempty(stars{k})
+            src = eachElementSource(prev);
+        else
+            src = arrayElementSource(elementRoot(prev), stars{k});
+        end
+        parts{k} = sprintf('json_each(%s) %s', src, a);
+        prev = a;
+    end
+    alias = sprintf('hae%d', depth);
+    if isempty(leaf)
+        src = eachElementSource(prev);
+    else
+        src = arrayElementSource(elementRoot(prev), leaf);
+    end
+    parts{end} = sprintf('json_each(%s) %s', src, alias);
+    fromSQL = strjoin(parts, ', ');
+end
+
+subCtx = ctx;
+subCtx.root = elementRoot(alias);
+subCtx.inElement = true;
+subCtx.depth = depth;
+[subSQL, subParams] = compileSearchstructArray(subSS, subCtx);
+existsSQL = sprintf('EXISTS (SELECT 1 FROM %s WHERE %s)', fromSQL, subSQL);
+
+if isNeg
+    if searchstructArrayIsExact(subSS)
+        sql = sprintf('(NOT %s)', existsSQL);
+        params = subParams;
+    else
+        sql = '1=1';
+        params = {};
+    end
+    return;
+end
+
+% Positive: where a sub-query leaf that every true match must satisfy is a
+% sidecar path, start from the sidecar's index; the EXISTS still decides
+% that one element satisfies the whole sub-query.
+[pre, preParams] = sidecarPrefilters(stars, prefix, subSS, ctx);
+if isempty(pre)
+    sql = existsSQL;
+    params = subParams;
+else
+    sql = ['(' strjoin([pre, {existsSQL}], ' AND ') ')'];
+    params = [preParams, subParams];
+end
+end
+
+function [pre, params] = sidecarPrefilters(stars, arrayPath, subSS, ctx)
+% One `documents.id IN (SELECT doc_id FROM queryable_array_elem ...)` per
+% AND-ed, positive leaf of the sub-query whose `<array>[*].<leaf>` path is
+% in the sidecar and whose predicate the sidecar row decides exactly as the
+% evaluator does (so no document with a matching element is dropped):
+% exact_string on a non-empty text against a TEXT path, and a scalar
+% numeric comparison against a REAL/INTEGER path. Only for a top-level
+% array path without `[*]`: the sidecar indexes paths from the document root.
+pre = {};
+params = {};
+if ctx.inElement || ~isempty(stars) || isempty(arrayPath)
+    return;
+end
+m = ctx.queryableArrayPaths;
+if ~isa(m, 'containers.Map') || m.Count == 0
+    return;
+end
+for k = 1:numel(subSS)
+    leafSS = subSS(k);
+    op = char(leafSS.operation);
+    f = char(leafSS.field);
+    if isempty(f) || contains(f, '[*]')
+        continue;
+    end
+    key = [arrayPath '[*].' f];
+    if ~m.isKey(key)
+        continue;
+    end
+    affinity = upper(char(m(key)));
+    t = leafSS.param1;
+    switch op
+        case 'exact_string'
+            ok = strcmp(affinity, 'TEXT') && (ischar(t) || (isstring(t) && isscalar(t))) ...
+                && strlength(string(t)) > 0;
+        case {'exact_number', 'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'}
+            ok = any(strcmp(affinity, {'REAL', 'INTEGER'})) && isnumeric(t) && isscalar(t);
+        otherwise
+            ok = false;
+    end
+    if ~ok
+        continue;
+    end
+    [predicate, p] = scalarPredicate(op, sidecarValueExpression(affinity), t);
+    pre{end+1} = ['documents.id IN (SELECT qae.doc_id FROM queryable_array_elem qae ' ...
+        'WHERE qae.path = ? AND ' predicate ')']; %#ok<AGROW>
+    params = [params, {key}, p]; %#ok<AGROW>
+end
+end
+
+function src = arrayElementSource(root, dotPath)
+% The value at dotPath under ROOT as a JSON array whose elements are the
+% ones did2.query's hasanyelement counts: an array as itself; an object (a
+% one-entry array of structures, as jsonencode writes it) or a scalar as a
+% one-element array; JSON null or a missing path as no elements. Also
+% keeps json_each away from a bare text value, which it would reject.
+p = jsonPath(dotPath);
+t = sprintf('json_type(%s, ''%s'')', root, p);
+x = sprintf('json_extract(%s, ''%s'')', root, p);
+src = sprintf(['CASE COALESCE(%s, ''null'') WHEN ''array'' THEN %s ' ...
+    'WHEN ''object'' THEN json_array(json(%s)) WHEN ''null'' THEN ''[]'' ' ...
+    'ELSE json_array(%s) END'], t, x, x, x);
+end
+
+function src = eachElementSource(alias)
+% arrayElementSource for the value of a json_each row (a `[*][*]` level).
+src = sprintf(['CASE %s.type WHEN ''array'' THEN %s.value ' ...
+    'WHEN ''object'' THEN json_array(json(%s.value)) WHEN ''null'' THEN ''[]'' ' ...
+    'ELSE json_array(%s.value) END'], alias, alias, alias, alias);
+end
+
+function expr = elementRoot(alias)
+% A json_each row's value as the root of relative paths: the object, or
+% NULL for any other element (no path resolves in it, as in the evaluator).
+expr = sprintf('(CASE WHEN %s.type = ''object'' THEN %s.value END)', alias, alias);
+end
+
+function ss = subquerySearchstructOf(sub)
+if isa(sub, 'did2.query')
+    ss = sub.searchstructure;
+elseif isstruct(sub)
+    ss = sub;
+else
+    error('did2:database:badSubquery', ...
+        'hasanyelement takes a sub-query (a did2.query or search-structure array).');
+end
+end
+
+function tf = searchstructArrayIsExact(ssArray)
+% Does this search-structure array compile, inside a hasanyelement
+% sub-query, to SQL that matches an element exactly when the evaluator
+% does? Only then may its NOT EXISTS stand in for `~hasanyelement`.
+tf = true;
+for k = 1:numel(ssArray)
+    ss = ssArray(k);
+    op = char(ss.operation);
+    if ~isempty(op) && op(1) == '~'
+        op = op(2:end);
+    end
+    switch op
+        case 'or'
+            ok = searchstructArrayIsExact(asStructArray(ss.param1)) ...
+                && searchstructArrayIsExact(asStructArray(ss.param2));
+        case 'hasanyelement'
+            ok = searchstructArrayIsExact(subquerySearchstructOf(ss.param1));
+        otherwise
+            ok = leafIsExact(ss);
+    end
+    if ~ok
+        tf = false;
+        return;
+    end
+end
+end
+
+function tf = leafIsExact(ss)
+% A leaf whose element-relative SQL agrees with the evaluator on every
+% element: exact_string of a text and hasfield, on a plain dot-path.
+op = char(ss.operation);
+if ~isempty(op) && op(1) == '~'
+    op = op(2:end);
+end
+f = char(ss.field);
+tf = false;
+if isempty(f) || contains(f, '[*]') || strcmp(f, sessionIdPath())
+    return;
+end
+switch op
+    case 'exact_string'
+        t = ss.param1;
+        tf = ischar(t) || (isstring(t) && isscalar(t));
+    case 'hasfield'
+        tf = true;
 end
 end
 

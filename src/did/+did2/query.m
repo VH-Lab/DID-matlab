@@ -24,7 +24,39 @@ classdef query
     %   Independent vs. correlated array predicates: per the model spec,
     %   two `[*]` predicates over the same array combined with `and()` do
     %   not necessarily refer to the same element. Each search structure
-    %   resolves its `[*]` paths independently.
+    %   resolves its `[*]` paths independently. So on an entry list
+    %
+    %       and(did2.query('s.parameters[*].variable.name', 'exact_string', 'orientation'), ...
+    %           did2.query('s.parameters[*].quantity.value', 'exact_number', 45))
+    %
+    %   matches a document whose 45 belongs to a DIFFERENT entry than its
+    %   orientation. To ask about ONE element, use `hasanyelement`:
+    %
+    %   hasanyelement (correlated, "same element"): field names an array
+    %   (of structures, usually); param1 is a SUB-QUERY (a did2.query, or a
+    %   search-structure array) whose field paths are read RELATIVE TO ONE
+    %   ELEMENT. The document matches when at least one element satisfies
+    %   the WHOLE sub-query:
+    %
+    %       sub = and(did2.query('variable.name', 'exact_string', 'orientation'), ...
+    %                 did2.query('quantity.value', 'exact_number', 45));
+    %       q = did2.query('s.parameters', 'hasanyelement', sub);
+    %
+    %   Any operator may appear in the sub-query (exact_string,
+    %   exact_number, lessthan..., contains_string, regexp, hasfield, `~`
+    %   negation, and/or, a nested hasanyelement over an array inside the
+    %   element); a sub-query field of '' is the element itself, so
+    %   hasanyelement also works over a flat list (e.g. of numbers).
+    %   `~hasanyelement` matches when NO element satisfies the sub-query,
+    %   which includes a missing or empty array. The elements are those of
+    %   the value at field: every entry of a structure array, cell array or
+    %   numeric/logical vector; a single structure or a text value is ONE
+    %   element (JSON stores a one-entry array of structures as an object);
+    %   a missing field or [] has none. field may itself carry `[*]`
+    %   segments (each array they reach is searched) and a trailing `[*]`
+    %   is ignored. isa and depends_on are document-level and are not
+    %   meaningful inside a sub-query. did2.database.sqlitedb compiles it to
+    %   json_each over the array (see did2.database.compileQuery).
     %
     %   did2.query Properties:
     %       searchstructure - struct array of the four-tuple form above.
@@ -54,6 +86,9 @@ classdef query
     %       q = did2.query('', 'depends_on', 'ingredient_id', ...       % its target
     %               did2.query('chemical.value.substance.name', ...      % matches a
     %                          'exact_string', 'peptone'));              % query
+    %       q = did2.query('s.parameters', 'hasanyelement', ...      % ONE entry
+    %               and(did2.query('variable.name', 'exact_string', 'orientation'), ...
+    %                   did2.query('quantity.value', 'exact_number', 45)));
     %       q = and(q1, q2);  q = or(q1, q2);
     %       tf = q.matches(doc);
     %       hits = q.filter(docList);
@@ -202,6 +237,9 @@ classdef query
                 param1 = ''
                 param2 = ''
             end
+            if any(strcmp(operation, {'hasanyelement', '~hasanyelement'}))
+                did2.query.subquerySearchstruct(param1);   % errors if not a sub-query
+            end
             ss = struct( ...
                 'field', field, ...
                 'operation', operation, ...
@@ -290,6 +328,21 @@ classdef query
             end
         end
 
+        function ss = subquerySearchstruct(sub)
+            % The search-structure array of a hasanyelement sub-query.
+            if isa(sub, 'did2.query') && isscalar(sub)
+                ss = sub.searchstructure;
+            elseif isstruct(sub) && (isempty(sub) || isequal(sort(fieldnames(sub)), ...
+                    sort({'field'; 'operation'; 'param1'; 'param2'})))
+                ss = sub;
+            else
+                error('did2:query:badSubquery', ...
+                    ['hasanyelement takes a sub-query as param1: a did2.query ' ...
+                     '(or a search-structure array) whose paths are read ' ...
+                     'relative to one element of the array.']);
+            end
+        end
+
         function tf = evaluateAll(searchArray, doc)
             % AND across the searchstructure array. An empty array matches.
             tf = true;
@@ -329,6 +382,8 @@ classdef query
                 case 'hasanysubfield_exact_string'
                     tf = did2.query.opHasAnySubfieldExact(doc, ss.field, ...
                         ss.param1, ss.param2);
+                case 'hasanyelement'
+                    tf = did2.query.opHasAnyElement(doc, ss.field, ss.param1);
                 case 'hasfield'
                     tf = ~isempty(did2.query.walkPath(doc, ss.field));
                 case 'hasmember'
@@ -565,6 +620,44 @@ classdef query
             end
         end
 
+        function tf = opHasAnyElement(doc, fieldPath, sub)
+            % Correlated "same element" check: some element of the array at
+            % fieldPath satisfies the WHOLE sub-query, its paths read
+            % relative to that element. See the class help for what counts
+            % as an element; did2.database.compileQuery counts the same way.
+            subSS = did2.query.subquerySearchstruct(sub);
+            fieldPath = char(fieldPath);
+            if endsWith(fieldPath, '[*]')
+                fieldPath = fieldPath(1:end-3);
+            end
+            containers = did2.query.walkPath(doc, fieldPath);
+            tf = false;
+            for c = 1:numel(containers)
+                elems = did2.query.elementsOf(containers{c});
+                for k = 1:numel(elems)
+                    if did2.query.evaluateAll(subSS, elems{k})
+                        tf = true;
+                        return;
+                    end
+                end
+            end
+        end
+
+        function elems = elementsOf(v)
+            % The elements hasanyelement searches in the value V.
+            if isstruct(v) || isnumeric(v) || islogical(v)
+                elems = num2cell(v(:)');
+            elseif iscell(v)
+                elems = reshape(v, 1, []);
+            elseif ischar(v) || (isstring(v) && isscalar(v))
+                elems = {v};
+            elseif isstring(v)
+                elems = cellstr(v(:)');
+            else
+                elems = {v};
+            end
+        end
+
         function tf = opScalar(op, doc, fieldPath, param1)
             values = did2.query.walkPath(doc, fieldPath);
             tf = false;
@@ -720,7 +813,7 @@ classdef query
             allowed = {'or', 'isa', 'depends_on', ...
                 'hasfield', 'hasmember', ...
                 'hasanysubfield_contains_string', ...
-                'hasanysubfield_exact_string', ...
+                'hasanysubfield_exact_string', 'hasanyelement', ...
                 'exact_string', 'exact_string_anycase', 'contains_string', 'wildcard', ...
                 'regexp', 'exact_number', ...
                 'lessthan', 'lessthaneq', 'greaterthan', 'greaterthaneq'};
