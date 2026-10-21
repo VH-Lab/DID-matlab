@@ -36,11 +36,17 @@
 %     list                   join separately built entries into one array
 %     composite              the general form: any nested structure a class declares
 %     datumType              a MATLAB / source type name -> `datum_type`
+
+%   Checks across documents
+%     checkDoseIngredients   a dose's ingredient_id edges are among its
+%                            formulation's (rule ingredient_in_formulation)
 %
 %   Checks beyond per-field types (the list lives in private/checkRules.m):
 %     the schema's own `rules` (key_regular_origin_spacing,
 %     key_positions_one_form, key_chunk_sampled_only, datum_type_when_bytes,
-%     clock_with_start, ingredients_or_product) -- an UNKNOWN rule is an error,
+%     clock_with_start, ingredients_or_product, ingredients_match_edges;
+%     ingredient_in_formulation is known but needs the formulation, see
+%     checkDoseIngredients) -- an UNKNOWN rule is an error,
 %     not a skip; `require_inherited`; conditions carry one value; variables are
 %     unique across keys and conditions; parameters carry one form and are
 %     unique; an inline `method` and a `method_id` edge are never both given;

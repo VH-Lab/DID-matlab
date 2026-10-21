@@ -741,6 +741,59 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(site), 'term_observation');
 verifyEqual(testCase, site.get('term.value').node, 'uberon:0002436');
 end
 
+function v1 = virusInjectionV1(id, adminDate)
+% A did_v1 virus_injection in the shape NDI's writer makes it
+% (+setup/+NDIMaker/treatmentMaker.m create_virus_injection_doc: every column
+% set, virus_AdministrationDate as char, virus_AdministrationPND as double).
+v1 = struct();
+v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'subject_id'}, 'value', {'subj_007'});
+v1.base = struct('id', id, 'session_id', 'sess_09', ...
+    'name', 'vi', 'datestamp', '2024-06-01T12:00:00.000Z');
+v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
+    'virus_name', 'AAV-ChR2', ...
+    'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1', ...
+    'virus_AdministrationDate', adminDate, 'virus_AdministrationPND', 21, ...
+    'dilution', 1000, 'diluent_OntologyName', '', 'diluent_name', '');
+end
+
+function testVirusInjectionAnchoredAtItsAdministrationDate(testCase)
+% Jess Haley, 2026-10-21 ("a") [virus injection onset]: virus_AdministrationDate
+% is the onset, so the dose (and its site observation) is anchored there.
+out = runJ(virusInjectionV1('vi_date', '2024-05-02'));
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+a = firstOfClassJ(out.migrated, 'absolute_time_reference');
+assertNotEmpty(testCase, a, 'no absolute time reference at the administration date');
+verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '2024-05-02');
+verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
+site = firstOfClassJ(out.migrated, 'term_observation');
+verifyEqual(testCase, depVal(site, 'time_reference_id'), a.get('base.id'));
+end
+
+function testVirusInjectionWithNoAdministrationDateIsDuringTheSession(testCase)
+% The date blank (the template's ""): "during the session", as before.
+out = runJ(virusInjectionV1('vi_nodate', ''));
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+verifyEmpty(testCase, firstOfClassJ(out.migrated, 'absolute_time_reference'));
+a = firstOfClassJ(out.migrated, 'relative_time_reference');
+assertNotEmpty(testCase, a);
+verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
+end
+
+function testVirusInjectionAdministrationDateCamelCaseIsRead(testCase)
+% Read as written too (a path that does not snake_case the block).
+v1 = virusInjectionV1('vi_camel', '');
+v1.virus_injection = rmfield(v1.virus_injection, 'virus_AdministrationDate');
+v1.virus_injection.virusAdministrationDate = '2024-05-03';
+out = runJ(v1);
+a = firstOfClassJ(out.migrated, 'absolute_time_reference');
+assertNotEmpty(testCase, a);
+verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '2024-05-03');
+end
+
 function testVirusInjectionBecomesDoseManipulation(testCase)
 v1 = struct();
 v1.document_class = struct('class_name', 'virus_injection', 'class_version', '1.0.0', ...
@@ -850,11 +903,45 @@ verifyEqual(testCase, site.get('term.value').node, 'SNOMED:783351009');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
 
+function testSalinePerBodyMassIsAPlaceholderNotAnAmount(testCase)
+% Hunsberger's control group is written `saline, 1 mg/kg` (EFO:0002677,
+% +hunsberger/TreatmentCreator.m): the drug group's per-body-mass number copied
+% onto a vehicle. It is the amount of NO active ingredient (Jess Haley,
+% 2026-10-21 [dose per ingredient]), so it is not an ingredient amount and not
+% a concentration: the dose's volume is NaN, there is no ingredient entry or
+% ingredient_id edge, and the migration report carries `amount_placeholder`.
+v1 = treatmentDrugDoc('td_saline', ...
+    sprintf('ontologyName,name,value,ontologyUnit,unitName\nEFO:0002677,saline,1,SNOMED:396163008,mg/kg'), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
+dv = d.get('dose.value');
+verifyTrue(testCase, isnan(dv.volume.liters), 'the injected volume is unrecorded');
+verifyFalse(testCase, isfield(dv, 'ingredients') && ~isempty(dv.ingredients), ...
+    'a vehicle''s placeholder is not an ingredient amount');
+verifyFalse(testCase, isfield(dv, 'amount_per_body_mass') && ~isempty(dv.amount_per_body_mass), ...
+    'nor the dose''s own amount per body mass');
+verifyEmpty(testCase, depVal(d, 'ingredient_id'));
+f = doseChainJ(out.migrated, d);
+e = f.get('formulation.value').ingredients(1);
+verifyTrue(testCase, isnan(e.concentration.source_value), 'nor a concentration');
+notes = out.summary.migration_notes;
+assertTrue(testCase, isfield(notes, 'amount_placeholder'), 'the placeholder was not reported');
+verifyEqual(testCase, notes.amount_placeholder.count, 1);
+verifyEqual(testCase, notes.amount_placeholder.ids, {'td_saline'});
+verifyEqual(testCase, notes.amount_placeholder.details, {'saline: 1 mg/kg'});
+end
+
 function testEachAmountRowFillsItsOwnDoseSlot(testCase)
 % Jess Haley, 2026-10-21 ("a"): when a treatment has more than one amount row,
 % EACH amount goes in its matching dose slot -- not only when exactly one row
-% exists. A volume row and a mass row: both reach the dose, both are taken off
-% their ingredient rows (they are amounts, not concentrations), nothing noted.
+% exists. INVERTED for the refinement of the same day ("a"): a MASS row that
+% NAMES a chemical is that chemical's, so the alprazolam 2 mg goes into its
+% `value.ingredients` entry (with an `ingredient_id` edge to it), not the top
+% level; the saline 0.5 mL (a volume) stays the top-level amount. Both are taken
+% off the formulation's rows (they are amounts, not concentrations); nothing noted.
 v1 = treatmentDrugDoc('td_two_kinds', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,2,UO:0000022,mg\n' ...
     'NCIT:C62467,saline,0.5,UO:0000098,mL']), ...
@@ -864,11 +951,17 @@ verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'dose_manipulation');
 v = d.get('dose.value');
-verifyEqual(testCase, v.mass.grams, 2e-3, 'AbsTol', 1e-15);
-verifyEqual(testCase, v.mass.source_value, 2);
+verifyFalse(testCase, isfield(v, 'mass') && isstruct(v.mass) && ~isempty(v.mass) ...
+    && isfield(v.mass, 'grams') && ~isempty(v.mass.grams), ...
+    'a mass row naming a chemical is not the top-level mass');
+assertEqual(testCase, numel(v.ingredients), 1);
+verifyEqual(testCase, v.ingredients(1).mass.grams, 2e-3, 'AbsTol', 1e-15);
+verifyEqual(testCase, v.ingredients(1).mass.source_value, 2);
 verifyEqual(testCase, v.volume.liters, 0.5e-3, 'AbsTol', 1e-15);
 verifyEqual(testCase, v.volume.source_value, 0.5);
-f = doseChainJ(out.migrated, d);
+[f, c] = doseChainJ(out.migrated, d);
+verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
+    'the entry is paired with the alprazolam chemical');
 ing = f.get('formulation.value').ingredients;
 verifyEqual(testCase, numel(ing), 2);
 verifyTrue(testCase, all(arrayfun(@(e) isnan(e.concentration.source_value), ing)), ...
@@ -877,15 +970,66 @@ verifyFalse(testCase, isfield(out.summary.migration_notes, 'dose_amount_conflict
 end
 
 function testSubstanceAmountRowFillsSubstanceAmount(testCase)
-% A row in a substance-amount unit (mmol) is the dose's substance_amount.
+% A row in a substance-amount unit (mmol) that names a chemical is that
+% chemical's substance_amount: its `value.ingredients` entry (Jess Haley,
+% 2026-10-21, "a"). INVERTED from the top-level substance_amount.
 v1 = treatmentDrugDoc('td_mol', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
     'NCIT:C227,alprazolam,3,UO:0000040,mmol']), ...
     'SNOMED:783351009', 'Intraperitoneal');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 v = out.migrated{1}.get('dose.value');
-verifyEqual(testCase, v.substance_amount.moles, 3e-3, 'AbsTol', 1e-15);
-verifyEqual(testCase, v.substance_amount.source_value, 3);
+assertEqual(testCase, numel(v.ingredients), 1);
+verifyEqual(testCase, v.ingredients(1).substance_amount.moles, 3e-3, 'AbsTol', 1e-15);
+verifyEqual(testCase, v.ingredients(1).substance_amount.source_value, 3);
+verifyTrue(testCase, isnan(v.volume.liters), 'the whole formulation''s amount is unrecorded');
+end
+
+function testDoseIngredientsAreCheckedAgainstTheirFormulationInBatch(testCase)
+% did-schema rule ingredient_in_formulation (Jess Haley, 2026-10-21 [dose per
+% ingredient]) needs the formulation, so it runs as a BATCH census
+% (did2.validate.doseIngredients -> did2.build.checkDoseIngredients) and counts.
+v1 = treatmentDrugDoc('td_ing_chk', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+    'NCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg']), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+rep = did2.validate.doseIngredients(out.migrated);
+verifyEqual(testCase, rep.docs_inspected, numel(out.migrated));
+verifyEqual(testCase, rep.doses_inspected, 1);
+verifyEqual(testCase, rep.doses_with_ingredients, 1);
+verifyEqual(testCase, rep.doses_checked, 1);
+verifyEqual(testCase, rep.violations, 0, 'the migrated dose names its own ingredient');
+% the same batch with the dose pointing at something its formulation lacks
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+dep = docs{1}.depends_on;
+k = find(strcmp({dep.name}, 'ingredient_id'), 1);
+if isfield(dep, 'value'); dep(k).value = 'not_an_ingredient'; end
+if isfield(dep, 'document_id'); dep(k).document_id = 'not_an_ingredient'; end
+docs{1}.depends_on = dep;
+rep = did2.validate.doseIngredients(docs);
+verifyEqual(testCase, rep.doses_checked, 1);
+verifyEqual(testCase, rep.violations, 1, 'a foreign ingredient_id is counted');
+verifyEqual(testCase, rep.violation_examples(1).id, 'td_ing_chk');
+end
+
+function testANamedDrugMassRowIsThatIngredientsMass(testCase)
+% Jess Haley, 2026-10-21 ("a"): a mass row naming a drug -> that chemical's
+% ingredient entry `.mass`, with an `ingredient_id` edge to its chemical; a
+% per-body-mass row on the same chemical merges into the SAME entry.
+v1 = treatmentDrugDoc('td_named_mass', sprintf(['ontologyName,name,value,ontologyUnit,unitName\n' ...
+    'NCIT:C227,alprazolam,0.5,UO:0000022,mg']), ...
+    'SNOMED:783351009', 'Intraperitoneal');
+out = runJ(v1);
+verifyEmpty(testCase, out.quarantine);
+d = out.migrated{1};
+v = d.get('dose.value');
+assertEqual(testCase, numel(v.ingredients), 1);
+verifyEqual(testCase, v.ingredients(1).mass.grams, 0.5e-3, 'AbsTol', 1e-15);
+[~, c] = doseChainJ(out.migrated, d);
+verifyEqual(testCase, c.get('chemical.value').substance.name, 'alprazolam');
+verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'));
+verifyTrue(testCase, isnan(v.volume.liters));
 end
 
 function testTwoDisagreeingRowsOfOneKindKeepTheFirstAndReportTheRest(testCase)
@@ -3946,7 +4090,7 @@ verifyEqual(testCase, ob.data_body.content_hash, 'd41d8cd98f00b204e9800998ecf842
 verifyEqual(testCase, ob.data_body.hash_algorithm, 'MD5');
 verifyFalse(testCase, contains(ob.data_body.description, 'd41d8cd9'), ...
     'the MD5 is the checksum, not free text');
-verifyEqual(testCase, ob.data_body.format.name, 'directory');
+verifyEqual(testCase, ob.data_body.format.node, 'EMPTY:0000315');   % "directory of files"
 end
 
 function testKiasortClustersFoldsToCountObservationPlusOpaqueBody(testCase)
@@ -4603,9 +4747,10 @@ verifyEqual(testCase, out{1}.base.id, 'fc_3');
 end
 
 function testVmspikefitFoldsToResidualScore(testCase)
-% did-schema #88: as fitcurve -- a model_fit_calculation when the source names
-% an operating system, a passthrough when it does not (the NDI template ships
-% no app block, so the passthrough is the expected case).
+% did-schema #88: as fitcurve -- a calculation with the model_fit value kind.
+% UPDATED 2026-10-21: operating_system_id is OPTIONAL (Jess Haley
+% [calculation-os-optional]), so with no app block (the NDI template ships
+% none) it FOLDS with no operating_system_id edge, instead of passing through.
 body = struct();
 body.document_class = struct('class_name', 'vmspikefit', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', {'base'}, 'class_version', {'1.0.0'}));
@@ -4614,8 +4759,11 @@ body.base = struct('id', 'vf_1', 'session_id', 'sess_09', 'name', 'vf', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 body.vmspikefit = struct('fit_equation', 'exp2', 'fit_sse', 3.25);
 out = did2.convert.migrators_j.vmspikefit(body);
-verifyEqual(testCase, numel(out), 1);
-verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'vmspikefit');
+names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);
+assertTrue(testCase, any(strcmp(names, 'model_fit_calculation')), strjoin(names, ', '));
+calc0 = out{find(strcmp(names, 'model_fit_calculation'), 1)};
+verifyEqual(testCase, calc0.base.id, 'vf_1');
+verifyEmpty(testCase, depValue(calc0, 'operating_system_id'));
 body.app = struct('name', 'vm', 'version', '1', 'os', 'GLNXA64');
 out = did2.convert.migrators_j.vmspikefit(body);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), out, 'UniformOutput', false);

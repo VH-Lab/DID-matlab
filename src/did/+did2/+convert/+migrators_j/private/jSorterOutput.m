@@ -96,11 +96,11 @@ anchor = jSessionAnchor(preBody, 'during');
 [software, swId] = jSoftwareFromApp(preBody, 'RequireSession', true);
 swOpt = {};
 if ~isempty(swId); swOpt = {'SoftwareId', swId}; end
-obs = jStatement(preBody, 'count_observation', ...
+obs = jStatement(preBody, 'observation', ...
     jSubjectOf(preBody, {'element_id', 'subject_id'}), ...
     jLabel('spike cluster assignment'), [], ...
     'Fields', struct('method', jMethod(sorterName)), 'DataBody', true, ...
-    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', char(preBody.base.id));
+    'TimeReferenceIds', {anchor.base.id}, swOpt{:}, 'Id', char(preBody.base.id), 'ValueKind', 'count');
 % Jess Haley, 2026-10-21 ("a"): the output directory is recorded BY LOCATION,
 % as resolveEpochProbemap records an epoch's files -- body_data_0's location is
 % the directory path, nothing ingested -- and the curated-output MD5 is the
@@ -127,9 +127,9 @@ bodies = [{obs, body, anchor}, software];
 end
 
 function t = SORTER_DIRECTORY_FORMAT()
-%SORTER_DIRECTORY_FORMAT The `format` of a sorter's output-directory body: the
-%   EMPTY term "directory" (Jess Haley, 2026-10-21), being minted in
-%   empty-ontology #22 and registered in did-schema. ITS NODE IS NOT YET KNOWN:
-%   this is the ONE place to put it when it is reported; until then a label.
-t = struct('node', '', 'name', 'directory');
+%SORTER_DIRECTORY_FORMAT The `format` of a sorter's output-directory body:
+%   EMPTY:0000315 "directory of files" (Jess Haley, 2026-10-19, empty-ontology
+%   d500863, minted for exactly the sorter output folder). The one place it is
+%   named.
+t = struct('node', 'EMPTY:0000315', 'name', 'directory of files');
 end

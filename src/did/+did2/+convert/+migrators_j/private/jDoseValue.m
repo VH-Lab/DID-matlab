@@ -1,4 +1,4 @@
-function [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals)
+function [value, chemicals, conflicts, ingredientRows, placeholders] = jDoseValue(chemicals)
 %JDOSEVALUE A migrated dose's `value`: the amount the source gave, else NaN.
 %
 %   [VALUE, CHEMICALS] = jDoseValue(CHEMICALS). CHEMICALS is the struct array
@@ -24,6 +24,10 @@ function [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals)
 %   in CONFLICTS (a cellstr, one line each) for the caller to report
 %   (jTreatmentBodies: reportNote 'dose_amount_conflict'). Either way it is
 %   taken off its row.
+%   A MASS OR SUBSTANCE AMOUNT ON A ROW THAT NAMES A CHEMICAL is that
+%   chemical's too (Jess Haley, 2026-10-21, "a"): it goes in its
+%   `value.ingredients` entry (`.mass` / `.substance_amount`), and only a row
+%   naming no chemical states a top-level mass (the whole formulation's).
 %   AN AMOUNT PER BODY MASS IS ONE INGREDIENT'S (Jess Haley, 2026-10-21
 %   [dose per ingredient], did-schema 959e6d5): Hunsberger's "1 mg/kg" is of
 %   the alprazolam, not of the solution. Such a row becomes an entry of the
@@ -32,6 +36,15 @@ function [value, chemicals, conflicts, ingredientRows] = jDoseValue(chemicals)
 %   adds one `ingredient_id` edge per row to that row's chemical
 %   (rule ingredients_match_edges). The top level then states the whole
 %   formulation's amount; unrecorded, it is NaN in volume.liters.
+%   A PLACEHOLDER IS NOT AN AMOUNT (Jess Haley, 2026-10-21 [dose per
+%   ingredient]): an amount per body mass on a VEHICLE row (saline,
+%   EFO:0002677 -- Hunsberger's control group is written `saline, 1 mg/kg`,
+%   copied from the drug group's row) is the amount of no active ingredient.
+%   It is not made an ingredient amount and not a concentration: it is taken
+%   off its row and listed in PLACEHOLDERS (a cellstr, one line each:
+%   substance, number, unit) for the caller to report
+%   (jTreatmentBodies: reportNote 'amount_placeholder'); with no other amount
+%   the dose's volume is NaN.
 %   No such row: the amount is unrecorded and is written as NaN in the
 %   dose's volume:
 %   `value.volume.liters = NaN` ("An unrecorded amount is written as NaN in
@@ -63,8 +76,9 @@ for k = 1:numel(chemicals)
 end
 
 conflicts = {};
+placeholders = {};
 ingredientRows = [];
-ingredients = struct('amount_per_body_mass', {});
+entryByRow = containers.Map('KeyType', 'double', 'ValueType', 'any');
 if ~isempty(hits)
     v = struct();
     firstSpelled = struct();   % the first row's unit spelling, per slot
@@ -82,10 +96,27 @@ if ~isempty(hits)
         q.source_unit = unitTerm(c.source_unit);
         chemicals(k).source_value = [];
         chemicals(k).source_unit = [];
-        if strcmp(slot, 'amount_per_body_mass')
-            % one ingredient's own amount, not the formulation's
-            ingredients(end+1) = struct('amount_per_body_mass', q); %#ok<AGROW>
-            ingredientRows(end+1) = k; %#ok<AGROW>
+        if strcmp(slot, 'amount_per_body_mass') && isVehicle(c.substance)
+            % a vehicle's "amount per body mass" names no active ingredient
+            placeholders{end+1} = sprintf('%s: %s %s', termName(c.substance), ...
+                num2str(sv, 17), spelled); %#ok<AGROW>
+            continue;
+        end
+        if strcmp(slot, 'amount_per_body_mass') || ...
+                (any(strcmp(slot, {'mass', 'substance_amount'})) && namesChemical(c.substance))
+            % one ingredient's own amount, not the formulation's: an amount per
+            % body mass always; a mass or substance amount when the row NAMES a
+            % chemical (Jess Haley, 2026-10-21, "a", refining [multiple amount
+            % rows]). One entry per chemical row, its slots merged.
+            e = struct();
+            if isKey(entryByRow, k); e = entryByRow(k); end
+            if ~isfield(e, slot)
+                e.(slot) = q;
+            end
+            entryByRow(k) = e;
+            if ~any(ingredientRows == k)
+                ingredientRows(end+1) = k; %#ok<AGROW>
+            end
             continue;
         end
         if ~isfield(v, slot)
@@ -111,8 +142,12 @@ if ~isempty(hits)
         % unrecorded, NaN at the top level (did-schema dose.json example)
         v.volume = struct('liters', NaN);
     end
-    if ~isempty(ingredients)
-        v.ingredients = ingredients;
+    if ~isempty(ingredientRows)
+        es = cell(1, numel(ingredientRows));
+        for i = 1:numel(ingredientRows)
+            es{i} = entryByRow(ingredientRows(i));
+        end
+        v.ingredients = did2.build.list(es{:});   % ragged entries, merged
     end
     value = did2.build.composite('dose', 'value', v);
 elseif isempty(hits) && ~isempty(kindOnly) && isscalar(unique(kindSlots(:, 1)))
@@ -192,6 +227,29 @@ switch kind
 end
 end
 
+function tf = isVehicle(substance)
+% a vehicle carries no active ingredient: saline (EFO:0002677, the term the
+% Hunsberger converter writes), or a substance named 'saline' / 'vehicle'
+tf = false;
+if ~isstruct(substance) || isempty(substance)
+    return;
+end
+node = '';
+if isfield(substance, 'node'); node = strtrim(char(substance.node)); end
+if strcmpi(node, 'EFO:0002677')
+    tf = true;
+    return;
+end
+tf = any(strcmpi(termName(substance), {'saline', 'vehicle'}));
+end
+
+function n = termName(substance)
+n = '';
+if isstruct(substance) && ~isempty(substance) && isfield(substance, 'name')
+    n = strtrim(char(substance.name));
+end
+end
+
 function s = unitSpelling(unit)
 s = '';
 if isstruct(unit) && ~isempty(unit) && isfield(unit, 'name')
@@ -206,5 +264,16 @@ if isstruct(unit)
     t = unit;
 else
     t = jSourceUnit(unit);
+end
+end
+
+function tf = namesChemical(substance)
+% the row names a chemical: its substance term has a node or a name
+tf = false;
+if isstruct(substance) && ~isempty(substance)
+    n = ''; m = '';
+    if isfield(substance, 'node'); n = strtrim(char(substance.node)); end
+    if isfield(substance, 'name'); m = strtrim(char(substance.name)); end
+    tf = ~isempty(n) || ~isempty(m);
 end
 end

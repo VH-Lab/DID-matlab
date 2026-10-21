@@ -31,6 +31,12 @@ function out = reportNote(action, arg2, arg3, arg4)
 %                     (two volumes, two masses, ...) that disagree: the dose
 %                     keeps the first; DETAIL names the kind and both amounts
 %                     (jDoseValue; Jess Haley, 2026-10-21, "a").
+%     amount_placeholder  a v1 treatment row giving an amount per body mass
+%                     of a VEHICLE (Hunsberger's saline `1 mg/kg`, copied from
+%                     the drug group): no active ingredient, so it is written
+%                     nowhere; the dose's volume is NaN. DETAIL is
+%                     'substance: number unit' (jDoseValue; Jess Haley,
+%                     2026-10-21 [dose per ingredient]).
 %     field_dropped   a v1 field a calculator fold (jCalculation, via
 %                     jTuningCurve / jContrastSensitivityValue) has no home for
 %                     on did-schema #88; DETAIL is its path in the source

@@ -91,7 +91,10 @@ on:
       did_schema_ref:
         description: >-
           did-schema ref to validate against. Default: the did-schema #88
-          branch the migrators are ported to (Jess Haley, 2026-10-21).
+          branch the migrators are ported to (Jess Haley, 2026-10-21). The
+          default does not depend on the branch the run is dispatched from, so
+          it is the same for #218 (claude/ecstatic-pascal-md91fw), port-88 and
+          the nightly schedule; each corpus job prints the ref and sha it used.
         required: false
         default: 'claude/ecstatic-pascal-md91fw'
         type: string
