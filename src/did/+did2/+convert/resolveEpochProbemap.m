@@ -139,6 +139,9 @@ report = struct( ...
     'rename_skipped_no_filenavigator',0, ...
     'rename_skipped_no_epoch',        0, ...
     'rename_quarantined',             0, ...
+    'rename_skipped_rows_without_home',0, ...
+    'acquisition_channels_minted',    0, ...
+    'channels_unbindable_type',       0, ...
     'fold_quarantined',               0, ...
     'ran',                            false);
 result.epoch_probemap_fold = report;
@@ -206,33 +209,42 @@ for k = 1:n
     switch classOf{k}
         case 'epoch'
             lid = '';
-            if isfield(b, 'epoch') && isstruct(b.epoch)
-                lid = charField(b.epoch, {'local_identifier'});
+            if isfield(b, 'entity') && isstruct(b.entity)
+                lid = charField(b.entity, {'local_identifier'});
             end
             if ~isempty(lid) && ~isempty(docIds{k})
                 key = epochKey(sessionIds{k}, lid);
                 if ~isKey(epochIdByKey, key); epochIdByKey(key) = docIds{k}; end
             end
-        case 'subject'
-            lid = '';
-            if isfield(b, 'subject') && isstruct(b.subject)
-                lid = charField(b.subject, {'local_identifier'});
-            end
-            if ~isempty(lid) && ~isempty(docIds{k})
-                key = epochKey(sessionIds{k}, lid);
-                if ~isKey(subjectIdByKey, key); subjectIdByKey(key) = docIds{k}; end
-            end
         case 'acquisition_system'
-            nm = baseField(b, 'name');
+            nm = '';
+            if isfield(b, 'acquisition_system') && isstruct(b.acquisition_system)
+                nm = charField(b.acquisition_system, {'name'});
+            end
+            if isempty(nm); nm = baseField(b, 'name'); end
             if ~isempty(nm) && ~isempty(docIds{k})
                 key = epochKey(sessionIds{k}, nm);
                 if ~isKey(acqSystemIdByName, key)
                     acqSystemIdByName(key) = docIds{k};
                 end
             end
+        otherwise
+            % did-schema #88: an animal, a probe, a cell are all one `entity`
+            % class told apart by `type`; any entity that is not a record
+            % (session, dataset, software, ...) can be a probemap subject or
+            % the probe itself, found by its local_identifier.
+            if isfield(b, 'entity') && isstruct(b.entity) ...
+                    && ~any(strcmp(classOf{k}, {'session', 'dataset', 'software', ...
+                    'operating_system', 'organization', 'person', 'protocol'}))
+                lid = charField(b.entity, {'local_identifier'});
+                if ~isempty(lid) && ~isempty(docIds{k})
+                    key = epochKey(sessionIds{k}, lid);
+                    if ~isKey(subjectIdByKey, key); subjectIdByKey(key) = docIds{k}; end
+                end
+            end
     end
     if isRecording30Observation(b)
-        subj  = depValueOf(b, 'subject_id');
+        subj  = depValueOf(b, 'entity_id');
         instr = depValueOf(b, 'instrument_id');
         if ~isempty(subj) && ~isempty(instr)
             tk = obs30TripleKey(subj, instr, classOf{k});
@@ -259,6 +271,9 @@ retire30AnchorCand = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % INCREMENT 3: source epochfiles_ingested docId -> its ingestion_manifest body.
 % Applied in the rebuild, GUARDED on the manifest surviving validation.
 renameBodyBySrcId = containers.Map('KeyType', 'char', 'ValueType', 'any');
+acIdByKey   = containers.Map('KeyType', 'char', 'ValueType', 'char');
+acBodyById  = containers.Map('KeyType', 'char', 'ValueType', 'any');
+newGroupAc = {};     % acquisition_channels base.id each new body points at ('' = none)
 
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
@@ -272,69 +287,52 @@ for k = 1:n
         continue;     % no epoch -> cannot fill ingestion_manifest.epoch_id; stays
     end
     epochDocId = epochIdByKey(epochKey(sid, es));
-    datestamp = baseField(b, 'datestamp');
+    datestamp = baseField(b, 'creation_timestamp');
+    if isempty(datestamp); datestamp = baseField(b, 'datestamp'); end
     if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
-
-    % ---- INCREMENT 3: schedule the rename-thin (guarded) -------------------
-    % epochfiles_ingested -> ingestion_manifest, the moment its epoch resolves.
-    % Scheduled BEFORE the probemap decode so a manifest with no probemap is
-    % still renamed. GUARDED on filenavigator_id (NDI writes it; V_eta dropped
-    % it): absent -> leave the tombstone, counted, never quarantined.
     fnId = depValueOf(b, 'filenavigator_id');
-    if isempty(fnId)
-        report.rename_skipped_no_filenavigator = ...
-            report.rename_skipped_no_filenavigator + 1;
-    else
-        renameBodyBySrcId(docIds{k}) = ...
-            mkIngestionManifest(b, fnId, epochDocId, sid, datestamp);
-    end
 
+    % did-schema #88 (#73 review item 39): ingestion_manifest carries NO
+    % serialized epochprobemap. Every row must have a home before the v1
+    % document may be renamed; a row that does not decompose (an imaging row,
+    % an unresolved type, a row naming no resolvable subject) keeps the WHOLE
+    % v1 document as a passthrough, so the row is never silently dropped.
+    rowsWithoutHome = 0;
     pm = probemapCharOf(b);
-    if isempty(pm); continue; end     % no probemap text -> no rows to decompose
-    rowsPM = parseProbemapRows(pm);
-    if isempty(rowsPM); continue; end
-
+    rowsPM = [];
+    if ~isempty(pm); rowsPM = parseProbemapRows(pm); end
     for r = 1:numel(rowsPM)
         report.probe_rows_total = report.probe_rows_total + 1;
         row = rowsPM(r);
-
-        % ---- SUBJECT (required) --------------------------------------------
         if isempty(row.subjectstring)
             report.rows_no_subjectstring = report.rows_no_subjectstring + 1;
+            rowsWithoutHome = rowsWithoutHome + 1;
             continue;
         end
         subjKey = epochKey(sid, row.subjectstring);
         if ~isKey(subjectIdByKey, subjKey)
             report.refused_no_subject = report.refused_no_subject + 1;
+            rowsWithoutHome = rowsWithoutHome + 1;
             continue;
         end
         subjectId = subjectIdByKey(subjKey);
 
-        % ---- MODALITY ------------------------------------------------------
         [entries, disposition] = localModality(row.type);
         switch disposition
             case 'stimulator'
-                % #66 increment 3 (TEAM-SIGNED 2026-08-21): a stimulator row
-                % decomposes into a `term_manipulation` (mirror of the recording
-                % observation, T3 direction), assembled below alongside the
-                % recording case. It shares the instrument/device/anchor
-                % resolution, so it falls through rather than `continue`.
                 report.rows_stimulator = report.rows_stimulator + 1;
             case 'recording'
-                % assemble below
             case 'image_deferred'
-                % Recognised imaging modality, but not emittable in increment 1
-                % (a blank image `value` cell is refused by #38; see
-                % localModality). Counted and left to the second pass.
                 report.rows_image_deferred = report.rows_image_deferred + 1;
+                rowsWithoutHome = rowsWithoutHome + 1;
                 continue;
             otherwise    % 'unresolved' or anything unexpected
                 report.rows_unresolved_modality = ...
                     report.rows_unresolved_modality + 1;
+                rowsWithoutHome = rowsWithoutHome + 1;
                 continue;
         end
 
-        % ---- INSTRUMENT (optional): the probe's own element-subject --------
         instrumentId = '';
         probeLocalId = probeLocalIdentifier(row.name, row.reference);
         probeKey = epochKey(sid, probeLocalId);
@@ -342,11 +340,6 @@ for k = 1:n
             instrumentId = subjectIdByKey(probeKey);
         end
 
-        % ---- DEVICE half (increment 2): devicestring -> acq system + channels
-        % `intan1:ai27-28,45;di1-4` -> device name (resolved against
-        % acquisition_system.base.name) + grouped {type, numbers} channels.
-        % Both OPTIONAL on the observation: an unresolved name OMITS the edge
-        % (never emitted empty), an unparsable channel spec yields no channels.
         acqSystemId = '';
         channels = emptyChannels();
         if ~isempty(row.devicestring)
@@ -371,7 +364,30 @@ for k = 1:n
             end
         end
 
-        % ---- the shared per-epoch 'during' anchor --------------------------
+        % #73 item 56: the rig + channels are ONE shared acquisition_channels
+        % document per distinct (session, rig, channels), named by the
+        % statement's acquisition_channels_id edge. A channel type outside
+        % the bound set (ai/ao/di/do) is not invented into it: the document is
+        % not minted and the row is counted.
+        acId = '';
+        if ~isempty(acqSystemId) || ~isempty(channels)
+            if channelsBindable(channels)
+                ak = channelsKey(sid, acqSystemId, channels);
+                if isKey(acIdByKey, ak)
+                    acId = acIdByKey(ak);
+                else
+                    acBody = mkAcquisitionChannels(acqSystemId, channels, sid, datestamp);
+                    acId = acBody.base.id;
+                    acIdByKey(ak) = acId;
+                    acBodyById(acId) = acBody;
+                    report.acquisition_channels_minted = ...
+                        report.acquisition_channels_minted + 1;
+                end
+            else
+                report.channels_unbindable_type = report.channels_unbindable_type + 1;
+            end
+        end
+
         if isKey(anchorByEpochId, epochDocId)
             anchorId = anchorByEpochId(epochDocId);
         else
@@ -382,23 +398,12 @@ for k = 1:n
             report.epoch_anchors_minted = report.epoch_anchors_minted + 1;
         end
 
-        % ---- STIMULATOR: mint the manipulation (#66 increment 3) -----------
-        % The manipulation-side mirror of the recording observation below. One
-        % `term_manipulation` per stimulator row: subject = the specimen,
-        % instrument = the stimulator element-subject (T7), the stimulator TYPE
-        % as `variable` + `term.value`, the device wiring carried the same way.
-        % No #30 retirement: a stimulator has no #30 recording observation to
-        % supersede (jRecordingModality returns no `recording` entry for it).
         if strcmp(disposition, 'stimulator')
             manip = mkManipulation(row.type, subjectId, instrumentId, ...
-                anchorId, sid, datestamp, acqSystemId, channels);
+                anchorId, sid, datestamp, acId);
             newBodies{end+1} = manip;              %#ok<AGROW>
             newGroupAnchor{end+1} = anchorId;      %#ok<AGROW>
-            % manipulations_emitted is counted with observations_emitted in the
-            % survival loop below (post-validation), so both report SURVIVORS and
-            % a manipulation is never mistaken for an observation. Instrument
-            % bookkeeping stays here: it describes the input row's resolution,
-            % pre-validation, exactly as the observation path counts it.
+            newGroupAc{end+1} = acId;              %#ok<AGROW>
             if isempty(instrumentId)
                 report.instrument_omitted = report.instrument_omitted + 1;
             else
@@ -407,19 +412,12 @@ for k = 1:n
             continue;
         end
 
-        % ---- mint the observation(s) (patch/sharp yield two) + RETIRE #30 --
-        % Retirement is PER ENTRY (per emitted observation CLASS), matched to the
-        % #30 observation of the SAME (subject, instrument, class) triple. A
-        % spike-sorted probe carries a #30 observation per derived neuron on this
-        % instrument (subject = the neuron); the triple key excludes those (their
-        % subject is not this specimen), leaving exactly the probe's own direct
-        % recording of this modality to supersede. Committed only after a
-        % replacement survives validation (below).
         for e = 1:numel(entries)
             obs = mkObservation(entries(e), subjectId, instrumentId, anchorId, ...
-                sid, datestamp, acqSystemId, channels);
+                sid, datestamp, acId);
             newBodies{end+1} = obs;                 %#ok<AGROW>
             newGroupAnchor{end+1} = anchorId;       %#ok<AGROW>
+            newGroupAc{end+1} = acId;               %#ok<AGROW>
 
             if ~isempty(instrumentId)
                 tk = obs30TripleKey(subjectId, instrumentId, entries(e).class);
@@ -430,14 +428,11 @@ for k = 1:n
                         if ~isempty(obs30Id) && ~any(strcmp(obs30Id, retire30Ids))
                             retire30Ids{end+1} = obs30Id;         %#ok<AGROW>
                             retireReplacementIds(obs30Id) = {obs.base.id};
-                            anchorId30 = depValueOf(bodies{hits{1}}, 'time_reference_1');
+                            anchorId30 = depValueOf(bodies{hits{1}}, 'time_reference_id');
                             if ~isempty(anchorId30)
                                 retire30AnchorCand(anchorId30) = {obs30Id};
                             end
                         elseif ~isempty(obs30Id) && isKey(retireReplacementIds, obs30Id)
-                            % same probe in another epoch already scheduled it:
-                            % add this replacement so the retirement survives if
-                            % ANY epoch's observation validates.
                             retireReplacementIds(obs30Id) = ...
                                 [retireReplacementIds(obs30Id), {obs.base.id}];
                         end
@@ -455,6 +450,17 @@ for k = 1:n
         else
             report.instrument_resolved = report.instrument_resolved + numel(entries);
         end
+    end
+
+    if isempty(fnId)
+        report.rename_skipped_no_filenavigator = ...
+            report.rename_skipped_no_filenavigator + 1;
+    elseif rowsWithoutHome > 0
+        report.rename_skipped_rows_without_home = ...
+            report.rename_skipped_rows_without_home + 1;
+    else
+        renameBodyBySrcId(docIds{k}) = ...
+            mkIngestionManifest(b, fnId, epochDocId, sid, datestamp);
     end
 end
 
@@ -474,7 +480,8 @@ end
 producedById = containers.Map('KeyType', 'char', 'ValueType', 'any');
 if ~isempty(newBodies)
     anchorBodies = anchorBodyById.values;
-    out = did2.convert.v1_to_v2([newBodies, anchorBodies(:)'], ...
+    acBodies = acBodyById.values;
+    out = did2.convert.v1_to_v2([newBodies, anchorBodies(:)', acBodies(:)'], ...
         'Validate',      options.Validate, ...
         'SchemaCache',   options.SchemaCache, ...
         'TargetVersion', options.TargetVersion);
@@ -527,6 +534,7 @@ for a = 1:numel(anchorKeys)
     anchorAlive(aid) = isKey(producedById, aid);
 end
 anchorHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+acHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 
 emittedNewIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 appended = {};
@@ -535,6 +543,8 @@ for j = 1:numel(newBodies)
     aid = newGroupAnchor{j};
     if ~anchorAlive(aid); continue; end          % group withheld: anchor died
     if ~isKey(producedById, id); continue; end    % this body quarantined
+    acId = newGroupAc{j};
+    if ~isempty(acId) && ~isKey(producedById, acId); continue; end  % its channels died
     appended{end+1} = producedById(id); %#ok<AGROW>
     % newBodies carries BOTH the recording observations and the stimulator
     % manipulations (#66 increment 3). Count each into its own counter, by the
@@ -547,6 +557,11 @@ for j = 1:numel(newBodies)
     end
     emittedNewIds(id) = true;
     anchorHasSurvivor(aid) = true;
+    if ~isempty(acId); acHasSurvivor(acId) = true; end
+end
+acKeys = acHasSurvivor.keys;
+for a = 1:numel(acKeys)
+    appended{end+1} = producedById(acKeys{a}); %#ok<AGROW>
 end
 % Anchors: emit only where a surviving observation references them.
 for a = 1:numel(anchorKeys)
@@ -633,169 +648,93 @@ end
 % ===================== builders ========================================
 
 function obs = mkObservation(entry, subjectId, instrumentId, anchorId, ...
-        sessionId, datestamp, acqSystemId, channels)
-%MKOBSERVATION One <modality>_observation. Field-for-field the shape
-%   +migrators_j/private/jRecordingObservation.m emits, base.name distinct
-%   ('migrated_probemap_observation') so it is never mistaken for a #30 obs.
-%   ACQSYSTEMID / CHANNELS are the DEVICE HALF (increment 2): both OPTIONAL, so
-%   an unresolved rig OMITS the edge and an empty channel spec OMITS the field --
-%   never emitted empty (the invented-empty-edge pattern, and #38 for the field).
-if nargin < 7; acqSystemId = ''; end
-if nargin < 8; channels = emptyChannels(); end
-obs = struct();
-obs.document_class = classBlock(entry.class, {'subject_observation', entry.mixin});
-obs.depends_on = struct('name', 'subject_id', 'value', subjectId);
-if ~isempty(instrumentId)
-    obs.depends_on(end+1) = struct('name', 'instrument_id', 'value', instrumentId); % T7
-end
-if ~isempty(acqSystemId)
-    obs.depends_on(end+1) = struct('name', 'acquisition_system_id', ...
-        'value', acqSystemId); % device half of the devicestring
-end
-obs.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
-obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_probemap_observation', 'datestamp', datestamp);
-obs.subject_statement = struct( ...
-    'variable', mkOntologyTerm('', entry.variable), ...
-    'storage_mode', 'reference');
-obs.subject_interaction = struct('method', mkOntologyTerm('', ''));
-if ~isempty(channels)
-    % channel half of the devicestring. HOISTED to subject_interaction (#66
-    % increment 3, 2026-08-21) so a stimulator manipulation carries it too;
-    % was subject_observation.channels.
-    obs.subject_interaction.channels = channels;
-end
-obs = attachQuantityBlock(obs, entry.mixin);
+        sessionId, datestamp, acId)
+% A recording row -> a value-less <modality>_observation of the specimen
+% (did-schema #88: a direction + a value kind), the probe as instrument (T7),
+% the rig + channels through acquisition_channels_id (#73 item 56).
+if nargin < 7; acId = ''; end
+obs = did2.build.statement(entry.class, char(subjectId), ...
+    did2.convert.registeredTerm('', entry.variable), [], ...
+    'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
+    'AcquisitionChannelsId', char(acId), ...
+    'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
+    'Validate', false);
+obs.base.name = 'migrated_probemap_observation';
 end
 
 function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
-        sessionId, datestamp, acqSystemId, channels)
-%MKMANIPULATION One `term_manipulation` for a stimulator probemap row -- #66
-%   increment 3, TEAM-SIGNED 2026-08-21. The manipulation-side mirror of
-%   mkObservation: a stimulator ACTS ON the specimen (T3), so it is NOT an
-%   observation. A `term_manipulation` (subject_manipulation + term) whose
-%   `variable` and `term.value` are the stimulator TYPE, subject_id the specimen,
-%   instrument_id the stimulator element-subject (T7), carrying the SAME device
-%   wiring as a recording observation (acquisition_system_id + channels, both on
-%   subject_interaction as of increment 3). The stimulus CONTENT is NOT here -- it
-%   lives in `timed_sequence_manipulation` from the stimulus model (#31); this is
-%   the probemap-level "this stimulator, wired thus, acted on this subject in this
-%   epoch" record the serialized `epochprobemap` string used to be the only home
-%   for. `storage_mode` is 'inline' (the term value is inline, not body-backed).
-%   base.name is distinct so it is never mistaken for an observation.
-if nargin < 7; acqSystemId = ''; end
-if nargin < 8; channels = emptyChannels(); end
-typeTerm = mkOntologyTerm('', stimType);
-% Field-for-field the shape the PROVEN term_manipulation emitter builds --
-% +migrators_j/treatment.m makeTermManipulation via private/jStartInteraction:
-% superclasses are the DIRECTION class ONLY ({subject_manipulation}); the `term`
-% data_type is carried by the block, not the declared superclass list. method
-% blank ("the leaf class already names the act"), single-point sample_time,
-% subject_manipulation block present, term.value = the variable.
-m = struct();
-m.document_class = classBlock('term_manipulation', {'subject_manipulation'});
-m.depends_on = struct('name', 'subject_id', 'value', subjectId);
-if ~isempty(instrumentId)
-    m.depends_on(end+1) = struct('name', 'instrument_id', 'value', instrumentId); % T7
-end
-if ~isempty(acqSystemId)
-    m.depends_on(end+1) = struct('name', 'acquisition_system_id', ...
-        'value', acqSystemId); % device half of the devicestring
-end
-m.depends_on(end+1) = struct('name', 'time_reference_1', 'value', anchorId);
-m.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_probemap_manipulation', 'datestamp', datestamp);
-m.subject_statement = struct('variable', typeTerm, 'storage_mode', 'inline');
-m.subject_interaction = struct('method', mkOntologyTerm('', ''), ...
-    'sample_time', struct('kind', 'point'));
-if ~isempty(channels)
-    m.subject_interaction.channels = channels;  % channel half (hoisted, increment 3)
-end
-m.subject_manipulation = struct('notes', '');
-m.term = struct('value', typeTerm);
+        sessionId, datestamp, acId)
+% A stimulator row -> a term_manipulation of the specimen: the stimulator type
+% as both the variable and the term value (#66 increment 3), the stimulator
+% element-subject as instrument (T7), the wiring through acquisition_channels_id.
+if nargin < 7; acId = ''; end
+typeTerm = did2.convert.registeredTerm('', stimType);
+m = did2.build.statement('term_manipulation', char(subjectId), typeTerm, typeTerm, ...
+    'TimeReferenceIds', {anchorId}, 'InstrumentId', char(instrumentId), ...
+    'AcquisitionChannelsId', char(acId), ...
+    'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
+    'Validate', false);
+m.base.name = 'migrated_probemap_manipulation';
 end
 
 function anchor = mkEpochAnchor(epochDocId, sessionId, datestamp)
-%MKEPOCHANCHOR The shared per-epoch 'during' relative_reference. Minted as the
-%   FINAL class (relative_reference 2.0.0 <- time_reference 4.0.0) because this
-%   pass runs AFTER resolveSessionAnchors -- there is no later fold to resolve a
-%   pass-1 handle, and `relative_to` is fillable here (the epoch document exists).
-%   Mirrors the corpus-proven body resolveSessionAnchors builds at :546-561.
-anchor = struct();
-anchor.document_class = struct( ...
-    'class_name',     'relative_reference', ...
-    'class_version',  '2.0.0', ...
-    'superclasses',   struct('class_name', 'time_reference', ...
-                             'class_version', '4.0.0'), ...
-    'schema_version', 'V_eta');
-anchor.depends_on = struct('name', 'relative_to', 'value', epochDocId);
-anchor.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_probemap_epoch_anchor', 'datestamp', datestamp);
-anchor.relative_reference = struct('value', ...
-    struct('relation', struct('node', 'time:intervalDuring', 'name', 'intervalDuring')));
+% "during the epoch": a relative_time_reference onto the epoch entity.
+anchor = did2.build.relativeTimeReference(char(epochDocId), 'Relation', 'intervalDuring', ...
+    'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
+    'Validate', false);
+anchor.base.name = 'migrated_probemap_epoch_anchor';
 end
 
-function obs = attachQuantityBlock(obs, mixin)
-%ATTACHQUANTITYBLOCK The data_type block, empty because the value is body-backed
-%   (storage_mode 'reference'). Every mixin takes an empty struct because its
-%   `value` is optional and so absent-is-valid. `image` is the exception --
-%   `image.value` is mustBeNonEmpty, and a blank cell is refused by the #38
-%   NonVacuousFields gate -- so imaging is DEFERRED upstream (localModality
-%   returns 'image_deferred') and NEVER reaches this function. The `image` branch
-%   below is therefore currently unreachable; it is kept, matching
-%   jRecordingObservation's shape, so a second increment that can fill the cell
-%   (from real raster metadata) has the landing pad ready. Reconstructed from
-%   jRecordingObservation's own attachQuantityBlock.
-if strcmp(mixin, 'image')
-    obs.image = struct();
-    obs.image.value = struct('pixels', [], 'dtype', '', ...
-        'color_model', mkOntologyTerm('', ''));
-    return;
+function ac = mkAcquisitionChannels(acqSystemId, channels, sessionId, datestamp)
+fields = struct();
+if ~isempty(channels)
+    fields.channels = channels;
 end
-obs.(mixin) = struct();
+edges = struct();
+if ~isempty(acqSystemId)
+    edges.acquisition_system_id = char(acqSystemId);
+end
+ac = did2.build.document('acquisition_channels', fields, 'Edges', edges, ...
+    'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
+    'Validate', false);
 end
 
-function dc = classBlock(name, supers)
-sc = struct('class_name', {}, 'class_version', {});
-for i = 1:numel(supers)
-    sc(i) = struct('class_name', supers{i}, 'class_version', '1.0.0');
+function tf = channelsBindable(channels)
+% acquisition_channels.channels.type is bound REQUIRED to ai | ao | di | do.
+tf = true;
+for i = 1:numel(channels)
+    if ~any(strcmp(char(channels(i).type.name), {'ai', 'ao', 'di', 'do'}))
+        tf = false; return;
+    end
 end
-dc = struct('class_name', name, 'class_version', '1.0.0', ...
-    'superclasses', sc, 'schema_version', 'V_eta');
+end
+
+function k = channelsKey(sessionId, acqSystemId, channels)
+parts = {char(sessionId), char(acqSystemId)};
+for i = 1:numel(channels)
+    parts{end+1} = [char(channels(i).type.name) sprintf('%d,', channels(i).numbers)]; %#ok<AGROW>
+end
+k = strjoin(parts, char(0));
 end
 
 function t = mkOntologyTerm(node, name)
-%MKONTOLOGYTERM {node, name}. Reconstructed jOntologyTerm (unreachable private).
 t = struct('node', char(node), 'name', char(name));
 end
 
 function m = mkIngestionManifest(srcBody, filenavigatorId, epochDocId, ...
         sessionId, datestamp)
-%MKINGESTIONMANIFEST epochfiles_ingested -> ingestion_manifest (increment 3).
-%   base.id PRESERVED (same document, renamed). filenavigator_id RESTORED as a
-%   real edge (NDI writes it; V_eta had dropped it for an invented `epochid`);
-%   epoch_id becomes an EDGE to the epoch document; the char epoch_id is DROPPED.
-%   The serialized `epochprobemap` is CARRIED VERBATIM (2026-08-21, lossless
-%   round-trip): its recording rows also decompose into observations, but
-%   stimulator/imaging rows do NOT (localModality returns 'stimulator' /
-%   'image_deferred' -> no observation), so dropping the string would lose their
-%   per-epoch presence with nowhere to land. ndi.vintage reads it back to rebuild
-%   the exact v1 epochprobemap; retired when every row has a decomposed home.
-m = struct();
-m.document_class = struct( ...
-    'class_name', 'ingestion_manifest', 'class_version', '2.0.0', ...
-    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-m.depends_on = struct('name', 'filenavigator_id', 'value', filenavigatorId);
-m.depends_on(end+1) = struct('name', 'epoch_id', 'value', epochDocId);
+% did-schema #88: ingestion_manifest {files} with the epoch_file_pattern_id
+% edge (v1 filenavigator_id, the epoch_file_pattern keeps its id) and the
+% epoch_id edge. No serialized epochprobemap (#73 review item 39): the caller
+% only renames when every row has decomposed.
 srcId = baseField(srcBody, 'id');
 if isempty(srcId); srcId = did.ido.unique_id(); end
-m.base = struct('id', srcId, 'session_id', sessionId, ...
-    'name', baseField(srcBody, 'name'), 'datestamp', datestamp);
-blk = struct();
-blk.files = ingestedFilesOf(srcBody);   % the manifest payload, carried verbatim
-blk.epochprobemap = probemapCharOf(srcBody);  % lossless read-back provenance
-m.ingestion_manifest = blk;
+m = did2.build.document('ingestion_manifest', ...
+    struct('files', {ingestedFilesOf(srcBody)}), ...
+    'Edges', struct('epoch_file_pattern_id', char(filenavigatorId), ...
+                    'epoch_id', char(epochDocId)), ...
+    'Id', srcId, 'SessionId', char(sessionId), ...
+    'CreationTimestamp', char(datestamp), 'Validate', false);
 end
 
 function files = ingestedFilesOf(body)
@@ -1094,10 +1033,31 @@ tf = strcmp(char(body.base.name), 'migrated_recording_observation');
 end
 
 function cn = classNameOf(b)
+% The class to switch on. did-schema #88: an `entity` reads as its type
+% ('epoch', 'organism', ...); a statement as <value kind>_<direction>.
 cn = '';
 if isstruct(b) && isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name')
     cn = char(b.document_class.class_name);
+end
+if strcmp(cn, 'entity') && isfield(b, 'entity') && isstruct(b.entity) ...
+        && isfield(b.entity, 'type')
+    t = b.entity.type;
+    if isstruct(t) && isfield(t, 'name') && ~isempty(t.name)
+        cn = char(t.name);
+    end
+elseif any(strcmp(cn, {'observation', 'assertion', 'manipulation', 'calculation'}))
+    try
+        sc = b.document_class.superclasses;
+        if isstruct(sc); sc = num2cell(sc); end
+        names = cell(1, numel(sc));
+        for k = 1:numel(sc)
+            if isstruct(sc{k}); names{k} = char(sc{k}.class_name); else; names{k} = char(sc{k}); end
+        end
+        kind = char(did2.schema.cache.shared().documentValueKind(cn, names));
+        if ~isempty(kind); cn = [kind '_' cn]; end
+    catch
+    end
 end
 end
 

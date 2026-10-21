@@ -34,4 +34,5 @@ if isempty(sid)
 end
 opts = jOpts(preBody);
 anchor = did2.build.relativeTimeReference(sid, 'Relation', relation, opts{:});
+anchor.base.name = 'migrated_session_anchor';   % lets a batch pass find the anchors it may remove
 end

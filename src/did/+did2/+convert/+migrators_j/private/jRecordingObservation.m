@@ -275,6 +275,7 @@ for k = 1:numel(entries)
     end
     obs = jStatement(preBody, e.class, subjectId, jLabel(e.variable), [], ...
         extra{:});
+    obs.base.name = 'migrated_recording_observation';   % resolveEpochProbemap retires by this name
     bodies{end+1} = obs;  %#ok<AGROW>
 end
 
