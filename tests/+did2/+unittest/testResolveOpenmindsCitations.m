@@ -139,6 +139,24 @@ end
 end
 
 
+function testTheFirstAuthorIsOrderZero(testCase)
+% Decided by Jess Haley, 2026-10-21 [author order from 0] (did-schema
+% V_eta_study_plan.md): "a `has_author` edge's `order` counts from 0 ... the
+% first author is `order: 0`". The fixture has one author, so it is 0 (was 1).
+[out, ~] = runPass(testCase, citationGraph());
+n = 0;
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if strcmp(b.document_class.class_name, 'directed_relation') ...
+            && strcmp(b.directed_relation.relation.name, 'has_author')
+        n = n + 1;
+        verifyEqual(testCase, double(b.directed_relation.order), 0);
+    end
+end
+verifyEqual(testCase, n, 1, 'DENOMINATOR: one has_author relation');
+end
+
+
 function testIdsArePreservedOneToOne(testCase)
 [out, rep] = runPass(testCase, citationGraph());
 verifyEqual(testCase, rep.persons_id_preserved, 1, 'denominator');

@@ -637,7 +637,7 @@ for i = 1:numel(authorRefs)
         buildGids({'ORCID', orcid}), true)]; %#ok<AGROW>
     tally.persons_emitted = tally.persons_emitted + 1;
     tally.persons_id_preserved = tally.persons_id_preserved + 1;
-    newBodies{end+1} = relationDoc(dv, datasetId, personId, 'has_author', i); %#ok<AGROW>
+    newBodies{end+1} = relationDoc(dv, datasetId, personId, 'has_author', i - 1); %#ok<AGROW> order from 0 ([author order from 0], Jess Haley 2026-10-21)
     tally.relations_emitted = tally.relations_emitted + 1;
 
     % Affiliations. The FIRST only -- see the header: emitting one edge per

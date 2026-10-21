@@ -347,10 +347,12 @@ obs = pickKind(out, 'observation', 'intensity');
 verifyEqual(testCase, obs.statement.variable.node, 'NCIT:C221750');
 c = obs.statement.conditions;
 verifyEqual(testCase, numel(c), 1);
-% a label variable (jLabel) carries no `node` at all
-verifyFalse(testCase, isfield(c(1).variable, 'node') ...
-    && strcmpi(char(c(1).variable.node), 'NCIT:C13717'));
-verifyEqual(testCase, c(1).variable.name, 'depicted term');
+verifyNotEqual(testCase, char(c(1).variable.node), 'NCIT:C13717');
+% Decided by Jess Haley, 2026-10-21 [non-area image node]: an existing ontology
+% term, not a new EMPTY term; the node itself is proposed (NCIT:C211970,
+% registered). Was the label 'depicted term'.
+verifyEqual(testCase, c(1).variable.node, 'NCIT:C211970');
+verifyEqual(testCase, c(1).variable.name, 'Image Annotation');
 verifyEqual(testCase, c(1).term.node, 'CL:0000540');
 end
 

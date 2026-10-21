@@ -2626,6 +2626,7 @@ alan = personByFamily(persons, 'Turing');
 verifyEmpty(testCase, globalIdsJ(alan));
 ds = firstOfClassJ(out.migrated, 'dataset');
 seqs = [];
+adaOrder = [];
 for k = 1:numel(out.migrated)
     d = out.migrated{k};
     if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
@@ -2633,9 +2634,15 @@ for k = 1:numel(out.migrated)
         verifyEqual(testCase, depVal(d, 'child_id'), ds.get('base.id'));
         seqs(end+1) = d.get('directed_relation.order'); %#ok<AGROW>
         verifyFalse(testCase, isfield(d.documentProperties.directed_relation, 'sequence'));
+        if strcmp(depVal(d, 'parent_id'), ada.get('base.id'))
+            adaOrder = d.get('directed_relation.order');
+        end
     end
 end
-verifyEqual(testCase, sort(seqs), [1 2]);
+% UPDATED 2026-10-21. Decided by Jess Haley, 2026-10-21 [author order from 0]
+% (did-schema V_eta_study_plan.md): "the first author is `order: 0`". Was [1 2].
+verifyEqual(testCase, sort(seqs), [0 1]);
+verifyEqual(testCase, adaOrder, 0, 'Ada is the first author in the source');
 end
 
 

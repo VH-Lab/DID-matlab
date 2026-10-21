@@ -28,7 +28,8 @@ function v2Body = ontology_image(preBody)
 %   the raster arm no longer emits the term observation. It is ONE intensity
 %   observation (variable NCIT:C221750, the source id) carrying the ontology
 %   node as a condition (NCIT:C13717 for a UBERON area, for pathSPromotion to
-%   promote onto the region part), plus its sampled_body and the anchor: 1 -> 3.
+%   promote onto the region part; NCIT:C211970 otherwise), plus its
+%   sampled_body and the anchor: 1 -> 3.
 %   Text below that says "term_observation + image_observation", "1 -> 4" or
 %   "the term says what the picture depicts" is history.
 %
@@ -310,8 +311,11 @@ end
 %     (ndi.migrate.internal.pathSPromotion) mints or finds the part, retargets
 %     the observation onto it and drops the condition. Until that pass runs the
 %     document is Bar-1 shape, not the decided final shape.
-%   - any other node -> variable 'depicted term' (a label, NOT a registered
-%     term: no registered variable fits; flagged for the team).
+%   - any other node -> variable NCIT:C211970 "Image Annotation". Decided by
+%     Jess Haley, 2026-10-21 [non-area image node] (same plan document): the
+%     variable is "an existing ontology term, not a new EMPTY term"; the
+%     specific node is recorded there as "Proposed (not decided)", chosen by
+%     Claude from an OLS search, and is registered.
 %
 % The raster itself (#73 review item 51): an ordinary numeric image (NDI
 % imageDocMaker.m: `image` is "a numeric matrix"), body-backed (data_body true,
@@ -335,7 +339,9 @@ if isAnatomicalArea(node)
         did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), ...
         'Term', nodeTerm);
 else
-    cond = did2.build.condition(jLabel('depicted term'), 'Term', nodeTerm);
+    cond = did2.build.condition( ...
+        did2.convert.registeredTerm('NCIT:C211970', 'Image Annotation'), ...
+        'Term', nodeTerm);
 end
 imgObs = jStatement(preBody, 'observation', subjectId, ...
     did2.convert.registeredTerm('NCIT:C221750', 'Imaging Signal Intensity'), ...

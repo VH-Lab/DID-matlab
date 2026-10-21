@@ -186,7 +186,7 @@ for i = 1:numel(authors)
     personId = did.ido.unique_id();
     bodies = [bodies, entityDoc(preBody, 'person', personId, personBlock, ...
         buildGids({'ORCID', orcid}), true)];
-    bodies{end+1} = relationDoc(preBody, datasetId, personId, 'has_author', i);
+    bodies{end+1} = relationDoc(preBody, datasetId, personId, 'has_author', i - 1);   % order counts from 0 ([author order from 0], Jess Haley 2026-10-21)
 
     affName = nestedChar(a, {'affiliation', 'memberOf', 'fullName'});
     if ~isempty(affName)
