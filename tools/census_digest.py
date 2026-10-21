@@ -612,6 +612,15 @@ POST_PASSES = [
         ("pyraview_kept_no_recording_observation", "  KEPT: no recording observation for element+epoch"),
         ("pyraview_kept_referenced", "  KEPT: still referenced by a survivor"),
         ("pyraview_repoint_quarantined", "  re-point QUARANTINED (kept as it was)"),
+        # [pyraview leftovers, schema form] (Jess Haley, 2026-10-21): the data
+        # type onto the recording observation's value; the anchor dropped when
+        # it equals the epoch, else its start is the levels' time key origin.
+        ("pyraview_data_type_moved", "  data type placed on the recording observation's value"),
+        ("pyraview_kept_data_type_conflict", "  KEPT: data type differs from one already placed"),
+        ("pyraview_anchor_equal_epoch_dropped", "  anchor equal to the epoch: dropped"),
+        ("pyraview_anchor_to_time_key", "  anchor differs from the epoch: start carried by the time key"),
+        ("pyraview_anchor_not_comparable_to_time_key", "  anchor NOT COMPARABLE (epoch states no extent): start carried by the time key"),
+        ("pyraview_kept_start_conflict", "  KEPT: anchor start is not the levels' time origin"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # run knobs move inline onto the calculation whose value kind is

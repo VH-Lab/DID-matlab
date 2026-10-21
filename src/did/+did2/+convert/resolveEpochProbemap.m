@@ -93,8 +93,9 @@ function [result, report] = resolveEpochProbemap(result, options)
 %                    element (instrument) and epoch, and the separate pyraview
 %                    observation is retired; with no such observation it is
 %                    kept as it was, and counted (pyraview_* counters). The
-%                    pyraview observation's datum_type and its clocked anchor do
-%                    not move with the levels.
+%                    pyraview observation's data type and its anchor are folded
+%                    as [pyraview leftovers, schema form] decides (see the
+%                    re-point step below).
 %
 %   IMAGING ROWS ARE NO LONGER DEFERRED (2026-10-21). They were left to the
 %   second pass because the old `image` value cell was required and a probemap
@@ -252,6 +253,12 @@ report = struct( ...
     'pyraview_kept_no_recording_observation', 0, ...
     'pyraview_kept_referenced',       0, ...
     'pyraview_repoint_quarantined',   0, ...
+    'pyraview_data_type_moved',       0, ...
+    'pyraview_kept_data_type_conflict', 0, ...
+    'pyraview_anchor_equal_epoch_dropped', 0, ...
+    'pyraview_anchor_to_time_key',    0, ...
+    'pyraview_anchor_not_comparable_to_time_key', 0, ...
+    'pyraview_kept_start_conflict',   0, ...
     'ran',                            false);
 result.epoch_probemap_fold = report;
 
@@ -838,6 +845,12 @@ newQuarantine = [newQuarantine, spikeQ];
 pyraviewRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 levelReplace = containers.Map('KeyType', 'char', 'ValueType', 'any');
 levelIdsByPv = containers.Map('KeyType', 'char', 'ValueType', 'any');
+recDataType = containers.Map('KeyType', 'char', 'ValueType', 'any');   % recId -> {dt, sdt}
+pvFold = containers.Map('KeyType', 'char', 'ValueType', 'any');        % pvId -> what moved
+idxByIdAll = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for k = 1:numel(docIds)
+    if ~isempty(docIds{k}); idxByIdAll(docIds{k}) = k; end
+end
 pvKeys = pyraviewOwners.keys;
 for i = 1:numel(pvKeys)
     pv = pyraviewOwners(pvKeys{i});
@@ -849,6 +862,55 @@ for i = 1:numel(pvKeys)
         continue;
     end
     recId = recByInstrEpoch(rk);
+    % [pyraview leftovers, schema form] (Jess Haley, 2026-10-21; did-schema
+    % V_eta_recording_observation_plan.md): "the retired pyraview observation's
+    % data type goes on the recording observation's value (value.data_type,
+    % which covers its sampled_body levels; a sampled_body never repeats it),
+    % and a time anchor that does not equal the epoch becomes the level body's
+    % time key (start offset) and is counted. No new body fields."
+    %
+    % THE DATA TYPE. One recording observation may receive the levels of
+    % several pyraviews (one per filter band); its one value.data_type must
+    % cover them all, so a pyraview whose type differs from one already placed
+    % there is kept as it was, and counted -- never overwritten.
+    [dt, sdt] = valueDataType(bodies{pv.obsIdx});
+    if ~isempty(dt) && isKey(recDataType, recId) ...
+            && ~isequal(recDataType(recId), {dt, sdt})
+        report.pyraview_kept_data_type_conflict = report.pyraview_kept_data_type_conflict + 1;
+        report.pyraview_kept_no_recording_observation = ...
+            report.pyraview_kept_no_recording_observation + 1;
+        continue;
+    end
+    % THE ANCHOR. +migrators_j/pyraview anchors on the epoch with the v1
+    % epochclocktimes: clock, start t0, duration t1-t0 -- clock READINGS, the
+    % convention epochMint's own extent references use. NDI's writer
+    % (+ndi/+gui/+app/+pyraview/makePyraviewDoc.m) takes t0/t1 from the epoch
+    % table and writes nativeStartTime = decimationStartTimes = t0, so each
+    % level's time key origin is ALREADY that start on that clock. So:
+    %   equal to the epoch (same clock, start, duration as one of the epoch's
+    %     own extent references)        -> dropped, counted;
+    %   not equal, or the epoch states no extent on that clock (not
+    %     comparable)                    -> the start lives in the level's time
+    %     key: every level origin must equal the anchor's start, which is then
+    %     the start offset the key carries; counted;
+    %   a level origin that differs from that start -> two facts disagree and
+    %     neither is picked: kept as it was, counted.
+    [anchorState, startSec] = anchorAgainstEpoch(bodies, idxByIdAll, pv);
+    if ~strcmp(anchorState, 'equal')
+        allAt = true;
+        for j = 1:numel(pv.levelIdx)
+            o = timeKeyOrigin(bodies{pv.levelIdx(j)});
+            if isempty(o) || isempty(startSec) || abs(o - startSec) > 1e-9 * max(1, abs(startSec))
+                allAt = false;
+            end
+        end
+        if ~allAt
+            report.pyraview_kept_start_conflict = report.pyraview_kept_start_conflict + 1;
+            report.pyraview_kept_no_recording_observation = ...
+                report.pyraview_kept_no_recording_observation + 1;
+            continue;
+        end
+    end
     moved = {};
     for j = 1:numel(pv.levelIdx)
         lb = bodies{pv.levelIdx(j)};
@@ -874,6 +936,8 @@ for i = 1:numel(pvKeys)
     levelIdsByPv(pvKeys{i}) = lids;
     report.pyraview_levels_repointed = report.pyraview_levels_repointed + numel(moved);
     pyraviewRetire(pvKeys{i}) = true;
+    pvFold(pvKeys{i}) = struct('recId', recId, 'dt', dt, 'sdt', sdt, 'anchor', anchorState);
+    if ~isempty(dt); recDataType(recId) = {dt, sdt}; end
 end
 
 % ---- v1 ingested archives retire once every file has a new owner ---------
@@ -915,6 +979,7 @@ for c = 1:numel(candidates)
     archiveRetire(candidates{c}) = true;
     report.archive_docs_retired = report.archive_docs_retired + 1;
 end
+dtByRec = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for c = 1:numel(pvIds)
     if isKey(refs, pvIds{c})
         % something that survives still names the pyraview observation: keep it
@@ -926,6 +991,39 @@ for c = 1:numel(pvIds)
         continue;
     end
     report.pyraview_observations_retired = report.pyraview_observations_retired + 1;
+    f = pvFold(pvIds{c});
+    switch f.anchor
+        case 'equal';  report.pyraview_anchor_equal_epoch_dropped = report.pyraview_anchor_equal_epoch_dropped + 1;
+        case 'differs'; report.pyraview_anchor_to_time_key = report.pyraview_anchor_to_time_key + 1;
+        otherwise; report.pyraview_anchor_not_comparable_to_time_key = ...
+                report.pyraview_anchor_not_comparable_to_time_key + 1;
+    end
+    if ~isempty(f.dt); dtByRec(f.recId) = {f.dt, f.sdt}; end
+end
+% the data type lands on each recording observation whose pyraview retired
+recIdsDt = dtByRec.keys;
+for c = 1:numel(recIdsDt)
+    for m = 1:numel(appended)
+        a = appended{m};
+        if isa(a, 'did2.document'); aid = char(a.get('base.id')); else; aid = char(a.base.id); end
+        if ~strcmp(aid, recIdsDt{c}); continue; end
+        pair = dtByRec(recIdsDt{c});
+        st = a;
+        if isa(st, 'did2.document'); st = st.toStruct(); end
+        st.value.data_type = pair{1};
+        if ~isempty(pair{2}); st.value.source_data_type = pair{2}; end
+        res = did2.convert.v1_to_v2({st}, ...
+            'Validate',      options.Validate, ...
+            'SchemaCache',   options.SchemaCache, ...
+            'TargetVersion', options.TargetVersion);
+        if isempty(res.quarantine) && isscalar(res.migrated)
+            appended{m} = res.migrated{1};
+            report.pyraview_data_type_moved = report.pyraview_data_type_moved + 1;
+        else
+            report.pyraview_repoint_quarantined = report.pyraview_repoint_quarantined + 1;
+        end
+        break;
+    end
 end
 if ~isempty(newQuarantine)
     if isfield(result, 'quarantine') && ~isempty(result.quarantine)
@@ -1740,9 +1838,109 @@ for i = 1:numel(sampledIdx)
             epochDocId = rid;
         end
     end
+    anchorIdx = 0;
+    if ~isempty(aid) && isKey(idxById, aid); anchorIdx = idxById(aid); end
     owners(oid) = struct('entityId', depValueOf(ob, 'entity_id'), ...
         'epochDocId', epochDocId, 'className', cn, 'valueKind', vk, ...
-        'levelIdx', sampledIdx(i));
+        'levelIdx', sampledIdx(i), 'obsIdx', ok, 'anchorIdx', anchorIdx);
+end
+end
+
+function [dt, sdt] = valueDataType(b)
+% the statement's value.data_type / source_data_type, '' when absent
+dt = ''; sdt = '';
+if isstruct(b) && isfield(b, 'value') && isstruct(b.value)
+    if isfield(b.value, 'data_type'); dt = char(b.value.data_type); end
+    if isfield(b.value, 'source_data_type'); sdt = char(b.value.source_data_type); end
+end
+end
+
+function [state, startSec] = anchorAgainstEpoch(bodies, idxById, pv)
+%ANCHORAGAINSTEPOCH 'equal' when the pyraview's anchor states the same clock,
+%   start and duration as one of its epoch's own extent references (epochMint:
+%   the epoch's `time_reference_id` edges); 'differs' when the epoch states an
+%   extent on that clock and it is not the same; 'not_comparable' when the epoch
+%   states none on that clock (a third state, never read as equal). STARTSEC is
+%   the anchor's start in seconds ([] when it has none).
+state = 'not_comparable';
+startSec = [];
+if pv.anchorIdx == 0; return; end
+[clk, startSec, dur] = refValue(bodies{pv.anchorIdx});
+if isempty(startSec)
+    % no metric offset: "during the epoch" is the epoch itself
+    state = 'equal';
+    return;
+end
+if ~isKey(idxById, pv.epochDocId); return; end
+eb = bodies{idxById(pv.epochDocId)};
+refIds = depValuesOf(eb, 'time_reference_id');
+for r = 1:numel(refIds)
+    if ~isKey(idxById, refIds{r}); continue; end
+    [c2, s2, d2] = refValue(bodies{idxById(refIds{r})});
+    if isempty(s2) || ~strcmpi(c2, clk); continue; end
+    same = abs(s2 - startSec) <= 1e-9 * max(1, abs(startSec));
+    if ~isempty(dur) || ~isempty(d2)
+        same = same && ~isempty(dur) && ~isempty(d2) ...
+            && abs(d2 - dur) <= 1e-9 * max(1, abs(dur));
+    end
+    if same; state = 'equal'; else; state = 'differs'; end
+    return;
+end
+end
+
+function [clk, startSec, dur] = refValue(b)
+% a relative_time_reference's clock name, start and duration (seconds)
+clk = ''; startSec = []; dur = [];
+if ~isstruct(b) || ~isfield(b, 'relative_time_reference'); return; end
+v = b.relative_time_reference;
+if ~isstruct(v) || ~isfield(v, 'value') || ~isstruct(v.value); return; end
+v = v.value;
+if isfield(v, 'clock')
+    c = v.clock;
+    if isstruct(c) && isfield(c, 'name'); c = c.name; end
+    if ischar(c) || isstring(c); clk = char(c); end
+end
+if isfield(v, 'start') && isstruct(v.start) && isfield(v.start, 'seconds') ...
+        && ~isempty(v.start.seconds)
+    startSec = double(v.start.seconds);
+end
+if isfield(v, 'duration') && isstruct(v.duration) && isfield(v.duration, 'seconds') ...
+        && ~isempty(v.duration.seconds)
+    dur = double(v.duration.seconds);
+end
+end
+
+function o = timeKeyOrigin(b)
+% the origin (seconds) of a body's `time` key, [] when it has none
+o = [];
+if ~isstruct(b) || ~isfield(b, 'data') || ~isstruct(b.data) || ~isfield(b.data, 'keys'); return; end
+ks = b.data.keys;
+if iscell(ks); ks = [ks{:}]; end
+for k = 1:numel(ks)
+    v = ks(k).variable;
+    nm = '';
+    if isstruct(v) && isfield(v, 'name'); nm = char(v.name); end
+    if strcmpi(nm, 'time') && isfield(ks(k), 'origin') && isstruct(ks(k).origin) ...
+            && isfield(ks(k).origin, 'value') && ~isempty(ks(k).origin.value)
+        o = double(ks(k).origin.value);
+        return;
+    end
+end
+end
+
+function v = depValuesOf(b, name)
+% every target of the edge NAME (an edge declared `multiple` repeats)
+v = {};
+if ~isstruct(b) || ~isfield(b, 'depends_on'); return; end
+deps = b.depends_on;
+if iscell(deps); deps = [deps{:}]; end
+for k = 1:numel(deps)
+    d = deps(k);
+    if ~isfield(d, 'name') || ~strcmp(d.name, name); continue; end
+    x = '';
+    if isfield(d, 'value') && ~isempty(d.value); x = char(d.value);
+    elseif isfield(d, 'document_id') && ~isempty(d.document_id); x = char(d.document_id); end
+    if ~isempty(x); v{end+1} = x; end %#ok<AGROW>
 end
 end
 

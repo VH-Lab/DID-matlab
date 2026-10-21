@@ -491,6 +491,105 @@ for i = 1:numel(levels)
 end
 end
 
+% ---- [pyraview leftovers, schema form] (Jess Haley, 2026-10-21) ----------
+% did-schema V_eta_recording_observation_plan.md: "the retired pyraview
+% observation's data type goes on the recording observation's value
+% (value.data_type, which covers its sampled_body levels; a sampled_body never
+% repeats it), and a time anchor that does not equal the epoch becomes the
+% level body's time key (start offset) and is counted. No new body fields."
+
+function [out, rep] = pyraviewFold(pvT0T1, nativeStart, withEpochExtent)
+%PYRAVIEWFOLD One probe, one epoch, one pyraview. WITHEPOCHEXTENT adds NDI's
+%   element_epoch for the probe (t0_t1 [0 10] on dev_local_time), which is
+%   where epochMint reads the epoch's own extent from.
+subj = subjectBody('specimen_pf', 'sess_pf', 'L');
+el   = elementBody('el_pf', 'sess_pf', 'tet', '1', 'n-trode', 1, 'specimen_pf');
+ing  = ingestedWithRows('ing_pf', 'sess_pf', 't00pf', {{'tet', '1', 'n-trode', 'L'}});
+pv   = pyraviewV1('pv_f', 'sess_pf', 'el_pf', 't00pf');
+pv.epochclocktimes.t0_t1 = pvT0T1;
+pv.pyraview.native_start_time = nativeStart;
+v1 = {sessionBody('sd_pf', 'sess_pf', 'ref'), subj, el, ing, pv};
+if withEpochExtent
+    v1{end+1} = elementEpochBody('ee_pf', 'sess_pf', 'el_pf', 't00pf', false);
+end
+[out, rep] = decompose(v1);
+end
+
+function testThePyraviewDataTypeLandsOnTheRecordingObservationsValue(testCase)
+[out, rep] = pyraviewFold([0 10], 0, true);
+verifyEqual(testCase, rep.pyraview_observations_retired, 1);
+verifyEqual(testCase, rep.pyraview_data_type_moved, 1);
+verifyEqual(testCase, rep.pyraview_kept_data_type_conflict, 0);
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+assertEqual(testCase, numel(obs), 1);
+% the v1 'double', normalised; the source spelling kept beside it
+verifyEqual(testCase, char(obs{1}.value.data_type), 'float64');
+verifyEqual(testCase, char(obs{1}.value.source_data_type), 'double');
+% "a sampled_body never repeats it": no new body field
+levels = bodiesOfClass(out, 'sampled_body');
+verifyEqual(testCase, numel(levels), 2);
+for i = 1:numel(levels)
+    verifyFalse(testCase, isfield(levels{i}.sampled_body, 'data_type'));
+    verifyFalse(testCase, isfield(levels{i}.sampled_body, 'source_data_type'));
+end
+end
+
+function testAnAnchorEqualToTheEpochIsDroppedAndCounted(testCase)
+% pyraview t0_t1 [0 10] on dev_local_time == the epoch's own extent (NDI's
+% writer takes both from the epoch table, makePyraviewDoc.m).
+[out, rep] = pyraviewFold([0 10], 0, true);
+verifyEqual(testCase, rep.pyraview_anchor_equal_epoch_dropped, 1);
+verifyEqual(testCase, rep.pyraview_anchor_to_time_key, 0);
+verifyEqual(testCase, rep.pyraview_anchor_not_comparable_to_time_key, 0);
+verifyEqual(testCase, rep.pyraview_kept_start_conflict, 0);
+verifyEmpty(testCase, docById(out, 'pv_f'));
+end
+
+function testAnAnchorThatDiffersFromTheEpochBecomesTheTimeKeyStart(testCase)
+% THE OTHER DIRECTION. The pyraview covers [2 10] of a [0 10] epoch: the anchor
+% is not the epoch. Its start (2 s on the epoch's clock) is what the levels'
+% time keys carry, so the move happens and is counted apart.
+[out, rep] = pyraviewFold([2 10], 2, true);
+verifyEqual(testCase, rep.pyraview_anchor_equal_epoch_dropped, 0);
+verifyEqual(testCase, rep.pyraview_anchor_to_time_key, 1);
+verifyEqual(testCase, rep.pyraview_observations_retired, 1);
+levels = bodiesOfClass(out, 'sampled_body');
+verifyEqual(testCase, numel(levels), 2);
+for i = 1:numel(levels)
+    k = levels{i}.data.keys;
+    names = arrayfun(@(a) char(a.variable.name), k, 'UniformOutput', false);
+    t = k(strcmp(names, 'time'));
+    verifyEqual(testCase, double(t.origin.value), 2, 'the start offset is the time key origin');
+end
+end
+
+function testAStartTheLevelsDoNotCarryKeepsThePyraview(testCase)
+% A differing anchor whose start is NOT the levels' time origin: two facts
+% disagree, neither is picked. Kept as it was, and counted.
+[out, rep] = pyraviewFold([2 10], 0, true);
+verifyEqual(testCase, rep.pyraview_kept_start_conflict, 1);
+verifyEqual(testCase, rep.pyraview_observations_retired, 0);
+verifyEqual(testCase, rep.pyraview_data_type_moved, 0);
+verifyNotEmpty(testCase, docById(out, 'pv_f'));
+% the recording observation is the one with the probe as instrument (the kept
+% pyraview observation names none)
+obs = bodiesNamed(out, 'migrated_probemap_observation');
+rec = obs(cellfun(@(b) strcmp(depVal(b, 'instrument_id'), 'el_pf'), obs));
+assertEqual(testCase, numel(rec), 1);
+verifyTrue(testCase, ~isfield(rec{1}.value, 'data_type') || isempty(rec{1}.value.data_type), ...
+    'nothing moved, so the recording observation gains no data type');
+end
+
+function testAnEpochWithNoExtentIsNotComparableNeverEqual(testCase)
+% With no element_epoch the epoch states no extent: "not comparable" is its
+% own count, never read as equal. The start still sits on the levels' time
+% keys (0 == 0), so the move happens.
+[~, rep] = pyraviewFold([0 10], 0, false);
+verifyEqual(testCase, rep.pyraview_anchor_not_comparable_to_time_key, 1);
+verifyEqual(testCase, rep.pyraview_anchor_equal_epoch_dropped, 0);
+verifyEqual(testCase, rep.pyraview_observations_retired, 1);
+end
+
 function testAPyraviewWithNoRecordingObservationIsKeptAndCounted(testCase)
 % No probemap row for the pyraview's element at that epoch: nothing to move
 % to, so the pyraview observation and its levels stay as they were; counted.
