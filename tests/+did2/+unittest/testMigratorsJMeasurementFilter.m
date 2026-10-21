@@ -154,11 +154,14 @@ function testSubjectMeasurementFoldsToObservationPlusAbsoluteReference(testCase)
 % THE SIGNED FOLD, end to end. 1 -> 2: a typed observation plus the wall-clock
 % instant as its own document.
 out = runJ(subjectMeasurementBody());
+did2.unittest.helpers.dumpJ('testSubjectMeasurementFoldsToObservationPlusAbsoluteReference', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);
 
 obs = docOfClass(testCase, out, 'time_observation');
+did2.unittest.helpers.dumpJ('testSubjectMeasurementFoldsToObservationPlusAbsoluteReference', 'obs', obs);
 ref = docOfClass(testCase, out, 'absolute_time_reference');
+did2.unittest.helpers.dumpJ('testSubjectMeasurementFoldsToObservationPlusAbsoluteReference', 'ref', ref);
 
 % subject_id CARRIES OVER, and the source id is PRESERVED (dissolving a
 % referenced document without keeping its id is the 11,448-orphan mistake).
@@ -189,7 +192,9 @@ function testDatestampBecomesTheInstantNotAField(testCase)
 % mapping would have DROPPED the measurement time. Assert it survives, in the
 % right place, and that it did not leak onto the observation.
 out = runJ(subjectMeasurementBody());
+did2.unittest.helpers.dumpJ('testDatestampBecomesTheInstantNotAField', 'out', out);
 ref = docOfClass(testCase, out, 'absolute_time_reference');
+did2.unittest.helpers.dumpJ('testDatestampBecomesTheInstantNotAField', 'ref', ref);
 
 % INVERTED for #65 increment 2 (V_eta_time_reference_model_plan.md:468,
 % TEAM-SIGN-OFF [time_reference] 2026-08-08). The flat `start_utc` /
@@ -215,6 +220,7 @@ verifyEqual(testCase, ref.get('absolute_reference.value.start.approximate'), fal
 % tombstone says so ("SHADOWS base.datestamp"). It must not be confused with the
 % measurement instant on either document.
 obs = docOfClass(testCase, out, 'time_observation');
+did2.unittest.helpers.dumpJ('testDatestampBecomesTheInstantNotAField', 'obs', obs);
 % base.datestamp -> base.creation_timestamp (did-schema 72fa57f). The FIXTURE
 % above still writes did_v1 `datestamp`, deliberately: these assertions are
 % about the MIGRATED output, and the rename happens on the way out.
@@ -225,6 +231,7 @@ verifyEqual(testCase, ref.get('base.creation_timestamp'), ...
 
 % and the v1 block is gone -- no `datestamp` field survives anywhere
 s = obs.toStruct();
+did2.unittest.helpers.dumpJ('testDatestampBecomesTheInstantNotAField', 's', s);
 verifyFalse(testCase, isfield(s, 'subjectmeasurement'));
 end
 
@@ -234,14 +241,19 @@ function testMissingDatestampFallsBackToSessionAnchor(testCase)
 % session anchor every other J migrator uses -- the honest weaker claim, not a
 % fabricated instant and not a missing edge.
 b = subjectMeasurementBody();
+did2.unittest.helpers.dumpJ('testMissingDatestampFallsBackToSessionAnchor', 'b', b);
 b.subjectmeasurement.datestamp = '';
 out = runJ(b);
+did2.unittest.helpers.dumpJ('testMissingDatestampFallsBackToSessionAnchor', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testMissingDatestampFallsBackToSessionAnchor', 'names', names);
 verifyFalse(testCase, any(strcmp(names, 'absolute_time_reference')));
 anchor = docOfClass(testCase, out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testMissingDatestampFallsBackToSessionAnchor', 'anchor', anchor);
 obs = docOfClass(testCase, out, 'time_observation');
+did2.unittest.helpers.dumpJ('testMissingDatestampFallsBackToSessionAnchor', 'obs', obs);
 verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_1'), ...
     anchor.get('base.id'));
 end
@@ -254,9 +266,12 @@ function testUnparseableDatestampKeepsTheSourceString(testCase)
 % INVERTED for #65 increment 2: the paths are `value.start.source_value` and
 % `value.start.utc`; `value.source_start` / `value.start_utc` no longer exist.
 b = subjectMeasurementBody();
+did2.unittest.helpers.dumpJ('testUnparseableDatestampKeepsTheSourceString', 'b', b);
 b.subjectmeasurement.datestamp = '17-Mar-2017 19:53:57';
 out = runJ(b);
+did2.unittest.helpers.dumpJ('testUnparseableDatestampKeepsTheSourceString', 'out', out);
 ref = docOfClass(testCase, out, 'absolute_time_reference');
+did2.unittest.helpers.dumpJ('testUnparseableDatestampKeepsTheSourceString', 'ref', ref);
 verifyEqual(testCase, ref.get('absolute_reference.value.start.source_value'), ...
     '17-Mar-2017 19:53:57');
 verifyFalse(testCase, isfield(ref.get('absolute_reference.value.start'), 'utc'));
@@ -268,8 +283,10 @@ function testNoSubjectPassesThrough(testCase)
 % clear the reference gate AND the quarantine gate and only show up in the
 % empty-required-edge census. That is the image_stack husk. Carry it instead.
 b = subjectMeasurementBody();
+did2.unittest.helpers.dumpJ('testNoSubjectPassesThrough', 'b', b);
 b.depends_on = struct('name', {'subject_id'}, 'value', {''});
 out = runJ(b);
+did2.unittest.helpers.dumpJ('testNoSubjectPassesThrough', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
@@ -283,8 +300,10 @@ function testUntypeableMeasurementPassesThrough(testCase)
 % CARRIED, visibly, in summary.unconverted_by_class. Guessing a leaf is the
 % error the whole ground-truth track exists to undo.
 b = subjectMeasurementBody();
+did2.unittest.helpers.dumpJ('testUntypeableMeasurementPassesThrough', 'b', b);
 b.subjectmeasurement.measurement = 'coat color';
 out = runJ(b);
+did2.unittest.helpers.dumpJ('testUntypeableMeasurementPassesThrough', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'subjectmeasurement');
@@ -301,8 +320,10 @@ function testVoltageIsNotTypedAsADuration(testCase)
 % migrator asks jQuantityLeaf for whole-word matching. Word boundaries only ever
 % NARROW: they can turn a typed leaf into a passthrough, never the reverse.
 b = subjectMeasurementBody();
+did2.unittest.helpers.dumpJ('testVoltageIsNotTypedAsADuration', 'b', b);
 b.subjectmeasurement.measurement = 'voltage';
 out = runJ(b);
+did2.unittest.helpers.dumpJ('testVoltageIsNotTypedAsADuration', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'subjectmeasurement');
@@ -317,9 +338,12 @@ cases = { 'weight', 'mass_observation'; ...
           'age', 'time_observation' };
 for k = 1:size(cases, 1)
     b = subjectMeasurementBody();
+did2.unittest.helpers.dumpJ('testWholeWordQuantitiesStillFold', 'b', b);
     b.subjectmeasurement.measurement = cases{k, 1};
     out = runJ(b);
+did2.unittest.helpers.dumpJ('testWholeWordQuantitiesStillFold', 'out', out);
     names = classNames(out);
+did2.unittest.helpers.dumpJ('testWholeWordQuantitiesStillFold', 'names', names);
     verifyTrue(testCase, any(strcmp(names, cases{k, 2})), ...
         sprintf('"%s" should fold to %s, got {%s}', cases{k, 1}, ...
             cases{k, 2}, strjoin(names, ', ')));
@@ -331,8 +355,10 @@ function testNonScalarValuePassesThrough(testCase)
 % permitted by the source. The quantity composites carry ONE number, so a vector
 % has no honest cell -- and taking value(1) would silently discard the rest.
 b = subjectMeasurementBody();
+did2.unittest.helpers.dumpJ('testNonScalarValuePassesThrough', 'b', b);
 b.subjectmeasurement.value = [30 31];
 out = runJ(b);
+did2.unittest.helpers.dumpJ('testNonScalarValuePassesThrough', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'subjectmeasurement');
@@ -344,9 +370,11 @@ function testRejectsTheMeasurementSiblingsShape(testCase)
 % sibling (or from the V_alpha snapshot), and reading it as a subjectmeasurement
 % would produce an empty document that validates. Fail loudly instead.
 b = subjectMeasurementBody();
+did2.unittest.helpers.dumpJ('testRejectsTheMeasurementSiblingsShape', 'b', b);
 b.subjectmeasurement = struct('ontology_name', 'PATO:0000011', 'name', 'age', ...
     'numeric_value', 30, 'string_value', '');
 out = runJ(b);
+did2.unittest.helpers.dumpJ('testRejectsTheMeasurementSiblingsShape', 'out', out);
 verifyEqual(testCase, numel(out.quarantine), 1);
 verifyTrue(testCase, contains(out.quarantine(1).reason, 'measurement'));
 end
@@ -359,6 +387,7 @@ function testSubjectMeasurementFoldValidates(testCase)
 % runJ deliberately passes Validate=false, so this calls v1_to_v2 directly.
 out = did2.convert.v1_to_v2(subjectMeasurementBody(), ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testSubjectMeasurementFoldValidates', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('subjectmeasurement quarantined under validation: %s', ...
         out.quarantine(1).reason));
@@ -382,7 +411,9 @@ v1.base = struct('id', 'me_1', 'session_id', 'sess_09', ...
 v1.measurement = struct('ontology_name', 'PATO:0000128', 'name', 'body weight', ...
     'numeric_value', 22.5, 'string_value', '');
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testMeasurementSiblingIsUnchangedByTheExtraction', 'out', out);
 obs = docOfClass(testCase, out, 'mass_observation');
+did2.unittest.helpers.dumpJ('testMeasurementSiblingIsUnchangedByTheExtraction', 'obs', obs);
 verifyEqual(testCase, obs.get('mass.value.source_value'), 22.5);
 verifyEqual(testCase, obs.get('mass.value.source_unit'), '');
 verifyEqual(testCase, obs.get('statement.variable.node'), 'PATO:0000128');
@@ -400,8 +431,10 @@ function testFilterBlockBecomesAFrequencyFilterDocument(testCase)
 % is not incidental metadata: 300-Hz-high-passed voltage is a different quantity
 % from raw voltage.
 out = runJ(pyraviewBody(predFilterBlock()));
+did2.unittest.helpers.dumpJ('testFilterBlockBecomesAFrequencyFilterDocument', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testFilterBlockBecomesAFrequencyFilterDocument', 'ff', ff);
 
 % type -> band; algorithm passes through the value_set unchanged. Both are
 % staged with an empty `node`: there is no CURIE authority for filter design
@@ -433,12 +466,15 @@ function testBandComesFromFilterTypeAfterTheSuperclassRename(testCase)
 % Driven through the FULL pipeline on purpose: a direct migrator call skips the
 % superclass pass and would pass whichever spelling the code read.
 out = runJ(pyraviewBody(predFilterBlock()));
+did2.unittest.helpers.dumpJ('testBandComesFromFilterTypeAfterTheSuperclassRename', 'out', out);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testBandComesFromFilterTypeAfterTheSuperclassRename', 'ff', ff);
 verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'high_pass');
 
 % and the direct call (no superclass pass, so the block still says `type`)
 % resolves the same band -- both spellings are live, exactly as for depends_on.
 bodies = did2.convert.migrators_j.pyraview(pyraviewBody(predFilterBlock()));
+did2.unittest.helpers.dumpJ('testBandComesFromFilterTypeAfterTheSuperclassRename', 'bodies', bodies);
 names = cellfun(@(b) did2.unittest.helpers.leafName(b), bodies, 'UniformOutput', false);
 idx = find(strcmp(names, 'frequency_filter'), 1);
 assertNotEmpty(testCase, idx);
@@ -451,8 +487,11 @@ function testNaNParametersAreAbsentNotCarried(testCase)
 % NaN (the rule already set for time references). `mustNotHaveNaN` is FALSE on
 % these fields, so a carried NaN would have validated cleanly and silently.
 out = runJ(pyraviewBody(predFilterBlock()));
+did2.unittest.helpers.dumpJ('testNaNParametersAreAbsentNotCarried', 'out', out);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testNaNParametersAreAbsentNotCarried', 'ff', ff);
 blk = ff.get('frequency_filter');
+did2.unittest.helpers.dumpJ('testNaNParametersAreAbsentNotCarried', 'blk', blk);
 verifyFalse(testCase, isfield(blk, 'stopband_attenuation'));
 % and nothing was invented for the band this design does not have
 verifyFalse(testCase, isfield(blk, 'stopband'));
@@ -464,11 +503,14 @@ function testMisspelledStopbandAttenuationIsRead(testCase)
 % both document the CORRECT spelling, which appears in no .m file on
 % origin/main. A migrator reading the correct one gets nothing, silently.
 blk = predFilterBlock();
+did2.unittest.helpers.dumpJ('testMisspelledStopbandAttenuationIsRead', 'blk', blk);
 blk.algorithm = 'chebyshev_2';
 blk.parameters.passBandRipple = NaN;
 blk.parameters.stopbandAttentuation = 40;
 out = runJ(pyraviewBody(blk));
+did2.unittest.helpers.dumpJ('testMisspelledStopbandAttenuationIsRead', 'out', out);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testMisspelledStopbandAttenuationIsRead', 'ff', ff);
 verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.decibels'), 40);
 verifyEqual(testCase, ff.get('frequency_filter.stopband_attenuation.source_unit'), 'dB');
 % chebyshev_2 has no passband ripple -- the NaN must not have been carried
@@ -481,8 +523,11 @@ function testSampleFrequencyAndLabelAreNotCarried(testCase)
 % that used it; the rate is already on the recording. And `label` is the same
 % fact as `band` in every real document (both "high"), so it is not duplicated.
 out = runJ(pyraviewBody(predFilterBlock()));
+did2.unittest.helpers.dumpJ('testSampleFrequencyAndLabelAreNotCarried', 'out', out);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testSampleFrequencyAndLabelAreNotCarried', 'ff', ff);
 blk = ff.get('frequency_filter');
+did2.unittest.helpers.dumpJ('testSampleFrequencyAndLabelAreNotCarried', 'blk', blk);
 verifyFalse(testCase, isfield(blk, 'sample_rate'));
 verifyFalse(testCase, isfield(blk, 'sample_frequency'));
 verifyFalse(testCase, isfield(blk, 'label'));
@@ -494,9 +539,13 @@ function testEveryLevelBodyPointsAtTheOneFilter(testCase)
 % filterData is called once per document (makePyraviewDoc.m:58/:108) and the
 % decimation happens after it, so every level shares ONE filter document.
 out = runJ(pyraviewBody(predFilterBlock()));
+did2.unittest.helpers.dumpJ('testEveryLevelBodyPointsAtTheOneFilter', 'out', out);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testEveryLevelBodyPointsAtTheOneFilter', 'ff', ff);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testEveryLevelBodyPointsAtTheOneFilter', 'names', names);
 bodies = out.migrated(strcmp(names, 'sampled_body'));
+did2.unittest.helpers.dumpJ('testEveryLevelBodyPointsAtTheOneFilter', 'bodies', bodies);
 verifyEqual(testCase, numel(bodies), 2);
 for k = 1:numel(bodies)
     s = bodies{k}.toStruct();
@@ -518,10 +567,13 @@ blk = struct('label', 'all', 'type', 'none', 'algorithm', 'none', ...
         'filterFrequency', NaN, 'passBandRipple', NaN, ...
         'stopbandAttentuation', NaN));
 out = runJ(pyraviewBody(blk));
+did2.unittest.helpers.dumpJ('testAllPassEmitsNoFilterAndNoEdge', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testAllPassEmitsNoFilterAndNoEdge', 'names', names);
 verifyFalse(testCase, any(strcmp(names, 'frequency_filter')));
 bodies = out.migrated(strcmp(names, 'sampled_body'));
+did2.unittest.helpers.dumpJ('testAllPassEmitsNoFilterAndNoEdge', 'bodies', bodies);
 verifyNotEmpty(testCase, bodies);
 for k = 1:numel(bodies)
     verifyEmpty(testCase, depValue(bodies{k}.toStruct(), 'filter_id'));
@@ -534,13 +586,17 @@ function testUnknownVocabularyEmitsNothing(testCase)
 % edge. (Compare: mapping an unknown band onto band_pass would have produced a
 % confident, wrong, cleanly-validating specification.)
 blk = predFilterBlock();
+did2.unittest.helpers.dumpJ('testUnknownVocabularyEmitsNothing', 'blk', blk);
 blk.type = 'notch';
 out = runJ(pyraviewBody(blk));
+did2.unittest.helpers.dumpJ('testUnknownVocabularyEmitsNothing', 'out', out);
 verifyFalse(testCase, any(strcmp(classNames(out), 'frequency_filter')));
 
 blk = predFilterBlock();
+did2.unittest.helpers.dumpJ('testUnknownVocabularyEmitsNothing', 'blk', blk);
 blk.algorithm = 'savitzky_golay';
 out = runJ(pyraviewBody(blk));
+did2.unittest.helpers.dumpJ('testUnknownVocabularyEmitsNothing', 'out', out);
 verifyFalse(testCase, any(strcmp(classNames(out), 'frequency_filter')));
 end
 
@@ -549,7 +605,9 @@ function testPyraviewWithNoFilterBlockIsUnchanged(testCase)
 % observation, one sampled_body per level, and the session anchor -- and no
 % stray frequency_filter.
 out = runJ(pyraviewBody());
+did2.unittest.helpers.dumpJ('testPyraviewWithNoFilterBlockIsUnchanged', 'out', out);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testPyraviewWithNoFilterBlockIsUnchanged', 'names', names);
 verifyTrue(testCase, any(strcmp(names, 'voltage_observation')));
 verifyTrue(testCase, any(strcmp(names, 'relative_time_reference')));
 verifyEqual(testCase, sum(strcmp(names, 'sampled_body')), 2);
@@ -561,17 +619,22 @@ function testBandPassNeedsTwoEdges(testCase)
 % (filter.md: "two values for bandpass filters"), and asserts NEITHER when it
 % gives one -- there is no way to know which end a single number is.
 blk = predFilterBlock();
+did2.unittest.helpers.dumpJ('testBandPassNeedsTwoEdges', 'blk', blk);
 blk.type = 'bandpass';
 blk.parameters.filterFrequency = [300 3000];
 out = runJ(pyraviewBody(blk));
+did2.unittest.helpers.dumpJ('testBandPassNeedsTwoEdges', 'out', out);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testBandPassNeedsTwoEdges', 'ff', ff);
 verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'band_pass');
 verifyEqual(testCase, ff.get('frequency_filter.passband.low.hertz'), 300);
 verifyEqual(testCase, ff.get('frequency_filter.passband.high.hertz'), 3000);
 
 blk.parameters.filterFrequency = 300;
 out = runJ(pyraviewBody(blk));
+did2.unittest.helpers.dumpJ('testBandPassNeedsTwoEdges', 'out', out);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testBandPassNeedsTwoEdges', 'ff', ff);
 verifyFalse(testCase, isfield(ff.get('frequency_filter'), 'passband'));
 end
 
@@ -579,10 +642,13 @@ function testLowPassPutsTheEdgeOnTheHighSide(testCase)
 % The reverse of the high-pass case: a low-pass keeps everything BELOW the edge,
 % so the number is the passband's HIGH edge and the low edge is open.
 blk = predFilterBlock();
+did2.unittest.helpers.dumpJ('testLowPassPutsTheEdgeOnTheHighSide', 'blk', blk);
 blk.type = 'low';
 blk.label = 'low';
 out = runJ(pyraviewBody(blk));
+did2.unittest.helpers.dumpJ('testLowPassPutsTheEdgeOnTheHighSide', 'out', out);
 ff = docOfClass(testCase, out, 'frequency_filter');
+did2.unittest.helpers.dumpJ('testLowPassPutsTheEdgeOnTheHighSide', 'ff', ff);
 verifyEqual(testCase, ff.get('frequency_filter.band.name'), 'low_pass');
 verifyEqual(testCase, ff.get('frequency_filter.passband.high.hertz'), 300);
 verifyFalse(testCase, isfield(ff.get('frequency_filter.passband'), 'low'));
@@ -595,6 +661,7 @@ function testPyraviewFilterFoldValidates(testCase)
 % can show either.
 out = did2.convert.v1_to_v2(pyraviewBody(predFilterBlock()), ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testPyraviewFilterFoldValidates', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('pyraview+filter quarantined under validation: %s', ...
         out.quarantine(1).reason));

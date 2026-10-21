@@ -26,11 +26,13 @@ function testSyncgraphFoldsToPolicyWhenTheSessionResolves(testCase)
 result = migrate({ ...
     syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
     sessionDocFixture('sessdoc_A', 'sess_A')});
+did2.unittest.helpers.dumpJ('testSyncgraphFoldsToPolicyWhenTheSessionResolves', 'result', result);
 % Pass 1 leaves the syncgraph a passthrough.
 verifyEqual(testCase, countOf(result, 'syncgraph'), 1);
 verifyEqual(testCase, countOf(result, 'clock_alignment_policy'), 0);
 
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+did2.unittest.helpers.dumpJ('testSyncgraphFoldsToPolicyWhenTheSessionResolves', 'out', out);
 rep = out.clock_alignment_fold;
 
 verifyEqual(testCase, rep.syncgraphs_seen, 1);
@@ -41,6 +43,7 @@ verifyEqual(testCase, countOf(out, 'syncgraph'), 0);
 verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), 1);
 
 policy = firstOf(out, 'clock_alignment_policy');
+did2.unittest.helpers.dumpJ('testSyncgraphFoldsToPolicyWhenTheSessionResolves', 'policy', policy);
 % base.id PRESERVED -- syncrule_mapping's syncgraph_id edge still resolves.
 verifyEqual(testCase, policy.get('base.id'), 'graph_1');
 % session_id names the session DOCUMENT's base.id, not the base.session_id
@@ -58,8 +61,11 @@ function testTheStampDoesNotPersistOntoThePolicy(testCase)
 result = migrate({ ...
     syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
     sessionDocFixture('sessdoc_A', 'sess_A')});
+did2.unittest.helpers.dumpJ('testTheStampDoesNotPersistOntoThePolicy', 'result', result);
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+did2.unittest.helpers.dumpJ('testTheStampDoesNotPersistOntoThePolicy', 'out', out);
 policy = firstOf(out, 'clock_alignment_policy');
+did2.unittest.helpers.dumpJ('testTheStampDoesNotPersistOntoThePolicy', 'policy', policy);
 verifyEmpty(testCase, depValue(policy, 'session_document_id'));
 end
 
@@ -70,7 +76,9 @@ function testNoSessionDocumentIsRefusedNotFilledEmpty(testCase)
 % as a passthrough -- never a clock_alignment_policy with an empty required
 % session edge (the invented-empty-edge pattern).
 result = migrate({syncgraphFixture('graph_1', {'rule_1'}, 'sess_MISSING')});
+did2.unittest.helpers.dumpJ('testNoSessionDocumentIsRefusedNotFilledEmpty', 'result', result);
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+did2.unittest.helpers.dumpJ('testNoSessionDocumentIsRefusedNotFilledEmpty', 'out', out);
 rep = out.clock_alignment_fold;
 verifyEqual(testCase, rep.syncgraphs_seen, 1);
 verifyEqual(testCase, rep.refused_no_session_document, 1);
@@ -86,7 +94,9 @@ result = migrate({ ...
     syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
     sessionDocFixture('sessdoc_A', 'sess_A'), ...
     sessionDocFixture('sessdoc_B', 'sess_A')});
+did2.unittest.helpers.dumpJ('testTwoSessionDocumentsClaimingOneIdAreRefusedAmbiguous', 'result', result);
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+did2.unittest.helpers.dumpJ('testTwoSessionDocumentsClaimingOneIdAreRefusedAmbiguous', 'out', out);
 rep = out.clock_alignment_fold;
 verifyEqual(testCase, rep.refused_ambiguous_session, 1);
 verifyEqual(testCase, rep.policies_folded, 0);
@@ -98,7 +108,9 @@ function testAnEmptySessionSentinelIsRefused(testCase)
 % syncgraph carrying it must not resolve to a document.
 result = migrate({syncgraphFixture('graph_1', {'rule_1'}, ...
     '0000000000000000_0000000000000000')});
+did2.unittest.helpers.dumpJ('testAnEmptySessionSentinelIsRefused', 'result', result);
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+did2.unittest.helpers.dumpJ('testAnEmptySessionSentinelIsRefused', 'out', out);
 rep = out.clock_alignment_fold;
 % Either the migrator's own sentinel guard declines, or no session document
 % claims the sentinel id -- both are refusals, neither is a fold.
@@ -113,6 +125,7 @@ function testAnEmptyBatchRunsAndReportsZero(testCase)
 % silently -- the silentLoss discipline.
 result = struct('migrated', {{}}, 'summary', struct('total', 0));
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+did2.unittest.helpers.dumpJ('testAnEmptyBatchRunsAndReportsZero', 'out', out);
 verifyTrue(testCase, out.clock_alignment_fold.ran);
 verifyEqual(testCase, out.clock_alignment_fold.syncgraphs_seen, 0);
 end
@@ -122,7 +135,9 @@ function testNonEtaTargetIsUntouched(testCase)
 result = migrate({ ...
     syncgraphFixture('graph_1', {'rule_1'}, 'sess_A'), ...
     sessionDocFixture('sessdoc_A', 'sess_A')});
+did2.unittest.helpers.dumpJ('testNonEtaTargetIsUntouched', 'result', result);
 out = did2.convert.resolveClockAlignment(result, 'TargetVersion', 'V_delta');
+did2.unittest.helpers.dumpJ('testNonEtaTargetIsUntouched', 'out', out);
 verifyEqual(testCase, countOf(out, 'syncgraph'), 1);
 verifyEqual(testCase, countOf(out, 'clock_alignment_policy'), 0);
 end

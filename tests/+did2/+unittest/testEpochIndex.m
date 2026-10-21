@@ -138,12 +138,14 @@ function testDidNotRunAndRanAndFoundNothingAreDifferentReadings(testCase)
 % The `silentLoss` failure in miniature: an all-zero report that never read its
 % input must not be indistinguishable from one that read an empty batch.
 idx = did2.convert.epochIndex();
+did2.unittest.helpers.dumpJ('testDidNotRunAndRanAndFoundNothingAreDifferentReadings', 'idx', idx);
 verifyFalse(testCase, idx.report.ran, ...
     'an index built from no source must report ran=false');
 verifyTrue(testCase, idx.report.vacuous);
 verifyEqual(testCase, idx.report.bodies_inspected, 0);
 
 idx2 = did2.convert.epochIndex(struct('migrated', {{}}));
+did2.unittest.helpers.dumpJ('testDidNotRunAndRanAndFoundNothingAreDifferentReadings', 'idx2', idx2);
 verifyTrue(testCase, idx2.report.ran, ...
     'an EMPTY BATCH ran -- it just found nothing; that is not "did not run"');
 verifyTrue(testCase, idx2.report.vacuous);
@@ -155,6 +157,7 @@ function testTheDenominatorCountsEveryDocumentIncludingTheUnreadable(testCase)
 % `total_docs` read 0 on all five corpora while 221,813 documents went by.
 batch = {epochDoc('epoch_1', 'sess_A', 't00001'), 42, sessionDoc('sess_A')};
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testTheDenominatorCountsEveryDocumentIncludingTheUnreadable', 'idx', idx);
 verifyEqual(testCase, idx.report.bodies_inspected, 3);
 verifyEqual(testCase, idx.report.bodies_unreadable, 1);
 verifyEqual(testCase, idx.report.epoch_documents_seen, 1);
@@ -173,6 +176,7 @@ batch = { ...
     epochDoc('epoch_A', 'sess_A', 't00070'), ...
     epochDoc('epoch_B', 'sess_B', 't00070')};
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testTheSameStringInTwoSessionsDoesNotFuse', 'idx', idx);
 
 verifyEqual(testCase, idx.report.epoch_documents_seen, 2);
 verifyEqual(testCase, idx.report.pairs_indexed, 2, ...
@@ -195,14 +199,19 @@ function testHalfAKeyResolvesToNothingNotToAGuess(testCase)
 % MUTATION TARGET: resolve half a key.
 batch = {sessionDoc('sess_A'), epochDoc('epoch_A', 'sess_A', 't00070')};
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testHalfAKeyResolvesToNothingNotToAGuess', 'idx', idx);
 verifyEqual(testCase, idx.report.pairs_indexed, 1);
 
 [id1, why1] = idx.resolve('', 't00070');
+did2.unittest.helpers.dumpJ('testHalfAKeyResolvesToNothingNotToAGuess', 'id1', id1);
+did2.unittest.helpers.dumpJ('testHalfAKeyResolvesToNothingNotToAGuess', 'why1', why1);
 verifyEmpty(testCase, id1, ...
     'no session id is half a key; the unique epoch is NOT the answer');
 verifyEqual(testCase, why1, 'refused_no_session_id');
 
 [id2, why2] = idx.resolve('sess_A', '');
+did2.unittest.helpers.dumpJ('testHalfAKeyResolvesToNothingNotToAGuess', 'id2', id2);
+did2.unittest.helpers.dumpJ('testHalfAKeyResolvesToNothingNotToAGuess', 'why2', why2);
 verifyEmpty(testCase, id2);
 verifyEqual(testCase, why2, 'refused_no_local_identifier');
 
@@ -219,8 +228,11 @@ function testAPairWithNoEpochDocumentIsCountedNotSilent(testCase)
 % MUTATION TARGET: drop the not-found counter.
 batch = {sessionDoc('sess_A'), epochDoc('epoch_A', 'sess_A', 't00070')};
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testAPairWithNoEpochDocumentIsCountedNotSilent', 'idx', idx);
 
 [id, why] = idx.resolve('sess_A', 't99999');
+did2.unittest.helpers.dumpJ('testAPairWithNoEpochDocumentIsCountedNotSilent', 'id', id);
+did2.unittest.helpers.dumpJ('testAPairWithNoEpochDocumentIsCountedNotSilent', 'why', why);
 verifyEmpty(testCase, id);
 verifyEqual(testCase, why, 'refused_no_epoch_document');
 verifyEqual(testCase, idx.report.refused_no_epoch_document, 1);
@@ -238,6 +250,7 @@ batch = { ...
     epochDoc('epoch_A', 'sess_A', 't00001'), ...
     epochDoc('epoch_C', 'sess_A', 't00002')};
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testResolveStillActuallyResolves', 'idx', idx);
 verifyEqual(testCase, idx.resolve('sess_A', 't00001'), 'epoch_A');
 verifyEqual(testCase, idx.resolve('sess_A', 't00002'), 'epoch_C');
 verifyEqual(testCase, idx.report.resolve_hits, 2);
@@ -254,11 +267,14 @@ batch = { ...
     epochDoc('epoch_A', 'sess_A', 't00070'), ...
     epochDoc('epoch_A_dup', 'sess_A', 't00070')};
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testAPairClaimedByTwoEpochsIsRefusedNotGuessed', 'idx', idx);
 verifyEqual(testCase, idx.report.epoch_documents_seen, 2);
 verifyEqual(testCase, idx.report.pairs_indexed, 1);
 verifyEqual(testCase, idx.report.pairs_ambiguous, 1);
 
 [id, why] = idx.resolve('sess_A', 't00070');
+did2.unittest.helpers.dumpJ('testAPairClaimedByTwoEpochsIsRefusedNotGuessed', 'id', id);
+did2.unittest.helpers.dumpJ('testAPairClaimedByTwoEpochsIsRefusedNotGuessed', 'why', why);
 verifyEmpty(testCase, id);
 verifyEqual(testCase, why, 'refused_ambiguous_epoch');
 end
@@ -267,9 +283,12 @@ function testAnEpochThatCannotKeyItselfIsCounted(testCase)
 % An epoch document with no `local_identifier` is an epoch nothing can ever
 % anchor to. It is a defect in whatever minted it, and it must be a number.
 noLid = epochDoc('epoch_X', 'sess_A', 't00070');
+did2.unittest.helpers.dumpJ('testAnEpochThatCannotKeyItselfIsCounted', 'noLid', noLid);
 noLid.epoch = struct('local_identifier', '');
 noSid = epochDoc('epoch_Y', '', 't00071');
+did2.unittest.helpers.dumpJ('testAnEpochThatCannotKeyItselfIsCounted', 'noSid', noSid);
 idx = did2.convert.epochIndex({noLid, noSid});
+did2.unittest.helpers.dumpJ('testAnEpochThatCannotKeyItselfIsCounted', 'idx', idx);
 verifyEqual(testCase, idx.report.epoch_documents_seen, 2);
 verifyEqual(testCase, idx.report.epoch_documents_without_local_identifier, 1);
 verifyEqual(testCase, idx.report.epoch_documents_without_session_id, 1);
@@ -290,8 +309,10 @@ batch = { ...
     epochDoc('epoch_stim', 'sess_A', 't00003'), ...
     epochDoc('epoch_elem', 'sess_A', 't00009')};
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testTwoEpochStringsOnOneBodyAreNotInterchangeable', 'idx', idx);
 
 body = responseBody('sess_A', 't00009', 't00003');   % element, stimulator
+did2.unittest.helpers.dumpJ('testTwoEpochStringsOnOneBodyAreNotInterchangeable', 'body', body);
 verifyEqual(testCase, ...
     idx.resolveBody(body, 'stimulus_response.element_epochid'), 'epoch_elem');
 verifyEqual(testCase, ...
@@ -311,9 +332,13 @@ function testAskingForASourceTheBodyLacksIsNOTTheSameAsNoEpochString(testCase)
 % only one.
 idx = did2.convert.epochIndex({sessionDoc('sess_A'), ...
     epochDoc('epoch_elem', 'sess_A', 't00009')});
+did2.unittest.helpers.dumpJ('testAskingForASourceTheBodyLacksIsNOTTheSameAsNoEpochString', 'idx', idx);
 onlyElement = responseBody('sess_A', 't00009', '');
+did2.unittest.helpers.dumpJ('testAskingForASourceTheBodyLacksIsNOTTheSameAsNoEpochString', 'onlyElement', onlyElement);
 
 [idA, whyA] = idx.resolveBody(onlyElement, 'stimulus_response.stimulator_epochid');
+did2.unittest.helpers.dumpJ('testAskingForASourceTheBodyLacksIsNOTTheSameAsNoEpochString', 'idA', idA);
+did2.unittest.helpers.dumpJ('testAskingForASourceTheBodyLacksIsNOTTheSameAsNoEpochString', 'whyA', whyA);
 verifyEmpty(testCase, idA);
 verifyEqual(testCase, whyA, 'refused_source_not_present');
 verifyEqual(testCase, idx.report.refused_source_not_present, 1);
@@ -329,7 +354,10 @@ end
 function testABodyWithNoEpochStringIsRefusedByName(testCase)
 idx = did2.convert.epochIndex({sessionDoc('sess_A'), ...
     epochDoc('epoch_A', 'sess_A', 't00070')});
+did2.unittest.helpers.dumpJ('testABodyWithNoEpochStringIsRefusedByName', 'idx', idx);
 [id, why] = idx.resolveBody(sessionDoc('sess_A'));
+did2.unittest.helpers.dumpJ('testABodyWithNoEpochStringIsRefusedByName', 'id', id);
+did2.unittest.helpers.dumpJ('testABodyWithNoEpochStringIsRefusedByName', 'why', why);
 verifyEmpty(testCase, id);
 verifyEqual(testCase, why, 'refused_no_epoch_string');
 verifyEqual(testCase, idx.report.refused_no_epoch_string, 1);
@@ -344,6 +372,7 @@ function testTheSchemaDecidesWhichClassesMayCarryTheEdge(testCase)
 % file, so it cannot go stale the first time a class gains the edge.
 requireSchemaCache(testCase);
 idx = did2.convert.epochIndex();
+did2.unittest.helpers.dumpJ('testTheSchemaDecidesWhichClassesMayCarryTheEdge', 'idx', idx);
 for c = {'acquisition_metadata_file', 'ingestion_manifest', ...
          'directed_relation', 'method_parameters'}
     verifyTrue(testCase, idx.classDeclaresEpochEdge(c{1}), ...
@@ -369,8 +398,12 @@ function testStampRefusesAClassThatDoesNotDeclareTheEdge(testCase)
 requireSchemaCache(testCase);
 idx = did2.convert.epochIndex({sessionDoc('sess_A'), ...
     epochDoc('epoch_A', 'sess_A', 't00070')});
+did2.unittest.helpers.dumpJ('testStampRefusesAClassThatDoesNotDeclareTheEdge', 'idx', idx);
 before = carrierBody('spikewaves', 'sess_A', 't00070');
+did2.unittest.helpers.dumpJ('testStampRefusesAClassThatDoesNotDeclareTheEdge', 'before', before);
 [after, why] = idx.stampEpochEdge(before);
+did2.unittest.helpers.dumpJ('testStampRefusesAClassThatDoesNotDeclareTheEdge', 'after', after);
+did2.unittest.helpers.dumpJ('testStampRefusesAClassThatDoesNotDeclareTheEdge', 'why', why);
 verifyEqual(testCase, why, 'refused_class_does_not_declare');
 verifyEqual(testCase, after, before, 'a refusal must leave the body untouched');
 verifyEqual(testCase, idx.report.stamp_refused_class_does_not_declare, 1);
@@ -384,9 +417,12 @@ function testStampWritesTheEdgeOnADeclaringClassAndOnlyOnce(testCase)
 requireSchemaCache(testCase);
 idx = did2.convert.epochIndex({sessionDoc('sess_A'), ...
     epochDoc('epoch_A', 'sess_A', 't00070')});
+did2.unittest.helpers.dumpJ('testStampWritesTheEdgeOnADeclaringClassAndOnlyOnce', 'idx', idx);
 
 [stamped, why] = idx.stampEpochEdge( ...
     methodParametersBody('sess_A', 't00070'), 'method_parameters');
+did2.unittest.helpers.dumpJ('testStampWritesTheEdgeOnADeclaringClassAndOnlyOnce', 'stamped', stamped);
+did2.unittest.helpers.dumpJ('testStampWritesTheEdgeOnADeclaringClassAndOnlyOnce', 'why', why);
 verifyEmpty(testCase, why);
 verifyEqual(testCase, depValue(stamped, 'epoch_id'), 'epoch_A');
 verifyEqual(testCase, idx.report.stamp_edges_written, 1);
@@ -394,6 +430,8 @@ verifyEqual(testCase, idx.report.stamp_edges_written, 1);
 % FIND-OR-CREATE, NOT CREATE: ndi.migrate.local re-reads every document on a
 % second pass over the same dataset, so a re-stamp must be a refusal.
 [again, why2] = idx.stampEpochEdge(stamped, 'method_parameters');
+did2.unittest.helpers.dumpJ('testStampWritesTheEdgeOnADeclaringClassAndOnlyOnce', 'again', again);
+did2.unittest.helpers.dumpJ('testStampWritesTheEdgeOnADeclaringClassAndOnlyOnce', 'why2', why2);
 verifyEqual(testCase, why2, 'refused_already_populated');
 verifyEqual(testCase, again, stamped);
 verifyEqual(testCase, idx.report.stamp_edges_written, 1);
@@ -407,8 +445,12 @@ function testStampRefusesWhenThePairDoesNotResolve(testCase)
 requireSchemaCache(testCase);
 idx = did2.convert.epochIndex({sessionDoc('sess_A'), ...
     epochDoc('epoch_A', 'sess_A', 't00070')});
+did2.unittest.helpers.dumpJ('testStampRefusesWhenThePairDoesNotResolve', 'idx', idx);
 before = methodParametersBody('sess_A', 't99999');
+did2.unittest.helpers.dumpJ('testStampRefusesWhenThePairDoesNotResolve', 'before', before);
 [after, why] = idx.stampEpochEdge(before, 'method_parameters');
+did2.unittest.helpers.dumpJ('testStampRefusesWhenThePairDoesNotResolve', 'after', after);
+did2.unittest.helpers.dumpJ('testStampRefusesWhenThePairDoesNotResolve', 'why', why);
 verifyEqual(testCase, why, 'refused_no_epoch_document');
 verifyEqual(testCase, after, before);
 verifyEqual(testCase, idx.report.stamp_refused_unresolved, 1);
@@ -429,7 +471,9 @@ batch = { ...
     carrierBody('stimulus_presentation', 'sess_A', 't00070'), ...
     methodParametersBody('sess_A', 't00070')};   % the one that CAN hold it
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testCarrierScanCountsTheGapItRefusesToClose', 'idx', idx);
 rep = idx.scanCarriers(batch);
+did2.unittest.helpers.dumpJ('testCarrierScanCountsTheGapItRefusesToClose', 'rep', rep);
 
 verifyEqual(testCase, rep.carriers_inspected, 5, ...
     'the denominator is every document, not every carrier');
@@ -455,11 +499,14 @@ function testCarrierScanOnAPreMintBatchIsVacuousNotClean(testCase)
 batch = {carrierBody('spikewaves', 'sess_A', 't00070'), ...
          carrierBody('stimulus_presentation', 'sess_A', 't00070')};
 idx = did2.convert.epochIndex(batch);
+did2.unittest.helpers.dumpJ('testCarrierScanOnAPreMintBatchIsVacuousNotClean', 'idx', idx);
 verifyTrue(testCase, idx.report.ran);
 verifyTrue(testCase, idx.report.vacuous, ...
     'no epoch document indexed -- every resolve below is a tautology');
 verifyEqual(testCase, idx.report.pairs_indexed, 0);
 [id, why] = idx.resolve('sess_A', 't00070');
+did2.unittest.helpers.dumpJ('testCarrierScanOnAPreMintBatchIsVacuousNotClean', 'id', id);
+did2.unittest.helpers.dumpJ('testCarrierScanOnAPreMintBatchIsVacuousNotClean', 'why', why);
 verifyEmpty(testCase, id);
 verifyEqual(testCase, why, 'refused_no_epoch_document');
 end
@@ -479,6 +526,7 @@ result = struct( ...
                'local_identifier', {'t00001', 't00002', 't00003'}, ...
                'epoch_document_id', {'epoch_A', 'WRONG_ID', 'epoch_ghost'})));
 idx = did2.convert.epochIndex(result);
+did2.unittest.helpers.dumpJ('testThePublishedIndexIsComparedAgainstTheBatch', 'idx', idx);
 verifyTrue(testCase, idx.report.published_index_present);
 verifyEqual(testCase, idx.report.published_index_rows, 3);
 verifyEqual(testCase, idx.report.published_rows_agreeing, 1);
@@ -497,6 +545,7 @@ function testAnAbsentPublishedIndexIsNotADivergence(testCase)
 % zero divergence alone.
 result = struct('migrated', {{epochDoc('epoch_A', 'sess_A', 't00001')}});
 idx = did2.convert.epochIndex(result);
+did2.unittest.helpers.dumpJ('testAnAbsentPublishedIndexIsNotADivergence', 'idx', idx);
 verifyFalse(testCase, idx.report.published_index_present);
 verifyEqual(testCase, idx.report.published_index_rows, 0);
 verifyEqual(testCase, idx.report.published_rows_disagreeing, 0);
@@ -524,8 +573,11 @@ v1 = { ...
     elementEpochBody('ee_2', 'sess_B', 't00070', 'el_2'), ...
     elementEpochBody('ee_3', 'sess_A', 't00071', 'el_1')};
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheIndexAgreesWithEpochMintOnItsOwnOutput', 'out', out);
 [out, mintReport] = did2.convert.epochMint(out, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheIndexAgreesWithEpochMintOnItsOwnOutput', 'out', out);
+did2.unittest.helpers.dumpJ('testTheIndexAgreesWithEpochMintOnItsOwnOutput', 'mintReport', mintReport);
 
 verifyEqual(testCase, mintReport.epochs_minted, 3, ...
     'two sessions x t00070 plus one t00071 is THREE epochs, not two');
@@ -533,6 +585,7 @@ verifyEqual(testCase, mintReport.distinct_epoch_id_strings, 2);
 verifyEqual(testCase, mintReport.pairs_minus_strings, 1);
 
 idx = did2.convert.epochIndex(out);
+did2.unittest.helpers.dumpJ('testTheIndexAgreesWithEpochMintOnItsOwnOutput', 'idx', idx);
 verifyEqual(testCase, idx.report.pairs_indexed, mintReport.epochs_minted, ...
     'the index must find every epoch the mint minted');
 verifyEqual(testCase, idx.report.pairs_minus_strings, ...
@@ -546,8 +599,11 @@ verifyEqual(testCase, idx.report.published_index_rows, 3);
 
 % and every pair the mint saw resolves through this class.
 a = idx.resolve('sess_A', 't00070');
+did2.unittest.helpers.dumpJ('testTheIndexAgreesWithEpochMintOnItsOwnOutput', 'a', a);
 b = idx.resolve('sess_B', 't00070');
+did2.unittest.helpers.dumpJ('testTheIndexAgreesWithEpochMintOnItsOwnOutput', 'b', b);
 c = idx.resolve('sess_A', 't00071');
+did2.unittest.helpers.dumpJ('testTheIndexAgreesWithEpochMintOnItsOwnOutput', 'c', c);
 verifyNotEmpty(testCase, a);
 verifyNotEmpty(testCase, b);
 verifyNotEmpty(testCase, c);

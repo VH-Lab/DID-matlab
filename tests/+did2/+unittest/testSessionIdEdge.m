@@ -74,6 +74,7 @@ end
 function testOnTheEdgeShapeTheFieldBecomesTheEdge(testCase)
 useShape(testCase, 'edge');
 out = runJ(passthroughV1('sess_A', struct('name', 'thing_id', 'value', 't1')));
+did2.unittest.helpers.dumpJ('testOnTheEdgeShapeTheFieldBecomesTheEdge', 'out', out);
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
 s = out.migrated{1}.toStruct();
 verifyFalse(testCase, isfield(s.base, 'session_id'), ...
@@ -88,6 +89,7 @@ end
 function testOnTheFieldShapeNothingMoves(testCase)
 useShape(testCase, 'field');
 out = runJ(passthroughV1('sess_A', struct('name', 'thing_id', 'value', 't1')));
+did2.unittest.helpers.dumpJ('testOnTheFieldShapeNothingMoves', 'out', out);
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
 s = out.migrated{1}.toStruct();
 verifyEqual(testCase, s.base.session_id, 'sess_A');
@@ -99,6 +101,7 @@ function testAStaleSessionEdgeIsReplacedNotDoubled(testCase)
 % session document; the field is the authority and there is one edge after
 useShape(testCase, 'edge');
 out = runJ(passthroughV1('sess_A', struct('name', 'session_id', 'value', 'stale')));
+did2.unittest.helpers.dumpJ('testAStaleSessionEdgeIsReplacedNotDoubled', 'out', out);
 s = out.migrated{1}.toStruct();
 verifyEqual(testCase, edgeTargets(s, 'session_id'), {'sess_A'});
 end
@@ -108,7 +111,9 @@ function testAMovedDocumentPassesThroughAgainUnchanged(testCase)
 % the edge shape must come out as it went in
 useShape(testCase, 'edge');
 first = runJ(passthroughV1('sess_A', struct('name', 'thing_id', 'value', 't1')));
+did2.unittest.helpers.dumpJ('testAMovedDocumentPassesThroughAgainUnchanged', 'first', first);
 again = runJ(first.migrated{1}.toStruct());
+did2.unittest.helpers.dumpJ('testAMovedDocumentPassesThroughAgainUnchanged', 'again', again);
 assertEqual(testCase, numel(again.migrated), 1, 'nothing emitted on the second pass');
 s = again.migrated{1}.toStruct();
 verifyFalse(testCase, isfield(s.base, 'session_id'));
@@ -119,6 +124,7 @@ function testVDeltaKeepsTheField(testCase)
 useShape(testCase, 'edge');
 out = did2.convert.v1_to_v2(passthroughV1('sess_A', struct('name', {}, 'value', {})), ...
     'Validate', false);
+did2.unittest.helpers.dumpJ('testVDeltaKeepsTheField', 'out', out);
 s = out.migrated{1}.toStruct();
 verifyEqual(testCase, s.base.session_id, 'sess_A');
 end
@@ -128,11 +134,13 @@ end
 function testTheSessionIsReIdOnlyOnTheEdgeShape(testCase)
 useShape(testCase, 'edge');
 s = runJ(sessionV1()).migrated{1}.toStruct();
+did2.unittest.helpers.dumpJ('testTheSessionIsReIdOnlyOnTheEdgeShape', 's', s);
 verifyEqual(testCase, s.base.id, 'sess_09');
 verifyEqual(testCase, edgeTargets(s, 'session_id'), {'sess_09'}, ...
     'the session entity points at itself');
 useShape(testCase, 'field');
 s = runJ(sessionV1()).migrated{1}.toStruct();
+did2.unittest.helpers.dumpJ('testTheSessionIsReIdOnlyOnTheEdgeShape', 's', s);
 verifyEqual(testCase, s.base.id, 'sess_doc_1');
 verifyEqual(testCase, s.base.session_id, 'sess_09');
 end
@@ -142,6 +150,7 @@ end
 function testMembershipIsIncludedInOnTheEdgeShape(testCase)
 useShape(testCase, 'edge');
 rel = membershipRelation(runJ(sessionInADatasetV1()));
+did2.unittest.helpers.dumpJ('testMembershipIsIncludedInOnTheEdgeShape', 'rel', rel);
 verifyEqual(testCase, rel.directed_relation.relation.name, 'included_in');
 verifyEqual(testCase, rel.directed_relation.relation.node, 'schema:isPartOf');
 % the relation is a dataset-level document: its edge names the dataset entity
@@ -151,6 +160,7 @@ end
 function testMembershipIsPartOfOnTheFieldShape(testCase)
 useShape(testCase, 'field');
 rel = membershipRelation(runJ(sessionInADatasetV1()));
+did2.unittest.helpers.dumpJ('testMembershipIsPartOfOnTheFieldShape', 'rel', rel);
 verifyEqual(testCase, rel.directed_relation.relation.name, 'part_of');
 end
 

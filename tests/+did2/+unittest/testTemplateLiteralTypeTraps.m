@@ -182,9 +182,12 @@ function testStimulusParameterEmptyValuePlaceholderIsDropped(testCase)
 % NaN is a value the field may reject -- and absence is what "unset" means and
 % the only spelling that passes (cache.m:1212-1225).
 out = runJ(stimulusParameterBody(''));
+did2.unittest.helpers.dumpJ('testStimulusParameterEmptyValuePlaceholderIsDropped', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'stimulus_parameter');
+did2.unittest.helpers.dumpJ('testStimulusParameterEmptyValuePlaceholderIsDropped', 'd', d);
 b = d.get('stimulus_parameter');
+did2.unittest.helpers.dumpJ('testStimulusParameterEmptyValuePlaceholderIsDropped', 'b', b);
 verifyFalse(testCase, isfield(b, 'value'), ...
     'the empty char placeholder must be DROPPED, not coerced');
 % the two string fields are untouched: `string` accepts '' (cache.m:1349-1371)
@@ -197,6 +200,7 @@ function testStimulusParameterPlaceholderDocumentValidates(testCase)
 % is otherwise exactly what ndi.document('stimulus_parameter') produces -- gets
 % through the validator instead of quarantining on typeMismatch.
 out = runJValidated(stimulusParameterBody(''));
+did2.unittest.helpers.dumpJ('testStimulusParameterPlaceholderDocumentValidates', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 end
@@ -206,8 +210,10 @@ function testStimulusParameterRealValueIsUntouched(testCase)
 % last_match.temp{1}). A real number passes through byte for byte, and the
 % id is preserved because this is a passthrough.
 out = runJValidated(stimulusParameterBody(21.5));
+did2.unittest.helpers.dumpJ('testStimulusParameterRealValueIsUntouched', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'stimulus_parameter');
+did2.unittest.helpers.dumpJ('testStimulusParameterRealValueIsUntouched', 'd', d);
 verifyEqual(testCase, d.get('stimulus_parameter.value'), 21.5, 'AbsTol', 1e-12);
 verifyEqual(testCase, d.get('base.id'), 'sp_1');
 end
@@ -217,8 +223,10 @@ function testStimulusParameterVectorValueSurvives(testCase)
 % whole cell"), so a multi-element numeric value must NOT be touched. This pins
 % the difference from imageStack_parameters.timestamp, which IS scalar.
 out = runJ(stimulusParameterBody([18 21 24]));
+did2.unittest.helpers.dumpJ('testStimulusParameterVectorValueSurvives', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'stimulus_parameter');
+did2.unittest.helpers.dumpJ('testStimulusParameterVectorValueSurvives', 'd', d);
 verifyEqual(testCase, d.get('stimulus_parameter.value'), [18 21 24]);
 end
 
@@ -227,8 +235,10 @@ function testStimulusParameterAbsentValueIsNotManufactured(testCase)
 % (v1_to_v2.m:473-478), so a document that never had `value` must not acquire a
 % 0. If this ever goes red the padding has changed and the repair is moot.
 out = runJ(stimulusParameterBody([], false));
+did2.unittest.helpers.dumpJ('testStimulusParameterAbsentValueIsNotManufactured', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'stimulus_parameter');
+did2.unittest.helpers.dumpJ('testStimulusParameterAbsentValueIsNotManufactured', 'd', d);
 verifyFalse(testCase, isfield(d.get('stimulus_parameter'), 'value'));
 end
 
@@ -238,6 +248,7 @@ function testStimulusParameterNonEmptyCharValueErrorsRatherThanGuessing(testCase
 % what we think it is. A loud quarantine with a legible reason beats a silent
 % typeMismatch -- the same call binaryseries_parameters makes.
 out = runJ(stimulusParameterBody('32'));
+did2.unittest.helpers.dumpJ('testStimulusParameterNonEmptyCharValueErrorsRatherThanGuessing', 'out', out);
 verifyEqual(testCase, numel(out.quarantine), 1);
 verifyEqual(testCase, numel(out.migrated), 0);
 end
@@ -250,9 +261,12 @@ function testImageStackTimestampEmptyPlaceholderIsDropped(testCase)
 % (cache.m:1258). Same disposition, different error -- which is why the sweep
 % had to look at the type AND the shape, not just the type.
 out = runJ(imageStackBody([]));
+did2.unittest.helpers.dumpJ('testImageStackTimestampEmptyPlaceholderIsDropped', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'image_stack');
+did2.unittest.helpers.dumpJ('testImageStackTimestampEmptyPlaceholderIsDropped', 'd', d);
 p = d.get('image_stack_parameters');
+did2.unittest.helpers.dumpJ('testImageStackTimestampEmptyPlaceholderIsDropped', 'p', p);
 verifyFalse(testCase, isfield(p, 'timestamp'), ...
     'the empty [] placeholder must be DROPPED, not coerced to 0');
 % every other field of the block is left exactly as it was
@@ -268,8 +282,10 @@ function testImageStackPlaceholderDocumentValidatesOnThePassthrough(testCase)
 % it through -- and a passthrough is exactly where an unnormalised template
 % literal reaches the validator. With the placeholder dropped it validates.
 out = runJValidated(imageStackBody([]));
+did2.unittest.helpers.dumpJ('testImageStackPlaceholderDocumentValidatesOnThePassthrough', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'image_stack');
+did2.unittest.helpers.dumpJ('testImageStackPlaceholderDocumentValidatesOnThePassthrough', 'd', d);
 verifyEqual(testCase, d.get('base.id'), 'is_1');   % passthrough: id preserved
 end
 
@@ -277,8 +293,10 @@ function testImageStackRealTimestampIsUntouched(testCase)
 % The writers' own shape: a scalar datenum
 % (babu/import.m:463 / haley/doImport.m:414,:788 `convertTo(...,'datenum')`).
 out = runJValidated(imageStackBody(739038.5));
+did2.unittest.helpers.dumpJ('testImageStackRealTimestampIsUntouched', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'image_stack');
+did2.unittest.helpers.dumpJ('testImageStackRealTimestampIsUntouched', 'd', d);
 verifyEqual(testCase, d.get('image_stack_parameters.timestamp'), 739038.5, ...
     'AbsTol', 1e-9);
 end
@@ -288,8 +306,10 @@ function testImageStackTimestampZeroIsAValueNotAPlaceholder(testCase)
 % isVacuousValue states ("a real numeric 0 or a logical false IS a value").
 % Dropping it would delete a datum; this pins that it is kept.
 out = runJ(imageStackBody(0));
+did2.unittest.helpers.dumpJ('testImageStackTimestampZeroIsAValueNotAPlaceholder', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'image_stack');
+did2.unittest.helpers.dumpJ('testImageStackTimestampZeroIsAValueNotAPlaceholder', 'd', d);
 verifyEqual(testCase, d.get('image_stack_parameters.timestamp'), 0);
 end
 
@@ -298,6 +318,7 @@ function testImageStackNonScalarTimestampErrorsRatherThanTruncating(testCase)
 % number. Two numbers means the source is not what we think it is, and nothing
 % establishes which element is meant, so it is not truncated.
 out = runJ(imageStackBody([739038.5 739039.5]));
+did2.unittest.helpers.dumpJ('testImageStackNonScalarTimestampErrorsRatherThanTruncating', 'out', out);
 verifyEqual(testCase, numel(out.quarantine), 1);
 verifyEqual(testCase, numel(out.migrated), 0);
 end
@@ -306,6 +327,7 @@ function testImageStackCharTimestampErrorsRatherThanParsing(testCase)
 % A date STRING has no established encoding here: the clock is named separately
 % by `clocktype`, so parsing would be a guess about both format and epoch.
 out = runJ(imageStackBody('2024-06-01'));
+did2.unittest.helpers.dumpJ('testImageStackCharTimestampErrorsRatherThanParsing', 'out', out);
 verifyEqual(testCase, numel(out.quarantine), 1);
 verifyEqual(testCase, numel(out.migrated), 0);
 end
@@ -313,8 +335,10 @@ end
 function testImageStackAbsentTimestampIsNotManufactured(testCase)
 % A block that never carried the field must not acquire one.
 out = runJ(imageStackBody([], false));
+did2.unittest.helpers.dumpJ('testImageStackAbsentTimestampIsNotManufactured', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'image_stack');
+did2.unittest.helpers.dumpJ('testImageStackAbsentTimestampIsNotManufactured', 'd', d);
 verifyFalse(testCase, isfield(d.get('image_stack_parameters'), 'timestamp'));
 end
 
@@ -326,7 +350,9 @@ function testImageStackParametersTombstoneStillExists(testCase)
 % regression, exactly) -- and this normalisation would become dead code without
 % anything saying so. Fail here instead.
 cache = did2.schema.cache.shared();
+did2.unittest.helpers.dumpJ('testImageStackParametersTombstoneStillExists', 'cache', cache);
 chain = cache.superclasses('image_stack');
+did2.unittest.helpers.dumpJ('testImageStackParametersTombstoneStillExists', 'chain', chain);
 verifyTrue(testCase, any(strcmp(chain, 'image_stack_parameters')), ...
     ['image_stack no longer inherits image_stack_parameters -- if the ' ...
      'tombstone was re-deleted, the subject-less passthrough has no schema.']);
@@ -338,8 +364,10 @@ function testTheBuiltPathStillReadsARealTimestamp(testCase)
 % image_stack builds its observation triple and clockFromParams reads the
 % timestamp into the body's t0. A real value must still get there.
 v1 = imageStackBody(739038.5);
+did2.unittest.helpers.dumpJ('testTheBuiltPathStillReadsARealTimestamp', 'v1', v1);
 v1.depends_on(1).value = 'sub_1';          % give it a subject -> the built path
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testTheBuiltPathStillReadsARealTimestamp', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)
@@ -357,8 +385,10 @@ function testTheBuiltPathSurvivesTheDroppedPlaceholder(testCase)
 % same t0 = 0 it used to get from []. If this goes red the two repairs are
 % fighting.
 v1 = imageStackBody([]);
+did2.unittest.helpers.dumpJ('testTheBuiltPathSurvivesTheDroppedPlaceholder', 'v1', v1);
 v1.depends_on(1).value = 'sub_1';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testTheBuiltPathSurvivesTheDroppedPlaceholder', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 names = cell(1, numel(out.migrated));
 for k = 1:numel(out.migrated)

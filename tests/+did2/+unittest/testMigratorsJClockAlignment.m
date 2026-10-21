@@ -168,9 +168,11 @@ end
 
 function testSyncruleFansOutToConfigurationChannelsAndSoftware(testCase)
 out = runJ(syncruleFixture('ctoe'));
+did2.unittest.helpers.dumpJ('testSyncruleFansOutToConfigurationChannelsAndSoftware', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 4);
 verifyEmpty(testCase, out.quarantine);
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testSyncruleFansOutToConfigurationChannelsAndSoftware', 'cfg', cfg);
 % base.id PRESERVED -- the signature says so, and syncgraph's syncrule_id_# and
 % syncrule_mapping's syncrule_id both resolve through it.
 verifyEqual(testCase, cfg.get('base.id'), 'rule_ctoe');
@@ -184,7 +186,9 @@ function testConfigurationCarriesExactlyTwoAcquisitionChannelEdges(testCase)
 % (commonTriggersOverlappingEpochs.m:110-115 accepts the pair in either order
 % and normalises afterwards), so the edges are a `_#` family, not from_/to_.
 out = runJ(syncruleFixture('ctoe'));
+did2.unittest.helpers.dumpJ('testConfigurationCarriesExactlyTwoAcquisitionChannelEdges', 'out', out);
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testConfigurationCarriesExactlyTwoAcquisitionChannelEdges', 'cfg', cfg);
 id1 = depVal(cfg, 'acquisition_channels_1');
 id2 = depVal(cfg, 'acquisition_channels_2');
 verifyNotEmpty(testCase, id1);
@@ -201,8 +205,11 @@ function testChannelSpecDecomposesTheWayNdiParsesIt(testCase)
 % commonTriggersOverlappingEpochs.m:369-377 performs, and the device NAME rides
 % on base.name because a syncrule stores a name, not a document id.
 out = runJ(syncruleFixture('ctoe'));
+did2.unittest.helpers.dumpJ('testChannelSpecDecomposesTheWayNdiParsesIt', 'out', out);
 ch = channelsNamed(testCase, out, 'vhtaste_sync');
+did2.unittest.helpers.dumpJ('testChannelSpecDecomposesTheWayNdiParsesIt', 'ch', ch);
 block = ch.get('acquisition_channels');
+did2.unittest.helpers.dumpJ('testChannelSpecDecomposesTheWayNdiParsesIt', 'block', block);
 verifyEqual(testCase, numel(block.channels), 1);
 verifyEqual(testCase, block.channels(1).type.name, 'dep');
 verifyEqual(testCase, block.channels(1).type.node, '');
@@ -214,9 +221,12 @@ function testAcquisitionSystemEdgeIsOmittedNotBlank(testCase)
 % source stores a device NAME and must_refer needs a document ID. Emitting it
 % blank would add another 100%-empty edge to the census for no gain.
 out = runJ(syncruleFixture('ctoe'));
+did2.unittest.helpers.dumpJ('testAcquisitionSystemEdgeIsOmittedNotBlank', 'out', out);
 ch = channelsNamed(testCase, out, 'vhtaste_sync');
+did2.unittest.helpers.dumpJ('testAcquisitionSystemEdgeIsOmittedNotBlank', 'ch', ch);
 verifyEmpty(testCase, depVal(ch, 'acquisition_system_id'));
 deps = depsOf(ch);
+did2.unittest.helpers.dumpJ('testAcquisitionSystemEdgeIsOmittedNotBlank', 'deps', deps);
 verifyFalse(testCase, any(strcmp({deps.name}, 'acquisition_system_id')));
 end
 
@@ -225,8 +235,11 @@ function testDeclaredParametersReplaceTheBag(testCase)
 % surviving fields are DECLARED and queryable" (repair 4), and errorOnFailure is
 % DROPPED (repair 5): throw-or-return-quietly is runtime behaviour.
 out = runJ(syncruleFixture('ctoe'));
+did2.unittest.helpers.dumpJ('testDeclaredParametersReplaceTheBag', 'out', out);
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testDeclaredParametersReplaceTheBag', 'cfg', cfg);
 block = cfg.get('clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testDeclaredParametersReplaceTheBag', 'block', block);
 verifyFalse(testCase, isfield(block, 'parameters'));
 verifyFalse(testCase, isfield(block, 'errorOnFailure'));
 verifyFalse(testCase, isfield(block, 'error_on_failure'));
@@ -242,13 +255,18 @@ function testFilefindNamesDevicesWithNoChannels(testCase)
 % strings at all. Both devices still become acquisition_channels documents --
 % the device identity is the fact -- with an empty channels list.
 out = runJ(syncruleFixture('filefind'));
+did2.unittest.helpers.dumpJ('testFilefindNamesDevicesWithNoChannels', 'out', out);
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testFilefindNamesDevicesWithNoChannels', 'cfg', cfg);
 verifyNotEmpty(testCase, depVal(cfg, 'acquisition_channels_1'));
 verifyNotEmpty(testCase, depVal(cfg, 'acquisition_channels_2'));
 ch = channelsNamed(testCase, out, 'mydaq1');
+did2.unittest.helpers.dumpJ('testFilefindNamesDevicesWithNoChannels', 'ch', ch);
 chBlock = ch.get('acquisition_channels');
+did2.unittest.helpers.dumpJ('testFilefindNamesDevicesWithNoChannels', 'chBlock', chBlock);
 verifyEmpty(testCase, chBlock.channels);
 block = cfg.get('clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testFilefindNamesDevicesWithNoChannels', 'block', block);
 verifyEqual(testCase, block.sync_file_name, 'syncfile.txt');
 verifyEqual(testCase, block.minimum_matching_file_paths, 1);
 % filefind has no epochclocktype, so `clock` is OMITTED rather than emitted as
@@ -270,7 +288,9 @@ function testFilematchBecomesAChannellessConfiguration(testCase)
 % so the config carries that as `minimum_matching_file_paths`, no channels, and
 % the software entity for its rule class.
 out = runJ(syncruleFixture('filematch'));
+did2.unittest.helpers.dumpJ('testFilematchBecomesAChannellessConfiguration', 'out', out);
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testFilematchBecomesAChannellessConfiguration', 'cfg', cfg);
 % base.id PRESERVED, so syncgraph's syncrule_id_# still resolves.
 verifyEqual(testCase, cfg.get('base.id'), 'rule_filematch');
 % ZERO acquisition_channels -- the whole point of the amendment.
@@ -278,6 +298,7 @@ verifyEqual(testCase, countClass(out, 'acquisition_channels'), 0);
 verifyEmpty(testCase, depVal(cfg, 'acquisition_channels_1'));
 % the file criterion is carried, not bagged.
 block = cfg.get('clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testFilematchBecomesAChannellessConfiguration', 'block', block);
 verifyEqual(testCase, block.minimum_matching_file_paths, 2);
 % the rule class becomes a software entity, edged from the config.
 verifyEqual(testCase, countClass(out, 'software'), 1);
@@ -291,9 +312,12 @@ function testSoftwareCarriesTheImplementationClass(testCase)
 % R1: v1's `ndi_syncrule_class` is the only thing on the document that says WHICH
 % strategy this is. Dropping it without a software entity would lose it.
 out = runJ(syncruleFixture('randomPulses'));
+did2.unittest.helpers.dumpJ('testSoftwareCarriesTheImplementationClass', 'out', out);
 sw = findClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testSoftwareCarriesTheImplementationClass', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.time.syncrule.randomPulses');
 cfg = findClass(testCase, out, 'clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testSoftwareCarriesTheImplementationClass', 'cfg', cfg);
 verifyEqual(testCase, depVal(cfg, 'software_id'), sw.get('base.id'));
 end
 
@@ -317,6 +341,7 @@ function testSyncgraphPassesThroughUntilTheSessionDocumentResolves(testCase)
 % shared the premise. That is the recorded lesson arriving through the DATA
 % this time rather than through the code.
 out = runJ(syncgraphFixture({'rule_a', 'rule_b', 'rule_c'}));
+did2.unittest.helpers.dumpJ('testSyncgraphPassesThroughUntilTheSessionDocumentResolves', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1, ...
     'a did_v1 syncgraph must pass through -- no session document can be resolved in pass 1');
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncgraph');
@@ -333,9 +358,12 @@ function testSyncgraphFoldsWhenTheSessionResolves(testCase)
 % Keeping it alive is the point: when that wiring lands, the fold is already
 % tested, and every assertion the old test made about MEMBERSHIP still holds.
 v1 = syncgraphFixture({'rule_a', 'rule_b', 'rule_c'});
+did2.unittest.helpers.dumpJ('testSyncgraphFoldsWhenTheSessionResolves', 'v1', v1);
 v1.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testSyncgraphFoldsWhenTheSessionResolves', 'out', out);
 policy = findClass(testCase, out, 'clock_alignment_policy');
+did2.unittest.helpers.dumpJ('testSyncgraphFoldsWhenTheSessionResolves', 'policy', policy);
 verifyEqual(testCase, policy.get('base.id'), 'graph_0001');
 % on the edge shape base's own `session_id` edge is this edge, and the session
 % DOCUMENT's id IS the session id, so the field is what it carries
@@ -357,10 +385,14 @@ function testRuleLessGraphEmitsNoConfigurationEdgeAtAll(testCase)
 % Driven through the resolved branch (see above) because that is the only
 % branch that emits a policy at all.
 v1 = syncgraphFixture({});
+did2.unittest.helpers.dumpJ('testRuleLessGraphEmitsNoConfigurationEdgeAtAll', 'v1', v1);
 v1.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testRuleLessGraphEmitsNoConfigurationEdgeAtAll', 'out', out);
 policy = findClass(testCase, out, 'clock_alignment_policy');
+did2.unittest.helpers.dumpJ('testRuleLessGraphEmitsNoConfigurationEdgeAtAll', 'policy', policy);
 deps = depsOf(policy);
+did2.unittest.helpers.dumpJ('testRuleLessGraphEmitsNoConfigurationEdgeAtAll', 'deps', deps);
 verifyFalse(testCase, any(startsWith({deps.name}, 'clock_alignment_configuration_')));
 verifyEqual(testCase, depVal(policy, 'session_id'), ...
     did2.unittest.helpers.sessionDocumentId('sessdoc_1', 'sess_0001'));
@@ -371,6 +403,7 @@ function testGraphWithTheEmptySessionSentinelPassesThrough(testCase)
 % session". Pointing a REQUIRED edge at a document that by construction does not
 % exist is an orphan, not a fact, so the document passes through instead.
 out = runJ(syncgraphFixture({'rule_a'}, '0000000000000000_0000000000000000'));
+did2.unittest.helpers.dumpJ('testGraphWithTheEmptySessionSentinelPassesThrough', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncgraph');
 verifyEqual(testCase, out.summary.unconverted_count, 1);
@@ -382,8 +415,10 @@ function testPolicyNeverEmitsABlankRequiredSessionEdge(testCase)
 % syncrule_mapping documents into the census while validating clean.
 for sessionId = {'sess_0001', '0000000000000000_0000000000000000', ''}
     out = runJ(syncgraphFixture({'rule_a'}, sessionId{1}));
+did2.unittest.helpers.dumpJ('testPolicyNeverEmitsABlankRequiredSessionEdge', 'out', out);
     for k = 1:numel(out.migrated)
         deps = depsOf(out.migrated{k});
+did2.unittest.helpers.dumpJ('testPolicyNeverEmitsABlankRequiredSessionEdge', 'deps', deps);
         for d = 1:numel(deps)
             if strcmp(deps(d).name, 'session_id')
                 verifyNotEmpty(testCase, depVal(out.migrated{k}, 'session_id'));
@@ -400,6 +435,7 @@ function testMappingPassesThroughBecauseNoEpochDocumentExists(testCase)
 % REQUIRED and the only honest referent is an `epoch` document; no migrator
 % mints one (#60). So the document keeps its own class and its own fields.
 out = runJ(mappingFixture(false));
+did2.unittest.helpers.dumpJ('testMappingPassesThroughBecauseNoEpochDocumentExists', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'syncrule_mapping');
@@ -416,6 +452,7 @@ function testPassthroughKeepsEverythingTheLiveNdiQueryReads(testCase)
 % and commonTriggersOverlappingEpochs.m:156-160 reads .epoch_id as well. All
 % four facts must survive migration or the rule recomputes from raw device files.
 out = runJ(mappingFixture(false));
+did2.unittest.helpers.dumpJ('testPassthroughKeepsEverythingTheLiveNdiQueryReads', 'out', out);
 doc = out.migrated{1};
 verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_a.objectname'), 'vhtaste_sync');
 verifyEqual(testCase, doc.get('syncrule_mapping.epochnode_b.objectname'), 'vhtaste_bpod');
@@ -456,8 +493,10 @@ function testPassthroughNoLongerDropsTheSerialisedProbeMap(testCase)
 % isstruct, so it returned an empty struct on every real document. Nothing
 % caught it because the unit fixture used a struct, which no writer produces.
 out = runJ(mappingFixture(false));
+did2.unittest.helpers.dumpJ('testPassthroughNoLongerDropsTheSerialisedProbeMap', 'out', out);
 doc = out.migrated{1};
 pm = doc.get('syncrule_mapping.epochnode_a.epochprobemap');
+did2.unittest.helpers.dumpJ('testPassthroughNoLongerDropsTheSerialisedProbeMap', 'pm', pm);
 verifyClass(testCase, pm, 'char');
 verifyTrue(testCase, contains(pm, 'dev1'));
 verifyTrue(testCase, contains( ...
@@ -481,11 +520,15 @@ function testTheSyncgraphEdgeStillResolvesAfterTheGraphConverts(testCase)
 % passthrough branch too, which testSyncgraphPassesThroughUntilTheSession...
 % pins separately.
 graph = syncgraphFixture({'rule_ctoe'});
+did2.unittest.helpers.dumpJ('testTheSyncgraphEdgeStillResolvesAfterTheGraphConverts', 'graph', graph);
 graph.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
 out = did2.convert.v1_to_v2({graph, mappingFixture(false)}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheSyncgraphEdgeStillResolvesAfterTheGraphConverts', 'out', out);
 policy = findClass(testCase, out, 'clock_alignment_policy');
+did2.unittest.helpers.dumpJ('testTheSyncgraphEdgeStillResolvesAfterTheGraphConverts', 'policy', policy);
 mapping = findClass(testCase, out, 'syncrule_mapping');
+did2.unittest.helpers.dumpJ('testTheSyncgraphEdgeStillResolvesAfterTheGraphConverts', 'mapping', mapping);
 verifyEqual(testCase, depVal(mapping, 'syncgraph_id'), policy.get('base.id'));
 end
 
@@ -493,8 +536,10 @@ end
 
 function testMappingConvertsWhenBothEndpointsHaveAnEpochDocument(testCase)
 out = runJ(mappingFixture(true));
+did2.unittest.helpers.dumpJ('testMappingConvertsWhenBothEndpointsHaveAnEpochDocument', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 3);
 align = findClass(testCase, out, 'clock_alignment');
+did2.unittest.helpers.dumpJ('testMappingConvertsWhenBothEndpointsHaveAnEpochDocument', 'align', align);
 verifyEqual(testCase, align.get('base.id'), 'map_0001');       % PRESERVED
 verifyEqual(testCase, countClass(out, 'relative_time_reference'), 2);
 end
@@ -505,8 +550,11 @@ function testPolynomialKeepsTheSourceOrderAndChecksItsDegree(testCase)
 % this is a rename -- nothing is reversed. {slope, intercept} would have been
 % LOSSY (ndi.time.timemapping is a polynomial by its own docstring).
 out = runJ(mappingFixture(true));
+did2.unittest.helpers.dumpJ('testPolynomialKeepsTheSourceOrderAndChecksItsDegree', 'out', out);
 align = findClass(testCase, out, 'clock_alignment');
+did2.unittest.helpers.dumpJ('testPolynomialKeepsTheSourceOrderAndChecksItsDegree', 'align', align);
 coeffs = align.get('polynomial.value.coefficients');
+did2.unittest.helpers.dumpJ('testPolynomialKeepsTheSourceOrderAndChecksItsDegree', 'coeffs', coeffs);
 verifyEqual(testCase, coeffs, [1.0002 -0.5]);
 verifyEqual(testCase, align.get('polynomial.value.degree'), numel(coeffs) - 1);
 verifyEqual(testCase, align.get('clock_alignment.cost'), 1);
@@ -514,13 +562,16 @@ verifyEqual(testCase, align.get('clock_alignment.cost'), 1);
 % predicate, not an OWL-Time interval relation, so it cannot reuse
 % relative_reference's binding and needs an NDIC term (#67 / #70).
 rel = align.get('clock_alignment.relation');
+did2.unittest.helpers.dumpJ('testPolynomialKeepsTheSourceOrderAndChecksItsDegree', 'rel', rel);
 verifyEqual(testCase, rel.name, 'temporally aligned with');
 verifyEqual(testCase, rel.node, '');
 end
 
 function testAllFourRequiredEdgesAreFilled(testCase)
 out = runJ(mappingFixture(true));
+did2.unittest.helpers.dumpJ('testAllFourRequiredEdgesAreFilled', 'out', out);
 align = findClass(testCase, out, 'clock_alignment');
+did2.unittest.helpers.dumpJ('testAllFourRequiredEdgesAreFilled', 'align', align);
 for name = {'from_reference', 'to_reference', ...
         'clock_alignment_configuration_id', 'clock_alignment_policy_id'}
     verifyNotEmpty(testCase, depVal(align, name{1}), ...
@@ -539,15 +590,20 @@ function testEndpointsBecomeDirectedReferencesThatKeepObjectname(testCase)
 % NDI sites and is otherwise recoverable ONLY via epoch.instrument_id, which the
 % epoch pass does not carry yet.
 out = runJ(mappingFixture(true));
+did2.unittest.helpers.dumpJ('testEndpointsBecomeDirectedReferencesThatKeepObjectname', 'out', out);
 align = findClass(testCase, out, 'clock_alignment');
+did2.unittest.helpers.dumpJ('testEndpointsBecomeDirectedReferencesThatKeepObjectname', 'align', align);
 fromRef = docWithId(testCase, out, depVal(align, 'from_reference'));
+did2.unittest.helpers.dumpJ('testEndpointsBecomeDirectedReferencesThatKeepObjectname', 'fromRef', fromRef);
 toRef   = docWithId(testCase, out, depVal(align, 'to_reference'));
+did2.unittest.helpers.dumpJ('testEndpointsBecomeDirectedReferencesThatKeepObjectname', 'toRef', toRef);
 verifyEqual(testCase, did2.unittest.helpers.leafName(fromRef), 'relative_reference');
 verifyEqual(testCase, fromRef.get('base.name'), 'vhtaste_sync');
 verifyEqual(testCase, toRef.get('base.name'), 'vhtaste_bpod');
 verifyEqual(testCase, depVal(fromRef, 'relative_to'), 'epochdoc_a');
 verifyEqual(testCase, depVal(toRef, 'relative_to'), 'epochdoc_b');
 val = fromRef.get('relative_reference.value');
+did2.unittest.helpers.dumpJ('testEndpointsBecomeDirectedReferencesThatKeepObjectname', 'val', val);
 verifyEqual(testCase, val.clock.name, 'dev_local_time');
 verifyEqual(testCase, val.start.seconds, 0);
 % INVERTED for #65 increment 2 (CHANGE 1): `value.end` no longer exists on
@@ -563,8 +619,10 @@ function testNoTimeClockYieldsNoConversionAtAll(testCase)
 % document; rather than emit one, the migrator falls back to the passthrough,
 % which preserves strictly more than the converted form would have.
 v1 = mappingFixture(true);
+did2.unittest.helpers.dumpJ('testNoTimeClockYieldsNoConversionAtAll', 'v1', v1);
 v1.syncrule_mapping.epochnode_a.epoch_clock = 'no_time';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testNoTimeClockYieldsNoConversionAtAll', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncrule_mapping');
 end
@@ -573,8 +631,10 @@ function testNonFiniteExtentYieldsNoConversionAtAll(testCase)
 % ndi.daq.reader.mfdaq/t0_t1's own docstring: "The abstract class always returns
 % {[NaN NaN]}". Real, reachable, and not a reference.
 v1 = mappingFixture(true);
+did2.unittest.helpers.dumpJ('testNonFiniteExtentYieldsNoConversionAtAll', 'v1', v1);
 v1.syncrule_mapping.epochnode_b.t0_t1 = [NaN NaN];
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testNonFiniteExtentYieldsNoConversionAtAll', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'syncrule_mapping');
 end
@@ -588,10 +648,12 @@ function testTheClusterHasNoOrphanEdges(testCase)
 out = did2.convert.v1_to_v2( ...
     {syncruleFixture('ctoe'), syncgraphFixture({'rule_ctoe'}), mappingFixture(true)}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheClusterHasNoOrphanEdges', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 report = did2.validate.references(out.migrated, 'KnownIds', ...
     [{'sess_0001', 'epochdoc_a', 'epochdoc_b'}, ...
      did2.unittest.helpers.sessionKnownIds(out.migrated)]);
+did2.unittest.helpers.dumpJ('testTheClusterHasNoOrphanEdges', 'report', report);
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
 verifyGreaterThanOrEqual(testCase, report.edges_examined, 10);
 if report.orphan_count > 0
@@ -608,7 +670,9 @@ function testEdgeFamilyCardinalityIsSatisfied(testCase)
 out = did2.convert.v1_to_v2( ...
     {syncruleFixture('ctoe'), syncgraphFixture({'rule_ctoe'})}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testEdgeFamilyCardinalityIsSatisfied', 'out', out);
 report = did2.validate.silentLoss(out.migrated);
+did2.unittest.helpers.dumpJ('testEdgeFamilyCardinalityIsSatisfied', 'report', report);
 % DENOMINATOR FIRST -- silentLoss printed zeros for two days while reading
 % nothing, so a zero is only evidence once total_docs is non-zero.
 verifyEqual(testCase, report.total_docs, numel(out.migrated));
@@ -627,11 +691,13 @@ function testConfigurationAndPolicyValidateAgainstTheRealVEtaSchema(testCase)
 % quick gate builds exactly that, and all four target classes are in the DRAFT
 % tier, so a stable-only schema path fails here rather than skipping.
 graph = syncgraphFixture({'rule_ctoe'});
+did2.unittest.helpers.dumpJ('testConfigurationAndPolicyValidateAgainstTheRealVEtaSchema', 'graph', graph);
 graph.depends_on(end+1) = struct('name', 'session_document_id', 'value', 'sessdoc_1');
 out = did2.convert.v1_to_v2( ...
     {syncruleFixture('ctoe'), syncruleFixture('filematch'), ...
      graph, mappingFixture(false)}, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testConfigurationAndPolicyValidateAgainstTheRealVEtaSchema', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -662,6 +728,7 @@ function testTheAlignmentFoldValidatesWhenTheGateIsOpen(testCase)
 % broken today".
 out = did2.convert.v1_to_v2(mappingFixture(true), ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheAlignmentFoldValidatesWhenTheGateIsOpen', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));

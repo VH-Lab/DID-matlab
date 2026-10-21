@@ -105,6 +105,8 @@ function testTheMintArmsTheSyncruleFold(testCase)
 % now exist -- minted from the two manifests that share their (session, string)
 % pairs -- so the fold runs and the mapping becomes a clock_alignment.
 [out, rep] = mintFrom(batchWithBothEndpointEpochs());
+did2.unittest.helpers.dumpJ('testTheMintArmsTheSyncruleFold', 'out', out);
+did2.unittest.helpers.dumpJ('testTheMintArmsTheSyncruleFold', 'rep', rep);
 
 verifyEqual(testCase, rep.syncrule_seen, 1, ...
     'the source document must be SEEN before any other count means anything');
@@ -120,6 +122,7 @@ verifyEqual(testCase, rep.syncrule_refused_total, 0);
 verifyEmpty(testCase, ofClass(out, 'syncrule_mapping'), ...
     'the fold is 1 -> 3: the source class must not also survive');
 align = ofClass(out, 'clock_alignment');
+did2.unittest.helpers.dumpJ('testTheMintArmsTheSyncruleFold', 'align', align);
 verifyNumElements(testCase, align, 1, ...
     'one clock_alignment per folded mapping');
 verifyEqual(testCase, char(align{1}.get('base.id')), 'map_0001', ...
@@ -129,6 +132,7 @@ verifyEqual(testCase, char(align{1}.get('base.id')), 'map_0001', ...
 % passthrough manifests that emit no references of their own, so the two are the
 % ONLY relative_references in the batch.
 refs = ofClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testTheMintArmsTheSyncruleFold', 'refs', refs);
 verifyNumElements(testCase, refs, 2, ...
     'branch 1 emits exactly two endpoint references');
 end
@@ -139,12 +143,16 @@ function testTheAlignmentAnchorsEachEndpointAtItsMintedEpoch(testCase)
 % names the epoch this pass MINTED for each endpoint's (session, string) pair --
 % read back out of the batch, so the test cannot pass by agreeing with a constant.
 [out, ~] = mintFrom(batchWithBothEndpointEpochs());
+did2.unittest.helpers.dumpJ('testTheAlignmentAnchorsEachEndpointAtItsMintedEpoch', 'out', out);
 align = ofClass(out, 'clock_alignment');
+did2.unittest.helpers.dumpJ('testTheAlignmentAnchorsEachEndpointAtItsMintedEpoch', 'align', align);
 verifyNumElements(testCase, align, 1);
 
 % epoch local_identifier -> minted epoch document id
 epochId = containers.Map('KeyType', 'char', 'ValueType', 'char');
+did2.unittest.helpers.dumpJ('testTheAlignmentAnchorsEachEndpointAtItsMintedEpoch', 'epochId', epochId);
 for e = ofClass(out, 'epoch')
+did2.unittest.helpers.dumpJ('testTheAlignmentAnchorsEachEndpointAtItsMintedEpoch', 'for e', for e);
     epochId(char(e{1}.get('entity.local_identifier'))) = char(e{1}.get('base.id'));
 end
 verifyTrue(testCase, isKey(epochId, 't00001') && isKey(epochId, 't00002'), ...
@@ -155,7 +163,9 @@ toId   = depValueOf(align{1}, 'to_reference');
 verifyNotEmpty(testCase, fromId);
 verifyNotEmpty(testCase, toId);
 fromRef = docWithId(out, fromId);
+did2.unittest.helpers.dumpJ('testTheAlignmentAnchorsEachEndpointAtItsMintedEpoch', 'fromRef', fromRef);
 toRef   = docWithId(out, toId);
+did2.unittest.helpers.dumpJ('testTheAlignmentAnchorsEachEndpointAtItsMintedEpoch', 'toRef', toRef);
 verifyNotEmpty(testCase, fromRef, 'from_reference names no document in the batch');
 verifyNotEmpty(testCase, toRef, 'to_reference names no document in the batch');
 verifyEqual(testCase, char(did2.unittest.helpers.leafName(fromRef)), ...
@@ -179,7 +189,9 @@ function testTheRestoredEdgesResolveAndTheStampsDoNotPersist(testCase)
 % cannot leak (which is why armingIsSafe's undeclared_edge refusal cannot fire on
 % the fold).
 [out, ~] = mintFrom(batchWithBothEndpointEpochs());
+did2.unittest.helpers.dumpJ('testTheRestoredEdgesResolveAndTheStampsDoNotPersist', 'out', out);
 align = ofClass(out, 'clock_alignment');
+did2.unittest.helpers.dumpJ('testTheRestoredEdgesResolveAndTheStampsDoNotPersist', 'align', align);
 verifyEqual(testCase, depValueOf(align{1}, 'clock_alignment_policy_id'), ...
     'graph_0001', 'syncgraph_id must be restored as the policy edge');
 verifyEqual(testCase, depValueOf(align{1}, 'clock_alignment_configuration_id'), ...
@@ -200,6 +212,8 @@ function testNoEndpointEpochDocumentIsRefusedNotFilledEmpty(testCase)
 [out, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_0001', 'exp1'), ...
     mappingFixture(false)});
+did2.unittest.helpers.dumpJ('testNoEndpointEpochDocumentIsRefusedNotFilledEmpty', 'out', out);
+did2.unittest.helpers.dumpJ('testNoEndpointEpochDocumentIsRefusedNotFilledEmpty', 'rep', rep);
 verifyEqual(testCase, rep.syncrule_seen, 1);
 verifyEqual(testCase, rep.syncrule_refused_no_epoch_document, 1);
 verifyEqual(testCase, rep.syncrule_refused_total, 1);
@@ -208,6 +222,7 @@ verifyEqual(testCase, rep.syncrule_folds_emitted, 0);
 verifyEmpty(testCase, ofClass(out, 'clock_alignment'), ...
     'no epoch means no honest referent -- refuse, do not emit a hollow reference');
 kept = ofClass(out, 'syncrule_mapping');
+did2.unittest.helpers.dumpJ('testNoEndpointEpochDocumentIsRefusedNotFilledEmpty', 'kept', kept);
 verifyNumElements(testCase, kept, 1, ...
     'the source document survives as the #58 passthrough');
 verifyFalse(testCase, hasDep(kept{1}, 'epoch_id_1'), ...
@@ -222,6 +237,8 @@ function testOnlyOneEndpointResolvingIsStillARefusal(testCase)
     sessionBody('sd_A', 'sess_0001', 'exp1'), ...
     ingestedBody('efi_1', 'sess_0001', 't00001', 'nav_1'), ...
     mappingFixture(false)});
+did2.unittest.helpers.dumpJ('testOnlyOneEndpointResolvingIsStillARefusal', 'out', out);
+did2.unittest.helpers.dumpJ('testOnlyOneEndpointResolvingIsStillARefusal', 'rep', rep);
 verifyEqual(testCase, rep.syncrule_seen, 1);
 verifyEqual(testCase, rep.syncrule_refused_no_epoch_document, 1);
 verifyEqual(testCase, rep.syncrule_folds_emitted, 0);
@@ -238,6 +255,7 @@ function testTheFoldIsVacuousNotCleanWhenNoMappingIsPresent(testCase)
 [~, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_0001', 'exp1'), ...
     ingestedBody('efi_1', 'sess_0001', 't00001', 'nav_1')});
+did2.unittest.helpers.dumpJ('testTheFoldIsVacuousNotCleanWhenNoMappingIsPresent', 'rep', rep);
 verifyTrue(testCase, rep.syncrule_fold_vacuous, ...
     'no source mappings: the zeros below are untested, not clean');
 verifyEqual(testCase, rep.syncrule_seen, 0);
@@ -250,6 +268,7 @@ function testTheReportCarriesTheFullSyncruleCounterSet(testCase)
 % must EXIST on the report before any document is read, so an all-zero run is
 % distinguishable from a run that never touched the fold.
 [~, rep] = mintFrom(batchWithBothEndpointEpochs());
+did2.unittest.helpers.dumpJ('testTheReportCarriesTheFullSyncruleCounterSet', 'rep', rep);
 for f = {'syncrule_seen', 'syncrule_already_folded', 'syncrule_edges_stamped', ...
          'syncrule_folds_emitted', 'syncrule_folds_withheld', ...
          'syncrule_refused_no_epoch_string', 'syncrule_refused_no_epoch_document', ...
@@ -268,12 +287,17 @@ function testRunningTwiceFoldsOnceAndRecognisesTheAlignment(testCase)
 % FOLDED rather than as a stranger, and mint no second epoch for a pair that
 % already has one.
 v1 = batchWithBothEndpointEpochs();
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndRecognisesTheAlignment', 'v1', v1);
 [out, rep1] = mintFrom(v1);
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndRecognisesTheAlignment', 'out', out);
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndRecognisesTheAlignment', 'rep1', rep1);
 verifyEqual(testCase, rep1.syncrule_folds_emitted, 1);
 verifyEqual(testCase, rep1.epochs_minted, 2);
 
 [out2, rep2] = did2.convert.epochMint(out, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndRecognisesTheAlignment', 'out2', out2);
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndRecognisesTheAlignment', 'rep2', rep2);
 verifyEqual(testCase, rep2.syncrule_already_folded, 1, ...
     'the second run must RECOGNISE the folded clock_alignment');
 verifyEqual(testCase, rep2.syncrule_seen, 0, ...
@@ -302,8 +326,11 @@ catch err
 end
 out = did2.convert.v1_to_v2(batchWithBothEndpointEpochs(), ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheFoldedAlignmentValidatesAgainstItsSchema', 'out', out);
 [out, rep] = did2.convert.epochMint(out, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheFoldedAlignmentValidatesAgainstItsSchema', 'out', out);
+did2.unittest.helpers.dumpJ('testTheFoldedAlignmentValidatesAgainstItsSchema', 'rep', rep);
 verifyEqual(testCase, rep.mint_quarantined, 0, ...
     'a folded document that cannot validate is a build defect, not a data problem');
 verifyEqual(testCase, rep.syncrule_folds_emitted, 1);

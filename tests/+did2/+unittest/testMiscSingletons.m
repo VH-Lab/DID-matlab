@@ -260,9 +260,12 @@ function testBinaryseriesTemplatePlaceholdersAreDropped(testCase)
 % of "unset" that passes -- an absent optional field returns early at
 % cache.m:1157-1163 -- so the placeholder is dropped, not coerced.
 out = runJ(binaryseriesTemplateBody('bsp_1', 'sess_1'));
+did2.unittest.helpers.dumpJ('testBinaryseriesTemplatePlaceholdersAreDropped', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'binaryseries_parameters');
+did2.unittest.helpers.dumpJ('testBinaryseriesTemplatePlaceholdersAreDropped', 'd', d);
 b = blockOf(d, 'binaryseries_parameters');
+did2.unittest.helpers.dumpJ('testBinaryseriesTemplatePlaceholdersAreDropped', 'b', b);
 verifyFalse(testCase, isfield(b, 'time_size'), 'placeholder time_size must be dropped');
 verifyFalse(testCase, isfield(b, 'data_size'), 'placeholder data_size must be dropped');
 verifyFalse(testCase, isfield(b, 'data_dim'),  'placeholder data_dim must be dropped');
@@ -281,9 +284,12 @@ function testBinaryseriesPopulatedBodyPassesThroughVerbatim(testCase)
 % into the data_body model is #45, and `axes[]` / `datum_type` / `regular` do
 % not exist yet.
 out = runJ(binaryseriesPopulatedBody('bsp_2', 'sess_1'));
+did2.unittest.helpers.dumpJ('testBinaryseriesPopulatedBodyPassesThroughVerbatim', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'binaryseries_parameters');
+did2.unittest.helpers.dumpJ('testBinaryseriesPopulatedBodyPassesThroughVerbatim', 'd', d);
 b = blockOf(d, 'binaryseries_parameters');
+did2.unittest.helpers.dumpJ('testBinaryseriesPopulatedBodyPassesThroughVerbatim', 'b', b);
 verifyEqual(testCase, b.time_size, 32);
 verifyEqual(testCase, b.time_type, 'float32');
 verifyEqual(testCase, b.data_size, 32);
@@ -300,8 +306,11 @@ function testBinaryseriesDataTypeFieldSurvivesUniversalRenames(testCase)
 % silently destroy the very field the #45 fold maps to
 % subject_statement.datum_type.
 out = runJ(binaryseriesPopulatedBody('bsp_3', 'sess_1'));
+did2.unittest.helpers.dumpJ('testBinaryseriesDataTypeFieldSurvivesUniversalRenames', 'out', out);
 d = onlyClass(testCase, out, 'binaryseries_parameters');
+did2.unittest.helpers.dumpJ('testBinaryseriesDataTypeFieldSurvivesUniversalRenames', 'd', d);
 b = blockOf(d, 'binaryseries_parameters');
+did2.unittest.helpers.dumpJ('testBinaryseriesDataTypeFieldSurvivesUniversalRenames', 'b', b);
 verifyTrue(testCase, isfield(b, 'data_type'), ...
     'universalRenames must not rename binaryseries_parameters.data_type');
 verifyEqual(testCase, b.data_type, 'float32');
@@ -314,6 +323,7 @@ function testBinaryseriesRejectsInventedFields(testCase)
 % document, and must fail loudly rather than migrate to something plausible.
 for f = {'num_channels', 'sample_rate'}
     v1 = binaryseriesPopulatedBody('bsp_4', 'sess_1');
+did2.unittest.helpers.dumpJ('testBinaryseriesRejectsInventedFields', 'v1', v1);
     v1.binaryseries_parameters.(f{1}) = 4;
     verifyError(testCase, @() did2.convert.migrators_j.binaryseries_parameters(v1), ...
         'did2:convert:binaryseriesParametersInventedField', ...
@@ -327,6 +337,7 @@ function testBinaryseriesRejectsNonEmptyCharInAnIntegerField(testCase)
 % to carry, and inventing the parse is the failure mode this whole repair track
 % exists to remove. Quarantine with a legible reason, not a bare typeMismatch.
 v1 = binaryseriesTemplateBody('bsp_5', 'sess_1');
+did2.unittest.helpers.dumpJ('testBinaryseriesRejectsNonEmptyCharInAnIntegerField', 'v1', v1);
 v1.binaryseries_parameters.time_size = '32';
 verifyError(testCase, @() did2.convert.migrators_j.binaryseries_parameters(v1), ...
     'did2:convert:binaryseriesParametersCharInteger');
@@ -343,6 +354,7 @@ function testBinaryseriesValidatesAgainstItsSchema(testCase)
 v1 = { binaryseriesTemplateBody('bsp_v1', 'sess_V'), ...
        binaryseriesPopulatedBody('bsp_v2', 'sess_V') };
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testBinaryseriesValidatesAgainstItsSchema', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -375,6 +387,7 @@ function testBinaryseriesCarriesNoEdgeSoNoSubjectIsReachable(testCase)
 % QUESTION" section is the thing to read before changing it.
 out = runJ({ binaryseriesTemplateBody('bsp_e1', 'sess_V'), ...
              binaryseriesPopulatedBody('bsp_e2', 'sess_V') });
+did2.unittest.helpers.dumpJ('testBinaryseriesCarriesNoEdgeSoNoSubjectIsReachable', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 % ASSERT, not verify: everything below loops over out.migrated, and a verify on
 % the count would let an empty result set pass every assertion vacuously.
@@ -417,6 +430,7 @@ function testBinaryseriesFoldIsNotBuiltAndNeedsMoreThanAxes(testCase)
 %       the ledger names cannot be instantiated at all.
 out = runJ({ binaryseriesTemplateBody('bsp_f1', 'sess_V'), ...
              binaryseriesPopulatedBody('bsp_f2', 'sess_V') });
+did2.unittest.helpers.dumpJ('testBinaryseriesFoldIsNotBuiltAndNeedsMoreThanAxes', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 % ASSERT before the all()/any() below. `all(strcmp({}, ...))` is TRUE on an
 % empty set, so a verify here would let a run that migrated NOTHING report a
@@ -455,14 +469,18 @@ function testBinaryseriesFoldBlockersAreStillInTheSchema(testCase)
 %   time_type -> the time axis's datum_type    data_type -> the statement's
 %   data_dim  -> the axis count      samples_regular_intervals -> axis `regular`
 cache = did2.schema.cache.shared();
+did2.unittest.helpers.dumpJ('testBinaryseriesFoldBlockersAreStillInTheSchema', 'cache', cache);
 
 % DENOMINATOR FIRST. All three classes must RESOLVE or every assertion below is
 % vacuous -- "the slot is absent" and "the schema set is not on the path" would
 % otherwise read identically, which is the silentLoss defect in miniature.
 try
     statement = cache.getClass('subject_statement');
+did2.unittest.helpers.dumpJ('testBinaryseriesFoldBlockersAreStillInTheSchema', 'statement', statement);
     body      = cache.getClass('sampled_body');
+did2.unittest.helpers.dumpJ('testBinaryseriesFoldBlockersAreStillInTheSchema', 'body', body);
     tombstone = cache.getClass('binaryseries_parameters');
+did2.unittest.helpers.dumpJ('testBinaryseriesFoldBlockersAreStillInTheSchema', 'tombstone', tombstone);
 catch err
     assumeFail(testCase, ...
         ['DID_SCHEMA_PATH does not resolve the V_eta data_body classes (' ...
@@ -477,7 +495,9 @@ verifyTrue(testCase, ~isempty(fieldDecl(statement, 'datum_type')), ...
     ['subject_statement.datum_type has gone -- it is the destination the ' ...
      'signature names for binaryseries_parameters.data_type.']);
 stmtAxes = fieldDecl(statement, 'axes');
+did2.unittest.helpers.dumpJ('testBinaryseriesFoldBlockersAreStillInTheSchema', 'stmtAxes', stmtAxes);
 bodyAxes = fieldDecl(body, 'axes');
+did2.unittest.helpers.dumpJ('testBinaryseriesFoldBlockersAreStillInTheSchema', 'bodyAxes', bodyAxes);
 verifyNotEmpty(testCase, stmtAxes, 'subject_statement.axes[] has gone (#45 regressed)');
 verifyNotEmpty(testCase, bodyAxes, 'sampled_body.axes[] has gone (#45 regressed)');
 % `data_dim -> the axis count` needs no field: it is numel(axes). `regular` does.
@@ -617,11 +637,13 @@ function testProjectvarWriterShapePassesThroughAndValidates(testCase)
 % validator cannot see quarantines, which is the opposite of preserving it.
 out = did2.convert.v1_to_v2(projectvarWriterBody('pv_1', 'sess_V', 'x=3; y=4'), ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testProjectvarWriterShapePassesThroughAndValidates', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('projectvar quarantined under validation: %s', ...
         out.quarantine(1).reason));
 end
 d = onlyClass(testCase, out, 'projectvar');
+did2.unittest.helpers.dumpJ('testProjectvarWriterShapePassesThroughAndValidates', 'd', d);
 % id preserved, class unchanged, payload untouched
 verifyEqual(testCase, d.get('base.id'), 'pv_1');
 verifyEqual(testCase, d.get('projectvar.data'), 'x=3; y=4');
@@ -641,8 +663,10 @@ function testProjectvarEmptyElementEdgeIsNotInvented(testCase)
 % two classes at the last census) where it does not belong.
 out = did2.convert.v1_to_v2(projectvarWriterBody('pv_2', 'sess_V', 'note'), ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testProjectvarEmptyElementEdgeIsNotInvented', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'projectvar');
+did2.unittest.helpers.dumpJ('testProjectvarEmptyElementEdgeIsNotInvented', 'd', d);
 verifyEqual(testCase, depValue(d, 'element_id'), '');
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0, ...
     'an OPTIONAL empty edge must not be counted as a required empty edge');
@@ -664,6 +688,7 @@ function testProjectvarNumericPayloadQuarantinesToday(testCase)
 % it for the first time on a corpus run.
 out = did2.convert.v1_to_v2(projectvarWriterBody('pv_3', 'sess_V', [1 2 3]), ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testProjectvarNumericPayloadQuarantinesToday', 'out', out);
 verifyEqual(testCase, numel(out.quarantine), 1, ...
     'a numeric projectvar payload is expected to quarantine TODAY');
 verifyEqual(testCase, out.quarantine(1).class_name, 'projectvar');
@@ -682,6 +707,7 @@ function testInteractionPurposeTargetValidates(testCase)
 % that the target the second pass will write into actually accepts the document
 % it is going to be handed.
 cache = did2.schema.cache.shared();
+did2.unittest.helpers.dumpJ('testInteractionPurposeTargetValidates', 'cache', cache);
 body = interactionPurposeBody('ip_1', 'sess_V', {'interaction_id_1'});
 cache.validateDocument(body);   % raises on any non-conformance
 % and a purpose covering SEVERAL interactions -- the repeatable-annotation shape
@@ -704,9 +730,11 @@ function testInteractionPurposeMissingEdgeFamilyIsReportOnly(testCase)
 % it is why `interaction_id_#` is listed among the three numbered families
 % declared REQUIRED and verified by nothing.
 cache = did2.schema.cache.shared();
+did2.unittest.helpers.dumpJ('testInteractionPurposeMissingEdgeFamilyIsReportOnly', 'cache', cache);
 body = interactionPurposeBody('ip_3', 'sess_V', {});
 cache.validateDocument(body);   % clean -- the gap
 rep = did2.validate.silentLoss({did2.document(body)}, 'SchemaCache', cache);
+did2.unittest.helpers.dumpJ('testInteractionPurposeMissingEdgeFamilyIsReportOnly', 'rep', rep);
 % denominator first: an audit that read nothing must not read as a clean one
 verifyEqual(testCase, rep.total_docs, 1);
 verifyEqual(testCase, rep.skipped_docs, 0);
@@ -726,6 +754,7 @@ function testInteractionPurposeIsNotEmittedByPassOne(testCase)
 v1 = { binaryseriesTemplateBody('bsp_n', 'sess_V'), ...
        projectvarWriterBody('pv_n', 'sess_V', 'note') };
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testInteractionPurposeIsNotEmittedByPassOne', 'out', out);
 for k = 1:numel(out.migrated)
     verifyNotEqual(testCase, ...
         out.migrated{k}.get('document_class.class_name'), 'interaction_purpose');

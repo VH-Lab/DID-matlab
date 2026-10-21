@@ -69,7 +69,9 @@ function testTwoMembersOnTheSameClockAreReported(testCase)
 % is a document whose `_1`/`_2` index carries no information -- exactly the
 % state #52 exists to make visible.
 [docs, ~] = epochWithClocks({'dev_local_time', 'dev_local_time'});
+did2.unittest.helpers.dumpJ('testTwoMembersOnTheSameClockAreReported', 'docs', docs);
 rep = did2.validate.silentLoss(docs);
+did2.unittest.helpers.dumpJ('testTwoMembersOnTheSameClockAreReported', 'rep', rep);
 verifyEqual(testCase, rep.total_docs, 3);
 verifyGreaterThanOrEqual(testCase, rep.family_uniqueness_violation_count, 1, ...
     'two members sharing value.clock must be reported');
@@ -85,7 +87,9 @@ function testTwoMembersOnDifferentClocksAreSilent(testCase)
 % extent each. NDI's epochtable is exactly this (a cell of clocks with a
 % matching t0_t1 column each), so this must NOT be a violation.
 [docs, ~] = epochWithClocks({'dev_local_time', 'utc'});
+did2.unittest.helpers.dumpJ('testTwoMembersOnDifferentClocksAreSilent', 'docs', docs);
 rep = did2.validate.silentLoss(docs);
+did2.unittest.helpers.dumpJ('testTwoMembersOnDifferentClocksAreSilent', 'rep', rep);
 verifyEqual(testCase, rep.family_uniqueness_violation_count, 0, ...
     'distinct clocks are what a multi-member family is FOR');
 end
@@ -94,7 +98,9 @@ function testOneMemberCannotViolate(testCase)
 % Every migrator in the tree writes only `time_reference_1` today. That must be
 % silent, and the denominator must say the rule could not fire.
 [docs, ~] = epochWithClocks({'dev_local_time'});
+did2.unittest.helpers.dumpJ('testOneMemberCannotViolate', 'docs', docs);
 rep = did2.validate.silentLoss(docs);
+did2.unittest.helpers.dumpJ('testOneMemberCannotViolate', 'rep', rep);
 verifyEqual(testCase, rep.family_uniqueness_violation_count, 0);
 verifyEqual(testCase, rep.uniqueness_denominator.docs_multi_member, 0, ...
     'a one-member family is not a multi-member document');
@@ -104,7 +110,9 @@ function testThreeMembersTwoOfWhichCollideCountOnce(testCase)
 % One occurrence per DUPLICATE member, not per pair: the second member sharing
 % a clock is the one nothing distinguishes from the first.
 [docs, ~] = epochWithClocks({'utc', 'dev_local_time', 'utc'});
+did2.unittest.helpers.dumpJ('testThreeMembersTwoOfWhichCollideCountOnce', 'docs', docs);
 rep = did2.validate.silentLoss(docs);
+did2.unittest.helpers.dumpJ('testThreeMembersTwoOfWhichCollideCountOnce', 'rep', rep);
 verifyEqual(testCase, rep.family_uniqueness_violation_count, 1);
 end
 
@@ -116,8 +124,11 @@ function testAnUnresolvableTargetIsCountedNotPassed(testCase)
 % a clean family. Silently passing here is the same defect as a census that
 % drops what it cannot parse and then takes its total from the survivors.
 [docs, ~] = epochWithClocks({'dev_local_time', 'dev_local_time'});
+did2.unittest.helpers.dumpJ('testAnUnresolvableTargetIsCountedNotPassed', 'docs', docs);
 epochOnly = docs(1);          % the two references left out of the batch
+did2.unittest.helpers.dumpJ('testAnUnresolvableTargetIsCountedNotPassed', 'epochOnly', epochOnly);
 rep = did2.validate.silentLoss(epochOnly);
+did2.unittest.helpers.dumpJ('testAnUnresolvableTargetIsCountedNotPassed', 'rep', rep);
 verifyEqual(testCase, rep.family_uniqueness_violation_count, 0);
 verifyEqual(testCase, rep.uniqueness_denominator.members_examined, 2);
 verifyEqual(testCase, rep.uniqueness_denominator.members_unresolved, 2, ...
@@ -131,7 +142,9 @@ function testAReferentWithNoClockIsCountedAsNoKey(testCase)
 % not comparable -- which is a third answer, distinct from "unique" and from
 % "duplicate", and must be visible as its own number.
 [docs, ~] = epochWithClocks({'', ''});   % blank ontology_term on both
+did2.unittest.helpers.dumpJ('testAReferentWithNoClockIsCountedAsNoKey', 'docs', docs);
 rep = did2.validate.silentLoss(docs);
+did2.unittest.helpers.dumpJ('testAReferentWithNoClockIsCountedAsNoKey', 'rep', rep);
 verifyEqual(testCase, rep.family_uniqueness_violation_count, 0, ...
     'two blank clocks are not two equal clocks -- there is nothing to compare');
 verifyEqual(testCase, rep.uniqueness_denominator.members_no_key, 2);
@@ -141,6 +154,7 @@ function testTheDenominatorsExistEvenOnAnEmptyBatch(testCase)
 % Operating rule 5, at the boundary: an instrument reports its denominator
 % first and UNCONDITIONALLY.
 rep = did2.validate.silentLoss({});
+did2.unittest.helpers.dumpJ('testTheDenominatorsExistEvenOnAnEmptyBatch', 'rep', rep);
 verifyTrue(testCase, isfield(rep, 'uniqueness_denominator'));
 verifyEqual(testCase, rep.uniqueness_denominator.members_examined, 0);
 verifyEqual(testCase, rep.uniqueness_denominator.docs_multi_member, 0);
@@ -154,7 +168,9 @@ function testMembersKeyedByLabelAreCountedSeparatelyFromCuries(testCase)
 % ways and read as unique. Counting the two separately is what makes that
 % visible instead of inferred.
 [docs, ~] = epochWithClocks({'dev_local_time', 'utc'});
+did2.unittest.helpers.dumpJ('testMembersKeyedByLabelAreCountedSeparatelyFromCuries', 'docs', docs);
 rep = did2.validate.silentLoss(docs);
+did2.unittest.helpers.dumpJ('testMembersKeyedByLabelAreCountedSeparatelyFromCuries', 'rep', rep);
 verifyEqual(testCase, rep.uniqueness_denominator.members_keyed_by_name, 2);
 verifyEqual(testCase, rep.uniqueness_denominator.members_keyed_by_node, 0);
 end
@@ -164,10 +180,13 @@ function testKeyPrefersTheCurieOverTheLabel(testCase)
 % whose CURIEs agree are the SAME clock and must collide. Written now, while
 % the decision is fresh, so the minting is not also a silent change of meaning.
 [docs, refs] = epochWithClocks({'dev_local_time', 'device local time'});
+did2.unittest.helpers.dumpJ('testKeyPrefersTheCurieOverTheLabel', 'docs', docs);
+did2.unittest.helpers.dumpJ('testKeyPrefersTheCurieOverTheLabel', 'refs', refs);
 refs{1}.relative_reference.value.clock.node = 'NDIC:0000123';
 refs{2}.relative_reference.value.clock.node = 'ndic:0000123';   % case-folded
 docs = [docs(1), {did2.document(refs{1})}, {did2.document(refs{2})}];
 rep = did2.validate.silentLoss(docs);
+did2.unittest.helpers.dumpJ('testKeyPrefersTheCurieOverTheLabel', 'rep', rep);
 verifyEqual(testCase, rep.uniqueness_denominator.members_keyed_by_node, 2);
 verifyEqual(testCase, rep.family_uniqueness_violation_count, 1, ...
     'the CURIE is the identity; two labels for one node are one clock');
@@ -181,11 +200,14 @@ function testAFamilyWithNoRuleIsNotChecked(testCase)
 % `referent_unique_by`, not by the word "time_reference", so a family that does
 % not declare the rule must contribute nothing -- not even a denominator.
 b = bodyOf('subject_calculation', 'calc_1');
+did2.unittest.helpers.dumpJ('testAFamilyWithNoRuleIsNotChecked', 'b', b);
 b.depends_on = struct( ...
     'name',  {'derived_from_1', 'derived_from_2'}, ...
     'value', {'src_1', 'src_1'});          % the SAME target twice
 src = bodyOf('subject', 'src_1');
+did2.unittest.helpers.dumpJ('testAFamilyWithNoRuleIsNotChecked', 'src', src);
 rep = did2.validate.silentLoss({did2.document(b), did2.document(src)});
+did2.unittest.helpers.dumpJ('testAFamilyWithNoRuleIsNotChecked', 'rep', rep);
 verifyEqual(testCase, rep.family_uniqueness_violation_count, 0, ...
     'a family that declares no uniqueness rule must not be checked');
 % And not merely "no violation" -- the members must not have been EXAMINED at
@@ -201,6 +223,7 @@ function testTheAuditStillNeverRaises(testCase)
 verifyWarningFree(testCase, @() did2.validate.silentLoss({[]}));
 verifyWarningFree(testCase, @() did2.validate.silentLoss(struct([])));
 b = bodyOf('epoch', 'ep_bad');
+did2.unittest.helpers.dumpJ('testTheAuditStillNeverRaises', 'b', b);
 b.depends_on = struct('name', {'time_reference_1'}, 'value', {'nope'});
 verifyWarningFree(testCase, @() did2.validate.silentLoss({did2.document(b)}));
 end

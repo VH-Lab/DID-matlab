@@ -148,6 +148,7 @@ function testPresentationPassesThroughWithItsIdAndPayloadIntact(testCase)
 % `stimulus_presentation_id` (tuning_response.m:326) and control_stimulus_ids
 % carries it too (:656); reassigning it is the mistake that cost 11,448 orphans.
 out = runJ(presentationFixture());
+did2.unittest.helpers.dumpJ('testPresentationPassesThroughWithItsIdAndPayloadIntact', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 
@@ -162,6 +163,7 @@ verifyEqual(testCase, d.get('stimulus_presentation.presentation_order'), ...
 % (that class declares only value.presentation_order), and it is what the
 % second pass turns into the distinct, deduped, referenced data_type documents.
 s = d.toStruct();
+did2.unittest.helpers.dumpJ('testPresentationPassesThroughWithItsIdAndPayloadIntact', 's', s);
 verifyEqual(testCase, numel(s.stimulus_presentation.stimuli), 3);
 verifyEqual(testCase, s.stimulus_presentation.stimuli(2).parameters.angle, 90);
 verifyEqual(testCase, s.stimulus_presentation.stimuli(3).parameters.isblank, 1);
@@ -190,6 +192,7 @@ function testStimulusElementIdSurvivesUnderNdisOwnName(testCase)
 % timed_sequence_manipulation -- not a subject, which is why no leaf is minted
 % here.
 out = runJ(presentationFixture());
+did2.unittest.helpers.dumpJ('testStimulusElementIdSurvivesUnderNdisOwnName', 'out', out);
 b   = out.migrated{1}.toStruct();
 verifyEqual(testCase, depValue(b, 'stimulus_element_id'), 'stimelem_5f10a2');
 verifyEmpty(testCase, depValue(b, 'element_id'));
@@ -201,8 +204,10 @@ function testInventedElementIdEdgeIsRejectedByName(testCase)
 % V_alpha/V_zeta snapshot or a fixture built against it. Same stance as
 % openminds_stimulus (`stimulus_id`) and epochfiles_ingested (`epochid`).
 v1 = presentationFixture();
+did2.unittest.helpers.dumpJ('testInventedElementIdEdgeIsRejectedByName', 'v1', v1);
 v1.depends_on(1).name = 'element_id';
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testInventedElementIdEdgeIsRejectedByName', 'out', out);
 
 verifyEmpty(testCase, out.migrated);
 verifyEqual(testCase, numel(out.quarantine), 1);
@@ -219,6 +224,7 @@ function testDeprecatedInlinePresentationTimeIsCarriedNotDropped(testCase)
 % document raises did2:validation:undeclaredField today. That is the BLOCKING
 % row check_tombstones.py reports, and it is a schema repair.
 out = runJ(deprecatedVintageFixture());
+did2.unittest.helpers.dumpJ('testDeprecatedInlinePresentationTimeIsCarriedNotDropped', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 
@@ -240,6 +246,7 @@ function testTheFileCarryingTheTimeAxisSurvives(testCase)
 % bytes -- single-document migrators carry files but do not read them -- so the
 % only requirement here is that the declaration is not dropped.
 out = runJ(presentationFixture());
+did2.unittest.helpers.dumpJ('testTheFileCarryingTheTimeAxisSurvives', 'out', out);
 s   = out.migrated{1}.toStruct();
 verifyTrue(testCase, isfield(s, 'files'));
 verifyTrue(testCase, any(strcmp(s.files.file_list, 'presentation_time.bin')));
@@ -260,7 +267,9 @@ function testPassOneMintsNoTimedSequenceAndNoManipulation(testCase)
 %
 % When the second pass lands, this test should FAIL and be replaced.
 out = runJ(presentationFixture());
+did2.unittest.helpers.dumpJ('testPassOneMintsNoTimedSequenceAndNoManipulation', 'out', out);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testPassOneMintsNoTimedSequenceAndNoManipulation', 'names', names);
 verifyFalse(testCase, any(strcmp(names, 'timed_sequence')));
 verifyFalse(testCase, any(strcmp(names, 'timed_sequence_manipulation')));
 % ...and NOT the superseded #19 dissolve either. That model
@@ -274,6 +283,7 @@ end
 
 function testControlIdsFoldToControlDesignationWithTheIdPreserved(testCase)
 out = runJ(controlFixture());
+did2.unittest.helpers.dumpJ('testControlIdsFoldToControlDesignationWithTheIdPreserved', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 
@@ -296,6 +306,7 @@ function testControlDesignationPointsAtThePresentationBothWays(testCase)
 % FAMILY the schema declares (revision 3 of the signed plan). A document names
 % instances; a schema declares the template name.
 out = runJ(controlFixture());
+did2.unittest.helpers.dumpJ('testControlDesignationPointsAtThePresentationBothWays', 'out', out);
 b   = out.migrated{1}.toStruct();
 verifyEqual(testCase, depValue(b, 'timed_sequence_id'), 'pres_b671ff');
 verifyEqual(testCase, depValue(b, 'derived_from_1'),    'pres_b671ff');
@@ -310,6 +321,7 @@ function testTheAppBlockIsDroppedNotCarriedIntoAnUndeclaredBlock(testCase)
 % did2:validation:undeclaredBlock. `software_id` (T10) is a tracked deferral --
 % the schema declares no such edge yet.
 out = runJ(controlFixture());
+did2.unittest.helpers.dumpJ('testTheAppBlockIsDroppedNotCarriedIntoAnUndeclaredBlock', 'out', out);
 s   = out.migrated{1}.toStruct();
 verifyFalse(testCase, isfield(s, 'app'));
 verifyFalse(testCase, any(strcmp({s.depends_on.name}, 'software_id')));
@@ -322,6 +334,7 @@ function testAnAllNaNControlArrayIsARealDocumentAndSurvives(testCase)
 % "Cleaning" it would delete the fact that the control lookup was attempted and
 % found nothing.
 out = runJ(controlFixture(nan(6, 1)));
+did2.unittest.helpers.dumpJ('testAnAllNaNControlArrayIsARealDocumentAndSurvives', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'control_designation');
@@ -336,8 +349,10 @@ function testControlIdsWithoutAPresentationPassThroughInsteadOfBecomingAHusk(tes
 % husk would be invisible. NDI marks the edge mustbenotempty and sets it
 % unconditionally at :656, so this cannot fire on a real document.
 v1 = controlFixture();
+did2.unittest.helpers.dumpJ('testControlIdsWithoutAPresentationPassThroughInsteadOfBecomingAHusk', 'v1', v1);
 v1.depends_on = struct('name', {}, 'value', {});
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testControlIdsWithoutAPresentationPassThroughInsteadOfBecomingAHusk', 'out', out);
 
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
@@ -356,8 +371,10 @@ function testTheEdgeIsReadThroughTheV1IdSpelling(testCase)
 % uses `value`. All three must reach the same string -- reading one spelling only
 % is how openminds_stimulus lost 635 referents.
 v1 = controlFixture();
+did2.unittest.helpers.dumpJ('testTheEdgeIsReadThroughTheV1IdSpelling', 'v1', v1);
 v1.depends_on = struct('name', {'stimulus_presentation_id'}, 'id', {'pres_b671ff'});
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testTheEdgeIsReadThroughTheV1IdSpelling', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'control_designation');
@@ -375,10 +392,12 @@ function testTheMigratedPairHasNoOrphanEdges(testCase)
 % them to subjects with ids preserved).
 out = did2.convert.v1_to_v2({presentationFixture(), controlFixture()}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheMigratedPairHasNoOrphanEdges', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 
 report = did2.validate.references(out.migrated, 'KnownIds', ...
     [{'stimelem_5f10a2'}, did2.unittest.helpers.sessionKnownIds(out.migrated)]);
+did2.unittest.helpers.dumpJ('testTheMigratedPairHasNoOrphanEdges', 'report', report);
 % DENOMINATOR FIRST: an orphan count means nothing without the edges inspected.
 verifyGreaterThanOrEqual(testCase, report.edges_examined, 3);
 if report.orphan_count > 0
@@ -402,6 +421,7 @@ function testPassOneValidatesAgainstTheRealVEtaSchema(testCase)
 % not declare that field yet (the BLOCKING row); add it when the schema lands.
 out = did2.convert.v1_to_v2({presentationFixture(), controlFixture()}, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testPassOneValidatesAgainstTheRealVEtaSchema', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));

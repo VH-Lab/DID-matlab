@@ -65,10 +65,12 @@ function testFilenavigatorFoldsToEpochFilePatternPlusSoftware(testCase)
 % carries is that cell's TEXT: "{ 'a', 'b' }".
 out = runJ(navBody('{ ''#\.rhd\>'', ''#\.tsv\>'' }', ...
     'ndi.epoch.epochprobemap_daqsystem', '{ ''(.*)epochprobemap.ndi'' }'));
+did2.unittest.helpers.dumpJ('testFilenavigatorFoldsToEpochFilePatternPlusSoftware', 'out', out);
 
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 2);      % pattern + software
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testFilenavigatorFoldsToEpochFilePatternPlusSoftware', 'names', names);
 verifyTrue(testCase, any(strcmp(names, 'epoch_file_pattern')));
 verifyTrue(testCase, any(strcmp(names, 'software')));
 
@@ -120,8 +122,10 @@ function testFilenavigatorSinglePatternStaysAList(testCase)
 % with the number of patterns (the drift rule, V_eta_openminds_family_record.md
 % Part 3).
 out = runJ(navBody('{ ''.*\.rhd\>'' }', 'ndi.epoch.epochprobemap_daqsystem', ''));
+did2.unittest.helpers.dumpJ('testFilenavigatorSinglePatternStaysAList', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 efp = firstOfClass(out, 'epoch_file_pattern');
+did2.unittest.helpers.dumpJ('testFilenavigatorSinglePatternStaysAList', 'efp', efp);
 verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), {'.*\.rhd\>'});
 % nothing was declared for the probe-map file, so the field is ABSENT rather
 % than blank -- a blank required-ish field is what silentLoss counts as vacuous.
@@ -134,8 +138,10 @@ function testFilenavigatorUnbracedParameterIsOneLiteralPattern(testCase)
 % unbraced string too. Such a document is one pattern, not zero -- discarding it
 % would be silent loss of the only thing the document says.
 out = runJ(navBody('.*\.rhd\>', '', ''));
+did2.unittest.helpers.dumpJ('testFilenavigatorUnbracedParameterIsOneLiteralPattern', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 efp = firstOfClass(out, 'epoch_file_pattern');
+did2.unittest.helpers.dumpJ('testFilenavigatorUnbracedParameterIsOneLiteralPattern', 'efp', efp);
 verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), {'.*\.rhd\>'});
 end
 
@@ -143,9 +149,12 @@ function testFilenavigatorEmptyListTextDeclaresNoPatterns(testCase)
 % cell2str returns the literal '{}' for an empty cell (cell2str.m:19). That is
 % "no patterns declared", not a pattern named "{}".
 out = runJ(navBody('{}', 'ndi.epoch.epochprobemap_daqsystem', '{}'));
+did2.unittest.helpers.dumpJ('testFilenavigatorEmptyListTextDeclaresNoPatterns', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 efp = firstOfClass(out, 'epoch_file_pattern');
+did2.unittest.helpers.dumpJ('testFilenavigatorEmptyListTextDeclaresNoPatterns', 'efp', efp);
 blk = efp.get('epoch_file_pattern');
+did2.unittest.helpers.dumpJ('testFilenavigatorEmptyListTextDeclaresNoPatterns', 'blk', blk);
 verifyFalse(testCase, isfield(blk, 'data_file_pattern'));
 verifyFalse(testCase, isfield(blk, 'epoch_map_pattern'));
 verifyEqual(testCase, blk.epoch_map_format, 'ndi.epoch.epochprobemap_daqsystem');
@@ -158,8 +167,10 @@ function testFilenavigatorWithNothingToDeclarePassesThrough(testCase)
 % The source class keeps its V_eta tombstone, so passing through loses nothing
 % and shows up in `unconverted_by_class` where it can be counted.
 v1 = navBody('', '', '');
+did2.unittest.helpers.dumpJ('testFilenavigatorWithNothingToDeclarePassesThrough', 'v1', v1);
 v1.filenavigator.ndi_filenavigator_class = '';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testFilenavigatorWithNothingToDeclarePassesThrough', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'filenavigator');
@@ -173,11 +184,14 @@ function testFilenavigatorWithoutImplementationClassOmitsTheEdge(testCase)
 % is exactly how 59 of 59 empty daqmetadatareader.daqsystem_id values passed
 % every gate.
 v1 = navBody('{ ''#.rhd'' }', 'ndi.epoch.epochprobemap_daqsystem', '');
+did2.unittest.helpers.dumpJ('testFilenavigatorWithoutImplementationClassOmitsTheEdge', 'v1', v1);
 v1.filenavigator.ndi_filenavigator_class = '';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testFilenavigatorWithoutImplementationClassOmitsTheEdge', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 1);          % no software body
 efp = firstOfClass(out, 'epoch_file_pattern');
+did2.unittest.helpers.dumpJ('testFilenavigatorWithoutImplementationClassOmitsTheEdge', 'efp', efp);
 verifyEqual(testCase, depValue(efp.toStruct(), 'software_id'), '');
 verifyEqual(testCase, efp.get('epoch_file_pattern.data_file_pattern'), {'#.rhd'});
 end
@@ -187,9 +201,12 @@ function testFilenavigatorSubclassNamesItsOwnSoftware(testCase)
 % ndi.file.navigator.epochdir, .rhd_series, ndi.setup.file.navigator.vhPrairie2p.
 % Two different implementations must not collapse into one software entity.
 v1 = navBody('{ ''#.tif'' }', 'ndi.epoch.epochprobemap_daqsystem', '');
+did2.unittest.helpers.dumpJ('testFilenavigatorSubclassNamesItsOwnSoftware', 'v1', v1);
 v1.filenavigator.ndi_filenavigator_class = 'ndi.setup.file.navigator.vhPrairie2p';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testFilenavigatorSubclassNamesItsOwnSoftware', 'out', out);
 sw = firstOfClass(out, 'software');
+did2.unittest.helpers.dumpJ('testFilenavigatorSubclassNamesItsOwnSoftware', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.setup.file.navigator.vhPrairie2p');
 verifyEqual(testCase, sw.get('base.name'), 'ndi.setup.file.navigator.vhPrairie2p');
 end
@@ -224,8 +241,10 @@ v1.orientation_direction_tuning = struct( ...
     'vector', struct('orientation_preference', 47.5));
 
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testAppBlockBecomesSoftwareOnTheFullPipeline', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testAppBlockBecomesSoftwareOnTheFullPipeline', 'names', names);
 verifyTrue(testCase, any(strcmp(names, 'software')), ...
     ['no software entity was minted -- the app fold read a field name that ' ...
      'universalRenames had already rewritten']);
@@ -237,6 +256,7 @@ verifyEqual(testCase, sw.get('software.version'), '1.2');
 verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.calc.vis.oridir@1.2');
 % the homepage rides on entity.global_identifier, scheme URL
 gid = sw.get('entity.global_identifier');
+did2.unittest.helpers.dumpJ('testAppBlockBecomesSoftwareOnTheFullPipeline', 'gid', gid);
 verifyEqual(testCase, numel(gid), 1);
 verifyEqual(testCase, gid(1).scheme, 'URL');
 
@@ -273,8 +293,10 @@ v1.base = struct('id', 'oc_3', 'session_id', 'sess_09', 'name', 'oc', ...
 v1.orientation_direction_tuning = struct('vector', struct('orientation_preference', 12));
 
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testCalculatorWithNoAppBlockMintsNoSoftware', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testCalculatorWithNoAppBlockMintsNoSoftware', 'names', names);
 verifyTrue(testCase, any(strcmp(names, 'software')));
 leaf = out.migrated{find(~strcmp(names, 'relative_time_reference') ...
     & ~strcmp(names, 'software') & ~strcmp(names, 'runtime_environment'), 1)};
@@ -293,11 +315,16 @@ function testSoftwareIsNotDedupedInPassOne(testCase)
 % WHEN THAT PASS LANDS this test should be REPLACED, not deleted: assert one
 % entity survives and both edges point at it.
 a = calcBodyNamed('oc_a', 'ndi.calc.vis.oridir', '1.2');
+did2.unittest.helpers.dumpJ('testSoftwareIsNotDedupedInPassOne', 'a', a);
 b = calcBodyNamed('oc_b', 'ndi.calc.vis.oridir', '1.2');
+did2.unittest.helpers.dumpJ('testSoftwareIsNotDedupedInPassOne', 'b', b);
 out = runJ({a, b});
+did2.unittest.helpers.dumpJ('testSoftwareIsNotDedupedInPassOne', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testSoftwareIsNotDedupedInPassOne', 'names', names);
 sw = out.migrated(strcmp(names, 'software'));
+did2.unittest.helpers.dumpJ('testSoftwareIsNotDedupedInPassOne', 'sw', sw);
 verifyEqual(testCase, numel(sw), 2);
 verifyEqual(testCase, sw{1}.get('software.local_identifier'), 'ndi.calc.vis.oridir@1.2');
 verifyEqual(testCase, sw{2}.get('software.local_identifier'), 'ndi.calc.vis.oridir@1.2');
@@ -321,13 +348,16 @@ function testNavigatorWithoutPatternListsValidates(testCase)
 % this is the minimal shape ndi.file.navigator(E) actually produces. The list
 % case has its own validating test, testEpochFilePatternListValidatesCleanly.
 v1 = navBody('', 'ndi.epoch.epochprobemap_daqsystem', '');
+did2.unittest.helpers.dumpJ('testNavigatorWithoutPatternListsValidates', 'v1', v1);
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testNavigatorWithoutPatternListsValidates', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
 end
 verifyEqual(testCase, numel(out.migrated), 2);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testNavigatorWithoutPatternListsValidates', 'names', names);
 verifyTrue(testCase, any(strcmp(names, 'epoch_file_pattern')));
 verifyTrue(testCase, any(strcmp(names, 'software')));
 end
@@ -357,7 +387,9 @@ function testEpochFilePatternListValidatesCleanly(testCase)
 % path, so without an assertion here a future re-tightening to `char` would
 % quarantine every multi-pattern navigator in the corpus silently.
 v1 = navBody('{ ''#\.rhd\>'', ''#\.tsv\>'' }', 'ndi.epoch.epochprobemap_daqsystem', '');
+did2.unittest.helpers.dumpJ('testEpochFilePatternListValidatesCleanly', 'v1', v1);
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testEpochFilePatternListValidatesCleanly', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf( ...
         ['a multi-pattern navigator must validate now that data_file_pattern ' ...
@@ -366,6 +398,7 @@ if ~isempty(out.quarantine)
 end
 verifyEqual(testCase, numel(out.migrated), 2);   % pattern + software
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testEpochFilePatternListValidatesCleanly', 'names', names);
 verifyTrue(testCase, any(strcmp(names, 'epoch_file_pattern')));
 % the LIST survived as a list -- not joined, not padded, not drifted to a char
 efp = out.migrated{find(strcmp(names, 'epoch_file_pattern'), 1)};

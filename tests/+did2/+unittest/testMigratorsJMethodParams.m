@@ -283,8 +283,10 @@ function testExtractionFoldsToMethodParametersPreservingIdAndName(testCase)
 % base.name is queried by exact_string at spikeextractor.m:372, so a fold that
 % moved either would break consumers that pass through untouched in pass 1.
 out = runJ(extractionBody('sep_1', 'default', 'sess_A'));
+did2.unittest.helpers.dumpJ('testExtractionFoldsToMethodParametersPreservingIdAndName', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testExtractionFoldsToMethodParametersPreservingIdAndName', 'd', d);
 verifyEqual(testCase, d.get('document_class.schema_version'), 'V_eta');
 verifyEqual(testCase, d.get('base.id'), 'sep_1');
 verifyEqual(testCase, d.get('method.name'), 'default');
@@ -299,6 +301,7 @@ function testExtractionEmitsTheFourBoundVariables(testCase)
 % those. If this list grows, the plan has to have grown first.
 d = onlyClass(testCase, runJ(extractionBody('sep_2', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionEmitsTheFourBoundVariables', 'd', d);
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'waveform window start', ...
     'waveform window duration', 'standard-deviation threshold'}));
@@ -310,10 +313,14 @@ function testExtractionRefractoryPeriodUnifiesWithVmspikeRefract(testCase)
 % and after the fold a query can see that. Asserted here on both sides at once.
 dExtract = onlyClass(testCase, runJ(extractionBody('sep_3', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionRefractoryPeriodUnifiesWithVmspikeRefract', 'dExtract', dExtract);
 dVm = onlyClass(testCase, runJ(vmspikeBody('vm_3', 'sess_A', 'elem_1', 't00001', '')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionRefractoryPeriodUnifiesWithVmspikeRefract', 'dVm', dVm);
 a = paramEntry(testCase, dExtract, 'refractory period');
+did2.unittest.helpers.dumpJ('testExtractionRefractoryPeriodUnifiesWithVmspikeRefract', 'a', a);
 b = paramEntry(testCase, dVm, 'refractory period');
+did2.unittest.helpers.dumpJ('testExtractionRefractoryPeriodUnifiesWithVmspikeRefract', 'b', b);
 verifyEqual(testCase, a.quantity.value, 0.001, 'AbsTol', 1e-12);
 verifyEqual(testCase, b.quantity.value, 0.0025, 'AbsTol', 1e-12);
 verifyEqual(testCase, a.variable.name, b.variable.name);
@@ -326,8 +333,11 @@ function testExtractionWaveformWindowIsAnchorPlusExtent(testCase)
 % deliberately NOT stored, which is why `waveform window end` must be absent.
 d = onlyClass(testCase, runJ(extractionBody('sep_4', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionWaveformWindowIsAnchorPlusExtent', 'd', d);
 st = paramEntry(testCase, d, 'waveform window start');
+did2.unittest.helpers.dumpJ('testExtractionWaveformWindowIsAnchorPlusExtent', 'st', st);
 du = paramEntry(testCase, d, 'waveform window duration');
+did2.unittest.helpers.dumpJ('testExtractionWaveformWindowIsAnchorPlusExtent', 'du', du);
 verifyEqual(testCase, st.quantity.value, -0.00045, 'AbsTol', 1e-12);
 verifyEqual(testCase, du.quantity.value, 0.00145, 'AbsTol', 1e-12);
 verifyEqual(testCase, st.quantity.value + du.quantity.value, 0.001, 'AbsTol', 1e-12);
@@ -346,8 +356,11 @@ function testExtractionSourceUnitIsEmptyBecauseV1RecordsNone(testCase)
 % Claiming source_unit 's' would put a unit in the record v1 never recorded.
 d = onlyClass(testCase, runJ(extractionBody('sep_5', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionSourceUnitIsEmptyBecauseV1RecordsNone', 'd', d);
 r = paramEntry(testCase, d, 'refractory period');
+did2.unittest.helpers.dumpJ('testExtractionSourceUnitIsEmptyBecauseV1RecordsNone', 'r', r);
 w = paramEntry(testCase, d, 'waveform window start');
+did2.unittest.helpers.dumpJ('testExtractionSourceUnitIsEmptyBecauseV1RecordsNone', 'w', w);
 verifyEqual(testCase, r.source_unit, '');
 verifyEqual(testCase, w.source_unit, '');
 end
@@ -359,11 +372,14 @@ function testExtractionThresholdSplitsByMethodStandardDeviation(testCase)
 % field is the same mistake as a `unit` field.
 d = onlyClass(testCase, runJ(extractionBody('sep_6', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionThresholdSplitsByMethodStandardDeviation', 'd', d);
 e = paramEntry(testCase, d, 'standard-deviation threshold');
+did2.unittest.helpers.dumpJ('testExtractionThresholdSplitsByMethodStandardDeviation', 'e', e);
 verifyEqual(testCase, e.quantity.value, -4, 'AbsTol', 1e-12);
 verifyEqual(testCase, e.quantity.source_value, '-4');
 % consumed into the variable, so it must NOT also sit in the bag
 b = bag(d);
+did2.unittest.helpers.dumpJ('testExtractionThresholdSplitsByMethodStandardDeviation', 'b', b);
 verifyFalse(testCase, isfield(b, 'threshold_method'));
 verifyFalse(testCase, isfield(b, 'threshold_parameter'));
 end
@@ -373,10 +389,13 @@ function testExtractionThresholdSplitsByMethodAbsolute(testCase)
 % (spikeextractor.m:211-225), so 'absolute' is the other half of a CLOSED set --
 % and it lands on the same variable vmspikefilteringparameters.threshold uses.
 v1 = extractionBody('sep_7', 'default', 'sess_A');
+did2.unittest.helpers.dumpJ('testExtractionThresholdSplitsByMethodAbsolute', 'v1', v1);
 v1.spike_extraction_parameters.threshold_method = 'absolute';
 v1.spike_extraction_parameters.threshold_parameter = -0.05;
 d = onlyClass(testCase, runJ(v1), 'method');
+did2.unittest.helpers.dumpJ('testExtractionThresholdSplitsByMethodAbsolute', 'd', d);
 e = paramEntry(testCase, d, 'absolute voltage threshold');
+did2.unittest.helpers.dumpJ('testExtractionThresholdSplitsByMethodAbsolute', 'e', e);
 verifyEqual(testCase, e.quantity.value, -0.05, 'AbsTol', 1e-12);
 verifyFalse(testCase, any(strcmp(paramVariables(d), 'standard-deviation threshold')));
 end
@@ -388,11 +407,14 @@ function testUnknownThresholdMethodIsNotGivenADimension(testCase)
 % can read; it exists so a hand-written document cannot make this migrator
 % assert a quantity it does not know.
 v1 = extractionBody('sep_8', 'default', 'sess_A');
+did2.unittest.helpers.dumpJ('testUnknownThresholdMethodIsNotGivenADimension', 'v1', v1);
 v1.spike_extraction_parameters.threshold_method = 'median_absolute_deviation';
 d = onlyClass(testCase, runJ(v1), 'method');
+did2.unittest.helpers.dumpJ('testUnknownThresholdMethodIsNotGivenADimension', 'd', d);
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
     'refractory period', 'waveform window start', 'waveform window duration'}));
 b = bag(d);
+did2.unittest.helpers.dumpJ('testUnknownThresholdMethodIsNotGivenADimension', 'b', b);
 verifyEqual(testCase, b.threshold_method, 'median_absolute_deviation');
 verifyEqual(testCase, b.threshold_parameter, -4);
 end
@@ -403,7 +425,9 @@ function testExtractionTailIsKeptWholeNotDropped(testCase)
 % eleven fields that is not a bound variable has to be findable here.
 d = onlyClass(testCase, runJ(extractionBody('sep_9', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionTailIsKeptWholeNotDropped', 'd', d);
 b = bag(d);
+did2.unittest.helpers.dumpJ('testExtractionTailIsKeptWholeNotDropped', 'b', b);
 verifyEqual(testCase, b.center_range_time, 0.0005, 'AbsTol', 1e-12);
 verifyEqual(testCase, b.overlap, 0.5, 'AbsTol', 1e-12);
 verifyEqual(testCase, b.read_time, 30, 'AbsTol', 1e-12);
@@ -426,9 +450,12 @@ function testExtractionCarriesAnUnknownFieldRatherThanDroppingIt(testCase)
 % silently, which is the failure the vocabulary audit exists to catch, pointed
 % the other way.
 v1 = extractionBody('sep_10', 'default', 'sess_A');
+did2.unittest.helpers.dumpJ('testExtractionCarriesAnUnknownFieldRatherThanDroppingIt', 'v1', v1);
 v1.spike_extraction_parameters.some_future_knob = 17;
 d = onlyClass(testCase, runJ(v1), 'method');
+did2.unittest.helpers.dumpJ('testExtractionCarriesAnUnknownFieldRatherThanDroppingIt', 'd', d);
 b = bag(d);
+did2.unittest.helpers.dumpJ('testExtractionCarriesAnUnknownFieldRatherThanDroppingIt', 'b', b);
 verifyEqual(testCase, b.some_future_knob, 17);
 end
 
@@ -440,7 +467,9 @@ function testExtractionHasNoScopeEdgesAtAll(testCase)
 % ABSENT, not present-and-blank.
 d = onlyClass(testCase, runJ(extractionBody('sep_11', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionHasNoScopeEdgesAtAll', 'd', d);
 names = edgeNames(d);
+did2.unittest.helpers.dumpJ('testExtractionHasNoScopeEdgesAtAll', 'names', names);
 verifyFalse(testCase, any(strcmp(names, 'subject_id')));
 verifyFalse(testCase, any(strcmp(names, 'epoch_id')));
 verifyFalse(testCase, any(strcmp(names, 'derived_from_id')));
@@ -452,14 +481,18 @@ function testExtractionAppBecomesASoftwareEntityWithAResolvingEdge(testCase)
 % real. So the app block leaves as a `software` entity (R1) and the edge points
 % at a document MINTED IN THE SAME BATCH, so it cannot orphan.
 out = runJ(extractionBody('sep_12', 'default', 'sess_A'));
+did2.unittest.helpers.dumpJ('testExtractionAppBecomesASoftwareEntityWithAResolvingEdge', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 2);
 mp = onlyClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testExtractionAppBecomesASoftwareEntityWithAResolvingEdge', 'mp', mp);
 sw = onlyClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testExtractionAppBecomesASoftwareEntityWithAResolvingEdge', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), 'ndi_app_spikeextractor');
 verifyEqual(testCase, sw.get('software.version'), '1.2.3');
 verifyEqual(testCase, sw.get('base.session_id'), 'sess_A');
 verifyEqual(testCase, depValue(mp, 'software_id'), sw.get('base.id'));
 gid = sw.get('entity.global_identifier');
+did2.unittest.helpers.dumpJ('testExtractionAppBecomesASoftwareEntityWithAResolvingEdge', 'gid', gid);
 verifyEqual(testCase, numel(gid), 1);
 verifyEqual(testCase, gid(1).scheme, 'URL');
 end
@@ -471,7 +504,9 @@ function testExtractionParksTheEnvironmentFieldsRatherThanDroppingThem(testCase)
 % rather than dropped -- an open question, not a solved one.
 d = onlyClass(testCase, runJ(extractionBody('sep_13', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testExtractionParksTheEnvironmentFieldsRatherThanDroppingThem', 'd', d);
 b = bag(d);
+did2.unittest.helpers.dumpJ('testExtractionParksTheEnvironmentFieldsRatherThanDroppingThem', 'b', b);
 env = b.execution_environment;
 verifyEqual(testCase, env.os, 'MACA64');
 verifyEqual(testCase, env.interpreter, 'MATLAB');
@@ -485,11 +520,15 @@ function testNoSoftwareIsMintedWithoutASessionToHangItOn(testCase)
 % turning a clean fold into a loss. So the app block is parked instead and no
 % edge is written.
 v1 = extractionBody('sep_14', 'default', '');
+did2.unittest.helpers.dumpJ('testNoSoftwareIsMintedWithoutASessionToHangItOn', 'v1', v1);
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testNoSoftwareIsMintedWithoutASessionToHangItOn', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = onlyClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testNoSoftwareIsMintedWithoutASessionToHangItOn', 'd', d);
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'software_id')));
 b = bag(d);
+did2.unittest.helpers.dumpJ('testNoSoftwareIsMintedWithoutASessionToHangItOn', 'b', b);
 verifyEqual(testCase, b.app.app_name, 'ndi_app_spikeextractor');
 end
 
@@ -502,8 +541,10 @@ function testModificationCarriesLineageScopeAndTheSamePayload(testCase)
 %                                                from the scope, not this edge)
 %   element_id               -> subject_id       (D2: element ids are preserved)
 out = runJ(modificationBody('sepm_1', 'default', 'sess_A', 'sep_1', 'elem_9', 't00042'));
+did2.unittest.helpers.dumpJ('testModificationCarriesLineageScopeAndTheSamePayload', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testModificationCarriesLineageScopeAndTheSamePayload', 'd', d);
 verifyEqual(testCase, d.get('base.id'), 'sepm_1');
 verifyEqual(testCase, d.get('method.name'), 'default');
 verifyEqual(testCase, depValue(d, 'parent_id'), 'sep_1');
@@ -527,8 +568,10 @@ function testModificationParksTheEpochStringInsteadOfInventingAnEdge(testCase)
 d = onlyClass(testCase, ...
     runJ(modificationBody('sepm_2', 'default', 'sess_A', 'sep_1', 'elem_9', 't00042')), ...
     'method');
+did2.unittest.helpers.dumpJ('testModificationParksTheEpochStringInsteadOfInventingAnEdge', 'd', d);
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'epoch_id')));
 b = bag(d);
+did2.unittest.helpers.dumpJ('testModificationParksTheEpochStringInsteadOfInventingAnEdge', 'b', b);
 verifyEqual(testCase, b.epochid, 't00042');
 end
 
@@ -536,7 +579,9 @@ function testModificationOmitsLineageWhenTheSourceEdgeIsEmpty(testCase)
 % derived_from_id is optional and must never be written blank. An empty v1
 % extraction_parameters_id means NO edge, not an edge to nowhere.
 v1 = modificationBody('sepm_3', 'default', 'sess_A', '', 'elem_9', 't00042');
+did2.unittest.helpers.dumpJ('testModificationOmitsLineageWhenTheSourceEdgeIsEmpty', 'v1', v1);
 d = onlyClass(testCase, runJ(v1), 'method');
+did2.unittest.helpers.dumpJ('testModificationOmitsLineageWhenTheSourceEdgeIsEmpty', 'd', d);
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'parent_id')));
 verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_9');
 end
@@ -550,11 +595,14 @@ function testSortingFoldsWithAnEmptyParameterListAndAFullBag(testCase)
 % JUDGMENT CALL"). So the document carries an empty parameter list, and every
 % field survives in `other`. Promoting min/max_clusters is a team call.
 out = runJ(sortingBody('sp_1', 'default', 'sess_A'));
+did2.unittest.helpers.dumpJ('testSortingFoldsWithAnEmptyParameterListAndAFullBag', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testSortingFoldsWithAnEmptyParameterListAndAFullBag', 'd', d);
 % did-schema #88 has no separate bag: the six fields are the method's parameter
 % entries, so the list is NOT empty; they are read back through bag() below.
 b = bag(d);
+did2.unittest.helpers.dumpJ('testSortingFoldsWithAnEmptyParameterListAndAFullBag', 'b', b);
 verifyEqual(testCase, b.graphical_mode, 1);
 verifyEqual(testCase, b.num_pca_features, 10);
 verifyEqual(testCase, b.interpolation, 3);
@@ -568,6 +616,7 @@ function testSortingPreservesTheIdAndTheNameSpikesorterQueriesBy(testCase)
 % the protocol up by base.name with exact_string. Both have to survive.
 d = onlyClass(testCase, runJ(sortingBody('sp_2', 'default', 'sess_A')), ...
     'method');
+did2.unittest.helpers.dumpJ('testSortingPreservesTheIdAndTheNameSpikesorterQueriesBy', 'd', d);
 verifyEqual(testCase, d.get('base.id'), 'sp_2');
 verifyEqual(testCase, d.get('method.name'), 'default');
 verifyEqual(testCase, d.get('method.name'), 'default');
@@ -579,8 +628,10 @@ end
 function testVmspikeFoldsWhenSpiketimesIsEmpty(testCase)
 % The template's own `spiketimes` value is "", so a settings-only document folds.
 out = runJ(vmspikeBody('vm_1', 'sess_A', 'elem_1', 't00001', ''));
+did2.unittest.helpers.dumpJ('testVmspikeFoldsWhenSpiketimesIsEmpty', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 d = onlyClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testVmspikeFoldsWhenSpiketimesIsEmpty', 'd', d);
 verifyEqual(testCase, d.get('base.id'), 'vm_1');
 verifyEqual(testCase, depValue(d, 'entity_id'), 'elem_1');
 verifyEqual(testCase, sort(paramVariables(d)), sort({ ...
@@ -594,7 +645,9 @@ function testVmspikeThresholdKeepsItsVerbatimStringAndBecomesANumber(testCase)
 % whatever the registry later says.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_2', 'sess_A', 'elem_1', 't00001', '')), ...
     'method');
+did2.unittest.helpers.dumpJ('testVmspikeThresholdKeepsItsVerbatimStringAndBecomesANumber', 'd', d);
 e = paramEntry(testCase, d, 'absolute voltage threshold');
+did2.unittest.helpers.dumpJ('testVmspikeThresholdKeepsItsVerbatimStringAndBecomesANumber', 'e', e);
 verifyEqual(testCase, e.quantity.value, 0.030, 'AbsTol', 1e-12);
 verifyEqual(testCase, e.quantity.source_value, '0.030');
 verifyEqual(testCase, e.source_unit, '');
@@ -612,6 +665,7 @@ function testVmspikeGuardsNonEmptySpiketimesWithAPassthrough(testCase)
 % today's behaviour either -- before this migrator existed, EVERY document of
 % this class reached validation in its did_v1 shape.
 out = runJ(vmspikeBody('vm_4', 'sess_A', 'elem_1', 't00001', [0.11 0.22 0.35]));
+did2.unittest.helpers.dumpJ('testVmspikeGuardsNonEmptySpiketimesWithAPassthrough', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(d), 'vmspikefilteringparameters');
@@ -630,7 +684,9 @@ function testVmspikeKeepsSamplingRateRatherThanDroppingIt(testCase)
 % rather than decided by a migrator.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_5', 'sess_A', 'elem_1', 't00001', '')), ...
     'method');
+did2.unittest.helpers.dumpJ('testVmspikeKeepsSamplingRateRatherThanDroppingIt', 'd', d);
 b = bag(d);
+did2.unittest.helpers.dumpJ('testVmspikeKeepsSamplingRateRatherThanDroppingIt', 'b', b);
 verifyEqual(testCase, b.sampling_rate, 0);
 verifyEqual(testCase, b.new_sampling_rate, 0);
 end
@@ -642,7 +698,9 @@ function testVmspikeGroupsItsFilterSettingsIncludingTheRenamedRm60Hz(testCase)
 % rename is exercised rather than assumed.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_6', 'sess_A', 'elem_1', 't00001', '')), ...
     'method');
+did2.unittest.helpers.dumpJ('testVmspikeGroupsItsFilterSettingsIncludingTheRenamedRm60Hz', 'd', d);
 b = bag(d);
+did2.unittest.helpers.dumpJ('testVmspikeGroupsItsFilterSettingsIncludingTheRenamedRm60Hz', 'b', b);
 f = b.filter;
 verifyEqual(testCase, f.rm60_hz, 1);
 verifyEqual(testCase, f.filter_algorithm, '0');
@@ -655,8 +713,10 @@ function testVmspikeParksItsEpochStringToo(testCase)
 % pass 1, so the string is parked instead of the edge being invented.
 d = onlyClass(testCase, runJ(vmspikeBody('vm_7', 'sess_A', 'elem_1', 't00099', '')), ...
     'method');
+did2.unittest.helpers.dumpJ('testVmspikeParksItsEpochStringToo', 'd', d);
 verifyFalse(testCase, any(strcmp(edgeNames(d), 'epoch_id')));
 b = bag(d);
+did2.unittest.helpers.dumpJ('testVmspikeParksItsEpochStringToo', 'b', b);
 verifyEqual(testCase, b.epochid, 't00099');
 end
 
@@ -680,6 +740,7 @@ v1 = { ...
     sortingBody('sp_v', 'default', 'sess_V'), ...
     vmspikeBody('vm_v', 'sess_V', 'elem_v', 't00001', '')};
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testMethodParametersValidatesAgainstItsSchema', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('%s quarantined under validation: %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));

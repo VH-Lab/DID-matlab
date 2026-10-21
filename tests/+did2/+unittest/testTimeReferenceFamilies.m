@@ -138,6 +138,7 @@ function testTheDenominatorsAndHeadlineExistOnAnEmptyBatch(testCase)
 % Operating rule 5 at the boundary: the denominator prints FIRST and
 % UNCONDITIONALLY, including on the early return an empty batch takes.
 rep = did2.validate.timeReferenceFamilies({});
+did2.unittest.helpers.dumpJ('testTheDenominatorsAndHeadlineExistOnAnEmptyBatch', 'rep', rep);
 verifyEqual(testCase, rep.docs_inspected, 0);
 verifyEqual(testCase, rep.slots_examined, 0);
 verifyEqual(testCase, rep.statements_with_reference, 0);
@@ -158,6 +159,7 @@ function testABatchWithNoStatementsReadsAsVACUOUSNotAsClean(testCase)
 docs = {did2.document(bodyOf('subject', 'sub_1')), ...
         did2.document(bodyOf('subject', 'sub_2'))};
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testABatchWithNoStatementsReadsAsVACUOUSNotAsClean', 'rep', rep);
 verifyEqual(testCase, rep.docs_inspected, 2);
 verifyEqual(testCase, rep.docs_classified, 2, ...
     'both documents must have been classified -- otherwise this is not a measurement');
@@ -171,6 +173,7 @@ function testUnreadableDocumentsAreCountedNeverDropped(testCase)
 % The denominator is what was HANDED IN. Taking it from the survivors is the
 % defect vBodies exists to document.
 rep = did2.validate.timeReferenceFamilies({[], []});
+did2.unittest.helpers.dumpJ('testUnreadableDocumentsAreCountedNeverDropped', 'rep', rep);
 verifyEqual(testCase, rep.docs_inspected, 2);
 verifyEqual(testCase, rep.docs_unreadable, 2);
 verifyEqual(testCase, rep.docs_classified, 0);
@@ -181,7 +184,9 @@ function testAStatementWithNoReferenceIsAMeasuredZeroNotAVacuousOne(testCase)
 % declares the family and carries no member IS a result: the family could have
 % been populated and was not. It must NOT be reported as vacuous.
 b = logicalObservation('vo_1', {});
+did2.unittest.helpers.dumpJ('testAStatementWithNoReferenceIsAMeasuredZeroNotAVacuousOne', 'b', b);
 rep = did2.validate.timeReferenceFamilies({did2.document(b)});
+did2.unittest.helpers.dumpJ('testAStatementWithNoReferenceIsAMeasuredZeroNotAVacuousOne', 'rep', rep);
 verifyEqual(testCase, rep.docs_declaring_family, 1);
 verifyEqual(testCase, rep.slots_examined, 1);
 verifyEqual(testCase, rep.slots_with_no_member, 1);
@@ -196,8 +201,10 @@ function testABlankMemberIsNotAReference(testCase)
 % as a reference would make "one anchor" and "one blank where an anchor goes"
 % the same number, which is the hole #72 had to open in silentLoss.
 b = logicalObservation('vo_1', {});
+did2.unittest.helpers.dumpJ('testABlankMemberIsNotAReference', 'b', b);
 b.depends_on(end+1) = struct('name', 'time_reference_1', 'value', '');
 rep = did2.validate.timeReferenceFamilies({did2.document(b)});
+did2.unittest.helpers.dumpJ('testABlankMemberIsNotAReference', 'rep', rep);
 verifyEqual(testCase, rep.members_examined, 1, ...
     'the blank member must be EXAMINED -- it is present');
 verifyEqual(testCase, rep.members_blank, 1);
@@ -212,7 +219,9 @@ function testASingleReferenceIsTheWellDefinedCase(testCase)
 % distribution must say so, and the SHAPE census must declare itself vacuous
 % with a reason that distinguishes "does not occur" from "is fine".
 docs = statementWithReferences('vo_1', nClockPair(1, 'a'));
+did2.unittest.helpers.dumpJ('testASingleReferenceIsTheWellDefinedCase', 'docs', docs);
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testASingleReferenceIsTheWellDefinedCase', 'rep', rep);
 verifyEqual(testCase, rep.statements_with_reference, 1);
 verifyEqual(testCase, numel(rep.count_distribution), 1);
 verifyEqual(testCase, rep.count_distribution(1).members, 1);
@@ -230,6 +239,7 @@ docs = [ statementWithReferences('vo_1', nClockPair(1, 'a')), ...
          statementWithReferences('vo_2', nClockPair(2, 'b')), ...
          statementWithReferences('vo_3', nClockPair(3, 'c')) ];
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testTheDistributionSeparatesOneTwoAndThree', 'rep', rep);
 verifyEqual(testCase, rep.statements_with_reference, 3);
 verifyEqual(testCase, [rep.count_distribution.members], [1 2 3], ...
     'the distribution must be per-count and in ascending order');
@@ -250,6 +260,7 @@ function testTheSplitAnchorAndNClockShapesAreDistinguishable(testCase)
 docs = [ statementWithReferences('vo_split', splitAnchorPair()), ...
          statementWithReferences('vo_clocks', nClockPair(2, 'k')) ];
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testTheSplitAnchorAndNClockShapesAreDistinguishable', 'rep', rep);
 verifyEqual(testCase, rep.statements_multi_reference, 2);
 verifyEqual(testCase, rep.shape_denominator.multi_slots_shaped, 2, ...
     'both statements had every referent in the batch, so both are shapeable');
@@ -278,7 +289,9 @@ function testAMixedAbsoluteAndRelativeFamilyIsItsOwnShape(testCase)
 % "is one an absolute_reference and the other relative" is one of the properties
 % the team asked to be grouped on. It must not be folded in with two relatives.
 refs = nClockPair(1, 'm');
+did2.unittest.helpers.dumpJ('testAMixedAbsoluteAndRelativeFamilyIsItsOwnShape', 'refs', refs);
 abs1 = bodyOf('absolute_reference', 'ref_abs');
+did2.unittest.helpers.dumpJ('testAMixedAbsoluteAndRelativeFamilyIsItsOwnShape', 'abs1', abs1);
 abs1.document_class.class_version = '2.0.0';
 abs1.document_class.superclasses = struct('class_name', {'time_reference'}, ...
     'class_version', {'4.0.0'});
@@ -290,7 +303,9 @@ abs1.absolute_reference = struct('value', struct( ...
                     'approximate', false)));
 refs{end+1} = abs1;
 docs = statementWithReferences('vo_mixed', refs);
+did2.unittest.helpers.dumpJ('testAMixedAbsoluteAndRelativeFamilyIsItsOwnShape', 'docs', docs);
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testAMixedAbsoluteAndRelativeFamilyIsItsOwnShape', 'rep', rep);
 verifyEqual(testCase, rep.statements_multi_reference, 1);
 verifyEqual(testCase, numel(rep.shape), 1);
 verifyTrue(testCase, contains(rep.shape(1).shape_key, 'kind=1abs+1rel'), ...
@@ -305,8 +320,11 @@ function testAnUnshapeableStatementIsCountedNeverGuessed(testCase)
 % shape is then UNKNOWN, and "unknown" must be its own row -- this is the one
 % zero that must never read as clean.
 docs = statementWithReferences('vo_1', splitAnchorPair());
+did2.unittest.helpers.dumpJ('testAnUnshapeableStatementIsCountedNeverGuessed', 'docs', docs);
 statementOnly = docs(1);          % the two references left out of the batch
+did2.unittest.helpers.dumpJ('testAnUnshapeableStatementIsCountedNeverGuessed', 'statementOnly', statementOnly);
 rep = did2.validate.timeReferenceFamilies(statementOnly);
+did2.unittest.helpers.dumpJ('testAnUnshapeableStatementIsCountedNeverGuessed', 'rep', rep);
 verifyEqual(testCase, rep.statements_multi_reference, 1);
 verifyEqual(testCase, rep.shape_denominator.multi_members_examined, 2);
 verifyEqual(testCase, rep.shape_denominator.multi_members_unresolved, 2);
@@ -328,9 +346,11 @@ function testTheShapeTablePartitionsTheMultiReferenceStatements(testCase)
 docs = [ statementWithReferences('vo_split',  splitAnchorPair()), ...
          statementWithReferences('vo_clocks', nClockPair(2, 'k')) ];
 orphan = statementWithReferences('vo_orphan', nClockPair(2, 'ORPHAN'));
+did2.unittest.helpers.dumpJ('testTheShapeTablePartitionsTheMultiReferenceStatements', 'orphan', orphan);
 docs = [docs, orphan(1)];         % statement only -- its anchors stay out
 
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testTheShapeTablePartitionsTheMultiReferenceStatements', 'rep', rep);
 verifyEqual(testCase, rep.statements_multi_reference, 3);
 verifyEqual(testCase, rep.shape_denominator.multi_slots_examined, 3);
 verifyEqual(testCase, sum([rep.shape.statements]), rep.statements_multi_reference, ...
@@ -351,7 +371,9 @@ function testEachShapeCarriesAnExampleStatementIdThatCanBeOpened(testCase)
 % The team asked for an example id per shape so a row can be looked at rather
 % than believed.
 docs = statementWithReferences('vo_split', splitAnchorPair());
+did2.unittest.helpers.dumpJ('testEachShapeCarriesAnExampleStatementIdThatCanBeOpened', 'docs', docs);
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testEachShapeCarriesAnExampleStatementIdThatCanBeOpened', 'rep', rep);
 verifyEqual(testCase, numel(rep.shape), 1);
 verifyEqual(testCase, rep.shape(1).example_document_id, 'vo_split');
 verifyEqual(testCase, rep.shape(1).example_class_name, 'logical_observation');
@@ -366,7 +388,9 @@ function testTheEmitterIsAttributedFromWhatTheDocumentsActuallyCarry(testCase)
 % names are the sharper fingerprint -- a split-anchor pair is two
 % `migrated_valid_interval_anchor` documents, which names the pass.
 docs = statementWithReferences('vo_split', splitAnchorPair());
+did2.unittest.helpers.dumpJ('testTheEmitterIsAttributedFromWhatTheDocumentsActuallyCarry', 'docs', docs);
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testTheEmitterIsAttributedFromWhatTheDocumentsActuallyCarry', 'rep', rep);
 verifyEqual(testCase, numel(rep.emitter), 1);
 verifyEqual(testCase, rep.emitter(1).statement_class, 'logical_observation');
 verifyEqual(testCase, rep.emitter(1).statement_name, 'migrated_valid_interval');
@@ -380,13 +404,16 @@ function testTwoEmittersProducingOneShapeAreSeparateRows(testCase)
 % Question 4 is whether a shape is one migrator's habit or a real pattern, so
 % two emitters landing on the same shape must NOT be summed into one row.
 a = statementWithReferences('vo_a', nClockPair(2, 'k'));
+did2.unittest.helpers.dumpJ('testTwoEmittersProducingOneShapeAreSeparateRows', 'a', a);
 b = statementWithReferences('vo_b', nClockPair(2, 'k'));
+did2.unittest.helpers.dumpJ('testTwoEmittersProducingOneShapeAreSeparateRows', 'b', b);
 % Re-stamp the second statement as if a different pass had written it. Real
 % distinct emitter names, both taken from the tree.
 bodyB = b{1}.documentProperties;
 bodyB.base.name = 'migrated_epoch_extent';
 b{1} = did2.document(bodyB);
 rep = did2.validate.timeReferenceFamilies([a, b]);
+did2.unittest.helpers.dumpJ('testTwoEmittersProducingOneShapeAreSeparateRows', 'rep', rep);
 verifyEqual(testCase, numel(rep.shape), 1, 'one shape ...');
 verifyEqual(testCase, numel(rep.emitter), 2, '... produced by two emitters');
 names = sort({rep.emitter.statement_name});
@@ -397,10 +424,12 @@ function testAnUnattributableStatementIsCountedAsSuch(testCase)
 % A batch whose documents carry no name must be visibly UNATTRIBUTED, not
 % silently attributed to ''.
 docs = statementWithReferences('vo_1', splitAnchorPair());
+did2.unittest.helpers.dumpJ('testAnUnattributableStatementIsCountedAsSuch', 'docs', docs);
 body = docs{1}.documentProperties;
 body.base.name = '';
 docs{1} = did2.document(body);
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testAnUnattributableStatementIsCountedAsSuch', 'rep', rep);
 verifyEqual(testCase, rep.emitter_denominator.multi_slots_with_statement_name, 0);
 verifyEqual(testCase, rep.emitter_denominator.multi_slots_without_statement_name, 1);
 end
@@ -413,9 +442,11 @@ function testTheFamilyIsFoundThroughASubclassReferent(testCase)
 % time_reference -- so a sweep that looked for the referent class literally
 % would miss the epoch family entirely.
 ep = bodyOf('epoch', 'ep_host');
+did2.unittest.helpers.dumpJ('testTheFamilyIsFoundThroughASubclassReferent', 'ep', ep);
 ep.document_class.superclasses = struct('class_name', {'entity'}, ...
     'class_version', {'1.0.0'});
 refs = nClockPair(2, 'e');
+did2.unittest.helpers.dumpJ('testTheFamilyIsFoundThroughASubclassReferent', 'refs', refs);
 deps = struct('name', {}, 'value', {});
 for k = 1:numel(refs)
     deps(end+1) = struct('name', sprintf('time_reference_%d', k), ...
@@ -427,6 +458,7 @@ for k = 1:numel(refs)
     docs{end+1} = did2.document(refs{k}); %#ok<AGROW>
 end
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testTheFamilyIsFoundThroughASubclassReferent', 'rep', rep);
 verifyEqual(testCase, rep.docs_declaring_family, 1, ...
     'epoch declares the family via a SUBCLASS referent and must be found');
 verifyEqual(testCase, rep.statements_multi_reference, 1);
@@ -439,14 +471,18 @@ function testANonTimeFamilyContributesNothingNotEvenADenominator(testCase)
 % must not enter any counter. Asserting only "0 shapes" would pass even if they
 % had been examined, which is the vacuous half of the assertion.
 b = bodyOf('subject_calculation', 'calc_1');
+did2.unittest.helpers.dumpJ('testANonTimeFamilyContributesNothingNotEvenADenominator', 'b', b);
 b.document_class.superclasses = struct('class_name', {'subject_interaction'}, ...
     'class_version', {'1.0.0'});
 b.depends_on = struct('name', {'derived_from_1', 'derived_from_2'}, ...
     'value', {'src_1', 'src_2'});
 src1 = bodyOf('subject', 'src_1');
+did2.unittest.helpers.dumpJ('testANonTimeFamilyContributesNothingNotEvenADenominator', 'src1', src1);
 src2 = bodyOf('subject', 'src_2');
+did2.unittest.helpers.dumpJ('testANonTimeFamilyContributesNothingNotEvenADenominator', 'src2', src2);
 rep = did2.validate.timeReferenceFamilies({did2.document(b), ...
     did2.document(src1), did2.document(src2)});
+did2.unittest.helpers.dumpJ('testANonTimeFamilyContributesNothingNotEvenADenominator', 'rep', rep);
 verifyEqual(testCase, rep.docs_declaring_family, 1, ...
     'subject_calculation is a subject_interaction and declares the time family');
 verifyEqual(testCase, rep.slots_examined, 1, 'exactly ONE slot -- the time family');
@@ -461,12 +497,15 @@ function testTheDiscriminatorLabelIsReadFromTheSchema(testCase)
 % declaration out of the same cache the instrument uses and assert the key
 % follows it, so a schema rename cannot leave a stale label behind.
 uniqueBy = declaredUniqueBy('subject_interaction');
+did2.unittest.helpers.dumpJ('testTheDiscriminatorLabelIsReadFromTheSchema', 'uniqueBy', uniqueBy);
 assumeNotEmpty(testCase, uniqueBy, ...
     'subject_interaction declares no referent_unique_by in this schema set');
 parts = strsplit(uniqueBy, '.');
 expected = [parts{end} '='];
 docs = statementWithReferences('vo_split', splitAnchorPair());
+did2.unittest.helpers.dumpJ('testTheDiscriminatorLabelIsReadFromTheSchema', 'docs', docs);
 rep = did2.validate.timeReferenceFamilies(docs);
+did2.unittest.helpers.dumpJ('testTheDiscriminatorLabelIsReadFromTheSchema', 'rep', rep);
 verifyEqual(testCase, numel(rep.shape), 1);
 verifyTrue(testCase, contains(rep.shape(1).shape_key, expected), ...
     sprintf('shape key "%s" must label the discriminator "%s" as declared', ...
@@ -479,11 +518,14 @@ verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies({[]}));
 verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies(struct([])));
 verifyWarningFree(testCase, @() did2.validate.timeReferenceFamilies({}));
 b = logicalObservation('vo_bad', {});
+did2.unittest.helpers.dumpJ('testTheAuditNeverRaises', 'b', b);
 b.depends_on(end+1) = struct('name', 'time_reference_1', 'value', 'nope');
 verifyWarningFree(testCase, ...
     @() did2.validate.timeReferenceFamilies({did2.document(b)}));
 b2 = bodyOf('a_class_that_does_not_exist', 'x_1');
+did2.unittest.helpers.dumpJ('testTheAuditNeverRaises', 'b2', b2);
 rep = did2.validate.timeReferenceFamilies({did2.document(b2)});
+did2.unittest.helpers.dumpJ('testTheAuditNeverRaises', 'rep', rep);
 verifyEqual(testCase, rep.docs_inspected, 1);
 verifyGreaterThanOrEqual(testCase, rep.docs_classified, 1);
 end

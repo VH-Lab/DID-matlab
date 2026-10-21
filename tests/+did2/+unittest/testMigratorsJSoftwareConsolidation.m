@@ -53,9 +53,11 @@ function testSyncruleSoftwareCarriesTheDedupHandle(testCase)
 % and the ctoe parameter set is the closed set isvalidparameters validates
 % (commonTriggersOverlappingEpochs.m:36).
 out = runJ(syncruleBody('ndi.time.syncrule.commonTriggersOverlappingEpochs'));
+did2.unittest.helpers.dumpJ('testSyncruleSoftwareCarriesTheDedupHandle', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 
 sw = firstOfClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testSyncruleSoftwareCarriesTheDedupHandle', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), ...
     'ndi.time.syncrule.commonTriggersOverlappingEpochs');
 % THE POINT OF THE FILE
@@ -64,6 +66,7 @@ verifyEqual(testCase, sw.get('software.local_identifier'), ...
 
 % and the configuration still points at it
 cfg = firstOfClass(testCase, out, 'clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testSyncruleSoftwareCarriesTheDedupHandle', 'cfg', cfg);
 verifyEqual(testCase, depValue(cfg.toStruct(), 'software_id'), sw.get('base.id'));
 end
 
@@ -73,7 +76,9 @@ function testSyncSoftwareVersionStaysEmptyAndTheHandleHasNoAtSign(testCase)
 % `@<version>` only when there is one. Guessing a version would be exactly the
 % fabrication the ground-truth track exists to stop.
 out = runJ(syncruleBody('ndi.time.syncrule.commonTriggersOverlappingEpochs'));
+did2.unittest.helpers.dumpJ('testSyncSoftwareVersionStaysEmptyAndTheHandleHasNoAtSign', 'out', out);
 sw = firstOfClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testSyncSoftwareVersionStaysEmptyAndTheHandleHasNoAtSign', 'sw', sw);
 % verifyEmpty, NOT verifyEqual(...,''): verifyEqual compares SIZE and MATLAB has
 % more than one empty char (0x0 vs 1x0), which is a fact about how the empty was
 % built, not about the migration.
@@ -88,7 +93,9 @@ function testSyncSoftwareGlobalIdentifierStaysEmpty(testCase)
 % moved from jSyncSoftware into jSoftware with the consolidation; pin it so the
 % move cannot quietly invent a scheme.
 out = runJ(syncruleBody('ndi.time.syncrule.randomPulses'));
+did2.unittest.helpers.dumpJ('testSyncSoftwareGlobalIdentifierStaysEmpty', 'out', out);
 sw = firstOfClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testSyncSoftwareGlobalIdentifierStaysEmpty', 'sw', sw);
 verifyEmpty(testCase, sw.get('entity.global_identifier'));
 end
 
@@ -98,10 +105,13 @@ function testSyncruleWithNoImplementationClassMintsNoSoftware(testCase)
 % (+did2/+validate/references.m:90 skips empty edges), which is the mechanism
 % behind the whole invented-empty-edge census.
 out = runJ(syncruleBody(''));
+did2.unittest.helpers.dumpJ('testSyncruleWithNoImplementationClassMintsNoSoftware', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testSyncruleWithNoImplementationClassMintsNoSoftware', 'names', names);
 verifyFalse(testCase, any(strcmp(names, 'software')));
 cfg = firstOfClass(testCase, out, 'clock_alignment_configuration');
+did2.unittest.helpers.dumpJ('testSyncruleWithNoImplementationClassMintsNoSoftware', 'cfg', cfg);
 verifyEqual(testCase, depValue(cfg.toStruct(), 'software_id'), '');
 end
 
@@ -112,15 +122,18 @@ function testSettingsSoftwareCarriesTheDedupHandleWithItsVersion(testCase)
 % populates the whole app block -- src/ndi/+ndi/app.m:105-114), so the handle is
 % NAME@VERSION.
 out = runJ(extractionParamsBody('ndi.app.spikeextractor', '2.1'));
+did2.unittest.helpers.dumpJ('testSettingsSoftwareCarriesTheDedupHandleWithItsVersion', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 
 sw = firstOfClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testSettingsSoftwareCarriesTheDedupHandleWithItsVersion', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikeextractor');
 verifyEqual(testCase, sw.get('software.version'), '2.1');
 verifyEqual(testCase, sw.get('software.local_identifier'), ...
     'ndi.app.spikeextractor@2.1');
 
 mp = firstOfClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testSettingsSoftwareCarriesTheDedupHandleWithItsVersion', 'mp', mp);
 verifyEqual(testCase, depValue(mp.toStruct(), 'software_id'), sw.get('base.id'));
 % base.id PRESERVED: three templates point at it
 % (spike_extraction_parameters_modification / spikewaves / spike_clusters, all
@@ -136,7 +149,9 @@ function testSettingsAppBlockReadsThePostRenameSpelling(testCase)
 % still pass a direct-call test. That is the bug this whole file's harness
 % choice exists to catch.
 out = runJ(extractionParamsBody('ndi.app.spikeextractor', '2.1'));
+did2.unittest.helpers.dumpJ('testSettingsAppBlockReadsThePostRenameSpelling', 'out', out);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testSettingsAppBlockReadsThePostRenameSpelling', 'names', names);
 verifyTrue(testCase, any(strcmp(names, 'software')), ...
     ['no software entity was minted -- the app fold read a field name that ' ...
      'universalRenames had already rewritten']);
@@ -149,8 +164,11 @@ function testSettingsExecutionEnvironmentIsParkedNotDropped(testCase)
 % (Unchanged by the consolidation; pinned because the parking now happens on the
 % far side of a shared helper, where it is easier to lose.)
 out = runJ(extractionParamsBody('ndi.app.spikeextractor', '2.1'));
+did2.unittest.helpers.dumpJ('testSettingsExecutionEnvironmentIsParkedNotDropped', 'out', out);
 mp = firstOfClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testSettingsExecutionEnvironmentIsParkedNotDropped', 'mp', mp);
 env = mp.get('method_parameters.other.execution_environment');
+did2.unittest.helpers.dumpJ('testSettingsExecutionEnvironmentIsParkedNotDropped', 'env', env);
 verifyEqual(testCase, env.interpreter, 'MATLAB');
 verifyEqual(testCase, env.os, 'Linux');
 end
@@ -174,14 +192,19 @@ function testSettingsWithNoSessionParksTheWholeAppBlock(testCase)
 % facts would then sit in `other` twice, under two keys. That is why
 % jSoftwareFromApp clears execEnv for a caller that asked for the leftover.
 v1 = extractionParamsBody('ndi.app.spikeextractor', '2.1');
+did2.unittest.helpers.dumpJ('testSettingsWithNoSessionParksTheWholeAppBlock', 'v1', v1);
 v1.base.session_id = '';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testSettingsWithNoSessionParksTheWholeAppBlock', 'out', out);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testSettingsWithNoSessionParksTheWholeAppBlock', 'names', names);
 verifyFalse(testCase, any(strcmp(names, 'software')));
 
 mp = firstOfClass(testCase, out, 'method');
+did2.unittest.helpers.dumpJ('testSettingsWithNoSessionParksTheWholeAppBlock', 'mp', mp);
 verifyEqual(testCase, depValue(mp.toStruct(), 'software_id'), '');
 other = mp.get('method_parameters.other');
+did2.unittest.helpers.dumpJ('testSettingsWithNoSessionParksTheWholeAppBlock', 'other', other);
 verifyTrue(testCase, isfield(other, 'app'));
 verifyEqual(testCase, other.app.app_name, 'ndi.app.spikeextractor');
 verifyFalse(testCase, isfield(other, 'execution_environment'));
@@ -198,11 +221,14 @@ function testCalculatorNamelessAppStillYieldsAnExecutionEnvironment(testCase)
 % ALSO mints minimal `software` (methodName-keyed) and `runtime_environment`
 % entities; the execution_environment inline block stays exactly as before.
 v1 = calcBody('', '');
+did2.unittest.helpers.dumpJ('testCalculatorNamelessAppStillYieldsAnExecutionEnvironment', 'v1', v1);
 v1.app.os = 'Linux';
 v1.app.interpreter = 'MATLAB';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testCalculatorNamelessAppStillYieldsAnExecutionEnvironment', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testCalculatorNamelessAppStillYieldsAnExecutionEnvironment', 'names', names);
 % A minimal software is always minted now (methodName-keyed) so the required
 % edge always resolves.
 verifyTrue(testCase, any(strcmp(names, 'software')));

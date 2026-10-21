@@ -54,6 +54,7 @@ function testSubjectlessRowPassesThroughInsteadOfFanningOut(testCase)
 % each with subject_id = ''. It must now carry the document through untouched
 % for the NDI second pass.
 out = did2.convert.migrators_j.ontology_table_row(makeRealRow());
+did2.unittest.helpers.dumpJ('testSubjectlessRowPassesThroughInsteadOfFanningOut', 'out', out);
 verifyEqual(testCase, numel(out), 1, ...
     'a row with no resolvable subject must not fan out into statements');
 verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'ontology_table_row', ...
@@ -66,11 +67,13 @@ function testNoEmittedBodyEverCarriesAnEmptySubjectId(testCase)
 % blank. If a future edit reinstates the fan-out, this fails even if the
 % passthrough test above is rewritten.
 out = did2.convert.migrators_j.ontology_table_row(makeRealRow());
+did2.unittest.helpers.dumpJ('testNoEmittedBodyEverCarriesAnEmptySubjectId', 'out', out);
 for i = 1:numel(out)
     b = out{i};
     if ~isfield(b, 'depends_on') || ~isstruct(b.depends_on); continue; end
     for k = 1:numel(b.depends_on)
         d = b.depends_on(k);
+did2.unittest.helpers.dumpJ('testNoEmittedBodyEverCarriesAnEmptySubjectId', 'd', d);
         if isfield(d, 'name') && strcmp(d.name, 'subject_id')
             verifyNotEmpty(testCase, d.value, sprintf( ...
                 ['%s was emitted with an EMPTY subject_id -- an observation ' ...
@@ -93,11 +96,13 @@ function testRowWithARealSubjectStillMigrates(testCase)
 % the migrator; this test pins the guard's behaviour on the path that emitted
 % the 76,766 hollow documents, whatever vintage produced them.
 pre = makeRealRow();
+did2.unittest.helpers.dumpJ('testRowWithARealSubjectStillMigrates', 'pre', pre);
 pre.ontology_table_row = struct('rows', struct( ...
     'ontology_name', 'NCIT:C1', 'name', 'Speed', 'value', '3.5'));
 pre.depends_on = [struct('name', 'document_id', 'value', 'doc-123'), ...
                   struct('name', 'subject_id',  'value', 'subj-9')];
 out = did2.convert.migrators_j.ontology_table_row(pre);
+did2.unittest.helpers.dumpJ('testRowWithARealSubjectStillMigrates', 'out', out);
 verifyGreaterThan(testCase, numel(out), 1, ...
     'a row WITH a subject must still migrate into statements');
 sawSubject = false;
@@ -138,6 +143,7 @@ function testRealWriterShapeHasNoRowsField(testCase)
 % through untouched. If a future change makes it fan out, that is a claim about
 % document shape that needs the same evidence.
 out = did2.convert.migrators_j.ontology_table_row(makeRealRow());
+did2.unittest.helpers.dumpJ('testRealWriterShapeHasNoRowsField', 'out', out);
 verifyEqual(testCase, numel(out), 1, ...
     ['a document in the CURRENT NDI writer shape has no `rows` field, so ' ...
      'extractRows returns nothing and it must pass through']);

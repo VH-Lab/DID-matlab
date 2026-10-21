@@ -264,16 +264,20 @@ function testDaqreaderDissolvesIntoSoftware(testCase)
 % else. `acquisition_reader` (did-schema 69fa66d) is the missing sibling, and
 % the daq family now folds one way for both readers.
 out = runJ(daqreaderV1('ndi.daq.reader.mfdaq.intan'));
+did2.unittest.helpers.dumpJ('testDaqreaderDissolvesIntoSoftware', 'out', out);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testDaqreaderDissolvesIntoSoftware', 'names', names);
 verifyEqual(testCase, numel(names), 2);
 verifyTrue(testCase, any(strcmp(names, 'acquisition_reader')));
 verifyTrue(testCase, any(strcmp(names, 'software')));
 
 reader = firstOfClass(out, 'acquisition_reader');
+did2.unittest.helpers.dumpJ('testDaqreaderDissolvesIntoSoftware', 'reader', reader);
 verifyEqual(testCase, depValue(reader, 'software_id'), ...
     firstOfClass(out, 'software').get('base.id'));
 
 sw = firstOfClass(out, 'software');
+did2.unittest.helpers.dumpJ('testDaqreaderDissolvesIntoSoftware', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.daq.reader.mfdaq.intan');
 verifyEqual(testCase, sw.get('software.local_identifier'), ...
     'ndi.daq.reader.mfdaq.intan');
@@ -293,6 +297,7 @@ function testDaqreaderPreservesItsBaseId(testCase)
 % templates (daqsystem + the three ingest classes); minting a fresh id here
 % would dangle every one of them -- the 11,448-orphan failure.
 out = runJ(daqreaderV1('ndi.daq.reader.mfdaq.intan'));
+did2.unittest.helpers.dumpJ('testDaqreaderPreservesItsBaseId', 'out', out);
 verifyEqual(testCase, out.migrated{1}.get('base.id'), 'reader_id_1');
 end
 
@@ -301,6 +306,7 @@ function testDaqreaderCarriesTheEmptySessionSentinel(testCase)
 % verbatim is what satisfies base.session_id's mustBeNonEmpty; a migrator that
 % "cleaned it up" to '' would emit a document that cannot validate.
 out = runJ(daqreaderV1('ndi.daq.reader.mfdaq.intan'));
+did2.unittest.helpers.dumpJ('testDaqreaderCarriesTheEmptySessionSentinel', 'out', out);
 verifyEqual(testCase, out.migrated{1}.get('base.session_id'), emptySessionId());
 end
 
@@ -308,7 +314,9 @@ function testDaqreaderWithoutAClassNamePassesThrough(testCase)
 % No identity -> no entity. jSoftware returns [] for an empty name precisely so
 % a caller cannot mint a nameless `software`.
 v1 = daqreaderV1('');
+did2.unittest.helpers.dumpJ('testDaqreaderWithoutAClassNamePassesThrough', 'v1', v1);
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testDaqreaderWithoutAClassNamePassesThrough', 'out', out);
 verifyEqual(testCase, classNames(out), {'daqreader'});
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
@@ -330,12 +338,16 @@ function testDaqreaderWithAReaderStringPassesThrough(testCase)
 % fold is unconditional. The test name is kept so the history is greppable;
 % what it asserts is now the opposite.
 v1 = daqreaderV1('ndi.daq.reader.mfdaq.ndr');
+did2.unittest.helpers.dumpJ('testDaqreaderWithAReaderStringPassesThrough', 'v1', v1);
 v1.daqreader.reader_string = 'intan';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testDaqreaderWithAReaderStringPassesThrough', 'out', out);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testDaqreaderWithAReaderStringPassesThrough', 'names', names);
 verifyEqual(testCase, numel(names), 2);
 verifyTrue(testCase, any(strcmp(names, 'acquisition_reader')));
 reader = firstOfClass(out, 'acquisition_reader');
+did2.unittest.helpers.dumpJ('testDaqreaderWithAReaderStringPassesThrough', 'reader', reader);
 verifyEqual(testCase, reader.get('acquisition_reader.reader_string'), 'intan');
 % The id still rides on the reader -- that is what keeps daqsystem.reader_id
 % resolving, and it is asserted separately in testDaqreaderPreservesItsBaseId.
@@ -354,10 +366,13 @@ function testDaqreaderWithAReaderStringButNoClassEmitsNoEmptyEdge(testCase)
 % armed does NOT catch it here because the edge is optional -- so nothing but
 % this assertion stands between us and a seventh row.
 v1 = daqreaderV1('');
+did2.unittest.helpers.dumpJ('testDaqreaderWithAReaderStringButNoClassEmitsNoEmptyEdge', 'v1', v1);
 v1.daqreader.reader_string = 'intan';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testDaqreaderWithAReaderStringButNoClassEmitsNoEmptyEdge', 'out', out);
 verifyEqual(testCase, classNames(out), {'acquisition_reader'});
 reader = firstOfClass(out, 'acquisition_reader');
+did2.unittest.helpers.dumpJ('testDaqreaderWithAReaderStringButNoClassEmitsNoEmptyEdge', 'reader', reader);
 verifyEqual(testCase, reader.get('acquisition_reader.reader_string'), 'intan');
 verifyEmpty(testCase, depValue(reader, 'software_id'), ...
     'software_id must be ABSENT when there is no software, never blank');
@@ -367,17 +382,21 @@ end
 
 function testMetadataReaderFoldsToTheReaderPlusSoftware(testCase)
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
+did2.unittest.helpers.dumpJ('testMetadataReaderFoldsToTheReaderPlusSoftware', 'out', out);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testMetadataReaderFoldsToTheReaderPlusSoftware', 'names', names);
 verifyEqual(testCase, numel(names), 2);
 verifyTrue(testCase, any(strcmp(names, 'epoch_parameter_reader')));
 verifyTrue(testCase, any(strcmp(names, 'software')));
 
 reader = firstOfClass(out, 'epoch_parameter_reader');
+did2.unittest.helpers.dumpJ('testMetadataReaderFoldsToTheReaderPlusSoftware', 'reader', reader);
 verifyEqual(testCase, reader.get('base.id'), 'mdreader_id_1');
 verifyEqual(testCase, ...
     reader.get('epoch_parameter_reader.file_regex'), '.*\.tsv\>');
 
 sw = firstOfClass(out, 'software');
+did2.unittest.helpers.dumpJ('testMetadataReaderFoldsToTheReaderPlusSoftware', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.daq.metadatareader');
 verifyEqual(testCase, depValue(reader, 'software_id'), sw.get('base.id'));
 end
@@ -388,6 +407,7 @@ function testMetadataReaderPreservesItsBaseId(testCase)
 % (migrators_j/daqmetadatareader_epochdata_ingested.m:74,94). A minted id here
 % would leave that required edge pointing at nothing.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
+did2.unittest.helpers.dumpJ('testMetadataReaderPreservesItsBaseId', 'out', out);
 verifyEqual(testCase, ...
     firstOfClass(out, 'epoch_parameter_reader').get('base.id'), ...
     'mdreader_id_1');
@@ -401,7 +421,9 @@ function testMetadataReaderMintsNoDaqsystemEdge(testCase)
 % NDI declares the edge the OTHER way (daqsystem -> daqmetadatareader_id) and
 % the schema half removed the invented one. Nothing may put it back.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
+did2.unittest.helpers.dumpJ('testMetadataReaderMintsNoDaqsystemEdge', 'out', out);
 reader = firstOfClass(out, 'epoch_parameter_reader');
+did2.unittest.helpers.dumpJ('testMetadataReaderMintsNoDaqsystemEdge', 'reader', reader);
 verifyFalse(testCase, hasDependency(reader, 'daqsystem_id'));
 end
 
@@ -410,6 +432,7 @@ function testMetadataReaderWithoutAClassNameOmitsTheSoftwareEdge(testCase)
 % software_id is OMITTED rather than written empty: an empty edge is skipped by
 % the reference validator, so writing one would be invisible rather than absent.
 out = runJ(daqmetadatareaderV1('', '.*\.tsv\>'));
+did2.unittest.helpers.dumpJ('testMetadataReaderWithoutAClassNameOmitsTheSoftwareEdge', 'out', out);
 verifyEqual(testCase, classNames(out), {'epoch_parameter_reader'});
 reader = out.migrated{1};
 verifyFalse(testCase, hasDependency(reader, 'software_id'));
@@ -423,13 +446,17 @@ function testMetadataReaderWithoutAPatternOmitsTheField(testCase)
 % is the common subclassed case, not a contrivance. A blank field is what
 % did2.validate.silentLoss counts as vacuous, so it is omitted.
 out = runJ(daqmetadatareaderV1('ndi.daq.metadatareader.NewStimStims', ''));
+did2.unittest.helpers.dumpJ('testMetadataReaderWithoutAPatternOmitsTheField', 'out', out);
 reader = firstOfClass(out, 'epoch_parameter_reader');
+did2.unittest.helpers.dumpJ('testMetadataReaderWithoutAPatternOmitsTheField', 'reader', reader);
 blk = reader.get('acquisition_metadata_reader');
+did2.unittest.helpers.dumpJ('testMetadataReaderWithoutAPatternOmitsTheField', 'blk', blk);
 verifyFalse(testCase, isfield(blk, 'metadata_file_pattern'));
 end
 
 function testMetadataReaderWithNothingToDeclarePassesThrough(testCase)
 out = runJ(daqmetadatareaderV1('', ''));
+did2.unittest.helpers.dumpJ('testMetadataReaderWithNothingToDeclarePassesThrough', 'out', out);
 verifyEqual(testCase, classNames(out), {'daqmetadatareader'});
 verifyEqual(testCase, out.summary.unconverted_count, 1);
 end
@@ -454,11 +481,14 @@ function testDaqsystemClassNameNowFoldsToASoftwareEntity(testCase)
 % class(obj) into ndi_daqsystem_class on every daqsystem NDI creates, so this
 % test -- not the empty-class-name one below -- is the corpus path.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
+did2.unittest.helpers.dumpJ('testDaqsystemClassNameNowFoldsToASoftwareEntity', 'out', out);
 verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
 verifyEqual(testCase, out.summary.unconverted_count, 0);
 
 sys = firstOfClass(out, 'acquisition_system');
+did2.unittest.helpers.dumpJ('testDaqsystemClassNameNowFoldsToASoftwareEntity', 'sys', sys);
 sw  = firstOfClass(out, 'software');
+did2.unittest.helpers.dumpJ('testDaqsystemClassNameNowFoldsToASoftwareEntity', 'sw', sw);
 
 % The class name is carried as the software entity's identity, and the edge
 % points at THAT document -- not at a string field, which acquisition_system
@@ -481,7 +511,9 @@ function testDaqsystemSoftwareIdIsDistinctFromReaderId(testCase)
 % entirely. A fold that collapsed them would silently claim the rig and its
 % reader are the same software.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {}));
+did2.unittest.helpers.dumpJ('testDaqsystemSoftwareIdIsDistinctFromReaderId', 'out', out);
 sys = firstOfClass(out, 'acquisition_system');
+did2.unittest.helpers.dumpJ('testDaqsystemSoftwareIdIsDistinctFromReaderId', 'sys', sys);
 verifyEqual(testCase, depValue(sys, 'reader_id'), 'reader_id_1');
 verifyNotEqual(testCase, depValue(sys, 'software_id'), 'reader_id_1');
 verifyNotEqual(testCase, depValue(sys, 'software_id'), '');
@@ -495,8 +527,11 @@ function testDaqsystemSoftwareTakesAFreshIdNotTheSystemsOwn(testCase)
 % -- so the software entity gets a fresh id, as in filenavigator.m and
 % daqmetadatareader.m. Overwriting it here would give two documents one id.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {}));
+did2.unittest.helpers.dumpJ('testDaqsystemSoftwareTakesAFreshIdNotTheSystemsOwn', 'out', out);
 sys = firstOfClass(out, 'acquisition_system');
+did2.unittest.helpers.dumpJ('testDaqsystemSoftwareTakesAFreshIdNotTheSystemsOwn', 'sys', sys);
 sw  = firstOfClass(out, 'software');
+did2.unittest.helpers.dumpJ('testDaqsystemSoftwareTakesAFreshIdNotTheSystemsOwn', 'sw', sw);
 verifyEqual(testCase, sys.get('base.id'), 'system_id_1');
 verifyNotEqual(testCase, sw.get('base.id'), 'system_id_1');
 end
@@ -509,10 +544,13 @@ function testDaqsystemWithAClassNameAndNoEdgesStillConverts(testCase)
 % companion assertion -- that a body with NEITHER a class name NOR edges still
 % passes through -- is testDaqsystemWithNoEdgesAtAllPassesThrough below.
 v1 = daqsystemV1('ndi.daq.system.image', {});
+did2.unittest.helpers.dumpJ('testDaqsystemWithAClassNameAndNoEdgesStillConverts', 'v1', v1);
 v1.depends_on = struct('name', {}, 'id', {});
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testDaqsystemWithAClassNameAndNoEdgesStillConverts', 'out', out);
 verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
 sys = firstOfClass(out, 'acquisition_system');
+did2.unittest.helpers.dumpJ('testDaqsystemWithAClassNameAndNoEdgesStillConverts', 'sys', sys);
 verifyNotEqual(testCase, depValue(sys, 'software_id'), '');
 verifyFalse(testCase, hasDependency(sys, 'reader_id'));
 end
@@ -525,6 +563,7 @@ function testDaqsystemFoldsTheThreeEdges(testCase)
 % software beside it, which is what makes software_id's optionality real rather
 % than theoretical.
 out = runJ(daqsystemV1('', {'md_id_1', 'md_id_2'}));
+did2.unittest.helpers.dumpJ('testDaqsystemFoldsTheThreeEdges', 'out', out);
 verifyEqual(testCase, classNames(out), {'acquisition_system'});
 sys = out.migrated{1};
 verifyFalse(testCase, hasDependency(sys, 'software_id'));
@@ -540,6 +579,7 @@ function testDaqsystemPreservesIdAndName(testCase)
 % daqsystem2_name, and queried as base.name by +ndi/session.m:148-160
 % (daqsystem_load). A depends_on sweep sees none of that.
 out = runJ(daqsystemV1('', {}));
+did2.unittest.helpers.dumpJ('testDaqsystemPreservesIdAndName', 'out', out);
 sys = out.migrated{1};
 verifyEqual(testCase, sys.get('base.id'), 'system_id_1');
 verifyEqual(testCase, sys.get('base.name'), 'intan1');
@@ -552,6 +592,7 @@ function testDaqsystemSkipsTheEmptyBareFamilyEntry(testCase)
 % empty bare entry would create an empty edge -- invisible to the validator,
 % which skips them -- and shift the numbering of the real ones.
 out = runJ(daqsystemV1('', {'md_id_1'}));
+did2.unittest.helpers.dumpJ('testDaqsystemSkipsTheEmptyBareFamilyEntry', 'out', out);
 sys = out.migrated{1};
 verifyEqual(testCase, depValue(sys, 'acquisition_metadata_reader_1'), 'md_id_1');
 verifyFalse(testCase, hasDependency(sys, 'acquisition_metadata_reader_2'));
@@ -562,6 +603,7 @@ function testDaqsystemWithNoMetadataReadersEmitsNoFamily(testCase)
 % why NDI marks the edge "mustbenotempty": 0 and V_eta gives
 % acquisition_metadata_reader_# min_count 0. The family is ABSENT, not empty.
 out = runJ(daqsystemV1('', {}));
+did2.unittest.helpers.dumpJ('testDaqsystemWithNoMetadataReadersEmitsNoFamily', 'out', out);
 sys = out.migrated{1};
 verifyFalse(testCase, hasDependency(sys, 'acquisition_metadata_reader_1'));
 verifyFalse(testCase, hasDependency(sys, 'daqmetadatareader_id'));
@@ -569,9 +611,11 @@ end
 
 function testDaqsystemOmitsAnEdgeItCannotFill(testCase)
 v1 = daqsystemV1('', {});
+did2.unittest.helpers.dumpJ('testDaqsystemOmitsAnEdgeItCannotFill', 'v1', v1);
 v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
                        'id',   {'nav_id_1',         ''});
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testDaqsystemOmitsAnEdgeItCannotFill', 'out', out);
 sys = out.migrated{1};
 verifyEqual(testCase, depValue(sys, 'epoch_file_pattern_id'), 'nav_id_1');
 verifyFalse(testCase, hasDependency(sys, 'reader_id'));
@@ -579,8 +623,10 @@ end
 
 function testDaqsystemWithNoEdgesAtAllPassesThrough(testCase)
 v1 = daqsystemV1('', {});
+did2.unittest.helpers.dumpJ('testDaqsystemWithNoEdgesAtAllPassesThrough', 'v1', v1);
 v1.depends_on = struct('name', {}, 'id', {});
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testDaqsystemWithNoEdgesAtAllPassesThrough', 'out', out);
 verifyEqual(testCase, classNames(out), {'daqsystem'});
 end
 
@@ -589,6 +635,7 @@ end
 function testDaqreaderFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqreaderV1('ndi.daq.reader.mfdaq.intan'));
+did2.unittest.helpers.dumpJ('testDaqreaderFoldValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 % Two bodies now, as for the metadata reader below. This is the assertion that
 % would catch a REQUIRED `software_id` on `acquisition_reader`: #37
@@ -601,6 +648,7 @@ end
 function testMetadataReaderFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
+did2.unittest.helpers.dumpJ('testMetadataReaderFoldValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 verifyEqual(testCase, numel(out.migrated), 2);
 end
@@ -608,6 +656,7 @@ end
 function testDaqsystemFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqsystemV1('', {'md_id_1', 'md_id_2'}));
+did2.unittest.helpers.dumpJ('testDaqsystemFoldValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 verifyEqual(testCase, classNames(out), {'acquisition_system'});
 end
@@ -626,6 +675,7 @@ function testDaqsystemClassNameFoldValidatesUnderVEta(testCase)
 % cleanly -- is kept, now against the folded shape.
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
+did2.unittest.helpers.dumpJ('testDaqsystemClassNameFoldValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 verifyEqual(testCase, classNames(out), {'acquisition_system', 'software'});
 end
@@ -665,8 +715,10 @@ function testTheResidualPassthroughIsAQuarantinePathByConstruction(testCase)
 % made deliberately and not discovered in a corpus run.
 assumeVEtaSchemas(testCase);
 v1 = daqsystemV1('', {});
+did2.unittest.helpers.dumpJ('testTheResidualPassthroughIsAQuarantinePathByConstruction', 'v1', v1);
 v1.depends_on = struct('name', {}, 'id', {});
 out = runJValidated(v1);
+did2.unittest.helpers.dumpJ('testTheResidualPassthroughIsAQuarantinePathByConstruction', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 1, ...
     ['an all-empty daqsystem is a HOLLOW document: the tombstone requires ' ...
      'two edges and a field it does not have. Quarantine is #37/#38 working, ' ...
@@ -681,11 +733,13 @@ function testTheFoldsLeaveNoEmptyRequiredEdgeAndNoFragment(testCase)
 % document would pass validation silently. These are the instruments that see it.
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqmetadatareaderV1('ndi.daq.metadatareader', '.*\.tsv\>'));
+did2.unittest.helpers.dumpJ('testTheFoldsLeaveNoEmptyRequiredEdgeAndNoFragment', 'out', out);
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
 verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
 verifyEqual(testCase, out.summary.fragment_count, 0);
 
 out = runJValidated(daqsystemV1('', {'md_id_1'}));
+did2.unittest.helpers.dumpJ('testTheFoldsLeaveNoEmptyRequiredEdgeAndNoFragment', 'out', out);
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
 verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
 verifyEqual(testCase, out.summary.fragment_count, 0);
@@ -698,6 +752,7 @@ verifyEqual(testCase, out.summary.fragment_count, 0);
 % edges, so quarantine_count alone cannot see a `software_id` that was declared
 % and left blank.
 out = runJValidated(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
+did2.unittest.helpers.dumpJ('testTheFoldsLeaveNoEmptyRequiredEdgeAndNoFragment', 'out', out);
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
 verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
 verifyEqual(testCase, out.summary.fragment_count, 0);

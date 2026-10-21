@@ -275,6 +275,7 @@ function testSoftwareIdIsDeclaredWhereWeHangIt(testCase)
 % and nowhere else in these chains -- adding it to a body whose chain does not
 % include subject_interaction is the invented-empty-edge pattern.
 cache = did2.schema.cache.shared();
+did2.unittest.helpers.dumpJ('testSoftwareIdIsDeclaredWhereWeHangIt', 'cache', cache);
 for c = {'count_observation', 'score_observation'}
     chain = [c, cache.superclasses(c{1})];
     verifyTrue(testCase, any(strcmp(chain, 'subject_interaction')), ...
@@ -291,6 +292,7 @@ end
 % has `multiple`/`min_count`), and a STRUCT ARRAY when they do. Handle both, or
 % this guard breaks the next time a key is added and reads as a schema failure.
 si = cache.getClass('subject_interaction');
+did2.unittest.helpers.dumpJ('testSoftwareIdIsDeclaredWhereWeHangIt', 'si', si);
 deps = si.depends_on;
 if ~iscell(deps); deps = num2cell(deps); end
 found = false;
@@ -307,16 +309,19 @@ function testKilosortAppBecomesASoftwareEntityAndEdge(testCase)
 % NAME@VERSION as the handle the deferred corpus-wide dedup pass reads, and two
 % of the three historical software builders omitted it.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
+did2.unittest.helpers.dumpJ('testKilosortAppBecomesASoftwareEntityAndEdge', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 4);   % obs + opaque_body + anchor + software
 
 sw = onlyClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testKilosortAppBecomesASoftwareEntityAndEdge', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
 verifyEqual(testCase, sw.get('software.version'), '1.4.2');
 verifyEqual(testCase, sw.get('software.local_identifier'), 'ndi.app.spikesorter@1.4.2');
 verifyEqual(testCase, sw.get('base.session_id'), 'sess_09');
 
 obs = onlyClass(testCase, out, 'count_observation');
+did2.unittest.helpers.dumpJ('testKilosortAppBecomesASoftwareEntityAndEdge', 'obs', obs);
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'srt_1');            % id still preserved
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'rec_sub_1');
@@ -328,7 +333,9 @@ function testKilosortExecutionEnvironmentIsCarried(testCase)
 % These four field names are already snake_case, so universalRenames leaves them
 % alone -- which is why the old fold populated them while minting no entity.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
+did2.unittest.helpers.dumpJ('testKilosortExecutionEnvironmentIsCarried', 'out', out);
 obs = onlyClass(testCase, out, 'count_observation');
+did2.unittest.helpers.dumpJ('testKilosortExecutionEnvironmentIsCarried', 'obs', obs);
 verifyEqual(testCase, obs.get('subject_interaction.execution_environment.os'), 'GLNXA64');
 verifyEqual(testCase, obs.get('subject_interaction.execution_environment.os_version'), '5.15.0');
 verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter'), 'MATLAB');
@@ -340,8 +347,11 @@ function testKilosortUrlRidesOnTheEntityGlobalIdentifier(testCase)
 % entity.global_identifier with scheme 'URL' (matching openMINDS
 % SoftwareVersion.homepage/repository), not on a bespoke field.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true));
+did2.unittest.helpers.dumpJ('testKilosortUrlRidesOnTheEntityGlobalIdentifier', 'out', out);
 sw  = onlyClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testKilosortUrlRidesOnTheEntityGlobalIdentifier', 'sw', sw);
 gid = sw.get('entity.global_identifier');
+did2.unittest.helpers.dumpJ('testKilosortUrlRidesOnTheEntityGlobalIdentifier', 'gid', gid);
 verifyEqual(testCase, numel(gid), 1);
 verifyEqual(testCase, gid(1).scheme, 'URL');
 verifyEqual(testCase, gid(1).value, 'https://github.com/VH-Lab/NDI-matlab');
@@ -351,9 +361,12 @@ function testKiasortFoldsTheSameWay(testCase)
 % Sibling class, same helper (private/jSorterOutput.m). Asserted separately
 % because "the sibling is covered by the other test" is how a divergence hides.
 out = runJ(sorterBody('kiasort_clusters', 'kiasort_directory', true));
+did2.unittest.helpers.dumpJ('testKiasortFoldsTheSameWay', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 sw  = onlyClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testKiasortFoldsTheSameWay', 'sw', sw);
 obs = onlyClass(testCase, out, 'count_observation');
+did2.unittest.helpers.dumpJ('testKiasortFoldsTheSameWay', 'obs', obs);
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('interaction.method.term.name'), 'kiasort');
 end
@@ -363,10 +376,12 @@ function testSorterWithoutAnAppBlockIsUnchanged(testCase)
 % NO empty execution_environment field manufactured on the observation
 % (absence is how V_eta spells unset).
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', false));
+did2.unittest.helpers.dumpJ('testSorterWithoutAnAppBlockIsUnchanged', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3);
 verifyFalse(testCase, hasClass(out, 'software'));
 obs = onlyClass(testCase, out, 'count_observation');
+did2.unittest.helpers.dumpJ('testSorterWithoutAnAppBlockIsUnchanged', 'obs', obs);
 verifyEmpty(testCase, depValue(obs, 'software_id'));
 verifyFalse(testCase, isfield(obs.get('subject_interaction'), 'execution_environment'));
 end
@@ -378,14 +393,17 @@ function testNoSessionMintsNoSoftware(testCase)
 % away: the observation, the body and the anchor all carry the same empty
 % session_id and fail on their own account under a validating run.
 out = runJ(sorterBody('kilosort_clusters', 'kilosort_directory', true, ''));
+did2.unittest.helpers.dumpJ('testNoSessionMintsNoSoftware', 'out', out);
 verifyFalse(testCase, hasClass(out, 'software'));
 obs = onlyClass(testCase, out, 'count_observation');
+did2.unittest.helpers.dumpJ('testNoSessionMintsNoSoftware', 'obs', obs);
 verifyEmpty(testCase, depValue(obs, 'software_id'));
 end
 
 function testKilosortFoldValidates(testCase)
 % The bodies are only worth emitting if they get through the validator.
 out = runJValidated(sorterBody('kilosort_clusters', 'kilosort_directory', true));
+did2.unittest.helpers.dumpJ('testKilosortFoldValidates', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 4);
 end
@@ -397,12 +415,15 @@ function testJrclustAppBecomesASoftwareEntityAndEdge(testCase)
 % rather than an external directory -> opaque_body). The software fold is
 % identical; only the payload differs.
 out = runJ(jrclustBody(true));
+did2.unittest.helpers.dumpJ('testJrclustAppBecomesASoftwareEntityAndEdge', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 4);
 verifyTrue(testCase, hasClass(out, 'sampled_body'));
 
 sw  = onlyClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testJrclustAppBecomesASoftwareEntityAndEdge', 'sw', sw);
 obs = onlyClass(testCase, out, 'count_observation');
+did2.unittest.helpers.dumpJ('testJrclustAppBecomesASoftwareEntityAndEdge', 'obs', obs);
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('base.id'), 'jc_1');             % id still preserved
 verifyEqual(testCase, obs.get('subject_interaction.execution_environment.interpreter'), ...
@@ -411,6 +432,7 @@ end
 
 function testJrclustWithoutAnAppBlockIsUnchanged(testCase)
 out = runJ(jrclustBody(false));
+did2.unittest.helpers.dumpJ('testJrclustWithoutAnAppBlockIsUnchanged', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 3);
 verifyFalse(testCase, hasClass(out, 'software'));
 end
@@ -428,20 +450,26 @@ function testNeuronExtracellularHangsSoftwareOnTheQualityObservation(testCase)
 % `cluster_index`. This fixture has no `mean_waveform`, so the score_observation
 % is still the ONLY software carrier here.
 out = runJ(neuronBody(true, true));
+did2.unittest.helpers.dumpJ('testNeuronExtracellularHangsSoftwareOnTheQualityObservation', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 % subject + relation + anchor + count_assertion + score_observation + software
 verifyEqual(testCase, numel(out.migrated), 6);
 
 sw   = onlyClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testNeuronExtracellularHangsSoftwareOnTheQualityObservation', 'sw', sw);
 qobs = onlyClass(testCase, out, 'score_observation');
+did2.unittest.helpers.dumpJ('testNeuronExtracellularHangsSoftwareOnTheQualityObservation', 'qobs', qobs);
 verifyEqual(testCase, depValue(qobs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, qobs.get('subject_interaction.execution_environment.os'), 'GLNXA64');
 
 neuron = onlyClass(testCase, out, 'subject');
+did2.unittest.helpers.dumpJ('testNeuronExtracellularHangsSoftwareOnTheQualityObservation', 'neuron', neuron);
 verifyEmpty(testCase, depValue(neuron, 'software_id'));
 rel = onlyClass(testCase, out, 'directed_relation');
+did2.unittest.helpers.dumpJ('testNeuronExtracellularHangsSoftwareOnTheQualityObservation', 'rel', rel);
 verifyEmpty(testCase, depValue(rel, 'software_id'));
 cidx = onlyClass(testCase, out, 'count_assertion');
+did2.unittest.helpers.dumpJ('testNeuronExtracellularHangsSoftwareOnTheQualityObservation', 'cidx', cidx);
 verifyEmpty(testCase, depValue(cidx, 'software_id'));
 end
 
@@ -460,6 +488,7 @@ function testNeuronExtracellularWithoutQualityStillHasNowhereToPutItsSoftware(te
 % number no longer loses its software. testTheWaveformObservationCarriesTheAppBlock
 % in testMigratorsJNeuronExtracellular.m asserts that half.
 out = runJ(neuronBody(true, false));
+did2.unittest.helpers.dumpJ('testNeuronExtracellularWithoutQualityStillHasNowhereToPutItsSoftware', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyFalse(testCase, hasClass(out, 'score_observation'));
 verifyFalse(testCase, hasClass(out, 'voltage_observation'));
@@ -475,11 +504,14 @@ function testVmspikefitHangsSoftwareOnTheResidualObservation(testCase)
 % repair turned on WHICH program wrote the fit (fit_sse, not r_squared), and the
 % answer was being thrown away with the block.
 out = runJ(vmspikefitBody(true, true));
+did2.unittest.helpers.dumpJ('testVmspikefitHangsSoftwareOnTheResidualObservation', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3);   % obs + anchor + software
 
 sw  = onlyClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testVmspikefitHangsSoftwareOnTheResidualObservation', 'sw', sw);
 obs = onlyClass(testCase, out, 'score_observation');
+did2.unittest.helpers.dumpJ('testVmspikefitHangsSoftwareOnTheResidualObservation', 'obs', obs);
 verifyEqual(testCase, depValue(obs, 'software_id'), sw.get('base.id'));
 verifyEqual(testCase, obs.get('score.value.value'), 3.25, 'AbsTol', 1e-9);
 verifyEqual(testCase, obs.get('interaction.method.term.name'), 'exp2');
@@ -492,6 +524,7 @@ function testVmspikefitWithoutSseStillHasNowhereToPutItsSoftware(testCase)
 % -> only a bare session anchor, which declares no software_id. INVERT when the
 % team gives it a home; do not patch.
 out = runJ(vmspikefitBody(true, false));
+did2.unittest.helpers.dumpJ('testVmspikefitWithoutSseStillHasNowhereToPutItsSoftware', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyFalse(testCase, hasClass(out, 'score_observation'));
 verifyFalse(testCase, hasClass(out, 'software'));
@@ -500,6 +533,7 @@ end
 
 function testVmspikefitFoldValidates(testCase)
 out = runJValidated(vmspikefitBody(true, true));
+did2.unittest.helpers.dumpJ('testVmspikefitFoldValidates', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, numel(out.migrated), 3);
 end
@@ -513,12 +547,16 @@ function testTheFoldSurvivesTheUniversalRename(testCase)
 % spelling is what actually reached the fold -- i.e. the software name did not
 % come from a fixture that happened to also carry the old spelling.
 v1 = sorterBody('kilosort_clusters', 'kilosort_directory', true);
+did2.unittest.helpers.dumpJ('testTheFoldSurvivesTheUniversalRename', 'v1', v1);
 renamed = did2.convert.universalRenames(v1);
+did2.unittest.helpers.dumpJ('testTheFoldSurvivesTheUniversalRename', 'renamed', renamed);
 verifyTrue(testCase, isfield(renamed.app, 'app_name'), ...
     'universalRenames must have produced app_name -- if not, this test is vacuous');
 verifyFalse(testCase, isfield(renamed.app, 'name'));
 
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testTheFoldSurvivesTheUniversalRename', 'out', out);
 sw  = onlyClass(testCase, out, 'software');
+did2.unittest.helpers.dumpJ('testTheFoldSurvivesTheUniversalRename', 'sw', sw);
 verifyEqual(testCase, sw.get('entity.name'), 'ndi.app.spikesorter');
 end

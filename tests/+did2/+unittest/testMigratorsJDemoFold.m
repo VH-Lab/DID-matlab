@@ -136,6 +136,7 @@ function testDemoNdiFoldsToDemoWithIsMockFalse(testCase)
 % 1 -> 1, id PRESERVED. Every fold in this project that changed a document id
 % created dangling references, so base.id is asserted before anything else.
 out = runJ(demoNdiV1(5));
+did2.unittest.helpers.dumpJ('testDemoNdiFoldsToDemoWithIsMockFalse', 'out', out);
 % ASSERT, not verify: everything below reads out.migrated{1}, and a verify on
 % the count would let an empty result set pass the rest vacuously.
 verifyEmpty(testCase, out.quarantine);
@@ -154,6 +155,7 @@ verifyEqual(testCase, doc.get('files.file_list'), {'filename1.ext'});
 % the consumed did_v1 block is GONE -- a populated leftover trips the strict
 % top-level check (did2:validation:undeclaredBlock)
 s = doc.toStruct();
+did2.unittest.helpers.dumpJ('testDemoNdiFoldsToDemoWithIsMockFalse', 's', s);
 verifyFalse(testCase, isfield(s, 'demo_ndi'));
 verifyFalse(testCase, isfield(s, 'demoNDI'));
 end
@@ -163,6 +165,7 @@ function testDemoNdiMockFoldsToDemoWithTheInheritedValue(testCase)
 % no fields of its own -- ndi.calc.example.simple.m:105-107 passes a demoNDI
 % block into a demoNDIMock document for exactly that reason.
 out = runJ(demoNdiMockV1(10, 1));
+did2.unittest.helpers.dumpJ('testDemoNdiMockFoldsToDemoWithTheInheritedValue', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the demoNDIMock fold emitted no document; every assertion below would be vacuous');
@@ -175,6 +178,7 @@ verifyTrue(testCase, doc.get('demo.is_mock'), ...
 % ALL THREE did_v1 blocks are consumed, named one at a time so a failure says
 % which one survived
 s = doc.toStruct();
+did2.unittest.helpers.dumpJ('testDemoNdiMockFoldsToDemoWithTheInheritedValue', 's', s);
 verifyFalse(testCase, isfield(s, 'demo_ndi'));
 verifyFalse(testCase, isfield(s, 'demo_ndi_mock'));
 verifyFalse(testCase, isfield(s, 'mock'));
@@ -187,6 +191,7 @@ function testDemoMockReadsAStoredIsMockRatherThanAssumingIt(testCase)
 % practice -- which is exactly why the read path needs a test of its own: it is
 % otherwise indistinguishable from hard-coding true.
 out = runJ(demoNdiMockV1(3, 0));
+did2.unittest.helpers.dumpJ('testDemoMockReadsAStoredIsMockRatherThanAssumingIt', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the demoNDIMock fold emitted no document; the assertion below would be vacuous');
@@ -202,6 +207,7 @@ function testDemoUnsetValueIsOmittedNeverInvented(testCase)
 % exactly what the source said. Writing the schema's blank_value 0.0 instead
 % would invent a measurement that reads as real in every later query.
 out = runJ(demoNdiV1(''));
+did2.unittest.helpers.dumpJ('testDemoUnsetValueIsOmittedNeverInvented', 'out', out);
 verifyEmpty(testCase, out.quarantine);
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the demoNDI fold emitted no document; every assertion below would be vacuous');
@@ -221,6 +227,7 @@ function testDemoRefusesAValueItCannotHold(testCase)
 % document has no schema and quarantines with missingClass anyway. Failing by
 % name at least puts the field and the shape in the quarantine reason.
 out = runJ(demoNdiV1('a string nobody declared'));
+did2.unittest.helpers.dumpJ('testDemoRefusesAValueItCannotHold', 'out', out);
 verifyEmpty(testCase, out.migrated);
 assertEqual(testCase, numel(out.quarantine), 1, ...
     'the unmappable value did not quarantine; the assertions below would be vacuous');
@@ -237,8 +244,10 @@ function testDemoRefusesAFieldItHasNoDestinationFor(testCase)
 % If NDI ever adds a field to demoNDI, this test is the thing that says so --
 % loudly, on the first document, instead of at a corpus census months later.
 v1 = demoNdiV1(5);
+did2.unittest.helpers.dumpJ('testDemoRefusesAFieldItHasNoDestinationFor', 'v1', v1);
 v1.demoNDI.somethingNew = 'x';
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testDemoRefusesAFieldItHasNoDestinationFor', 'out', out);
 verifyEmpty(testCase, out.migrated);
 assertEqual(testCase, numel(out.quarantine), 1, ...
     'the unknown field did not quarantine; the assertions below would be vacuous');
@@ -260,6 +269,7 @@ function testDemoFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 
 out = runJValidated(demoNdiV1(5));
+did2.unittest.helpers.dumpJ('testDemoFoldValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the demoNDI fold produced no validated document');
@@ -267,6 +277,7 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), 'demo');
 verifyFalse(testCase, out.migrated{1}.get('demo.is_mock'));
 
 out = runJValidated(demoNdiMockV1(10, 1));
+did2.unittest.helpers.dumpJ('testDemoFoldValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the demoNDIMock fold produced no validated document');

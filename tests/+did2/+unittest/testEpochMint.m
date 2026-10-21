@@ -132,9 +132,12 @@ end
 function testEpochGainsATimeReferencePerClock(testCase)
 out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
+did2.unittest.helpers.dumpJ('testEpochGainsATimeReferencePerClock', 'out', out);
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testEpochGainsATimeReferencePerClock', 'epochs', epochs);
 verifyEqual(testCase, numel(epochs), 1, 'one epoch for one epoch-id string');
 refs = ofClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testEpochGainsATimeReferencePerClock', 'refs', refs);
 verifyEqual(testCase, numel(refs), 1, 'one reference for the one clock');
 
 % THE EDGE DIRECTION IS THE DECISION, so it is asserted in both directions
@@ -167,7 +170,9 @@ function testTheInlineClocksBlockIsLeftInPlace(testCase)
 % block, THIS test is the one that should fail and be inverted deliberately.
 out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
+did2.unittest.helpers.dumpJ('testTheInlineClocksBlockIsLeftInPlace', 'out', out);
 ae = ofClass(out, 'acquisition_epoch');
+did2.unittest.helpers.dumpJ('testTheInlineClocksBlockIsLeftInPlace', 'ae', ae);
 verifyEqual(testCase, numel(ae), 1);
 clocks = ae{1}.get('acquisition_epoch.clocks');
 verifyEqual(testCase, numel(clocks), 1);
@@ -183,12 +188,14 @@ out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1'), ...
     elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2'), ...
     elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3')});
+did2.unittest.helpers.dumpJ('testManyDocumentsSharingOneEpochGiveOneReferencePerClock', 'out', out);
 verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1);
 verifyEqual(testCase, numel(ofClass(out, 'relative_time_reference')), 1, ...
     'three documents, one epoch, one clock -> ONE reference');
 [~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1'), ...
     elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2')});
+did2.unittest.helpers.dumpJ('testManyDocumentsSharingOneEpochGiveOneReferencePerClock', 'rep', rep);
 verifyEqual(testCase, rep.epoch_extent_sources_seen, 2, 'the DENOMINATOR');
 verifyEqual(testCase, rep.epoch_extent_references_emitted, 1);
 verifyEqual(testCase, rep.epoch_extent_duplicate_clock, 1, ...
@@ -203,9 +210,12 @@ function testTwoSourcesDisagreeingAboutOneClockAreCountedSeparately(testCase)
 % dropped, and the disagreement gets its own counter so it cannot hide inside
 % the benign one.
 a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+did2.unittest.helpers.dumpJ('testTwoSourcesDisagreeingAboutOneClockAreCountedSeparately', 'a', a);
 b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+did2.unittest.helpers.dumpJ('testTwoSourcesDisagreeingAboutOneClockAreCountedSeparately', 'b', b);
 b.element_epoch.t0_t1 = [0, 999.5];
 [~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b});
+did2.unittest.helpers.dumpJ('testTwoSourcesDisagreeingAboutOneClockAreCountedSeparately', 'rep', rep);
 verifyEqual(testCase, rep.epoch_extent_conflicting_clock, 1);
 verifyEqual(testCase, rep.epoch_extent_duplicate_clock, 0);
 verifyEqual(testCase, rep.epoch_extent_references_emitted, 1, ...
@@ -216,8 +226,11 @@ function testNoTimesMeansNoReference(testCase)
 % "NO TIMES => NO REFERENCE" -- a NaN-valued reference is a hollow document,
 % the exact thing silentLoss and isFragment exist to catch.
 v1 = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+did2.unittest.helpers.dumpJ('testNoTimesMeansNoReference', 'v1', v1);
 v1.element_epoch.epoch_clock = 'no_time';
 [out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), v1});
+did2.unittest.helpers.dumpJ('testNoTimesMeansNoReference', 'out', out);
+did2.unittest.helpers.dumpJ('testNoTimesMeansNoReference', 'rep', rep);
 verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
 verifyEqual(testCase, rep.epoch_extent_skipped_no_time, 1);
 verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, ...
@@ -231,10 +244,12 @@ function testAnEmptyBatchReportsVacuityRatherThanZeros(testCase)
 % `epoch_extent_*` zero is meaningless unless the denominator is non-zero, so
 % the vacuity flag is what distinguishes them.
 [~, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref')});
+did2.unittest.helpers.dumpJ('testAnEmptyBatchReportsVacuityRatherThanZeros', 'rep', rep);
 verifyTrue(testCase, rep.epoch_extent_vacuous);
 verifyEqual(testCase, rep.epoch_extent_sources_seen, 0);
 [~, rep2] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
+did2.unittest.helpers.dumpJ('testAnEmptyBatchReportsVacuityRatherThanZeros', 'rep2', rep2);
 verifyFalse(testCase, rep2.epoch_extent_vacuous);
 end
 
@@ -450,6 +465,8 @@ function testTheReportStatesItsDenominatorFirst(testCase)
 % never ran, so `ran` and `documents_inspected` exist before any document is
 % read and are asserted here on the smallest possible input.
 [out, rep] = mintFrom({sessionBody('sd_A', 'sess_A', 'ts_2008')});
+did2.unittest.helpers.dumpJ('testTheReportStatesItsDenominatorFirst', 'out', out);
+did2.unittest.helpers.dumpJ('testTheReportStatesItsDenominatorFirst', 'rep', rep);
 verifyTrue(testCase, rep.ran, 'the report must say it ran');
 verifyEqual(testCase, rep.documents_inspected, numel(out.migrated), ...
     'documents_inspected is the denominator and must equal what was handed in');
@@ -470,6 +487,8 @@ result.quarantine = struct('original_body', {}, 'class_name', {}, ...
 result.summary = struct('total', 0);
 [result, rep] = did2.convert.epochMint(result, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testAnEmptyBatchReportsRatherThanReturningSilently', 'result', result);
+did2.unittest.helpers.dumpJ('testAnEmptyBatchReportsRatherThanReturningSilently', 'rep', rep);
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyTrue(testCase, isfield(result, 'epoch_mint'), ...
@@ -483,9 +502,12 @@ function testANonEtaTargetIsUntouched(testCase)
 % tests the guard and not some other target's migration path.
 out = runJ({sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
             elementEpochBody('ee_0', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testANonEtaTargetIsUntouched', 'out', out);
 before = numel(out.migrated);
 [out, rep] = did2.convert.epochMint(out, ...
     'Validate', false, 'TargetVersion', 'V_delta');
+did2.unittest.helpers.dumpJ('testANonEtaTargetIsUntouched', 'out', out);
+did2.unittest.helpers.dumpJ('testANonEtaTargetIsUntouched', 'rep', rep);
 verifyFalse(testCase, rep.ran, 'a non-V_eta target must report that it did not run');
 verifyEqual(testCase, numel(out.migrated), before);
 end
@@ -501,9 +523,12 @@ function testOneEpochPerSessionEpochPair(testCase)
     sessionBody('sd_B', 'sess_B', 'ts_2009'), ...
     elementEpochBody('ee_1', 'sess_A', 't00070', 'el_1'), ...
     elementEpochBody('ee_2', 'sess_B', 't00070', 'el_2')});
+did2.unittest.helpers.dumpJ('testOneEpochPerSessionEpochPair', 'out', out);
+did2.unittest.helpers.dumpJ('testOneEpochPerSessionEpochPair', 'rep', rep);
 verifyEqual(testCase, rep.epochs_minted, 2, ...
     'one epoch-id string under two sessions is TWO epochs, never one');
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testOneEpochPerSessionEpochPair', 'epochs', epochs);
 verifyEqual(testCase, numel(epochs), 2);
 lids = sort(cellfun(@(d) char(d.get('entity.local_identifier')), epochs, ...
     'UniformOutput', false));
@@ -527,6 +552,7 @@ function testKeyingOnTheStringAloneWouldHaveFused(testCase)
     sessionBody('sd_B', 'sess_B', 'ts_2009'), ...
     elementEpochBody('ee_1', 'sess_A', 't00070', 'el_1'), ...
     elementEpochBody('ee_2', 'sess_B', 't00070', 'el_2')});
+did2.unittest.helpers.dumpJ('testKeyingOnTheStringAloneWouldHaveFused', 'rep', rep);
 verifyEqual(testCase, rep.distinct_epoch_id_strings, 1, ...
     'one distinct STRING');
 verifyEqual(testCase, rep.distinct_session_epoch_pairs, 2, ...
@@ -544,6 +570,8 @@ function testManyDocumentsOfOneEpochMintItOnce(testCase)
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1'), ...
     elementEpochBody('ee_2', 'sess_A', 't00069', 'el_2'), ...
     ingestedBody('efi_1', 'sess_A', 't00069', 'nav_1')});
+did2.unittest.helpers.dumpJ('testManyDocumentsOfOneEpochMintItOnce', 'out', out);
+did2.unittest.helpers.dumpJ('testManyDocumentsOfOneEpochMintItOnce', 'rep', rep);
 verifyEqual(testCase, rep.epochs_minted, 1);
 verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1);
 verifyEqual(testCase, rep.documents_with_epoch_id, 3, ...
@@ -559,9 +587,12 @@ function testTheIngestedManifestIsAKeySource(testCase)
 [out, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     ingestedBody('efi_1', 'sess_A', 't00070', 'nav_1')});
+did2.unittest.helpers.dumpJ('testTheIngestedManifestIsAKeySource', 'out', out);
+did2.unittest.helpers.dumpJ('testTheIngestedManifestIsAKeySource', 'rep', rep);
 verifyEqual(testCase, rep.documents_with_epoch_id, 1);
 verifyEqual(testCase, rep.epochs_minted, 1);
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testTheIngestedManifestIsAKeySource', 'epochs', epochs);
 verifyEqual(testCase, char(epochs{1}.get('entity.local_identifier')), 't00070');
 end
 
@@ -574,6 +605,8 @@ function testNoSessionDocumentMintsNothing(testCase)
 % empty) under the repair's own name. The refusal is the correct behaviour and
 % the COUNT is what makes it auditable.
 [out, rep] = mintFrom({elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testNoSessionDocumentMintsNothing', 'out', out);
+did2.unittest.helpers.dumpJ('testNoSessionDocumentMintsNothing', 'rep', rep);
 verifyEqual(testCase, rep.epochs_minted, 0);
 verifyEqual(testCase, rep.skipped_no_session_document, 1, ...
     'the refusal must be counted, not merely performed');
@@ -589,7 +622,9 @@ function testNoEpochEverCarriesAnEmptySessionEdge(testCase)
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1'), ...
     elementEpochBody('ee_2', 'sess_X', 't00071', 'el_2'), ...
     ingestedBody('efi_1', '',       't00072', 'nav_1')});
+did2.unittest.helpers.dumpJ('testNoEpochEverCarriesAnEmptySessionEdge', 'out', out);
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testNoEpochEverCarriesAnEmptySessionEdge', 'epochs', epochs);
 % THE DENOMINATOR, asserted before the property. "every epoch has a populated
 % session edge" is trivially true of zero epochs, and an empty pass is
 % indistinguishable from a real one in the output -- the failure
@@ -610,6 +645,7 @@ function testADocumentWithNoSessionIdIsRefusedAndCounted(testCase)
 [~, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     ingestedBody('efi_1', '', 't00072', 'nav_1')});
+did2.unittest.helpers.dumpJ('testADocumentWithNoSessionIdIsRefusedAndCounted', 'rep', rep);
 verifyEqual(testCase, rep.skipped_no_session_id, 1);
 verifyEqual(testCase, rep.epochs_minted, 0);
 end
@@ -624,6 +660,7 @@ function testTwoSessionDocumentsForOneSessionIdAreRefused(testCase)
     sessionBody('sd_A1', 'sess_A', 'ts_2008'), ...
     sessionBody('sd_A2', 'sess_A', 'ts_2008'), ...
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testTwoSessionDocumentsForOneSessionIdAreRefused', 'rep', rep);
 verifyEqual(testCase, rep.session_documents_seen, 2);
 verifyEqual(testCase, rep.skipped_ambiguous_session, 1);
 verifyEqual(testCase, rep.epochs_minted, 0);
@@ -642,6 +679,8 @@ function testTheSyntheticWholeSessionIdIsNotMinted(testCase)
 [out, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     oneEpochBody('oe_1', 'sess_A', 'ts_2008', 'el_1')});
+did2.unittest.helpers.dumpJ('testTheSyntheticWholeSessionIdIsNotMinted', 'out', out);
+did2.unittest.helpers.dumpJ('testTheSyntheticWholeSessionIdIsNotMinted', 'rep', rep);
 verifyEqual(testCase, rep.skipped_synthetic, 1);
 verifyEqual(testCase, rep.epochs_minted, 0);
 verifyEmpty(testCase, ofClass(out, 'epoch'));
@@ -654,6 +693,7 @@ function testARealEpochAlongsideASyntheticOneStillMints(testCase)
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     oneEpochBody('oe_1', 'sess_A', 'ts_2008', 'el_1'), ...
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_2')});
+did2.unittest.helpers.dumpJ('testARealEpochAlongsideASyntheticOneStillMints', 'rep', rep);
 verifyEqual(testCase, rep.skipped_synthetic, 1);
 verifyEqual(testCase, rep.epochs_minted, 1);
 end
@@ -669,16 +709,22 @@ function testRunningTwiceMintsNothingTheSecondTime(testCase)
 v1 = { sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
        elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1') };
 [out, rep1] = mintFrom(v1);
+did2.unittest.helpers.dumpJ('testRunningTwiceMintsNothingTheSecondTime', 'out', out);
+did2.unittest.helpers.dumpJ('testRunningTwiceMintsNothingTheSecondTime', 'rep1', rep1);
 verifyEqual(testCase, rep1.epochs_minted, 1);
 firstEpochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testRunningTwiceMintsNothingTheSecondTime', 'firstEpochs', firstEpochs);
 firstId = char(firstEpochs{1}.get('base.id'));
 
 [out2, rep2] = did2.convert.epochMint(out, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testRunningTwiceMintsNothingTheSecondTime', 'out2', out2);
+did2.unittest.helpers.dumpJ('testRunningTwiceMintsNothingTheSecondTime', 'rep2', rep2);
 verifyEqual(testCase, rep2.epochs_minted, 0, 'the second run must mint nothing');
 verifyEqual(testCase, rep2.epochs_found_existing, 1, ...
     'and must say it FOUND the epoch rather than that there was none');
 secondEpochs = ofClass(out2, 'epoch');
+did2.unittest.helpers.dumpJ('testRunningTwiceMintsNothingTheSecondTime', 'secondEpochs', secondEpochs);
 verifyEqual(testCase, numel(secondEpochs), 1);
 verifyEqual(testCase, char(secondEpochs{1}.get('base.id')), firstId, ...
     'the epoch id must be stable across runs -- everything else points at it');
@@ -694,6 +740,7 @@ function testTheEpochIndexIsTheSeamOtherPassesUse(testCase)
     sessionBody('sd_B', 'sess_B', 'ts_2009'), ...
     elementEpochBody('ee_1', 'sess_A', 't00070', 'el_1'), ...
     elementEpochBody('ee_2', 'sess_B', 't00070', 'el_2')});
+did2.unittest.helpers.dumpJ('testTheEpochIndexIsTheSeamOtherPassesUse', 'rep', rep);
 verifyEqual(testCase, numel(rep.epoch_index), 2);
 verifyEqual(testCase, sort({rep.epoch_index.session_id}), {'sess_A', 'sess_B'});
 for k = 1:numel(rep.epoch_index)
@@ -734,12 +781,16 @@ function testMethodParametersGetsItsEpochEdge(testCase)
 [out, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     extractionModificationBody('sepm_1', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testMethodParametersGetsItsEpochEdge', 'out', out);
+did2.unittest.helpers.dumpJ('testMethodParametersGetsItsEpochEdge', 'rep', rep);
 verifyEqual(testCase, rep.epochs_minted, 1);
 verifyEqual(testCase, rep.method_parameters_seen, 1);
 verifyEqual(testCase, rep.method_parameters_edges_filled, 1);
 mp = ofClass(out, 'method');
+did2.unittest.helpers.dumpJ('testMethodParametersGetsItsEpochEdge', 'mp', mp);
 verifyEqual(testCase, numel(mp), 1);
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testMethodParametersGetsItsEpochEdge', 'epochs', epochs);
 epochDocId = char(epochs{1}.get('base.id'));
 verifyEqual(testCase, depValue(mp{1}.toStruct(), 'epoch_id'), epochDocId, ...
     'the edge must point at the minted epoch, not at the v1 string');
@@ -752,7 +803,9 @@ function testTheParkedStringLeavesWhenTheEdgeArrives(testCase)
 out = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     extractionModificationBody('sepm_1', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testTheParkedStringLeavesWhenTheEdgeArrives', 'out', out);
 mp = ofClass(out, 'method');
+did2.unittest.helpers.dumpJ('testTheParkedStringLeavesWhenTheEdgeArrives', 'mp', mp);
 other = mp{1}.get('method_parameters.other');
 verifyFalse(testCase, isstruct(other) && isfield(other, 'epochid'), ...
     'the parked string must not survive alongside its edge');
@@ -764,10 +817,13 @@ function testAnUnresolvableEpochLeavesTheStringParked(testCase)
 % spikeextractor.m:388-391 does a live three-way lookup that includes it.
 [out, rep] = mintFrom({ ...
     extractionModificationBody('sepm_1', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testAnUnresolvableEpochLeavesTheStringParked', 'out', out);
+did2.unittest.helpers.dumpJ('testAnUnresolvableEpochLeavesTheStringParked', 'rep', rep);
 verifyEqual(testCase, rep.epochs_minted, 0);
 verifyEqual(testCase, rep.method_parameters_edges_filled, 0);
 verifyEqual(testCase, rep.method_parameters_unresolved, 1);
 mp = ofClass(out, 'method');
+did2.unittest.helpers.dumpJ('testAnUnresolvableEpochLeavesTheStringParked', 'mp', mp);
 s = mp{1}.toStruct();
 verifyFalse(testCase, hasDep(s, 'epoch_id'), ...
     'an edge that cannot be filled must not be declared empty');
@@ -788,12 +844,16 @@ out = did2.convert.v1_to_v2({ ...
         sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
         elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testMintedEpochValidatesAgainstItsSchema', 'out', out);
 [out, rep] = did2.convert.epochMint(out, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testMintedEpochValidatesAgainstItsSchema', 'out', out);
+did2.unittest.helpers.dumpJ('testMintedEpochValidatesAgainstItsSchema', 'rep', rep);
 verifyEqual(testCase, rep.mint_quarantined, 0, ...
     'a minted epoch that cannot validate is a build defect, not a data problem');
 verifyEqual(testCase, rep.epochs_minted, 1);
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testMintedEpochValidatesAgainstItsSchema', 'epochs', epochs);
 d = epochs{1};
 verifyEqual(testCase, char(d.get('entity.local_identifier')), 't00069');
 verifyEqual(testCase, depValue(d.toStruct(), 'session_id'), did2.unittest.helpers.sessionDocumentId('sd_A', 'sess_A'));
@@ -819,7 +879,9 @@ function testTheMintEmitsNoEdgeItCannotPopulate(testCase)
 [out, ~] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testTheMintEmitsNoEdgeItCannotPopulate', 'out', out);
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testTheMintEmitsNoEdgeItCannotPopulate', 'epochs', epochs);
 s = epochs{1}.toStruct();
 verifyFalse(testCase, hasDep(s, 'instrument_id'), ...
     'instrument_id needs the daq graph (#59) and must stay absent');
@@ -845,8 +907,10 @@ function testPassOneBehaviourIsUnchangedByTheMint(testCase)
 [out, ~] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testPassOneBehaviourIsUnchangedByTheMint', 'out', out);
 verifyTrue(testCase, any(strcmp(classNames(out), 'acquisition_epoch')));
 ae = ofClass(out, 'acquisition_epoch');
+did2.unittest.helpers.dumpJ('testPassOneBehaviourIsUnchangedByTheMint', 'ae', ae);
 verifyEqual(testCase, char(ae{1}.get('epochid.epochid')), 't00069', ...
     'the v1 handle stays until the 15-class rewire lands');
 verifyFalse(testCase, hasDep(ae{1}.toStruct(), 'epoch_id'), ...
@@ -920,6 +984,8 @@ function testTheMintArmsTheIngestedMetadataFold(testCase)
 [out, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+did2.unittest.helpers.dumpJ('testTheMintArmsTheIngestedMetadataFold', 'out', out);
+did2.unittest.helpers.dumpJ('testTheMintArmsTheIngestedMetadataFold', 'rep', rep);
 
 verifyEqual(testCase, rep.metadata_ingested_seen, 1, ...
     'the source document must be SEEN before any other count means anything');
@@ -931,6 +997,7 @@ verifyEqual(testCase, rep.metadata_ingested_folds_withheld, 0);
 verifyEqual(testCase, rep.metadata_refused_total, 0);
 
 folded = ofClass(out, 'acquisition_metadata_file');
+did2.unittest.helpers.dumpJ('testTheMintArmsTheIngestedMetadataFold', 'folded', folded);
 verifyNumElements(testCase, folded, 1, ...
     'the signed target is one acquisition_metadata_file per source document');
 verifyEmpty(testCase, ofClass(out, 'daqmetadatareader_epochdata_ingested'), ...
@@ -945,12 +1012,15 @@ function testTheFoldedFilePointsAtTheEpochThatWasMinted(testCase)
 [out, ~] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+did2.unittest.helpers.dumpJ('testTheFoldedFilePointsAtTheEpochThatWasMinted', 'out', out);
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testTheFoldedFilePointsAtTheEpochThatWasMinted', 'epochs', epochs);
 verifyNumElements(testCase, epochs, 1);
 epochDocId = char(epochs{1}.get('base.id'));
 verifyEqual(testCase, char(epochs{1}.get('entity.local_identifier')), 't00001');
 
 folded = ofClass(out, 'acquisition_metadata_file');
+did2.unittest.helpers.dumpJ('testTheFoldedFilePointsAtTheEpochThatWasMinted', 'folded', folded);
 s = folded{1}.toStruct();
 verifyEqual(testCase, depValue(s, 'epoch_id'), epochDocId, ...
     'epoch_id must be the minted epoch document, read back from the batch');
@@ -966,7 +1036,9 @@ function testTheFoldPreservesTheIdAndCarriesTheBytes(testCase)
 [out, ~] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+did2.unittest.helpers.dumpJ('testTheFoldPreservesTheIdAndCarriesTheBytes', 'out', out);
 folded = ofClass(out, 'acquisition_metadata_file');
+did2.unittest.helpers.dumpJ('testTheFoldPreservesTheIdAndCarriesTheBytes', 'folded', folded);
 verifyEqual(testCase, char(folded{1}.get('base.id')), 'amf_1', ...
     'base.id is preserved, so the migrated document stays traceable to its source');
 s = folded{1}.toStruct();
@@ -985,7 +1057,9 @@ function testTheEpochStringLeavesInTheSameStepTheEdgeArrives(testCase)
 [out, ~] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+did2.unittest.helpers.dumpJ('testTheEpochStringLeavesInTheSameStepTheEdgeArrives', 'out', out);
 s = ofClass(out, 'acquisition_metadata_file');
+did2.unittest.helpers.dumpJ('testTheEpochStringLeavesInTheSameStepTheEdgeArrives', 's', s);
 s = s{1}.toStruct();
 verifyTrue(testCase, hasDep(s, 'epoch_id'));
 verifyFalse(testCase, isfield(s, 'epochid'), ...
@@ -1006,13 +1080,17 @@ function testTwoSessionsReusingOneEpochStringFoldToDifferentEpochs(testCase)
     sessionBody('sd_B', 'sess_B', 'ts_2009'), ...
     metadataIngestedBody('amf_A', 'sess_A', 't00001', 'mdr_A', {'data.bin'}), ...
     metadataIngestedBody('amf_B', 'sess_B', 't00001', 'mdr_B', {'data.bin'})});
+did2.unittest.helpers.dumpJ('testTwoSessionsReusingOneEpochStringFoldToDifferentEpochs', 'out', out);
+did2.unittest.helpers.dumpJ('testTwoSessionsReusingOneEpochStringFoldToDifferentEpochs', 'rep', rep);
 verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 2);
 verifyEqual(testCase, rep.epochs_minted, 2, ...
     'one string, two sessions, two epochs -- the pair is the key');
 
 folded = ofClass(out, 'acquisition_metadata_file');
+did2.unittest.helpers.dumpJ('testTwoSessionsReusingOneEpochStringFoldToDifferentEpochs', 'folded', folded);
 verifyNumElements(testCase, folded, 2);
 edges = containers.Map('KeyType', 'char', 'ValueType', 'char');
+did2.unittest.helpers.dumpJ('testTwoSessionsReusingOneEpochStringFoldToDifferentEpochs', 'edges', edges);
 for k = 1:numel(folded)
     s = folded{k}.toStruct();
     edges(char(s.base.id)) = depValue(s, 'epoch_id');
@@ -1024,7 +1102,9 @@ verifyNotEqual(testCase, edges('amf_A'), edges('amf_B'), ...
 % ... and each at the epoch belonging to ITS OWN session. Inequality alone
 % would still pass if the two were simply swapped.
 epochOwner = containers.Map('KeyType', 'char', 'ValueType', 'char');
+did2.unittest.helpers.dumpJ('testTwoSessionsReusingOneEpochStringFoldToDifferentEpochs', 'epochOwner', epochOwner);
 epochs = ofClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testTwoSessionsReusingOneEpochStringFoldToDifferentEpochs', 'epochs', epochs);
 for k = 1:numel(epochs)
     e = epochs{k}.toStruct();
     epochOwner(char(e.base.id)) = depValue(e, 'session_id');
@@ -1042,6 +1122,8 @@ function testAnUnresolvableEpochLeavesTheDocumentAsItWas(testCase)
 % the target class cannot carry the string.
 [out, rep] = mintFrom({ ...
     metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})});
+did2.unittest.helpers.dumpJ('testAnUnresolvableEpochLeavesTheDocumentAsItWas', 'out', out);
+did2.unittest.helpers.dumpJ('testAnUnresolvableEpochLeavesTheDocumentAsItWas', 'rep', rep);
 verifyEqual(testCase, rep.metadata_ingested_seen, 1);
 verifyEqual(testCase, rep.metadata_refused_no_epoch_document, 1);
 verifyEqual(testCase, rep.metadata_refused_total, 1);
@@ -1051,6 +1133,7 @@ verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0);
 verifyEmpty(testCase, ofClass(out, 'acquisition_metadata_file'), ...
     'no epoch means no carrier -- refuse, do not emit an observation about nobody');
 kept = ofClass(out, 'daqmetadatareader_epochdata_ingested');
+did2.unittest.helpers.dumpJ('testAnUnresolvableEpochLeavesTheDocumentAsItWas', 'kept', kept);
 verifyNumElements(testCase, kept, 1, ...
     'the source document survives untouched under its restored tombstone');
 s = kept{1}.toStruct();
@@ -1070,7 +1153,9 @@ function testNoFoldedFileEverCarriesAnEmptyEpochEdge(testCase)
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     metadataIngestedBody('amf_ok',   'sess_A', 't00001', 'mdr_1', {'data.bin'}), ...
     metadataIngestedBody('amf_nosess', 'sess_Z', 't00002', 'mdr_2', {'data.bin'})});
+did2.unittest.helpers.dumpJ('testNoFoldedFileEverCarriesAnEmptyEpochEdge', 'out', out);
 folded = ofClass(out, 'acquisition_metadata_file');
+did2.unittest.helpers.dumpJ('testNoFoldedFileEverCarriesAnEmptyEpochEdge', 'folded', folded);
 verifyNumElements(testCase, folded, 1, ...
     'exactly the resolvable one folds; the other stays did_v1');
 for k = 1:numel(folded)
@@ -1092,6 +1177,8 @@ function testTheMigratorsOwnGuardsStillDecide(testCase)
 [out, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {})});
+did2.unittest.helpers.dumpJ('testTheMigratorsOwnGuardsStillDecide', 'out', out);
+did2.unittest.helpers.dumpJ('testTheMigratorsOwnGuardsStillDecide', 'rep', rep);
 verifyEqual(testCase, rep.metadata_ingested_seen, 1);
 verifyEqual(testCase, rep.metadata_ingested_edges_stamped, 1, ...
     'the epoch WAS resolvable -- the refusal came from the migrator, not from here');
@@ -1099,6 +1186,7 @@ verifyEqual(testCase, rep.metadata_refused_migrator_declined, 1);
 verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 0);
 verifyEmpty(testCase, ofClass(out, 'acquisition_metadata_file'));
 kept = ofClass(out, 'daqmetadatareader_epochdata_ingested');
+did2.unittest.helpers.dumpJ('testTheMigratorsOwnGuardsStillDecide', 'kept', kept);
 verifyNumElements(testCase, kept, 1);
 verifyFalse(testCase, hasDep(kept{1}.toStruct(), 'epoch_id'), ...
     'the stamped edge is discarded with the declined body, so a decline is a no-op');
@@ -1113,6 +1201,7 @@ function testTheFoldIsVacuousNotCleanWhenNoSourceIsPresent(testCase)
 [~, rep] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
+did2.unittest.helpers.dumpJ('testTheFoldIsVacuousNotCleanWhenNoSourceIsPresent', 'rep', rep);
 verifyTrue(testCase, rep.metadata_fold_vacuous, ...
     'no source documents: the zeros below are untested, not clean');
 verifyEqual(testCase, rep.metadata_ingested_seen, 0);
@@ -1132,11 +1221,15 @@ v1 = { ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})};
 [out, rep1] = mintFrom(v1);
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndSaysSo', 'out', out);
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndSaysSo', 'rep1', rep1);
 verifyEqual(testCase, rep1.metadata_ingested_folds_emitted, 1);
 verifyEqual(testCase, rep1.epochs_minted, 1);
 
 [out2, rep2] = did2.convert.epochMint(out, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndSaysSo', 'out2', out2);
+did2.unittest.helpers.dumpJ('testRunningTwiceFoldsOnceAndSaysSo', 'rep2', rep2);
 verifyEqual(testCase, rep2.metadata_ingested_already_folded, 1, ...
     'the second run must RECOGNISE the folded document, not ignore it');
 verifyEqual(testCase, rep2.metadata_ingested_seen, 0);
@@ -1171,8 +1264,11 @@ out = did2.convert.v1_to_v2({ ...
         sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
         metadataIngestedBody('amf_1', 'sess_A', 't00001', 'mdr_1', {'data.bin'})}, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheFoldedFileValidatesAgainstItsSchema', 'out', out);
 [out, rep] = did2.convert.epochMint(out, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheFoldedFileValidatesAgainstItsSchema', 'out', out);
+did2.unittest.helpers.dumpJ('testTheFoldedFileValidatesAgainstItsSchema', 'rep', rep);
 verifyEqual(testCase, rep.mint_quarantined, 0, ...
     'a folded document that cannot validate is a build defect, not a data problem');
 verifyEqual(testCase, rep.metadata_ingested_folds_emitted, 1);
@@ -1280,6 +1376,7 @@ function testTheArmingPathStatesItsDenominatorBeforeItsResult(testCase)
 % against it. On the production table this is the 1 -> 1 case and must be
 % EXACTLY what it was before the rebuild.
 [~, rep] = mintFrom(oneMetadataBatch());
+did2.unittest.helpers.dumpJ('testTheArmingPathStatesItsDenominatorBeforeItsResult', 'rep', rep);
 verifyFalse(testCase, rep.arming_vacuous, ...
     'a batch that armed a migrator is not a vacuous run');
 verifyEqual(testCase, rep.arming_calls, 1);
@@ -1300,6 +1397,7 @@ function testNoArmedMigratorAtAllIsVACUOUSNotZero(testCase)
 % so -- every arming zero below it is then a zero over a zero denominator.
 [~, rep] = mintFrom({ sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
                       elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1') });
+did2.unittest.helpers.dumpJ('testNoArmedMigratorAtAllIsVACUOUSNotZero', 'rep', rep);
 verifyTrue(testCase, rep.arming_vacuous);
 verifyEqual(testCase, rep.arming_calls, 0);
 verifyEqual(testCase, rep.arming_bodies_offered, 0);
@@ -1312,6 +1410,8 @@ function testAMigratorReturningThreeBodiesLandsAllThree(testCase)
 % anything else as a refusal, so two of these three would have been built,
 % and silently discarded.
 [out, rep] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(2));
+did2.unittest.helpers.dumpJ('testAMigratorReturningThreeBodiesLandsAllThree', 'out', out);
+did2.unittest.helpers.dumpJ('testAMigratorReturningThreeBodiesLandsAllThree', 'rep', rep);
 
 verifyEqual(testCase, rep.arming_calls, 1);
 verifyEqual(testCase, rep.arming_bodies_offered, 3, ...
@@ -1337,7 +1437,9 @@ function testTheMintedReferencesAreTheEmittersOwnAndKeepTheirIds(testCase)
 % built must be the bodies that landed, id for id, or the batch holds something
 % nobody minted.
 [out, ~] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(2));
+did2.unittest.helpers.dumpJ('testTheMintedReferencesAreTheEmittersOwnAndKeepTheirIds', 'out', out);
 landed = ofClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testTheMintedReferencesAreTheEmittersOwnAndKeepTheirIds', 'landed', landed);
 ids = sort(cellfun(@(d) char(d.get('base.id')), landed, 'UniformOutput', false));
 verifyNumElements(testCase, unique(ids), 2, ...
     'two distinct reference documents, not one document counted twice');
@@ -1354,7 +1456,11 @@ function testAddingOneMoreBodyAddsOneMoreDocument(testCase)
 % would not move with N. It is asked as a DIFFERENCE so no constant can satisfy
 % it.
 [outA, repA] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(1));
+did2.unittest.helpers.dumpJ('testAddingOneMoreBodyAddsOneMoreDocument', 'outA', outA);
+did2.unittest.helpers.dumpJ('testAddingOneMoreBodyAddsOneMoreDocument', 'repA', repA);
 [outB, repB] = mintWithArming(oneMetadataBatch(), foldPlusNReferences(3));
+did2.unittest.helpers.dumpJ('testAddingOneMoreBodyAddsOneMoreDocument', 'outB', outB);
+did2.unittest.helpers.dumpJ('testAddingOneMoreBodyAddsOneMoreDocument', 'repB', repB);
 verifyEqual(testCase, repA.arming_bodies_offered, 2);
 verifyEqual(testCase, repB.arming_bodies_offered, 4);
 verifyEqual(testCase, numel(outB.migrated) - numel(outA.migrated), 2, ...
@@ -1380,6 +1486,7 @@ for nExtras = [0 2]
         'every dropped body must be dropped for a NAMED reason');
 end
 [~, repBad] = mintWithArming(oneMetadataBatch(), @(b) reIdentifiedFold(b));
+did2.unittest.helpers.dumpJ('testDroppedEqualsOfferedMinusCarriedAndTheReasonsSumToIt', 'repBad', repBad);
 verifyEqual(testCase, repBad.arming_bodies_dropped, ...
     repBad.arming_bodies_offered - repBad.arming_bodies_carried);
 verifyEqual(testCase, repBad.arming_bodies_dropped, ...
@@ -1405,6 +1512,8 @@ function testAPrimaryThatDoesNotPreserveTheIdIsRefusedWHOLE(testCase)
 % that is not going to be carried, so carrying them would leave two documents
 % referenced by nothing.
 [out, rep] = mintWithArming(oneMetadataBatch(), @(b) reIdentifiedFold(b));
+did2.unittest.helpers.dumpJ('testAPrimaryThatDoesNotPreserveTheIdIsRefusedWHOLE', 'out', out);
+did2.unittest.helpers.dumpJ('testAPrimaryThatDoesNotPreserveTheIdIsRefusedWHOLE', 'rep', rep);
 verifyEqual(testCase, rep.arming_bodies_offered, 2);
 verifyEqual(testCase, rep.arming_bodies_carried, 0);
 verifyEqual(testCase, rep.arming_bodies_dropped_id_not_preserved, 2, ...
@@ -1422,6 +1531,7 @@ function testAMigratorThatDeclinesStillReportsItsBodies(testCase)
 % The declined body was still OFFERED. Counting only what is carried would make
 % the denominator move with the outcome, which is the defect Rule 5 names.
 [~, rep] = mintWithArming(oneMetadataBatch(), @(b) b);
+did2.unittest.helpers.dumpJ('testAMigratorThatDeclinesStillReportsItsBodies', 'rep', rep);
 verifyEqual(testCase, rep.arming_bodies_offered, 1);
 verifyEqual(testCase, rep.arming_bodies_carried, 0);
 verifyEqual(testCase, rep.arming_bodies_dropped_declined, 1);
@@ -1433,6 +1543,7 @@ function testAnArmingTableWithNoRowForTheClassIsAnError(testCase)
 % production migrator would let a test that thinks it is driving 1 -> N pass
 % while driving 1 -> 1 -- a green result from machinery that never ran.
 out = runJ(oneMetadataBatch());
+did2.unittest.helpers.dumpJ('testAnArmingTableWithNoRowForTheClassIsAnError', 'out', out);
 verifyError(testCase, @() did2.convert.epochMint(out, 'Validate', false, ...
         'TargetVersion', 'V_eta', 'ArmingMigrators', struct('something_else', @(b) b)), ...
     'did2:convert:epochMint:noArmingMigrator');
@@ -1458,9 +1569,12 @@ catch err
          err.message ').']);
 end
 out = runJ(oneMetadataBatch());
+did2.unittest.helpers.dumpJ('testAnExtraThatDoesNotSurviveTakesTHEWHOLECALLWithIt', 'out', out);
 [out, rep] = did2.convert.epochMint(out, 'Validate', true, ...
     'TargetVersion', 'V_eta', ...
     'ArmingMigrators', armingTable(@(b) foldPlusUnreferencedExtent(b)));
+did2.unittest.helpers.dumpJ('testAnExtraThatDoesNotSurviveTakesTHEWHOLECALLWithIt', 'out', out);
+did2.unittest.helpers.dumpJ('testAnExtraThatDoesNotSurviveTakesTHEWHOLECALLWithIt', 'rep', rep);
 
 verifyEqual(testCase, rep.arming_bodies_offered, 2);
 verifyEqual(testCase, rep.arming_bodies_carried, 0, ...
@@ -1495,6 +1609,7 @@ function testTheMintCarriesTheSchemaAuthoritysOwnCounters(testCase)
 % owners, so its own counters ride out with the report and
 % `arming_edge_declaration_unchecked` is readable against them.
 [~, rep] = mintFrom(oneMetadataBatch());
+did2.unittest.helpers.dumpJ('testTheMintCarriesTheSchemaAuthoritysOwnCounters', 'rep', rep);
 verifyTrue(testCase, isfield(rep, 'epoch_index_report'));
 verifyTrue(testCase, isfield(rep.epoch_index_report, 'schema_lookups_unavailable'));
 verifyTrue(testCase, isfield(rep.epoch_index_report, 'schema_lookups_failed'));
@@ -1507,6 +1622,7 @@ function testTheEdgeDeclarationCheckIsSkippedNotFAKEDWhenValidationIsOff(testCas
 % is counted UNCHECKED. A guard whose verdict depended on whether a schema path
 % happened to resolve would let a configuration difference change the DATA.
 [~, rep] = mintFrom(oneMetadataBatch());
+did2.unittest.helpers.dumpJ('testTheEdgeDeclarationCheckIsSkippedNotFAKEDWhenValidationIsOff', 'rep', rep);
 verifyEqual(testCase, rep.arming_edge_declaration_unchecked, 1, ...
     'the folded acquisition_metadata_file carries epoch_id and was not checked');
 verifyEqual(testCase, rep.arming_bodies_dropped_undeclared_edge, 0, ...

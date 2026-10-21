@@ -70,8 +70,11 @@ end
 
 function testAnEmptyBatchRanWithEveryCounterAtZero(testCase)
 r = emptyResult();
+did2.unittest.helpers.dumpJ('testAnEmptyBatchRanWithEveryCounterAtZero', 'r', r);
 [out, rep] = did2.convert.resolveOpenmindsCitations(r, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testAnEmptyBatchRanWithEveryCounterAtZero', 'out', out);
+did2.unittest.helpers.dumpJ('testAnEmptyBatchRanWithEveryCounterAtZero', 'rep', rep);
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, rep.openminds_documents_seen, 0);
@@ -85,8 +88,11 @@ function testItIsANoOpOnANonVEtaTarget(testCase)
 % that also run other targets. `ran` FALSE with every counter 0 is the
 % off-target reading, and it must not print the same as the empty-batch one.
 r = emptyResult();
+did2.unittest.helpers.dumpJ('testItIsANoOpOnANonVEtaTarget', 'r', r);
 [out, rep] = did2.convert.resolveOpenmindsCitations(r, ...
     'Validate', false, 'TargetVersion', 'V_delta');
+did2.unittest.helpers.dumpJ('testItIsANoOpOnANonVEtaTarget', 'out', out);
+did2.unittest.helpers.dumpJ('testItIsANoOpOnANonVEtaTarget', 'rep', rep);
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, out.migrated, {});
@@ -97,6 +103,7 @@ function testABatchWithNoOpenmindsDocumentsIsNotTheSameAsNotRunning(testCase)
 % last measurement. `ran` TRUE, a NON-ZERO documents_inspected, and zero
 % openminds documents: three facts that together say "looked, found none".
 [~, rep] = runPass(testCase, {ontologyLabelDoc('lbl_1', 'nothing_at_all')});
+did2.unittest.helpers.dumpJ('testABatchWithNoOpenmindsDocumentsIsNotTheSameAsNotRunning', 'rep', rep);
 verifyTrue(testCase, rep.ran);
 verifyGreaterThan(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, rep.openminds_documents_seen, 0);
@@ -110,6 +117,8 @@ function testTheCitationGraphBecomesTheSixEntityClasses(testCase)
 %TESTTHECITATIONGRAPHBECOMESTHESIXENTITYCLASSES One DatasetVersion graph in,
 %   the same six entity classes metadata_editor emits out, plus the edges.
 [out, rep] = runPass(testCase, citationGraph());
+did2.unittest.helpers.dumpJ('testTheCitationGraphBecomesTheSixEntityClasses', 'out', out);
+did2.unittest.helpers.dumpJ('testTheCitationGraphBecomesTheSixEntityClasses', 'rep', rep);
 
 verifyEqual(testCase, rep.openminds_documents_seen, 12, ...
     'the denominator: the fixture graph is twelve openminds documents');
@@ -147,6 +156,8 @@ function testIdsArePreservedOneToOne(testCase)
 %   the editor blob is not -- so `person` can be an id-preserving 1:1 fold,
 %   which metadata_editor cannot do (it mints a fresh id per author).
 [out, rep] = runPass(testCase, citationGraph());
+did2.unittest.helpers.dumpJ('testIdsArePreservedOneToOne', 'out', out);
+did2.unittest.helpers.dumpJ('testIdsArePreservedOneToOne', 'rep', rep);
 verifyEqual(testCase, rep.persons_id_preserved, 1, 'denominator');
 verifyEqual(testCase, idsOfClass(out, 'person'), {'om_person'});
 verifyEqual(testCase, idsOfClass(out, 'funding'), {'om_funding'});
@@ -166,9 +177,11 @@ function testTheDatasetEntityIsKeyedOnTheDatasetIdNotTheDocumentId(testCase)
 %   document's own id and resolveDatasetEntities could never dedup it against
 %   the `dataset_remote` / `session_in_a_dataset` stubs.
 [out, ~] = runPass(testCase, citationGraph());
+did2.unittest.helpers.dumpJ('testTheDatasetEntityIsKeyedOnTheDatasetIdNotTheDocumentId', 'out', out);
 verifyEqual(testCase, idsOfClass(out, 'dataset'), {'ds_01'}, ...
     'the dataset entity must carry the DATASET id, not `om_dsv`');
 b = bodyOfClass(out, 'dataset');
+did2.unittest.helpers.dumpJ('testTheDatasetEntityIsKeyedOnTheDatasetIdNotTheDocumentId', 'b', b);
 verifyEqual(testCase, b.dataset.full_name, 'A Real Dataset');
 verifyEqual(testCase, b.dataset.short_name, 'ARD');
 verifyEqual(testCase, b.dataset.version, '1.0.1');
@@ -186,14 +199,19 @@ function testTheRichEntityBeatsABareStubInTheDedupThatRunsNext(testCase)
 %   surviving entity's full_name.
 out = did2.convert.v1_to_v2([citationGraph(), {datasetRemoteDoc()}], ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheRichEntityBeatsABareStubInTheDedupThatRunsNext', 'out', out);
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 [out, rep] = did2.convert.resolveOpenmindsCitations(out, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheRichEntityBeatsABareStubInTheDedupThatRunsNext', 'out', out);
+did2.unittest.helpers.dumpJ('testTheRichEntityBeatsABareStubInTheDedupThatRunsNext', 'rep', rep);
 verifyEqual(testCase, rep.components_consumed, 1, 'denominator');
 out = did2.convert.resolveDatasetEntities(out, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheRichEntityBeatsABareStubInTheDedupThatRunsNext', 'out', out);
 verifyEqual(testCase, numel(classesOf(out, 'dataset')), 1);
 b = bodyOfClass(out, 'dataset');
+did2.unittest.helpers.dumpJ('testTheRichEntityBeatsABareStubInTheDedupThatRunsNext', 'b', b);
 verifyEqual(testCase, b.base.id, 'ds_01');
 verifyEqual(testCase, b.dataset.full_name, 'A Real Dataset', ...
     'the bare dataset_remote stub won the richness ranking');
@@ -212,7 +230,9 @@ function testThePublicationCarriesADoiAndNoTitle(testCase)
 %   (convertFormDataToDocuments.addDoiPrefix), so the stored identifier is
 %   `https://doi.org/10.x/y` while the editor path's DOI field is bare.
 [out, ~] = runPass(testCase, citationGraph());
+did2.unittest.helpers.dumpJ('testThePublicationCarriesADoiAndNoTitle', 'out', out);
 b = bodyOfClass(out, 'publication');
+did2.unittest.helpers.dumpJ('testThePublicationCarriesADoiAndNoTitle', 'b', b);
 verifyEqual(testCase, b.publication.title, '', ...
     'a title was invented for a graph that does not carry one');
 g = b.entity.global_identifier;
@@ -226,7 +246,9 @@ function testTheOrcidPrefixIsStrippedTheWayTheReaderStripsIt(testCase)
 % load_author_from_ndidocument does `identifier(19:end)` -- 18 characters of
 % `https://orcid.org/` -- because convertFormDataToDocuments added the prefix.
 [out, ~] = runPass(testCase, citationGraph());
+did2.unittest.helpers.dumpJ('testTheOrcidPrefixIsStrippedTheWayTheReaderStripsIt', 'out', out);
 b = bodyOfClass(out, 'person');
+did2.unittest.helpers.dumpJ('testTheOrcidPrefixIsStrippedTheWayTheReaderStripsIt', 'b', b);
 g = b.entity.global_identifier;
 verifyEqual(testCase, numel(g), 1);
 verifyEqual(testCase, g(1).scheme, 'ORCID');
@@ -244,16 +266,22 @@ function testFullDocumentationIsReadInBothOfItsTwoShapes(testCase)
 %   arms must work AND must be counted apart, because a single total would hide
 %   which shape occurred.
 [outA, repA] = runPass(testCase, citationGraph());          % WebResource / IRI
+did2.unittest.helpers.dumpJ('testFullDocumentationIsReadInBothOfItsTwoShapes', 'outA', outA);
+did2.unittest.helpers.dumpJ('testFullDocumentationIsReadInBothOfItsTwoShapes', 'repA', repA);
 verifyEqual(testCase, repA.web_resources_from_iri, 1);
 verifyEqual(testCase, repA.web_resources_from_doi, 0);
 gA = bodyOfClass(outA, 'web_resource').entity.global_identifier;
+did2.unittest.helpers.dumpJ('testFullDocumentationIsReadInBothOfItsTwoShapes', 'gA', gA);
 verifyEqual(testCase, gA(1).scheme, 'URL');
 verifyEqual(testCase, gA(1).value, 'https://example.org/docs');
 
 [outB, repB] = runPass(testCase, citationGraphDocumentedByDoi());
+did2.unittest.helpers.dumpJ('testFullDocumentationIsReadInBothOfItsTwoShapes', 'outB', outB);
+did2.unittest.helpers.dumpJ('testFullDocumentationIsReadInBothOfItsTwoShapes', 'repB', repB);
 verifyEqual(testCase, repB.web_resources_from_iri, 0);
 verifyEqual(testCase, repB.web_resources_from_doi, 1);
 gB = bodyOfClass(outB, 'web_resource').entity.global_identifier;
+did2.unittest.helpers.dumpJ('testFullDocumentationIsReadInBothOfItsTwoShapes', 'gB', gB);
 verifyEqual(testCase, gB(1).scheme, 'DOI');
 verifyEqual(testCase, gB(1).value, '10.5555/docs');
 end
@@ -270,10 +298,13 @@ function testTheSubjectBranchIsLeftExactlyWhereItWas(testCase)
 %   look like success in every other counter. So it asserts they are STILL
 %   THERE, by id, and that the citation half went anyway.
 [out, rep] = runPass(testCase, citationGraphWithSubject());
+did2.unittest.helpers.dumpJ('testTheSubjectBranchIsLeftExactlyWhereItWas', 'out', out);
+did2.unittest.helpers.dumpJ('testTheSubjectBranchIsLeftExactlyWhereItWas', 'rep', rep);
 verifyEqual(testCase, rep.components_consumed, 1, ...
     'the citation half must still be assembled');
 verifyEqual(testCase, rep.components_withheld, 0);
 survivors = idsOfClass(out, 'openminds');
+did2.unittest.helpers.dumpJ('testTheSubjectBranchIsLeftExactlyWhereItWas', 'survivors', survivors);
 verifyEqual(testCase, sort(survivors), {'om_species', 'om_subject'}, ...
     'the subject branch was consumed, or something else was left behind');
 end
@@ -291,6 +322,8 @@ function testTheOrphanGuardWithholdsTheWholeComponent(testCase)
 %   the component and the id.
 [out, rep] = runPass(testCase, ...
     [citationGraph(), {ontologyLabelDoc('lbl_1', 'om_person')}]);
+did2.unittest.helpers.dumpJ('testTheOrphanGuardWithholdsTheWholeComponent', 'out', out);
+did2.unittest.helpers.dumpJ('testTheOrphanGuardWithholdsTheWholeComponent', 'rep', rep);
 verifyEqual(testCase, rep.openminds_documents_seen, 12, 'denominator');
 verifyEqual(testCase, rep.components_planned, 1);
 verifyEqual(testCase, rep.components_withheld, 1);
@@ -315,11 +348,14 @@ function testEveryEdgeResolvesInBothOutcomes(testCase)
 %   withheld one must be orphan-free, because "safe" is not a property of one
 %   branch.
 consumed = runPass(testCase, citationGraph());
+did2.unittest.helpers.dumpJ('testEveryEdgeResolvesInBothOutcomes', 'consumed', consumed);
 withheld = runPass(testCase, ...
     [citationGraph(), {ontologyLabelDoc('lbl_1', 'om_person')}]);
+did2.unittest.helpers.dumpJ('testEveryEdgeResolvesInBothOutcomes', 'withheld', withheld);
 for r = {consumed, withheld}
     refRep = did2.validate.references(r{1}.migrated, ...
         'KnownIds', did2.unittest.helpers.sessionKnownIds(r{1}.migrated));
+did2.unittest.helpers.dumpJ('testEveryEdgeResolvesInBothOutcomes', 'refRep', refRep);
     verifyGreaterThan(testCase, refRep.edges_examined, 0, ...
         'zero edges examined would make the zero below meaningless');
     verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
@@ -336,6 +372,8 @@ function testAComponentWithNoDatasetVersionIsLeftAlone(testCase)
 %   `openminds_documents_seen` is the difference between "left alone by design"
 %   and "skipped by accident".
 [out, rep] = runPass(testCase, strainFragmentGraph());
+did2.unittest.helpers.dumpJ('testAComponentWithNoDatasetVersionIsLeftAlone', 'out', out);
+did2.unittest.helpers.dumpJ('testAComponentWithNoDatasetVersionIsLeftAlone', 'rep', rep);
 verifyEqual(testCase, rep.openminds_documents_seen, 2, 'denominator');
 verifyEqual(testCase, rep.openminds_components_seen, 1);
 verifyEqual(testCase, rep.components_without_dataset_version, 1);
@@ -371,6 +409,8 @@ function testEveryRootlessComponentIsCountedNotJustTheFirst(testCase)
 %   component that is never visited is a component whose documents nothing
 %   proves survived. So the count is asserted at 2 AND the survivors at 4.
 [out, rep] = runPass(testCase, twoRootlessComponents());
+did2.unittest.helpers.dumpJ('testEveryRootlessComponentIsCountedNotJustTheFirst', 'out', out);
+did2.unittest.helpers.dumpJ('testEveryRootlessComponentIsCountedNotJustTheFirst', 'rep', rep);
 verifyEqual(testCase, rep.openminds_documents_seen, 4, 'denominator');
 verifyEqual(testCase, rep.openminds_components_seen, 2);
 verifyEqual(testCase, rep.dataset_versions_seen, 0);
@@ -405,6 +445,8 @@ function testAStrainFamilyBesideACitationGraphIsNotEatenByIt(testCase)
 %   the real did2.validate.references over the result: if the strain pair were
 %   half-consumed, its `openminds_1` edge would dangle.
 [out, rep] = runPass(testCase, [citationGraph(), strainFragmentGraph()]);
+did2.unittest.helpers.dumpJ('testAStrainFamilyBesideACitationGraphIsNotEatenByIt', 'out', out);
+did2.unittest.helpers.dumpJ('testAStrainFamilyBesideACitationGraphIsNotEatenByIt', 'rep', rep);
 verifyEqual(testCase, rep.openminds_documents_seen, 14, 'denominator');
 verifyEqual(testCase, rep.openminds_components_seen, 2);
 verifyEqual(testCase, rep.dataset_versions_seen, 1);
@@ -420,6 +462,7 @@ verifyEqual(testCase, rep.documents_consumed, 12, ...
 verifyEqual(testCase, rep.documents_appended, 13);
 verifyEqual(testCase, rep.persons_emitted, 1);
 survivors = idsOfClass(out, 'openminds');
+did2.unittest.helpers.dumpJ('testAStrainFamilyBesideACitationGraphIsNotEatenByIt', 'survivors', survivors);
 verifyEqual(testCase, numel(survivors), 2, ...
     'the strain component did not survive intact');
 verifyTrue(testCase, any(strcmp(survivors, 'om_strain')), ...
@@ -428,6 +471,7 @@ verifyTrue(testCase, any(strcmp(survivors, 'om_ecoli')), ...
     'the Species fragment was consumed by the citation walk');
 refRep = did2.validate.references(out.migrated, ...
     'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
+did2.unittest.helpers.dumpJ('testAStrainFamilyBesideACitationGraphIsNotEatenByIt', 'refRep', refRep);
 verifyGreaterThan(testCase, refRep.edges_examined, 0, 'denominator');
 verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
     '%d orphan edge(s) of %d examined', refRep.orphan_count, ...
@@ -443,7 +487,9 @@ function testTheGuardedPassthroughCarriesTheBodyVerbatim(testCase)
 %   migrator that reshaped or renamed anything would break both.
 in = omDoc('om_person', 'openminds.core.actors.Person', ...
     'https://openminds.om-i.org/types/Person', personFields(), {});
+did2.unittest.helpers.dumpJ('testTheGuardedPassthroughCarriesTheBodyVerbatim', 'in', in);
 out = did2.convert.migrators_j.openminds(in);
+did2.unittest.helpers.dumpJ('testTheGuardedPassthroughCarriesTheBodyVerbatim', 'out', out);
 verifyTrue(testCase, iscell(out) && isscalar(out));
 verifyEqual(testCase, out{1}, in, 'the body was not carried verbatim');
 end
@@ -462,6 +508,7 @@ function testAnUnclassifiableOpenmindsBodyIsRefused(testCase)
 %   reason, not the outcome -- which is why this guard costs the 0-quarantine
 %   baseline nothing.
 b = omDoc('om_x', '', '', struct(), {});
+did2.unittest.helpers.dumpJ('testAnUnclassifiableOpenmindsBodyIsRefused', 'b', b);
 verifyError(testCase, @() did2.convert.migrators_j.openminds(b), ...
     'did2:convert:openmindsUnknownShape');
 end
@@ -476,7 +523,9 @@ function testAnUnrecognisedTypeIsCarriedRatherThanRefused(testCase)
 b = omDoc('om_t', 'openminds.controlledterms.SomeFutureTechnique', ...
     'https://openminds.om-i.org/types/SomeFutureTechnique', ...
     struct('name', 'a technique nobody has enumerated'), {});
+did2.unittest.helpers.dumpJ('testAnUnrecognisedTypeIsCarriedRatherThanRefused', 'b', b);
 out = did2.convert.migrators_j.openminds(b);
+did2.unittest.helpers.dumpJ('testAnUnrecognisedTypeIsCarriedRatherThanRefused', 'out', out);
 verifyEqual(testCase, out{1}, b);
 end
 
@@ -499,9 +548,12 @@ if isempty(getenv('DID_SCHEMA_PATH'))
 end
 out = did2.convert.v1_to_v2(citationGraph(), ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheEmittedDocumentsValidateAgainstTheRealVEtaSchema', 'out', out);
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 [out, rep] = did2.convert.resolveOpenmindsCitations(out, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheEmittedDocumentsValidateAgainstTheRealVEtaSchema', 'out', out);
+did2.unittest.helpers.dumpJ('testTheEmittedDocumentsValidateAgainstTheRealVEtaSchema', 'rep', rep);
 verifyEqual(testCase, rep.components_reverted_on_validation, 0, ...
     'a component reverted: an emitted body does not validate');
 verifyEqual(testCase, rep.bodies_quarantined, 0);
@@ -511,6 +563,7 @@ verifyEqual(testCase, rep.documents_appended, 13, ...
     '1 dataset + 1 person + 2 organizations + 1 funding + 1 publication + 1 web_resource + 6 relations');
 refRep = did2.validate.references(out.migrated, ...
     'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
+did2.unittest.helpers.dumpJ('testTheEmittedDocumentsValidateAgainstTheRealVEtaSchema', 'refRep', refRep);
 verifyGreaterThan(testCase, refRep.edges_examined, 0);
 verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
     '%d orphan edge(s) of %d examined', refRep.orphan_count, ...

@@ -94,8 +94,10 @@ function testExtracellularProbeBecomesVoltageObservationOfTheSpecimen(testCase)
 % The headline case. An n-trode probe (direct = 1) recording a specimen becomes a
 % voltage_observation OF THE SPECIMEN taken WITH the electrode.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testExtracellularProbeBecomesVoltageObservationOfTheSpecimen', 'out', out);
 
 obs = firstOfClass(out, 'voltage_observation');
+did2.unittest.helpers.dumpJ('testExtracellularProbeBecomesVoltageObservationOfTheSpecimen', 'obs', obs);
 verifyNotEmpty(testCase, obs, 'no voltage_observation was emitted for an n-trode');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'specimen_1');   % the SPECIMEN
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');      % the electrode (T7)
@@ -109,6 +111,7 @@ verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
 % timing: the shared session 'during' anchor (the epoch join is the second pass)
 verifyNotEmpty(testCase, depValue(obs, 'time_reference_1'));
 anchor = firstOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testExtracellularProbeBecomesVoltageObservationOfTheSpecimen', 'anchor', anchor);
 verifyNotEmpty(testCase, anchor);
 verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
 end
@@ -129,7 +132,9 @@ function testNoBodyIsEmittedBecauseTheElementCarriesNoBytes(testCase)
 % to `epochfiles_ingested` / `daqreader_*_epochdata_ingested`, different
 % documents with their own migrators.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testNoBodyIsEmittedBecauseTheElementCarriesNoBytes', 'out', out);
 obs = firstOfClass(out, 'voltage_observation');
+did2.unittest.helpers.dumpJ('testNoBodyIsEmittedBecauseTheElementCarriesNoBytes', 'obs', obs);
 verifyNotEmpty(testCase, obs, 'the observation itself must still be emitted');
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0, ...
     ['a sampled_body was emitted for an element, which carries no files -- ' ...
@@ -142,8 +147,11 @@ function testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId(testCas
 % Moving that id onto the observation would silently re-point all of them (the
 % 11,448-orphan shape). The observation is new, so nothing can dangle on it.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId', 'out', out);
 sub = firstOfClass(out, 'subject');
+did2.unittest.helpers.dumpJ('testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId', 'sub', sub);
 obs = firstOfClass(out, 'voltage_observation');
+did2.unittest.helpers.dumpJ('testTheElementIdStaysOnTheSubjectAndTheObservationMintsAFreshId', 'obs', obs);
 verifyEqual(testCase, sub.get('base.id'), 'el_1');
 verifyNotEqual(testCase, obs.get('base.id'), 'el_1');
 end
@@ -160,6 +168,7 @@ function testMultiChannelProbeIsOneObservationWithAChannelAxis(testCase)
 % The channel axis rides with the bytes, wherever they are described, which for
 % an element is not here.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testMultiChannelProbeIsOneObservationWithAChannelAxis', 'out', out);
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1, ...
     'a multi-site probe must not fan out into one observation per site');
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
@@ -180,11 +189,13 @@ function testUnderscoredElectrodeSpellingAlsoResolves(testCase)
 % +ndi/+database/+metadata_app/+fun/loadProbes.m:46 matches real data with
 % regexp 'electrode-\d'. All three reach the same row.
 out = runJ(elementDoc('ctx', 'extracellular_electrode-4', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testUnderscoredElectrodeSpellingAlsoResolves', 'out', out);
 % NARROWED 2026-08-14: the property under test is that all three spellings
 % RESOLVE to the voltage row. The channel-axis assertion rode on a body that is
 % no longer emitted; resolution is what this test is for.
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
 obs = firstOfClass(out, 'voltage_observation');
+did2.unittest.helpers.dumpJ('testUnderscoredElectrodeSpellingAlsoResolves', 'obs', obs);
 verifyEqual(testCase, obs.get('statement.variable').name, 'voltage');
 end
 
@@ -192,6 +203,7 @@ function testSingleChannelPipetteCarriesNoChannelAxis(testCase)
 % PROBE-TYPES.md: patch-Vm is "single channel, specifies voltage recording".
 % A single-channel body has no channel dimension to declare.
 out = runJ(elementDoc('Vm_a', 'patch-Vm', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testSingleChannelPipetteCarriesNoChannelAxis', 'out', out);
 % NARROWED 2026-08-14 for the same reason as the multichannel test: no body is
 % emitted, so there is no axes slot to assert about either way. What survives is
 % the cardinality -- a single-channel pipette is ONE observation.
@@ -204,9 +216,11 @@ end
 function testObservesRelationIsGoneForAMappedRecordingElement(testCase)
 % THE RETIREMENT. The instrument_id edge replaces it.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testObservesRelationIsGoneForAMappedRecordingElement', 'out', out);
 verifyFalse(testCase, hasRelation(out, 'observes'), ...
     'the loose `probe observes specimen` relation survived the instrument_id edge');
 obs = firstOfClass(out, 'voltage_observation');
+did2.unittest.helpers.dumpJ('testObservesRelationIsGoneForAMappedRecordingElement', 'obs', obs);
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
 end
 
@@ -222,6 +236,7 @@ function testDerivedElementKeepsItsDerivedFromLineage(testCase)
 % half of this test was and remains correct, which is why the test survives
 % under its own name.
 out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1'));
+did2.unittest.helpers.dumpJ('testDerivedElementKeepsItsDerivedFromLineage', 'out', out);
 verifyTrue(testCase, hasRelation(out, 'derived_from'));
 % Still no body: the element declares no files, exactly as for a direct probe.
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
@@ -242,8 +257,10 @@ function testDerivedSpikesBecomesATimeObservationOfTheNeuronItself(testCase)
 % different fact -- the neuron's own lineage -- and it is carried by the
 % element's `subject_id` edge, not by this document.
 out = runJ(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1'));
+did2.unittest.helpers.dumpJ('testDerivedSpikesBecomesATimeObservationOfTheNeuronItself', 'out', out);
 
 obs = firstOfClass(out, 'time_observation');
+did2.unittest.helpers.dumpJ('testDerivedSpikesBecomesATimeObservationOfTheNeuronItself', 'obs', obs);
 verifyNotEmpty(testCase, obs, 'no time_observation was emitted for a spikes element');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'el_1', ...
     'the spike train is an observation OF THE NEURON, whose id the element keeps');
@@ -255,6 +272,7 @@ verifyEqual(testCase, obs.get('statement.variable').name, 'spike');
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'reference');
 % and it is anchored, like every other observation this assembler emits
 anchor = firstOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testDerivedSpikesBecomesATimeObservationOfTheNeuronItself', 'anchor', anchor);
 verifyNotEmpty(testCase, anchor);
 verifyEqual(testCase, depValue(obs, 'time_reference_1'), anchor.get('base.id'));
 % NOT the unresolved path. `spikes` has a signature; it must never surface on
@@ -274,7 +292,9 @@ function testASpikesElementWithNoUnderlyingProbeOmitsTheInstrumentEdge(testCase)
 % `underlying_element_id` -- and that is why it is asserted here rather than
 % left to a corpus. The corpora are a sample.
 out = runJ(elementDoc('orphan_unit', 'spikes', 'ndi.neuron', 0, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testASpikesElementWithNoUnderlyingProbeOmitsTheInstrumentEdge', 'out', out);
 obs = firstOfClass(out, 'time_observation');
+did2.unittest.helpers.dumpJ('testASpikesElementWithNoUnderlyingProbeOmitsTheInstrumentEdge', 'obs', obs);
 verifyNotEmpty(testCase, obs, ...
     'a spikes element with no underlying probe emitted no observation at all');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'el_1');
@@ -289,6 +309,7 @@ function testPatchProducesAVoltageAndACurrentObservation(testCase)
 % quantities are two `variable`s, so two statements -- NOT one observation with a
 % 2-long channel axis, which would label a current trace 'voltage'.
 out = runJ(elementDoc('patch_a', 'patch', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testPatchProducesAVoltageAndACurrentObservation', 'out', out);
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 1);
 verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
 % was 2 -- one body per observation. No bodies are emitted now; the signed
@@ -297,7 +318,9 @@ verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 % both are OF the specimen and WITH the same instrument, and share one anchor
 volt = firstOfClass(out, 'voltage_observation');
+did2.unittest.helpers.dumpJ('testPatchProducesAVoltageAndACurrentObservation', 'volt', volt);
 curr = firstOfClass(out, 'current_observation');
+did2.unittest.helpers.dumpJ('testPatchProducesAVoltageAndACurrentObservation', 'curr', curr);
 verifyEqual(testCase, depValue(volt, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(curr, 'entity_id'), 'specimen_1');
 verifyEqual(testCase, depValue(volt, 'instrument_id'), 'el_1');
@@ -313,6 +336,7 @@ function testCurrentPipetteIsNotLabelledVoltage(testCase)
 % recording"; mapping it to voltage would be the fitcurve SSE/goodness-of-fit
 % polarity swap one tier over -- a tidy-looking rename that inverts the meaning.
 out = runJ(elementDoc('I_a', 'patch-I', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testCurrentPipetteIsNotLabelledVoltage', 'out', out);
 verifyEqual(testCase, countOfClass(out, 'current_observation'), 1);
 verifyEqual(testCase, countOfClass(out, 'voltage_observation'), 0);
 end
@@ -323,7 +347,9 @@ function testImagingProbeBecomesImageObservation(testCase)
 % PROBE-TYPES.md _Imaging_; probetype2object.json registers all four imaging
 % types to ndi.probe.image.
 out = runJ(elementDoc('camera', 'wide-field-imaging', 'ndi.probe.image', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testImagingProbeBecomesImageObservation', 'out', out);
 obs = firstOfClass(out, 'intensity_observation');
+did2.unittest.helpers.dumpJ('testImagingProbeBecomesImageObservation', 'obs', obs);
 verifyNotEmpty(testCase, obs);
 verifyEqual(testCase, obs.get('statement.variable').name, 'image');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
@@ -352,6 +378,7 @@ function testUnmappedTypeIsFlaggedQueryablyAndKeepsObserves(testCase)
 % observation over a bare self-describing sampled_body, per the signed text. See
 % the file header.
 out = runJ(elementDoc('spout', 'lick-spout', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testUnmappedTypeIsFlaggedQueryablyAndKeepsObserves', 'out', out);
 
 flag = assertionWithVariable(out, 'modality unresolved');
 verifyNotEmpty(testCase, flag, 'an unmapped element type produced no queryable flag');
@@ -367,6 +394,7 @@ function testAMappedTypeIsNotFlaggedUnresolved(testCase)
 % The flag has to mean something: a resolved type must not carry it, or the
 % worklist query returns every element and says nothing.
 out = runJ(elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testAMappedTypeIsNotFlaggedUnresolved', 'out', out);
 verifyEmpty(testCase, assertionWithVariable(out, 'modality unresolved'));
 end
 
@@ -380,7 +408,9 @@ types = {'n-trode', 'patch', 'patch-Vm', 'wide-field-imaging', 'thermometer', ..
          'lick-spout', 'ppg', 'reward-well', 'stimulator', 'event', '', 'madeup'};
 for t = 1:numel(types)
     out = runJ(elementDoc('e', types{t}, 'ndi.element', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testBannedClassNamesAreNeverMinted', 'out', out);
     names = classNames(out);
+did2.unittest.helpers.dumpJ('testBannedClassNamesAreNeverMinted', 'names', names);
     for b = 1:numel(banned)
         verifyFalse(testCase, any(strcmp(names, banned{b})), ...
             sprintf('type "%s" minted the banned class %s', types{t}, banned{b}));
@@ -394,6 +424,7 @@ function testElementWithNoTypeAtAllIsFlaggedNotDropped(testCase)
 % Guard A with the ndi_element_class as the best-known label -- never a silent
 % gap, and never a guessed modality.
 out = runJ(elementDoc('counter', '', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testElementWithNoTypeAtAllIsFlaggedNotDropped', 'out', out);
 flag = assertionWithVariable(out, 'modality unresolved');
 verifyNotEmpty(testCase, flag);
 verifyEqual(testCase, flag.get('term.value').name, 'ndi.probe.timeseries.mfdaq');
@@ -410,6 +441,7 @@ function testStimulatorElementEmitsNoObservationAndKeepsObserves(testCase)
 % `observes` is KEPT, because dropping a link with nothing in its place is loss,
 % not retirement.
 out = runJ(elementDoc('stim', 'stimulator', 'ndi.probe.timeseries.stimulator', 1, 'specimen_1', ''));
+did2.unittest.helpers.dumpJ('testStimulatorElementEmitsNoObservationAndKeepsObserves', 'out', out);
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 verifyTrue(testCase, hasRelation(out, 'observes'));
@@ -426,6 +458,7 @@ function testNoSpecimenMeansNoObservationAndNoEmptyRequiredEdge(testCase)
 % direct element with no subject_id emits nothing rather than an observation
 % about nobody.
 out = runJ(elementDoc('orphan_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, '', ''));
+did2.unittest.helpers.dumpJ('testNoSpecimenMeansNoObservationAndNoEmptyRequiredEdge', 'out', out);
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
 verifyEqual(testCase, countOfClass(out, 'subject'), 1);   % the element still migrates
@@ -444,7 +477,9 @@ function testExtracellularRecordingValidatesAgainstVEta(testCase)
 % `storage_mode: 'reference'` validates -- the run above quarantines nothing,
 % so the enum accepts it and the observation stands without a body.
 v1 = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
+did2.unittest.helpers.dumpJ('testExtracellularRecordingValidatesAgainstVEta', 'v1', v1);
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testExtracellularRecordingValidatesAgainstVEta', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));
@@ -461,7 +496,9 @@ function testTheSpikeTrainAlsoValidatesAgainstVEta(testCase)
 % is mustBeNonEmpty false, unlike the ten classes that are not -- which is what
 % lets the times live in the sorter's file rather than in the document.
 v1 = elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'specimen_1', 'probe_1');
+did2.unittest.helpers.dumpJ('testTheSpikeTrainAlsoValidatesAgainstVEta', 'v1', v1);
 out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheSpikeTrainAlsoValidatesAgainstVEta', 'out', out);
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('quarantined under validation: [%s] %s', ...
         out.quarantine(1).class_name, out.quarantine(1).reason));

@@ -159,6 +159,7 @@ function testReferenceBecomesLocalIdentifierWithIdPreserved(testCase)
 % 1 -> 1, id PRESERVED. Every fold in this project that changed a document id
 % created dangling references, so base.id is asserted before anything else.
 out = runJ(sessionV1('ts_2024'));
+did2.unittest.helpers.dumpJ('testReferenceBecomesLocalIdentifierWithIdPreserved', 'out', out);
 verifyEmpty(testCase, out.quarantine, reasonsOf(out));
 % ASSERT, not verify: everything below reads out.migrated{1}, and a verify on
 % the count would let an empty result set pass the rest vacuously.
@@ -182,6 +183,7 @@ function testOnTheEdgeShapeTheSessionIsReIdToItsSessionId(testCase)
 % migrated session takes the v1 base.session_id as its id and its own edge
 % points at itself. On the field shape base.id is preserved, as before.
 out = runJ(sessionV1('ts_2024'));
+did2.unittest.helpers.dumpJ('testOnTheEdgeShapeTheSessionIsReIdToItsSessionId', 'out', out);
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
 s = out.migrated{1}.toStruct();
 if did2.schema.cache.shared().sessionIdIsEdge()
@@ -189,6 +191,7 @@ if did2.schema.cache.shared().sessionIdIsEdge()
     verifyFalse(testCase, isfield(s.base, 'session_id'), ...
         'base.session_id survived beside the session_id edge');
     edges = s.depends_on(strcmp({s.depends_on.name}, 'session_id'));
+did2.unittest.helpers.dumpJ('testOnTheEdgeShapeTheSessionIsReIdToItsSessionId', 'edges', edges);
     assertEqual(testCase, numel(edges), 1, 'expected exactly one session_id edge');
     verifyEqual(testCase, did2.schema.cache.sessionIdOf(s), s.base.id, ...
         'the session entity must point at itself');
@@ -204,8 +207,10 @@ function testTheOldSpellingIsGoneNotMerelyShadowed(testCase)
 % read by anything still looking for it -- one slot spelled two ways is the
 % drift the rename exists to end.
 out = runJ(sessionV1('ts_2024'));
+did2.unittest.helpers.dumpJ('testTheOldSpellingIsGoneNotMerelyShadowed', 'out', out);
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
 blk = bodyBlock(out.migrated{1});
+did2.unittest.helpers.dumpJ('testTheOldSpellingIsGoneNotMerelyShadowed', 'blk', blk);
 verifyFalse(testCase, isfield(blk, 'reference'), ...
     'session.reference survived the rename alongside session.local_identifier');
 end
@@ -214,8 +219,10 @@ function testTheThreeVZetaInventionsAreRemoved(testCase)
 % Not "are absent" -- REMOVED. Fed in deliberately, because they are undeclared
 % on the post-rename schema and would quarantine the document if carried.
 out = runJ(sessionVZetaVintage('ts_2024'));
+did2.unittest.helpers.dumpJ('testTheThreeVZetaInventionsAreRemoved', 'out', out);
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
 blk = bodyBlock(out.migrated{1});
+did2.unittest.helpers.dumpJ('testTheThreeVZetaInventionsAreRemoved', 'blk', blk);
 for f = {'type', 'date', 'purpose'}
     verifyFalse(testCase, isfield(blk, f{1}), ...
         sprintf('session.%s survived; it is undeclared and will quarantine', f{1}));
@@ -228,6 +235,7 @@ function testTheRenamedDocumentValidates(testCase)
 % runs with Validate false.
 assumeVEtaSchemas(testCase);
 out = runJValidated(sessionVZetaVintage('ts_2024'));
+did2.unittest.helpers.dumpJ('testTheRenamedDocumentValidates', 'out', out);
 verifyEmpty(testCase, out.quarantine, reasonsOf(out));
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
 verifyEqual(testCase, out.migrated{1}.get('session.local_identifier'), 'ts_2024');
@@ -240,6 +248,7 @@ function testAnEmptyReferenceQuarantinesRatherThanBeingInvented(testCase)
 % So the correct behaviour is a loud quarantine, not a quiet substitution.
 assumeVEtaSchemas(testCase);
 out = runJValidated(sessionV1(''));
+did2.unittest.helpers.dumpJ('testAnEmptyReferenceQuarantinesRatherThanBeingInvented', 'out', out);
 verifyEmpty(testCase, out.migrated, ...
     'an empty session reference was migrated; nothing may invent a handle');
 assertNotEmpty(testCase, out.quarantine, ...
@@ -251,8 +260,10 @@ function testABodyWithNoSessionBlockPassesThroughUnchanged(testCase)
 % The migrator guards on the block's presence. A body reaching it without one
 % is not something to error on -- it is nothing to rewrite.
 v1 = sessionV1('ts_2024');
+did2.unittest.helpers.dumpJ('testABodyWithNoSessionBlockPassesThroughUnchanged', 'v1', v1);
 v1 = rmfield(v1, 'session');
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testABodyWithNoSessionBlockPassesThroughUnchanged', 'out', out);
 assertEqual(testCase, numel(out.migrated), 1, 'nothing emitted');
 verifyEqual(testCase, out.migrated{1}.get('base.id'), did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'sess_09'), ...
     'the block is not rewritten; on the edge shape the session is still re-id');

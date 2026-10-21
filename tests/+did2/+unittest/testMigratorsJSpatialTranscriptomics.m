@@ -59,9 +59,11 @@ function testPyramidEmitsPyramidAndAnchor(testCase)
 % legitimate anchor is a session_relative_reference with relation `during`
 % -- see the migrator header, open team question 1.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
+did2.unittest.helpers.dumpJ('testPyramidEmitsPyramidAndAnchor', 'out', out);
 verifyEqual(testCase, numel(out), 2, ...
     sprintf('expected 2 bodies (pyramid + anchor), got %d', numel(out)));
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testPyramidEmitsPyramidAndAnchor', 'names', names);
 verifyEqual(testCase, sum(strcmp(names, 'spatial_gene_expression_pyramid')), 1);
 verifyEqual(testCase, sum(strcmp(names, 'relative_time_reference')), 1);
 end
@@ -71,8 +73,11 @@ function testPyramidPreservesBaseId(testCase)
 % document depending on the pyramid uses base.id to reach it, so a rewritten
 % id would strand every dependent.
 v1 = pyramidV1();
+did2.unittest.helpers.dumpJ('testPyramidPreservesBaseId', 'v1', v1);
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(v1);
+did2.unittest.helpers.dumpJ('testPyramidPreservesBaseId', 'out', out);
 pyr = pick(out, 'spatial_gene_expression_pyramid');
+did2.unittest.helpers.dumpJ('testPyramidPreservesBaseId', 'pyr', pyr);
 verifyEqual(testCase, pyr.base.id, v1.base.id);
 end
 
@@ -81,7 +86,9 @@ function testPyramidCarriesSubjectIdFromV1DependsOn(testCase)
 % (per the Corrected Option C sign-off). The v1 body already carries a
 % subject_id dep; the migrator must NOT drop it and must NOT invent it.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
+did2.unittest.helpers.dumpJ('testPyramidCarriesSubjectIdFromV1DependsOn', 'out', out);
 pyr = pick(out, 'spatial_gene_expression_pyramid');
+did2.unittest.helpers.dumpJ('testPyramidCarriesSubjectIdFromV1DependsOn', 'pyr', pyr);
 verifyEqual(testCase, depValue(pyr, 'entity_id'), 'subj_stereoseq_1');
 end
 
@@ -91,7 +98,9 @@ function testPyramidBindsVariableToGeneExpression(testCase)
 % spatial_gene_expression_pyramid`, `variable.node: NCIT:C16608`,
 % `variable.name: gene expression`). The migrator writes exactly that.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
+did2.unittest.helpers.dumpJ('testPyramidBindsVariableToGeneExpression', 'out', out);
 pyr = pick(out, 'spatial_gene_expression_pyramid');
+did2.unittest.helpers.dumpJ('testPyramidBindsVariableToGeneExpression', 'pyr', pyr);
 verifyEqual(testCase, pyr.statement.variable.node, 'NCIT:C16608');
 verifyEqual(testCase, pyr.statement.variable.name, 'gene expression');
 end
@@ -100,8 +109,11 @@ function testPyramidCarriesTimeReferenceEdgeAtTheAnchor(testCase)
 % time_reference_1 REQUIRED (subject_interaction min_count 1) -- the edge
 % must point at the anchor body we emit alongside.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
+did2.unittest.helpers.dumpJ('testPyramidCarriesTimeReferenceEdgeAtTheAnchor', 'out', out);
 pyr = pick(out, 'spatial_gene_expression_pyramid');
+did2.unittest.helpers.dumpJ('testPyramidCarriesTimeReferenceEdgeAtTheAnchor', 'pyr', pyr);
 anchor = pick(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testPyramidCarriesTimeReferenceEdgeAtTheAnchor', 'anchor', anchor);
 verifyEqual(testCase, depValue(pyr, 'time_reference_1'), anchor.base.id);
 verifyEqual(testCase, anchor.session_relative_reference.relation, 'during');
 end
@@ -111,8 +123,11 @@ function testPyramidCarriesGeneListIdVerbatim(testCase)
 % survive intact -- the pyramid names the columns of its count space by
 % pointing here.
 v1 = pyramidV1();
+did2.unittest.helpers.dumpJ('testPyramidCarriesGeneListIdVerbatim', 'v1', v1);
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(v1);
+did2.unittest.helpers.dumpJ('testPyramidCarriesGeneListIdVerbatim', 'out', out);
 pyr = pick(out, 'spatial_gene_expression_pyramid');
+did2.unittest.helpers.dumpJ('testPyramidCarriesGeneListIdVerbatim', 'pyr', pyr);
 verifyEqual(testCase, depValue(pyr, 'gene_list_id'), 'gl_hg38_v1');
 end
 
@@ -122,8 +137,11 @@ function testPyramidBlockFieldsCarryVerbatim(testCase)
 % own property fields. Pyramid is a real document; its shape is not a
 % reshape.
 v1 = pyramidV1();
+did2.unittest.helpers.dumpJ('testPyramidBlockFieldsCarryVerbatim', 'v1', v1);
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(v1);
+did2.unittest.helpers.dumpJ('testPyramidBlockFieldsCarryVerbatim', 'out', out);
 pyr = pick(out, 'spatial_gene_expression_pyramid');
+did2.unittest.helpers.dumpJ('testPyramidBlockFieldsCarryVerbatim', 'pyr', pyr);
 b = pyr.spatial_gene_expression_pyramid;
 verifyEqual(testCase, b.chip_serial, 'SS200000123BL_A1');
 verifyEqual(testCase, b.pipeline_version, 'SAW v7.1.2');
@@ -140,7 +158,9 @@ function testPyramidCarriesGeneExpressionMixinFields(testCase)
 % ⊂ base shape mixin, not itself an observation. The pyramid inherits
 % from gene_expression so the block is on the same document.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
+did2.unittest.helpers.dumpJ('testPyramidCarriesGeneExpressionMixinFields', 'out', out);
 pyr = pick(out, 'spatial_gene_expression_pyramid');
+did2.unittest.helpers.dumpJ('testPyramidCarriesGeneExpressionMixinFields', 'pyr', pyr);
 verifyEqual(testCase, pyr.gene_expression.assay, 'Stereo-seq');
 verifyEqual(testCase, pyr.gene_expression.count_type, 'raw');
 verifyEqual(testCase, pyr.gene_expression.count_units, 'UMI');
@@ -155,7 +175,9 @@ function testPyramidMethodOmittedNotEmittedEmpty(testCase)
 % mustBeNonEmpty is false) and honest: the pyramid's method question is
 % still open. ASSERTED so a future flip is deliberate rather than silent.
 out = did2.convert.migrators_j.spatial_gene_expression_pyramid(pyramidV1());
+did2.unittest.helpers.dumpJ('testPyramidMethodOmittedNotEmittedEmpty', 'out', out);
 pyr = pick(out, 'spatial_gene_expression_pyramid');
+did2.unittest.helpers.dumpJ('testPyramidMethodOmittedNotEmittedEmpty', 'pyr', pyr);
 verifyFalse(testCase, isfield(pyr.subject_interaction, 'method'), ...
     ['subject_interaction.method must be OMITTED, not emitted empty -- ' ...
      'an empty {node,name} term ticks the did-schema #70 ratchet']);
@@ -169,7 +191,9 @@ function testCellsCarrySpatialGeneExpressionPyramidIdEdgeVerbatim(testCase)
 % true), and Cells's own subject_id is REQUIRED per the class schema. The
 % migrator is a passthrough; both edges survive intact.
 v1 = cellsV1();
+did2.unittest.helpers.dumpJ('testCellsCarrySpatialGeneExpressionPyramidIdEdgeVerbatim', 'v1', v1);
 out = did2.convert.migrators_j.spatial_gene_expression_cells(v1);
+did2.unittest.helpers.dumpJ('testCellsCarrySpatialGeneExpressionPyramidIdEdgeVerbatim', 'out', out);
 verifyEqual(testCase, numel(out), 1);
 verifyEqual(testCase, out{1}.base.id, v1.base.id);
 verifyEqual(testCase, ...
@@ -181,7 +205,9 @@ function testTilesCarryPyramidIdEdgeAndDoNotInventASubjectId(testCase)
 % Tiles's subject_id is OPTIONAL -- the pyramid dep carries the subject.
 % The passthrough must not mint one. Nor discard the pyramid edge.
 v1 = tilesV1();
+did2.unittest.helpers.dumpJ('testTilesCarryPyramidIdEdgeAndDoNotInventASubjectId', 'v1', v1);
 out = did2.convert.migrators_j.spatial_gene_expression_tiles(v1);
+did2.unittest.helpers.dumpJ('testTilesCarryPyramidIdEdgeAndDoNotInventASubjectId', 'out', out);
 verifyEqual(testCase, numel(out), 1);
 verifyEqual(testCase, out{1}.base.id, v1.base.id);
 verifyEqual(testCase, ...
@@ -196,7 +222,9 @@ function testCellTypeLabelsPreservesIsUnsupervised(testCase)
 % classifier's output; only this flag distinguishes them. Also: the
 % cells_document_id edge (mustBeNonEmpty: true) survives.
 v1 = cellTypeLabelsV1();
+did2.unittest.helpers.dumpJ('testCellTypeLabelsPreservesIsUnsupervised', 'v1', v1);
 out = did2.convert.migrators_j.cell_type_labels(v1);
+did2.unittest.helpers.dumpJ('testCellTypeLabelsPreservesIsUnsupervised', 'out', out);
 verifyEqual(testCase, numel(out), 1);
 verifyEqual(testCase, out{1}.base.id, v1.base.id);
 verifyEqual(testCase, ...
@@ -209,7 +237,9 @@ function testGeneListMappingPreservesMappingTypeAndSymmetric(testCase)
 % mapping_type and symmetric are LOAD-BEARING per the .md doc: alias vs
 % ortholog is not collapsible to a bare directed_relation.
 v1 = geneListMappingV1();
+did2.unittest.helpers.dumpJ('testGeneListMappingPreservesMappingTypeAndSymmetric', 'v1', v1);
 out = did2.convert.migrators_j.gene_list_mapping(v1);
+did2.unittest.helpers.dumpJ('testGeneListMappingPreservesMappingTypeAndSymmetric', 'out', out);
 verifyEqual(testCase, numel(out), 1);
 verifyEqual(testCase, out{1}.base.id, v1.base.id);
 verifyEqual(testCase, out{1}.gene_list_mapping.mapping_type, 'ortholog');
@@ -226,7 +256,9 @@ function testFileReferenceCarriesTheSnakeCasedFields(testCase)
 % through. This fixture uses the snake_case spellings the migrator is
 % handed on the real pipeline.
 v1 = fileReferenceV1();
+did2.unittest.helpers.dumpJ('testFileReferenceCarriesTheSnakeCasedFields', 'v1', v1);
 out = did2.convert.migrators_j.file_reference(v1);
+did2.unittest.helpers.dumpJ('testFileReferenceCarriesTheSnakeCasedFields', 'out', out);
 verifyEqual(testCase, numel(out), 1);
 verifyEqual(testCase, out{1}.base.id, v1.base.id);
 b = out{1}.file_reference;
@@ -248,6 +280,7 @@ function testFileReferenceIsNotFoldedToGenericFile(testCase)
 % DO NOT "FIX" THIS TEST BY DELETING IT. If the team rules the other way,
 % the class's own .md doc has to change first.
 out = did2.convert.migrators_j.file_reference(fileReferenceV1());
+did2.unittest.helpers.dumpJ('testFileReferenceIsNotFoldedToGenericFile', 'out', out);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out{1}), 'file_reference');
 end
 
@@ -255,7 +288,9 @@ function testGeneListPreservesReferenceTableFields(testCase)
 % gene_list is a reference table; the pyramid's gene_list_id points here,
 % so id preservation is what makes that edge resolve.
 v1 = geneListV1();
+did2.unittest.helpers.dumpJ('testGeneListPreservesReferenceTableFields', 'v1', v1);
 out = did2.convert.migrators_j.gene_list(v1);
+did2.unittest.helpers.dumpJ('testGeneListPreservesReferenceTableFields', 'out', out);
 verifyEqual(testCase, numel(out), 1);
 verifyEqual(testCase, out{1}.base.id, v1.base.id);
 verifyEqual(testCase, out{1}.gene_list.n_genes, 24793);
@@ -269,7 +304,9 @@ function testGeneExpressionMixinCarriesAssayAndCounts(testCase)
 % variable = NCIT:C16608. As a document on its own it exists too (v1
 % source shape), and it passes through.
 v1 = geneExpressionV1();
+did2.unittest.helpers.dumpJ('testGeneExpressionMixinCarriesAssayAndCounts', 'v1', v1);
 out = did2.convert.migrators_j.gene_expression(v1);
+did2.unittest.helpers.dumpJ('testGeneExpressionMixinCarriesAssayAndCounts', 'out', out);
 verifyEqual(testCase, numel(out), 1);
 verifyEqual(testCase, out{1}.base.id, v1.base.id);
 verifyEqual(testCase, out{1}.gene_expression.assay, 'Stereo-seq');

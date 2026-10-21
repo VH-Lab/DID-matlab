@@ -95,8 +95,11 @@ function testAnEmptyBatchRanWithEveryCounterAtZero(testCase)
 % "ran and found nothing" must be readable as such, and must NOT print the same
 % as "did not run" (the off-target case below).
 r = emptyResult();
+did2.unittest.helpers.dumpJ('testAnEmptyBatchRanWithEveryCounterAtZero', 'r', r);
 [out, rep] = did2.convert.resolveLawnPlateSubjects(r, ...
     'Validate', false, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testAnEmptyBatchRanWithEveryCounterAtZero', 'out', out);
+did2.unittest.helpers.dumpJ('testAnEmptyBatchRanWithEveryCounterAtZero', 'rep', rep);
 verifyTrue(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, rep.lawn_rows_seen, 0);
@@ -110,8 +113,11 @@ function testItIsANoOpOnANonVEtaTarget(testCase)
 % is wired into harnesses that also run V_delta. `ran` FALSE with every
 % counter 0 is the off-target reading, distinct from the empty-batch one above.
 r = emptyResult();
+did2.unittest.helpers.dumpJ('testItIsANoOpOnANonVEtaTarget', 'r', r);
 [out, rep] = did2.convert.resolveLawnPlateSubjects(r, ...
     'Validate', false, 'TargetVersion', 'V_delta');
+did2.unittest.helpers.dumpJ('testItIsANoOpOnANonVEtaTarget', 'out', out);
+did2.unittest.helpers.dumpJ('testItIsANoOpOnANonVEtaTarget', 'rep', rep);
 verifyFalse(testCase, rep.ran);
 verifyEqual(testCase, rep.documents_inspected, 0);
 verifyEqual(testCase, out.migrated, {});
@@ -124,6 +130,7 @@ function testNoEcoliTablesIsDistinctFromTablesPresentAndJoinsFailing(testCase)
 %
 %   A: a batch of ordinary documents with no lawn/plate table at all.
 [~, repA] = runPass(testCase, {celegansBehaviourPlateRow()});
+did2.unittest.helpers.dumpJ('testNoEcoliTablesIsDistinctFromTablesPresentAndJoinsFailing', 'repA', repA);
 verifyEqual(testCase, repA.ontology_table_rows_seen, 1, ...
     'the denominator: the row WAS inspected');
 verifyEqual(testCase, repA.lawn_rows_seen, 0);
@@ -136,6 +143,7 @@ verifyEqual(testCase, repA.unclassified_rows_in_those_sessions, 0, ...
 %   B: the tables ARE here, and the chain cannot complete because the plate row
 %   is missing. Same zero subjects; a completely different report.
 [~, repB] = runPass(testCase, {ecoliLawnRow(), ecoliImageRow()});
+did2.unittest.helpers.dumpJ('testNoEcoliTablesIsDistinctFromTablesPresentAndJoinsFailing', 'repB', repB);
 verifyEqual(testCase, repB.lawn_rows_seen, 1);
 verifyEqual(testCase, repB.image_rows_seen, 1);
 verifyEqual(testCase, repB.sessions_with_lawn_plate_tables, 1);
@@ -157,6 +165,8 @@ function testTheTwoTiersAndTheMemberOfEdge(testCase)
 %   produce. Both endpoints are resolved back to documents in the batch.
 [out, rep] = runPass(testCase, ...
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()});
+did2.unittest.helpers.dumpJ('testTheTwoTiersAndTheMemberOfEdge', 'out', out);
+did2.unittest.helpers.dumpJ('testTheTwoTiersAndTheMemberOfEdge', 'rep', rep);
 
 verifyEqual(testCase, rep.plate_rows_seen, 1);
 verifyEqual(testCase, rep.image_rows_seen, 1);
@@ -175,12 +185,15 @@ verifyEqual(testCase, rep.plate_observations_emitted, 4);
 verifyEqual(testCase, rep.lawn_observations_emitted, 8);
 
 rel = firstOfClass(testCase, out, 'directed_relation');
+did2.unittest.helpers.dumpJ('testTheTwoTiersAndTheMemberOfEdge', 'rel', rel);
 verifyEqual(testCase, rel.directed_relation.relation.name, 'member_of');
 verifyEqual(testCase, rel.directed_relation.relation.node, 'RO:0002350');
 
 % THE ASSERTION THAT MATTERS: both ends resolve, and to the RIGHT tiers.
 child  = documentById(out, depValue(rel, 'child_id'));
+did2.unittest.helpers.dumpJ('testTheTwoTiersAndTheMemberOfEdge', 'child', child);
 parent = documentById(out, depValue(rel, 'parent_id'));
+did2.unittest.helpers.dumpJ('testTheTwoTiersAndTheMemberOfEdge', 'parent', parent);
 verifyNotEmpty(testCase, child,  'the member end dangles -- a gating orphan');
 verifyNotEmpty(testCase, parent, 'the group end dangles -- a gating orphan');
 verifyEqual(testCase, child.subject.description,  'bacterial lawn (a bacterial patch)');
@@ -211,11 +224,15 @@ function testTheLawnIdentifierIsTheExperimentPlatePatchTriple(testCase)
 %   pins that the two-hop chain, not a guess, produced it.
 [out, rep] = runPass(testCase, ...
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()});
+did2.unittest.helpers.dumpJ('testTheLawnIdentifierIsTheExperimentPlatePatchTriple', 'out', out);
+did2.unittest.helpers.dumpJ('testTheLawnIdentifierIsTheExperimentPlatePatchTriple', 'rep', rep);
 verifyEqual(testCase, rep.lawn_subjects_minted, 1, 'denominator');
 lawn = subjectByDescription(testCase, out, 'bacterial lawn (a bacterial patch)');
+did2.unittest.helpers.dumpJ('testTheLawnIdentifierIsTheExperimentPlatePatchTriple', 'lawn', lawn);
 verifyEqual(testCase, lawn.subject.local_identifier, ...
     'exp/0007/plate/0061/patch/0003');
 plate = subjectByDescription(testCase, out, 'bacterial plate (a plate of lawns)');
+did2.unittest.helpers.dumpJ('testTheLawnIdentifierIsTheExperimentPlatePatchTriple', 'plate', plate);
 verifyEqual(testCase, plate.subject.local_identifier, 'exp/0007/plate/0061');
 verifyEqual(testCase, rep.local_identifier_collisions_within_batch, 0);
 verifyEqual(testCase, rep.local_identifier_fallback_to_document_id, 0);
@@ -230,8 +247,12 @@ function testALawnIsNotMintedWhenAComponentOfTheTripleCannotBeRead(testCase)
 %   Here the plate row exists but has lost its `expID` column, which is the ONLY
 %   component that is not on the patch or the image row.
 plate = ecoliPlateRow();
+did2.unittest.helpers.dumpJ('testALawnIsNotMintedWhenAComponentOfTheTripleCannotBeRead', 'plate', plate);
 plate = dropColumn(plate, 'ExperimentSessionIdentifier');
+did2.unittest.helpers.dumpJ('testALawnIsNotMintedWhenAComponentOfTheTripleCannotBeRead', 'plate', plate);
 [out, rep] = runPass(testCase, {plate, ecoliImageRow(), ecoliLawnRow()});
+did2.unittest.helpers.dumpJ('testALawnIsNotMintedWhenAComponentOfTheTripleCannotBeRead', 'out', out);
+did2.unittest.helpers.dumpJ('testALawnIsNotMintedWhenAComponentOfTheTripleCannotBeRead', 'rep', rep);
 verifyEqual(testCase, rep.chains_attempted, 1, 'denominator: the chain was tried');
 verifyEqual(testCase, rep.refused_lawn_no_exp_id, 1);
 verifyEqual(testCase, rep.lawn_subjects_minted, 0);
@@ -254,11 +275,15 @@ function testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsMemberOf(testCase
 %   chain still resolves through the plate ROW for expID), and the `member_of`
 %   is withheld because both ends must exist.
 plate = ecoliPlateRow();
+did2.unittest.helpers.dumpJ('testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsMemberOf', 'plate', plate);
 for name = {'BacterialOD600Measurement', 'BacterialOD600TargetAtSeeding', ...
         'BacterialColonyFormingUnitsCFUMeasurement', 'BacterialPatchVolume'}
     plate = dropColumn(plate, name{1});
+did2.unittest.helpers.dumpJ('testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsMemberOf', 'plate', plate);
 end
 [out, rep] = runPass(testCase, {plate, ecoliImageRow(), ecoliLawnRow()});
+did2.unittest.helpers.dumpJ('testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsMemberOf', 'out', out);
+did2.unittest.helpers.dumpJ('testAPlateWithNoMeasurementsMintsNoSubjectAndWithholdsMemberOf', 'rep', rep);
 verifyEqual(testCase, rep.plate_rows_seen, 1, 'denominator: the row was seen');
 verifyEqual(testCase, rep.plate_rows_with_measurements, 0);
 verifyEqual(testCase, rep.plate_rows_with_values_but_none_emittable, 1, ...
@@ -279,6 +304,7 @@ function testARowWithNoValuesAtAllIsCountedApartFromOneWithUntypableValues(testC
 %   states the team asked to keep distinct, asserted as two different counters
 %   on two different fixtures. Summing them is the failure this pins.
 bare = ecoliLawnRow();
+did2.unittest.helpers.dumpJ('testARowWithNoValuesAtAllIsCountedApartFromOneWithUntypableValues', 'bare', bare);
 for name = {'BacterialPatchRadius', 'BacterialPatchCircularity', ...
         'BacterialPatchBorderPeakFluorescenceIntensity', ...
         'BacterialPatchBorderEdgeFluorescenceIntensity', ...
@@ -287,8 +313,10 @@ for name = {'BacterialPatchRadius', 'BacterialPatchCircularity', ...
         'BacterialPatchCenterFluorescenceAmplitude', ...
         'BacterialPatchBorderToCenterFluorescenceRatio'}
     bare = dropColumn(bare, name{1});
+did2.unittest.helpers.dumpJ('testARowWithNoValuesAtAllIsCountedApartFromOneWithUntypableValues', 'bare', bare);
 end
 [~, repBare] = runPass(testCase, {ecoliPlateRow(), ecoliImageRow(), bare});
+did2.unittest.helpers.dumpJ('testARowWithNoValuesAtAllIsCountedApartFromOneWithUntypableValues', 'repBare', repBare);
 verifyEqual(testCase, repBare.lawn_rows_seen, 1, 'denominator');
 verifyEqual(testCase, repBare.lawn_rows_with_no_values_at_all, 1);
 verifyEqual(testCase, repBare.lawn_rows_with_values_but_none_emittable, 0);
@@ -304,7 +332,10 @@ verifyEqual(testCase, repBare.lawn_rows_with_values_but_none_emittable, 0);
 % real double; a logical there is the shape a writer bug would produce.
 flagged = addColumn(bare, 'BacterialPatchCircularity', ...
     'bacterial patch circularity', true);
+did2.unittest.helpers.dumpJ('testARowWithNoValuesAtAllIsCountedApartFromOneWithUntypableValues', 'flagged', flagged);
 [out, repFlag] = runPass(testCase, {ecoliPlateRow(), ecoliImageRow(), flagged});
+did2.unittest.helpers.dumpJ('testARowWithNoValuesAtAllIsCountedApartFromOneWithUntypableValues', 'out', out);
+did2.unittest.helpers.dumpJ('testARowWithNoValuesAtAllIsCountedApartFromOneWithUntypableValues', 'repFlag', repFlag);
 verifyEqual(testCase, repFlag.lawn_rows_seen, 1, 'denominator');
 verifyEqual(testCase, repFlag.lawn_rows_with_values_but_none_emittable, 1);
 verifyEqual(testCase, repFlag.lawn_rows_with_no_values_at_all, 0);
@@ -324,12 +355,16 @@ function testTheJoinNeverCrossesASessionBoundary(testCase)
 %   VALUE of the identifier rather than on a count: a count would be identical
 %   either way.
 otherPlate = ecoliPlateRow();
+did2.unittest.helpers.dumpJ('testTheJoinNeverCrossesASessionBoundary', 'otherPlate', otherPlate);
 otherPlate.base.id = 'otr_plate_other';
 otherPlate.base.session_id = 'sess_celegans';
 otherPlate = setColumn(otherPlate, 'ExperimentSessionIdentifier', '9999');
+did2.unittest.helpers.dumpJ('testTheJoinNeverCrossesASessionBoundary', 'otherPlate', otherPlate);
 
 [out, rep] = runPass(testCase, ...
     {otherPlate, ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()});
+did2.unittest.helpers.dumpJ('testTheJoinNeverCrossesASessionBoundary', 'out', out);
+did2.unittest.helpers.dumpJ('testTheJoinNeverCrossesASessionBoundary', 'rep', rep);
 verifyEqual(testCase, rep.plate_rows_seen, 2, 'denominator: both plates seen');
 % ASSERTED BEFORE THE HANDLE IS READ, deliberately. An unscoped index would put
 % both plates on the key '0061' and the chain would refuse as AMBIGUOUS -- which
@@ -340,6 +375,7 @@ verifyEqual(testCase, rep.refused_plate_row_ambiguous, 0);
 verifyEqual(testCase, rep.chains_resolved, 1);
 verifyEqual(testCase, rep.lawn_subjects_minted, 1);
 lawn = subjectByDescription(testCase, out, 'bacterial lawn (a bacterial patch)');
+did2.unittest.helpers.dumpJ('testTheJoinNeverCrossesASessionBoundary', 'lawn', lawn);
 verifyEqual(testCase, lawn.subject.local_identifier, ...
     'exp/0007/plate/0061/patch/0003', ...
     'the other session''s expID 9999 must not reach this lawn');
@@ -371,6 +407,7 @@ function testTheCollisionSplitReportsItsDenominatorsAndPartitionsExactly(testCas
 %   same.
 [~, rep] = runPass(testCase, ...
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()});
+did2.unittest.helpers.dumpJ('testTheCollisionSplitReportsItsDenominatorsAndPartitionsExactly', 'rep', rep);
 verifyEqual(testCase, rep.local_identifier_handles_formed, 2, ...
     'the denominator: one plate handle and one lawn handle were FORMED');
 verifyEqual(testCase, rep.local_identifier_handles_distinct, 2);
@@ -388,9 +425,11 @@ function testACollisionInsideOneSessionIsCountedAsWithinSession(testCase)
 %   ONE session: the same (experiment, plate, patch) triple twice, with nothing
 %   about sessions to explain it away.
 lawn2 = ecoliLawnRow();
+did2.unittest.helpers.dumpJ('testACollisionInsideOneSessionIsCountedAsWithinSession', 'lawn2', lawn2);
 lawn2.base.id = 'otr_ecoli_lawn_2';
 [~, rep] = runPass(testCase, ...
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow(), lawn2});
+did2.unittest.helpers.dumpJ('testACollisionInsideOneSessionIsCountedAsWithinSession', 'rep', rep);
 verifyEqual(testCase, rep.lawn_rows_seen, 2, 'denominator: both patch rows seen');
 verifyEqual(testCase, rep.chains_resolved, 2, 'denominator: both chains resolved');
 verifyEqual(testCase, rep.lawn_subjects_minted, 2);
@@ -419,6 +458,7 @@ function testACollisionOnlyBetweenSessionsIsNotCountedAsWithinSession(testCase)
     inSession(ecoliPlateRow(), 'sess_ecoli_2', '_b'), ...
     inSession(ecoliImageRow(), 'sess_ecoli_2', '_b'), ...
     inSession(ecoliLawnRow(),  'sess_ecoli_2', '_b')});
+did2.unittest.helpers.dumpJ('testACollisionOnlyBetweenSessionsIsNotCountedAsWithinSession', 'rep', rep);
 verifyEqual(testCase, rep.sessions_with_lawn_plate_tables, 2, 'denominator');
 verifyEqual(testCase, rep.chains_resolved, 2, 'denominator: both chains resolved');
 verifyEqual(testCase, rep.plate_subjects_minted, 2);
@@ -443,12 +483,14 @@ function testAHandleThatCollidesBothWaysSplitsAcrossBothBuckets(testCase)
 %   implementation that tagged each duplicated handle with a single verdict
 %   would report 3/0 or 0/3 here and pass both pure tests above.
 lawn2 = ecoliLawnRow();
+did2.unittest.helpers.dumpJ('testAHandleThatCollidesBothWaysSplitsAcrossBothBuckets', 'lawn2', lawn2);
 lawn2.base.id = 'otr_ecoli_lawn_2';
 [~, rep] = runPass(testCase, { ...
     ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow(), lawn2, ...
     inSession(ecoliPlateRow(), 'sess_ecoli_2', '_b'), ...
     inSession(ecoliImageRow(), 'sess_ecoli_2', '_b'), ...
     inSession(ecoliLawnRow(),  'sess_ecoli_2', '_b')});
+did2.unittest.helpers.dumpJ('testAHandleThatCollidesBothWaysSplitsAcrossBothBuckets', 'rep', rep);
 verifyEqual(testCase, rep.lawn_subjects_minted, 3, 'denominator');
 verifyEqual(testCase, rep.plate_subjects_minted, 2, 'denominator');
 verifyEqual(testCase, rep.local_identifier_handles_formed, 5);
@@ -472,10 +514,13 @@ function testTheUnclassifiableBucketIsAnUntestedZeroNotACleanOne(testCase)
 %   pass equally for a bucket that was never wired up -- the all-zeros-reads-as-
 %   clean failure this pass's canary exists for, one counter over.
 lawn = ecoliLawnRow();
+did2.unittest.helpers.dumpJ('testTheUnclassifiableBucketIsAnUntestedZeroNotACleanOne', 'lawn', lawn);
 lawn.base.session_id = '';
 plate = ecoliPlateRow();
+did2.unittest.helpers.dumpJ('testTheUnclassifiableBucketIsAnUntestedZeroNotACleanOne', 'plate', plate);
 plate.base.session_id = '';
 [~, rep] = runPass(testCase, {plate, ecoliImageRow(), lawn});
+did2.unittest.helpers.dumpJ('testTheUnclassifiableBucketIsAnUntestedZeroNotACleanOne', 'rep', rep);
 verifyEqual(testCase, rep.lawn_rows_with_measurements, 1, ...
     'denominator: the row was recognised and measured; only naming was refused');
 verifyEqual(testCase, rep.plate_rows_with_measurements, 1, 'denominator');
@@ -502,12 +547,15 @@ function testTheCelegansPatchSubjectIsRelabelledToTheTriple(testCase)
 %   plate row, which carries expID.
 [out, rep] = runPass(testCase, ...
     {celegansPatchGeometryRow(), celegansBehaviourPlateRow()});
+did2.unittest.helpers.dumpJ('testTheCelegansPatchSubjectIsRelabelledToTheTriple', 'out', out);
+did2.unittest.helpers.dumpJ('testTheCelegansPatchSubjectIsRelabelledToTheTriple', 'rep', rep);
 verifyEqual(testCase, rep.celegans_patch_subjects_seen, 1, 'denominator');
 verifyEqual(testCase, rep.celegans_patch_subjects_relabelled, 1);
 verifyEqual(testCase, rep.celegans_patch_subjects_refused_no_exp_id, 0);
 verifyEqual(testCase, rep.celegans_patch_subjects_unparseable_handle, 0);
 
 patch = subjectByDescription(testCase, out, 'bacterial patch');
+did2.unittest.helpers.dumpJ('testTheCelegansPatchSubjectIsRelabelledToTheTriple', 'patch', patch);
 verifyEqual(testCase, patch.subject.local_identifier, ...
     'exp/0001/plate/0017/patch/0017');
 % THE RELABEL IS THE SECOND SITE THAT FORMS A HANDLE, so it must reach the
@@ -529,10 +577,13 @@ function testTheCelegansPatchKeepsThePairWhenNoExperimentNumberExists(testCase)
 %   stands -- which still is not "just patch #" -- and the count says so rather
 %   than the report reading as if the upgrade had happened.
 [out, rep] = runPass(testCase, {celegansPatchGeometryRow()});
+did2.unittest.helpers.dumpJ('testTheCelegansPatchKeepsThePairWhenNoExperimentNumberExists', 'out', out);
+did2.unittest.helpers.dumpJ('testTheCelegansPatchKeepsThePairWhenNoExperimentNumberExists', 'rep', rep);
 verifyEqual(testCase, rep.celegans_patch_subjects_seen, 1, 'denominator');
 verifyEqual(testCase, rep.celegans_patch_subjects_relabelled, 0);
 verifyEqual(testCase, rep.celegans_patch_subjects_refused_no_exp_id, 1);
 patch = subjectByDescription(testCase, out, 'bacterial patch');
+did2.unittest.helpers.dumpJ('testTheCelegansPatchKeepsThePairWhenNoExperimentNumberExists', 'patch', patch);
 verifyEqual(testCase, patch.subject.local_identifier, 'plate/0017/patch/0017');
 end
 
@@ -555,6 +606,7 @@ nSubjects = 0;
 for b = 1:numel(batches)
     [out, ~] = runPass(testCase, batches{b});
     subs = subjectsOf(out);
+did2.unittest.helpers.dumpJ('testNoSubjectAnywhereIsLabelledJustAPatchNumber', 'subs', subs);
     for k = 1:numel(subs)
         nSubjects = nSubjects + 1;
         handle = subs{k}.subject.local_identifier;
@@ -582,8 +634,11 @@ function testTheSourceRowsAreLeftExactlyWhereTheyWere(testCase)
 %   partial measure enumeration safe.
 [out, rep] = runPass(testCase, ...
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()});
+did2.unittest.helpers.dumpJ('testTheSourceRowsAreLeftExactlyWhereTheyWere', 'out', out);
+did2.unittest.helpers.dumpJ('testTheSourceRowsAreLeftExactlyWhereTheyWere', 'rep', rep);
 verifyEqual(testCase, rep.source_rows_left_in_place, 3);
 rows = findClass(out, 'ontology_table_row');
+did2.unittest.helpers.dumpJ('testTheSourceRowsAreLeftExactlyWhereTheyWere', 'rows', rows);
 verifyEqual(testCase, numel(rows), 3, 'a source row was consumed');
 ids = sort(cellfun(@(b) b.base.id, rows, 'UniformOutput', false));
 verifyEqual(testCase, ids, {'otr_ecoli_image', 'otr_ecoli_lawn', 'otr_ecoli_plate'});
@@ -591,6 +646,7 @@ verifyEqual(testCase, ids, {'otr_ecoli_image', 'otr_ecoli_lawn', 'otr_ecoli_plat
 % still be on the row -- constraint 4 says do not mint a strain edge, and a
 % dropped column would be worse than an unminted one
 plateRow = documentById(out, 'otr_ecoli_plate');
+did2.unittest.helpers.dumpJ('testTheSourceRowsAreLeftExactlyWhereTheyWere', 'plateRow', plateRow);
 rowData = plateRow.ontology_table_row.data;
 verifyEqual(testCase, rowData.BacterialStrainDocumentIdentifier, 'strain_doc_1');
 % and nothing minted a strain edge anywhere
@@ -613,7 +669,9 @@ function testAColumnResolvesByTermNameWhenTheKeyIsUnrecognisable(testCase)
 %   reporting everything resolved by name would mean the shortName rule in the
 %   header is wrong, and that has to be visible rather than merely harmless.
 lawn = scrambleKeys(ecoliLawnRow());
+did2.unittest.helpers.dumpJ('testAColumnResolvesByTermNameWhenTheKeyIsUnrecognisable', 'lawn', lawn);
 [~, rep] = runPass(testCase, {ecoliPlateRow(), ecoliImageRow(), lawn});
+did2.unittest.helpers.dumpJ('testAColumnResolvesByTermNameWhenTheKeyIsUnrecognisable', 'rep', rep);
 verifyEqual(testCase, rep.lawn_rows_seen, 1, ...
     'the name channel did not classify the row');
 verifyEqual(testCase, rep.lawn_subjects_minted, 1);
@@ -628,10 +686,12 @@ function testAnUnrecognisedRowInALiveSessionIsCountedAsTheCanary(testCase)
 %   canary is what separates those: rows recognised in a session, beside rows in
 %   the SAME session that matched nothing.
 stray = celegansBehaviourPlateRow();
+did2.unittest.helpers.dumpJ('testAnUnrecognisedRowInALiveSessionIsCountedAsTheCanary', 'stray', stray);
 stray.base.id = 'otr_stray';
 stray.base.session_id = 'sess_ecoli';   % same session as the E. coli tables
 [~, rep] = runPass(testCase, ...
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow(), stray});
+did2.unittest.helpers.dumpJ('testAnUnrecognisedRowInALiveSessionIsCountedAsTheCanary', 'rep', rep);
 verifyEqual(testCase, rep.sessions_with_lawn_plate_tables, 1, 'denominator');
 verifyEqual(testCase, rep.unclassified_rows_in_those_sessions, 1);
 verifyEqual(testCase, rep.ontology_table_rows_seen, 4);
@@ -656,9 +716,12 @@ end
 out = did2.convert.v1_to_v2( ...
     {ecoliPlateRow(), ecoliImageRow(), ecoliLawnRow()}, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheMintedDocumentsValidateAgainstTheRealVEtaSchema', 'out', out);
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 [out, rep] = did2.convert.resolveLawnPlateSubjects(out, ...
     'Validate', true, 'TargetVersion', 'V_eta');
+did2.unittest.helpers.dumpJ('testTheMintedDocumentsValidateAgainstTheRealVEtaSchema', 'out', out);
+did2.unittest.helpers.dumpJ('testTheMintedDocumentsValidateAgainstTheRealVEtaSchema', 'rep', rep);
 verifyEqual(testCase, rep.subjects_quarantined, 0);
 verifyEqual(testCase, rep.statements_quarantined, 0);
 verifyEmpty(testCase, out.quarantine);
@@ -667,6 +730,7 @@ verifyEqual(testCase, rep.documents_appended, 15, ...
     '2 subjects + 12 observations + 1 member_of');
 % and the whole batch is reference-clean, which is the gate that actually runs
 refRep = did2.validate.references(out.migrated);
+did2.unittest.helpers.dumpJ('testTheMintedDocumentsValidateAgainstTheRealVEtaSchema', 'refRep', refRep);
 verifyEqual(testCase, refRep.orphan_count, 0, ...
     sprintf('%d orphan edge(s) of %d examined', refRep.orphan_count, ...
         refRep.edges_examined));

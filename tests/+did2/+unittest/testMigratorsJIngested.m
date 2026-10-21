@@ -281,6 +281,7 @@ function testMetadataIngestedPassesThroughWithoutAnEpochDocument(testCase)
 % must keep refusing on its own. See testEpochMint's ingested-metadata section
 % for the batch half.
 out = runJ(metadataIngestedV1());
+did2.unittest.helpers.dumpJ('testMetadataIngestedPassesThroughWithoutAnEpochDocument', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
@@ -296,6 +297,7 @@ end
 
 function testMetadataIngestedFoldsWhenTheEpochEdgeIsPresent(testCase)
 out = runJ(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testMetadataIngestedFoldsWhenTheEpochEdgeIsPresent', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
@@ -319,6 +321,7 @@ function testMetadataFoldDropsTheEpochidBlockForTheEdge(testCase)
 % lost -- it moves from the string to the edge, which is the whole reason the
 % fold is gated on the edge existing.
 out = runJ(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testMetadataFoldDropsTheEpochidBlockForTheEdge', 'out', out);
 s = out.migrated{1}.toStruct();
 verifyFalse(testCase, isfield(s, 'epochid'));
 verifyEqual(testCase, depVal(out.migrated{1}, 'epoch_id'), 'epoch_doc_1');
@@ -326,8 +329,10 @@ end
 
 function testMetadataIngestedWithNoReaderEdgePassesThrough(testCase)
 v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
+did2.unittest.helpers.dumpJ('testMetadataIngestedWithNoReaderEdgePassesThrough', 'v1', v1);
 v1.depends_on(1).value = '';          % daqmetadatareader_id emptied
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testMetadataIngestedWithNoReaderEdgePassesThrough', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'daqmetadatareader_epochdata_ingested');
@@ -338,8 +343,10 @@ function testMetadataIngestedWithNoBytesPassesThrough(testCase)
 % and unlike depends_on NOTHING skips an empty `file` -- so a byte-less carrier
 % would be a hollow document with no excuse.
 v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
+did2.unittest.helpers.dumpJ('testMetadataIngestedWithNoBytesPassesThrough', 'v1', v1);
 v1.files = struct('file_list', {{}});
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testMetadataIngestedWithNoBytesPassesThrough', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'daqmetadatareader_epochdata_ingested');
@@ -350,9 +357,11 @@ function testMetadataIngestedReadsTheFileSpellingNDIAlsoUses(testCase)
 % migrator's guard has to agree with the auditor or a real document could be
 % passed through for a reason the audit does not report.
 v1 = withEpochEdge(metadataIngestedV1(), 'epoch_doc_1');
+did2.unittest.helpers.dumpJ('testMetadataIngestedReadsTheFileSpellingNDIAlsoUses', 'v1', v1);
 v1 = rmfield(v1, 'files');
 v1.file = struct('file_list', {{'data.bin'}});
 out = runJ(v1);
+did2.unittest.helpers.dumpJ('testMetadataIngestedReadsTheFileSpellingNDIAlsoUses', 'out', out);
 verifyEqual(testCase, did2.unittest.helpers.leafName(out.migrated{1}), ...
     'acquisition_metadata_file');
 verifyEqual(testCase, out.migrated{1}.get('files.file_list'), {'data.bin'});
@@ -362,6 +371,7 @@ end
 
 function testReaderIngestedPassesThroughWithoutAnEpochDocument(testCase)
 out = runJ(readerIngestedV1({'dev_local_time'}, [0; 10]));
+did2.unittest.helpers.dumpJ('testReaderIngestedPassesThroughWithoutAnEpochDocument', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
@@ -374,10 +384,12 @@ end
 
 function testReaderIngestedLiftsOneClockToARelativeReference(testCase)
 out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0; 10]), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testReaderIngestedLiftsOneClockToARelativeReference', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
 
 refs = docsOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testReaderIngestedLiftsOneClockToARelativeReference', 'refs', refs);
 verifyEqual(testCase, numel(refs), 1);
 ref = refs{1};
 verifyEqual(testCase, depVal(ref, 'relative_to'), 'epoch_doc_1');
@@ -395,12 +407,14 @@ verifyEqual(testCase, depVal(ref, 'relative_to'), 'epoch_doc_1');
 verifyEqual(testCase, ref.get('relative_reference.value.clock.name'), 'dev_local_time');
 verifyEqual(testCase, ref.get('relative_reference.value.start.seconds'), 0);
 val = ref.get('relative_reference.value');
+did2.unittest.helpers.dumpJ('testReaderIngestedLiftsOneClockToARelativeReference', 'val', val);
 verifyFalse(testCase, isfield(val, 'end'));
 verifyEqual(testCase, val.duration.seconds, 10);
 verifyEqual(testCase, val.duration.source_unit, 's');
 % dev_local_time is the precise tier (within 0.1 ms). It states NO tolerance, so
 % no clock_tolerance is written -- absence, not a fabricated zero.
 tr = ref.get('time_reference');
+did2.unittest.helpers.dumpJ('testReaderIngestedLiftsOneClockToARelativeReference', 'tr', tr);
 verifyFalse(testCase, isfield(tr, 'clock_tolerance'));
 verifyEqual(testCase, ref.get('base.session_id'), 'sess_09');
 end
@@ -410,7 +424,9 @@ function testReaderIngestedSourceSurvivesTheLift(testCase)
 % archives -- has no target until #30, so retiring the document would drop the
 % only copy of an ingested session's data.
 out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0; 10]), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testReaderIngestedSourceSurvivesTheLift', 'out', out);
 src = docsOfClass(out, 'daqreader_epochdata_ingested');
+did2.unittest.helpers.dumpJ('testReaderIngestedSourceSurvivesTheLift', 'src', src);
 verifyEqual(testCase, numel(src), 1);
 verifyEqual(testCase, src{1}.get('base.id'), 'ing_1');
 verifyEqual(testCase, src{1}.get('epochid.epochid'), 't00001');
@@ -426,11 +442,14 @@ function testReaderIngestedLiftsEveryClockInTheCellArray(testCase)
 t0t1 = [0 100; 10 110];      % column 1 = [0 10], column 2 = [100 110]
 out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time', 'exp_global_time'}, t0t1), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testReaderIngestedLiftsEveryClockInTheCellArray', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 3);
 
 refs = docsOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testReaderIngestedLiftsEveryClockInTheCellArray', 'refs', refs);
 verifyEqual(testCase, numel(refs), 2);
 byClock = containers.Map();
+did2.unittest.helpers.dumpJ('testReaderIngestedLiftsEveryClockInTheCellArray', 'byClock', byClock);
 for k = 1:numel(refs)
     v = refs{k}.get('relative_reference.value');
     % INVERTED for #65 increment 2: the clock is an ontology_term cell, and the
@@ -448,7 +467,9 @@ function testReaderIngestedAcceptsTheDegenerateVectorT0T1(testCase)
 % to-json, from-json, to-json conversion problem"): with one clock the 2x1
 % column comes back as a bare 2-element vector.
 out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0 10]), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testReaderIngestedAcceptsTheDegenerateVectorT0T1', 'out', out);
 refs = docsOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testReaderIngestedAcceptsTheDegenerateVectorT0T1', 'refs', refs);
 verifyEqual(testCase, numel(refs), 1);
 val = refs{1}.get('relative_reference.value');
 verifyEqual(testCase, val.start.seconds, 0);
@@ -461,6 +482,7 @@ function testNoTimeClockEmitsNoReference(testCase)
 % +ndi/+daq/+reader/image.m:204-207 falls back to it for a clockless epoch and
 % migrators_i/image_stack.m:182 does the same.
 out = runJ(withEpochEdge(readerIngestedV1({'no_time'}, [0; 0]), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testNoTimeClockEmitsNoReference', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEmpty(testCase, docsOfClass(out, 'relative_time_reference'));
 verifyEqual(testCase, out.summary.unconverted_count, 1);
@@ -472,6 +494,7 @@ function testNaNIntervalEmitsNoReference(testCase)
 % document -- the exact thing silentLoss and isFragment exist to catch.
 out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time'}, [NaN; NaN]), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testNaNIntervalEmitsNoReference', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 verifyEmpty(testCase, docsOfClass(out, 'relative_time_reference'));
 end
@@ -482,7 +505,9 @@ function testMixedClocksDropOnlyTheUninterpretableOne(testCase)
 t0t1 = [0 0; 10 0];
 out = runJ(withEpochEdge( ...
     readerIngestedV1({'dev_local_time', 'no_time'}, t0t1), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testMixedClocksDropOnlyTheUninterpretableOne', 'out', out);
 refs = docsOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testMixedClocksDropOnlyTheUninterpretableOne', 'refs', refs);
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'dev_local_time');
 end
@@ -496,7 +521,9 @@ function testApproxClockDeEncodesToAClockToleranceNotABoolean(testCase)
 % the bare clock plus an explicit tolerance on the ROOT -- and the four-term
 % vocabulary has no `approx_utc` member for the clock term to have carried.
 out = runJ(withEpochEdge(readerIngestedV1({'approx_utc'}, [0; 10]), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testApproxClockDeEncodesToAClockToleranceNotABoolean', 'out', out);
 refs = docsOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testApproxClockDeEncodesToAClockToleranceNotABoolean', 'refs', refs);
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'utc');
 verifyEqual(testCase, refs{1}.get('time_reference.clock_tolerance.seconds'), 5);
@@ -510,7 +537,9 @@ function testReferenceOmitsRelationWhenItHasAMetric(testCase)
 % `relation` is the qualitative Allen relation used when there is NO metric
 % offset. Emitting both would assert the same fact twice, in two vocabularies.
 out = runJ(withEpochEdge(readerIngestedV1({'dev_local_time'}, [0; 10]), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testReferenceOmitsRelationWhenItHasAMetric', 'out', out);
 refs = docsOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testReferenceOmitsRelationWhenItHasAMetric', 'refs', refs);
 val = refs{1}.get('relative_reference.value');
 verifyFalse(testCase, isfield(val, 'relation'));
 end
@@ -522,7 +551,9 @@ function testMfdaqIngestedStillReturnsAStructWhileGuarded(testCase)
 % testMigratorsJ.m, which reads out.document_class.class_name off a struct. The
 % delegation must not change that on the guarded path.
 body = mfdaqIngestedV1();
+did2.unittest.helpers.dumpJ('testMfdaqIngestedStillReturnsAStructWhileGuarded', 'body', body);
 out = did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested(body);
+did2.unittest.helpers.dumpJ('testMfdaqIngestedStillReturnsAStructWhileGuarded', 'out', out);
 verifyTrue(testCase, isstruct(out));
 verifyTrue(testCase, isscalar(out));
 verifyEqual(testCase, did2.unittest.helpers.leafName(out), 'daqreader_epochdata_ingested');
@@ -537,13 +568,16 @@ function testMfdaqIngestedDelegatesTheEpochLift(testCase)
 % epochtable never became references, because v1_to_v2 looks the concrete
 % migrator up once, on the class the document ARRIVED with.
 out = runJ(withEpochEdge(mfdaqIngestedV1(), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testMfdaqIngestedDelegatesTheEpochLift', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 2);
 verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
 refs = docsOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testMfdaqIngestedDelegatesTheEpochLift', 'refs', refs);
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, refs{1}.get('relative_reference.value.clock.name'), 'dev_local_time');
 % the de-encode still happened
 src = docsOfClass(out, 'daqreader_epochdata_ingested');
+did2.unittest.helpers.dumpJ('testMfdaqIngestedDelegatesTheEpochLift', 'src', src);
 verifyEqual(testCase, ...
     src{1}.get('daqreader_epochdata_ingested.parameters.sample_analog_segment'), ...
     1000000);
@@ -569,6 +603,7 @@ end
 
 function testImageIngestedPassesThroughWithoutAnEpochDocument(testCase)
 out = runJ(imageIngestedV1());
+did2.unittest.helpers.dumpJ('testImageIngestedPassesThroughWithoutAnEpochDocument', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(doc), ...
@@ -582,8 +617,10 @@ function testImageIngestedLiftsTheInheritedEpochTable(testCase)
 % which the writer builds and passes as a separate property block
 % (+ndi/+daq/+reader/image.m:187-188, 216-219) -- not on the image header.
 out = runJ(withEpochEdge(imageIngestedV1(), 'epoch_doc_7'));
+did2.unittest.helpers.dumpJ('testImageIngestedLiftsTheInheritedEpochTable', 'out', out);
 verifyEqual(testCase, numel(out.migrated), 2);
 refs = docsOfClass(out, 'relative_time_reference');
+did2.unittest.helpers.dumpJ('testImageIngestedLiftsTheInheritedEpochTable', 'refs', refs);
 verifyEqual(testCase, numel(refs), 1);
 verifyEqual(testCase, depVal(refs{1}, 'relative_to'), 'epoch_doc_7');
 % INVERTED for #65 increment 2: `value.end` is gone, the extent is
@@ -602,7 +639,9 @@ function testImageIngestedEmitsNoSubjectlessObservation(testCase)
 % the image_stack husk, 4,563 JH documents, guarded three days ago at 5e53f79;
 % this asserts the same shape is not rebuilt one class over.
 out = runJ(withEpochEdge(imageIngestedV1(), 'epoch_doc_7'));
+did2.unittest.helpers.dumpJ('testImageIngestedEmitsNoSubjectlessObservation', 'out', out);
 names = classNames(out);
+did2.unittest.helpers.dumpJ('testImageIngestedEmitsNoSubjectlessObservation', 'names', names);
 verifyFalse(testCase, any(strcmp(names, 'intensity_observation')));
 verifyFalse(testCase, any(strcmp(names, 'sampled_body')));
 end
@@ -613,7 +652,9 @@ function testImageIngestedKeepsTheMetadataThatHasNoHome(testCase)
 % image_observation NOR sampled_body. Retiring the source would drop it
 % silently; the passthrough keeps it losslessly.
 out = runJ(withEpochEdge(imageIngestedV1(), 'epoch_doc_7'));
+did2.unittest.helpers.dumpJ('testImageIngestedKeepsTheMetadataThatHasNoHome', 'out', out);
 src = docsOfClass(out, 'daqreader_image_epochdata_ingested');
+did2.unittest.helpers.dumpJ('testImageIngestedKeepsTheMetadataThatHasNoHome', 'src', src);
 verifyEqual(testCase, numel(src), 1);
 md = src{1}.get('daqreader_image_epochdata_ingested.metadata');
 verifyTrue(testCase, isfield(md, 'israster'));
@@ -650,12 +691,14 @@ function testImageIngestedCarriesNoEdgeToASubjectOrElement(testCase)
 % daqsystem to MANY probes. If this test ever goes red, a source shape gained an
 % edge and the migrator header's blocker 1 is the thing to re-read first.
 out = runJ(imageIngestedV1());
+did2.unittest.helpers.dumpJ('testImageIngestedCarriesNoEdgeToASubjectOrElement', 'out', out);
 % ASSERT, not verify: everything below reads out.migrated{1}, and a verify on
 % the count would let an empty result set pass the rest vacuously.
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the passthrough emitted no document; every assertion below would be vacuous');
 doc = out.migrated{1};
 deps = did2.unittest.helpers.dropSessionEdge(doc.get('depends_on'));   % base's own edge is not the migrator's
+did2.unittest.helpers.dumpJ('testImageIngestedCarriesNoEdgeToASubjectOrElement', 'deps', deps);
 assertEqual(testCase, numel(deps), 1, ...
     'daqreader_image_epochdata_ingested acquired a second edge; see the migrator header');
 verifyEqual(testCase, char(deps(1).name), 'daqreader_id');
@@ -688,10 +731,12 @@ function testImageIngestedPassthroughKeepsEveryHeaderFieldWithNoDestination(test
 % every one of these seven fields survives only because the document is carried
 % whole -- which is what this asserts.
 out = runJ(imageIngestedV1());
+did2.unittest.helpers.dumpJ('testImageIngestedPassthroughKeepsEveryHeaderFieldWithNoDestination', 'out', out);
 assertEqual(testCase, numel(out.migrated), 1, ...
     'the passthrough emitted no document; every assertion below would be vacuous');
 doc = out.migrated{1};
 blk = doc.get('daqreader_image_epochdata_ingested');
+did2.unittest.helpers.dumpJ('testImageIngestedPassthroughKeepsEveryHeaderFieldWithNoDestination', 'blk', blk);
 headerFields = {'dimension_order', 'dimension_size', 'data_type', 'num_frames', ...
                 'frametimes', 'clocktype', 'metadata'};
 % the loop's iterable is a literal, and its length is pinned so it cannot shrink
@@ -738,6 +783,7 @@ function testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks(testCase)
 % events and this file must not report them as one.
 assumeVEtaSchemas(testCase);
 cache = did2.schema.cache.shared();
+did2.unittest.helpers.dumpJ('testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks', 'cache', cache);
 % assumeVEtaSchemas probes `acquisition_metadata_file` and `relative_reference`,
 % and BOTH are in schemas/V_eta/stable. The two classes this test is about are
 % in schemas/V_eta/DRAFT, and did2.schema.cache reads ONE non-recursive folder
@@ -759,16 +805,19 @@ end
 % stated as a set membership rather than a count: the assertion is about
 % subject_id specifically, and a count would pass on the wrong edge.
 obsRequired = cache.requiredDependencies('image_observation');
+did2.unittest.helpers.dumpJ('testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks', 'obsRequired', obsRequired);
 verifyTrue(testCase, any(strcmp(obsRequired, 'subject_id')), ...
     ['image_observation no longer requires subject_id; blocker 1 in ' ...
      '+migrators_j/daqreader_image_epochdata_ingested.m is the thing to re-read']);
 bodyRequired = cache.requiredDependencies('sampled_body');
+did2.unittest.helpers.dumpJ('testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks', 'bodyRequired', bodyRequired);
 verifyTrue(testCase, any(strcmp(bodyRequired, 'statement')), ...
     ['sampled_body no longer requires `statement`; both unemitted targets ' ...
      'hung off that one edge, which is why the fold was one fact away']);
 
 % -- and the destinations the header would land in DO exist ---------------
 stmtFields = fieldNamesOf(cache, 'subject_statement');
+did2.unittest.helpers.dumpJ('testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks', 'stmtFields', stmtFields);
 verifyTrue(testCase, ismember('datum_type', stmtFields), ...
     'subject_statement.datum_type is where revision 2 puts `data_type`');
 verifyTrue(testCase, ismember('axes', stmtFields), ...
@@ -778,9 +827,11 @@ verifyTrue(testCase, ismember('axes', stmtFields), ...
 % (+ndi/+daq/+reader/image.m:180, :196-202), so origin/spacing cannot hold it
 % and a `values` slot is the only landing place.
 axesDef = namedField(cache, 'sampled_body', 'axes');
+did2.unittest.helpers.dumpJ('testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks', 'axesDef', axesDef);
 assertNotEmpty(testCase, axesDef, ...
     'sampled_body declares no `axes`; every assertion below would be vacuous');
 axisSub = subFieldNames(axesDef);
+did2.unittest.helpers.dumpJ('testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks', 'axisSub', axisSub);
 verifyTrue(testCase, ismember('values', axisSub), ...
     'sampled_body.axes[].values is the only home for irregular frametimes');
 verifyTrue(testCase, ismember('regular', axisSub), ...
@@ -794,6 +845,7 @@ end
 function testMetadataFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testMetadataFoldValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, ...
     reasonsOf(out));
 verifyEqual(testCase, numel(out.migrated), 1);
@@ -808,6 +860,7 @@ function testMetadataPassthroughValidatesUnderVEta(testCase)
 % in quarantine once.
 assumeVEtaSchemas(testCase);
 out = runJValidated(metadataIngestedV1());
+did2.unittest.helpers.dumpJ('testMetadataPassthroughValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 end
 
@@ -815,6 +868,7 @@ function testReferenceLiftValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(withEpochEdge( ...
     readerIngestedV1({'dev_local_time'}, [0; 10]), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testReferenceLiftValidatesUnderVEta', 'out', out);
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
 verifyEqual(testCase, numel(docsOfClass(out, 'relative_time_reference')), 1);
 end
@@ -825,6 +879,7 @@ function testTheFoldLeavesNoEmptyRequiredEdgeAndNoFragment(testCase)
 % quarantine_count alone proves nothing.
 assumeVEtaSchemas(testCase);
 out = runJValidated(withEpochEdge(metadataIngestedV1(), 'epoch_doc_1'));
+did2.unittest.helpers.dumpJ('testTheFoldLeavesNoEmptyRequiredEdgeAndNoFragment', 'out', out);
 verifyEqual(testCase, out.silent_loss.empty_dependency_count, 0);
 verifyEqual(testCase, out.silent_loss.vacuous_field_count, 0);
 verifyEqual(testCase, out.summary.fragment_count, 0);

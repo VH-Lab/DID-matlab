@@ -61,12 +61,17 @@ function testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired(testCase)
 %   row 3  tet/3/n-trode/x   -> subjectstring 'x@lab' resolves to no subject:
 %                              REFUSED, no observation.
 subj = subjectBody('specimen_1', 'sess_1', 'L');
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'subj', subj);
 el   = elementBody('el_1', 'sess_1', 'tet', '1', 'n-trode', 1, 'specimen_1');
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'el', el);
 ing  = ingestedWithRows('ing_1', 'sess_1', 't00001', { ...
     {'tet', '1', 'n-trode', 'L'}, ...
     {'tet', '2', 'n-trode', 'L'}, ...
     {'tet', '3', 'n-trode', 'x@lab'}});
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'ing', ing);
 [out, rep] = decompose({sessionBody('sd_1', 'sess_1', 'ref'), subj, el, ing});
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'out', out);
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'rep', rep);
 
 % --- the report -----------------------------------------------------------
 verifyTrue(testCase, rep.ran);
@@ -105,6 +110,7 @@ verifyEqual(testCase, rep.probe_rows_total, ...
 
 % --- exactly two migrated_probemap_observation documents ------------------
 obs = bodiesNamed(out, 'migrated_probemap_observation');
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'obs', obs);
 verifyEqual(testCase, numel(obs), 2);
 
 % both are voltage_observations of the specimen, anchored to the same epoch
@@ -130,6 +136,7 @@ verifyEqual(testCase, numel(unique(anchorIds)), 1);
 
 % --- the shared anchor is an epoch-scoped 'during' relative_reference ------
 anchors = bodiesNamed(out, 'migrated_probemap_epoch_anchor');
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'anchors', anchors);
 verifyEqual(testCase, numel(anchors), 1);
 a = anchors{1};
 verifyEqual(testCase, char(did2.unittest.helpers.leafName(a)), 'relative_reference');
@@ -137,6 +144,7 @@ verifyEqual(testCase, a.base.id, anchorIds{1});
 verifyEqual(testCase, char(a.relative_reference.value.relation.name), 'intervalDuring');
 % its relative_to is the minted epoch document
 epochs = bodiesOfClass(out, 'epoch');
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'epochs', epochs);
 verifyEqual(testCase, numel(epochs), 1);
 verifyEqual(testCase, depVal(a, 'relative_to'), epochs{1}.base.id);
 
@@ -144,6 +152,7 @@ verifyEqual(testCase, depVal(a, 'relative_to'), epochs{1}.base.id);
 % element.m emits a voltage_observation (base.name migrated_recording_observation)
 % with instrument_id el_1; resolveEpochProbemap replaces it, so it is gone.
 recObs = bodiesNamed(out, 'migrated_recording_observation');
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'recObs', recObs);
 for i = 1:numel(recObs)
     verifyNotEqual(testCase, depVal(recObs{i}, 'instrument_id'), 'el_1');
 end
@@ -161,6 +170,7 @@ end
 % --- INCREMENT 3: the ingested document is now an ingestion_manifest --------
 verifyEqual(testCase, numel(bodiesOfClass(out, 'epochfiles_ingested')), 0);
 mani = bodiesOfClass(out, 'ingestion_manifest');
+did2.unittest.helpers.dumpJ('testTwoObservationsMintedOneRowRefusedAndTheHash30ObsRetired', 'mani', mani);
 verifyEqual(testCase, numel(mani), 1);
 m = mani{1};
 verifyEqual(testCase, m.base.id, 'ing_1');                    % id PRESERVED
@@ -185,10 +195,15 @@ function testAPatchElementRetiresBOTHClassesViaTheTripleKey(testCase)
 % voltage_observation supersedes the #30 voltage_observation and its
 % current_observation supersedes the #30 current_observation. BOTH retire.
 subj = subjectBody('specimen_2', 'sess_2', 'L');
+did2.unittest.helpers.dumpJ('testAPatchElementRetiresBOTHClassesViaTheTripleKey', 'subj', subj);
 el   = elementBody('el_2', 'sess_2', 'pat', '1', 'patch', 1, 'specimen_2');
+did2.unittest.helpers.dumpJ('testAPatchElementRetiresBOTHClassesViaTheTripleKey', 'el', el);
 ing  = ingestedWithRows('ing_2', 'sess_2', 't00002', { ...
     {'pat', '1', 'patch', 'L'}});
+did2.unittest.helpers.dumpJ('testAPatchElementRetiresBOTHClassesViaTheTripleKey', 'ing', ing);
 [out, rep] = decompose({sessionBody('sd_2', 'sess_2', 'ref'), subj, el, ing});
+did2.unittest.helpers.dumpJ('testAPatchElementRetiresBOTHClassesViaTheTripleKey', 'out', out);
+did2.unittest.helpers.dumpJ('testAPatchElementRetiresBOTHClassesViaTheTripleKey', 'rep', rep);
 
 % one patch row -> two observations (voltage + current)
 verifyEqual(testCase, rep.observations_emitted, 2);
@@ -197,6 +212,7 @@ verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
 verifyEqual(testCase, rep.retire_no_match, 0);
 % both #30 observations for el_2 are RETIRED
 recObs = bodiesNamed(out, 'migrated_recording_observation');
+did2.unittest.helpers.dumpJ('testAPatchElementRetiresBOTHClassesViaTheTripleKey', 'recObs', recObs);
 verifyEqual(testCase, numel(recObs), 0);
 end
 
@@ -212,11 +228,17 @@ function testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording(testCase)
 % (subject, instrument, class) triple matches only the probe's OWN direct
 % recording (subject = the specimen), leaving the neuron's spike train intact.
 subj = subjectBody('specimen_sp', 'sess_sp', 'L');
+did2.unittest.helpers.dumpJ('testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording', 'subj', subj);
 elP  = elementBody('el_probe', 'sess_sp', 'tet', '1', 'n-trode', 1, 'specimen_sp');
+did2.unittest.helpers.dumpJ('testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording', 'elP', elP);
 elN  = derivedElementBody('el_neuron', 'sess_sp', 'n1', 'spikes', 'el_probe');
+did2.unittest.helpers.dumpJ('testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording', 'elN', elN);
 ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', { ...
     {'tet', '1', 'n-trode', 'L'}});
+did2.unittest.helpers.dumpJ('testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording', 'ing', ing);
 [out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ing});
+did2.unittest.helpers.dumpJ('testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording', 'out', out);
+did2.unittest.helpers.dumpJ('testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording', 'rep', rep);
 
 verifyEqual(testCase, rep.observations_emitted, 1);       % one probemap voltage obs
 verifyEqual(testCase, rep.session30_observations_retired, 1);
@@ -224,6 +246,7 @@ verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
 % the probe's OWN direct recording (subject specimen_sp) is gone; the neuron's
 % spike-train observation (subject el_neuron, instrument el_probe) SURVIVES.
 recObs = bodiesNamed(out, 'migrated_recording_observation');
+did2.unittest.helpers.dumpJ('testASpikeSortedProbeRetiresOnlyItsOwnDirectRecording', 'recObs', recObs);
 verifyEqual(testCase, numel(recObs), 1);
 verifyEqual(testCase, depVal(recObs{1}, 'subject_id'), 'el_neuron');
 verifyEqual(testCase, depVal(recObs{1}, 'instrument_id'), 'el_probe');
@@ -235,10 +258,14 @@ function testAnUnresolvableSubjectstringEmitsNoObservation(testCase)
 % subject_id is the ONE required edge; a row whose subjectstring matches no
 % subject document emits NOTHING (never an empty required edge) and is counted.
 el  = elementBody('el_3', 'sess_3', 'tet', '1', 'n-trode', 1, 'specimen_3');
+did2.unittest.helpers.dumpJ('testAnUnresolvableSubjectstringEmitsNoObservation', 'el', el);
 ing = ingestedWithRows('ing_3', 'sess_3', 't00003', { ...
     {'tet', '1', 'n-trode', 'nobody@lab'}});
+did2.unittest.helpers.dumpJ('testAnUnresolvableSubjectstringEmitsNoObservation', 'ing', ing);
 % NB: no subject document for specimen_3's local id, so the row cannot resolve.
 [out, rep] = decompose({sessionBody('sd_3', 'sess_3', 'ref'), el, ing});
+did2.unittest.helpers.dumpJ('testAnUnresolvableSubjectstringEmitsNoObservation', 'out', out);
+did2.unittest.helpers.dumpJ('testAnUnresolvableSubjectstringEmitsNoObservation', 'rep', rep);
 verifyEqual(testCase, rep.probe_rows_total, 1);
 verifyEqual(testCase, rep.refused_no_subject, 1);
 verifyEqual(testCase, rep.observations_emitted, 0);
@@ -253,11 +280,15 @@ function testAnEmptySubjectstringIsCountedApart(testCase)
 % An empty subjectstring column is a DIFFERENT refusal from a present-but-
 % unresolvable one, and must not be summed with it.
 subj = subjectBody('specimen_4', 'sess_4', 'L');
+did2.unittest.helpers.dumpJ('testAnEmptySubjectstringIsCountedApart', 'subj', subj);
 el   = elementBody('el_4', 'sess_4', 'tet', '1', 'n-trode', 1, 'specimen_4');
+did2.unittest.helpers.dumpJ('testAnEmptySubjectstringIsCountedApart', 'el', el);
 ing  = ingestedWithRows('ing_4', 'sess_4', 't00004', { ...
     {'tet', '1', 'n-trode', ''}, ...
     {'tet', '2', 'n-trode', 'L'}});
+did2.unittest.helpers.dumpJ('testAnEmptySubjectstringIsCountedApart', 'ing', ing);
 [~, rep] = decompose({sessionBody('sd_4', 'sess_4', 'ref'), subj, el, ing});
+did2.unittest.helpers.dumpJ('testAnEmptySubjectstringIsCountedApart', 'rep', rep);
 verifyEqual(testCase, rep.probe_rows_total, 2);
 verifyEqual(testCase, rep.rows_no_subjectstring, 1);
 verifyEqual(testCase, rep.refused_no_subject, 0);
@@ -281,8 +312,10 @@ function testModalityRowsResolveToTheRightObservationLeaf(testCase)
 % localModality IMAGE IS DEFERRED note. jRecordingObservation carries the same
 % latent blank-image shape but never validates it (its tests run Validate=false).
 subj = subjectBody('spec_m', 'sess_m', 'L');
+did2.unittest.helpers.dumpJ('testModalityRowsResolveToTheRightObservationLeaf', 'subj', subj);
 ing  = ingestedWithRows('ing_m', 'sess_m', 't0m', { ...
     {'a', '', 'n-trode',              'L'}, ...   % voltage
+did2.unittest.helpers.dumpJ('testModalityRowsResolveToTheRightObservationLeaf', 'ing', ing);
     {'b', '', 'patch-i',              'L'}, ...   % current
     {'c', '', 'two-photon-imaging',   'L'}, ...   % image (DEFERRED, not emitted)
     {'d', '', 'spikes',               'L'}, ...   % time
@@ -290,6 +323,8 @@ ing  = ingestedWithRows('ing_m', 'sess_m', 't0m', { ...
     {'f', '', 'thermometer',          'L'}, ...   % temperature
     {'g', '', 'extracellular_electrode-4', 'L'}}); % voltage (electrode stem)
 [out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subj, ing});
+did2.unittest.helpers.dumpJ('testModalityRowsResolveToTheRightObservationLeaf', 'out', out);
+did2.unittest.helpers.dumpJ('testModalityRowsResolveToTheRightObservationLeaf', 'rep', rep);
 verifyEqual(testCase, rep.probe_rows_total, 7);
 verifyEqual(testCase, rep.observations_emitted, 6);
 verifyEqual(testCase, rep.rows_image_deferred, 1);
@@ -320,36 +355,45 @@ end
 
 function testStimProbeRowsTotal(testCase)
 [~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.probe_rows_total, 2);
+did2.unittest.helpers.dumpJ('testStimProbeRowsTotal', 'rep', rep);
 end
 function testStimRowsStimulator(testCase)
 [~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.rows_stimulator, 1);
+did2.unittest.helpers.dumpJ('testStimRowsStimulator', 'rep', rep);
 end
 function testStimRowsUnresolved(testCase)
 [~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.rows_unresolved_modality, 1);
+did2.unittest.helpers.dumpJ('testStimRowsUnresolved', 'rep', rep);
 end
 function testStimObservationsEmittedZero(testCase)
 [~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.observations_emitted, 0);
+did2.unittest.helpers.dumpJ('testStimObservationsEmittedZero', 'rep', rep);
 end
 function testStimManipulationsEmittedOne(testCase)
 [~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.manipulations_emitted, 1);
+did2.unittest.helpers.dumpJ('testStimManipulationsEmittedOne', 'rep', rep);
 end
 function testStimNoObservationBody(testCase)
 [out, ~, ~] = stimDecompose();
+did2.unittest.helpers.dumpJ('testStimNoObservationBody', 'out', out);
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
 end
 
 function testStimNotQuarantined(testCase)
 [~, rep, ~] = stimDecompose();
+did2.unittest.helpers.dumpJ('testStimNotQuarantined', 'rep', rep);
 verifyEqual(testCase, rep.fold_quarantined, 0);
 end
 
 function testStimOneManipulationValidatedAndEmitted(testCase)
 [~, ~, manips] = stimDecompose();
+did2.unittest.helpers.dumpJ('testStimOneManipulationValidatedAndEmitted', 'manips', manips);
 verifyEqual(testCase, numel(manips), 1);
 end
 
 function testStimManipulationClassSubjectAnchor(testCase)
 [~, ~, manips] = stimDecompose();
+did2.unittest.helpers.dumpJ('testStimManipulationClassSubjectAnchor', 'manips', manips);
 assertNotEmpty(testCase, manips);
 m = manips{1};
 verifyEqual(testCase, char(did2.unittest.helpers.leafName(m)), 'term_manipulation');
@@ -359,6 +403,7 @@ end
 
 function testStimManipulationCarriesTheStimulatorType(testCase)
 [~, ~, manips] = stimDecompose();
+did2.unittest.helpers.dumpJ('testStimManipulationCarriesTheStimulatorType', 'manips', manips);
 assertNotEmpty(testCase, manips);
 m = manips{1};
 verifyEqual(testCase, char(m.statement.variable.name), 'stimulator');
@@ -372,10 +417,15 @@ function testDeviceStringResolvesAcqSystemAndParsesGroupedChannels(testCase)
 % `intan1:ai27-28,45;di0-2` -> acquisition_system_id (the migrated daqsystem
 % named 'intan1') + two channel groups {ai [27 28 45]} and {di [0 1 2]}.
 subj = subjectBody('spec_d', 'sess_d', 'L');
+did2.unittest.helpers.dumpJ('testDeviceStringResolvesAcqSystemAndParsesGroupedChannels', 'subj', subj);
 daq  = daqsystemBody('acqsys_d', 'sess_d', 'intan1');
+did2.unittest.helpers.dumpJ('testDeviceStringResolvesAcqSystemAndParsesGroupedChannels', 'daq', daq);
 ing  = ingestedWithDeviceRows('ing_d', 'sess_d', 't0d', { ...
     {'p', '', 'n-trode', 'intan1:ai27-28,45;di0-2', 'L'}});
+did2.unittest.helpers.dumpJ('testDeviceStringResolvesAcqSystemAndParsesGroupedChannels', 'ing', ing);
 [out, rep] = decompose({sessionBody('sd_d', 'sess_d', 'ref'), subj, daq, ing});
+did2.unittest.helpers.dumpJ('testDeviceStringResolvesAcqSystemAndParsesGroupedChannels', 'out', out);
+did2.unittest.helpers.dumpJ('testDeviceStringResolvesAcqSystemAndParsesGroupedChannels', 'rep', rep);
 
 verifyEqual(testCase, rep.device_strings_seen, 1);
 verifyEqual(testCase, rep.device_acqsystem_resolved, 1);
@@ -384,6 +434,7 @@ verifyEqual(testCase, rep.device_channels_parsed, 1);
 verifyEqual(testCase, rep.device_channels_unparsable, 0);
 
 obs = bodiesNamed(out, 'migrated_probemap_observation');
+did2.unittest.helpers.dumpJ('testDeviceStringResolvesAcqSystemAndParsesGroupedChannels', 'obs', obs);
 verifyEqual(testCase, numel(obs), 1);
 verifyEqual(testCase, depVal(obs{1}, 'acquisition_system_id'), 'acqsys_d');
 ch = obs{1}.subject_interaction.channels;   % hoisted from subject_observation (inc 3)
@@ -402,8 +453,11 @@ function testRenameIsGuardedWhenNoFilenavigatorId(testCase)
 % the guarded-passthrough idiom. Empty probemap here, so the rename decision is
 % the only thing under test.
 ing = ingestedRaw('ing_g', 'sess_g', 't0g', '');
+did2.unittest.helpers.dumpJ('testRenameIsGuardedWhenNoFilenavigatorId', 'ing', ing);
 ing.depends_on = struct('name', {}, 'value', {});   % NO filenavigator_id
 [out, rep] = decompose({sessionBody('sd_g', 'sess_g', 'ref'), ing});
+did2.unittest.helpers.dumpJ('testRenameIsGuardedWhenNoFilenavigatorId', 'out', out);
+did2.unittest.helpers.dumpJ('testRenameIsGuardedWhenNoFilenavigatorId', 'rep', rep);
 
 verifyEqual(testCase, rep.epochfiles_ingested_seen, 1);
 verifyEqual(testCase, rep.refused_no_epoch, 0);              % epoch DOES resolve
@@ -423,10 +477,15 @@ function testAnIngestedDocWithNoMintedEpochIsRefused(testCase)
 % nothing is emitted -- the anchor's required `relative_to` would have nowhere to
 % point.
 subj = subjectBody('spec_n', 'sess_n', 'L');
+did2.unittest.helpers.dumpJ('testAnIngestedDocWithNoMintedEpochIsRefused', 'subj', subj);
 el   = elementBody('el_n', 'sess_n', 'tet', '1', 'n-trode', 1, 'spec_n');
+did2.unittest.helpers.dumpJ('testAnIngestedDocWithNoMintedEpochIsRefused', 'el', el);
 ing  = ingestedWithRows('ing_n', 'sess_n', 't0n', {{'tet', '1', 'n-trode', 'L'}});
+did2.unittest.helpers.dumpJ('testAnIngestedDocWithNoMintedEpochIsRefused', 'ing', ing);
 % NO session document -> epochMint mints no epoch for (sess_n, t0n).
 [out, rep] = decompose({subj, el, ing});
+did2.unittest.helpers.dumpJ('testAnIngestedDocWithNoMintedEpochIsRefused', 'out', out);
+did2.unittest.helpers.dumpJ('testAnIngestedDocWithNoMintedEpochIsRefused', 'rep', rep);
 verifyEqual(testCase, rep.epochfiles_ingested_seen, 1);
 verifyEqual(testCase, rep.refused_no_epoch, 1);
 verifyEqual(testCase, rep.observations_emitted, 0);
