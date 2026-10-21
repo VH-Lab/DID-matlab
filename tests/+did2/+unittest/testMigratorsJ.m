@@ -294,7 +294,7 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(a), 'term_assertion');
 verifyEqual(testCase, a.get('statement.variable').name, 'species');
 verifyEqual(testCase, a.get('term.value').node, 'NCBITaxon:6239');
 verifyEqual(testCase, a.get('term.value').name, 'Caenorhabditis elegans');
-verifyEqual(testCase, depVal(a, 'subject_id'), 'subj_007');
+verifyEqual(testCase, depVal(a, 'entity_id'), 'subj_007');
 % an assertion is timeless: it is a subject_assertion, not an interaction
 supers = a.get('document_class.superclasses');
 verifyEqual(testCase, supers(1).class_name, 'subject_assertion');
@@ -392,7 +392,7 @@ verifyEmpty(testCase, rel, ...
 % an extracellular electrode bundle, so the modality is voltage.
 obs = firstOfClassJ(out.migrated, 'voltage_observation');
 verifyNotEmpty(testCase, obs, 'a direct n-trode must emit a voltage_observation');
-verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');    % the SPECIMEN
+verifyEqual(testCase, depVal(obs, 'entity_id'), 'subj_007');    % the SPECIMEN
 verifyEqual(testCase, depVal(obs, 'instrument_id'), 'el_1');     % the electrode (T7)
 
 % The element itself is still promoted to a subject with its id PRESERVED --
@@ -428,7 +428,7 @@ verifyTrue(testCase, isfield(out.summary.by_class, 'session_relative_reference')
 
 act = out.migrated{1};
 % recipient is the patient; the material term is the value AND the variable
-verifyEqual(testCase, depVal(act, 'subject_id'), 'rec_001');
+verifyEqual(testCase, depVal(act, 'entity_id'), 'rec_001');
 verifyEqual(testCase, act.get('statement.variable').name, 'embryonic tissue');
 verifyEqual(testCase, act.get('term.value').name, 'embryonic tissue');
 verifyEqual(testCase, act.get('subject_interaction.method').name, 'transplantation');
@@ -518,8 +518,8 @@ verifyEqual(testCase, mass.get('statement.variable').name, 'body weight');
 verifyEqual(testCase, mass.get('mass.value').source_value, 24.3);
 verifyEqual(testCase, mass.get('subject_statement.storage_mode'), 'inline');
 % the spine: subject_id carried, shared time anchor wired on
-verifyEqual(testCase, depVal(mass, 'subject_id'), 'subj_001');
-verifyEqual(testCase, depVal(mass, 'time_reference_1'), out.migrated{4}.get('base.id'));
+verifyEqual(testCase, depVal(mass, 'entity_id'), 'subj_001');
+verifyEqual(testCase, depVal(mass, 'time_reference_id'), out.migrated{4}.get('base.id'));
 end
 
 function testOntologyTableRowStringColumnIsTermObservation(testCase)
@@ -558,20 +558,31 @@ m = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'temperature_manipulation');
 verifyEqual(testCase, m.get('temperature.value').source_value, 4.0);
 verifyEqual(testCase, m.get('statement.variable').name, 'cold exposure');
-verifyEqual(testCase, depVal(m, 'subject_id'), 'subj_007');
+verifyEqual(testCase, depVal(m, 'entity_id'), 'subj_007');
 % shared session anchor wired on as the time_reference
-verifyEqual(testCase, depVal(m, 'time_reference_1'), out.migrated{2}.get('base.id'));
+verifyEqual(testCase, depVal(m, 'time_reference_id'), out.migrated{2}.get('base.id'));
 end
 
 function testTreatmentSubstanceIsDoseManipulation(testCase)
 out = runJ(treatmentDoc('chebi:28001', 'haloperidol', 2.5, ''));
 m = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(m), 'dose_manipulation');
-chem = m.get('dose.value').formulation.chemicals;
-verifyEqual(testCase, chem(1).substance.name, 'haloperidol');
-% the source numeric_value is carried as the dose amount (not dropped)
-verifyEqual(testCase, chem(1).amount.source_value, 2.5);
-% the substance is BOTH the spine identity and the dose chemical
+% did-schema #88: the dose names a `formulation` document (formulation_id),
+% whose ingredient_id edges name `chemical` documents; the amount rides on the
+% formulation's ingredient entry.
+fId = depVal(m, 'formulation_id');
+verifyNotEmpty(testCase, fId, 'the dose must name its formulation');
+f = []; c = [];
+for k = 1:numel(out.migrated)
+    d = out.migrated{k};
+    if strcmp(d.get('base.id'), fId); f = d; end
+    if strcmp(d.get('document_class.class_name'), 'chemical'); c = d; end
+end
+verifyNotEmpty(testCase, c, 'no chemical document was emitted');
+if ~isempty(c)
+    verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
+end
+verifyNotEmpty(testCase, f, 'the formulation the dose names is not in the batch');
 verifyEqual(testCase, m.get('statement.variable').node, 'chebi:28001');
 end
 
@@ -661,7 +672,7 @@ o = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(o), 'term_observation');
 verifyEqual(testCase, o.get('term.value').node, 'uberon:0002436');
 % the probe is the subject (device-as-subject, D2)
-verifyEqual(testCase, depVal(o, 'subject_id'), 'probe_42');
+verifyEqual(testCase, depVal(o, 'entity_id'), 'probe_42');
 end
 
 function v1 = ontologyLabelBody()
@@ -807,7 +818,7 @@ obs = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 % id PRESERVED, so anything referring to this document still resolves
 verifyEqual(testCase, obs.get('base.id'), 'img_01');
-verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');
+verifyEqual(testCase, depVal(obs, 'entity_id'), 'subj_007');
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
 % dtype comes from the parameters block, never guessed from the pixels
 verifyEqual(testCase, obs.get('image.value').dtype, 'uint8');
@@ -1071,7 +1082,7 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 verifyEqual(testCase, obs.get('base.name'), 'migrated_image');
 % the value lives in the body: storage_mode: body on the statement
 verifyEqual(testCase, obs.get('subject_statement.storage_mode'), 'body');
-verifyEqual(testCase, depVal(obs, 'subject_id'), 'subj_007');
+verifyEqual(testCase, depVal(obs, 'entity_id'), 'subj_007');
 % the raster CELL: image now matches the single-`value` convention every other
 % data_type follows -- ONE payload slot holding the pixels plus the descriptors
 % needed to read them (dtype is not recoverable from a bare matrix, R6 dec. 4).
@@ -1349,8 +1360,8 @@ verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), ...
     {'ontology_table_row_id', 'subject_id', 'time_reference_1'}, ...
     'the fold arm emits exactly subject_id + the anchor + the carried row');
-verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_7');
-verifyNotEmpty(testCase, depVal(obs, 'time_reference_1'));
+verifyEqual(testCase, depVal(obs, 'entity_id'), 'subjgrp_7');
+verifyNotEmpty(testCase, depVal(obs, 'time_reference_id'));
 % THE CARRY: the source `document_id` value, under the slot's name.
 verifyEqual(testCase, depVal(obs, 'ontology_table_row_id'), 'otr_plate_1', ...
     'the plate row the source document_id named must survive the fold');
@@ -1489,8 +1500,8 @@ obs = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
 
 % NON-VACUITY FIRST: the fold happened and the edges that SHOULD be there are.
-verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_babu_3');
-verifyNotEmpty(testCase, depVal(obs, 'time_reference_1'));
+verifyEqual(testCase, depVal(obs, 'entity_id'), 'subjgrp_babu_3');
+verifyNotEmpty(testCase, depVal(obs, 'time_reference_id'));
 
 % THE ASSERTION: the slot is ABSENT, not present-and-empty. Read by NAME --
 % depVal cannot tell those apart and would pass either way.
@@ -1519,7 +1530,7 @@ v1.depends_on = struct('name', {'subject_id', 'document_id'}, ...
 out = runJ(v1);
 obs = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.leafName(obs), 'image_observation');
-verifyEqual(testCase, depVal(obs, 'subject_id'), 'subjgrp_babu_3');
+verifyEqual(testCase, depVal(obs, 'entity_id'), 'subjgrp_babu_3');
 verifyEqual(testCase, sort(did2.unittest.helpers.dropSessionEdge(depNamesOf(obs))), {'subject_id', 'time_reference_1'}, ...
     'an empty source document_id must not become an empty V_eta edge');
 end
@@ -1587,14 +1598,14 @@ verifyEqual(testCase, bc.velocity_observation, 3);
 % a measurement is about the worm and shares the encounter window
 tref = firstOfClassJ(out.migrated, 'session_bounded_reference');
 vel = firstOfClassJ(out.migrated, 'velocity_observation');
-verifyEqual(testCase, depVal(vel, 'subject_id'), 'worm_1');
-verifyEqual(testCase, depVal(vel, 'time_reference_1'), tref.get('base.id'));
+verifyEqual(testCase, depVal(vel, 'entity_id'), 'worm_1');
+verifyEqual(testCase, depVal(vel, 'time_reference_id'), tref.get('base.id'));
 % the relation is the encounter record: worm --encountered--> patch, same window
 rel = firstOfClassJ(out.migrated, 'directed_relation');
 verifyEqual(testCase, depVal(rel, 'child'), 'worm_1');
 verifyEqual(testCase, depVal(rel, 'parent'), 'patch_1');
 verifyEqual(testCase, rel.get('directed_relation.relation').name, 'encountered');
-verifyEqual(testCase, depVal(rel, 'time_reference_1'), tref.get('base.id'));
+verifyEqual(testCase, depVal(rel, 'time_reference_id'), tref.get('base.id'));
 % the window carries onset/offset
 verifyEqual(testCase, tref.get('session_bounded_reference.start').source_value, 1249.72);
 end
@@ -1661,8 +1672,8 @@ verifyEqual(testCase, sub.get('entity.local_identifier'), ...
 % every geometry observation is about that patch and shares the anchor
 anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
 od = firstOfClassJ(out.migrated, 'concentration_observation');
-verifyEqual(testCase, depVal(od, 'subject_id'), 'otr_patch');
-verifyEqual(testCase, depVal(od, 'time_reference_1'), anchor.get('base.id'));
+verifyEqual(testCase, depVal(od, 'entity_id'), 'otr_patch');
+verifyEqual(testCase, depVal(od, 'time_reference_id'), anchor.get('base.id'));
 end
 
 function testAPatchSubjectIsNeverLabelledJustThePatchNumber(testCase)
@@ -1754,14 +1765,14 @@ verifyEqual(testCase, bc.intensity_observation, 1);
 % and it is about the patch, on the same anchor as the enumerated measures
 anchor = firstOfClassJ(out.migrated, 'session_relative_reference');
 extra = firstOfClassJ(out.migrated, 'intensity_observation');
-verifyEqual(testCase, depVal(extra, 'subject_id'), 'otr_patch');
-verifyEqual(testCase, depVal(extra, 'time_reference_1'), anchor.get('base.id'));
+verifyEqual(testCase, depVal(extra, 'entity_id'), 'otr_patch');
+verifyEqual(testCase, depVal(extra, 'time_reference_id'), anchor.get('base.id'));
 % the already-shipped 7th column is carried too, as a term (its value is a label)
 plate = firstOfClassJ(out.migrated, 'term_observation');
 assertNotEmpty(testCase, plate, ...
     'BacterialPlateIdentifier was dropped');
 verifyEqual(testCase, plate.get('term.value').name, '0061');
-verifyEqual(testCase, depVal(plate, 'subject_id'), 'otr_patch');
+verifyEqual(testCase, depVal(plate, 'entity_id'), 'otr_patch');
 end
 
 % ==== ontology_table_row: the C. elegans CULTIVATION PLATE is not a patch ===
@@ -1933,8 +1944,8 @@ end
 
 dose = firstOfClassJ(out.migrated, 'dose_manipulation');
 verifyNotEmpty(testCase, dose);
-verifyEqual(testCase, depVal(dose, 'subject_id'), subjId);
-verifyNotEmpty(testCase, depVal(dose, 'time_reference_1'));
+verifyEqual(testCase, depVal(dose, 'entity_id'), subjId);
+verifyNotEmpty(testCase, depVal(dose, 'time_reference_id'));
 % the primary chemical is the spine identity and seeds the dose formulation
 verifyEqual(testCase, dose.get('statement.variable').name, 'muscimol');
 chems = dose.get('dose.value').formulation.chemicals;
@@ -1947,7 +1958,7 @@ verifyEqual(testCase, anchor.get('session_relative_reference.relation'), 'during
 locObs = firstOfClassJ(out.migrated, 'term_observation');
 verifyNotEmpty(testCase, locObs);
 verifyEqual(testCase, locObs.get('term.value').name, 'CNS');
-verifyEqual(testCase, depVal(locObs, 'subject_id'), subjId);
+verifyEqual(testCase, depVal(locObs, 'entity_id'), subjId);
 end
 
 % ============ metadata_editor -> dataset + entities + relations =========
