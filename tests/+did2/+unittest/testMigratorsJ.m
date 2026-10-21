@@ -4615,9 +4615,10 @@ end
 
 function testNeuronExtracellularMintsDerivedSubject(testCase)
 % #9 grain-B pattern: a sorted unit is a DERIVED subject, not an observation of the
-% recording. neuron_extracellular -> subject + derived_from relation (unit <- the
-% recording subject) + a count_assertion of the sorter's cluster_index + a
-% score_observation of the unit + anchor. 1 -> 5.
+% recording. neuron_extracellular -> entity (cell) + derived_from relation (unit <-
+% the recording element) + anchor + CALCULATIONS about the unit (#73 review item
+% 48, 2026-10-21): cluster_index as a label, quality_number as a score, with the
+% calculator's software (no app block here: named by the fallback). 1 -> 6.
 %
 % WAS 4 UNTIL 2026-08-17. The fifth body is the `count_assertion` carrying
 % `cluster_index`, which until then survived only as text inside
@@ -4635,14 +4636,15 @@ body.neuron_extracellular = struct('cluster_index', 7, 'quality_number', 3, ...
 
 out = did2.convert.migrators_j.neuron_extracellular(body);
 names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
-verifyEqual(testCase, numel(out), 5, ...
-    sprintf('expected 5 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
+verifyEqual(testCase, numel(out), 6, ...
+    sprintf('expected 6 bodies, got %d: %s', numel(out), strjoin(names, ', ')));
 verifyTrue(testCase, any(strcmp(names, 'cell')));   % #88: the unit is an entity of type cell
 verifyTrue(testCase, any(strcmp(names, 'directed_relation')));
-verifyTrue(testCase, any(strcmp(names, 'observation+score')));
-verifyTrue(testCase, any(strcmp(names, 'assertion+count')));
-verifyFalse(testCase, any(strcmp(names, 'observation+voltage')), ...
-    'no mean_waveform in this fixture -- an observation here would be a husk');
+verifyTrue(testCase, any(strcmp(names, 'calculation+score')));
+verifyTrue(testCase, any(strcmp(names, 'calculation+label')));
+verifyTrue(testCase, any(strcmp(names, 'software')));
+verifyFalse(testCase, any(strcmp(names, 'calculation+voltage')), ...
+    'no mean_waveform in this fixture -- a calculation here would be a husk');
 
 neuron = out{find(strcmp(names, 'cell'), 1)};
 verifyEqual(testCase, neuron.entity.local_identifier, 'unit_7');
@@ -4652,7 +4654,7 @@ verifyEqual(testCase, depValue(rel, 'child_id'), neuron.base.id);
 verifyEqual(testCase, depValue(rel, 'parent_id'), 'rec_sub_1');
 verifyEqual(testCase, rel.directed_relation.relation.name, 'derived_from');
 % the quality observation is about the minted unit
-qobs = out{find(strcmp(names, 'observation+score'), 1)};
+qobs = out{find(strcmp(names, 'calculation+score'), 1)};
 verifyEqual(testCase, depValue(qobs, 'entity_id'), neuron.base.id);
 verifyEqual(testCase, qobs.score.value.score, 3, 'AbsTol', 1e-9);
 end
