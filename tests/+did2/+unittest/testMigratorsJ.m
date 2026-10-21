@@ -181,11 +181,12 @@ out = runJ(v1);
 
 verifyEqual(testCase, numel(out.migrated), 1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'subject');
+% did-schema #88: a subject_group is an `entity` of type group
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'group');
 verifyEqual(testCase, doc.get('document_class.schema_version'), 'V_eta');
 verifyEqual(testCase, doc.get('entity.local_identifier'), 'cohortA');
 % bare identity: is_group / is_biological must NOT be present in V_eta
-sub = doc.get('subject');
+sub = doc.get('entity');
 verifyFalse(testCase, isfield(sub, 'is_group'));
 verifyFalse(testCase, isfield(sub, 'is_biological'));
 end
@@ -217,7 +218,8 @@ v1.base = struct('id', 'sub_bare', 'session_id', 'sess_09', ...
 v1.subject = struct('local_identifier', '', 'description', '');
 out = runJ(v1);
 doc = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'subject');
+% did-schema #88: a subject is an `entity` of type organism
+verifyEqual(testCase, did2.unittest.helpers.leafName(doc), 'organism');
 verifyEqual(testCase, doc.get('entity.local_identifier'), 'sub_bare');
 end
 
