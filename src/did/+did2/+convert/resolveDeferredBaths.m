@@ -302,13 +302,17 @@ for k = 1:numel(migrated)
     doc = migrated{k};
     try
         cn = doc.className();
-        if strcmp(cn, 'element')
+        if strcmp(cn, 'element') || strcmp(cn, 'entity')
+            % #88: an element migrates to an `entity` (its lineage to the
+            % specimen is a relation, read below)
             id = char(doc.get('base.id'));
             if ~isempty(id); idx.elements(id) = doc; end
         elseif strcmp(cn, 'directed_relation')
             deps = docDeps(doc);
-            child = depFrom(deps, 'child');
-            parent = depFrom(deps, 'parent');
+            child = depFrom(deps, 'child_id');
+            if isempty(child); child = depFrom(deps, 'child'); end
+            parent = depFrom(deps, 'parent_id');
+            if isempty(parent); parent = depFrom(deps, 'parent'); end
             if ~isempty(child) && ~isempty(parent) && ~isKey(idx.relParent, child)
                 idx.relParent(child) = parent;
             end
@@ -417,71 +421,58 @@ bodies = {anchorBody, bathBody};
 end
 
 function bodies = makeBathVEta(v1Body, subjectId)
-%MAKEBATHVETA Assemble a strict-J `dose_manipulation` (+ session anchor) from a
-%   deferred stimulus_bath. Mirrors migrators_j.treatment.makeDoseManipulation:
-%   the primary chemical is the spine identity (subject_statement.variable), the
-%   whole bath mixture becomes the dose formulation's chemicals, and the bath
-%   rides on the resolved subject over a session-relative window. The bath
-%   `location` has no strict-J home on the subject (it is the chamber, not a
-%   subject site) and is dropped -- a discovery follow-up if it proves needed.
+% did-schema #88, built through did2.build: a "during the session" anchor (a
+% relative_time_reference onto the session entity, whose base.id IS the
+% session id), one `chemical` per mixture row, the `formulation` naming them
+% (its ingredient entries carry each row's amount as the source wrote it), the
+% `dose_manipulation` (id preserved) naming the formulation, and the location
+% observation when the bath names a location.
 sessionId = baseField(v1Body, 'session_id', '');
 datestamp = baseField(v1Body, 'datestamp', '');
-bathId    = baseField(v1Body, 'id', did.ido.unique_id());
+if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+bathId    = baseField(v1Body, 'id', '');
 mixture   = parseMixture(v1Body);
 variable  = primaryChemical(mixture);
+o = {'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), 'Validate', false};
 
-% session-relative anchor (the ordinal fallback; base.session_id carries session)
-anchorId = did.ido.unique_id();
-anchorBody = struct();
-anchorBody.document_class = struct('class_name', 'session_relative_reference', ...
-    'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'time_reference', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-anchorBody.depends_on = struct('name', {}, 'value', {});
-anchorBody.base = struct('id', anchorId, 'session_id', sessionId, ...
-    'name', 'migrated_session_anchor', 'creation_timestamp', datestamp);
-anchorBody.time_reference = struct('is_approximate', true);
-anchorBody.session_relative_reference = struct('relation', 'during');
+anchorBody = did2.build.relativeTimeReference(char(sessionId), ...
+    'Relation', 'intervalDuring', o{:});
+anchorId = anchorBody.base.id;
 
-% the bath mixture -> dose formulation chemicals ({substance, amount}).
-% `substance` is a non-empty ontology_term, so skip parseMixture's blank
-% fallback entry (both node and name empty) rather than emit an invalid chemical.
-chemicals = struct('substance', {}, 'amount', {});
+bodies = {anchorBody};
+ids = {};
+entries = {};
 for i = 1:numel(mixture)
     chem = mixture(i).chemical;
     if isempty(chem.node) && isempty(chem.name)
         continue;
     end
-    chemicals(end+1) = struct('substance', chem, ...
-        'amount', mixture(i).amount); %#ok<AGROW>
+    sub = did2.convert.registeredTerm(chem.node, chem.name);
+    c = did2.build.document('chemical', struct('value', struct('substance', sub)), o{:});
+    bodies{end+1} = c; %#ok<AGROW>
+    ids{end+1} = c.base.id; %#ok<AGROW>
+    e = struct();
+    a = mixture(i).amount;
+    if isfinite(a.source_value)
+        conc = struct('source_value', a.source_value);
+        if ~isempty(a.source_unit)
+            conc.source_unit = did2.convert.registeredTerm('', a.source_unit);
+        end
+        e.concentration = conc;
+    end
+    entries{end+1} = e; %#ok<AGROW>
 end
-formulation = struct();
-formulation.chemicals = chemicals;
-
-dose = struct();
-dose.document_class = struct('class_name', 'dose_manipulation', 'class_version', '1.0.0', ...
-    'superclasses', [ ...
-        struct('class_name', 'subject_manipulation', 'class_version', '1.0.0'), ...
-        struct('class_name', 'dose',                 'class_version', '1.0.0')], ...
-    'schema_version', 'V_eta');
-dose.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-dose.base = struct('id', bathId, 'session_id', sessionId, ...
-    'name', 'migrated_bath', 'creation_timestamp', datestamp);
-dose.subject_statement = struct('variable', variable, 'storage_mode', 'inline');
-dose.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
-dose.subject_manipulation = struct('notes', '');
-dose.dose = struct('value', struct('formulation', formulation, ...
-    'volume', struct('source_unit', '', 'source_value', 0.0, 'approximate', false), ...
-    'route', struct('node', '', 'name', '')));
-
-bodies = {anchorBody, dose};
-
-% carry the bath location (otherwise dropped): a merely-located site is a
-% term_observation about the subject (D3), the same disposition treatment /
-% virus_injection give a site. Emitted only when the source names a location.
+if isempty(ids)
+    error('did2:convert:bathNoChemical', ...
+        'stimulus_bath "%s" names no chemical, so no formulation can say what was given.', bathId);
+end
+f = did2.build.document('formulation', struct('value', struct('ingredients', {entries})), ...
+    o{:}, 'Edges', struct('ingredient_id', {ids}));
+bodies{end+1} = f;
+dose = did2.build.statement('dose_manipulation', char(subjectId), variable, [], ...
+    'TimeReferenceIds', {anchorId}, 'Edges', struct('formulation_id', f.base.id), ...
+    'Id', char(bathId), o{:});
+bodies = [{dose}, bodies];
 loc = locationTerm(v1Body);
 if ~isempty(loc.node) || ~isempty(loc.name)
     bodies{end+1} = makeLocationObs(v1Body, subjectId, anchorId, loc);
@@ -489,25 +480,14 @@ end
 end
 
 function obs = makeLocationObs(v1Body, subjectId, anchorId, loc)
-%MAKELOCATIONOBS A term_observation carrying the bath's location term, about the
-%   bathed subject, on the same session anchor as the dose.
-sessionId = baseField(v1Body, 'session_id', '');
 datestamp = baseField(v1Body, 'datestamp', '');
-obs = struct();
-obs.document_class = struct('class_name', 'term_observation', 'class_version', '1.0.0', ...
-    'superclasses', struct('class_name', 'subject_observation', 'class_version', '1.0.0'), ...
-    'schema_version', 'V_eta');
-obs.depends_on = [ ...
-    struct('name', 'subject_id',       'value', subjectId), ...
-    struct('name', 'time_reference_1', 'value', anchorId)];
-obs.base = struct('id', did.ido.unique_id(), 'session_id', sessionId, ...
-    'name', 'migrated_bath_location', 'creation_timestamp', datestamp);
-obs.subject_statement = struct('variable', struct('node', '', 'name', 'anatomical location'), ...
-    'storage_mode', 'inline');
-obs.subject_interaction = struct('method', struct('node', '', 'name', ''), ...
-    'sample_time', struct('kind', 'point'));
-obs.subject_observation = struct();
-obs.term = struct('value', loc);   % value rides the `term` composite block
+if isempty(datestamp); datestamp = '2024-01-01T00:00:00.000Z'; end
+obs = did2.build.statement('term_observation', char(subjectId), ...
+    did2.convert.registeredTerm('', 'anatomical location'), ...
+    did2.convert.registeredTerm(loc.node, loc.name), ...
+    'TimeReferenceIds', {anchorId}, ...
+    'SessionId', char(baseField(v1Body, 'session_id', '')), ...
+    'CreationTimestamp', char(datestamp), 'Validate', false);
 end
 
 function variable = primaryChemical(mixture)
