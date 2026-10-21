@@ -25,9 +25,14 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   DID-schema tools/coverage.py, which credits the completion ladder from it.
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
-%   BATCH-PASS-CONSUMES: epochfiles_ingested
+%   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview
 %   BATCH-PASS-EMITS: epochfiles_ingested -> document: voltage_observation, current_observation, time_observation, acceleration_observation, temperature_observation, term_manipulation, ingestion_manifest, relative_reference, opaque_body, intensity_observation
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: time_observation, opaque_body, relative_reference
+%   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
+%       +migrators_j/pyraview through epochMint) are RE-POINTED to the epoch's
+%       recording observation and its separate observation retired; nothing
+%       new is minted for it here, so crediting it would count epochMint's
+%       emission twice.
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)
